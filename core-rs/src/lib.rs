@@ -11,6 +11,7 @@
 pub mod actions;
 pub mod assertions;
 pub mod clock;
+pub mod engine;
 pub mod error;
 pub mod events;
 pub mod graph;
