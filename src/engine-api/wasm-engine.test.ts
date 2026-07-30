@@ -134,4 +134,30 @@ describe('WasmEngine', () => {
       engine.advance(1.5);
     }).toThrow(TypeError);
   });
+
+  /**
+   * The M3 save seam, exercised from the side that will use it. A round trip
+   * that only proves the JSON parses would let a restored engine be a
+   * snapshot rather than a live world, so this one keeps playing afterwards.
+   */
+  it('survives a serialize and restore, and keeps running', () => {
+    const engine = seeded();
+    engine.advance(3);
+    const saved = engine.serialize();
+    const hash = engine.snapshotHash();
+
+    const restored = new WasmEngine(1);
+    restored.restore(saved);
+
+    expect(restored.snapshotHash()).toBe(hash);
+    expect(restored.now()).toBe(3);
+    expect(restored.dispatchLog()).toEqual(engine.dispatchLog());
+    expect(restored.dispatch('account.unlock', 'person:pat', 'account:ada', {}))
+      .toEqual({ ok: true });
+    expect(restored.graph.getField('account:ada', 'locked')).toBe(false);
+
+    expect(() => {
+      restored.restore('{ not json');
+    }).toThrow();
+  });
 });

@@ -625,6 +625,43 @@ describe('determinism over the shipped world', () => {
     }
   });
 
+  /**
+   * Cause before consequence. The dual-engine harness caught the retired bus
+   * delivering a mutation to later subscribers only AFTER the ticket engine
+   * had reacted to it - the resolution arriving before the change that caused
+   * it. An app that repaints from the world on `ticket:resolved` would have
+   * read a world that had not been told yet.
+   */
+  it('reports a mutation before the ticket events it causes', () => {
+    wasm.events.length = 0;
+    expect(
+      wasm.engine.dispatch(
+        HELPDESK_ACTIONS.accountUnlock,
+        ACTOR,
+        COMPANY_IDS.garyAccount,
+        {},
+      ),
+    ).toEqual({ ok: true });
+
+    expect(wasm.events.map((event) => event.type)).toEqual([
+      'graph:mutated',
+      'graph:mutated',
+      'ticket:resolved',
+    ]);
+
+    const [cause] = wasm.events;
+    expect(cause).toEqual({
+      type: 'graph:mutated',
+      mutation: {
+        type: 'field:set',
+        id: COMPANY_IDS.garyAccount,
+        field: FIELDS.locked,
+        previous: true,
+        value: false,
+      },
+    });
+  });
+
   it('gates by tier and leaves the world untouched when it refuses', () => {
     wasm.engine.setTier(0);
     replica.engine.setTier(0);

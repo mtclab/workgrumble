@@ -56,10 +56,6 @@ export function loadEngineFromBytes(bytes: BufferSource): void {
   loaded = true;
 }
 
-export function isEngineLoaded(): boolean {
-  return loaded;
-}
-
 function parseAnswer(payload: string): EngineAnswer {
   const parsed: unknown = JSON.parse(payload);
 
@@ -185,16 +181,8 @@ export class WasmEngine implements EngineApi {
     return isTicketState(state) ? state : undefined;
   }
 
-  public isTicketRegistered(id: NodeId): boolean {
-    return this.query({ kind: 'ticket_registered', id }) === true;
-  }
-
   public wasTicketBreached(id: NodeId): boolean {
     return this.query({ kind: 'ticket_breached', id }) === true;
-  }
-
-  public setWaiting(id: NodeId, waiting: boolean): void {
-    this.expect(this.core.set_waiting(id, waiting));
   }
 
   public onEvent(listener: (event: EngineEvent) => void): () => void {

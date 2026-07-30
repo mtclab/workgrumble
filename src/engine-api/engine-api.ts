@@ -46,11 +46,7 @@ export interface EngineApi {
   dispatchLog(): readonly DispatchLogEntry[];
 
   ticketState(id: NodeId): TicketState | undefined;
-  isTicketRegistered(id: NodeId): boolean;
   wasTicketBreached(id: NodeId): boolean;
-  /** Parks or un-parks a ticket directly. Actions do this through an op; the
-   * method exists for tests and for the engine-level ticket suites. */
-  setWaiting(id: NodeId, waiting: boolean): void;
 
   /** Every engine event, in the order it happened. */
   onEvent(listener: (event: EngineEvent) => void): () => void;
@@ -107,9 +103,4 @@ function subscribe<Listener>(
     subscribed = false;
     listeners.delete(listener);
   };
-}
-
-/** The read-only view the shell holds, over whichever engine is installed. */
-export function createGraphView(engine: EngineApi): ReadOnlyGraphView {
-  return engine.graph;
 }
