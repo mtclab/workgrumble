@@ -84,10 +84,23 @@ export function validateDialogueTrees(
     }
 
     for (const node of tree.nodes) {
+      const labels = new Set<string>();
+
       for (const option of node.options) {
         if (option.label.length === 0) {
           throw new Error(`An option of "${node.id}" has no label.`);
         }
+
+        // Two options reading the same in one breath is a content bug: the
+        // player cannot tell them apart, and neither can anything driving
+        // the UI by what it says on the button.
+        if (labels.has(option.label)) {
+          throw new Error(
+            `Node "${node.id}" of "${tree.id}" offers "${option.label}" twice.`,
+          );
+        }
+
+        labels.add(option.label);
 
         if (option.next !== undefined && !nodeIds.has(option.next)) {
           throw new Error(
@@ -133,9 +146,49 @@ export function validateDialogueTrees(
         }
       }
     }
+
+    assertEveryNodeReachable(tree);
   }
 
   return Object.freeze([...trees]);
+}
+
+/**
+ * Content nobody can reach is content nobody will ever see, and it hides the
+ * mistake that put it there - a branch wired to the wrong node id looks fine
+ * in the file and is simply missing in play.
+ */
+function assertEveryNodeReachable(tree: Readonly<DialogueTree>): void {
+  const seen = new Set<string>();
+  const queue: string[] = [tree.root];
+
+  if (tree.resolved_root !== undefined) {
+    queue.push(tree.resolved_root);
+  }
+
+  while (queue.length > 0) {
+    const id = queue.pop();
+
+    if (id === undefined || seen.has(id)) {
+      continue;
+    }
+
+    seen.add(id);
+
+    for (const option of dialogueNode(tree, id)?.options ?? []) {
+      if (option.next !== undefined) {
+        queue.push(option.next);
+      }
+    }
+  }
+
+  for (const node of tree.nodes) {
+    if (!seen.has(node.id)) {
+      throw new Error(
+        `Node "${node.id}" of "${tree.id}" cannot be reached from any root.`,
+      );
+    }
+  }
 }
 
 export const WORLD_DIALOGUE: readonly DialogueTree[] = validateDialogueTrees(

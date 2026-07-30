@@ -106,6 +106,39 @@ describe('dialogue content gate', () => {
     ])).toThrow('no resolved root');
   });
 
+  it('refuses two options that read the same in one node', () => {
+    expect(() => validateDialogueTrees([
+      tree({
+        nodes: [
+          {
+            id: 'start',
+            npc_line: 'It is broken.',
+            options: [{ label: 'Ask how' }, { label: 'Ask how' }],
+          },
+        ],
+      }),
+    ])).toThrow('twice');
+  });
+
+  it('refuses content no conversation can reach', () => {
+    expect(() => validateDialogueTrees([
+      tree({
+        nodes: [
+          {
+            id: 'start',
+            npc_line: 'It is broken.',
+            options: [{ label: 'Ask how' }],
+          },
+          {
+            id: 'orphan',
+            npc_line: 'Nobody will ever read this.',
+            options: [{ label: 'Nor this' }],
+          },
+        ],
+      }),
+    ])).toThrow('cannot be reached');
+  });
+
   it('refuses two trees for the same speaker', () => {
     expect(() => validateDialogueTrees([tree(), tree({ id: 'dialogue/2' })]))
       .toThrow('more than one dialogue tree');
