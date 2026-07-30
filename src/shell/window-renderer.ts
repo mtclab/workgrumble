@@ -1,5 +1,6 @@
 import type { AppDef, AppInstance, GameApi } from './apps/types';
 import { createIcon } from './icons';
+import { createReentrantPass } from './reentrant';
 import {
   closeWindow,
   focusWindow,
@@ -53,6 +54,17 @@ export class WindowRenderer {
   private readonly rendered = new Map<string, RenderedWindow>();
   private readonly definitions = new Map<string, AppDef>();
   private readonly gestures = new Set<AbortController>();
+  /**
+   * A pass mounts plugin code, and plugin code may open another window from
+   * its own `mount`. That commits new state mid-pass, so the paint is guarded:
+   * the nested request waits for the running pass instead of re-entering it
+   * before the current window is on the books.
+   */
+  private readonly paint = createReentrantPass<Readonly<WindowManagerState>>(
+    (state) => {
+      this.paintOnce(state);
+    },
+  );
 
   public constructor(
     private readonly layer: HTMLElement,
@@ -67,6 +79,10 @@ export class WindowRenderer {
   }
 
   public sync(state: Readonly<WindowManagerState>): void {
+    this.paint(state);
+  }
+
+  private paintOnce(state: Readonly<WindowManagerState>): void {
     const openIds = new Set(state.windows.map(({ id }) => id));
 
     for (const [id, rendered] of this.rendered) {

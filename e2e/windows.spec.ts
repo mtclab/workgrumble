@@ -114,6 +114,34 @@ test('offers both launch routes for both apps and closes cleanly', async ({
   await expect(page.getByTestId('bubbles-app')).toBeVisible();
 });
 
+/**
+ * One window per app, mounted exactly once. Every launch route - including an
+ * app opening another app - has to land on the same single window, or the
+ * renderer is mounting plugin code twice behind the player's back.
+ */
+test('mounts each app exactly once however it is launched', async ({
+  page,
+}) => {
+  await logIn(page);
+
+  await openFromDesktopIcon(page, 'about');
+  await page.getByTestId('about-open-bubbles').click();
+  await expect(page.getByTestId('window-bubbles')).toHaveCount(1);
+
+  await openFromStartMenu(page, 'bubbles');
+  await openFromDesktopIcon(page, 'bubbles');
+  await page.getByTestId('about-open-bubbles').click();
+
+  await expect(page.getByTestId('window-bubbles')).toHaveCount(1);
+  await expect(page.getByTestId('bubbles-app')).toHaveCount(1);
+  await expect(page.getByTestId('bubble-target')).toHaveCount(1);
+  await expect(page.getByTestId('taskbar-button-bubbles')).toHaveCount(1);
+
+  // A second window is still a second window: the About page must not have
+  // been remounted by any of that either.
+  await expect(page.getByTestId('about-app')).toHaveCount(1);
+});
+
 test('closes the start menu with Escape and with an outside click', async ({
   page,
 }) => {
