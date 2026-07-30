@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type {
   DispatchResult,
   Edge,
+  EngineEvent,
   Expr,
   FieldValue,
   GraphNode,
@@ -222,6 +223,14 @@ function createFixture(): WasmEngine {
 }
 
 let fixture: WasmEngine;
+let events: EngineEvent[];
+
+/** Everything the engine announced since the last call, and a clean slate. */
+function drainEvents(): readonly EngineEvent[] {
+  const drained = [...events];
+  events.length = 0;
+  return drained;
+}
 
 function dispatch(
   id: string,
@@ -250,6 +259,10 @@ function expectRefusal(
 
 beforeEach(() => {
   fixture = createFixture();
+  events = [];
+  fixture.onEvent((event) => {
+    events.push(event);
+  });
 });
 
 describe('helpdesk action registry', () => {
@@ -427,6 +440,42 @@ describe('service.restart', () => {
     );
     expect(fixture.graph.getField('service:spooler', FIELDS.status))
       .toBe('wedged');
+  });
+
+  /**
+   * "The backlog" is a PRINTER on the other end of the wire. The guard used to
+   * bind the first connected node carrying a `queue_len` at all, in id order -
+   * so a reception mouse with a number on it blocked the restart, in a
+   * sentence naming a device the player never touched and cannot empty.
+   */
+  it('reads the printer queue, not whatever else is on the wire', () => {
+    // `device:mouse` sorts before `device:printer`, so it is the one the old
+    // search found first.
+    fixture.applySetup([
+      {
+        op: 'addEdge',
+        edge: {
+          from: 'service:spooler',
+          to: 'device:mouse',
+          kind: 'connected_to',
+        },
+      },
+      {
+        op: 'setField',
+        id: 'device:mouse',
+        field: FIELDS.queueLen,
+        value: 3,
+      },
+    ]);
+    dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer');
+
+    expect(
+      dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:spooler'),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.getField('service:spooler', FIELDS.status))
+      .toBe('running');
+    // And the mouse was left exactly as it was found.
+    expect(fixture.graph.getField('device:mouse', FIELDS.queueLen)).toBe(3);
   });
 
   it('refuses to restart a healthy service', () => {
@@ -754,14 +803,22 @@ describe('ticket.mark_asked', () => {
       .toBe(true);
   });
 
+  /**
+   * The same hash is not the same as nothing happening: a mutation that wrote
+   * the value already there would leave the hash alone and still wake every
+   * app subscribed to the world. The no-op has to be silent as well as
+   * harmless.
+   */
   it('takes a second question as the no-op it is', () => {
     dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET);
     const before = fixture.snapshotHash();
+    drainEvents();
 
     expect(
       dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET),
     ).toEqual({ ok: true });
     expect(fixture.snapshotHash()).toBe(before);
+    expect(drainEvents()).toEqual([]);
   });
 
   it('refuses a ticket that is already closed', () => {

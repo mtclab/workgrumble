@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import type { Expr } from '../../engine-api';
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
 import { createWorldSession, type WorldSession } from '../session';
 import { acceptsEscalation } from './escalation';
-import { WORLD_TICKETS } from './index';
+import { allowsEscalation, WORLD_TICKETS } from './index';
 import type { TicketActionStep } from './types';
 
 function drive(session: WorldSession, step: Readonly<TicketActionStep>): void {
@@ -141,10 +142,75 @@ describe('hardware that reports a status', () => {
 describe('escalation policy', () => {
   it('offers escalation only where the ticket rules accept it', () => {
     const escalatable = WORLD_TICKETS
-      .filter((entry) => acceptsEscalation(entry.def.resolved_when))
+      .filter((entry) => acceptsEscalation(entry.def.resolved_when, entry.def.id))
       .map(({ def }) => def.id);
 
     expect(escalatable).toEqual(['ticket:fan-noise']);
+  });
+
+  /**
+   * The rule has to be about the ticket being asked about. A clause reading
+   * ANOTHER ticket's `escalated` flag used to count, which offered a button
+   * that marked this ticket escalated, did not close it, and refused the
+   * second press: a ticket the player could neither finish nor escalate.
+   */
+  it('reads the selector, not just the field name', () => {
+    const own: Expr = {
+      op: 'eq',
+      selector: { id: 'ticket:mine' },
+      field: FIELDS.escalated,
+      value: true,
+    };
+    const other: Expr = {
+      op: 'eq',
+      selector: { id: 'ticket:somebody-else' },
+      field: FIELDS.escalated,
+      value: true,
+    };
+    const wandering: Expr = {
+      op: 'eq',
+      selector: { kind: 'ticket', where: [{ field: FIELDS.state, value: 'open' }] },
+      field: FIELDS.escalated,
+      value: true,
+    };
+
+    expect(acceptsEscalation(own, 'ticket:mine')).toBe(true);
+    expect(acceptsEscalation(other, 'ticket:mine')).toBe(false);
+    expect(acceptsEscalation(wandering, 'ticket:mine')).toBe(false);
+    expect(acceptsEscalation({ op: 'or', exprs: [other, own] }, 'ticket:mine'))
+      .toBe(true);
+    expect(acceptsEscalation({ op: 'or', exprs: [other, wandering] }, 'ticket:mine'))
+      .toBe(false);
+    expect(acceptsEscalation({ op: 'not', expr: own }, 'ticket:mine')).toBe(false);
+    expect(acceptsEscalation({ op: 'exists', kind: 'ticket' }, 'ticket:mine'))
+      .toBe(false);
+  });
+
+  /**
+   * The button and the engine are ONE rule, so they have to agree on every
+   * shipped ticket. A button that greys out for one reason while the engine
+   * refuses for another is two rules pretending to be one.
+   */
+  it('agrees with the engine on every shipped ticket', () => {
+    for (const entry of WORLD_TICKETS) {
+      const session = createWorldSession();
+      const offered = allowsEscalation(entry.def.id);
+      const result = session.engine.dispatch(
+        HELPDESK_ACTIONS.ticketEscalate,
+        COMPANY_IDS.player,
+        entry.def.id,
+        {},
+      );
+
+      expect(result.ok, `${entry.def.id} offered=${String(offered)}`)
+        .toBe(offered);
+
+      // And where it was offered, it actually CLOSED the ticket rather than
+      // leaving it escalated and open.
+      if (offered) {
+        expect(session.engine.ticketState(entry.def.id)).toBe('resolved');
+      }
+    }
   });
 
   it('refuses to escalate a ticket that is fixable from the desk', () => {

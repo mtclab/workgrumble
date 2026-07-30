@@ -124,5 +124,7 @@ export function ticketTitle(id: string): string {
 /** The escalate policy the ticket actions ask before allowing an escalation. */
 export function allowsEscalation(ticketId: string): boolean {
   const entry = findWorldTicket(ticketId);
-  return entry !== undefined && acceptsEscalation(entry.def.resolved_when);
+
+  return entry !== undefined
+    && acceptsEscalation(entry.def.resolved_when, entry.def.id);
 }

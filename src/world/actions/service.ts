@@ -1,5 +1,5 @@
 import type { ActionData } from '../../engine-api';
-import { FIELDS, SERVICE_STATUS } from '../fields';
+import { DEVICE_TYPES, FIELDS, SERVICE_STATUS } from '../fields';
 import {
   fieldIs,
   HELPDESK_TIER,
@@ -40,6 +40,11 @@ export const SERVICE_ACTIONS: readonly ActionData[] = [
       // Queued work survives a restart on purpose, so a service brought back
       // in front of a full queue is handed the job that jammed it within
       // seconds. Real order: empty the queue, then start the service.
+      //
+      // "The backlog" is specifically a PRINTER on the other end of the wire.
+      // Binding whatever connected node happens to carry a `queue_len` first
+      // means refusing a restart because of a number on an unrelated box, in
+      // a sentence naming a device the player never touched.
       {
         when: {
           pred: 'neighbor_where',
@@ -50,6 +55,8 @@ export const SERVICE_ACTIONS: readonly ActionData[] = [
           matching: {
             pred: 'all',
             of: [
+              { pred: 'kind_is', node: { bind: BACKLOG }, kind: 'device' },
+              fieldIs({ bind: BACKLOG }, FIELDS.type, DEVICE_TYPES.printer),
               {
                 pred: 'field_is_number',
                 node: { bind: BACKLOG },
