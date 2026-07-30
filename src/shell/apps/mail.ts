@@ -84,8 +84,8 @@ export const MAIL_APP: AppDef = {
 
       if (thread === undefined) {
         const empty = element('p', 'mail-placeholder', 'mail-empty');
-        empty.textContent = 'Pick a message. Two of them are about the queue '
-          + 'and one of them is about a kettle.';
+        empty.textContent = 'Pick a message. One of them is about the queue, '
+          + 'twice, and one of them is about a kettle.';
         reader.append(empty);
         return;
       }
