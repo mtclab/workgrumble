@@ -90,6 +90,9 @@ This is the no-dead-end core: sysadmin tier later = new node kinds (`dns_record`
 - **Reputation** drives performance review, later job offers. Fail state: review < threshold = fired. Demo scope: retry week.
 - **Money**: daily salary minus caricature deductions (payslip is a joke surface). Farm price on the wall.
 - **Escalate action**: legit resolution for hardware/field tickets (coffee-in-keyboard) - teaches real helpdesk truth, costs small reputation vs solving remotely when solvable.
+- **"Waiting on user" state** (from `docs/research/ticket-material.md`): vague tickets ("it's broken", no body) require asking the right chat question; SLA pauses ONLY if question actually asked (CYA rule); user may reply late/never, angry escalation mail lands regardless - comedy + triage texture.
+- **Ticket archetypes** (data field, drives pacing): `hidden_cause` (symptom node != faulty node - bread and butter), `read_the_screen` (answer verbatim on user's screen, instant-win filler), `deadline_absurdity` ("broken 6 months, fix in 2 hours" - correct play = negotiate/escalate via chat), `recurring_arc` (multi-day mystery, e.g. cleaner-unplugs-rack-every-Friday class - solved by spotting schedule correlation), `flood` (maintenance-blindness: many identical tickets, bulk-close with announcement link).
+- **NPC mirror comedy**: users slack and hide evidence too - Remote Assist occasionally reveals their solitaire/shopping being panic-closed; coverup tickets where graph history contradicts user's story. Pure flavor, thematic echo of player's own slack loop.
 
 ## 8. POC content target
 
