@@ -1,22 +1,10 @@
-import { ActionRegistry } from './engine/actions';
-import { SimClock } from './engine/clock';
-import { createEngineEventBus } from './engine/events';
-import { EntityGraph } from './engine/graph';
 import { createReadOnlyGraphView } from './engine/graph-view';
-import { createRng } from './engine/rng';
-import { TicketEngine } from './engine/tickets';
 import { APP_MANIFEST } from './shell/apps';
 import type { ShellContext } from './shell/context';
 import { Shell } from './shell/shell';
-import { COMPANY, COMPANY_IDS, seedCompanyWorld } from './world/company';
-import {
-  DEMO_TICKET,
-  DEMO_TIER,
-  registerDemoActions,
-} from './world/demo-world';
-
-/** Fixed seed: the demo day is replayable. */
-const WORLD_SEED = 0x5eed_1c01;
+import { COMPANY, COMPANY_IDS } from './world/company';
+import { createWorldSession } from './world/session';
+import { ticketTitle } from './world/tickets';
 
 /** Real milliseconds per simulation minute. */
 const TICK_INTERVAL_MS = 1_000;
@@ -32,20 +20,11 @@ function mountPoint(): HTMLElement {
 }
 
 function boot(): void {
-  const bus = createEngineEventBus();
-  const graph = new EntityGraph(bus);
-  const clock = new SimClock();
-  const rng = createRng(WORLD_SEED);
-  const registry = new ActionRegistry(graph, rng, clock, DEMO_TIER);
-  const tickets = new TicketEngine(graph, clock, bus);
-
-  seedCompanyWorld(graph);
-  registerDemoActions(registry);
-  tickets.spawn(DEMO_TICKET);
+  const { bus, graph, clock, registry, tier } = createWorldSession();
 
   const context: ShellContext = {
     manifest: APP_MANIFEST,
-    tier: DEMO_TIER,
+    tier,
     graph: createReadOnlyGraphView(graph),
     clock,
     user: {
@@ -71,15 +50,15 @@ function boot(): void {
   bus.on('ticket:resolved', ({ id }) => {
     shell.notify(
       'Ticket resolved',
-      `${id === DEMO_TICKET.id ? DEMO_TICKET.flavor.title : id} - closed. `
-        + 'Reputation nudged upward by an amount nobody will mention.',
+      `${ticketTitle(id)} - closed. Reputation nudged upward by an amount `
+        + 'nobody will mention.',
     );
   });
   bus.on('ticket:breached', ({ id }) => {
     shell.notify(
       'SLA breached',
-      `${id === DEMO_TICKET.id ? DEMO_TICKET.flavor.title : id} - the timer `
-        + 'ran out. An escalation mail is already being drafted about you.',
+      `${ticketTitle(id)} - the timer ran out. An escalation mail is already `
+        + 'being drafted about you.',
     );
   });
 
