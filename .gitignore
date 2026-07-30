@@ -8,3 +8,5 @@ coverage/
 *.local
 playwright-report/
 test-results/
+core-rs/target/
+core-rs/pkg/

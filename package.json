@@ -11,7 +11,11 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:e2e": "playwright test",
-    "gate": "npm run typecheck && npm run lint && vitest run"
+    "core:test": "cargo test --manifest-path core-rs/Cargo.toml",
+    "core:lint": "cargo clippy --manifest-path core-rs/Cargo.toml --all-targets -- -D warnings",
+    "core:build": "wasm-pack build core-rs --target web --out-dir pkg",
+    "gate:core": "npm run core:test && npm run core:lint && npm run core:build",
+    "gate": "npm run gate:core && npm run typecheck && npm run lint && vitest run"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
