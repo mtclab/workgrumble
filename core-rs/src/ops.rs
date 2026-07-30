@@ -12,14 +12,97 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::Value as Json;
+use serde_json::{Map, Value as Json};
 
 use crate::assertions::{evaluate, Expr};
 use crate::error::{EngineError, EngineResult};
 use crate::graph::{Direction, EntityGraph};
+use crate::num::{safe_int, MAX_SAFE_INT};
 use crate::refuse;
 use crate::schema::{is_edge_kind, is_node_kind, Node};
 use crate::value::FieldValue;
+
+/// What the op language is allowed to say at this point in a definition.
+///
+/// Two things vary with position and both used to be checked nowhere. Dice may
+/// only be rolled while APPLYING - a guard that consumed rng would make replay
+/// a fiction, and the evaluator silently answered `null` instead of saying so.
+/// And a `bind` names a node some enclosing `neighbor_where` found, so it means
+/// something inside that search's `matching` and nothing anywhere else; an op
+/// that referred to one was accepted at registration and failed at dispatch,
+/// AFTER the ops before it had already changed the world.
+#[derive(Clone, Debug)]
+pub struct ParseScope {
+    /// Bind names an enclosing `neighbor_where` has brought into scope.
+    binds: Vec<String>,
+    /// Whether the rng-consuming value forms are legal here.
+    rng: bool,
+}
+
+impl ParseScope {
+    /// Inside `apply`: dice are legal, and nothing is bound.
+    pub fn apply() -> Self {
+        Self {
+            binds: Vec::new(),
+            rng: true,
+        }
+    }
+
+    /// Inside `validate`, and inside any `when` condition: no dice.
+    pub fn guard() -> Self {
+        Self {
+            binds: Vec::new(),
+            rng: false,
+        }
+    }
+
+    fn without_rng(&self) -> Self {
+        Self {
+            binds: self.binds.clone(),
+            rng: false,
+        }
+    }
+
+    fn with_bind(&self, name: &str) -> Self {
+        let mut binds = self.binds.clone();
+
+        if !self.binds(name) {
+            binds.push(name.to_owned());
+        }
+
+        Self {
+            binds,
+            rng: self.rng,
+        }
+    }
+
+    fn binds(&self, name: &str) -> bool {
+        self.binds.iter().any(|bound| bound == name)
+    }
+}
+
+/// The one key an object may carry out of a set of alternatives.
+///
+/// Two of them is not "the first one wins": it is a definition that says two
+/// contradictory things, and picking one silently is how `{ ref, id }` quietly
+/// ignored the id somebody meant.
+fn exactly_one<'a>(
+    object: &Map<String, Json>,
+    keys: &[&'a str],
+    what: &str,
+) -> EngineResult<&'a str> {
+    let mut present = keys.iter().filter(|key| object.contains_key(**key));
+
+    let Some(key) = present.next() else {
+        let options = keys.join("\", \"");
+        return refuse!("{what} needs one of \"{options}\".");
+    };
+
+    match present.next() {
+        Some(other) => refuse!("{what} says both \"{key}\" and \"{other}\"; it may say one."),
+        None => Ok(key),
+    }
+}
 
 /// Where a node comes from at dispatch time.
 #[derive(Clone, Debug)]
@@ -37,33 +120,40 @@ pub enum NodeRef {
     Bind(String),
 }
 
+const NODE_REF_KEYS: [&str; 4] = ["ref", "id", "param", "bind"];
+
 impl NodeRef {
-    pub fn parse(value: &Json) -> EngineResult<Self> {
+    pub fn parse(value: &Json, scope: &ParseScope) -> EngineResult<Self> {
         let object = value
             .as_object()
             .ok_or_else(|| EngineError::new("Node reference must be an object."))?;
+        let key = exactly_one(object, &NODE_REF_KEYS, "Node reference")?;
+        let name = object
+            .get(key)
+            .and_then(Json::as_str)
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| {
+                EngineError::new(format!(
+                    "Node reference \"{key}\" must be a non-empty string."
+                ))
+            })?;
 
-        if let Some(reference) = object.get("ref").and_then(Json::as_str) {
-            return match reference {
+        match key {
+            "ref" => match name {
                 "target" => Ok(Self::Target),
                 "actor" => Ok(Self::Actor),
                 other => refuse!("Node reference \"{other}\" is not \"target\" or \"actor\"."),
-            };
+            },
+            "id" => Ok(Self::Id(name.to_owned())),
+            "param" => Ok(Self::Param(name.to_owned())),
+            _ if scope.binds(name) => Ok(Self::Bind(name.to_owned())),
+            // An unbound `bind` can never resolve, so accepting it means
+            // failing at dispatch instead - halfway through the ops, with the
+            // earlier ones already applied.
+            _ => refuse!(
+                "Node reference binds \"{name}\", which no enclosing neighbor_where binds here."
+            ),
         }
-
-        if let Some(id) = object.get("id").and_then(Json::as_str) {
-            return Ok(Self::Id(id.to_owned()));
-        }
-
-        if let Some(param) = object.get("param").and_then(Json::as_str) {
-            return Ok(Self::Param(param.to_owned()));
-        }
-
-        if let Some(bind) = object.get("bind").and_then(Json::as_str) {
-            return Ok(Self::Bind(bind.to_owned()));
-        }
-
-        refuse!("Node reference needs one of \"ref\", \"id\", \"param\" or \"bind\".")
     }
 }
 
@@ -97,99 +187,149 @@ pub enum ValueExpr {
     Eq(Box<ValueExpr>, Box<ValueExpr>),
 }
 
+const VALUE_KEYS: [&str; 10] = [
+    "const",
+    "param",
+    "param_trim",
+    "now",
+    "field",
+    "not_field",
+    "append_line",
+    "rng_pick",
+    "rng_int",
+    "eq",
+];
+
 impl ValueExpr {
+    /// Parses a value in an APPLY position, where dice are legal.
     pub fn parse(value: &Json) -> EngineResult<Self> {
+        Self::parse_in(value, &ParseScope::apply())
+    }
+
+    pub fn parse_in(value: &Json, scope: &ParseScope) -> EngineResult<Self> {
         let object = value
             .as_object()
             .ok_or_else(|| EngineError::new("Value expression must be an object."))?;
-
-        if let Some(constant) = object.get("const") {
-            let parsed = FieldValue::from_json(constant)
-                .ok_or_else(|| EngineError::new("Constant is not a field value."))?;
-            return Ok(Self::Const(parsed));
-        }
-
-        if let Some(param) = object.get("param").and_then(Json::as_str) {
-            return Ok(Self::Param(param.to_owned()));
-        }
-
-        if let Some(param) = object.get("param_trim").and_then(Json::as_str) {
-            return Ok(Self::ParamTrim(param.to_owned()));
-        }
-
-        if object.contains_key("now") {
-            return Ok(Self::Now);
-        }
-
-        if let Some(field) = object.get("field") {
-            let (node, field) = parse_node_and_field(field)?;
-            return Ok(Self::Field { node, field });
-        }
-
-        if let Some(field) = object.get("not_field") {
-            let (node, field) = parse_node_and_field(field)?;
-            return Ok(Self::NotField { node, field });
-        }
-
-        if let Some(append) = object.get("append_line") {
-            let (node, field) = parse_node_and_field(append)?;
-            let inner = append
-                .as_object()
-                .and_then(|object| object.get("value"))
-                .ok_or_else(|| EngineError::new("append_line needs a \"value\"."))?;
-            return Ok(Self::AppendLine {
-                node,
-                field,
-                value: Box::new(Self::parse(inner)?),
-            });
-        }
-
-        if let Some(choices) = object.get("rng_pick").and_then(Json::as_array) {
-            let parsed: Option<Vec<FieldValue>> =
-                choices.iter().map(FieldValue::from_json).collect();
-            let parsed =
-                parsed.ok_or_else(|| EngineError::new("rng_pick choices must be field values."))?;
-
-            if parsed.is_empty() {
-                return refuse!("rng_pick needs at least one choice.");
+        let key = exactly_one(object, &VALUE_KEYS, "Value expression")?;
+        let entry = object
+            .get(key)
+            .expect("the key came from this object's own keys");
+        let text = || -> EngineResult<String> {
+            entry
+                .as_str()
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(|| EngineError::new(format!("\"{key}\" must be a non-empty string.")))
+        };
+        let dice = || -> EngineResult<()> {
+            if scope.rng {
+                return Ok(());
             }
 
-            return Ok(Self::RngPick(parsed));
-        }
+            // A guard that rolled dice would consume the stream a replay
+            // depends on, so the evaluator refuses to roll there - which used
+            // to mean the guard silently compared against `null` instead.
+            refuse!("\"{key}\" rolls dice, which only an apply op may do.")
+        };
 
-        if let Some(bounds) = object.get("rng_int").and_then(Json::as_object) {
-            let min = bounds
-                .get("min")
-                .and_then(Json::as_i64)
-                .ok_or_else(|| EngineError::new("rng_int needs an integer \"min\"."))?;
-            let max = bounds
-                .get("max")
-                .and_then(Json::as_i64)
-                .ok_or_else(|| EngineError::new("rng_int needs an integer \"max\"."))?;
-
-            if max < min {
-                return refuse!("rng_int needs \"max\" to be at least \"min\".");
+        match key {
+            "const" => Ok(Self::Const(
+                FieldValue::from_json(entry)
+                    .ok_or_else(|| EngineError::new("Constant is not a field value."))?,
+            )),
+            "param" => Ok(Self::Param(text()?)),
+            "param_trim" => Ok(Self::ParamTrim(text()?)),
+            "now" => match entry {
+                Json::Bool(true) => Ok(Self::Now),
+                // `{ "now": false }` reading as "now" is a definition saying
+                // one thing and meaning another.
+                _ => refuse!("\"now\" must be true."),
+            },
+            "field" => {
+                let (node, field) = parse_node_and_field(entry, scope)?;
+                Ok(Self::Field { node, field })
             }
+            "not_field" => {
+                let (node, field) = parse_node_and_field(entry, scope)?;
+                Ok(Self::NotField { node, field })
+            }
+            "append_line" => {
+                let (node, field) = parse_node_and_field(entry, scope)?;
+                let inner = entry
+                    .as_object()
+                    .and_then(|object| object.get("value"))
+                    .ok_or_else(|| EngineError::new("append_line needs a \"value\"."))?;
+                Ok(Self::AppendLine {
+                    node,
+                    field,
+                    value: Box::new(Self::parse_in(inner, scope)?),
+                })
+            }
+            "rng_pick" => {
+                dice()?;
+                let choices = entry
+                    .as_array()
+                    .ok_or_else(|| EngineError::new("rng_pick needs an array of choices."))?;
+                let parsed: Option<Vec<FieldValue>> =
+                    choices.iter().map(FieldValue::from_json).collect();
+                let parsed = parsed
+                    .ok_or_else(|| EngineError::new("rng_pick choices must be field values."))?;
 
-            return Ok(Self::RngInt { min, max });
+                if parsed.is_empty() {
+                    return refuse!("rng_pick needs at least one choice.");
+                }
+
+                Ok(Self::RngPick(parsed))
+            }
+            "rng_int" => {
+                dice()?;
+                let bounds = entry
+                    .as_object()
+                    .ok_or_else(|| EngineError::new("rng_int needs \"min\" and \"max\"."))?;
+                let bound = |name: &str| -> EngineResult<i64> {
+                    bounds.get(name).and_then(safe_int).ok_or_else(|| {
+                        EngineError::new(format!("rng_int needs a safe integer \"{name}\"."))
+                    })
+                };
+                let min = bound("min")?;
+                let max = bound("max")?;
+
+                if max < min {
+                    return refuse!("rng_int needs \"max\" to be at least \"min\".");
+                }
+
+                // The reference drew from `max - min + 1` as a JavaScript
+                // number. A range wider than that cannot be drawn from the same
+                // way, so it is not a bigger range - it is a different one.
+                let width = max
+                    .checked_sub(min)
+                    .and_then(|span| span.checked_add(1))
+                    .filter(|width| *width <= MAX_SAFE_INT);
+
+                if width.is_none() {
+                    return refuse!("rng_int range is wider than the safe integer space.");
+                }
+
+                Ok(Self::RngInt { min, max })
+            }
+            _ => {
+                let pair = entry
+                    .as_array()
+                    .ok_or_else(|| EngineError::new("eq needs exactly two value expressions."))?;
+                let [left, right] = pair.as_slice() else {
+                    return refuse!("eq needs exactly two value expressions.");
+                };
+
+                Ok(Self::Eq(
+                    Box::new(Self::parse_in(left, scope)?),
+                    Box::new(Self::parse_in(right, scope)?),
+                ))
+            }
         }
-
-        if let Some(pair) = object.get("eq").and_then(Json::as_array) {
-            let [left, right] = pair.as_slice() else {
-                return refuse!("eq needs exactly two value expressions.");
-            };
-
-            return Ok(Self::Eq(
-                Box::new(Self::parse(left)?),
-                Box::new(Self::parse(right)?),
-            ));
-        }
-
-        refuse!("Value expression has no recognised form.")
     }
 }
 
-fn parse_node_and_field(value: &Json) -> EngineResult<(NodeRef, String)> {
+fn parse_node_and_field(value: &Json, scope: &ParseScope) -> EngineResult<(NodeRef, String)> {
     let object = value
         .as_object()
         .ok_or_else(|| EngineError::new("Field reference must be an object."))?;
@@ -197,6 +337,7 @@ fn parse_node_and_field(value: &Json) -> EngineResult<(NodeRef, String)> {
         object
             .get("node")
             .ok_or_else(|| EngineError::new("Field reference needs a \"node\"."))?,
+        scope,
     )?;
     let field = object
         .get("field")
@@ -230,6 +371,10 @@ impl FieldName {
             .and_then(|object| object.get("param"))
             .and_then(Json::as_str)
         {
+            if param.is_empty() {
+                return refuse!("Field name parameter must be a non-empty string.");
+            }
+
             return Ok(Self::Param(param.to_owned()));
         }
 
@@ -364,12 +509,22 @@ pub enum Pred {
 
 const MAX_PRED_DEPTH: usize = 32;
 
+/// What a `neighbor_where` binds its match to when it does not say.
+pub const DEFAULT_BIND: &str = "it";
+
 impl Pred {
+    /// Parses a predicate in a guard position: no dice, nothing bound.
     pub fn parse(value: &Json) -> EngineResult<Self> {
-        Self::parse_at(value, 0)
+        Self::parse_in(value, &ParseScope::guard(), 0)
     }
 
-    fn parse_at(value: &Json, depth: usize) -> EngineResult<Self> {
+    /// A predicate never rolls dice, wherever it appears, so the scope it is
+    /// given is stripped of rng before anything inside it is read.
+    pub fn parse_in(value: &Json, scope: &ParseScope, depth: usize) -> EngineResult<Self> {
+        Self::parse_at(value, &scope.without_rng(), depth)
+    }
+
+    fn parse_at(value: &Json, scope: &ParseScope, depth: usize) -> EngineResult<Self> {
         if depth > MAX_PRED_DEPTH {
             return refuse!("Predicate is nested too deeply.");
         }
@@ -387,6 +542,7 @@ impl Pred {
                 object
                     .get("node")
                     .ok_or_else(|| EngineError::new("Predicate needs a \"node\"."))?,
+                scope,
             )
         };
         let field = || -> EngineResult<String> {
@@ -412,10 +568,11 @@ impl Pred {
                 .ok_or_else(|| EngineError::new("Predicate needs a numeric \"value\"."))
         };
         let value_expr = || -> EngineResult<ValueExpr> {
-            ValueExpr::parse(
+            ValueExpr::parse_in(
                 object
                     .get("value")
                     .ok_or_else(|| EngineError::new("Predicate needs a \"value\"."))?,
+                scope,
             )
         };
         let nested = |key: &str| -> EngineResult<Vec<Pred>> {
@@ -424,7 +581,7 @@ impl Pred {
                 .and_then(Json::as_array)
                 .ok_or_else(|| EngineError::new(format!("Predicate needs an array \"{key}\".")))?
                 .iter()
-                .map(|entry| Self::parse_at(entry, depth + 1))
+                .map(|entry| Self::parse_at(entry, scope, depth + 1))
                 .collect()
         };
 
@@ -500,11 +657,13 @@ impl Pred {
                     object
                         .get("from")
                         .ok_or_else(|| EngineError::new("has_edge needs a \"from\"."))?,
+                    scope,
                 )?,
                 to: NodeRef::parse(
                     object
                         .get("to")
                         .ok_or_else(|| EngineError::new("has_edge needs a \"to\"."))?,
+                    scope,
                 )?,
                 kind: parse_edge_kind(object.get("kind"))?,
             }),
@@ -517,10 +676,27 @@ impl Pred {
                     Some(kind) => Some(parse_edge_kind(Some(kind))?),
                     None => None,
                 };
+                let bind = match object.get("bind") {
+                    Some(bind) => Some(
+                        bind.as_str()
+                            .filter(|name| !name.is_empty())
+                            .map(str::to_owned)
+                            .ok_or_else(|| {
+                                EngineError::new(
+                                    "neighbor_where \"bind\" must be a non-empty string.",
+                                )
+                            })?,
+                    ),
+                    None => None,
+                };
+                // The name the search binds is in scope for what it searches
+                // WITH, and nowhere else.
+                let inner = scope.with_bind(bind.as_deref().unwrap_or(DEFAULT_BIND));
                 let matching = Self::parse_at(
                     object
                         .get("matching")
                         .ok_or_else(|| EngineError::new("neighbor_where needs \"matching\"."))?,
+                    &inner,
                     depth + 1,
                 )?;
 
@@ -529,7 +705,7 @@ impl Pred {
                     direction,
                     edge_kind,
                     matching: Box::new(matching),
-                    bind: object.get("bind").and_then(Json::as_str).map(str::to_owned),
+                    bind,
                 })
             }
             "line_in_field" => Ok(Self::LineInField {
@@ -562,6 +738,7 @@ impl Pred {
                 object
                     .get("of")
                     .ok_or_else(|| EngineError::new("not needs an \"of\"."))?,
+                scope,
                 depth + 1,
             )?))),
             "all" => Ok(Self::All(nested("of")?)),
@@ -649,11 +826,12 @@ pub enum Op {
 const MAX_OP_DEPTH: usize = 8;
 
 impl Op {
+    /// Parses an op in an apply position, which is the only position ops have.
     pub fn parse(value: &Json) -> EngineResult<Self> {
-        Self::parse_at(value, 0)
+        Self::parse_at(value, &ParseScope::apply(), 0)
     }
 
-    fn parse_at(value: &Json, depth: usize) -> EngineResult<Self> {
+    fn parse_at(value: &Json, scope: &ParseScope, depth: usize) -> EngineResult<Self> {
         if depth > MAX_OP_DEPTH {
             return refuse!("Op is nested too deeply.");
         }
@@ -671,6 +849,7 @@ impl Op {
                 object
                     .get("node")
                     .ok_or_else(|| EngineError::new("Op needs a \"node\"."))?,
+                scope,
             )
         };
         let field = || -> EngineResult<FieldName> {
@@ -686,11 +865,13 @@ impl Op {
                     object
                         .get("from")
                         .ok_or_else(|| EngineError::new("Edge op needs a \"from\"."))?,
+                    scope,
                 )?,
                 NodeRef::parse(
                     object
                         .get("to")
                         .ok_or_else(|| EngineError::new("Edge op needs a \"to\"."))?,
+                    scope,
                 )?,
                 parse_edge_kind(object.get("kind"))?,
             ))
@@ -700,10 +881,11 @@ impl Op {
             "set_field" => Ok(Self::SetField {
                 node: node()?,
                 field: field()?,
-                value: ValueExpr::parse(
+                value: ValueExpr::parse_in(
                     object
                         .get("value")
                         .ok_or_else(|| EngineError::new("set_field needs a \"value\"."))?,
+                    scope,
                 )?,
             }),
             "clear_field" => Ok(Self::ClearField {
@@ -732,14 +914,16 @@ impl Op {
                     .and_then(Json::as_array)
                     .ok_or_else(|| EngineError::new("when needs an array \"ops\"."))?
                     .iter()
-                    .map(|entry| Self::parse_at(entry, depth + 1))
+                    .map(|entry| Self::parse_at(entry, scope, depth + 1))
                     .collect();
 
                 Ok(Self::When {
-                    cond: Pred::parse(
+                    cond: Pred::parse_in(
                         object
                             .get("cond")
                             .ok_or_else(|| EngineError::new("when needs a \"cond\"."))?,
+                        scope,
+                        0,
                     )?,
                     ops: ops?,
                 })
@@ -850,7 +1034,9 @@ pub fn eval_value(context: &EvalContext<'_>, value: &ValueExpr) -> FieldValue {
         ValueExpr::Eq(left, right) => {
             FieldValue::Bool(eval_value(context, left).same_value(&eval_value(context, right)))
         }
-        // Randomness cannot reach a guard by construction; see `apply`.
+        // Unreachable: `ParseScope` refuses these in every position this
+        // function is called from. Kept total rather than panicking, because a
+        // boundary that can panic is a boundary that can poison the module.
         ValueExpr::RngPick(_) | ValueExpr::RngInt { .. } => FieldValue::Null,
     }
 }
@@ -924,7 +1110,7 @@ pub fn evaluate_pred(context: &mut EvalContext<'_>, predicate: &Pred) -> bool {
                 .into_iter()
                 .map(|neighbor| neighbor.id.clone())
                 .collect();
-            let slot = bind.clone().unwrap_or_else(|| "it".to_owned());
+            let slot = bind.clone().unwrap_or_else(|| DEFAULT_BIND.to_owned());
             let previous = context.binds.get(&slot).cloned();
 
             for candidate in candidates {
@@ -1268,5 +1454,159 @@ mod tests {
         assert!(ValueExpr::parse(&json!({ "const": [] })).is_err());
         assert!(ValueExpr::parse(&json!({ "rng_pick": [] })).is_err());
         assert!(Guard::parse(&json!({ "when": { "pred": "target_missing" } })).is_err());
+    }
+
+    /// A reference that names two ways to find a node says two things. Picking
+    /// the first quietly ignored the other one.
+    #[test]
+    fn a_node_reference_names_exactly_one_way_to_find_a_node() {
+        let scope = ParseScope::apply();
+
+        assert!(NodeRef::parse(&json!({ "ref": "target" }), &scope).is_ok());
+        assert!(NodeRef::parse(&json!({ "id": "device:x" }), &scope).is_ok());
+        assert!(NodeRef::parse(&json!({ "param": "who" }), &scope).is_ok());
+
+        let both = NodeRef::parse(&json!({ "ref": "target", "id": "device:x" }), &scope)
+            .expect_err("two discriminators");
+        assert!(both.message().contains("it may say one"), "{both}");
+
+        assert!(NodeRef::parse(&json!({}), &scope).is_err());
+        assert!(NodeRef::parse(&json!({ "id": "" }), &scope).is_err());
+        assert!(NodeRef::parse(&json!({ "param": "" }), &scope).is_err());
+        assert!(NodeRef::parse(&json!({ "id": 7 }), &scope).is_err());
+    }
+
+    #[test]
+    fn a_value_expression_names_exactly_one_form_and_means_now_when_it_says_now() {
+        assert!(ValueExpr::parse(&json!({ "now": true })).is_ok());
+        assert!(ValueExpr::parse(&json!({ "now": false })).is_err());
+        assert!(ValueExpr::parse(&json!({ "now": 1 })).is_err());
+        assert!(ValueExpr::parse(&json!({ "const": 1, "param": "x" })).is_err());
+        assert!(ValueExpr::parse(&json!({ "param": "" })).is_err());
+        assert!(ValueExpr::parse(&json!({})).is_err());
+    }
+
+    /// Dice belong to `apply`. A guard that rolled them would consume the
+    /// stream a replay depends on, so it evaluated to `null` instead - which
+    /// made the guard skippable rather than loud.
+    #[test]
+    fn dice_are_refused_everywhere_a_guard_can_reach() {
+        let rolled = json!({ "rng_int": { "min": 1, "max": 6 } });
+
+        assert!(ValueExpr::parse_in(&rolled, &ParseScope::apply()).is_ok());
+        assert!(ValueExpr::parse_in(&rolled, &ParseScope::guard()).is_err());
+
+        let guard = Pred::parse(&json!({
+            "pred": "field_eq",
+            "node": { "ref": "target" },
+            "field": "roll",
+            "value": rolled,
+        }))
+        .expect_err("no dice in a guard");
+        assert!(guard.message().contains("only an apply op may do"), "{guard}");
+
+        // Including the condition of a `when`, which is evaluated exactly the
+        // way a guard is.
+        assert!(Op::parse(&json!({
+            "op": "when",
+            "cond": {
+                "pred": "field_eq",
+                "node": { "ref": "target" },
+                "field": "roll",
+                "value": { "rng_pick": [1, 2] },
+            },
+            "ops": [],
+        }))
+        .is_err());
+
+        // And an apply op may still roll them.
+        assert!(Op::parse(&json!({
+            "op": "set_field",
+            "node": { "ref": "target" },
+            "field": "roll",
+            "value": rolled,
+        }))
+        .is_ok());
+    }
+
+    #[test]
+    fn refuses_an_rng_range_wider_than_javascript_can_draw_from() {
+        assert!(ValueExpr::parse(&json!({ "rng_int": { "min": 0, "max": 10 } })).is_ok());
+        assert!(ValueExpr::parse(&json!({ "rng_int": { "min": 5, "max": 4 } })).is_err());
+        assert!(ValueExpr::parse(&json!({ "rng_int": { "min": 0, "max": 1.5 } })).is_err());
+        assert!(ValueExpr::parse(&json!({ "rng_int": { "min": i64::MIN, "max": i64::MAX } }))
+            .is_err());
+        assert!(ValueExpr::parse(&json!({
+            "rng_int": { "min": -MAX_SAFE_INT, "max": MAX_SAFE_INT },
+        }))
+        .is_err());
+    }
+
+    /// A `bind` means something inside the search that made it and nothing
+    /// outside it. Accepting one in an apply op meant failing at dispatch,
+    /// after the ops before it had already changed the world.
+    #[test]
+    fn a_bind_is_only_legal_inside_the_search_that_binds_it() {
+        let matched = json!({
+            "pred": "neighbor_where",
+            "node": { "ref": "target" },
+            "direction": "out",
+            "edge_kind": "connected_to",
+            "bind": "backlog",
+            "matching": {
+                "pred": "field_is_number",
+                "node": { "bind": "backlog" },
+                "field": "queue_len",
+            },
+        });
+        assert!(Pred::parse(&matched).is_ok());
+
+        // The default name is bound too.
+        assert!(Pred::parse(&json!({
+            "pred": "neighbor_where",
+            "node": { "ref": "target" },
+            "direction": "out",
+            "matching": { "pred": "node_missing", "node": { "bind": DEFAULT_BIND } },
+        }))
+        .is_ok());
+
+        // A different name is not.
+        assert!(Pred::parse(&json!({
+            "pred": "neighbor_where",
+            "node": { "ref": "target" },
+            "direction": "out",
+            "bind": "backlog",
+            "matching": { "pred": "node_missing", "node": { "bind": "other" } },
+        }))
+        .is_err());
+
+        // Nor is one outside any search at all.
+        assert!(Pred::parse(&json!({
+            "pred": "node_missing",
+            "node": { "bind": "backlog" },
+        }))
+        .is_err());
+
+        let stray = Op::parse(&json!({
+            "op": "set_field",
+            "node": { "bind": "backlog" },
+            "field": "queue_len",
+            "value": { "const": 0 },
+        }))
+        .expect_err("apply ops bind nothing");
+        assert!(stray.message().contains("no enclosing neighbor_where"), "{stray}");
+
+        assert!(Op::parse(&json!({
+            "op": "when",
+            "cond": {
+                "pred": "neighbor_where",
+                "node": { "ref": "target" },
+                "direction": "out",
+                "bind": "backlog",
+                "matching": { "pred": "node_missing", "node": { "bind": "backlog" } },
+            },
+            "ops": [{ "op": "remove_node", "node": { "bind": "backlog" } }],
+        }))
+        .is_err());
     }
 }
