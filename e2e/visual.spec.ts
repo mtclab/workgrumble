@@ -22,3 +22,20 @@ test('captures shell states for visual review', async ({ page }) => {
   await page.keyboard.press('Backquote');
   await page.screenshot({ path: 'test-results/visual/05-boss-key.png' });
 });
+
+test('captures helpdesk apps for visual review', async ({ page }) => {
+  await logIn(page);
+
+  await openFromStartMenu(page, 'tickets');
+  await page.screenshot({ path: 'test-results/visual/06-tickets-queue.png' });
+  await page.getByTestId('ticket-row-locked-account').click();
+  await page.screenshot({ path: 'test-results/visual/07-ticket-detail.png' });
+
+  await openFromStartMenu(page, 'directory');
+  await page.screenshot({ path: 'test-results/visual/08-directory.png' });
+
+  await openFromStartMenu(page, 'cmd');
+  await page.getByTestId('cmd-input').fill('help');
+  await page.keyboard.press('Enter');
+  await page.screenshot({ path: 'test-results/visual/09-cmd.png' });
+});

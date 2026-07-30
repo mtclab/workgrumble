@@ -13,7 +13,6 @@ export interface ActionClock {
 }
 
 interface BaseActionContext {
-  readonly rng: Rng;
   readonly actor: NodeId;
   readonly target: NodeId | null;
   readonly params: Record<string, FieldValue>;
@@ -21,17 +20,19 @@ interface BaseActionContext {
 }
 
 /**
- * What a validator gets. Identical to `ActionContext` except that the graph is
- * the read-only view: refusing is a pure decision, so the type makes the write
- * methods unreachable and the frozen view makes them unreachable at runtime.
+ * What a validator gets. Like `ActionContext` except the graph is the
+ * read-only view and there is NO rng: refusing is a pure decision, so the
+ * type makes both mutation and randomness structurally unreachable -
+ * a validator that consumes rng would silently skew replay determinism.
  */
 export interface ValidationContext extends BaseActionContext {
   readonly graph: ReadOnlyGraphView;
 }
 
-/** What `apply` gets: the real, writable world graph. */
+/** What `apply` gets: the real, writable world graph plus the rng. */
 export interface ActionContext extends BaseActionContext {
   readonly graph: EntityGraph;
+  readonly rng: Rng;
 }
 
 export interface ActionDef {
@@ -141,7 +142,6 @@ export class ActionRegistry {
 
     const validationReason = definition.validate({
       graph: createReadOnlyGraphView(this.graph),
-      rng: this.rng,
       actor,
       target,
       params: { ...params },
