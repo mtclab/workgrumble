@@ -8,10 +8,12 @@
 
 #![forbid(unsafe_code)]
 
+pub mod clock;
 pub mod error;
 pub mod events;
 pub mod graph;
 pub mod hash;
+pub mod rng;
 pub mod schema;
 pub mod value;
 
