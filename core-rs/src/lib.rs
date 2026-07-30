@@ -16,6 +16,7 @@ pub mod error;
 pub mod events;
 pub mod graph;
 pub mod hash;
+pub mod num;
 pub mod ops;
 pub mod rng;
 pub mod schema;
