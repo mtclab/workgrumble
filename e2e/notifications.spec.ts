@@ -3,6 +3,12 @@ import { expect, test } from '@playwright/test';
 import { logIn, openFromDesktopIcon } from './helpers';
 
 /**
+ * Real milliseconds the seeded ticket needs to run out its SLA: 240 sim
+ * minutes at one minute per real second (`main.ts`, `demo-world.ts`).
+ */
+const SLA_MS = 240_000;
+
+/**
  * Journey 4: an app raises a notification, the toast shows, the badge counts
  * it, dismissing the toast keeps the record, and the tray clears the badge.
  */
@@ -42,6 +48,45 @@ test('raises a toast, counts it on the badge and dismisses it', async ({
 
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
+});
+
+/**
+ * The simulation does not stop for the login screen. Anything it announces
+ * while there is no desktop to announce it on has to survive until there is
+ * one - dropping it loses the only notice the player ever gets.
+ */
+test('delivers engine notifications raised before the desktop existed', async ({
+  page,
+}) => {
+  // Fake timers: the SLA is four simulated hours, and the test should not be.
+  await page.clock.install();
+  await page.goto('/');
+
+  await page.keyboard.press('Space');
+  await expect(page.getByTestId('login-screen')).toBeVisible();
+
+  // Four hours of shift pass on the login screen; the seeded ticket breaches
+  // with nobody logged on.
+  await page.clock.runFor(SLA_MS);
+  await expect(page.getByTestId('desktop')).toHaveCount(0);
+
+  await page.getByTestId('login-password').fill('hunter2');
+  await page.getByTestId('login-submit').click();
+  await expect(page.getByTestId('desktop')).toBeVisible();
+
+  // The alarm is waiting on the desk: toast, badge and history all carry it.
+  const toasts = page.getByTestId('toast');
+  await expect(toasts.filter({ hasText: 'SLA breached' })).toHaveCount(1);
+  await expect(page.getByTestId('notification-badge')).toHaveAttribute(
+    'data-unread',
+    '1',
+  );
+
+  await page.getByTestId('notification-tray').click();
+  const panel = page.getByTestId('notification-panel');
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText('SLA breached');
+  await expect(page.getByTestId('notification-panel-item')).toHaveCount(1);
 });
 
 test('reports engine outcomes and refusals instead of failing silently', async ({

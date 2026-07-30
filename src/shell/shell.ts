@@ -3,6 +3,7 @@ import type { ShellContext } from './context';
 import { Desktop } from './desktop';
 import { createIconSprite } from './icons';
 import { createLoginScreen, type LoginScreen } from './login-screen';
+import { NOTIFICATION_HISTORY_LIMIT } from './notifications';
 import {
   createShellState,
   reduceShellState,
@@ -12,6 +13,11 @@ import {
 
 /** Real milliseconds between fake POST lines. Chrome only, not simulation. */
 const BOOT_STEP_MS = 380;
+
+interface QueuedNotification {
+  readonly title: string;
+  readonly body: string;
+}
 
 /**
  * Owns the boot -> login -> desktop machine and the DOM for each screen. All
@@ -25,6 +31,12 @@ export class Shell {
   private state: ShellState = createShellState();
   private desktop: Desktop | null = null;
   private bootTimer: number | null = null;
+  /**
+   * Engine notifications raised while no desktop exists. The simulation runs
+   * through boot, the login screen and a logged-off session, so anything it
+   * announces there has to wait for a desktop rather than vanish.
+   */
+  private readonly queued: QueuedNotification[] = [];
 
   public constructor(
     private readonly root: HTMLElement,
@@ -72,10 +84,22 @@ export class Shell {
 
   /**
    * Raises a shell notification from outside the app layer (engine events).
-   * Dropped while no desktop is mounted: there is nowhere truthful to show it.
+   * With no desktop mounted it is held until there is one, capped at the depth
+   * the notification centre itself keeps so a long logged-off stretch cannot
+   * grow the queue without bound.
    */
   public notify(title: string, body: string): void {
-    this.desktop?.notify(title, body);
+    if (this.desktop === null) {
+      this.queued.push({ title, body });
+
+      if (this.queued.length > NOTIFICATION_HISTORY_LIMIT) {
+        this.queued.shift();
+      }
+
+      return;
+    }
+
+    this.desktop.notify(title, body);
   }
 
   public dispose(): void {
@@ -125,12 +149,26 @@ export class Shell {
         },
       });
       this.desktop.mount(this.root);
+      this.flushQueuedNotifications(this.desktop);
       return;
     }
 
     if (screen !== 'desktop' && this.desktop !== null) {
       this.desktop.dispose();
       this.desktop = null;
+    }
+  }
+
+  /**
+   * Replays what the simulation announced while nobody was looking, oldest
+   * first. The stamp is delivery time, not raise time: a toast that is handed
+   * over late still deserves its full time on screen.
+   */
+  private flushQueuedNotifications(desktop: Desktop): void {
+    const held = this.queued.splice(0, this.queued.length);
+
+    for (const notification of held) {
+      desktop.notify(notification.title, notification.body);
     }
   }
 
