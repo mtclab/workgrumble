@@ -4,7 +4,12 @@ export const DEFAULT_WINDOW_WIDTH = 560;
 export const DEFAULT_WINDOW_HEIGHT = 380;
 
 const CASCADE_OFFSET = 28;
-const CASCADE_START = 36;
+/**
+ * Cascade origin. The horizontal start clears the desktop icon column so a
+ * freshly opened window never buries the icons you opened it from.
+ */
+const CASCADE_ORIGIN_X = 140;
+const CASCADE_ORIGIN_Y = 32;
 const CASCADE_SLOTS = 7;
 const BOUNDS_EPSILON = 0.001;
 
@@ -182,8 +187,8 @@ function cascadeBounds(
   const slot = cascadeIndex % CASCADE_SLOTS;
   return clampWindowBounds(
     {
-      x: CASCADE_START + slot * CASCADE_OFFSET,
-      y: CASCADE_START + slot * CASCADE_OFFSET,
+      x: CASCADE_ORIGIN_X + slot * CASCADE_OFFSET,
+      y: CASCADE_ORIGIN_Y + slot * CASCADE_OFFSET,
       width: DEFAULT_WINDOW_WIDTH,
       height: DEFAULT_WINDOW_HEIGHT,
     },

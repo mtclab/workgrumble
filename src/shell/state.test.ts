@@ -4,8 +4,69 @@ import {
   BOOT_STEP_COUNT,
   createShellState,
   reduceShellState,
+  type ShellEvent,
+  type ShellScreen,
   type ShellState,
 } from './state';
+
+const ALL_EVENTS: readonly ShellEvent[] = [
+  { type: 'boot:advance' },
+  { type: 'boot:skip' },
+  { type: 'login:submit' },
+  { type: 'session:log-out' },
+  { type: 'session:restart' },
+];
+
+const ALL_SCREENS: readonly ShellScreen[] = ['boot', 'login', 'desktop'];
+
+function stateKey(state: Readonly<ShellState>): string {
+  return `${state.screen}:${String(state.bootStep)}`;
+}
+
+/** Every state the machine can actually be driven into from a cold boot. */
+function reachableStates(): ShellState[] {
+  const seen = new Map<string, ShellState>();
+  const queue: ShellState[] = [createShellState()];
+
+  while (queue.length > 0) {
+    const state = queue.shift();
+
+    if (state === undefined || seen.has(stateKey(state))) {
+      continue;
+    }
+
+    seen.set(stateKey(state), state);
+
+    for (const event of ALL_EVENTS) {
+      queue.push(reduceShellState(state, event));
+    }
+  }
+
+  return [...seen.values()];
+}
+
+function screensReachableFrom(start: Readonly<ShellState>): Set<ShellScreen> {
+  const screens = new Set<ShellScreen>([start.screen]);
+  const seen = new Set<string>();
+  const queue: ShellState[] = [{ ...start }];
+
+  while (queue.length > 0) {
+    const state = queue.shift();
+
+    if (state === undefined || seen.has(stateKey(state))) {
+      continue;
+    }
+
+    seen.add(stateKey(state));
+    screens.add(state.screen);
+
+    for (const event of ALL_EVENTS) {
+      queue.push(reduceShellState(state, event));
+    }
+  }
+
+  return screens;
+}
 
 function advanceBoot(state: ShellState, steps: number): ShellState {
   let next = state;
@@ -68,5 +129,30 @@ describe('shell state machine', () => {
     expect(
       reduceShellState(login, { type: 'session:restart' }),
     ).toEqual(createShellState());
+  });
+
+  it('has no dead end: every screen stays reachable from every state', () => {
+    const states = reachableStates();
+
+    expect(states.length).toBeGreaterThan(BOOT_STEP_COUNT);
+
+    for (const state of states) {
+      expect({
+        from: stateKey(state),
+        screens: [...screensReachableFrom(state)].sort(),
+      }).toEqual({
+        from: stateKey(state),
+        screens: [...ALL_SCREENS].sort(),
+      });
+    }
+  });
+
+  it('never advances the boot sequence past its final step', () => {
+    for (const state of reachableStates()) {
+      expect(state.bootStep).toBeLessThanOrEqual(BOOT_STEP_COUNT);
+      expect(state.bootStep).toBeGreaterThanOrEqual(0);
+      expect(state.screen === 'boot' || state.bootStep === BOOT_STEP_COUNT)
+        .toBe(true);
+    }
   });
 });

@@ -138,6 +138,50 @@ describe('window manager minimize and maximize', () => {
     expect(state.focusedId).toBe('three');
     assertWindowManagerInvariants(state);
   });
+
+  it('keeps every hidden slack window open so the taskbar can restore it', () => {
+    const before = openThree();
+    const after = minimizeSlackWindows(before);
+
+    expect(after.windows.map(({ id }) => id)).toEqual(
+      before.windows.map(({ id }) => id),
+    );
+    expect(minimizeSlackWindows(after)).toBe(after);
+    expect(selected(restoreWindow(after, 'two'), 'two').minimized).toBe(false);
+  });
+
+  it('leaves a slack-free desktop untouched when the boss key fires', () => {
+    let state = createWindowManager(VIEWPORT);
+    state = openWindow(state, seed('one'));
+    state = openWindow(state, seed('three'));
+
+    expect(minimizeSlackWindows(state)).toBe(state);
+  });
+
+  it('empties focus when every window is minimized and never dead-ends', () => {
+    let state = openThree();
+
+    for (const id of ['one', 'two', 'three']) {
+      state = minimizeWindow(state, id);
+    }
+
+    expect(state.focusedId).toBeNull();
+    expect(state.windows).toHaveLength(3);
+    assertWindowManagerInvariants(state);
+
+    state = toggleTaskbarWindow(state, 'one');
+    expect(state.focusedId).toBe('one');
+    expect(selected(state, 'one').minimized).toBe(false);
+  });
+
+  it('keeps focus when a background window closes', () => {
+    const state = closeWindow(openThree(), 'one');
+
+    expect(state.focusedId).toBe('three');
+    expect(state.windows.map(({ id }) => id)).toEqual(['two', 'three']);
+    assertWindowManagerInvariants(state);
+    expect(closeWindow(state, 'missing')).toBe(state);
+  });
 });
 
 describe('window manager movement, resize, and viewport constraints', () => {
@@ -194,6 +238,30 @@ describe('window manager movement, resize, and viewport constraints', () => {
     const restored = selected(state, 'one').bounds;
     expect(restored.x + restored.width).toBeLessThanOrEqual(420);
     expect(restored.y + restored.height).toBeLessThanOrEqual(260);
+    assertWindowManagerInvariants(state);
+  });
+
+  it('cascades unpositioned windows fully inside the viewport', () => {
+    let state = createWindowManager({ width: 640, height: 400 });
+
+    for (let index = 0; index < 12; index += 1) {
+      state = openWindow(state, {
+        id: `window-${String(index)}`,
+        appId: 'demo',
+        title: `Window ${String(index)}`,
+        icon: 'icon-about',
+        slack: false,
+      });
+    }
+
+    for (const windowState of state.windows) {
+      const { x, y, width, height } = windowState.bounds;
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(x + width).toBeLessThanOrEqual(640);
+      expect(y + height).toBeLessThanOrEqual(400);
+    }
+
     assertWindowManagerInvariants(state);
   });
 

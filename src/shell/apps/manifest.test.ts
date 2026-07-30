@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { ICON_IDS } from '../icons';
+import { APP_MANIFEST } from './index';
 import {
   appsForTier,
   loadManifest,
@@ -61,5 +63,32 @@ describe('app manifest', () => {
       'Duplicate',
     );
     expect(() => appsForTier([], 1.5)).toThrow('non-negative');
+  });
+});
+
+describe('shipped manifest', () => {
+  it('ships the two demo apps in order', () => {
+    expect(APP_MANIFEST.map(({ id }) => id)).toEqual(['about', 'bubbles']);
+  });
+
+  it('draws every icon in-repo instead of borrowing one', () => {
+    for (const app of APP_MANIFEST) {
+      expect(ICON_IDS).toContain(app.icon);
+    }
+  });
+
+  it('keeps at least one slack app so the boss key has a target', () => {
+    expect(APP_MANIFEST.some((app) => app.slack)).toBe(true);
+    expect(APP_MANIFEST.some((app) => !app.slack)).toBe(true);
+  });
+
+  it('hides tier-gated apps from a tier-zero desktop', () => {
+    expect(appsForTier(APP_MANIFEST, 0).map(({ id }) => id)).toEqual([
+      'about',
+    ]);
+    expect(appsForTier(APP_MANIFEST, 1).map(({ id }) => id)).toEqual([
+      'about',
+      'bubbles',
+    ]);
   });
 });

@@ -142,6 +142,9 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
   ],
 };
 
+/** Every icon id drawn in this repo. Manifest icons must come from this set. */
+export const ICON_IDS: readonly string[] = Object.freeze(Object.keys(ICONS));
+
 function configureShape(shape: IconShape): SVGElement {
   const element = document.createElementNS(SVG_NAMESPACE, shape.element);
 
