@@ -18,7 +18,7 @@ test('boss key minimizes slack windows only', async ({ page }) => {
   await expect(bubbles).toBeVisible();
   await expect(bubbles).toHaveAttribute('data-focused', 'true');
 
-  await page.keyboard.press('~');
+  await page.keyboard.press('Backquote');
 
   await expect(bubbles).toBeHidden();
   await expect(about).toBeVisible();
@@ -41,7 +41,7 @@ test('boss key is inert when no slack window is on screen', async ({
   await logIn(page);
   await openFromDesktopIcon(page, 'about');
 
-  await page.keyboard.press('~');
+  await page.keyboard.press('Backquote');
 
   await expect(page.getByTestId('window-about')).toBeVisible();
   await expect(page.getByTestId('window-about')).toHaveAttribute(
@@ -58,7 +58,7 @@ test('boss key survives being pressed with the start menu open', async ({
   await page.getByTestId('start-button').click();
   await expect(page.getByTestId('start-menu')).toBeVisible();
 
-  await page.keyboard.press('~');
+  await page.keyboard.press('Backquote');
 
   await expect(page.getByTestId('start-menu')).toBeHidden();
   await expect(page.getByTestId('window-bubbles')).toBeHidden();

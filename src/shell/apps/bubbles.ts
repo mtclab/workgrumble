@@ -1,4 +1,4 @@
-import { BOSS_KEY } from '../keys';
+import { BOSS_KEY_LABEL } from '../keys';
 import { createIcon } from '../icons';
 import type { AppDef } from './types';
 
@@ -22,7 +22,7 @@ const CAUGHT_LINES = [
   'Clean pop. Productivity remains plausibly deniable.',
   'Another one. The queue has not noticed your absence.',
   'You are extremely good at this and it will never appear on a payslip.',
-  `High-score energy. Keep a finger on ${BOSS_KEY}.`,
+  `High-score energy. Keep a finger on ${BOSS_KEY_LABEL}.`,
 ] as const;
 
 export const BUBBLES_APP: AppDef = {
@@ -46,7 +46,7 @@ export const BUBBLES_APP: AppDef = {
     scoreLabel.dataset.testid = 'bubbles-score';
     const tip = document.createElement('span');
     tip.className = 'bubbles-tip';
-    tip.textContent = `Morale exercise. Panic key: ${BOSS_KEY}`;
+    tip.textContent = `Morale exercise. Panic key: ${BOSS_KEY_LABEL}`;
     const reset = document.createElement('button');
     reset.type = 'button';
     reset.className = 'os-button os-button-compact';

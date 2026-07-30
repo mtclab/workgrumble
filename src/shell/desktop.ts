@@ -3,7 +3,7 @@ import { appsForTier } from './apps/manifest';
 import { formatSimTime } from './clock-format';
 import type { ShellContext } from './context';
 import { createIcon } from './icons';
-import { BOSS_KEY, DISMISS_KEY } from './keys';
+import { BOSS_KEY_CODE, DISMISS_KEY } from './keys';
 import { launchApp } from './launch';
 import {
   createNotificationState,
@@ -418,7 +418,7 @@ export class Desktop {
       return;
     }
 
-    if (event.key !== BOSS_KEY || isTextEntry(event.target)) {
+    if (event.code !== BOSS_KEY_CODE || isTextEntry(event.target)) {
       return;
     }
 
