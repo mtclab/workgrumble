@@ -217,6 +217,9 @@ test('mounts each app exactly once however it is launched', async ({
 
   await openFromStartMenu(page, 'bubbles');
   await openFromDesktopIcon(page, 'bubbles');
+  // Bubble Break now sits on top of About; raise About so its button is
+  // actually clickable rather than covered by the other window.
+  await page.getByTestId('taskbar-button-about').click();
   await page.getByTestId('about-open-bubbles').click();
 
   await expect(page.getByTestId('window-bubbles')).toHaveCount(1);
