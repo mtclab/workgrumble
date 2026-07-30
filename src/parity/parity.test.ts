@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { ActionDef } from '../engine/actions';
 import {
   type DispatchResult,
   type EngineApi,
@@ -150,7 +149,7 @@ function goldenTs(): Harness {
   const harness = collect(engine);
 
   engine.applySetup(GOLDEN_SETUP);
-  engine.registerActionDefs(goldenActionDefs() as readonly ActionDef[]);
+  engine.registerActionDefs(goldenActionDefs());
   return harness;
 }
 
