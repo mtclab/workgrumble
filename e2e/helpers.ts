@@ -10,7 +10,14 @@ export interface Box {
 /** Boots the shell and logs in. Boot auto-advances, so skipping is optional. */
 export async function logIn(page: Page): Promise<void> {
   await page.goto('/');
+  await completeLogin(page);
+}
 
+/**
+ * Everything after the navigation: skip the boot gag and log on. Split out so
+ * a test can put its own work between loading the page and using it.
+ */
+export async function completeLogin(page: Page): Promise<void> {
   const boot = page.getByTestId('boot-screen');
 
   if (await boot.isVisible()) {

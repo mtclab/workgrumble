@@ -1,24 +1,30 @@
 import { expect, test } from '@playwright/test';
 
 import {
+  completeLogin,
   dragBy,
-  logIn,
   openFromDesktopIcon,
   openFromStartMenu,
 } from './helpers';
 
 /**
  * Journey 5: drive every user-reachable surface once and assert the run stays
- * clean - no console errors, no page errors, and not one request that leaves
- * the origin serving the build.
+ * clean - no console errors, no page errors, and no network at all.
+ *
+ * The gate is deliberately blunt. Loading the build is the ONLY moment this
+ * product is allowed to touch the network, so those requests become the
+ * allowlist and everything after them is a failure - including a same-origin
+ * `fetch('/telemetry')`, which an off-origin check would have waved through.
  */
-test('completes a full session with no console errors and no off-origin requests', async ({
+test('completes a full session with no console errors and no runtime requests', async ({
   page,
   baseURL,
 }) => {
   const origin = new URL(baseURL ?? 'http://localhost').origin;
   const consoleErrors: string[] = [];
-  const offOrigin: string[] = [];
+  const staticAssets: string[] = [];
+  const runtimeRequests: string[] = [];
+  let loaded = false;
 
   page.on('console', (message) => {
     if (message.type() === 'error') {
@@ -29,12 +35,19 @@ test('completes a full session with no console errors and no off-origin requests
     consoleErrors.push(`pageerror: ${error.message}`);
   });
   page.on('request', (request) => {
-    if (new URL(request.url()).origin !== origin) {
-      offOrigin.push(request.url());
+    if (loaded) {
+      runtimeRequests.push(`${request.method()} ${request.url()}`);
+      return;
     }
+
+    staticAssets.push(request.url());
   });
 
-  await logIn(page);
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  loaded = true;
+
+  await completeLogin(page);
 
   // Windows: open, stack, drag, maximize, restore, minimize, close.
   await openFromDesktopIcon(page, 'about');
@@ -99,5 +112,11 @@ test('completes a full session with no console errors and no off-origin requests
   await expect(page.getByTestId('desktop')).toBeVisible();
 
   expect(consoleErrors).toEqual([]);
-  expect(offOrigin).toEqual([]);
+  // Not one request of any kind after the build finished loading.
+  expect(runtimeRequests).toEqual([]);
+  // And the load itself only ever pulled static assets from its own origin.
+  expect(
+    staticAssets.filter((url) => new URL(url).origin !== origin),
+  ).toEqual([]);
+  expect(staticAssets.length).toBeGreaterThan(0);
 });
