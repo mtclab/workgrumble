@@ -36,6 +36,9 @@ function rotationOf(machine: Readonly<ReadOnlyGraphNode>): Rotation {
   return isRotation(rotation) ? rotation : 0;
 }
 
+/** Matches the battery the device action calls full; kept in one place. */
+const FULL_BATTERY = 100;
+
 const STATUS_LABELS: Readonly<Record<string, string>> = {
   [SERVICE_STATUS.running]: 'Running',
   [SERVICE_STATUS.stopped]: 'Stopped',
@@ -389,6 +392,12 @@ export const REMOTE_APP: AppDef = {
             'Replace battery',
             `remote-replace-battery-${key}`,
             { compact: true },
+          );
+          setAvailability(
+            replace,
+            battery >= FULL_BATTERY
+              ? 'Those batteries are fresh. The cupboard budget is not.'
+              : null,
           );
           replace.addEventListener('click', () => {
             run(
