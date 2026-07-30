@@ -31,12 +31,24 @@ test('opens, stacks, drags, resizes and restores application windows', async ({
     await zIndexOf(page, 'bubbles'),
   );
 
-  // Focus follows click: raising the background window flips the order.
-  await page.getByTestId('titlebar-bubbles').click();
+  // Focus follows click: raising the background window flips the order. The
+  // click lands on the sliver of the bubbles titlebar the cascade leaves
+  // uncovered, which is exactly how a player would raise it.
+  await page.getByTestId('titlebar-bubbles').click({
+    position: { x: 40, y: 8 },
+  });
   await expect(bubbles).toHaveAttribute('data-focused', 'true');
   await expect(about).toHaveAttribute('data-focused', 'false');
   expect(await zIndexOf(page, 'bubbles')).toBeGreaterThan(
     await zIndexOf(page, 'about'),
+  );
+
+  // Raise About from the taskbar before dragging it: a covered titlebar must
+  // not be dragged, or the gesture would move the window on top of it.
+  await page.getByTestId('taskbar-button-about').click();
+  await expect(about).toHaveAttribute('data-focused', 'true');
+  expect(await zIndexOf(page, 'about')).toBeGreaterThan(
+    await zIndexOf(page, 'bubbles'),
   );
 
   // Drag by the titlebar.

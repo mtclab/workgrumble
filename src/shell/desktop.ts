@@ -477,11 +477,18 @@ export class Desktop {
   private setTrayPanelOpen(open: boolean): void {
     if (open) {
       this.setStartMenuOpen(false);
-      this.commitNotifications(markAllRead(this.notifications));
     }
 
+    // Visibility flips before the content is filled: `renderNotifications`
+    // only repaints the list while the panel is on screen, so marking the
+    // badge read first would leave the panel empty.
     this.trayPanel.hidden = !open;
     this.trayButton.setAttribute('aria-expanded', String(open));
+
+    if (open) {
+      this.renderTrayPanel();
+      this.commitNotifications(markAllRead(this.notifications));
+    }
   }
 
   private closeTransientSurfaces(): void {
