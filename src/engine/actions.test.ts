@@ -89,6 +89,41 @@ describe('ActionRegistry', () => {
     expect(graph.snapshotHash()).toBe(before);
   });
 
+  it('isolates graph writes attempted by a rejecting validator', () => {
+    const graph = actionGraph();
+    const registry = new ActionRegistry(
+      graph,
+      createRng(2),
+      new SimClock(),
+    );
+    registry.register({
+      id: 'invalid.mutating-validator',
+      tier: 1,
+      validate: (context) => {
+        context.graph.setField('account:user', 'locked', false);
+        return 'Rejected after an invalid validation write.';
+      },
+      apply: (context) => {
+        context.graph.setField('account:user', 'locked', false);
+      },
+    });
+    const before = graph.snapshotHash();
+
+    expect(
+      registry.dispatch(
+        'invalid.mutating-validator',
+        'person:tech',
+        'account:user',
+        {},
+      ),
+    ).toEqual({
+      ok: false,
+      reason: 'Rejected after an invalid validation write.',
+    });
+    expect(graph.snapshotHash()).toBe(before);
+    expect(graph.getField('account:user', 'locked')).toBe(true);
+  });
+
   it('applies a valid action and protects its append-only log copies', () => {
     const graph = actionGraph();
     const clock = new SimClock();
@@ -117,4 +152,3 @@ describe('ActionRegistry', () => {
     expect(registry.log[0]?.params.source).toBe('directory');
   });
 });
-

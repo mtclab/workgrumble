@@ -1,7 +1,11 @@
 import type { SimClock } from './clock';
-import type { EntityGraph, NodeId } from './graph';
+import { EntityGraph, type NodeId } from './graph';
 import type { Rng } from './rng';
-import type { FieldValue } from './schema';
+import {
+  EDGE_KINDS,
+  type FieldValue,
+  NODE_KINDS,
+} from './schema';
 
 export interface ActionContext {
   graph: EntityGraph;
@@ -89,14 +93,23 @@ export class ActionRegistry {
     target: NodeId | null,
     params: Record<string, FieldValue>,
   ): DispatchResult {
+    const tick = this.clock.now();
     const definition = this.actions.get(id);
 
     if (definition === undefined) {
-      return this.reject(id, actor, target, params, `Unknown action "${id}".`);
+      return this.reject(
+        tick,
+        id,
+        actor,
+        target,
+        params,
+        `Unknown action "${id}".`,
+      );
     }
 
     if (definition.tier > this.tier) {
       return this.reject(
+        tick,
         id,
         actor,
         target,
@@ -106,7 +119,7 @@ export class ActionRegistry {
     }
 
     const context: ActionContext = {
-      graph: this.graph,
+      graph: this.createValidationGraph(),
       rng: this.rng,
       actor,
       target,
@@ -115,12 +128,20 @@ export class ActionRegistry {
     const validationReason = definition.validate(context);
 
     if (validationReason !== null) {
-      return this.reject(id, actor, target, params, validationReason);
+      return this.reject(
+        tick,
+        id,
+        actor,
+        target,
+        params,
+        validationReason,
+      );
     }
 
+    context.graph = this.graph;
     definition.apply(context);
     this.dispatchLog.push({
-      tick: this.clock.now(),
+      tick,
       id,
       actor,
       target,
@@ -160,6 +181,7 @@ export class ActionRegistry {
   }
 
   private reject(
+    tick: number,
     id: string,
     actor: NodeId,
     target: NodeId | null,
@@ -167,7 +189,7 @@ export class ActionRegistry {
     reason: string,
   ): DispatchResult {
     this.dispatchLog.push({
-      tick: this.clock.now(),
+      tick,
       id,
       actor,
       target,
@@ -178,6 +200,37 @@ export class ActionRegistry {
     return { ok: false, reason };
   }
 
+  private createValidationGraph(): EntityGraph {
+    const validationGraph = new EntityGraph();
+
+    for (const kind of NODE_KINDS) {
+      for (const node of this.graph.nodesOfKind(kind)) {
+        validationGraph.addNode(node);
+      }
+    }
+
+    for (const kind of NODE_KINDS) {
+      for (const node of this.graph.nodesOfKind(kind)) {
+        for (const edgeKind of EDGE_KINDS) {
+          for (
+            const neighbor of this.graph.neighbors(
+              node.id,
+              { direction: 'out', edgeKind },
+            )
+          ) {
+            validationGraph.addEdge({
+              from: node.id,
+              to: neighbor.id,
+              kind: edgeKind,
+            });
+          }
+        }
+      }
+    }
+
+    return validationGraph;
+  }
+
   private validateTier(tier: number): number {
     if (!Number.isSafeInteger(tier) || tier < 0) {
       throw new TypeError('Action tier must be a non-negative safe integer.');
@@ -186,4 +239,3 @@ export class ActionRegistry {
     return tier;
   }
 }
-
