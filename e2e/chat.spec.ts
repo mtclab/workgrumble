@@ -114,6 +114,104 @@ test('changes what the reporter says once their ticket is closed', async ({
     .toBeVisible();
 });
 
+/**
+ * The awkward case the ordering in `chat.ts` exists for: an option that fixes
+ * the world resolves its own ticket synchronously, mid-click, and the world
+ * listener repaints the thread before the dispatch has even returned. The
+ * conversation has to land on the reporter's REACTION, not on the branch the
+ * option named a moment before the problem stopped existing.
+ */
+test('lands on the reaction when a chat option closes its own ticket', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'chat');
+  await page.getByTestId('chat-person-ada').click();
+
+  const transcript = page.getByTestId('chat-transcript');
+  const options = page.getByTestId('chat-options');
+
+  // The walk-through sits behind the diagnosis, which is the point of it.
+  await options.getByRole('button', { name: /anybody else was at her desk/ })
+    .click();
+  await options.getByRole('button', { name: /which keys Gareth pressed/ })
+    .click();
+  await expect(transcript).toContainText('Control, something, and an arrow');
+
+  await options
+    .getByRole('button', { name: /Control, Alt and Up right now/ })
+    .click();
+
+  // One dispatch, one resolution, and it says what it did.
+  await expect(resolvedToast(page)).toHaveCount(1);
+  await expect(page.getByTestId('chat-outcome')).toContainText('Done, from '
+    + 'here');
+
+  // The option pointed at a node on the open branch. The thread ends on the
+  // reaction anyway, and stays there: the options on offer are hers from
+  // AFTER the fix, and none of them belong to the node the option named.
+  await expect(transcript).toContainText('They message you again.');
+  await expect(transcript).toContainText('It is the right way up');
+  await expect(options.getByRole('button', { name: /rotation shortcut/ }))
+    .toBeVisible();
+  await expect(
+    options.getByRole('button', { name: /sit up, this takes a moment/ }),
+  ).toHaveCount(0);
+  await expect(
+    options.getByRole('button', { name: /Control, Alt and Up right now/ }),
+  ).toHaveCount(0);
+  await expect(page.getByTestId('chat-person-ada')).not.toContainText(
+    'Open ticket',
+  );
+
+  // And the queue agrees that it closed, once.
+  await openFromStartMenu(page, 'tickets');
+  await expect(
+    page.getByTestId('ticket-row-rotated-screen'),
+  ).toHaveAttribute('data-state', 'resolved');
+});
+
+/**
+ * Cross-app links open the target app ONCE and hand it its aim once, whether
+ * the window was closed, already open, or minimized behind the taskbar. A
+ * second window, or a second delivery, is a conversation restarted under the
+ * player mid-sentence.
+ */
+test('opens the chat window once and re-aims the one that exists', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'tickets');
+
+  // Chat is not running. The ticket link mounts it AND lands it on Ada.
+  await page.getByTestId('ticket-row-rotated-screen').click();
+  await page.getByTestId('ticket-open-chat').click();
+  await expect(page.getByTestId('window-chat')).toHaveCount(1);
+  await expect(page.getByTestId('taskbar-button-chat')).toHaveCount(1);
+  await expect(page.getByTestId('chat-heading')).toHaveText('Ada Whitlock');
+
+  // Her opening line is in the transcript exactly once: a second mount, or a
+  // second intent, would say it again.
+  await expect(
+    page.getByTestId('chat-transcript').getByText(/I have been hacked/),
+  ).toHaveCount(1);
+
+  // Minimized, the same link has to restore it and re-aim it - not open a
+  // second one, and not leave the player looking at the wrong reporter.
+  await page.getByTestId('minimize-chat').click();
+  await expect(page.getByTestId('window-chat')).toBeHidden();
+
+  await page.getByTestId('ticket-row-wedged-spooler').click();
+  await page.getByTestId('ticket-open-chat').click();
+  await expect(page.getByTestId('window-chat')).toBeVisible();
+  await expect(page.getByTestId('window-chat')).toHaveCount(1);
+  await expect(page.getByTestId('taskbar-button-chat')).toHaveCount(1);
+  await expect(page.getByTestId('chat-heading')).toHaveText('Nina Okafor');
+  await expect(
+    page.getByTestId('chat-transcript').getByText(/printer is haunted/),
+  ).toHaveCount(1);
+});
+
 test('keeps the boss channel to talk and no consequences', async ({ page }) => {
   await logIn(page);
   await openFromStartMenu(page, 'chat');

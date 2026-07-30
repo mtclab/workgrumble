@@ -15,6 +15,9 @@ import {
  */
 
 const TURNED = 'matrix(0, 1, -1, 0, 0, 0)';
+/** The other quarter turn. 270 is not 90 with a different label on it. */
+const COUNTER_TURNED = 'matrix(0, -1, 1, 0, 0, 0)';
+const UPSIDE_DOWN = 'matrix(-1, 0, 0, -1, 0, 0)';
 const UPRIGHT = 'matrix(1, 0, 0, 1, 0, 0)';
 
 test('closes the rotated-screen ticket from inside Remote Assist', async ({
@@ -95,6 +98,45 @@ test('shows the same rotation gag when the fix comes from the terminal', async (
   );
 
   await focusWindow(page, 'remote');
+  await expect(viewport).toHaveCSS('transform', UPRIGHT);
+  await expect(resolvedToast(page)).toHaveCount(1);
+});
+
+/**
+ * Every rotation turns the screen the way it says. A viewport that renders
+ * 90 and 270 the same way looks correct in the one screenshot anybody takes
+ * and is wrong for half the values the action accepts.
+ */
+test('turns the remote screen in the direction the rotation names', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-ada').click();
+
+  const viewport = page.getByTestId('remote-viewport');
+  const picker = page.getByTestId('remote-rotation-picker');
+  const apply = page.getByTestId('remote-apply-rotation');
+
+  await expect(viewport).toHaveAttribute('data-rotation', '90');
+  await expect(viewport).toHaveCSS('transform', TURNED);
+
+  // The inverse quarter turn, which must be the inverse matrix.
+  await picker.selectOption('270');
+  await apply.click();
+  await expect(viewport).toHaveAttribute('data-rotation', '270');
+  await expect(viewport).toHaveCSS('transform', COUNTER_TURNED);
+  expect(COUNTER_TURNED).not.toBe(TURNED);
+
+  await picker.selectOption('180');
+  await apply.click();
+  await expect(viewport).toHaveCSS('transform', UPSIDE_DOWN);
+
+  // None of that closed anything: only upright is a fix.
+  await expect(resolvedToast(page)).toHaveCount(0);
+
+  await picker.selectOption('0');
+  await apply.click();
   await expect(viewport).toHaveCSS('transform', UPRIGHT);
   await expect(resolvedToast(page)).toHaveCount(1);
 });
