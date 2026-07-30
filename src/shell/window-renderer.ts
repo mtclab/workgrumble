@@ -120,6 +120,20 @@ export class WindowRenderer {
     });
   }
 
+  /**
+   * The window that currently holds `node`, if any. The desktop asks before a
+   * paint so it can follow keyboard focus out of a window it is about to hide.
+   */
+  public windowIdContaining(node: Node): string | null {
+    for (const [id, rendered] of this.rendered) {
+      if (rendered.element.contains(node)) {
+        return id;
+      }
+    }
+
+    return null;
+  }
+
   public dispose(): void {
     for (const gesture of this.gestures) {
       gesture.abort();

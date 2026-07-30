@@ -455,6 +455,10 @@ export class Desktop {
 
     this.startMenu.hidden = !open;
     this.startButton.setAttribute('aria-expanded', String(open));
+
+    if (!open) {
+      this.returnFocus(this.startMenu, this.startButton);
+    }
   }
 
   private setTrayPanelOpen(open: boolean): void {
@@ -471,6 +475,22 @@ export class Desktop {
     if (open) {
       this.renderTrayPanel();
       this.commitNotifications(markAllRead(this.notifications));
+      return;
+    }
+
+    this.returnFocus(this.trayPanel, this.trayButton);
+  }
+
+  /**
+   * Hands focus back to the control that opened a surface once that surface
+   * closes. Without it, Escape leaves the cursor inside a hidden menu and the
+   * keyboard player has to Tab in from the top of the document again.
+   */
+  private returnFocus(surface: HTMLElement, trigger: HTMLElement): void {
+    const active = document.activeElement;
+
+    if (active instanceof HTMLElement && surface.contains(active)) {
+      trigger.focus();
     }
   }
 
@@ -490,8 +510,45 @@ export class Desktop {
 
   private renderWindows(): void {
     const state = this.requireWindowManager();
+    // Read the focus owner before the paint: hiding the element that holds
+    // focus drops it on the document body, and by then there is nothing left
+    // to tell us where the player was.
+    const focusOwner = this.windowIdWithFocus();
     this.renderer.sync(state);
     this.renderTaskbarWindows(state);
+    this.followFocusOutOfHiddenWindow(state, focusOwner);
+  }
+
+  private windowIdWithFocus(): string | null {
+    const active = document.activeElement;
+
+    return active instanceof HTMLElement
+      ? this.renderer.windowIdContaining(active)
+      : null;
+  }
+
+  /**
+   * Keyboard focus must never be left inside a window the paint just hid: the
+   * window is `aria-hidden`, so a screen reader loses the cursor and Tab
+   * resumes from nowhere. The taskbar button is where that window now lives.
+   */
+  private followFocusOutOfHiddenWindow(
+    state: Readonly<WindowManagerState>,
+    focusOwner: string | null,
+  ): void {
+    if (focusOwner === null) {
+      return;
+    }
+
+    const windowState = state.windows.find(
+      (candidate) => candidate.id === focusOwner,
+    );
+
+    if (windowState === undefined || !windowState.minimized) {
+      return;
+    }
+
+    this.taskbarButtons.get(focusOwner)?.element.focus();
   }
 
   private renderTaskbarWindows(state: Readonly<WindowManagerState>): void {

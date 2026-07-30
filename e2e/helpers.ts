@@ -69,6 +69,29 @@ export async function dragBy(
   await page.mouse.up();
 }
 
+export interface ActiveElement {
+  /** `data-testid` of the focused element, or null when there is none. */
+  readonly testid: string | null;
+  /** True when the focused element sits inside an `aria-hidden` subtree. */
+  readonly inAriaHidden: boolean;
+}
+
+/** Reads where keyboard focus actually is, not where the UI implies it is. */
+export async function activeElement(page: Page): Promise<ActiveElement> {
+  return page.evaluate(() => {
+    const active = document.activeElement;
+
+    if (!(active instanceof HTMLElement)) {
+      return { testid: null, inAriaHidden: false };
+    }
+
+    return {
+      testid: active.dataset.testid ?? null,
+      inAriaHidden: active.closest('[aria-hidden="true"]') !== null,
+    };
+  });
+}
+
 export async function zIndexOf(page: Page, appId: string): Promise<number> {
   const value = await page
     .getByTestId(`window-${appId}`)
