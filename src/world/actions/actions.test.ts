@@ -10,7 +10,7 @@ import type { FieldValue } from '../../engine/schema';
 import { TicketEngine } from '../../engine/tickets';
 import { FIELDS } from '../fields';
 import { HELPDESK_ACTION_IDS, HELPDESK_ACTIONS } from './ids';
-import { registerHelpdeskActions } from './index';
+import { clueLines, registerHelpdeskActions } from './index';
 
 const ACTOR = 'person:tech';
 const ESCALATABLE_TICKET = 'ticket:hardware';
@@ -216,8 +216,8 @@ beforeEach(() => {
 
 describe('helpdesk action registry', () => {
   it('registers every advertised action exactly once', () => {
-    expect(HELPDESK_ACTION_IDS).toHaveLength(16);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(16);
+    expect(HELPDESK_ACTION_IDS).toHaveLength(17);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(17);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});
@@ -664,6 +664,70 @@ describe('ticket.escalate', () => {
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketEscalate, TWO_STEP_TICKET),
       'already with the field team',
+      before,
+    );
+  });
+});
+
+describe('ticket.add_clue', () => {
+  it('writes what the reporter let slip onto the ticket', () => {
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, {
+        clue: 'A colleague was at the desk on Friday.',
+      }),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.clues))
+      .toBe('A colleague was at the desk on Friday.');
+  });
+
+  it('appends later clues as their own lines, in the order they landed', () => {
+    dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: 'First.' });
+    dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: 'Second.' });
+
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.clues))
+      .toBe('First.\nSecond.');
+    expect(clueLines(fixture.graph.getField(PLAIN_TICKET, FIELDS.clues)))
+      .toEqual(['First.', 'Second.']);
+  });
+
+  it('refuses a clue with no words in it', () => {
+    const before = fixture.graph.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: '   ' }),
+      'nothing to write down',
+      before,
+    );
+  });
+
+  it('refuses to write the same clue twice', () => {
+    dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: 'Once.' });
+    const before = fixture.graph.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: 'Once.' }),
+      'already written on the ticket',
+      before,
+    );
+  });
+
+  it('refuses to add anything to a ticket that is already closed', () => {
+    dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET);
+    const before = fixture.graph.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketAddClue, ESCALATABLE_TICKET, {
+        clue: 'Too late.',
+      }),
+      'already closed',
+      before,
+    );
+  });
+
+  it('refuses a target that is not a ticket', () => {
+    const before = fixture.graph.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketAddClue, 'account:ada', {
+        clue: 'Wrong shelf.',
+      }),
+      'only works on a ticket',
       before,
     );
   });

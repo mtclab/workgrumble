@@ -6,8 +6,18 @@ import {
   HELPDESK_TIER,
   requireTargetId,
   resolveTarget,
+  stringParam,
 } from './helpers';
 import { HELPDESK_ACTIONS } from './ids';
+
+const CLUE_PARAM = 'clue';
+
+/** The clue field is one string; the ticket app splits it back into lines. */
+export function clueLines(value: unknown): readonly string[] {
+  return typeof value === 'string' && value.length > 0
+    ? value.split('\n').filter((line) => line.length > 0)
+    : [];
+}
 
 /**
  * What the ticket actions need to know about shipped ticket content without
@@ -115,6 +125,51 @@ export function createTicketActions(
           requireTargetId(context.target),
           FIELDS.escalated,
           true,
+        );
+      },
+    },
+    {
+      id: HELPDESK_ACTIONS.ticketAddClue,
+      tier: HELPDESK_TIER,
+      validate: (context) => {
+        const resolved = resolveTarget(context, 'ticket');
+
+        if (!resolved.ok) {
+          return resolved.reason;
+        }
+
+        if (field(resolved.node, FIELDS.state) === 'resolved') {
+          return 'That ticket is already closed. Whatever they have just '
+            + 'remembered, it is history now.';
+        }
+
+        const clue = stringParam(context, CLUE_PARAM)?.trim() ?? '';
+
+        if (clue.length === 0) {
+          return 'There is nothing to write down. A note that says nothing is '
+            + 'worse than no note at all.';
+        }
+
+        if (clueLines(field(resolved.node, FIELDS.clues)).includes(clue)) {
+          return 'That is already written on the ticket. Asking twice gets '
+            + 'the same answer, slightly colder.';
+        }
+
+        return null;
+      },
+      apply: (context) => {
+        const target = requireTargetId(context.target);
+        const clue = context.params[CLUE_PARAM];
+
+        if (typeof clue !== 'string' || clue.trim().length === 0) {
+          throw new TypeError('A clue must be a non-empty string.');
+        }
+
+        const existing = clueLines(context.graph.getField(target, FIELDS.clues));
+        context.graph.setField(
+          target,
+          FIELDS.clues,
+          [...existing, clue.trim()].join('\n'),
         );
       },
     },

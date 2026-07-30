@@ -20,6 +20,12 @@ export const HELPDESK_ACTIONS = {
   ticketSetWaiting: 'ticket.set_waiting',
   ticketClearWaiting: 'ticket.clear_waiting',
   ticketEscalate: 'ticket.escalate',
+  /**
+   * What the reporter just let slip, written onto the ticket. Chat reveals go
+   * through here rather than through a back door into the graph: a clue is a
+   * world mutation like any other, so it is an action like any other.
+   */
+  ticketAddClue: 'ticket.add_clue',
 } as const;
 
 export type HelpdeskActionId =
