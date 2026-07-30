@@ -12,6 +12,8 @@ Contract for builder. Deviations need overseer sign-off. Context: `DESIGN_POC.md
 
 Real actions, each `{ id, tier: 1, validate, apply }`, all graph-only, deterministic:
 `account.unlock`, `account.reset_password` (sets `password_reset_at` tick, clears `locked`), `account.add_to_group`, `account.remove_from_group`, `service.restart` (wedged|stopped -> running), `machine.set_display_rotation`, `machine.set_resolution`, `machine.reboot` (clears `pending_updates`, sets `uptime_since`), `device.power_cycle` (powered false->true, clears `wedged`), `device.replace_battery`, `mail_rule.delete`, `share.grant_access` (adds has_access edge), `printer.clear_queue` (device field `queue_len` -> 0), `ticket.set_waiting` / `ticket.clear_waiting` (wraps TicketEngine.setWaiting - the CYA mechanic hook), `ticket.escalate` (sets ticket field `escalated`, resolves via assertion where a ticket's resolved_when accepts escalation - used by hardware tickets).
+
+AMENDED post-review (2026-07-31): +`ticket.add_clue` (chat reveals) and +`ticket.mark_asked` (CYA evidence; `set_waiting` refuses without it) = 18 actions total. Services carry `restartable` as data; `service.restart` refuses hardware and refuses a wedged service with a non-empty queue (clear first).
 Every action: validate rejects wrong node kind / missing prerequisites with a HUMAN reason string (shown in UI); unit test per action (accept + at least one reject).
 
 ## 2. Apps (all plug into M1 manifest, tier_required: 1)
@@ -31,7 +33,7 @@ Build order: Tickets -> User Directory -> Chat -> Mail -> Remote Assist -> Cmd -
 Three, exercising the archetype field:
 1. `rotated-screen` (hidden_cause): reporter insists "hacked"; cause `machine.display_rotation=90`. Paths: Remote Assist (visible rotated content, fix via remote) OR Cmd `rotate`. Chat reveal available.
 2. `locked-account` (read_the_screen): vacation lockout. Paths: User Directory unlock OR Cmd `unlock`. SLA generous; comedy in chat.
-3. `wedged-spooler` (hidden_cause): "printer is haunted", queue 47, spooler wedged. Paths: Cmd `restart` OR Remote Assist services panel. Requires clear_queue too (two-step: assertion = spooler running AND queue empty).
+3. `wedged-spooler` (hidden_cause): "printer is haunted", queue 47, spooler wedged. Paths: Cmd OR Remote Assist services panel. Two-step in the HONEST order (amended post-review): clear the stuck queue FIRST, then restart - restart with a non-empty queue is refused; assertion = spooler running AND queue empty.
 Ticket JSON validated by the M0 validator at load; a load-time dev check asserts every shipped ticket resolvable (solvability harness lands fully in M4 - here a hand-written per-ticket unit test drives graph-level action sequences for EACH advertised path and asserts resolution).
 
 ## 4. World
