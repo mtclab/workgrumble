@@ -83,6 +83,41 @@ test('completes a full session with no console errors and no runtime requests', 
     'true',
   );
 
+  // Helpdesk apps: queue, directory and terminal each reach the world once.
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('ticket-row-locked-account').click();
+  await expect(page.getByTestId('ticket-detail-title')).toBeVisible();
+  await page.getByTestId('ticket-waiting-toggle').click();
+  await expect(page.getByTestId('ticket-detail-state')).toContainText(
+    'Waiting on user',
+  );
+  await page.getByTestId('ticket-waiting-toggle').click();
+  await expect(page.getByTestId('ticket-detail-state')).toContainText('Open');
+
+  await openFromStartMenu(page, 'directory');
+  await page.getByTestId('directory-search').fill('gpoole');
+  await page.getByTestId('directory-row-gary').click();
+  await page.getByTestId('directory-remove-group').click();
+  await expect(page.getByTestId('directory-outcome')).toContainText(
+    'membership removed',
+  );
+  await page.getByTestId('directory-reset-password').click();
+  await expect(page.getByTestId('directory-outcome')).toContainText(
+    'Temporary password',
+  );
+
+  await openFromStartMenu(page, 'cmd');
+  const terminal = page.getByTestId('cmd-input');
+  await terminal.fill('help');
+  await terminal.press('Enter');
+  await expect(page.getByTestId('cmd-output')).toContainText('clearqueue');
+  await terminal.fill('ping SALES-02');
+  await terminal.press('Enter');
+  await expect(page.getByTestId('cmd-output')).toContainText('Reply from');
+  await terminal.fill('cls');
+  await terminal.press('Enter');
+  await expect(page.getByTestId('cmd-output')).not.toContainText('Reply from');
+
   // Boss key, then recover from the taskbar.
   await page.keyboard.press('~');
   await expect(page.getByTestId('window-bubbles')).toBeHidden();
