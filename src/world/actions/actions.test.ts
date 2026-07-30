@@ -17,6 +17,12 @@ const ESCALATABLE_TICKET = 'ticket:hardware';
 /** Escalation is necessary but not sufficient: it stays open after the call. */
 const TWO_STEP_TICKET = 'ticket:hardware-two-step';
 const PLAIN_TICKET = 'ticket:plain';
+/**
+ * A ticket node in the graph that the engine knows nothing about. Perfectly
+ * valid content, and the engine throws if asked about it - so every action
+ * that reaches for a ticket record has to refuse it in words.
+ */
+const ORPHAN_TICKET = 'ticket:orphan';
 
 /** Never satisfied by anything in this file: keeps a fixture ticket open. */
 const NEVER: Expr = {
@@ -153,6 +159,18 @@ function seedFixture(graph: EntityGraph): void {
       target: 'Deleted Items',
     },
   });
+  graph.addNode({
+    id: ORPHAN_TICKET,
+    kind: 'ticket',
+    fields: {
+      state: 'open',
+      spawned_at: 0,
+      sla_deadline: 600,
+      breached: false,
+      // Even fully "asked", it has no record behind it and no clock to stop.
+      question_asked: true,
+    },
+  });
   graph.addEdge({
     from: 'account:ada',
     to: 'group:print-users',
@@ -178,6 +196,7 @@ function createFixture(): Fixture {
   registerHelpdeskActions(registry, {
     tickets,
     allowsEscalation: (id) => id !== PLAIN_TICKET,
+    isRegistered: (id) => FIXTURE_TICKETS.some((entry) => entry.id === id),
   });
 
   for (const { id, resolvedWhen } of FIXTURE_TICKETS) {
@@ -686,6 +705,38 @@ describe('ticket waiting state', () => {
       'only works on a ticket',
       before,
     );
+  });
+});
+
+/**
+ * A ticket the engine has never heard of used to validate cleanly and then
+ * throw out of `apply`, taking the click - and whatever the shell was in the
+ * middle of - with it. A dispatch answers; it does not detonate.
+ */
+describe('a ticket node the engine does not track', () => {
+  it.each([
+    HELPDESK_ACTIONS.ticketSetWaiting,
+    HELPDESK_ACTIONS.ticketClearWaiting,
+    HELPDESK_ACTIONS.ticketMarkAsked,
+  ])('refuses %s instead of throwing', (action) => {
+    const before = fixture.graph.snapshotHash();
+    let result: DispatchResult | null = null;
+
+    expect(() => {
+      result = dispatch(action, ORPHAN_TICKET);
+    }).not.toThrow();
+
+    expectRefusal(
+      result ?? { ok: false, reason: 'never dispatched.' },
+      'not on the helpdesk system',
+      before,
+    );
+  });
+
+  it('leaves the tickets it does track alone', () => {
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET),
+    ).toEqual({ ok: true });
   });
 });
 

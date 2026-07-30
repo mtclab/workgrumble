@@ -38,9 +38,25 @@ export function createWorldSession(seed: number = WORLD_SEED): WorldSession {
   );
   const tickets = new TicketEngine(graph, clock, bus);
 
+  /**
+   * Which ticket ids the engine is actually tracking. The engine does not
+   * publish its register and does not need to: it announces every spawn, so
+   * the session keeps the list it already broadcasts. Validation asks this
+   * before touching the engine, because a `ticket` node with no record behind
+   * it makes `setWaiting` throw - and an action must refuse, never throw.
+   */
+  const registeredTickets = new Set<string>();
+  bus.on('ticket:spawned', ({ id }) => {
+    registeredTickets.add(id);
+  });
+
   seedCompanyWorld(graph);
   registerDemoActions(registry);
-  registerHelpdeskActions(registry, { tickets, allowsEscalation });
+  registerHelpdeskActions(registry, {
+    tickets,
+    allowsEscalation,
+    isRegistered: (id) => registeredTickets.has(id),
+  });
 
   for (const entry of WORLD_TICKETS) {
     tickets.spawn(entry.def);

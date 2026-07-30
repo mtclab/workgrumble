@@ -27,9 +27,21 @@ export function clueLines(value: unknown): readonly string[] {
 export interface TicketPolicy {
   readonly tickets: TicketEngine;
   allowsEscalation(ticketId: string): boolean;
+  /**
+   * Whether the ticket engine is actually tracking this id. A `ticket` node
+   * can exist in the graph without a record behind it - hand-seeded content,
+   * a future spawner, a test fixture - and the engine THROWS when asked about
+   * one. Validation has to know, so a dispatch answers with a reason rather
+   * than taking the app down with it.
+   */
+  isRegistered(ticketId: string): boolean;
 }
 
 const CLOSED_REASON = 'That ticket is already closed. Let it rest.';
+
+const UNTRACKED_REASON = 'That ticket is not on the helpdesk system. It is a '
+  + 'record in the estate and in nobody\'s queue, so there is no clock behind '
+  + 'it and nothing here can move it.';
 
 /**
  * The CYA rule, in the words the player reads. Exported because the Tickets
@@ -53,6 +65,10 @@ export function createTicketActions(
 
         if (!resolved.ok) {
           return resolved.reason;
+        }
+
+        if (!policy.isRegistered(resolved.node.id)) {
+          return UNTRACKED_REASON;
         }
 
         const state = field(resolved.node, FIELDS.state);
@@ -93,6 +109,10 @@ export function createTicketActions(
           return resolved.reason;
         }
 
+        if (!policy.isRegistered(resolved.node.id)) {
+          return UNTRACKED_REASON;
+        }
+
         if (field(resolved.node, FIELDS.state) === 'resolved') {
           return 'That ticket is already closed. There is nothing left to ask '
             + 'them about.';
@@ -118,6 +138,10 @@ export function createTicketActions(
 
         if (!resolved.ok) {
           return resolved.reason;
+        }
+
+        if (!policy.isRegistered(resolved.node.id)) {
+          return UNTRACKED_REASON;
         }
 
         const state = field(resolved.node, FIELDS.state);
