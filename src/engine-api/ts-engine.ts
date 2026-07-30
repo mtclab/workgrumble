@@ -53,14 +53,17 @@ export class TsEngine implements EngineApi {
       this.clock,
       tier,
     );
-    // The ticket engine subscribes first, exactly as the session wires it, so
-    // a ticket has already reacted by the time the event reaches a listener.
-    this.tickets = new TicketEngine(this.graphStore, this.clock, this.bus);
-    this.view = createReadOnlyGraphView(this.graphStore);
-
+    // Subscribed BEFORE the ticket engine on purpose. The bus runs listeners
+    // in subscription order, so a later subscriber saw a mutation only after
+    // the ticket engine had already reacted to it and emitted its own events -
+    // consequences ahead of cause. The core returns events in causal order,
+    // and this is where the retired engine is lined up with it rather than
+    // the parity gate being loosened to accept both.
     this.bus.on('graph:mutated', (mutation) => {
       this.fanOut.emit([{ type: 'graph:mutated', mutation } as EngineEvent]);
     });
+    this.tickets = new TicketEngine(this.graphStore, this.clock, this.bus);
+    this.view = createReadOnlyGraphView(this.graphStore);
     this.bus.on('ticket:spawned', ({ id }) => {
       this.registered.add(id);
       this.fanOut.emit([{ type: 'ticket:spawned', id }]);
