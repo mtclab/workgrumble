@@ -1,7 +1,7 @@
 export const MIN_WINDOW_WIDTH = 280;
 export const MIN_WINDOW_HEIGHT = 180;
-export const DEFAULT_WINDOW_WIDTH = 560;
-export const DEFAULT_WINDOW_HEIGHT = 380;
+export const DEFAULT_WINDOW_WIDTH = 620;
+export const DEFAULT_WINDOW_HEIGHT = 480;
 
 const CASCADE_OFFSET = 28;
 /**

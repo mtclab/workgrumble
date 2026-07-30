@@ -54,7 +54,6 @@ const PROPERTY_ROWS: readonly PropertyRow[] = [
       'unknown',
     ),
   },
-  { label: 'Network', read: () => 'WORKGRUMBLE (one hub, much hope)' },
   { label: 'Chassis fan', read: (api) => fanStatus(api) },
   {
     label: 'World records',
