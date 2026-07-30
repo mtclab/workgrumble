@@ -2,18 +2,17 @@ import { ActionRegistry } from './engine/actions';
 import { SimClock } from './engine/clock';
 import { createEngineEventBus } from './engine/events';
 import { EntityGraph } from './engine/graph';
+import { createReadOnlyGraphView } from './engine/graph-view';
 import { createRng } from './engine/rng';
 import { TicketEngine } from './engine/tickets';
-import { createReadOnlyGraphView } from './engine/graph-view';
 import { APP_MANIFEST } from './shell/apps';
 import type { ShellContext } from './shell/context';
 import { Shell } from './shell/shell';
+import { COMPANY, COMPANY_IDS, seedCompanyWorld } from './world/company';
 import {
   DEMO_TICKET,
   DEMO_TIER,
   registerDemoActions,
-  seedDemoWorld,
-  WORLD_IDS,
 } from './world/demo-world';
 
 /** Fixed seed: the demo day is replayable. */
@@ -40,7 +39,7 @@ function boot(): void {
   const registry = new ActionRegistry(graph, rng, clock, DEMO_TIER);
   const tickets = new TicketEngine(graph, clock, bus);
 
-  seedDemoWorld(graph);
+  seedCompanyWorld(graph);
   registerDemoActions(registry);
   tickets.spawn(DEMO_TICKET);
 
@@ -51,10 +50,10 @@ function boot(): void {
     clock,
     user: {
       displayName: 'Pat Pending',
-      account: 'WORKGRUMBLE\\ppending',
+      account: `${COMPANY.domain}\\ppending`,
       passwordHint: 'Hint: it is on the sticky note under the keyboard. '
         + 'Any password works; nobody has checked since 1998.',
-      node: WORLD_IDS.player,
+      node: COMPANY_IDS.player,
     },
     dispatch: (id, actor, target, params) => registry.dispatch(
       id,

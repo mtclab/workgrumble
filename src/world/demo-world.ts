@@ -2,20 +2,22 @@ import type {
   ActionDef,
   ActionRegistry,
 } from '../engine/actions';
-import type { EntityGraph } from '../engine/graph';
 import type { TicketDef } from '../engine/tickets';
+import { COMPANY_IDS } from './company';
+import { FIELDS, SERVICE_STATUS } from './fields';
 
 /**
- * The M1 fixture world. It is deliberately tiny: enough graph for the demo
- * apps to read something true, and one ticket so the ticket engine is wired
- * end to end rather than constructed and ignored.
+ * The M1 demo apps, still wired to the world - only now the world is the real
+ * company seed (`company.ts`) instead of a fixture of its own. About This
+ * Workstation reads the player's actual kit, and its percussive-maintenance
+ * button still resolves a real ticket.
  */
 export const WORLD_IDS = {
-  player: 'person:pat',
-  account: 'account:pat',
-  machine: 'machine:beige-box',
-  monitor: 'device:monitor',
-  fan: 'service:chassis-fan',
+  player: COMPANY_IDS.player,
+  account: COMPANY_IDS.playerAccount,
+  machine: COMPANY_IDS.playerMachine,
+  monitor: COMPANY_IDS.monitor,
+  fan: COMPANY_IDS.fan,
   ticket: 'ticket:fan-noise',
 } as const;
 
@@ -26,84 +28,48 @@ export const DEMO_ACTIONS = {
 
 export const DEMO_TIER = 1;
 
-export function seedDemoWorld(graph: EntityGraph): void {
-  graph.addNode({
-    id: WORLD_IDS.player,
-    kind: 'person',
-    fields: { name: 'Pat Pending' },
-  });
-  graph.addNode({
-    id: WORLD_IDS.account,
-    kind: 'account',
-    fields: { username: 'ppending', locked: false, enabled: true },
-  });
-  graph.addNode({
-    id: WORLD_IDS.machine,
-    kind: 'machine',
-    fields: {
-      hostname: 'BEIGE-BOX',
-      display_rotation: 0,
-      resolution: '1024x768',
-    },
-  });
-  graph.addNode({
-    id: WORLD_IDS.monitor,
-    kind: 'device',
-    fields: { name: 'Trinitrend 15"', type: 'monitor', powered: true },
-  });
-  graph.addNode({
-    id: WORLD_IDS.fan,
-    kind: 'service',
-    fields: { name: 'Chassis fan', status: 'running' },
-  });
-
-  graph.addEdge({
-    from: WORLD_IDS.player,
-    to: WORLD_IDS.account,
-    kind: 'owns',
-  });
-  graph.addEdge({
-    from: WORLD_IDS.player,
-    to: WORLD_IDS.machine,
-    kind: 'owns',
-  });
-  graph.addEdge({
-    from: WORLD_IDS.monitor,
-    to: WORLD_IDS.machine,
-    kind: 'connected_to',
-  });
-  graph.addEdge({
-    from: WORLD_IDS.fan,
-    to: WORLD_IDS.machine,
-    kind: 'runs_on',
-  });
-}
-
-/** The ticket that the About app's percussive maintenance button resolves. */
+/**
+ * The hardware ticket. Two honest endings: fix the fan yourself (the About
+ * app's percussive maintenance button, or anything else that unwedges it), or
+ * escalate it to the field team - which is what escalation is FOR, and the
+ * only ticket in M2 whose own rules accept one.
+ */
 export const DEMO_TICKET: TicketDef = {
   id: WORLD_IDS.ticket,
   archetype: 'hidden_cause',
   flavor: {
     title: 'PC sounds like a hornet in a biscuit tin',
     body:
-      'Reporter says the noise started "around the time the cleaner came '
-      + 'through". Reporter is, as usual, correct about the timing and wrong '
-      + 'about the cause.',
+      'Filed by you, about your own desk, because the process insists that '
+      + 'work without a ticket did not happen. The noise started "around the '
+      + 'time the cleaner came through", which is correct about the timing '
+      + 'and wrong about the cause.',
   },
   reporter: WORLD_IDS.player,
   setup: [
     {
       op: 'setField',
       id: WORLD_IDS.fan,
-      field: 'status',
-      value: 'wedged',
+      field: FIELDS.status,
+      value: SERVICE_STATUS.wedged,
     },
   ],
   resolved_when: {
-    op: 'eq',
-    selector: { id: WORLD_IDS.fan },
-    field: 'status',
-    value: 'running',
+    op: 'or',
+    exprs: [
+      {
+        op: 'eq',
+        selector: { id: WORLD_IDS.fan },
+        field: FIELDS.status,
+        value: SERVICE_STATUS.running,
+      },
+      {
+        op: 'eq',
+        selector: { id: WORLD_IDS.ticket },
+        field: FIELDS.escalated,
+        value: true,
+      },
+    ],
   },
   sla_ticks: 240,
   reward: { reputation: 3, money: 12 },
