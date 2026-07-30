@@ -1,0 +1,74 @@
+import { expect, test } from '@playwright/test';
+
+import { focusWindow, logIn, openFromStartMenu } from './helpers';
+
+test('opens the KB at the article the ticket names', async ({ page }) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('ticket-row-wedged-spooler').click();
+  await page.getByTestId('ticket-open-kb').click();
+
+  await expect(page.getByTestId('window-kb')).toBeVisible();
+  await expect(page.getByTestId('kb-reference')).toHaveText('kb/print-spooler');
+  await expect(page.getByTestId('kb-title')).toContainText('print spooler');
+  // The learner path: it says WHY the restart alone is not enough.
+  await expect(page.getByTestId('kb-body')).toContainText(
+    'two steps, in this order',
+  );
+  await expect(page.getByTestId('kb-row-print-spooler')).toHaveAttribute(
+    'data-selected',
+    'true',
+  );
+
+  // See-also is a real link, not a decoration.
+  await page.getByTestId('kb-see-also-power-cycle').click();
+  await expect(page.getByTestId('kb-reference')).toHaveText('kb/power-cycle');
+  await expect(page.getByTestId('kb-title')).toContainText(
+    'turning it off and on again',
+  );
+
+  // A second ticket re-aims the window that is already open, rather than
+  // leaving the player on somebody else's article.
+  await focusWindow(page, 'tickets');
+  await page.getByTestId('ticket-row-locked-account').click();
+  await page.getByTestId('ticket-open-kb').click();
+  await expect(page.getByTestId('kb-reference')).toHaveText(
+    'kb/account-lockout',
+  );
+  await expect(page.getByTestId('kb-body')).toContainText('lockout');
+});
+
+test('reads the inbox on the shift clock and marks it read', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'mail');
+
+  await expect(page.getByTestId('mail-summary')).toContainText('2 unread');
+  const nag = page.getByTestId('mail-row-queue-nag');
+  await expect(nag).toHaveAttribute('data-unread', 'true');
+  await expect(page.getByTestId('mail-empty')).toBeVisible();
+
+  await nag.click();
+  await expect(page.getByTestId('mail-subject')).toContainText('the queue');
+
+  // Sim time, not wall-clock time: the stamps are shift minutes rendered as
+  // the same clock the taskbar shows.
+  const stamps = page.getByTestId('mail-message-time');
+  await expect(stamps).toHaveCount(2);
+  await expect(stamps.first()).toContainText('Day 1');
+  await expect(stamps.first()).toContainText('08:05');
+  await expect(stamps.last()).toContainText('08:25');
+  await expect(page.getByTestId('mail-message-from').first()).toHaveText(
+    'Desmond Frisk',
+  );
+
+  await expect(nag).toHaveAttribute('data-unread', 'false');
+  await expect(page.getByTestId('mail-summary')).toContainText('1 unread');
+
+  await page.getByTestId('mail-row-onboarding').click();
+  await expect(page.getByTestId('mail-subject')).toContainText(
+    'Welcome to Workgrumble',
+  );
+  await expect(page.getByTestId('mail-summary')).toContainText('0 unread');
+});

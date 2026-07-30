@@ -106,6 +106,52 @@ test('completes a full session with no console errors and no runtime requests', 
     'Temporary password',
   );
 
+  // Remote Assist: connect, read the remote screen, drive a control on it.
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-print').click();
+  await expect(page.getByTestId('remote-hostname')).toHaveText('PRINT-01');
+  await expect(page.getByTestId('remote-viewport')).toHaveAttribute(
+    'data-rotation',
+    '0',
+  );
+  await page.getByTestId('remote-rotation-picker').selectOption('180');
+  await page.getByTestId('remote-apply-rotation').click();
+  await expect(page.getByTestId('remote-viewport')).toHaveAttribute(
+    'data-rotation',
+    '180',
+  );
+  await page.getByTestId('remote-reboot').click();
+  await expect(page.getByTestId('remote-outcome')).toContainText('Rebooted');
+
+  // Chat: a thread with no effects behind it, run to its end and restarted.
+  await openFromStartMenu(page, 'chat');
+  await page.getByTestId('chat-person-bev').click();
+  const chatOptions = page.getByTestId('chat-options');
+  await chatOptions.getByRole('button', { name: /visitor biscuits/ }).click();
+  await expect(page.getByTestId('chat-transcript')).toContainText('fixture');
+  await chatOptions.getByRole('button', { name: /Go back to the top/ }).click();
+  await chatOptions.getByRole('button', { name: /only passing through/ })
+    .click();
+  await page.getByTestId('chat-restart').click();
+  await expect(chatOptions.getByRole('button', { name: /biscuits/ }))
+    .toBeVisible();
+
+  // Mail: open a thread, which is the only interaction it has.
+  await openFromStartMenu(page, 'mail');
+  await page.getByTestId('mail-row-onboarding').click();
+  await expect(page.getByTestId('mail-subject')).toContainText('Workgrumble');
+
+  // KB: read an article and follow a link out of it.
+  await openFromStartMenu(page, 'kb');
+  await page.getByTestId('kb-row-account-lockout').click();
+  await expect(page.getByTestId('kb-reference')).toHaveText(
+    'kb/account-lockout',
+  );
+  await page.getByTestId('kb-see-also-reading-the-error').click();
+  await expect(page.getByTestId('kb-reference')).toHaveText(
+    'kb/reading-the-error',
+  );
+
   await openFromStartMenu(page, 'cmd');
   const terminal = page.getByTestId('cmd-input');
   await terminal.fill('help');

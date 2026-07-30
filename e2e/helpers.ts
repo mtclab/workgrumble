@@ -49,6 +49,30 @@ export async function openFromDesktopIcon(
   await expect(page.getByTestId(`window-${appId}`)).toBeVisible();
 }
 
+/** Brings an already-open window to the front from the taskbar. */
+export async function focusWindow(page: Page, appId: string): Promise<void> {
+  await page.getByTestId(`taskbar-button-${appId}`).click();
+  await expect(page.getByTestId(`window-${appId}`)).toHaveAttribute(
+    'data-focused',
+    'true',
+  );
+}
+
+/** Runs one line in the Support Terminal and waits for it to echo back. */
+export async function runCommand(page: Page, line: string): Promise<void> {
+  const input = page.getByTestId('cmd-input');
+  await input.fill(line);
+  await input.press('Enter');
+  await expect(page.getByTestId('cmd-output')).toContainText(
+    `C:\\SUPPORT> ${line}`,
+  );
+}
+
+/** The one toast that says a ticket closed itself. */
+export function resolvedToast(page: Page): Locator {
+  return page.getByTestId('toast').filter({ hasText: 'Ticket resolved' });
+}
+
 export async function boxOf(locator: Locator): Promise<Box> {
   const box = await locator.boundingBox();
 

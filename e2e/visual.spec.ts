@@ -39,3 +39,30 @@ test('captures helpdesk apps for visual review', async ({ page }) => {
   await page.keyboard.press('Enter');
   await page.screenshot({ path: 'test-results/visual/09-cmd.png' });
 });
+
+test('captures the chat, mail, KB and remote surfaces', async ({ page }) => {
+  await logIn(page);
+
+  // Remote Assist on the machine whose screen is sideways: this capture is
+  // the one that shows whether the signature gag reads at all.
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-ada').click();
+  await page.screenshot({ path: 'test-results/visual/10-remote-rotated.png' });
+
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-print').click();
+  await page.screenshot({ path: 'test-results/visual/11-remote-services.png' });
+
+  await openFromStartMenu(page, 'chat');
+  await page.getByTestId('chat-person-ada').click();
+  await page.getByTestId('chat-option-1').click();
+  await page.screenshot({ path: 'test-results/visual/12-chat.png' });
+
+  await openFromStartMenu(page, 'mail');
+  await page.getByTestId('mail-row-queue-nag').click();
+  await page.screenshot({ path: 'test-results/visual/13-mail.png' });
+
+  await openFromStartMenu(page, 'kb');
+  await page.getByTestId('kb-row-print-spooler').click();
+  await page.screenshot({ path: 'test-results/visual/14-kb.png' });
+});

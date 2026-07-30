@@ -1,0 +1,142 @@
+import { expect, test } from '@playwright/test';
+
+import {
+  focusWindow,
+  logIn,
+  openFromStartMenu,
+  resolvedToast,
+} from './helpers';
+
+/**
+ * Remote Assist journeys. The gag has to be VISIBLE, not merely modelled: a
+ * rotated screen is asserted through the computed CSS transform on the remote
+ * viewport, before the fix and after it. `matrix(0, 1, -1, 0, 0, 0)` is a
+ * quarter turn; `matrix(1, 0, 0, 1, 0, 0)` is upright.
+ */
+
+const TURNED = 'matrix(0, 1, -1, 0, 0, 0)';
+const UPRIGHT = 'matrix(1, 0, 0, 1, 0, 0)';
+
+test('closes the rotated-screen ticket from inside Remote Assist', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'tickets');
+
+  const row = page.getByTestId('ticket-row-rotated-screen');
+  await row.click();
+  await expect(page.getByTestId('ticket-detail-title')).toContainText('hacked');
+
+  // The ticket detail opens Remote Assist ON the reporter's machine, not on
+  // whatever the app happened to be showing last.
+  await page.getByTestId('ticket-open-remote').click();
+  await expect(page.getByTestId('window-remote')).toBeVisible();
+  await expect(page.getByTestId('remote-hostname')).toHaveText('SALES-02');
+  await expect(page.getByTestId('remote-owner')).toContainText('Ada');
+
+  // Her screen really is sideways in front of the player.
+  const viewport = page.getByTestId('remote-viewport');
+  await expect(viewport).toHaveAttribute('data-rotation', '90');
+  await expect(viewport).toHaveCSS('transform', TURNED);
+  await expect(page.getByTestId('remote-rotation-state')).toHaveText(
+    '90 degrees',
+  );
+  await expect(page.getByTestId('remote-resolution')).toHaveText('1024x768');
+
+  // Setting it to what it already is is refused before the click.
+  const picker = page.getByTestId('remote-rotation-picker');
+  const apply = page.getByTestId('remote-apply-rotation');
+  await picker.selectOption('90');
+  await expect(apply).toBeDisabled();
+  await expect(apply).toHaveAttribute('title', /already at 90 degrees/);
+
+  // Put it back.
+  await picker.selectOption('0');
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect(page.getByTestId('remote-outcome')).toContainText(
+    'Screen set to 0 degrees',
+  );
+
+  // The gag is gone from the screen, not just from a field.
+  await expect(viewport).toHaveAttribute('data-rotation', '0');
+  await expect(viewport).toHaveCSS('transform', UPRIGHT);
+
+  // And the world being right closes the ticket by itself.
+  await expect(resolvedToast(page)).toHaveCount(1);
+  await focusWindow(page, 'tickets');
+  await expect(row).toHaveAttribute('data-state', 'resolved');
+  await expect(page.getByTestId('ticket-detail-state')).toContainText('Closed');
+});
+
+test('shows the same rotation gag when the fix comes from the terminal', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-ada').click();
+
+  const viewport = page.getByTestId('remote-viewport');
+  await expect(viewport).toHaveCSS('transform', TURNED);
+
+  // Fixed from a different app entirely: the remote screen is a view of the
+  // world, so it straightens itself without being told.
+  await openFromStartMenu(page, 'cmd');
+  const input = page.getByTestId('cmd-input');
+  await input.fill('rotate SALES-02 0');
+  await input.press('Enter');
+  await expect(page.getByTestId('cmd-output')).toContainText(
+    'display set to 0 degrees',
+  );
+
+  await focusWindow(page, 'remote');
+  await expect(viewport).toHaveCSS('transform', UPRIGHT);
+  await expect(resolvedToast(page)).toHaveCount(1);
+});
+
+test('closes the spooler ticket from the remote services taskbar', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'tickets');
+  const row = page.getByTestId('ticket-row-wedged-spooler');
+  await row.click();
+  await expect(page.getByTestId('ticket-detail-title')).toContainText(
+    'haunted',
+  );
+
+  // Nina has no workstation of her own, so this one is driven from the picker.
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-print').click();
+  await expect(page.getByTestId('remote-hostname')).toHaveText('PRINT-01');
+
+  const spooler = page.getByTestId('remote-service-spooler');
+  await expect(spooler).toContainText('Not responding');
+
+  // A healthy service on the same box refuses a restart, and says why.
+  const vpnRestart = page.getByTestId('remote-restart-vpn');
+  await expect(vpnRestart).toBeDisabled();
+  await expect(vpnRestart).toHaveAttribute('title', /running/);
+
+  // Half a fix is not a fix: the backlog outlives the restart.
+  await page.getByTestId('remote-restart-spooler').click();
+  await expect(spooler).toContainText('Running');
+  await expect(page.getByTestId('remote-queue-printer')).toHaveText(
+    '47 job(s) queued',
+  );
+  await expect(resolvedToast(page)).toHaveCount(0);
+  await focusWindow(page, 'tickets');
+  await expect(row).toHaveAttribute('data-state', 'open');
+
+  // The other half, from the hardware panel.
+  await focusWindow(page, 'remote');
+  await page.getByTestId('remote-clear-printer').click();
+  await expect(page.getByTestId('remote-queue-printer')).toHaveText(
+    '0 job(s) queued',
+  );
+  await expect(page.getByTestId('remote-clear-printer')).toBeDisabled();
+  await expect(resolvedToast(page)).toHaveCount(1);
+
+  await focusWindow(page, 'tickets');
+  await expect(row).toHaveAttribute('data-state', 'resolved');
+});

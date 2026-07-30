@@ -1,32 +1,19 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
-import { logIn, openFromStartMenu } from './helpers';
+import {
+  focusWindow,
+  logIn,
+  openFromStartMenu,
+  runCommand,
+} from './helpers';
 
 /**
  * M2 lane-A journeys: a player takes a ticket off the queue, works out what is
  * wrong, fixes the WORLD, and watches the ticket close itself. Nothing here
  * clicks a "resolve" button, because there is not one.
  *
- * Lane B adds the Chat, Remote Assist and KB halves of these journeys.
+ * The Chat, Remote Assist and KB halves live in their own spec files.
  */
-
-/** Runs one line in the Support Terminal and waits for it to echo back. */
-async function runCommand(page: Page, line: string): Promise<void> {
-  const input = page.getByTestId('cmd-input');
-  await input.fill(line);
-  await input.press('Enter');
-  await expect(page.getByTestId('cmd-output')).toContainText(
-    `C:\\SUPPORT> ${line}`,
-  );
-}
-
-async function focusWindow(page: Page, appId: string): Promise<void> {
-  await page.getByTestId(`taskbar-button-${appId}`).click();
-  await expect(page.getByTestId(`window-${appId}`)).toHaveAttribute(
-    'data-focused',
-    'true',
-  );
-}
 
 test('closes the locked-account ticket through Active Dictionary', async ({
   page,
@@ -226,14 +213,23 @@ test('offers escalation only where the ticket allows it', async ({ page }) => {
   await expect(escalate).toBeDisabled();
   await expect(escalate).toHaveAttribute('title', /fixable from your desk/);
 
-  // The KB and Chat links belong to lane B; until those apps install they say
-  // so instead of quietly doing nothing.
-  await expect(page.getByTestId('ticket-open-kb')).toBeDisabled();
-  await expect(page.getByTestId('ticket-open-kb')).toHaveAttribute(
+  // The cross-app links are live now that Chat, Remote Assist and the KB are
+  // installed - and the one with nowhere to go still says why.
+  await expect(page.getByTestId('ticket-open-kb')).toBeEnabled();
+  await expect(page.getByTestId('ticket-open-chat')).toBeEnabled();
+  const remote = page.getByTestId('ticket-open-remote');
+  await expect(remote).toBeEnabled();
+  await expect(remote).toHaveAttribute('data-blocked', 'false');
+
+  // The spooler ticket is reported by somebody with no workstation of their
+  // own, so Remote Assist has no screen to open - and says so rather than
+  // opening the wrong machine.
+  await page.getByTestId('ticket-row-wedged-spooler').click();
+  await expect(remote).toBeDisabled();
+  await expect(remote).toHaveAttribute(
     'title',
-    /Knowledge Base is not installed/,
+    /No workstation is signed out to this reporter/,
   );
-  await expect(page.getByTestId('ticket-open-chat')).toBeDisabled();
 
   // The hardware ticket is the one that earns a van.
   await page.getByTestId('ticket-row-fan-noise').click();
