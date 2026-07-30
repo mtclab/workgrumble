@@ -181,21 +181,36 @@ impl Expr {
         }
     }
 
-    /// Whether this rule can be satisfied by setting `field` to `value` - the
-    /// question the escalate action asks a ticket about its own resolution.
-    /// A `not` branch answers no: closing a ticket by making a negation true
-    /// is not a thing the player can be told to do.
-    pub fn accepts_field(&self, field: &str, value: &FieldValue) -> bool {
+    /// Whether this rule can be satisfied by setting `field` to `value` ON
+    /// `node` - the question the escalate action asks a ticket about its own
+    /// resolution. A `not` branch answers no: closing a ticket by making a
+    /// negation true is not a thing the player can be told to do.
+    ///
+    /// The selector matters as much as the field. A clause reading some OTHER
+    /// node's `escalated` flag is a rule about that node; treating it as this
+    /// ticket's escape hatch offers a button that marks the ticket escalated,
+    /// does not close it, and refuses the second press - a ticket the player
+    /// can neither finish nor escalate again.
+    ///
+    /// Only a selector that NAMES the node counts. A `kind` + `where` selector
+    /// is resolved against the graph and can point at a different node from one
+    /// mutation to the next, and an escalation offer that appears and vanishes
+    /// as the world moves is not a rule anybody can play against.
+    pub fn accepts_field(&self, node: &str, field: &str, value: &FieldValue) -> bool {
         match self {
             Self::And(expressions) | Self::Or(expressions) => expressions
                 .iter()
-                .any(|expr| expr.accepts_field(field, value)),
+                .any(|expr| expr.accepts_field(node, field, value)),
             Self::Not(_) => false,
             Self::Eq {
+                selector,
                 field: candidate,
                 value: expected,
-                ..
-            } => candidate == field && expected.same_value(value),
+            } => {
+                matches!(selector, Selector::Id(id) if id == node)
+                    && candidate == field
+                    && expected.same_value(value)
+            }
             Self::Exists { .. } | Self::Edge { .. } => false,
         }
     }
@@ -461,8 +476,8 @@ mod tests {
         }))
         .expect("valid");
 
-        assert!(accepts.accepts_field("escalated", &escalated));
-        assert!(!accepts.accepts_field("breached", &escalated));
+        assert!(accepts.accepts_field("t", "escalated", &escalated));
+        assert!(!accepts.accepts_field("t", "breached", &escalated));
 
         let negated = Expr::parse(&json!({
             "op": "not",
@@ -470,6 +485,36 @@ mod tests {
         }))
         .expect("valid");
 
-        assert!(!negated.accepts_field("escalated", &escalated));
+        assert!(!negated.accepts_field("t", "escalated", &escalated));
+    }
+
+    /// The rule has to be about the ticket being asked. A clause reading
+    /// ANOTHER ticket's `escalated` flag used to count, which offered the
+    /// button on a ticket the button could not close.
+    #[test]
+    fn a_rule_about_another_node_does_not_accept_this_one_s_field() {
+        let escalated = FieldValue::Bool(true);
+        let cross = Expr::parse(&json!({
+            "op": "eq",
+            "selector": { "id": "ticket:other" },
+            "field": "escalated",
+            "value": true,
+        }))
+        .expect("valid");
+
+        assert!(cross.accepts_field("ticket:other", "escalated", &escalated));
+        assert!(!cross.accepts_field("ticket:mine", "escalated", &escalated));
+
+        // A selector that has to be resolved against the graph can name a
+        // different node after the next mutation, so it never counts.
+        let ambulatory = Expr::parse(&json!({
+            "op": "eq",
+            "selector": { "kind": "ticket", "where": [{ "field": "state", "value": "open" }] },
+            "field": "escalated",
+            "value": true,
+        }))
+        .expect("valid");
+
+        assert!(!ambulatory.accepts_field("ticket:mine", "escalated", &escalated));
     }
 }

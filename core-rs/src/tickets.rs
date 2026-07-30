@@ -12,6 +12,7 @@ use serde_json::{json, Value as Json};
 
 use crate::assertions::Expr;
 use crate::error::{EngineError, EngineResult};
+use crate::num::safe_int_at_least;
 use crate::ops::TicketIndex;
 use crate::refuse;
 use crate::schema::{is_ticket_archetype, validate_edge, validate_node, Edge, Node};
@@ -145,8 +146,7 @@ impl TicketDef {
 
         let sla_ticks = object
             .get("sla_ticks")
-            .and_then(Json::as_i64)
-            .filter(|ticks| *ticks >= 0)
+            .and_then(|ticks| safe_int_at_least(ticks, 0))
             .ok_or_else(|| {
                 EngineError::new("Ticket sla_ticks must be a non-negative safe integer.")
             })?;
@@ -238,11 +238,16 @@ impl TicketEngine {
         )
     }
 
+    /// Rebuilds the records from a save. Every flag has to be there and be a
+    /// boolean: a missing `waiting` silently defaulting to false is how a
+    /// parked ticket came back with its SLA running, and a duplicated id
+    /// silently overwriting its twin is how a save could carry two truths
+    /// about one ticket and restore only the later one.
     pub fn restore(&mut self, value: &Json) -> EngineResult<()> {
         let entries = value
             .as_array()
             .ok_or_else(|| EngineError::new("Ticket state must be an array."))?;
-        self.records.clear();
+        let mut records = BTreeMap::new();
 
         for entry in entries {
             let object = entry
@@ -253,28 +258,31 @@ impl TicketEngine {
                     .get("def")
                     .ok_or_else(|| EngineError::new("Ticket state entry needs a def."))?,
             )?;
+            let flag = |name: &str| -> EngineResult<bool> {
+                object
+                    .get(name)
+                    .and_then(Json::as_bool)
+                    .ok_or_else(|| {
+                        EngineError::new(format!("Ticket state entry needs a boolean \"{name}\"."))
+                    })
+            };
+            let record = TicketRecord {
+                waiting: flag("waiting")?,
+                resolved: flag("resolved")?,
+                breached: flag("breached")?,
+                updating: false,
+                def,
+            };
 
-            self.records.insert(
-                def.id.clone(),
-                TicketRecord {
-                    def,
-                    waiting: object
-                        .get("waiting")
-                        .and_then(Json::as_bool)
-                        .unwrap_or(false),
-                    resolved: object
-                        .get("resolved")
-                        .and_then(Json::as_bool)
-                        .unwrap_or(false),
-                    breached: object
-                        .get("breached")
-                        .and_then(Json::as_bool)
-                        .unwrap_or(false),
-                    updating: false,
-                },
-            );
+            if records.contains_key(&record.def.id) {
+                let id = &record.def.id;
+                return refuse!("Ticket state names \"{id}\" twice.");
+            }
+
+            records.insert(record.def.id.clone(), record);
         }
 
+        self.records = records;
         Ok(())
     }
 }
@@ -287,7 +295,11 @@ impl TicketIndex for TicketEngine {
     fn resolution_accepts(&self, id: &str, field: &str, value: &FieldValue) -> bool {
         self.records
             .get(id)
-            .is_some_and(|record| record.def.resolved_when.accepts_field(field, value))
+            // The rule has to be satisfiable by setting the field ON THIS
+            // TICKET. A clause about some other node's `escalated` flag is a
+            // rule about that node, and honouring it here is what left a
+            // ticket marked escalated and still open.
+            .is_some_and(|record| record.def.resolved_when.accepts_field(id, field, value))
     }
 }
 
