@@ -130,6 +130,52 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { points: '4 13 9 18 20 6' },
     },
   ],
+  'icon-tickets': [
+    {
+      element: 'rect',
+      attributes: { x: '5', y: '3', width: '14', height: '18', rx: '1' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '9', y1: '8', x2: '15', y2: '8' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '9', y1: '12', x2: '15', y2: '12' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '9', y1: '16', x2: '13', y2: '16' },
+    },
+  ],
+  'icon-directory': [
+    {
+      element: 'rect',
+      attributes: { x: '4', y: '3', width: '16', height: '18', rx: '1' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '12', cy: '10', r: '2.5' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M8 17a4 4 0 0 1 8 0' },
+    },
+  ],
+  'icon-cmd': [
+    {
+      element: 'rect',
+      attributes: { x: '3', y: '4', width: '18', height: '16', rx: '1' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '7 10 10 13 7 16' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '12', y1: '16', x2: '17', y2: '16' },
+    },
+  ],
   'icon-lock': [
     {
       element: 'rect',

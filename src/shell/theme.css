@@ -32,6 +32,14 @@
   --color-accent-deep: #10403a;
   --color-accent-ink: #f1fbf8;
 
+  /*
+   * Semantic alarm colour. Not decoration and not a second brand colour: it is
+   * only ever allowed to mean "the SLA has run out" or "this was refused".
+   */
+  --color-alarm: #8f3222;
+  --color-alarm-soft: #e8d5cf;
+  --color-alarm-ink: #fdf1ec;
+
   /* ---- palette: wallpaper + terminal ---- */
   --color-wallpaper: #2b332e;
   --color-wallpaper-weave: #333c36;
@@ -108,6 +116,9 @@
   --size-initials: 44px;
   --size-rail: 30px;
   --size-taskbar-button: 176px;
+  --size-queue: 214px;
+  --size-directory-list: 190px;
+  --size-terminal-min: 240px;
   --size-scanline: 3px;
   --measure-boot: 62ch;
   --stroke-icon: 1.75;
@@ -1176,4 +1187,428 @@ input {
   font-family: var(--font-read);
   font-size: var(--text-sm);
   text-align: center;
+}
+
+/* --------------------------------------------------------- helpdesk apps */
+
+.app-refusal {
+  display: flex;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-alarm-soft);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-alarm);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.app-refusal .svg-icon {
+  color: var(--color-alarm);
+}
+
+.os-button[data-blocked="true"] {
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-ink-disabled);
+  cursor: not-allowed;
+}
+
+.ticket-badge {
+  display: inline-block;
+  padding: var(--space-0) var(--space-2);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ticket-badge[data-state="waiting_on_user"] {
+  background: var(--color-surface-sunken);
+  color: var(--color-ink-soft);
+}
+
+.ticket-badge[data-state="breached"] {
+  background: var(--color-alarm);
+  color: var(--color-alarm-ink);
+}
+
+.ticket-badge[data-state="resolved"] {
+  background: var(--color-accent-deep);
+  color: var(--color-accent-ink);
+}
+
+/* ------------------------------------------------------------- tickets */
+
+.tickets-app {
+  grid-template-rows: auto 1fr;
+  align-content: stretch;
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.tickets-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  box-shadow: var(--bevel-raised);
+  font-size: var(--text-xs);
+}
+
+.tickets-summary {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tickets-note {
+  flex: 1;
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+  font-style: italic;
+}
+
+.tickets-columns {
+  display: grid;
+  grid-template-columns: var(--size-queue) 1fr;
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.tickets-queue {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  overflow-y: auto;
+  background: var(--color-surface-field);
+  box-shadow: var(--bevel-sunken);
+}
+
+.ticket-row {
+  display: grid;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3);
+  border: none;
+  background: var(--color-surface);
+  box-shadow: var(--bevel-raised);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ticket-row:hover {
+  background: var(--color-surface-raised);
+}
+
+.ticket-row[data-selected="true"] {
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+}
+
+.ticket-row strong {
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
+}
+
+.ticket-row-meta {
+  color: var(--color-ink-soft);
+}
+
+.ticket-row-status {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ticket-row-sla {
+  color: var(--color-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.ticket-row[data-state="breached"] .ticket-row-sla {
+  color: var(--color-alarm);
+  font-weight: 700;
+}
+
+.tickets-empty,
+.tickets-placeholder {
+  padding: var(--space-4);
+  color: var(--color-ink-disabled);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.tickets-detail {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  overflow-y: auto;
+  background: var(--color-surface);
+  box-shadow: var(--bevel-sunken);
+}
+
+.tickets-detail h2 {
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+
+.ticket-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-5);
+  font-size: var(--text-xs);
+}
+
+.ticket-facts dt {
+  color: var(--color-ink-soft);
+}
+
+.ticket-facts dd {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ticket-body {
+  max-width: var(--measure-boot);
+  color: var(--color-ink);
+  font-family: var(--font-read);
+  font-size: var(--text-md);
+}
+
+.ticket-clues {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-field);
+  box-shadow: var(--bevel-sunken);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.app-outcome {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-field);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-accent-deep);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+/* --------------------------------------------------- active dictionary */
+
+.directory-app {
+  grid-template-rows: auto 1fr;
+  align-content: stretch;
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.directory-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  box-shadow: var(--bevel-raised);
+  font-size: var(--text-xs);
+}
+
+.directory-search-label {
+  display: flex;
+  flex: 1;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.directory-search {
+  flex: 1;
+  min-width: var(--size-rail);
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  background: var(--color-surface-field);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-ink);
+  font-size: var(--text-xs);
+}
+
+.directory-count {
+  color: var(--color-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.directory-columns {
+  display: grid;
+  grid-template-columns: var(--size-directory-list) 1fr;
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.directory-list {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  overflow-y: auto;
+  background: var(--color-surface-field);
+  box-shadow: var(--bevel-sunken);
+}
+
+.directory-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-0) var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  border: none;
+  background: var(--color-surface);
+  box-shadow: var(--bevel-raised);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.directory-row:hover {
+  background: var(--color-surface-raised);
+}
+
+.directory-row[data-selected="true"] {
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+}
+
+.directory-row strong {
+  font-size: var(--text-sm);
+}
+
+.directory-row-owner {
+  grid-column: 1;
+  color: var(--color-ink-soft);
+}
+
+.directory-row-lock {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  color: var(--color-alarm);
+}
+
+.directory-detail {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  overflow-y: auto;
+  background: var(--color-surface);
+  box-shadow: var(--bevel-sunken);
+}
+
+.directory-detail h2 {
+  font-size: var(--text-lg);
+  font-family: var(--font-mono);
+}
+
+.directory-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-5);
+  font-size: var(--text-xs);
+}
+
+.directory-facts dt {
+  color: var(--color-ink-soft);
+}
+
+.directory-facts dd {
+  font-weight: 700;
+}
+
+.directory-group-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.directory-group-picker {
+  min-width: var(--size-start-menu);
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  background: var(--color-surface-field);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.directory-empty,
+.directory-placeholder {
+  padding: var(--space-4);
+  color: var(--color-ink-disabled);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+/* ------------------------------------------------------ support terminal */
+
+.cmd-app {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  height: 100%;
+  min-height: var(--size-terminal-min);
+  padding: var(--space-3);
+  background: var(--color-terminal);
+  color: var(--color-terminal-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  cursor: text;
+}
+
+.cmd-output {
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cmd-line-out[data-kind="echo"] {
+  color: var(--color-terminal-dim);
+}
+
+.cmd-line {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  padding-top: var(--space-2);
+}
+
+.cmd-prompt {
+  color: var(--color-accent-bright);
+  white-space: nowrap;
+}
+
+.cmd-input {
+  flex: 1;
+  min-width: var(--size-rail);
+  padding: var(--space-0);
+  border: none;
+  background: var(--color-clear);
+  color: var(--color-terminal-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  caret-color: var(--color-terminal-ink);
+}
+
+.cmd-input:focus {
+  outline: none;
+}
+
+.cmd-input:focus-visible {
+  outline: none;
 }

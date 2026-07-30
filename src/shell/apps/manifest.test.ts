@@ -67,8 +67,14 @@ describe('app manifest', () => {
 });
 
 describe('shipped manifest', () => {
-  it('ships the two demo apps in order', () => {
-    expect(APP_MANIFEST.map(({ id }) => id)).toEqual(['about', 'bubbles']);
+  it('ships the helpdesk apps ahead of the demo apps', () => {
+    expect(APP_MANIFEST.map(({ id }) => id)).toEqual([
+      'tickets',
+      'directory',
+      'cmd',
+      'about',
+      'bubbles',
+    ]);
   });
 
   it('draws every icon in-repo instead of borrowing one', () => {
@@ -87,8 +93,20 @@ describe('shipped manifest', () => {
       'about',
     ]);
     expect(appsForTier(APP_MANIFEST, 1).map(({ id }) => id)).toEqual([
+      'tickets',
+      'directory',
+      'cmd',
       'about',
       'bubbles',
     ]);
+  });
+
+  it('gates every helpdesk app behind the helpdesk tier', () => {
+    for (const id of ['tickets', 'directory', 'cmd']) {
+      expect(
+        APP_MANIFEST.find((app) => app.id === id)?.tier_required,
+      ).toBe(1);
+      expect(APP_MANIFEST.find((app) => app.id === id)?.slack).toBe(false);
+    }
   });
 });
