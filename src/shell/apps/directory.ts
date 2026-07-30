@@ -291,6 +291,9 @@ export const DIRECTORY_APP: AppDef = {
 
       picker.addEventListener('change', () => {
         selectedGroupId = picker.value;
+        // Repaint: the add/remove buttons describe THIS group, so their
+        // availability and their refusal reasons have to move with it.
+        render();
       });
 
       const member = groups.some((group) => group.id === selectedGroupId);
