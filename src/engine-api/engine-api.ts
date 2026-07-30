@@ -58,12 +58,26 @@ export interface EngineApi {
 }
 
 /**
- * A shared fan-out for both adapters. Listeners are copied before dispatch so
- * an app that unsubscribes while being notified does not skip its neighbour.
+ * A shared fan-out for the adapter. Listeners are copied before delivery so an
+ * app that unsubscribes while being notified does not skip its neighbour.
+ *
+ * Two things listeners do that a plain loop cannot survive:
+ *
+ * - One of them dispatches. That produces events which, delivered immediately,
+ *   would reach the listeners AFTER this one before the event they are still
+ *   waiting for - a consequence arriving before its cause, for half the room.
+ *   So a nested emit joins the back of the queue the current drain is working
+ *   through, and causal order holds for everybody.
+ * - One of them throws. Every listener after it used to lose the event
+ *   entirely: one app's bad repaint silently froze another app. Every listener
+ *   is called, the failures are collected, and the aggregate is thrown once
+ *   delivery is complete.
  */
 export class EventFanOut {
   private readonly eventListeners = new Set<(event: EngineEvent) => void>();
   private readonly tickListeners = new Set<(tick: number) => void>();
+  private readonly queue: EngineEvent[] = [];
+  private draining = false;
 
   public onEvent(listener: (event: EngineEvent) => void): () => void {
     return subscribe(this.eventListeners, listener);
@@ -74,18 +88,67 @@ export class EventFanOut {
   }
 
   public emit(events: readonly EngineEvent[]): void {
-    for (const event of events) {
-      for (const listener of [...this.eventListeners]) {
-        listener(event);
-      }
+    this.queue.push(...events);
+
+    if (this.draining) {
+      // A listener is emitting while being notified. Its events are queued
+      // behind the batch in flight and the drain already running delivers
+      // them; returning here is what keeps cause before consequence.
+      return;
     }
+
+    this.draining = true;
+    const failures: unknown[] = [];
+
+    try {
+      for (
+        let event = this.queue.shift();
+        event !== undefined;
+        event = this.queue.shift()
+      ) {
+        for (const listener of [...this.eventListeners]) {
+          try {
+            listener(event);
+          } catch (failure: unknown) {
+            failures.push(failure);
+          }
+        }
+      }
+    } finally {
+      this.draining = false;
+      // A drain that ends badly must not leave a queue for the next emit to
+      // deliver out of nowhere.
+      this.queue.length = 0;
+    }
+
+    throwFailures(failures, 'events');
   }
 
   public tick(tick: number): void {
+    const failures: unknown[] = [];
+
     for (const listener of [...this.tickListeners]) {
-      listener(tick);
+      try {
+        listener(tick);
+      } catch (failure: unknown) {
+        failures.push(failure);
+      }
     }
+
+    throwFailures(failures, 'the tick');
   }
+}
+
+/** Reports listener failures once everybody has been told. */
+function throwFailures(failures: readonly unknown[], what: string): void {
+  if (failures.length === 0) {
+    return;
+  }
+
+  throw new AggregateError(
+    failures,
+    `${String(failures.length)} listener(s) failed handling ${what}.`,
+  );
 }
 
 function subscribe<Listener>(
