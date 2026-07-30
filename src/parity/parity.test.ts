@@ -2,11 +2,17 @@
  * The determinism harness.
  *
  * It began as a dual-engine gate - the Rust core beside the TypeScript engine
- * it replaced, step for step - and it kept the half that outlives the port:
- * the golden hash, log replay, and the whole shipped world driven twice
- * through independently built engines. Same script, same refusals, same
- * events, same hash, or the day is not replayable and nothing else here can
- * be trusted.
+ * it replaced, step for step - and the TypeScript engine is gone. What is left
+ * is SELF-consistency, and it is worth being honest about the difference: two
+ * `WasmEngine` instances are the same implementation run twice, so agreeing
+ * proves the engine carries no hidden state between instances and no
+ * dependence on time, iteration order or allocation - not that two independent
+ * implementations agree. The real cross-check is the golden hash, which was
+ * measured on the retired engine and has to keep coming out of this one.
+ *
+ * So: the golden hash, log replay including its refusals, and the whole
+ * shipped world driven twice. Same script, same refusals, same events, same
+ * hash, or the day is not replayable and nothing else here can be trusted.
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -37,6 +43,7 @@ import {
   GOLDEN_SCRIPT,
   GOLDEN_SEED,
   GOLDEN_SETUP,
+  type ScriptStep,
 } from './golden-fixture';
 
 const SEED = 0x5eed_1c01;
@@ -115,8 +122,8 @@ function wasmWorld(): Harness {
   return harness;
 }
 
-function goldenWasm(): Harness {
-  const engine = new WasmEngine(GOLDEN_SEED);
+function goldenWasm(seed: number = GOLDEN_SEED): Harness {
+  const engine = new WasmEngine(seed);
   const harness = collect(engine);
 
   engine.applySetup(GOLDEN_SETUP);
@@ -507,6 +514,20 @@ const UNAMBIGUOUS: Expr = {
   value: false,
 };
 
+/**
+ * A step the fixture refuses, appended to the golden script for the replay
+ * test only: the golden hash is measured on the script above and nothing may
+ * change it, and a refusal changes nothing by definition - which is exactly
+ * what makes it the right thing to pin.
+ */
+const GOLDEN_REFUSAL: ScriptStep = {
+  advance: 1,
+  id: 'machine.rotate',
+  target: 'service:spooler',
+  params: {},
+};
+const GOLDEN_REFUSAL_REASON = 'Target must be machine.';
+
 describe('the golden hash', () => {
   it('lands two fresh engines on the committed hash from one script', () => {
     const wasm = goldenWasm();
@@ -532,29 +553,137 @@ describe('the golden hash', () => {
     expect(wasm.engine.now()).toBe(replica.engine.now());
   });
 
-  it('replays a captured log into the same hash', () => {
+  /**
+   * A replay is only worth anything if it replays the WHOLE log, and a real
+   * log is mostly not a list of things that worked. The refusal is pinned
+   * exactly - the sentence, the log entry, the empty event list, the unchanged
+   * hash - because a replay that quietly succeeded where the session was
+   * refused would diverge from that point on and the final hash would be the
+   * only thing that noticed.
+   */
+  it('replays a captured log, refusals included, into the same hash', () => {
     const source = goldenWasm();
+    const script = [...GOLDEN_SCRIPT, GOLDEN_REFUSAL];
 
-    for (const step of GOLDEN_SCRIPT) {
+    for (const step of script) {
       source.engine.advance(step.advance);
       source.engine.dispatch(step.id, GOLDEN_ACTOR, step.target, step.params);
     }
 
+    // The refusal is in the log, and it did not touch the world.
+    expect(source.engine.snapshotHash()).toBe(GOLDEN_SCENARIO_HASH);
+
+    const captured = source.engine.dispatchLog();
+    const refused = captured.filter((entry) => !entry.ok);
+
+    expect(refused).toEqual([
+      {
+        tick: source.engine.now(),
+        id: GOLDEN_REFUSAL.id,
+        actor: GOLDEN_ACTOR,
+        target: GOLDEN_REFUSAL.target,
+        params: {},
+        ok: false,
+        reason: GOLDEN_REFUSAL_REASON,
+      },
+    ]);
+
     const replay = goldenWasm();
 
-    for (const entry of source.engine.dispatchLog()) {
+    for (const entry of captured) {
       replay.engine.advance(entry.tick - replay.engine.now());
+      replay.events.length = 0;
       const result = replay.engine.dispatch(
         entry.id,
         entry.actor,
         entry.target,
         entry.params,
       );
-      expect(result.ok).toBe(entry.ok);
+
+      expect(result.ok, entry.id).toBe(entry.ok);
+
+      if (!entry.ok) {
+        expect(result).toEqual({ ok: false, reason: entry.reason });
+        expect(replay.events, 'a refusal announced something').toEqual([]);
+      }
     }
 
     expect(replay.engine.snapshotHash()).toBe(source.engine.snapshotHash());
-    expect(replay.engine.dispatchLog()).toEqual(source.engine.dispatchLog());
+    expect(replay.engine.dispatchLog()).toEqual(captured);
+  });
+
+  /**
+   * The seeds at the ends of the generator's range, and the floats at the ends
+   * of a field's. Both are places where a boundary that coerces instead of
+   * refusing produces a world that is almost the one asked for.
+   */
+  it('runs the fixture on the extreme seeds and the extreme numbers', () => {
+    for (const seed of [0, 0xffff_ffff]) {
+      const first = goldenWasm(seed);
+      const second = goldenWasm(seed);
+
+      for (const step of GOLDEN_SCRIPT) {
+        for (const harness of [first, second]) {
+          harness.engine.advance(step.advance);
+          expect(
+            harness.engine.dispatch(
+              step.id,
+              GOLDEN_ACTOR,
+              step.target,
+              step.params,
+            ),
+            `seed ${String(seed)}`,
+          ).toEqual({ ok: true });
+        }
+      }
+
+      expect(first.engine.snapshotHash()).toBe(second.engine.snapshotHash());
+      expect(first.engine.dispatchLog()).toEqual(second.engine.dispatchLog());
+      // A different seed is a different day. If it were not, the seed would be
+      // decorative and the golden hash would prove nothing about the rng.
+      expect(first.engine.snapshotHash()).not.toBe(GOLDEN_SCENARIO_HASH);
+    }
+
+    const extremes: readonly FieldValue[] = [
+      Number.MIN_VALUE,
+      -Number.MIN_VALUE,
+      Number.MAX_VALUE,
+      -Number.MAX_VALUE,
+      Number.MAX_SAFE_INTEGER,
+      Number.EPSILON,
+      0,
+      -0,
+    ];
+    const first = goldenWasm();
+    const second = goldenWasm();
+
+    for (const value of extremes) {
+      for (const harness of [first, second]) {
+        expect(
+          harness.engine.dispatch('field.set', GOLDEN_ACTOR, 'share:common', {
+            field: 'quota_gb',
+            value,
+          }),
+          String(value),
+        ).toEqual({ ok: true });
+      }
+
+      // The number that came back is the number that went in, digit for digit,
+      // on both engines - which is what the hash is made of.
+      expect(first.engine.graph.getField('share:common', 'quota_gb'))
+        .toBe(second.engine.graph.getField('share:common', 'quota_gb'));
+      expect(first.engine.snapshotHash()).toBe(second.engine.snapshotHash());
+    }
+
+    // Negative zero is the one extreme JSON cannot carry: `JSON.stringify(-0)`
+    // is `"0"`, so it reaches the engine as a positive zero. That is a
+    // property of the wire, not a coercion the boundary chose, and both
+    // engines see the same thing - which is all determinism asks. The engine's
+    // own `Object.is` comparison still distinguishes the two internally.
+    expect(Object.is(
+      first.engine.graph.getField('share:common', 'quota_gb'),
+      0,
+    )).toBe(true);
   });
 });
 
