@@ -70,6 +70,80 @@ export function setAvailability(
   button.removeAttribute('aria-description');
 }
 
+/** `machine:print` -> `print`. Element ids and test hooks read better without
+ * the kind prefix, and every app derived this the same way separately. */
+export function nodeKey(id: string): string {
+  return id.includes(':') ? id.slice(id.indexOf(':') + 1) : id;
+}
+
+/**
+ * The two lines every helpdesk app ends with: what just worked, and what was
+ * refused and why. One builder so all five apps say it the same way, and so a
+ * refusal can never quietly render as a bare paragraph with no icon.
+ */
+export function outcomeLine(
+  testId: string,
+  outcome: string | null,
+): HTMLElement {
+  const line = element('p', 'app-outcome', testId);
+  line.hidden = outcome === null;
+  line.textContent = outcome ?? '';
+  return line;
+}
+
+export function refusalLine(
+  testId: string,
+  refusal: string | null,
+  icon: SVGSVGElement | null,
+): HTMLElement {
+  const line = element('p', 'app-refusal', testId);
+  line.hidden = refusal === null;
+
+  if (refusal !== null) {
+    if (icon !== null) {
+      line.append(icon);
+    }
+
+    const copy = element('span');
+    copy.textContent = refusal;
+    line.append(copy);
+  }
+
+  return line;
+}
+
+/**
+ * Repaints `root` without losing the keyboard.
+ *
+ * These apps rebuild their whole panel on every world change and every tick,
+ * which drops focus to the document body mid-task. The control the player was
+ * standing on is found again by its test id - unless the repaint disabled it,
+ * in which case focusing it would drop the cursor anyway.
+ */
+export function withFocusRestored(root: HTMLElement, paint: () => void): void {
+  const active = document.activeElement;
+  const focusedTestId = active instanceof HTMLElement && root.contains(active)
+    ? active.dataset.testid ?? null
+    : null;
+
+  paint();
+
+  if (focusedTestId === null) {
+    return;
+  }
+
+  const restored = root.querySelector(
+    `[data-testid="${CSS.escape(focusedTestId)}"]`,
+  );
+
+  if (
+    restored instanceof HTMLElement
+    && !(restored instanceof HTMLButtonElement && restored.disabled)
+  ) {
+    restored.focus();
+  }
+}
+
 export function definitionRow(
   list: HTMLElement,
   label: string,

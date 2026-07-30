@@ -54,12 +54,14 @@ test('reads the inbox on the shift clock and marks it read', async ({
 
   // Sim time, not wall-clock time: the stamps are shift minutes rendered as
   // the same clock the taskbar shows.
-  const stamps = page.getByTestId('mail-message-time');
-  await expect(stamps).toHaveCount(2);
-  await expect(stamps.first()).toContainText('Day 1');
-  await expect(stamps.first()).toContainText('08:05');
-  await expect(stamps.last()).toContainText('08:25');
-  await expect(page.getByTestId('mail-message-from').first()).toHaveText(
+  await expect(page.getByTestId('mail-reader').locator('article'))
+    .toHaveCount(2);
+  const first = page.getByTestId('mail-message-time-queue-nag-1');
+  await expect(first).toContainText('Day 1');
+  await expect(first).toContainText('08:05');
+  await expect(page.getByTestId('mail-message-time-queue-nag-2'))
+    .toContainText('08:25');
+  await expect(page.getByTestId('mail-message-from-queue-nag-1')).toHaveText(
     'Desmond Frisk',
   );
 

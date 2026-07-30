@@ -15,6 +15,7 @@ import {
   element,
   formatDuration,
   osButton,
+  refusalLine,
   setAvailability,
   textValue,
 } from './ui';
@@ -344,17 +345,9 @@ export const TICKETS_APP: AppDef = {
       );
       detail.append(actions);
 
-      const refusalLine = element('p', 'app-refusal', 'ticket-refusal');
-      refusalLine.hidden = refusal === null;
-
-      if (refusal !== null) {
-        refusalLine.append(createIcon('icon-lock'));
-        const copy = element('span');
-        copy.textContent = refusal;
-        refusalLine.append(copy);
-      }
-
-      detail.append(refusalLine);
+      detail.append(
+        refusalLine('ticket-refusal', refusal, createIcon('icon-lock')),
+      );
     };
 
     const render = (): void => {

@@ -9,7 +9,8 @@ import {
 } from './helpers';
 import { HELPDESK_ACTIONS } from './ids';
 
-const FULL_BATTERY = 100;
+/** What a fresh set of batteries reads. The UI gates on the same number. */
+export const FULL_BATTERY = 100;
 
 export const DEVICE_ACTIONS: readonly ActionDef[] = [
   {

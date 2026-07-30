@@ -8,6 +8,8 @@ import {
   definitionRow,
   element,
   osButton,
+  outcomeLine,
+  refusalLine,
   setAvailability,
   textValue,
 } from './ui';
@@ -345,21 +347,10 @@ export const DIRECTORY_APP: AppDef = {
       groupRow.append(picker, addGroup, removeGroup);
       detail.append(groupRow);
 
-      const outcomeLine = element('p', 'app-outcome', 'directory-outcome');
-      outcomeLine.hidden = outcome === null;
-      outcomeLine.textContent = outcome ?? '';
-
-      const refusalLine = element('p', 'app-refusal', 'directory-refusal');
-      refusalLine.hidden = refusal === null;
-
-      if (refusal !== null) {
-        refusalLine.append(createIcon('icon-lock'));
-        const copy = element('span');
-        copy.textContent = refusal;
-        refusalLine.append(copy);
-      }
-
-      detail.append(outcomeLine, refusalLine);
+      detail.append(
+        outcomeLine('directory-outcome', outcome),
+        refusalLine('directory-refusal', refusal, createIcon('icon-lock')),
+      );
     };
 
     const render = (): void => {

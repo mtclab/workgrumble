@@ -120,6 +120,15 @@ test('completes a full session with no console errors and no runtime requests', 
     'data-rotation',
     '180',
   );
+  // Upside down on screen, not merely upside down in a field.
+  await expect(page.getByTestId('remote-viewport')).toHaveCSS(
+    'transform',
+    'matrix(-1, 0, 0, -1, 0, 0)',
+  );
+  await page.getByTestId('remote-clear-printer').click();
+  await expect(page.getByTestId('remote-queue-printer')).toHaveText(
+    '0 job(s) queued',
+  );
   await page.getByTestId('remote-reboot').click();
   await expect(page.getByTestId('remote-outcome')).toContainText('Rebooted');
 

@@ -7,6 +7,7 @@ import { SERVICE_ACTIONS } from './service';
 import { SHARE_ACTIONS } from './share';
 import { createTicketActions, type TicketPolicy } from './ticket';
 
+export { FULL_BATTERY } from './device';
 export { HELPDESK_TIER } from './helpers';
 export {
   HELPDESK_ACTION_IDS,

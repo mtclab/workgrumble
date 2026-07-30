@@ -44,10 +44,15 @@ export const MAIL_APP: AppDef = {
     columns.append(list, reader);
     root.append(toolbar, columns);
 
+    /** Newest traffic at the top, the way every inbox has always sorted. */
+    const threads = (): readonly MailThread[] => [...WORLD_MAIL].sort(
+      (left, right) => latestTick(right) - latestTick(left),
+    );
+
     const renderList = (): void => {
       list.replaceChildren();
 
-      for (const thread of WORLD_MAIL) {
+      for (const thread of threads()) {
         const item = element('li');
         const row = element(
           'button',
@@ -95,11 +100,14 @@ export const MAIL_APP: AppDef = {
       reader.append(heading);
 
       for (const message of thread.messages) {
-        const entry = element('article', 'mail-message', 'mail-message');
+        // One test id per message, not one shared by all of them: a locator
+        // that matches three articles is a locator nothing can assert on.
+        const key = mailKey(message.id).replace('#', '-');
+        const entry = element('article', 'mail-message', `mail-message-${key}`);
         const head = element('div', 'mail-message-head');
-        const from = element('strong', undefined, 'mail-message-from');
+        const from = element('strong', undefined, `mail-message-from-${key}`);
         from.textContent = senderName(api, message.from);
-        const stamp = element('time', undefined, 'mail-message-time');
+        const stamp = element('time', undefined, `mail-message-time-${key}`);
         const display = formatSimTime(message.tick);
         stamp.textContent = `${display.day} · ${display.time}`;
         stamp.setAttribute('aria-label', display.accessible);

@@ -71,10 +71,14 @@ export const KB_APP: AppDef = {
     const renderReader = (article: KbArticle | undefined): void => {
       reader.replaceChildren();
 
+      // A miss replaces the page rather than sitting on top of the last one:
+      // "nothing is filed under X" printed above an unrelated article reads
+      // as if THAT article is the miss.
       if (notice !== null) {
         const missing = element('p', 'app-refusal', 'kb-notice');
         missing.textContent = notice;
         reader.append(missing);
+        return;
       }
 
       if (article === undefined) {

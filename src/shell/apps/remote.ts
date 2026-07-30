@@ -1,5 +1,5 @@
 import type { ReadOnlyGraphNode } from '../../engine/graph-view';
-import { HELPDESK_ACTIONS } from '../../world/actions';
+import { FULL_BATTERY, HELPDESK_ACTIONS } from '../../world/actions';
 import {
   DEVICE_TYPES,
   FIELDS,
@@ -14,17 +14,17 @@ import type { AppDef, AppInstance } from './types';
 import {
   definitionRow,
   element,
+  nodeKey,
   osButton,
+  outcomeLine,
+  refusalLine,
   setAvailability,
   textValue,
+  withFocusRestored,
 } from './ui';
 
 export function machineKey(id: string): string {
-  return id.startsWith('machine:') ? id.slice('machine:'.length) : id;
-}
-
-function nodeKey(id: string): string {
-  return id.includes(':') ? id.slice(id.indexOf(':') + 1) : id;
+  return nodeKey(id);
 }
 
 function hostnameOf(machine: Readonly<ReadOnlyGraphNode>): string {
@@ -35,9 +35,6 @@ function rotationOf(machine: Readonly<ReadOnlyGraphNode>): Rotation {
   const rotation = machine.fields[FIELDS.displayRotation];
   return isRotation(rotation) ? rotation : 0;
 }
-
-/** Matches the battery the device action calls full; kept in one place. */
-const FULL_BATTERY = 100;
 
 const STATUS_LABELS: Readonly<Record<string, string>> = {
   [SERVICE_STATUS.running]: 'Running',
@@ -68,6 +65,12 @@ export const REMOTE_APP: AppDef = {
     let pickedRotation: Rotation | null = null;
     let refusal: string | null = null;
     let outcome: string | null = null;
+    /**
+     * The clock on the remote taskbar. It is repainted on its own every tick
+     * rather than through a full repaint: rebuilding the session once a
+     * second would slam the rotation dropdown shut in the player's hand.
+     */
+    let remoteTray: HTMLElement | null = null;
 
     const root = element('section', 'app-page remote-app', 'remote-app');
 
@@ -145,10 +148,7 @@ export const REMOTE_APP: AppDef = {
         }
 
         row.addEventListener('click', () => {
-          selectedId = machine.id;
-          pickedRotation = null;
-          refusal = null;
-          outcome = null;
+          selectMachine(machine.id);
           render();
         });
         item.append(row);
@@ -242,6 +242,7 @@ export const REMOTE_APP: AppDef = {
       const tray = element('span', 'remote-tray', 'remote-tray');
       tray.textContent = formatSimTime(api.clock.now()).time;
       taskbar.append(tray);
+      remoteTray = tray;
 
       viewport.append(wallpaper, taskbar);
       frame.append(viewport);
@@ -262,8 +263,13 @@ export const REMOTE_APP: AppDef = {
         'Whatever the driver felt like',
       );
       definitionRow(facts, 'Rotation', 'remote-rotation-state').textContent = `${String(rotationOf(machine))} degrees`;
+      // Guarded, not merely typed: `formatSimTime` throws on a negative or
+      // fractional tick, and this render runs inside the clock listener,
+      // where one throw would stop every other tick listener with it.
       const uptime = machine.fields[FIELDS.uptimeSince];
       definitionRow(facts, 'Booted', 'remote-uptime').textContent = typeof uptime === 'number'
+        && Number.isSafeInteger(uptime)
+        && uptime >= 0
         ? formatSimTime(uptime).time
         : 'Some time before the merger';
       panel.append(facts);
@@ -469,21 +475,18 @@ export const REMOTE_APP: AppDef = {
       );
       session.append(panels);
 
-      const outcomeLine = element('p', 'app-outcome', 'remote-outcome');
-      outcomeLine.hidden = outcome === null;
-      outcomeLine.textContent = outcome ?? '';
+      session.append(
+        outcomeLine('remote-outcome', outcome),
+        refusalLine('remote-refusal', refusal, createIcon('icon-lock')),
+      );
+    };
 
-      const refusalLine = element('p', 'app-refusal', 'remote-refusal');
-      refusalLine.hidden = refusal === null;
-
-      if (refusal !== null) {
-        refusalLine.append(createIcon('icon-lock'));
-        const copy = element('span');
-        copy.textContent = refusal;
-        refusalLine.append(copy);
-      }
-
-      session.append(outcomeLine, refusalLine);
+    /** Everything that only makes sense while looking at ONE machine. */
+    const selectMachine = (id: string | null): void => {
+      selectedId = id;
+      pickedRotation = null;
+      refusal = null;
+      outcome = null;
     };
 
     const render = (): void => {
@@ -493,7 +496,10 @@ export const REMOTE_APP: AppDef = {
         selectedId === null
         || !nodes.some((machine) => machine.id === selectedId)
       ) {
-        selectedId = nodes[0]?.id ?? null;
+        // A machine that vanished takes its pending rotation and its last
+        // refusal with it: applying either against the next box would be a
+        // fix aimed at the wrong screen.
+        selectMachine(nodes[0]?.id ?? null);
       }
 
       const sideways = nodes.filter(
@@ -502,32 +508,24 @@ export const REMOTE_APP: AppDef = {
       summary.textContent = `${String(nodes.length)} workstations · `
         + `${String(sideways)} sideways`;
 
-      const focusedTestId = document.activeElement instanceof HTMLElement
-        && root.contains(document.activeElement)
-        ? document.activeElement.dataset.testid ?? null
-        : null;
-
-      renderMachines(nodes);
-      renderSession(nodes.find((machine) => machine.id === selectedId));
-
-      // A tick repaint must not take the keyboard off the control the player
-      // is standing on, the same rule the ticket queue follows.
-      if (focusedTestId !== null) {
-        const restored = root.querySelector(
-          `[data-testid="${focusedTestId}"]`,
-        );
-
-        if (restored instanceof HTMLElement) {
-          restored.focus();
-        }
-      }
+      // A repaint must not take the keyboard off the control the player is
+      // standing on, the same rule the ticket queue follows.
+      withFocusRestored(root, () => {
+        renderMachines(nodes);
+        renderSession(nodes.find((machine) => machine.id === selectedId));
+      });
     };
 
     host.replaceChildren(root);
     render();
 
-    const unsubscribeTick = api.clock.onTick(() => {
-      render();
+    // Only the remote clock moves on a tick. A full repaint every second
+    // would destroy and rebuild the rotation dropdown under the player's
+    // cursor, which is the one control this app exists for.
+    const unsubscribeTick = api.clock.onTick((tick) => {
+      if (remoteTray !== null) {
+        remoteTray.textContent = formatSimTime(tick).time;
+      }
     });
     const unsubscribeWorld = api.onWorldChange(() => {
       render();
@@ -543,10 +541,7 @@ export const REMOTE_APP: AppDef = {
           return;
         }
 
-        selectedId = intent.id;
-        pickedRotation = null;
-        refusal = null;
-        outcome = null;
+        selectMachine(intent.id);
         render();
       },
       unmount: (): void => {

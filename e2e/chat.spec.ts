@@ -117,7 +117,21 @@ test('changes what the reporter says once their ticket is closed', async ({
 test('keeps the boss channel to talk and no consequences', async ({ page }) => {
   await logIn(page);
   await openFromStartMenu(page, 'chat');
+
+  // Start somewhere else so selecting the boss has to actually do something.
+  await page.getByTestId('chat-person-bev').click();
+  await expect(page.getByTestId('chat-heading')).toHaveText('Bev Tannock');
+  await expect(page.getByTestId('chat-person-bev')).toHaveAttribute(
+    'data-selected',
+    'true',
+  );
+
   await page.getByTestId('chat-person-desmond').click();
+  await expect(page.getByTestId('chat-heading')).toHaveText('Desmond Frisk');
+  await expect(page.getByTestId('chat-person-bev')).toHaveAttribute(
+    'data-selected',
+    'false',
+  );
 
   const transcript = page.getByTestId('chat-transcript');
   const options = page.getByTestId('chat-options');
@@ -126,10 +140,16 @@ test('keeps the boss channel to talk and no consequences', async ({ page }) => {
   await options.getByRole('button', { name: /raise a ticket like everybody/ })
     .click();
   await expect(transcript).toContainText('I raise concerns');
+  // The thread moved: the option that got us here is gone from the panel.
+  await expect(
+    options.getByRole('button', { name: /raise a ticket like everybody/ }),
+  ).toHaveCount(0);
 
-  // Nothing the boss channel says can change the world, so nothing here
-  // reports an outcome or a refusal.
+  // Nothing the boss channel says can change the world, and the world agrees:
+  // the queue is exactly where it was before the conversation started.
   await expect(page.getByTestId('chat-outcome')).toBeHidden();
   await expect(page.getByTestId('chat-refusal')).toBeHidden();
   await expect(resolvedToast(page)).toHaveCount(0);
+  await openFromStartMenu(page, 'tickets');
+  await expect(page.getByTestId('tickets-summary')).toContainText('4 open');
 });

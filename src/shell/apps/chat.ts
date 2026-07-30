@@ -12,7 +12,15 @@ import { FIELDS } from '../../world/fields';
 import { ticketTitle } from '../../world/tickets';
 import { createIcon } from '../icons';
 import type { AppDef, AppInstance } from './types';
-import { element, osButton, textValue } from './ui';
+import {
+  element,
+  nodeKey,
+  osButton,
+  outcomeLine,
+  refusalLine,
+  textValue,
+  withFocusRestored,
+} from './ui';
 
 type Speaker = 'them' | 'you' | 'system';
 
@@ -30,7 +38,7 @@ interface ThreadState {
 }
 
 export function personKey(id: string): string {
-  return id.startsWith('person:') ? id.slice('person:'.length) : id;
+  return nodeKey(id);
 }
 
 /**
@@ -125,6 +133,13 @@ export const CHAT_APP: AppDef = {
       return existing;
     };
 
+    /**
+     * Plays one option. The conversation is advanced BEFORE the effect is
+     * dispatched, because a dispatch mutates the world synchronously and the
+     * world listener repaints (and may move this very thread onto its
+     * reaction branch) before the dispatch call has even returned. Advancing
+     * afterwards would drag the thread back onto the branch it just left.
+     */
     const choose = (
       personId: string,
       tree: Readonly<DialogueTree>,
@@ -134,6 +149,17 @@ export const CHAT_APP: AppDef = {
       thread.lines.push({ who: 'you', text: option.label });
       refusal = null;
       outcome = null;
+
+      if (option.next === undefined) {
+        thread.ended = true;
+        thread.lines.push({ who: 'system', text: 'The conversation ends.' });
+      } else {
+        thread.nodeId = option.next;
+        thread.lines.push({
+          who: 'them',
+          text: dialogueNode(tree, option.next)?.npc_line ?? '',
+        });
+      }
 
       if (option.effect !== undefined) {
         const result = applyDialogueEffect(option.effect, {
@@ -155,17 +181,6 @@ export const CHAT_APP: AppDef = {
           // thing that did not work, not a thing that ends the call.
           refusal = result.reason;
         }
-      }
-
-      if (option.next === undefined) {
-        thread.ended = true;
-        thread.lines.push({ who: 'system', text: 'The conversation ends.' });
-      } else {
-        thread.nodeId = option.next;
-        thread.lines.push({
-          who: 'them',
-          text: dialogueNode(tree, option.next)?.npc_line ?? '',
-        });
       }
 
       render();
@@ -308,21 +323,10 @@ export const CHAT_APP: AppDef = {
 
       panel.append(options);
 
-      const outcomeLine = element('p', 'app-outcome', 'chat-outcome');
-      outcomeLine.hidden = outcome === null;
-      outcomeLine.textContent = outcome ?? '';
-
-      const refusalLine = element('p', 'app-refusal', 'chat-refusal');
-      refusalLine.hidden = refusal === null;
-
-      if (refusal !== null) {
-        refusalLine.append(createIcon('icon-lock'));
-        const copy = element('span');
-        copy.textContent = refusal;
-        refusalLine.append(copy);
-      }
-
-      panel.append(outcomeLine, refusalLine);
+      panel.append(
+        outcomeLine('chat-outcome', outcome),
+        refusalLine('chat-refusal', refusal, createIcon('icon-lock')),
+      );
     };
 
     const render = (): void => {
@@ -345,8 +349,12 @@ export const CHAT_APP: AppDef = {
       summary.textContent = `${String(nodes.length)} contacts · `
         + `${String(open)} with something open`;
 
-      renderPeople(nodes);
-      renderPanel(nodes.find((person) => person.id === selectedId));
+      // A world change repaints the whole panel underneath the player, so the
+      // option they were standing on has to survive the paint.
+      withFocusRestored(root, () => {
+        renderPeople(nodes);
+        renderPanel(nodes.find((person) => person.id === selectedId));
+      });
 
       // Keep the transcript pinned to the newest line: a conversation that
       // silently scrolls away from the player is a conversation they lose.

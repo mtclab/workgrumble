@@ -1,10 +1,14 @@
+import type { DispatchResult } from '../../engine/actions';
 import type { FieldValue } from '../../engine/schema';
 import { HELPDESK_ACTION_IDS, HELPDESK_ACTIONS } from '../actions';
 import { type DialogueEffect, isRevealEffect } from './types';
 
-export type DialogueEffectResult =
-  | { ok: true }
-  | { ok: false; reason: string };
+/**
+ * The same answer a dispatched action gives, because that is exactly what an
+ * effect is. Kept as an alias so a caller can hand its own `dispatch` over
+ * without adapting between two identical shapes.
+ */
+export type DialogueEffectResult = DispatchResult;
 
 /** How an effect reaches the world: the shell hands over its own dispatch. */
 export type EffectDispatch = (
