@@ -1,57 +1,41 @@
-import type { ActionDef } from '../../engine/actions';
+import type { ActionData } from '../../engine-api';
 import {
-  describeNode,
   HELPDESK_TIER,
-  requireTargetId,
-  resolveParamNode,
-  resolveTarget,
+  param,
+  paramNodeGuards,
+  TARGET,
+  targetGuards,
 } from './helpers';
 import { HELPDESK_ACTIONS } from './ids';
 
 const ACCOUNT_PARAM = 'account';
 
-export const SHARE_ACTIONS: readonly ActionDef[] = [
+export const SHARE_ACTIONS: readonly ActionData[] = [
   {
     id: HELPDESK_ACTIONS.shareGrantAccess,
     tier: HELPDESK_TIER,
-    validate: (context) => {
-      const resolved = resolveTarget(context, 'share');
-
-      if (!resolved.ok) {
-        return resolved.reason;
-      }
-
-      const account = resolveParamNode(context, ACCOUNT_PARAM, 'account');
-
-      if (!account.ok) {
-        return account.reason;
-      }
-
-      const granted = context.graph
-        .neighbors(account.node.id, {
-          direction: 'out',
-          edgeKind: 'has_access',
-        })
-        .some((candidate) => candidate.id === resolved.node.id);
-
-      return granted
-        ? `"${describeNode(account.node)}" can already reach `
-          + `"${describeNode(resolved.node)}". The problem is somewhere else, `
-          + 'and it usually spells the path wrong.'
-        : null;
-    },
-    apply: (context) => {
-      const account = context.params[ACCOUNT_PARAM];
-
-      if (typeof account !== 'string') {
-        throw new TypeError('Granting access needs an account node id.');
-      }
-
-      context.graph.addEdge({
-        from: account,
-        to: requireTargetId(context.target),
+    validate: [
+      ...targetGuards('share'),
+      ...paramNodeGuards(ACCOUNT_PARAM, 'account'),
+      {
+        when: {
+          pred: 'has_edge',
+          from: param(ACCOUNT_PARAM),
+          to: TARGET,
+          kind: 'has_access',
+        },
+        reason: `"{p:${ACCOUNT_PARAM}.label}" can already reach `
+          + '"{target.label}". The problem is somewhere else, and it usually '
+          + 'spells the path wrong.',
+      },
+    ],
+    apply: [
+      {
+        op: 'add_edge',
+        from: param(ACCOUNT_PARAM),
+        to: TARGET,
         kind: 'has_access',
-      });
-    },
+      },
+    ],
   },
 ];

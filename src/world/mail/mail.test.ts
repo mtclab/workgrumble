@@ -107,7 +107,7 @@ describe('shipped inbox', () => {
 
     for (const entry of WORLD_MAIL) {
       for (const message of entry.messages) {
-        expect(session.graph.getNode(message.from)?.kind).toBe('person');
+        expect(session.engine.graph.getNode(message.from)?.kind).toBe('person');
       }
     }
   });

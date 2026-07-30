@@ -1,4 +1,4 @@
-import type { ReadOnlyGraphNode } from '../../engine/graph-view';
+import type { ReadOnlyGraphNode } from '../../engine-api';
 import { FULL_BATTERY, HELPDESK_ACTIONS } from '../../world/actions';
 import {
   DEVICE_TYPES,

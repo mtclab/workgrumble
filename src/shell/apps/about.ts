@@ -1,4 +1,4 @@
-import { NODE_KINDS } from '../../engine/schema';
+import { NODE_KINDS } from '../../engine-api';
 import { DEMO_ACTIONS, WORLD_IDS } from '../../world/demo-world';
 import { formatSimTime } from '../clock-format';
 import { createIcon } from '../icons';

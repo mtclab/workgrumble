@@ -1,19 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
-import { EntityGraph } from '../engine/graph';
-import { NODE_KINDS } from '../engine/schema';
-import { COMPANY_IDS, seedCompanyWorld } from './company';
+import {
+  NODE_KINDS,
+  type ReadOnlyGraphView,
+  WasmEngine,
+} from '../engine-api';
+import { companySetup, COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
 
-function seeded(): EntityGraph {
-  const graph = new EntityGraph();
-  seedCompanyWorld(graph);
-  return graph;
+/** The seed applied by the engine that will run it, and read back through it. */
+function seededEngine(): WasmEngine {
+  const engine = new WasmEngine(1);
+  engine.applySetup(companySetup());
+  return engine;
+}
+
+function seeded(): ReadOnlyGraphView {
+  return seededEngine().graph;
 }
 
 describe('company world', () => {
   it('seeds the same world every time', () => {
-    expect(seeded().snapshotHash()).toBe(seeded().snapshotHash());
+    expect(seededEngine().snapshotHash())
+      .toBe(seededEngine().snapshotHash());
   });
 
   it('staffs the office and equips it', () => {

@@ -1,4 +1,4 @@
-import type { ReadOnlyGraphNode } from '../../engine/graph-view';
+import type { ReadOnlyGraphNode } from '../../engine-api';
 import { HELPDESK_ACTIONS } from '../../world/actions';
 import { FIELDS } from '../../world/fields';
 import { formatSimTime } from '../clock-format';

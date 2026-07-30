@@ -1,6 +1,6 @@
-import type { DispatchResult } from '../engine/actions';
-import type { FieldValue, NodeId } from '../engine/graph';
-import type { ReadOnlyGraphView } from '../engine/graph-view';
+import type { DispatchResult } from '../engine-api';
+import type { FieldValue, NodeId } from '../engine-api';
+import type { ReadOnlyGraphView } from '../engine-api';
 import type { AppDef } from './apps/types';
 
 /**

@@ -1,8 +1,4 @@
-import type {
-  ActionDef,
-  ActionRegistry,
-} from '../engine/actions';
-import type { TicketDef } from '../engine/tickets';
+import type { ActionData, TicketDef } from '../engine-api';
 import { COMPANY_IDS } from './company';
 import { FIELDS, SERVICE_STATUS } from './fields';
 
@@ -76,51 +72,60 @@ export const DEMO_TICKET: TicketDef = {
   kb_ref: 'kb/chassis-fan',
 };
 
-const DEMO_ACTION_DEFS: readonly ActionDef[] = [
+/**
+ * The demo verbs, as data like every other action. Both of them aim at fixed
+ * nodes rather than at a target, which the op language says with `id` refs.
+ */
+export const DEMO_ACTION_DATA: readonly ActionData[] = [
   {
     id: DEMO_ACTIONS.diagnostics,
     tier: DEMO_TIER,
-    validate: (context) => {
-      if (context.graph.getNode(WORLD_IDS.machine) === undefined) {
-        return 'There is no workstation here to diagnose.';
-      }
-
-      return null;
-    },
-    apply: (context) => {
-      // The stamp comes from the simulation clock, not from a caller-supplied
-      // parameter: a report is dated when it ran, not when the UI says so.
-      context.graph.setField(
-        WORLD_IDS.machine,
-        'last_diagnostic',
-        context.clock.now(),
-      );
-    },
+    validate: [
+      {
+        when: { pred: 'node_missing', node: { id: WORLD_IDS.machine } },
+        reason: 'There is no workstation here to diagnose.',
+      },
+    ],
+    // The stamp comes from the simulation clock, not from a caller-supplied
+    // parameter: a report is dated when it ran, not when the UI says so.
+    apply: [
+      {
+        op: 'set_field',
+        node: { id: WORLD_IDS.machine },
+        field: 'last_diagnostic',
+        value: { now: true },
+      },
+    ],
   },
   {
     id: DEMO_ACTIONS.reseatFan,
     tier: DEMO_TIER,
-    validate: (context) => {
-      const status = context.graph.getField(WORLD_IDS.fan, 'status');
-
-      if (status === undefined) {
-        return 'No chassis fan is registered on this workstation.';
-      }
-
-      if (status === 'running') {
-        return 'The fan already spins freely. Hitting it again is just violence.';
-      }
-
-      return null;
-    },
-    apply: (context) => {
-      context.graph.setField(WORLD_IDS.fan, 'status', 'running');
-    },
+    validate: [
+      {
+        when: {
+          pred: 'field_missing',
+          node: { id: WORLD_IDS.fan },
+          field: FIELDS.status,
+        },
+        reason: 'No chassis fan is registered on this workstation.',
+      },
+      {
+        when: {
+          pred: 'field_eq',
+          node: { id: WORLD_IDS.fan },
+          field: FIELDS.status,
+          value: { const: SERVICE_STATUS.running },
+        },
+        reason: 'The fan already spins freely. Hitting it again is just violence.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: { id: WORLD_IDS.fan },
+        field: FIELDS.status,
+        value: { const: SERVICE_STATUS.running },
+      },
+    ],
   },
 ];
-
-export function registerDemoActions(registry: ActionRegistry): void {
-  for (const definition of DEMO_ACTION_DEFS) {
-    registry.register(definition);
-  }
-}

@@ -1,0 +1,303 @@
+/**
+ * The vocabulary the engine and the world share.
+ *
+ * These used to live inside `src/engine`; the engine is Rust now, so this is
+ * where the TypeScript side keeps the shapes it sends across the boundary and
+ * the shapes it gets back. Nothing here has behaviour - behaviour is the
+ * engine's job, and a second implementation of it in TypeScript is exactly the
+ * drift the port exists to remove.
+ */
+
+export const NODE_KINDS = [
+  'person',
+  'account',
+  'machine',
+  'device',
+  'service',
+  'share',
+  'group',
+  'mail_rule',
+  'ticket',
+] as const;
+
+export const EDGE_KINDS = [
+  'owns',
+  'member_of',
+  'connected_to',
+  'runs_on',
+  'has_access',
+] as const;
+
+export const TICKET_STATES = [
+  'open',
+  'resolved',
+  'breached',
+  'waiting_on_user',
+] as const;
+
+export const TICKET_ARCHETYPES = [
+  'hidden_cause',
+  'read_the_screen',
+  'deadline_absurdity',
+  'recurring_arc',
+  'flood',
+] as const;
+
+export type NodeKind = (typeof NODE_KINDS)[number];
+export type EdgeKind = (typeof EDGE_KINDS)[number];
+export type TicketState = (typeof TICKET_STATES)[number];
+export type TicketArchetype = (typeof TICKET_ARCHETYPES)[number];
+export type FieldValue = string | number | boolean | null;
+export type NodeId = string;
+
+export interface GraphNode {
+  id: NodeId;
+  kind: NodeKind;
+  fields: Record<string, FieldValue>;
+}
+
+export interface Edge {
+  from: NodeId;
+  to: NodeId;
+  kind: EdgeKind;
+}
+
+export interface ReadOnlyGraphNode {
+  readonly id: NodeId;
+  readonly kind: NodeKind;
+  readonly fields: Readonly<Record<string, FieldValue>>;
+}
+
+export interface NeighborOptions {
+  edgeKind?: EdgeKind;
+  direction: 'out' | 'in';
+}
+
+/**
+ * The query half of the graph, and nothing else: the shell reads the world and
+ * reaches it only through dispatched actions.
+ */
+export interface ReadOnlyGraphView {
+  getNode(id: NodeId): ReadOnlyGraphNode | undefined;
+  getField(id: NodeId, field: string): FieldValue | undefined;
+  nodesOfKind(kind: NodeKind): readonly ReadOnlyGraphNode[];
+  allNodes(): readonly ReadOnlyGraphNode[];
+  neighbors(
+    id: NodeId,
+    options: Readonly<NeighborOptions>,
+  ): readonly ReadOnlyGraphNode[];
+}
+
+export type DispatchResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+export interface DispatchLogEntry {
+  tick: number;
+  id: string;
+  actor: NodeId;
+  target: NodeId | null;
+  params: Record<string, FieldValue>;
+  ok: boolean;
+  reason?: string;
+}
+
+export type GraphMutation =
+  | { type: 'node:added'; node: GraphNode }
+  | { type: 'node:removed'; node: GraphNode; edges: Edge[] }
+  | {
+    type: 'field:set';
+    id: NodeId;
+    field: string;
+    previous?: FieldValue;
+    value: FieldValue;
+  }
+  | { type: 'edge:added'; edge: Edge }
+  | { type: 'edge:removed'; edge: Edge };
+
+export type EngineEvent =
+  | { type: 'graph:mutated'; mutation: GraphMutation }
+  | { type: 'ticket:spawned'; id: string }
+  | { type: 'ticket:resolved'; id: string }
+  | { type: 'ticket:breached'; id: string };
+
+/* -- assertions ---------------------------------------------------------- */
+
+export interface FieldMatch {
+  field: string;
+  value: FieldValue;
+}
+
+export type Selector =
+  | { id: NodeId }
+  | { kind: NodeKind; where: FieldMatch[] };
+
+export type Expr =
+  | { op: 'and' | 'or'; exprs: Expr[] }
+  | { op: 'not'; expr: Expr }
+  | {
+    op: 'eq';
+    selector: Selector;
+    field: string;
+    value: FieldValue;
+  }
+  | { op: 'exists'; kind: NodeKind; where?: FieldMatch[] }
+  | { op: 'edge'; from: Selector; to: Selector; kind: EdgeKind };
+
+/* -- world construction -------------------------------------------------- */
+
+export type SetupOp =
+  | { op: 'addNode'; node: GraphNode }
+  | { op: 'setField'; id: NodeId; field: string; value: FieldValue }
+  | { op: 'addEdge'; edge: Edge }
+  | { op: 'removeEdge'; edge: Edge };
+
+export interface TicketDef {
+  id: string;
+  archetype: TicketArchetype;
+  flavor: {
+    title: string;
+    body: string;
+  };
+  reporter: NodeId;
+  setup: SetupOp[];
+  resolved_when: Expr;
+  sla_ticks: number;
+  reward: {
+    reputation: number;
+    money: number;
+  };
+  kb_ref: string;
+}
+
+/* -- the op language ----------------------------------------------------- */
+
+/** Where an op or a predicate finds the node it is talking about. */
+export type NodeRefData =
+  | { ref: 'target' | 'actor' }
+  | { id: NodeId }
+  | { param: string }
+  | { bind: string };
+
+export interface FieldRefData {
+  node: NodeRefData;
+  field: string;
+}
+
+/**
+ * A value computed when an action applies. The `rng_*` forms are only legal
+ * in `apply`: a validator that rolled dice would make replay a fiction.
+ */
+export type ValueData =
+  | { const: FieldValue }
+  | { param: string }
+  | { param_trim: string }
+  | { now: true }
+  | { field: FieldRefData }
+  | { not_field: FieldRefData }
+  | { append_line: FieldRefData & { value: ValueData } }
+  | { rng_pick: FieldValue[] }
+  | { rng_int: { min: number; max: number } }
+  | { eq: [ValueData, ValueData] };
+
+/** A field name, or the parameter carrying one. */
+export type FieldNameData = string | { param: string };
+
+export type PredData =
+  | { pred: 'target_missing' }
+  | { pred: 'node_missing'; node: NodeRefData }
+  | { pred: 'kind_is'; node: NodeRefData; kind: NodeKind }
+  | { pred: 'field_eq'; node: NodeRefData; field: string; value: ValueData }
+  | { pred: 'field_missing'; node: NodeRefData; field: string }
+  | { pred: 'field_is_number'; node: NodeRefData; field: string }
+  | { pred: 'field_is_bool'; node: NodeRefData; field: string }
+  | { pred: 'field_at_least'; node: NodeRefData; field: string; value: number }
+  | { pred: 'field_at_most'; node: NodeRefData; field: string; value: number }
+  | { pred: 'param_absent'; param: string }
+  | { pred: 'param_string_missing'; param: string }
+  | { pred: 'param_blank'; param: string }
+  | { pred: 'param_int_in'; param: string; values: number[] }
+  | { pred: 'param_format'; param: string; format: 'resolution' }
+  | {
+    pred: 'has_edge';
+    from: NodeRefData;
+    to: NodeRefData;
+    kind: EdgeKind;
+  }
+  | {
+    pred: 'neighbor_where';
+    node: NodeRefData;
+    direction: 'out' | 'in';
+    edge_kind?: EdgeKind;
+    matching: PredData;
+    bind?: string;
+  }
+  | { pred: 'line_in_field'; node: NodeRefData; field: string; value: ValueData }
+  | { pred: 'ticket_untracked'; node: NodeRefData }
+  | {
+    pred: 'resolution_refuses_field';
+    node: NodeRefData;
+    field: string;
+    value: FieldValue;
+  }
+  | { pred: 'assert'; expr: Expr }
+  | { pred: 'not'; of: PredData }
+  | { pred: 'all'; of: PredData[] }
+  | { pred: 'any'; of: PredData[] };
+
+/**
+ * One refusal. `reason` is a template the engine fills in with what the world
+ * actually looks like: `{target.label}`, `{target.kind_label}`, `{v:rotation}`,
+ * `{p:group.label}`, `{b:backlog.f:queue_len}`.
+ */
+export interface GuardData {
+  when: PredData;
+  reason: string;
+}
+
+export type OpData =
+  | { op: 'set_field'; node: NodeRefData; field: FieldNameData; value: ValueData }
+  | { op: 'clear_field'; node: NodeRefData; field: FieldNameData }
+  | { op: 'add_edge'; from: NodeRefData; to: NodeRefData; kind: EdgeKind }
+  | { op: 'remove_edge'; from: NodeRefData; to: NodeRefData; kind: EdgeKind }
+  | { op: 'remove_node'; node: NodeRefData }
+  | { op: 'set_waiting'; node: NodeRefData; waiting: boolean }
+  | { op: 'when'; cond: PredData; ops: OpData[] };
+
+export interface ActionData {
+  id: string;
+  tier: number;
+  validate?: GuardData[];
+  apply?: OpData[];
+}
+
+export interface ActionPayload {
+  /** How a refusal names each node kind. The words are the world's, not the
+   * engine's - it only knows which kind it is refusing. */
+  kind_labels?: Partial<Record<NodeKind, string>>;
+  actions: readonly ActionData[];
+}
+
+/* -- the handful of guards the view layer needs -------------------------- */
+
+export function isNodeKind(value: unknown): value is NodeKind {
+  return typeof value === 'string'
+    && NODE_KINDS.some((kind) => kind === value);
+}
+
+export function isEdgeKind(value: unknown): value is EdgeKind {
+  return typeof value === 'string'
+    && EDGE_KINDS.some((kind) => kind === value);
+}
+
+export function isTicketState(value: unknown): value is TicketState {
+  return typeof value === 'string'
+    && TICKET_STATES.some((state) => state === value);
+}
+
+export function isFieldValue(value: unknown): value is FieldValue {
+  return value === null
+    || typeof value === 'string'
+    || typeof value === 'boolean'
+    || (typeof value === 'number' && Number.isFinite(value));
+}

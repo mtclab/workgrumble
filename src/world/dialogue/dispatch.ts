@@ -1,5 +1,5 @@
-import type { DispatchResult } from '../../engine/actions';
-import type { FieldValue } from '../../engine/schema';
+import type { DispatchResult } from '../../engine-api';
+import type { FieldValue } from '../../engine-api';
 import { HELPDESK_ACTION_IDS, HELPDESK_ACTIONS } from '../actions';
 import { type DialogueEffect, isAskEffect, isRevealEffect } from './types';
 

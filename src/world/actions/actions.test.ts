@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { ActionRegistry, type DispatchResult } from '../../engine/actions';
-import type { Expr } from '../../engine/assertions';
-import { SimClock } from '../../engine/clock';
-import { createEngineEventBus } from '../../engine/events';
-import { EntityGraph } from '../../engine/graph';
-import { createRng } from '../../engine/rng';
-import type { FieldValue } from '../../engine/schema';
-import { TicketEngine } from '../../engine/tickets';
+import type {
+  DispatchResult,
+  Edge,
+  Expr,
+  FieldValue,
+  GraphNode,
+  SetupOp,
+  TicketDef,
+} from '../../engine-api';
+import { WasmEngine } from '../../engine-api';
 import { FIELDS } from '../fields';
 import { HELPDESK_ACTION_IDS, HELPDESK_ACTIONS } from './ids';
-import { clueLines, registerHelpdeskActions } from './index';
+import { clueLines, helpdeskActionPayload } from './index';
 
 const ACTOR = 'person:tech';
 const ESCALATABLE_TICKET = 'ticket:hardware';
@@ -59,40 +61,42 @@ const FIXTURE_TICKETS: readonly { id: string; resolvedWhen: Expr }[] = [
   },
 ];
 
-interface Fixture {
-  graph: EntityGraph;
-  clock: SimClock;
-  registry: ActionRegistry;
-  tickets: TicketEngine;
+function addNode(ops: SetupOp[], node: GraphNode): void {
+  ops.push({ op: 'addNode', node });
 }
 
-function seedFixture(graph: EntityGraph): void {
-  graph.addNode({
+function addEdge(ops: SetupOp[], edge: Edge): void {
+  ops.push({ op: 'addEdge', edge });
+}
+
+function fixtureSetup(): readonly SetupOp[] {
+  const ops: SetupOp[] = [];
+  addNode(ops, {
     id: ACTOR,
     kind: 'person',
     fields: { name: 'Pat Pending' },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'account:ada',
     kind: 'account',
     fields: { username: 'ada', locked: true, enabled: true },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'account:gone',
     kind: 'account',
     fields: { username: 'gone', locked: true, enabled: false },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'group:print-users',
     kind: 'group',
     fields: { name: 'Print Users' },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'group:vpn-users',
     kind: 'group',
     fields: { name: 'VPN Users' },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'machine:ada',
     kind: 'machine',
     fields: {
@@ -102,7 +106,7 @@ function seedFixture(graph: EntityGraph): void {
       pending_updates: true,
     },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'device:printer',
     kind: 'device',
     fields: {
@@ -113,12 +117,12 @@ function seedFixture(graph: EntityGraph): void {
       queue_len: 12,
     },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'device:monitor',
     kind: 'device',
     fields: { name: 'Trinitrend 15"', type: 'monitor', powered: true },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'device:mouse',
     kind: 'device',
     fields: {
@@ -128,29 +132,29 @@ function seedFixture(graph: EntityGraph): void {
       battery_pct: 0,
     },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'service:spooler',
     kind: 'service',
     fields: { name: 'Print Spooler', status: 'wedged', restartable: true },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'service:vpn',
     kind: 'service',
     fields: { name: 'VPN Concentrator', status: 'running', restartable: true },
   });
   // Hardware that reports a status. It looks exactly like a service in the
   // graph, which is the whole reason the truth has to be written down.
-  graph.addNode({
+  addNode(ops, {
     id: 'service:fan',
     kind: 'service',
     fields: { name: 'Chassis fan', status: 'wedged', restartable: false },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'share:common',
     kind: 'share',
     fields: { name: 'Common', path: '\\\\WORKGRUMBLE\\common' },
   });
-  graph.addNode({
+  addNode(ops, {
     id: 'mail_rule:autofile',
     kind: 'mail_rule',
     fields: {
@@ -159,7 +163,7 @@ function seedFixture(graph: EntityGraph): void {
       target: 'Deleted Items',
     },
   });
-  graph.addNode({
+  addNode(ops, {
     id: ORPHAN_TICKET,
     kind: 'ticket',
     fields: {
@@ -171,36 +175,36 @@ function seedFixture(graph: EntityGraph): void {
       question_asked: true,
     },
   });
-  graph.addEdge({
+  addEdge(ops, {
     from: 'account:ada',
     to: 'group:print-users',
     kind: 'member_of',
   });
   // What the spooler feeds, so a restart can see the backlog it would be
   // handed straight back.
-  graph.addEdge({
+  addEdge(ops, {
     from: 'service:spooler',
     to: 'device:printer',
     kind: 'connected_to',
   });
+
+  return ops;
 }
 
-function createFixture(): Fixture {
-  const bus = createEngineEventBus();
-  const graph = new EntityGraph(bus);
-  const clock = new SimClock();
-  const registry = new ActionRegistry(graph, createRng(0x1_2345), clock, 1);
-  const tickets = new TicketEngine(graph, clock, bus);
+/**
+ * The fixture runs on the shipped engine with the shipped verb set: no policy
+ * callbacks, no hand-wired registry. Whether an escalation is allowed is read
+ * off the ticket's own resolution rule, and whether a ticket is tracked is
+ * something the engine already knows - which is the whole point of the port.
+ */
+function createFixture(): WasmEngine {
+  const engine = new WasmEngine(0x1_2345);
 
-  seedFixture(graph);
-  registerHelpdeskActions(registry, {
-    tickets,
-    allowsEscalation: (id) => id !== PLAIN_TICKET,
-    isRegistered: (id) => FIXTURE_TICKETS.some((entry) => entry.id === id),
-  });
+  engine.applySetup(fixtureSetup());
+  engine.registerActions(helpdeskActionPayload());
 
   for (const { id, resolvedWhen } of FIXTURE_TICKETS) {
-    tickets.spawn({
+    const def: TicketDef = {
       id,
       archetype: 'hidden_cause',
       flavor: { title: `Fixture ${id}`, body: 'Fixture ticket.' },
@@ -210,20 +214,21 @@ function createFixture(): Fixture {
       sla_ticks: 600,
       reward: { reputation: 1, money: 1 },
       kb_ref: 'kb/fixture',
-    });
+    };
+    engine.registerTicket(def);
   }
 
-  return { graph, clock, registry, tickets };
+  return engine;
 }
 
-let fixture: Fixture;
+let fixture: WasmEngine;
 
 function dispatch(
   id: string,
   target: string | null,
   params: Record<string, FieldValue> = {},
 ): DispatchResult {
-  return fixture.registry.dispatch(id, ACTOR, target, params);
+  return fixture.dispatch(id, ACTOR, target, params);
 }
 
 /** Every refusal must be readable, specific, and leave the world untouched. */
@@ -240,7 +245,7 @@ function expectRefusal(
 
   expect(result.reason).toContain(fragment);
   expect(result.reason.endsWith('.')).toBe(true);
-  expect(fixture.graph.snapshotHash()).toBe(hashBefore);
+  expect(fixture.snapshotHash()).toBe(hashBefore);
 }
 
 beforeEach(() => {
@@ -262,7 +267,7 @@ describe('helpdesk action registry', () => {
   });
 
   it('refuses a missing target with an instruction, not a stack trace', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.accountUnlock, null),
       'Pick an account first',
@@ -286,7 +291,7 @@ describe('account.unlock', () => {
 
   it('refuses an account that is not locked', () => {
     dispatch(HELPDESK_ACTIONS.accountUnlock, 'account:ada');
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.accountUnlock, 'account:ada'),
       'is not locked',
@@ -295,7 +300,7 @@ describe('account.unlock', () => {
   });
 
   it('refuses a disabled account and says what is really wrong', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.accountUnlock, 'account:gone'),
       'is disabled, not locked',
@@ -304,7 +309,7 @@ describe('account.unlock', () => {
   });
 
   it('refuses a target of the wrong kind', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.accountUnlock, 'machine:ada'),
       'only works on an account',
@@ -315,7 +320,7 @@ describe('account.unlock', () => {
 
 describe('account.reset_password', () => {
   it('stamps the reset tick and ends the lockout', () => {
-    fixture.clock.advance(42);
+    fixture.advance(42);
     expect(
       dispatch(HELPDESK_ACTIONS.accountResetPassword, 'account:ada'),
     ).toEqual({ ok: true });
@@ -325,7 +330,7 @@ describe('account.reset_password', () => {
   });
 
   it('refuses a disabled account', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.accountResetPassword, 'account:gone'),
       'is disabled',
@@ -349,7 +354,7 @@ describe('account.add_to_group', () => {
   });
 
   it('refuses a membership that already exists', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.accountAddToGroup, 'account:ada', {
         group: 'group:print-users',
@@ -360,7 +365,7 @@ describe('account.add_to_group', () => {
   });
 
   it('refuses a group that is not a group', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.accountAddToGroup, 'account:ada', {
         group: 'share:common',
@@ -387,7 +392,7 @@ describe('account.remove_from_group', () => {
   });
 
   it('refuses a membership that was never there', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.accountRemoveFromGroup, 'account:ada', {
         group: 'group:vpn-users',
@@ -414,7 +419,7 @@ describe('service.restart', () => {
    * Teaching the wrong order in a game about learning the job is the bug.
    */
   it('refuses to start a service back into the queue that jammed it', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:spooler'),
       'It will just choke on the same job again.',
@@ -425,7 +430,7 @@ describe('service.restart', () => {
   });
 
   it('refuses to restart a healthy service', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:vpn'),
       'is already running',
@@ -439,7 +444,7 @@ describe('service.restart', () => {
    * refuses on the hardware truth rather than on the status.
    */
   it('refuses to restart hardware however wedged it looks', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:fan'),
       'It will not help.',
@@ -461,7 +466,7 @@ describe('machine.set_display_rotation', () => {
   });
 
   it('refuses an angle no monitor stand has ever managed', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.machineSetDisplayRotation, 'machine:ada', {
         rotation: 45,
@@ -472,7 +477,7 @@ describe('machine.set_display_rotation', () => {
   });
 
   it('refuses a rotation the screen already has', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.machineSetDisplayRotation, 'machine:ada', {
         rotation: 90,
@@ -495,7 +500,7 @@ describe('machine.set_resolution', () => {
   });
 
   it('refuses something that is not a resolution', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.machineSetResolution, 'machine:ada', {
         resolution: 'as big as possible',
@@ -508,7 +513,7 @@ describe('machine.set_resolution', () => {
 
 describe('machine.reboot', () => {
   it('clears pending updates and stamps the new uptime', () => {
-    fixture.clock.advance(9);
+    fixture.advance(9);
     expect(dispatch(HELPDESK_ACTIONS.machineReboot, 'machine:ada')).toEqual({
       ok: true,
     });
@@ -518,7 +523,7 @@ describe('machine.reboot', () => {
   });
 
   it('refuses to reboot something that is not a workstation', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.machineReboot, 'device:printer'),
       'only works on a workstation',
@@ -537,7 +542,7 @@ describe('device.power_cycle', () => {
   });
 
   it('refuses a device that is on and behaving', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.devicePowerCycle, 'device:monitor'),
       'is on and behaving itself',
@@ -556,7 +561,7 @@ describe('device.replace_battery', () => {
   });
 
   it('refuses a device that runs on mains power', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.deviceReplaceBattery, 'device:printer'),
       'does not take batteries',
@@ -574,7 +579,7 @@ describe('printer.clear_queue', () => {
   });
 
   it('refuses a device with no queue at all', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:monitor'),
       'is not a printer',
@@ -584,7 +589,7 @@ describe('printer.clear_queue', () => {
 
   it('refuses a queue that is already empty', () => {
     dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer');
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer'),
       'is already empty',
@@ -602,7 +607,7 @@ describe('mail_rule.delete', () => {
   });
 
   it('refuses anything that is not a mail rule', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.mailRuleDelete, 'account:ada'),
       'only works on a mail rule',
@@ -629,7 +634,7 @@ describe('share.grant_access', () => {
     dispatch(HELPDESK_ACTIONS.shareGrantAccess, 'share:common', {
       account: 'account:ada',
     });
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.shareGrantAccess, 'share:common', {
         account: 'account:ada',
@@ -640,7 +645,7 @@ describe('share.grant_access', () => {
   });
 
   it('refuses a missing account parameter', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.shareGrantAccess, 'share:common'),
       'arrived empty',
@@ -655,12 +660,12 @@ describe('ticket waiting state', () => {
     expect(
       dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET),
     ).toEqual({ ok: true });
-    expect(fixture.tickets.getState(PLAIN_TICKET)).toBe('waiting_on_user');
+    expect(fixture.ticketState(PLAIN_TICKET)).toBe('waiting_on_user');
 
     expect(
       dispatch(HELPDESK_ACTIONS.ticketClearWaiting, PLAIN_TICKET),
     ).toEqual({ ok: true });
-    expect(fixture.tickets.getState(PLAIN_TICKET)).toBe('open');
+    expect(fixture.ticketState(PLAIN_TICKET)).toBe('open');
   });
 
   /**
@@ -669,19 +674,19 @@ describe('ticket waiting state', () => {
    * triage layer of the game stops meaning anything.
    */
   it('refuses to stop the clock on somebody nobody has asked anything', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET),
       'You have not actually asked them anything yet.',
       before,
     );
-    expect(fixture.tickets.getState(PLAIN_TICKET)).toBe('open');
+    expect(fixture.ticketState(PLAIN_TICKET)).toBe('open');
   });
 
   it('refuses to park a ticket that is already parked', () => {
     dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET);
     dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET);
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET),
       'already parked on the user',
@@ -690,7 +695,7 @@ describe('ticket waiting state', () => {
   });
 
   it('refuses to un-park a ticket nobody parked', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketClearWaiting, PLAIN_TICKET),
       'not waiting on anybody',
@@ -699,7 +704,7 @@ describe('ticket waiting state', () => {
   });
 
   it('refuses to park anything that is not a ticket', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketSetWaiting, 'device:printer'),
       'only works on a ticket',
@@ -719,7 +724,7 @@ describe('a ticket node the engine does not track', () => {
     HELPDESK_ACTIONS.ticketClearWaiting,
     HELPDESK_ACTIONS.ticketMarkAsked,
   ])('refuses %s instead of throwing', (action) => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     let result: DispatchResult | null = null;
 
     expect(() => {
@@ -751,17 +756,17 @@ describe('ticket.mark_asked', () => {
 
   it('takes a second question as the no-op it is', () => {
     dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET);
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
 
     expect(
       dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET),
     ).toEqual({ ok: true });
-    expect(fixture.graph.snapshotHash()).toBe(before);
+    expect(fixture.snapshotHash()).toBe(before);
   });
 
   it('refuses a ticket that is already closed', () => {
     dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET);
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketMarkAsked, ESCALATABLE_TICKET),
       'nothing left to ask them about',
@@ -770,7 +775,7 @@ describe('ticket.mark_asked', () => {
   });
 
   it('refuses anything that is not a ticket', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketMarkAsked, 'device:printer'),
       'only works on a ticket',
@@ -786,11 +791,11 @@ describe('ticket.escalate', () => {
     ).toEqual({ ok: true });
     expect(fixture.graph.getField(ESCALATABLE_TICKET, FIELDS.escalated))
       .toBe(true);
-    expect(fixture.tickets.getState(ESCALATABLE_TICKET)).toBe('resolved');
+    expect(fixture.ticketState(ESCALATABLE_TICKET)).toBe('resolved');
   });
 
   it('refuses to escalate work that is fixable from the desk', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketEscalate, PLAIN_TICKET),
       'career-limiting move',
@@ -800,7 +805,7 @@ describe('ticket.escalate', () => {
 
   it('refuses to escalate a ticket the escalation already closed', () => {
     dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET);
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET),
       'already closed',
@@ -812,8 +817,8 @@ describe('ticket.escalate', () => {
     expect(dispatch(HELPDESK_ACTIONS.ticketEscalate, TWO_STEP_TICKET)).toEqual({
       ok: true,
     });
-    expect(fixture.tickets.getState(TWO_STEP_TICKET)).toBe('open');
-    const before = fixture.graph.snapshotHash();
+    expect(fixture.ticketState(TWO_STEP_TICKET)).toBe('open');
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketEscalate, TWO_STEP_TICKET),
       'already with the field team',
@@ -844,7 +849,7 @@ describe('ticket.add_clue', () => {
   });
 
   it('refuses a clue with no words in it', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: '   ' }),
       'nothing to write down',
@@ -854,7 +859,7 @@ describe('ticket.add_clue', () => {
 
   it('refuses to write the same clue twice', () => {
     dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: 'Once.' });
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: 'Once.' }),
       'already written on the ticket',
@@ -864,7 +869,7 @@ describe('ticket.add_clue', () => {
 
   it('refuses to add anything to a ticket that is already closed', () => {
     dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET);
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketAddClue, ESCALATABLE_TICKET, {
         clue: 'Too late.',
@@ -875,7 +880,7 @@ describe('ticket.add_clue', () => {
   });
 
   it('refuses a target that is not a ticket', () => {
-    const before = fixture.graph.snapshotHash();
+    const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketAddClue, 'account:ada', {
         clue: 'Wrong shelf.',

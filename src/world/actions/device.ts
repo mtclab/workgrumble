@@ -1,104 +1,128 @@
-import type { ActionDef } from '../../engine/actions';
+import type { ActionData } from '../../engine-api';
 import { DEVICE_TYPES, FIELDS } from '../fields';
 import {
-  describeNode,
-  field,
+  fieldIs,
   HELPDESK_TIER,
-  requireTargetId,
-  resolveTarget,
+  not,
+  TARGET,
+  targetGuards,
 } from './helpers';
 import { HELPDESK_ACTIONS } from './ids';
 
 /** What a fresh set of batteries reads. The UI gates on the same number. */
 export const FULL_BATTERY = 100;
 
-export const DEVICE_ACTIONS: readonly ActionDef[] = [
+export const DEVICE_ACTIONS: readonly ActionData[] = [
   {
     id: HELPDESK_ACTIONS.devicePowerCycle,
     tier: HELPDESK_TIER,
-    validate: (context) => {
-      const resolved = resolveTarget(context, 'device');
-
-      if (!resolved.ok) {
-        return resolved.reason;
-      }
-
-      const powered = field(resolved.node, FIELDS.powered);
-      const wedged = field(resolved.node, FIELDS.wedged);
-
-      if (powered === true && wedged !== true) {
-        return `"${describeNode(resolved.node)}" is on and behaving itself. `
-          + 'Switching it off and on again now is superstition, not support.';
-      }
-
-      return null;
-    },
-    apply: (context) => {
-      const target = requireTargetId(context.target);
-      context.graph.setField(target, FIELDS.powered, true);
-      context.graph.setField(target, FIELDS.wedged, false);
-    },
+    validate: [
+      ...targetGuards('device'),
+      {
+        when: {
+          pred: 'all',
+          of: [
+            fieldIs(TARGET, FIELDS.powered, true),
+            not(fieldIs(TARGET, FIELDS.wedged, true)),
+          ],
+        },
+        reason: '"{target.label}" is on and behaving itself. '
+          + 'Switching it off and on again now is superstition, not support.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.powered,
+        value: { const: true },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.wedged,
+        value: { const: false },
+      },
+    ],
   },
   {
     id: HELPDESK_ACTIONS.deviceReplaceBattery,
     tier: HELPDESK_TIER,
-    validate: (context) => {
-      const resolved = resolveTarget(context, 'device');
-
-      if (!resolved.ok) {
-        return resolved.reason;
-      }
-
-      const battery = field(resolved.node, FIELDS.batteryPct);
-
-      if (typeof battery !== 'number') {
-        return `"${describeNode(resolved.node)}" does not take batteries. `
-          + 'It takes mains power and mild abuse.';
-      }
-
-      if (battery >= FULL_BATTERY) {
-        return `The batteries in "${describeNode(resolved.node)}" are fresh. `
-          + 'The cupboard budget is not.';
-      }
-
-      return null;
-    },
-    apply: (context) => {
-      const target = requireTargetId(context.target);
-      context.graph.setField(target, FIELDS.batteryPct, FULL_BATTERY);
-      context.graph.setField(target, FIELDS.powered, true);
-    },
+    validate: [
+      ...targetGuards('device'),
+      {
+        when: not({
+          pred: 'field_is_number',
+          node: TARGET,
+          field: FIELDS.batteryPct,
+        }),
+        reason: '"{target.label}" does not take batteries. '
+          + 'It takes mains power and mild abuse.',
+      },
+      {
+        when: {
+          pred: 'field_at_least',
+          node: TARGET,
+          field: FIELDS.batteryPct,
+          value: FULL_BATTERY,
+        },
+        reason: 'The batteries in "{target.label}" are fresh. '
+          + 'The cupboard budget is not.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.batteryPct,
+        value: { const: FULL_BATTERY },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.powered,
+        value: { const: true },
+      },
+    ],
   },
   {
     id: HELPDESK_ACTIONS.printerClearQueue,
     tier: HELPDESK_TIER,
-    validate: (context) => {
-      const resolved = resolveTarget(context, 'device');
-
-      if (!resolved.ok) {
-        return resolved.reason;
-      }
-
-      if (field(resolved.node, FIELDS.type) !== DEVICE_TYPES.printer) {
-        return `"${describeNode(resolved.node)}" is not a printer. `
-          + 'It has no queue, only opinions.';
-      }
-
-      const queued = field(resolved.node, FIELDS.queueLen);
-
-      if (typeof queued !== 'number' || queued <= 0) {
-        return `The queue on "${describeNode(resolved.node)}" is already `
-          + 'empty. Whatever is not printing, it is not the backlog.';
-      }
-
-      return null;
-    },
-    apply: (context) => {
-      context.graph.setField(
-        requireTargetId(context.target),
-        FIELDS.queueLen,
-        0,
-      );
-    },
+    validate: [
+      ...targetGuards('device'),
+      {
+        when: not(fieldIs(TARGET, FIELDS.type, DEVICE_TYPES.printer)),
+        reason: '"{target.label}" is not a printer. '
+          + 'It has no queue, only opinions.',
+      },
+      {
+        when: {
+          pred: 'any',
+          of: [
+            not({
+              pred: 'field_is_number',
+              node: TARGET,
+              field: FIELDS.queueLen,
+            }),
+            {
+              pred: 'field_at_most',
+              node: TARGET,
+              field: FIELDS.queueLen,
+              value: 0,
+            },
+          ],
+        },
+        reason: 'The queue on "{target.label}" is already empty. '
+          + 'Whatever is not printing, it is not the backlog.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.queueLen,
+        value: { const: 0 },
+      },
+    ],
   },
 ];

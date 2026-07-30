@@ -1,4 +1,4 @@
-import type { Expr } from '../../engine/assertions';
+import type { Expr } from '../../engine-api';
 import { FIELDS } from '../fields';
 
 /**

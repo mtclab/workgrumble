@@ -1,4 +1,4 @@
-import { createReadOnlyGraphView } from './engine/graph-view';
+import { loadEngine } from './engine-api';
 import { APP_MANIFEST } from './shell/apps';
 import type { ShellContext } from './shell/context';
 import { Shell } from './shell/shell';
@@ -19,14 +19,21 @@ function mountPoint(): HTMLElement {
   return host;
 }
 
-function boot(): void {
-  const { bus, graph, clock, registry, tier } = createWorldSession();
+async function boot(): Promise<void> {
+  // The engine is wasm now, so it has to be fetched before a world exists.
+  // Same-origin, alongside the bundle, and nothing renders until it is here.
+  await loadEngine();
+
+  const { engine, tier } = createWorldSession();
 
   const context: ShellContext = {
     manifest: APP_MANIFEST,
     tier,
-    graph: createReadOnlyGraphView(graph),
-    clock,
+    graph: engine.graph,
+    clock: {
+      now: () => engine.now(),
+      onTick: (listener) => engine.onTick(listener),
+    },
     user: {
       displayName: 'Pat Pending',
       account: `${COMPANY.domain}\\ppending`,
@@ -34,38 +41,43 @@ function boot(): void {
         + 'Any password works; nobody has checked since 1998.',
       node: COMPANY_IDS.player,
     },
-    dispatch: (id, actor, target, params) => registry.dispatch(
+    dispatch: (id, actor, target, params) => engine.dispatch(
       id,
       actor,
       target,
       params,
     ),
-    onWorldChange: (listener) => bus.on('graph:mutated', () => {
-      listener();
+    onWorldChange: (listener) => engine.onEvent((event) => {
+      if (event.type === 'graph:mutated') {
+        listener();
+      }
     }),
   };
 
   const shell = new Shell(mountPoint(), context);
 
-  bus.on('ticket:resolved', ({ id }) => {
-    shell.notify(
-      'Ticket resolved',
-      `${ticketTitle(id)} - closed. Reputation nudged upward by an amount `
-        + 'nobody will mention.',
-    );
-  });
-  bus.on('ticket:breached', ({ id }) => {
-    shell.notify(
-      'SLA breached',
-      `${ticketTitle(id)} - the timer ran out. An escalation mail is already `
-        + 'being drafted about you.',
-    );
+  engine.onEvent((event) => {
+    if (event.type === 'ticket:resolved') {
+      shell.notify(
+        'Ticket resolved',
+        `${ticketTitle(event.id)} - closed. Reputation nudged upward by an `
+          + 'amount nobody will mention.',
+      );
+    }
+
+    if (event.type === 'ticket:breached') {
+      shell.notify(
+        'SLA breached',
+        `${ticketTitle(event.id)} - the timer ran out. An escalation mail is `
+          + 'already being drafted about you.',
+      );
+    }
   });
 
   shell.start();
   window.setInterval(() => {
-    clock.advance(1);
+    engine.advance(1);
   }, TICK_INTERVAL_MS);
 }
 
-boot();
+void boot();

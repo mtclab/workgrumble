@@ -360,7 +360,7 @@ describe('shipped conversations', () => {
     const session = createWorldSession();
 
     for (const conversation of WORLD_DIALOGUE) {
-      expect(session.graph.getNode(conversation.speaker)?.kind).toBe('person');
+      expect(session.engine.graph.getNode(conversation.speaker)?.kind).toBe('person');
     }
   });
 });
@@ -390,11 +390,11 @@ describe('asking the right question', () => {
       return;
     }
 
-    expect(session.graph.getField(entry.def.id, FIELDS.clues)).toBeUndefined();
+    expect(session.engine.graph.getField(entry.def.id, FIELDS.clues)).toBeUndefined();
 
     const result = applyDialogueEffect(reveal, {
       ticket: conversation.ticket,
-      dispatch: (action, target, params) => session.registry.dispatch(
+      dispatch: (action, target, params) => session.engine.dispatch(
         action,
         COMPANY_IDS.player,
         target,
@@ -403,13 +403,13 @@ describe('asking the right question', () => {
     });
 
     expect(result).toEqual({ ok: true });
-    expect(session.graph.getField(entry.def.id, FIELDS.clues))
+    expect(session.engine.graph.getField(entry.def.id, FIELDS.clues))
       .toContain('colleague');
 
     // Asking the same question twice does not double the note, and says so.
     const again = applyDialogueEffect(reveal, {
       ticket: conversation.ticket,
-      dispatch: (action, target, params) => session.registry.dispatch(
+      dispatch: (action, target, params) => session.engine.dispatch(
         action,
         COMPANY_IDS.player,
         target,

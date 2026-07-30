@@ -1,10 +1,10 @@
 import type {
   DispatchResult,
-} from '../../engine/actions';
-import type { ReadOnlyGraphView } from '../../engine/graph-view';
+} from '../../engine-api';
+import type { ReadOnlyGraphView } from '../../engine-api';
 import type {
   FieldValue,
-} from '../../engine/schema';
+} from '../../engine-api';
 
 /**
  * What one app asks another to show when it opens it.

@@ -1,5 +1,5 @@
-import type { ReadOnlyGraphNode } from '../../engine/graph-view';
-import { isTicketState, type TicketState } from '../../engine/schema';
+import type { ReadOnlyGraphNode } from '../../engine-api';
+import { isTicketState, type TicketState } from '../../engine-api';
 import {
   clueLines,
   HELPDESK_ACTIONS,

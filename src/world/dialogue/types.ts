@@ -1,4 +1,4 @@
-import type { FieldValue } from '../../engine/schema';
+import type { FieldValue } from '../../engine-api';
 
 /**
  * Dialogue is DATA. A tree is a bag of nodes with an entry point, and the only

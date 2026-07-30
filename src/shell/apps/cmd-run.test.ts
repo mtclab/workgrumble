@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-import { createReadOnlyGraphView } from '../../engine/graph-view';
 import { COMPANY_IDS } from '../../world/company';
 import { createWorldSession, type WorldSession } from '../../world/session';
 import { parseCommand } from './cmd-parse';
@@ -12,18 +11,18 @@ function apiFor(
   actor: string = COMPANY_IDS.player,
 ): GameApi {
   return {
-    graph: createReadOnlyGraphView(session.graph),
-    dispatch: (id, dispatchActor, target, params) => session.registry.dispatch(
+    graph: session.engine.graph,
+    dispatch: (id, dispatchActor, target, params) => session.engine.dispatch(
       id,
       dispatchActor,
       target,
       params,
     ),
     clock: {
-      now: () => session.clock.now(),
-      onTick: (listener) => session.clock.onTick(listener),
+      now: () => session.engine.now(),
+      onTick: (listener) => session.engine.onTick(listener),
     },
-    onWorldChange: (listener) => session.bus.on('graph:mutated', () => {
+    onWorldChange: (listener) => session.engine.onEvent(() => {
       listener();
     }),
     notify: () => {},
@@ -73,7 +72,7 @@ describe('support terminal commands', () => {
     const session = createWorldSession();
     const api = apiFor(session);
 
-    expect(session.graph.getField(COMPANY_IDS.spooler, 'status'))
+    expect(session.engine.graph.getField(COMPANY_IDS.spooler, 'status'))
       .toBe('wedged');
 
     const output = run(api, 'ping PRINT-01');
@@ -103,9 +102,9 @@ describe('support terminal commands', () => {
     const session = createWorldSession();
     const api = apiFor(session);
 
-    expect(session.tickets.getState('ticket:locked-account')).toBe('open');
+    expect(session.engine.ticketState('ticket:locked-account')).toBe('open');
     expect(run(api, 'unlock gpoole')).toContain('unlocked');
-    expect(session.tickets.getState('ticket:locked-account')).toBe('resolved');
+    expect(session.engine.ticketState('ticket:locked-account')).toBe('resolved');
 
     // A second attempt explains itself instead of pretending to work.
     expect(run(api, 'unlock gpoole')).toContain('is not locked');
@@ -116,10 +115,10 @@ describe('support terminal commands', () => {
     const api = apiFor(session);
 
     expect(run(api, 'rotate SALES-02 45')).toContain('not an angle');
-    expect(session.tickets.getState('ticket:rotated-screen')).toBe('open');
+    expect(session.engine.ticketState('ticket:rotated-screen')).toBe('open');
 
     expect(run(api, 'rotate SALES-02 0')).toContain('set to 0 degrees');
-    expect(session.tickets.getState('ticket:rotated-screen')).toBe('resolved');
+    expect(session.engine.ticketState('ticket:rotated-screen')).toBe('resolved');
   });
 
   it('needs both halves of the spooler fix, in the right order', () => {
@@ -132,15 +131,15 @@ describe('support terminal commands', () => {
     // The wrong order is refused, not quietly accepted and half-useful.
     expect(run(api, 'restart spooler'))
       .toContain('It will just choke on the same job again.');
-    expect(session.graph.getField(COMPANY_IDS.spooler, 'status'))
+    expect(session.engine.graph.getField(COMPANY_IDS.spooler, 'status'))
       .toBe('wedged');
 
     // And clearing alone is not a fix either: the service is still wedged.
     expect(run(api, 'clearqueue hercules')).toContain('47 job(s) dropped');
-    expect(session.tickets.getState('ticket:wedged-spooler')).toBe('open');
+    expect(session.engine.ticketState('ticket:wedged-spooler')).toBe('open');
 
     expect(run(api, 'restart spooler')).toContain('RUNNING');
-    expect(session.tickets.getState('ticket:wedged-spooler')).toBe('resolved');
+    expect(session.engine.ticketState('ticket:wedged-spooler')).toBe('resolved');
   });
 
   /**
@@ -151,12 +150,12 @@ describe('support terminal commands', () => {
   it('refuses to restart the chassis fan and leaves its ticket open', () => {
     const session = createWorldSession();
     const api = apiFor(session);
-    const before = session.graph.snapshotHash();
+    const before = session.engine.snapshotHash();
 
     expect(run(api, 'services BEIGE-BOX')).toContain('[hardware, not restartable]');
     expect(run(api, 'restart fan')).toContain('It will not help.');
-    expect(session.graph.snapshotHash()).toBe(before);
-    expect(session.tickets.getState('ticket:fan-noise')).toBe('open');
+    expect(session.engine.snapshotHash()).toBe(before);
+    expect(session.engine.ticketState('ticket:fan-noise')).toBe('open');
   });
 
   it('passes engine refusals straight through to the player', () => {
@@ -171,10 +170,10 @@ describe('support terminal commands', () => {
   it('issues a temporary password and clears the lockout with it', () => {
     const session = createWorldSession();
     const api = apiFor(session);
-    session.clock.advance(17);
+    session.engine.advance(17);
 
     expect(run(api, 'resetpw gpoole')).toContain('Temporary password issued');
-    expect(session.graph.getField(COMPANY_IDS.garyAccount, 'password_reset_at'))
+    expect(session.engine.graph.getField(COMPANY_IDS.garyAccount, 'password_reset_at'))
       .toBe(17);
     expect(run(api, 'users gpoole')).toContain('Password set : 08:17');
   });
@@ -182,11 +181,11 @@ describe('support terminal commands', () => {
   it('clears the screen without touching the world', () => {
     const session = createWorldSession();
     const api = apiFor(session);
-    const before = session.graph.snapshotHash();
+    const before = session.engine.snapshotHash();
     const result = executeCommand(parseCommand('cls'), api);
 
     expect(result).toEqual({ lines: [], clear: true });
-    expect(session.graph.snapshotHash()).toBe(before);
+    expect(session.engine.snapshotHash()).toBe(before);
   });
 
   it('prints a version nobody should feel reassured by', () => {

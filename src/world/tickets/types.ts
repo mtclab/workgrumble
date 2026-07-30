@@ -1,5 +1,5 @@
-import type { FieldValue } from '../../engine/schema';
-import type { TicketDef } from '../../engine/tickets';
+import type { FieldValue } from '../../engine-api';
+import type { TicketDef } from '../../engine-api';
 
 /** Where a solution path is played. Lane B owns `chat` and `remote`. */
 export type TicketPathApp =

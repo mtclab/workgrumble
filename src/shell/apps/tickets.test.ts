@@ -26,22 +26,22 @@ describe('a breached ticket that gets closed', () => {
     const session = createWorldSession();
 
     // Let the shortest SLA in the queue run out. Nothing else is due yet.
-    session.clock.advance(FAN_SLA_TICKS);
-    expect(session.tickets.getState(FAN_TICKET)).toBe('breached');
-    expect(session.tickets.getState(ROTATED_TICKET)).toBe('open');
+    session.engine.advance(FAN_SLA_TICKS);
+    expect(session.engine.ticketState(FAN_TICKET)).toBe('breached');
+    expect(session.engine.ticketState(ROTATED_TICKET)).toBe('open');
 
     // Then do the work anyway: this is the honest ending, late.
     expect(
-      session.registry.dispatch(
+      session.engine.dispatch(
         HELPDESK_ACTIONS.ticketEscalate,
         COMPANY_IDS.player,
         FAN_TICKET,
         {},
       ),
     ).toEqual({ ok: true });
-    expect(session.tickets.getState(FAN_TICKET)).toBe('resolved');
+    expect(session.engine.ticketState(FAN_TICKET)).toBe('resolved');
 
-    const nodes = session.graph.nodesOfKind('ticket');
+    const nodes = session.engine.graph.nodesOfKind('ticket');
     const closed = nodes.find((node) => node.id === FAN_TICKET);
     const clean = nodes.find((node) => node.id === ROTATED_TICKET);
 
@@ -61,6 +61,6 @@ describe('a breached ticket that gets closed', () => {
   it('counts nothing on a queue that has missed nothing', () => {
     const session = createWorldSession();
 
-    expect(breachedTicketCount(session.graph.nodesOfKind('ticket'))).toBe(0);
+    expect(breachedTicketCount(session.engine.graph.nodesOfKind('ticket'))).toBe(0);
   });
 });

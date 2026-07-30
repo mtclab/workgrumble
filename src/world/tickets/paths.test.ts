@@ -9,7 +9,7 @@ import { WORLD_TICKETS } from './index';
 import type { TicketActionStep } from './types';
 
 function drive(session: WorldSession, step: Readonly<TicketActionStep>): void {
-  const result = session.registry.dispatch(
+  const result = session.engine.dispatch(
     step.action,
     COMPANY_IDS.player,
     step.target,
@@ -28,8 +28,8 @@ describe('shipped tickets', () => {
     const session = createWorldSession();
 
     for (const entry of WORLD_TICKETS) {
-      expect(session.tickets.getState(entry.def.id)).toBe('open');
-      expect(session.graph.getField(entry.def.id, FIELDS.slaDeadline))
+      expect(session.engine.ticketState(entry.def.id)).toBe('open');
+      expect(session.engine.graph.getField(entry.def.id, FIELDS.slaDeadline))
         .toBe(entry.def.sla_ticks);
     }
 
@@ -45,13 +45,13 @@ describe('shipped tickets', () => {
     const session = createWorldSession();
 
     expect(
-      session.graph.getField(COMPANY_IDS.adaMachine, FIELDS.displayRotation),
+      session.engine.graph.getField(COMPANY_IDS.adaMachine, FIELDS.displayRotation),
     ).toBe(90);
-    expect(session.graph.getField(COMPANY_IDS.garyAccount, FIELDS.locked))
+    expect(session.engine.graph.getField(COMPANY_IDS.garyAccount, FIELDS.locked))
       .toBe(true);
-    expect(session.graph.getField(COMPANY_IDS.spooler, FIELDS.status))
+    expect(session.engine.graph.getField(COMPANY_IDS.spooler, FIELDS.status))
       .toBe('wedged');
-    expect(session.graph.getField(COMPANY_IDS.printer, FIELDS.queueLen))
+    expect(session.engine.graph.getField(COMPANY_IDS.printer, FIELDS.queueLen))
       .toBe(47);
   });
 });
@@ -68,7 +68,7 @@ describe.each(WORLD_TICKETS.map((entry) => [entry.def.id, entry] as const))(
       'closes through the %s path',
       (_pathId, path) => {
         const session = createWorldSession();
-        expect(session.tickets.getState(ticketId)).toBe('open');
+        expect(session.engine.ticketState(ticketId)).toBe('open');
 
         path.steps.forEach((step, index) => {
           drive(session, step);
@@ -76,7 +76,7 @@ describe.each(WORLD_TICKETS.map((entry) => [entry.def.id, entry] as const))(
           const finalStep = index === path.steps.length - 1;
           // A multi-step path must NEED every step: if the ticket closes early
           // the extra steps are decoration and the assertion is too loose.
-          expect(session.tickets.getState(ticketId)).toBe(
+          expect(session.engine.ticketState(ticketId)).toBe(
             finalStep ? 'resolved' : 'open',
           );
         });
@@ -85,8 +85,8 @@ describe.each(WORLD_TICKETS.map((entry) => [entry.def.id, entry] as const))(
 
     it('stays open until a path is actually driven', () => {
       const session = createWorldSession();
-      session.clock.advance(1);
-      expect(session.tickets.getState(ticketId)).toBe('open');
+      session.engine.advance(1);
+      expect(session.engine.ticketState(ticketId)).toBe('open');
     });
   },
 );
@@ -99,9 +99,9 @@ describe.each(WORLD_TICKETS.map((entry) => [entry.def.id, entry] as const))(
 describe('hardware that reports a status', () => {
   it('refuses to restart the chassis fan and leaves its ticket open', () => {
     const session = createWorldSession();
-    const before = session.graph.snapshotHash();
+    const before = session.engine.snapshotHash();
 
-    const result = session.registry.dispatch(
+    const result = session.engine.dispatch(
       HELPDESK_ACTIONS.serviceRestart,
       COMPANY_IDS.player,
       COMPANY_IDS.fan,
@@ -110,17 +110,17 @@ describe('hardware that reports a status', () => {
 
     expect(result.ok).toBe(false);
     expect(result.ok ? '' : result.reason).toContain('It will not help.');
-    expect(session.graph.snapshotHash()).toBe(before);
-    expect(session.graph.getField(COMPANY_IDS.fan, FIELDS.status))
+    expect(session.engine.snapshotHash()).toBe(before);
+    expect(session.engine.graph.getField(COMPANY_IDS.fan, FIELDS.status))
       .toBe('wedged');
-    expect(session.tickets.getState('ticket:fan-noise')).toBe('open');
+    expect(session.engine.ticketState('ticket:fan-noise')).toBe('open');
   });
 
   it('still restarts the software on the same estate', () => {
     const session = createWorldSession();
 
     // The queue goes first, which is the spooler ticket's whole lesson.
-    session.registry.dispatch(
+    session.engine.dispatch(
       HELPDESK_ACTIONS.printerClearQueue,
       COMPANY_IDS.player,
       COMPANY_IDS.printer,
@@ -128,7 +128,7 @@ describe('hardware that reports a status', () => {
     );
 
     expect(
-      session.registry.dispatch(
+      session.engine.dispatch(
         HELPDESK_ACTIONS.serviceRestart,
         COMPANY_IDS.player,
         COMPANY_IDS.spooler,
@@ -149,7 +149,7 @@ describe('escalation policy', () => {
 
   it('refuses to escalate a ticket that is fixable from the desk', () => {
     const session = createWorldSession();
-    const result = session.registry.dispatch(
+    const result = session.engine.dispatch(
       HELPDESK_ACTIONS.ticketEscalate,
       COMPANY_IDS.player,
       'ticket:locked-account',
@@ -161,7 +161,7 @@ describe('escalation policy', () => {
       reason: 'This is fixable from your desk, and everyone downstream knows '
         + 'it. Escalating it would be a career-limiting move.',
     });
-    expect(session.tickets.getState('ticket:locked-account')).toBe('open');
+    expect(session.engine.ticketState('ticket:locked-account')).toBe('open');
   });
 });
 
@@ -174,10 +174,10 @@ describe('waiting on the user', () => {
   it('will not stop a shipped ticket clock before the question is asked', () => {
     const session = createWorldSession();
     const ticketId = 'ticket:locked-account';
-    const before = session.graph.snapshotHash();
-    const deadline = session.graph.getField(ticketId, FIELDS.slaDeadline);
+    const before = session.engine.snapshotHash();
+    const deadline = session.engine.graph.getField(ticketId, FIELDS.slaDeadline);
 
-    const refused = session.registry.dispatch(
+    const refused = session.engine.dispatch(
       HELPDESK_ACTIONS.ticketSetWaiting,
       COMPANY_IDS.player,
       ticketId,
@@ -187,23 +187,23 @@ describe('waiting on the user', () => {
     expect(refused.ok).toBe(false);
     expect(refused.ok ? '' : refused.reason)
       .toContain('You have not actually asked them anything yet.');
-    expect(session.graph.snapshotHash()).toBe(before);
-    expect(session.graph.getField(ticketId, FIELDS.slaDeadline)).toBe(deadline);
-    expect(session.tickets.getState(ticketId)).toBe('open');
+    expect(session.engine.snapshotHash()).toBe(before);
+    expect(session.engine.graph.getField(ticketId, FIELDS.slaDeadline)).toBe(deadline);
+    expect(session.engine.ticketState(ticketId)).toBe('open');
 
     // Ten minutes later the clock has eaten ten minutes, exactly as if the
     // player had never touched the toggle.
-    session.clock.advance(10);
-    expect(session.graph.getField(ticketId, FIELDS.slaDeadline)).toBe(deadline);
+    session.engine.advance(10);
+    expect(session.engine.graph.getField(ticketId, FIELDS.slaDeadline)).toBe(deadline);
   });
 
   it('pushes the SLA deadline out while the ticket is parked', () => {
     const session = createWorldSession();
     const ticketId = 'ticket:locked-account';
-    const before = session.graph.getField(ticketId, FIELDS.slaDeadline);
+    const before = session.engine.graph.getField(ticketId, FIELDS.slaDeadline);
 
     expect(
-      session.registry.dispatch(
+      session.engine.dispatch(
         HELPDESK_ACTIONS.ticketMarkAsked,
         COMPANY_IDS.player,
         ticketId,
@@ -212,31 +212,31 @@ describe('waiting on the user', () => {
     ).toEqual({ ok: true });
 
     expect(
-      session.registry.dispatch(
+      session.engine.dispatch(
         HELPDESK_ACTIONS.ticketSetWaiting,
         COMPANY_IDS.player,
         ticketId,
         {},
       ),
     ).toEqual({ ok: true });
-    session.clock.advance(10);
+    session.engine.advance(10);
 
-    expect(session.tickets.getState(ticketId)).toBe('waiting_on_user');
-    expect(session.graph.getField(ticketId, FIELDS.slaDeadline)).toBe(
+    expect(session.engine.ticketState(ticketId)).toBe('waiting_on_user');
+    expect(session.engine.graph.getField(ticketId, FIELDS.slaDeadline)).toBe(
       typeof before === 'number' ? before + 10 : before,
     );
 
     // And the clock bites again the moment the ticket comes back to you.
     expect(
-      session.registry.dispatch(
+      session.engine.dispatch(
         HELPDESK_ACTIONS.ticketClearWaiting,
         COMPANY_IDS.player,
         ticketId,
         {},
       ),
     ).toEqual({ ok: true });
-    session.clock.advance(5);
-    expect(session.graph.getField(ticketId, FIELDS.slaDeadline)).toBe(
+    session.engine.advance(5);
+    expect(session.engine.graph.getField(ticketId, FIELDS.slaDeadline)).toBe(
       typeof before === 'number' ? before + 10 : before,
     );
   });

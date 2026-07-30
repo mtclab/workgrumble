@@ -1,4 +1,4 @@
-import { validateTicketDef, type TicketDef } from '../../engine/tickets';
+import type { TicketDef } from '../../engine-api';
 import { HELPDESK_ACTION_IDS } from '../actions';
 import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
 import { acceptsEscalation } from './escalation';
@@ -57,7 +57,10 @@ function validateWorldTickets(
   const ids = new Set<string>();
 
   for (const entry of entries) {
-    const def = validateTicketDef(entry.def);
+    // Shape validation belongs to the engine now: it refuses a malformed
+    // definition at spawn, in one place, for every world. What is left here is
+    // what only the CONTENT knows - that a ticket is reachable and referenced.
+    const { def } = entry;
 
     if (ids.has(def.id)) {
       throw new Error(`Duplicate ticket id "${def.id}".`);

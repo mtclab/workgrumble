@@ -1,21 +1,16 @@
-import type { ActionDef } from '../../engine/actions';
+import type { ActionData } from '../../engine-api';
 import {
   HELPDESK_TIER,
-  requireTargetId,
-  resolveTarget,
+  TARGET,
+  targetGuards,
 } from './helpers';
 import { HELPDESK_ACTIONS } from './ids';
 
-export const MAIL_RULE_ACTIONS: readonly ActionDef[] = [
+export const MAIL_RULE_ACTIONS: readonly ActionData[] = [
   {
     id: HELPDESK_ACTIONS.mailRuleDelete,
     tier: HELPDESK_TIER,
-    validate: (context) => {
-      const resolved = resolveTarget(context, 'mail_rule');
-      return resolved.ok ? null : resolved.reason;
-    },
-    apply: (context) => {
-      context.graph.removeNode(requireTargetId(context.target));
-    },
+    validate: [...targetGuards('mail_rule')],
+    apply: [{ op: 'remove_node', node: TARGET }],
   },
 ];

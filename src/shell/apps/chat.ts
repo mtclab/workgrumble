@@ -1,4 +1,4 @@
-import type { ReadOnlyGraphNode } from '../../engine/graph-view';
+import type { ReadOnlyGraphNode } from '../../engine-api';
 import {
   applyDialogueEffects,
   type DialogueOption,

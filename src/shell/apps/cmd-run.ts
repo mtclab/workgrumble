@@ -1,5 +1,5 @@
-import type { ReadOnlyGraphNode } from '../../engine/graph-view';
-import type { NodeKind } from '../../engine/schema';
+import type { ReadOnlyGraphNode } from '../../engine-api';
+import type { NodeKind } from '../../engine-api';
 import { HELPDESK_ACTIONS } from '../../world/actions';
 import { DEVICE_TYPES, FIELDS, isRotation } from '../../world/fields';
 import { formatSimTime } from '../clock-format';

@@ -1,5 +1,13 @@
-import type { EntityGraph } from '../engine/graph';
+import type { Edge, GraphNode, SetupOp } from '../engine-api';
 import { DEVICE_TYPES, FIELDS, SERVICE_STATUS } from './fields';
+
+function addNode(ops: SetupOp[], node: GraphNode): void {
+  ops.push({ op: 'addNode', node });
+}
+
+function addEdge(ops: SetupOp[], edge: Edge): void {
+  ops.push({ op: 'addEdge', edge });
+}
 
 /**
  * The employer. One company = one graph seed (DESIGN_POC section 6.4), so a
@@ -141,9 +149,16 @@ const SHARE_ACCESS: readonly string[] = [
   COMPANY_IDS.ninaAccount,
 ];
 
-export function seedCompanyWorld(graph: EntityGraph): void {
+/**
+ * The employer as construction ops. The seed is data the engine applies, not
+ * calls into a graph the world holds: nothing outside the engine gets a
+ * writable handle on the world any more.
+ */
+export function companySetup(): readonly SetupOp[] {
+  const ops: SetupOp[] = [];
+
   for (const member of STAFF) {
-    graph.addNode({
+    addNode(ops, {
       id: member.person,
       kind: 'person',
       fields: {
@@ -152,7 +167,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
         [FIELDS.desk]: member.desk,
       },
     });
-    graph.addNode({
+    addNode(ops, {
       id: member.account,
       kind: 'account',
       fields: {
@@ -161,14 +176,14 @@ export function seedCompanyWorld(graph: EntityGraph): void {
         [FIELDS.enabled]: true,
       },
     });
-    graph.addEdge({
+    addEdge(ops, {
       from: member.person,
       to: member.account,
       kind: 'owns',
     });
   }
 
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.playerMachine,
     kind: 'machine',
     fields: {
@@ -178,7 +193,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
       [FIELDS.pendingUpdates]: false,
     },
   });
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.adaMachine,
     kind: 'machine',
     fields: {
@@ -188,7 +203,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
       [FIELDS.pendingUpdates]: true,
     },
   });
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.garyMachine,
     kind: 'machine',
     fields: {
@@ -198,7 +213,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
       [FIELDS.pendingUpdates]: true,
     },
   });
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.printServer,
     kind: 'machine',
     fields: {
@@ -209,7 +224,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
     },
   });
 
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.monitor,
     kind: 'device',
     fields: {
@@ -218,7 +233,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
       [FIELDS.powered]: true,
     },
   });
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.printer,
     kind: 'device',
     fields: {
@@ -229,7 +244,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
       [FIELDS.queueLen]: 0,
     },
   });
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.adaMouse,
     kind: 'device',
     fields: {
@@ -243,7 +258,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
   // The fan reports a status like everything else on this box, and that is
   // the whole trap: it is a lump of spinning plastic, not a service. Saying
   // so here is what keeps "restart it" honest everywhere downstream.
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.fan,
     kind: 'service',
     fields: {
@@ -252,7 +267,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
       [FIELDS.restartable]: false,
     },
   });
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.spooler,
     kind: 'service',
     fields: {
@@ -261,7 +276,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
       [FIELDS.restartable]: true,
     },
   });
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.vpn,
     kind: 'service',
     fields: {
@@ -271,18 +286,18 @@ export function seedCompanyWorld(graph: EntityGraph): void {
     },
   });
 
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.printUsers,
     kind: 'group',
     fields: { [FIELDS.name]: 'Print Users' },
   });
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.vpnUsers,
     kind: 'group',
     fields: { [FIELDS.name]: 'VPN Users' },
   });
 
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.commonShare,
     kind: 'share',
     fields: {
@@ -291,7 +306,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
     },
   });
 
-  graph.addNode({
+  addNode(ops, {
     id: COMPANY_IDS.garyMailRule,
     kind: 'mail_rule',
     fields: {
@@ -301,60 +316,60 @@ export function seedCompanyWorld(graph: EntityGraph): void {
     },
   });
 
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.player,
     to: COMPANY_IDS.playerMachine,
     kind: 'owns',
   });
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.ada,
     to: COMPANY_IDS.adaMachine,
     kind: 'owns',
   });
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.gary,
     to: COMPANY_IDS.garyMachine,
     kind: 'owns',
   });
   // The lead signed for the print server years ago and has never once looked
   // at it. Ownership on paper, ownership in practice: not the same graph.
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.boss,
     to: COMPANY_IDS.printServer,
     kind: 'owns',
   });
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.gary,
     to: COMPANY_IDS.garyMailRule,
     kind: 'owns',
   });
 
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.monitor,
     to: COMPANY_IDS.playerMachine,
     kind: 'connected_to',
   });
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.printer,
     to: COMPANY_IDS.printServer,
     kind: 'connected_to',
   });
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.adaMouse,
     to: COMPANY_IDS.adaMachine,
     kind: 'connected_to',
   });
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.playerMachine,
     to: COMPANY_IDS.printServer,
     kind: 'connected_to',
   });
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.adaMachine,
     to: COMPANY_IDS.printServer,
     kind: 'connected_to',
   });
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.garyMachine,
     to: COMPANY_IDS.printServer,
     kind: 'connected_to',
@@ -363,32 +378,32 @@ export function seedCompanyWorld(graph: EntityGraph): void {
   // Which printer the spooler actually feeds. Written down rather than
   // guessed from "whatever else is plugged into that box", because the VPN
   // shares the same server and has nothing to do with anybody's backlog.
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.spooler,
     to: COMPANY_IDS.printer,
     kind: 'connected_to',
   });
 
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.fan,
     to: COMPANY_IDS.playerMachine,
     kind: 'runs_on',
   });
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.spooler,
     to: COMPANY_IDS.printServer,
     kind: 'runs_on',
   });
   // The VPN concentrator shares the print server because it was the only box
   // with a free slot the week it arrived. This is load-bearing beige.
-  graph.addEdge({
+  addEdge(ops, {
     from: COMPANY_IDS.vpn,
     to: COMPANY_IDS.printServer,
     kind: 'runs_on',
   });
 
   for (const membership of GROUP_MEMBERSHIPS) {
-    graph.addEdge({
+    addEdge(ops, {
       from: membership.account,
       to: membership.group,
       kind: 'member_of',
@@ -396,10 +411,12 @@ export function seedCompanyWorld(graph: EntityGraph): void {
   }
 
   for (const account of SHARE_ACCESS) {
-    graph.addEdge({
+    addEdge(ops, {
       from: account,
       to: COMPANY_IDS.commonShare,
       kind: 'has_access',
     });
   }
+
+  return ops;
 }

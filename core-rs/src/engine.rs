@@ -184,12 +184,12 @@ impl Engine {
                 None => value_refusal("get_node needs an \"id\"."),
             },
             "get_field" => match (id, field) {
-                (Some(id), Some(field)) => value_result(
-                    self.world
-                        .graph
-                        .get_field(id, field)
-                        .map_or(Json::Null, FieldValue::to_json),
-                ),
+                // An absent field leaves the key off entirely: `null` is a
+                // legitimate value and "missing" is a different answer.
+                (Some(id), Some(field)) => match self.world.graph.get_field(id, field) {
+                    Some(value) => value_result(value.to_json()),
+                    None => json!({ "ok": true }).to_string(),
+                },
                 _ => value_refusal("get_field needs an \"id\" and a \"field\"."),
             },
             "nodes_of_kind" => match request.get("node_kind").and_then(Json::as_str) {
