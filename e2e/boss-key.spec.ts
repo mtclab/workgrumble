@@ -50,6 +50,61 @@ test('boss key is inert when no slack window is on screen', async ({
   );
 });
 
+/**
+ * The panic key has no exceptions. Typing into an app field is exactly when a
+ * player is most visibly not working, so that is the worst moment for the key
+ * to stop responding.
+ */
+test('boss key fires while the player is typing in an app field', async ({
+  page,
+}) => {
+  await logIn(page);
+
+  await openFromDesktopIcon(page, 'about');
+  await openFromStartMenu(page, 'bubbles');
+
+  const initials = page.getByTestId('bubbles-initials');
+  await initials.click();
+  await initials.fill('PAT');
+  await expect(initials).toBeFocused();
+
+  await page.keyboard.press('Backquote');
+
+  await expect(page.getByTestId('window-bubbles')).toBeHidden();
+  await expect(page.getByTestId('window-about')).toBeVisible();
+  await expect(page.getByTestId('window-about')).toHaveAttribute(
+    'data-focused',
+    'true',
+  );
+
+  // The keypress is swallowed, not typed: no stray backtick in the field.
+  await page.getByTestId('taskbar-button-bubbles').click();
+  await expect(page.getByTestId('bubbles-initials')).toHaveValue('PAT');
+});
+
+test('boss key hides a maximized slack window', async ({ page }) => {
+  await logIn(page);
+
+  await openFromDesktopIcon(page, 'about');
+  await openFromStartMenu(page, 'bubbles');
+
+  const bubbles = page.getByTestId('window-bubbles');
+  await page.getByTestId('titlebar-bubbles').dblclick({
+    position: { x: 40, y: 10 },
+  });
+  await expect(bubbles).toHaveAttribute('data-maximized', 'true');
+
+  await page.keyboard.press('Backquote');
+
+  await expect(bubbles).toBeHidden();
+  await expect(page.getByTestId('window-about')).toBeVisible();
+
+  // It comes back exactly as it was hidden - still maximized, still yours.
+  await page.getByTestId('taskbar-button-bubbles').click();
+  await expect(bubbles).toBeVisible();
+  await expect(bubbles).toHaveAttribute('data-maximized', 'true');
+});
+
 test('boss key survives being pressed with the start menu open', async ({
   page,
 }) => {

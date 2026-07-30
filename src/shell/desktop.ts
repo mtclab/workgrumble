@@ -38,12 +38,6 @@ function isVisible(element: HTMLElement): boolean {
   return element.hidden === false;
 }
 
-function isTextEntry(target: EventTarget | null): boolean {
-  return target instanceof HTMLInputElement
-    || target instanceof HTMLTextAreaElement
-    || (target instanceof HTMLElement && target.isContentEditable);
-}
-
 function menuItem(
   label: string,
   icon: string,
@@ -418,7 +412,10 @@ export class Desktop {
       return;
     }
 
-    if (event.code !== BOSS_KEY_CODE || isTextEntry(event.target)) {
+    // No text-entry exception. A panic key that stops working the moment the
+    // player is typing into an app is not a panic key, and the manager in the
+    // doorway does not wait for the field to lose focus.
+    if (event.code !== BOSS_KEY_CODE) {
       return;
     }
 

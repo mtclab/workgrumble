@@ -103,6 +103,7 @@
   --size-dialog: 340px;
   --size-badge: 17px;
   --size-bubble: 54px;
+  --size-initials: 44px;
   --size-rail: 30px;
   --size-taskbar-button: 176px;
   --size-scanline: 3px;
@@ -1104,6 +1105,26 @@ input {
   color: var(--color-ink-soft);
   font-family: var(--font-read);
   font-style: italic;
+}
+
+.bubbles-fame {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-weight: 700;
+}
+
+.bubbles-initials {
+  width: var(--size-initials);
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  background: var(--color-surface-field);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-ink);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  text-transform: uppercase;
 }
 
 .bubbles-arena {

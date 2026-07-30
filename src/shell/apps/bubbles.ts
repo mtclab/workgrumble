@@ -18,6 +18,9 @@ const BUBBLE_POSITIONS = [
 
 const MILESTONE_SCORE = 5;
 
+/** Arcade rules: three letters, no more, and nothing is ever written down. */
+const INITIALS_LENGTH = 3;
+
 const CAUGHT_LINES = [
   'Clean pop. Productivity remains plausibly deniable.',
   'Another one. The queue has not noticed your absence.',
@@ -47,12 +50,28 @@ export const BUBBLES_APP: AppDef = {
     const tip = document.createElement('span');
     tip.className = 'bubbles-tip';
     tip.textContent = `Morale exercise. Panic key: ${BOSS_KEY_LABEL}`;
+    const fame = document.createElement('label');
+    fame.className = 'bubbles-fame';
+    const fameLabel = document.createElement('span');
+    fameLabel.textContent = 'Initials';
+    const initials = document.createElement('input');
+    initials.type = 'text';
+    initials.className = 'bubbles-initials';
+    initials.dataset.testid = 'bubbles-initials';
+    initials.maxLength = INITIALS_LENGTH;
+    initials.size = INITIALS_LENGTH;
+    initials.autocomplete = 'off';
+    initials.spellcheck = false;
+    initials.placeholder = '---';
+    initials.setAttribute('aria-label', 'High-score initials');
+    fame.append(fameLabel, initials);
+
     const reset = document.createElement('button');
     reset.type = 'button';
     reset.className = 'os-button os-button-compact';
     reset.dataset.testid = 'bubbles-reset';
     reset.textContent = 'Reset';
-    toolbar.append(scoreLabel, tip, reset);
+    toolbar.append(scoreLabel, tip, fame, reset);
 
     const arena = document.createElement('div');
     arena.className = 'bubbles-arena';
@@ -103,9 +122,25 @@ export const BUBBLES_APP: AppDef = {
       message.textContent = 'Catch the bubble before management catches you.';
       render();
     };
+    const onInitials = (): void => {
+      const cleaned = initials.value
+        .toUpperCase()
+        .replaceAll(/[^A-Z]/g, '')
+        .slice(0, INITIALS_LENGTH);
+
+      if (cleaned !== initials.value) {
+        initials.value = cleaned;
+      }
+
+      if (cleaned.length === INITIALS_LENGTH) {
+        message.textContent = `${cleaned} enters the hall of fame. The hall `
+          + 'of fame is this window, and it forgets you the moment it closes.';
+      }
+    };
 
     bubble.addEventListener('click', onCatch);
     reset.addEventListener('click', onReset);
+    initials.addEventListener('input', onInitials);
 
     root.append(toolbar, arena);
     host.replaceChildren(root);
@@ -115,6 +150,7 @@ export const BUBBLES_APP: AppDef = {
       unmount: (): void => {
         bubble.removeEventListener('click', onCatch);
         reset.removeEventListener('click', onReset);
+        initials.removeEventListener('input', onInitials);
         root.remove();
       },
     };
