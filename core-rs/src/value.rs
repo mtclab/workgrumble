@@ -22,6 +22,14 @@ pub enum FieldValue {
     Str(String),
 }
 
+/// Equality is `Object.is`, deliberately: the engine has exactly one notion of
+/// "same field value" and `==` must not become a second, looser one.
+impl PartialEq for FieldValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.same_value(other)
+    }
+}
+
 impl FieldValue {
     /// `Object.is`, which is what the TypeScript engine compares fields with:
     /// NaN equals NaN and -0 does not equal 0. Field values are validated
@@ -107,8 +115,9 @@ impl FieldValue {
         match self {
             Self::Null => Json::Null,
             Self::Bool(value) => Json::Bool(*value),
-            Self::Num(value) => serde_json::Number::from_f64(*value)
-                .map_or(Json::Null, Json::Number),
+            Self::Num(value) => {
+                serde_json::Number::from_f64(*value).map_or(Json::Null, Json::Number)
+            }
             Self::Str(value) => Json::String(value.clone()),
         }
     }
@@ -189,7 +198,10 @@ pub fn format_js_number(value: f64) -> String {
     let (mantissa, exponent) = exponential
         .split_once('e')
         .expect("Rust exponential formatting always contains an exponent");
-    let digits: String = mantissa.chars().filter(|character| *character != '.').collect();
+    let digits: String = mantissa
+        .chars()
+        .filter(|character| *character != '.')
+        .collect();
     let digits = digits.trim_end_matches('0');
     let digits = if digits.is_empty() { "0" } else { digits };
     let exponent: i32 = exponent.parse().unwrap_or(0);
@@ -239,7 +251,10 @@ mod tests {
         assert_eq!(format_js_number(1e-6), "0.000001");
         assert_eq!(format_js_number(1e-7), "1e-7");
         assert_eq!(format_js_number(1.2345e-7), "1.2345e-7");
-        assert_eq!(format_js_number(9_007_199_254_740_991.0), "9007199254740991");
+        assert_eq!(
+            format_js_number(9_007_199_254_740_991.0),
+            "9007199254740991"
+        );
         assert_eq!(format_js_number(0.30000000000000004), "0.30000000000000004");
     }
 

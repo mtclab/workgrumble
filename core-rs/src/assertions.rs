@@ -394,9 +394,18 @@ mod tests {
             "value": true,
         });
 
-        assert!(evaluate_json(&graph, &json!({ "op": "and", "exprs": [locked] })));
-        assert!(evaluate_json(&graph, &json!({ "op": "or", "exprs": [locked] })));
-        assert!(!evaluate_json(&graph, &json!({ "op": "not", "expr": locked })));
+        assert!(evaluate_json(
+            &graph,
+            &json!({ "op": "and", "exprs": [locked] })
+        ));
+        assert!(evaluate_json(
+            &graph,
+            &json!({ "op": "or", "exprs": [locked] })
+        ));
+        assert!(!evaluate_json(
+            &graph,
+            &json!({ "op": "not", "expr": locked })
+        ));
         // An empty `and` is vacuously true and an empty `or` is false, which
         // is what `every`/`some` do in the reference.
         assert!(evaluate_json(&graph, &json!({ "op": "and", "exprs": [] })));

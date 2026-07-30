@@ -24,13 +24,7 @@ pub const NODE_KINDS: [&str; 9] = [
     "ticket",
 ];
 
-pub const EDGE_KINDS: [&str; 5] = [
-    "owns",
-    "member_of",
-    "connected_to",
-    "runs_on",
-    "has_access",
-];
+pub const EDGE_KINDS: [&str; 5] = ["owns", "member_of", "connected_to", "runs_on", "has_access"];
 
 pub const TICKET_STATES: [&str; 4] = ["open", "resolved", "breached", "waiting_on_user"];
 
@@ -207,7 +201,10 @@ pub fn validate_node(value: &Json) -> EngineResult<Node> {
         return refuse!("Node id must be a non-empty string.");
     }
 
-    let kind = object.get("kind").and_then(Json::as_str).unwrap_or_default();
+    let kind = object
+        .get("kind")
+        .and_then(Json::as_str)
+        .unwrap_or_default();
 
     if !is_node_kind(kind) {
         return refuse!("Node kind is not supported.");
@@ -221,8 +218,9 @@ pub fn validate_node(value: &Json) -> EngineResult<Node> {
     let mut fields = Fields::new();
 
     for (field, raw) in raw_fields {
-        let parsed = FieldValue::from_json(raw)
-            .ok_or_else(|| EngineError::new(format!("Field \"{field}\" has an unsupported value.")))?;
+        let parsed = FieldValue::from_json(raw).ok_or_else(|| {
+            EngineError::new(format!("Field \"{field}\" has an unsupported value."))
+        })?;
         fields.insert(field.clone(), parsed);
     }
 
@@ -239,9 +237,15 @@ pub fn validate_edge(value: &Json) -> EngineResult<Edge> {
     let object = value
         .as_object()
         .ok_or_else(|| EngineError::new("Setup edge must be an object."))?;
-    let from = object.get("from").and_then(Json::as_str).unwrap_or_default();
+    let from = object
+        .get("from")
+        .and_then(Json::as_str)
+        .unwrap_or_default();
     let to = object.get("to").and_then(Json::as_str).unwrap_or_default();
-    let kind = object.get("kind").and_then(Json::as_str).unwrap_or_default();
+    let kind = object
+        .get("kind")
+        .and_then(Json::as_str)
+        .unwrap_or_default();
 
     if from.is_empty() || to.is_empty() || !is_edge_kind(kind) {
         return refuse!("Setup edge is invalid.");

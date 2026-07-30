@@ -8,15 +8,19 @@
 
 #![forbid(unsafe_code)]
 
+pub mod actions;
 pub mod assertions;
 pub mod clock;
 pub mod error;
 pub mod events;
 pub mod graph;
 pub mod hash;
+pub mod ops;
 pub mod rng;
 pub mod schema;
+pub mod tickets;
 pub mod value;
+pub mod world;
 
 /// The engine contract version. Bumped when the boundary shape changes.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");

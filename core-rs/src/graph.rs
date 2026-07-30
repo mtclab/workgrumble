@@ -227,7 +227,9 @@ impl EntityGraph {
         }
 
         ids.sort_by(|left, right| js_str_cmp(left, right));
-        ids.into_iter().filter_map(|id| self.nodes.get(id)).collect()
+        ids.into_iter()
+            .filter_map(|id| self.nodes.get(id))
+            .collect()
     }
 
     pub fn has_edge(&self, from: &str, to: &str, kind: &str) -> bool {
@@ -351,7 +353,10 @@ mod tests {
 
         match mutation {
             GraphMutation::FieldSet { previous, .. } => {
-                assert_eq!(previous.and_then(|value| value.as_str().map(str::to_owned)), Some("Ada".to_owned()));
+                assert_eq!(
+                    previous.and_then(|value| value.as_str().map(str::to_owned)),
+                    Some("Ada".to_owned())
+                );
             }
             other => panic!("unexpected mutation {other:?}"),
         }
@@ -396,7 +401,9 @@ mod tests {
             .collect();
 
         assert_eq!(ids, vec!["person:b", "person:c"]);
-        assert!(graph.neighbors("person:ghost", Direction::Out, None).is_empty());
+        assert!(graph
+            .neighbors("person:ghost", Direction::Out, None)
+            .is_empty());
     }
 
     #[test]
@@ -412,7 +419,10 @@ mod tests {
 
         graph.clear_field("ticket:x", "note").expect("clear note");
         assert!(graph.get_field("ticket:x", "note").is_none());
-        assert!(graph.clear_field("ticket:x", "note").expect("absent").is_none());
+        assert!(graph
+            .clear_field("ticket:x", "note")
+            .expect("absent")
+            .is_none());
 
         assert!(graph.clear_field("ticket:x", "state").is_err());
         assert!(graph.get_field("ticket:x", "state").is_some());
