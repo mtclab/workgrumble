@@ -1,19 +1,28 @@
 import { isDispatchableAction } from './dispatch';
 import { DIALOGUE_TREES } from './trees';
-import { type DialogueNode, type DialogueTree, isRevealEffect } from './types';
+import {
+  type DialogueNode,
+  type DialogueTree,
+  isAskEffect,
+  isRevealEffect,
+} from './types';
 
 export {
   applyDialogueEffect,
+  applyDialogueEffects,
   type DialogueEffectContext,
   type DialogueEffectResult,
+  type DialogueEffectsOutcome,
   type EffectDispatch,
   isDispatchableAction,
 } from './dispatch';
 export {
+  type DialogueAskEffect,
   type DialogueEffect,
   type DialogueNode,
   type DialogueOption,
   type DialogueTree,
+  isAskEffect,
   isRevealEffect,
 } from './types';
 
@@ -109,40 +118,47 @@ export function validateDialogueTrees(
           );
         }
 
-        const effect = option.effect;
+        for (const effect of option.effects ?? []) {
+          if (isRevealEffect(effect)) {
+            if (effect.reveal.trim().length === 0) {
+              throw new Error(
+                `Option "${option.label}" of "${tree.id}" reveals nothing.`,
+              );
+            }
 
-        if (effect === undefined) {
-          continue;
-        }
+            if (tree.ticket === undefined) {
+              throw new Error(
+                `Option "${option.label}" of "${tree.id}" reveals a clue with `
+                + 'no ticket to write it on.',
+              );
+            }
 
-        if (isRevealEffect(effect)) {
-          if (effect.reveal.trim().length === 0) {
+            continue;
+          }
+
+          if (isAskEffect(effect)) {
+            if (tree.ticket === undefined) {
+              throw new Error(
+                `Option "${option.label}" of "${tree.id}" asks a question `
+                + 'with no ticket to log it against.',
+              );
+            }
+
+            continue;
+          }
+
+          if (!isDispatchableAction(effect.action)) {
             throw new Error(
-              `Option "${option.label}" of "${tree.id}" reveals nothing.`,
+              `Option "${option.label}" of "${tree.id}" dispatches `
+              + `unregistered action "${effect.action}".`,
             );
           }
 
-          if (tree.ticket === undefined) {
+          if (effect.target.length === 0) {
             throw new Error(
-              `Option "${option.label}" of "${tree.id}" reveals a clue with `
-              + 'no ticket to write it on.',
+              `Option "${option.label}" of "${tree.id}" aims at nothing.`,
             );
           }
-
-          continue;
-        }
-
-        if (!isDispatchableAction(effect.action)) {
-          throw new Error(
-            `Option "${option.label}" of "${tree.id}" dispatches unregistered `
-            + `action "${effect.action}".`,
-          );
-        }
-
-        if (effect.target.length === 0) {
-          throw new Error(
-            `Option "${option.label}" of "${tree.id}" aims at nothing.`,
-          );
         }
       }
     }

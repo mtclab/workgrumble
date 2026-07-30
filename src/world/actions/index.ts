@@ -14,7 +14,7 @@ export {
   HELPDESK_ACTIONS,
   type HelpdeskActionId,
 } from './ids';
-export { clueLines } from './ticket';
+export { clueLines, WAITING_NEEDS_QUESTION_REASON } from './ticket';
 export type { TicketPolicy } from './ticket';
 
 /** Every tier-1 helpdesk action, in a stable order. */

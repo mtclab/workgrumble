@@ -216,8 +216,8 @@ beforeEach(() => {
 
 describe('helpdesk action registry', () => {
   it('registers every advertised action exactly once', () => {
-    expect(HELPDESK_ACTION_IDS).toHaveLength(17);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(17);
+    expect(HELPDESK_ACTION_IDS).toHaveLength(18);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(18);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});
@@ -586,6 +586,7 @@ describe('share.grant_access', () => {
 
 describe('ticket waiting state', () => {
   it('parks a ticket on the user and takes it back off again', () => {
+    dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET);
     expect(
       dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET),
     ).toEqual({ ok: true });
@@ -597,7 +598,23 @@ describe('ticket waiting state', () => {
     expect(fixture.tickets.getState(PLAIN_TICKET)).toBe('open');
   });
 
+  /**
+   * The CYA rule, as a standing gate. Without it the waiting toggle is a
+   * button that freezes every SLA in the building for free, and the whole
+   * triage layer of the game stops meaning anything.
+   */
+  it('refuses to stop the clock on somebody nobody has asked anything', () => {
+    const before = fixture.graph.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET),
+      'You have not actually asked them anything yet.',
+      before,
+    );
+    expect(fixture.tickets.getState(PLAIN_TICKET)).toBe('open');
+  });
+
   it('refuses to park a ticket that is already parked', () => {
+    dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET);
     dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET);
     const before = fixture.graph.snapshotHash();
     expectRefusal(
@@ -620,6 +637,45 @@ describe('ticket waiting state', () => {
     const before = fixture.graph.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.ticketSetWaiting, 'device:printer'),
+      'only works on a ticket',
+      before,
+    );
+  });
+});
+
+describe('ticket.mark_asked', () => {
+  it('records that the reporter was actually asked something', () => {
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.questionAsked))
+      .toBe(true);
+  });
+
+  it('takes a second question as the no-op it is', () => {
+    dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET);
+    const before = fixture.graph.snapshotHash();
+
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.snapshotHash()).toBe(before);
+  });
+
+  it('refuses a ticket that is already closed', () => {
+    dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET);
+    const before = fixture.graph.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketMarkAsked, ESCALATABLE_TICKET),
+      'nothing left to ask them about',
+      before,
+    );
+  });
+
+  it('refuses anything that is not a ticket', () => {
+    const before = fixture.graph.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketMarkAsked, 'device:printer'),
       'only works on a ticket',
       before,
     );

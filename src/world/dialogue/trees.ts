@@ -1,3 +1,4 @@
+import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { WORLD_IDS } from '../demo-world';
 import type { DialogueTree } from './types';
@@ -9,6 +10,9 @@ import type { DialogueTree } from './types';
  * - the reporter voices the PROBLEM as they experience it, never the cause;
  * - exactly one option per tree is the right question, and it carries the
  *   `reveal` that writes the cause onto the ticket;
+ * - every option that puts a QUESTION to a reporter carries `asks`, and no
+ *   option that merely tells them something does: that mark is what lets the
+ *   SLA be parked on them, so it has to mean what it says;
  * - a tree with a ticket also has a `resolved_root`, so the person reacts to
  *   the fix instead of repeating their complaint at a closed ticket;
  * - the comedy is recognition, never contempt: the user is wrong about the
@@ -30,18 +34,23 @@ const ROTATED_SCREEN: DialogueTree = {
         {
           label: 'Ask what the screen was doing when she left on Friday',
           next: 'friday',
+          effects: [{ asks: true }],
         },
         {
           label: 'Ask whether anybody else was at her desk on Friday',
           next: 'colleague',
-          effect: {
-            reveal: 'Ada mentions a colleague was "showing her something" at '
-              + 'her keyboard on Friday afternoon.',
-          },
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Ada mentions a colleague was "showing her something" '
+                + 'at her keyboard on Friday afternoon.',
+            },
+          ],
         },
         {
           label: 'Ask her to read the screen out, tilt and all',
           next: 'tilt',
+          effects: [{ asks: true }],
         },
         { label: 'Tell her you are looking at it now' },
       ],
@@ -54,10 +63,13 @@ const ROTATED_SCREEN: DialogueTree = {
         {
           label: 'Ask whether anybody else was at her desk on Friday',
           next: 'colleague',
-          effect: {
-            reveal: 'Ada mentions a colleague was "showing her something" at '
-              + 'her keyboard on Friday afternoon.',
-          },
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Ada mentions a colleague was "showing her something" '
+                + 'at her keyboard on Friday afternoon.',
+            },
+          ],
         },
         { label: 'Go back to the top', next: 'complaint' },
         { label: 'Tell her you are looking at it now' },
@@ -69,7 +81,11 @@ const ROTATED_SCREEN: DialogueTree = {
         + 'Friday. But he would not hack me. He cannot hack the coffee '
         + 'machine, and it has one button.',
       options: [
-        { label: 'Ask which keys Gareth pressed', next: 'keys' },
+        {
+          label: 'Ask which keys Gareth pressed',
+          next: 'keys',
+          effects: [{ asks: true }],
+        },
         { label: 'Go back to the top', next: 'complaint' },
         { label: 'Thank her and get on with it' },
       ],
@@ -80,6 +96,20 @@ const ROTATED_SCREEN: DialogueTree = {
         + 'to lunch. Is that hacking? That sounds like hacking.',
       options: [
         { label: 'Tell her that is a screen-rotation shortcut', next: 'tilt' },
+        {
+          // Fixed over the phone, by the person whose screen it is. The
+          // ticket closes on the world changing, so the conversation lands on
+          // her reaction rather than on the branch this option names.
+          label: 'Talk her through pressing Control, Alt and Up right now',
+          next: 'tilt',
+          effects: [
+            {
+              action: HELPDESK_ACTIONS.machineSetDisplayRotation,
+              target: COMPANY_IDS.adaMachine,
+              params: { rotation: 0 },
+            },
+          ],
+        },
         { label: 'Go back to the top', next: 'complaint' },
         { label: 'Say you will have it back by eleven' },
       ],
@@ -129,13 +159,24 @@ const LOCKED_ACCOUNT: DialogueTree = {
         {
           label: 'Ask him to read the message out, word for word',
           next: 'reads',
-          effect: {
-            reveal: 'Gary reads it out himself: "This account has been locked '
-              + 'out, please contact support."',
-          },
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Gary reads it out himself: "This account has been '
+                + 'locked out, please contact support."',
+            },
+          ],
         },
-        { label: 'Ask when he last logged in', next: 'holiday' },
-        { label: 'Ask him to try once more while you watch', next: 'again' },
+        {
+          label: 'Ask when he last logged in',
+          next: 'holiday',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Ask him to try once more while you watch',
+          next: 'again',
+          effects: [{ asks: true }],
+        },
         { label: 'Tell him you will look at the account' },
       ],
     },
@@ -147,10 +188,13 @@ const LOCKED_ACCOUNT: DialogueTree = {
         {
           label: 'Ask him to read the message out, word for word',
           next: 'reads',
-          effect: {
-            reveal: 'Gary reads it out himself: "This account has been locked '
-              + 'out, please contact support."',
-          },
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Gary reads it out himself: "This account has been '
+                + 'locked out, please contact support."',
+            },
+          ],
         },
         { label: 'Go back to the top', next: 'complaint' },
         { label: 'Tell him you will look at the account' },
@@ -164,10 +208,13 @@ const LOCKED_ACCOUNT: DialogueTree = {
         {
           label: 'Ask him to read the message out, word for word',
           next: 'reads',
-          effect: {
-            reveal: 'Gary reads it out himself: "This account has been locked '
-              + 'out, please contact support."',
-          },
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Gary reads it out himself: "This account has been '
+                + 'locked out, please contact support."',
+            },
+          ],
         },
         { label: 'Go back to the top', next: 'complaint' },
       ],
@@ -229,13 +276,24 @@ const WEDGED_SPOOLER: DialogueTree = {
         {
           label: 'Ask what was sent to it just before it stopped',
           next: 'last-job',
-          effect: {
-            reveal: 'Nina sent the long delivery note out of the old system '
-              + 'just before the printer went quiet.',
-          },
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Nina sent the long delivery note out of the old '
+                + 'system just before the printer went quiet.',
+            },
+          ],
         },
-        { label: 'Ask how many people have re-sent their jobs', next: 'resends' },
-        { label: 'Ask whether the paper tray is empty', next: 'paper' },
+        {
+          label: 'Ask how many people have re-sent their jobs',
+          next: 'resends',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Ask whether the paper tray is empty',
+          next: 'paper',
+          effects: [{ asks: true }],
+        },
         { label: 'Tell her you will go and look at the print server' },
       ],
     },
@@ -247,10 +305,13 @@ const WEDGED_SPOOLER: DialogueTree = {
         {
           label: 'Ask what was sent to it just before it stopped',
           next: 'last-job',
-          effect: {
-            reveal: 'Nina sent the long delivery note out of the old system '
-              + 'just before the printer went quiet.',
-          },
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Nina sent the long delivery note out of the old '
+                + 'system just before the printer went quiet.',
+            },
+          ],
         },
         { label: 'Go back to the top', next: 'complaint' },
       ],
@@ -263,10 +324,13 @@ const WEDGED_SPOOLER: DialogueTree = {
         {
           label: 'Ask what was sent to it just before it stopped',
           next: 'last-job',
-          effect: {
-            reveal: 'Nina sent the long delivery note out of the old system '
-              + 'just before the printer went quiet.',
-          },
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Nina sent the long delivery note out of the old '
+                + 'system just before the printer went quiet.',
+            },
+          ],
         },
         { label: 'Go back to the top', next: 'complaint' },
       ],
@@ -276,7 +340,11 @@ const WEDGED_SPOOLER: DialogueTree = {
       npc_line: 'The big delivery note. The one from the old system that '
         + 'always comes out looking wrong. Then everything stopped.',
       options: [
-        { label: 'Ask whether that has happened before', next: 'before' },
+        {
+          label: 'Ask whether that has happened before',
+          next: 'before',
+          effects: [{ asks: true }],
+        },
         { label: 'Go back to the top', next: 'complaint' },
         { label: 'Tell her not to send it again until you call back' },
       ],
@@ -324,10 +392,12 @@ const FAN_NOISE: DialogueTree = {
         {
           label: 'Ask yourself when the noise started',
           next: 'when',
-          effect: {
-            reveal: 'Your own notes: the noise started after the tower was '
-              + 'moved to sweep behind the desk.',
-          },
+          effects: [
+            {
+              reveal: 'Your own notes: the noise started after the tower was '
+                + 'moved to sweep behind the desk.',
+            },
+          ],
         },
         { label: 'Ask yourself whether it is getting worse', next: 'worse' },
         { label: 'Close the window before anybody sees' },

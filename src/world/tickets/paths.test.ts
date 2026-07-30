@@ -119,10 +119,50 @@ describe('escalation policy', () => {
 });
 
 describe('waiting on the user', () => {
+  /**
+   * The CYA rule against the SHIPPED world: the toggle cannot buy back a
+   * minute of SLA until the reporter has actually been asked something, and
+   * the refusal leaves the deadline exactly where it was.
+   */
+  it('will not stop a shipped ticket clock before the question is asked', () => {
+    const session = createWorldSession();
+    const ticketId = 'ticket:locked-account';
+    const before = session.graph.snapshotHash();
+    const deadline = session.graph.getField(ticketId, FIELDS.slaDeadline);
+
+    const refused = session.registry.dispatch(
+      HELPDESK_ACTIONS.ticketSetWaiting,
+      COMPANY_IDS.player,
+      ticketId,
+      {},
+    );
+
+    expect(refused.ok).toBe(false);
+    expect(refused.ok ? '' : refused.reason)
+      .toContain('You have not actually asked them anything yet.');
+    expect(session.graph.snapshotHash()).toBe(before);
+    expect(session.graph.getField(ticketId, FIELDS.slaDeadline)).toBe(deadline);
+    expect(session.tickets.getState(ticketId)).toBe('open');
+
+    // Ten minutes later the clock has eaten ten minutes, exactly as if the
+    // player had never touched the toggle.
+    session.clock.advance(10);
+    expect(session.graph.getField(ticketId, FIELDS.slaDeadline)).toBe(deadline);
+  });
+
   it('pushes the SLA deadline out while the ticket is parked', () => {
     const session = createWorldSession();
     const ticketId = 'ticket:locked-account';
     const before = session.graph.getField(ticketId, FIELDS.slaDeadline);
+
+    expect(
+      session.registry.dispatch(
+        HELPDESK_ACTIONS.ticketMarkAsked,
+        COMPANY_IDS.player,
+        ticketId,
+        {},
+      ),
+    ).toEqual({ ok: true });
 
     expect(
       session.registry.dispatch(

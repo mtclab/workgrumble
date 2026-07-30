@@ -3,8 +3,12 @@ import type { FieldValue } from '../../engine/schema';
 /**
  * Dialogue is DATA. A tree is a bag of nodes with an entry point, and the only
  * things an option can do are: move to another node, dispatch a REGISTERED
- * action, or write a clue onto the ticket. There is no hook for "run this
- * function", because that is how a content file quietly becomes engine code.
+ * action, write a clue onto the ticket, or record that the reporter was
+ * actually asked something. There is no hook for "run this function", because
+ * that is how a content file quietly becomes engine code.
+ *
+ * `reveal` and `asks` are shorthands, not extra powers: both come out as
+ * ordinary helpdesk actions aimed at the tree's ticket.
  */
 
 /** Dispatch a registered helpdesk action. Unknown ids are refused, not run. */
@@ -19,7 +23,19 @@ export interface DialogueRevealEffect {
   readonly reveal: string;
 }
 
-export type DialogueEffect = DialogueActionEffect | DialogueRevealEffect;
+/**
+ * Mark the tree's ticket as one whose reporter has genuinely been asked about
+ * their problem - the option is a QUESTION put to them, not a statement made
+ * at them. It is what buys the right to park the SLA on the user.
+ */
+export interface DialogueAskEffect {
+  readonly asks: true;
+}
+
+export type DialogueEffect =
+  | DialogueActionEffect
+  | DialogueRevealEffect
+  | DialogueAskEffect;
 
 export function isRevealEffect(
   effect: Readonly<DialogueEffect>,
@@ -27,11 +43,22 @@ export function isRevealEffect(
   return 'reveal' in effect;
 }
 
+export function isAskEffect(
+  effect: Readonly<DialogueEffect>,
+): effect is DialogueAskEffect {
+  return 'asks' in effect;
+}
+
 export interface DialogueOption {
   readonly label: string;
   /** Node to move to. Omitted means the conversation reaches an end. */
   readonly next?: string;
-  readonly effect?: DialogueEffect;
+  /**
+   * Run in order when the option is picked. A list rather than a single
+   * effect because one line of dialogue routinely does two things at once -
+   * the right question both counts as asking AND gets the truth out of them.
+   */
+  readonly effects?: readonly DialogueEffect[];
 }
 
 export interface DialogueNode {

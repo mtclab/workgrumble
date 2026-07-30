@@ -170,37 +170,66 @@ test('explains every refusal in words a person can act on', async ({
   );
 });
 
-test('parks a ticket on the user and visibly buys back the SLA', async ({
+/**
+ * The CYA rule end to end. Parking a ticket on the user stops their SLA, so
+ * it costs a real question first - otherwise the toggle is a button that
+ * freezes every clock in the building and triage stops being a game.
+ */
+test('parks a ticket only once the user has actually been asked', async ({
   page,
 }) => {
   await logIn(page);
   await openFromStartMenu(page, 'tickets');
   await page.getByTestId('ticket-row-locked-account').click();
 
+  const toggle = page.getByTestId('ticket-waiting-toggle');
   const due = page.getByTestId('ticket-detail-due');
   const remaining = page.getByTestId('ticket-detail-sla');
   const firstDue = (await due.textContent())?.trim() ?? '';
   expect(firstDue).toMatch(/^\d{2}:\d{2}$/);
 
-  // Unparked, the clock eats into the SLA.
+  // Nobody has spoken to Gary yet, so the toggle is refused BEFORE the click
+  // and says why in the same words the engine would have used.
+  await expect(toggle).toBeDisabled();
+  await expect(toggle).toHaveAttribute('data-blocked', 'true');
+  await expect(toggle).toHaveAttribute(
+    'title',
+    /have not actually asked them anything yet/,
+  );
+
+  // Meanwhile the clock eats the SLA and the deadline stays exactly where it
+  // was: nothing has been bought back.
   await expect(remaining).not.toHaveText(
     (await remaining.textContent())?.trim() ?? '',
     { timeout: 10_000 },
   );
+  await expect(due).toHaveText(firstDue);
+  await expect(page.getByTestId('ticket-detail-state')).toContainText('Open');
 
-  await page.getByTestId('ticket-waiting-toggle').click();
+  // Ask him something. That is the whole price.
+  await page.getByTestId('ticket-open-chat').click();
+  await expect(page.getByTestId('chat-heading')).toHaveText('Gary Poole');
+  await page
+    .getByTestId('chat-options')
+    .getByRole('button', { name: /when he last logged in/ })
+    .click();
+  await expect(page.getByTestId('chat-outcome')).toContainText(
+    'Logged as asked',
+  );
+
+  await focusWindow(page, 'tickets');
+  await expect(toggle).toBeEnabled();
+  await toggle.click();
   await expect(page.getByTestId('ticket-detail-state')).toContainText(
     'Waiting on user',
   );
-  await expect(page.getByTestId('ticket-waiting-toggle')).toContainText(
-    'Take it back off the user',
-  );
+  await expect(toggle).toContainText('Take it back off the user');
 
   // Parked, the deadline itself moves out - the SLA is being bought back a
   // minute at a time, which is exactly the CYA mechanic.
   await expect(due).not.toHaveText(firstDue, { timeout: 10_000 });
 
-  await page.getByTestId('ticket-waiting-toggle').click();
+  await toggle.click();
   await expect(page.getByTestId('ticket-detail-state')).toContainText('Open');
 });
 

@@ -21,6 +21,12 @@ export const HELPDESK_ACTIONS = {
   ticketClearWaiting: 'ticket.clear_waiting',
   ticketEscalate: 'ticket.escalate',
   /**
+   * The CYA rule made mechanical: the reporter has actually been asked about
+   * their problem, so the SLA may honestly be stopped on them. Nothing else
+   * can set it, and `ticket.set_waiting` refuses without it.
+   */
+  ticketMarkAsked: 'ticket.mark_asked',
+  /**
    * What the reporter just let slip, written onto the ticket. Chat reveals go
    * through here rather than through a back door into the graph: a clue is a
    * world mutation like any other, so it is an action like any other.

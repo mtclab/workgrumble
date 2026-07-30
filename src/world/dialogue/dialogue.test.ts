@@ -7,11 +7,13 @@ import { createWorldSession } from '../session';
 import { findWorldTicket, WORLD_TICKETS } from '../tickets';
 import {
   applyDialogueEffect,
+  applyDialogueEffects,
   type DialogueEffectResult,
   dialogueForSpeaker,
   dialogueNode,
   dialogueRoot,
   findDialogueTree,
+  isAskEffect,
   isRevealEffect,
   validateDialogueTrees,
   WORLD_DIALOGUE,
@@ -75,7 +77,9 @@ describe('dialogue content gate', () => {
             options: [
               {
                 label: 'Fix it by magic',
-                effect: { action: 'magic.fix_everything', target: 'machine:a' },
+                effects: [
+                  { action: 'magic.fix_everything', target: 'machine:a' },
+                ],
               },
             ],
           },
@@ -91,7 +95,7 @@ describe('dialogue content gate', () => {
           {
             id: 'start',
             npc_line: 'It is broken.',
-            options: [{ label: 'Ask', effect: { reveal: CLUE } }],
+            options: [{ label: 'Ask', effects: [{ reveal: CLUE }] }],
           },
         ],
       }),
@@ -213,6 +217,58 @@ describe('dialogue effect dispatcher', () => {
     expect(result.ok ? '' : result.reason)
       .toContain('nowhere to write that down');
   });
+
+  it('turns asking into the mark action aimed at the conversation ticket', () => {
+    const seen: string[] = [];
+    applyDialogueEffect({ asks: true }, {
+      ticket: 'ticket:rotated-screen',
+      dispatch: (action, target): DialogueEffectResult => {
+        seen.push(`${action}|${target}`);
+        return { ok: true };
+      },
+    });
+
+    expect(seen).toEqual(['ticket.mark_asked|ticket:rotated-screen']);
+  });
+
+  it('refuses to log a question that has no ticket behind it', () => {
+    const result = applyDialogueEffect({ asks: true }, {
+      dispatch: (): DialogueEffectResult => ({ ok: true }),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.ok ? '' : result.reason)
+      .toContain('no clock this question could ever stop');
+  });
+
+  /**
+   * Every effect on an option runs, in order, even after one is refused: the
+   * right question asked twice still counts as asking, and only the clue is
+   * the repeat.
+   */
+  it('runs every effect an option carries and keeps the first refusal', () => {
+    const seen: string[] = [];
+    const outcome = applyDialogueEffects(
+      [{ asks: true }, { reveal: CLUE }, { asks: true }],
+      {
+        ticket: 'ticket:rotated-screen',
+        dispatch: (action): DialogueEffectResult => {
+          seen.push(action);
+          return action === HELPDESK_ACTIONS.ticketAddClue
+            ? { ok: false, reason: 'Already written on the ticket.' }
+            : { ok: true };
+        },
+      },
+    );
+
+    expect(seen).toEqual([
+      HELPDESK_ACTIONS.ticketMarkAsked,
+      HELPDESK_ACTIONS.ticketAddClue,
+      HELPDESK_ACTIONS.ticketMarkAsked,
+    ]);
+    expect(outcome.done).toEqual([{ asks: true }, { asks: true }]);
+    expect(outcome.refusal).toBe('Already written on the ticket.');
+  });
 });
 
 describe('shipped conversations', () => {
@@ -238,14 +294,52 @@ describe('shipped conversations', () => {
       const found = findDialogueTree(entry.dialogue_ref);
       const reveals = new Set(
         (found?.nodes ?? []).flatMap((node) => node.options
-          .map((option) => option.effect)
-          .filter((effect) => effect !== undefined && isRevealEffect(effect))
-          .map((effect) => isRevealEffect(effect) ? effect.reveal : '')),
+          .flatMap((option) => option.effects ?? [])
+          .filter(isRevealEffect)
+          .map((effect) => effect.reveal)),
       );
 
       expect(reveals.size, `${entry.def.id} reveals one cause`).toBe(1);
       expect(found?.resolved_root).toBeDefined();
     }
+  });
+
+  /**
+   * The other half of the CYA gate. `ticket.set_waiting` refuses until the
+   * reporter has been asked something, so a reporter with no `asks` option in
+   * their tree is a ticket the player can NEVER legitimately park - a dead
+   * end built out of two rules that each look fine alone.
+   */
+  it('gives every reporter a question that counts as having asked', () => {
+    for (const entry of WORLD_TICKETS) {
+      if (entry.def.reporter === COMPANY_IDS.player) {
+        continue;
+      }
+
+      const found = findDialogueTree(entry.dialogue_ref);
+      const asks = (found?.nodes ?? []).flatMap(
+        (node) => node.options.flatMap((option) => option.effects ?? []),
+      ).filter(isAskEffect);
+
+      expect(asks.length, `${entry.def.id} can be asked something`)
+        .toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * You cannot ask yourself a question and call the SLA stopped. The ticket
+   * the player filed about their own desk carries no `asks` anywhere, which
+   * is what keeps the CYA rule from being self-service.
+   */
+  it('refuses to let the player ask themselves anything', () => {
+    const self = findDialogueTree('dialogue/fan-noise');
+
+    expect(self?.speaker).toBe(COMPANY_IDS.player);
+    expect(
+      (self?.nodes ?? []).flatMap(
+        (node) => node.options.flatMap((option) => option.effects ?? []),
+      ).filter(isAskEffect),
+    ).toEqual([]);
   });
 
   it('opens on the reaction once the ticket is closed', () => {
@@ -288,8 +382,8 @@ describe('asking the right question', () => {
 
     const reveal = conversation.nodes
       .flatMap((node) => node.options)
-      .map((option) => option.effect)
-      .find((effect) => effect !== undefined && isRevealEffect(effect));
+      .flatMap((option) => option.effects ?? [])
+      .find(isRevealEffect);
     expect(reveal).toBeDefined();
 
     if (reveal === undefined) {

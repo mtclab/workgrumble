@@ -1,6 +1,10 @@
 import type { ReadOnlyGraphNode } from '../../engine/graph-view';
 import { isTicketState, type TicketState } from '../../engine/schema';
-import { clueLines, HELPDESK_ACTIONS } from '../../world/actions';
+import {
+  clueLines,
+  HELPDESK_ACTIONS,
+  WAITING_NEEDS_QUESTION_REASON,
+} from '../../world/actions';
 import { FIELDS } from '../../world/fields';
 import {
   allowsEscalation,
@@ -244,7 +248,11 @@ export const TICKETS_APP: AppDef = {
           ? 'This ticket is closed. The clock has nothing left to stop.'
           : state === 'breached'
             ? 'The SLA has already run out. Parking it now fools nobody.'
-            : null,
+            // The CYA rule, said before the click and in the same words the
+            // engine would refuse it with. Message the reporter first.
+            : !waiting && node.fields[FIELDS.questionAsked] !== true
+              ? WAITING_NEEDS_QUESTION_REASON
+              : null,
       );
       waitingButton.addEventListener('click', () => {
         dispatchOn(

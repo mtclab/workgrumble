@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   completeLogin,
   dragBy,
+  focusWindow,
   openFromDesktopIcon,
   openFromStartMenu,
 } from './helpers';
@@ -87,6 +88,15 @@ test('completes a full session with no console errors and no runtime requests', 
   await openFromStartMenu(page, 'tickets');
   await page.getByTestId('ticket-row-locked-account').click();
   await expect(page.getByTestId('ticket-detail-title')).toBeVisible();
+  // The clock only stops on a user who was actually asked something, so the
+  // journey buys the right to park it before parking it.
+  await expect(page.getByTestId('ticket-waiting-toggle')).toBeDisabled();
+  await page.getByTestId('ticket-open-chat').click();
+  await page
+    .getByTestId('chat-options')
+    .getByRole('button', { name: /when he last logged in/ })
+    .click();
+  await focusWindow(page, 'tickets');
   await page.getByTestId('ticket-waiting-toggle').click();
   await expect(page.getByTestId('ticket-detail-state')).toContainText(
     'Waiting on user',

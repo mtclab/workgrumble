@@ -39,6 +39,12 @@ export const FIELDS = {
   spawnedAt: 'spawned_at',
   breached: 'breached',
   escalated: 'escalated',
+  /**
+   * Whether the reporter has actually been asked about their problem. The CYA
+   * rule (DESIGN_POC section 7): the SLA only pauses if the question was put
+   * to them, so parking a ticket needs this to be true.
+   */
+  questionAsked: 'question_asked',
   /** Clue lines revealed in chat, appended by the dialogue layer (lane B). */
   clues: 'clues',
 } as const;

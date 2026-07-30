@@ -31,6 +31,16 @@ export interface TicketPolicy {
 
 const CLOSED_REASON = 'That ticket is already closed. Let it rest.';
 
+/**
+ * The CYA rule, in the words the player reads. Exported because the Tickets
+ * app disables its own toggle with the SAME sentence: a button that greys out
+ * for one reason while the engine refuses for another is two rules pretending
+ * to be one.
+ */
+export const WAITING_NEEDS_QUESTION_REASON = 'You have not actually asked '
+  + 'them anything yet. Stopping their clock on a question nobody put to them '
+  + 'is the kind of thing that gets read back to you at a review.';
+
 export function createTicketActions(
   policy: Readonly<TicketPolicy>,
 ): readonly ActionDef[] {
@@ -61,10 +71,43 @@ export function createTicketActions(
             + 'stopped as it is going to get.';
         }
 
+        // The CYA rule: an SLA pauses because the reporter was asked something
+        // and has not answered, never because the queue looked frightening.
+        if (field(resolved.node, FIELDS.questionAsked) !== true) {
+          return WAITING_NEEDS_QUESTION_REASON;
+        }
+
         return null;
       },
       apply: (context) => {
         policy.tickets.setWaiting(requireTargetId(context.target), true);
+      },
+    },
+    {
+      id: HELPDESK_ACTIONS.ticketMarkAsked,
+      tier: HELPDESK_TIER,
+      validate: (context) => {
+        const resolved = resolveTarget(context, 'ticket');
+
+        if (!resolved.ok) {
+          return resolved.reason;
+        }
+
+        if (field(resolved.node, FIELDS.state) === 'resolved') {
+          return 'That ticket is already closed. There is nothing left to ask '
+            + 'them about.';
+        }
+
+        // Deliberately no "you already asked" refusal: asking a second
+        // question is normal support, and the mark simply stays set.
+        return null;
+      },
+      apply: (context) => {
+        const target = requireTargetId(context.target);
+
+        if (context.graph.getField(target, FIELDS.questionAsked) !== true) {
+          context.graph.setField(target, FIELDS.questionAsked, true);
+        }
       },
     },
     {

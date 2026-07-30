@@ -69,6 +69,18 @@ export const ROTATED_SCREEN: WorldTicket = {
         },
       ],
     },
+    {
+      id: 'chat-walk-through',
+      app: 'chat',
+      label: 'Talk her through the shortcut herself, over chat',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.machineSetDisplayRotation,
+          target: COMPANY_IDS.adaMachine,
+          params: { rotation: 0 },
+        },
+      ],
+    },
   ],
 };
 

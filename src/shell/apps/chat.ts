@@ -1,11 +1,12 @@
 import type { ReadOnlyGraphNode } from '../../engine/graph-view';
 import {
-  applyDialogueEffect,
+  applyDialogueEffects,
   type DialogueOption,
   type DialogueTree,
   dialogueForSpeaker,
   dialogueNode,
   dialogueRoot,
+  isAskEffect,
   isRevealEffect,
 } from '../../world/dialogue';
 import { FIELDS } from '../../world/fields';
@@ -161,27 +162,40 @@ export const CHAT_APP: AppDef = {
         });
       }
 
-      if (option.effect !== undefined) {
-        const result = applyDialogueEffect(option.effect, {
-          ticket: tree.ticket,
-          dispatch: (action, target, params) => api.dispatch(
-            action,
-            api.actor,
-            target,
-            params,
-          ),
-        });
+      const played = applyDialogueEffects(option.effects ?? [], {
+        ticket: tree.ticket,
+        dispatch: (action, target, params) => api.dispatch(
+          action,
+          api.actor,
+          target,
+          params,
+        ),
+      });
 
-        if (result.ok) {
-          outcome = isRevealEffect(option.effect)
-            ? `Written onto ${ticketTitle(tree.ticket ?? '')}.`
-            : 'Done, from here, while they were still talking.';
-        } else {
-          // The conversation carries on regardless: a refused effect is a
-          // thing that did not work, not a thing that ends the call.
-          refusal = result.reason;
-        }
+      // The conversation carries on regardless: a refused effect is a thing
+      // that did not work, not a thing that ends the call.
+      refusal = played.refusal;
+
+      const said: string[] = [];
+
+      if (played.done.some(isAskEffect)) {
+        said.push('Logged as asked, so the clock can honestly be stopped on '
+          + 'them.');
       }
+
+      if (played.done.some(isRevealEffect)) {
+        said.push(`Written onto ${ticketTitle(tree.ticket ?? '')}.`);
+      }
+
+      if (
+        played.done.some(
+          (effect) => !isAskEffect(effect) && !isRevealEffect(effect),
+        )
+      ) {
+        said.push('Done, from here, while they were still talking.');
+      }
+
+      outcome = said.length > 0 ? said.join(' ') : null;
 
       render();
     };
