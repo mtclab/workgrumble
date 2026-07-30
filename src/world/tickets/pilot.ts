@@ -150,8 +150,9 @@ export const LOCKED_ACCOUNT: WorldTicket = {
 };
 
 /**
- * Pilot ticket 3 - hidden_cause, two steps. Restarting the spooler is not
- * enough on its own: the backlog it choked on is still there afterwards.
+ * Pilot ticket 3 - hidden_cause, two steps IN ORDER. Queued jobs survive a
+ * restart on purpose, so starting the spooler before emptying the queue only
+ * hands it the job that jammed it. Clear first, then start.
  */
 export const WEDGED_SPOOLER: WorldTicket = {
   def: {
@@ -206,33 +207,33 @@ export const WEDGED_SPOOLER: WorldTicket = {
   dialogue_ref: 'dialogue/wedged-spooler',
   paths: [
     {
-      id: 'cmd-restart-and-clear',
+      id: 'cmd-clear-and-restart',
       app: 'cmd',
-      label: 'restart spooler, then clearqueue on the Hercules',
+      label: 'clearqueue on the Hercules, then restart spooler',
       steps: [
-        {
-          action: HELPDESK_ACTIONS.serviceRestart,
-          target: COMPANY_IDS.spooler,
-        },
         {
           action: HELPDESK_ACTIONS.printerClearQueue,
           target: COMPANY_IDS.printer,
+        },
+        {
+          action: HELPDESK_ACTIONS.serviceRestart,
+          target: COMPANY_IDS.spooler,
         },
       ],
     },
     {
       id: 'remote-services-panel',
       app: 'remote',
-      label: 'Restart it from the services panel on PRINT-01, then empty the '
-        + 'queue',
+      label: 'Empty the queue from the hardware panel on PRINT-01, then start '
+        + 'the spooler from its taskbar',
       steps: [
-        {
-          action: HELPDESK_ACTIONS.serviceRestart,
-          target: COMPANY_IDS.spooler,
-        },
         {
           action: HELPDESK_ACTIONS.printerClearQueue,
           target: COMPANY_IDS.printer,
+        },
+        {
+          action: HELPDESK_ACTIONS.serviceRestart,
+          target: COMPANY_IDS.spooler,
         },
       ],
     },

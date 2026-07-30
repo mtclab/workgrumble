@@ -360,6 +360,15 @@ export function seedCompanyWorld(graph: EntityGraph): void {
     kind: 'connected_to',
   });
 
+  // Which printer the spooler actually feeds. Written down rather than
+  // guessed from "whatever else is plugged into that box", because the VPN
+  // shares the same server and has nothing to do with anybody's backlog.
+  graph.addEdge({
+    from: COMPANY_IDS.spooler,
+    to: COMPANY_IDS.printer,
+    kind: 'connected_to',
+  });
+
   graph.addEdge({
     from: COMPANY_IDS.fan,
     to: COMPANY_IDS.playerMachine,

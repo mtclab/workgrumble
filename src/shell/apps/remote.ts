@@ -196,6 +196,17 @@ export const REMOTE_APP: AppDef = {
 
       for (const service of services) {
         const status = textValue(service.fields[FIELDS.status], 'unknown');
+        // Whatever this service feeds, and whether it is still backed up:
+        // starting it in front of a full queue only jams it again.
+        const backlog = api.graph
+          .neighbors(service.id, {
+            direction: 'out',
+            edgeKind: 'connected_to',
+          })
+          .find((device) => {
+            const queued = device.fields[FIELDS.queueLen];
+            return typeof queued === 'number' && queued > 0;
+          });
         const chip = element(
           'div',
           'remote-service',
@@ -220,15 +231,19 @@ export const REMOTE_APP: AppDef = {
             : status === SERVICE_STATUS.running
               ? 'This one is running. Restarting a healthy service in front '
                 + 'of the user is how a small ticket becomes a big one.'
-              : null,
+              : backlog !== undefined
+                ? `${String(backlog.fields[FIELDS.queueLen])} job(s) are `
+                  + 'still queued behind it. It will just choke on the same '
+                  + 'job again. Empty the queue first.'
+                : null,
         );
         restart.addEventListener('click', () => {
           run(
             HELPDESK_ACTIONS.serviceRestart,
             service.id,
             {},
-            `${textValue(service.fields[FIELDS.name], service.id)} restarted. `
-              + 'Whatever it choked on is still in the queue.',
+            `${textValue(service.fields[FIELDS.name], service.id)} started `
+              + 'again, with nothing left waiting to jam it.',
           );
         });
 

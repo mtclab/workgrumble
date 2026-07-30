@@ -11,9 +11,12 @@ test('opens the KB at the article the ticket names', async ({ page }) => {
   await expect(page.getByTestId('window-kb')).toBeVisible();
   await expect(page.getByTestId('kb-reference')).toHaveText('kb/print-spooler');
   await expect(page.getByTestId('kb-title')).toContainText('print spooler');
-  // The learner path: it says WHY the restart alone is not enough.
+  // The learner path: it says WHY the queue goes first, and in which order.
   await expect(page.getByTestId('kb-body')).toContainText(
-    'two steps, in this order',
+    'stop, clear, start',
+  );
+  await expect(page.getByTestId('kb-body')).toContainText(
+    'survive a restart on purpose',
   );
   await expect(page.getByTestId('kb-row-print-spooler')).toHaveAttribute(
     'data-selected',

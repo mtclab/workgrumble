@@ -119,6 +119,14 @@ describe('hardware that reports a status', () => {
   it('still restarts the software on the same estate', () => {
     const session = createWorldSession();
 
+    // The queue goes first, which is the spooler ticket's whole lesson.
+    session.registry.dispatch(
+      HELPDESK_ACTIONS.printerClearQueue,
+      COMPANY_IDS.player,
+      COMPANY_IDS.printer,
+      {},
+    );
+
     expect(
       session.registry.dispatch(
         HELPDESK_ACTIONS.serviceRestart,

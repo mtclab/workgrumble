@@ -486,7 +486,8 @@ export function executeCommand(
       [
         `Stopping ${labelOf(found.node)} ...`,
         `Starting ${labelOf(found.node)} ... service reports RUNNING.`,
-        'Whatever it choked on is still in the queue, though.',
+        'It came back in the one configuration anybody ever tested, with',
+        'nothing left waiting to jam it.',
       ],
     );
   }
@@ -510,7 +511,8 @@ export function executeCommand(
           typeof depth === 'number' ? String(depth) : 'all'
         } job(s) dropped.`,
         'They went wherever the odd socks go. Nobody will re-send more than',
-        'four of them.',
+        'four of them. The spooler can be started now that there is nothing',
+        'left for it to choke on.',
       ],
     );
   }

@@ -101,17 +101,24 @@ describe('support terminal commands', () => {
     expect(session.tickets.getState('ticket:rotated-screen')).toBe('resolved');
   });
 
-  it('needs both halves of the spooler fix, in the terminal too', () => {
+  it('needs both halves of the spooler fix, in the right order', () => {
     const session = createWorldSession();
     const api = apiFor(session);
 
     expect(run(api, 'services PRINT-01')).toContain('WEDGED');
     expect(run(api, 'queue hercules')).toContain('47 job(s) queued');
 
-    expect(run(api, 'restart spooler')).toContain('RUNNING');
+    // The wrong order is refused, not quietly accepted and half-useful.
+    expect(run(api, 'restart spooler'))
+      .toContain('It will just choke on the same job again.');
+    expect(session.graph.getField(COMPANY_IDS.spooler, 'status'))
+      .toBe('wedged');
+
+    // And clearing alone is not a fix either: the service is still wedged.
+    expect(run(api, 'clearqueue hercules')).toContain('47 job(s) dropped');
     expect(session.tickets.getState('ticket:wedged-spooler')).toBe('open');
 
-    expect(run(api, 'clearqueue hercules')).toContain('47 job(s) dropped');
+    expect(run(api, 'restart spooler')).toContain('RUNNING');
     expect(session.tickets.getState('ticket:wedged-spooler')).toBe('resolved');
   });
 

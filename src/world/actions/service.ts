@@ -40,6 +40,25 @@ export const SERVICE_ACTIONS: readonly ActionDef[] = [
           + 'one.';
       }
 
+      // Queued work survives a restart on purpose, so a service brought back
+      // in front of a full queue is handed the job that jammed it within
+      // seconds. Real order: empty the queue, then start the service.
+      const backlog = context.graph
+        .neighbors(resolved.node.id, {
+          direction: 'out',
+          edgeKind: 'connected_to',
+        })
+        .find((device) => {
+          const queued = device.fields[FIELDS.queueLen];
+          return typeof queued === 'number' && queued > 0;
+        });
+
+      if (backlog !== undefined) {
+        return `${String(backlog.fields[FIELDS.queueLen])} job(s) are still `
+          + `queued on "${describeNode(backlog)}". It will just choke on the `
+          + 'same job again. Empty the queue first, then start the service.';
+      }
+
       return null;
     },
     apply: (context) => {

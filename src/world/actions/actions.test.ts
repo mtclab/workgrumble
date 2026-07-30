@@ -158,6 +158,13 @@ function seedFixture(graph: EntityGraph): void {
     to: 'group:print-users',
     kind: 'member_of',
   });
+  // What the spooler feeds, so a restart can see the backlog it would be
+  // handed straight back.
+  graph.addEdge({
+    from: 'service:spooler',
+    to: 'device:printer',
+    kind: 'connected_to',
+  });
 }
 
 function createFixture(): Fixture {
@@ -373,12 +380,29 @@ describe('account.remove_from_group', () => {
 });
 
 describe('service.restart', () => {
-  it('brings a wedged service back to running', () => {
+  it('brings a wedged service back once its queue is empty', () => {
+    dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer');
     expect(
       dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:spooler'),
     ).toEqual({ ok: true });
     expect(fixture.graph.getField('service:spooler', FIELDS.status))
       .toBe('running');
+  });
+
+  /**
+   * Queued jobs are files on disk and outlive a restart on purpose, so a
+   * service started in front of its backlog is handed the job that jammed it.
+   * Teaching the wrong order in a game about learning the job is the bug.
+   */
+  it('refuses to start a service back into the queue that jammed it', () => {
+    const before = fixture.graph.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:spooler'),
+      'It will just choke on the same job again.',
+      before,
+    );
+    expect(fixture.graph.getField('service:spooler', FIELDS.status))
+      .toBe('wedged');
   });
 
   it('refuses to restart a healthy service', () => {

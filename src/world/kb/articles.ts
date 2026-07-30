@@ -52,8 +52,8 @@ export const KB_ARTICLES: readonly KbArticle[] = [
   },
   {
     id: 'kb/print-spooler',
-    title: 'The print spooler, and why restarting it is only half the job',
-    summary: 'Restart the service, then empty the queue it choked on.',
+    title: 'The print spooler, and why the queue goes first',
+    summary: 'Stop it, empty the queue it choked on, then start it again.',
     body: [
       'The spooler is the service that accepts print jobs, stores them on '
       + 'disk and feeds them to the printer one at a time. Printing is slow '
@@ -61,13 +61,15 @@ export const KB_ARTICLES: readonly KbArticle[] = [
       'When one malformed job jams the front of that queue, everything sent '
       + 'afterwards piles up behind it. The printer hums and flashes because '
       + 'it is still waiting for a job that will never make sense.',
-      'Restarting the spooler clears the service, but not the backlog: the '
-      + 'stored jobs survive a restart on purpose, so a crash does not eat '
-      + 'somebody\'s hundred-page report. Restart it and the same bad job '
-      + 'jams it again within seconds.',
-      'So it is two steps, in this order: restart the service, then empty '
-      + 'the queue. Remote Assist has both on the print server; the terminal '
-      + 'spells them "restart spooler" and "clearqueue <printer>".',
+      'Here is the part that catches people: the queued jobs are files on '
+      + 'disk, and they survive a restart on purpose, so a crash does not eat '
+      + 'somebody\'s hundred-page report. Start the service in front of that '
+      + 'backlog and it is handed the same bad job within seconds.',
+      'So the order is stop, clear, start - not start and hope. In this '
+      + 'building that comes out as two moves: empty the queue, then restart '
+      + 'the spooler. Remote Assist has both on the print server; the '
+      + 'terminal spells them "clearqueue <printer>" and "restart spooler". '
+      + 'Doing it the other way round is refused, and says why.',
       'Tell the reporter which jobs were dropped. Somebody always re-sends '
       + 'the same delivery note four times, and they deserve to know all '
       + 'four are gone.',

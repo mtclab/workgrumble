@@ -104,7 +104,7 @@ test('closes the rotated-screen ticket through the terminal', async ({
   ).toHaveAttribute('data-state', 'resolved');
 });
 
-test('needs both halves of the spooler fix before the ticket closes', async ({
+test('needs both halves of the spooler fix, in the honest order', async ({
   page,
 }) => {
   await logIn(page);
@@ -121,9 +121,18 @@ test('needs both halves of the spooler fix before the ticket closes', async ({
   await runCommand(page, 'queue hercules');
   await expect(page.getByTestId('cmd-output')).toContainText('47 job(s)');
 
-  // Step one on its own is not a fix: the backlog is still there.
+  // The wrong way round is refused outright: queued jobs outlive a restart,
+  // so a spooler started in front of them is handed the same bad job back.
   await runCommand(page, 'restart spooler');
-  await expect(page.getByTestId('cmd-output')).toContainText('RUNNING');
+  await expect(page.getByTestId('cmd-output')).toContainText(
+    'It will just choke on the same job again.',
+  );
+  await runCommand(page, 'services PRINT-01');
+  await expect(page.getByTestId('cmd-output')).toContainText('WEDGED');
+
+  // Step one on its own is not a fix either: the service is still wedged.
+  await runCommand(page, 'clearqueue hercules');
+  await expect(page.getByTestId('cmd-output')).toContainText('job(s) dropped');
   await focusWindow(page, 'tickets');
   await expect(row).toHaveAttribute('data-state', 'open');
   await expect(
@@ -132,8 +141,8 @@ test('needs both halves of the spooler fix before the ticket closes', async ({
 
   // Step two closes it.
   await focusWindow(page, 'cmd');
-  await runCommand(page, 'clearqueue hercules');
-  await expect(page.getByTestId('cmd-output')).toContainText('job(s) dropped');
+  await runCommand(page, 'restart spooler');
+  await expect(page.getByTestId('cmd-output')).toContainText('RUNNING');
   await expect(
     page.getByTestId('toast').filter({ hasText: 'Ticket resolved' }),
   ).toHaveCount(1);

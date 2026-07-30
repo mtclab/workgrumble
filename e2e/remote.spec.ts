@@ -123,23 +123,31 @@ test('closes the spooler ticket from the remote services taskbar', async ({
   await expect(vpnRestart).toBeDisabled();
   await expect(vpnRestart).toHaveAttribute('title', /running/);
 
-  // Half a fix is not a fix: the backlog outlives the restart.
-  await page.getByTestId('remote-restart-spooler').click();
-  await expect(spooler).toContainText('Running');
-  await expect(page.getByTestId('remote-queue-printer')).toHaveText(
-    '47 job(s) queued',
+  // And the wedged one refuses too, for the honest reason: 47 jobs are still
+  // waiting to jam it the moment it comes back.
+  const spoolerRestart = page.getByTestId('remote-restart-spooler');
+  await expect(spoolerRestart).toBeDisabled();
+  await expect(spoolerRestart).toHaveAttribute(
+    'title',
+    /choke on the same job again/,
   );
-  await expect(resolvedToast(page)).toHaveCount(0);
-  await focusWindow(page, 'tickets');
-  await expect(row).toHaveAttribute('data-state', 'open');
 
-  // The other half, from the hardware panel.
-  await focusWindow(page, 'remote');
+  // Queue first, from the hardware panel. That alone is still not a fix.
   await page.getByTestId('remote-clear-printer').click();
   await expect(page.getByTestId('remote-queue-printer')).toHaveText(
     '0 job(s) queued',
   );
   await expect(page.getByTestId('remote-clear-printer')).toBeDisabled();
+  await expect(spooler).toContainText('Not responding');
+  await expect(resolvedToast(page)).toHaveCount(0);
+  await focusWindow(page, 'tickets');
+  await expect(row).toHaveAttribute('data-state', 'open');
+
+  // Now the service can be started, and the ticket closes on the world.
+  await focusWindow(page, 'remote');
+  await expect(spoolerRestart).toBeEnabled();
+  await spoolerRestart.click();
+  await expect(spooler).toContainText('Running');
   await expect(resolvedToast(page)).toHaveCount(1);
 
   await focusWindow(page, 'tickets');
