@@ -8,6 +8,7 @@ DRAFT (overseer). Contract for builder once M2 closes. Context: `DESIGN_POC.md` 
 - Ticket drip: scheduler data per day (spawn tick -> ticket def), seeded; lunch window 12:00-12:30 flagged (boss never patrols, stress drain doubled - the safe-slack tutorial window).
 - Pause + speed toggle UI (taskbar): pause stops clock advance, speed x1/x2/x4 scales real-time->tick conversion ONLY (SimClock stays integer).
 - Save/load: versioned localStorage snapshot at day boundaries + manual save; snapshot = graph serialization + dispatch-log hash + player stats + day state. Load-time version check with migration stub. Window-local app state (chat transcripts, mail read, kb selection) moves into a shell-owned store that survives window close AND is included in the save.
+- **Dispatch-log checkpoint/drain policy belongs here.** The log is append-only and part of every save, so it grows for as long as a career does. M3 owns the answer: a checkpoint (world state at tick N) plus the log SINCE it, with replay defined against the checkpoint rather than tick 0, and a drain rule at day boundaries. Until then `core-rs` carries only a bounded guard - `actions::MAX_DISPATCH_LOG`, a hard refusal at 500k entries, unreachable in a session - so growth is bounded but not yet managed. Deleting that guard is part of landing this.
 
 ## 2. Meters (engine-side data, shell renders)
 
