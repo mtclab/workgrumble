@@ -19,13 +19,21 @@ test('reveals the hidden cause when the right question is asked', async ({
 }) => {
   await logIn(page);
   await openFromStartMenu(page, 'tickets');
+
+  // "Message reporter" opens the conversation with THIS ticket's reporter,
+  // and re-aims a chat window that is already open on somebody else.
+  await page.getByTestId('ticket-row-locked-account').click();
+  await page.getByTestId('ticket-open-chat').click();
+  await expect(page.getByTestId('window-chat')).toBeVisible();
+  await expect(page.getByTestId('chat-heading')).toHaveText('Gary Poole');
+
+  await focusWindow(page, 'tickets');
   await page.getByTestId('ticket-row-rotated-screen').click();
 
   // Nothing has been learned yet, so there is nothing on the ticket.
   await expect(page.getByTestId('ticket-clues')).toHaveCount(0);
 
   await page.getByTestId('ticket-open-chat').click();
-  await expect(page.getByTestId('window-chat')).toBeVisible();
   await expect(page.getByTestId('chat-heading')).toHaveText('Ada Whitlock');
 
   const transcript = page.getByTestId('chat-transcript');

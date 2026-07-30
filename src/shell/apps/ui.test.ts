@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { personKey } from './chat';
 import { accountKey } from './directory';
+import { machineKey } from './remote';
 import { ticketKey } from './tickets';
 import { formatDuration, textValue } from './ui';
 
@@ -27,5 +29,9 @@ describe('app formatting helpers', () => {
     expect(ticketKey('locked-account')).toBe('locked-account');
     expect(accountKey('account:gary')).toBe('gary');
     expect(accountKey('gary')).toBe('gary');
+    expect(personKey('person:ada')).toBe('ada');
+    expect(personKey('ada')).toBe('ada');
+    expect(machineKey('machine:print')).toBe('print');
+    expect(machineKey('print')).toBe('print');
   });
 });

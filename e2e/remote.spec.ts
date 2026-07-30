@@ -21,14 +21,19 @@ test('closes the rotated-screen ticket from inside Remote Assist', async ({
   page,
 }) => {
   await logIn(page);
-  await openFromStartMenu(page, 'tickets');
 
+  // Park Remote Assist on somebody else's box first, so the ticket link has
+  // to actually re-aim it rather than landing on whatever was already shown.
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-print').click();
+  await expect(page.getByTestId('remote-hostname')).toHaveText('PRINT-01');
+
+  await openFromStartMenu(page, 'tickets');
   const row = page.getByTestId('ticket-row-rotated-screen');
   await row.click();
   await expect(page.getByTestId('ticket-detail-title')).toContainText('hacked');
 
-  // The ticket detail opens Remote Assist ON the reporter's machine, not on
-  // whatever the app happened to be showing last.
+  // The ticket detail opens Remote Assist ON the reporter's machine.
   await page.getByTestId('ticket-open-remote').click();
   await expect(page.getByTestId('window-remote')).toBeVisible();
   await expect(page.getByTestId('remote-hostname')).toHaveText('SALES-02');
