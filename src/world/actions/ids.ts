@@ -1,0 +1,30 @@
+/**
+ * Every verb the helpdesk tier can perform. UI buttons, terminal commands and
+ * (from lane B) chat dialogue effects all name actions from this list - two
+ * skins, one verb set, and nothing reaches the world any other way.
+ */
+export const HELPDESK_ACTIONS = {
+  accountUnlock: 'account.unlock',
+  accountResetPassword: 'account.reset_password',
+  accountAddToGroup: 'account.add_to_group',
+  accountRemoveFromGroup: 'account.remove_from_group',
+  serviceRestart: 'service.restart',
+  machineSetDisplayRotation: 'machine.set_display_rotation',
+  machineSetResolution: 'machine.set_resolution',
+  machineReboot: 'machine.reboot',
+  devicePowerCycle: 'device.power_cycle',
+  deviceReplaceBattery: 'device.replace_battery',
+  mailRuleDelete: 'mail_rule.delete',
+  shareGrantAccess: 'share.grant_access',
+  printerClearQueue: 'printer.clear_queue',
+  ticketSetWaiting: 'ticket.set_waiting',
+  ticketClearWaiting: 'ticket.clear_waiting',
+  ticketEscalate: 'ticket.escalate',
+} as const;
+
+export type HelpdeskActionId =
+  (typeof HELPDESK_ACTIONS)[keyof typeof HELPDESK_ACTIONS];
+
+export const HELPDESK_ACTION_IDS: readonly HelpdeskActionId[] = Object.freeze(
+  Object.values(HELPDESK_ACTIONS),
+);
