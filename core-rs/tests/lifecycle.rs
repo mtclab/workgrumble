@@ -69,7 +69,7 @@ fn ticket_events(world: &mut World) -> Vec<String> {
             EngineEvent::TicketSpawned(id) => Some(format!("spawned:{id}")),
             EngineEvent::TicketResolved(id) => Some(format!("resolved:{id}")),
             EngineEvent::TicketBreached(id) => Some(format!("breached:{id}")),
-            EngineEvent::GraphMutated(_) => None,
+            EngineEvent::GraphMutated(_) | EngineEvent::WorldRestored { .. } => None,
         })
         .collect()
 }

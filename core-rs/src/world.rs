@@ -16,6 +16,7 @@ use crate::clock::SimClock;
 use crate::error::{EngineError, EngineResult};
 use crate::events::{EngineEvent, GraphMutation};
 use crate::graph::EntityGraph;
+use crate::num::MAX_SAFE_INT;
 use crate::ops::{
     evaluate_pred, field_lines, render_template, EvalContext, FieldName, NodeRef, Op, Params, Pred,
     ValueExpr,
@@ -35,6 +36,27 @@ pub struct World {
     events: Vec<EngineEvent>,
 }
 
+/// Everything an operation can change, kept aside so a failure can put it back.
+///
+/// An action is one thing the player did, so it either happened or it did not:
+/// a second op refusing after the first resolved a ticket and rolled the dice
+/// used to leave `{ ok: false }` on top of a world that had moved. The graph
+/// and the ticket records are cloned outright - the graph is dozens of nodes,
+/// not a database - while the log and the event stream are append-only, so a
+/// length is a complete undo record for them.
+///
+/// The registry's verb set is deliberately absent: nothing that runs inside a
+/// transaction registers an action or changes tier, and `register_actions`
+/// buys its atomicity by checking every definition BEFORE installing any.
+struct Checkpoint {
+    graph: EntityGraph,
+    tickets: TicketEngine,
+    rng: Rng,
+    clock: SimClock,
+    log_len: usize,
+    events_len: usize,
+}
+
 impl World {
     pub fn new(seed: u32) -> Self {
         Self {
@@ -51,6 +73,52 @@ impl World {
     /// one ordered stream instead of a callback per mutation.
     pub fn drain_events(&mut self) -> Vec<EngineEvent> {
         std::mem::take(&mut self.events)
+    }
+
+    /// Announces something the world itself did not cause - a restore. Every
+    /// other event comes from a mutation and is pushed where it happens.
+    pub fn push_event(&mut self, event: EngineEvent) {
+        self.events.push(event);
+    }
+
+    // -- atomicity ---------------------------------------------------------
+
+    fn checkpoint(&self) -> Checkpoint {
+        Checkpoint {
+            graph: self.graph.clone(),
+            tickets: self.tickets.clone(),
+            rng: self.rng.clone(),
+            clock: self.clock.clone(),
+            log_len: self.registry.log().len(),
+            events_len: self.events.len(),
+        }
+    }
+
+    fn rollback(&mut self, checkpoint: Checkpoint) {
+        self.graph = checkpoint.graph;
+        self.tickets = checkpoint.tickets;
+        self.rng = checkpoint.rng;
+        self.clock = checkpoint.clock;
+        self.registry.truncate_log(checkpoint.log_len);
+        self.events.truncate(checkpoint.events_len);
+    }
+
+    /// Runs `body` all the way or not at all. A refusal leaves the world, the
+    /// rng stream, the clock, the log and the event stream exactly as they were
+    /// when the call started.
+    fn transact<Value>(
+        &mut self,
+        body: impl FnOnce(&mut Self) -> EngineResult<Value>,
+    ) -> EngineResult<Value> {
+        let checkpoint = self.checkpoint();
+
+        match body(self) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.rollback(checkpoint);
+                Err(error)
+            }
+        }
     }
 
     // -- mutations ---------------------------------------------------------
@@ -103,12 +171,17 @@ impl World {
             .ok_or_else(|| EngineError::new("Setup must be an array of mutations."))?;
         let parsed: EngineResult<Vec<SetupMutation>> =
             ops.iter().map(SetupMutation::parse).collect();
+        let parsed = parsed?;
 
-        for mutation in parsed? {
-            self.apply_setup_mutation(&mutation)?;
-        }
+        // Half a seeded world is not a world. The eighth mutation refusing
+        // must not leave the first seven standing.
+        self.transact(|world| {
+            for mutation in &parsed {
+                world.apply_setup_mutation(mutation)?;
+            }
 
-        Ok(())
+            Ok(())
+        })
     }
 
     fn apply_setup_mutation(&mut self, mutation: &SetupMutation) -> EngineResult<()> {
@@ -139,23 +212,48 @@ impl World {
             _ => return refuse!("Action payload must be an array or an object."),
         };
 
-        if let Some(Json::Object(labels)) = labels {
-            for (kind, label) in labels {
-                let label = label
-                    .as_str()
-                    .ok_or_else(|| EngineError::new("Kind labels must be strings."))?;
-                self.registry
-                    .kind_labels
-                    .insert(kind.clone(), label.to_owned());
+        // Read every label before writing any, for the same reason the
+        // definitions are all parsed first: a payload is one payload.
+        let labels = match labels {
+            None | Some(Json::Null) => BTreeMap::new(),
+            Some(Json::Object(labels)) => {
+                let mut parsed = BTreeMap::new();
+
+                for (kind, label) in labels {
+                    let label = label
+                        .as_str()
+                        .ok_or_else(|| EngineError::new("Kind labels must be strings."))?;
+                    parsed.insert(kind.clone(), label.to_owned());
+                }
+
+                parsed
             }
-        }
+            Some(_) => return refuse!("Action payload \"kind_labels\" must be an object."),
+        };
 
         // Parse them all before registering any: a payload with one bad
         // definition in it must not leave half a verb set installed.
         let parsed: EngineResult<Vec<ActionDef>> =
             definitions.iter().map(ActionDef::parse).collect();
+        let parsed = parsed?;
+        let mut seen: Vec<&str> = Vec::new();
 
-        for definition in parsed? {
+        for definition in &parsed {
+            self.registry.can_register(&definition.id)?;
+
+            if seen.contains(&definition.id.as_str()) {
+                let id = &definition.id;
+                return refuse!("Action \"{id}\" is registered twice in one payload.");
+            }
+
+            seen.push(&definition.id);
+        }
+
+        // Nothing below can fail, which is what makes the whole payload atomic
+        // without a checkpoint.
+        self.registry.kind_labels.extend(labels);
+
+        for definition in parsed {
             self.registry.register(definition)?;
         }
 
@@ -172,6 +270,17 @@ impl World {
         params: Params,
     ) -> DispatchResult {
         let tick = self.clock.now();
+
+        // The log is part of a save, so it cannot grow forever. Refusing here
+        // rather than logging the refusal is deliberate: a full log has no room
+        // for the sentence explaining that it is full. See `MAX_DISPATCH_LOG`.
+        if self.registry.log_is_full() {
+            return DispatchResult::Refused(
+                "The dispatch log is full. This session has recorded as much as the engine will \
+                 hold; save and start a fresh one."
+                    .to_owned(),
+            );
+        }
 
         let Some(definition) = self.registry.get(id).cloned() else {
             return self.reject(
@@ -200,10 +309,13 @@ impl World {
             return self.reject(tick, id, actor, target, params, reason);
         }
 
-        if let Err(error) = self.apply_ops(&definition.apply, actor, target, &params) {
-            // Validation passed and the ops still could not run: that is a
-            // broken definition, not a player mistake. It is still a refusal
-            // rather than a crash, and it is logged as one.
+        // Every op or none. Validation passing and the ops still not running is
+        // a broken definition rather than a player mistake, and the world it
+        // half-changed on the way out is the worst of both: a refusal the
+        // player reads and a mutation they did not ask for.
+        if let Err(error) =
+            self.transact(|world| world.apply_ops(&definition.apply, actor, target, &params))
+        {
             return self.reject(tick, id, actor, target, params, error.into_message());
         }
 
@@ -455,15 +567,19 @@ impl World {
     // -- clock -------------------------------------------------------------
 
     pub fn advance(&mut self, ticks: i64) -> EngineResult<()> {
-        for _ in 0..ticks {
-            if !self.clock.step() {
-                break;
+        // A refused advance is an advance that did not happen: a caller told
+        // that time did not move must not find that some of it did.
+        self.transact(|world| {
+            for _ in 0..ticks {
+                if !world.clock.step() {
+                    break;
+                }
+
+                world.handle_tick()?;
             }
 
-            self.handle_tick()?;
-        }
-
-        Ok(())
+            Ok(())
+        })
     }
 
     /// A parked ticket's deadline moves with the clock: time spent waiting on
@@ -486,9 +602,15 @@ impl World {
                     EngineError::new(format!("Ticket \"{id}\" has an invalid SLA deadline."))
                 })?;
 
+            let Some(extended) = deadline
+                .checked_add(1)
+                .filter(|deadline| *deadline <= MAX_SAFE_INT)
+            else {
+                return refuse!("Ticket \"{id}\" cannot have its SLA extended any further.");
+            };
+
             self.updating(&id, true);
-            let result =
-                self.set_field(&id, "sla_deadline", FieldValue::Num((deadline + 1) as f64));
+            let result = self.set_field(&id, "sla_deadline", FieldValue::Num(extended as f64));
             self.updating(&id, false);
             result?;
         }
@@ -500,6 +622,13 @@ impl World {
 
     pub fn spawn_ticket(&mut self, value: &Json) -> EngineResult<()> {
         let definition = TicketDef::parse(value)?;
+
+        // A spawn runs the ticket's own setup mutations before it knows whether
+        // the ticket can exist, so it is a transaction like any other.
+        self.transact(|world| world.spawn_parsed_ticket(definition))
+    }
+
+    fn spawn_parsed_ticket(&mut self, definition: TicketDef) -> EngineResult<()> {
         let id = definition.id.clone();
 
         if self.tickets.records.contains_key(&id) || self.graph.get_node(&id).is_some() {
@@ -510,11 +639,14 @@ impl World {
             return refuse!("Ticket setup must not create the ticket node itself.");
         }
 
-        let deadline = self.clock.now() + definition.sla_ticks;
-
-        if deadline > 9_007_199_254_740_991 {
+        let Some(deadline) = self
+            .clock
+            .now()
+            .checked_add(definition.sla_ticks)
+            .filter(|deadline| *deadline <= MAX_SAFE_INT)
+        else {
             return refuse!("Ticket SLA deadline exceeds the safe tick range.");
-        }
+        };
 
         let reporter = definition.reporter.clone();
         let reporter_will_exist =

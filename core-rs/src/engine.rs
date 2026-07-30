@@ -13,8 +13,11 @@ use crate::actions::{parse_params, DispatchLogEntry};
 use crate::assertions::evaluate_json;
 use crate::clock::SimClock;
 use crate::error::{EngineError, EngineResult};
-use crate::events::events_to_json;
+use crate::events::{events_to_json, EngineEvent};
 use crate::graph::{node_to_json, Direction};
+use crate::num::{is_safe_int, safe_int_at_least, safe_u32};
+use crate::ops::Params;
+use crate::refuse;
 use crate::rng::Rng;
 use crate::schema::{validate_edge, validate_node};
 use crate::value::FieldValue;
@@ -28,6 +31,53 @@ pub struct Engine {
 fn parse_json(payload: &str) -> EngineResult<Json> {
     serde_json::from_str(payload)
         .map_err(|error| EngineError::new(format!("Payload is not valid JSON: {error}")))
+}
+
+/// A key that has to be a string when it is there at all.
+///
+/// Absent, `null` and "the wrong type entirely" are three different things and
+/// only the first two mean "not given". Reading `target: 42` as "no target" is
+/// what let an aimed action run aimlessly - and a fixed-target action mutate
+/// anyway - on a request that was plainly a mistake.
+fn optional_str<'a>(request: &'a Json, key: &str, what: &str) -> EngineResult<Option<&'a str>> {
+    match request.get(key) {
+        None | Some(Json::Null) => Ok(None),
+        Some(Json::String(text)) => Ok(Some(text)),
+        Some(_) => refuse!("{what}"),
+    }
+}
+
+fn required_str<'a>(request: &'a Json, key: &str, what: &str) -> EngineResult<&'a str> {
+    optional_str(request, key, what)?.ok_or_else(|| EngineError::new(what))
+}
+
+/// A dispatch, read strictly: nothing here defaults, everything refuses.
+struct DispatchRequest {
+    action: String,
+    actor: String,
+    target: Option<String>,
+    params: Params,
+}
+
+impl DispatchRequest {
+    fn parse(request: &Json) -> EngineResult<Self> {
+        if !request.is_object() {
+            return refuse!("Dispatch must be an object.");
+        }
+
+        Ok(Self {
+            action: required_str(request, "action", "Dispatch needs an \"action\" id.")?.to_owned(),
+            actor: required_str(request, "actor", "Dispatch needs an \"actor\" node id.")?
+                .to_owned(),
+            target: optional_str(
+                request,
+                "target",
+                "Dispatch \"target\" must be a node id or null.",
+            )?
+            .map(str::to_owned),
+            params: parse_params(request.get("params"))?,
+        })
+    }
 }
 
 fn ok_with_events(world: &mut World) -> String {
@@ -53,11 +103,22 @@ fn value_refusal(reason: &str) -> String {
 
 #[wasm_bindgen]
 impl Engine {
+    /// Builds an engine on a seed.
+    ///
+    /// The seed arrives as a `Number`, so it is taken as one and checked here
+    /// rather than declared `u32` and left to the glue: wasm-bindgen coerces,
+    /// and coercion turns `Infinity` into 0, `1.5` into 1 and `2^32` into 0.
+    /// A world seeded by one of those is a world nobody asked for, replayed
+    /// against a save that says something else.
     #[wasm_bindgen(constructor)]
-    pub fn new(seed: u32) -> Self {
-        Self {
-            world: World::new(seed),
+    pub fn new(seed: f64) -> Result<Engine, String> {
+        if !is_safe_int(seed) || !(0.0..=f64::from(u32::MAX)).contains(&seed) {
+            return Err("Engine seed must be an integer between 0 and 4294967295.".to_owned());
         }
+
+        Ok(Self {
+            world: World::new(seed as u32),
+        })
     }
 
     /// Graph construction ops - how a world gets seeded.
@@ -78,24 +139,18 @@ impl Engine {
 
     /// `{ action, actor, target, params }` in, `{ ok, reason?, events }` out.
     pub fn dispatch(&mut self, payload: &str) -> String {
-        let request = match parse_json(payload) {
+        let request = match parse_json(payload).and_then(|request| DispatchRequest::parse(&request))
+        {
             Ok(request) => request,
             Err(error) => return refusal_with_events(&mut self.world, error.message()),
         };
 
-        let Some(action) = request.get("action").and_then(Json::as_str) else {
-            return refusal_with_events(&mut self.world, "Dispatch needs an \"action\" id.");
-        };
-        let Some(actor) = request.get("actor").and_then(Json::as_str) else {
-            return refusal_with_events(&mut self.world, "Dispatch needs an \"actor\" node id.");
-        };
-        let params = match parse_params(request.get("params")) {
-            Ok(params) => params,
-            Err(error) => return refusal_with_events(&mut self.world, error.message()),
-        };
-        let target = request.get("target").and_then(Json::as_str);
-
-        let result = self.world.dispatch(action, actor, target, params);
+        let result = self.world.dispatch(
+            &request.action,
+            &request.actor,
+            request.target.as_deref(),
+            request.params,
+        );
         let events = events_to_json(&self.world.drain_events());
         let mut answer = result.to_json();
 
@@ -113,27 +168,38 @@ impl Engine {
         }
     }
 
-    pub fn set_waiting(&mut self, id: &str, waiting: bool) -> String {
-        match self.world.set_waiting(id, waiting) {
+    // There is deliberately no `set_waiting` here. Parking a ticket's SLA is a
+    // MECHANIC, not a setter: it costs a question actually put to the reporter
+    // (`ticket.mark_asked`), and the whole CYA rule lives in the guards of the
+    // `ticket.set_waiting` / `ticket.clear_waiting` actions. An export that
+    // flipped the flag directly was a way around the rule the game is about.
+
+    pub fn set_tier(&mut self, tier: f64) -> String {
+        if !is_safe_int(tier) || tier < 0.0 {
+            return refusal_with_events(
+                &mut self.world,
+                "Action tier must be a non-negative safe integer.",
+            );
+        }
+
+        match self.world.registry.set_tier(tier as i64) {
             Ok(()) => ok_with_events(&mut self.world),
             Err(error) => refusal_with_events(&mut self.world, error.message()),
         }
     }
 
-    pub fn set_tier(&mut self, tier: i32) -> String {
-        match self.world.registry.set_tier(i64::from(tier)) {
-            Ok(()) => ok_with_events(&mut self.world),
-            Err(error) => refusal_with_events(&mut self.world, error.message()),
-        }
-    }
-
-    pub fn tier(&self) -> i32 {
-        self.world.registry.tier() as i32
+    pub fn tier(&self) -> f64 {
+        self.world.registry.tier() as f64
     }
 
     /// Advances whole ticks, returning everything that happened on the way.
     pub fn advance(&mut self, ticks: f64) -> String {
-        match SimClock::validate_advance(ticks).and_then(|ticks| self.world.advance(ticks)) {
+        match self
+            .world
+            .clock
+            .validate_advance(ticks)
+            .and_then(|ticks| self.world.advance(ticks))
+        {
             Ok(()) => ok_with_events(&mut self.world),
             Err(error) => refusal_with_events(&mut self.world, error.message()),
         }
@@ -161,19 +227,19 @@ impl Engine {
 
     /// Read-only questions about the world: `{ kind, ... }` in, a value out.
     pub fn query(&self, payload: &str) -> String {
-        let request = match parse_json(payload) {
-            Ok(request) => request,
-            Err(error) => return value_refusal(error.message()),
-        };
+        match self.answer_query(payload) {
+            Ok(answer) => answer,
+            Err(error) => value_refusal(error.message()),
+        }
+    }
 
-        let Some(kind) = request.get("kind").and_then(Json::as_str) else {
-            return value_refusal("Query needs a \"kind\".");
-        };
+    fn answer_query(&self, payload: &str) -> EngineResult<String> {
+        let request = parse_json(payload)?;
+        let kind = required_str(&request, "kind", "Query needs a \"kind\".")?;
+        let id = optional_str(&request, "id", "Query \"id\" must be a node id.")?;
+        let field = optional_str(&request, "field", "Query \"field\" must be a field name.")?;
 
-        let id = request.get("id").and_then(Json::as_str);
-        let field = request.get("field").and_then(Json::as_str);
-
-        match kind {
+        Ok(match kind {
             "get_node" => match id {
                 Some(id) => value_result(
                     self.world
@@ -192,7 +258,11 @@ impl Engine {
                 },
                 _ => value_refusal("get_field needs an \"id\" and a \"field\"."),
             },
-            "nodes_of_kind" => match request.get("node_kind").and_then(Json::as_str) {
+            "nodes_of_kind" => match optional_str(
+                &request,
+                "node_kind",
+                "Query \"node_kind\" must be a node kind.",
+            )? {
                 Some(node_kind) => value_result(Json::Array(
                     self.world
                         .graph
@@ -213,26 +283,25 @@ impl Engine {
             )),
             "neighbors" => {
                 let Some(id) = id else {
-                    return value_refusal("neighbors needs an \"id\".");
+                    return Ok(value_refusal("neighbors needs an \"id\"."));
                 };
-                let direction = match request
-                    .get("direction")
-                    .and_then(Json::as_str)
-                    .map(Direction::parse)
-                {
-                    Some(Ok(direction)) => direction,
-                    Some(Err(error)) => return value_refusal(error.message()),
-                    None => return value_refusal("neighbors needs a \"direction\"."),
-                };
+                let direction = Direction::parse(required_str(
+                    &request,
+                    "direction",
+                    "neighbors needs a \"direction\".",
+                )?)?;
+                // A wrongly typed edge kind used to read as "no filter", which
+                // answers a narrow question with every neighbour there is.
+                let edge_kind = optional_str(
+                    &request,
+                    "edge_kind",
+                    "Query \"edge_kind\" must be an edge kind.",
+                )?;
 
                 value_result(Json::Array(
                     self.world
                         .graph
-                        .neighbors(
-                            id,
-                            direction,
-                            request.get("edge_kind").and_then(Json::as_str),
-                        )
+                        .neighbors(id, direction, edge_kind)
                         .into_iter()
                         .map(node_to_json)
                         .collect(),
@@ -261,7 +330,7 @@ impl Engine {
             "action_ids" => value_result(json!(self.world.registry.ids())),
             "tier" => value_result(json!(self.world.registry.tier())),
             other => value_refusal(&format!("Query kind \"{other}\" is not known.")),
-        }
+        })
     }
 
     /// The save seam: everything needed to stand this engine up again.
@@ -326,21 +395,40 @@ impl Engine {
         &mut self.world
     }
 
+    /// Rebuilds this engine from a save, or refuses and stays exactly as it is.
+    ///
+    /// Everything here is required and everything is checked, including how the
+    /// parts agree with each other: a save is a claim about one coherent world,
+    /// and a restore that accepts a contradictory one produces a world the
+    /// engine's own rules say cannot exist - a ticket parked with its SLA
+    /// running, a record for a ticket that is not in the graph. Refusing costs
+    /// the player a load; accepting costs them a session that misbehaves later
+    /// for reasons nothing can explain.
     fn restore_state(&mut self, state: &Json) -> EngineResult<()> {
         let object = state
             .as_object()
             .ok_or_else(|| EngineError::new("Saved state must be an object."))?;
 
+        // Exact match, not "at least": a save from another engine version is a
+        // save whose meaning this code does not know, and guessing at it is how
+        // a forward-incompatible field becomes a silent default.
+        let version = object
+            .get("version")
+            .and_then(Json::as_str)
+            .ok_or_else(|| EngineError::new("Saved state needs a version."))?;
+
+        if version != crate::ENGINE_VERSION {
+            let current = crate::ENGINE_VERSION;
+            return refuse!("Saved state is version \"{version}\"; this engine is \"{current}\".");
+        }
+
         let seed = object
             .get("seed")
-            .and_then(Json::as_u64)
-            .ok_or_else(|| EngineError::new("Saved state needs a seed."))?
-            as u32;
-        let rng_state = object
-            .get("rng_state")
-            .and_then(Json::as_u64)
-            .ok_or_else(|| EngineError::new("Saved state needs an rng state."))?
-            as u32;
+            .and_then(safe_u32)
+            .ok_or_else(|| EngineError::new("Saved state needs a seed within the 32-bit range."))?;
+        let rng_state = object.get("rng_state").and_then(safe_u32).ok_or_else(|| {
+            EngineError::new("Saved state needs an rng state within the 32-bit range.")
+        })?;
 
         let clock = object
             .get("clock")
@@ -348,15 +436,19 @@ impl Engine {
             .ok_or_else(|| EngineError::new("Saved state needs a clock."))?;
         let tick = clock
             .get("tick")
-            .and_then(Json::as_i64)
-            .filter(|tick| *tick >= 0)
-            .ok_or_else(|| EngineError::new("Saved clock needs a non-negative tick."))?;
+            .and_then(|tick| safe_int_at_least(tick, 0))
+            .ok_or_else(|| {
+                EngineError::new("Saved clock needs a tick inside the safe integer range.")
+            })?;
         let speed = clock
             .get("speed")
             .and_then(Json::as_f64)
             .filter(|speed| speed.is_finite() && *speed > 0.0)
             .ok_or_else(|| EngineError::new("Saved clock needs a positive speed."))?;
-        let paused = clock.get("paused").and_then(Json::as_bool).unwrap_or(false);
+        let paused = clock
+            .get("paused")
+            .and_then(Json::as_bool)
+            .ok_or_else(|| EngineError::new("Saved clock needs a boolean paused flag."))?;
 
         let graph = object
             .get("graph")
@@ -377,8 +469,7 @@ impl Engine {
             .ok_or_else(|| EngineError::new("Saved state needs a registry."))?;
         let tier = registry
             .get("tier")
-            .and_then(Json::as_i64)
-            .filter(|tier| *tier >= 0)
+            .and_then(|tier| safe_int_at_least(tier, 0))
             .ok_or_else(|| EngineError::new("Saved registry needs a tier."))?;
         let log: EngineResult<Vec<DispatchLogEntry>> = registry
             .get("log")
@@ -392,11 +483,14 @@ impl Engine {
         let actions = registry
             .get("actions")
             .cloned()
-            .unwrap_or_else(|| Json::Array(Vec::new()));
+            .ok_or_else(|| EngineError::new("Saved registry needs its actions."))?;
         let labels = registry
             .get("kind_labels")
             .cloned()
-            .unwrap_or_else(|| Json::Object(serde_json::Map::new()));
+            .ok_or_else(|| EngineError::new("Saved registry needs its kind labels."))?;
+        let tickets = object
+            .get("tickets")
+            .ok_or_else(|| EngineError::new("Saved state needs tickets."))?;
 
         // Build the replacement world completely before touching this one: a
         // half-restored engine is worse than a refused restore.
@@ -404,6 +498,8 @@ impl Engine {
 
         for node in nodes {
             let node = validate_node(node)?;
+            // `add_node` refuses a duplicate, so a save naming one node twice
+            // cannot restore as whichever copy came last.
             world.graph.add_node(node)?;
         }
 
@@ -414,17 +510,70 @@ impl Engine {
 
         world.register_actions(&json!({ "kind_labels": labels, "actions": actions }))?;
         world.registry.set_tier(tier)?;
-        world.registry.restore_log(log);
-        world.tickets.restore(
-            object
-                .get("tickets")
-                .ok_or_else(|| EngineError::new("Saved state needs tickets."))?,
-        )?;
+        world.registry.restore_log(log)?;
+        world.tickets.restore(tickets)?;
+        check_ticket_coherence(&world)?;
         world.rng = Rng::from_parts(seed, rng_state);
         world.clock = SimClock::from_parts(tick, paused, speed);
         world.drain_events();
 
+        // The world the shell is looking at has just been replaced wholesale.
+        // Saying so is the difference between a load that repaints and a load
+        // that shows the previous session until something unrelated moves.
+        world.push_event(EngineEvent::WorldRestored { tick });
+
         self.world = world;
         Ok(())
     }
+}
+
+/// Whether the ticket records and the ticket nodes tell the same story.
+///
+/// The record holds the SLA bookkeeping and the node holds what the player
+/// reads; a save where they disagree is a save that restores a ticket the
+/// engine can never move - parked according to one half, running according to
+/// the other.
+fn check_ticket_coherence(world: &World) -> EngineResult<()> {
+    for (id, record) in &world.tickets.records {
+        let Some(node) = world.graph.get_node(id) else {
+            return refuse!("Saved ticket \"{id}\" has no ticket node in the graph.");
+        };
+
+        if node.kind != "ticket" {
+            let kind = &node.kind;
+            return refuse!("Saved ticket \"{id}\" is registered against a {kind} node.");
+        }
+
+        let breached = node
+            .fields
+            .get("breached")
+            .is_some_and(FieldValue::is_true);
+
+        if breached != record.breached {
+            return refuse!("Saved ticket \"{id}\" and its node disagree about the breach.");
+        }
+
+        let expected = if record.resolved {
+            "resolved"
+        } else if record.breached {
+            "breached"
+        } else if record.waiting {
+            "waiting_on_user"
+        } else {
+            "open"
+        };
+        let state = node
+            .fields
+            .get("state")
+            .and_then(FieldValue::as_str)
+            .unwrap_or_default();
+
+        if state != expected {
+            return refuse!(
+                "Saved ticket \"{id}\" is \"{state}\" in the graph and \"{expected}\" on its record."
+            );
+        }
+    }
+
+    Ok(())
 }

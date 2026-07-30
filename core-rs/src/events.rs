@@ -39,6 +39,12 @@ pub enum EngineEvent {
     TicketSpawned(String),
     TicketResolved(String),
     TicketBreached(String),
+    /// The whole world was replaced by a saved one. Nothing mutated its way
+    /// there, so no other event describes it, and anything showing the world
+    /// or the clock is looking at a previous session until it hears this.
+    WorldRestored {
+        tick: i64,
+    },
 }
 
 fn node_json(node: &Node) -> Json {
@@ -103,6 +109,7 @@ impl EngineEvent {
             Self::TicketSpawned(id) => json!({ "type": "ticket:spawned", "id": id }),
             Self::TicketResolved(id) => json!({ "type": "ticket:resolved", "id": id }),
             Self::TicketBreached(id) => json!({ "type": "ticket:breached", "id": id }),
+            Self::WorldRestored { tick } => json!({ "type": "world:restored", "tick": tick }),
         }
     }
 }

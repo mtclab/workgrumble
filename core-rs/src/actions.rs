@@ -10,9 +10,23 @@ use std::collections::BTreeMap;
 use serde_json::{json, Value as Json};
 
 use crate::error::{EngineError, EngineResult};
+use crate::num::{safe_int_at_least, MAX_SAFE_INT};
 use crate::ops::{Guard, Op, Params};
 use crate::refuse;
 use crate::value::FieldValue;
+
+/// The hard ceiling on the dispatch log.
+///
+/// The log is append-only and it is part of a save, so unbounded growth is a
+/// memory leak AND a save-size leak. Draining it properly - periodic
+/// checkpoints, a log that replays from the last one - is the M3 save system's
+/// job and is designed there, not invented here. This constant is only the
+/// backstop that keeps growth bounded in the meantime: at one dispatch per
+/// second it is over five days of continuous clicking, so no session reaches
+/// it, and a session that does gets a sentence rather than a dead tab.
+///
+/// See `docs/SPEC_M3.md` - the checkpoint/drain policy replaces this guard.
+pub const MAX_DISPATCH_LOG: usize = 500_000;
 
 #[derive(Clone, Debug)]
 pub struct ActionDef {
@@ -36,8 +50,7 @@ impl ActionDef {
             .ok_or_else(|| EngineError::new("Action id must be a non-empty string."))?;
         let tier = object
             .get("tier")
-            .and_then(Json::as_i64)
-            .filter(|tier| *tier >= 0)
+            .and_then(|tier| safe_int_at_least(tier, 0))
             .ok_or_else(|| EngineError::new("Action tier must be a non-negative safe integer."))?;
 
         let validate = match object.get("validate") {
@@ -50,6 +63,9 @@ impl ActionDef {
             None => Vec::new(),
         };
 
+        // `apply` may roll dice; a guard may not. Both start with nothing bound,
+        // because a binding only exists inside the `neighbor_where` that made
+        // it - see `ParseScope`.
         let apply = match object.get("apply") {
             Some(ops) => ops
                 .as_array()
@@ -116,11 +132,23 @@ impl DispatchLogEntry {
             .as_object()
             .ok_or_else(|| EngineError::new("Dispatch log entry must be an object."))?;
 
+        // A wrongly typed `target` used to read as "no target", which turns a
+        // replayed aimed action into an aimless one.
+        let target = match object.get("target") {
+            None | Some(Json::Null) => None,
+            Some(Json::String(target)) => Some(target.clone()),
+            Some(_) => {
+                return refuse!("Dispatch log entry target must be a node id or null.");
+            }
+        };
+
         Ok(Self {
             tick: object
                 .get("tick")
-                .and_then(Json::as_i64)
-                .ok_or_else(|| EngineError::new("Dispatch log entry needs a tick."))?,
+                .and_then(|tick| safe_int_at_least(tick, 0))
+                .ok_or_else(|| {
+                    EngineError::new("Dispatch log entry needs a non-negative safe integer tick.")
+                })?,
             id: object
                 .get("id")
                 .and_then(Json::as_str)
@@ -131,10 +159,7 @@ impl DispatchLogEntry {
                 .and_then(Json::as_str)
                 .ok_or_else(|| EngineError::new("Dispatch log entry needs an actor."))?
                 .to_owned(),
-            target: object
-                .get("target")
-                .and_then(Json::as_str)
-                .map(str::to_owned),
+            target,
             params: parse_params(object.get("params"))?,
             ok: object
                 .get("ok")
@@ -183,6 +208,7 @@ pub struct ActionRegistry {
     pub kind_labels: BTreeMap<String, String>,
     tier: i64,
     log: Vec<DispatchLogEntry>,
+    log_capacity: usize,
 }
 
 impl Default for ActionRegistry {
@@ -192,6 +218,7 @@ impl Default for ActionRegistry {
             kind_labels: BTreeMap::new(),
             tier: 1,
             log: Vec::new(),
+            log_capacity: MAX_DISPATCH_LOG,
         }
     }
 }
@@ -204,12 +231,26 @@ impl ActionRegistry {
         }
     }
 
+    /// A registry with a smaller log than the shipped one. The guard that
+    /// bounds the log is worth proving; half a million entries of it are not,
+    /// so the ceiling is a field and the tests turn it down.
+    pub fn with_log_capacity(tier: i64, log_capacity: usize) -> Self {
+        Self {
+            log_capacity,
+            ..Self::new(tier)
+        }
+    }
+
+    pub fn log_capacity(&self) -> usize {
+        self.log_capacity
+    }
+
     pub fn tier(&self) -> i64 {
         self.tier
     }
 
     pub fn set_tier(&mut self, tier: i64) -> EngineResult<()> {
-        if tier < 0 {
+        if !(0..=MAX_SAFE_INT).contains(&tier) {
             return refuse!("Action tier must be a non-negative safe integer.");
         }
 
@@ -217,12 +258,19 @@ impl ActionRegistry {
         Ok(())
     }
 
-    pub fn register(&mut self, definition: ActionDef) -> EngineResult<()> {
-        if self.actions.contains_key(&definition.id) {
-            let id = &definition.id;
+    /// Whether a definition can be installed, asked BEFORE anything is. A
+    /// payload with one duplicate in it must not leave half a verb set behind,
+    /// and the cheapest way to promise that is to check every id first.
+    pub fn can_register(&self, id: &str) -> EngineResult<()> {
+        if self.actions.contains_key(id) {
             return refuse!("Action \"{id}\" is already registered.");
         }
 
+        Ok(())
+    }
+
+    pub fn register(&mut self, definition: ActionDef) -> EngineResult<()> {
+        self.can_register(&definition.id)?;
         self.actions.insert(definition.id.clone(), definition);
         Ok(())
     }
@@ -243,12 +291,28 @@ impl ActionRegistry {
         self.log.push(entry);
     }
 
+    /// Whether the log has room for another entry. See `MAX_DISPATCH_LOG`.
+    pub fn log_is_full(&self) -> bool {
+        self.log.len() >= self.log_capacity
+    }
+
+    /// Rolls the log back to a length taken before an operation started. The
+    /// log is append-only, so a length is a complete undo record.
+    pub fn truncate_log(&mut self, length: usize) {
+        self.log.truncate(length);
+    }
+
     pub fn definitions(&self) -> Vec<&Json> {
         self.actions.values().map(|action| &action.raw).collect()
     }
 
-    pub fn restore_log(&mut self, entries: Vec<DispatchLogEntry>) {
+    pub fn restore_log(&mut self, entries: Vec<DispatchLogEntry>) -> EngineResult<()> {
+        if entries.len() > self.log_capacity {
+            return refuse!("Saved dispatch log is longer than the engine will hold.");
+        }
+
         self.log = entries;
+        Ok(())
     }
 }
 
@@ -304,6 +368,39 @@ mod tests {
         assert!(ActionDef::parse(&json!({ "id": "a", "tier": -1 })).is_err());
         assert!(ActionDef::parse(&json!({ "id": "a" })).is_err());
         assert!(ActionDef::parse(&json!({ "id": "a", "tier": 1, "apply": {} })).is_err());
+    }
+
+    /// A tier is a number the shell reads back through JavaScript. One the
+    /// browser cannot hold exactly is not a big tier, it is a wrong one.
+    #[test]
+    fn refuses_tiers_javascript_could_not_read_back() {
+        assert!(ActionDef::parse(&json!({ "id": "a", "tier": MAX_SAFE_INT })).is_ok());
+        assert!(ActionDef::parse(&json!({ "id": "a", "tier": 9_007_199_254_740_992_i64 })).is_err());
+        assert!(ActionDef::parse(&json!({ "id": "a", "tier": i64::MAX })).is_err());
+        assert!(ActionDef::parse(&json!({ "id": "a", "tier": 1.5 })).is_err());
+
+        let mut registry = ActionRegistry::new(1);
+        assert!(registry.set_tier(MAX_SAFE_INT).is_ok());
+        assert!(registry.set_tier(MAX_SAFE_INT + 1).is_err());
+        assert!(registry.set_tier(-1).is_err());
+        assert_eq!(registry.tier(), MAX_SAFE_INT);
+    }
+
+    #[test]
+    fn refuses_a_log_entry_whose_target_is_not_a_node_id() {
+        let entry = json!({
+            "tick": 0, "id": "a", "actor": "person:pat", "target": 42, "params": {}, "ok": true,
+        });
+        assert_eq!(
+            DispatchLogEntry::from_json(&entry).expect_err("typed").message(),
+            "Dispatch log entry target must be a node id or null.",
+        );
+
+        let unsafe_tick = json!({
+            "tick": 9_007_199_254_740_992_i64,
+            "id": "a", "actor": "person:pat", "target": null, "params": {}, "ok": true,
+        });
+        assert!(DispatchLogEntry::from_json(&unsafe_tick).is_err());
     }
 
     #[test]

@@ -7,6 +7,8 @@
 //! disturb the stream it came from. (`next_f64` is `next()` over there; the
 //! bare name belongs to `Iterator` in Rust and reusing it reads as one.)
 
+use crate::num::is_safe_int;
+
 const UINT32_RANGE: f64 = 4_294_967_296.0;
 const FNV32_OFFSET: u32 = 0x811c_9dc5;
 const FNV32_PRIME: u32 = 0x0100_0193;
@@ -73,8 +75,19 @@ impl Rng {
             return min;
         }
 
-        let range = (max - min + 1) as f64;
-        min + (self.next_f64() * range).floor() as i64
+        // `max - min + 1` in `i64` panics in debug and wraps in release on the
+        // extremes, and a range wider than the safe integer space cannot be
+        // sampled the way the reference sampled it anyway. The real gate is at
+        // registration (`rng_int` refuses such a range); this is the belt that
+        // keeps a caller reaching the generator directly from finding a panic.
+        let width = (max as f64) - (min as f64) + 1.0;
+
+        if !is_safe_int(width) {
+            return min;
+        }
+
+        let offset = (self.next_f64() * width).floor() as i64;
+        min.saturating_add(offset)
     }
 
     pub fn pick<'a, Item>(&mut self, items: &'a [Item]) -> Option<&'a Item> {
@@ -115,6 +128,21 @@ mod tests {
         assert!(left_values.iter().all(|value| (-2..=4).contains(value)));
         assert!(left_values.contains(&-2));
         assert!(left_values.contains(&4));
+    }
+
+    /// The extremes used to panic in debug and wrap in release. They are
+    /// unreachable through a registered action now, and they still may not
+    /// take the process down when reached directly.
+    #[test]
+    fn survives_ranges_no_double_could_hold() {
+        let mut rng = Rng::new(4);
+
+        assert_eq!(rng.int(i64::MIN, i64::MAX), i64::MIN);
+        assert_eq!(rng.int(0, i64::MAX), 0);
+        assert_eq!(rng.int(5, 4), 5);
+
+        let sampled = rng.int(0, crate::num::MAX_SAFE_INT - 1);
+        assert!((0..crate::num::MAX_SAFE_INT).contains(&sampled));
     }
 
     #[test]
