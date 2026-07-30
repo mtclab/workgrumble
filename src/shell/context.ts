@@ -1,7 +1,7 @@
 import type { DispatchResult } from '../engine/actions';
 import type { FieldValue, NodeId } from '../engine/graph';
+import type { ReadOnlyGraphView } from '../engine/graph-view';
 import type { AppDef } from './apps/types';
-import type { ReadonlyGraph } from './graph-view';
 
 /**
  * The slice of the engine clock the shell is allowed to see: it may read
@@ -29,7 +29,7 @@ export interface ShellUser {
 export interface ShellContext {
   readonly manifest: readonly AppDef[];
   readonly tier: number;
-  readonly graph: ReadonlyGraph;
+  readonly graph: ReadOnlyGraphView;
   readonly clock: ShellClock;
   readonly user: ShellUser;
   dispatch(
@@ -38,4 +38,10 @@ export interface ShellContext {
     target: NodeId | null,
     params: Record<string, FieldValue>,
   ): DispatchResult;
+  /**
+   * Fires after the world graph changed, whoever changed it. An app that has
+   * to stay truthful (a ticket queue, a directory listing) repaints from this
+   * instead of only repainting the window that happened to dispatch.
+   */
+  onWorldChange(listener: () => void): () => void;
 }

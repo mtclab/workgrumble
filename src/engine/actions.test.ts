@@ -1,8 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
-import { ActionRegistry, type ActionDef } from './actions';
+import {
+  ActionRegistry,
+  type ActionDef,
+  type ValidationContext,
+} from './actions';
 import { SimClock } from './clock';
 import { EntityGraph } from './graph';
+import type { ReadOnlyGraphView } from './graph-view';
 import { createRng } from './rng';
 
 function actionGraph(): EntityGraph {
@@ -89,18 +94,31 @@ describe('ActionRegistry', () => {
     expect(graph.snapshotHash()).toBe(before);
   });
 
-  it('isolates graph writes attempted by a rejecting validator', () => {
+  it('hands validation a read-only view that cannot write to the world', () => {
     const graph = actionGraph();
     const registry = new ActionRegistry(
       graph,
       createRng(2),
       new SimClock(),
     );
+    const writeAttempts: string[] = [];
     registry.register({
       id: 'invalid.mutating-validator',
       tier: 1,
       validate: (context) => {
-        context.graph.setField('account:user', 'locked', false);
+        // Type level: the view has no writers at all (see the ReadOnlyGraphView
+        // assertion below). Runtime level: there is nothing to reach for, and
+        // the frozen view refuses to grow one.
+        expectTypeOf(context.graph).toEqualTypeOf<ReadOnlyGraphView>();
+        const reachable = context.graph as unknown as Record<string, unknown>;
+
+        for (const method of ['setField', 'addNode', 'addEdge', 'removeEdge']) {
+          writeAttempts.push(`${method}:${String(typeof reachable[method])}`);
+        }
+
+        expect(
+          Reflect.set(reachable, 'setField', (): void => {}),
+        ).toBe(false);
         return 'Rejected after an invalid validation write.';
       },
       apply: (context) => {
@@ -120,8 +138,54 @@ describe('ActionRegistry', () => {
       ok: false,
       reason: 'Rejected after an invalid validation write.',
     });
+    expect(writeAttempts).toEqual([
+      'setField:undefined',
+      'addNode:undefined',
+      'addEdge:undefined',
+      'removeEdge:undefined',
+    ]);
     expect(graph.snapshotHash()).toBe(before);
     expect(graph.getField('account:user', 'locked')).toBe(true);
+  });
+
+  it('validates against the live world, matching the old clone semantics', () => {
+    const graph = actionGraph();
+    const clock = new SimClock();
+    const registry = new ActionRegistry(graph, createRng(4), clock, 2);
+    const seen: string[] = [];
+    registry.register({
+      id: 'audit.read-fields',
+      tier: 1,
+      validate: (context: ValidationContext) => {
+        seen.push(String(context.graph.getField('account:user', 'locked')));
+        seen.push(context.graph.allNodes().map(({ id }) => id).join(','));
+        seen.push(
+          context.graph
+            .nodesOfKind('account')
+            .map(({ id }) => id)
+            .join(','),
+        );
+        seen.push(String(context.clock.now()));
+        return null;
+      },
+      apply: ({ graph, target }) => {
+        if (target !== null) {
+          graph.setField(target, 'locked', false);
+        }
+      },
+    });
+
+    clock.advance(7);
+    expect(
+      registry.dispatch('audit.read-fields', 'person:tech', 'account:user', {}),
+    ).toEqual({ ok: true });
+    expect(seen).toEqual([
+      'true',
+      'account:user,person:tech',
+      'account:user',
+      '7',
+    ]);
+    expect(graph.getField('account:user', 'locked')).toBe(false);
   });
 
   it('applies a valid action and protects its append-only log copies', () => {

@@ -198,8 +198,12 @@ export class EntityGraph {
   }
 
   public nodesOfKind(kind: NodeKind): Node[] {
+    return this.allNodes().filter((node) => node.kind === kind);
+  }
+
+  /** Every node, id-sorted, as clones. Sorting keeps readers deterministic. */
+  public allNodes(): Node[] {
     return [...this.nodeStore.values()]
-      .filter((node) => node.kind === kind)
       .sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
       .map(cloneNode);
   }

@@ -179,9 +179,9 @@ export const ABOUT_APP: AppDef = {
     const onDiagnostics = (): void => {
       const result = api.dispatch(
         DEMO_ACTIONS.diagnostics,
-        WORLD_IDS.player,
+        api.actor,
         WORLD_IDS.machine,
-        { tick: api.clock.now() },
+        {},
       );
       render();
       api.notify(
@@ -195,7 +195,7 @@ export const ABOUT_APP: AppDef = {
     const onPercussion = (): void => {
       const result = api.dispatch(
         DEMO_ACTIONS.reseatFan,
-        WORLD_IDS.player,
+        api.actor,
         WORLD_IDS.fan,
         {},
       );

@@ -4,9 +4,9 @@ import { createEngineEventBus } from './engine/events';
 import { EntityGraph } from './engine/graph';
 import { createRng } from './engine/rng';
 import { TicketEngine } from './engine/tickets';
+import { createReadOnlyGraphView } from './engine/graph-view';
 import { APP_MANIFEST } from './shell/apps';
 import type { ShellContext } from './shell/context';
-import { createReadonlyGraph } from './shell/graph-view';
 import { Shell } from './shell/shell';
 import {
   DEMO_TICKET,
@@ -47,7 +47,7 @@ function boot(): void {
   const context: ShellContext = {
     manifest: APP_MANIFEST,
     tier: DEMO_TIER,
-    graph: createReadonlyGraph(graph),
+    graph: createReadOnlyGraphView(graph),
     clock,
     user: {
       displayName: 'Pat Pending',
@@ -62,6 +62,9 @@ function boot(): void {
       target,
       params,
     ),
+    onWorldChange: (listener) => bus.on('graph:mutated', () => {
+      listener();
+    }),
   };
 
   const shell = new Shell(mountPoint(), context);

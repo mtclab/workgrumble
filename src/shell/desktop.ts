@@ -201,13 +201,17 @@ export class Desktop {
       ),
       clock: {
         now: () => context.clock.now(),
+        onTick: (listener) => context.clock.onTick(listener),
       },
+      onWorldChange: (listener) => context.onWorldChange(listener),
       notify: (title, body) => {
         this.notify(title, body);
       },
       openApp: (id) => {
         this.openApp(id);
       },
+      hasApp: (id) => this.apps.some((app) => app.id === id),
+      actor: context.user.node,
     };
 
     this.renderer = new WindowRenderer(

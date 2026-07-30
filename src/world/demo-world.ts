@@ -1,5 +1,4 @@
 import type {
-  ActionContext,
   ActionDef,
   ActionRegistry,
 } from '../engine/actions';
@@ -111,16 +110,6 @@ export const DEMO_TICKET: TicketDef = {
   kb_ref: 'kb/chassis-fan',
 };
 
-function numberParam(context: Readonly<ActionContext>, name: string): number {
-  const value = context.params[name];
-
-  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
-    throw new TypeError(`Action parameter "${name}" must be a tick number.`);
-  }
-
-  return value;
-}
-
 const DEMO_ACTION_DEFS: readonly ActionDef[] = [
   {
     id: DEMO_ACTIONS.diagnostics,
@@ -130,17 +119,15 @@ const DEMO_ACTION_DEFS: readonly ActionDef[] = [
         return 'There is no workstation here to diagnose.';
       }
 
-      if (typeof context.params.tick !== 'number') {
-        return 'Diagnostics need a timestamp to stamp the report with.';
-      }
-
       return null;
     },
     apply: (context) => {
+      // The stamp comes from the simulation clock, not from a caller-supplied
+      // parameter: a report is dated when it ran, not when the UI says so.
       context.graph.setField(
         WORLD_IDS.machine,
         'last_diagnostic',
-        numberParam(context, 'tick'),
+        context.clock.now(),
       );
     },
   },

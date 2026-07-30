@@ -1,24 +1,43 @@
 import type { SimClock } from './clock';
-import { EntityGraph, type NodeId } from './graph';
-import type { Rng } from './rng';
 import {
-  EDGE_KINDS,
-  type FieldValue,
-  NODE_KINDS,
-} from './schema';
+  createReadOnlyGraphView,
+  type ReadOnlyGraphView,
+} from './graph-view';
+import type { EntityGraph, NodeId } from './graph';
+import type { Rng } from './rng';
+import type { FieldValue } from './schema';
 
-export interface ActionContext {
-  graph: EntityGraph;
-  rng: Rng;
-  actor: NodeId;
-  target: NodeId | null;
-  params: Record<string, FieldValue>;
+/** The slice of the clock an action may see: simulation time, read-only. */
+export interface ActionClock {
+  now(): number;
+}
+
+interface BaseActionContext {
+  readonly rng: Rng;
+  readonly actor: NodeId;
+  readonly target: NodeId | null;
+  readonly params: Record<string, FieldValue>;
+  readonly clock: ActionClock;
+}
+
+/**
+ * What a validator gets. Identical to `ActionContext` except that the graph is
+ * the read-only view: refusing is a pure decision, so the type makes the write
+ * methods unreachable and the frozen view makes them unreachable at runtime.
+ */
+export interface ValidationContext extends BaseActionContext {
+  readonly graph: ReadOnlyGraphView;
+}
+
+/** What `apply` gets: the real, writable world graph. */
+export interface ActionContext extends BaseActionContext {
+  readonly graph: EntityGraph;
 }
 
 export interface ActionDef {
   id: string;
   tier: number;
-  validate(context: ActionContext): string | null;
+  validate(context: ValidationContext): string | null;
   apply(context: ActionContext): void;
 }
 
@@ -54,6 +73,7 @@ function cloneLogEntry(entry: Readonly<DispatchLogEntry>): DispatchLogEntry {
 export class ActionRegistry {
   private readonly actions = new Map<string, ActionDef>();
   private readonly dispatchLog: DispatchLogEntry[] = [];
+  private readonly actionClock: ActionClock;
   private tier: number;
 
   public constructor(
@@ -63,6 +83,7 @@ export class ActionRegistry {
     initialTier = 1,
   ) {
     this.tier = this.validateTier(initialTier);
+    this.actionClock = Object.freeze({ now: () => this.clock.now() });
   }
 
   public get log(): readonly DispatchLogEntry[] {
@@ -118,14 +139,14 @@ export class ActionRegistry {
       );
     }
 
-    const context: ActionContext = {
-      graph: this.createValidationGraph(),
+    const validationReason = definition.validate({
+      graph: createReadOnlyGraphView(this.graph),
       rng: this.rng,
       actor,
       target,
       params: { ...params },
-    };
-    const validationReason = definition.validate(context);
+      clock: this.actionClock,
+    });
 
     if (validationReason !== null) {
       return this.reject(
@@ -138,8 +159,14 @@ export class ActionRegistry {
       );
     }
 
-    context.graph = this.graph;
-    definition.apply(context);
+    definition.apply({
+      graph: this.graph,
+      rng: this.rng,
+      actor,
+      target,
+      params: { ...params },
+      clock: this.actionClock,
+    });
     this.dispatchLog.push({
       tick,
       id,
@@ -198,37 +225,6 @@ export class ActionRegistry {
       reason,
     });
     return { ok: false, reason };
-  }
-
-  private createValidationGraph(): EntityGraph {
-    const validationGraph = new EntityGraph();
-
-    for (const kind of NODE_KINDS) {
-      for (const node of this.graph.nodesOfKind(kind)) {
-        validationGraph.addNode(node);
-      }
-    }
-
-    for (const kind of NODE_KINDS) {
-      for (const node of this.graph.nodesOfKind(kind)) {
-        for (const edgeKind of EDGE_KINDS) {
-          for (
-            const neighbor of this.graph.neighbors(
-              node.id,
-              { direction: 'out', edgeKind },
-            )
-          ) {
-            validationGraph.addEdge({
-              from: node.id,
-              to: neighbor.id,
-              kind: edgeKind,
-            });
-          }
-        }
-      }
-    }
-
-    return validationGraph;
   }
 
   private validateTier(tier: number): number {

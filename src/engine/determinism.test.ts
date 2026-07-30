@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ActionRegistry,
-  type ActionContext,
   type ActionDef,
   type DispatchLogEntry,
+  type ValidationContext,
 } from './actions';
 import { SimClock } from './clock';
 import { EntityGraph } from './graph';
@@ -126,7 +126,7 @@ const SCRIPT: readonly ScriptStep[] = [
 ];
 
 function targetKindReason(
-  context: ActionContext,
+  context: ValidationContext,
   kind: NodeKind,
 ): string | null {
   if (context.target === null) {
