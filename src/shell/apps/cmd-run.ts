@@ -296,11 +296,17 @@ function servicesLines(api: GameApi, query: string): CommandResult {
     );
   }
 
+  // Hardware sits in this list because it reports a status, so the list says
+  // which of them a "restart" would actually mean anything to.
   return lines(
     `Services on ${labelOf(found.node)}:`,
     ...services.map(
       (service) => `  ${pad(labelOf(service), USAGE_COLUMN)}${
         statusWord(service)
+      }${
+        service.fields[FIELDS.restartable] === true
+          ? ''
+          : '   [hardware, not restartable]'
       }`,
     ),
   );

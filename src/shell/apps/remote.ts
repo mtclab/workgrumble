@@ -214,10 +214,13 @@ export const REMOTE_APP: AppDef = {
         );
         setAvailability(
           restart,
-          status === SERVICE_STATUS.running
-            ? 'This one is running. Restarting a healthy service in front of '
-              + 'the user is how a small ticket becomes a big one.'
-            : null,
+          service.fields[FIELDS.restartable] !== true
+            ? 'This is hardware with a status light, not software. You cannot '
+              + 'turn a fan off and on again. Well. You can. It will not help.'
+            : status === SERVICE_STATUS.running
+              ? 'This one is running. Restarting a healthy service in front '
+                + 'of the user is how a small ticket becomes a big one.'
+              : null,
         );
         restart.addEventListener('click', () => {
           run(

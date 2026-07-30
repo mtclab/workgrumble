@@ -125,12 +125,19 @@ function seedFixture(graph: EntityGraph): void {
   graph.addNode({
     id: 'service:spooler',
     kind: 'service',
-    fields: { name: 'Print Spooler', status: 'wedged' },
+    fields: { name: 'Print Spooler', status: 'wedged', restartable: true },
   });
   graph.addNode({
     id: 'service:vpn',
     kind: 'service',
-    fields: { name: 'VPN Concentrator', status: 'running' },
+    fields: { name: 'VPN Concentrator', status: 'running', restartable: true },
+  });
+  // Hardware that reports a status. It looks exactly like a service in the
+  // graph, which is the whole reason the truth has to be written down.
+  graph.addNode({
+    id: 'service:fan',
+    kind: 'service',
+    fields: { name: 'Chassis fan', status: 'wedged', restartable: false },
   });
   graph.addNode({
     id: 'share:common',
@@ -381,6 +388,21 @@ describe('service.restart', () => {
       'is already running',
       before,
     );
+  });
+
+  /**
+   * A fan is not a service. It reports a status, it can be wedged, and none
+   * of that makes "off and on again" a thing you can do to it - so the action
+   * refuses on the hardware truth rather than on the status.
+   */
+  it('refuses to restart hardware however wedged it looks', () => {
+    const before = fixture.graph.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:fan'),
+      'It will not help.',
+      before,
+    );
+    expect(fixture.graph.getField('service:fan', FIELDS.status)).toBe('wedged');
   });
 });
 

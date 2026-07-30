@@ -30,6 +30,12 @@ export const FIELDS = {
   queueLen: 'queue_len',
   /** service */
   status: 'status',
+  /**
+   * Whether this is software that can be stopped and started again. Hardware
+   * reports a status too - a chassis fan has one - and saying so in the data
+   * is what stops "restart it" from being a lie about the physical world.
+   */
+  restartable: 'restartable',
   /** share + group + mail_rule */
   path: 'path',
   target: 'target',

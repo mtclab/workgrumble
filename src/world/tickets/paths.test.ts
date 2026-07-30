@@ -91,6 +91,45 @@ describe.each(WORLD_TICKETS.map((entry) => [entry.def.id, entry] as const))(
   },
 );
 
+/**
+ * Content honesty at graph level: the estate contains one thing that looks
+ * like a service and is not, and no verb on the helpdesk tier may pretend
+ * otherwise or quietly close the ticket that hangs off it.
+ */
+describe('hardware that reports a status', () => {
+  it('refuses to restart the chassis fan and leaves its ticket open', () => {
+    const session = createWorldSession();
+    const before = session.graph.snapshotHash();
+
+    const result = session.registry.dispatch(
+      HELPDESK_ACTIONS.serviceRestart,
+      COMPANY_IDS.player,
+      COMPANY_IDS.fan,
+      {},
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.ok ? '' : result.reason).toContain('It will not help.');
+    expect(session.graph.snapshotHash()).toBe(before);
+    expect(session.graph.getField(COMPANY_IDS.fan, FIELDS.status))
+      .toBe('wedged');
+    expect(session.tickets.getState('ticket:fan-noise')).toBe('open');
+  });
+
+  it('still restarts the software on the same estate', () => {
+    const session = createWorldSession();
+
+    expect(
+      session.registry.dispatch(
+        HELPDESK_ACTIONS.serviceRestart,
+        COMPANY_IDS.player,
+        COMPANY_IDS.spooler,
+        {},
+      ).ok,
+    ).toBe(true);
+  });
+});
+
 describe('escalation policy', () => {
   it('offers escalation only where the ticket rules accept it', () => {
     const escalatable = WORLD_TICKETS

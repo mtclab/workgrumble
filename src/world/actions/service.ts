@@ -20,6 +20,15 @@ export const SERVICE_ACTIONS: readonly ActionDef[] = [
         return resolved.reason;
       }
 
+      // Hardware first: a fan is not "already running", it is not a service
+      // at all, and telling the player the wrong true thing helps nobody.
+      if (field(resolved.node, FIELDS.restartable) !== true) {
+        return `"${describeNode(resolved.node)}" is a piece of hardware that `
+          + 'reports a status, not software you can stop and start. You '
+          + 'cannot turn a fan off and on again. Well. You can. It will not '
+          + 'help.';
+      }
+
       const status = field(resolved.node, FIELDS.status);
 
       if (

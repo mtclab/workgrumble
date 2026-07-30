@@ -240,12 +240,16 @@ export function seedCompanyWorld(graph: EntityGraph): void {
     },
   });
 
+  // The fan reports a status like everything else on this box, and that is
+  // the whole trap: it is a lump of spinning plastic, not a service. Saying
+  // so here is what keeps "restart it" honest everywhere downstream.
   graph.addNode({
     id: COMPANY_IDS.fan,
     kind: 'service',
     fields: {
       [FIELDS.name]: 'Chassis fan',
       [FIELDS.status]: SERVICE_STATUS.running,
+      [FIELDS.restartable]: false,
     },
   });
   graph.addNode({
@@ -254,6 +258,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
     fields: {
       [FIELDS.name]: 'Print Spooler',
       [FIELDS.status]: SERVICE_STATUS.running,
+      [FIELDS.restartable]: true,
     },
   });
   graph.addNode({
@@ -262,6 +267,7 @@ export function seedCompanyWorld(graph: EntityGraph): void {
     fields: {
       [FIELDS.name]: 'VPN Concentrator',
       [FIELDS.status]: SERVICE_STATUS.running,
+      [FIELDS.restartable]: true,
     },
   });
 

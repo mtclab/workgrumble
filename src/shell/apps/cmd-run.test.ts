@@ -115,6 +115,22 @@ describe('support terminal commands', () => {
     expect(session.tickets.getState('ticket:wedged-spooler')).toBe('resolved');
   });
 
+  /**
+   * The terminal is the second skin over the same verbs, so the hardware
+   * truth has to survive the trip through it: `restart fan` was a third,
+   * unadvertised way to close the fan ticket and a lie about a fan.
+   */
+  it('refuses to restart the chassis fan and leaves its ticket open', () => {
+    const session = createWorldSession();
+    const api = apiFor(session);
+    const before = session.graph.snapshotHash();
+
+    expect(run(api, 'services BEIGE-BOX')).toContain('[hardware, not restartable]');
+    expect(run(api, 'restart fan')).toContain('It will not help.');
+    expect(session.graph.snapshotHash()).toBe(before);
+    expect(session.tickets.getState('ticket:fan-noise')).toBe('open');
+  });
+
   it('passes engine refusals straight through to the player', () => {
     const session = createWorldSession();
     const api = apiFor(session);

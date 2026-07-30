@@ -164,6 +164,18 @@ test('explains every refusal in words a person can act on', async ({
   );
   await runCommand(page, 'rotate SALES-02 45');
   await expect(page.getByTestId('cmd-output')).toContainText('not an angle');
+
+  // The fan is hardware. It is listed with the services because it reports a
+  // status, and the terminal refuses to pretend that makes it restartable.
+  await runCommand(page, 'services BEIGE-BOX');
+  await expect(page.getByTestId('cmd-output')).toContainText(
+    '[hardware, not restartable]',
+  );
+  await runCommand(page, 'restart fan');
+  await expect(page.getByTestId('cmd-output')).toContainText(
+    'It will not help.',
+  );
+
   await runCommand(page, 'unlok gpoole');
   await expect(page.getByTestId('cmd-output')).toContainText(
     'Did you mean "unlock"?',
