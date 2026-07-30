@@ -119,7 +119,13 @@ export type EngineEvent =
   | { type: 'graph:mutated'; mutation: GraphMutation }
   | { type: 'ticket:spawned'; id: string }
   | { type: 'ticket:resolved'; id: string }
-  | { type: 'ticket:breached'; id: string };
+  | { type: 'ticket:breached'; id: string }
+  /**
+   * A saved world replaced the running one. Nothing mutated its way there, so
+   * no other event describes it: anything showing the world or the clock is
+   * looking at the previous session until it hears this.
+   */
+  | { type: 'world:restored'; tick: number };
 
 /* -- assertions ---------------------------------------------------------- */
 

@@ -47,8 +47,12 @@ async function boot(): Promise<void> {
       target,
       params,
     ),
+    // A load is a world change like any other, and the biggest one there is:
+    // every open app is showing a world that no longer exists until it
+    // repaints. Without this, the desktop kept the previous session on screen
+    // until some unrelated mutation happened along.
     onWorldChange: (listener) => engine.onEvent((event) => {
-      if (event.type === 'graph:mutated') {
+      if (event.type === 'graph:mutated' || event.type === 'world:restored') {
         listener();
       }
     }),
