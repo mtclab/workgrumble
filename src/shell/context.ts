@@ -1,6 +1,7 @@
 import type { DispatchResult } from '../engine-api';
 import type { FieldValue, NodeId } from '../engine-api';
 import type { ReadOnlyGraphView } from '../engine-api';
+import type { AppStateStore } from './app-state';
 import type { AppDef } from './apps/types';
 
 /**
@@ -32,6 +33,8 @@ export interface ShellContext {
   readonly graph: ReadOnlyGraphView;
   readonly clock: ShellClock;
   readonly user: ShellUser;
+  /** What the apps were showing: outlives their windows, part of the save. */
+  readonly appState: AppStateStore;
   dispatch(
     id: string,
     actor: NodeId,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { COMPANY_IDS } from '../../world/company';
+import { AppStateStore } from '../app-state';
 import { createWorldSession, type WorldSession } from '../../world/session';
 import { parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
@@ -12,6 +13,7 @@ function apiFor(
 ): GameApi {
   return {
     graph: session.engine.graph,
+    appState: new AppStateStore(),
     dispatch: (id, dispatchActor, target, params) => session.engine.dispatch(
       id,
       dispatchActor,

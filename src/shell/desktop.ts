@@ -193,6 +193,7 @@ export class Desktop {
 
     this.api = {
       graph: context.graph,
+      appState: context.appState,
       dispatch: (id, actor, target, params) => context.dispatch(
         id,
         actor,

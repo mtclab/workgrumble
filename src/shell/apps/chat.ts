@@ -11,6 +11,7 @@ import {
 } from '../../world/dialogue';
 import { FIELDS } from '../../world/fields';
 import { ticketTitle } from '../../world/tickets';
+import type { ChatState, ChatThread } from '../app-state';
 import { createIcon } from '../icons';
 import type { AppDef, AppInstance } from './types';
 import {
@@ -22,21 +23,6 @@ import {
   textValue,
   withFocusRestored,
 } from './ui';
-
-type Speaker = 'them' | 'you' | 'system';
-
-interface TranscriptLine {
-  readonly who: Speaker;
-  readonly text: string;
-}
-
-interface ThreadState {
-  nodeId: string;
-  /** Root the thread is running from, so a resolution can move it. */
-  rootUsed: string;
-  lines: TranscriptLine[];
-  ended: boolean;
-}
 
 export function personKey(id: string): string {
   return nodeKey(id);
@@ -57,8 +43,20 @@ export const CHAT_APP: AppDef = {
   tier_required: 1,
   slack: false,
   mount: (host, api): AppInstance => {
-    const threads = new Map<string, ThreadState>();
-    let selectedId: string | null = null;
+    // Transcripts outlive the window, and the save carries them: a
+    // conversation that unhappens when the window closes is a conversation the
+    // player has to have again, and the reveal it bought is already on the
+    // ticket. What is NOT kept is the last line of feedback - a refusal or an
+    // outcome is about the click that just happened.
+    const chat = (): ChatState => api.appState.get().chat;
+    const putThread = (personId: string, thread: ChatThread): void => {
+      api.appState.patch('chat', {
+        threads: { ...chat().threads, [personId]: thread },
+      });
+    };
+    const select = (personId: string | null): void => {
+      api.appState.patch('chat', { selectedId: personId });
+    };
     let refusal: string | null = null;
     let outcome: string | null = null;
 
@@ -87,7 +85,7 @@ export const CHAT_APP: AppDef = {
     const startThread = (
       tree: Readonly<DialogueTree>,
       rootId: string,
-    ): ThreadState => ({
+    ): ChatThread => ({
       nodeId: rootId,
       rootUsed: rootId,
       lines: [
@@ -107,31 +105,35 @@ export const CHAT_APP: AppDef = {
     const threadFor = (
       personId: string,
       tree: Readonly<DialogueTree>,
-    ): ThreadState => {
+    ): ChatThread => {
       const activeRoot = dialogueRoot(tree, ticketResolved(tree));
-      const existing = threads.get(personId);
+      const existing = chat().threads[personId];
 
       if (existing === undefined) {
         const fresh = startThread(tree, activeRoot);
-        threads.set(personId, fresh);
+        putThread(personId, fresh);
         return fresh;
       }
 
-      if (existing.rootUsed !== activeRoot) {
-        existing.lines.push({
-          who: 'system',
-          text: 'They message you again.',
-        });
-        existing.lines.push({
-          who: 'them',
-          text: dialogueNode(tree, activeRoot)?.npc_line ?? '',
-        });
-        existing.nodeId = activeRoot;
-        existing.rootUsed = activeRoot;
-        existing.ended = false;
+      if (existing.rootUsed === activeRoot) {
+        return existing;
       }
 
-      return existing;
+      const moved: ChatThread = {
+        nodeId: activeRoot,
+        rootUsed: activeRoot,
+        ended: false,
+        lines: [
+          ...existing.lines,
+          { who: 'system', text: 'They message you again.' },
+          {
+            who: 'them',
+            text: dialogueNode(tree, activeRoot)?.npc_line ?? '',
+          },
+        ],
+      };
+      putThread(personId, moved);
+      return moved;
     };
 
     /**
@@ -147,20 +149,36 @@ export const CHAT_APP: AppDef = {
       option: Readonly<DialogueOption>,
     ): void => {
       const thread = threadFor(personId, tree);
-      thread.lines.push({ who: 'you', text: option.label });
+      const said: ChatThread['lines'] = [
+        ...thread.lines,
+        { who: 'you', text: option.label },
+      ];
       refusal = null;
       outcome = null;
 
-      if (option.next === undefined) {
-        thread.ended = true;
-        thread.lines.push({ who: 'system', text: 'The conversation ends.' });
-      } else {
-        thread.nodeId = option.next;
-        thread.lines.push({
-          who: 'them',
-          text: dialogueNode(tree, option.next)?.npc_line ?? '',
-        });
-      }
+      putThread(
+        personId,
+        option.next === undefined
+          ? {
+            ...thread,
+            ended: true,
+            lines: [
+              ...said,
+              { who: 'system', text: 'The conversation ends.' },
+            ],
+          }
+          : {
+            ...thread,
+            nodeId: option.next,
+            lines: [
+              ...said,
+              {
+                who: 'them',
+                text: dialogueNode(tree, option.next)?.npc_line ?? '',
+              },
+            ],
+          },
+      );
 
       const played = applyDialogueEffects(option.effects ?? [], {
         ticket: tree.ticket,
@@ -176,15 +194,15 @@ export const CHAT_APP: AppDef = {
       // that did not work, not a thing that ends the call.
       refusal = played.refusal;
 
-      const said: string[] = [];
+      const reported: string[] = [];
 
       if (played.done.some(isAskEffect)) {
-        said.push('Logged as asked, so the clock can honestly be stopped on '
-          + 'them.');
+        reported.push('Logged as asked, so the clock can honestly be stopped '
+          + 'on them.');
       }
 
       if (played.done.some(isRevealEffect)) {
-        said.push(`Written onto ${ticketTitle(tree.ticket ?? '')}.`);
+        reported.push(`Written onto ${ticketTitle(tree.ticket ?? '')}.`);
       }
 
       if (
@@ -192,10 +210,10 @@ export const CHAT_APP: AppDef = {
           (effect) => !isAskEffect(effect) && !isRevealEffect(effect),
         )
       ) {
-        said.push('Done, from here, while they were still talking.');
+        reported.push('Done, from here, while they were still talking.');
       }
 
-      outcome = said.length > 0 ? said.join(' ') : null;
+      outcome = reported.length > 0 ? reported.join(' ') : null;
 
       render();
     };
@@ -212,7 +230,7 @@ export const CHAT_APP: AppDef = {
           `chat-person-${personKey(person.id)}`,
         );
         row.type = 'button';
-        row.dataset.selected = String(person.id === selectedId);
+        row.dataset.selected = String(person.id === chat().selectedId);
         row.dataset.self = String(person.id === api.actor);
 
         const name = element('strong');
@@ -235,7 +253,7 @@ export const CHAT_APP: AppDef = {
         }
 
         row.addEventListener('click', () => {
-          selectedId = person.id;
+          select(person.id);
           refusal = null;
           outcome = null;
           render();
@@ -313,12 +331,17 @@ export const CHAT_APP: AppDef = {
         const again = osButton('Bring it up again', 'chat-restart');
         again.addEventListener('click', () => {
           const activeRoot = dialogueRoot(tree, ticketResolved(tree));
-          thread.nodeId = activeRoot;
-          thread.rootUsed = activeRoot;
-          thread.ended = false;
-          thread.lines.push({
-            who: 'them',
-            text: dialogueNode(tree, activeRoot)?.npc_line ?? '',
+          putThread(person.id, {
+            nodeId: activeRoot,
+            rootUsed: activeRoot,
+            ended: false,
+            lines: [
+              ...thread.lines,
+              {
+                who: 'them',
+                text: dialogueNode(tree, activeRoot)?.npc_line ?? '',
+              },
+            ],
           });
           refusal = null;
           outcome = null;
@@ -345,14 +368,17 @@ export const CHAT_APP: AppDef = {
 
     const render = (): void => {
       const nodes = persons();
+      const { selectedId } = chat();
 
       if (
         selectedId === null
         || !nodes.some((person) => person.id === selectedId)
       ) {
-        selectedId = nodes.find((person) => person.id !== api.actor)?.id
-          ?? nodes[0]?.id
-          ?? null;
+        select(
+          nodes.find((person) => person.id !== api.actor)?.id
+            ?? nodes[0]?.id
+            ?? null,
+        );
       }
 
       const open = nodes.filter((person) => {
@@ -367,7 +393,8 @@ export const CHAT_APP: AppDef = {
       // option they were standing on has to survive the paint.
       withFocusRestored(root, () => {
         renderPeople(nodes);
-        renderPanel(nodes.find((person) => person.id === selectedId));
+        const showing = chat().selectedId;
+        renderPanel(nodes.find((person) => person.id === showing));
       });
 
       // Keep the transcript pinned to the newest line: a conversation that
@@ -385,6 +412,12 @@ export const CHAT_APP: AppDef = {
     const unsubscribeWorld = api.onWorldChange(() => {
       render();
     });
+    // A load replaces every transcript at once, and nothing else says so.
+    const unsubscribeState = api.appState.onReplaced(() => {
+      refusal = null;
+      outcome = null;
+      render();
+    });
 
     return {
       receiveIntent: (intent): void => {
@@ -396,13 +429,14 @@ export const CHAT_APP: AppDef = {
           return;
         }
 
-        selectedId = intent.id;
+        select(intent.id);
         refusal = null;
         outcome = null;
         render();
       },
       unmount: (): void => {
         unsubscribeWorld();
+        unsubscribeState();
         root.remove();
       },
     };

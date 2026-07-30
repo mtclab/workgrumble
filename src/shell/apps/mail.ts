@@ -26,8 +26,15 @@ export const MAIL_APP: AppDef = {
   tier_required: 1,
   slack: false,
   mount: (host, api): AppInstance => {
-    const unread = new Set(WORLD_MAIL.map((thread) => thread.id));
-    let selectedId: string | null = null;
+    // Read and selected both outlive the window. An inbox that forgets what
+    // was read the moment it is closed is an inbox nobody can work through -
+    // and the save carries this for the same reason.
+    const state = (): { selectedId: string | null; read: readonly string[] } =>
+      api.appState.get().mail;
+    const isUnread = (id: string): boolean => !state().read.includes(id);
+    const unreadCount = (): number => WORLD_MAIL.filter(
+      (thread) => isUnread(thread.id),
+    ).length;
 
     const root = element('section', 'app-page mail-app', 'mail-app');
 
@@ -60,8 +67,8 @@ export const MAIL_APP: AppDef = {
           `mail-row-${mailKey(thread.id)}`,
         );
         row.type = 'button';
-        row.dataset.selected = String(thread.id === selectedId);
-        row.dataset.unread = String(unread.has(thread.id));
+        row.dataset.selected = String(thread.id === state().selectedId);
+        row.dataset.unread = String(isUnread(thread.id));
 
         const subject = element('strong');
         subject.textContent = thread.subject;
@@ -75,8 +82,11 @@ export const MAIL_APP: AppDef = {
 
         row.append(subject, from, stamp);
         row.addEventListener('click', () => {
-          selectedId = thread.id;
-          unread.delete(thread.id);
+          const { read } = state();
+          api.appState.patch('mail', {
+            selectedId: thread.id,
+            read: read.includes(thread.id) ? read : [...read, thread.id],
+          });
           render();
         });
         item.append(row);
@@ -125,7 +135,8 @@ export const MAIL_APP: AppDef = {
     };
 
     const render = (): void => {
-      summary.textContent = `${String(unread.size)} unread · `
+      const { selectedId } = state();
+      summary.textContent = `${String(unreadCount())} unread · `
         + `${String(WORLD_MAIL.length)} threads`;
       renderList();
       renderReader(selectedId === null ? undefined : findMailThread(selectedId));
@@ -134,8 +145,14 @@ export const MAIL_APP: AppDef = {
     host.replaceChildren(root);
     render();
 
+    // A load replaces what every app was showing, and nothing else says so.
+    const unsubscribeState = api.appState.onReplaced(() => {
+      render();
+    });
+
     return {
       unmount: (): void => {
+        unsubscribeState();
         root.remove();
       },
     };

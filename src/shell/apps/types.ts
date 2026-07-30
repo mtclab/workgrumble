@@ -5,6 +5,7 @@ import type { ReadOnlyGraphView } from '../../engine-api';
 import type {
   FieldValue,
 } from '../../engine-api';
+import type { AppStateStore } from '../app-state';
 
 /**
  * What one app asks another to show when it opens it.
@@ -32,6 +33,13 @@ export interface AppInstance {
 
 export interface GameApi {
   readonly graph: ReadOnlyGraphView;
+  /**
+   * What this app was showing last time it was open. Window-local state used
+   * to die with the window; a transcript, an unread flag and a selected
+   * article are things the player expects to find where they left them, and
+   * things a save has to carry.
+   */
+  readonly appState: AppStateStore;
   dispatch(
     id: string,
     actor: string,

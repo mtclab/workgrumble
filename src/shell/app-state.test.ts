@@ -1,0 +1,153 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import {
+  type AppState,
+  AppStateStore,
+  createAppState,
+  parseAppState,
+} from './app-state';
+
+function worked(store: AppStateStore): AppState {
+  store.patch('mail', { selectedId: 'mail/queue-nag', read: ['mail/queue-nag'] });
+  store.patch('kb', { selectedId: 'kb/print-spooler' });
+  store.patch('chat', {
+    selectedId: 'person:ada',
+    threads: {
+      'person:ada': {
+        nodeId: 'friday',
+        rootUsed: 'root',
+        ended: false,
+        lines: [
+          { who: 'them', text: 'I have been hacked.' },
+          { who: 'you', text: 'Was anybody else at your desk?' },
+        ],
+      },
+    },
+  });
+  store.patch('day', { briefShownFor: 1, scorecardShownFor: null });
+
+  return store.snapshot();
+}
+
+describe('the shell-owned app state', () => {
+  it('starts a session with nothing read and nothing selected', () => {
+    const fresh = createAppState();
+
+    expect(fresh.mail).toEqual({ selectedId: null, read: [] });
+    expect(fresh.kb.selectedId).toBeNull();
+    expect(fresh.chat).toEqual({ selectedId: null, threads: {} });
+    expect(fresh.day).toEqual({ briefShownFor: null, scorecardShownFor: null });
+  });
+
+  it('patches one slice without disturbing the others', () => {
+    const store = new AppStateStore();
+    store.patch('mail', { read: ['mail/onboarding'] });
+    store.patch('kb', { selectedId: 'kb/power-cycle' });
+
+    expect(store.get().mail).toEqual({
+      selectedId: null,
+      read: ['mail/onboarding'],
+    });
+    expect(store.get().kb.selectedId).toBe('kb/power-cycle');
+    expect(store.get().chat.threads).toEqual({});
+  });
+
+  /**
+   * The round trip a mid-day save depends on. A transcript that comes back a
+   * line short is a conversation the player is asked to have again, and the
+   * reveal it bought is already on the ticket - so the two halves of the
+   * session would disagree about what was said.
+   */
+  it('survives the trip through storage exactly as it went in', () => {
+    const store = new AppStateStore();
+    const before = worked(store);
+    const wire: unknown = JSON.parse(JSON.stringify(store.snapshot()));
+
+    const loaded = new AppStateStore();
+    expect(loaded.hydrate(wire)).toBe(true);
+    expect(loaded.get()).toEqual(before);
+    expect(loaded.get().chat.threads['person:ada']?.lines).toHaveLength(2);
+  });
+
+  /**
+   * This arrives from `localStorage`, which anything on the machine can have
+   * edited. Half a session on screen is worse than none: the player is left to
+   * work out which half.
+   */
+  it('refuses a snapshot that is not exactly the shape it writes', () => {
+    const store = new AppStateStore();
+    const good: unknown = JSON.parse(JSON.stringify(worked(store)));
+
+    expect(parseAppState(good)).not.toBeNull();
+
+    const broken: unknown[] = [
+      null,
+      'nope',
+      [],
+      {},
+      { ...(good as object), mail: { selectedId: 7, read: [] } },
+      { ...(good as object), mail: { selectedId: null, read: [1, 2] } },
+      { ...(good as object), kb: {} },
+      { ...(good as object), day: { briefShownFor: 0, scorecardShownFor: null } },
+      { ...(good as object), day: { briefShownFor: 1.5, scorecardShownFor: null } },
+      {
+        ...(good as object),
+        chat: { selectedId: null, threads: { 'person:ada': { lines: [] } } },
+      },
+      {
+        ...(good as object),
+        chat: {
+          selectedId: null,
+          threads: {
+            'person:ada': {
+              nodeId: 'root',
+              rootUsed: 'root',
+              ended: false,
+              lines: [{ who: 'nobody', text: 'x' }],
+            },
+          },
+        },
+      },
+    ];
+
+    for (const snapshot of broken) {
+      expect(parseAppState(snapshot), JSON.stringify(snapshot)).toBeNull();
+    }
+
+    // And a refused hydrate leaves the running session alone.
+    const running = new AppStateStore();
+    const untouched = worked(running);
+    expect(running.hydrate({ chat: 'gone' })).toBe(false);
+    expect(running.get()).toEqual(untouched);
+  });
+
+  /**
+   * An app repaints its own writes, so notifying on those is a loop waiting
+   * for its first re-entrant caller. A REPLACEMENT is the one change no app
+   * can see coming - the load that swaps the session underneath it.
+   */
+  it('announces a replacement and stays quiet about ordinary writes', () => {
+    const store = new AppStateStore();
+    const listener = vi.fn();
+    const unsubscribe = store.onReplaced(listener);
+
+    store.patch('kb', { selectedId: 'kb/power-cycle' });
+    expect(listener).not.toHaveBeenCalled();
+
+    expect(store.hydrate(createAppState())).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    store.reset();
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    // A refused hydrate changed nothing, so it announces nothing.
+    expect(store.hydrate('rubbish')).toBe(false);
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    store.reset();
+    expect(listener).toHaveBeenCalledTimes(2);
+    // Unsubscribing twice is a no-op, not a second removal.
+    unsubscribe();
+  });
+});

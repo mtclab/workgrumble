@@ -17,8 +17,14 @@ export const KB_APP: AppDef = {
   icon: 'icon-kb',
   tier_required: 1,
   slack: false,
-  mount: (host): AppInstance => {
-    let selectedId: string = WORLD_KB[0]?.id ?? '';
+  mount: (host, api): AppInstance => {
+    // Which article the player was on outlives the window: closing the KB to
+    // get at the desktop is not the same as putting the article back.
+    const selected = (): string => api.appState.get().kb.selectedId
+      ?? WORLD_KB[0]?.id
+      ?? '';
+    // A miss is about the intent that was just delivered, so it dies with the
+    // window on purpose - there is nothing to come back to.
     let notice: string | null = null;
 
     const root = element('section', 'app-page kb-app', 'kb-app');
@@ -37,7 +43,7 @@ export const KB_APP: AppDef = {
     root.append(toolbar, columns);
 
     const select = (id: string): void => {
-      selectedId = id;
+      api.appState.patch('kb', { selectedId: id });
       notice = null;
       render();
     };
@@ -53,7 +59,7 @@ export const KB_APP: AppDef = {
           `kb-row-${kbSlug(article.id)}`,
         );
         row.type = 'button';
-        row.dataset.selected = String(article.id === selectedId);
+        row.dataset.selected = String(article.id === selected());
 
         const title = element('strong');
         title.textContent = article.title;
@@ -137,11 +143,17 @@ export const KB_APP: AppDef = {
 
     const render = (): void => {
       renderList();
-      renderReader(findKbArticle(selectedId));
+      renderReader(findKbArticle(selected()));
     };
 
     host.replaceChildren(root);
     render();
+
+    // A load replaces what every app was showing, and nothing else says so.
+    const unsubscribeState = api.appState.onReplaced(() => {
+      notice = null;
+      render();
+    });
 
     return {
       receiveIntent: (intent: AppIntent): void => {
@@ -161,6 +173,7 @@ export const KB_APP: AppDef = {
         select(intent.ref);
       },
       unmount: (): void => {
+        unsubscribeState();
         root.remove();
       },
     };

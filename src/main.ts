@@ -1,4 +1,5 @@
 import { loadEngine } from './engine-api';
+import { AppStateStore } from './shell/app-state';
 import { APP_MANIFEST } from './shell/apps';
 import type { ShellContext } from './shell/context';
 import { Shell } from './shell/shell';
@@ -25,11 +26,15 @@ async function boot(): Promise<void> {
   await loadEngine();
 
   const { engine, tier } = createWorldSession();
+  // The apps' own memory - transcripts, unread flags, the article that was
+  // open. It outlives their windows and the save carries it.
+  const appState = new AppStateStore();
 
   const context: ShellContext = {
     manifest: APP_MANIFEST,
     tier,
     graph: engine.graph,
+    appState,
     clock: {
       now: () => engine.now(),
       onTick: (listener) => engine.onTick(listener),
