@@ -546,19 +546,17 @@ export function setWindowViewport(
   viewportInput: Readonly<Viewport>,
 ): WindowManagerState {
   const viewport = validateViewport(viewportInput);
-  const windows = state.windows.map((windowState): ManagedWindow => {
-    const restoreBounds = windowState.restoreBounds === null
-      ? null
-      : clampWindowBounds(windowState.restoreBounds, viewport);
-
-    return {
-      ...windowState,
-      bounds: windowState.maximized
-        ? viewportBounds(viewport)
-        : clampWindowBounds(windowState.bounds, viewport),
-      restoreBounds,
-    };
-  });
+  // `restoreBounds` is carried through untouched. A viewport change is often
+  // temporary (a rotated phone, a split-screen drag, a window-manager
+  // animation) and rewriting the pre-maximize geometry against the smallest
+  // viewport ever seen would shrink the window for good. Restoring clamps
+  // against the viewport of that moment instead - see `toggleMaximizedWindow`.
+  const windows = state.windows.map((windowState): ManagedWindow => ({
+    ...windowState,
+    bounds: windowState.maximized
+      ? viewportBounds(viewport)
+      : clampWindowBounds(windowState.bounds, viewport),
+  }));
 
   return finish({
     ...state,

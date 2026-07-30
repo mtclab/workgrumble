@@ -222,7 +222,7 @@ describe('window manager movement, resize, and viewport constraints', () => {
     assertWindowManagerInvariants(state);
   });
 
-  it('reclamps normal and restore bounds when the viewport changes', () => {
+  it('refills the viewport when it changes and clamps the restore to it', () => {
     let state = openWindow(createWindowManager(VIEWPORT), seed('one'));
     state = toggleMaximizedWindow(state, 'one');
     state = setWindowViewport(state, { width: 420, height: 260 });
@@ -238,6 +238,37 @@ describe('window manager movement, resize, and viewport constraints', () => {
     const restored = selected(state, 'one').bounds;
     expect(restored.x + restored.width).toBeLessThanOrEqual(420);
     expect(restored.y + restored.height).toBeLessThanOrEqual(260);
+    assertWindowManagerInvariants(state);
+  });
+
+  it('keeps the pre-maximize geometry across a temporary viewport shrink', () => {
+    const large = { width: 1_280, height: 800 };
+    let state = openWindow(createWindowManager(large), seed('one'));
+    const normalBounds = selected(state, 'one').bounds;
+
+    state = toggleMaximizedWindow(state, 'one');
+    // The window manager is dragged through a phone-sized viewport and back:
+    // a minimised browser, a rotated device, a split-screen shove.
+    state = setWindowViewport(state, { width: 500, height: 400 });
+    expect(selected(state, 'one').restoreBounds).toEqual(normalBounds);
+
+    state = setWindowViewport(state, large);
+    state = toggleMaximizedWindow(state, 'one');
+
+    expect(selected(state, 'one').bounds).toEqual(normalBounds);
+    expect(selected(state, 'one').maximized).toBe(false);
+    assertWindowManagerInvariants(state);
+  });
+
+  it('clamps a stale restore against the viewport it lands in', () => {
+    let state = openWindow(createWindowManager(VIEWPORT), seed('one'));
+    state = toggleMaximizedWindow(state, 'one');
+    state = setWindowViewport(state, { width: 500, height: 400 });
+    state = toggleMaximizedWindow(state, 'one');
+
+    const bounds = selected(state, 'one').bounds;
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(500);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(400);
     assertWindowManagerInvariants(state);
   });
 
