@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod assertions;
 pub mod clock;
 pub mod error;
 pub mod events;
