@@ -1,6 +1,6 @@
 import type { ReadOnlyGraphNode } from '../../engine/graph-view';
 import { isTicketState, type TicketState } from '../../engine/schema';
-import { HELPDESK_ACTIONS } from '../../world/actions';
+import { clueLines, HELPDESK_ACTIONS } from '../../world/actions';
 import { FIELDS } from '../../world/fields';
 import {
   allowsEscalation,
@@ -75,15 +75,6 @@ function slaSummary(
   }
 
   return `${formatDuration(deadline - now)} left`;
-}
-
-/** Clue lines the chat layer reveals are stored on the ticket node itself. */
-function clueLines(node: Readonly<ReadOnlyGraphNode>): readonly string[] {
-  const clues = node.fields[FIELDS.clues];
-
-  return typeof clues === 'string' && clues.length > 0
-    ? clues.split('\n').filter((line) => line.length > 0)
-    : [];
 }
 
 export const TICKETS_APP: AppDef = {
@@ -222,7 +213,9 @@ export const TICKETS_APP: AppDef = {
 
       detail.append(heading, facts, body);
 
-      const clues = clueLines(node);
+      // Clue lines the chat layer revealed live on the ticket node itself,
+      // split by the same helper the clue action writes them with.
+      const clues = clueLines(node.fields[FIELDS.clues]);
 
       if (clues.length > 0) {
         const list = element('ul', 'ticket-clues', 'ticket-clues');
@@ -279,35 +272,76 @@ export const TICKETS_APP: AppDef = {
         dispatchOn(HELPDESK_ACTIONS.ticketEscalate, node.id);
       });
 
-      // Lane B ships Chat and the KB wiki. Until then the links are visible
-      // and honest about why they do nothing, instead of quietly missing.
+      // The three cross-app links. Each one carries WHERE to land, not just
+      // which app to open: a KB button that opens the KB at somebody else's
+      // article is the same dead end as a KB button that does nothing.
+      const reporter = entry?.def.reporter ?? '';
       const chatButton = osButton('Message reporter', 'ticket-open-chat');
       setAvailability(
         chatButton,
-        api.hasApp('chat')
-          ? null
-          : 'Chat is not installed on this workstation yet. Walk over, or '
-            + 'wait for the rollout that was promised in March.',
+        !api.hasApp('chat')
+          ? 'Chat is not installed on this workstation yet. Walk over, or '
+            + 'wait for the rollout that was promised in March.'
+          : reporter.length === 0
+            ? 'This ticket has no reporter on file. It filed itself, which is '
+              + 'a different ticket entirely.'
+            : null,
       );
       chatButton.addEventListener('click', () => {
-        api.openApp('chat');
+        api.openApp('chat', { kind: 'chat-person', id: reporter });
+      });
+
+      const reporterMachine = reporter.length === 0
+        ? undefined
+        : api.graph
+          .neighbors(reporter, { direction: 'out', edgeKind: 'owns' })
+          .find((node) => node.kind === 'machine');
+      const remoteButton = osButton(
+        'Remote into their machine',
+        'ticket-open-remote',
+      );
+      setAvailability(
+        remoteButton,
+        !api.hasApp('remote')
+          ? 'Remote Assist is not installed on this workstation.'
+          : reporterMachine === undefined
+            ? 'No workstation is signed out to this reporter, so there is no '
+              + 'screen to take over. Pick the box yourself in Remote Assist.'
+            : null,
+      );
+      remoteButton.addEventListener('click', () => {
+        if (reporterMachine !== undefined) {
+          api.openApp('remote', {
+            kind: 'remote-machine',
+            id: reporterMachine.id,
+          });
+        }
       });
 
       const kbRef = entry?.def.kb_ref ?? '';
       const kbButton = osButton('Open KB article', 'ticket-open-kb');
       setAvailability(
         kbButton,
-        api.hasApp('kb')
-          ? null
-          : `The Knowledge Base is not installed yet (article: ${
+        !api.hasApp('kb')
+          ? `The Knowledge Base is not installed yet (article: ${
             kbRef.length > 0 ? kbRef : 'none filed'
-          }).`,
+          }).`
+          : kbRef.length === 0
+            ? 'Nobody has filed an article for this one yet. You are about to '
+              + 'become the person who did.'
+            : null,
       );
       kbButton.addEventListener('click', () => {
-        api.openApp('kb');
+        api.openApp('kb', { kind: 'kb-article', ref: kbRef });
       });
 
-      actions.append(waitingButton, escalateButton, chatButton, kbButton);
+      actions.append(
+        waitingButton,
+        escalateButton,
+        chatButton,
+        remoteButton,
+        kbButton,
+      );
       detail.append(actions);
 
       const refusalLine = element('p', 'app-refusal', 'ticket-refusal');

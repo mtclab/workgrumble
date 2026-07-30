@@ -71,7 +71,11 @@ describe('shipped manifest', () => {
     expect(APP_MANIFEST.map(({ id }) => id)).toEqual([
       'tickets',
       'directory',
+      'remote',
+      'chat',
+      'mail',
       'cmd',
+      'kb',
       'about',
       'bubbles',
     ]);
@@ -95,14 +99,26 @@ describe('shipped manifest', () => {
     expect(appsForTier(APP_MANIFEST, 1).map(({ id }) => id)).toEqual([
       'tickets',
       'directory',
+      'remote',
+      'chat',
+      'mail',
       'cmd',
+      'kb',
       'about',
       'bubbles',
     ]);
   });
 
   it('gates every helpdesk app behind the helpdesk tier', () => {
-    for (const id of ['tickets', 'directory', 'cmd']) {
+    for (const id of [
+      'tickets',
+      'directory',
+      'remote',
+      'chat',
+      'mail',
+      'cmd',
+      'kb',
+    ]) {
       expect(
         APP_MANIFEST.find((app) => app.id === id)?.tier_required,
       ).toBe(1);

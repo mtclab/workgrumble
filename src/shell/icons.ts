@@ -176,6 +176,58 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { x1: '12', y1: '16', x2: '17', y2: '16' },
     },
   ],
+  'icon-chat': [
+    {
+      element: 'path',
+      attributes: { d: 'M4 5h16v11H9l-5 4z' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '9', x2: '16', y2: '9' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '12', x2: '13', y2: '12' },
+    },
+  ],
+  'icon-mail': [
+    {
+      element: 'rect',
+      attributes: { x: '3', y: '5', width: '18', height: '14', rx: '1' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '3 7 12 13 21 7' },
+    },
+  ],
+  'icon-remote': [
+    {
+      element: 'rect',
+      attributes: { x: '3', y: '4', width: '18', height: '12', rx: '1' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '20', x2: '16', y2: '20' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '12', y1: '16', x2: '12', y2: '20' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '9 8 12 10 9 12' },
+    },
+  ],
+  'icon-kb': [
+    {
+      element: 'path',
+      attributes: { d: 'M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4z' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z' },
+    },
+  ],
   'icon-lock': [
     {
       element: 'rect',

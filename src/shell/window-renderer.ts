@@ -1,4 +1,9 @@
-import type { AppDef, AppInstance, GameApi } from './apps/types';
+import type {
+  AppDef,
+  AppInstance,
+  AppIntent,
+  GameApi,
+} from './apps/types';
 import { createIcon } from './icons';
 import { createReentrantPass } from './reentrant';
 import {
@@ -57,6 +62,8 @@ export class WindowRenderer {
   private readonly rendered = new Map<string, RenderedWindow>();
   private readonly definitions = new Map<string, AppDef>();
   private readonly gestures = new Set<AbortController>();
+  /** Intents addressed to a window that is not mounted yet. */
+  private readonly pendingIntents = new Map<string, AppIntent>();
   /**
    * A pass mounts plugin code, and plugin code may open another window from
    * its own `mount`. That commits new state mid-pass, so the paint is guarded:
@@ -85,6 +92,23 @@ export class WindowRenderer {
     this.paint(state);
   }
 
+  /**
+   * Hands an intent to the app in `windowId`. The window may not be mounted
+   * yet - an app that opens another from its own `mount` runs inside a paint,
+   * and the paint that creates the target window is deferred behind it - so an
+   * intent for a window that does not exist yet is held for its first mount.
+   */
+  public deliverIntent(windowId: string, intent: AppIntent): void {
+    const rendered = this.rendered.get(windowId);
+
+    if (rendered === undefined) {
+      this.pendingIntents.set(windowId, intent);
+      return;
+    }
+
+    rendered.instance.receiveIntent?.(intent);
+  }
+
   private paintOnce(state: Readonly<WindowManagerState>): void {
     const openIds = new Set(state.windows.map(({ id }) => id));
 
@@ -94,6 +118,9 @@ export class WindowRenderer {
         rendered.instance.unmount();
         rendered.element.remove();
         this.rendered.delete(id);
+        // A closed window's undelivered intent dies with it: reopening the
+        // app later must not resurrect a request from another session.
+        this.pendingIntents.delete(id);
       }
     }
 
@@ -148,6 +175,7 @@ export class WindowRenderer {
     }
 
     this.rendered.clear();
+    this.pendingIntents.clear();
   }
 
   private createRenderedWindow(
@@ -281,6 +309,16 @@ export class WindowRenderer {
 
     this.layer.append(element);
     const instance = definition.mount(content, this.api);
+
+    // An intent that arrived while this window was still being painted waits
+    // here rather than being dropped: the app it was addressed to only exists
+    // from this line onwards.
+    const pending = this.pendingIntents.get(windowState.id);
+
+    if (pending !== undefined) {
+      this.pendingIntents.delete(windowState.id);
+      instance.receiveIntent?.(pending);
+    }
 
     return {
       element,

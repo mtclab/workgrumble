@@ -1,10 +1,10 @@
-import type { AppDef, GameApi } from './apps/types';
+import type { AppDef, AppIntent, GameApi } from './apps/types';
 import { appsForTier } from './apps/manifest';
 import { formatSimTime } from './clock-format';
 import type { ShellContext } from './context';
 import { createIcon } from './icons';
 import { BOSS_KEY_CODE, DISMISS_KEY } from './keys';
-import { launchApp } from './launch';
+import { launchApp, windowIdFor } from './launch';
 import {
   createNotificationState,
   dismissToast,
@@ -207,8 +207,8 @@ export class Desktop {
       notify: (title, body) => {
         this.notify(title, body);
       },
-      openApp: (id) => {
-        this.openApp(id);
+      openApp: (id, intent) => {
+        this.openApp(id, intent);
       },
       hasApp: (id) => this.apps.some((app) => app.id === id),
       actor: context.user.node,
@@ -262,8 +262,13 @@ export class Desktop {
     this.element.remove();
   }
 
-  /** Opens an app window, or brings an already-open one back to the front. */
-  public openApp(id: string): void {
+  /**
+   * Opens an app window, or brings an already-open one back to the front. An
+   * intent is a cross-app link's second half ("open the KB AT this article")
+   * and is handed over after the window exists, so it works both for an app
+   * that was already open and one this call has just mounted.
+   */
+  public openApp(id: string, intent?: AppIntent): void {
     this.closeTransientSurfaces();
     const definition = this.apps.find((app) => app.id === id);
 
@@ -278,6 +283,10 @@ export class Desktop {
     this.commitWindows(
       launchApp(this.requireWindowManager(), definition),
     );
+
+    if (intent !== undefined) {
+      this.renderer.deliverIntent(windowIdFor(definition), intent);
+    }
   }
 
   public notify(title: string, body: string): void {
