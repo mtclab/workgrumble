@@ -191,6 +191,45 @@ test('explains every refusal in words a person can act on', async ({
   );
 });
 
+test('never aims a directory action at an account the search has hidden', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'directory');
+  await page.getByTestId('directory-search').fill('gpoole');
+  await page.getByTestId('directory-row-gary').click();
+  await expect(page.getByTestId('directory-detail-username')).toHaveText(
+    'gpoole',
+  );
+  await expect(page.getByTestId('directory-detail-status')).toHaveText(
+    'Locked out',
+  );
+
+  // Filter him out. The detail pane follows the list, not the memory of what
+  // was selected before it - otherwise every button here is pointed at
+  // somebody the player can no longer see.
+  await page.getByTestId('directory-search').fill('awhitlock');
+  await expect(page.getByTestId('directory-row-gary')).toHaveCount(0);
+  await expect(page.getByTestId('directory-detail-username')).toHaveText(
+    'awhitlock',
+  );
+  await expect(page.getByTestId('directory-detail-status')).toHaveText('Fine');
+
+  // Filter everybody out and there is nothing to aim anything at: no detail,
+  // no action row, nothing to click by accident.
+  await page.getByTestId('directory-search').fill('zzzz');
+  await expect(page.getByTestId('directory-empty')).toBeVisible();
+  await expect(page.getByTestId('directory-detail-empty')).toBeVisible();
+  await expect(page.getByTestId('directory-unlock')).toHaveCount(0);
+  await expect(page.getByTestId('directory-reset-password')).toHaveCount(0);
+
+  // And nothing happened to Gary while he was off screen.
+  await page.getByTestId('directory-search').fill('gpoole');
+  await expect(page.getByTestId('directory-detail-status')).toHaveText(
+    'Locked out',
+  );
+});
+
 /**
  * The CYA rule end to end. Parking a ticket on the user stops their SLA, so
  * it costs a real question first - otherwise the toggle is a button that

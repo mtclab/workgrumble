@@ -10,6 +10,7 @@ import {
   osButton,
   outcomeLine,
   refusalLine,
+  resolveSelection,
   setAvailability,
   textValue,
 } from './ui';
@@ -355,12 +356,16 @@ export const DIRECTORY_APP: AppDef = {
 
     const render = (): void => {
       const nodes = accounts();
+      // The selection has to follow the LIST, not the graph: an account the
+      // search has filtered out still exists, and a detail pane with live
+      // buttons aimed at somebody the player cannot see is how a password
+      // gets reset for the wrong person.
+      const selection = resolveSelection(nodes, selectedId);
 
-      if (
-        selectedId === null
-        || api.graph.getNode(selectedId) === undefined
-      ) {
-        selectedId = nodes[0]?.id ?? null;
+      if (selection.changed) {
+        selectedId = selection.id;
+        refusal = null;
+        outcome = null;
       }
 
       const focusedTestId = document.activeElement instanceof HTMLElement
@@ -369,11 +374,7 @@ export const DIRECTORY_APP: AppDef = {
         : null;
 
       renderList(nodes);
-      renderDetail(
-        selectedId === null
-          ? undefined
-          : api.graph.getNode(selectedId),
-      );
+      renderDetail(nodes.find((account) => account.id === selectedId));
 
       if (focusedTestId !== null && focusedTestId !== 'directory-search') {
         const restored = root.querySelector(

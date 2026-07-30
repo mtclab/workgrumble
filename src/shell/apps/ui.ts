@@ -70,6 +70,37 @@ export function setAvailability(
   button.removeAttribute('aria-description');
 }
 
+export interface SelectionChange {
+  readonly id: string | null;
+  /** True when the app has to let go of what the player had selected. */
+  readonly changed: boolean;
+}
+
+/**
+ * Which row a list app should be showing, given what is on offer right now.
+ *
+ * The rule is one line long and every list app had written its own version of
+ * it: keep the player's selection while it is VISIBLE, otherwise fall back to
+ * the first row, and to nothing when the list is empty. "Visible" means the
+ * list on screen, not the graph behind it - a selection that has been
+ * filtered out, or removed from the world, leaves a detail pane and a row of
+ * action buttons aimed at something the player can no longer see.
+ *
+ * Callers that hold half-entered state for the selected row (a picked
+ * rotation, a refusal, an outcome line) drop it when `changed` is true: that
+ * state belonged to the row that has gone.
+ */
+export function resolveSelection(
+  visible: readonly { readonly id: string }[],
+  selected: string | null,
+): SelectionChange {
+  const kept = selected !== null
+    && visible.some((candidate) => candidate.id === selected);
+  const id = kept ? selected : visible[0]?.id ?? null;
+
+  return { id, changed: id !== selected };
+}
+
 /** `machine:print` -> `print`. Element ids and test hooks read better without
  * the kind prefix, and every app derived this the same way separately. */
 export function nodeKey(id: string): string {

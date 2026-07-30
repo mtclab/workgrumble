@@ -18,6 +18,7 @@ import {
   osButton,
   outcomeLine,
   refusalLine,
+  resolveSelection,
   setAvailability,
   textValue,
   withFocusRestored,
@@ -509,15 +510,13 @@ export const REMOTE_APP: AppDef = {
 
     const render = (): void => {
       const nodes = machines();
+      const selection = resolveSelection(nodes, selectedId);
 
-      if (
-        selectedId === null
-        || !nodes.some((machine) => machine.id === selectedId)
-      ) {
+      if (selection.changed) {
         // A machine that vanished takes its pending rotation and its last
         // refusal with it: applying either against the next box would be a
         // fix aimed at the wrong screen.
-        selectMachine(nodes[0]?.id ?? null);
+        selectMachine(selection.id);
       }
 
       const sideways = nodes.filter(

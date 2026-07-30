@@ -20,6 +20,7 @@ import {
   formatDuration,
   osButton,
   refusalLine,
+  resolveSelection,
   setAvailability,
   textValue,
 } from './ui';
@@ -360,13 +361,7 @@ export const TICKETS_APP: AppDef = {
 
     const render = (): void => {
       const nodes = ticketNodes();
-
-      if (
-        selectedId === null
-        || !nodes.some((node) => node.id === selectedId)
-      ) {
-        selectedId = nodes[0]?.id ?? null;
-      }
+      selectedId = resolveSelection(nodes, selectedId).id;
 
       const openCount = nodes.filter(
         (node) => ticketState(node) === 'open'

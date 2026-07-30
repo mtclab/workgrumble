@@ -4,7 +4,52 @@ import { personKey } from './chat';
 import { accountKey } from './directory';
 import { machineKey } from './remote';
 import { ticketKey } from './tickets';
-import { formatDuration, textValue } from './ui';
+import { formatDuration, resolveSelection, textValue } from './ui';
+
+/**
+ * What a list app is allowed to have selected. The rule sounds trivial and it
+ * is the one that decides whether the detail pane and its action buttons are
+ * aimed at something the player can see - a selection that outlives its row
+ * is a fix dispatched at a hidden target.
+ */
+describe('list selection', () => {
+  const nodes = [
+    { id: 'machine:ada' },
+    { id: 'machine:beige-box' },
+    { id: 'machine:print' },
+  ];
+
+  it('keeps a selection that is still on the list', () => {
+    expect(resolveSelection(nodes, 'machine:print'))
+      .toEqual({ id: 'machine:print', changed: false });
+  });
+
+  it('moves off a selection the list no longer offers', () => {
+    // The Remote Assist case: the machine was removed from the world, or
+    // filtered out from under the player, mid-session.
+    const left = nodes.filter((node) => node.id !== 'machine:print');
+
+    expect(resolveSelection(left, 'machine:print'))
+      .toEqual({ id: 'machine:ada', changed: true });
+    // Deterministic: the graph hands lists back id-sorted, so the fallback is
+    // the same row on every machine and every replay.
+    expect(resolveSelection([...left].reverse(), 'machine:print').id)
+      .toBe('machine:beige-box');
+  });
+
+  it('selects the first row when nothing was selected yet', () => {
+    expect(resolveSelection(nodes, null))
+      .toEqual({ id: 'machine:ada', changed: true });
+  });
+
+  it('selects nothing at all when the list is empty', () => {
+    expect(resolveSelection([], 'machine:print'))
+      .toEqual({ id: null, changed: true });
+    // And an empty list that was already showing nothing is not a change, so
+    // an app repainting on every tick does not keep resetting its controls.
+    expect(resolveSelection([], null)).toEqual({ id: null, changed: false });
+  });
+});
 
 describe('app formatting helpers', () => {
   it('renders sim ticks as shift durations, never as raw ticks', () => {
