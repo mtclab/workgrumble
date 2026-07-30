@@ -119,6 +119,8 @@ Each ticket: flavor text (English office-comedy voice), KB article, assertion, 1
 
 Sysadmin/devops tiers, Linux desktop skin, employer switching UI (seam only), cloud/terraform, multi-win-goal select (farm counter only), audio beyond minimal cues, mobile layout, cloud saves, monetization.
 
+Owner-added future items (2026-07-31): **selectable OS skins** (95/98 confirmed as the base look; XP/Vista/etc as selectable themes later - tokens-only styling is the seam, no component may hardcode chrome); **engine = Rust/WASM core** (decided, ported pre-M3, `docs/SPEC_CORE_RS.md`) so tier growth never forces a rewrite; **realism depth mandate** - in-game apps must be researched against real tooling (ServiceNow/AD/services.msc/RMM/RDP class), not invented barebones (`docs/research/real-systems.md`).
+
 ## 12. Owner decisions (answered 2026-07-30)
 
 1. Flavor language: **English**.
