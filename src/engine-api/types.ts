@@ -102,6 +102,28 @@ export interface DispatchLogEntry {
   reason?: string;
 }
 
+/**
+ * Where the dispatch log is measured from, and how much of it there is.
+ *
+ * The log is append-only and every save carries it, so a career-long log is a
+ * save that grows forever. A checkpoint is the world at `tick` - named by the
+ * graph `hash` it had there - and the log holds only what happened since; a
+ * `hash` of null means nothing has been drained yet, so the log is still the
+ * whole history.
+ */
+export interface LogCheckpoint {
+  readonly tick: number;
+  readonly hash: string | null;
+  readonly entries: number;
+}
+
+/** What taking a checkpoint moved. */
+export interface CheckpointOutcome {
+  readonly tick: number;
+  readonly hash: string;
+  readonly drained: number;
+}
+
 export type GraphMutation =
   | { type: 'node:added'; node: GraphNode }
   | { type: 'node:removed'; node: GraphNode; edges: Edge[] }

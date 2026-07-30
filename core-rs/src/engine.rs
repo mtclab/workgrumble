@@ -9,7 +9,7 @@
 use serde_json::{json, Value as Json};
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::actions::{parse_params, DispatchLogEntry};
+use crate::actions::{parse_params, DispatchLogEntry, LogCheckpoint};
 use crate::assertions::evaluate_json;
 use crate::clock::SimClock;
 use crate::error::{EngineError, EngineResult};
@@ -225,6 +225,28 @@ impl Engine {
         .to_string()
     }
 
+    /// Draws a line under the log: this world, at this tick, becomes the
+    /// baseline every later save is measured from.
+    ///
+    /// The day loop calls this at a day boundary, which is the one moment the
+    /// history behind it is finished with - the day has been scored and paid.
+    /// Answers with the baseline it set and how many entries it drained, so a
+    /// caller can say what it cost.
+    pub fn checkpoint(&mut self) -> String {
+        let outcome = self.world.take_checkpoint();
+
+        json!({
+            "ok": true,
+            "value": {
+                "tick": outcome.tick,
+                "hash": outcome.hash,
+                "drained": outcome.drained,
+            },
+            "events": events_to_json(&self.world.drain_events()),
+        })
+        .to_string()
+    }
+
     /// Read-only questions about the world: `{ kind, ... }` in, a value out.
     pub fn query(&self, payload: &str) -> String {
         match self.answer_query(payload) {
@@ -329,6 +351,18 @@ impl Engine {
             },
             "action_ids" => value_result(json!(self.world.registry.ids())),
             "tier" => value_result(json!(self.world.registry.tier())),
+            // What the log is measured from, and how much of it there is: the
+            // two numbers a save system needs to decide whether to drain.
+            "checkpoint" => {
+                let checkpoint = self.world.registry.checkpoint().to_json();
+                let mut answer = checkpoint;
+
+                if let Json::Object(object) = &mut answer {
+                    object.insert("entries".to_owned(), json!(self.world.registry.log().len()));
+                }
+
+                value_result(answer)
+            }
             other => value_refusal(&format!("Query kind \"{other}\" is not known.")),
         })
     }
@@ -364,6 +398,9 @@ impl Engine {
                 "tier": self.world.registry.tier(),
                 "kind_labels": self.world.registry.kind_labels,
                 "actions": self.world.registry.definitions(),
+                // The log SINCE the checkpoint, and the checkpoint it is since.
+                // Either half without the other is a history nobody can place.
+                "checkpoint": self.world.registry.checkpoint().to_json(),
                 "log": self
                     .world
                     .registry
@@ -479,6 +516,20 @@ impl Engine {
             .map(DispatchLogEntry::from_json)
             .collect();
         let log = log?;
+        let checkpoint = LogCheckpoint::from_json(
+            registry
+                .get("checkpoint")
+                .ok_or_else(|| EngineError::new("Saved registry needs its checkpoint."))?,
+        )?;
+
+        // A baseline in the future is a save that has drained history it has
+        // not lived through yet.
+        if checkpoint.tick > tick {
+            let baseline = checkpoint.tick;
+            return refuse!(
+                "Saved checkpoint is at tick {baseline}, after the saved clock {tick}."
+            );
+        }
 
         let actions = registry
             .get("actions")
@@ -510,7 +561,7 @@ impl Engine {
 
         world.register_actions(&json!({ "kind_labels": labels, "actions": actions }))?;
         world.registry.set_tier(tier)?;
-        world.registry.restore_log(log)?;
+        world.registry.restore_log(log, checkpoint)?;
         world.tickets.restore(tickets)?;
         check_ticket_coherence(&world)?;
         world.rng = Rng::from_parts(seed, rng_state);

@@ -15,18 +15,57 @@ use crate::ops::{Guard, Op, Params};
 use crate::refuse;
 use crate::value::FieldValue;
 
-/// The hard ceiling on the dispatch log.
+/// Where the dispatch log is measured from.
 ///
-/// The log is append-only and it is part of a save, so unbounded growth is a
-/// memory leak AND a save-size leak. Draining it properly - periodic
-/// checkpoints, a log that replays from the last one - is the M3 save system's
-/// job and is designed there, not invented here. This constant is only the
-/// backstop that keeps growth bounded in the meantime: at one dispatch per
-/// second it is over five days of continuous clicking, so no session reaches
-/// it, and a session that does gets a sentence rather than a dead tab.
+/// A checkpoint is the world as it stood at `tick`, named by the graph hash it
+/// had there; the log holds only what happened SINCE. That is what keeps the
+/// log - and every save carrying it - from growing for as long as a career
+/// does, and it is what "replay" means from here on: take the world at the
+/// checkpoint, apply the log, arrive at the world the save describes. Replay
+/// from tick 0 is no longer promised, because the entries that would have got
+/// you there have been drained on purpose.
 ///
-/// See `docs/SPEC_M3.md` - the checkpoint/drain policy replaces this guard.
-pub const MAX_DISPATCH_LOG: usize = 500_000;
+/// `hash` is `None` before any checkpoint has been taken. That is not a
+/// missing value, it is a different claim: nothing has been drained, so the
+/// log IS the whole history and the world's own beginning is the baseline.
+/// The M0 determinism fixture never checkpoints, which is why its golden hash
+/// is untouched by any of this.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LogCheckpoint {
+    pub tick: i64,
+    pub hash: Option<String>,
+}
+
+impl LogCheckpoint {
+    pub fn to_json(&self) -> Json {
+        json!({
+            "tick": self.tick,
+            "hash": match &self.hash {
+                Some(hash) => json!(hash),
+                None => Json::Null,
+            },
+        })
+    }
+
+    pub fn from_json(value: &Json) -> EngineResult<Self> {
+        let object = value
+            .as_object()
+            .ok_or_else(|| EngineError::new("Saved checkpoint must be an object."))?;
+        let tick = object
+            .get("tick")
+            .and_then(|tick| safe_int_at_least(tick, 0))
+            .ok_or_else(|| {
+                EngineError::new("Saved checkpoint needs a non-negative safe integer tick.")
+            })?;
+        let hash = match object.get("hash") {
+            None | Some(Json::Null) => None,
+            Some(Json::String(hash)) if !hash.is_empty() => Some(hash.clone()),
+            Some(_) => return refuse!("Saved checkpoint hash must be a hash or null."),
+        };
+
+        Ok(Self { tick, hash })
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct ActionDef {
@@ -208,7 +247,7 @@ pub struct ActionRegistry {
     pub kind_labels: BTreeMap<String, String>,
     tier: i64,
     log: Vec<DispatchLogEntry>,
-    log_capacity: usize,
+    checkpoint: LogCheckpoint,
 }
 
 impl Default for ActionRegistry {
@@ -218,7 +257,7 @@ impl Default for ActionRegistry {
             kind_labels: BTreeMap::new(),
             tier: 1,
             log: Vec::new(),
-            log_capacity: MAX_DISPATCH_LOG,
+            checkpoint: LogCheckpoint::default(),
         }
     }
 }
@@ -229,20 +268,6 @@ impl ActionRegistry {
             tier,
             ..Self::default()
         }
-    }
-
-    /// A registry with a smaller log than the shipped one. The guard that
-    /// bounds the log is worth proving; half a million entries of it are not,
-    /// so the ceiling is a field and the tests turn it down.
-    pub fn with_log_capacity(tier: i64, log_capacity: usize) -> Self {
-        Self {
-            log_capacity,
-            ..Self::new(tier)
-        }
-    }
-
-    pub fn log_capacity(&self) -> usize {
-        self.log_capacity
     }
 
     pub fn tier(&self) -> i64 {
@@ -291,27 +316,59 @@ impl ActionRegistry {
         self.log.push(entry);
     }
 
-    /// Whether the log has room for another entry. See `MAX_DISPATCH_LOG`.
-    pub fn log_is_full(&self) -> bool {
-        self.log.len() >= self.log_capacity
-    }
-
     /// Rolls the log back to a length taken before an operation started. The
     /// log is append-only, so a length is a complete undo record.
     pub fn truncate_log(&mut self, length: usize) {
         self.log.truncate(length);
     }
 
+    pub fn checkpoint(&self) -> &LogCheckpoint {
+        &self.checkpoint
+    }
+
+    /// Moves the baseline to `tick`/`hash` and drains everything the log had
+    /// recorded up to here, answering with how many entries went.
+    ///
+    /// The entries are dropped rather than archived on purpose: the state they
+    /// would replay into is the checkpoint itself, and keeping both is keeping
+    /// the same information twice - which is the growth this policy exists to
+    /// stop. Whoever wants the old log keeps the old SAVE.
+    pub fn set_checkpoint(&mut self, tick: i64, hash: String) -> usize {
+        let drained = self.log.len();
+        self.log.clear();
+        self.checkpoint = LogCheckpoint {
+            tick,
+            hash: Some(hash),
+        };
+        drained
+    }
+
     pub fn definitions(&self) -> Vec<&Json> {
         self.actions.values().map(|action| &action.raw).collect()
     }
 
-    pub fn restore_log(&mut self, entries: Vec<DispatchLogEntry>) -> EngineResult<()> {
-        if entries.len() > self.log_capacity {
-            return refuse!("Saved dispatch log is longer than the engine will hold.");
+    /// Reinstates a saved log against a saved checkpoint.
+    ///
+    /// The two are checked against each other because they are one claim: a
+    /// log that starts before the baseline it is measured from describes a
+    /// history that has already been absorbed, and replaying it would apply
+    /// the same actions twice.
+    pub fn restore_log(
+        &mut self,
+        entries: Vec<DispatchLogEntry>,
+        checkpoint: LogCheckpoint,
+    ) -> EngineResult<()> {
+        if let Some(entry) = entries.iter().find(|entry| entry.tick < checkpoint.tick) {
+            let tick = entry.tick;
+            let baseline = checkpoint.tick;
+            return refuse!(
+                "Saved dispatch log has an entry at tick {tick}, before its checkpoint at \
+                 {baseline}."
+            );
         }
 
         self.log = entries;
+        self.checkpoint = checkpoint;
         Ok(())
     }
 }

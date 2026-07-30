@@ -7,7 +7,7 @@
 //! gates for that: they FAIL against staged mutations, half-seeded worlds and
 //! half-installed verb sets.
 
-use core_rs::actions::{ActionRegistry, MAX_DISPATCH_LOG};
+use core_rs::actions::{ActionRegistry, LogCheckpoint};
 use core_rs::events::EngineEvent;
 use core_rs::ops::Params;
 use core_rs::value::FieldValue;
@@ -250,44 +250,12 @@ fn an_action_payload_with_a_duplicate_installs_none_of_it() {
     assert!(world.registry.get("twice.over").is_none());
 }
 
-/// The log is part of a save, so it cannot grow without end. The ceiling the
-/// engine ships is unreachable in play; the mechanism is proven here at a
-/// ceiling of three.
+/// A log that is measured from a baseline can only hold what came after it.
+/// (The rest of the checkpoint policy lives in `checkpoint.rs`; this is the
+/// half that belongs to the registry's own bookkeeping.)
 #[test]
-fn the_dispatch_log_stops_growing_at_its_ceiling() {
-    assert_eq!(ActionRegistry::new(1).log_capacity(), MAX_DISPATCH_LOG);
-
-    let mut world = harness();
-    world.registry = ActionRegistry::with_log_capacity(1, 3);
-    world
-        .register_actions(&json!([{
-            "id": "spooler.start",
-            "tier": 1,
-            "apply": [{
-                "op": "set_field",
-                "node": { "id": "service:spooler" },
-                "field": "status",
-                "value": { "const": "running" },
-            }],
-        }]))
-        .expect("verb");
-
-    for _ in 0..3 {
-        dispatch(&mut world, "spooler.start");
-    }
-
-    assert_eq!(world.registry.log().len(), 3);
-
-    let full = dispatch(&mut world, "spooler.start");
-    assert!(full.contains("dispatch log is full"), "{full}");
-    // The refusal does not itself become a log entry: a full log has no room
-    // for the sentence saying it is full.
-    assert_eq!(world.registry.log().len(), 3);
-}
-
-#[test]
-fn a_restored_log_longer_than_the_ceiling_is_refused() {
-    let mut registry = ActionRegistry::with_log_capacity(1, 1);
+fn a_restored_log_that_predates_its_checkpoint_is_refused() {
+    let mut registry = ActionRegistry::new(1);
     let entry = |tick: i64| -> Json {
         json!({
             "tick": tick,
@@ -305,10 +273,23 @@ fn a_restored_log_longer_than_the_ceiling_is_refused() {
             .collect::<Result<Vec<_>, _>>()
             .expect("valid entries")
     };
+    let baseline = |tick: i64| LogCheckpoint {
+        tick,
+        hash: Some("0123456789abcdef".to_owned()),
+    };
 
-    assert!(registry.restore_log(parse(&[entry(0)])).is_ok());
-    assert!(registry.restore_log(parse(&[entry(0), entry(1)])).is_err());
-    assert_eq!(registry.log().len(), 1);
+    assert!(registry
+        .restore_log(parse(&[entry(7), entry(9)]), baseline(7))
+        .is_ok());
+    assert_eq!(registry.log().len(), 2);
+
+    let error = registry
+        .restore_log(parse(&[entry(6)]), baseline(7))
+        .expect_err("the entry predates the baseline");
+    assert!(error.message().contains("before its checkpoint"));
+    // And the refusal left the registry on the log it already had.
+    assert_eq!(registry.log().len(), 2);
+    assert_eq!(registry.checkpoint().tick, 7);
 }
 
 /// An advance that refuses is an advance that did not happen. A caller told

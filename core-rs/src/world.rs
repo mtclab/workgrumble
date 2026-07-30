@@ -36,6 +36,14 @@ pub struct World {
     events: Vec<EngineEvent>,
 }
 
+/// What a checkpoint moved: the baseline it set, and how much log it drained.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CheckpointOutcome {
+    pub tick: i64,
+    pub hash: String,
+    pub drained: usize,
+}
+
 /// Everything an operation can change, kept aside so a failure can put it back.
 ///
 /// An action is one thing the player did, so it either happened or it did not:
@@ -48,7 +56,11 @@ pub struct World {
 /// The registry's verb set is deliberately absent: nothing that runs inside a
 /// transaction registers an action or changes tier, and `register_actions`
 /// buys its atomicity by checking every definition BEFORE installing any.
-struct Checkpoint {
+///
+/// Not to be confused with the log checkpoint (`actions::LogCheckpoint`): this
+/// one is a transaction's undo record and lives for one call, that one is the
+/// baseline a save is measured from and outlives the session.
+struct Savepoint {
     graph: EntityGraph,
     tickets: TicketEngine,
     rng: Rng,
@@ -83,8 +95,8 @@ impl World {
 
     // -- atomicity ---------------------------------------------------------
 
-    fn checkpoint(&self) -> Checkpoint {
-        Checkpoint {
+    fn savepoint(&self) -> Savepoint {
+        Savepoint {
             graph: self.graph.clone(),
             tickets: self.tickets.clone(),
             rng: self.rng.clone(),
@@ -94,13 +106,13 @@ impl World {
         }
     }
 
-    fn rollback(&mut self, checkpoint: Checkpoint) {
-        self.graph = checkpoint.graph;
-        self.tickets = checkpoint.tickets;
-        self.rng = checkpoint.rng;
-        self.clock = checkpoint.clock;
-        self.registry.truncate_log(checkpoint.log_len);
-        self.events.truncate(checkpoint.events_len);
+    fn rollback(&mut self, savepoint: Savepoint) {
+        self.graph = savepoint.graph;
+        self.tickets = savepoint.tickets;
+        self.rng = savepoint.rng;
+        self.clock = savepoint.clock;
+        self.registry.truncate_log(savepoint.log_len);
+        self.events.truncate(savepoint.events_len);
     }
 
     /// Runs `body` all the way or not at all. A refusal leaves the world, the
@@ -110,14 +122,36 @@ impl World {
         &mut self,
         body: impl FnOnce(&mut Self) -> EngineResult<Value>,
     ) -> EngineResult<Value> {
-        let checkpoint = self.checkpoint();
+        let savepoint = self.savepoint();
 
         match body(self) {
             Ok(value) => Ok(value),
             Err(error) => {
-                self.rollback(checkpoint);
+                self.rollback(savepoint);
                 Err(error)
             }
+        }
+    }
+
+    // -- the log's baseline --------------------------------------------------
+
+    /// Takes a checkpoint here: the world as it stands becomes the baseline the
+    /// dispatch log is measured from, and everything the log had recorded up to
+    /// this moment is drained.
+    ///
+    /// Nothing about the world changes - not the graph, not the clock, not one
+    /// die - so the hash this reports is the hash it had a moment ago. What
+    /// changes is what a save has to carry: the history since here, instead of
+    /// the history since the first day of the career.
+    pub fn take_checkpoint(&mut self) -> CheckpointOutcome {
+        let tick = self.clock.now();
+        let hash = self.graph.snapshot_hash();
+        let drained = self.registry.set_checkpoint(tick, hash.clone());
+
+        CheckpointOutcome {
+            tick,
+            hash,
+            drained,
         }
     }
 
@@ -270,17 +304,6 @@ impl World {
         params: Params,
     ) -> DispatchResult {
         let tick = self.clock.now();
-
-        // The log is part of a save, so it cannot grow forever. Refusing here
-        // rather than logging the refusal is deliberate: a full log has no room
-        // for the sentence explaining that it is full. See `MAX_DISPATCH_LOG`.
-        if self.registry.log_is_full() {
-            return DispatchResult::Refused(
-                "The dispatch log is full. This session has recorded as much as the engine will \
-                 hold; save and start a fresh one."
-                    .to_owned(),
-            );
-        }
 
         let Some(definition) = self.registry.get(id).cloned() else {
             return self.reject(

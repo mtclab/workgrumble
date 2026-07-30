@@ -331,6 +331,45 @@ describe('WasmEngine', () => {
     expect(engine.graph.getField('account:ada', 'locked')).toBe(false);
   });
 
+  /**
+   * The checkpoint policy from the side that drives it: the day loop drains at
+   * a day boundary, and everything after that is measured from there. The
+   * engine's own gates prove the replay; this one proves the adapter hands the
+   * baseline across intact rather than reporting a drain that never happened.
+   */
+  it('drains the log at a checkpoint and measures the rest from it', () => {
+    const engine = seeded();
+    engine.advance(4);
+    engine.dispatch('account.unlock', 'person:pat', 'account:ada', {});
+    engine.dispatch('account.unlock', 'person:pat', null, {});
+
+    expect(engine.dispatchLog()).toHaveLength(2);
+    expect(engine.logCheckpoint()).toEqual({
+      tick: 0,
+      hash: null,
+      entries: 2,
+    });
+
+    const hash = engine.snapshotHash();
+    expect(engine.checkpoint()).toEqual({ tick: 4, hash, drained: 2 });
+    // A checkpoint is bookkeeping: the world it describes is the world it left.
+    expect(engine.snapshotHash()).toBe(hash);
+    expect(engine.now()).toBe(4);
+    expect(engine.dispatchLog()).toEqual([]);
+    expect(engine.logCheckpoint()).toEqual({ tick: 4, hash, entries: 0 });
+
+    // A refusal after the drain is history the save still has to carry.
+    engine.dispatch('account.unlock', 'person:pat', null, {});
+    const carried = engine.dispatchLog();
+    expect(carried).toHaveLength(1);
+    expect(carried[0]?.ok).toBe(false);
+
+    const loaded = new WasmEngine(1);
+    loaded.restore(engine.serialize());
+    expect(loaded.dispatchLog()).toEqual(carried);
+    expect(loaded.logCheckpoint()).toEqual({ tick: 4, hash, entries: 1 });
+  });
+
   it('says nothing when a restore is refused', () => {
     const engine = seeded();
     const events: EngineEvent[] = [];

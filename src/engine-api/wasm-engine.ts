@@ -8,11 +8,13 @@ import {
 } from './engine-api';
 import type {
   ActionPayload,
+  CheckpointOutcome,
   DispatchLogEntry,
   DispatchResult,
   EngineEvent,
   Expr,
   FieldValue,
+  LogCheckpoint,
   NeighborOptions,
   NodeId,
   NodeKind,
@@ -305,6 +307,26 @@ export class WasmEngine implements EngineApi {
 
   public dispatchLog(): readonly DispatchLogEntry[] {
     return JSON.parse(this.core.dispatch_log()) as DispatchLogEntry[];
+  }
+
+  /**
+   * Draws the line the log is measured from. Nothing about the world moves,
+   * so there is nothing to repaint - but the answer says how much history was
+   * dropped, which is the one thing a caller cannot find out afterwards.
+   */
+  public checkpoint(): CheckpointOutcome {
+    const answer = parseAnswer(this.core.checkpoint());
+    this.fanOut.emit(answer.events ?? []);
+
+    if (!answer.ok) {
+      throw new Error(answer.reason ?? 'The engine refused the checkpoint.');
+    }
+
+    return answer.value as CheckpointOutcome;
+  }
+
+  public logCheckpoint(): LogCheckpoint {
+    return this.query({ kind: 'checkpoint' }) as LogCheckpoint;
   }
 
   public ticketState(id: NodeId): TicketState | undefined {

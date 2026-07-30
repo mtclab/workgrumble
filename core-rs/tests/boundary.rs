@@ -599,7 +599,19 @@ fn saved_with_ticket() -> (Engine, Json) {
 fn refuses_a_save_from_another_engine_version() {
     let (mut engine, saved) = saved_with_ticket();
 
-    for version in [json!("0.0.9"), json!("0.2.0"), json!(1), json!(null)] {
+    // Derived from the current version rather than written out: a hard-coded
+    // "the other version" becomes the CURRENT one the day the boundary shape
+    // changes, and the gate then proves the opposite of what it claims.
+    let newer = format!("{}.1", core_rs::ENGINE_VERSION);
+    let versions = [
+        json!("0.0.9"),
+        json!(newer),
+        json!(1),
+        json!(null),
+        json!(""),
+    ];
+
+    for version in versions {
         let mut broken = saved.clone();
         broken["version"] = version.clone();
         expect_refusal(

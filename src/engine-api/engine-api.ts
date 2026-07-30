@@ -1,10 +1,12 @@
 import type {
   ActionPayload,
+  CheckpointOutcome,
   DispatchLogEntry,
   DispatchResult,
   EngineEvent,
   Expr,
   FieldValue,
+  LogCheckpoint,
   NodeId,
   ReadOnlyGraphView,
   SetupOp,
@@ -44,6 +46,15 @@ export interface EngineApi {
   evaluate(expr: Expr): boolean;
   snapshotHash(): string;
   dispatchLog(): readonly DispatchLogEntry[];
+  /**
+   * Makes this moment the baseline the dispatch log is measured from, and
+   * drains everything recorded before it. The day loop calls this at a day
+   * boundary - the one point where the history behind it is finished with,
+   * because the day has been scored and paid.
+   */
+  checkpoint(): CheckpointOutcome;
+  /** The baseline a save would be carried against right now. */
+  logCheckpoint(): LogCheckpoint;
 
   ticketState(id: NodeId): TicketState | undefined;
   wasTicketBreached(id: NodeId): boolean;
