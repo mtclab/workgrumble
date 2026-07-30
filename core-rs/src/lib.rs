@@ -8,6 +8,13 @@
 
 #![forbid(unsafe_code)]
 
+pub mod error;
+pub mod events;
+pub mod graph;
+pub mod hash;
+pub mod schema;
+pub mod value;
+
 /// The engine contract version. Bumped when the boundary shape changes.
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
