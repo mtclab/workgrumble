@@ -165,6 +165,14 @@ export function companySetup(): readonly SetupOp[] {
         [FIELDS.name]: member.name,
         [FIELDS.title]: member.title,
         [FIELDS.desk]: member.desk,
+        // The day, and the money the day is for, belong to the person working
+        // it. Nobody else in the building has a shift the player can see.
+        ...(member.person === COMPANY_IDS.player
+          ? {
+            [FIELDS.dayState]: 'morning_brief',
+            [FIELDS.farmFund]: 0,
+          }
+          : {}),
       },
     });
     addNode(ops, {

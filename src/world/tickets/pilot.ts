@@ -11,6 +11,7 @@ const PRINTER_QUEUE_DEPTH = 47;
  * genre in one ticket.
  */
 export const ROTATED_SCREEN: WorldTicket = {
+  arrival: 'morning',
   def: {
     id: 'ticket:rotated-screen',
     archetype: 'hidden_cause',
@@ -89,6 +90,7 @@ export const ROTATED_SCREEN: WorldTicket = {
  * in English, and has been read aloud to you twice.
  */
 export const LOCKED_ACCOUNT: WorldTicket = {
+  arrival: 'morning',
   def: {
     id: 'ticket:locked-account',
     archetype: 'read_the_screen',
@@ -155,6 +157,7 @@ export const LOCKED_ACCOUNT: WorldTicket = {
  * hands it the job that jammed it. Clear first, then start.
  */
 export const WEDGED_SPOOLER: WorldTicket = {
+  arrival: 'morning',
   def: {
     id: 'ticket:wedged-spooler',
     archetype: 'hidden_cause',

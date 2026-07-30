@@ -40,3 +40,20 @@ export type HelpdeskActionId =
 export const HELPDESK_ACTION_IDS: readonly HelpdeskActionId[] = Object.freeze(
   Object.values(HELPDESK_ACTIONS),
 );
+
+/**
+ * The day's own verbs. Separate from the helpdesk set because they are not
+ * work: they are the shape of the shift around the work, and the day loop
+ * drives them rather than a button on a ticket.
+ */
+export const DAY_ACTIONS = {
+  startShift: 'day.start_shift',
+  endShift: 'day.end_shift',
+  clockOff: 'day.clock_off',
+} as const;
+
+export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
+
+export const DAY_ACTION_IDS: readonly DayActionId[] = Object.freeze(
+  Object.values(DAY_ACTIONS),
+);

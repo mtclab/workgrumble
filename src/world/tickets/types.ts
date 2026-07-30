@@ -1,5 +1,6 @@
 import type { FieldValue } from '../../engine-api';
 import type { TicketDef } from '../../engine-api';
+import type { TicketArrival } from '../day';
 
 /** Where a solution path is played. Lane B owns `chat` and `remote`. */
 export type TicketPathApp =
@@ -31,6 +32,13 @@ export interface TicketPath {
 
 export interface WorldTicket {
   readonly def: TicketDef;
+  /**
+   * When this ticket joins the day: waiting in the queue at 08:00, or arriving
+   * during the shift. Declared per ticket rather than decided by the scheduler
+   * because it is a content decision - the inherited pile is written to be the
+   * first thing a player reads.
+   */
+  readonly arrival: TicketArrival;
   /** The real cause, for KB articles and chat reveals (lane B). */
   readonly cause: string;
   /** Dialogue tree id the reporter answers with. Lane B renders it. */

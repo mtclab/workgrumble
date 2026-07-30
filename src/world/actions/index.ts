@@ -1,5 +1,6 @@
 import type { ActionData, ActionPayload } from '../../engine-api';
 import { ACCOUNT_ACTIONS } from './account';
+import { DAY_ACTION_DATA } from './day';
 import { DEVICE_ACTIONS } from './device';
 import { KIND_LABELS } from './helpers';
 import { MACHINE_ACTIONS } from './machine';
@@ -11,6 +12,9 @@ import { TICKET_ACTIONS } from './ticket';
 export { FULL_BATTERY } from './device';
 export { HELPDESK_TIER, KIND_LABELS } from './helpers';
 export {
+  DAY_ACTION_IDS,
+  DAY_ACTIONS,
+  type DayActionId,
   HELPDESK_ACTION_IDS,
   HELPDESK_ACTIONS,
   type HelpdeskActionId,
@@ -27,6 +31,7 @@ export function helpdeskActions(): readonly ActionData[] {
     ...MAIL_RULE_ACTIONS,
     ...SHARE_ACTIONS,
     ...TICKET_ACTIONS,
+    ...DAY_ACTION_DATA,
   ];
 }
 

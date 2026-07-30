@@ -245,6 +245,13 @@ export type PredData =
   | { pred: 'param_string_missing'; param: string }
   | { pred: 'param_blank'; param: string }
   | { pred: 'param_int_in'; param: string; values: number[] }
+  /**
+   * A parameter that is a whole number the browser can hold exactly, at or
+   * above `value`. The check a running total needs before it becomes world
+   * state: everything else numeric reads a field, and `param_int_in` only
+   * enumerates.
+   */
+  | { pred: 'param_is_whole_number'; param: string; value: number }
   | { pred: 'param_format'; param: string; format: 'resolution' }
   | {
     pred: 'has_edge';

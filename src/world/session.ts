@@ -9,7 +9,7 @@ import {
 } from './actions';
 import { companySetup } from './company';
 import { DEMO_ACTION_DATA } from './demo-world';
-import { WORLD_TICKETS } from './tickets';
+import { MORNING_TICKET_DEFS } from './tickets';
 
 /** Fixed seed: the working day is replayable. */
 export const WORLD_SEED = 0x5eed_1c01;
@@ -41,8 +41,11 @@ export function createWorldSession(
   });
   engine.registerActions(helpdeskActionPayload());
 
-  for (const entry of WORLD_TICKETS) {
-    engine.registerTicket(entry.def);
+  // Only the morning pile is spawned here: it is what was waiting when the
+  // player sat down. Everything that ARRIVES during a shift is the day
+  // driver's to spawn, at the tick the day's schedule says it turns up.
+  for (const def of MORNING_TICKET_DEFS) {
+    engine.registerTicket(def);
   }
 
   return { engine, tier: HELPDESK_TIER };

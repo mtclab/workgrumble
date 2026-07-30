@@ -1,5 +1,4 @@
-const MINUTES_PER_DAY = 24 * 60;
-const SHIFT_START_MINUTE = 8 * 60;
+import { DAY_OPENS_MINUTE, MINUTES_PER_DAY } from '../world/day';
 
 export interface SimTimeDisplay {
   readonly day: string;
@@ -12,7 +11,8 @@ export function formatSimTime(tick: number): SimTimeDisplay {
     throw new TypeError('Simulation tick must be a non-negative safe integer.');
   }
 
-  const elapsed = SHIFT_START_MINUTE + tick;
+  // The day model owns where tick 0 sits; this only turns it into a face.
+  const elapsed = DAY_OPENS_MINUTE + tick;
   const dayNumber = Math.floor(elapsed / MINUTES_PER_DAY) + 1;
   const minuteOfDay = elapsed % MINUTES_PER_DAY;
   const hours = Math.floor(minuteOfDay / 60);

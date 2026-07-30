@@ -17,7 +17,7 @@ use serde_json::{Map, Value as Json};
 use crate::assertions::{evaluate, Expr};
 use crate::error::{EngineError, EngineResult};
 use crate::graph::{Direction, EntityGraph};
-use crate::num::{safe_int, MAX_SAFE_INT};
+use crate::num::{is_safe_int, safe_int, MAX_SAFE_INT};
 use crate::refuse;
 use crate::schema::{is_edge_kind, is_node_kind, Node};
 use crate::value::FieldValue;
@@ -466,6 +466,17 @@ pub enum Pred {
         param: String,
         values: Vec<f64>,
     },
+    /// A parameter that is a whole number JavaScript can hold exactly, at or
+    /// above `value`.
+    ///
+    /// Nothing else could say this. `param_int_in` enumerates, and every other
+    /// numeric predicate reads a FIELD - so a total that arrived as a string,
+    /// or as a fraction of a penny, went into the graph unexamined and came
+    /// back out as the world's opinion of the money.
+    ParamIsWholeNumber {
+        param: String,
+        value: f64,
+    },
     ParamFormat {
         param: String,
         format: ParamFormat,
@@ -642,6 +653,10 @@ impl Pred {
                     values,
                 })
             }
+            "param_is_whole_number" => Ok(Self::ParamIsWholeNumber {
+                param: param()?,
+                value: number()?,
+            }),
             "param_format" => {
                 let format = object
                     .get("format")
@@ -1083,6 +1098,10 @@ pub fn evaluate_pred(context: &mut EvalContext<'_>, predicate: &Pred) -> bool {
             .param(param)
             .and_then(FieldValue::as_f64)
             .is_some_and(|actual| values.contains(&actual)),
+        Pred::ParamIsWholeNumber { param, value } => context
+            .param(param)
+            .and_then(FieldValue::as_f64)
+            .is_some_and(|actual| is_safe_int(actual) && actual >= *value),
         Pred::ParamFormat { param, format } => context
             .param(param)
             .and_then(FieldValue::as_str)
@@ -1329,6 +1348,50 @@ mod tests {
             tickets: &NoTickets,
             binds: BTreeMap::new(),
         }
+    }
+
+    /// A number the world is going to keep - a running total, a balance - has
+    /// to be a number, and one the browser can hold exactly. Nothing else in
+    /// the predicate set could say that about a PARAMETER, so a total arriving
+    /// as text, as a fraction, or as `2^53` was written into the graph as-is.
+    #[test]
+    fn a_numeric_parameter_is_checked_for_being_a_number_at_all() {
+        let graph = fixture();
+        let predicate = Pred::parse(&json!({
+            "pred": "param_is_whole_number",
+            "param": "banked",
+            "value": 0,
+        }))
+        .expect("valid predicate");
+
+        let holds = |value: FieldValue| -> bool {
+            let mut params = Params::new();
+            params.insert("banked".to_owned(), value);
+            let mut evaluation = context(&graph, &params, None);
+            evaluate_pred(&mut evaluation, &predicate)
+        };
+
+        assert!(holds(FieldValue::Num(0.0)));
+        assert!(holds(FieldValue::Num(9_600.0)));
+        assert!(holds(FieldValue::Num(MAX_SAFE_INT as f64)));
+
+        assert!(!holds(FieldValue::Num(-1.0)), "below the floor");
+        assert!(!holds(FieldValue::Num(12.5)), "half a penny");
+        assert!(
+            !holds(FieldValue::Num(MAX_SAFE_INT as f64 * 4.0)),
+            "past what the browser reads back",
+        );
+        assert!(!holds(FieldValue::Str("9600".to_owned())), "a number in text");
+        assert!(!holds(FieldValue::Bool(true)));
+        assert!(!holds(FieldValue::Null));
+
+        // And an absent parameter is not a number either.
+        let params = Params::new();
+        let mut evaluation = context(&graph, &params, None);
+        assert!(!evaluate_pred(&mut evaluation, &predicate));
+
+        assert!(Pred::parse(&json!({ "pred": "param_is_whole_number", "param": "x" })).is_err());
+        assert!(Pred::parse(&json!({ "pred": "param_is_whole_number", "value": 0 })).is_err());
     }
 
     #[test]

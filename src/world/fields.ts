@@ -11,6 +11,15 @@ export const FIELDS = {
   name: 'name',
   title: 'title',
   desk: 'desk',
+  /**
+   * The player's day: `morning_brief`, `shift` or `day_end`. It lives in the
+   * graph rather than in the shell because a day has to survive a save and be
+   * replayable - a day state re-derived from the clock on load would forget
+   * that the player had not finished reading the scorecard.
+   */
+  dayState: 'day_state',
+  /** Everything banked towards the farm, in whole pence. */
+  farmFund: 'farm_fund',
   /** account */
   username: 'username',
   locked: 'locked',

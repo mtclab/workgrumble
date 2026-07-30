@@ -1,5 +1,6 @@
 import type { TicketDef } from '../../engine-api';
 import { HELPDESK_ACTION_IDS } from '../actions';
+import type { ScheduledTicket } from '../day';
 import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
 import { acceptsEscalation } from './escalation';
 import { PILOT_TICKETS } from './pilot';
@@ -17,6 +18,7 @@ export type {
 /** The hardware ticket: fix it yourself, or escalate it and mean it. */
 const FAN_TICKET: WorldTicket = {
   def: DEMO_TICKET,
+  arrival: 'morning',
   cause: 'The chassis fan is fouled and has wedged itself against the case.',
   dialogue_ref: 'dialogue/fan-noise',
   paths: [
@@ -116,6 +118,27 @@ export const WORLD_TICKET_DEFS: readonly TicketDef[] = Object.freeze(
 export function findWorldTicket(id: string): WorldTicket | undefined {
   return WORLD_TICKETS.find((entry) => entry.def.id === id);
 }
+
+/**
+ * The shipped content as the day scheduler reads it.
+ *
+ * Everything here arrives in the morning today: four tickets is the pile you
+ * inherit at 08:00, and the shift's own arrivals are what the M4 content lands
+ * into. The scheduler does not care - it deals whatever the pool declares.
+ */
+export function ticketArrivalPool(): readonly ScheduledTicket[] {
+  return WORLD_TICKETS.map((entry) => ({
+    id: entry.def.id,
+    arrival: entry.arrival,
+  }));
+}
+
+/** The tickets that are already in the queue when the player sits down. */
+export const MORNING_TICKET_DEFS: readonly TicketDef[] = Object.freeze(
+  WORLD_TICKETS
+    .filter((entry) => entry.arrival === 'morning')
+    .map(({ def }) => def),
+);
 
 export function ticketTitle(id: string): string {
   return findWorldTicket(id)?.def.flavor.title ?? id;
