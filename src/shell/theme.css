@@ -1247,6 +1247,13 @@ input {
   color: var(--color-accent-ink);
 }
 
+/* Closing a ticket does not un-breach it. Last rule wins on purpose: a
+   resolved ticket that ate its SLA keeps the alarm semantics it earned. */
+.ticket-badge[data-breached="true"] {
+  background: var(--color-alarm);
+  color: var(--color-alarm-ink);
+}
+
 /* ------------------------------------------------------------- tickets */
 
 .tickets-app {
@@ -1339,7 +1346,7 @@ input {
   font-variant-numeric: tabular-nums;
 }
 
-.ticket-row[data-state="breached"] .ticket-row-sla {
+.ticket-row[data-breached="true"] .ticket-row-sla {
   color: var(--color-alarm);
   font-weight: 700;
 }

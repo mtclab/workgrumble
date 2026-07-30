@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { logIn, openFromDesktopIcon } from './helpers';
+import { logIn, openFromDesktopIcon, openFromStartMenu } from './helpers';
 
 /**
  * Real milliseconds the seeded ticket needs to run out its SLA: 240 sim
@@ -87,6 +87,25 @@ test('delivers engine notifications raised before the desktop existed', async ({
   await expect(panel).toBeVisible();
   await expect(panel).toContainText('SLA breached');
   await expect(page.getByTestId('notification-panel-item')).toHaveCount(1);
+
+  // Doing the work late does not un-breach the ticket. The queue keeps the
+  // marker, the detail keeps it, and the day's tally keeps counting it -
+  // otherwise closing everything quietly erases the score.
+  await page.keyboard.press('Escape');
+  await openFromStartMenu(page, 'tickets');
+  const row = page.getByTestId('ticket-row-fan-noise');
+  await expect(row).toHaveAttribute('data-state', 'breached');
+  await expect(page.getByTestId('tickets-summary')).toContainText('1 breached');
+
+  await row.click();
+  await page.getByTestId('ticket-escalate').click();
+  await expect(row).toHaveAttribute('data-state', 'resolved');
+  await expect(row).toHaveAttribute('data-breached', 'true');
+  await expect(row).toContainText('Closed (breached)');
+  await expect(page.getByTestId('ticket-detail-state')).toContainText(
+    'Closed (breached)',
+  );
+  await expect(page.getByTestId('tickets-summary')).toContainText('1 breached');
 });
 
 test('reports engine outcomes and refusals instead of failing silently', async ({

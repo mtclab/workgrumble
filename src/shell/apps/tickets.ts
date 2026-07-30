@@ -49,6 +49,32 @@ function ticketState(node: Readonly<ReadOnlyGraphNode>): TicketState {
   return isTicketState(state) ? state : 'open';
 }
 
+/**
+ * Whether this ticket EVER breached, from the field the engine latches when
+ * it happens. Closing a ticket sets its state to resolved and nothing else,
+ * so reading the current state alone quietly forgives every breach the
+ * moment the work is finished - which is precisely the thing a review is
+ * about to ask you for.
+ */
+export function wasBreached(node: Readonly<ReadOnlyGraphNode>): boolean {
+  return node.fields[FIELDS.breached] === true;
+}
+
+export function ticketStateLabel(node: Readonly<ReadOnlyGraphNode>): string {
+  const state = ticketState(node);
+
+  return state === 'resolved' && wasBreached(node)
+    ? 'Closed (breached)'
+    : STATE_LABELS[state];
+}
+
+/** How many SLAs were missed today, open or closed. */
+export function breachedTicketCount(
+  nodes: readonly Readonly<ReadOnlyGraphNode>[],
+): number {
+  return nodes.filter(wasBreached).length;
+}
+
 function deadlineOf(node: Readonly<ReadOnlyGraphNode>): number {
   const deadline = node.fields[FIELDS.slaDeadline];
   return typeof deadline === 'number' ? deadline : 0;
@@ -148,6 +174,7 @@ export const TICKETS_APP: AppDef = {
         );
         row.type = 'button';
         row.dataset.state = state;
+        row.dataset.breached = String(wasBreached(node));
         row.dataset.selected = String(node.id === selectedId);
 
         const title = element('strong');
@@ -157,7 +184,8 @@ export const TICKETS_APP: AppDef = {
         const status = element('span', 'ticket-row-status');
         const badge = element('span', 'ticket-badge');
         badge.dataset.state = state;
-        badge.textContent = STATE_LABELS[state];
+        badge.dataset.breached = String(wasBreached(node));
+        badge.textContent = ticketStateLabel(node);
         const sla = element('span', 'ticket-row-sla');
         sla.textContent = slaSummary(node, now);
         status.append(badge, sla);
@@ -208,7 +236,8 @@ export const TICKETS_APP: AppDef = {
       const stateValue = definitionRow(facts, 'State', 'ticket-detail-state');
       const stateBadge = element('span', 'ticket-badge');
       stateBadge.dataset.state = state;
-      stateBadge.textContent = STATE_LABELS[state];
+      stateBadge.dataset.breached = String(wasBreached(node));
+      stateBadge.textContent = ticketStateLabel(node);
       stateValue.append(stateBadge);
       definitionRow(facts, 'Due', 'ticket-detail-due').textContent = formatSimTime(deadline).time;
       definitionRow(facts, 'SLA', 'ticket-detail-sla').textContent = slaSummary(node, now);
@@ -367,9 +396,9 @@ export const TICKETS_APP: AppDef = {
         (node) => ticketState(node) === 'open'
           || ticketState(node) === 'waiting_on_user',
       ).length;
-      const breachedCount = nodes.filter(
-        (node) => ticketState(node) === 'breached',
-      ).length;
+      // Cumulative, from the latched field: a breach that was later fixed
+      // still happened, and the day's tally is what the review reads.
+      const breachedCount = breachedTicketCount(nodes);
       summary.textContent = `${String(openCount)} open · `
         + `${String(breachedCount)} breached · `
         + `${String(nodes.length)} total`;
