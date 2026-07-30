@@ -216,6 +216,11 @@ test('mounts each app exactly once however it is launched', async ({
   await expect(page.getByTestId('window-bubbles')).toHaveCount(1);
 
   await openFromStartMenu(page, 'bubbles');
+  // With nine apps the Bubble Break icon wraps into the window cascade
+  // area; clear both windows off it so the icon route is actually a click
+  // on the icon (restoring via icon is still that route).
+  await page.keyboard.press('Backquote');
+  await page.getByTestId('minimize-about').click();
   await openFromDesktopIcon(page, 'bubbles');
   // Bubble Break now sits on top of About; raise About so its button is
   // actually clickable rather than covered by the other window.

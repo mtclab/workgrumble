@@ -1,6 +1,6 @@
 import { test } from '@playwright/test';
 
-import { logIn, openFromDesktopIcon, openFromStartMenu } from './helpers';
+import { logIn, openFromStartMenu } from './helpers';
 
 // Overseer visual-review captures - not assertions. Screenshots land in
 // test-results/visual/ and are eyeballed by a human/model reviewer.
@@ -12,7 +12,9 @@ test('captures shell states for visual review', async ({ page }) => {
   await page.screenshot({ path: 'test-results/visual/02-desktop.png' });
 
   await openFromStartMenu(page, 'about');
-  await openFromDesktopIcon(page, 'bubbles');
+  // Nine apps wrap the icon grid under the cascade area - launch the second
+  // window from the start menu instead of a possibly covered desktop icon.
+  await openFromStartMenu(page, 'bubbles');
   await page.screenshot({ path: 'test-results/visual/03-two-windows.png' });
 
   await page.getByTestId('start-button').click();
