@@ -62,7 +62,7 @@ export default defineConfig(
     },
   },
   {
-    files: ['src/engine/**/*.ts'],
+    files: ['src/engine-api/**/*.ts'],
     rules: {
       'no-restricted-globals': [
         'error',
@@ -92,7 +92,8 @@ export default defineConfig(
         },
         {
           name: 'fetch',
-          message: 'Engine modules must not depend on browser I/O.',
+          message: 'Engine modules must not depend on browser I/O. '
+            + 'Loading the wasm asset is the generated glue\'s job.',
         },
         {
           name: 'XMLHttpRequest',
@@ -150,16 +151,20 @@ export default defineConfig(
           ],
           patterns: [
             {
+              // `../../core-rs/pkg` is deliberately reachable: this layer is
+              // the one module that is allowed to know where the core lives.
               group: [
-                '../*',
-                '../../*',
                 '*.css',
                 '*.html',
                 '*.less',
                 '*.sass',
                 '*.scss',
-                '*?raw',
-                '*?url',
+                // Anchored to a path so `node:url` is not caught as a Vite
+                // `?url` asset import.
+                './**?raw',
+                './**?url',
+                '../**?raw',
+                '../**?url',
               ],
               message: 'Engine imports must remain pure TypeScript dependencies.',
             },

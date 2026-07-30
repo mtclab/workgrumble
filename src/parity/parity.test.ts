@@ -1,3 +1,14 @@
+/**
+ * The determinism harness.
+ *
+ * It began as a dual-engine gate - the Rust core beside the TypeScript engine
+ * it replaced, step for step - and it kept the half that outlives the port:
+ * the golden hash, log replay, and the whole shipped world driven twice
+ * through independently built engines. Same script, same refusals, same
+ * events, same hash, or the day is not replayable and nothing else here can
+ * be trusted.
+ */
+
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -9,7 +20,6 @@ import {
   type SetupOp,
   WasmEngine,
 } from '../engine-api';
-import { TsEngine } from '../engine-api/ts-engine';
 import {
   helpdeskActionPayload,
   HELPDESK_ACTIONS,
@@ -19,7 +29,7 @@ import {
 import { companySetup, COMPANY_IDS } from '../world/company';
 import { DEMO_ACTION_DATA, DEMO_ACTIONS, WORLD_IDS } from '../world/demo-world';
 import { FIELDS } from '../world/fields';
-import { acceptsEscalation, WORLD_TICKETS } from '../world/tickets';
+import { WORLD_TICKETS } from '../world/tickets';
 import {
   GOLDEN_ACTION_DATA,
   GOLDEN_ACTOR,
@@ -27,9 +37,7 @@ import {
   GOLDEN_SCRIPT,
   GOLDEN_SEED,
   GOLDEN_SETUP,
-  goldenActionDefs,
 } from './golden-fixture';
-import { DEMO_ACTION_DEFS, legacyHelpdeskActions } from './legacy';
 
 const SEED = 0x5eed_1c01;
 const ACTOR = COMPANY_IDS.player;
@@ -107,49 +115,12 @@ function wasmWorld(): Harness {
   return harness;
 }
 
-function tsWorld(): Harness {
-  const engine = new TsEngine(SEED, HELPDESK_TIER);
-  const harness = collect(engine);
-
-  engine.applySetup(companySetup());
-  engine.applySetup(ORPHAN_SETUP);
-  engine.registerActionDefs([
-    ...DEMO_ACTION_DEFS,
-    ...legacyHelpdeskActions({
-      tickets: engine.ticketEngine,
-      // The same rule the core reads off the ticket itself: can setting
-      // `escalated` close it? Anything else would be comparing two different
-      // policies rather than two implementations of one.
-      allowsEscalation: (id) => {
-        const entry = WORLD_TICKETS.find((ticket) => ticket.def.id === id);
-        return entry !== undefined && acceptsEscalation(entry.def.resolved_when);
-      },
-      isRegistered: (id) => engine.isTicketRegistered(id),
-    }),
-  ]);
-
-  for (const entry of WORLD_TICKETS) {
-    engine.registerTicket(entry.def);
-  }
-
-  return harness;
-}
-
 function goldenWasm(): Harness {
   const engine = new WasmEngine(GOLDEN_SEED);
   const harness = collect(engine);
 
   engine.applySetup(GOLDEN_SETUP);
   engine.registerActions({ actions: GOLDEN_ACTION_DATA });
-  return harness;
-}
-
-function goldenTs(): Harness {
-  const engine = new TsEngine(GOLDEN_SEED);
-  const harness = collect(engine);
-
-  engine.applySetup(GOLDEN_SETUP);
-  engine.registerActionDefs(goldenActionDefs());
   return harness;
 }
 
@@ -536,13 +507,13 @@ const UNAMBIGUOUS: Expr = {
   value: false,
 };
 
-describe('golden hash parity', () => {
-  it('lands both engines on the committed hash from the same script', () => {
+describe('the golden hash', () => {
+  it('lands two fresh engines on the committed hash from one script', () => {
     const wasm = goldenWasm();
-    const ts = goldenTs();
+    const replica = goldenWasm();
 
     for (const step of GOLDEN_SCRIPT) {
-      for (const harness of [wasm, ts]) {
+      for (const harness of [wasm, replica]) {
         harness.engine.advance(step.advance);
         expect(
           harness.engine.dispatch(
@@ -556,12 +527,12 @@ describe('golden hash parity', () => {
     }
 
     expect(wasm.engine.snapshotHash()).toBe(GOLDEN_SCENARIO_HASH);
-    expect(ts.engine.snapshotHash()).toBe(GOLDEN_SCENARIO_HASH);
-    expect(wasm.engine.dispatchLog()).toEqual(ts.engine.dispatchLog());
-    expect(wasm.engine.now()).toBe(ts.engine.now());
+    expect(replica.engine.snapshotHash()).toBe(GOLDEN_SCENARIO_HASH);
+    expect(wasm.engine.dispatchLog()).toEqual(replica.engine.dispatchLog());
+    expect(wasm.engine.now()).toBe(replica.engine.now());
   });
 
-  it('replays a captured log into the same hash on the core', () => {
+  it('replays a captured log into the same hash', () => {
     const source = goldenWasm();
 
     for (const step of GOLDEN_SCRIPT) {
@@ -587,29 +558,29 @@ describe('golden hash parity', () => {
   });
 });
 
-describe('dual-engine parity over the shipped world', () => {
+describe('determinism over the shipped world', () => {
   let wasm: Harness;
-  let ts: Harness;
+  let replica: Harness;
 
   beforeEach(() => {
     wasm = wasmWorld();
-    ts = tsWorld();
+    replica = wasmWorld();
   });
 
-  it('starts from the same world', () => {
-    expect(wasm.engine.snapshotHash()).toBe(ts.engine.snapshotHash());
-    expect(wasm.events).toEqual(ts.events);
+  it('starts from the same world every time', () => {
+    expect(wasm.engine.snapshotHash()).toBe(replica.engine.snapshotHash());
+    expect(wasm.events).toEqual(replica.events);
   });
 
-  it('agrees on every verb, accepted and refused, step for step', () => {
+  it('agrees with itself on every verb, accepted and refused', () => {
     const steps = SCRIPT;
     const wasmFrames = drive(wasm, steps, ACTOR);
-    const tsFrames = drive(ts, steps, ACTOR);
+    const replicaFrames = drive(replica, steps, ACTOR);
 
     expect(steps.length).toBeGreaterThan(50);
 
     for (const [index, frame] of wasmFrames.entries()) {
-      const other = tsFrames[index];
+      const other = replicaFrames[index];
       expect(other, frame.label).toBeDefined();
       expect(frame.result, frame.label).toEqual(other?.result);
       expect(frame.hash, frame.label).toBe(other?.hash);
@@ -617,46 +588,46 @@ describe('dual-engine parity over the shipped world', () => {
       expect(frame.events, frame.label).toEqual(other?.events);
     }
 
-    expect(wasm.engine.dispatchLog()).toEqual(ts.engine.dispatchLog());
+    expect(wasm.engine.dispatchLog()).toEqual(replica.engine.dispatchLog());
   });
 
   it('agrees on every advertised solution path', () => {
     const steps = pathSteps();
     const wasmFrames = drive(wasm, steps, ACTOR);
-    const tsFrames = drive(ts, steps, ACTOR);
+    const replicaFrames = drive(replica, steps, ACTOR);
 
     expect(steps.length).toBeGreaterThan(5);
 
     for (const [index, frame] of wasmFrames.entries()) {
-      expect(frame.result, frame.label).toEqual(tsFrames[index]?.result);
-      expect(frame.hash, frame.label).toBe(tsFrames[index]?.hash);
-      expect(frame.events, frame.label).toEqual(tsFrames[index]?.events);
+      expect(frame.result, frame.label).toEqual(replicaFrames[index]?.result);
+      expect(frame.hash, frame.label).toBe(replicaFrames[index]?.hash);
+      expect(frame.events, frame.label).toEqual(replicaFrames[index]?.events);
     }
   });
 
   it('agrees while the clock runs the queue into breach', () => {
     for (let elapsed = 0; elapsed < 8; elapsed += 1) {
       wasm.events.length = 0;
-      ts.events.length = 0;
+      replica.events.length = 0;
       wasm.engine.advance(60);
-      ts.engine.advance(60);
+      replica.engine.advance(60);
 
-      expect(wasm.engine.snapshotHash()).toBe(ts.engine.snapshotHash());
-      expect(wasm.events).toEqual(ts.events);
-      expect(wasm.engine.now()).toBe(ts.engine.now());
+      expect(wasm.engine.snapshotHash()).toBe(replica.engine.snapshotHash());
+      expect(wasm.events).toEqual(replica.events);
+      expect(wasm.engine.now()).toBe(replica.engine.now());
     }
 
     for (const entry of WORLD_TICKETS) {
       expect(wasm.engine.ticketState(entry.def.id))
-        .toBe(ts.engine.ticketState(entry.def.id));
+        .toBe(replica.engine.ticketState(entry.def.id));
       expect(wasm.engine.wasTicketBreached(entry.def.id))
-        .toBe(ts.engine.wasTicketBreached(entry.def.id));
+        .toBe(replica.engine.wasTicketBreached(entry.def.id));
     }
   });
 
-  it('agrees on tier gating and leaves the world untouched when it refuses', () => {
+  it('gates by tier and leaves the world untouched when it refuses', () => {
     wasm.engine.setTier(0);
-    ts.engine.setTier(0);
+    replica.engine.setTier(0);
 
     const before = wasm.engine.snapshotHash();
     const wasmRefusal = wasm.engine.dispatch(
@@ -665,7 +636,7 @@ describe('dual-engine parity over the shipped world', () => {
       COMPANY_IDS.garyAccount,
       {},
     );
-    const tsRefusal = ts.engine.dispatch(
+    const replicaRefusal = replica.engine.dispatch(
       HELPDESK_ACTIONS.accountUnlock,
       ACTOR,
       COMPANY_IDS.garyAccount,
@@ -676,33 +647,33 @@ describe('dual-engine parity over the shipped world', () => {
       ok: false,
       reason: `Action "${HELPDESK_ACTIONS.accountUnlock}" requires tier 1.`,
     });
-    expect(wasmRefusal).toEqual(tsRefusal);
+    expect(wasmRefusal).toEqual(replicaRefusal);
     expect(wasm.engine.snapshotHash()).toBe(before);
-    expect(ts.engine.snapshotHash()).toBe(before);
+    expect(replica.engine.snapshotHash()).toBe(before);
   });
 
-  it('agrees on assertion evaluation, ambiguous selectors included', () => {
+  it('answers assertions the same way, ambiguous selectors included', () => {
     expect(wasm.engine.evaluate(AMBIGUOUS)).toBe(false);
-    expect(ts.engine.evaluate(AMBIGUOUS)).toBe(false);
+    expect(replica.engine.evaluate(AMBIGUOUS)).toBe(false);
     expect(wasm.engine.evaluate(UNAMBIGUOUS)).toBe(true);
-    expect(ts.engine.evaluate(UNAMBIGUOUS)).toBe(true);
+    expect(replica.engine.evaluate(UNAMBIGUOUS)).toBe(true);
   });
 
-  it('agrees on what the read-only view shows', () => {
-    expect(wasm.engine.graph.allNodes()).toEqual(ts.engine.graph.allNodes());
+  it('shows the same world through the read-only view', () => {
+    expect(wasm.engine.graph.allNodes()).toEqual(replica.engine.graph.allNodes());
     expect(wasm.engine.graph.nodesOfKind('ticket'))
-      .toEqual(ts.engine.graph.nodesOfKind('ticket'));
+      .toEqual(replica.engine.graph.nodesOfKind('ticket'));
     expect(wasm.engine.graph.getNode(COMPANY_IDS.garyAccount))
-      .toEqual(ts.engine.graph.getNode(COMPANY_IDS.garyAccount));
+      .toEqual(replica.engine.graph.getNode(COMPANY_IDS.garyAccount));
     expect(wasm.engine.graph.getField(COMPANY_IDS.garyAccount, FIELDS.locked))
-      .toEqual(ts.engine.graph.getField(COMPANY_IDS.garyAccount, FIELDS.locked));
+      .toEqual(replica.engine.graph.getField(COMPANY_IDS.garyAccount, FIELDS.locked));
     expect(
       wasm.engine.graph.neighbors(COMPANY_IDS.garyAccount, {
         direction: 'out',
         edgeKind: 'member_of',
       }),
     ).toEqual(
-      ts.engine.graph.neighbors(COMPANY_IDS.garyAccount, {
+      replica.engine.graph.neighbors(COMPANY_IDS.garyAccount, {
         direction: 'out',
         edgeKind: 'member_of',
       }),

@@ -29,9 +29,21 @@ DRAFT (overseer). Contract for builder once M2 closes. Context: `DESIGN_POC.md` 
 - Desk consumables (desktop overlay, not windows): energy drink - buff (action speed feel: reduced fumble + higher stress ceiling for N ticks) then crash (stress spike + slow) with stacking tolerance; beer - LOCKED (probation), visible with comedy tooltip; unlock event = M4 Friday scene. Consumable state in graph; effects pure functions.
 - Empties: energy-drink cans accumulate visibly on desk overlay; boss arrival with >N cans = minor suspicion bump (tidy-desk action clears).
 
+## 4b. Realism fold-in (from `docs/research/real-systems.md`, owner mandate 2026-07-31)
+
+These replace the toy SLA model while the pressure layer is being built anyway:
+
+1. **Computed priority**: tickets stop carrying a chosen priority. Reporter supplies claimed URGENCY (data/dialogue); true IMPACT is derivable from the graph (how many people/services hang off the broken node). Player classifies both in the Tickets app; a 3x3 lookup matrix assigns P1-P4; SLA targets key off priority. Misclassification = wrong clock (comedy + consequence); boss "urgent" trash = high claimed urgency, low real impact - the priority trap becomes mechanical, not scripted.
+2. **Two SLA clocks**: response (first meaningful touch - first customer-visible comment or dispatched action on the ticket's nodes) and resolution. On-hold reasons (awaiting user via question_asked, awaiting vendor via escalation) pause the RESOLUTION clock only.
+3. **Two comment streams** on tickets: internal worknotes vs customer-visible. `question_asked` evidence = the question exists in the customer-visible stream (chat asks write there). Worknotes feed the scorecard + CYA.
+4. **Escalation handoff form**: escalating opens a pre-populated form ("user reported / what I tried" auto-filled from the dispatch log entries touching that ticket's nodes); thin handoffs bounce back from L2 with a comedy note + reputation cost. Career seam: at sysadmin tier these come back TO the player.
+
+Deferred to M4 spec (depth items, not pressure): Event Viewer app over the mutation log, ipconfig-family Cmd expansion, AD lockout-story fields (badPwdCount, locked vs disabled vs expired, stale-device relock ticket), KCS article shape, parent/child flood closing, RMM background mode + consent handshake in Remote Assist.
+
 ## 5. Gates (M3 exit)
 
-- Full-day journey e2e ON BUILT ARTIFACT: morning brief -> tickets drip in -> resolve some -> slack during lunch -> telegraph -> boss-key -> survive -> get caught once deliberately -> day-end scorecard reflects ALL of it -> save -> reload -> state identical (graph hash + meters + app state).
+- Full-day journey e2e ON BUILT ARTIFACT: morning brief -> tickets drip in -> triage (classify impact/urgency, matrix assigns priority) -> resolve some -> slack during lunch -> telegraph -> boss-key -> survive -> get caught once deliberately -> escalate one ticket via the handoff form -> day-end scorecard reflects ALL of it -> save -> reload -> state identical (graph hash + meters + app state).
+- Misclassified-priority journey: wrong classification -> wrong SLA clock -> visible consequence at scorecard; response-vs-resolution clocks assert independently; on-hold pauses resolution only.
 - Determinism: same seed + scripted day = identical end-of-day hash; golden hash for the test day.
 - Meter unit suite: every transition, floors/ceilings, buff/crash/tolerance stacking.
 - Caught-scene reachability: every slack app has a scene; test iterates manifest slack apps.

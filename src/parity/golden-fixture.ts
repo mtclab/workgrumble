@@ -1,4 +1,3 @@
-import type { ActionDef, ValidationContext } from '../engine/actions';
 import type {
   ActionData,
   FieldValue,
@@ -6,13 +5,13 @@ import type {
   NodeKind,
   SetupOp,
 } from '../engine-api';
-import { isFieldValue } from '../engine-api';
 
 /**
- * The M0 determinism fixture, written once and run by both engines: the same
- * eight nodes, the same fifteen scripted dispatches, the same rng-consuming
- * actions. The Rust core runs the DATA half, the retired engine runs the
- * CLOSURE half, and both have to land on `4a07e554b7acbd22`.
+ * The M0 determinism fixture: the same eight nodes, the same fifteen scripted
+ * dispatches, the same rng-consuming actions the TypeScript engine was
+ * measured on. It has to land on `4a07e554b7acbd22` forever - the hash is the
+ * proof that the serialization, the rng and the action semantics have not
+ * drifted, and it outlived the engine it was taken from.
  */
 export const GOLDEN_SCENARIO_HASH = '4a07e554b7acbd22';
 export const GOLDEN_SEED = 0x5eed_1234;
@@ -278,117 +277,3 @@ export const GOLDEN_ACTION_DATA: readonly ActionData[] = [
     ],
   },
 ];
-
-function targetKindReason(
-  context: ValidationContext,
-  kind: NodeKind,
-): string | null {
-  if (context.target === null) {
-    return 'Target is required.';
-  }
-
-  const target = context.graph.getNode(context.target);
-  return target?.kind === kind ? null : `Target must be ${kind}.`;
-}
-
-function setFieldParams(
-  params: Readonly<Record<string, FieldValue>>,
-): { field: string; value: FieldValue } | undefined {
-  const field = params.field;
-  const value = params.value;
-
-  if (
-    typeof field !== 'string'
-    || field.length === 0
-    || !isFieldValue(value)
-  ) {
-    return undefined;
-  }
-
-  return { field, value };
-}
-
-/** The same fixture verbs as closures, for the retired engine. */
-export function goldenActionDefs(): ActionDef[] {
-  return [
-    {
-      id: 'service.jostle',
-      tier: 1,
-      validate: (context) => targetKindReason(context, 'service'),
-      apply: ({ graph, rng, target }) => {
-        if (target !== null) {
-          graph.setField(target, 'status', rng.pick(SERVICE_STATES));
-        }
-      },
-    },
-    {
-      id: 'account.roll-lock',
-      tier: 1,
-      validate: (context) => targetKindReason(context, 'account'),
-      apply: ({ graph, rng, target }) => {
-        if (target !== null) {
-          graph.setField(target, 'locked', rng.int(0, 1) === 1);
-        }
-      },
-    },
-    {
-      id: 'machine.rotate',
-      tier: 1,
-      validate: (context) => targetKindReason(context, 'machine'),
-      apply: ({ graph, rng, target }) => {
-        if (target !== null) {
-          graph.setField(target, 'display_rotation', rng.pick(ROTATIONS));
-        }
-      },
-    },
-    {
-      id: 'device.toggle',
-      tier: 1,
-      validate: (context) => {
-        const kindReason = targetKindReason(context, 'device');
-
-        if (kindReason !== null || context.target === null) {
-          return kindReason;
-        }
-
-        return typeof context.graph.getField(context.target, 'powered') === 'boolean'
-          ? null
-          : 'Device requires a powered field.';
-      },
-      apply: ({ graph, target }) => {
-        if (target === null) {
-          return;
-        }
-
-        const powered = graph.getField(target, 'powered');
-
-        if (typeof powered === 'boolean') {
-          graph.setField(target, 'powered', !powered);
-        }
-      },
-    },
-    {
-      id: 'field.set',
-      tier: 1,
-      validate: (context) => {
-        if (
-          context.target === null
-          || context.graph.getNode(context.target) === undefined
-        ) {
-          return 'Existing target is required.';
-        }
-
-        return setFieldParams(context.params) === undefined
-          ? 'Field and value params are required.'
-          : null;
-      },
-      apply: ({ graph, params, target }) => {
-        const parsed = setFieldParams(params);
-
-        if (target !== null && parsed !== undefined) {
-          graph.setField(target, parsed.field, parsed.value);
-        }
-      },
-    },
-  ];
-}
