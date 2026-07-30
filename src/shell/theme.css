@@ -41,6 +41,8 @@
   --color-terminal-dim: #5e7a63;
 
   --color-shadow-drop: rgb(20 18 15 / 35%);
+  /* Colour stops that fade out still go through the palette. */
+  --color-clear: transparent;
 
   /* ---- type ---- */
   --font-ui: Tahoma, Verdana, "DejaVu Sans", Geneva, sans-serif;
@@ -321,7 +323,7 @@ input {
     radial-gradient(
       circle at 30% 20%,
       var(--color-wallpaper-glow) 0%,
-      transparent 55%
+      var(--color-clear) 55%
     ),
     repeating-linear-gradient(
       var(--angle-weave),
@@ -478,7 +480,7 @@ input {
   width: var(--size-desktop-icon);
   padding: var(--space-3) var(--space-2);
   border: none;
-  background: transparent;
+  background: none;
   color: var(--color-ink-inverse);
   font-size: var(--text-xs);
   line-height: var(--leading-tight);
@@ -769,7 +771,7 @@ input {
   place-items: center;
   padding: var(--space-1);
   border: none;
-  background: transparent;
+  background: none;
   cursor: pointer;
 }
 
@@ -859,7 +861,7 @@ input {
   width: 100%;
   padding: var(--space-3) var(--space-4);
   border: none;
-  background: transparent;
+  background: none;
   font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
