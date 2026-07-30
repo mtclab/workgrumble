@@ -13,6 +13,9 @@ import {
   type WindowManagerState,
 } from './wm';
 
+/** `PointerEvent.buttons` bit for the primary (left) button. */
+const PRIMARY_BUTTON_MASK = 1;
+
 const RESIZE_HANDLES: readonly ResizeHandle[] = [
   'n',
   'ne',
@@ -351,8 +354,21 @@ export class WindowRenderer {
     const pointerId = event.pointerId;
     const gesture = new AbortController();
 
+    const endGesture = (): void => {
+      gesture.abort();
+      this.gestures.delete(gesture);
+    };
     const onMove = (moveEvent: PointerEvent): void => {
       if (moveEvent.pointerId !== pointerId) {
+        return;
+      }
+
+      // The release can be lost: outside the document, over a plugin that
+      // swallows it, or to a window that never regains focus. Every move
+      // reconfirms the button is still held, so a lost release cannot leave a
+      // ghost gesture that drags the window on the next idle pointer move.
+      if ((moveEvent.buttons & PRIMARY_BUTTON_MASK) === 0) {
+        endGesture();
         return;
       }
 
@@ -367,8 +383,7 @@ export class WindowRenderer {
     };
     const finish = (finishEvent: PointerEvent): void => {
       if (finishEvent.pointerId === pointerId) {
-        gesture.abort();
-        this.gestures.delete(gesture);
+        endGesture();
       }
     };
 
@@ -379,6 +394,9 @@ export class WindowRenderer {
       finish,
       { signal: gesture.signal },
     );
+    // Losing the window takes the release with it (alt-tab, a dev-tools break,
+    // the OS stealing the pointer), so a blur ends the gesture outright.
+    window.addEventListener('blur', endGesture, { signal: gesture.signal });
     this.gestures.add(gesture);
   }
 }

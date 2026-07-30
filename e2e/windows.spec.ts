@@ -114,6 +114,93 @@ test('offers both launch routes for both apps and closes cleanly', async ({
   await expect(page.getByTestId('bubbles-app')).toBeVisible();
 });
 
+declare global {
+  interface Window {
+    /** Pointer id of the last pointerdown, captured by the drag journeys. */
+    ghostPointerId?: number;
+  }
+}
+
+/**
+ * A drag whose release is lost - the button comes up outside the document, or
+ * over something that swallows the event - must not leave the gesture live.
+ * The tell is a buttonless move afterwards still dragging the window.
+ */
+test('drops a drag when the pointer release goes missing', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.addEventListener(
+      'pointerdown',
+      (event) => {
+        window.ghostPointerId = event.pointerId;
+      },
+      { capture: true },
+    );
+  });
+  await logIn(page);
+  await openFromDesktopIcon(page, 'about');
+
+  const about = page.getByTestId('window-about');
+  const grip = await boxOf(page.getByTestId('titlebar-about'));
+  const startX = grip.x + grip.width / 2;
+  const startY = grip.y + grip.height / 2;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 40, startY + 30, { steps: 6 });
+  const dragged = await boxOf(about);
+  expect(dragged.x).toBeGreaterThan(grip.x);
+
+  // The release never arrives; the next move simply reports no button held.
+  await page.evaluate((point) => {
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      clientX: point.x,
+      clientY: point.y,
+      buttons: 0,
+      pointerId: window.ghostPointerId ?? 1,
+    }));
+  }, { x: startX + 60, y: startY + 45 });
+
+  // Everything after that is a ghost drag if the gesture survived.
+  await page.mouse.move(startX + 240, startY + 180, { steps: 8 });
+  await page.mouse.up();
+  await page.mouse.move(startX + 300, startY + 220, { steps: 4 });
+
+  const settled = await boxOf(about);
+  expect(settled.x).toBeCloseTo(dragged.x, 0);
+  expect(settled.y).toBeCloseTo(dragged.y, 0);
+});
+
+test('drops a drag when the shell loses focus mid-gesture', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromDesktopIcon(page, 'about');
+
+  const about = page.getByTestId('window-about');
+  const grip = await boxOf(page.getByTestId('titlebar-about'));
+  const startX = grip.x + grip.width / 2;
+  const startY = grip.y + grip.height / 2;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 30, startY + 20, { steps: 4 });
+  const dragged = await boxOf(about);
+
+  // Alt-tab, a debugger break, the OS stealing the pointer: the release lands
+  // somewhere else entirely.
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('blur'));
+  });
+
+  await page.mouse.move(startX + 220, startY + 170, { steps: 8 });
+  await page.mouse.up();
+
+  const settled = await boxOf(about);
+  expect(settled.x).toBeCloseTo(dragged.x, 0);
+  expect(settled.y).toBeCloseTo(dragged.y, 0);
+});
+
 /**
  * One window per app, mounted exactly once. Every launch route - including an
  * app opening another app - has to land on the same single window, or the
