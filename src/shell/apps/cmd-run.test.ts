@@ -63,6 +63,27 @@ describe('support terminal commands', () => {
     expect(run(api, 'ping SALES-99')).toContain('Unknown host "SALES-99"');
   });
 
+  /**
+   * A reply proves the box answered at the network layer and nothing else.
+   * The print server answers happily with its spooler wedged and 47 jobs
+   * stuck behind it, so a terminal that says "the machine is fine" teaches
+   * the player to stop looking exactly where the fault is.
+   */
+  it('never calls a host healthy on the strength of a ping', () => {
+    const session = createWorldSession();
+    const api = apiFor(session);
+
+    expect(session.graph.getField(COMPANY_IDS.spooler, 'status'))
+      .toBe('wedged');
+
+    const output = run(api, 'ping PRINT-01');
+    expect(output).toContain('Reply from PRINT-01');
+    expect(output).toContain('It is alive.');
+    expect(output).not.toContain('fine');
+    expect(output).not.toContain('healthy');
+    expect(output).not.toContain('OK');
+  });
+
   it('times out when the caller has no workstation of their own', () => {
     const api = apiFor(createWorldSession(), COMPANY_IDS.nina);
 

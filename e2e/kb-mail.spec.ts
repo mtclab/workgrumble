@@ -29,6 +29,14 @@ test('opens the KB at the article the ticket names', async ({ page }) => {
   await expect(page.getByTestId('kb-title')).toContainText(
     'turning it off and on again',
   );
+  // Learner-honest: a restart drops what was in memory and hands back
+  // everything that was already written down, queue included.
+  await expect(page.getByTestId('kb-body')).toContainText(
+    'only holding in memory',
+  );
+  await expect(page.getByTestId('kb-body')).toContainText(
+    'does not empty a print queue',
+  );
 
   // A second ticket re-aims the window that is already open, rather than
   // leaving the player on somebody else's article.

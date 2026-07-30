@@ -100,13 +100,20 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     title: 'Have you tried turning it off and on again (and why it works)',
     summary: 'The joke is real engineering, and it has limits.',
     body: [
-      'Restarting a device throws away every piece of state it was holding: '
-      + 'half-finished jobs, wedged drivers, a network card that has stopped '
-      + 'believing in the network. It comes back in the one configuration '
-      + 'anybody tested properly, which is the state it starts in.',
+      'Restarting a device throws away the state it was only holding in '
+      + 'memory: the work in flight, a wedged driver, a network card that has '
+      + 'stopped believing in the network. It comes back in the one '
+      + 'configuration anybody tested properly, which is the state it starts '
+      + 'in.',
+      'What was written down survives, and that is the half people forget. '
+      + 'Settings, files, licence keys and anything already queued on disk '
+      + 'are all still there afterwards - which is exactly why a restart does '
+      + 'not empty a print queue, and why the job that jammed the spooler is '
+      + 'waiting for it when it comes back up.',
       'That is why it works so often, and it is not a cop-out. Most support '
       + 'problems are not broken hardware; they are a device stuck in a '
-      + 'state its makers never thought about.',
+      + 'state its makers never thought about. It clears the confusion and '
+      + 'hands back everything that was already wrong.',
       'It is also why it is not a fix. If the same machine wedges every '
       + 'Friday afternoon, restarting it every Friday afternoon is not '
       + 'support, it is a standing appointment. Find what puts it in that '

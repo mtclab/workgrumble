@@ -223,9 +223,12 @@ function pingLines(api: GameApi, query: string): CommandResult {
       (_, index) => `Reply from ${label}: bytes=32 time=${String(3 + index)}ms `
         + 'TTL=57',
     ),
+    // A reply proves one thing: the box answered at the network layer. It
+    // says nothing about the services on it, and a terminal that reports
+    // "the machine is fine" teaches the player to stop looking.
     `Packets: sent = ${String(PING_PACKETS)}, received = `
-      + `${String(PING_PACKETS)}, lost = 0. The machine is fine. The person `
-      + 'using it may not be.',
+      + `${String(PING_PACKETS)}, lost = 0. It is alive. This says nothing `
+      + 'about its mood, and nothing at all about what is running on it.',
   );
 }
 
