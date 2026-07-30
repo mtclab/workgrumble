@@ -4,6 +4,7 @@ import { formatSimTime } from './clock-format';
 import type { ShellContext } from './context';
 import { createIcon } from './icons';
 import { BOSS_KEY, DISMISS_KEY } from './keys';
+import { launchApp } from './launch';
 import {
   createNotificationState,
   dismissToast,
@@ -17,8 +18,6 @@ import { WindowRenderer } from './window-renderer';
 import {
   createWindowManager,
   minimizeSlackWindows,
-  openWindow,
-  restoreWindow,
   setWindowViewport,
   toggleTaskbarWindow,
   type Viewport,
@@ -278,21 +277,8 @@ export class Desktop {
       return;
     }
 
-    const state = this.requireWindowManager();
-    const existing = state.windows.some(
-      (windowState) => windowState.id === definition.id,
-    );
-
     this.commitWindows(
-      existing
-        ? restoreWindow(state, definition.id)
-        : openWindow(state, {
-          id: definition.id,
-          appId: definition.id,
-          title: definition.title,
-          icon: definition.icon,
-          slack: definition.slack,
-        }),
+      launchApp(this.requireWindowManager(), definition),
     );
   }
 
