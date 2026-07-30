@@ -28,6 +28,8 @@ interface RenderedWindow {
   readonly maximizeButton: HTMLButtonElement;
   readonly abortController: AbortController;
   readonly instance: AppInstance;
+  /** Last painted maximize state; null until the first paint. */
+  maximizeIcon: boolean | null;
 }
 
 type ReadState = () => Readonly<WindowManagerState>;
@@ -252,6 +254,7 @@ export class WindowRenderer {
       maximizeButton,
       abortController,
       instance,
+      maximizeIcon: null,
     };
   }
 
@@ -291,6 +294,13 @@ export class WindowRenderer {
     );
     element.style.setProperty('--window-z', String(zIndex));
 
+    // Repainting the icon costs a new SVG node, and `sync` runs on every
+    // pointer move of a drag - so only touch it when the state actually flips.
+    if (rendered.maximizeIcon === windowState.maximized) {
+      return;
+    }
+
+    rendered.maximizeIcon = windowState.maximized;
     const action = windowState.maximized ? 'Restore' : 'Maximize';
     maximizeButton.setAttribute(
       'aria-label',
