@@ -114,16 +114,17 @@ test('leaves the cursor in a half-typed line when the lead walks in', async ({
   await page.getByTestId('brief-start-shift').click();
   await page.getByTestId('close-brief').click();
 
-  // Something to be caught at, and something to be typing.
+  // Something to be caught at, and something to be typing. The speed control
+  // is set BEFORE the line is typed: clicking a button takes the cursor, so a
+  // helper that clicks x4 would blur the terminal this test is about.
   await openFromStartMenu(page, 'bubbles');
+  await runSimMinutes(page, 1);
+
   await openFromStartMenu(page, 'cmd');
   const terminal = page.getByTestId('cmd-input');
   await terminal.fill('restart spool');
   await expect(terminal).toBeFocused();
 
-  // The speed control first: `runToTelegraph` walks the clock in x4 minutes,
-  // so the shell has to be running at x4 for its steps to be minutes.
-  await runSimMinutes(page, 1);
   await runToTelegraph(page);
   const caught = page.getByTestId('window-caught');
 
