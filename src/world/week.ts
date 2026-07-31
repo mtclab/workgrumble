@@ -438,6 +438,30 @@ export function assertWeekTickets<Entry extends RosterEntry>(
     }
   }
 
+  // A message that raises a ticket nobody wrote is a Tuesday afternoon that
+  // throws at twenty past two, in front of a player, on a beat that only fires
+  // when they were polite about it.
+  for (const script of WEEK) {
+    for (const slot of script.dms ?? []) {
+      const entry = known.get(slot.raises);
+
+      if (entry === undefined) {
+        throw new Error(
+          `Day ${String(script.day)} lets "${slot.speaker}" raise `
+          + `"${slot.raises}", which nobody wrote.`,
+        );
+      }
+
+      if (entry.arrival !== 'summoned') {
+        throw new Error(
+          `"${slot.raises}" is raised by a message and arrives `
+          + `"${entry.arrival}". A ticket somebody files because you said no `
+          + 'cannot also be dealt by the morning.',
+        );
+      }
+    }
+  }
+
   const scheduled = new Set(scheduledTicketIds());
 
   for (const entry of roster) {

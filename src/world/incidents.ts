@@ -20,7 +20,8 @@
  */
 
 import { WORLD_ACTIONS } from './actions/ids';
-import { COMPANY_IDS } from './company';
+import { companySetup, COMPANY_IDS } from './company';
+import { seededNodeIds } from './tickets/solvable';
 import type { TicketActionStep } from './tickets/types';
 
 export const INCIDENTS = {
@@ -71,6 +72,23 @@ export const WORLD_INCIDENTS: readonly WorldIncident[] = Object.freeze([
     ],
   },
 ]);
+
+/**
+ * Load-time gate, and the same one the ticket paths get: an incident aimed at
+ * a node nobody built is a fault that silently does not happen, on an evening
+ * nobody is watching, which surfaces two days later as a ticket about a
+ * printer that is working perfectly.
+ */
+for (const incident of WORLD_INCIDENTS) {
+  for (const step of incident.steps) {
+    if (!seededNodeIds(companySetup()).has(step.target)) {
+      throw new Error(
+        `Incident "${incident.id}" aims "${step.action}" at `
+        + `"${step.target}", which is not in the estate.`,
+      );
+    }
+  }
+}
 
 export function findIncident(id: string): WorldIncident | undefined {
   return WORLD_INCIDENTS.find((incident) => incident.id === id);

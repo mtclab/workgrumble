@@ -5,6 +5,7 @@ import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
 import { createWorldSession } from '../session';
 import { findWorldTicket, WORLD_TICKETS } from '../tickets';
+import { directMessagesOn, WEEK_DAYS } from '../week';
 import {
   applyDialogueEffect,
   applyDialogueEffects,
@@ -424,6 +425,25 @@ describe('shipped conversations', () => {
     expect(idle.ticket).toBeUndefined();
     expect(idle.open).toBe(false);
     expect(idle.root).toBe(found.root);
+  });
+
+  /**
+   * Everybody the week lets message you directly has somewhere for that
+   * message to land. A `summoned_root` is the entry point nothing in a tree
+   * points at, so a person without one is a conversation that opens on their
+   * small talk with a favour nobody can see having been asked for - which is
+   * not a crash and is not a wrong number, it is the beat simply not existing.
+   */
+  it('gives every direct message a node to arrive on', () => {
+    for (let day = 1; day <= WEEK_DAYS; day += 1) {
+      for (const slot of directMessagesOn(day)) {
+        const found = dialogueForSpeaker(slot.speaker);
+
+        expect(found, `${slot.speaker} has a conversation`).toBeDefined();
+        expect(found?.summoned_root, `${slot.speaker} can be summoned`)
+          .toBeDefined();
+      }
+    }
   });
 
   it('speaks only for people who exist in the company', () => {
