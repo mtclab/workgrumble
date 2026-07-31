@@ -262,9 +262,34 @@ interface GoldenWeek {
  * log learned to record a printer LOSING power as well as coming back. That is
  * two lines on PRINT-02 a week, it is the only evidence the recurring arc has,
  * and it changed no count, no meter and no minute on either timeline.
+ *
+ * And a third time, for the M4 QA wave, and again ONLY the hashes: every
+ * count, every meter, both timelines and both endings came through untouched.
+ * Four things are in the graph that were not before, and all four are state
+ * rather than behaviour.
+ *
+ *  - The new starter is seeded WITH the Sales mailbox and the Send As group,
+ *    and each of the two tickets about them takes its own one away as it
+ *    arrives. Two edges in the seed, and the fault written down where every
+ *    other missing-permission ticket in this world writes it - without which
+ *    a player who granted both on the Monday was dealt two tickets that
+ *    spawned already resolved.
+ *  - The warehouse printer counts how many times it has lost power, so the
+ *    note by the socket is earned by evidence rather than available on the
+ *    Monday. One field, moved by the cleaner's trolley, twice a week.
+ *  - The review writes down the reputation it was decided on, so the week
+ *    screen stops reading a number that carries on moving all afternoon. One
+ *    field on the player, written at three o'clock on the Friday.
+ *  - Dennis's ticket carries the reply that closed it, because the reply IS
+ *    the fix and the resolution rule now says so. Two fields on one ticket in
+ *    the worked week, and none at all in the idle one.
+ *
+ * The coalesced night is in this diff too and moved NOTHING: the same nine
+ * hundred minutes, in one call instead of nine hundred, is a performance
+ * change and `night.test.ts` is the proof that it is only that.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: '70d995d48767efe3',
+  hash: 'fefc3253776af51b',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -331,7 +356,7 @@ const GOLDEN_WORKED: GoldenWeek = {
  * and the world does not pretend otherwise.
  */
 const GOLDEN_IDLE: GoldenWeek = {
-  hash: 'b06f8bfb6fa6e7dc',
+  hash: 'fc07799712f6733e',
   tick: 6_300,
   outcome: 'fired',
   days: [

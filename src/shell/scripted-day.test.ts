@@ -461,8 +461,18 @@ const GOLDEN_DAY = {
    * Monday. Every time, every other number on this screen was read rather than
    * assumed, and the only one that has ever moved with the hash - stress at
    * five o'clock - moved for a reason written beside it.
+   *
+   * It has now moved a fourth time, for the M4 QA wave, and again alone: not
+   * one meter, minute, timeline entry or penny on this screen changed. Two
+   * things are in Monday's graph that were not before. The new starter is
+   * seeded with the Sales mailbox and the Send As group - two edges, so that
+   * the two tickets about them can take the permissions away as they arrive
+   * rather than reporting the absence of something nobody wrote down. And the
+   * warehouse printer counts how many times it has lost power, which is what
+   * the note by the socket is earned by; the trolley writes the first of
+   * those at 16:56 on this very Monday.
    */
-  hash: 'c60aaaf3a800a7c8',
+  hash: 'de732e1ab79732ca',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */
