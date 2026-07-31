@@ -1,5 +1,4 @@
 export {
-  accountLockedMessage,
   countEvents,
   encodeEvent,
   EVENT_IDS,
@@ -9,10 +8,7 @@ export {
   type EventLevel,
   isEventLevel,
   type MachineEvent,
-  printFailedMessage,
   readEventLog,
-  serviceCrashedMessage,
-  slaMissedMessage,
   withEvent,
 } from './log';
 export { machinesFor, watchMachineEvents } from './watch';

@@ -112,8 +112,8 @@ export const LINK_PARENT_REFUSED_REASON = 'That ticket is not a duplicate of '
   + 'anything. Its own fault is still its own fault, and closing something '
   + 'else would close it on paper while the reporter sits there.';
 
-export const LINK_PARENT_CLOSED_REASON = 'That ticket is already closed. '
-  + 'Attaching it to a parent now is filing, not support.';
+const LINK_PARENT_CLOSED_REASON = 'That ticket is already closed. Attaching '
+  + 'it to a parent now is filing, not support.';
 
 const UNTRACKED_GUARD: GuardData = {
   when: { pred: 'ticket_untracked', node: TARGET },
