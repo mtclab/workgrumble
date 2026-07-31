@@ -24,7 +24,12 @@ const INVITE_ONLY = /invite-only while it is being tested/i;
 
 test.describe('the tester door', () => {
   test('refuses a browser that was never invited', async ({ browser }) => {
-    const context = await browser.newContext();
+    // Explicitly stateless: the suite's global setup hands every context a
+    // pass so the journeys written before there was a door still run, and a
+    // context that inherits it is not a browser that was never invited.
+    const context = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+    });
     const page = await context.newPage();
 
     const response = await page.goto('/');
