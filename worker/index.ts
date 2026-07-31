@@ -53,11 +53,21 @@ import type { Env, KVNamespace } from './types';
 const HOUR = 60 * 60 * 1_000;
 const DAY = 24 * HOUR;
 
-/** How hard each surface may be leaned on, and over what stretch. */
+/**
+ * How hard each surface may be leaned on, and over what stretch.
+ *
+ * Sized to stop a machine walking the token space or the badge space at speed,
+ * and NOT sized to be tight. A tester on a shared office address, a household
+ * behind one router and the journey suite itself all arrive as one caller
+ * here - and a limit that fails the gate on the second run of the day is a
+ * limit somebody deletes rather than tunes. The one that is genuinely small is
+ * the feedback counter, and that one is per badge rather than per address,
+ * because it is about a person filing the same complaint forty times.
+ */
 const LIMITS = {
-  door: { limit: 30, windowMs: HOUR },
-  register: { limit: 5, windowMs: HOUR },
-  login: { limit: 20, windowMs: 15 * 60 * 1_000 },
+  door: { limit: 120, windowMs: HOUR },
+  register: { limit: 30, windowMs: HOUR },
+  login: { limit: 60, windowMs: 15 * 60 * 1_000 },
   save: { limit: 240, windowMs: HOUR },
   feedback: { limit: 10, windowMs: DAY },
 } as const;

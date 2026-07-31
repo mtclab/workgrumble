@@ -28,48 +28,23 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
 const BINDING = 'TOKENS';
 
-/** The staging-only fixture tokens. Never mint these anywhere real. */
-const FIXTURES = {
-  'wg-fixture-shared-0000000000': {
-    label: 'e2e: the shared link every journey walks in through',
-    uses_max: null,
-    uses_count: 0,
-    expires_at: null,
-    revoked: false,
-  },
-  'wg-fixture-single-0000000000': {
-    label: 'e2e: one admission, then spent',
-    uses_max: 1,
-    uses_count: 0,
-    expires_at: null,
-    revoked: false,
-  },
-  'wg-fixture-spent-00000000000': {
-    label: 'e2e: already spent',
-    uses_max: 2,
-    uses_count: 2,
-    expires_at: null,
-    revoked: false,
-  },
-  'wg-fixture-revoked-000000000': {
-    label: 'e2e: revoked while it still had uses left',
-    uses_max: null,
-    uses_count: 0,
-    expires_at: null,
-    revoked: true,
-  },
-  'wg-fixture-expired-000000000': {
-    label: 'e2e: ran out of time on the first of January 2020',
-    uses_max: null,
-    uses_count: 0,
-    expires_at: 1577836800000,
-    revoked: false,
-  },
-};
+/**
+ * The staging-only fixture tokens, read off the SAME file the journey suite
+ * imports - so what the box is seeded with and what the tests drive cannot
+ * drift apart. A journey walking in through a link nobody seeded fails on the
+ * box with a 403 and no clue why.
+ */
+const FIXTURES = JSON.parse(
+  readFileSync(
+    new URL('../e2e/fixtures/door-tokens.json', import.meta.url),
+    'utf8',
+  ),
+);
 
 function fail(message) {
   console.error(message);
@@ -207,6 +182,11 @@ function seedFixtures(flags) {
   }
 
   for (const [token, record] of Object.entries(FIXTURES)) {
+    // The file carries its own explanation under a key no token can wear.
+    if (token.startsWith('_')) {
+      continue;
+    }
+
     put(token, record, flags);
     console.log(`seeded ${token}`);
   }

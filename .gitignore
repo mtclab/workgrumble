@@ -10,3 +10,6 @@ playwright-report/
 test-results/
 core-rs/target/
 core-rs/pkg/
+# `wrangler dev` keeps its simulated KV here. It is a staging box's scratch
+# directory and it holds tester tokens; it never belongs in the repository.
+.wrangler/

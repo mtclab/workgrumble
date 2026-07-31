@@ -5,9 +5,12 @@ import {
   boxOf,
   clockOffFor,
   completeLogin,
+  dismissBrief,
   dragBy,
   focusWindow,
+  issueBadge,
   logInOnDay,
+  logOnWithBadge,
   openFromDesktopIcon,
   openFromStartMenu,
   realMs,
@@ -17,7 +20,9 @@ import {
   runToTelegraph,
   workUntil,
   workUntilMinute,
+  worldHash,
 } from './helpers';
+import { REFUSED_TOKENS, SHARED_TOKEN } from './tokens';
 import {
   COVERAGE,
   type CoverageId,
@@ -987,6 +992,43 @@ test('walks every function of a probation week that goes well', async ({
   await step('browser.bookmarks', async () => {
     await page.getByTestId('browser-home-button').click();
     await expect(page.getByTestId('browser-home')).toBeVisible();
+  });
+
+  await step('updates.window', async () => {
+    await openFromStartMenu(page, 'updates');
+    await expect(page.getByTestId('updates-installed'))
+      .toContainText('has been installed');
+    await expect(page.getByTestId('updates-line').first())
+      .toContainText('Addresses an issue');
+  });
+
+  await step('updates.report', async () => {
+    await page.getByTestId('updates-report').click();
+    await expect(page.getByTestId('window-feedback')).toBeVisible();
+  });
+
+  await step('feedback.window', async () => {
+    await expect(page.getByTestId('feedback-app'))
+      .toContainText('Report a real problem');
+  });
+
+  await step('feedback.context', async () => {
+    // Everything the report would carry besides the words, before anything is
+    // sent, plus the line about not typing anything personal into it.
+    await expect(page.getByTestId('feedback-context'))
+      .toContainText('Window in front');
+    await expect(page.getByTestId('feedback-notice'))
+      .toContainText('do not put anything personal');
+    await expect(page.getByTestId('feedback-contact')).not.toBeChecked();
+  });
+
+  await step('feedback.empty-refusal', async () => {
+    await page.getByTestId('feedback-details').fill('Something went wrong.');
+    await page.getByTestId('feedback-send').click();
+    await expect(page.getByTestId('feedback-refusal'))
+      .toContainText('needs a line saying what happened');
+    await page.getByTestId('close-feedback').click();
+    await page.getByTestId('close-updates').click();
   });
 
   await step('taskbar.button', async () => {
@@ -2233,6 +2275,154 @@ test('walks the thirty seconds of checking that stops the post', async ({
   await beginShift(page);
   await openFromStartMenu(page, 'mail');
   await expect(page.getByTestId('mail-row-security-incident')).toHaveCount(0);
+});
+
+/* ========================================================================= *
+ * The deploy run: everything the tester build adds and a file server cannot.
+ * ========================================================================= */
+
+test('walks the door, the badge and the report the tester build adds', async ({
+  browser,
+  page,
+}) => {
+  await recordControls(page);
+  test.setTimeout(600_000);
+
+  await step('door.refusal', async () => {
+    // A browser holding no pass, offered four dead links: revoked, spent,
+    // expired, and one nobody ever minted. The assertion is that the four
+    // answers are ONE answer.
+    const outside = await browser.newContext();
+    const stranger = await outside.newPage();
+    const pages: string[] = [];
+
+    for (const token of REFUSED_TOKENS) {
+      const response = await stranger.goto(`/t/${token}`);
+      expect(response?.status(), token).toBe(403);
+      await expect(stranger.getByTestId('boot-screen')).toHaveCount(0);
+      pages.push(await stranger.content());
+    }
+
+    expect(new Set(pages).size).toBe(1);
+    await outside.close();
+  });
+
+  await step('door.admission', async () => {
+    const invited = await browser.newContext();
+    const tester = await invited.newPage();
+
+    await tester.goto(`/t/${SHARED_TOKEN}`);
+    await expect(tester).toHaveURL(/\/$/);
+    await expect(tester.getByTestId('boot-screen')).toBeVisible();
+
+    // The pass survives the redirect that set it, which is the whole of what
+    // a thirty-day cookie is for.
+    await tester.goto('/');
+    await expect(tester.getByTestId('boot-screen')).toBeVisible();
+    await invited.close();
+  });
+
+  await page.clock.install();
+  await page.goto('/');
+  await page.keyboard.press('Space');
+
+  await step('login.badge-refused', async () => {
+    await page.getByTestId('login-badge').fill('WG-9999-ZZ');
+    await page.getByTestId('login-password').fill('hunter2');
+    await page.getByTestId('login-submit').click();
+
+    await expect(page.getByTestId('login-badge-refusal'))
+      .toContainText('not one this building recognises');
+    await expect(page.getByTestId('desktop')).toHaveCount(0);
+  });
+
+  let badge = '';
+
+  await step('login.issue-badge', async () => {
+    await page.getByTestId('login-badge').fill('');
+    badge = await issueBadge(page);
+    await expect(page.getByTestId('login-badge-issued'))
+      .toContainText('IT cannot look it up');
+  });
+
+  await page.getByTestId('login-submit').click();
+  await expect(page.getByTestId('desktop')).toBeVisible();
+  await dismissBrief(page);
+
+  await step('feedback.send', async () => {
+    await openFromStartMenu(page, 'feedback');
+    await page.getByTestId('feedback-summary')
+      .fill('The spooler button did nothing on Thursday');
+    await page.getByTestId('feedback-details')
+      .fill('Clicked it four times; the queue stayed where it was.');
+    await page.getByTestId('feedback-contact').check();
+    await page.getByTestId('feedback-send').click();
+
+    await expect(page.getByTestId('feedback-outcome')).toContainText('Filed');
+    await expect(page.getByTestId('feedback-summary')).toHaveValue('');
+    await page.getByTestId('close-feedback').click();
+  });
+
+  let played = '';
+
+  await step('start-menu.badge-sync', async () => {
+    await page.getByTestId('day-state').click();
+    await beginShift(page);
+    await runSimMinutes(page, 90);
+    // Two browsers cannot be compared while one of them is still living
+    // through minutes.
+    await page.getByTestId('day-pause').click();
+    await expect(page.getByTestId('day-state')).toContainText('paused');
+
+    await page.getByTestId('start-button').click();
+    await page.getByTestId('start-menu-save').click();
+    await expect(
+      page.getByTestId('toast').filter({ hasText: 'Game saved' }),
+    ).toHaveCount(1);
+
+    played = await worldHash(page);
+    expect(played).not.toBe('');
+  });
+
+  await step('login.badge', async () => {
+    // A browser with nothing in it: no week, no badge, and no pass until it
+    // follows the link. The goal is being back in the same Monday, so the
+    // assertion is the graph hash rather than a status code.
+    const elsewhere = await browser.newContext();
+    const other = await elsewhere.newPage();
+
+    await other.clock.install();
+    await other.goto(`/t/${SHARED_TOKEN}`);
+    await other.keyboard.press('Space');
+    await logOnWithBadge(other, badge);
+
+    await expect(
+      other.getByTestId('toast').filter({ hasText: 'later week on it' }),
+    ).toBeVisible();
+    await expect.poll(() => worldHash(other), { timeout: 15_000 }).toBe(played);
+
+    await elsewhere.close();
+  });
+
+  await step('updates.installed', async () => {
+    // A workstation that remembers an older build, which is the only kind
+    // that has been updated.
+    const older = await browser.newContext();
+    const upgraded = await older.newPage();
+
+    await upgraded.addInitScript(() => {
+      window.localStorage.setItem('workgrumble/seen-version', '0.0.1');
+    });
+    await upgraded.goto(`/t/${SHARED_TOKEN}`);
+    await upgraded.keyboard.press('Space');
+    await upgraded.getByTestId('login-password').fill('hunter2');
+    await upgraded.getByTestId('login-submit').click();
+
+    await expect(upgraded.getByTestId('window-updates')).toBeVisible();
+    await expect(upgraded.getByTestId('updates-installed'))
+      .toContainText('has been installed');
+    await older.close();
+  });
 });
 
 /* ========================================================================= *

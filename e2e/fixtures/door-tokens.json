@@ -1,0 +1,44 @@
+{
+  "_comment": [
+    "The tester links the door journeys are driven with. STAGING ONLY.",
+    "These strings are in a repository, so seeding them into production would",
+    "be publishing a key: `scripts/tokens.mjs seed-fixtures` refuses without",
+    "--local for exactly that reason.",
+    "",
+    "Every one of them is IDEMPOTENT under the walk. The shared link has no use",
+    "limit, so admitting through it a thousand times only counts to a thousand;",
+    "the other three are refused before anything is written, so the suite never",
+    "changes a record and never needs re-seeding between runs. The one thing",
+    "deliberately not walked end to end is spending the LAST use of a counted",
+    "link - that is a state change, and it is proven in worker/tokens.test.ts",
+    "where it can be run a hundred times."
+  ],
+  "wg-fixture-shared-0000000000": {
+    "label": "e2e: the shared link every journey walks in through",
+    "uses_max": null,
+    "uses_count": 0,
+    "expires_at": null,
+    "revoked": false
+  },
+  "wg-fixture-spent-00000000000": {
+    "label": "e2e: a counted link with nothing left on it",
+    "uses_max": 2,
+    "uses_count": 2,
+    "expires_at": null,
+    "revoked": false
+  },
+  "wg-fixture-revoked-000000000": {
+    "label": "e2e: revoked while it still had uses and time left",
+    "uses_max": null,
+    "uses_count": 0,
+    "expires_at": null,
+    "revoked": true
+  },
+  "wg-fixture-expired-000000000": {
+    "label": "e2e: ran out of time on the first of January 2020",
+    "uses_max": null,
+    "uses_count": 0,
+    "expires_at": 1577836800000,
+    "revoked": false
+  }
+}

@@ -8,16 +8,31 @@ Parody IT-career simulator in a fake-OS UI, in the browser. Start as a helpdesk 
 - Build plan: `docs/BUILD_PLAN.md`
 - Market case: `docs/spikes/market.md`
 
-Status: design phase. POC scope = fully built helpdesk slice (probation week demo).
+Status: POC complete, deploy milestone built. Tester build v0.1.
 
 PRIVATE repo - no GitHub Actions workflows by policy; all gates run locally.
 
-This build is a static, LOCAL-SAVE-ONLY artifact: the world lives in this
-browser's `localStorage` and nowhere else, so clearing site data clears the
-week. The hosted side of the roadmap - a Worker, badge accounts, KV sync,
-token limits and in-game feedback (`docs/ROADMAP.md`, "Deploy milestone") - is
-a separate milestone and is deliberately absent from this repository. Nothing
-here talks to a server, and nothing here expects one.
+## What ships
+
+One Cloudflare Worker serves the whole thing: the static bundle plus a small
+API (`worker/`, `wrangler.toml`). The GAME is still entirely client-side and
+still offline-first - the week lives in this browser's `localStorage`, is
+loaded from there, and plays identically with the server switched off, missing
+or refusing to answer. What the Worker adds is the three things a tester build
+needs and a static file cannot do:
+
+- **a door** - `/t/<token>` admits a tester link and everything else refuses
+  without a pass. Links are minted, listed and revoked with `scripts/tokens.mjs`
+  on the owner's machine; there is no web surface anywhere that writes one.
+- **a badge number** - `WG-####-XX`, which is the whole of an account. No email,
+  no name, no analytics, no IP. Lose the badge and you lose the save, said once
+  at the moment it is issued.
+- **a copy of the save on that badge** - written on the same events that already
+  autosave, read once at boot. Newest stamp wins and the loser is kept, never
+  destroyed.
+
+Plus an in-game "Report a real problem" form, and releases delivered in-fiction
+as operating-system updates (`src/world/releases.ts`).
 
 ## Milestone gate
 
@@ -33,23 +48,44 @@ npm run gate
 Rust tests, clippy with warnings denied, the wasm build, the TypeScript
 typecheck, the linter and the whole Vitest suite - including the headless
 whole-day determinism run against the golden day in
-`src/shell/scripted-day.test.ts`. Everything in it is offline and browserless.
+`src/shell/scripted-day.test.ts`, and the Worker's own units in `worker/`.
+Everything in it is offline and browserless: no wrangler, no network, no
+Cloudflare account.
 
-**2. Against a served build, on the staging box:**
+**2. Against the served Worker, on the staging box:**
 
 ```
 npm run build
-# serve dist/ on the box, then, pointed at it:
-PLAYWRIGHT_BASE_URL=http://<box>:<port> npm run gate:e2e
+# on the box, from the repo root (the local KV lives in ./.wrangler):
+npx wrangler dev --ip 0.0.0.0 \
+  --var SIGNING_KEY:any-long-throwaway-string-for-staging \
+  --var FEEDBACK_DRY_RUN:true
+node scripts/tokens.mjs seed-fixtures --local
+# then, pointed at it:
+PLAYWRIGHT_BASE_URL=http://<box>:8787 npm run gate:e2e
 ```
+
+The venue changed with the deploy milestone: the shipped artifact is now a
+Worker with a door on it, so the served half runs against `wrangler dev` rather
+than against a directory of files. `PLAYWRIGHT_BASE_URL` is still the only
+environment input - the suite lets itself in through a fixture link whose id is
+a constant in `e2e/tokens.ts`, seeded from the same file the CLI reads.
 
 The journey suite in `e2e/` drives the SHIPPED artifact through a real browser
 as a player: the day loop, the boss key, the caught scene, triage, the handoff
-form, the scorecard, and a save/reload that has to come back to the same world.
+form, the scorecard, a save/reload that has to come back to the same world, and
+- since the deploy milestone - the door, a badge carrying a week to a second
+browser, the report form and the update window.
+
 It is deliberately NOT wired into `npm run gate` - this workspace does not run
 browsers, and a gate that silently skips the half nobody can run here is worse
 than a gate with two named halves. `gate:e2e` refuses to start without
 `PLAYWRIGHT_BASE_URL`, so it cannot pass by having tested nothing.
+
+`FEEDBACK_DRY_RUN` is a STAGING-ONLY flag: the report form is checked and
+accepted and nothing is filed. It is an explicit flag rather than "post if
+there is a token, otherwise pretend", because that fallback turns an expired
+token in production into feedback that silently goes nowhere.
 
 Both halves are required before a milestone is called done. Neither substitutes
 for the other: the local half proves the world is deterministic and the rules

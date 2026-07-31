@@ -336,6 +336,51 @@ export async function activeElement(page: Page): Promise<ActiveElement> {
   });
 }
 
+/* -- the badge and the door ---------------------------------------------- */
+
+/**
+ * Asks the log-on screen for a badge number and reads back the one it was
+ * given.
+ *
+ * The badge is read off the FIELD rather than out of a cookie, because the
+ * cookie is HttpOnly and unreadable by design - being shown the number once,
+ * on screen, is the only way a player ever learns it, so it is the only way a
+ * test should learn it either.
+ */
+export async function issueBadge(page: Page): Promise<string> {
+  await expect(page.getByTestId('login-screen')).toBeVisible();
+  await page.getByTestId('login-issue-badge').click();
+
+  const issued = page.getByTestId('login-badge-issued');
+  await expect(issued).toContainText('Write it down');
+  await expect(page.getByTestId('login-badge')).toHaveValue(/^WG-\d{4}-[A-Z]{2}$/);
+
+  return page.getByTestId('login-badge').inputValue();
+}
+
+/** Logs on as a badge that was issued somewhere else. */
+export async function logOnWithBadge(
+  page: Page,
+  badge: string,
+): Promise<void> {
+  await expect(page.getByTestId('login-screen')).toBeVisible();
+  await page.getByTestId('login-badge').fill(badge);
+  await page.getByTestId('login-password').fill('hunter2');
+  await page.getByTestId('login-submit').click();
+  await expect(page.getByTestId('desktop')).toBeVisible();
+}
+
+/**
+ * The whole world in sixteen characters, which is the only honest way to ask
+ * "is this the same week" across two browsers.
+ */
+export async function worldHash(page: Page): Promise<string> {
+  return page.evaluate(
+    () => (globalThis as { careerSim?: { hash(): string } }).careerSim?.hash()
+      ?? '',
+  );
+}
+
 export async function zIndexOf(page: Page, appId: string): Promise<number> {
   const value = await page
     .getByTestId(`window-${appId}`)
