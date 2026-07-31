@@ -98,8 +98,11 @@ test('passes the review, opens the beer and reads the week back', async ({
   // in this game that is fixed by hitting it.
   await openFromStartMenu(page, 'about');
   await page.getByTestId('about-reseat-fan').click();
+  // Three tickets close inside a couple of sim-minutes here and toasts only
+  // expire on ticks, so the stack still holds the earlier two. The notice
+  // body carries the ticket title, which is what makes this one exact.
   await expect(
-    page.getByTestId('toast').filter({ hasText: 'Ticket resolved' }),
+    page.getByTestId('toast').filter({ hasText: 'hornet in a biscuit tin' }),
   ).toHaveCount(1);
 
   await openFromStartMenu(page, 'tickets');

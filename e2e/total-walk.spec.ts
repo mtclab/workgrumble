@@ -89,9 +89,18 @@ function resolvedFor(page: Page, title: RegExp): Locator {
     .filter({ hasText: title });
 }
 
-/** Brings the queue to the front and opens a ticket on it. */
+/**
+ * Brings the queue to the front and opens a ticket on it - opening the queue
+ * first if this run has not needed it yet, because `focusWindow` waits on a
+ * taskbar button that only exists once an app has been launched.
+ */
 async function openTicket(page: Page, slug: string): Promise<void> {
-  await focusWindow(page, 'tickets');
+  if (await page.getByTestId('window-tickets').count() === 0) {
+    await openFromStartMenu(page, 'tickets');
+  } else {
+    await focusWindow(page, 'tickets');
+  }
+
   await page.getByTestId(`ticket-row-${slug}`).click();
 }
 
@@ -253,11 +262,15 @@ test('walks every function of a probation week that goes well', async ({
 
   await step('desktop.pause', async () => {
     const pause = page.getByTestId('day-pause');
+    const clock = page.getByTestId('sim-clock-time');
     await pause.click();
     await expect(pause).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('day-state')).toContainText('paused');
+    // What pause promises is that the clock does not move - not that it is
+    // any particular minute. Getting here costs a few of them.
+    const stopped = (await clock.textContent())?.trim() ?? '';
     await page.clock.runFor(realMs(10, 4));
-    await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
+    await expect(clock).toHaveText(stopped);
     await pause.click();
     await expect(pause).toHaveAttribute('aria-pressed', 'false');
   });
@@ -1912,6 +1925,10 @@ test('walks the week nobody worked, the firing, and the retry', async ({
         JSON.stringify({ schema: 99, engine: '{}' }),
       );
     });
+    // Hold the day still: what a refused load must not do is MOVE the world,
+    // and a running clock at x4 moves twenty minutes while the menu opens.
+    const pause = page.getByTestId('day-pause');
+    await pause.click();
     const clock = await page.getByTestId('sim-clock-time').textContent();
 
     await page.getByTestId('start-button').click();
@@ -1920,7 +1937,8 @@ test('walks the week nobody worked, the firing, and the retry', async ({
       page.getByTestId('toast').filter({ hasText: 'Not loaded' }),
     ).toHaveCount(1);
     await expect(page.getByTestId('sim-clock-time')).toHaveText(clock ?? '');
-    await expect(page.getByTestId('day-state')).toHaveText('Shift');
+    await expect(page.getByTestId('day-state')).toContainText('Shift');
+    await pause.click();
   });
 
   // Four hours in, with the game put away and nothing closed: the queue has
@@ -2044,7 +2062,9 @@ test('walks the week nobody worked, the firing, and the retry', async ({
 test('walks the enrolment nobody checked, and the post it becomes', async ({
   page,
 }) => {
-  test.setTimeout(600_000);
+  // Playing two full days through the UI before the beat under test costs
+  // most of ten minutes on the box; give the run room rather than a cliff.
+  test.setTimeout(1_800_000);
   await logInOnDay(page, 3, { brief: 'keep' });
   await workUntil(page, 140);
 
@@ -2072,7 +2092,9 @@ test('walks the enrolment nobody checked, and the post it becomes', async ({
 test('walks the thirty seconds of checking that stops the post', async ({
   page,
 }) => {
-  test.setTimeout(600_000);
+  // Playing two full days through the UI before the beat under test costs
+  // most of ten minutes on the box; give the run room rather than a cliff.
+  test.setTimeout(1_800_000);
   await logInOnDay(page, 3, { brief: 'keep' });
   await workUntil(page, 140);
 

@@ -140,6 +140,11 @@ export const CMD_APP: AppDef = {
     form.addEventListener('submit', onSubmit);
     input.addEventListener('keydown', onKeyDown);
     root.addEventListener('pointerdown', onRootPointerDown);
+    // And again after the click has finished: clicking a terminal that was
+    // not the focused window raises the window too, and whatever that does
+    // to the cursor happens after pointerdown. A terminal you clicked and
+    // then have to click again is a terminal that is lying about being ready.
+    root.addEventListener('click', onRootPointerDown as EventListener);
 
     host.replaceChildren(root);
 
@@ -154,6 +159,7 @@ export const CMD_APP: AppDef = {
         form.removeEventListener('submit', onSubmit);
         input.removeEventListener('keydown', onKeyDown);
         root.removeEventListener('pointerdown', onRootPointerDown);
+        root.removeEventListener('click', onRootPointerDown as EventListener);
         root.remove();
       },
     };
