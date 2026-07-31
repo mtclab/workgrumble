@@ -107,3 +107,28 @@ test('says so plainly when a machine has nothing to report', async ({
     '0 of 0 event(s) on BEIGE-BOX',
   );
 });
+
+/** The ticket knows which box the reporter is at; the log is one click away. */
+test('opens the event log at the reporter\'s machine from the ticket', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('ticket-row-locked-account').click();
+  await page.getByTestId('ticket-open-events').click();
+
+  await expect(page.getByTestId('window-events')).toBeVisible();
+  await expect(page.getByTestId('events-count')).toContainText('PAYROLL-04');
+  await expect(
+    page.getByTestId('events-table').locator('[data-event="4740"]'),
+  ).toContainText('gpoole');
+
+  // The rotated screen is nobody's event: her machine has nothing to say, and
+  // the app says so rather than showing an empty table.
+  await focusWindow(page, 'tickets');
+  await page.getByTestId('ticket-row-rotated-screen').click();
+  await page.getByTestId('ticket-open-events').click();
+  await expect(page.getByTestId('events-log-empty')).toContainText(
+    'SALES-02 has nothing to report',
+  );
+});

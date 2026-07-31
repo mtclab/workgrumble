@@ -36,6 +36,10 @@ test('captures helpdesk apps for visual review', async ({ page }) => {
   await openFromStartMenu(page, 'directory');
   await page.screenshot({ path: 'test-results/visual/08-directory.png' });
 
+  await openFromStartMenu(page, 'events');
+  await page.getByTestId('events-machine-print').click();
+  await page.screenshot({ path: 'test-results/visual/08b-events.png' });
+
   await openFromStartMenu(page, 'cmd');
   await page.getByTestId('cmd-input').fill('help');
   await page.keyboard.press('Enter');

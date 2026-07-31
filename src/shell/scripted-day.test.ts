@@ -448,8 +448,16 @@ describe('the can, on the clock', () => {
  * reads it for what changing any of these means.
  */
 const GOLDEN_DAY = {
-  /** The world at the end of it, in sixteen characters. */
-  hash: 'b1534b610bc1114c',
+  /**
+   * The world at the end of it, in sixteen characters.
+   *
+   * It moved once in M4 lane B, and only here: the machines now keep their own
+   * event logs, and an event log is graph state. Every other number on this
+   * screen - meters, watermarks, the pay, the minute the lead arrived on - is
+   * exactly what it was, which is the proof that what moved was the log and
+   * not the day.
+   */
+  hash: '941ce0e7dfac1975',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */

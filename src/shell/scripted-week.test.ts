@@ -230,9 +230,14 @@ interface GoldenWeek {
  * and is a CONSCIOUS diff - the same rule the M0 hash and the golden day live
  * by - and the diff is the review: which day closed what, what the week paid,
  * and whether Friday still went the way the meters said it should.
+ *
+ * Both hashes moved once in M4 lane B and nothing else did: the machines keep
+ * event logs now and the accounts carry a lockout trail, both of which are
+ * graph state. Every count, every meter, every minute on both timelines is
+ * unchanged, which is what says the week itself did not move.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: '8d213f6a78394fc6',
+  hash: 'bd4139cd5b5569c1',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -279,7 +284,7 @@ const GOLDEN_WORKED: GoldenWeek = {
  * reputation on the floor by Friday afternoon.
  */
 const GOLDEN_IDLE: GoldenWeek = {
-  hash: 'd1bc240a2f864c6c',
+  hash: '3d7cedd31feea60b',
   tick: 6_300,
   outcome: 'fired',
   days: [

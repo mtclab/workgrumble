@@ -969,6 +969,28 @@ export const TICKETS_APP: AppDef = {
       // The article somebody LINKED beats the one the ticket was written
       // with: the second is where to start reading, the first is what was
       // actually used, and only one of them is evidence.
+      // The fourth cross-app link, and the one the recurring faults live on:
+      // what the reporter's machine wrote down about itself while nobody was
+      // reading. It carries WHICH box, like the remote link does.
+      const eventsButton = osButton('Read its event log', 'ticket-open-events');
+      setAvailability(
+        eventsButton,
+        !api.hasApp('events')
+          ? 'Event Viewer is not installed on this workstation yet.'
+          : reporterMachine === undefined
+            ? 'No workstation is signed out to this reporter, so there is no '
+              + 'log to read. Pick the box yourself in Event Viewer.'
+            : null,
+      );
+      eventsButton.addEventListener('click', () => {
+        if (reporterMachine !== undefined) {
+          api.openApp('events', {
+            kind: 'remote-machine',
+            id: reporterMachine.id,
+          });
+        }
+      });
+
       const kbRef = linkedArticle(node) ?? entry?.def.kb_ref ?? '';
       const kbButton = osButton('Open KB article', 'ticket-open-kb');
       setAvailability(
@@ -991,6 +1013,7 @@ export const TICKETS_APP: AppDef = {
         escalateButton,
         chatButton,
         remoteButton,
+        eventsButton,
         kbButton,
       );
       detail.append(
