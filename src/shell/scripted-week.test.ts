@@ -232,17 +232,18 @@ interface GoldenWeek {
  * and whether Friday still went the way the meters said it should.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: 'a640170c6b010e48',
+  hash: '8d213f6a78394fc6',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
-  // Monday brings three - the ticket that was waiting, the one that drips in
-  // mid-morning, and the one the lead raises by mentioning it - and the rest
-  // of the week brings one a day. All of them close, none of them go red.
+  // Monday brings four - the two that were waiting, the one that drips in
+  // mid-morning, and the one the lead raises by mentioning it. Tuesday drips
+  // one, Thursday inherits the office-wide fault, and the two blank days are
+  // days lane C has not filled yet. All of them close, none of them go red.
   days: [
-    [3, 3, 0],
+    [4, 4, 0],
     [1, 1, 0],
-    [1, 1, 0],
+    [0, 0, 0],
     [1, 1, 0],
     [0, 0, 0],
   ],
@@ -278,13 +279,13 @@ const GOLDEN_WORKED: GoldenWeek = {
  * reputation on the floor by Friday afternoon.
  */
 const GOLDEN_IDLE: GoldenWeek = {
-  hash: '6c169e6e2ea5cea6',
+  hash: 'd1bc240a2f864c6c',
   tick: 6_300,
   outcome: 'fired',
   days: [
-    [3, 0, 3],
+    [4, 0, 4],
     [1, 0, 1],
-    [1, 0, 1],
+    [0, 0, 0],
     [1, 0, 1],
     [0, 0, 0],
   ],

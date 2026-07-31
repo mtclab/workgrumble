@@ -409,12 +409,12 @@ describe('the day scorecard', () => {
 describe('a worked day', () => {
   it('shows up on the ledger the scorecard is built from', () => {
     const session = createWorldSession();
-    // Monday's own queue, dealt as the week deals it: the rotated screen was
-    // waiting at eight and the fan turns up mid-morning.
+    // Monday's own queue, dealt as the week deals it: two tickets waiting at
+    // eight, and the one you filed about your own desk turns up mid-morning.
     spawnWorldTicket(session.engine, 'ticket:fan-noise');
     const before = dayLedger(session.engine.graph.nodesOfKind('ticket'), 1);
     expect(before.closed).toBe(0);
-    expect(before.arrived).toBe(2);
+    expect(before.arrived).toBe(3);
 
     expect(
       session.engine.dispatch(
@@ -430,7 +430,7 @@ describe('a worked day', () => {
 
     const after = dayLedger(session.engine.graph.nodesOfKind('ticket'), 1);
     expect(after.closed).toBe(1);
-    expect(after.stillOpen).toBe(1);
+    expect(after.stillOpen).toBe(2);
     expect(daySlip(after).net).toBeGreaterThan(daySlip(before).net);
   });
 });

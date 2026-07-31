@@ -29,7 +29,7 @@ describe('a breached ticket that gets closed', () => {
     // three that get missed and one that was triaged out of trouble - is
     // dealt here rather than inherited. They are the same tickets the week
     // hands out across Monday to Thursday.
-    for (const id of [FAN_TICKET, 'ticket:locked-account', 'ticket:wedged-spooler']) {
+    for (const id of [FAN_TICKET, 'ticket:wedged-spooler']) {
       spawnWorldTicket(session.engine, id);
     }
 

@@ -177,8 +177,8 @@ describe('the week the retry starts', () => {
     expect(read(FIELDS.deskCans)).toBe(0);
     expect(read(FIELDS.dayState)).toBe('morning_brief');
     expect(retried.engine.now()).toBe(0);
-    expect(graph.nodesOfKind('ticket').map((node) => node.id))
-      .toEqual([...dayPlan(1).inherited]);
+    expect([...graph.nodesOfKind('ticket')].map((node) => node.id).sort())
+      .toEqual([...dayPlan(1).inherited].sort());
   });
 
   /**

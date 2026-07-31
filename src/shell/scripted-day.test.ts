@@ -449,16 +449,15 @@ describe('the can, on the clock', () => {
  */
 const GOLDEN_DAY = {
   /** The world at the end of it, in sixteen characters. */
-  hash: '1ba421b5f998896f',
+  hash: 'b1534b610bc1114c',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */
   onTheWay: {
     // 09:45. The browser has been up since five past and nothing has been
-    // closed. Monday's queue is one inherited ticket and one that has not
-    // arrived yet, so there is nothing on the stress meter at all - a queue
-    // inside what a person can hold costs nothing, which is the rate saying
-    // so rather than a meter that has stopped working.
+    // closed. Monday inherits two tickets, which is exactly what a person can
+    // hold in their head, so there is nothing on the stress meter at all - the
+    // rate saying so rather than a meter that has stopped working.
     105: {
       stress: 0,
       suspicion: 34,
@@ -474,9 +473,11 @@ const GOLDEN_DAY = {
       drink_crash_charged: -1,
     },
     // 11:00. One can open and paid for, the screen clean since twenty to ten,
-    // and the morning's arrival now in the queue beside the inherited one.
+    // and the morning's arrival now in the queue beside the two inherited
+    // ones - so the queue has started charging for itself, and the first
+    // deadline of the day has gone past.
     180: {
-      stress: 6,
+      stress: 17,
       suspicion: 19,
       reputation: 50,
       suspicion_events: 7,
@@ -492,20 +493,19 @@ const GOLDEN_DAY = {
   } as Record<string, Record<string, number>>,
   /** Every number the pressure layer ended the day holding. */
   atSeventeen: {
-    // A queue of three that nobody closed, two cans, and two conversations
-    // with the lead. Stress ends on the floor because the browser is open at
-    // the end of the day and a three-ticket queue charges one point an
-    // interval against three points of relief - the queue is what does it to
-    // you, and this queue is small.
-    stress: 0,
+    // A queue of four that nobody closed, two cans, and two conversations
+    // with the lead. The browser is open at the end of the day, so two points
+    // of queue an interval are working against three of relief - stress comes
+    // down through the afternoon without reaching the floor.
+    stress: 49,
     suspicion: 100,
-    reputation: 29,
+    reputation: 26,
     suspicion_events: 58,
     caught_events: 2,
-    // Three deadlines missed and charged once each: the ticket inherited at
-    // eight, the one that arrived mid-morning, and the one the lead raised by
-    // mentioning it. Nothing was resolved, so there was no credit to pay out.
-    breaches_charged: 3,
+    // Four deadlines missed and charged once each: the two tickets inherited
+    // at eight, the one that arrived mid-morning, and the one the lead raised
+    // by mentioning it. Nothing was resolved, so there was no credit to pay.
+    breaches_charged: 4,
     resolve_credit_paid: 0,
     consumable_spend: 240,
     desk_cans: 2,
@@ -514,7 +514,7 @@ const GOLDEN_DAY = {
     drink_tolerance: 2,
     drink_crash_charged: 234,
   } as Record<string, number>,
-  banked: 7_715,
+  banked: 7_315,
   /**
    * Every minute the day announced something, in order: the bill for a can,
    * the footsteps, the lead's messages, and the two rounds that found

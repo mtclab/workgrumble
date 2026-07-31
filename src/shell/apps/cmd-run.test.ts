@@ -59,7 +59,9 @@ function sessionWith(...ticketIds: readonly string[]): WorldSession {
   const session = createWorldSession();
 
   for (const id of ticketIds) {
-    spawnWorldTicket(session.engine, id);
+    if (session.engine.graph.getNode(id) === undefined) {
+      spawnWorldTicket(session.engine, id);
+    }
   }
 
   return session;

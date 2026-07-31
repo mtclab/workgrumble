@@ -109,18 +109,22 @@ export interface DayScript {
 /**
  * The week itself.
  *
- * The five shipped tickets are spread across it rather than piled onto Monday:
- * the rotated screen is the gimme you are handed on your first morning, the fan
- * is the one you filed about your own desk and it turns up mid-morning like a
- * conscience, and the wedged spooler - the only office-wide fault in the world -
- * lands on Thursday, which is the day the ramp says should hurt. Friday brings
- * nothing new because Friday is about the conversation at three.
+ * Monday hands the player the two tickets the two basic tools are taught on -
+ * a screen somebody has rotated and an account somebody has locked - and drips
+ * in the one they filed about their own desk, mid-morning, like a conscience.
+ * The office-wide fault, which is the only one in the shipped world, waits for
+ * Thursday, because Thursday is the day the ramp says should hurt. Friday
+ * brings nothing new: Friday is about the conversation at three.
+ *
+ * Wednesday and Friday carry no shipped ticket at all, and that is what the
+ * `load` column is for. Five tickets across five days is a thin week; the
+ * numbers say what each day is FOR, and lane C fills them.
  */
 export const WEEK: readonly DayScript[] = validateWeek([
   {
     day: 1,
     label: 'Monday',
-    inherited: ['ticket:rotated-screen'],
+    inherited: ['ticket:rotated-screen', 'ticket:locked-account'],
     drip: [{ ticketId: 'ticket:fan-noise', minute: 10 * 60 + 20 }],
     patrolSeed: 0,
     load: 1,
@@ -128,8 +132,8 @@ export const WEEK: readonly DayScript[] = validateWeek([
   {
     day: 2,
     label: 'Tuesday',
-    inherited: ['ticket:locked-account'],
-    drip: [],
+    inherited: [],
+    drip: [{ ticketId: 'ticket:tidied-list', minute: 10 * 60 + 40 }],
     patrolSeed: 1_301,
     load: 2,
   },
@@ -137,7 +141,7 @@ export const WEEK: readonly DayScript[] = validateWeek([
     day: 3,
     label: 'Wednesday',
     inherited: [],
-    drip: [{ ticketId: 'ticket:tidied-list', minute: 10 * 60 + 40 }],
+    drip: [],
     patrolSeed: 5_927,
     load: 3,
   },
