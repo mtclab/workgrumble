@@ -42,6 +42,17 @@ test('captures helpdesk apps for visual review', async ({ page }) => {
   await page.screenshot({ path: 'test-results/visual/09-cmd.png' });
 });
 
+test('captures the day surfaces', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Space');
+  await page.getByTestId('login-password').fill('hunter2');
+  await page.getByTestId('login-submit').click();
+  await page.screenshot({ path: 'test-results/visual/15-morning-brief.png' });
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('day-speed-4').click();
+  await page.screenshot({ path: 'test-results/visual/16-shift-taskbar.png' });
+});
+
 test('captures the chat, mail, KB and remote surfaces', async ({ page }) => {
   await logIn(page);
 
