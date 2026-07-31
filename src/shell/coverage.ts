@@ -1789,6 +1789,136 @@ export const SCENES_WITHOUT_A_ROUTE: Readonly<Record<string, string>> = {
     + 'for, which the loader makes unreachable for anything this build ships.',
 };
 
+/**
+ * Every control a player can touch, by the test id it wears.
+ *
+ * The second half of the completeness gate, and the half that was missing. The
+ * manifest above lists FUNCTIONS and the walk drives them; both gates argued
+ * about the same list, so a UI-only control - a filter, a navigation button, a
+ * toggle that reaches no new action, command, app or scene - could be added,
+ * left out of `COVERAGE`, and pass both. Nothing anywhere knew it existed.
+ *
+ * So the walk enumerates the controls it actually SEES on the built artifact -
+ * every button, select, input and textarea that carries a test id, gathered as
+ * the DOM produces them - and diffs that against this list. A control nobody
+ * wrote down here goes red on the served half of the gate, named.
+ *
+ * A trailing `*` is a family: one entry per row, per app, per service, per
+ * window. The id up to the star is what identifies the control; what comes
+ * after it is which of them this is.
+ */
+export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
+  /* -- boot and login ----------------------------------------------------- */
+  'login-password',
+  'login-submit',
+  'login-restart',
+
+  /* -- the desktop, the taskbar and the start menu ------------------------ */
+  'desktop-icon-*',
+  'start-button',
+  'start-menu-item-*',
+  'start-menu-save',
+  'start-menu-load',
+  'start-menu-log-off',
+  'start-menu-restart',
+  'taskbar-button-*',
+  'day-state',
+  'day-pause',
+  'day-speed-*',
+  'notification-tray',
+  'toast-dismiss',
+
+  /* -- window chrome ------------------------------------------------------ */
+  'minimize-*',
+  'close-*',
+
+  /* -- the desk ----------------------------------------------------------- */
+  'desk-drink',
+  'desk-tidy',
+  'desk-beer',
+
+  /* -- the queue ---------------------------------------------------------- */
+  'ticket-row-*',
+  'ticket-pick-*',
+  'ticket-open-chat',
+  'ticket-open-kb',
+  'ticket-open-remote',
+  'ticket-open-events',
+  'ticket-article-picker',
+  'ticket-link-article',
+  'ticket-link-parent',
+  'ticket-waiting-toggle',
+  'ticket-escalate',
+  'triage-impact',
+  'triage-urgency',
+  'triage-file',
+  'handoff-reported',
+  'handoff-send',
+  'handoff-cancel',
+
+  /* -- the other tools ---------------------------------------------------- */
+  'directory-search',
+  'directory-row-*',
+  'directory-unlock',
+  'directory-reset-password',
+  'directory-enable',
+  'directory-group-picker',
+  'directory-add-group',
+  'directory-remove-group',
+  'remote-machine-*',
+  'remote-rotation-picker',
+  'remote-apply-rotation',
+  'remote-reboot',
+  'remote-restart-*',
+  'remote-clear-*',
+  'remote-power-*',
+  'remote-replace-battery-*',
+  'events-machine-*',
+  'events-filter',
+  'cmd-input',
+  'kb-row-*',
+  'kb-see-also-*',
+  'mail-row-*',
+  'chat-person-*',
+  'chat-option-*',
+  'chat-restart',
+  'chat-open-tickets',
+  'browser-site-*',
+  'browser-home-button',
+  'about-run-diagnostics',
+  'about-reseat-fan',
+  'about-refresh',
+  'about-open-bubbles',
+  'bubbles-reset',
+  'bubbles-initials',
+  'bubble-target',
+
+  /* -- the screens the day puts up ---------------------------------------- */
+  'brief-start-shift',
+  'brief-open-tickets',
+  'brief-open-mail',
+  'scorecard-clock-off',
+  'caught-dismiss',
+  'review-dismiss',
+  'beer-open',
+  'weekend-onward',
+]);
+
+/**
+ * Whether a test id seen on screen is a control somebody wrote down.
+ *
+ * Families match on the part before the star, which is the half that names the
+ * control; a new `remote-restart-<something>` is the same control aimed at a
+ * different service, and a new `remote-throttle-<something>` is not.
+ */
+export function isDeclaredControl(testid: string): boolean {
+  return PLAYER_CONTROLS.some((declared) => (
+    declared.endsWith('*')
+      ? testid.startsWith(declared.slice(0, -1))
+      : testid === declared
+  ));
+}
+
 /** Every entry, by id. Throws rather than returning nothing: an unknown id in
  * the walk is a walk that is lying about what it covered. */
 export function coverageEntry(id: string): CoverageEntry {

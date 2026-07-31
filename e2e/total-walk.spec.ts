@@ -23,6 +23,7 @@ import {
   type CoverageId,
   coverageEntry,
   coverageFor,
+  isDeclaredControl,
   WALK_RUNS,
   type WalkRunId,
 } from '../src/shell/coverage';
@@ -49,8 +50,104 @@ import {
 
 test.describe.configure({ mode: 'serial' });
 
+// Every session folds what it saw into the shared ledger, whether it passed or
+// not: a run that fell over halfway still saw everything up to there.
+test.afterEach(async ({ page }) => {
+  await collectControls(page);
+});
+
 /** Everything this file has actually driven, by coverage id. */
 const walked = new Set<string>();
+
+/**
+ * Every control this walk has SEEN, by test id, across all four sessions.
+ *
+ * The manifest gate below answers "was every listed function driven". It could
+ * not answer "is every control on screen a listed function", because both
+ * halves of the old gate read the same list: a UI-only control - a filter, a
+ * navigation button, a toggle reaching no new action, command, app or scene -
+ * could be added, left out of `COVERAGE`, and pass everything. So the walk
+ * collects what the DOM actually produced and diffs it against
+ * `PLAYER_CONTROLS`, which is a list of controls rather than of functions.
+ */
+const seenControls = new Set<string>();
+
+/**
+ * Watches the page for controls, from the first paint onwards.
+ *
+ * "A control" is deliberately the real form controls plus anything wearing a
+ * button role, because those are the elements that DO something when they are
+ * used. A div with a test id on it is a label, a panel or a readout, and a
+ * gate that enumerated those would be a gate about markup. The selector is
+ * written out inside the init script because that string is evaluated in the
+ * page, where nothing from this module exists.
+ *
+ * An init script rather than a sweep at the end, because most of this product
+ * is windows that open and close: a control that was only on screen between
+ * two steps is still a control, and a single snapshot would miss every one of
+ * them. The observer is cheap - it records a string per new element - and it
+ * never touches anything it sees.
+ */
+async function recordControls(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const selector = 'button[data-testid], select[data-testid], '
+      + 'input[data-testid], textarea[data-testid], [role="button"][data-testid]';
+    const seen = new Set<string>();
+    const scope = window as unknown as { __controls: string[] };
+    scope.__controls = [];
+
+    const keep = (element: Element): void => {
+      const id = (element as HTMLElement).dataset.testid;
+
+      if (id !== undefined && !seen.has(id)) {
+        seen.add(id);
+        scope.__controls.push(id);
+      }
+    };
+
+    // The node itself AND everything under it: an added element can be the
+    // control, or the panel the control arrived inside.
+    const note = (root: Element | Document): void => {
+      if (root instanceof Element && root.matches(selector)) {
+        keep(root);
+      }
+
+      for (const element of root.querySelectorAll(selector)) {
+        keep(element);
+      }
+    };
+
+    const start = (): void => {
+      note(document);
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const added of record.addedNodes) {
+            if (added instanceof Element) {
+              note(added);
+            }
+          }
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', start, { once: true });
+    } else {
+      start();
+    }
+  });
+}
+
+/** Folds what one session saw into the ledger the gate reads. */
+async function collectControls(page: Page): Promise<void> {
+  const ids = await page.evaluate(
+    () => (window as unknown as { __controls?: string[] }).__controls ?? [],
+  );
+
+  for (const id of ids) {
+    seenControls.add(id);
+  }
+}
 
 /**
  * Drives one entry, named after it.
@@ -172,6 +269,7 @@ async function runUntilCrash(page: Page): Promise<void> {
 test('walks every function of a probation week that goes well', async ({
   page,
 }) => {
+  await recordControls(page);
   // Five played days plus every tool, every scene and a save/reload in the
   // middle of them. It is the longest journey in the suite by design.
   test.setTimeout(1_800_000);
@@ -1880,6 +1978,7 @@ test('walks every function of a probation week that goes well', async ({
 test('walks the week nobody worked, the firing, and the retry', async ({
   page,
 }) => {
+  await recordControls(page);
   test.setTimeout(900_000);
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -2079,6 +2178,7 @@ test('walks the week nobody worked, the firing, and the retry', async ({
 test('walks the enrolment nobody checked, and the post it becomes', async ({
   page,
 }) => {
+  await recordControls(page);
   // Playing two full days through the UI before the beat under test costs
   // most of ten minutes on the box; give the run room rather than a cliff.
   test.setTimeout(1_800_000);
@@ -2109,6 +2209,7 @@ test('walks the enrolment nobody checked, and the post it becomes', async ({
 test('walks the thirty seconds of checking that stops the post', async ({
   page,
 }) => {
+  await recordControls(page);
   // Playing two full days through the UI before the beat under test costs
   // most of ten minutes on the box; give the run room rather than a cliff.
   test.setTimeout(1_800_000);
@@ -2153,4 +2254,33 @@ test('drove every function the coverage manifest lists', () => {
   const listed = new Set(COVERAGE.map((entry) => entry.id));
   expect([...walked].filter((id) => !listed.has(id))).toEqual([]);
   expect(walked.size).toBe(COVERAGE.length);
+});
+
+/**
+ * The other direction, and the one that used to have nothing looking at it.
+ *
+ * Everything above argues with `COVERAGE`, which is a list of FUNCTIONS; both
+ * halves of that gate read the same list, so a UI-only control reaching no new
+ * action, command, app or scene could be added, left out of the list, and pass
+ * both. This one argues with the DOM: every button, select, input and textarea
+ * these four sessions actually put on screen has to be a control somebody
+ * wrote down in `PLAYER_CONTROLS`.
+ *
+ * A failure here is a list to extend, not a bug to hunt: the message names the
+ * ids nobody has accounted for.
+ */
+test('saw no control the inventory does not know about', () => {
+  const unknown = [...seenControls]
+    .filter((id) => !isDeclaredControl(id))
+    .sort((left, right) => left.localeCompare(right));
+
+  expect(
+    unknown,
+    'controls on screen that PLAYER_CONTROLS does not list - add them there '
+      + 'with the function they belong to, or take them off the screen',
+  ).toEqual([]);
+
+  // And the walk really did look: a run that saw nothing has a broken
+  // recorder rather than a product with no buttons in it.
+  expect(seenControls.size).toBeGreaterThan(30);
 });
