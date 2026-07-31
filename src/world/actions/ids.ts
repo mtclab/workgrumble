@@ -117,6 +117,18 @@ export const HELPDESK_ACTIONS = {
    */
   ticketAddComment: 'ticket.add_comment',
   /**
+   * Writing BACK to the reporter: a statement rather than a question.
+   *
+   * Its own verb, and the difference is not decoration. Everything else that
+   * reaches the customer-visible stream is a question - "when exactly did it
+   * go?" - so the last line on that stream is not the explanation of anything,
+   * and it was being copied onto forty duplicates as the reason their tickets
+   * had closed. This is the one that leaves a mark a resolution rule can
+   * watch, which is how a ticket whose fix IS a sentence to somebody - the man
+   * who reported the phish and got nothing back - can say so where it binds.
+   */
+  ticketReplyToReporter: 'ticket.reply_to_reporter',
+  /**
    * The response clock stopped by something other than a comment: the first
    * dispatched action that touched the ticket's own nodes. The driver notices;
    * the world records it, because a clock is world state.

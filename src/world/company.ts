@@ -359,9 +359,19 @@ const GROUP_MEMBERSHIPS: readonly { account: string; group: string }[] = [
   { account: COMPANY_IDS.yolandaAccount, group: COMPANY_IDS.printUsers },
   { account: COMPANY_IDS.vicAccount, group: COMPANY_IDS.printUsers },
   // Send As on the Sales mailbox. Ada has it because she was there when it was
-  // set up; the new starter has neither this nor the mailbox, which is two
-  // permissions and therefore - the whole lesson - two tickets.
+  // set up; the new starter loses both of these to the setup of the two
+  // tickets about them, which is two permissions and therefore - the whole
+  // lesson - two tickets.
+  //
+  // Kwame is seeded WITH them and each ticket takes its own one away as it
+  // arrives, which is the same shape every other missing-permission ticket in
+  // this world uses. Without it the fault was the absence of something nobody
+  // had written down, so a player who granted Full Access and Send As on
+  // Monday afternoon - both perfectly legal moves - was handed two tickets
+  // that spawned already resolved, and the chain that IS the lesson never
+  // happened.
   { account: COMPANY_IDS.adaAccount, group: COMPANY_IDS.salesSendAs },
+  { account: COMPANY_IDS.kwameAccount, group: COMPANY_IDS.salesSendAs },
 ];
 
 /** Gary is deliberately left off the share: it gives grant_access a job. */
@@ -372,6 +382,8 @@ const SHARE_ACCESS: readonly { account: string; share: string }[] = [
   { account: COMPANY_IDS.ninaAccount, share: COMPANY_IDS.commonShare },
   { account: COMPANY_IDS.bevAccount, share: COMPANY_IDS.commonShare },
   { account: COMPANY_IDS.adaAccount, share: COMPANY_IDS.salesMailbox },
+  // And Kwame, until the ticket about it arrives and takes it off him again.
+  { account: COMPANY_IDS.kwameAccount, share: COMPANY_IDS.salesMailbox },
 ];
 
 /**

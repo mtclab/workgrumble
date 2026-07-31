@@ -80,6 +80,29 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         field: FIELDS.dayState,
         value: { const: 'day_end' },
       },
+      // Five o'clock on a Friday that went well, and not a minute before it.
+      //
+      // The lock used to come off in the review itself, at three, which left
+      // two hours of shift in which the fridge was open and the week was not
+      // over - the joke the tooltip has been telling all week, told early and
+      // at the desk. The probation ends when the DAY does.
+      {
+        op: 'when',
+        cond: {
+          pred: 'field_eq',
+          node: ACTOR,
+          field: FIELDS.reviewOutcome,
+          value: { const: 'passed' },
+        },
+        ops: [
+          {
+            op: 'set_field',
+            node: ACTOR,
+            field: FIELDS.beerUnlocked,
+            value: { const: true },
+          },
+        ],
+      },
     ],
   },
   // The service clock, kept honest by the state it belongs to: one of these is
@@ -150,13 +173,14 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         field: FIELDS.reviewOutcome,
         value: { const: 'passed' },
       },
-      // The probation ends, which is one thing on the desk and one thing in
-      // the fridge: the beer stops being a tooltip about probation.
+      // What the conversation was decided on, kept as it was read. Reputation
+      // carries on moving all afternoon and the week screen was showing the
+      // live number beside the verdict it did not produce.
       {
         op: 'set_field',
         node: ACTOR,
-        field: FIELDS.beerUnlocked,
-        value: { const: true },
+        field: FIELDS.reviewReputation,
+        value: { field: { node: ACTOR, field: FIELDS.reputation } },
       },
       {
         op: 'set_field',
@@ -204,6 +228,16 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         node: ACTOR,
         field: FIELDS.reviewOutcome,
         value: { const: 'fired' },
+      },
+      // The same snapshot on the way out. A week screen that read the live
+      // meter could say "41 of 40 needed" above "Probation: not continued",
+      // which is the screen arguing with itself about the one number the
+      // player is owed an honest account of.
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reviewReputation,
+        value: { field: { node: ACTOR, field: FIELDS.reputation } },
       },
     ],
   },

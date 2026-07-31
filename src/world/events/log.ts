@@ -158,7 +158,23 @@ export function readEventLog(value: unknown): readonly MachineEvent[] {
 }
 
 /**
- * The log with one more entry on the end, oldest dropped once it is full.
+ * The log with one more entry on the end, kept to its bound by dropping the
+ * cheapest rows rather than simply the oldest ones.
+ *
+ * A flat window was a diagnosis surface that could be emptied by anything
+ * repetitive. Thirty reboots of PRINT-02 on a Wednesday afternoon - each of
+ * them a perfectly legal, repeatable action - pushed Monday's power loss off
+ * the end, and Thursday's ticket then asked the player to correlate two
+ * timestamps of which the log could only still show one. The evidence was
+ * destroyed by noise, which is exactly the failure a real retention policy
+ * exists to stop.
+ *
+ * So the bound stays at thirty - it is in every save from here on, and thirty
+ * rows is already more than anybody reads before lunch - and the eviction is
+ * level-aware: information goes first, oldest first, and warnings and errors
+ * are only dropped once there is nothing cheaper left. That is the honest
+ * shape, because the row a recurring fault turns on is by definition the
+ * high-level one: 6008 is an error and a reboot is not.
  *
  * Pure, so the caller dispatches the whole field as one value and a replay
  * writes exactly the same string - the same contract the ticket touch log
@@ -173,7 +189,46 @@ export function withEvent(
     : [];
 
   lines.push(encodeEvent(event));
-  return lines.slice(-EVENT_LOG_LIMIT).join('\n');
+  return retain(lines).join('\n');
+}
+
+/** Whether a row is one of the cheap ones, and therefore the first to go. */
+function isCheap(line: string): boolean {
+  const event = decodeEvent(line);
+  // A row this build cannot read is a row nobody can diagnose anything from,
+  // so it is cheaper than the cheapest thing that still parses.
+  return event === null || event.level === 'information';
+}
+
+/**
+ * Thirty rows, chosen by what they are worth rather than by when they landed.
+ *
+ * Oldest-first within each pass, so a log that has never been full keeps its
+ * order exactly and a log that has keeps the story rather than the noise.
+ */
+function retain(lines: readonly string[]): readonly string[] {
+  if (lines.length <= EVENT_LOG_LIMIT) {
+    return lines;
+  }
+
+  const kept = [...lines];
+  let excess = kept.length - EVENT_LOG_LIMIT;
+
+  for (let index = 0; index < kept.length && excess > 0;) {
+    const line = kept[index];
+
+    if (line !== undefined && isCheap(line)) {
+      kept.splice(index, 1);
+      excess -= 1;
+    } else {
+      index += 1;
+    }
+  }
+
+  // And if the whole window is errors and warnings, the oldest of those go:
+  // the bound is a bound, and a log that could grow without limit because it
+  // is all bad news is a save that grows without limit.
+  return kept.slice(-EVENT_LOG_LIMIT);
 }
 
 /** How many times this has already happened to this thing on this box. */

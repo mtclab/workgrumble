@@ -228,8 +228,75 @@ function validateWorldTickets(
   // about outcomes: a step aimed at a node nobody built arrives as a refusal
   // in front of a player rather than as an error in front of us.
   assertPathsAimAtRealNodes(entries, seededNodeIds(companySetup()));
+  assertChainsAreChains(entries);
 
   return Object.freeze([...entries]);
+}
+
+/**
+ * The `follows` graph, checked for being a graph.
+ *
+ * Three things can be wrong with it and none of them looks wrong in the file.
+ * A ticket that follows one nobody wrote never arrives at all, and the only
+ * symptom is a chain that stops - which reads as a quiet afternoon. Two
+ * tickets following the SAME one is a chain with a coin toss in it: the day
+ * loop asks for "the follower" and gets whichever the roster happens to list
+ * first, so the ticket the player is dealt depends on the order of an array.
+ * And a cycle is a queue that fills itself: every close raises the next one,
+ * for ever, in a game with an SLA on everything.
+ */
+function assertChainsAreChains(entries: readonly WorldTicket[]): void {
+  const known = new Set(entries.map(({ def }) => def.id));
+  const followedBy = new Map<string, string>();
+
+  for (const entry of entries) {
+    const { follows } = entry;
+
+    if (follows === undefined) {
+      continue;
+    }
+
+    if (!known.has(follows)) {
+      throw new Error(
+        `Ticket "${entry.def.id}" follows "${follows}", which nobody wrote. It `
+        + 'would never be raised, and the only symptom is a chain that stops.',
+      );
+    }
+
+    const already = followedBy.get(follows);
+
+    if (already !== undefined) {
+      throw new Error(
+        `"${follows}" is followed by both "${already}" and "${entry.def.id}". `
+        + 'The day loop raises THE follower, so which of the two a player is '
+        + 'dealt would depend on the order of an array.',
+      );
+    }
+
+    followedBy.set(follows, entry.def.id);
+  }
+
+  // And no chain eats its own tail. Walking forwards from each start settles
+  // it in one pass per chain, which is all a roster this size needs.
+  for (const start of followedBy.keys()) {
+    const seen = new Set<string>([start]);
+
+    for (
+      let next = followedBy.get(start);
+      next !== undefined;
+      next = followedBy.get(next)
+    ) {
+      if (seen.has(next)) {
+        throw new Error(
+          `The chain through "${start}" comes back to "${next}". A close that `
+          + 'raises a ticket that closes and raises it again is a queue that '
+          + 'fills itself.',
+        );
+      }
+
+      seen.add(next);
+    }
+  }
 }
 
 /**
@@ -259,6 +326,10 @@ export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekTickets(
  * The ticket a fix raises, if it raises one. The day loop asks after every
  * dispatch, which is what makes a follow-up arrive in the minute its parent
  * closed rather than at the top of the next one.
+ *
+ * "The" follower is exact rather than convenient: the loader refuses a roster
+ * in which two tickets follow the same one, so there is never a second
+ * candidate for this to pick between.
  */
 export function followUpTo(ticketId: string): string | undefined {
   return WORLD_TICKETS.find((entry) => entry.follows === ticketId)?.def.id;

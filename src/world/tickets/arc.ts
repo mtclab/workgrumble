@@ -44,12 +44,23 @@ export const VACUUM_TUESDAY: WorldTicket = {
         + 'twice this month and it did not seem worth a ticket either time.',
     },
     reporter: COMPANY_IDS.owen,
+    // The fault as the ticket reports it: off, and off for the first time.
+    // The count is part of the fault rather than a side effect of the clock
+    // having passed through the right minute - the same rule the rest of this
+    // roster keeps, and the reason a ticket is broken whether or not anybody
+    // was watching last night.
     setup: [
       {
         op: 'setField',
         id: COMPANY_IDS.warehousePrinter,
         field: FIELDS.powered,
         value: false,
+      },
+      {
+        op: 'setField',
+        id: COMPANY_IDS.warehousePrinter,
+        field: FIELDS.powerLosses,
+        value: 1,
       },
     ],
     resolved_when: {
@@ -102,12 +113,22 @@ export const VACUUM_THURSDAY: WorldTicket = {
         + 'and he is right, and he has been right for about a month.',
     },
     reporter: COMPANY_IDS.owen,
+    // And the second time, which is the whole ticket. Twice is what the note
+    // by the socket is earned by: Facilities will write "DO NOT UNPLUG" on
+    // anything once somebody can tell them what keeps being unplugged and
+    // when, and one outage cannot tell them that.
     setup: [
       {
         op: 'setField',
         id: COMPANY_IDS.warehousePrinter,
         field: FIELDS.powered,
         value: false,
+      },
+      {
+        op: 'setField',
+        id: COMPANY_IDS.warehousePrinter,
+        field: FIELDS.powerLosses,
+        value: 2,
       },
     ],
     resolved_when: {

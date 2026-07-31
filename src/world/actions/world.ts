@@ -51,6 +51,46 @@ export const WORLD_ACTION_DATA: readonly ActionData[] = [
         field: FIELDS.powered,
         value: { const: false },
       },
+      // And the count, which is the only durable trace a socket leaves.
+      //
+      // The machine's own log has the timestamps and is where a player reads
+      // the story, but it is thirty rows long and a busy Wednesday can push
+      // Monday's outage off the end of it. The count is what the repair is
+      // gated on: one outage is an accident, and the same socket doing it
+      // twice is somebody's round.
+      //
+      // Seeded here rather than in the estate, because "how many times has
+      // this been unplugged" is a fact every device starts with the same
+      // answer to and only this verb ever changes.
+      {
+        op: 'when',
+        cond: not({
+          pred: 'field_is_number',
+          node: TARGET,
+          field: FIELDS.powerLosses,
+        }),
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.powerLosses,
+            value: { const: 0 },
+          },
+        ],
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.powerLosses,
+        value: {
+          add: {
+            node: TARGET,
+            field: FIELDS.powerLosses,
+            by: { const: 1 },
+            clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
+          },
+        },
+      },
     ],
   },
   {

@@ -439,6 +439,93 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
       },
     ],
   ),
+  /**
+   * Writing back, which is not the same act as asking.
+   *
+   * It lands in the same customer-visible stream - there is only one thing the
+   * reporter can see - and it leaves two marks beside it that a question does
+   * not. `replied` is what a resolution rule can watch, so a ticket whose fix
+   * is a sentence to somebody can say so where it binds rather than in a line
+   * of dialogue that claims it happened. `reply_to_reporter` is the sentence
+   * itself, kept apart so the bulk close has an explanation to copy: the last
+   * customer-visible line is usually the last thing the player ASKED, and
+   * forty people being told their VPN ticket closed because somebody wanted to
+   * know exactly when it went is not a service desk, it is a mail merge.
+   */
+  {
+    id: HELPDESK_ACTIONS.ticketReplyToReporter,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('ticket'),
+      UNTRACKED_GUARD,
+      {
+        when: stateIs('resolved'),
+        reason: 'That ticket is closed. Anything you send now arrives at '
+          + 'somebody who has stopped thinking about it.',
+      },
+      {
+        when: { pred: 'param_blank', param: COMMENT_PARAM },
+        reason: 'An empty reply is worse than no reply. They can tell the '
+          + 'difference between silence and a form letter, and they mind the '
+          + 'second one more.',
+      },
+      {
+        when: {
+          pred: 'line_in_field',
+          node: TARGET,
+          field: FIELDS.customerVisible,
+          value: { param_trim: COMMENT_PARAM },
+        },
+        reason: 'You have already sent them that, word for word. Sending it '
+          + 'twice reads as an automated system, which is what they were '
+          + 'hoping you were not.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.customerVisible,
+        value: {
+          append_line: {
+            node: TARGET,
+            field: FIELDS.customerVisible,
+            value: { param_trim: COMMENT_PARAM },
+          },
+        },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.replyToReporter,
+        value: { param_trim: COMMENT_PARAM },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.replied,
+        value: { const: true },
+      },
+      // Somebody the reporter heard from is somebody who responded, and this
+      // is the first contact on plenty of tickets.
+      {
+        op: 'when',
+        cond: not({
+          pred: 'field_is_number',
+          node: TARGET,
+          field: FIELDS.respondedAt,
+        }),
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.respondedAt,
+            value: { now: true },
+          },
+        ],
+      },
+    ],
+  },
   {
     id: HELPDESK_ACTIONS.ticketRecordResponse,
     tier: HELPDESK_TIER,

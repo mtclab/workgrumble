@@ -37,6 +37,17 @@ export const FIELDS = {
   reviewOutcome: 'review_outcome',
   weekEnded: 'week_ended',
   /**
+   * The number the conversation at three o'clock was actually decided on.
+   *
+   * Snapshotted by the review itself, because reputation carries on moving
+   * afterwards: a ticket closed at half past three moves it up, a deadline
+   * missed at four moves it down, and the week screen was reading it live. It
+   * could therefore say "37 of 40 needed" directly above "Probation: passed",
+   * which is a screen arguing with itself about something the player cannot
+   * check.
+   */
+  reviewReputation: 'review_reputation',
+  /**
    * The beer: visible from the first morning, locked until the probation ends,
    * and the whole reason the tooltip on it is worth reading. `beerOpened` is
    * whether the one at the end of the week has been had, which is what the
@@ -143,6 +154,18 @@ export const FIELDS = {
   mfaEnrolled: 'mfa_enrolled',
   mfaEnrolledAt: 'mfa_enrolled_at',
   identityVerifiedAt: 'identity_verified_at',
+  /**
+   * Whether anybody had checked, AT THE MOMENT the authenticator was bound.
+   *
+   * The latch is the whole of the lesson. `identityVerifiedAt` is a field that
+   * can be written at any time, so reading it later answered a different
+   * question - "has anybody ever checked" - and both wrong answers were
+   * reachable: verifying the next morning cancelled a consequence that had
+   * already been earned, and a speculative check on Monday excused an
+   * enrolment on Wednesday. What happened at the desk happened; this is the
+   * record of it, written once, by the enrolment, and never revised.
+   */
+  mfaEnrolmentVerified: 'mfa_enrolment_verified',
   securityFalloutAt: 'security_fallout_at',
   /**
    * When every device this account was signed in on was signed out again.
@@ -190,6 +213,16 @@ export const FIELDS = {
    */
   stickyNote: 'sticky_note',
   /** device */
+  /**
+   * How many times this device has lost power without being shut down.
+   *
+   * A count rather than a line in a log, because the log is bounded and this
+   * is the one fact the week's two-day arc turns on: a socket that took the
+   * warehouse printer down ONCE is an accident, and the same socket taking it
+   * down twice is somebody's round. It is what the note on the wall is earned
+   * by - the repair is a diagnosis, and a diagnosis needs two timestamps.
+   */
+  powerLosses: 'power_losses',
   type: 'type',
   powered: 'powered',
   wedged: 'wedged',
@@ -272,6 +305,23 @@ export const FIELDS = {
    */
   worknotes: 'worknotes',
   customerVisible: 'customer_visible',
+  /**
+   * The last thing said TO the reporter that was a statement rather than a
+   * question, and the marker that one was said at all.
+   *
+   * Both streams above are appended to by questions - "when exactly did it
+   * go?" is customer-visible, because it is the only place a question the
+   * reporter could have seen can live - so the last customer-visible line is
+   * not the explanation of anything. It was being copied onto forty duplicates
+   * as the reason their tickets closed, which read as the service desk asking
+   * forty people when their VPN went and then shutting the ticket.
+   *
+   * `replied` is what a resolution rule can watch, which is how a ticket whose
+   * fix is a sentence to somebody - the man who reported the phish - can say
+   * so in the only place that binds.
+   */
+  replied: 'replied',
+  replyToReporter: 'reply_to_reporter',
   /**
    * How long this ticket has been parked ALTOGETHER, in simulated minutes.
    *

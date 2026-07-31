@@ -81,6 +81,18 @@ const NOT_IN_THE_SHIFT_TAIL: readonly GuardData[] = Array.from(
   },
 );
 
+/**
+ * Why the bottle is still in the fridge at ten past three.
+ *
+ * The review is over and it went well and there are two hours of shift left,
+ * which is the whole of the reason: opening it now would be a beer at a desk
+ * on a Friday afternoon, which is a different thing entirely and a shorter
+ * career. Exported because the desk greys the bottle out with it.
+ */
+export const BEER_TOO_EARLY_REASON = 'The shift is not over. Whatever was '
+  + 'decided at three, there are two hours of it left and the fridge is at the '
+  + 'other end of the building, in full view of the man who decided it.';
+
 const TOLERANCE_IS_A_RUN: GuardData = {
   when: not({
     pred: 'param_int_in',
@@ -204,11 +216,17 @@ export const CONSUMABLE_ACTION_DATA: readonly ActionData[] = [
   /**
    * The beer, which the whole week has been a tooltip about.
    *
-   * No shift guard: the point of it is that the shift is over. What it does
-   * have is the lock, and the lock is the probation - the field is only ever
-   * turned on by a review that went the right way, so "unlocked" cannot be
-   * claimed by anybody dispatching this early. One bottle: the mechanics are
-   * a reward, not a second stacking run with a crash on the end.
+   * Three guards, and they are three different sentences on purpose. The LOCK
+   * is the probation - the field only ever comes on at the end of a Friday a
+   * review went the right way. The DAY is the joke: this is a bottle at the
+   * end of a week, not a can at a desk, and there is a perfectly good vending
+   * machine for the other thing. And the REVIEW is the belt to the lock's
+   * braces - the flag is a consequence of the outcome, and a world where the
+   * two disagree is a world where somebody has been at the save file.
+   *
+   * The lock used to be turned on by the review itself, at three, which left
+   * two hours of shift in which the fridge was open. One bottle either way:
+   * the mechanics are a reward, not a second stacking run with a crash on it.
    */
   {
     id: DAY_ACTIONS.consumableBeer,
@@ -220,6 +238,24 @@ export const CONSUMABLE_ACTION_DATA: readonly ActionData[] = [
           node: ACTOR,
           field: FIELDS.beerUnlocked,
           value: { const: true },
+        }),
+        reason: BEER_TOOLTIP,
+      },
+      {
+        when: not({
+          pred: 'field_eq',
+          node: ACTOR,
+          field: FIELDS.dayState,
+          value: { const: 'day_end' },
+        }),
+        reason: BEER_TOO_EARLY_REASON,
+      },
+      {
+        when: not({
+          pred: 'field_eq',
+          node: ACTOR,
+          field: FIELDS.reviewOutcome,
+          value: { const: 'passed' },
         }),
         reason: BEER_TOOLTIP,
       },

@@ -242,6 +242,14 @@ export const HR_REPORT_MACRO: WorldTicket = {
         {
           action: HELPDESK_ACTIONS.machineReboot,
           target: COMPANY_IDS.fileServer,
+          // The escalation closes the ticket with or without it AT GRAPH
+          // LEVEL, because the form's two halves arrive as parameters here.
+          // What the reboot buys is the half the shipped BUTTON does not let
+          // anybody type: the Tickets app fills "what I tried" from the touch
+          // log, and a handoff with nothing in that half is the thin one that
+          // bounces. Declared, so the gate proves the claim rather than being
+          // told to ignore the step - see `TicketActionStep`.
+          optional_for_closure: true,
         },
         {
           action: HELPDESK_ACTIONS.ticketEscalate,
@@ -270,6 +278,20 @@ export const HR_REPORT_MACRO: WorldTicket = {
  * not a fail state. It costs stress, it costs a good deal of composure, and the
  * ticket still closes, because the fix was never the link.
  */
+/**
+ * The sentence the whole ticket is actually for.
+ *
+ * Exported because it is said in two places - the advertised path and Dennis's
+ * own conversation - and the reporter must read the same words whichever one
+ * the player got there by. It is customer-visible: he can see it, and that is
+ * the point of it.
+ */
+export const PHISH_PRAISE = 'You did exactly the right thing, and you did it '
+  + 'faster than the tools did. The sender domain was a lookalike, the '
+  + 'quarantine rule is on now, and nobody else will see it. Please keep '
+  + 'sending them - the ones that turn out to be nothing cost us a minute, and '
+  + 'the one that does not costs everybody a fortnight.';
+
 export const PHISHING_REPORT: WorldTicket = {
   arrival: 'morning',
   nodes: [COMPANY_IDS.phishBlock, COMPANY_IDS.dennisMachine],
@@ -288,11 +310,29 @@ export const PHISHING_REPORT: WorldTicket = {
     },
     reporter: COMPANY_IDS.dennis,
     setup: [],
+    // Two halves, and the second one is the ticket. Switching the rule on
+    // stops this mail; writing back to the man who reported it is what decides
+    // whether the next hundred get reported at all, and it is the only fix in
+    // the week that is made entirely of a sentence. The ticket used to close
+    // on the rule alone while the resolved conversation claimed "you wrote
+    // back", which is the game telling the player they did something they did
+    // not do.
     resolved_when: {
-      op: 'eq',
-      selector: { id: COMPANY_IDS.phishBlock },
-      field: FIELDS.enabled,
-      value: true,
+      op: 'and',
+      exprs: [
+        {
+          op: 'eq',
+          selector: { id: COMPANY_IDS.phishBlock },
+          field: FIELDS.enabled,
+          value: true,
+        },
+        {
+          op: 'eq',
+          selector: { id: 'ticket:phishing-report' },
+          field: FIELDS.replied,
+          value: true,
+        },
+      ],
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
     reward: { reputation: 5, money: 18 },
@@ -305,13 +345,21 @@ export const PHISHING_REPORT: WorldTicket = {
   paths: [
     {
       id: 'switch-the-rule-on',
-      app: 'cmd',
+      // The rule is a terminal job and the reply is a conversation, and the
+      // second one is the half that closes it. The app a path advertises is
+      // where the player ends up, not where they start.
+      app: 'chat',
       label: 'Switch the quarantine rule on, then tell him he did the right '
         + 'thing',
       steps: [
         {
           action: HELPDESK_ACTIONS.mailRuleEnable,
           target: COMPANY_IDS.phishBlock,
+        },
+        {
+          action: HELPDESK_ACTIONS.ticketReplyToReporter,
+          target: 'ticket:phishing-report',
+          params: { comment: PHISH_PRAISE },
         },
       ],
     },

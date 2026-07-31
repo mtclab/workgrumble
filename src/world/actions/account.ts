@@ -1,4 +1,5 @@
 import type { ActionData, GuardData } from '../../engine-api';
+import { IDENTITY_VERIFICATION_TICKS } from '../fallout';
 import { FIELDS } from '../fields';
 import {
   fieldIs,
@@ -191,11 +192,16 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
     tier: HELPDESK_TIER,
     validate: [
       ...targetGuards('account'),
+      // TODAY, and the word is load-bearing. The refusal used to read any
+      // stamp at all, so a check done on Monday refused a check on Wednesday
+      // and left the player with an enrolment they could not verify - which is
+      // a trap with no way out rather than a joke about repeating yourself.
       {
         when: {
-          pred: 'field_is_number',
+          pred: 'field_within',
           node: TARGET,
           field: FIELDS.identityVerifiedAt,
+          ticks: IDENTITY_VERIFICATION_TICKS,
         },
         reason: 'You have already checked who "{target.label}" is today. '
           + 'Asking them their payroll number twice is not twice the security, '
@@ -229,10 +235,17 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
           + 'codes and no idea which one the door wants.',
       },
     ],
-    // Nothing here asks whether anybody checked. That is not an oversight: an
-    // enrolment that refused without a verification would teach the player that
-    // the system does the checking, and the entire point of this trap is that
-    // it does not and never will.
+    // Nothing here REFUSES for want of a verification. That is not an
+    // oversight: an enrolment that refused without one would teach the player
+    // that the system does the checking, and the entire point of this trap is
+    // that it does not and never will.
+    //
+    // What it does do is write down what was true at the desk, in the minute
+    // it happened, and never revise it. The consequence a day later reads this
+    // latch rather than the account's verification stamp, because the stamp
+    // can be written at any time - verifying the next morning used to cancel a
+    // consequence that had already been earned, and a speculative check on
+    // Monday used to excuse an enrolment on Wednesday.
     apply: [
       {
         op: 'set_field',
@@ -245,6 +258,29 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
         node: TARGET,
         field: FIELDS.mfaEnrolledAt,
         value: { now: true },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.mfaEnrolmentVerified,
+        value: { const: false },
+      },
+      {
+        op: 'when',
+        cond: {
+          pred: 'field_within',
+          node: TARGET,
+          field: FIELDS.identityVerifiedAt,
+          ticks: IDENTITY_VERIFICATION_TICKS,
+        },
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.mfaEnrolmentVerified,
+            value: { const: true },
+          },
+        ],
       },
     ],
   },

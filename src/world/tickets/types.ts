@@ -16,6 +16,27 @@ export interface TicketActionStep {
   readonly action: string;
   readonly target: string;
   readonly params?: Readonly<Record<string, FieldValue>>;
+  /**
+   * A step this path takes that the CLOSE does not depend on.
+   *
+   * There is exactly one shape of these in this game and it is the whole of
+   * the MFA ticket: checking who you are talking to before you bind a new
+   * authenticator to their account. The enrolment closes the ticket either
+   * way - that is the trap, and a world that refused the enrolment without a
+   * check would be a world doing the checking - and the difference turns up a
+   * day later in somebody else's incident report.
+   *
+   * It is declared rather than inferred because the solvability gate proves
+   * NECESSITY: omit a step, and the ticket must not close. Without a way to
+   * say "this one is different", the only ways to keep that gate green would
+   * be to delete the check from the path or to weaken the gate, and both of
+   * those are how a decorative step gets shipped.
+   *
+   * The flag is itself checked. A step marked this way MUST still close the
+   * ticket when it is left out, or the claim is a lie and the gate says so -
+   * so it cannot be sprinkled on a step to silence a real failure.
+   */
+  readonly optional_for_closure?: boolean;
 }
 
 /**

@@ -270,17 +270,35 @@ function tickField(node: ReadOnlyGraphNode, field: string): number | null {
     : null;
 }
 
+/**
+ * The tickets a given day is answerable for: the ones that arrived in it.
+ *
+ * The cohort, exported, because more than one thing on the scorecard counts
+ * over it and every one of them has to count over the SAME one. Two of them
+ * did not - the late responses and the misclassified triage were counted over
+ * every ticket in the world - so a Monday with one missed response reported
+ * that same failure again on Tuesday, on Wednesday, and at the review, on days
+ * the player had done nothing wrong.
+ */
+export function ticketsArrivedOn(
+  tickets: readonly ReadOnlyGraphNode[],
+  day: number,
+): readonly ReadOnlyGraphNode[] {
+  requireDay(day);
+  const opens = dayOpensTick(day);
+  const closes = dayOpensTick(day + 1);
+
+  return tickets.filter((ticket) => {
+    const spawned = tickField(ticket, FIELDS.spawnedAt);
+    return spawned !== null && spawned >= opens && spawned < closes;
+  });
+}
+
 export function dayLedger(
   tickets: readonly ReadOnlyGraphNode[],
   day: number,
 ): DayLedger {
-  requireDay(day);
-  const opens = dayOpensTick(day);
-  const closes = dayOpensTick(day + 1);
-  const mine = tickets.filter((ticket) => {
-    const spawned = tickField(ticket, FIELDS.spawnedAt);
-    return spawned !== null && spawned >= opens && spawned < closes;
-  });
+  const mine = ticketsArrivedOn(tickets, day);
 
   return {
     arrived: mine.length,

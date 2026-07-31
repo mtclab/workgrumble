@@ -91,11 +91,15 @@ export const SECURITY_ACTIONS: readonly ActionData[] = [
         reason: 'Nothing was enrolled on that account, so there is nothing to '
           + 'answer for.',
       },
+      // The latch the enrolment wrote, and not the account's current
+      // verification stamp. What happened at the desk happened: checking the
+      // next morning is a good habit and it is not a time machine.
       {
         when: {
-          pred: 'field_is_number',
+          pred: 'field_eq',
           node: param(ACCOUNT_PARAM),
-          field: FIELDS.identityVerifiedAt,
+          field: FIELDS.mfaEnrolmentVerified,
+          value: { const: true },
         },
         reason: 'Somebody checked who they were before that enrolment. That is '
           + 'the whole of the difference, and it is why this is not happening.',

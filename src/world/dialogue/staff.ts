@@ -18,7 +18,8 @@
 
 import { COMPANY_IDS } from '../company';
 import { HELPDESK_ACTIONS } from '../actions/ids';
-import type { DialogueTree } from './types';
+import { PHISH_PRAISE } from '../tickets/desk';
+import type { DialogueEffect, DialogueTree } from './types';
 
 const ACCOUNTS_PAYABLE: DialogueTree = {
   id: 'dialogue/accounts-payable',
@@ -781,6 +782,20 @@ const LATE_SHIFT: DialogueTree = {
   ],
 };
 
+/**
+ * The reply itself, as an effect, said once and offered from three places.
+ *
+ * It is a dispatched action rather than a line of flavour, because it is the
+ * half of this ticket that closes it: the rule stops the mail and the reply
+ * decides whether the next hundred get reported. The resolved conversation
+ * used to claim "you wrote back" whether or not anybody had.
+ */
+const PRAISE_DENNIS: DialogueEffect = {
+  action: HELPDESK_ACTIONS.ticketReplyToReporter,
+  target: 'ticket:phishing-report',
+  params: { comment: PHISH_PRAISE },
+};
+
 const MARKETING: DialogueTree = {
   id: 'dialogue/marketing',
   speaker: COMPANY_IDS.dennis,
@@ -811,7 +826,11 @@ const MARKETING: DialogueTree = {
           next: 'others',
           effects: [{ asks: true }],
         },
-        { label: 'Tell him he did exactly the right thing', next: 'told' },
+        {
+          label: 'Tell him he did exactly the right thing',
+          next: 'told',
+          effects: [PRAISE_DENNIS],
+        },
         {
           // Offered plainly, and it is not a fail state. It costs a great deal
           // of composure and the ticket still closes, because the fix was
@@ -833,7 +852,11 @@ const MARKETING: DialogueTree = {
         + 'had been proofreading a poster all morning and my eyes were in '
         + 'that mode.',
       options: [
-        { label: 'Tell him he did exactly the right thing', next: 'told' },
+        {
+          label: 'Tell him he did exactly the right thing',
+          next: 'told',
+          effects: [PRAISE_DENNIS],
+        },
         { label: 'Go back to the top', next: 'sorry' },
       ],
     },
@@ -842,7 +865,11 @@ const MARKETING: DialogueTree = {
       npc_line: 'The two either side of me. I told them not to click it. One '
         + 'of them had already replied to it saying "is this you".',
       options: [
-        { label: 'Tell him he did exactly the right thing', next: 'told' },
+        {
+          label: 'Tell him he did exactly the right thing',
+          next: 'told',
+          effects: [PRAISE_DENNIS],
+        },
         { label: 'Go back to the top', next: 'sorry' },
       ],
     },

@@ -36,7 +36,21 @@ export const MAILBOX_ACCESS: WorldTicket = {
         + 'in. He is being extremely polite about all of it.',
     },
     reporter: COMPANY_IDS.kwame,
-    setup: [],
+    // The fault, written down where every other missing-permission ticket in
+    // this world writes it: the access is not there when the ticket arrives,
+    // whatever anybody did with it beforehand. An empty setup made the fault
+    // "the absence of something nobody recorded", so a player who granted this
+    // proactively on Monday was dealt a ticket that spawned already closed.
+    setup: [
+      {
+        op: 'removeEdge',
+        edge: {
+          from: COMPANY_IDS.kwameAccount,
+          to: COMPANY_IDS.salesMailbox,
+          kind: 'has_access',
+        },
+      },
+    ],
     resolved_when: {
       op: 'edge',
       from: { id: COMPANY_IDS.kwameAccount },
@@ -93,7 +107,21 @@ export const SENDAS_MISSING: WorldTicket = {
         + 'apologies than this deserves from him.',
     },
     reporter: COMPANY_IDS.kwame,
-    setup: [],
+    // The second permission going missing as the second ticket arrives, for
+    // the same reason as the first: the follower is raised by the fix, so a
+    // world where somebody had already added him to the group would have
+    // spawned it resolved in the same breath as it raised it - a chain closing
+    // itself, twice, for free.
+    setup: [
+      {
+        op: 'removeEdge',
+        edge: {
+          from: COMPANY_IDS.kwameAccount,
+          to: COMPANY_IDS.salesSendAs,
+          kind: 'member_of',
+        },
+      },
+    ],
     resolved_when: {
       op: 'edge',
       from: { id: COMPANY_IDS.kwameAccount },

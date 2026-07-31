@@ -140,25 +140,30 @@ export function cascadesDue(
 /**
  * What the reporter of a child ticket is actually told.
  *
- * The parent's own last word to ITS reporter, copied - which is the real
+ * The parent's own explanation to ITS reporter, copied - which is the real
  * behaviour and the honest one: the forty people who reported the same outage
- * get the same explanation, in the same words, at the same minute. When the
- * parent was closed without a word to anybody, they get the plain fact
- * instead, because "resolved" with no sentence attached is how a service desk
- * earns its reputation.
+ * get the same explanation, in the same words, at the same minute.
+ *
+ * The explanation is the parent's REPLY and never simply its last
+ * customer-visible line. Questions live on that stream too - "when exactly did
+ * it go?" is customer-visible, because it is the only place a question the
+ * reporter could have seen can be - and copying the last one onto forty
+ * duplicates told forty people their ticket had been closed because somebody
+ * wanted to know when their VPN went. When nobody wrote back, they get the
+ * plain fact instead, because "resolved" with no sentence attached is how a
+ * service desk earns the reputation it has.
  */
 export function cascadeComment(
   parentTitle: string,
-  parentComments: readonly string[],
+  parentReply: unknown,
 ): string {
-  const last = [...parentComments].reverse()
-    .find((line) => line.trim().length > 0);
+  const explanation = typeof parentReply === 'string' ? parentReply.trim() : '';
 
-  return last === undefined
+  return explanation.length === 0
     ? `Closed with the parent incident, "${parentTitle}". The fault behind `
       + 'this and everybody else\'s report has been fixed. Nothing further is '
       + 'needed from you.'
-    : `Closed with the parent incident, "${parentTitle}": ${last}`;
+    : `Closed with the parent incident, "${parentTitle}": ${explanation}`;
 }
 
 /** The internal note the link itself leaves on the child. */

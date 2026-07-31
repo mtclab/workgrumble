@@ -57,6 +57,7 @@ const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.printerClearQueue]: 'Cleared the print queue',
   [HELPDESK_ACTIONS.ticketAddWorknote]: 'Wrote a work note',
   [HELPDESK_ACTIONS.ticketAddComment]: 'Put a question to the reporter',
+  [HELPDESK_ACTIONS.ticketReplyToReporter]: 'Wrote back to the reporter',
   [HELPDESK_ACTIONS.ticketSetWaiting]: 'Parked it on the reporter',
   [HELPDESK_ACTIONS.ticketClearWaiting]: 'Took it back off the reporter',
   [HELPDESK_ACTIONS.ticketClassify]: 'Triaged it',

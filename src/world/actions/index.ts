@@ -3,7 +3,7 @@ import { ACCOUNT_ACTIONS } from './account';
 import { BOSS_ACTION_DATA } from './boss';
 import { CONSUMABLE_ACTION_DATA } from './consumables';
 
-export { LATE_CAN_REASON } from './consumables';
+export { BEER_TOO_EARLY_REASON, LATE_CAN_REASON } from './consumables';
 import { DAY_ACTION_DATA } from './day';
 import { DEVICE_ACTIONS } from './device';
 import { FACILITIES_ACTIONS } from './facilities';

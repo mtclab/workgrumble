@@ -13,8 +13,18 @@
  */
 
 import type { ReadOnlyGraphView } from '../engine-api';
-import { dayForTick } from './hours';
+import { dayForTick, SHIFT_MINUTES } from './hours';
 import { FIELDS, LOCKOUT_THRESHOLD } from './fields';
+
+/**
+ * How long a check of who somebody is stays good for.
+ *
+ * A working day, which is what the desk means when it says "I have already
+ * checked who you are today" - and deliberately not longer. A verification
+ * done speculatively on Monday used to satisfy an enrolment on Wednesday
+ * forever, which is not a security control, it is a box that was ticked once.
+ */
+export const IDENTITY_VERIFICATION_TICKS = SHIFT_MINUTES;
 
 /**
  * How often something with a stored password tries it.
@@ -94,6 +104,13 @@ export function staleLogonsDue(
  * has been long enough for the person it was NOT to have used it. A day, which
  * is why the day is in the test - firing it the same evening would make it a
  * punishment for the click rather than a consequence of the omission.
+ *
+ * "Nobody checked" is read off the LATCH the enrolment wrote rather than off
+ * the account's verification stamp, and that is the load-bearing half. The
+ * stamp can be written at any time, so reading it later answered a different
+ * question - "has anybody ever checked" - and the answer to that one could be
+ * changed after the fact by verifying the next morning, which cancelled a
+ * consequence that had already been earned.
  */
 export function socialEngineeringDue(
   graph: ReadOnlyGraphView,
@@ -108,7 +125,7 @@ export function socialEngineeringDue(
       return [];
     }
 
-    return typeof account.fields[FIELDS.identityVerifiedAt] === 'number'
+    return account.fields[FIELDS.mfaEnrolmentVerified] === true
       || typeof account.fields[FIELDS.securityFalloutAt] === 'number'
       ? []
       : [account.id];
