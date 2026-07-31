@@ -12,6 +12,15 @@ export const HELPDESK_ACTIONS = {
   machineSetDisplayRotation: 'machine.set_display_rotation',
   machineSetResolution: 'machine.set_resolution',
   machineReboot: 'machine.reboot',
+  /**
+   * One line into a machine's own log, written as the thing happened.
+   *
+   * The whole bounded field arrives already built, from the one place that
+   * knows what a machine's history looks like - the same contract
+   * `ticket.record_touch` keeps, and for the same reason: a replay writes the
+   * identical string rather than recomputing it from a clock nobody saved.
+   */
+  machineRecordEvent: 'machine.record_event',
   devicePowerCycle: 'device.power_cycle',
   deviceReplaceBattery: 'device.replace_battery',
   mailRuleDelete: 'mail_rule.delete',

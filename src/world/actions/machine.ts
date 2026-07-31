@@ -10,6 +10,7 @@ import { HELPDESK_ACTIONS } from './ids';
 
 const ROTATION_PARAM = 'rotation';
 const RESOLUTION_PARAM = 'resolution';
+const EVENTS_PARAM = 'events';
 
 export const MACHINE_ACTIONS: readonly ActionData[] = [
   {
@@ -77,6 +78,26 @@ export const MACHINE_ACTIONS: readonly ActionData[] = [
         node: TARGET,
         field: FIELDS.resolution,
         value: { param: RESOLUTION_PARAM },
+      },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.machineRecordEvent,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('machine'),
+      {
+        when: { pred: 'param_string_missing', param: EVENTS_PARAM },
+        reason: 'A machine\'s history is a list of things that happened to '
+          + 'it, and this is not one.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.eventLog,
+        value: { param: EVENTS_PARAM },
       },
     ],
   },

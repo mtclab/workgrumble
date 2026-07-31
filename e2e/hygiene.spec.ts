@@ -236,6 +236,13 @@ test('completes a full session with no console errors and no runtime requests', 
     'kb/reading-the-error',
   );
 
+  // Event Viewer: pick a machine, read what it wrote, filter it.
+  await openFromStartMenu(page, 'events');
+  await page.getByTestId('events-machine-print').click();
+  await expect(page.getByTestId('events-count')).toContainText('PRINT-01');
+  await page.getByTestId('events-filter').selectOption('error');
+  await page.getByTestId('events-filter').selectOption('all');
+
   await openFromStartMenu(page, 'cmd');
   const terminal = page.getByTestId('cmd-input');
   await terminal.fill('help');
@@ -244,6 +251,26 @@ test('completes a full session with no console errors and no runtime requests', 
   await terminal.fill('ping SALES-02');
   await terminal.press('Enter');
   await expect(page.getByTestId('cmd-output')).toContainText('Reply from');
+  // The reading commands, which are the half of the terminal that fixes
+  // nothing and gets typed most.
+  await terminal.fill('ipconfig /all');
+  await terminal.press('Enter');
+  await expect(page.getByTestId('cmd-output')).toContainText('Physical Address');
+  await terminal.fill('whoami');
+  await terminal.press('Enter');
+  await expect(page.getByTestId('cmd-output')).toContainText('ppending');
+  await terminal.fill('systeminfo');
+  await terminal.press('Enter');
+  await expect(page.getByTestId('cmd-output')).toContainText('Host Name');
+  await terminal.fill('tracert PRINT-01');
+  await terminal.press('Enter');
+  await expect(page.getByTestId('cmd-output')).toContainText('Trace complete');
+  await terminal.fill('nslookup SALES-02');
+  await terminal.press('Enter');
+  await expect(page.getByTestId('cmd-output')).toContainText('Address:');
+  await terminal.fill('net user gpoole');
+  await terminal.press('Enter');
+  await expect(page.getByTestId('cmd-output')).toContainText('Account');
   await terminal.fill('cls');
   await terminal.press('Enter');
   await expect(page.getByTestId('cmd-output')).not.toContainText('Reply from');

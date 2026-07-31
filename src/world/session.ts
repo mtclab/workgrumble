@@ -10,6 +10,7 @@ import {
 } from './actions';
 import { companySetup, COMPANY_IDS } from './company';
 import { DEMO_ACTION_DATA } from './demo-world';
+import { watchMachineEvents } from './events';
 import { FIELDS } from './fields';
 import { spawnWorldTicket } from './tickets';
 import { inheritedTicketIds } from './week';
@@ -100,6 +101,13 @@ export function createWorldSession(
     actions: DEMO_ACTION_DATA,
   });
   engine.registerActions(helpdeskActionPayload());
+
+  // The machines start keeping their own history HERE, before a single ticket
+  // is dealt: a spooler that was already down when the player sat down still
+  // fell over, and the Event Viewer is the only surface that says when. A
+  // subscription taken after the pile was spawned would open Monday on four
+  // faults and an empty log.
+  watchMachineEvents(engine, COMPANY_IDS.player);
 
   // Only Monday's inherited pile is spawned here: it is what was waiting when
   // the player sat down. Everything that ARRIVES during a shift, and every

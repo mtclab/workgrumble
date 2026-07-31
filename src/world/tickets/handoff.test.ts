@@ -170,6 +170,9 @@ describe('reading "what I tried" off the ticket', () => {
           // The day loop's verb, not the player's: nobody presses this one,
           // so it has no line on a form somebody fills in.
           HELPDESK_ACTIONS.ticketResolveWithParent,
+          // And a machine writing down what happened to it is the world
+          // moving, not a tech trying something.
+          HELPDESK_ACTIONS.machineRecordEvent,
         ]).toContain(id);
       }
     }

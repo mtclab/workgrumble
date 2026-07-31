@@ -82,6 +82,11 @@ const NOT_WORK: ReadonlySet<string> = new Set<string>([
   // loop telling forty people at once.
   HELPDESK_ACTIONS.ticketLinkToParent,
   HELPDESK_ACTIONS.ticketResolveWithParent,
+  // A machine writing its own history is not somebody working the fault, and
+  // it must never be: the event log is written as the world moves, by the
+  // world, and a response clock stopped by a machine noticing its own spooler
+  // had fallen over would be a clock stopped by nobody.
+  HELPDESK_ACTIONS.machineRecordEvent,
 ]);
 
 export function countsAsWork(actionId: string): boolean {

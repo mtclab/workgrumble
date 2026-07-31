@@ -8,6 +8,7 @@ import { CAUGHT_APP } from './caught';
 import { CHAT_APP } from './chat';
 import { CMD_APP } from './cmd';
 import { DIRECTORY_APP } from './directory';
+import { EVENTS_APP } from './events';
 import { KB_APP } from './kb';
 import { MAIL_APP } from './mail';
 import { loadManifest } from './manifest';
@@ -39,6 +40,7 @@ export const APP_MANIFEST = assertCaughtScenes(loadManifest([
   TICKETS_APP,
   DIRECTORY_APP,
   REMOTE_APP,
+  EVENTS_APP,
   CHAT_APP,
   MAIL_APP,
   CMD_APP,

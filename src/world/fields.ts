@@ -101,6 +101,18 @@ export const FIELDS = {
   passwordResetAt: 'password_reset_at',
   /** machine */
   hostname: 'hostname',
+  /**
+   * What this machine has written down about itself: services that stopped,
+   * reboots, lockouts, print queues that gave up, service levels the agent
+   * noticed nobody else was watching.
+   *
+   * Bounded and kept ON THE MACHINE rather than read back out of the dispatch
+   * log, exactly like a ticket's touch log and for the same reason: the log is
+   * drained at every day boundary, and a fault that only shows up as two
+   * outages four days apart is unreadable from a machine that forgets
+   * overnight.
+   */
+  eventLog: 'event_log',
   displayRotation: 'display_rotation',
   resolution: 'resolution',
   pendingUpdates: 'pending_updates',

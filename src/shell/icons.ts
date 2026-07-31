@@ -218,6 +218,30 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { points: '9 8 12 10 9 12' },
     },
   ],
+  // A page of ruled lines with one of them flagged: a log, and the one entry
+  // somebody should have read.
+  'icon-events': [
+    {
+      element: 'rect',
+      attributes: { x: '4', y: '3', width: '16', height: '18', rx: '1' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '8', x2: '16', y2: '8' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '12', x2: '16', y2: '12' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '16', x2: '13', y2: '16' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '17', cy: '16', r: '1' },
+    },
+  ],
   'icon-kb': [
     {
       element: 'path',
