@@ -12,8 +12,8 @@
  * again each morning.
  */
 
-import type { EngineApi, NodeId } from '../engine-api';
-import { DAY_ACTIONS } from '../world/actions';
+import type { EngineApi, NodeId, ReadOnlyGraphNode } from '../engine-api';
+import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import {
   arrivalsBetween,
   buildDaySchedule,
@@ -26,10 +26,26 @@ import {
   daySlip,
   dueTransition,
   isDayState,
+  isLunchtime,
   shiftStartTick,
 } from '../world/day';
 import { FIELDS } from '../world/fields';
-import { findWorldTicket, ticketArrivalPool } from '../world/tickets';
+import {
+  isMeterTick,
+  meterDeltas,
+  type MeterState,
+  movesAnything,
+} from '../world/meters';
+import { needsResponse } from '../world/sla';
+import {
+  bounceLandsAt,
+  findWorldTicket,
+  HANDOFF_BOUNCE,
+  resolveCredit,
+  ticketArrivalPool,
+  ticketNodes,
+  ticketTitle,
+} from '../world/tickets';
 
 /** Real milliseconds one simulated minute takes at normal speed. */
 export const TICK_INTERVAL_MS = 1_000;
@@ -108,6 +124,17 @@ export interface DayDriverHandlers {
    * moment a save is worth writing, and the cheapest one - the log is empty.
    */
   onDayBoundary(): void;
+  /**
+   * Slack apps with a window open and NOT minimised, by app id.
+   *
+   * The driver cannot see the screen and has no business doing so; the shell
+   * can, and this is the one thing about it the pressure layer needs. A
+   * minimised game is a game nobody is playing and nobody can catch you at,
+   * which is why it is not in this list.
+   */
+  openSlackApps(): readonly string[];
+  /** Something the player ought to be told about. */
+  onNotice?(title: string, body: string): void;
 }
 
 /**
@@ -236,6 +263,7 @@ export class DayDriver implements DayApi {
       }
 
       this.spawnArrivals(before, now);
+      this.applyPressure(now);
 
       if (this.applyDueTransition()) {
         // The day ended inside this batch. The rest of the batch belongs to
@@ -375,6 +403,156 @@ export class DayDriver implements DayApi {
 
       this.engine.registerTicket(entry.def);
     }
+  }
+
+  /* -- the pressure layer ------------------------------------------------ */
+
+  /**
+   * Everything the shift does to you, at a fixed cadence.
+   *
+   * It runs on the tick rather than on real time, and only during the shift:
+   * the morning brief is not paid and the scorecard is not work. Because it is
+   * keyed to the simulation clock, a day replayed from the dispatch log
+   * arrives at the same meters - which is the whole reason the deltas are
+   * computed here and applied by the engine rather than the other way round.
+   *
+   * The order matters and is not arbitrary. Response marks first, so a ticket
+   * touched this minute is not still counted as untouched; bounces next, so
+   * the reputation they cost is in the world before anything reads it; the
+   * meters last, so they see the day as it actually stands.
+   */
+  private applyPressure(now: number): void {
+    if (this.state() !== 'shift' || !isMeterTick(now)) {
+      return;
+    }
+
+    this.recordResponses();
+    this.settleBounces(now);
+    this.tickMeters(now);
+  }
+
+  private tickets(): readonly ReadOnlyGraphNode[] {
+    return this.engine.graph.nodesOfKind('ticket');
+  }
+
+  /**
+   * The other way a response clock stops: not a word to the reporter, but a
+   * dispatched action on the thing that is broken. Somebody who fixed the
+   * printer without saying anything did respond - they just did it in the
+   * order techs actually do it.
+   */
+  private recordResponses(): void {
+    const log = this.engine.dispatchLog();
+
+    for (const ticket of this.tickets()) {
+      if (!needsResponse(ticket)) {
+        continue;
+      }
+
+      const nodes = new Set(ticketNodes(ticket.id));
+
+      if (nodes.size === 0) {
+        continue;
+      }
+
+      const touched = log.some(
+        (entry) => entry.ok && entry.target !== null && nodes.has(entry.target),
+      );
+
+      if (touched) {
+        this.engine.dispatch(
+          HELPDESK_ACTIONS.ticketRecordResponse,
+          this.actor,
+          ticket.id,
+          {},
+        );
+      }
+    }
+  }
+
+  /** Second line, getting round to it. */
+  private settleBounces(now: number): void {
+    for (const ticket of this.tickets()) {
+      const bounced = ticket.fields[FIELDS.handoffBouncedAt];
+      const settled = ticket.fields[FIELDS.handoffSettledAt];
+
+      if (typeof bounced !== 'number' || typeof settled === 'number') {
+        continue;
+      }
+
+      if (now < bounceLandsAt(bounced)) {
+        continue;
+      }
+
+      const result = this.engine.dispatch(
+        HELPDESK_ACTIONS.ticketBounceHandoff,
+        this.actor,
+        ticket.id,
+        {},
+      );
+
+      if (result.ok) {
+        this.handlers.onNotice?.(
+          'Returned by second line',
+          `${ticketTitle(ticket.id)} - ${HANDOFF_BOUNCE.worknote}`,
+        );
+      }
+    }
+  }
+
+  /** What the meters read on the player node right now. */
+  private meterState(): MeterState {
+    const read = (field: string): number => {
+      const value = this.engine.graph.getField(this.actor, field);
+      return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+        ? value
+        : 0;
+    };
+
+    return {
+      stress: read(FIELDS.stress),
+      suspicion: read(FIELDS.suspicion),
+      reputation: read(FIELDS.reputation),
+      suspicionEvents: read(FIELDS.suspicionEvents),
+      breachesCharged: read(FIELDS.breachesCharged),
+      resolveCreditPaid: read(FIELDS.resolveCreditPaid),
+    };
+  }
+
+  private tickMeters(now: number): void {
+    const tickets = this.tickets();
+    const state = this.meterState();
+    const deltas = meterDeltas({
+      // A parked ticket is not on your plate this minute, which is half the
+      // reason parking one is a relief rather than a formality.
+      openTickets: tickets.filter(
+        (ticket) => ticket.fields[FIELDS.state] === 'open',
+      ).length,
+      breachedTickets: tickets.filter(
+        (ticket) => ticket.fields[FIELDS.breached] === true,
+      ).length,
+      breachesCharged: state.breachesCharged,
+      resolveCredit: resolveCredit(tickets),
+      resolveCreditPaid: state.resolveCreditPaid,
+      openSlackApps: this.handlers.openSlackApps(),
+      lunch: isLunchtime(now),
+    });
+
+    if (!movesAnything(state, deltas)) {
+      return;
+    }
+
+    this.engine.dispatch(DAY_ACTIONS.metersTick, this.actor, null, {
+      stress_up: deltas.stressUp,
+      stress_down: deltas.stressDown,
+      suspicion_up: deltas.suspicionUp,
+      suspicion_down: deltas.suspicionDown,
+      reputation_up: deltas.reputationUp,
+      reputation_down: deltas.reputationDown,
+      suspicion_events_up: deltas.suspicionEvent ? 1 : 0,
+      breaches_charged: deltas.breachesCharged,
+      resolve_credit_paid: deltas.resolveCreditPaid,
+    });
   }
 
   /** Returns true when the transition it made ended the day. */

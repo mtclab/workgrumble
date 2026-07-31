@@ -196,3 +196,40 @@ export function parseCommand(input: string): ParsedCommand {
     ? { kind: 'usage', spec, args, query }
     : { kind: 'command', spec, args, query };
 }
+
+/**
+ * What a shaking hand types.
+ *
+ * Two adjacent letters swapped, at a position that is a function of the line
+ * and the minute - so the same line at the same minute always fumbles the same
+ * way, and a line typed twice in a row does not fumble identically. It is a
+ * GAG: the command that actually runs is the one that was typed, and the
+ * terminal says so on the next line. Nothing here reaches the world.
+ */
+export function fumbleTypo(line: string, tick: number): string {
+  const letters = [...line];
+  const swappable: number[] = [];
+
+  for (let index = 0; index + 1 < letters.length; index += 1) {
+    if (/[a-z]/iu.test(letters[index] ?? '') && /[a-z]/iu.test(letters[index + 1] ?? '')) {
+      swappable.push(index);
+    }
+  }
+
+  const at = swappable[(Math.abs(tick) + line.length) % swappable.length];
+
+  if (at === undefined) {
+    return line;
+  }
+
+  const left = letters[at];
+  const right = letters[at + 1];
+
+  if (left === undefined || right === undefined) {
+    return line;
+  }
+
+  letters[at] = right;
+  letters[at + 1] = left;
+  return letters.join('');
+}

@@ -25,6 +25,8 @@ import {
   type WindowManagerState,
 } from './wm';
 import { isLunchtime } from '../world/day';
+import { FIELDS } from '../world/fields';
+import { isFumbling } from '../world/meters';
 import { SPEEDS, type Speed } from './day-driver';
 
 export interface DesktopHandlers {
@@ -81,6 +83,7 @@ export class Desktop {
   private readonly clockDay: HTMLElement;
   private readonly dayState: HTMLButtonElement;
   private readonly pauseButton: HTMLButtonElement;
+  private readonly fumbleChip: HTMLElement;
   private readonly speedButtons = new Map<Speed, HTMLButtonElement>();
 
   private readonly taskbarButtons = new Map<string, TaskbarButton>();
@@ -91,6 +94,7 @@ export class Desktop {
   private readonly observer: ResizeObserver;
   private unsubscribeClock: (() => void) | null = null;
   private unsubscribeDay: (() => void) | null = null;
+  private unsubscribeWorld: (() => void) | null = null;
 
   private wm: WindowManagerState | null = null;
   private notifications: NotificationState = createNotificationState();
@@ -224,7 +228,19 @@ export class Desktop {
       dayControls.append(button);
     }
 
-    tray.append(dayControls, this.trayButton, clock);
+    // The fumble chip. It is on the taskbar rather than in a dialog because
+    // the joke has to be legible while it is happening, and because a player
+    // watching their own hands shake deserves to be told it is a joke.
+    this.fumbleChip = document.createElement('span');
+    this.fumbleChip.className = 'fumble-chip';
+    this.fumbleChip.dataset.testid = 'fumble-chip';
+    this.fumbleChip.textContent = 'Hands going';
+    this.fumbleChip.title = 'Stress over 80. Everything still does exactly '
+      + 'what you tell it - the shaking is entirely cosmetic, which is more '
+      + 'than can be said for the rest of this job.';
+    this.fumbleChip.hidden = true;
+
+    tray.append(this.fumbleChip, dayControls, this.trayButton, clock);
 
     taskbar.append(this.startButton, divider, this.taskbarWindows, tray);
 
@@ -314,9 +330,15 @@ export class Desktop {
       this.renderDay();
       this.syncDayScreens();
     });
+    // The meters live in the graph, and nothing about the clock says when one
+    // moved: the fumble state has to follow the world, not the minute.
+    this.unsubscribeWorld = this.context.onWorldChange(() => {
+      this.renderPressure();
+    });
 
     this.renderClock(this.context.clock.now());
     this.renderDay();
+    this.renderPressure();
     this.renderNotifications();
     this.renderWindows();
     this.syncDayScreens();
@@ -328,6 +350,8 @@ export class Desktop {
     this.unsubscribeClock = null;
     this.unsubscribeDay?.();
     this.unsubscribeDay = null;
+    this.unsubscribeWorld?.();
+    this.unsubscribeWorld = null;
     this.abort.abort();
     this.renderer.dispose();
     this.taskbarButtons.clear();
@@ -839,6 +863,18 @@ export class Desktop {
   }
 
   /**
+   * Which slack apps are genuinely on screen: open, and not minimised.
+   *
+   * The suspicion meter is about what somebody walking past would SEE, so a
+   * minimised game does not count - which is exactly what the boss key is for.
+   */
+  public openSlackApps(): readonly string[] {
+    return (this.wm?.windows ?? [])
+      .filter((windowState) => windowState.slack && !windowState.minimized)
+      .map((windowState) => windowState.appId);
+  }
+
+  /**
    * The day's own screens, put on screen once each.
    *
    * "Once" is remembered in the shell store rather than here, so logging off
@@ -916,6 +952,25 @@ export class Desktop {
       button.dataset.active = String(active);
       button.setAttribute('aria-pressed', String(active));
     }
+  }
+
+  /**
+   * Fumble mode: over 80 stress the room starts swimming.
+   *
+   * It is a look and nothing else. Every action still dispatches exactly as
+   * asked, every button still does what it says, and the copy on the chip says
+   * so - a mechanic that silently made the player wrong would be a punishment
+   * dressed as a joke, and this game does not do that.
+   */
+  private renderPressure(): void {
+    const stress = this.context.graph.getField(
+      this.context.user.node,
+      FIELDS.stress,
+    );
+    const fumbling = typeof stress === 'number' && isFumbling(stress);
+
+    this.element.dataset.fumbling = String(fumbling);
+    this.fumbleChip.hidden = !fumbling;
   }
 
   private renderClock(tick: number): void {

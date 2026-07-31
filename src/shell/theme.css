@@ -40,6 +40,14 @@
   --color-alarm-soft: #e8d5cf;
   --color-alarm-ink: #fdf1ec;
 
+  /*
+   * The internal pad. Every ticketing system in the trade puts work notes on
+   * a yellowed background so nobody sends one to the customer by mistake, and
+   * that is the only thing this colour is allowed to mean.
+   */
+  --color-note: #f6efd2;
+  --color-note-edge: #c8b064;
+
   /* ---- palette: wallpaper + terminal ---- */
   --color-wallpaper: #2b332e;
   --color-wallpaper-weave: #333c36;
@@ -84,6 +92,8 @@
   /* ---- borders + bevels ---- */
   --border-hair: 1px;
   --border-bevel: 2px;
+  /* The stripe down the side of an internal note. */
+  --border-note: 3px;
   --bevel-raised:
     inset calc(-1 * var(--border-bevel)) calc(-1 * var(--border-bevel)) 0 0
       var(--color-bevel-dark),
@@ -129,6 +139,7 @@
   --size-day-controls: 26px;
   --size-progress-bar: 14px;
   --measure-boot: 62ch;
+  --measure-field: 140px;
   --stroke-icon: 1.75;
 
   /* ---- z layers ---- */
@@ -142,6 +153,10 @@
   /* ---- motion (kept tiny: the boss key must be instant) ---- */
   --duration-fast: 90ms;
   --duration-blink: 1.1s;
+  /* Slow enough to read as a room swimming rather than a broken animation. */
+  --duration-sway: 3.4s;
+  --offset-sway: 3px;
+  --angle-sway: 0.4deg;
   --opacity-dim: 0.35;
   --scale-press: 0.92;
   --angle-sweep: 90deg;
@@ -155,6 +170,12 @@
   :root {
     --duration-fast: 0ms;
     --duration-blink: 0s;
+  }
+
+  /* The gag is a wobble. Somebody who has asked for no motion still gets the
+     chip that explains it, which is the half that carries the joke. */
+  .screen-desktop[data-fumbling="true"] .window-layer {
+    animation: none;
   }
 }
 
@@ -808,6 +829,44 @@ input {
   font-weight: 700;
 }
 
+/* -------------------------------------------------------------- fumbling */
+
+/*
+ * Over 80 stress the room starts swimming. It is a LOOK: every dispatch still
+ * lands exactly where it was aimed, and the chip on the taskbar says so in
+ * words, because a mechanic that quietly made the player wrong would be a
+ * punishment wearing a joke's coat.
+ */
+.fumble-chip {
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-alarm-soft);
+  color: var(--color-alarm);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.screen-desktop[data-fumbling="true"] .window-layer {
+  animation: fumble-sway var(--duration-sway) ease-in-out infinite;
+}
+
+@keyframes fumble-sway {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+
+  25% {
+    transform: translate(var(--offset-sway), 0) rotate(var(--angle-sway));
+  }
+
+  75% {
+    transform:
+      translate(calc(-1 * var(--offset-sway)), 0)
+      rotate(calc(-1 * var(--angle-sway)));
+  }
+}
+
 .tray-badge[data-unread="0"] {
   background: var(--color-surface-sunken);
   color: var(--color-ink-disabled);
@@ -1399,7 +1458,98 @@ input {
   font-size: var(--text-md);
 }
 
-.ticket-clues {
+/* Priority is a computed field, so it reads as a stamp rather than a choice.
+   The four tiers differ by weight and colour, never by colour alone. */
+.ticket-priority {
+  display: inline-block;
+  padding: var(--space-0) var(--space-2);
+  background: var(--color-surface-sunken);
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ticket-priority[data-priority="1"] {
+  background: var(--color-alarm);
+  color: var(--color-alarm-ink);
+}
+
+.ticket-priority[data-priority="2"] {
+  background: var(--color-alarm-soft);
+  color: var(--color-alarm);
+}
+
+.ticket-priority[data-priority="3"] {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.ticket-triage,
+.ticket-handoff {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-raised);
+}
+
+.ticket-triage h3,
+.ticket-handoff h3,
+.ticket-stream h3 {
+  font-size: var(--text-sm);
+  text-transform: none;
+}
+
+.triage-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.triage-field {
+  display: grid;
+  gap: var(--space-2);
+  flex: 1 1 var(--measure-field);
+}
+
+.triage-label {
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.os-select,
+.os-input {
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: var(--color-surface-field);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+
+.ticket-claim,
+.triage-outcome,
+.ticket-handoff-note {
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.ticket-handoff-warning {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-alarm-soft);
+  color: var(--color-alarm);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+/* The two streams are told apart by more than a heading: internal notes sit
+   on the yellowed pad every ticketing system in the trade uses, and the
+   customer-visible ones sit on the surface the reporter would see. */
+.ticket-stream {
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
@@ -1407,6 +1557,48 @@ input {
   box-shadow: var(--bevel-sunken);
   font-family: var(--font-read);
   font-size: var(--text-sm);
+}
+
+.ticket-stream[data-internal="true"] {
+  background: var(--color-note);
+  border-left: var(--border-note) solid var(--color-note-edge);
+}
+
+.ticket-stream-lines {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.ticket-stream-empty {
+  color: var(--color-ink-disabled);
+}
+
+.handoff-tried {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-note);
+  border-left: var(--border-note) solid var(--color-note-edge);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.handoff-tried li[data-worked="false"] {
+  color: var(--color-alarm);
+}
+
+.scorecard-triage {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.scorecard-triage-list {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-alarm);
 }
 
 .app-outcome {

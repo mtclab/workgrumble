@@ -1,3 +1,4 @@
+import type { ReadOnlyGraphNode } from '../../engine-api';
 import {
   type DayLedger,
   dayLedger,
@@ -8,6 +9,11 @@ import {
   type PaySlip,
 } from '../../world/day';
 import { FIELDS } from '../../world/fields';
+import { STARTING_REPUTATION } from '../../world/meters';
+import { cellLabel } from '../../world/priority';
+import { ticketClocks } from '../../world/sla';
+import { findWorldTicket } from '../../world/tickets';
+import { misclassifiedTickets, ticketKey } from './tickets';
 import type { AppDef, AppInstance, GameApi } from './types';
 import {
   definitionRow,
@@ -17,23 +23,66 @@ import {
 } from './ui';
 
 /**
- * A meter lane B has not built yet, said honestly.
+ * A meter, read off the player node.
  *
- * The slot is wired to the field it will read, so the day it starts being
- * measured this line starts telling the truth without anybody remembering to
- * come back here. Until then it says it is not measured - which is a different
- * sentence from a confident zero, and the only one the scorecard is allowed.
+ * It reports what is there and says so plainly when nothing is: a world seeded
+ * without the meters is a bug, and a confident zero is how that bug reaches
+ * the player looking like a good day.
  */
-function meterLine(api: GameApi, field: string): string {
+function meterValue(api: GameApi, field: string): number | null {
   const value = api.graph.getField(api.actor, field);
+  return typeof value === 'number' && Number.isSafeInteger(value)
+    ? value
+    : null;
+}
 
-  return typeof value === 'number'
-    ? String(value)
-    : 'Not measured yet - lands with the pressure layer';
+function meterLine(api: GameApi, field: string, suffix = ''): string {
+  const value = meterValue(api, field);
+  return value === null ? 'Not measured' : `${String(value)}${suffix}`;
 }
 
 function ledgerFor(api: GameApi, day: number): DayLedger {
   return dayLedger(api.graph.nodesOfKind('ticket'), day);
+}
+
+/**
+ * The review line, which is the whole reason reputation is a number.
+ *
+ * The bands are said in words because a number on its own is not a judgement,
+ * and this screen is where the week's judgement is being formed.
+ */
+function reputationLine(reputation: number | null): string {
+  if (reputation === null) {
+    return 'Nobody has an opinion of you, which cannot be right.';
+  }
+
+  if (reputation >= 70) {
+    return 'The lead has started saying your name in meetings you are not in, '
+      + 'and means it kindly.';
+  }
+
+  if (reputation >= STARTING_REPUTATION) {
+    return 'Steady. Nobody upstairs has learned your name, which at this '
+      + 'stage of a probation is a compliment.';
+  }
+
+  if (reputation >= 30) {
+    return 'There has been a conversation about you that you were not at.';
+  }
+
+  return 'Friday is going to be a conversation, and it will be short.';
+}
+
+/** Tickets whose response clock ran out before anybody said a word. */
+function lateResponses(
+  api: GameApi,
+  nodes: readonly ReadOnlyGraphNode[],
+): number {
+  return nodes.filter((node) => ticketClocks(
+    node,
+    api.clock.now(),
+    findWorldTicket(node.id)?.def.sla_ticks ?? 0,
+  ).response.breached).length;
 }
 
 /**
@@ -85,19 +134,72 @@ export const SCORECARD_APP: AppDef = {
       const list = element('dl', 'scorecard-rows');
       ledgerPanel.append(title, list);
 
+      const tickets = api.graph.nodesOfKind('ticket');
+
       definitionRow(list, 'Arrived today', 'scorecard-arrived')
         .textContent = String(ledger.arrived);
       definitionRow(list, 'Tickets closed', 'scorecard-closed')
         .textContent = String(ledger.closed);
-      definitionRow(list, 'SLA breaches', 'scorecard-breaches')
+      definitionRow(list, 'Resolution SLAs missed', 'scorecard-breaches')
         .textContent = String(ledger.breached);
+      definitionRow(list, 'Response SLAs missed', 'scorecard-late-response')
+        .textContent = String(lateResponses(api, tickets));
       definitionRow(list, 'Still open at 17:00', 'scorecard-open')
         .textContent = String(ledger.stillOpen);
-      // Wired to the fields the meters will live in; see `meterLine`.
       definitionRow(list, 'Stress carried', 'scorecard-stress')
-        .textContent = meterLine(api, FIELDS.stress);
+        .textContent = meterLine(api, FIELDS.stress, ' of 100');
       definitionRow(list, 'Suspicion', 'scorecard-suspicion')
-        .textContent = meterLine(api, FIELDS.suspicion);
+        .textContent = meterLine(api, FIELDS.suspicion, ' of 100');
+      definitionRow(list, 'Suspicious minutes', 'scorecard-suspicion-events')
+        .textContent = meterLine(api, FIELDS.suspicionEvents);
+
+      const reputation = meterValue(api, FIELDS.reputation);
+      definitionRow(list, 'Reputation', 'scorecard-reputation')
+        .textContent = reputation === null
+          ? 'Not measured'
+          : `${String(reputation)} · ${reputationLine(reputation)}`;
+
+      renderTriage(tickets);
+    };
+
+    /**
+     * What the triage was worth, which is the half of the day nobody counts
+     * until a review does. A wrong cell is not a wrong number - it is a wrong
+     * reading of the estate, so both cells are printed side by side.
+     */
+    const renderTriage = (nodes: readonly ReadOnlyGraphNode[]): void => {
+      const wrong = misclassifiedTickets(api, nodes);
+      const panel = element('div', 'scorecard-triage', 'scorecard-triage');
+      const title = element('h4');
+      title.textContent = 'Triage';
+      panel.append(title);
+
+      const summary = element('p', undefined, 'scorecard-misclassified');
+      summary.textContent = wrong.length === 0
+        ? 'Every ticket triaged today was read the way the estate reads. '
+          + 'Nobody will ever mention it.'
+        : `${String(wrong.length)} ticket(s) triaged against the evidence.`;
+      panel.append(summary);
+
+      if (wrong.length > 0) {
+        const list = element('ul', 'scorecard-triage-list');
+
+        for (const entry of wrong) {
+          const item = element(
+            'li',
+            undefined,
+            `scorecard-misclassified-${ticketKey(entry.id)}`,
+          );
+          item.textContent = `${entry.title}: you filed ${
+            cellLabel(entry.assigned)
+          }, the estate says ${cellLabel(entry.truth)}.`;
+          list.append(item);
+        }
+
+        panel.append(list);
+      }
+
+      ledgerPanel.append(panel);
     };
 
     const renderPay = (slip: Readonly<PaySlip>): void => {

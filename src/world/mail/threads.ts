@@ -1,4 +1,6 @@
 import { COMPANY_IDS } from '../company';
+import { WORLD_IDS } from '../demo-world';
+import { FIELDS } from '../fields';
 import type { MailThread } from './types';
 
 /** The inbox, as it stood when the shift started. */
@@ -60,6 +62,36 @@ export const MAIL_THREADS: readonly MailThread[] = [
           + 'half ten, so if anything there is now less rush, compressed.',
           'Also Sales are saying they have been hacked. I have said we are '
           + 'all over it. Please be all over it.',
+        ],
+      },
+    ],
+  },
+  /**
+   * Second line, returning a handoff nobody could work from. It is gated on
+   * the ticket's own field, so it exists exactly when it has happened and is
+   * stamped at the minute it landed - and if the player never sends a thin
+   * handoff, nobody in the game ever writes this.
+   */
+  {
+    id: 'mail/handoff-bounce',
+    subject: 'RE: escalation - returning this one',
+    arrival: {
+      node: WORLD_IDS.ticket,
+      field: FIELDS.handoffSettledAt,
+    },
+    messages: [
+      {
+        id: 'mail/handoff-bounce#1',
+        from: COMPANY_IDS.boss,
+        tick: 0,
+        body: [
+          'Desmond forwarding this on from second line, whose exact words '
+          + 'were "what is this", and who I am told said them out loud.',
+          'Their form wants what the user reported and what you tried. Yours '
+          + 'had the ticket number. They have sent it back and they have '
+          + 'sent it back to you, which I gather is the polite version.',
+          'Not a telling off. Genuinely. It is only that they now know your '
+          + 'name, and that is a thing that compounds.',
         ],
       },
     ],

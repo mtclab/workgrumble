@@ -68,6 +68,7 @@ function session(storage: MemoryStorage = new MemoryStorage()): Session {
   const appState = new AppStateStore();
   const driver = new DayDriver(engine, COMPANY_IDS.player, WORLD_SEED, {
     onDayBoundary: () => {},
+    openSlackApps: () => [],
   });
   const slot = new SaveSlot(storage);
 

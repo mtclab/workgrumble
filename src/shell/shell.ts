@@ -102,6 +102,17 @@ export class Shell {
     this.desktop.notify(title, body);
   }
 
+  /**
+   * Slack apps with a window open and not minimised.
+   *
+   * The pressure layer needs to know what is genuinely ON SCREEN - a minimised
+   * game is a game nobody is playing and nobody can catch you at - and with no
+   * desktop mounted the answer is nothing, because there is no screen.
+   */
+  public openSlackApps(): readonly string[] {
+    return this.desktop?.openSlackApps() ?? [];
+  }
+
   public dispose(): void {
     this.stopBootTimer();
     this.desktop?.dispose();

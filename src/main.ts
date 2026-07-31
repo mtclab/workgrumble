@@ -39,6 +39,12 @@ async function boot(): Promise<void> {
     onDayBoundary: () => {
       session.save();
     },
+    // What the pressure layer cannot see for itself: which slack apps are
+    // genuinely on screen right now.
+    openSlackApps: () => shell.openSlackApps(),
+    onNotice: (title, body) => {
+      shell.notify(title, body);
+    },
   });
 
   const session = createShellSession({ engine, appState, day, slot });

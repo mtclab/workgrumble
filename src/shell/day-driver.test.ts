@@ -25,16 +25,31 @@ interface Harness {
   readonly driver: DayDriver;
   readonly engine: ReturnType<typeof createWorldSession>['engine'];
   readonly boundaries: () => number;
+  readonly notices: () => readonly string[];
+  /** What the shell would say is on screen. The tests move it about. */
+  readonly slack: { open: readonly string[] };
 }
 
 function harness(): Harness {
   const { engine } = createWorldSession();
   const onDayBoundary = vi.fn();
+  const notices: string[] = [];
+  const slack: { open: readonly string[] } = { open: [] };
   const driver = new DayDriver(engine, COMPANY_IDS.player, WORLD_SEED, {
     onDayBoundary,
+    openSlackApps: () => slack.open,
+    onNotice: (title) => {
+      notices.push(title);
+    },
   });
 
-  return { driver, engine, boundaries: () => onDayBoundary.mock.calls.length };
+  return {
+    driver,
+    engine,
+    boundaries: () => onDayBoundary.mock.calls.length,
+    notices: () => notices,
+    slack,
+  };
 }
 
 /** Real milliseconds that buy `ticks` simulated minutes at normal speed. */

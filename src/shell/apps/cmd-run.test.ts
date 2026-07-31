@@ -21,6 +21,7 @@ function apiFor(
     appState: new AppStateStore(),
     day: new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
       onDayBoundary: () => {},
+      openSlackApps: () => [],
     }),
     dispatch: (id, dispatchActor, target, params) => session.engine.dispatch(
       id,

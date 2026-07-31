@@ -3,7 +3,8 @@ import {
   latestTick,
   type MailThread,
   mailKey,
-  WORLD_MAIL,
+  messageTick,
+  visibleMail,
 } from '../../world/mail';
 import { FIELDS } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
@@ -32,7 +33,7 @@ export const MAIL_APP: AppDef = {
     const state = (): { selectedId: string | null; read: readonly string[] } =>
       api.appState.get().mail;
     const isUnread = (id: string): boolean => !state().read.includes(id);
-    const unreadCount = (): number => WORLD_MAIL.filter(
+    const unreadCount = (): number => visibleMail(api.graph).filter(
       (thread) => isUnread(thread.id),
     ).length;
 
@@ -52,9 +53,11 @@ export const MAIL_APP: AppDef = {
     root.append(toolbar, columns);
 
     /** Newest traffic at the top, the way every inbox has always sorted. */
-    const threads = (): readonly MailThread[] => [...WORLD_MAIL].sort(
-      (left, right) => latestTick(right) - latestTick(left),
-    );
+    const threads = (): readonly MailThread[] => [...visibleMail(api.graph)]
+      .sort(
+        (left, right) => latestTick(right, api.graph)
+          - latestTick(left, api.graph),
+      );
 
     const renderList = (): void => {
       list.replaceChildren();
@@ -78,7 +81,7 @@ export const MAIL_APP: AppDef = {
           thread.messages[0]?.from ?? 'person:unknown',
         );
         const stamp = element('span', 'mail-row-time');
-        stamp.textContent = formatSimTime(latestTick(thread)).time;
+        stamp.textContent = formatSimTime(latestTick(thread, api.graph)).time;
 
         row.append(subject, from, stamp);
         row.addEventListener('click', () => {
@@ -118,7 +121,9 @@ export const MAIL_APP: AppDef = {
         const from = element('strong', undefined, `mail-message-from-${key}`);
         from.textContent = senderName(api, message.from);
         const stamp = element('time', undefined, `mail-message-time-${key}`);
-        const display = formatSimTime(message.tick);
+        const display = formatSimTime(
+          messageTick(thread, message.tick, api.graph),
+        );
         stamp.textContent = `${display.day} · ${display.time}`;
         stamp.setAttribute('aria-label', display.accessible);
         head.append(from, stamp);
@@ -137,7 +142,7 @@ export const MAIL_APP: AppDef = {
     const render = (): void => {
       const { selectedId } = state();
       summary.textContent = `${String(unreadCount())} unread · `
-        + `${String(WORLD_MAIL.length)} threads`;
+        + `${String(visibleMail(api.graph).length)} threads`;
       renderList();
       renderReader(selectedId === null ? undefined : findMailThread(selectedId));
     };

@@ -4,10 +4,13 @@ import { formatSimTime } from '../../shell/clock-format';
 import { COMPANY_IDS } from '../company';
 import { createWorldSession } from '../session';
 import {
+  arrivedAt,
   findMailThread,
   latestTick,
   mailKey,
+  messageTick,
   validateMailThreads,
+  visibleMail,
   WORLD_MAIL,
 } from './index';
 import type { MailThread } from './types';
@@ -113,6 +116,8 @@ describe('shipped inbox', () => {
   });
 
   it('stamps every message at a time the shift clock can show', () => {
+    const { engine } = createWorldSession();
+
     for (const entry of WORLD_MAIL) {
       for (const message of entry.messages) {
         expect(formatSimTime(message.tick).time).toMatch(/^\d{2}:\d{2}$/);
@@ -126,6 +131,48 @@ describe('shipped inbox', () => {
         { id: 'a', from: COMPANY_IDS.boss, tick: 3, body: ['a'] },
         { id: 'b', from: COMPANY_IDS.boss, tick: 40, body: ['b'] },
       ],
-    })).toBe(40);
+    }, engine.graph)).toBe(40);
+  });
+
+  /**
+   * A consequence cannot be stamped by a content file, because nobody knows
+   * when the player will earn it. Until the field says otherwise the thread
+   * does not exist - an inbox that shows a bounce-back before anything has
+   * bounced is telling the player their future.
+   */
+  it('hides a gated thread until the world says it arrived, then stamps it', () => {
+    const { engine } = createWorldSession();
+    const gated: MailThread = {
+      id: 'mail/gated',
+      subject: 'Sent back',
+      arrival: { node: 'ticket:fan-noise', field: 'handoff_settled_at' },
+      messages: [
+        { id: 'mail/gated#1', from: COMPANY_IDS.boss, tick: 0, body: ['No.'] },
+      ],
+    };
+
+    expect(arrivedAt(gated, engine.graph)).toBeNull();
+    expect(visibleMail(engine.graph).some((entry) => entry.arrival !== undefined))
+      .toBe(false);
+
+    // A thin handoff, followed by second line getting round to it.
+    engine.dispatch('ticket.escalate', COMPANY_IDS.player, 'ticket:fan-noise', {
+      reported: '',
+      tried: '',
+    });
+    engine.advance(30);
+    engine.dispatch(
+      'ticket.bounce_handoff',
+      COMPANY_IDS.player,
+      'ticket:fan-noise',
+      {},
+    );
+
+    const landed = arrivedAt(gated, engine.graph);
+    expect(landed).toBe(30);
+    expect(messageTick(gated, 0, engine.graph)).toBe(30);
+    expect(latestTick(gated, engine.graph)).toBe(30);
+    expect(visibleMail(engine.graph).some((entry) => entry.id === 'mail/x'))
+      .toBe(false);
   });
 });

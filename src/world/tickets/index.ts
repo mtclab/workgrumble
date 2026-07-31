@@ -1,6 +1,11 @@
-import type { ReadOnlyGraphView, TicketDef } from '../../engine-api';
+import type {
+  ReadOnlyGraphNode,
+  ReadOnlyGraphView,
+  TicketDef,
+} from '../../engine-api';
 import { HELPDESK_ACTION_IDS } from '../actions';
 import type { ScheduledTicket } from '../day';
+import { FIELDS } from '../fields';
 import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
 import { type Classification, classify, trueImpact } from '../priority';
 import { acceptsEscalation } from './escalation';
@@ -181,6 +186,24 @@ export const MORNING_TICKET_DEFS: readonly TicketDef[] = Object.freeze(
 
 export function ticketTitle(id: string): string {
   return findWorldTicket(id)?.def.flavor.title ?? id;
+}
+
+/**
+ * What every resolved ticket in this list is worth in reputation, in total.
+ *
+ * A total rather than a count because the credit is archetype-weighted - the
+ * spooler outage is worth more than a rotated screen - and because a total is
+ * what the meters can compare against a watermark: what has been earned so
+ * far, minus what has already been paid out.
+ */
+export function resolveCredit(
+  tickets: readonly Readonly<ReadOnlyGraphNode>[],
+): number {
+  return tickets.reduce((total, ticket) => {
+    const resolved = ticket.fields[FIELDS.state] === 'resolved';
+    const reward = findWorldTicket(ticket.id)?.def.reward.reputation ?? 0;
+    return resolved ? total + Math.max(0, reward) : total;
+  }, 0);
 }
 
 /** The estate a ticket is about, or nothing when nobody wrote it down. */

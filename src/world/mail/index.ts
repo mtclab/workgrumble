@@ -1,7 +1,8 @@
+import type { ReadOnlyGraphView } from '../../engine-api';
 import { MAIL_THREADS } from './threads';
 import type { MailThread } from './types';
 
-export type { MailMessage, MailThread } from './types';
+export type { MailArrival, MailMessage, MailThread } from './types';
 
 /**
  * Load-time content gate. Mail is harmless right up until a thread has no
@@ -79,10 +80,51 @@ export function findMailThread(id: string): MailThread | undefined {
   return WORLD_MAIL.find((thread) => thread.id === id);
 }
 
+/**
+ * When a gated thread arrived, or null while it has not.
+ *
+ * The field either holds a tick or it does not exist, and "does not exist" is
+ * the whole answer: an inbox that shows a bounce-back before second line have
+ * bounced anything is telling the player their future.
+ */
+export function arrivedAt(
+  thread: Readonly<MailThread>,
+  graph: ReadOnlyGraphView,
+): number | null {
+  if (thread.arrival === undefined) {
+    return 0;
+  }
+
+  const value = graph.getField(thread.arrival.node, thread.arrival.field);
+
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+/** The threads that exist right now, gated ones included once they do. */
+export function visibleMail(
+  graph: ReadOnlyGraphView,
+): readonly MailThread[] {
+  return WORLD_MAIL.filter((thread) => arrivedAt(thread, graph) !== null);
+}
+
+/** When each message in a thread landed, absolute, gate or no gate. */
+export function messageTick(
+  thread: Readonly<MailThread>,
+  offset: number,
+  graph: ReadOnlyGraphView,
+): number {
+  return (arrivedAt(thread, graph) ?? 0) + offset;
+}
+
 /** When a thread last saw traffic - what the inbox list sorts and stamps by. */
-export function latestTick(thread: Readonly<MailThread>): number {
+export function latestTick(
+  thread: Readonly<MailThread>,
+  graph: ReadOnlyGraphView,
+): number {
   return thread.messages.reduce(
-    (latest, message) => Math.max(latest, message.tick),
+    (latest, message) => Math.max(latest, messageTick(thread, message.tick, graph)),
     0,
   );
 }

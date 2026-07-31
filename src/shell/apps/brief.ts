@@ -1,7 +1,7 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import { isLunchtime, shiftStartTick } from '../../world/day';
 import { FIELDS } from '../../world/fields';
-import { latestTick, type MailThread, WORLD_MAIL } from '../../world/mail';
+import { latestTick, type MailThread, visibleMail } from '../../world/mail';
 import { findWorldTicket } from '../../world/tickets';
 import { formatSimTime } from '../clock-format';
 import type { AppDef, AppInstance, GameApi } from './types';
@@ -20,9 +20,9 @@ import {
  * in this building means whoever is most worried. Picked from the same inbox
  * the Mail app reads, so the brief can never quote a mail that is not there.
  */
-function briefingMail(): MailThread | undefined {
-  return [...WORLD_MAIL].sort(
-    (left, right) => latestTick(right) - latestTick(left),
+function briefingMail(api: GameApi): MailThread | undefined {
+  return [...visibleMail(api.graph)].sort(
+    (left, right) => latestTick(right, api.graph) - latestTick(left, api.graph),
   )[0];
 }
 
@@ -86,7 +86,7 @@ export const BRIEF_APP: AppDef = {
       heading2.textContent = 'Already waiting for you';
       mailPanel.append(heading2);
 
-      const thread = briefingMail();
+      const thread = briefingMail(api);
       const message = thread?.messages[thread.messages.length - 1];
 
       if (thread === undefined || message === undefined) {

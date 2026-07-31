@@ -1,9 +1,20 @@
-import { parseCommand } from './cmd-parse';
+import { FIELDS } from '../../world/fields';
+import { isFumbling } from '../../world/meters';
+import { fumbleTypo, parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
 import type { AppDef } from './types';
 import { element } from './ui';
 
 export const PROMPT = 'C:\\SUPPORT>';
+
+/**
+ * The line the terminal prints after it has finished laughing at you. It says
+ * out loud that the typo was cosmetic, because the alternative - a game that
+ * silently corrupts the player's input at high stress - is a punishment, and
+ * this one is a joke.
+ */
+export const FUMBLE_NOTE = 'Sent as typed. Your hands are going; the terminal '
+  + 'is fine.';
 
 const BANNER: readonly string[] = [
   'WORKGRUMBLE Support Terminal [Version 4.10.1998]',
@@ -55,9 +66,27 @@ export const CMD_APP: AppDef = {
       output.scrollTop = output.scrollHeight;
     };
 
+    /** Over 80 stress, the room swims and so does the keyboard. */
+    const fumbling = (): boolean => {
+      const stress = api.graph.getField(api.actor, FIELDS.stress);
+      return typeof stress === 'number' && isFumbling(stress);
+    };
+
     const submit = (): void => {
       const raw = input.value;
       input.value = '';
+
+      // The gag, in full: what your hands did, then the correction, then the
+      // command that actually ran - which is the one you typed.
+      if (raw.trim().length > 0 && fumbling()) {
+        const typo = fumbleTypo(raw, api.clock.now());
+
+        if (typo !== raw) {
+          print(`${PROMPT} ${typo}`, 'echo');
+          print(FUMBLE_NOTE, 'note');
+        }
+      }
+
       print(`${PROMPT} ${raw}`, 'echo');
 
       if (raw.trim().length > 0) {

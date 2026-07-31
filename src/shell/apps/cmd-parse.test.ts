@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COMMANDS,
   findCommand,
+  fumbleTypo,
   parseCommand,
   suggestCommand,
 } from './cmd-parse';
@@ -97,5 +98,32 @@ describe('command parser', () => {
       expect(spec.summary.endsWith('.')).toBe(true);
       expect(spec.minArgs).toBeLessThanOrEqual(spec.maxArgs);
     }
+  });
+});
+
+/**
+ * The fumble gag is a look, not a mechanic: whatever the terminal prints, the
+ * line that runs is the line that was typed. These pin the half that IS
+ * visible - it changes something, it changes one thing, and it changes the
+ * same thing twice for the same minute.
+ */
+describe('fumbling', () => {
+  it('swaps two adjacent letters, deterministically', () => {
+    const typed = 'restart spooler';
+    const typo = fumbleTypo(typed, 7);
+
+    expect(typo).not.toBe(typed);
+    expect(typo).toHaveLength(typed.length);
+    expect([...typo].sort()).toEqual([...typed].sort());
+    expect(fumbleTypo(typed, 7)).toBe(typo);
+    // A different minute fumbles differently, so the same command twice
+    // running does not read as a broken renderer.
+    expect(fumbleTypo(typed, 8)).not.toBe(typo);
+  });
+
+  it('leaves a line with nothing to swap exactly as it was', () => {
+    expect(fumbleTypo('', 3)).toBe('');
+    expect(fumbleTypo('a', 3)).toBe('a');
+    expect(fumbleTypo('4 2', 3)).toBe('4 2');
   });
 });
