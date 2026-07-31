@@ -224,18 +224,33 @@ export const HR_REPORT_MACRO: WorldTicket = {
       ],
     },
     {
+      /**
+       * Escalating is a workflow rather than a shrug, and the workflow has
+       * required content: what the user reported, and what you TRIED. The
+       * second half is not typed by anybody - the form fills it in from what
+       * was actually dispatched at this ticket's estate - so the path has to
+       * start with something genuinely attempted, or it is not the path the
+       * button behind it can walk. A reboot of the file server is what a first
+       * line tech does try, it is honest, and it does not fix a service that
+       * was stopped on purpose in March.
+       */
       id: 'escalate-with-the-date',
       app: 'tickets',
-      label: 'Send it up with the date it actually broke on',
+      label: 'Try the obvious thing, then send it up with the date it '
+        + 'actually broke on',
       steps: [
+        {
+          action: HELPDESK_ACTIONS.machineReboot,
+          target: COMPANY_IDS.fileServer,
+        },
         {
           action: HELPDESK_ACTIONS.ticketEscalate,
           target: 'ticket:hr-report-macro',
           params: {
             reported: 'Headcount report has not generated since March; needed '
               + 'for a board pack at 15:00 today.',
-            tried: 'Read the scheduled reports service on FILES-01\n'
-              + 'Confirmed the job has been stopped since the March window',
+            tried: 'Rebooted FILES-01; the scheduled reports service is still '
+              + 'stopped and has been since the March window',
           },
         },
       ],

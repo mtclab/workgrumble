@@ -224,11 +224,19 @@ test('the report nobody raised in March is escalated with the date', async ({
   await page.getByTestId('ticket-row-hr-report-macro').click();
   await expect(page.getByTestId('ticket-detail-title')).toContainText('March');
 
-  // Escalation is a real answer to this one, and the form is what makes it
-  // one: second line take tickets on a form, not on trust. What was tried is
-  // filled in from what was actually done to the estate, so the only thing
-  // anybody types is the symptom.
+  // Try the obvious thing first, and not as a formality: "what I tried" on the
+  // handoff form is not typed by anybody, it is filled in from what was
+  // actually dispatched at this ticket's estate. A form with the symptom on it
+  // and nothing in the tried column is a thin handoff, and second line send
+  // those straight back - which is a different journey with a bill on it.
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-files').click();
+  await page.getByTestId('remote-reboot').click();
+
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('ticket-row-hr-report-macro').click();
   await page.getByTestId('ticket-escalate').click();
+  await expect(page.getByTestId('handoff-tried')).toContainText('Rebooted');
   await page.getByTestId('handoff-reported').fill(
     'Headcount report has not generated since March; needed at 15:00 today.',
   );

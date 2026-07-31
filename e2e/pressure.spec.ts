@@ -63,7 +63,11 @@ test('classifies a ticket and moves its SLA with the priority', async ({
 }) => {
   // Thursday, where the week keeps the one fault the whole office notices -
   // and it is waiting in the queue at eight, like every inherited ticket.
-  await logInOnDay(page, 4, { brief: 'keep' });
+  // Tuesday, which is the morning the office-wide fault is inherited on.
+  // Triage is refused on a ticket that has already blown its SLA - correctly,
+  // and with a sentence about it - so this has to be the day the spooler is
+  // still fresh rather than a Thursday two idle days later.
+  await logInOnDay(page, 2, { brief: 'keep' });
   await beginShift(page);
   await openFromStartMenu(page, 'tickets');
 
@@ -121,7 +125,11 @@ test('classifies a ticket and moves its SLA with the priority', async ({
 test('carries a misclassified ticket through to the scorecard', async ({
   page,
 }) => {
-  await logInOnDay(page, 4, { brief: 'keep' });
+  // Tuesday, which is the morning the office-wide fault is inherited on.
+  // Triage is refused on a ticket that has already blown its SLA - correctly,
+  // and with a sentence about it - so this has to be the day the spooler is
+  // still fresh rather than a Thursday two idle days later.
+  await logInOnDay(page, 2, { brief: 'keep' });
   await beginShift(page);
   await openFromStartMenu(page, 'tickets');
 
@@ -318,9 +326,14 @@ test('starts fumbling once the day has gone badly enough', async ({ page }) => {
   await expect(page.getByTestId('fumble-chip')).toBeHidden();
 
   // Five hours of doing nothing about anything, at four times the speed.
+  //
+  // Read to the hour rather than to the minute: `hurry` sets the speed with a
+  // click, and a click at four times the clock costs a few simulated minutes
+  // of its own. This test is about what the afternoon does to a pair of hands,
+  // not about landing on a particular minute of it.
   await hurry(page);
   await page.clock.runFor(realMs(5 * 60, 4));
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('14:00');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^14:/);
 
   await expect(desktop).toHaveAttribute('data-fumbling', 'true');
   const chip = page.getByTestId('fumble-chip');
