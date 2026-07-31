@@ -191,10 +191,26 @@ test('the man who reported the phish gets the rule and the reply', async ({
   await runCommand(page, 'rule on quarantine');
   await expect(page.getByTestId('cmd-output')).toContainText('is now on');
 
+  // The rule stops the mail and it does not close the ticket. The reply is
+  // the other half and it is the half that pays: the next hundred of these
+  // depend on whether reporting one was worth his morning.
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('ticket-row-phishing-report').click();
+  await expect(page.getByTestId('ticket-detail-state')).toContainText('Open');
+
+  await openFromStartMenu(page, 'chat');
+  await page.getByTestId('chat-person-dennis').click();
+  await page.getByTestId('chat-option-2').click();
+
   await expectClosed(page, 'phishing-report');
 
-  // The reply is the half that pays, so it is on the ticket where he can see
-  // it rather than in a work note where he cannot.
+  // On the TICKET, in the stream he can see, rather than in a line of
+  // dialogue claiming somebody wrote back.
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('ticket-row-phishing-report').click();
+  await expect(page.getByTestId('ticket-comments'))
+    .toContainText('You did exactly the right thing');
+
   await openFromStartMenu(page, 'chat');
   await page.getByTestId('chat-person-dennis').click();
   await expect(page.getByTestId('chat-transcript'))

@@ -281,13 +281,14 @@ beforeEach(() => {
 
 describe('helpdesk action registry', () => {
   it('registers every advertised action exactly once', () => {
-    // Thirty-seven, because M4's roster asked the tier for verbs it did not
+    // Thirty-eight, because M4's roster asked the tier for verbs it did not
     // have: an identity check, an enrolment, a session revoke that is the
     // wrong flavour of fix, two ends of a licence seat, a certificate, a
-    // stored credential, a mail rule switch, a note for a socket, and a link
-    // nobody should follow.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(37);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(37);
+    // stored credential, a mail rule switch, a note for a socket, a link
+    // nobody should follow, and a reply to the one man this week who did the
+    // right thing.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(38);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(38);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});

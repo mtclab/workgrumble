@@ -30,6 +30,7 @@ import { FIELDS, LOCKOUT_THRESHOLD } from '../world/fields';
 import { visibleMail } from '../world/mail';
 import { createWorldSession } from '../world/session';
 import { linkNote } from '../world/tickets';
+import { PHISH_PRAISE } from '../world/tickets/desk';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
 
 beforeAll(() => {
@@ -209,6 +210,166 @@ describe('the shortcut on the new phone', () => {
       .not.toContain('mail/security-incident');
   });
 
+  /**
+   * The consequence is decided by what happened AT THE DESK, and nothing can
+   * go back and change it afterwards.
+   *
+   * Reading the account's verification stamp answered a different question -
+   * "has anybody ever checked" - and the answer to that one is editable. So a
+   * player who took the shortcut on Wednesday could verify her identity on
+   * Wednesday evening, or during Thursday's morning brief before the fallout
+   * settled, and the incident report never arrived. The enrolment latches what
+   * was true when it happened.
+   */
+  it('still bills a shortcut that was verified after the fact', () => {
+    const scene = enrolPriya(false);
+
+    expect(
+      scene.engine.graph.getField(
+        COMPANY_IDS.priyaAccount,
+        FIELDS.mfaEnrolmentVerified,
+      ),
+    ).toBe(false);
+
+    // Wednesday afternoon, an hour too late.
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.accountVerifyIdentity,
+      COMPANY_IDS.priyaAccount,
+    );
+    expect(
+      scene.engine.graph.getField(
+        COMPANY_IDS.priyaAccount,
+        FIELDS.mfaEnrolmentVerified,
+      ),
+    ).toBe(false);
+
+    runTo(scene, 17 * 60);
+    scene.driver.clockOff();
+    const before = meter(scene, FIELDS.reputation);
+    scene.driver.startShift();
+
+    expect(meter(scene, FIELDS.reputation))
+      .toBe(before - SOCIAL_ENGINEERING_REPUTATION);
+    expect(scene.notices).toContain('Security incident report');
+  });
+
+  /** And it survives the round trip, because it is a field like any other. */
+  it('carries the latch through a save and a load', () => {
+    const scene = enrolPriya(false);
+    const saved = scene.engine.serialize();
+
+    const next = world();
+    next.engine.restore(saved);
+    next.driver.resync();
+
+    expect(
+      next.engine.graph.getField(
+        COMPANY_IDS.priyaAccount,
+        FIELDS.mfaEnrolmentVerified,
+      ),
+    ).toBe(false);
+
+    // And the bill still lands on the other side of the reload.
+    while (next.driver.state() === 'shift') {
+      next.driver.step(TICK_INTERVAL_MS);
+    }
+
+    next.driver.clockOff();
+    const before = next.engine.graph.getField(
+      COMPANY_IDS.player,
+      FIELDS.reputation,
+    );
+    next.driver.startShift();
+
+    expect(next.engine.graph.getField(COMPANY_IDS.player, FIELDS.reputation))
+      .toBe((typeof before === 'number' ? before : 0)
+        - SOCIAL_ENGINEERING_REPUTATION);
+  });
+
+  /**
+   * A check done on Monday is not a check done today, whatever the field says.
+   *
+   * The verification stamp had no age on it, so a speculative click on the
+   * Directory on day one satisfied an enrolment on Wednesday for ever - and
+   * the refusal on re-verifying read the same stamp, so the player who tried
+   * to do it properly on Wednesday was told they had already checked today.
+   */
+  it('does not let Monday\'s check stand in for Wednesday\'s', () => {
+    const scene = skipTo(1);
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.accountVerifyIdentity,
+      COMPANY_IDS.priyaAccount,
+    );
+
+    while (scene.driver.day() < 3) {
+      runTo(scene, 17 * 60);
+      scene.driver.clockOff();
+      scene.driver.startShift();
+    }
+
+    runTo(scene, 11 * 60);
+
+    // Wednesday: the check is stale, so it may be done again - and doing it
+    // again is what makes the enrolment a verified one.
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.accountVerifyIdentity,
+      COMPANY_IDS.priyaAccount,
+    );
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.accountRegisterMfa,
+      COMPANY_IDS.priyaAccount,
+    );
+
+    expect(
+      scene.engine.graph.getField(
+        COMPANY_IDS.priyaAccount,
+        FIELDS.mfaEnrolmentVerified,
+      ),
+    ).toBe(true);
+  });
+
+  /** And a stale check on its own excuses nothing. */
+  it('bills an enrolment whose only check was days ago', () => {
+    const scene = skipTo(1);
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.accountVerifyIdentity,
+      COMPANY_IDS.priyaAccount,
+    );
+
+    while (scene.driver.day() < 3) {
+      runTo(scene, 17 * 60);
+      scene.driver.clockOff();
+      scene.driver.startShift();
+    }
+
+    runTo(scene, 11 * 60);
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.accountRegisterMfa,
+      COMPANY_IDS.priyaAccount,
+    );
+
+    expect(
+      scene.engine.graph.getField(
+        COMPANY_IDS.priyaAccount,
+        FIELDS.mfaEnrolmentVerified,
+      ),
+    ).toBe(false);
+
+    runTo(scene, 17 * 60);
+    scene.driver.clockOff();
+    const before = meter(scene, FIELDS.reputation);
+    scene.driver.startShift();
+
+    expect(meter(scene, FIELDS.reputation))
+      .toBe(before - SOCIAL_ENGINEERING_REPUTATION);
+  });
+
   /** And the wrong flavour of fix says which fix it is the wrong flavour of. */
   it('refuses a session revoke on an account with no working factor', () => {
     const scene = skipTo(3);
@@ -299,6 +460,76 @@ describe('the request that was granted exactly as written', () => {
     );
 
     expect(scene.engine.ticketState('ticket:sendas-missing')).toBe('resolved');
+  });
+
+  /**
+   * The chain cannot be pre-solved, and this is driven through the real day
+   * driver because that is the only place the bug lived.
+   *
+   * Both tickets had an empty setup, so the fault they reported was the
+   * absence of something nobody had written down. A player who granted Full
+   * Access and Send As on the Monday - two perfectly legal moves, on a
+   * directory that lists both - was dealt a mailbox ticket that spawned
+   * already resolved, which immediately raised the follower, which also
+   * spawned already resolved. Two tickets, seven points and twenty-six pence,
+   * for work that was done before either of them existed, and the chain that
+   * IS the lesson never happened.
+   */
+  it('spawns both halves open even when the work was done in advance', () => {
+    const scene = skipTo(1);
+
+    // Monday: neither permission can be granted early, because the seed has
+    // them and each ticket takes its own one away as it arrives.
+    const earlyGrant = scene.driver.dispatch(
+      HELPDESK_ACTIONS.shareGrantAccess,
+      COMPANY_IDS.player,
+      COMPANY_IDS.salesMailbox,
+      { account: COMPANY_IDS.kwameAccount },
+    );
+    expect(earlyGrant.ok).toBe(false);
+
+    const earlyGroup = scene.driver.dispatch(
+      HELPDESK_ACTIONS.accountAddToGroup,
+      COMPANY_IDS.player,
+      COMPANY_IDS.kwameAccount,
+      { group: COMPANY_IDS.salesSendAs },
+    );
+    expect(earlyGroup.ok).toBe(false);
+
+    runTo(scene, 17 * 60);
+    scene.driver.clockOff();
+    scene.driver.startShift();
+    runTo(scene, 13 * 60 + 20);
+
+    // Tuesday, one o'clock: the ticket arrives, and it arrives OPEN.
+    expect(scene.engine.ticketState('ticket:mailbox-access')).toBe('open');
+    expect(scene.engine.graph.getNode('ticket:sendas-missing')).toBeUndefined();
+
+    // And the same for the follower. Kwame is in the Send As group until the
+    // ticket about it arrives, so the adversarial move is to take him out and
+    // put him back - both legal, both one click in the Directory - and then
+    // finish the first half. The follower is still raised OPEN.
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.accountRemoveFromGroup,
+      COMPANY_IDS.kwameAccount,
+      { group: COMPANY_IDS.salesSendAs },
+    );
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.accountAddToGroup,
+      COMPANY_IDS.kwameAccount,
+      { group: COMPANY_IDS.salesSendAs },
+    );
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.shareGrantAccess,
+      COMPANY_IDS.salesMailbox,
+      { account: COMPANY_IDS.kwameAccount },
+    );
+
+    expect(scene.engine.ticketState('ticket:mailbox-access')).toBe('resolved');
+    expect(scene.engine.ticketState('ticket:sendas-missing')).toBe('open');
   });
 });
 
@@ -420,8 +651,10 @@ describe('Thursday, and forty people with one fault', () => {
       });
     }
 
-    // The parent's last word to its own reporter, which is what the copies get.
-    dispatch(scene, HELPDESK_ACTIONS.ticketAddComment,
+    // The parent's explanation to its own reporter, which is what the copies
+    // get. A reply rather than a question: the customer-visible stream carries
+    // both, and only one of them explains anything.
+    dispatch(scene, HELPDESK_ACTIONS.ticketReplyToReporter,
       'ticket:vpn-cert-expired',
       { comment: 'The certificate had expired. It has been replaced.' });
 
@@ -534,6 +767,145 @@ describe('the same thing every Tuesday and Thursday', () => {
   });
 
   /**
+   * The note is a diagnosis, so it is refused until there is one.
+   *
+   * The action only ever asked whether a note was already there, so the arc's
+   * closing move was available from the first morning: open Facilities on
+   * Monday, ask Vic for the note, and Thursday's ticket - the one the whole
+   * two-day arc exists to teach - closes on a power cycle alone, on a day when
+   * the fault it diagnoses has happened once.
+   */
+  it('refuses the note until the socket has done it twice', () => {
+    const scene = skipTo(1);
+
+    // Monday morning: it has not happened at all yet.
+    const monday = scene.driver.dispatch(
+      HELPDESK_ACTIONS.facilitiesStickyNote,
+      COMPANY_IDS.player,
+      COMPANY_IDS.warehousePrintServer,
+      {},
+    );
+    expect(monday.ok).toBe(false);
+    expect(monday.ok ? '' : monday.reason).toContain('often enough');
+
+    runTo(scene, 17 * 60);
+    scene.driver.clockOff();
+    scene.driver.startShift();
+
+    // Tuesday: once, which is an accident rather than a timetable. The printer
+    // is put back on, which is Tuesday's whole job and also what leaves the
+    // socket something to take again on Wednesday evening.
+    expect(scene.engine.graph.getField(
+      COMPANY_IDS.warehousePrinter,
+      FIELDS.powerLosses,
+    )).toBe(1);
+    const tuesday = scene.driver.dispatch(
+      HELPDESK_ACTIONS.facilitiesStickyNote,
+      COMPANY_IDS.player,
+      COMPANY_IDS.warehousePrintServer,
+      {},
+    );
+    expect(tuesday.ok).toBe(false);
+
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.devicePowerCycle,
+      COMPANY_IDS.warehousePrinter,
+    );
+    runTo(scene, 17 * 60);
+    scene.driver.clockOff();
+    scene.driver.startShift();
+
+    // Wednesday MORNING: still once. The second outage has not happened.
+    expect(scene.driver.day()).toBe(3);
+    const wednesday = scene.driver.dispatch(
+      HELPDESK_ACTIONS.facilitiesStickyNote,
+      COMPANY_IDS.player,
+      COMPANY_IDS.warehousePrintServer,
+      {},
+    );
+    expect(wednesday.ok).toBe(false);
+
+    runTo(scene, 17 * 60);
+    scene.driver.clockOff();
+    scene.driver.startShift();
+
+    // Thursday: twice, on two different evenings, and the box wrote both down.
+    expect(scene.engine.graph.getField(
+      COMPANY_IDS.warehousePrinter,
+      FIELDS.powerLosses,
+    )).toBe(2);
+
+    const log = readEventLog(scene.engine.graph.getField(
+      COMPANY_IDS.warehousePrintServer,
+      FIELDS.eventLog,
+    ));
+    expect(log.filter((event) => event.id === EVENT_IDS.powerLost))
+      .toHaveLength(2);
+
+    const thursday = scene.driver.dispatch(
+      HELPDESK_ACTIONS.facilitiesStickyNote,
+      COMPANY_IDS.player,
+      COMPANY_IDS.warehousePrintServer,
+      {},
+    );
+    expect(thursday.ok).toBe(true);
+  });
+
+  /**
+   * And the whole arc, walked from the log rather than from the answer.
+   *
+   * The player reads PRINT-02's own history, finds two power losses at the
+   * same minute two days apart, goes to Facilities on the strength of it, and
+   * closes the ticket. Every step is driven; nothing here is a fixture.
+   */
+  it('is closable from the two lines the box wrote down', () => {
+    // Tuesday is worked, because that is the week: the printer goes back on,
+    // which is what leaves the socket something to take again on the Wednesday.
+    const scene = skipTo(2);
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.devicePowerCycle,
+      COMPANY_IDS.warehousePrinter,
+    );
+
+    while (scene.driver.day() < 4) {
+      runTo(scene, 17 * 60);
+      scene.driver.clockOff();
+      scene.driver.startShift();
+    }
+
+    expect(scene.engine.ticketState('ticket:vacuum-thursday')).toBe('open');
+
+    const log = readEventLog(scene.engine.graph.getField(
+      COMPANY_IDS.warehousePrintServer,
+      FIELDS.eventLog,
+    ));
+    const outages = log.filter((event) => event.id === EVENT_IDS.powerLost);
+
+    // The evidence, as the Event Viewer renders it: two of them, same minute
+    // of the day, two days apart.
+    expect(outages).toHaveLength(2);
+    expect(new Set(outages.map(
+      (event) => event.tick % MINUTES_PER_DAY,
+    )).size).toBe(1);
+
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.devicePowerCycle,
+      COMPANY_IDS.warehousePrinter,
+    );
+    expect(scene.engine.ticketState('ticket:vacuum-thursday')).toBe('open');
+
+    dispatch(
+      scene,
+      HELPDESK_ACTIONS.facilitiesStickyNote,
+      COMPANY_IDS.warehousePrintServer,
+    );
+    expect(scene.engine.ticketState('ticket:vacuum-thursday')).toBe('resolved');
+  });
+
+  /**
    * And the correlation is READABLE: two outages on that box, on different
    * days, at the same minute. It is the only clue the arc has, it is the only
    * trace a socket in another corridor ever leaves, and it is the one thing a
@@ -597,6 +969,12 @@ describe('Friday', () => {
     expect(scene.engine.ticketState('ticket:hr-report-macro')).toBe('open');
 
     dispatch(scene, HELPDESK_ACTIONS.mailRuleEnable, COMPANY_IDS.phishBlock);
+    // The rule stops the mail. It does not close the ticket on its own, and
+    // that is the ticket: the man who reported it gets an answer, or the next
+    // hundred of these never get reported at all.
+    expect(scene.engine.ticketState('ticket:phishing-report')).toBe('open');
+    dispatch(scene, HELPDESK_ACTIONS.ticketReplyToReporter,
+      'ticket:phishing-report', { comment: PHISH_PRAISE });
     dispatch(scene, HELPDESK_ACTIONS.serviceRestart, COMPANY_IDS.backupAgent);
     dispatch(scene, HELPDESK_ACTIONS.serviceRestart, COMPANY_IDS.reportJob);
 

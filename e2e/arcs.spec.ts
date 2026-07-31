@@ -166,6 +166,76 @@ test('Thursday: forty reports, one certificate, one repair', async ({
   }
 });
 
+/**
+ * The same flood, worked in the order a fast desk works it: repair the fault
+ * the minute you understand it, and file the reports afterwards.
+ *
+ * Ada is fifteen minutes behind the parent and Gary is thirty-five, so this is
+ * not an exotic ordering - it is what happens to anybody who renews the
+ * certificate as soon as they have read the first ticket. The queue used to
+ * refuse it: a closed ticket with no children could not be a parent, so those
+ * reports had no way to be closed through the shipped UI at all, while the
+ * engine would have taken the link and closed them in the same minute.
+ */
+test('Thursday: the certificate first, and the reports filed after', async ({
+  page,
+}) => {
+  await logInOnDay(page, 4, { brief: 'keep' });
+  await workUntil(page, 180);
+
+  // The repair, before any bookkeeping at all.
+  await openFromStartMenu(page, 'cmd');
+  await runCommand(page, 'renewcert VPN Concentrator');
+  await expect(page.getByTestId('cmd-output'))
+    .toContainText('New certificate issued');
+
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('ticket-row-vpn-cert-expired').click();
+  await expect(page.getByTestId('ticket-detail-state')).toContainText('Closed');
+  // A closed incident is still the incident forty people are reporting, and
+  // the panel says what attaching to it now does.
+  await expect(page.getByTestId('ticket-parent-standing'))
+    .toContainText('closes straight away');
+
+  await page.getByTestId('ticket-pick-vpn-cert-dup-ada').check();
+  await page.getByTestId('ticket-pick-vpn-cert-dup-gary').check();
+  await page.getByTestId('ticket-row-vpn-cert-expired').click();
+  const attach = page.getByTestId('ticket-link-parent');
+  await expect(attach).toBeEnabled();
+  await attach.click();
+
+  for (const slug of ['vpn-cert-dup-ada', 'vpn-cert-dup-gary']) {
+    await page.getByTestId(`ticket-row-${slug}`).click();
+    await expect(page.getByTestId('ticket-detail-state'))
+      .toContainText('Closed');
+    await expect(page.getByTestId('ticket-comments'))
+      .toContainText('Closed with the parent incident');
+  }
+});
+
+/** And the same shape on the Wednesday, where the gap is the best part of an hour. */
+test('Wednesday: the share is back before the duplicate is filed', async ({
+  page,
+}) => {
+  await logInOnDay(page, 3, { brief: 'keep' });
+  await workUntil(page, 220);
+
+  await openFromStartMenu(page, 'cmd');
+  await runCommand(page, 'restart file sharing');
+  await expect(page.getByTestId('cmd-output')).toContainText('RUNNING');
+
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('ticket-row-share-maintenance').click();
+  await expect(page.getByTestId('ticket-detail-state')).toContainText('Closed');
+
+  await page.getByTestId('ticket-pick-share-dup-terry').check();
+  await page.getByTestId('ticket-row-share-maintenance').click();
+  await page.getByTestId('ticket-link-parent').click();
+
+  await page.getByTestId('ticket-row-share-dup-terry').click();
+  await expect(page.getByTestId('ticket-detail-state')).toContainText('Closed');
+});
+
 /* -- the arc --------------------------------------------------------------- */
 
 test('the printer on Tuesday is a timetable by the Thursday', async ({

@@ -1049,8 +1049,11 @@ describe('duplicates closing with their parent', () => {
   it('tells the child\'s reporter in the minute the parent closed', () => {
     const world = flood();
 
+    // A REPLY: what the duplicates are told is the parent's explanation, and
+    // an explanation is a statement. Questions live on the same stream and are
+    // never the reason a ticket closed.
     world.driver.dispatch(
-      HELPDESK_ACTIONS.ticketAddComment,
+      HELPDESK_ACTIONS.ticketReplyToReporter,
       COMPANY_IDS.player,
       PARENT,
       { comment: 'Certificate replaced. Remote access is back.' },
@@ -1098,5 +1101,68 @@ describe('duplicates closing with their parent', () => {
     expect(
       fieldLines(world.engine.graph.getField(CHILD, FIELDS.customerVisible)),
     ).toHaveLength(1);
+  });
+
+  /**
+   * Parent first, duplicate later - which is the ORDER a fast desk works in.
+   *
+   * Two of the week's four duplicates arrive after the fault behind them can
+   * already have been fixed: Terry reports the share at ten past eleven and
+   * the parent has been repairable since twenty past ten, and Ada and Gary
+   * turn up fifteen and thirty-five minutes after Thursday's VPN parent. A
+   * player who fixes the fault the minute they understand it is left holding
+   * reports that can only be closed by attaching them to something already
+   * closed - so the engine has to take the link and the cascade has to fire in
+   * the same minute rather than waiting for one that will never come.
+   */
+  it('attaches a late duplicate to a parent that is already closed', () => {
+    const world = harness();
+    world.engine.registerTicket(fixture(PARENT, VPN_BACK, [
+      {
+        op: 'setField',
+        id: COMPANY_IDS.vpn,
+        field: FIELDS.status,
+        value: 'stopped',
+      },
+    ]));
+    world.driver.startShift();
+
+    // The fault, repaired before the second person has got round to phoning.
+    world.driver.dispatch(
+      HELPDESK_ACTIONS.ticketReplyToReporter,
+      COMPANY_IDS.player,
+      PARENT,
+      { comment: 'The concentrator is back up. Nothing was lost.' },
+    );
+    world.driver.dispatch(
+      HELPDESK_ACTIONS.serviceRestart,
+      COMPANY_IDS.player,
+      COMPANY_IDS.vpn,
+      {},
+    );
+    expect(world.engine.ticketState(PARENT)).toBe('resolved');
+
+    // And now the late one turns up.
+    world.driver.step(realMs(20));
+    world.engine.registerTicket(
+      fixture(CHILD, closesWithParent(CHILD, PER_USER)),
+    );
+    expect(world.engine.ticketState(CHILD)).toBe('open');
+
+    const linked = world.driver.dispatch(
+      HELPDESK_ACTIONS.ticketLinkToParent,
+      COMPANY_IDS.player,
+      CHILD,
+      { parent: PARENT, note: linkNote('The VPN certificate', PARENT) },
+    );
+
+    expect(linked).toEqual({ ok: true });
+    // Closed in the same minute as the link, with the parent's own words.
+    expect(world.engine.ticketState(CHILD)).toBe('resolved');
+    expect(
+      fieldLines(world.engine.graph.getField(CHILD, FIELDS.customerVisible)),
+    ).toEqual([
+      expect.stringContaining('The concentrator is back up.') as unknown as string,
+    ]);
   });
 });

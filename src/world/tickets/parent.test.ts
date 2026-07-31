@@ -147,7 +147,7 @@ function cascade(): number {
         parent: due.parent,
         comment: cascadeComment(
           'The certificate expired',
-          fieldLines(parent?.fields[FIELDS.customerVisible]),
+          parent?.fields[FIELDS.replyToReporter],
         ),
       },
     );
@@ -282,7 +282,10 @@ describe('the cascade', () => {
    */
   it('closes every child when the parent is fixed, with the parent\'s words', () => {
     engine.advance(30);
-    dispatch(HELPDESK_ACTIONS.ticketAddComment, PARENT, {
+    // A REPLY rather than a comment. Questions land on the same stream - it
+    // is the only place a question the reporter could see can be - and the
+    // last one of those is not an explanation of anything.
+    dispatch(HELPDESK_ACTIONS.ticketReplyToReporter, PARENT, {
       comment: 'The certificate has been replaced and the VPN is back.',
     });
     dispatch(HELPDESK_ACTIONS.serviceRestart, CERT);
@@ -381,17 +384,32 @@ describe('the cascade', () => {
 });
 
 describe('what the reporter of a duplicate is told', () => {
-  it('copies the parent\'s last word rather than the first', () => {
-    expect(cascadeComment('An outage', ['We are looking at it.', 'It is back.']))
+  it('copies the parent\'s explanation', () => {
+    expect(cascadeComment('An outage', 'It is back.'))
       .toContain('It is back.');
-    expect(cascadeComment('An outage', ['We are looking at it.', 'It is back.']))
-      .toContain('An outage');
+    expect(cascadeComment('An outage', 'It is back.')).toContain('An outage');
   });
 
   it('says something honest when the parent said nothing', () => {
-    expect(cascadeComment('An outage', []))
+    expect(cascadeComment('An outage', undefined))
       .toContain('Nothing further is needed from you');
-    expect(cascadeComment('An outage', ['   ']))
+    expect(cascadeComment('An outage', ''))
       .toContain('Nothing further is needed from you');
+    expect(cascadeComment('An outage', '   '))
+      .toContain('Nothing further is needed from you');
+  });
+
+  /**
+   * The bug this field exists for: a diagnostic question is customer-visible,
+   * because it is the only place a question the reporter could have seen can
+   * live - and it was being copied onto forty duplicates as the reason their
+   * tickets had closed. Forty people were told their VPN ticket was resolved
+   * because somebody wanted to know exactly when it went.
+   */
+  it('never copies a question the player asked as the closure', () => {
+    const asked = 'Can you tell me exactly when it went?';
+    // The reply field is the only thing it reads, and a question never
+    // reaches it: `ticket.add_comment` writes the stream and nothing else.
+    expect(cascadeComment('An outage', undefined)).not.toContain(asked);
   });
 });

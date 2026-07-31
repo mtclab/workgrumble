@@ -7,9 +7,14 @@ import { loadEngineForTests } from '../engine-api/load-node';
 import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS } from '../world/fields';
-import { createWorldSession, WORLD_SEED } from '../world/session';
+import {
+  createWorldSession,
+  FIRST_WEEK,
+  seedForAttempt,
+  type WeekCarry,
+} from '../world/session';
 import { spawnWorldTicket } from '../world/tickets';
-import { RetrySlot } from './retry';
+import { acknowledgeCarry, carryFrom, RetrySlot } from './retry';
 import { AppStateStore } from './app-state';
 import { DayDriver } from './day-driver';
 import {
@@ -72,10 +77,13 @@ interface Session {
   readonly restarts: () => number;
 }
 
-function session(storage: MemoryStorage = new MemoryStorage()): Session {
-  const { engine } = createWorldSession();
+function session(
+  storage: MemoryStorage = new MemoryStorage(),
+  carry: Readonly<WeekCarry> = FIRST_WEEK,
+): Session {
+  const { engine, seed } = createWorldSession(carry);
   const appState = new AppStateStore();
-  const driver = new DayDriver(engine, COMPANY_IDS.player, WORLD_SEED, {
+  const driver = new DayDriver(engine, COMPANY_IDS.player, seed, {
     onDayBoundary: () => {},
     openSlackApps: () => [],
     focusedSlackApp: () => null,
@@ -338,5 +346,105 @@ describe('the save file', () => {
     // which one it will not take, and takes the current one.
     expect(parseSaveFile(JSON.stringify({ ...file, schema: 0 })).ok).toBe(false);
     expect(OLDEST_READABLE_SCHEMA).toBeLessThanOrEqual(SAVE_SCHEMA);
+  });
+});
+
+/* -- the week that survives a firing -------------------------------------- */
+
+describe('the carry-over a firing leaves behind', () => {
+  /**
+   * The fund is the joke the whole game hangs on, so the moment it exists in
+   * exactly one place is the moment worth testing.
+   *
+   * Boot used to read the retry slot and CLEAR it, then build the week. A
+   * refresh, a crash or a shut laptop between that read and the first day
+   * boundary came back as attempt one with nothing banked - which is not a lost
+   * session, it is the one thing a firing is not allowed to take.
+   */
+  it('survives a refresh taken the instant the new week boots', () => {
+    const storage = new MemoryStorage();
+    const slot = new RetrySlot(storage);
+    expect(slot.write({ attempt: 2, farmFund: 41_000, kbSelected: null }))
+      .toEqual({ ok: true, value: undefined });
+
+    // Boot, as `main.ts` boots: peek, build, save, and only then let go.
+    const carried = slot.peek();
+    expect(carried).not.toBeNull();
+    const booted = session(storage, carryFrom(carried ?? {
+      attempt: 1,
+      farmFund: 0,
+      kbSelected: null,
+    }));
+    expect(acknowledgeCarry(slot, () => booted.session.save())).toBe(true);
+
+    // The refresh: nothing of that session survives except what is in storage.
+    expect(slot.peek()).toBeNull();
+    const afterRefresh = session(storage);
+    expect(afterRefresh.session.load()).toEqual({ ok: true, value: undefined });
+
+    expect(
+      afterRefresh.engine.graph.getField(COMPANY_IDS.player, FIELDS.farmFund),
+    ).toBe(41_000);
+    expect(
+      afterRefresh.engine.graph.getField(COMPANY_IDS.player, FIELDS.weekAttempt),
+    ).toBe(2);
+  });
+
+  /** And a browser that cannot keep the save keeps the carry-over instead. */
+  it('holds on to the record when the new week could not be written', () => {
+    const storage = new MemoryStorage();
+    const slot = new RetrySlot(storage);
+    slot.write({ attempt: 3, farmFund: 900, kbSelected: null });
+
+    const booted = session(storage, { farmFund: 900, attempt: 3 });
+    storage.sealed = true;
+
+    expect(acknowledgeCarry(slot, () => booted.session.save())).toBe(false);
+    storage.sealed = false;
+    // Still there, so the next boot is asked the same question rather than
+    // quietly starting a first week with an empty fund.
+    expect(slot.peek()?.farmFund).toBe(900);
+    expect(slot.peek()?.attempt).toBe(3);
+  });
+
+  /**
+   * A save taken during attempt two, reloaded into a boot that knows nothing
+   * about it.
+   *
+   * The engine restores the right world; the DRIVER was built beside it with
+   * attempt one's seed, and a save carries only pause and speed - so the day
+   * it picked back up dripped its tickets on attempt one's minutes and walked
+   * the lead round attempt one's rounds, in a world the player had reached on
+   * attempt two. The seed is derived from the world now, which is the half
+   * that survives a load.
+   */
+  it('picks a reloaded second attempt back up on its own schedule', () => {
+    const storage = new MemoryStorage();
+    const live = session(storage, { farmFund: 0, attempt: 2 });
+    live.driver.startShift();
+    live.driver.step(60_000 * 3);
+    expect(live.session.save()).toEqual({ ok: true, value: undefined });
+
+    const schedule = live.driver.schedule();
+    const hash = live.engine.snapshotHash();
+
+    // The refresh: no retry record left, so boot builds a FIRST week.
+    const afterRefresh = session(storage);
+    expect(afterRefresh.driver.schedule().arrivals.map((one) => one.tick))
+      .not.toEqual(schedule.arrivals.map((one) => one.tick));
+
+    expect(afterRefresh.session.load()).toEqual({ ok: true, value: undefined });
+
+    expect(afterRefresh.engine.snapshotHash()).toBe(hash);
+    // The queue it is going to deal is attempt two's, minute for minute.
+    expect(afterRefresh.driver.schedule().arrivals)
+      .toEqual(schedule.arrivals);
+
+    // And the rest of the day plays out identically, boss included.
+    live.driver.step(60_000 * 120);
+    afterRefresh.driver.step(60_000 * 120);
+    expect(afterRefresh.engine.snapshotHash()).toBe(live.engine.snapshotHash());
+    expect(afterRefresh.driver.boss()).toEqual(live.driver.boss());
+    expect(seedForAttempt(2)).not.toBe(seedForAttempt(1));
   });
 });

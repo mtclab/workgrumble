@@ -14,12 +14,15 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { EngineApi } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
-import { DAY_ACTIONS } from '../world/actions';
+import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { BEER_STRESS_RELIEF, BEER_SUSPICION } from '../world/consumables';
-import { shiftEndTick } from '../world/day';
+import { shiftEndTick, shiftStartTick } from '../world/day';
 import { FIELDS } from '../world/fields';
+import { REPUTATION_PER_BREACH } from '../world/meters';
 import { createWorldSession } from '../world/session';
+import { spawnWorldTicket } from '../world/tickets';
+import { PHISH_PRAISE } from '../world/tickets/desk';
 import {
   PROBATION_BONUS_PENCE,
   REVIEW_DAY,
@@ -28,6 +31,16 @@ import {
   reviewTick,
 } from '../world/week';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
+
+/** Friday's own inherited ticket, and the only one closable at 14:59. */
+const PHISHING_TICKET = 'ticket:phishing-report';
+
+/**
+ * A ticket nobody's idle week ever raises - it is summoned by a fix that never
+ * happened - so it is the one this file can put into a Friday at a minute of
+ * its own choosing.
+ */
+const LATE_TICKET = 'ticket:sendas-missing';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -62,6 +75,21 @@ function week(): Week {
   });
 
   return { driver, engine, reviews, beers, weekEnds };
+}
+
+/**
+ * The same world, through a save and a reload.
+ *
+ * A fresh session, the serialized world put into it, and the driver told to
+ * pick the day back up - which is exactly what the shipped load does. Anything
+ * that is only true in the session that produced it is not true.
+ */
+function reloaded(world: Week): Week {
+  const state = world.engine.serialize();
+  const next = week();
+  next.engine.restore(state);
+  next.driver.resync();
+  return next;
 }
 
 function meter(world: Week, field: string): number {
@@ -147,10 +175,14 @@ describe('the review at three on Friday', () => {
       { outcome: 'passed', tick: reviewTick(REVIEW_DAY) },
     ]);
     expect(world.driver.reviewOutcome()).toBe('passed');
-    // The probation ends: the fridge is unlocked and the fund takes the bonus.
+    // The fund takes the bonus at three. The fridge does NOT: the probation
+    // ends at three and the WEEK ends at five, and there are two hours of
+    // shift in between in which a bottle at the desk is a different joke and
+    // a shorter career.
     expect(meter(world, FIELDS.beerUnlocked)).toBeNaN();
     expect(world.engine.graph.getField(COMPANY_IDS.player, FIELDS.beerUnlocked))
-      .toBe(true);
+      .toBe(false);
+    expect(world.driver.beer().ok).toBe(false);
     expect(meter(world, FIELDS.farmFund))
       .toBe(fundBefore + PROBATION_BONUS_PENCE);
 
@@ -159,6 +191,166 @@ describe('the review at three on Friday', () => {
     expect(world.reviews).toHaveLength(1);
     expect(meter(world, FIELDS.farmFund))
       .toBe(fundBefore + PROBATION_BONUS_PENCE);
+    // Still shift, still locked - a minute past four is not the end of a week.
+    expect(world.driver.beer().ok).toBe(false);
+  });
+
+  /**
+   * The bottle, at the two minutes that decide it.
+   *
+   * The lock used to come off inside the review verb, so from 15:00 the desk
+   * had a working beer on it and two hours of shift left to drink it in - the
+   * tooltip's joke told early, at a desk, in front of the man who had just
+   * decided to keep you on. It comes off at the day_end transition now, and
+   * both halves are asserted through a save and a load because the day state
+   * is the thing a reload restores.
+   */
+  it('keeps the bottle in the fridge until the week has actually ended', () => {
+    const world = playToTheReview(REVIEW_PASS_REPUTATION);
+    world.driver.step(TICK_INTERVAL_MS);
+    expect(world.driver.reviewOutcome()).toBe('passed');
+
+    // 15:01: reviewed, passed, and still working.
+    expect(world.driver.state()).toBe('shift');
+    expect(world.driver.beer().ok).toBe(false);
+    expect(reloaded(world).driver.beer().ok).toBe(false);
+
+    world.driver.step(TICK_INTERVAL_MS
+      * (shiftEndTick(REVIEW_DAY) - world.engine.now()));
+
+    // 17:00: the day has ended, so the week has.
+    expect(world.driver.state()).toBe('day_end');
+    expect(world.engine.graph.getField(COMPANY_IDS.player, FIELDS.beerUnlocked))
+      .toBe(true);
+    // Through a save and a load, because a bottle that only works in the
+    // session that unlocked it is a bottle nobody can come back to.
+    const later = reloaded(world);
+    expect(later.driver.state()).toBe('day_end');
+    expect(later.driver.beer().ok).toBe(true);
+    // One bottle.
+    expect(later.driver.beer().ok).toBe(false);
+  });
+
+  /** And a week that was fired never gets one, at any hour. */
+  it('never unlocks the bottle for a week that was not continued', () => {
+    const world = playToTheReview(REVIEW_PASS_REPUTATION - 1);
+    world.driver.step(TICK_INTERVAL_MS);
+    expect(world.driver.reviewOutcome()).toBe('fired');
+
+    world.driver.step(TICK_INTERVAL_MS
+      * (shiftEndTick(REVIEW_DAY) - world.engine.now()));
+
+    expect(world.driver.state()).toBe('day_end');
+    expect(world.engine.graph.getField(COMPANY_IDS.player, FIELDS.beerUnlocked))
+      .toBe(false);
+    expect(world.driver.beer().ok).toBe(false);
+  });
+
+  /**
+   * The conversation reads the minute it happens IN, not the minute before it.
+   *
+   * The review used to be settled before the parent cascades and before the
+   * meters, so a ticket resolved at 14:59 - whose credit is paid at the 15:00
+   * meter tick - was work the lead had not been told about when he made his
+   * decision. One point below the line, one closed ticket, and fired for a job
+   * that was already done.
+   */
+  it('counts a ticket closed at 14:59 in the conversation at 15:00', () => {
+    const world = playToTheReview(REVIEW_PASS_REPUTATION - 1);
+    expect(world.engine.now()).toBe(reviewTick(REVIEW_DAY) - 1);
+
+    // Friday's own inherited ticket, closed one minute before the meeting.
+    const closed = world.driver.dispatch(
+      HELPDESK_ACTIONS.mailRuleEnable,
+      COMPANY_IDS.player,
+      COMPANY_IDS.phishBlock,
+      {},
+    );
+    expect(closed).toEqual({ ok: true });
+    const replied = world.driver.dispatch(
+      HELPDESK_ACTIONS.ticketReplyToReporter,
+      COMPANY_IDS.player,
+      PHISHING_TICKET,
+      { comment: PHISH_PRAISE },
+    );
+    expect(replied).toEqual({ ok: true });
+    expect(world.engine.ticketState(PHISHING_TICKET)).toBe('resolved');
+
+    // The credit has not been paid yet: it lands on the meter tick, which is
+    // the same minute as the review.
+    expect(meter(world, FIELDS.reputation)).toBe(REVIEW_PASS_REPUTATION - 1);
+
+    world.driver.step(TICK_INTERVAL_MS);
+
+    expect(world.engine.now()).toBe(reviewTick(REVIEW_DAY));
+    expect(meter(world, FIELDS.reputation))
+      .toBeGreaterThanOrEqual(REVIEW_PASS_REPUTATION);
+    expect(world.driver.reviewOutcome()).toBe('passed');
+  });
+
+  /** And the same minute, taken through a save and a load at 14:59. */
+  it('reaches the same conversation across a save at 14:59', () => {
+    const world = playToTheReview(REVIEW_PASS_REPUTATION - 1);
+
+    world.driver.dispatch(
+      HELPDESK_ACTIONS.mailRuleEnable,
+      COMPANY_IDS.player,
+      COMPANY_IDS.phishBlock,
+      {},
+    );
+    world.driver.dispatch(
+      HELPDESK_ACTIONS.ticketReplyToReporter,
+      COMPANY_IDS.player,
+      PHISHING_TICKET,
+      { comment: PHISH_PRAISE },
+    );
+
+    const later = reloaded(world);
+    expect(later.engine.now()).toBe(reviewTick(REVIEW_DAY) - 1);
+    expect(later.driver.reviewOutcome()).toBe('pending');
+
+    later.driver.step(TICK_INTERVAL_MS);
+
+    expect(later.driver.reviewOutcome()).toBe('passed');
+    expect(later.reviews).toEqual([
+      { outcome: 'passed', tick: reviewTick(REVIEW_DAY) },
+    ]);
+  });
+
+  /**
+   * And the other direction, which is the same bug wearing the other face: a
+   * deadline crossed AT 15:00 is charged at 15:00, and the review has to have
+   * been told before it decides. Passing on a number that was already stale by
+   * the time it was read is a pass the player cannot account for either.
+   */
+  it('counts a deadline missed at 15:00 in the conversation at 15:00', () => {
+    const world = week();
+    playDaysUpTo(world, REVIEW_DAY);
+    world.driver.startShift();
+
+    // Eleven o'clock, which is four hours - an untriaged ticket's whole SLA -
+    // before the meeting. Its deadline therefore lands on the meeting's own
+    // minute, which is the only way to ask which of the two the driver
+    // settles first.
+    world.driver.step(TICK_INTERVAL_MS
+      * (shiftStartTick(REVIEW_DAY) + 120 - world.engine.now()));
+    spawnWorldTicket(world.engine, LATE_TICKET);
+    expect(world.engine.graph.getField(LATE_TICKET, FIELDS.slaDeadline))
+      .toBe(reviewTick(REVIEW_DAY));
+
+    world.driver.step(TICK_INTERVAL_MS
+      * (reviewTick(REVIEW_DAY) - 1 - world.engine.now()));
+    setReputation(world, REVIEW_PASS_REPUTATION);
+    expect(world.engine.ticketState(LATE_TICKET)).toBe('open');
+    expect(world.driver.reviewOutcome()).toBe('pending');
+
+    world.driver.step(TICK_INTERVAL_MS);
+
+    expect(world.engine.now()).toBe(reviewTick(REVIEW_DAY));
+    expect(world.engine.ticketState(LATE_TICKET)).toBe('breached');
+    expect(meter(world, FIELDS.reputation))
+      .toBe(REVIEW_PASS_REPUTATION - REPUTATION_PER_BREACH);
+    expect(world.driver.reviewOutcome()).toBe('fired');
   });
 
   it('fires a week that did not, and one point is the difference', () => {
@@ -284,7 +476,11 @@ describe('the end of the week', () => {
     expect(card.days).toHaveLength(5);
     expect(card.arrived).toBe(tickets.length);
     expect(card.outcome).toBe('passed');
-    expect(card.reputation).toBe(meter(world, FIELDS.reputation));
+    // The number the CONVERSATION was decided on, which stopped moving at
+    // three o'clock. Reading the live meter let this screen print "37 of 40
+    // needed" directly above "Probation: passed".
+    expect(card.reputation).toBe(meter(world, FIELDS.reviewReputation));
+    expect(card.reputation).toBe(REVIEW_PASS_REPUTATION);
     expect(card.bankedPence).toBe(meter(world, FIELDS.farmFund));
     // A first week starts at nothing, so everything in the fund is this
     // week's - bonus included, because the bonus is this week's too.

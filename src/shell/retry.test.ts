@@ -88,25 +88,25 @@ function screensAfterAWeek(): AppStateStore {
 }
 
 describe('what a firing leaves behind', () => {
-  it('carries the fund, the reading and the attempt, and nothing else', () => {
+  it('carries the fund, the article and the attempt, and nothing else', () => {
     const record = recordFrom(1, 12_345, screensAfterAWeek().snapshot());
 
     expect(record).toEqual({
       attempt: 2,
       farmFund: 12_345,
-      mailRead: ['mail/onboarding'],
       kbSelected: 'kb/print-spooler',
     });
 
     const screens = screensFrom(record);
-    // Kept: what had been read, and where the answer was written down.
-    expect(screens.mail.read).toEqual(['mail/onboarding']);
+    // Kept: where the answer was written down.
     expect(screens.kb.selectedId).toBe('kb/print-spooler');
-    // Reset: the conversation, the windows it happened in, and the selection
-    // in an inbox that belongs to a week nobody is going back to.
+    // Reset: the conversation, the windows it happened in, and the WHOLE of
+    // the inbox. A thread still marked read on the Monday of a new week is a
+    // thread with its unread cue taken off - the security incident report and
+    // the maintenance notice both arrive again and both matter again.
     expect(screens.chat).toEqual(createAppState().chat);
     expect(screens.windows).toEqual(createAppState().windows);
-    expect(screens.mail.selectedId).toBeNull();
+    expect(screens.mail).toEqual(createAppState().mail);
     expect(screens.day).toEqual(createAppState().day);
     expect(screens.caught).toEqual(createAppState().caught);
   });
@@ -116,8 +116,8 @@ describe('what a firing leaves behind', () => {
     const fresh = new AppStateStore();
     hydrateFromRetry(fresh, record);
 
-    expect(fresh.get().mail.read).toEqual(['mail/onboarding']);
     expect(fresh.get().kb.selectedId).toBe('kb/print-spooler');
+    expect(fresh.get().mail.read).toEqual([]);
     expect(fresh.get().windows.open).toEqual([]);
   });
 
@@ -131,25 +131,38 @@ describe('what a firing leaves behind', () => {
     expect(parseRetryRecord({ ...good, attempt: 0 })).toBeNull();
     expect(parseRetryRecord({ ...good, attempt: 1.5 })).toBeNull();
     expect(parseRetryRecord({ ...good, farmFund: -1 })).toBeNull();
-    expect(parseRetryRecord({ ...good, mailRead: [7] })).toBeNull();
     expect(parseRetryRecord({ ...good, kbSelected: 7 })).toBeNull();
     expect(parseRetryRecord({ ...good, kbSelected: null })).not.toBeNull();
+    // A record written by a build that still carried the inbox is a fund
+    // somebody earned. The extra key is read past, not refused.
+    expect(parseRetryRecord({ ...good, mailRead: ['mail/onboarding'] }))
+      .toEqual(good);
   });
 
-  /** A carry-over is used once, by the week it starts. */
-  it('clears the slot when it is taken', () => {
+  /**
+   * Reading the slot must NOT empty it.
+   *
+   * The carry-over is the only copy of the fund until the new week has been
+   * written down somewhere that survives the tab, and clearing it at the read
+   * left a window - boot to the first day boundary - in which a refresh came
+   * back as attempt one with nothing in it.
+   */
+  it('leaves the record in the slot until somebody lets go of it', () => {
     const storage = new MemoryStorage();
     const slot = new RetrySlot(storage);
     const record = recordFrom(1, 900, createAppState());
 
-    expect(slot.take()).toBeNull();
+    expect(slot.peek()).toBeNull();
     expect(slot.write(record)).toEqual({ ok: true, value: undefined });
-    expect(slot.take()).toEqual(record);
-    expect(slot.take()).toBeNull();
+    expect(slot.peek()).toEqual(record);
+    expect(slot.peek()).toEqual(record);
+
+    slot.clear();
+    expect(slot.peek()).toBeNull();
 
     // And rubbish in the slot is a week that starts fresh, not a crash.
     storage.setItem(RETRY_KEY, '{not json');
-    expect(slot.take()).toBeNull();
+    expect(slot.peek()).toBeNull();
   });
 });
 

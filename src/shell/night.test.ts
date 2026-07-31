@@ -1,0 +1,267 @@
+/**
+ * The night, and the seam either side of it.
+ *
+ * Nine hundred minutes go past between clocking off at five and sitting down
+ * at eight, and the world does exactly one thing in each of them: every
+ * unresolved deadline moves out by a minute and the counter behind it goes up
+ * by one. Lived a minute at a time that was nine hundred tick fan-outs and
+ * tens of thousands of mutation events, every one of which repainted every
+ * open window - which is the whole of the measured delay between pressing
+ * "clock off" and seeing tomorrow morning.
+ *
+ * It is one core call now. That is only allowed to be a performance change, so
+ * this file is the proof that it is one: the same hash, the same counters, the
+ * same machine event logs and the same dispatch log as the minute-by-minute
+ * night, with the fan-out counted so the saving cannot quietly go away again.
+ *
+ * And the other half is the seam the QA could not find a failure at and could
+ * not find a test for either: a session saved during the morning brief, loaded,
+ * and started at nine has to arrive at the same world as one that was never
+ * interrupted. A resync that started an SLA a minute early, or extended one
+ * twice, would be invisible to every other test in the suite.
+ */
+
+import { beforeAll, describe, expect, it } from 'vitest';
+
+import type { EngineApi } from '../engine-api';
+import { loadEngineForTests } from '../engine-api/load-node';
+import { COMPANY_IDS } from '../world/company';
+import {
+  dayOpensTick,
+  shiftEndTick,
+  shiftStartTick,
+} from '../world/day';
+import { FIELDS } from '../world/fields';
+import { readEventLog } from '../world/events';
+import { createWorldSession } from '../world/session';
+import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
+
+beforeAll(() => {
+  loadEngineForTests();
+});
+
+interface Night {
+  readonly driver: DayDriver;
+  readonly engine: EngineApi;
+  /** Simulation ticks the engine announced. */
+  readonly ticks: () => number;
+  /** Engine events the engine announced. */
+  readonly events: () => number;
+}
+
+function night(): Night {
+  const { engine, seed } = createWorldSession();
+  let ticks = 0;
+  let events = 0;
+
+  engine.onTick(() => {
+    ticks += 1;
+  });
+  engine.onEvent(() => {
+    events += 1;
+  });
+
+  const driver = new DayDriver(engine, COMPANY_IDS.player, seed, {
+    onDayBoundary: () => {},
+    openSlackApps: () => [],
+    focusedSlackApp: () => null,
+  });
+
+  return { driver, engine, ticks: () => ticks, events: () => events };
+}
+
+/** Monday, worked to five o'clock and no further. */
+function toClockingOff(scene: Night): void {
+  scene.driver.startShift();
+  scene.driver.step(TICK_INTERVAL_MS
+    * (shiftEndTick(1) - scene.engine.now()));
+  expect(scene.driver.state()).toBe('day_end');
+}
+
+/** Every machine's log, as the Event Viewer would render it. */
+function logs(engine: EngineApi): Record<string, string> {
+  const found: Record<string, string> = {};
+
+  for (const machine of engine.graph.nodesOfKind('machine')) {
+    found[machine.id] = readEventLog(machine.fields[FIELDS.eventLog])
+      .map((entry) => `${String(entry.tick)}/${String(entry.id)}`)
+      .join(',');
+  }
+
+  return found;
+}
+
+/** Every open ticket's deadline and the counters behind it. */
+function clocks(engine: EngineApi): Record<string, string> {
+  const found: Record<string, string> = {};
+
+  for (const ticket of engine.graph.nodesOfKind('ticket')) {
+    found[ticket.id] = [
+      FIELDS.slaDeadline,
+      FIELDS.offHoursTicks,
+      FIELDS.heldTicks,
+      FIELDS.respondedAt,
+      FIELDS.state,
+    ].map((field) => `${field}=${String(ticket.fields[field] ?? '-')}`).join('|');
+  }
+
+  return found;
+}
+
+describe('the night, taken in one go', () => {
+  /**
+   * The parity that makes the coalesce legitimate rather than a shortcut: the
+   * same world, to the hash, to the counters, and to the last line in every
+   * machine's own log.
+   */
+  it('lands on exactly the world a minute-by-minute night lands on', () => {
+    const coalesced = night();
+    const lived = night();
+    toClockingOff(coalesced);
+    toClockingOff(lived);
+
+    expect(coalesced.engine.snapshotHash()).toBe(lived.engine.snapshotHash());
+
+    const minutes = dayOpensTick(2) - coalesced.engine.now();
+    expect(minutes).toBeGreaterThan(800);
+
+    coalesced.engine.advanceOffHours(minutes);
+
+    for (let minute = 0; minute < minutes; minute += 1) {
+      lived.engine.advance(1);
+    }
+
+    expect(coalesced.engine.now()).toBe(lived.engine.now());
+    expect(coalesced.engine.snapshotHash()).toBe(lived.engine.snapshotHash());
+    expect(clocks(coalesced.engine)).toEqual(clocks(lived.engine));
+    // The evidence surface, row for row: the whole reason the coalesce may
+    // not simply batch the events is that somebody stamps times onto them.
+    expect(logs(coalesced.engine)).toEqual(logs(lived.engine));
+    expect(coalesced.engine.dispatchLog()).toEqual(lived.engine.dispatchLog());
+  });
+
+  /**
+   * And the cost, counted rather than timed. A wall clock is a flaky
+   * assertion; the number of fan-outs is the thing that was actually wrong,
+   * and it is exact.
+   */
+  it('announces the night once instead of nine hundred times', () => {
+    const coalesced = night();
+    const lived = night();
+    toClockingOff(coalesced);
+    toClockingOff(lived);
+
+    const minutes = dayOpensTick(2) - coalesced.engine.now();
+    const ticksBefore = coalesced.ticks();
+    const eventsBefore = coalesced.events();
+
+    coalesced.engine.advanceOffHours(minutes);
+
+    for (let minute = 0; minute < minutes; minute += 1) {
+      lived.engine.advance(1);
+    }
+
+    expect(coalesced.ticks() - ticksBefore).toBe(1);
+    expect(coalesced.events() - eventsBefore).toBe(0);
+    // The comparison, so this stops being a number nobody can read: living it
+    // announces one tick per minute and a mutation per open deadline per
+    // minute, and there are several hundred of both.
+    expect(lived.ticks()).toBeGreaterThan(minutes - 1);
+    expect(lived.events()).toBeGreaterThan(minutes);
+  });
+
+  /** And the shipped day boundary uses it, so the saving is the player's. */
+  it('crosses a real day boundary with one repaint', () => {
+    const scene = night();
+    toClockingOff(scene);
+
+    const ticksBefore = scene.ticks();
+    const eventsBefore = scene.events();
+    scene.driver.clockOff();
+
+    expect(scene.engine.now()).toBe(dayOpensTick(2));
+    // One tick for the night. The events are the clock-off verb itself and
+    // the checkpoint - a handful, not a queue.
+    expect(scene.ticks() - ticksBefore).toBe(1);
+    expect(scene.events() - eventsBefore).toBeLessThan(50);
+  });
+
+  /**
+   * The coalesce is legal only while the service clock is held, and that is
+   * the load-bearing half rather than a tidiness rule: with the clock running
+   * a deadline can be crossed, and a breach carries a minute that somebody
+   * stamps onto a machine's log with `now()`. Reporting all of them as having
+   * happened at the end of the night is the dishonest version of this change.
+   */
+  it('refuses to coalesce minutes somebody is being paid for', () => {
+    const scene = night();
+    scene.driver.startShift();
+
+    expect(scene.engine.slaRunning()).toBe(true);
+    expect(() => {
+      scene.engine.advanceOffHours(60);
+    }).toThrow(/lived one at a time/u);
+    expect(scene.engine.now()).toBe(shiftStartTick(1));
+  });
+});
+
+/* -- the seam at nine o'clock --------------------------------------------- */
+
+describe('a session saved during the morning brief', () => {
+  /**
+   * Uninterrupted, versus saved at 08:59, loaded and started at nine.
+   *
+   * No failure was reproduced here; the point is that one could not have been
+   * found. The existing load coverage restores AFTER a completed night, so a
+   * resync that started the service clock a minute early, or that let the
+   * night's extension run one minute too far, would leave every deadline in
+   * the world one out and the whole suite green.
+   */
+  it('arrives at the same world as one that was never interrupted', () => {
+    const straight = night();
+    const interrupted = night();
+
+    for (const scene of [straight, interrupted]) {
+      toClockingOff(scene);
+      scene.driver.clockOff();
+      expect(scene.engine.now()).toBe(dayOpensTick(2));
+      expect(scene.driver.state()).toBe('morning_brief');
+    }
+
+    // The interrupted one spends the brief being read, and is saved with one
+    // minute of it left.
+    interrupted.engine.advanceOffHours(shiftStartTick(2) - 1
+      - interrupted.engine.now());
+    expect(interrupted.engine.now()).toBe(shiftStartTick(2) - 1);
+
+    const saved = interrupted.engine.serialize();
+    const reloaded = night();
+    reloaded.engine.restore(saved);
+    reloaded.driver.resync();
+
+    expect(reloaded.driver.state()).toBe('morning_brief');
+    expect(reloaded.engine.now()).toBe(shiftStartTick(2) - 1);
+
+    // Both start the shift, which is what puts the clock on nine.
+    straight.driver.startShift();
+    reloaded.driver.startShift();
+
+    expect(reloaded.engine.now()).toBe(shiftStartTick(2));
+    expect(straight.engine.now()).toBe(shiftStartTick(2));
+    expect(reloaded.engine.slaRunning()).toBe(true);
+    expect(straight.engine.slaRunning()).toBe(true);
+
+    // Every deadline, every counter, and the world itself.
+    expect(clocks(reloaded.engine)).toEqual(clocks(straight.engine));
+    expect(reloaded.engine.snapshotHash()).toBe(straight.engine.snapshotHash());
+
+    // And they stay together for the morning, which is where an off-by-one in
+    // the extension would show up rather than at the seam itself.
+    straight.driver.step(TICK_INTERVAL_MS * 120);
+    reloaded.driver.step(TICK_INTERVAL_MS * 120);
+
+    expect(reloaded.engine.now()).toBe(straight.engine.now());
+    expect(clocks(reloaded.engine)).toEqual(clocks(straight.engine));
+    expect(reloaded.engine.snapshotHash()).toBe(straight.engine.snapshotHash());
+  });
+});

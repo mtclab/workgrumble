@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { loadEngineForTests } from '../../engine-api/load-node';
-import { HELPDESK_ACTIONS } from '../actions';
+import { HELPDESK_ACTIONS, WORLD_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
 import { createWorldSession, type WorldSession } from '../session';
@@ -53,6 +53,69 @@ describe('the log a machine keeps', () => {
     expect(read).toHaveLength(EVENT_LOG_LIMIT);
     expect(read[0]?.tick).toBe(7);
     expect(read[EVENT_LOG_LIMIT - 1]?.tick).toBe(EVENT_LOG_LIMIT + 6);
+  });
+
+  /**
+   * A bounded log that evicts by age alone is a diagnosis surface anything
+   * repetitive can empty.
+   *
+   * Thirty reboots of PRINT-02 on a Wednesday afternoon - each of them a
+   * perfectly legal, repeatable action - pushed Monday's power loss off the
+   * end, and Thursday's ticket then asked the player to correlate two
+   * timestamps of which the log could show one. So the bound stays and the
+   * eviction is by WORTH: information first, oldest first, and the bad news
+   * survives it.
+   */
+  it('throws away the noise before it throws away the evidence', () => {
+    let log = withEvent('', event({
+      tick: 0,
+      level: 'error',
+      id: EVENT_IDS.powerLost,
+      subject: COMPANY_IDS.printer,
+      message: 'It lost power without being shut down.',
+    }));
+
+    // Comfortably more benign rows than the whole window holds.
+    for (let tick = 1; tick <= EVENT_LOG_LIMIT + 10; tick += 1) {
+      log = withEvent(log, event({
+        tick,
+        level: 'information',
+        id: EVENT_IDS.rebooted,
+        message: 'The system has been restarted.',
+      }));
+    }
+
+    const outage = withEvent(log, event({
+      tick: 2_880,
+      level: 'error',
+      id: EVENT_IDS.powerLost,
+      subject: COMPANY_IDS.printer,
+      message: 'It lost power without being shut down. Again.',
+    }));
+    const read = readEventLog(outage);
+
+    // Still bounded: this is in every save from here on.
+    expect(read.length).toBeLessThanOrEqual(EVENT_LOG_LIMIT);
+    // And the two timestamps the arc turns on are both still readable.
+    expect(read.filter((entry) => entry.id === EVENT_IDS.powerLost)
+      .map((entry) => entry.tick)).toEqual([0, 2_880]);
+    // The noise is what went, oldest of it first.
+    expect(read.some((entry) => entry.level === 'information')).toBe(true);
+    expect(read.find((entry) => entry.level === 'information')?.tick)
+      .toBeGreaterThan(1);
+  });
+
+  /** Warnings outrank information too, and errors outrank warnings' age. */
+  it('drops the oldest of everything only once nothing cheaper is left', () => {
+    let log = '';
+
+    for (let tick = 0; tick < EVENT_LOG_LIMIT + 5; tick += 1) {
+      log = withEvent(log, event({ tick, level: 'warning' }));
+    }
+
+    const read = readEventLog(log);
+    expect(read).toHaveLength(EVENT_LOG_LIMIT);
+    expect(read[0]?.tick).toBe(5);
   });
 
   /**
@@ -163,6 +226,59 @@ describe('the log the world writes for itself', () => {
     const queue = log.find((entry) => entry.id === EVENT_IDS.printFailed);
     expect(queue?.level).toBe('warning');
     expect(queue?.message).toContain('47 queued');
+  });
+
+  /**
+   * The whole scenario, in the world: an outage, a busy afternoon on the same
+   * box, and a second outage two days later that still has something to be
+   * correlated with.
+   *
+   * A reboot is repeatable and it is logged, so thirty of them used to be a
+   * way of destroying the only evidence the week's two-day arc has - and
+   * nothing about doing it looks like sabotage from the inside.
+   */
+  it('keeps two outages readable across thirty reboots between them', () => {
+    const cut = (): void => {
+      session.engine.dispatch(
+        WORLD_ACTIONS.powerCut,
+        COMPANY_IDS.player,
+        COMPANY_IDS.warehousePrinter,
+        {},
+      );
+    };
+    const restore = (): void => {
+      session.engine.dispatch(
+        HELPDESK_ACTIONS.devicePowerCycle,
+        COMPANY_IDS.player,
+        COMPANY_IDS.warehousePrinter,
+        {},
+      );
+    };
+
+    session.engine.advance(10);
+    cut();
+    restore();
+
+    for (let round = 0; round < EVENT_LOG_LIMIT + 5; round += 1) {
+      session.engine.advance(1);
+      session.engine.dispatch(
+        HELPDESK_ACTIONS.machineReboot,
+        COMPANY_IDS.player,
+        COMPANY_IDS.warehousePrintServer,
+        {},
+      );
+    }
+
+    session.engine.advance(2_880);
+    cut();
+
+    const outages = logOf(COMPANY_IDS.warehousePrintServer)
+      .filter((entry) => entry.id === EVENT_IDS.powerLost);
+
+    expect(outages).toHaveLength(2);
+    expect(outages[0]?.tick).toBe(10);
+    expect(logOf(COMPANY_IDS.warehousePrintServer).length)
+      .toBeLessThanOrEqual(EVENT_LOG_LIMIT);
   });
 
   /** The count IS the diagnosis: four crashes is a timetable, not a mystery. */
