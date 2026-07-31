@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   focusWindow,
   logIn,
+  logInOnDay,
   openFromStartMenu,
   runCommand,
 } from './helpers';
@@ -108,7 +109,8 @@ test('closes the rotated-screen ticket through the terminal', async ({
 test('needs both halves of the spooler fix, in the honest order', async ({
   page,
 }) => {
-  await logIn(page);
+  // Thursday, which is where the week keeps its only office-wide fault.
+  await logInOnDay(page, 4);
   await openFromStartMenu(page, 'tickets');
   const row = page.getByTestId('ticket-row-wedged-spooler');
   await row.click();
@@ -304,7 +306,9 @@ test('parks a ticket only once the user has actually been asked', async ({
 });
 
 test('offers escalation only where the ticket allows it', async ({ page }) => {
-  await logIn(page);
+  // Three tickets and three different answers, which needs a day by which all
+  // three have arrived: Monday's account, Monday's fan and Thursday's printer.
+  await logInOnDay(page, 4);
   await openFromStartMenu(page, 'tickets');
 
   await page.getByTestId('ticket-row-locked-account').click();

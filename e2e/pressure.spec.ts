@@ -1,6 +1,14 @@
 import { expect, type Page, test } from '@playwright/test';
 
-import { completeLogin, focusWindow, logIn, openFromStartMenu } from './helpers';
+import {
+  completeLogin,
+  focusWindow,
+  logIn,
+  logInOnDay,
+  openFromStartMenu,
+  runSimMinutes,
+  runToTelegraph,
+} from './helpers';
 
 /**
  * M3, on the built artifact: triage that computes a priority, a clock for the
@@ -23,10 +31,18 @@ function realMs(minutes: number, speed = 1): number {
 /** Logs on, starts the shift, and leaves the desktop clear. */
 async function startShift(page: Page): Promise<void> {
   await completeLogin(page, { brief: 'keep' });
+  await beginShift(page);
+}
+
+/** The same, from a morning brief that is already on screen. */
+async function beginShift(page: Page): Promise<void> {
   await page.getByTestId('brief-start-shift').click();
   await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
   await page.getByTestId('close-brief').click();
 }
+
+/** The minute the fan ticket drips into Monday. `buildDaySchedule` picks it. */
+const FAN_ARRIVAL = 128;
 
 /** Runs the day at four times normal speed, which is what x4 is for. */
 async function hurry(page: Page): Promise<void> {
@@ -45,9 +61,10 @@ async function hurry(page: Page): Promise<void> {
 test('classifies a ticket and moves its SLA with the priority', async ({
   page,
 }) => {
-  await page.clock.install();
-  await page.goto('/');
-  await startShift(page);
+  // Thursday, where the week keeps the one fault the whole office notices -
+  // and it is waiting in the queue at eight, like every inherited ticket.
+  await logInOnDay(page, 4, { brief: 'keep' });
+  await beginShift(page);
   await openFromStartMenu(page, 'tickets');
 
   await page.getByTestId('ticket-row-wedged-spooler').click();
@@ -58,10 +75,12 @@ test('classifies a ticket and moves its SLA with the priority', async ({
   await expect(chip).toContainText('Untriaged');
   await expect(page.getByTestId('ticket-row-priority-wedged-spooler'))
     .toHaveText('Untriaged');
-  // Four hours from when it arrived at eight, which is P3's - the tier the
-  // badge beside it says an untriaged ticket is treated as.
+  // Four hours of DESK TIME from when it arrived at eight, which is P3's -
+  // the tier the badge beside it says an untriaged ticket is treated as. The
+  // hour before the shift is not an hour anybody could have worked in, so the
+  // deadline is one o'clock rather than noon.
   await expect(page.getByTestId('ticket-detail-resolution'))
-    .toHaveAttribute('data-due', '12:00');
+    .toHaveAttribute('data-due', '13:00');
 
   // The reporter's claim is on the form, and it is a claim.
   await expect(page.getByTestId('ticket-claimed-urgency'))
@@ -85,12 +104,13 @@ test('classifies a ticket and moves its SLA with the priority', async ({
   await expect(page.getByTestId('ticket-row-wedged-spooler'))
     .toHaveAttribute('data-priority', '2');
 
-  // And the deadline the ticket is held to moved with it: two hours from when
-  // it arrived at eight, not two hours from now.
+  // And the deadline the ticket is held to moved with it: two hours at the
+  // desk from when it arrived at eight, not two hours from now - so eleven,
+  // and half past nine for the first word anybody owes the reporter.
   await expect(page.getByTestId('ticket-detail-resolution'))
-    .toHaveAttribute('data-due', '10:00');
+    .toHaveAttribute('data-due', '11:00');
   await expect(page.getByTestId('ticket-detail-response'))
-    .toHaveAttribute('data-due', '08:30');
+    .toHaveAttribute('data-due', '09:30');
 });
 
 /**
@@ -101,9 +121,8 @@ test('classifies a ticket and moves its SLA with the priority', async ({
 test('carries a misclassified ticket through to the scorecard', async ({
   page,
 }) => {
-  await page.clock.install();
-  await page.goto('/');
-  await startShift(page);
+  await logInOnDay(page, 4, { brief: 'keep' });
+  await beginShift(page);
   await openFromStartMenu(page, 'tickets');
 
   await page.getByTestId('ticket-row-wedged-spooler').click();
@@ -224,6 +243,10 @@ test('bounces a thin handoff and passes a complete one', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
   await startShift(page);
+  // The fan is the one you filed about your own desk, and it turns up
+  // mid-morning rather than waiting for you at eight.
+  await runSimMinutes(page, FAN_ARRIVAL - 60 + 2);
+  await page.getByTestId('day-speed-1').click();
   await openFromStartMenu(page, 'tickets');
   await page.getByTestId('ticket-row-fan-noise').click();
 
@@ -353,10 +376,11 @@ test('shows the right corridor the moment a paused save is loaded', async ({
   const chip = page.getByTestId('boss-chip');
 
   // Walk day two up to the first set of footsteps and stop the clock dead.
-  await page.clock.runFor(realMs(3 * 60, 4));
-  await expect(desktop).toHaveAttribute('data-boss', 'telegraph', {
-    timeout: 10_000,
-  });
+  // Each day of the week twists the seed the corridor is built from, so this
+  // walks until the floor creaks rather than naming a minute that would need
+  // re-measuring every time a day is tuned.
+  await runToTelegraph(page);
+  await expect(desktop).toHaveAttribute('data-boss', 'telegraph');
   await page.getByTestId('day-pause').click();
   await expect(page.getByTestId('day-state')).toContainText('paused');
 

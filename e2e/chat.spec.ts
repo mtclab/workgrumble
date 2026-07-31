@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   focusWindow,
   logIn,
+  logInOnDay,
   openFromStartMenu,
   resolvedToast,
   runCommand,
@@ -188,7 +189,10 @@ test('lands on the reaction when a chat option closes its own ticket', async ({
 test('opens the chat window once and re-aims the one that exists', async ({
   page,
 }) => {
-  await logIn(page);
+  // Two reporters, so two tickets: the screen somebody rotated is Monday's,
+  // and the printer everybody shares is Thursday's - by which time the first
+  // one is still in the queue, because nobody in this test has fixed it.
+  await logInOnDay(page, 4);
   await openFromStartMenu(page, 'tickets');
 
   // Chat is not running. The ticket link mounts it AND lands it on Ada.

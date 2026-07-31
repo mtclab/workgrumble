@@ -1,9 +1,16 @@
 import { expect, test } from '@playwright/test';
 
-import { focusWindow, logIn, openFromStartMenu } from './helpers';
+import {
+  focusWindow,
+  logIn,
+  logInOnDay,
+  openFromStartMenu,
+} from './helpers';
 
 test('opens the KB at the article the ticket names', async ({ page }) => {
-  await logIn(page);
+  // The office-wide printer fault is Thursday's, because Thursday is the day
+  // the week's ramp says should hurt - so this walks the week to it.
+  await logInOnDay(page, 4);
   await openFromStartMenu(page, 'tickets');
   await page.getByTestId('ticket-row-wedged-spooler').click();
   await page.getByTestId('ticket-open-kb').click();

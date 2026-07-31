@@ -7,6 +7,17 @@ export interface Box {
   readonly height: number;
 }
 
+/** Real milliseconds one simulated minute costs at x1 (`day-driver.ts`). */
+export const TICK_MS = 1_000;
+
+/** Minutes in a shift, 09:00 to 17:00. */
+export const SHIFT_MINUTES = 8 * 60;
+
+/** Fake real time that buys `minutes` simulated minutes at `speed`. */
+export function realMs(minutes: number, speed: number): number {
+  return (minutes * TICK_MS) / speed;
+}
+
 export interface LoginOptions {
   /**
    * What to do with the morning brief, which the day puts on screen at the
@@ -60,6 +71,105 @@ export async function dismissBrief(page: Page): Promise<void> {
     await page.getByTestId('close-brief').click();
     await expect(brief).toHaveCount(0);
   }
+}
+
+/**
+ * Runs the simulated clock forward, in minutes, on a page whose clock has been
+ * installed. The speed control is the shipped one, so this is the same thing a
+ * player does when they get bored - only without the waiting.
+ */
+export async function runSimMinutes(
+  page: Page,
+  minutes: number,
+  speed = 4,
+): Promise<void> {
+  await page.getByTestId(`day-speed-${String(speed)}`).click();
+  await page.clock.runFor(realMs(minutes, speed));
+}
+
+/**
+ * Boots a session and plays it forward to the morning of `day`.
+ *
+ * The week deals its queue across five days - Monday's two, a drip on the
+ * Tuesday, the office-wide fault on the Thursday - so a test about a ticket
+ * that arrives later has to get there, and there is only one way to get there:
+ * work the days in between and clock off. It installs the fake clock itself,
+ * because a test that walks four days in real time is a test nobody runs.
+ *
+ * It leaves the target day's morning brief on screen unless told otherwise,
+ * exactly as `logIn` does.
+ */
+export async function logInOnDay(
+  page: Page,
+  day: number,
+  options: Readonly<LoginOptions> = {},
+): Promise<void> {
+  await page.clock.install();
+  await page.goto('/');
+  await completeLogin(page, { brief: 'keep' });
+
+  for (let current = 1; current < day; current += 1) {
+    await expect(page.getByTestId('brief-heading'))
+      .toContainText(`Day ${String(current)}`);
+    await page.getByTestId('brief-start-shift').click();
+    await page.getByTestId('close-brief').click();
+
+    await runSimMinutes(page, SHIFT_MINUTES);
+    await expect(page.getByTestId('day-state')).toHaveText('Day end');
+    await page.getByTestId('scorecard-clock-off').click();
+    await expect(page.getByTestId('window-brief')).toBeVisible();
+  }
+
+  await expect(page.getByTestId('brief-heading'))
+    .toContainText(`Day ${String(day)}`);
+
+  if (options.brief !== 'keep') {
+    await dismissBrief(page);
+  }
+}
+
+/**
+ * Starts the shift on the day that is on screen and runs the clock to a tick
+ * of that day, counting from 08:00 - which is what every tick in this game
+ * counts from, and what the day's schedule is written in.
+ *
+ * Starting the shift puts the clock on 09:00 (tick 60), so anything earlier
+ * than that has already happened by the time this returns.
+ */
+export async function workUntil(page: Page, tickOfDay: number): Promise<void> {
+  await page.getByTestId('day-state').click();
+  await expect(page.getByTestId('window-brief')).toBeVisible();
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('close-brief').click();
+
+  if (tickOfDay > 60) {
+    await runSimMinutes(page, tickOfDay - 60);
+  }
+}
+
+/**
+ * Walks the clock forward in small steps until the lead's footsteps start.
+ *
+ * Deliberately a search rather than a minute the test knows: the corridor is a
+ * seeded schedule and each day of the week twists that seed, so a test that
+ * hard-codes a Tuesday telegraph is a test that breaks when a Tuesday is
+ * tuned. Two minutes a step, which cannot skip a four-minute window.
+ */
+export async function runToTelegraph(
+  page: Page,
+  limitMinutes = 300,
+): Promise<void> {
+  const desktop = page.getByTestId('desktop');
+
+  for (let minute = 0; minute < limitMinutes; minute += 2) {
+    if (await desktop.getAttribute('data-boss') === 'telegraph') {
+      return;
+    }
+
+    await page.clock.runFor(realMs(2, 4));
+  }
+
+  throw new Error('The lead never came down the corridor.');
 }
 
 export async function openFromStartMenu(

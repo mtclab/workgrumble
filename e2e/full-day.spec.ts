@@ -31,8 +31,9 @@ const SECOND_ARRIVAL = 311;
 const SHIFT_END = 540;
 const LUNCH_START = 240;
 const LUNCH_END = 270;
-/** The one ticket that is not waiting at 08:00. `buildDaySchedule` picks it. */
-const DRIP_ARRIVAL = 279;
+/** The one Monday ticket that is not waiting at 08:00: `buildDaySchedule`
+ * puts it at eight minutes past ten, and the week's table names the hour. */
+const DRIP_ARRIVAL = 128;
 
 /** Runs the day forward to a given minute-of-day, at four times normal speed. */
 async function runTo(page: Page, tick: number): Promise<void> {
@@ -75,8 +76,11 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   /* -- the morning ------------------------------------------------------- */
 
   await expect(page.getByTestId('brief-heading')).toContainText('Day 1');
+  // Two, which is the ceiling a morning may hand anybody: the screen
+  // somebody rotated and the account somebody locked. The rest of the day
+  // arrives while it is being worked.
   await expect(page.getByTestId('brief-queue-list').getByRole('listitem'))
-    .toHaveCount(4);
+    .toHaveCount(2);
   await page.getByTestId('brief-start-shift').click();
   await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
   await page.getByTestId('close-brief').click();
@@ -88,12 +92,16 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   /* -- triage, and then actually fixing something ------------------------ */
 
   await openFromStartMenu(page, 'tickets');
-  await page.getByTestId('ticket-row-wedged-spooler').click();
-  await page.getByTestId('triage-impact').selectOption('3');
-  await page.getByTestId('triage-urgency').selectOption('3');
-  await expect(page.getByTestId('triage-outcome')).toContainText('P1');
+  await page.getByTestId('ticket-row-rotated-screen').click();
+  // One desk, and the person at it can still work: the estate says low
+  // impact, the ticket says it can wait until somebody looks, and the matrix
+  // says P4. Filing what the estate supports is the boring correct answer,
+  // and the scorecard at 17:00 says nothing about it - which is the point.
+  await page.getByTestId('triage-impact').selectOption('1');
+  await page.getByTestId('triage-urgency').selectOption('2');
+  await expect(page.getByTestId('triage-outcome')).toContainText('P4');
   await page.getByTestId('triage-file').click();
-  await expect(page.getByTestId('ticket-detail-priority')).toHaveText('P1');
+  await expect(page.getByTestId('ticket-detail-priority')).toHaveText('P4');
 
   await openFromStartMenu(page, 'directory');
   await page.getByTestId('directory-search').fill('gpoole');
@@ -102,6 +110,31 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   await expect(
     page.getByTestId('toast').filter({ hasText: 'Ticket resolved' }),
   ).toHaveCount(1);
+
+  /* -- the morning's arrival --------------------------------------------- */
+
+  // Nothing has been raised since the player sat down: everything so far was
+  // already in the queue. This one turns up on its own, on the minute the
+  // week's table named and the day's seeded jitter settled on.
+  await focusWindow(page, 'tickets');
+  await expect(page.getByTestId('ticket-row-fan-noise')).toHaveCount(0);
+
+  await runTo(page, DRIP_ARRIVAL);
+  await expect(
+    page.getByTestId('toast').filter({ hasText: 'New ticket' }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByTestId('toast').filter({ hasText: 'hornet in a biscuit tin' }),
+  ).toHaveCount(1);
+
+  const dripped = page.getByTestId('ticket-row-fan-noise');
+  await expect(dripped).toBeVisible();
+  await dripped.click();
+  await expect(page.getByTestId('ticket-detail-raised')).toHaveText('10:08');
+  // Untriaged, and the badge says what that costs rather than leaving the
+  // player to find out at 17:00.
+  await expect(page.getByTestId('ticket-detail-priority'))
+    .toHaveText('Untriaged (treated as P3)');
 
   /* -- the corridor, survived -------------------------------------------- */
 
@@ -170,31 +203,6 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   await runTo(page, LUNCH_END + 5);
   await expect(page.getByTestId('day-state')).toHaveText('Shift');
 
-  /* -- the afternoon's arrival ------------------------------------------- */
-
-  // Nothing has been raised since the player sat down: everything so far was
-  // either already in the queue or something the lead said. This one turns up
-  // on its own, on the minute the day's seeded schedule picked for it.
-  await focusWindow(page, 'tickets');
-  await expect(page.getByTestId('ticket-row-tidied-list')).toHaveCount(0);
-
-  await runTo(page, DRIP_ARRIVAL);
-  await expect(
-    page.getByTestId('toast').filter({ hasText: 'New ticket' }),
-  ).toHaveCount(1);
-  await expect(
-    page.getByTestId('toast').filter({ hasText: 'works for everyone except me' }),
-  ).toHaveCount(1);
-
-  const dripped = page.getByTestId('ticket-row-tidied-list');
-  await expect(dripped).toBeVisible();
-  await dripped.click();
-  await expect(page.getByTestId('ticket-detail-raised')).toHaveText('12:39');
-  // Untriaged, and the badge says what that costs rather than leaving the
-  // player to find out at 17:00.
-  await expect(page.getByTestId('ticket-detail-priority'))
-    .toHaveText('Untriaged (treated as P3)');
-
   /* -- the corridor, walked into on purpose ------------------------------ */
 
   await runTo(page, SECOND_TELEGRAPH + 1);
@@ -257,7 +265,7 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   await expect(page.getByTestId('window-scorecard')).toBeVisible();
 
   // Everything the day actually contained, on one screen.
-  await expect(page.getByTestId('scorecard-arrived')).toHaveText('6');
+  await expect(page.getByTestId('scorecard-arrived')).toHaveText('4');
   await expect(page.getByTestId('scorecard-closed')).toHaveText('2');
   await expect(page.getByTestId('scorecard-caught')).toContainText('1 ·');
   await expect(page.getByTestId('scorecard-consumables')).toContainText('£1.20');

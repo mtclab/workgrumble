@@ -115,6 +115,36 @@ test('completes a full session with no console errors and no runtime requests', 
   await page.getByTestId('caught-dismiss').click();
   await expect(page.getByTestId('window-caught')).toHaveCount(0);
 
+  // The week's own three screens, also opened cold. Every one of them is
+  // reachable from the start menu on a Monday morning, so every one of them
+  // has to say what it is BEFORE it has anything to report - a blank review,
+  // a beer that explains its own lock, and a week nobody has finished.
+  await openFromStartMenu(page, 'review');
+  await expect(page.getByTestId('review-app'))
+    .toHaveAttribute('data-outcome', 'pending');
+  await expect(page.getByTestId('review-heading'))
+    .toHaveText('Nothing has been decided');
+  await page.getByTestId('review-dismiss').click();
+  await expect(page.getByTestId('window-review')).toHaveCount(0);
+
+  await openFromStartMenu(page, 'beer');
+  await expect(page.getByTestId('beer-open')).toBeDisabled();
+  await expect(page.getByTestId('beer-open')).toHaveAttribute(
+    'title',
+    /probation/,
+  );
+  await page.getByTestId('close-beer').click();
+  await expect(page.getByTestId('window-beer')).toHaveCount(0);
+
+  await openFromStartMenu(page, 'weekend');
+  await expect(page.getByTestId('weekend-app'))
+    .toHaveAttribute('data-ended', 'false');
+  await expect(page.getByTestId('weekend-verdict-title'))
+    .toHaveText('The week is not over');
+  await expect(page.getByTestId('weekend-onward')).toBeDisabled();
+  await page.getByTestId('close-weekend').click();
+  await expect(page.getByTestId('window-weekend')).toHaveCount(0);
+
   // Helpdesk apps: queue, directory and terminal each reach the world once.
   await openFromStartMenu(page, 'tickets');
   await page.getByTestId('ticket-row-locked-account').click();

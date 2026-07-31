@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   focusWindow,
   logIn,
+  logInOnDay,
   openFromStartMenu,
   resolvedToast,
 } from './helpers';
@@ -144,7 +145,9 @@ test('turns the remote screen in the direction the rotation names', async ({
 test('closes the spooler ticket from the remote services taskbar', async ({
   page,
 }) => {
-  await logIn(page);
+  // Thursday: the office-wide fault is the one the week's ramp saves for the
+  // heavy day, so the walk to it is part of the journey.
+  await logInOnDay(page, 4);
   await openFromStartMenu(page, 'tickets');
   const row = page.getByTestId('ticket-row-wedged-spooler');
   await row.click();

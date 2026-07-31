@@ -32,8 +32,10 @@ test('walks a day from the morning brief to the scorecard', async ({
   await expect(brief).toBeVisible();
   await expect(page.getByTestId('brief-heading')).toContainText('Day 1');
   await expect(page.getByTestId('brief-mail-subject')).not.toBeEmpty();
+  // Two, which is the most a morning may hand anybody: the week drips the
+  // rest of the day's work in while it is being worked.
   await expect(page.getByTestId('brief-queue-list').getByRole('listitem'))
-    .toHaveCount(4);
+    .toHaveCount(2);
   await expect(page.getByTestId('day-state')).toHaveText('Morning brief');
   await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
 
@@ -88,9 +90,9 @@ test('walks a day from the morning brief to the scorecard', async ({
   await expect(page.getByTestId('scorecard-heading')).toContainText(
     'Day 1, clocking off',
   );
-  // Four inherited, the one the lead raised by mentioning it at 11:49, and
-  // the one that dripped in after lunch.
-  await expect(page.getByTestId('scorecard-arrived')).toHaveText('6');
+  // Two inherited, the one that dripped in at eight minutes past ten, and the
+  // one the lead raised by mentioning it at 11:49.
+  await expect(page.getByTestId('scorecard-arrived')).toHaveText('4');
   await expect(page.getByTestId('scorecard-caught')).toContainText('0 ·');
   await expect(page.getByTestId('scorecard-consumables')).toContainText('£0.00');
   await expect(page.getByTestId('scorecard-net')).toContainText('£');
@@ -144,7 +146,7 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
 
   // Do something the world will remember, and something only the shell will.
   await openFromStartMenu(page, 'tickets');
-  await page.getByTestId('ticket-row-wedged-spooler').click();
+  await page.getByTestId('ticket-row-locked-account').click();
   await expect(page.getByTestId('ticket-detail-title')).toBeVisible();
 
   await openFromStartMenu(page, 'mail');
@@ -171,8 +173,8 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
 
   // The same queue, still open, with the same ticket in it.
   await openFromStartMenu(page, 'tickets');
-  await expect(page.getByTestId('ticket-row-wedged-spooler')).toBeVisible();
-  await page.getByTestId('ticket-row-wedged-spooler').click();
+  await expect(page.getByTestId('ticket-row-locked-account')).toBeVisible();
+  await page.getByTestId('ticket-row-locked-account').click();
   await expect(page.getByTestId('ticket-detail-state')).toContainText('Open');
 
   // And the shell's own memory: the mail that was read is still read.

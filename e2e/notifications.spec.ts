@@ -1,17 +1,28 @@
 import { expect, test } from '@playwright/test';
 
 import {
+  completeLogin,
   focusWindow,
   logIn,
   openFromDesktopIcon,
   openFromStartMenu,
+  workUntil,
 } from './helpers';
 
 /**
- * Real milliseconds the seeded ticket needs to run out its SLA: 240 sim
- * minutes at one minute per real second (`main.ts`, `demo-world.ts`).
+ * Real milliseconds the fan ticket needs to run out its SLA.
+ *
+ * It is 240 simulated minutes at one minute per real second, and it is now
+ * counted from 10:08 rather than from 08:00 twice over: the ticket drips in
+ * mid-morning on the Monday, and the clock it is held to only counts minutes
+ * somebody is at the desk. So the deadline is 14:08, and this is the wait from
+ * a standing start at eight - which is the whole business-hours rule, seen
+ * from the far end.
  */
-const SLA_MS = 240_000;
+const FAN_BREACH_MS = 370_000;
+
+/** The minute the fan ticket drips into Monday: `buildDaySchedule` picks it. */
+const FAN_ARRIVAL = 128;
 
 /**
  * Journey 4: an app raises a notification, the toast shows, the badge counts
@@ -76,7 +87,7 @@ test('delivers engine notifications raised before the desktop existed', async ({
 
   // Four hours of shift pass on the login screen; the seeded ticket breaches
   // with nobody logged on.
-  await page.clock.runFor(SLA_MS);
+  await page.clock.runFor(FAN_BREACH_MS);
   await expect(page.getByTestId('desktop')).toHaveCount(0);
 
   await page.getByTestId('login-password').fill('hunter2');
@@ -88,9 +99,11 @@ test('delivers engine notifications raised before the desktop existed', async ({
   // and raised his usual concern in the meantime - what matters here is that
   // the breach raised at 12:00 survived a login screen, not that it was the
   // only thing that happened.
-  // Since M3-13 every untriaged ticket shares the P3 clock, so the whole
-  // morning pile breaches together - at least one of them must have made it
-  // through the login screen, and the fan ticket is the one this test tracks.
+  // Since M3-13 every untriaged ticket shares the P3 clock, so the two the
+  // morning inherited breached together at one o'clock and the one that
+  // dripped in at eight minutes past ten breached at eight minutes past two -
+  // at least one of them must have made it through the login screen, and the
+  // fan ticket is the one this test tracks.
   const toasts = page.getByTestId('toast');
   await expect(
     toasts.filter({ hasText: 'SLA breached' }).first(),
@@ -117,7 +130,7 @@ test('delivers engine notifications raised before the desktop existed', async ({
   await openFromStartMenu(page, 'tickets');
   const row = page.getByTestId('ticket-row-fan-noise');
   await expect(row).toHaveAttribute('data-state', 'breached');
-  await expect(page.getByTestId('tickets-summary')).toContainText("4 breached");
+  await expect(page.getByTestId('tickets-summary')).toContainText("3 breached");
 
   // The queue redraws its countdowns while the clock moves; hold the day
   // still so the row is a stable click target under fake-timer speeds.
@@ -146,13 +159,19 @@ test('delivers engine notifications raised before the desktop existed', async ({
   await expect(page.getByTestId('ticket-detail-state')).toContainText(
     'Closed (breached)',
   );
-  await expect(page.getByTestId('tickets-summary')).toContainText("4 breached");
+  await expect(page.getByTestId('tickets-summary')).toContainText("3 breached");
 });
 
 test('reports engine outcomes and refusals instead of failing silently', async ({
   page,
 }) => {
-  await logIn(page);
+  // The fan is the ticket you filed about your own desk, and the week drips
+  // it in mid-morning rather than handing it over at eight - so the shift has
+  // to be under way before there is anything for the fix to close.
+  await page.clock.install();
+  await page.goto('/');
+  await completeLogin(page, { brief: 'keep' });
+  await workUntil(page, FAN_ARRIVAL + 2);
   await openFromDesktopIcon(page, 'about');
 
   const toasts = page.getByTestId('toast');
