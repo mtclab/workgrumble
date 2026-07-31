@@ -65,6 +65,10 @@ test('delivers engine notifications raised before the desktop existed', async ({
 }) => {
   // Fake timers: the SLA is four simulated hours, and the test should not be.
   await page.clock.install();
+  // By noon the untouched queue has the player fumbling, and the sway
+  // animation never settles under strict actionability checks. This test is
+  // about notifications, not hands - take the shipped reduced-motion path.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
 
   await page.keyboard.press('Space');
@@ -108,6 +112,9 @@ test('delivers engine notifications raised before the desktop existed', async ({
   await expect(row).toHaveAttribute('data-state', 'breached');
   await expect(page.getByTestId('tickets-summary')).toContainText('1 breached');
 
+  // The queue redraws its countdowns while the clock moves; hold the day
+  // still so the row is a stable click target under fake-timer speeds.
+  await page.getByTestId('day-pause').click();
   await row.click();
 
   // Escalating is a form now, and second line will not take a form with

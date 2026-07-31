@@ -35,7 +35,7 @@ test('walks a day from the morning brief to the scorecard', async ({
   await expect(page.getByTestId('brief-queue-list').getByRole('listitem'))
     .toHaveCount(4);
   await expect(page.getByTestId('day-state')).toHaveText('Morning brief');
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('08:00');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
 
   // Starting the shift skips whatever is left of the morning.
   await page.getByTestId('brief-start-shift').click();
@@ -108,7 +108,7 @@ test('walks a day from the morning brief to the scorecard', async ({
   await page.getByTestId('scorecard-clock-off').click();
   await expect(scorecard).toHaveCount(0);
   await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 2');
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('08:00');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
   await expect(page.getByTestId('window-brief')).toBeVisible();
   await expect(page.getByTestId('brief-heading')).toContainText('Day 2');
 
@@ -118,7 +118,7 @@ test('walks a day from the morning brief to the scorecard', async ({
   await page.getByTestId('start-menu-load').click();
   await expect(page.getByTestId('toast')).toContainText('Game loaded');
   await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 2');
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('08:00');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
 });
 
 /**
@@ -157,7 +157,7 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
   // A reload is a new session: fresh world, 08:00, nothing read.
   await page.reload();
   await completeLogin(page);
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('08:00');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-load').click();

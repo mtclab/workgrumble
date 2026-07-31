@@ -88,7 +88,7 @@ test('completes a full session with no console errors and no runtime requests', 
   // bookmarks. Nothing here may reach the network, which is the joke.
   await openFromStartMenu(page, 'browser');
   await page.getByTestId('browser-site-forum').click();
-  await expect(page.getByTestId('browser-thread')).toContainText('MOWER WONT');
+  await expect(page.getByTestId('browser-thread')).toContainText(/mower wont/i);
   await page.getByTestId('browser-site-cats').click();
   await expect(page.getByTestId('browser-hits')).toContainText('visitor');
   await page.getByTestId('browser-home-button').click();

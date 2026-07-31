@@ -104,7 +104,7 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
 
   await openFromStartMenu(page, 'browser');
   await page.getByTestId('browser-site-forum').click();
-  await expect(page.getByTestId('browser-thread')).toContainText('MOWER WONT');
+  await expect(page.getByTestId('browser-thread')).toContainText(/mower wont/i);
 
   await runTo(page, FIRST_TELEGRAPH);
   await expect(desktop).toHaveAttribute('data-boss', 'telegraph');

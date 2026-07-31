@@ -181,21 +181,11 @@
     --duration-fast: 0ms;
     --duration-blink: 0s;
   }
-
-  /* The gag is a wobble. Somebody who has asked for no motion still gets the
-     chip that explains it, which is the half that carries the joke. */
-  .screen-desktop[data-fumbling="true"] .window-layer {
-    animation: none;
-  }
-
-  /* Same rule for the corridor, and it matters more: the telegraph is a
-     mechanic, not decoration, so the motion goes and the chip, the
-     notification and the reflection itself all stay. */
-  .screen-desktop[data-boss="telegraph"] .door-flash,
-  .screen-desktop[data-boss="telegraph"] .taskbar {
-    animation: none;
-  }
 }
+
+/* NOTE: the reduced-motion animation overrides live at the BOTTOM of this
+   file. They share specificity with the base rules, so the cascade decides -
+   an override declared before its base rule silently loses (it did). */
 
 /* ------------------------------------------------------------------ reset */
 
@@ -3022,4 +3012,23 @@ input {
   font-family: var(--font-read);
   font-size: var(--text-sm);
   font-style: italic;
+}
+
+/* ------------------------------------------------- reduced motion (LAST) */
+/* Declared after every base animation rule on purpose: same specificity,
+   so source order is the only thing keeping these wins honest. */
+@media (prefers-reduced-motion: reduce) {
+  /* The gag is a wobble. Somebody who has asked for no motion still gets the
+     chip that explains it, which is the half that carries the joke. */
+  .screen-desktop[data-fumbling="true"] .window-layer {
+    animation: none;
+  }
+
+  /* Same rule for the corridor, and it matters more: the telegraph is a
+     mechanic, not decoration, so the motion goes and the chip, the
+     notification and the reflection itself all stay. */
+  .screen-desktop[data-boss="telegraph"] .door-flash,
+  .screen-desktop[data-boss="telegraph"] .taskbar {
+    animation: none;
+  }
 }
