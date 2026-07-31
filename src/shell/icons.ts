@@ -228,6 +228,74 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { d: 'M20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z' },
     },
   ],
+  'icon-day': [
+    {
+      element: 'circle',
+      attributes: { cx: '12', cy: '12', r: '8' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '12 7 12 12 16 14' },
+    },
+  ],
+  'icon-scorecard': [
+    {
+      element: 'rect',
+      attributes: { x: '5', y: '3', width: '14', height: '18', rx: '1' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '8', x2: '16', y2: '8' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '12', x2: '16', y2: '12' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '16', x2: '13', y2: '16' },
+    },
+  ],
+  'icon-pause': [
+    {
+      element: 'line',
+      attributes: { x1: '9', y1: '5', x2: '9', y2: '19' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '15', y1: '5', x2: '15', y2: '19' },
+    },
+  ],
+  'icon-play': [
+    {
+      element: 'path',
+      attributes: { d: 'M7 4l12 8-12 8z' },
+    },
+  ],
+  'icon-save': [
+    {
+      element: 'rect',
+      attributes: { x: '4', y: '4', width: '16', height: '16', rx: '1' },
+    },
+    {
+      element: 'rect',
+      attributes: { x: '8', y: '4', width: '8', height: '6' },
+    },
+    {
+      element: 'rect',
+      attributes: { x: '8', y: '14', width: '8', height: '6' },
+    },
+  ],
+  'icon-load': [
+    {
+      element: 'path',
+      attributes: { d: 'M3 7h6l2 2h10v10H3z' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '9 14 12 17 15 14' },
+    },
+  ],
   'icon-lock': [
     {
       element: 'rect',

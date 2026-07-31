@@ -16,6 +16,7 @@ import {
 } from './notifications';
 import { WindowRenderer } from './window-renderer';
 import {
+  closeWindow,
   createWindowManager,
   minimizeSlackWindows,
   setWindowViewport,
@@ -23,6 +24,8 @@ import {
   type Viewport,
   type WindowManagerState,
 } from './wm';
+import { isLunchtime } from '../world/day';
+import { SPEEDS, type Speed } from './day-driver';
 
 export interface DesktopHandlers {
   logOut(): void;
@@ -76,6 +79,9 @@ export class Desktop {
   private readonly trayPanelList: HTMLElement;
   private readonly clockTime: HTMLElement;
   private readonly clockDay: HTMLElement;
+  private readonly dayState: HTMLButtonElement;
+  private readonly pauseButton: HTMLButtonElement;
+  private readonly speedButtons = new Map<Speed, HTMLButtonElement>();
 
   private readonly taskbarButtons = new Map<string, TaskbarButton>();
   private readonly toastElements = new Map<string, HTMLElement>();
@@ -84,6 +90,7 @@ export class Desktop {
   private readonly abort = new AbortController();
   private readonly observer: ResizeObserver;
   private unsubscribeClock: (() => void) | null = null;
+  private unsubscribeDay: (() => void) | null = null;
 
   private wm: WindowManagerState | null = null;
   private notifications: NotificationState = createNotificationState();
@@ -165,7 +172,59 @@ export class Desktop {
     this.clockDay = document.createElement('span');
     this.clockDay.dataset.testid = 'sim-clock-day';
     clock.append(this.clockTime, this.clockDay);
-    tray.append(this.trayButton, clock);
+
+    const dayControls = document.createElement('div');
+    dayControls.className = 'day-controls';
+    dayControls.dataset.testid = 'day-controls';
+    this.dayState = document.createElement('button');
+    this.dayState.type = 'button';
+    this.dayState.className = 'day-state';
+    this.dayState.dataset.testid = 'day-state';
+    this.dayState.addEventListener(
+      'click',
+      () => {
+        // The day's own screen, on demand. A brief or a scorecard that can be
+        // closed and not reopened is the dead end the house rules forbid.
+        this.openApp(
+          this.context.day.state() === 'day_end' ? 'scorecard' : 'brief',
+        );
+      },
+      { signal: this.abort.signal },
+    );
+
+    this.pauseButton = document.createElement('button');
+    this.pauseButton.type = 'button';
+    this.pauseButton.className = 'day-button';
+    this.pauseButton.dataset.testid = 'day-pause';
+    this.pauseButton.append(createIcon('icon-pause'));
+    this.pauseButton.addEventListener(
+      'click',
+      () => {
+        this.context.day.setPaused(!this.context.day.paused());
+      },
+      { signal: this.abort.signal },
+    );
+    dayControls.append(this.dayState, this.pauseButton);
+
+    for (const speed of SPEEDS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'day-button day-speed';
+      button.dataset.testid = `day-speed-${String(speed)}`;
+      button.textContent = `x${String(speed)}`;
+      button.title = `Run the clock at ${String(speed)} times normal speed`;
+      button.addEventListener(
+        'click',
+        () => {
+          this.context.day.setSpeed(speed);
+        },
+        { signal: this.abort.signal },
+      );
+      this.speedButtons.set(speed, button);
+      dayControls.append(button);
+    }
+
+    tray.append(dayControls, this.trayButton, clock);
 
     taskbar.append(this.startButton, divider, this.taskbarWindows, tray);
 
@@ -187,13 +246,16 @@ export class Desktop {
       this.trayPanel,
     );
 
-    for (const app of this.apps) {
+    // The day screens are put on screen by the day itself and stay out of the
+    // icon grid; the start menu still lists them.
+    for (const app of this.apps.filter((entry) => entry.desktop !== false)) {
       icons.append(this.createDesktopIcon(app));
     }
 
     this.api = {
       graph: context.graph,
       appState: context.appState,
+      day: context.day,
       dispatch: (id, actor, target, params) => context.dispatch(
         id,
         actor,
@@ -244,18 +306,27 @@ export class Desktop {
     this.observer.observe(this.surface);
     this.unsubscribeClock = this.context.clock.onTick((tick) => {
       this.renderClock(tick);
+      this.renderDay();
       this.commitNotifications(expireToasts(this.notifications, tick));
+    });
+    this.unsubscribeDay = this.context.day.onChanged(() => {
+      this.renderDay();
+      this.syncDayScreens();
     });
 
     this.renderClock(this.context.clock.now());
+    this.renderDay();
     this.renderNotifications();
     this.renderWindows();
+    this.syncDayScreens();
   }
 
   public dispose(): void {
     this.observer.disconnect();
     this.unsubscribeClock?.();
     this.unsubscribeClock = null;
+    this.unsubscribeDay?.();
+    this.unsubscribeDay = null;
     this.abort.abort();
     this.renderer.dispose();
     this.taskbarButtons.clear();
@@ -329,6 +400,46 @@ export class Desktop {
 
     const separator = document.createElement('div');
     separator.className = 'menu-separator';
+
+    const save = menuItem('Save game', 'icon-save', 'start-menu-save');
+    save.addEventListener(
+      'click',
+      () => {
+        this.closeTransientSurfaces();
+        const outcome = this.context.session.save();
+        this.notify(
+          outcome.ok ? 'Game saved' : 'Not saved',
+          outcome.ok
+            ? 'The day is written down. It will be exactly this dull when you '
+              + 'come back to it.'
+            : outcome.reason,
+        );
+      },
+      { signal: this.abort.signal },
+    );
+
+    const load = menuItem('Load game', 'icon-load', 'start-menu-load');
+    load.addEventListener(
+      'click',
+      () => {
+        this.closeTransientSurfaces();
+        const outcome = this.context.session.load();
+
+        // A load replaces the world under every open window. The engine, the
+        // app store and the driver each announce themselves, so there is
+        // nothing to repaint by hand here - only something to say.
+        this.notify(
+          outcome.ok ? 'Game loaded' : 'Not loaded',
+          outcome.ok
+            ? 'Back where you left it, queue and all.'
+            : outcome.reason,
+        );
+      },
+      { signal: this.abort.signal },
+    );
+
+    const sessionSeparator = document.createElement('div');
+    sessionSeparator.className = 'menu-separator';
     const logOut = menuItem('Log off', 'icon-log-out', 'start-menu-log-off');
     logOut.addEventListener(
       'click',
@@ -348,7 +459,7 @@ export class Desktop {
       { signal: this.abort.signal },
     );
 
-    list.append(separator, logOut, restart);
+    list.append(separator, save, load, sessionSeparator, logOut, restart);
     menu.append(rail, list);
     return menu;
   }
@@ -723,6 +834,86 @@ export class Desktop {
       stamp.textContent = `${display.day} · ${display.time}`;
       item.append(title, body, stamp);
       this.trayPanelList.append(item);
+    }
+  }
+
+  /**
+   * The day's own screens, put on screen once each.
+   *
+   * "Once" is remembered in the shell store rather than here, so logging off
+   * and back on does not shove the brief in the player's face again - and a
+   * loaded save does not either, because the store came with it.
+   */
+  private syncDayScreens(): void {
+    if (this.wm === null) {
+      return;
+    }
+
+    const day = this.context.day.day();
+    const state = this.context.day.state();
+    const shown = this.context.appState.get().day;
+
+    if (state === 'morning_brief') {
+      // Yesterday's scorecard is not tomorrow's news.
+      this.closeWindowIfOpen('scorecard');
+
+      if (shown.briefShownFor !== day) {
+        this.context.appState.patch('day', { briefShownFor: day });
+        this.openApp('brief');
+      }
+
+      return;
+    }
+
+    if (state === 'day_end' && shown.scorecardShownFor !== day) {
+      this.context.appState.patch('day', { scorecardShownFor: day });
+      this.openApp('scorecard');
+    }
+  }
+
+  private closeWindowIfOpen(appId: string): void {
+    const state = this.requireWindowManager();
+
+    if (state.windows.some((windowState) => windowState.id === appId)) {
+      this.commitWindows(closeWindow(state, appId));
+    }
+  }
+
+  private renderDay(): void {
+    const day = this.context.day;
+    const state = day.state();
+    const paused = day.paused();
+    const lunch = isLunchtime(this.context.clock.now());
+    const label = state === 'morning_brief'
+      ? 'Morning brief'
+      : state === 'day_end'
+        ? 'Day end'
+        : lunch
+          ? 'Lunch'
+          : 'Shift';
+
+    this.dayState.textContent = paused ? `${label} · paused` : label;
+    this.dayState.dataset.state = state;
+    this.dayState.dataset.lunch = String(lunch);
+    this.dayState.title = state === 'day_end'
+      ? 'Open the day scorecard'
+      : 'Open the morning brief';
+
+    this.pauseButton.dataset.active = String(paused);
+    this.pauseButton.setAttribute('aria-pressed', String(paused));
+    this.pauseButton.setAttribute(
+      'aria-label',
+      paused ? 'Resume the clock' : 'Pause the clock',
+    );
+    this.pauseButton.title = paused ? 'Resume the clock' : 'Pause the clock';
+    this.pauseButton.replaceChildren(
+      createIcon(paused ? 'icon-play' : 'icon-pause'),
+    );
+
+    for (const [speed, button] of this.speedButtons) {
+      const active = day.speed() === speed;
+      button.dataset.active = String(active);
+      button.setAttribute('aria-pressed', String(active));
     }
   }
 

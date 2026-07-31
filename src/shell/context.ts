@@ -3,6 +3,8 @@ import type { FieldValue, NodeId } from '../engine-api';
 import type { ReadOnlyGraphView } from '../engine-api';
 import type { AppStateStore } from './app-state';
 import type { AppDef } from './apps/types';
+import type { DayApi } from './day-driver';
+import type { ShellSessionApi } from './save';
 
 /**
  * The slice of the engine clock the shell is allowed to see: it may read
@@ -35,6 +37,9 @@ export interface ShellContext {
   readonly user: ShellUser;
   /** What the apps were showing: outlives their windows, part of the save. */
   readonly appState: AppStateStore;
+  /** The shift: what day it is, what state it is in, and the two verbs. */
+  readonly day: DayApi;
+  readonly session: ShellSessionApi;
   dispatch(
     id: string,
     actor: NodeId,

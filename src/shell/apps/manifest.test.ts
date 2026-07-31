@@ -67,8 +67,10 @@ describe('app manifest', () => {
 });
 
 describe('shipped manifest', () => {
-  it('ships the helpdesk apps ahead of the demo apps', () => {
+  it('ships the day screens and the helpdesk apps ahead of the demo apps', () => {
     expect(APP_MANIFEST.map(({ id }) => id)).toEqual([
+      'brief',
+      'scorecard',
       'tickets',
       'directory',
       'remote',
@@ -97,6 +99,8 @@ describe('shipped manifest', () => {
       'about',
     ]);
     expect(appsForTier(APP_MANIFEST, 1).map(({ id }) => id)).toEqual([
+      'brief',
+      'scorecard',
       'tickets',
       'directory',
       'remote',
@@ -109,8 +113,27 @@ describe('shipped manifest', () => {
     ]);
   });
 
+  /**
+   * The day's own screens are opened by the day and never by an icon: an entry
+   * for "the morning brief" among the tools would read as a tool. They keep
+   * their start-menu entry, because a screen that cannot be reopened is a dead
+   * end - which is exactly what the desktop flag is allowed to cost.
+   */
+  it('keeps the day screens off the desktop and in the start menu', () => {
+    const hidden = APP_MANIFEST.filter((app) => app.desktop === false);
+    expect(hidden.map(({ id }) => id)).toEqual(['brief', 'scorecard']);
+
+    for (const app of APP_MANIFEST) {
+      if (app.id !== 'brief' && app.id !== 'scorecard') {
+        expect(app.desktop, app.id).not.toBe(false);
+      }
+    }
+  });
+
   it('gates every helpdesk app behind the helpdesk tier', () => {
     for (const id of [
+      'brief',
+      'scorecard',
       'tickets',
       'directory',
       'remote',

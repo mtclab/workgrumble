@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { COMPANY_IDS } from '../../world/company';
 import { AppStateStore } from '../app-state';
-import { createWorldSession, type WorldSession } from '../../world/session';
+import { DayDriver } from '../day-driver';
+import {
+  createWorldSession,
+  WORLD_SEED,
+  type WorldSession,
+} from '../../world/session';
 import { parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
 import type { GameApi } from './types';
@@ -14,6 +19,9 @@ function apiFor(
   return {
     graph: session.engine.graph,
     appState: new AppStateStore(),
+    day: new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
+      onDayBoundary: () => {},
+    }),
     dispatch: (id, dispatchActor, target, params) => session.engine.dispatch(
       id,
       dispatchActor,

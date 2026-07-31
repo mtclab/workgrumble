@@ -6,6 +6,7 @@ import type {
   FieldValue,
 } from '../../engine-api';
 import type { AppStateStore } from '../app-state';
+import type { DayApi } from '../day-driver';
 
 /**
  * What one app asks another to show when it opens it.
@@ -40,6 +41,12 @@ export interface GameApi {
    * things a save has to carry.
    */
   readonly appState: AppStateStore;
+  /**
+   * The shift the player is in the middle of. Reading it is free; the two
+   * things that move it - starting the shift, clocking off - go through the
+   * engine's action registry like every other change to the world.
+   */
+  readonly day: DayApi;
   dispatch(
     id: string,
     actor: string,
@@ -72,5 +79,12 @@ export interface AppDef {
   readonly icon: string;
   readonly tier_required: number;
   readonly slack: boolean;
+  /**
+   * Whether the app gets a desktop icon. The day screens do not: they are put
+   * on screen by the day itself, and an icon for "the morning brief" among the
+   * tools would read as a tool. They keep their start-menu entry, because a
+   * screen you cannot reopen is a dead end.
+   */
+  readonly desktop?: boolean;
   mount(host: HTMLElement, api: GameApi): AppInstance;
 }

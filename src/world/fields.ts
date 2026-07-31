@@ -20,6 +20,14 @@ export const FIELDS = {
   dayState: 'day_state',
   /** Everything banked towards the farm, in whole pence. */
   farmFund: 'farm_fund',
+  /**
+   * The pressure meters. Lane B owns the arithmetic and the effects; the names
+   * are declared here so the day-end scorecard can be wired to the real fields
+   * now and start telling the truth the day they are populated, rather than
+   * printing a confident zero in the meantime.
+   */
+  stress: 'stress',
+  suspicion: 'suspicion',
   /** account */
   username: 'username',
   locked: 'locked',

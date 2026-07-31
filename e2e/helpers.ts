@@ -7,17 +7,33 @@ export interface Box {
   readonly height: number;
 }
 
+export interface LoginOptions {
+  /**
+   * What to do with the morning brief, which the day puts on screen at the
+   * first login of a day. `close` (the default) clears it out of the way so a
+   * test that is about something else starts on an empty desktop; `keep`
+   * leaves it for the tests that are about the day itself.
+   */
+  readonly brief?: 'close' | 'keep';
+}
+
 /** Boots the shell and logs in. Boot auto-advances, so skipping is optional. */
-export async function logIn(page: Page): Promise<void> {
+export async function logIn(
+  page: Page,
+  options: Readonly<LoginOptions> = {},
+): Promise<void> {
   await page.goto('/');
-  await completeLogin(page);
+  await completeLogin(page, options);
 }
 
 /**
  * Everything after the navigation: skip the boot gag and log on. Split out so
  * a test can put its own work between loading the page and using it.
  */
-export async function completeLogin(page: Page): Promise<void> {
+export async function completeLogin(
+  page: Page,
+  options: Readonly<LoginOptions> = {},
+): Promise<void> {
   const boot = page.getByTestId('boot-screen');
 
   if (await boot.isVisible()) {
@@ -28,6 +44,22 @@ export async function completeLogin(page: Page): Promise<void> {
   await page.getByTestId('login-password').fill('hunter2');
   await page.getByTestId('login-submit').click();
   await expect(page.getByTestId('desktop')).toBeVisible();
+
+  if (options.brief === 'keep') {
+    return;
+  }
+
+  await dismissBrief(page);
+}
+
+/** Closes the morning brief if the day has just put one up. */
+export async function dismissBrief(page: Page): Promise<void> {
+  const brief = page.getByTestId('window-brief');
+
+  if (await brief.isVisible()) {
+    await page.getByTestId('close-brief').click();
+    await expect(brief).toHaveCount(0);
+  }
 }
 
 export async function openFromStartMenu(
