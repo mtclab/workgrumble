@@ -88,10 +88,28 @@ describe('company world', () => {
     expect(graph.getField(COMPANY_IDS.player, FIELDS.name)).toBe('Pat Pending');
   });
 
-  it('leaves the payroll clerk locked out and off the common share', () => {
+  /**
+   * The seed is a WORKING building. Every account fault in this game arrives
+   * with the ticket that is about it - which is what puts a lockout in the
+   * machine's event log at the minute it happened, instead of before the world
+   * started - so the payroll clerk is unlocked here and locked by his ticket.
+   */
+  it('seeds accounts that work, with the lockout story ready to be told', () => {
     const graph = seeded();
 
-    expect(graph.getField(COMPANY_IDS.garyAccount, FIELDS.locked)).toBe(true);
+    expect(graph.getField(COMPANY_IDS.garyAccount, FIELDS.locked)).toBe(false);
+    expect(graph.getField(COMPANY_IDS.garyAccount, FIELDS.enabled)).toBe(true);
+    expect(graph.getField(COMPANY_IDS.garyAccount, FIELDS.passwordExpired))
+      .toBe(false);
+    expect(graph.getField(COMPANY_IDS.garyAccount, FIELDS.badPwCount)).toBe(0);
+    expect(graph.getField(COMPANY_IDS.garyAccount, FIELDS.pwMustChange))
+      .toBe(false);
+    // Two weeks away: he has not signed in since before this log starts, and
+    // an absent last logon says so honestly where a made-up date would not.
+    expect(graph.getField(COMPANY_IDS.garyAccount, FIELDS.lastLogon))
+      .toBeUndefined();
+    expect(graph.getField(COMPANY_IDS.playerAccount, FIELDS.lastLogon)).toBe(0);
+
     expect(
       graph
         .neighbors(COMPANY_IDS.garyAccount, {

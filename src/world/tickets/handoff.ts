@@ -33,6 +33,7 @@ export interface TriedEntry {
 const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.accountUnlock]: 'Unlocked the account',
   [HELPDESK_ACTIONS.accountResetPassword]: 'Reset the password',
+  [HELPDESK_ACTIONS.accountEnable]: 'Enabled the account again',
   [HELPDESK_ACTIONS.accountAddToGroup]: 'Added the account to a group',
   [HELPDESK_ACTIONS.accountRemoveFromGroup]: 'Removed the account from a group',
   [HELPDESK_ACTIONS.serviceRestart]: 'Restarted the service',

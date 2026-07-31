@@ -223,15 +223,21 @@ describe('the log the world writes for itself', () => {
       {},
     );
 
+    // The whole story, in order, on the desk it happened at: five failures,
+    // the door shutting, somebody opening it again, and the reset after.
     const log = logOf(COMPANY_IDS.garyMachine);
     expect(log.map((entry) => entry.id)).toEqual([
+      EVENT_IDS.logonFailed,
+      EVENT_IDS.accountLocked,
       EVENT_IDS.accountUnlocked,
       EVENT_IDS.passwordReset,
     ]);
-    expect(log[0]?.level).toBe('information');
+    expect(log[0]?.level).toBe('warning');
     expect(log[0]?.source).toBe(EVENT_SOURCES.security);
-    expect(log[0]?.message).toContain('gpoole');
-    expect(log[0]?.tick).toBe(5);
+    expect(log[0]?.message).toContain('Bad password count is now 5');
+    expect(log[1]?.level).toBe('warning');
+    expect(log[1]?.message).toContain('gpoole');
+    expect(log[2]?.tick).toBe(5);
     // Somebody else's desk knows nothing about it.
     expect(logOf(COMPANY_IDS.adaMachine)).toEqual([]);
   });

@@ -464,3 +464,88 @@ test('refuses to attach a ticket that is nobody\'s duplicate', async ({
   ).toHaveAttribute('data-state', 'open');
   await expect(page.getByTestId('ticket-parent-outcome')).toBeHidden();
 });
+
+/**
+ * The lockout, read rather than guessed.
+ *
+ * An unlock used to be a button somebody pressed because the word "locked" was
+ * on the screen. The directory now tells the whole story - how many wrong
+ * passwords, when the door shut, whether the account has been used at all -
+ * and the other two states that look identical from the reporter's chair say
+ * out loud which fix they want instead.
+ */
+test('tells the lockout story in Active Dictionary, and refuses the wrong fixes', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'directory');
+  await page.getByTestId('directory-row-gary').click();
+
+  await expect(page.getByTestId('directory-detail-status')).toHaveText(
+    'Locked out',
+  );
+  await expect(page.getByTestId('directory-detail-status')).toHaveAttribute(
+    'data-state',
+    'locked',
+  );
+  await expect(page.getByTestId('directory-detail-bad-passwords')).toContainText(
+    '5 since it was last cleared',
+  );
+  await expect(page.getByTestId('directory-detail-locked-since')).toContainText(
+    '08:00',
+  );
+  // Two weeks away: he has not signed in since before the log starts, which is
+  // the other half of the diagnosis.
+  await expect(page.getByTestId('directory-detail-last-logon')).toContainText(
+    'Not since before this log starts',
+  );
+  await expect(page.getByTestId('directory-detail-must-change')).toHaveText('No');
+
+  // The other two fixes are offered and refused, in the words that say which
+  // fault this actually is.
+  const enable = page.getByTestId('directory-enable');
+  await expect(enable).toBeDisabled();
+  await expect(enable).toHaveAttribute('title', /is not disabled/);
+
+  await page.getByTestId('directory-unlock').click();
+  await expect(page.getByTestId('directory-detail-status')).toHaveText('Fine');
+  await expect(page.getByTestId('directory-detail-bad-passwords')).toContainText(
+    '0 since it was last cleared',
+  );
+  await expect(page.getByTestId('directory-detail-locked-since')).toHaveText(
+    'Not locked',
+  );
+
+  // And the machine at that desk wrote all of it down.
+  await openFromStartMenu(page, 'events');
+  await page.getByTestId('events-machine-gary').click();
+  await expect(
+    page.getByTestId('events-table').locator('[data-event="4625"]'),
+  ).toContainText('Bad password count is now 5');
+  await expect(
+    page.getByTestId('events-table').locator('[data-event="4740"]'),
+  ).toContainText('gpoole');
+  await expect(
+    page.getByTestId('events-table').locator('[data-event="4767"]'),
+  ).toContainText('unlocked by the service desk');
+});
+
+/**
+ * A reset is the fix for an expired password and a sticky note for everything
+ * else - and it leaves the "must change at next logon" flag every real reset
+ * leaves, which is a follow-up ticket rather than a second fault.
+ */
+test('leaves the must-change flag behind after a reset', async ({ page }) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'directory');
+  await page.getByTestId('directory-row-ada').click();
+  await expect(page.getByTestId('directory-detail-must-change')).toHaveText('No');
+
+  await page.getByTestId('directory-reset-password').click();
+  await expect(page.getByTestId('directory-outcome')).toContainText(
+    'Temporary password issued',
+  );
+  await expect(page.getByTestId('directory-detail-must-change')).toContainText(
+    'at next logon',
+  );
+});

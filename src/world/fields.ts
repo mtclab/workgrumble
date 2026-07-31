@@ -94,11 +94,37 @@ export const FIELDS = {
   drinkCrashCharged: 'drink_crash_charged',
   /** What the machine has had off you today, in whole pence. */
   consumableSpend: 'consumable_spend',
-  /** account */
+  /**
+   * account
+   *
+   * Three of these are three DIFFERENT faults that wear the same face at the
+   * login box, and the whole lockout story rests on them staying apart:
+   *
+   * - `locked` is automatic and temporary. The directory counted the bad
+   *   attempts in `bad_pw_count`, gave up at `locked_since`, and an unlock
+   *   clears both. The password is still the password.
+   * - `enabled` false is deliberate and permanent until somebody reverses it:
+   *   a leaver, a security hold, a contract that ended. Nothing but enabling
+   *   it helps, and enabling it is a decision rather than a button.
+   * - `passwordExpired` is a policy clock running out on the credential while
+   *   the account itself is perfectly healthy. A reset fixes it; an unlock
+   *   does not, because there was never a lockout.
+   *
+   * `pwMustChange` is what a reset leaves behind - the "user must change
+   * password at next logon" tick box every real reset sets - and it is a
+   * follow-up ticket waiting to happen rather than a fault. `lastLogon` is
+   * how a tech answers "is this account even used", and is absent for
+   * somebody who has not been in since before the log starts.
+   */
   username: 'username',
   locked: 'locked',
   enabled: 'enabled',
   passwordResetAt: 'password_reset_at',
+  badPwCount: 'bad_pw_count',
+  lockedSince: 'locked_since',
+  lastLogon: 'last_logon',
+  pwMustChange: 'pw_must_change',
+  passwordExpired: 'password_expired',
   /** machine */
   hostname: 'hostname',
   /**

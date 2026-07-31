@@ -54,6 +54,8 @@ export const EVENT_IDS = {
   rebooted: 1074,
   /** The device came back after being turned off and on again. */
   devicePowered: 6005,
+  /** An account failed to log on. The one that comes in fives. */
+  logonFailed: 4625,
   /** A user account was locked out. */
   accountLocked: 4740,
   /** A user account was unlocked. */
@@ -208,6 +210,11 @@ export function devicePoweredMessage(name: string): string {
 export function accountLockedMessage(username: string): string {
   return `User account ${username} was locked out. Something is still trying `
     + 'the old password, and it is not always a person.';
+}
+
+export function logonFailedMessage(username: string, count: number): string {
+  return `An account failed to log on: ${username}. Bad password count is now `
+    + `${String(count)}. Whatever is typing them is not slowing down.`;
 }
 
 export function accountUnlockedMessage(username: string): string {

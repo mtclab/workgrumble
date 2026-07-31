@@ -5,6 +5,15 @@
  */
 export const HELPDESK_ACTIONS = {
   accountUnlock: 'account.unlock',
+  /**
+   * Putting back an account somebody switched off.
+   *
+   * Its own verb rather than a flag on unlock, because it is its own DECISION:
+   * a disabled account was disabled deliberately - a leaver, a security hold,
+   * a contract that ended - and enabling one without knowing who turned it off
+   * is the sort of thing that appears in an audit log with your name on it.
+   */
+  accountEnable: 'account.enable',
   accountResetPassword: 'account.reset_password',
   accountAddToGroup: 'account.add_to_group',
   accountRemoveFromGroup: 'account.remove_from_group',

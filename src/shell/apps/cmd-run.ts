@@ -263,18 +263,43 @@ function usersLines(api: GameApi, query: string): CommandResult {
   });
   const reset = account.fields[FIELDS.passwordResetAt];
 
+  const badPasswords = account.fields[FIELDS.badPwCount];
+  const lockedSince = account.fields[FIELDS.lockedSince];
+  const lastLogon = account.fields[FIELDS.lastLogon];
+
   return lines(
     `Account      : ${labelOf(account)}`,
     `Owner        : ${textValue(
       owner?.fields[FIELDS.name],
       'unclaimed',
     )} (${textValue(owner?.fields[FIELDS.title], 'role unrecorded')})`,
+    // Three states, three words, because three different jobs hang off them.
     `Status       : ${
       account.fields[FIELDS.enabled] === false
         ? 'DISABLED'
         : account.fields[FIELDS.locked] === true
           ? 'LOCKED OUT'
-          : 'OK'
+          : account.fields[FIELDS.passwordExpired] === true
+            ? 'PASSWORD EXPIRED'
+            : 'OK'
+    }`,
+    `Bad passwords: ${
+      typeof badPasswords === 'number' ? String(badPasswords) : 'not counted'
+    }`,
+    `Locked since : ${
+      typeof lockedSince === 'number'
+        ? formatSimTime(lockedSince).time
+        : 'not locked'
+    }`,
+    `Last logon   : ${
+      typeof lastLogon === 'number'
+        ? `${formatSimTime(lastLogon).time} (${formatSimTime(lastLogon).day})`
+        : 'not since before this log starts'
+    }`,
+    `Must change  : ${
+      account.fields[FIELDS.pwMustChange] === true
+        ? 'yes, at next logon'
+        : 'no'
     }`,
     `Password set : ${
       typeof reset === 'number'

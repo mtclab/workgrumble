@@ -87,6 +87,19 @@ function fixtureSetup(): readonly SetupOp[] {
     kind: 'account',
     fields: { username: 'gone', locked: true, enabled: false },
   });
+  // The third state. Nobody locked it and nobody switched it off: a policy
+  // clock ran out on the credential while the account itself is perfectly
+  // healthy, and it is the one an unlock cannot touch.
+  addNode(ops, {
+    id: 'account:stale',
+    kind: 'account',
+    fields: {
+      username: 'stale',
+      locked: false,
+      enabled: true,
+      password_expired: true,
+    },
+  });
   addNode(ops, {
     id: 'group:print-users',
     kind: 'group',
@@ -268,8 +281,8 @@ beforeEach(() => {
 
 describe('helpdesk action registry', () => {
   it('registers every advertised action exactly once', () => {
-    expect(HELPDESK_ACTION_IDS).toHaveLength(26);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(26);
+    expect(HELPDESK_ACTION_IDS).toHaveLength(27);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(27);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});
@@ -327,6 +340,121 @@ describe('account.unlock', () => {
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.accountUnlock, 'machine:ada'),
       'only works on an account',
+      before,
+    );
+  });
+});
+
+/**
+ * The matrix. Three faults that wear the same face at the login box, three
+ * fixes, and nine cells - because the wrong fix on the wrong state is not a
+ * harmless miss: it is a sticky note by lunchtime, or an account the leavers
+ * process disabled being switched back on with your name in the audit log.
+ */
+describe('locked, disabled and expired', () => {
+  const LOCKED = 'account:ada';
+  const DISABLED = 'account:gone';
+  const EXPIRED = 'account:stale';
+
+  it('unlocks only the locked one, and says which fault the others have', () => {
+    expect(dispatch(HELPDESK_ACTIONS.accountUnlock, LOCKED)).toEqual({
+      ok: true,
+    });
+    expect(fixture.graph.getField(LOCKED, FIELDS.locked)).toBe(false);
+
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.accountUnlock, DISABLED),
+      'is disabled, not locked',
+      before,
+    );
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.accountUnlock, EXPIRED),
+      'their password has expired',
+      before,
+    );
+  });
+
+  it('enables only the disabled one, and refuses the other two', () => {
+    expect(dispatch(HELPDESK_ACTIONS.accountEnable, DISABLED)).toEqual({
+      ok: true,
+    });
+    expect(fixture.graph.getField(DISABLED, FIELDS.enabled)).toBe(true);
+    // Enabling does not unlock: it was locked as well, and that is a second
+    // job rather than the same one.
+    expect(fixture.graph.getField(DISABLED, FIELDS.locked)).toBe(true);
+
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.accountEnable, LOCKED),
+      'is not disabled',
+      before,
+    );
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.accountEnable, EXPIRED),
+      'is not disabled',
+      before,
+    );
+  });
+
+  it('resets the expired one, refuses the disabled one, and clears a lockout', () => {
+    fixture.advance(11);
+    expect(dispatch(HELPDESK_ACTIONS.accountResetPassword, EXPIRED))
+      .toEqual({ ok: true });
+    expect(fixture.graph.getField(EXPIRED, FIELDS.passwordExpired)).toBe(false);
+    // Every real reset leaves this behind, and it is the next ticket.
+    expect(fixture.graph.getField(EXPIRED, FIELDS.pwMustChange)).toBe(true);
+    expect(fixture.graph.getField(EXPIRED, FIELDS.passwordResetAt)).toBe(11);
+
+    // A reset on a locked account is allowed and clears the lockout with it -
+    // which is why it looks like a cure-all and is not.
+    expect(dispatch(HELPDESK_ACTIONS.accountResetPassword, LOCKED))
+      .toEqual({ ok: true });
+    expect(fixture.graph.getField(LOCKED, FIELDS.locked)).toBe(false);
+
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.accountResetPassword, DISABLED),
+      'still lets nobody in',
+      before,
+    );
+  });
+
+  /** An unlock ends the lockout and the count behind it, and nothing else. */
+  it('leaves an expired password expired after an unlock', () => {
+    fixture.applySetup([
+      {
+        op: 'setField',
+        id: EXPIRED,
+        field: FIELDS.locked,
+        value: true,
+      },
+      {
+        op: 'setField',
+        id: EXPIRED,
+        field: FIELDS.badPwCount,
+        value: 5,
+      },
+      {
+        op: 'setField',
+        id: EXPIRED,
+        field: FIELDS.lockedSince,
+        value: 3,
+      },
+    ]);
+
+    expect(dispatch(HELPDESK_ACTIONS.accountUnlock, EXPIRED))
+      .toEqual({ ok: true });
+    expect(fixture.graph.getField(EXPIRED, FIELDS.locked)).toBe(false);
+    expect(fixture.graph.getField(EXPIRED, FIELDS.badPwCount)).toBe(0);
+    expect(fixture.graph.getField(EXPIRED, FIELDS.lockedSince)).toBeUndefined();
+    // Still expired. Two faults, and only one of them has been dealt with.
+    expect(fixture.graph.getField(EXPIRED, FIELDS.passwordExpired)).toBe(true);
+
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.accountUnlock, EXPIRED),
+      'their password has expired',
       before,
     );
   });

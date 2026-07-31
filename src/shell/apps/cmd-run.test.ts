@@ -135,6 +135,27 @@ describe('support terminal commands', () => {
     expect(output).toContain('Print Users');
   });
 
+  /**
+   * The lockout trail: what a tech reads BEFORE deciding which of the three
+   * fixes this is. The count and the timestamp are the diagnosis, and the last
+   * logon is what says the phone in his pocket has been at it for a fortnight.
+   */
+  it('prints the lockout story, not just the word', () => {
+    const session = sessionWith('ticket:locked-account');
+    const api = apiFor(session);
+    const output = run(api, 'users gpoole');
+
+    expect(output).toContain('Status       : LOCKED OUT');
+    expect(output).toContain('Bad passwords: 5');
+    expect(output).toContain('Locked since : 08:00');
+    expect(output).toContain('Last logon   : not since before this log starts');
+    expect(output).toContain('Must change  : no');
+
+    // Somebody who has been in this morning reads completely differently.
+    expect(run(api, 'net user awhitlock')).toContain('Status       : OK');
+    expect(run(api, 'net user awhitlock')).toContain('Last logon   : 08:00');
+  });
+
   it('closes the locked-account ticket through unlock', () => {
     const session = sessionWith('ticket:locked-account');
     const api = apiFor(session);
@@ -213,6 +234,11 @@ describe('support terminal commands', () => {
     expect(session.engine.graph.getField(COMPANY_IDS.garyAccount, 'password_reset_at'))
       .toBe(17);
     expect(run(api, 'users gpoole')).toContain('Password set : 08:17');
+    // And it leaves behind the flag every real reset leaves, which is the
+    // ticket after this one.
+    expect(run(api, 'users gpoole')).toContain('Must change  : yes');
+    expect(run(api, 'users gpoole')).toContain('Bad passwords: 0');
+    expect(run(api, 'users gpoole')).toContain('Locked since : not locked');
   });
 
   /* -- the looking commands ---------------------------------------------- */

@@ -1,5 +1,12 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
-import { HELPDESK_ACTIONS } from '../../world/actions';
+import {
+  DISABLED_NEEDS_ENABLING_REASON,
+  DISABLED_NOT_LOCKED_REASON,
+  EXPIRED_NOT_LOCKED_REASON,
+  HELPDESK_ACTIONS,
+  NOT_DISABLED_REASON,
+  NOT_LOCKED_REASON,
+} from '../../world/actions';
 import { FIELDS } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { createIcon } from '../icons';
@@ -33,12 +40,37 @@ function usernameOf(account: Readonly<ReadOnlyGraphNode>): string {
   return textValue(account.fields[FIELDS.username], accountKey(account.id));
 }
 
-function statusOf(account: Readonly<ReadOnlyGraphNode>): string {
+/**
+ * Which of the three it is, in the order a tech has to read them.
+ *
+ * Disabled first because it beats everything - an account somebody switched
+ * off is off whatever else is true of it - then the lockout, then the expiry.
+ * The order is the diagnosis: it is what stops "locked" being the answer to
+ * every complaint that starts "it will not let me in".
+ */
+export function statusOf(account: Readonly<ReadOnlyGraphNode>): string {
   if (account.fields[FIELDS.enabled] === false) {
     return 'Disabled';
   }
 
-  return account.fields[FIELDS.locked] === true ? 'Locked out' : 'Fine';
+  if (account.fields[FIELDS.locked] === true) {
+    return 'Locked out';
+  }
+
+  return account.fields[FIELDS.passwordExpired] === true
+    ? 'Password expired'
+    : 'Fine';
+}
+
+/** A tick a field is holding, or nothing when it holds no such thing. */
+function tickField(
+  account: Readonly<ReadOnlyGraphNode>,
+  field: string,
+): number | null {
+  const value = account.fields[field];
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
 }
 
 /**
@@ -125,6 +157,9 @@ export const DIRECTORY_APP: AppDef = {
         row.type = 'button';
         row.dataset.selected = String(account.id === selectedId);
         row.dataset.locked = String(account.fields[FIELDS.locked] === true);
+        // The row says WHICH fault, because a list where every unhappy account
+        // looks the same is a list that teaches "click unlock and see".
+        row.dataset.state = statusOf(account).toLowerCase().replace(' ', '-');
 
         const name = element('strong');
         name.textContent = usernameOf(account);
@@ -186,10 +221,15 @@ export const DIRECTORY_APP: AppDef = {
       });
       const locked = account.fields[FIELDS.locked] === true;
       const disabled = account.fields[FIELDS.enabled] === false;
+      const expired = account.fields[FIELDS.passwordExpired] === true;
       const reset = account.fields[FIELDS.passwordResetAt];
+      const badPasswords = account.fields[FIELDS.badPwCount];
+      const lockedSince = tickField(account, FIELDS.lockedSince);
+      const lastLogon = tickField(account, FIELDS.lastLogon);
 
+      const username = usernameOf(account);
       const heading = element('h2', undefined, 'directory-detail-username');
-      heading.textContent = usernameOf(account);
+      heading.textContent = username;
 
       const facts = element('dl', 'directory-facts');
       definitionRow(facts, 'Owner', 'directory-detail-owner').textContent = textValue(
@@ -200,7 +240,42 @@ export const DIRECTORY_APP: AppDef = {
         ownerOf(api, account)?.fields[FIELDS.title],
         'Unrecorded',
       );
-      definitionRow(facts, 'Status', 'directory-detail-status').textContent = statusOf(account);
+      const statusRow = definitionRow(
+        facts,
+        'Status',
+        'directory-detail-status',
+      );
+      statusRow.textContent = statusOf(account);
+      statusRow.dataset.state = disabled
+        ? 'disabled'
+        : locked
+          ? 'locked'
+          : expired
+            ? 'expired'
+            : 'fine';
+      // The lockout trail, which is what turns an unlock from a button press
+      // into a read: how many wrong passwords, when the door shut, and whether
+      // this account is even in use.
+      definitionRow(facts, 'Bad passwords', 'directory-detail-bad-passwords')
+        .textContent = typeof badPasswords === 'number'
+          ? `${String(badPasswords)} since it was last cleared`
+          : 'Not counted on this account';
+      definitionRow(facts, 'Locked since', 'directory-detail-locked-since')
+        .textContent = lockedSince === null
+          ? 'Not locked'
+          : `${formatSimTime(lockedSince).time} (${
+            formatSimTime(lockedSince).day
+          })`;
+      definitionRow(facts, 'Last logon', 'directory-detail-last-logon')
+        .textContent = lastLogon === null
+          ? 'Not since before this log starts'
+          : `${formatSimTime(lastLogon).time} (${
+            formatSimTime(lastLogon).day
+          })`;
+      definitionRow(facts, 'Must change password', 'directory-detail-must-change')
+        .textContent = account.fields[FIELDS.pwMustChange] === true
+          ? 'Yes, at next logon. Expect a second ticket about it.'
+          : 'No';
       definitionRow(facts, 'Password reset', 'directory-detail-reset')
         .textContent = typeof reset === 'number'
           ? formatSimTime(reset).time
@@ -225,20 +300,20 @@ export const DIRECTORY_APP: AppDef = {
       setAvailability(
         unlock,
         disabled
-          ? 'This account is disabled. Unlocking it would achieve a very tidy '
-            + 'nothing.'
+          ? DISABLED_NOT_LOCKED_REASON.replace('{target.label}', username)
           : locked
             ? null
-            : 'This account is not locked. Whatever they are complaining '
-              + 'about, it is something else.',
+            : expired
+              ? EXPIRED_NOT_LOCKED_REASON.replace('{target.label}', username)
+              : NOT_LOCKED_REASON.replace('{target.label}', username),
       );
       unlock.addEventListener('click', () => {
         run(
           HELPDESK_ACTIONS.accountUnlock,
           account.id,
           {},
-          `Unlocked ${usernameOf(account)}. They are logging in already and `
-            + 'they will not say thank you.',
+          `Unlocked ${username}. They are logging in already and they will `
+            + 'not say thank you.',
         );
       });
 
@@ -249,7 +324,7 @@ export const DIRECTORY_APP: AppDef = {
       setAvailability(
         resetPassword,
         disabled
-          ? 'This account is disabled. A new password still lets nobody in.'
+          ? DISABLED_NEEDS_ENABLING_REASON.replace('{target.label}', username)
           : null,
       );
       resetPassword.addEventListener('click', () => {
@@ -257,12 +332,32 @@ export const DIRECTORY_APP: AppDef = {
           HELPDESK_ACTIONS.accountResetPassword,
           account.id,
           {},
-          'Temporary password issued and the lockout cleared. It will be on a '
-            + 'sticky note by lunchtime.',
+          'Temporary password issued, the lockout cleared with it, and they '
+            + 'must change it at next logon. It will be on a sticky note by '
+            + 'lunchtime.',
         );
       });
 
-      actions.append(unlock, resetPassword);
+      // The third fix, for the third fault. It is its own button because it
+      // is its own decision: somebody switched that account off on purpose.
+      const enable = osButton('Enable account', 'directory-enable');
+      setAvailability(
+        enable,
+        disabled
+          ? null
+          : NOT_DISABLED_REASON.replace('{target.label}', username),
+      );
+      enable.addEventListener('click', () => {
+        run(
+          HELPDESK_ACTIONS.accountEnable,
+          account.id,
+          {},
+          `Enabled ${username}. Whoever disabled it had a reason, and it is `
+            + 'now your name in the log next to putting it back.',
+        );
+      });
+
+      actions.append(unlock, resetPassword, enable);
       detail.append(actions);
 
       const groupRow = element('div', 'directory-group-row');

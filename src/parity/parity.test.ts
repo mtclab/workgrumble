@@ -843,11 +843,17 @@ describe('determinism over the shipped world', () => {
       ),
     ).toEqual({ ok: true });
 
-    expect(wasm.events.map((event) => event.type)).toEqual([
-      'graph:mutated',
-      'graph:mutated',
-      'ticket:resolved',
-    ]);
+    const types = wasm.events.map((event) => event.type);
+    // The unlock makes several changes - the lock itself, the timestamp it
+    // clears, the bad-password count it zeroes - and every one of them is in
+    // the world before the ticket reacts to any of them. (What comes after is
+    // the machine writing the unlock into its own event log, which is a
+    // consequence of the consequence and belongs where it lands.)
+    expect(types.filter((type) => type === 'ticket:resolved')).toHaveLength(1);
+    const resolvedAt = types.indexOf('ticket:resolved');
+    expect(resolvedAt).toBeGreaterThan(0);
+    expect(types.slice(0, resolvedAt).every((type) => type === 'graph:mutated'))
+      .toBe(true);
 
     const [cause] = wasm.events;
     expect(cause).toEqual({

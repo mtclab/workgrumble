@@ -40,6 +40,7 @@ import {
   EVENT_IDS,
   EVENT_SOURCES,
   type EventLevel,
+  logonFailedMessage,
   type MachineEvent,
   passwordResetMessage,
   printFailedMessage,
@@ -216,6 +217,23 @@ function draftFor(
           EVENT_IDS.accountEnabled,
           accountEnabledMessage(name),
         );
+    }
+
+    if (
+      mutation.field === FIELDS.badPwCount
+      && typeof mutation.value === 'number'
+      && mutation.value > (typeof mutation.previous === 'number'
+        ? mutation.previous
+        : 0)
+    ) {
+      // Only upwards. A count going back to nought is a tech clearing the
+      // lockout, which the unlock line already says.
+      return draft(
+        'warning',
+        EVENT_SOURCES.security,
+        EVENT_IDS.logonFailed,
+        logonFailedMessage(name, mutation.value),
+      );
     }
 
     if (mutation.field === FIELDS.passwordResetAt) {

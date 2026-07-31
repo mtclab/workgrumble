@@ -14,6 +14,13 @@ import { SERVICE_ACTIONS } from './service';
 import { SHARE_ACTIONS } from './share';
 import { TICKET_ACTIONS } from './ticket';
 
+export {
+  DISABLED_NEEDS_ENABLING_REASON,
+  DISABLED_NOT_LOCKED_REASON,
+  EXPIRED_NOT_LOCKED_REASON,
+  NOT_DISABLED_REASON,
+  NOT_LOCKED_REASON,
+} from './account';
 export { FULL_BATTERY } from './device';
 export { HELPDESK_TIER, KIND_LABELS } from './helpers';
 export {

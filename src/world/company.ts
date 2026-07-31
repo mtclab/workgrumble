@@ -71,8 +71,17 @@ interface StaffSeed {
   readonly name: string;
   readonly title: string;
   readonly username: string;
-  readonly locked: boolean;
   readonly desk: string;
+  /**
+   * When they were last in, as a tick, or absent for somebody who has not
+   * signed in since before this log starts.
+   *
+   * Absent rather than a negative number, because the clock in this game
+   * counts from the first Monday morning and there is no honest way to write
+   * "a fortnight ago" in it. A directory that shows "not since before the log
+   * starts" is telling the truth; one that shows a made-up date is not.
+   */
+  readonly lastLogon?: number;
 }
 
 const STAFF: readonly StaffSeed[] = [
@@ -82,8 +91,8 @@ const STAFF: readonly StaffSeed[] = [
     name: 'Pat Pending',
     title: 'IT Support Technician (probationary)',
     username: 'ppending',
-    locked: false,
     desk: 'The cupboard with the good kettle',
+    lastLogon: 0,
   },
   {
     person: COMPANY_IDS.boss,
@@ -91,8 +100,8 @@ const STAFF: readonly StaffSeed[] = [
     name: 'Desmond Frisk',
     title: 'Service Delivery Lead',
     username: 'dfrisk',
-    locked: false,
     desk: 'The office with the door',
+    lastLogon: 0,
   },
   {
     person: COMPANY_IDS.ada,
@@ -100,8 +109,8 @@ const STAFF: readonly StaffSeed[] = [
     name: 'Ada Whitlock',
     title: 'Senior Account Manager',
     username: 'awhitlock',
-    locked: false,
     desk: 'Sales, by the window she will not stop opening',
+    lastLogon: 0,
   },
   {
     person: COMPANY_IDS.gary,
@@ -109,8 +118,10 @@ const STAFF: readonly StaffSeed[] = [
     name: 'Gary Poole',
     title: 'Payroll Clerk',
     username: 'gpoole',
-    locked: true,
     desk: 'Payroll, behind the plant',
+    // Two weeks away. He has not been in since before this log starts, which
+    // is the first thing the directory says about him and the reason the
+    // lockout is not a mystery.
   },
   {
     person: COMPANY_IDS.nina,
@@ -118,8 +129,8 @@ const STAFF: readonly StaffSeed[] = [
     name: 'Nina Okafor',
     title: 'Logistics Coordinator',
     username: 'nokafor',
-    locked: false,
     desk: 'Logistics, nearest the printer and regretting it',
+    lastLogon: 0,
   },
   {
     person: COMPANY_IDS.bev,
@@ -127,8 +138,8 @@ const STAFF: readonly StaffSeed[] = [
     name: 'Bev Tannock',
     title: 'Reception',
     username: 'btannock',
-    locked: false,
     desk: 'Reception, guarding the visitor biscuits',
+    lastLogon: 0,
   },
 ];
 
@@ -210,8 +221,21 @@ export function companySetup(): readonly SetupOp[] {
       kind: 'account',
       fields: {
         [FIELDS.username]: member.username,
-        [FIELDS.locked]: member.locked,
+        // Nobody is locked, disabled or expired in the SEED. Every account
+        // fault in this game arrives with the ticket that is about it, which
+        // is what puts the lockout in the machine's event log at the minute it
+        // happened instead of before the world started.
+        [FIELDS.locked]: false,
         [FIELDS.enabled]: true,
+        [FIELDS.passwordExpired]: false,
+        // Seeded rather than left absent for the reason the meters are: the op
+        // language moves a field it can read, and a counter that was never a
+        // number is a counter nothing can add to.
+        [FIELDS.badPwCount]: 0,
+        [FIELDS.pwMustChange]: false,
+        ...(member.lastLogon === undefined
+          ? {}
+          : { [FIELDS.lastLogon]: member.lastLogon }),
       },
     });
     addEdge(ops, {

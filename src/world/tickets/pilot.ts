@@ -7,6 +7,15 @@ import type { WorldTicket } from './types';
 const PRINTER_QUEUE_DEPTH = 47;
 
 /**
+ * How many wrong passwords this directory takes before it shuts the door.
+ *
+ * Written down because it is the number the account carries when the player
+ * reads it, and because the lockout story is only a story if the count in the
+ * directory and the count in the fiction are the same number.
+ */
+export const LOCKOUT_THRESHOLD = 5;
+
+/**
  * Pilot ticket 1 - hidden_cause. The reported symptom ("hacked") and the
  * faulty field (a rotated display) are not the same thing, which is the whole
  * genre in one ticket.
@@ -116,7 +125,24 @@ export const LOCKED_ACCOUNT: WorldTicket = {
         + 'never the problem.',
     },
     reporter: COMPANY_IDS.gary,
+    // The lockout as it actually happened, in the order it happened in: five
+    // failed attempts first thing, then the directory shutting the door. Both
+    // are in the graph rather than in the flavour text, because the directory
+    // and the event log are where a tech reads this - and because "3 bad
+    // attempts at 04:12 while they were away" is the whole diagnosis.
     setup: [
+      {
+        op: 'setField',
+        id: COMPANY_IDS.garyAccount,
+        field: FIELDS.badPwCount,
+        value: LOCKOUT_THRESHOLD,
+      },
+      {
+        op: 'setField',
+        id: COMPANY_IDS.garyAccount,
+        field: FIELDS.lockedSince,
+        value: 0,
+      },
       {
         op: 'setField',
         id: COMPANY_IDS.garyAccount,
@@ -134,8 +160,10 @@ export const LOCKED_ACCOUNT: WorldTicket = {
     reward: { reputation: 2, money: 8 },
     kb_ref: 'kb/account-lockout',
   },
-  cause: 'The lockout tripped while Gary was away and nothing has cleared it '
-    + 'since.',
+  cause: 'The lockout tripped this morning after five failed attempts and '
+    + 'nothing has cleared it since. Gary has been away a fortnight and has '
+    + 'not signed in once in that time, which is the other half of the story '
+    + 'the directory tells.',
   dialogue_ref: 'dialogue/locked-account',
   paths: [
     {
