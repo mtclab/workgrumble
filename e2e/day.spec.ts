@@ -88,7 +88,10 @@ test('walks a day from the morning brief to the scorecard', async ({
   await expect(page.getByTestId('scorecard-heading')).toContainText(
     'Day 1, clocking off',
   );
-  await expect(page.getByTestId('scorecard-arrived')).toHaveText('4');
+  // Four inherited plus the one the lead raised by mentioning it at 11:49.
+  await expect(page.getByTestId('scorecard-arrived')).toHaveText('5');
+  await expect(page.getByTestId('scorecard-caught')).toContainText('0 ·');
+  await expect(page.getByTestId('scorecard-consumables')).toContainText('£0.00');
   await expect(page.getByTestId('scorecard-net')).toContainText('£');
   // The pressure layer's own numbers, measured rather than promised.
   await expect(page.getByTestId('scorecard-stress')).toContainText(' of 100');

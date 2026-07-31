@@ -53,6 +53,42 @@ test('captures the day surfaces', async ({ page }) => {
   await page.screenshot({ path: 'test-results/visual/16-shift-taskbar.png' });
 });
 
+/**
+ * The M3 surfaces, which are the ones a reviewer has to LOOK at: a browser
+ * that has to read as a browser from 1998, a corridor that has to be
+ * unmissable, a desk that has to read as a desk, and a manager standing in a
+ * window. Captures only - the assertions live in `full-day.spec.ts`.
+ */
+test('captures the pressure surfaces', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  await page.keyboard.press('Space');
+  await page.getByTestId('login-password').fill('hunter2');
+  await page.getByTestId('login-submit').click();
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('close-brief').click();
+  await page.getByTestId('day-speed-4').click();
+
+  await openFromStartMenu(page, 'browser');
+  await page.getByTestId('browser-site-forum').click();
+  await page.screenshot({ path: 'test-results/visual/17-browser-forum.png' });
+  await page.getByTestId('browser-site-cats').click();
+  await page.screenshot({ path: 'test-results/visual/18-browser-cats.png' });
+
+  // Two cans on the desk, and the corridor about to happen: 216 is the first
+  // telegraph of day one on the shipped seed.
+  await page.getByTestId('desk-drink').click();
+  await page.clock.runFor((150 * 1_000) / 4);
+  await page.getByTestId('desk-drink').click();
+  await page.screenshot({ path: 'test-results/visual/19-desk.png' });
+
+  await page.clock.runFor((6 * 1_000) / 4);
+  await page.screenshot({ path: 'test-results/visual/20-telegraph.png' });
+
+  await page.clock.runFor((6 * 1_000) / 4);
+  await page.screenshot({ path: 'test-results/visual/21-caught.png' });
+});
+
 test('captures the chat, mail, KB and remote surfaces', async ({ page }) => {
   await logIn(page);
 

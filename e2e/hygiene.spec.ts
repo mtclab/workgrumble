@@ -84,6 +84,34 @@ test('completes a full session with no console errors and no runtime requests', 
     'true',
   );
 
+  // The other slack app, both of its pages, and the way back to the
+  // bookmarks. Nothing here may reach the network, which is the joke.
+  await openFromStartMenu(page, 'browser');
+  await page.getByTestId('browser-site-forum').click();
+  await expect(page.getByTestId('browser-thread')).toContainText('MOWER WONT');
+  await page.getByTestId('browser-site-cats').click();
+  await expect(page.getByTestId('browser-hits')).toContainText('visitor');
+  await page.getByTestId('browser-home-button').click();
+  await expect(page.getByTestId('browser-home')).toBeVisible();
+
+  // The desk. Neither item is available before nine, and both say why
+  // rather than sitting there dead.
+  const canOfSomething = page.getByTestId('desk-drink');
+  await expect(canOfSomething).toBeDisabled();
+  await expect(canOfSomething).toHaveAttribute('title', /not on shift/);
+  const beer = page.getByTestId('desk-beer');
+  await expect(beer).toBeDisabled();
+  await expect(beer).toHaveAttribute('title', /probation/);
+  await expect(page.getByTestId('desk-empties')).toBeHidden();
+  await expect(page.getByTestId('desk-tidy')).toBeHidden();
+
+  // The caught scene, opened cold from the start menu: it says nothing has
+  // happened rather than inventing a telling-off, and it closes.
+  await openFromStartMenu(page, 'caught');
+  await expect(page.getByTestId('caught-heading')).toHaveText('Nothing to report');
+  await page.getByTestId('caught-dismiss').click();
+  await expect(page.getByTestId('window-caught')).toHaveCount(0);
+
   // Helpdesk apps: queue, directory and terminal each reach the world once.
   await openFromStartMenu(page, 'tickets');
   await page.getByTestId('ticket-row-locked-account').click();

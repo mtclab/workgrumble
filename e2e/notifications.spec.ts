@@ -80,18 +80,24 @@ test('delivers engine notifications raised before the desktop existed', async ({
   await expect(page.getByTestId('desktop')).toBeVisible();
 
   // The alarm is waiting on the desk: toast, badge and history all carry it.
+  // The shift ran on without anybody logged on, so the lead has been round
+  // and raised his usual concern in the meantime - what matters here is that
+  // the breach raised at 12:00 survived a login screen, not that it was the
+  // only thing that happened.
   const toasts = page.getByTestId('toast');
   await expect(toasts.filter({ hasText: 'SLA breached' })).toHaveCount(1);
-  await expect(page.getByTestId('notification-badge')).toHaveAttribute(
+  await expect(page.getByTestId('notification-badge')).not.toHaveAttribute(
     'data-unread',
-    '1',
+    '0',
   );
 
   await page.getByTestId('notification-tray').click();
   const panel = page.getByTestId('notification-panel');
   await expect(panel).toBeVisible();
   await expect(panel).toContainText('SLA breached');
-  await expect(page.getByTestId('notification-panel-item')).toHaveCount(1);
+  await expect(
+    page.getByTestId('notification-panel-item').filter({ hasText: 'SLA breached' }),
+  ).toHaveCount(1);
 
   // Doing the work late does not un-breach the ticket. The queue keeps the
   // marker, the detail keeps it, and the day's tally keeps counting it -

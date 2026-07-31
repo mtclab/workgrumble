@@ -1,5 +1,5 @@
 import { loadEngine } from './engine-api';
-import { AppStateStore } from './shell/app-state';
+import { type AppState, AppStateStore } from './shell/app-state';
 import { APP_MANIFEST } from './shell/apps';
 import { pingBossThread } from './shell/boss-thread';
 import type { ShellContext } from './shell/context';
@@ -9,6 +9,28 @@ import { Shell } from './shell/shell';
 import { COMPANY, COMPANY_IDS } from './world/company';
 import { createWorldSession, WORLD_SEED } from './world/session';
 import { ticketTitle } from './world/tickets';
+
+/**
+ * A read-only window onto the running session, for the journey gate.
+ *
+ * The full-day test has to prove that a save and a reload land on the SAME
+ * world, and "the same world" is a graph hash - a number no screen shows and
+ * no screen should. Everything here reads; nothing dispatches, advances a
+ * clock or writes a field, so the worst a player can do with it is find out
+ * what their own save already knows.
+ */
+export interface SimDebug {
+  /** The graph hash: the whole world in sixteen characters. */
+  hash(): string;
+  /** Simulation tick, which the taskbar clock only shows to the minute. */
+  tick(): number;
+  /** What the apps were showing, as the save would carry it. */
+  screens(): AppState;
+}
+
+declare global {
+  var careerSim: SimDebug | undefined;
+}
 
 function mountPoint(): HTMLElement {
   const host = document.getElementById('app');
@@ -135,6 +157,12 @@ async function boot(): Promise<void> {
         `${ticketTitle(event.id)} - it is in the queue, and it is yours.`,
       );
     }
+  });
+
+  globalThis.careerSim = Object.freeze({
+    hash: () => engine.snapshotHash(),
+    tick: () => engine.now(),
+    screens: () => appState.snapshot(),
   });
 
   shell.start();
