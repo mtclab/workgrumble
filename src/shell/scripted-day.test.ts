@@ -452,6 +452,41 @@ const GOLDEN_DAY = {
   hash: 'b7bfd3b19d73b1f3',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
+  /** The meters partway through, where a changed rate is still legible. */
+  onTheWay: {
+    // 09:45. The browser has been up since five past and nothing has been
+    // closed, but the queue is still inside what a person can hold.
+    105: {
+      stress: 2,
+      suspicion: 34,
+      reputation: 50,
+      suspicion_events: 7,
+      caught_events: 0,
+      breaches_charged: 0,
+      resolve_credit_paid: 0,
+      consumable_spend: 0,
+      desk_cans: 0,
+      drink_started_at: -1,
+      drink_tolerance: 0,
+      drink_crash_charged: -1,
+    },
+    // 11:00. One can open, the screen clean since twenty to ten, and the
+    // queue charging for itself every interval.
+    180: {
+      stress: 38,
+      suspicion: 19,
+      reputation: 50,
+      suspicion_events: 7,
+      caught_events: 0,
+      breaches_charged: 0,
+      resolve_credit_paid: 0,
+      consumable_spend: 120,
+      desk_cans: 1,
+      drink_started_at: 120,
+      drink_tolerance: 1,
+      drink_crash_charged: 120,
+    },
+  } as Record<string, Record<string, number>>,
   /** Every number the pressure layer ended the day holding. */
   atSeventeen: {
     // Two cans, two conversations with the lead and a queue nobody closed.
@@ -501,9 +536,40 @@ describe('the same day, twice', () => {
     slackFrom(SECOND_VISIT.telegraphTick - 6, ['browser']),
   ];
 
+  /**
+   * Minutes the meters are read on the way through, before anything has had
+   * time to pin itself to the top of its range.
+   *
+   * The end-of-day snapshot alone is not enough to hold a RATE: stress spends
+   * the back half of this day against its ceiling, so doubling what a ticket
+   * in the queue is worth per interval changes nothing anybody can read at
+   * 17:00. These two are taken while there is still room to move.
+   */
+  const PROBE_TICKS: readonly number[] = [
+    shiftStartTick(1) + 45,
+    shiftStartTick(1) + 120,
+  ];
+
+  function probeAt(
+    tick: number,
+    into: Record<string, Record<string, number>>,
+  ): Move {
+    return {
+      atTick: tick,
+      label: `read the meters at ${String(tick)}`,
+      play: (day) => {
+        into[String(tick)] = Object.fromEntries(
+          PRESSURE_FIELDS.map((field) => [field, meter(day, field)]),
+        );
+      },
+    };
+  }
+
   interface Walked {
     readonly hash: string;
     readonly tick: number;
+    /** The meters partway through, where they are still free to move. */
+    readonly onTheWay: Record<string, Record<string, number>>;
     /** What the day END looked like, before clocking off cleared the counts. */
     readonly atSeventeen: Record<string, number>;
     readonly banked: number;
@@ -536,7 +602,11 @@ describe('the same day, twice', () => {
   ];
 
   function walk(moves: readonly Move[]): Walked {
-    const day = playShift(startDay(), moves);
+    const onTheWay: Record<string, Record<string, number>> = {};
+    const day = playShift(startDay(), [
+      ...moves,
+      ...PROBE_TICKS.map((tick) => probeAt(tick, onTheWay)),
+    ]);
     expect(day.driver.state()).toBe('day_end');
 
     const atSeventeen = Object.fromEntries(
@@ -548,6 +618,7 @@ describe('the same day, twice', () => {
     return {
       hash: day.engine.snapshotHash(),
       tick: day.engine.now(),
+      onTheWay,
       atSeventeen,
       banked: meter(day, FIELDS.farmFund),
       caught: day.caught.length,
@@ -586,6 +657,7 @@ describe('the same day, twice', () => {
 
     expect(walked.hash).toBe(GOLDEN_DAY.hash);
     expect(walked.tick).toBe(GOLDEN_DAY.tick);
+    expect(walked.onTheWay).toEqual(GOLDEN_DAY.onTheWay);
     expect(walked.atSeventeen).toEqual(GOLDEN_DAY.atSeventeen);
     expect(walked.banked).toBe(GOLDEN_DAY.banked);
     expect(walked.timeline).toEqual(GOLDEN_DAY.timeline);
