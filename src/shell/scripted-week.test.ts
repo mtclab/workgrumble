@@ -10,11 +10,16 @@
  * o'clock on Friday that reads it. Every one of those is a place where a
  * change could be invisible on any single day and wrong by Friday.
  *
- * Two weeks are walked. The WORKED week closes what arrives, using the paths
- * the content itself advertises, and passes the review; the IDLE week touches
- * nothing and is fired. Both are pinned to committed numbers, because two runs
- * agreeing only proves the run is repeatable - a changed rate moves both of
- * them together and sails through.
+ * Two weeks are walked for the golden. The WORKED week closes what arrives,
+ * using the paths the content itself advertises, and passes the review; the
+ * IDLE week touches nothing and is fired. Both are pinned to committed numbers,
+ * because two runs agreeing only proves the run is repeatable - a changed rate
+ * moves both of them together and sails through.
+ *
+ * Three more are walked for BALANCE, at the bottom of the file: half the
+ * roster, the whole roster with the forum open all week, and both at once. The
+ * question there is different - not "does the week replay" but "can the review
+ * tell these apart" - and the answer is a committed table rather than a hash.
  *
  * Nothing below touches the DOM, so the real driver runs exactly as it does in
  * the browser, minus the browser.
@@ -32,6 +37,7 @@ import { createWorldSession } from '../world/session';
 import { findWorldTicket } from '../world/tickets';
 import {
   REVIEW_DAY,
+  REVIEW_PASS_REPUTATION,
   type ReviewOutcome,
   type WeekScorecard,
 } from '../world/week';
@@ -124,9 +130,12 @@ function runTo(world: Week, tick: number): void {
  * ticket whose advertised path changes is a ticket this week still closes -
  * and a ticket whose path stops working is a week that stops passing.
  */
-function workTheQueue(world: Week): void {
+function workTheQueue(
+  world: Week,
+  skip: (id: string) => boolean = () => false,
+): void {
   for (const ticket of world.engine.graph.nodesOfKind('ticket')) {
-    if (!isUnresolved(ticket)) {
+    if (!isUnresolved(ticket) || skip(ticket.id)) {
       continue;
     }
 
@@ -225,6 +234,58 @@ function idleWeek(world: Week, day: number): void {
   if (day === 2) {
     show(world, ['bubbles']);
   }
+}
+
+/* -- the balance profiles -------------------------------------------------- */
+
+/**
+ * Half the roster, decided by the ticket's own id and therefore decided ONCE.
+ *
+ * "Every other one I come across" is not half a week's work - the second sweep
+ * picks up what the first skipped, and the profile quietly becomes the worked
+ * week with a delay in it (measured: 22 of 23 closed). A ticket this skips is
+ * a ticket nobody ever touches, which is what doing half the job looks like.
+ */
+function halfTheRoster(id: string): boolean {
+  let total = 0;
+
+  for (const character of id) {
+    total += character.charCodeAt(0);
+  }
+
+  return total % 2 === 1;
+}
+
+/** The three sweeps of the worked week, over whatever the profile allows. */
+function sweeps(
+  world: Week,
+  day: number,
+  skip?: (id: string) => boolean,
+): void {
+  const start = shiftStartTick(day);
+
+  runTo(world, start + 90);
+  workTheQueue(world, skip);
+  runTo(world, start + 240);
+  workTheQueue(world, skip);
+  runTo(world, start + 400);
+  workTheQueue(world, skip);
+}
+
+function halfWeek(world: Week, day: number): void {
+  sweeps(world, day, halfTheRoster);
+}
+
+/** The queue worked properly, with the forum open behind it all week. */
+function slackWeek(world: Week, day: number): void {
+  show(world, ['browser']);
+  sweeps(world, day);
+}
+
+/** And both at once: half the job, done with the browser up. */
+function slackHalfWeek(world: Week, day: number): void {
+  show(world, ['browser']);
+  sweeps(world, day, halfTheRoster);
 }
 
 interface GoldenWeek {
@@ -446,5 +507,165 @@ describe('the probation week, twice', () => {
 
   it('lands on the golden week that was not', () => {
     expectGolden(walk(idleWeek), GOLDEN_IDLE);
+  });
+});
+
+/**
+ * Balance, from playing rather than from a spreadsheet.
+ *
+ * Five weeks, played five ways, put through the shipped driver and read at the
+ * one moment that decides anything: three o'clock on Friday, when the lead
+ * looks at one number. What is being asked is not "is the number right" - it
+ * is whether the number can tell these five apart, because a threshold that
+ * everybody clears is a review nobody sits, and one that nobody clears is a
+ * game with one ending.
+ *
+ * The answer is a two-by-two and a floor. There are two ways to lose this job -
+ * miss the work, or be seen not doing it - and the week forgives EITHER of
+ * them on its own and neither of them together:
+ *
+ *   worked properly ............ 23 of 23, no breaches ..... 100, passed
+ *   half the roster ............ 13 of 22, ten breaches ..... 69, passed
+ *   worked, browser up all week . 23 of 23, caught 15 times .. 50, passed
+ *   half the roster, browser up . 13 of 22, caught 15 times ... 0, FIRED
+ *   nothing at all .............. 0 of 22, everything late .... 0, FIRED
+ *
+ * with the line at 40. Nothing was tuned to produce that: these are the rates
+ * as M3 and M4 left them, and the table is committed here so that a change to
+ * any of them shows up as a diff in a shape rather than as a number in a file.
+ *
+ * The one thing it says about the design, which is a note rather than a bug:
+ * a properly worked week reaches the reputation CEILING by about Wednesday, so
+ * the last two days of it are invisible to the review. That is a meter-model
+ * question, not a rate.
+ */
+describe('the week at four skill levels', () => {
+  interface Profile {
+    readonly name: string;
+    readonly play: (world: Week, day: number) => void;
+    readonly closed: number;
+    readonly breached: number;
+    readonly reputation: number;
+    readonly outcome: ReviewOutcome;
+    readonly caught: number;
+  }
+
+  const PROFILES: readonly Profile[] = [
+    {
+      name: 'worked properly',
+      play: workedWeek,
+      closed: 23,
+      breached: 0,
+      reputation: 100,
+      outcome: 'passed',
+      // One browser, on the Wednesday, hidden before the second round - and
+      // found once, which is the week's own texture rather than a profile.
+      caught: 1,
+    },
+    {
+      name: 'half the roster',
+      play: halfWeek,
+      closed: 13,
+      breached: 10,
+      reputation: 69,
+      outcome: 'passed',
+      caught: 0,
+    },
+    {
+      name: 'worked, with the browser up all week',
+      play: slackWeek,
+      closed: 23,
+      breached: 0,
+      reputation: 50,
+      outcome: 'passed',
+      caught: 15,
+    },
+    {
+      name: 'half the roster, with the browser up all week',
+      play: slackHalfWeek,
+      closed: 13,
+      breached: 10,
+      reputation: 0,
+      outcome: 'fired',
+      caught: 15,
+    },
+    {
+      name: 'nothing at all',
+      play: idleWeek,
+      closed: 0,
+      breached: 22,
+      reputation: 0,
+      outcome: 'fired',
+      // A game of Bubble Break left up from the Tuesday morning, found on
+      // every round of the corridor for the rest of the week.
+      caught: 12,
+    },
+  ];
+
+  const walked = new Map<string, WalkedWeek>();
+
+  beforeAll(() => {
+    for (const profile of PROFILES) {
+      walked.set(profile.name, walk(profile.play));
+    }
+  });
+
+  const reputationOf = (name: string): number => {
+    const week = walked.get(name);
+    expect(week).toBeDefined();
+    return week?.meters[FIELDS.reputation] ?? Number.NaN;
+  };
+
+  it.each(PROFILES)('plays $name the way it says', (profile) => {
+    const week = walked.get(profile.name);
+    expect(week).toBeDefined();
+    expect(week?.card.closed).toBe(profile.closed);
+    expect(week?.card.breached).toBe(profile.breached);
+    expect(week?.meters[FIELDS.reputation]).toBe(profile.reputation);
+    expect(
+      week?.timeline.filter((line) => line.startsWith('caught:')),
+    ).toHaveLength(profile.caught);
+  });
+
+  it('sends the two who did neither home, and keeps the other three', () => {
+    for (const profile of PROFILES) {
+      expect(walked.get(profile.name)?.outcome, profile.name)
+        .toBe(profile.outcome);
+    }
+
+    // The threshold is what decided all five, and it decided them by the
+    // number rather than by anything the profiles were told.
+    for (const profile of PROFILES) {
+      const reputation = reputationOf(profile.name);
+
+      if (profile.outcome === 'passed') {
+        expect(reputation, profile.name)
+          .toBeGreaterThanOrEqual(REVIEW_PASS_REPUTATION);
+      } else {
+        expect(reputation, profile.name).toBeLessThan(REVIEW_PASS_REPUTATION);
+      }
+    }
+  });
+
+  /**
+   * And they are separated in the right ORDER, with room between them. Two
+   * profiles landing on the same number would pass every assertion above while
+   * telling the player nothing: the week has to be able to tell "did the work"
+   * from "did half of it" from "did it with the forum open".
+   */
+  it('marks the week down for each thing that went wrong', () => {
+    const worked = reputationOf('worked properly');
+    const half = reputationOf('half the roster');
+    const slacked = reputationOf('worked, with the browser up all week');
+    const both = reputationOf('half the roster, with the browser up all week');
+
+    expect(worked).toBeGreaterThan(half);
+    expect(half).toBeGreaterThan(slacked);
+    expect(slacked).toBeGreaterThan(both);
+    // A margin rather than a tie-break: ten points is a bad day, and these are
+    // meant to be different weeks.
+    expect(worked - half).toBeGreaterThanOrEqual(10);
+    expect(half - slacked).toBeGreaterThanOrEqual(10);
+    expect(slacked - both).toBeGreaterThanOrEqual(10);
   });
 });
