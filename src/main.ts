@@ -4,10 +4,11 @@ import { APP_MANIFEST } from './shell/apps';
 import { pingBossThread } from './shell/boss-thread';
 import type { ShellContext } from './shell/context';
 import { DayDriver, DRIVER_INTERVAL_MS } from './shell/day-driver';
+import { carryFrom, hydrateFromRetry, RetrySlot } from './shell/retry';
 import { createShellSession, SaveSlot } from './shell/save';
 import { Shell } from './shell/shell';
 import { COMPANY, COMPANY_IDS } from './world/company';
-import { createWorldSession, WORLD_SEED } from './world/session';
+import { createWorldSession, FIRST_WEEK } from './world/session';
 import { ticketTitle } from './world/tickets';
 
 /**
@@ -47,15 +48,27 @@ async function boot(): Promise<void> {
   // Same-origin, alongside the bundle, and nothing renders until it is here.
   await loadEngine();
 
-  const { engine, tier } = createWorldSession();
+  // A week that was played before and ended badly leaves exactly three things
+  // behind: the fund, what had been read, and which attempt this is. Reading
+  // the slot CLEARS it - a carry-over is used once, by the week it starts.
+  const retry = new RetrySlot(window.localStorage);
+  const carried = retry.take();
+  const { engine, tier, seed } = createWorldSession(
+    carried === null ? FIRST_WEEK : carryFrom(carried),
+  );
   // The apps' own memory - transcripts, unread flags, the article that was
   // open. It outlives their windows and the save carries it.
   const appState = new AppStateStore();
+
+  if (carried !== null) {
+    hydrateFromRetry(appState, carried);
+  }
+
   const slot = new SaveSlot(window.localStorage);
   // The only place real time becomes simulation time. Pause and speed live
   // here rather than in the engine, whose clock counts whole ticks and nothing
   // else - which is what makes a day replayable.
-  const day = new DayDriver(engine, COMPANY_IDS.player, WORLD_SEED, {
+  const day = new DayDriver(engine, COMPANY_IDS.player, seed, {
     // The day boundary is the cheapest save there is: the log has just been
     // checkpointed, so the file carries a baseline and an empty history. The
     // hook runs a whole day after this line, by which time `session` exists.
@@ -95,9 +108,55 @@ async function boot(): Promise<void> {
           : `${ping.line} It is now a ticket, because you made it one.`,
       );
     },
+    // Friday at three. The world has already decided - the verb is guarded on
+    // the one number that decides it - so what is left is the conversation.
+    onReview: (outcome) => {
+      shell.openApp('review');
+      shell.notify(
+        outcome === 'passed' ? 'Probation over' : 'A quick word',
+        outcome === 'passed'
+          ? 'The lead has had a look at the week and the week is fine. Not '
+            + 'brilliant. Fine.'
+          : 'The lead would like a word in the room with the blind that does '
+            + 'not go all the way down.',
+      );
+    },
+    // Five o'clock on a Friday that went well.
+    onBeerUnlocked: () => {
+      shell.openApp('beer');
+      shell.notify(
+        'There is one in the fridge',
+        'With your name on it, allegedly. The probation is over, which is '
+          + 'what the lock on it has been about all week.',
+      );
+    },
+    onWeekEnd: (outcome) => {
+      shell.openApp('weekend');
+      shell.notify(
+        'That is the week',
+        outcome === 'passed'
+          ? 'Five days, one review and a fund that has moved. Week two is '
+            + 'Monday.'
+          : 'Five days and a short conversation. The fund is still yours, '
+            + 'which is the only part of this they cannot take back.',
+      );
+    },
   });
 
-  const session = createShellSession({ engine, appState, day, slot });
+  const session = createShellSession({
+    engine,
+    appState,
+    day,
+    slot,
+    retry,
+    actor: COMPANY_IDS.player,
+    // A world that never happened cannot be un-happened in place: the retry
+    // has been written down, so the cheapest honest way to build the week
+    // again is to start the page again.
+    restart: () => {
+      window.location.reload();
+    },
+  });
 
   const context: ShellContext = {
     manifest: APP_MANIFEST,

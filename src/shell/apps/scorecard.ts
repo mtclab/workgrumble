@@ -11,6 +11,7 @@ import {
 import { FIELDS } from '../../world/fields';
 import { STARTING_REPUTATION } from '../../world/meters';
 import { cellLabel } from '../../world/priority';
+import { isReviewDay } from '../../world/week';
 import { ticketClocks } from '../../world/sla';
 import { misclassifiedTickets, ticketKey } from './tickets';
 import type { AppDef, AppInstance, GameApi } from './types';
@@ -315,6 +316,10 @@ export const SCORECARD_APP: AppDef = {
       renderPay(slip);
       renderFarm(scored ? banked + slip.net : banked);
 
+      // Friday is not a day like the others: there is no tomorrow morning to
+      // start, so clocking off ends the week and puts the week's own screen up.
+      const lastDay = isReviewDay(day);
+      clockOff.textContent = lastDay ? 'Clock off for the week' : 'Clock off';
       setAvailability(
         clockOff,
         scored
@@ -322,7 +327,10 @@ export const SCORECARD_APP: AppDef = {
           : 'Clocking off is for the end of a day. This one is still on.',
       );
       note.textContent = scored
-        ? 'Clocking off banks the take-home and starts tomorrow morning.'
+        ? lastDay
+          ? 'That is the week. Clocking off banks the last of it and adds the '
+            + 'five days up.'
+          : 'Clocking off banks the take-home and starts tomorrow morning.'
         : 'Come back at 17:00. It will be here, and so will the queue.';
     };
 

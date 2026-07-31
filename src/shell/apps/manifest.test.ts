@@ -71,7 +71,10 @@ describe('shipped manifest', () => {
     expect(APP_MANIFEST.map(({ id }) => id)).toEqual([
       'brief',
       'scorecard',
+      'weekend',
       'caught',
+      'review',
+      'beer',
       'tickets',
       'directory',
       'remote',
@@ -103,7 +106,10 @@ describe('shipped manifest', () => {
     expect(appsForTier(APP_MANIFEST, 1).map(({ id }) => id)).toEqual([
       'brief',
       'scorecard',
+      'weekend',
       'caught',
+      'review',
+      'beer',
       'tickets',
       'directory',
       'remote',
@@ -126,10 +132,12 @@ describe('shipped manifest', () => {
   it('keeps the day screens off the desktop and in the start menu', () => {
     const hidden = APP_MANIFEST.filter((app) => app.desktop === false);
     expect(hidden.map(({ id }) => id))
-      .toEqual(['brief', 'scorecard', 'caught']);
+      .toEqual(['brief', 'scorecard', 'weekend', 'caught', 'review', 'beer']);
+
+    const dayScreens = new Set(hidden.map(({ id }) => id));
 
     for (const app of APP_MANIFEST) {
-      if (app.id !== 'brief' && app.id !== 'scorecard' && app.id !== 'caught') {
+      if (!dayScreens.has(app.id)) {
         expect(app.desktop, app.id).not.toBe(false);
       }
     }
@@ -139,7 +147,10 @@ describe('shipped manifest', () => {
     for (const id of [
       'brief',
       'scorecard',
+      'weekend',
       'caught',
+      'review',
+      'beer',
       'tickets',
       'directory',
       'remote',

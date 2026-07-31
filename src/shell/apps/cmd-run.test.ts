@@ -43,6 +43,7 @@ function apiFor(
     openApp: () => {},
     closeApp: () => {},
     hasApp: () => false,
+    restartWeek: () => {},
     actor,
   };
 }

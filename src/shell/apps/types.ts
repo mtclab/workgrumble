@@ -85,6 +85,15 @@ export interface GameApi {
   closeApp(id: string): void;
   /** True when an app is installed at the current tier, for cross-app links. */
   hasApp(id: string): boolean;
+  /**
+   * Plays the probation week again after a firing.
+   *
+   * It is a SESSION verb rather than a world one: the world it would change is
+   * the one being thrown away. What survives is written to its own slot and
+   * the shell starts again from nothing, which is the only honest way to build
+   * a world that has never happened.
+   */
+  restartWeek(): void;
   /** The person node the shell dispatches actions as. */
   readonly actor: string;
 }

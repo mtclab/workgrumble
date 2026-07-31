@@ -504,7 +504,13 @@ export class DayDriver implements DayApi {
     const day = this.day();
 
     if (isReviewDay(day)) {
-      this.endWeek(day);
+      // A week that has already ended stays ended. The button is still on the
+      // screen - the scorecard does not vanish when it is pressed - and a
+      // second press must be a no-op rather than a refusal the driver throws.
+      if (!this.weekEnded()) {
+        this.endWeek(day);
+      }
+
       return;
     }
 

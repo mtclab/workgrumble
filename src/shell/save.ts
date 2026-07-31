@@ -13,12 +13,14 @@
  * to be rubbish costs the player a click rather than the session they were in.
  */
 
-import type { EngineApi } from '../engine-api';
+import type { EngineApi, NodeId } from '../engine-api';
 import type { AppState, AppStateStore } from './app-state';
 import { parseAppState } from './app-state';
 import { formatSimTime } from './clock-format';
 import type { DriverSaveSeam, DriverState } from './day-driver';
 import { parseDriverState } from './day-driver';
+import { recordFrom, type RetrySlot } from './retry';
+import { FIELDS } from '../world/fields';
 
 /**
  * The shape written today. Bumped when the file's meaning changes.
@@ -224,6 +226,15 @@ export interface ShellSessionApi {
   save(): SaveOutcome;
   load(): SaveOutcome;
   hasSave(): boolean;
+  /**
+   * Plays the week again after a firing: writes down what survives it - the
+   * farm fund, what had been read, which attempt the next one is - throws the
+   * save away, and starts the session over.
+   *
+   * The restart itself is the caller's, because it is a fact about the page
+   * rather than about the world: this half is the part a test can drive.
+   */
+  retryWeek(): SaveOutcome;
 }
 
 export interface SessionParts {
@@ -231,6 +242,12 @@ export interface SessionParts {
   readonly appState: AppStateStore;
   readonly day: DriverSaveSeam;
   readonly slot: SaveSlot;
+  /** Where the one thing that survives a firing is written down. */
+  readonly retry: RetrySlot;
+  /** The node the week's fund and attempt number live on. */
+  readonly actor: NodeId;
+  /** What the shell does once a retry has been written: reload, usually. */
+  restart(): void;
 }
 
 /**
@@ -244,7 +261,13 @@ export interface SessionParts {
 export function createShellSession(
   parts: Readonly<SessionParts>,
 ): ShellSessionApi {
-  const { engine, appState, day, slot } = parts;
+  const { engine, appState, day, slot, retry, actor } = parts;
+  const number = (field: string): number => {
+    const value = engine.graph.getField(actor, field);
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : 0;
+  };
 
   return {
     save: (): SaveOutcome => {
@@ -291,5 +314,29 @@ export function createShellSession(
     },
 
     hasSave: (): boolean => slot.exists(),
+
+    /**
+     * The order matters. The carry-over is written FIRST, because it is the
+     * only thing worth keeping; the save goes next, because it describes a
+     * world nobody is going back to; and the restart is last, because after it
+     * nothing in this session runs again. A failure to write the carry-over
+     * stops all three - a retry that silently lost the fund would be the one
+     * joke this game cannot afford to get wrong.
+     */
+    retryWeek: (): SaveOutcome => {
+      const written = retry.write(recordFrom(
+        number(FIELDS.weekAttempt),
+        number(FIELDS.farmFund),
+        appState.snapshot(),
+      ));
+
+      if (!written.ok) {
+        return written;
+      }
+
+      slot.clear();
+      parts.restart();
+      return { ok: true, value: undefined };
+    },
   };
 }

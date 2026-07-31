@@ -1,5 +1,6 @@
 import { assertCaughtScenes } from '../../world/scenes';
 import { ABOUT_APP } from './about';
+import { BEER_APP } from './beer';
 import { BRIEF_APP } from './brief';
 import { BROWSER_APP } from './browser';
 import { BUBBLES_APP } from './bubbles';
@@ -11,8 +12,10 @@ import { KB_APP } from './kb';
 import { MAIL_APP } from './mail';
 import { loadManifest } from './manifest';
 import { REMOTE_APP } from './remote';
+import { REVIEW_APP } from './review';
 import { SCORECARD_APP } from './scorecard';
 import { TICKETS_APP } from './tickets';
+import { WEEKEND_APP } from './weekend';
 
 /**
  * The installed app roster, in taskbar and start-menu order: the day's own
@@ -29,7 +32,10 @@ import { TICKETS_APP } from './tickets';
 export const APP_MANIFEST = assertCaughtScenes(loadManifest([
   BRIEF_APP,
   SCORECARD_APP,
+  WEEKEND_APP,
   CAUGHT_APP,
+  REVIEW_APP,
+  BEER_APP,
   TICKETS_APP,
   DIRECTORY_APP,
   REMOTE_APP,

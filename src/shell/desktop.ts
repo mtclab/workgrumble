@@ -152,6 +152,11 @@ export class Desktop {
       tidy: () => {
         this.tidyDesk();
       },
+      // The bottle opens the scene rather than swallowing a dispatch: it is
+      // the payoff for a week of locked tooltip, and it deserves the window.
+      beer: () => {
+        this.openApp('beer');
+      },
     });
 
     this.surface.append(
@@ -334,6 +339,9 @@ export class Desktop {
         this.closeWindowIfOpen(id);
       },
       hasApp: (id) => this.apps.some((app) => app.id === id),
+      restartWeek: () => {
+        this.restartWeek();
+      },
       actor: context.user.node,
     };
 
@@ -1127,6 +1135,8 @@ export class Desktop {
         startedAt: read(FIELDS.drinkStartedAt),
         tolerance: read(FIELDS.drinkTolerance),
         cans: read(FIELDS.deskCans),
+        beerUnlocked: read(FIELDS.beerUnlocked),
+        beerOpened: read(FIELDS.beerOpened),
       },
       now,
       onShift,
@@ -1171,6 +1181,20 @@ export class Desktop {
     if (boss.phase === 'present') {
       this.bossChip.textContent = 'He is here';
       this.bossChip.title = 'The lead is at your shoulder, being encouraging.';
+    }
+  }
+
+  /**
+   * Playing the week again after a firing. The session writes down the two
+   * things that survive it and the page starts from nothing - a world that
+   * never happened cannot be un-happened in place, and a half-rebuilt one is
+   * worse than a reload.
+   */
+  private restartWeek(): void {
+    const outcome = this.context.session.retryWeek();
+
+    if (!outcome.ok) {
+      this.notify('Not starting again', outcome.reason);
     }
   }
 

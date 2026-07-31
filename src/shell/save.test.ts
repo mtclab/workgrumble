@@ -8,6 +8,8 @@ import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS } from '../world/fields';
 import { createWorldSession, WORLD_SEED } from '../world/session';
+import { spawnWorldTicket } from '../world/tickets';
+import { RetrySlot } from './retry';
 import { AppStateStore } from './app-state';
 import { DayDriver } from './day-driver';
 import {
@@ -65,6 +67,9 @@ interface Session {
   readonly driver: DayDriver;
   readonly session: ShellSessionApi;
   readonly storage: MemoryStorage;
+  readonly retry: RetrySlot;
+  /** How many times the session asked the shell to start over. */
+  readonly restarts: () => number;
 }
 
 function session(storage: MemoryStorage = new MemoryStorage()): Session {
@@ -76,14 +81,28 @@ function session(storage: MemoryStorage = new MemoryStorage()): Session {
     focusedSlackApp: () => null,
   });
   const slot = new SaveSlot(storage);
+  const retry = new RetrySlot(storage);
+  let restarts = 0;
 
   return {
     engine,
     appState,
     driver,
     storage,
+    retry,
+    restarts: () => restarts,
     // The shipped wiring, not a copy of it.
-    session: createShellSession({ engine, appState, day: driver, slot }),
+    session: createShellSession({
+      engine,
+      appState,
+      day: driver,
+      slot,
+      retry,
+      actor: COMPANY_IDS.player,
+      restart: () => {
+        restarts += 1;
+      },
+    }),
   };
 }
 
@@ -91,6 +110,7 @@ function session(storage: MemoryStorage = new MemoryStorage()): Session {
 function workUntilMidday(live: Session): void {
   live.driver.startShift();
   live.driver.setSpeed(2);
+  spawnWorldTicket(live.engine, 'ticket:fan-noise');
   live.driver.step(60_000);
 
   expect(

@@ -13,6 +13,7 @@
 
 import {
   BEER_TOOLTIP,
+  BEER_UNLOCKED_TOOLTIP,
   DRINK_LABELS,
   DRINK_PRICE_PENCE,
   type DrinkPhase,
@@ -34,11 +35,17 @@ export interface DeskState {
   readonly blocked: string | null;
   /** What the can says about itself while it can still be opened. */
   readonly tooltip: string;
+  /** Null once the probation is over; otherwise why the beer is locked. */
+  readonly beerBlocked: string | null;
+  /** Whether the one with your name on it has already been had. */
+  readonly beerOpened: boolean;
 }
 
 export interface DeskHandlers {
   drink(): void;
   tidy(): void;
+  /** The bottle. It opens a scene rather than swallowing a dispatch. */
+  beer(): void;
 }
 
 /** How the desk reads a can that is about to be opened, for the tooltip. */
@@ -68,6 +75,8 @@ export class Desk {
   private readonly drinkButton: HTMLButtonElement;
   private readonly drinkLabel: HTMLElement;
   private readonly beerButton: HTMLButtonElement;
+  private readonly beerLabel: HTMLElement;
+  private readonly beerLock: SVGElement;
   private readonly empties: HTMLElement;
   private readonly tidyButton: HTMLButtonElement;
 
@@ -87,14 +96,19 @@ export class Desk {
     });
 
     // Visible, locked, and it says why when you go near it. A locked thing
-    // nobody can see is not a locked thing, it is an absent one.
+    // nobody can see is not a locked thing, it is an absent one - and the lock
+    // is the setup for the one moment on Friday that pays it off.
     this.beerButton = element('button', 'desk-item desk-item-locked', 'desk-beer');
     this.beerButton.type = 'button';
     this.beerButton.append(createIcon('icon-beer'));
-    const beerLabel = element('span', 'desk-item-label');
-    beerLabel.textContent = 'Beer';
-    this.beerButton.append(beerLabel, createIcon('icon-lock'));
+    this.beerLabel = element('span', 'desk-item-label', 'desk-beer-label');
+    this.beerLabel.textContent = 'Beer';
+    this.beerLock = createIcon('icon-lock');
+    this.beerButton.append(this.beerLabel, this.beerLock);
     setAvailability(this.beerButton, BEER_TOOLTIP);
+    this.beerButton.addEventListener('click', () => {
+      handlers.beer();
+    });
 
     items.append(this.drinkButton, this.beerButton);
 
@@ -121,7 +135,31 @@ export class Desk {
       this.drinkButton.title = state.tooltip;
     }
 
+    this.renderBeer(state);
     this.renderEmpties(state.cans);
+  }
+
+  /**
+   * The beer, which is a tooltip for four and a half days and then a button.
+   *
+   * The lock lives in the world - only a review that went the right way turns
+   * it off - so this reads the answer rather than deciding it, and the label
+   * says which of the three things it currently is.
+   */
+  private renderBeer(state: Readonly<DeskState>): void {
+    const locked = state.beerBlocked !== null;
+    this.beerButton.classList.toggle('desk-item-locked', locked);
+    this.beerButton.dataset.locked = String(locked);
+    this.beerButton.dataset.opened = String(state.beerOpened);
+    this.beerLock.style.display = locked ? '' : 'none';
+    this.beerLabel.textContent = state.beerOpened ? 'Empty' : 'Beer';
+    setAvailability(this.beerButton, state.beerBlocked);
+
+    if (!locked) {
+      this.beerButton.title = state.beerOpened
+        ? 'Gone. It was not a good beer and it was exactly the right beer.'
+        : BEER_UNLOCKED_TOOLTIP;
+    }
   }
 
   private renderEmpties(cans: number): void {
@@ -155,6 +193,8 @@ export function deskState(
     readonly startedAt: unknown;
     readonly tolerance: unknown;
     readonly cans: unknown;
+    readonly beerUnlocked?: unknown;
+    readonly beerOpened?: unknown;
   },
   now: number,
   onShift: boolean,
@@ -173,6 +213,8 @@ export function deskState(
     cans,
     blocked: blockedReason(now, onShift, shiftEndsAt, buffTicksFor(tolerance)),
     tooltip: drinkTooltip(phase, tolerance),
+    beerBlocked: fields.beerUnlocked === true ? null : BEER_TOOLTIP,
+    beerOpened: fields.beerOpened === true,
   };
 }
 
