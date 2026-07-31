@@ -58,8 +58,10 @@ test('classifies a ticket and moves its SLA with the priority', async ({
   await expect(chip).toContainText('Untriaged');
   await expect(page.getByTestId('ticket-row-priority-wedged-spooler'))
     .toHaveText('Untriaged');
+  // Four hours from when it arrived at eight, which is P3's - the tier the
+  // badge beside it says an untriaged ticket is treated as.
   await expect(page.getByTestId('ticket-detail-resolution'))
-    .toHaveAttribute('data-due', '14:00');
+    .toHaveAttribute('data-due', '12:00');
 
   // The reporter's claim is on the form, and it is a claim.
   await expect(page.getByTestId('ticket-claimed-urgency'))
@@ -314,4 +316,71 @@ test('starts fumbling once the day has gone badly enough', async ({ page }) => {
   // And the command that ran is the one that was asked for, not the one the
   // shaking produced.
   await expect(output).toContainText('Gary Poole');
+});
+
+/**
+ * A save from tomorrow, loaded into today, with the lead already in the
+ * corridor.
+ *
+ * The engine announces the restored tick before the driver has rebuilt the day
+ * that tick belongs to, so the paint that tick causes draws the corridor from
+ * the wrong day's patrol. The player sees a clear corridor, pauses to read the
+ * queue, and the door opens. Everything below is on the built artifact,
+ * paused, so nothing but the load can move the screen.
+ */
+test('shows the right corridor the moment a paused save is loaded', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/');
+  await startShift(page);
+  await hurry(page);
+
+  // Day one, out and clocked off: day two starts with the same shape and a
+  // patrol of its own.
+  await page.clock.runFor(realMs(8 * 60, 4));
+  await expect(page.getByTestId('sim-clock-time')).toHaveText('17:00');
+  await page.getByTestId('scorecard-clock-off').click();
+  await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 2');
+
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('close-brief').click();
+
+  const desktop = page.getByTestId('desktop');
+  const chip = page.getByTestId('boss-chip');
+
+  // Walk day two up to the first set of footsteps and stop the clock dead.
+  await page.clock.runFor(realMs(3 * 60, 4));
+  await expect(desktop).toHaveAttribute('data-boss', 'telegraph', {
+    timeout: 10_000,
+  });
+  await page.getByTestId('day-pause').click();
+  await expect(page.getByTestId('day-state')).toContainText('paused');
+
+  const telegraph = await chip.textContent();
+  const clock = await page.getByTestId('sim-clock-time').textContent();
+
+  await page.getByTestId('start-button').click();
+  await page.getByTestId('start-menu-save').click();
+  await expect(page.getByTestId('toast').filter({ hasText: 'Game saved' }))
+    .toHaveCount(1);
+
+  // A fresh session: day one, nine in the morning, nobody in the corridor.
+  await page.reload();
+  await completeLogin(page, { brief: 'keep' });
+  await page.getByTestId('close-brief').click();
+  await expect(desktop).toHaveAttribute('data-boss', 'clear');
+
+  await page.getByTestId('start-button').click();
+  await page.getByTestId('start-menu-load').click();
+  await expect(page.getByTestId('toast').filter({ hasText: 'Game loaded' }))
+    .toHaveCount(1);
+
+  // Immediately: no tick has passed, because the clock is paused and a paused
+  // clock is the whole point of this test.
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(clock ?? '');
+  await expect(desktop).toHaveAttribute('data-boss', 'telegraph');
+  await expect(chip).toBeVisible();
+  await expect(chip).toHaveText(telegraph ?? '');
+  await expect(page.getByTestId('door-flash')).toBeVisible();
 });

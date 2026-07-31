@@ -88,8 +88,9 @@ test('walks a day from the morning brief to the scorecard', async ({
   await expect(page.getByTestId('scorecard-heading')).toContainText(
     'Day 1, clocking off',
   );
-  // Four inherited plus the one the lead raised by mentioning it at 11:49.
-  await expect(page.getByTestId('scorecard-arrived')).toHaveText('5');
+  // Four inherited, the one the lead raised by mentioning it at 11:49, and
+  // the one that dripped in after lunch.
+  await expect(page.getByTestId('scorecard-arrived')).toHaveText('6');
   await expect(page.getByTestId('scorecard-caught')).toContainText('0 ·');
   await expect(page.getByTestId('scorecard-consumables')).toContainText('£0.00');
   await expect(page.getByTestId('scorecard-net')).toContainText('£');

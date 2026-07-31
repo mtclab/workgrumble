@@ -31,6 +31,8 @@ const SECOND_ARRIVAL = 311;
 const SHIFT_END = 540;
 const LUNCH_START = 240;
 const LUNCH_END = 270;
+/** The one ticket that is not waiting at 08:00. `buildDaySchedule` picks it. */
+const DRIP_ARRIVAL = 279;
 
 /** Runs the day forward to a given minute-of-day, at four times normal speed. */
 async function runTo(page: Page, tick: number): Promise<void> {
@@ -164,6 +166,31 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   await runTo(page, LUNCH_END + 5);
   await expect(page.getByTestId('day-state')).toHaveText('Shift');
 
+  /* -- the afternoon's arrival ------------------------------------------- */
+
+  // Nothing has been raised since the player sat down: everything so far was
+  // either already in the queue or something the lead said. This one turns up
+  // on its own, on the minute the day's seeded schedule picked for it.
+  await focusWindow(page, 'tickets');
+  await expect(page.getByTestId('ticket-row-tidied-list')).toHaveCount(0);
+
+  await runTo(page, DRIP_ARRIVAL);
+  await expect(
+    page.getByTestId('toast').filter({ hasText: 'New ticket' }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByTestId('toast').filter({ hasText: 'works for everyone except me' }),
+  ).toHaveCount(1);
+
+  const dripped = page.getByTestId('ticket-row-tidied-list');
+  await expect(dripped).toBeVisible();
+  await dripped.click();
+  await expect(page.getByTestId('ticket-detail-raised')).toHaveText('12:39');
+  // Untriaged, and the badge says what that costs rather than leaving the
+  // player to find out at 17:00.
+  await expect(page.getByTestId('ticket-detail-priority'))
+    .toHaveText('Untriaged (treated as P3)');
+
   /* -- the corridor, walked into on purpose ------------------------------ */
 
   await runTo(page, SECOND_TELEGRAPH + 1);
@@ -226,7 +253,7 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   await expect(page.getByTestId('window-scorecard')).toBeVisible();
 
   // Everything the day actually contained, on one screen.
-  await expect(page.getByTestId('scorecard-arrived')).toHaveText('5');
+  await expect(page.getByTestId('scorecard-arrived')).toHaveText('6');
   await expect(page.getByTestId('scorecard-closed')).toHaveText('2');
   await expect(page.getByTestId('scorecard-caught')).toContainText('1 ·');
   await expect(page.getByTestId('scorecard-consumables')).toContainText('£1.20');

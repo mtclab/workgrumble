@@ -43,6 +43,7 @@ import {
   STARTING_REPUTATION,
 } from '../world/meters';
 import { createWorldSession, WORLD_SEED } from '../world/session';
+import { APP_MANIFEST } from './apps';
 import { AppStateStore } from './app-state';
 import { pingBossThread } from './boss-thread';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
@@ -51,18 +52,51 @@ beforeAll(() => {
   loadEngineForTests();
 });
 
-interface Screen {
-  /** What the shell would report as genuinely on screen. */
-  open: readonly string[];
-}
-
 interface Day {
   readonly driver: DayDriver;
   readonly engine: EngineApi;
   readonly appState: AppStateStore;
-  readonly screen: Screen;
   readonly caught: readonly { appId: string; tick: number }[];
   readonly notices: readonly string[];
+  /** Everything the day announced, with the minute it happened on. */
+  readonly timeline: readonly string[];
+}
+
+/** Which of the shipped apps are the ones you would rather not be seen at. */
+const SLACK_APPS: ReadonlySet<string> = new Set(
+  APP_MANIFEST.filter((app) => app.slack).map((app) => app.id),
+);
+
+/**
+ * Opening windows, through the same store the desktop writes and the save
+ * carries. The last one opened is the one in front.
+ *
+ * The test drives the SAVED screen rather than a fake of its own, which is the
+ * whole point: a reload puts these windows back, so a reloaded session sees
+ * what an uninterrupted one saw without anybody putting it back by hand.
+ */
+function show(day: Day, apps: readonly string[]): void {
+  day.appState.patch('windows', {
+    open: apps.map((appId) => ({ appId, minimized: false })),
+    focusedId: apps[apps.length - 1] ?? null,
+  });
+}
+
+function visibleSlack(appState: AppStateStore): readonly string[] {
+  return appState.get().windows.open
+    .filter((entry) => !entry.minimized && SLACK_APPS.has(entry.appId))
+    .map((entry) => entry.appId);
+}
+
+function focusedSlack(appState: AppStateStore): string | null {
+  const { open, focusedId } = appState.get().windows;
+  const focused = open.find((entry) => entry.appId === focusedId);
+
+  return focused !== undefined
+    && !focused.minimized
+    && SLACK_APPS.has(focused.appId)
+    ? focused.appId
+    : null;
 }
 
 /** One scripted move by the player, at the minute they made it. */
@@ -75,24 +109,29 @@ interface Move {
 function startDay(): Day {
   const { engine } = createWorldSession();
   const appState = new AppStateStore();
-  const screen: Screen = { open: [] };
   const caught: { appId: string; tick: number }[] = [];
   const notices: string[] = [];
+  const timeline: string[] = [];
+  const at = (what: string): string => `${what}@${String(engine.now())}`;
   const driver = new DayDriver(engine, COMPANY_IDS.player, WORLD_SEED, {
     onDayBoundary: () => {},
-    openSlackApps: () => screen.open,
+    openSlackApps: () => visibleSlack(appState),
+    focusedSlackApp: () => focusedSlack(appState),
     onNotice: (title) => {
       notices.push(title);
+      timeline.push(at(title));
     },
     onCaught: (appId, tick) => {
       caught.push({ appId, tick });
+      timeline.push(`caught:${appId}@${String(tick)}`);
     },
     onBossPing: (ping) => {
       pingBossThread(appState, ping.line);
+      timeline.push(at(`ping:${String(ping.index)}`));
     },
   });
 
-  return { driver, engine, appState, screen, caught, notices };
+  return { driver, engine, appState, caught, notices, timeline };
 }
 
 /**
@@ -146,7 +185,7 @@ function slackFrom(tick: number, apps: readonly string[]): Move {
     atTick: tick,
     label: `open ${apps.join(', ')}`,
     play: (day) => {
-      day.screen.open = apps;
+      show(day, apps);
     },
   };
 }
@@ -157,7 +196,7 @@ function bossKeyAt(tick: number): Move {
     atTick: tick,
     label: 'boss key',
     play: (day) => {
-      day.screen.open = [];
+      show(day, []);
     },
   };
 }
@@ -280,6 +319,39 @@ describe('the lead on the clock', () => {
       .toBeGreaterThanOrEqual(EMPTIES_SUSPICION_BUMP - 1);
   });
 
+  /**
+   * Two observations, one visit. Being caught at something is a conversation
+   * about the screen; the cans are a second, quieter one about the desk, and
+   * a man who has just found a browser open does not stop being able to count.
+   * Settling only the first made the screen a hiding place for the desk.
+   */
+  it('settles the screen and the desk in the same visit, once each', () => {
+    const cans = EMPTIES_TOLERATED + 1;
+    const day = playUntil(startDay(), FIRST_VISIT.arrivalTick + 1, [
+      ...Array.from(
+        { length: cans },
+        (_unused, index) => drinkAt(shiftStartTick(1) + 1 + index),
+      ),
+      slackFrom(FIRST_VISIT.telegraphTick - 5, ['browser']),
+    ]);
+
+    expect(day.caught).toEqual([
+      { appId: 'browser', tick: FIRST_VISIT.arrivalTick },
+    ]);
+    expect(meter(day, FIELDS.caughtEvents)).toBe(1);
+    expect(
+      day.notices.filter((notice) => notice === 'He counted them'),
+    ).toHaveLength(1);
+
+    // Both prices, exactly once each: the floor being caught puts suspicion
+    // on, and the bump for a desk he did the arithmetic on.
+    expect(meter(day, FIELDS.reputation))
+      .toBe(STARTING_REPUTATION - CAUGHT_REPUTATION_COST);
+    expect(meter(day, FIELDS.suspicion))
+      .toBeGreaterThanOrEqual(CAUGHT_SUSPICION_FLOOR + EMPTIES_SUSPICION_BUMP);
+    expect(meter(day, FIELDS.deskCans)).toBe(cans);
+  });
+
   it('says nothing about a desk that was tidied in time', () => {
     const day = playUntil(startDay(), FIRST_VISIT.arrivalTick + 1, [
       ...Array.from(
@@ -371,6 +443,53 @@ describe('the can, on the clock', () => {
  * cans, crashes, the pay at the end - replayed from the same seed and the same
  * script, twice, has to land on the same graph.
  */
+/**
+ * The scripted day, as it stood when this gate was written. See the test that
+ * reads it for what changing any of these means.
+ */
+const GOLDEN_DAY = {
+  /** The world at the end of it, in sixteen characters. */
+  hash: 'b7bfd3b19d73b1f3',
+  /** Midnight: the day was clocked off and the night slept through. */
+  tick: 1_440,
+  /** Every number the pressure layer ended the day holding. */
+  atSeventeen: {
+    // Two cans, two conversations with the lead and a queue nobody closed.
+    stress: 97,
+    suspicion: 100,
+    reputation: 20,
+    suspicion_events: 58,
+    caught_events: 2,
+    // Six deadlines missed and charged once each; nothing was resolved, so
+    // there was no credit to pay out.
+    breaches_charged: 6,
+    resolve_credit_paid: 0,
+    consumable_spend: 240,
+    desk_cans: 2,
+    // The second can of the run, and the crash it was billed for.
+    drink_started_at: 234,
+    drink_tolerance: 2,
+    drink_crash_charged: 234,
+  } as Record<string, number>,
+  banked: 6_515,
+  /**
+   * Every minute the day announced something, in order: the bill for a can,
+   * the footsteps, the lead's messages, and the two rounds that found
+   * something on the screen.
+   */
+  timeline: [
+    'That is the can, then@165',
+    'Footsteps@216',
+    'ping:0@229',
+    'That is the can, then@270',
+    'Footsteps@307',
+    'caught:browser@311',
+    'ping:1@381',
+    'Footsteps@386',
+    'caught:browser@390',
+  ] as readonly string[],
+};
+
 describe('the same day, twice', () => {
   const script = (): readonly Move[] => [
     slackFrom(shiftStartTick(1) + 5, ['browser']),
@@ -389,22 +508,39 @@ describe('the same day, twice', () => {
     readonly atSeventeen: Record<string, number>;
     readonly banked: number;
     readonly caught: number;
+    /** Every footstep, arrival, ping and bill, with the minute it landed on. */
+    readonly timeline: readonly string[];
   }
+
+  /**
+   * Everything the pressure layer ends the day holding.
+   *
+   * The watermarks and the run are in here with the meters on purpose: they
+   * are what makes a repeating tick idempotent, and a regression that billed a
+   * breach twice or lost a crash would leave the visible meters looking
+   * plausible while the bookkeeping behind them had changed.
+   */
+  const PRESSURE_FIELDS: readonly string[] = [
+    FIELDS.stress,
+    FIELDS.suspicion,
+    FIELDS.reputation,
+    FIELDS.suspicionEvents,
+    FIELDS.caughtEvents,
+    FIELDS.breachesCharged,
+    FIELDS.resolveCreditPaid,
+    FIELDS.consumableSpend,
+    FIELDS.deskCans,
+    FIELDS.drinkStartedAt,
+    FIELDS.drinkTolerance,
+    FIELDS.drinkCrashCharged,
+  ];
 
   function walk(moves: readonly Move[]): Walked {
     const day = playShift(startDay(), moves);
     expect(day.driver.state()).toBe('day_end');
 
     const atSeventeen = Object.fromEntries(
-      [
-        FIELDS.stress,
-        FIELDS.suspicion,
-        FIELDS.reputation,
-        FIELDS.suspicionEvents,
-        FIELDS.caughtEvents,
-        FIELDS.consumableSpend,
-        FIELDS.deskCans,
-      ].map((field) => [field, meter(day, field)]),
+      PRESSURE_FIELDS.map((field) => [field, meter(day, field)]),
     );
 
     day.driver.clockOff();
@@ -415,6 +551,7 @@ describe('the same day, twice', () => {
       atSeventeen,
       banked: meter(day, FIELDS.farmFund),
       caught: day.caught.length,
+      timeline: day.timeline,
     };
   }
 
@@ -433,6 +570,28 @@ describe('the same day, twice', () => {
   });
 
   /**
+   * The golden day: literals, committed, binding.
+   *
+   * Two runs agreeing proves the day is deterministic and nothing else - a
+   * change to a rate, a schedule or a meter moves both of them together and
+   * the comparison sails through. These numbers are the other half: they were
+   * produced by the code below on the day it was written, and every one of
+   * them is a decision. Changing any of them is allowed and is a CONSCIOUS
+   * diff - the same rule the M0 golden hash lives by - and the diff is the
+   * review: which meter moved, which minute the lead arrived on, what the day
+   * paid.
+   */
+  it('lands on the golden day, to the number', () => {
+    const walked = walk(script());
+
+    expect(walked.hash).toBe(GOLDEN_DAY.hash);
+    expect(walked.tick).toBe(GOLDEN_DAY.tick);
+    expect(walked.atSeventeen).toEqual(GOLDEN_DAY.atSeventeen);
+    expect(walked.banked).toBe(GOLDEN_DAY.banked);
+    expect(walked.timeline).toEqual(GOLDEN_DAY.timeline);
+  });
+
+  /**
    * And the gate has teeth: a day played differently is a different world. A
    * hash that matched here would be a hash that had stopped depending on the
    * day at all.
@@ -446,31 +605,54 @@ describe('the same day, twice', () => {
     expect(lazy.hash).not.toBe(busy.hash);
   });
 
-  /** Nothing about the boss is saved, so a reload lands him where the day says. */
-  it('puts the lead back where the day says after a reload', () => {
+  /**
+   * The reload, played honestly.
+   *
+   * Nothing about the boss is saved - the schedule is a function of the day -
+   * but what is ON SCREEN is, and it is what the arrival is decided on. The
+   * reloaded session is handed the save and nothing else: no test puts the
+   * windows back for it, because if a save does not carry them then reloading
+   * mid-telegraph is a way out of the conversation.
+   */
+  it('walks into the same arrival after a mid-telegraph reload', () => {
     const day = startDay();
     day.driver.startShift();
-    day.driver.step(TICK_INTERVAL_MS * 30);
+    show(day, ['browser']);
 
+    while (day.engine.now() < FIRST_VISIT.telegraphTick + 1) {
+      day.driver.step(TICK_INTERVAL_MS);
+    }
+
+    expect(day.driver.boss().phase).toBe('telegraph');
     const saved = day.engine.serialize();
+    const screens = day.appState.snapshot();
+
     const reloaded = startDay();
     reloaded.engine.restore(saved);
+    expect(reloaded.appState.hydrate(screens)).toBe(true);
     reloaded.driver.resync();
 
     expect(reloaded.driver.boss()).toEqual(day.driver.boss());
     expect(reloaded.engine.now()).toBe(day.engine.now());
+    // The Browser came back with the save, which is the whole point.
+    expect(visibleSlack(reloaded.appState)).toEqual(['browser']);
 
-    // Walk both to the first arrival with the same screen up: same outcome.
     for (const world of [day, reloaded]) {
-      world.screen.open = ['bubbles'];
-
-      while (world.engine.now() < FIRST_VISIT.arrivalTick) {
+      while (world.engine.now() < FIRST_VISIT.arrivalTick + 1) {
         world.driver.step(TICK_INTERVAL_MS);
       }
     }
 
     expect(reloaded.caught).toEqual(day.caught);
+    expect(reloaded.caught).toEqual([
+      { appId: 'browser', tick: FIRST_VISIT.arrivalTick },
+    ]);
+    expect(meter(reloaded, FIELDS.caughtEvents))
+      .toBe(meter(day, FIELDS.caughtEvents));
     expect(meter(reloaded, FIELDS.reputation))
       .toBe(STARTING_REPUTATION - CAUGHT_REPUTATION_COST);
+    expect(meter(reloaded, FIELDS.suspicion)).toBe(meter(day, FIELDS.suspicion));
+    expect(meter(reloaded, FIELDS.stress)).toBe(meter(day, FIELDS.stress));
+    expect(reloaded.engine.snapshotHash()).toBe(day.engine.snapshotHash());
   });
 });
