@@ -4,6 +4,7 @@ import type { ReadOnlyGraphView } from '../engine-api';
 import type { AppStateStore } from './app-state';
 import type { AppDef } from './apps/types';
 import type { DayApi } from './day-driver';
+import type { SaveHealthView } from './save-health';
 import type { ShellSessionApi } from './save';
 
 /**
@@ -40,6 +41,13 @@ export interface ShellContext {
   /** The shift: what day it is, what state it is in, and the two verbs. */
   readonly day: DayApi;
   readonly session: ShellSessionApi;
+  /**
+   * Whether writes are landing. It is on the context rather than inside the
+   * session because the SURFACE for it is the taskbar: "nothing is being
+   * kept" is a state a player has to be able to see at any moment, not a
+   * toast that scrolled past while they were in a ticket.
+   */
+  readonly saveHealth: SaveHealthView;
   dispatch(
     id: string,
     actor: NodeId,

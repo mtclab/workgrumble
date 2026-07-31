@@ -1,4 +1,4 @@
-import { loadEngine } from './engine-api';
+import { loadEngine, WasmEngine } from './engine-api';
 import { type AppState, AppStateStore } from './shell/app-state';
 import { APP_MANIFEST } from './shell/apps';
 import { openDirectMessage, pingBossThread } from './shell/boss-thread';
@@ -10,8 +10,10 @@ import {
   hydrateFromRetry,
   RetrySlot,
 } from './shell/retry';
-import { createShellSession, SaveSlot } from './shell/save';
+import { createShellSession, type SaveOutcome, SaveSlot } from './shell/save';
+import { SaveHealth } from './shell/save-health';
 import { Shell } from './shell/shell';
+import { openStorage } from './shell/storage';
 import { COMPANY, COMPANY_IDS } from './world/company';
 import { createWorldSession, FIRST_WEEK } from './world/session';
 import { ticketTitle } from './world/tickets';
@@ -45,7 +47,58 @@ function mountPoint(): HTMLElement {
     throw new Error('The shell needs a #app mount point in index.html.');
   }
 
+  // Whatever index.html painted while the wasm was on its way - the loading
+  // shell - goes here, replaced by the thing it was standing in for.
+  host.replaceChildren();
   return host;
+}
+
+/**
+ * The screen a player gets when the boot never finishes.
+ *
+ * There are real ways for it not to: a Worker serving the wasm with the wrong
+ * MIME type or from a stale cache, a compile that fails, a browser that will
+ * not hand over storage at all. Every one of them used to produce an empty
+ * body and an unhandled rejection in a console nobody has open, which is
+ * indistinguishable from the game being broken forever.
+ */
+function showBootFailure(failure: unknown): void {
+  const host = document.getElementById('app');
+
+  if (!(host instanceof HTMLElement)) {
+    return;
+  }
+
+  const panel = document.createElement('div');
+  panel.className = 'boot-failure';
+  panel.dataset.testid = 'boot-failure';
+
+  const heading = document.createElement('h1');
+  heading.textContent = 'The workstation did not come up';
+
+  const body = document.createElement('p');
+  body.textContent = 'Something between here and the server did not arrive. '
+    + 'This is a beige box in 1998 and it has done this before; it usually '
+    + 'comes up on the second go.';
+
+  const detail = document.createElement('pre');
+  detail.className = 'boot-failure-detail';
+  detail.dataset.testid = 'boot-failure-detail';
+  detail.textContent = failure instanceof Error
+    ? failure.message
+    : String(failure);
+
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'os-button os-button-primary';
+  retry.dataset.testid = 'boot-retry';
+  retry.textContent = 'Try again';
+  retry.addEventListener('click', () => {
+    window.location.reload();
+  });
+
+  panel.append(heading, body, detail, retry);
+  host.replaceChildren(panel);
 }
 
 async function boot(): Promise<void> {
@@ -53,10 +106,19 @@ async function boot(): Promise<void> {
   // Same-origin, alongside the bundle, and nothing renders until it is here.
   await loadEngine();
 
+  // Storage is a decision somebody else's browser makes, and reading it can
+  // throw. Behind a guarded adapter it is always SOMETHING - a real store, or
+  // an in-memory one that forgets when the tab does - plus the honest sentence
+  // about which. The health latch starts with that sentence on it, so a
+  // browser that was never going to keep anything says so from the taskbar
+  // rather than at the first day boundary.
+  const store = openStorage(() => window.localStorage);
+  const health = new SaveHealth(store.reason);
+
   // A week that was played before and ended badly leaves exactly three things
   // behind: the fund, the article that was up, and which attempt this is.
   // Reading the slot LEAVES it - see below for when it is finally let go of.
-  const retry = new RetrySlot(window.localStorage);
+  const retry = new RetrySlot(store.storage);
   const carried = retry.peek();
   const { engine, tier, seed } = createWorldSession(
     carried === null ? FIRST_WEEK : carryFrom(carried),
@@ -69,7 +131,7 @@ async function boot(): Promise<void> {
     hydrateFromRetry(appState, carried);
   }
 
-  const slot = new SaveSlot(window.localStorage);
+  const slot = new SaveSlot(store.storage);
   // The only place real time becomes simulation time. Pause and speed live
   // here rather than in the engine, whose clock counts whole ticks and nothing
   // else - which is what makes a day replayable.
@@ -78,10 +140,25 @@ async function boot(): Promise<void> {
     // checkpointed, so the file carries a baseline and an empty history. The
     // hook runs a whole day after this line, by which time `session` exists.
     onDayBoundary: () => {
-      session.save();
+      const kept = session.save();
+
+      // The one that used to be thrown away. Storage filling up at clock-off
+      // produced a completely normal new morning and a tab that took the day
+      // with it when it closed, without a word on screen.
+      if (!kept.ok) {
+        shell.notify(
+          'The day was not saved',
+          `${kept.reason} The week is still playable, and closing this tab `
+          + 'will lose it.',
+        );
+      }
     },
     // What the pressure layer cannot see for itself: which slack apps are
     // genuinely on screen right now.
+    // And whether there is a desk to be at. Without this the day ran through
+    // the POST gag, the login box and every logged-off minute at a minute a
+    // second, with the pause button on the far side of a login form.
+    atDesk: () => shell.hasDesktop(),
     openSlackApps: () => shell.openSlackApps(),
     // And the one the player is in, which is the only one calming anybody
     // down. The lead sees the rest.
@@ -165,6 +242,19 @@ async function boot(): Promise<void> {
     slot,
     retry,
     actor: COMPANY_IDS.player,
+    // A throwaway engine for the preflight: a save is tried in a session
+    // nobody is playing before it replaces the one somebody is.
+    probeEngine: () => new WasmEngine(seed),
+    // Every write, automatic or not, reports here. Two of the three have no
+    // control a player can see, and those were the two whose failures vanished.
+    onWrite: (outcome: SaveOutcome) => {
+      if (outcome.ok) {
+        health.succeeded();
+        return;
+      }
+
+      health.failed(outcome.reason);
+    },
     // A world that never happened cannot be un-happened in place: the retry
     // has been written down, so the cheapest honest way to build the week
     // again is to start the page again.
@@ -176,12 +266,16 @@ async function boot(): Promise<void> {
   // And here is where the carry-over is finally let go of, and not a line
   // earlier: the new week is saved first, and the record is dropped only if
   // that write worked. See `acknowledgeCarry` for what this is protecting.
-  if (carried !== null) {
-    acknowledgeCarry(retry, () => session.save());
-  }
+  // The answer is kept rather than ignored: `false` means the new attempt is
+  // not durable, so the carry-over is deliberately still sitting there - which
+  // is the honest failure, and which the player has to be told, because a
+  // refresh from here starts this attempt again from the fund they carried in.
+  const carryUnsaved = carried !== null
+    && !acknowledgeCarry(retry, () => session.save());
 
   const context: ShellContext = {
     manifest: APP_MANIFEST,
+    saveHealth: health,
     tier,
     graph: engine.graph,
     appState,
@@ -253,6 +347,23 @@ async function boot(): Promise<void> {
     screens: () => appState.snapshot(),
   });
 
+  // Both of these are raised BEFORE the shell starts, with no desktop on
+  // screen to raise them on - which is exactly the case the notification queue
+  // exists for, and now the only one that can happen: the day itself is frozen
+  // until somebody is at a desk.
+  if (store.reason !== null) {
+    shell.notify('Nothing is being saved', store.reason);
+  }
+
+  if (carryUnsaved) {
+    shell.notify(
+      'This attempt is not saved',
+      'The browser would not keep the new week. Everything works, and '
+      + 'refreshing the page will start this attempt again from the fund you '
+      + 'carried in.',
+    );
+  }
+
   shell.start();
   // The interval is shorter than a tick so that a faster clock is a faster
   // clock, rather than a burst of minutes once a second; the driver keeps the
@@ -262,4 +373,6 @@ async function boot(): Promise<void> {
   }, DRIVER_INTERVAL_MS);
 }
 
-void boot();
+void boot().catch((failure: unknown) => {
+  showBootFailure(failure);
+});

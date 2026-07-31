@@ -83,6 +83,19 @@ export class Shell {
   }
 
   /**
+   * Whether there is a desktop on screen, which is the day driver's licence to
+   * convert real time at all.
+   *
+   * The simulation used to run through the POST gag, the login box and every
+   * logged-off minute, at one simulated minute per second, with the pause
+   * button on the far side of a login form. Whether somebody is AT the desk is
+   * a fact about this class, so this is where the answer lives.
+   */
+  public hasDesktop(): boolean {
+    return this.desktop !== null;
+  }
+
+  /**
    * Raises a shell notification from outside the app layer (engine events).
    * With no desktop mounted it is held until there is one, capped at the depth
    * the notification centre itself keeps so a long logged-off stretch cannot

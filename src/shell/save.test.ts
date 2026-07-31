@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { EngineApi } from '../engine-api';
+import { WasmEngine } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
@@ -107,6 +108,9 @@ function session(
       slot,
       retry,
       actor: COMPANY_IDS.player,
+      // The shipped preflight, not a copy of it: a save is tried in a session
+      // nobody is playing before it replaces the one somebody is.
+      probeEngine: () => new WasmEngine(seed),
       restart: () => {
         restarts += 1;
       },
@@ -346,6 +350,79 @@ describe('the save file', () => {
     // which one it will not take, and takes the current one.
     expect(parseSaveFile(JSON.stringify({ ...file, schema: 0 })).ok).toBe(false);
     expect(OLDEST_READABLE_SCHEMA).toBeLessThanOrEqual(SAVE_SCHEMA);
+  });
+
+  /**
+   * The hole the malformed-engine cases above cannot reach.
+   *
+   * Every "foreign" file in this suite so far is a broken engine STRING, and
+   * the engine's own restore refuses those atomically. This one is not broken:
+   * it is a structurally valid engine-0.4 world, wrapped as a current-schema
+   * save, that simply is not this game's - the player node has no day state on
+   * it. `engine.restore` accepts that happily, because coherence is all it
+   * checks and the world IS coherent; the driver is the half that asks the
+   * Workgrumble questions, and it used to ask them AFTER the running session
+   * had already been replaced, outside the catch, in a click handler.
+   *
+   * Built by taking a real save and deleting one field, so it is exactly as
+   * valid as the engine can tell and exactly as unplayable as it is.
+   */
+  it('refuses a valid foreign world that is missing the player invariants', () => {
+    const source = session();
+    workUntilMidday(source);
+    source.session.save();
+    const raw = source.storage.getItem('it-career-sim/save');
+
+    if (raw === null) {
+      throw new Error('The save was not written.');
+    }
+
+    const file = JSON.parse(raw) as Record<string, unknown>;
+    const payload = JSON.parse(String(file.engine)) as {
+      graph: { nodes: { id: string; fields: Record<string, unknown> }[] };
+    };
+    const player = payload.graph.nodes.find(
+      (node) => node.id === COMPANY_IDS.player,
+    );
+
+    if (player === undefined) {
+      throw new Error('The save has no player in it to spoil.');
+    }
+
+    delete player.fields[FIELDS.dayState];
+    const foreign = JSON.stringify({
+      ...file,
+      engine: JSON.stringify(payload),
+    });
+
+    // It really is a world the engine is happy with, which is the whole point.
+    const probe = new WasmEngine(seedForAttempt(1));
+    expect(() => {
+      probe.restore(JSON.stringify(payload));
+    }).not.toThrow();
+
+    const live = session();
+    workUntilMidday(live);
+    const before = {
+      hash: live.engine.snapshotHash(),
+      tick: live.engine.now(),
+      state: live.driver.state(),
+      speed: live.driver.speed(),
+      screens: live.appState.snapshot(),
+    };
+    live.storage.setItem('it-career-sim/save', foreign);
+
+    const outcome = live.session.load();
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok === false && outcome.reason)
+      .toContain('That save would not load');
+
+    // The session the player was in, untouched: world, clock, day and screens.
+    expect(live.engine.snapshotHash()).toBe(before.hash);
+    expect(live.engine.now()).toBe(before.tick);
+    expect(live.driver.state()).toBe(before.state);
+    expect(live.driver.speed()).toBe(before.speed);
+    expect(live.appState.snapshot()).toEqual(before.screens);
   });
 });
 

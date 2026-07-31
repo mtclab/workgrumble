@@ -106,6 +106,7 @@ export class Desktop {
   private readonly dayState: HTMLButtonElement;
   private readonly pauseButton: HTMLButtonElement;
   private readonly fumbleChip: HTMLElement;
+  private readonly saveChip: HTMLElement;
   private readonly bossChip: HTMLElement;
   private readonly doorFlash: HTMLElement;
   private readonly desk: Desk;
@@ -121,6 +122,7 @@ export class Desktop {
   private unsubscribeDay: (() => void) | null = null;
   private unsubscribeWorld: (() => void) | null = null;
   private unsubscribeScreens: (() => void) | null = null;
+  private unsubscribeSaveHealth: (() => void) | null = null;
 
   private wm: WindowManagerState | null = null;
   private notifications: NotificationState = createNotificationState();
@@ -303,7 +305,24 @@ export class Desktop {
     this.bossChip.dataset.testid = 'boss-chip';
     this.bossChip.hidden = true;
 
-    tray.append(this.bossChip, this.fumbleChip, dayControls, this.trayButton, clock);
+    // The one chip that is not a joke. Two of this product's three writes are
+    // automatic, so "the browser stopped keeping anything" is a state nobody
+    // would otherwise meet until the tab closed and took the week with it. It
+    // stays up until a write actually works.
+    this.saveChip = document.createElement('span');
+    this.saveChip.className = 'save-chip';
+    this.saveChip.dataset.testid = 'save-health';
+    this.saveChip.textContent = 'Not saving';
+    this.saveChip.hidden = true;
+
+    tray.append(
+      this.bossChip,
+      this.saveChip,
+      this.fumbleChip,
+      dayControls,
+      this.trayButton,
+      clock,
+    );
 
     taskbar.append(this.startButton, divider, this.taskbarWindows, tray);
 
@@ -423,7 +442,11 @@ export class Desktop {
       this.restoreWindows();
       this.syncDayScreens();
     });
+    this.unsubscribeSaveHealth = this.context.saveHealth.onChanged(() => {
+      this.renderSaveHealth();
+    });
 
+    this.renderSaveHealth();
     this.renderClock(this.context.clock.now());
     this.renderDay();
     this.renderPressure();
@@ -442,6 +465,8 @@ export class Desktop {
     this.unsubscribeWorld = null;
     this.unsubscribeScreens?.();
     this.unsubscribeScreens = null;
+    this.unsubscribeSaveHealth?.();
+    this.unsubscribeSaveHealth = null;
     this.abort.abort();
     this.renderer.dispose();
     this.taskbarButtons.clear();
@@ -1235,6 +1260,17 @@ export class Desktop {
       : 'Hands going';
     this.desk.render(desk);
     this.renderBoss();
+  }
+
+  /**
+   * The durability chip: hidden while writes are landing, and up with the
+   * reason on it while they are not.
+   */
+  private renderSaveHealth(): void {
+    const problem = this.context.saveHealth.problem();
+
+    this.saveChip.hidden = problem === null;
+    this.saveChip.title = problem ?? '';
   }
 
   /**

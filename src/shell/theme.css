@@ -217,6 +217,51 @@ body {
   display: none !important;
 }
 
+/* ------------------------------------------------ before anything has run */
+
+/*
+ * The loading shell and the screen a boot that never finished ends on. Both
+ * live in the reset section because they are the only two things in this file
+ * that have to be styled before the shell exists: index.html paints the first
+ * one, and main.ts swaps in the second when `boot()` rejects.
+ */
+.boot-splash,
+.boot-failure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: flex-start;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-8);
+  background: var(--color-terminal);
+  color: var(--color-terminal-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.boot-splash-note,
+.boot-failure p {
+  color: var(--color-terminal-dim);
+}
+
+.boot-failure h1 {
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+
+.boot-failure-detail {
+  max-width: 100%;
+  margin: var(--space-0);
+  padding: var(--space-3);
+  overflow-x: auto;
+  border: var(--border-hair) solid var(--color-terminal-dim);
+  color: var(--color-terminal-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+}
+
 h1,
 h2,
 h3,
@@ -847,6 +892,20 @@ input {
  * punishment wearing a joke's coat.
  */
 .fumble-chip {
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-alarm-soft);
+  color: var(--color-alarm);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/*
+ * The durability chip, in the same clothes as the fumble chip and for the
+ * opposite reason: this one is not a joke. It is up whenever a write has
+ * failed and nothing has succeeded since.
+ */
+.save-chip {
   padding: var(--space-1) var(--space-3);
   background: var(--color-alarm-soft);
   color: var(--color-alarm);

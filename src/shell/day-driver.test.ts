@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
-import type { Expr, TicketDef } from '../engine-api';
+import type { EngineApi, Expr, TicketDef } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import {
   DAY_ACTIONS,
@@ -413,6 +413,79 @@ describe('the day driver', () => {
  * the simulation clock at the cadence it claims, only while the shift is on,
  * and that the numbers it sends reach the fields they are about.
  */
+describe('the desk nobody is sitting at', () => {
+  /**
+   * The bug this exists for: tick zero is 08:00, one simulated minute costs
+   * one real second, and the interval used to start unconditionally at boot.
+   * A new player spending a minute on the login screen walked into a shift
+   * that had started without them; nine minutes anywhere near the boot
+   * sequence was the entire day, tickets and all. And the pause button - the
+   * one control the spec promises is always available - is on the desktop, on
+   * the far side of that login form.
+   */
+  function awayHarness(): { driver: DayDriver; engine: EngineApi; at: {
+    desk: boolean;
+  }; } {
+    const { engine } = createWorldSession();
+    const at = { desk: false };
+    const driver = new DayDriver(engine, COMPANY_IDS.player, WORLD_SEED, {
+      onDayBoundary: () => {},
+      openSlackApps: () => [],
+      focusedSlackApp: () => null,
+      atDesk: () => at.desk,
+    });
+
+    return { driver, engine, at };
+  }
+
+  it('does not spend a single minute while nobody is at a desk', () => {
+    const { driver, engine, at } = awayHarness();
+
+    expect(driver.running()).toBe(false);
+    driver.step(realMs(600));
+    expect(engine.now()).toBe(0);
+    expect(driver.state()).toBe('morning_brief');
+
+    at.desk = true;
+    expect(driver.running()).toBe(true);
+    driver.step(realMs(10));
+    expect(engine.now()).toBe(10);
+  });
+
+  /** Logging off does not un-pause the day, and logging on does not pause it. */
+  it('keeps the pause the player chose across a log-off', () => {
+    const { driver, engine, at } = awayHarness();
+    at.desk = true;
+    driver.setPaused(true);
+
+    at.desk = false;
+    driver.step(realMs(30));
+    at.desk = true;
+
+    expect(driver.paused()).toBe(true);
+    expect(driver.running()).toBe(false);
+    driver.step(realMs(30));
+    expect(engine.now()).toBe(0);
+
+    driver.setPaused(false);
+    driver.step(realMs(5));
+    expect(engine.now()).toBe(5);
+  });
+
+  /**
+   * And the part-converted real time is dropped rather than banked, so a long
+   * login screen does not hand over a tick the moment the desktop appears.
+   */
+  it('banks nothing while it is frozen', () => {
+    const { driver, engine, at } = awayHarness();
+
+    driver.step(TICK_INTERVAL_MS - 1);
+    at.desk = true;
+    driver.step(1);
+    expect(engine.now()).toBe(0);
+  });
+});
+
 describe('the pressure layer on the clock', () => {
   const meter = (
     engine: Harness['engine'],

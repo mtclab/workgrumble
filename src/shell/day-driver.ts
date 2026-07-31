@@ -231,6 +231,26 @@ export interface DayDriverHandlers {
    * the one they are in.
    */
   focusedSlackApp(): string | null;
+  /**
+   * Whether there is a desktop session for any of this to be happening in.
+   *
+   * The clock does not convert real time while there is not, and that is not a
+   * nicety: tick zero is 08:00 and one simulated minute costs one real second,
+   * so a new player spending a minute on the login screen walked into a shift
+   * that had started without them, and nine minutes anywhere near the boot
+   * sequence was the whole day. Tickets breached before anybody had seen a
+   * desktop, read the brief, or been given the pause button - which is on the
+   * desktop, and is the one control the spec promises is always available.
+   *
+   * It is a QUESTION rather than a flag the shell sets, for the same reason
+   * the two above it are: the driver cannot see a screen, the shell can, and a
+   * mirrored copy is a copy that can be left disagreeing with the world. A
+   * headless harness omits it and is at the desk by construction.
+   *
+   * The player's own pause is a separate thing and is deliberately untouched
+   * by this, so logging off and back on lands on the pause state it left.
+   */
+  atDesk?(): boolean;
   /** Something the player ought to be told about. */
   onNotice?(title: string, body: string): void;
   /**
@@ -442,7 +462,15 @@ export class DayDriver implements DayApi {
 
   /** True while the clock is actually converting real time into ticks. */
   public running(): boolean {
-    return !this.paused_ && clockRuns(this.state());
+    return this.atDesk() && !this.paused_ && clockRuns(this.state());
+  }
+
+  /**
+   * Whether anybody is at the desk. Absent handler means yes: the headless
+   * harnesses ARE the player, and there is no screen for them to be away from.
+   */
+  public atDesk(): boolean {
+    return this.handlers.atDesk?.() !== false;
   }
 
   /**

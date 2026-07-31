@@ -18,7 +18,7 @@ import type { AppState, AppStateStore } from './app-state';
 import { parseAppState } from './app-state';
 import { formatSimTime } from './clock-format';
 import type { DriverSaveSeam, DriverState } from './day-driver';
-import { parseDriverState } from './day-driver';
+import { DayDriver, parseDriverState } from './day-driver';
 import { recordFrom, type RetrySlot } from './retry';
 import { FIELDS } from '../world/fields';
 
@@ -239,6 +239,18 @@ export interface ShellSessionApi {
 
 export interface SessionParts {
   readonly engine: EngineApi;
+  /**
+   * A fresh, empty engine, for trying a save in before it is committed.
+   *
+   * Injected rather than imported because the engine is wasm and this module
+   * has no business loading it - and because a preflight that runs on the same
+   * engine as the session is not a preflight.
+   *
+   * Omitting it is legal and skips the preflight; the snapshot-and-rollback
+   * below still makes the load all-or-nothing. Every shipped call site
+   * provides it.
+   */
+  probeEngine?(): EngineApi;
   readonly appState: AppStateStore;
   readonly day: DriverSaveSeam;
   readonly slot: SaveSlot;
@@ -248,6 +260,94 @@ export interface SessionParts {
   readonly actor: NodeId;
   /** What the shell does once a retry has been written: reload, usually. */
   restart(): void;
+  /**
+   * Every write this session makes, told to whoever is keeping score.
+   *
+   * It is here rather than at the call sites because two of the three writes
+   * have no call site a player can see - the day-boundary checkpoint and the
+   * one that lets go of a carried-over retry both happen inside the day loop -
+   * and those are exactly the two whose failures used to vanish.
+   */
+  onWrite?(outcome: SaveOutcome): void;
+}
+
+/**
+ * What the driver needs to exist and does nothing with. A preflight has no
+ * screen to open a scene on and no player to notify.
+ */
+const SILENT_HANDLERS = {
+  onDayBoundary: (): void => {},
+  openSlackApps: (): readonly string[] => [],
+  focusedSlackApp: (): string | null => null,
+} as const;
+
+function loadFailure(failure: unknown): string {
+  return failure instanceof Error
+    ? `That save would not load: ${failure.message}`
+    : 'That save would not load.';
+}
+
+/**
+ * Tries the whole file somewhere it cannot hurt anybody.
+ *
+ * A fresh engine restores the payload, and a real `DayDriver` is built on top
+ * of the result and handed the saved driver state - which is what asks the
+ * restored world every Workgrumble question there is: is there a player node,
+ * does it carry a day state, does the clock land on a day this week has, and
+ * does the registry still hold the verbs the day loop dispatches. All of those
+ * throw, all of them used to throw AFTER the running session had been
+ * replaced, and none of them is something the engine's generic coherence check
+ * has any business knowing about.
+ */
+function preflight(
+  file: Readonly<SaveFile>,
+  actor: NodeId,
+  probeEngine: (() => EngineApi) | undefined,
+): SaveOutcome {
+  if (probeEngine === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  try {
+    const probe = probeEngine();
+    probe.restore(file.engine);
+    const driver = new DayDriver(probe, actor, 0, SILENT_HANDLERS);
+    driver.restoreDriverState(file.driver);
+    // The two reads every day screen makes on its first paint. A world that
+    // cannot answer them is a world the shell cannot draw.
+    driver.state();
+    driver.schedule();
+  } catch (failure: unknown) {
+    return refuse(loadFailure(failure));
+  }
+
+  return { ok: true, value: undefined };
+}
+
+/** Puts the session that was running back, after a commit went wrong. */
+function undo(
+  rollback: {
+    readonly engine: string;
+    readonly app: AppState;
+    readonly driver: DriverState;
+  },
+  parts: Readonly<SessionParts>,
+  failure: unknown,
+): SaveOutcome {
+  try {
+    parts.engine.restore(rollback.engine);
+    parts.appState.hydrate(rollback.app);
+    parts.day.restoreDriverState(rollback.driver);
+  } catch {
+    // Both worlds are now gone, which is the one outcome worth restarting for.
+    return refuse(
+      'That save would not load, and putting the session back did not work '
+      + 'either. Nothing here can be trusted now - reload the page and load '
+      + 'again, or start a new week.',
+    );
+  }
+
+  return refuse(loadFailure(failure));
 }
 
 /**
@@ -272,8 +372,7 @@ export function createShellSession(
   return {
     save: (): SaveOutcome => {
       const display = formatSimTime(engine.now());
-
-      return slot.write({
+      const outcome = slot.write({
         schema: SAVE_SCHEMA,
         savedAtTick: engine.now(),
         label: `${display.day}, ${display.time}`,
@@ -281,12 +380,30 @@ export function createShellSession(
         app: appState.snapshot(),
         driver: day.driverState(),
       });
+
+      parts.onWrite?.(outcome);
+      return outcome;
     },
 
     /**
-     * Everything is parsed before anything is replaced, and the engine's own
-     * restore refuses atomically - so a save that turns out to be rubbish
-     * costs the player a click rather than the session they were in.
+     * All-or-nothing, in two layers, because it used to be neither.
+     *
+     * The engine's own restore IS atomic, and that was being mistaken for the
+     * load being atomic. It is not: the app state and the DRIVER are put back
+     * afterwards, outside the catch, and the driver is the half that asks the
+     * restored world Workgrumble-specific questions - which day is it, what
+     * state is the player's day in, does this registry still hold the verbs
+     * that stop the service clock. A structurally valid engine world with no
+     * `person:pat` in it passes `engine.restore` happily and then throws in
+     * `restoreDriverState`, by which time the running session has already been
+     * replaced and the click handler has an uncaught exception in it.
+     *
+     * So: the whole file is tried in a DISPOSABLE session first - a fresh
+     * engine, restored, with a real driver built on top of it - and only a
+     * file that survives that is committed. And the commit itself is wrapped
+     * in a snapshot of all three components, so anything the preflight did not
+     * think to model still leaves the player in the session they were in
+     * rather than halfway between two.
      */
     load: (): SaveOutcome => {
       const file = slot.read();
@@ -295,22 +412,26 @@ export function createShellSession(
         return file;
       }
 
-      try {
-        engine.restore(file.value.engine);
-      } catch (failure: unknown) {
-        return refuse(
-          failure instanceof Error
-            ? `That save would not load: ${failure.message}`
-            : 'That save would not load.',
-        );
+      const tried = preflight(file.value, actor, parts.probeEngine);
+
+      if (!tried.ok) {
+        return tried;
       }
 
-      // Both of these were parsed on the way in, so neither can fail here -
-      // and both announce themselves, which is what repaints the windows that
-      // are looking at the session this call just replaced.
-      appState.hydrate(file.value.app);
-      day.restoreDriverState(file.value.driver);
-      return { ok: true, value: undefined };
+      const rollback = {
+        engine: engine.serialize(),
+        app: appState.snapshot(),
+        driver: day.driverState(),
+      };
+
+      try {
+        engine.restore(file.value.engine);
+        appState.hydrate(file.value.app);
+        day.restoreDriverState(file.value.driver);
+        return { ok: true, value: undefined };
+      } catch (failure: unknown) {
+        return undo(rollback, parts, failure);
+      }
     },
 
     hasSave: (): boolean => slot.exists(),
@@ -329,6 +450,8 @@ export function createShellSession(
         number(FIELDS.farmFund),
         appState.snapshot(),
       ));
+
+      parts.onWrite?.(written);
 
       if (!written.ok) {
         return written;

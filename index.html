@@ -9,7 +9,23 @@
     <link rel="stylesheet" href="/src/shell/theme.css">
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!--
+        The loading shell, painted by the browser before a single line of the
+        bundle has run. Nothing used to render until the wasm had been fetched
+        and compiled - roughly 330KB of it, behind 400KB of JavaScript - so a
+        slow connection got a white page with no evidence that anything was
+        happening, and a failed fetch got a white page forever. main.ts clears
+        this the moment it has a shell to put here, or replaces it with a
+        diagnostic and a Try again button if the boot never finishes.
+      -->
+      <div class="boot-splash" data-testid="boot-splash">
+        <p class="boot-splash-line">WORKGRUMBLE LTD - workstation starting</p>
+        <p class="boot-splash-note">
+          Loading the estate. It is a beige box and it is doing its best.
+        </p>
+      </div>
+    </div>
     <noscript>
       This workstation needs JavaScript. So does the rest of the building.
     </noscript>
