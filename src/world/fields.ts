@@ -125,6 +125,42 @@ export const FIELDS = {
   lastLogon: 'last_logon',
   pwMustChange: 'pw_must_change',
   passwordExpired: 'password_expired',
+  /**
+   * The modern half of the account, and the one the week's flagship ticket is
+   * about.
+   *
+   * `mfaEnrolledAt` is the minute the second factor was bound to a device -
+   * absent means the account has nothing but a password on it. `identityVerifiedAt`
+   * is the minute somebody PROVED they were who they said they were before that
+   * binding happened, and it is deliberately a separate field: re-enrolling
+   * somebody's authenticator on a phone call is the single easiest way to hand
+   * an account to a stranger, and a world that recorded "we did the enrolment"
+   * without recording "we checked" could not tell the difference afterwards.
+   * `securityFalloutAt` is when the consequence of not checking landed - the
+   * watermark that stops one skipped check being billed twice, and the field
+   * the consequence mail hangs its arrival off.
+   */
+  mfaEnrolled: 'mfa_enrolled',
+  mfaEnrolledAt: 'mfa_enrolled_at',
+  identityVerifiedAt: 'identity_verified_at',
+  securityFalloutAt: 'security_fallout_at',
+  /**
+   * When every device this account was signed in on was signed out again.
+   *
+   * The right fix for a session somebody else is holding, and the wrong fix for
+   * an authenticator that died with a phone - which is why it is a verb of its
+   * own rather than a flag on the enrolment, and why its refusal is written to
+   * be read.
+   */
+  sessionsRevokedAt: 'sessions_revoked_at',
+  /**
+   * Whether this account is holding one of the suite's seats.
+   *
+   * A seat is not a permission and it is not a group: it is a thing the company
+   * bought a fixed number of, and the reason a new starter cannot open the
+   * accounts package on their first morning is almost never the new starter.
+   */
+  licence: 'licence',
   /** machine */
   hostname: 'hostname',
   /**
@@ -143,14 +179,52 @@ export const FIELDS = {
   resolution: 'resolution',
   pendingUpdates: 'pending_updates',
   uptimeSince: 'uptime_since',
+  /**
+   * The one fix in this game made of paper.
+   *
+   * A machine that loses power at the same minute every Tuesday and Thursday
+   * does not have a fault; it has an appointment, and the repair is a note on
+   * the wall by the socket telling the next person with a vacuum cleaner which
+   * plug is not theirs. It is on the machine because that is where the socket
+   * is, and it is world state because the fix has to survive the night.
+   */
+  stickyNote: 'sticky_note',
   /** device */
   type: 'type',
   powered: 'powered',
   wedged: 'wedged',
   batteryPct: 'battery_pct',
   queueLen: 'queue_len',
+  /**
+   * Whether this device is holding somebody's password and trying it.
+   *
+   * The classic relock: an account is unlocked, and four minutes later it is
+   * locked again, because a tablet in a cupboard has been offering the same
+   * wrong password every few minutes since the day it was reset. The device
+   * carries the credential, the directory carries the count, and the Event
+   * Viewer is where the two meet.
+   */
+  storedCredential: 'stored_credential',
   /** service */
   status: 'status',
+  /**
+   * Whether the certificate this service presents has run out.
+   *
+   * Its own field rather than a stopped status because it is its own fault
+   * with its own fix: the service is running perfectly and refusing everybody,
+   * which is exactly what an expired certificate looks like from a laptop in
+   * somebody's spare room.
+   */
+  certExpired: 'cert_expired',
+  /**
+   * How many seats of a licence pool are unclaimed.
+   *
+   * On the pool rather than counted off the accounts, because the number is
+   * what the vendor's console shows and what the refusal has to quote - and
+   * because counting edges is not something the op language does, which is the
+   * honest reason as well as the practical one.
+   */
+  seatsFree: 'seats_free',
   /**
    * Whether this is software that can be stopped and started again. Hardware
    * reports a status too - a chassis fan has one - and saying so in the data
@@ -281,7 +355,24 @@ export const DEVICE_TYPES = {
   printer: 'printer',
   monitor: 'monitor',
   mouse: 'mouse',
+  /**
+   * The forgotten kind. A tablet is the only thing on this estate that holds a
+   * password of its own, which is what makes it the answer to an account that
+   * relocks four minutes after every unlock.
+   */
+  tablet: 'tablet',
 } as const;
+
+/**
+ * How many wrong passwords this directory takes before it shuts the door.
+ *
+ * It lives beside the field names because it is the directory's own policy
+ * rather than any one ticket's: the account that arrives locked on Monday, the
+ * tablet that hammers its way to a lockout on Thursday and the sentence a KB
+ * article uses to explain both are the same number, and a lockout story is only
+ * a story if the count in the world and the count in the fiction agree.
+ */
+export const LOCKOUT_THRESHOLD = 5;
 
 export const SERVICE_STATUS = {
   running: 'running',

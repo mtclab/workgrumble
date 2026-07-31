@@ -1,19 +1,10 @@
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
-import { FIELDS, SERVICE_STATUS } from '../fields';
+import { FIELDS, LOCKOUT_THRESHOLD, SERVICE_STATUS } from '../fields';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import type { WorldTicket } from './types';
 
 const PRINTER_QUEUE_DEPTH = 47;
-
-/**
- * How many wrong passwords this directory takes before it shuts the door.
- *
- * Written down because it is the number the account carries when the player
- * reads it, and because the lockout story is only a story if the count in the
- * directory and the count in the fiction are the same number.
- */
-export const LOCKOUT_THRESHOLD = 5;
 
 /**
  * Pilot ticket 1 - hidden_cause. The reported symptom ("hacked") and the

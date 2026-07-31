@@ -6,21 +6,33 @@ import { CONSUMABLE_ACTION_DATA } from './consumables';
 export { LATE_CAN_REASON } from './consumables';
 import { DAY_ACTION_DATA } from './day';
 import { DEVICE_ACTIONS } from './device';
+import { FACILITIES_ACTIONS } from './facilities';
 import { KIND_LABELS } from './helpers';
 import { MACHINE_ACTIONS } from './machine';
 import { MAIL_RULE_ACTIONS } from './mail-rule';
 import { METER_ACTION_DATA } from './meters';
+import { SECURITY_ACTIONS } from './security';
 import { SERVICE_ACTIONS } from './service';
 import { SHARE_ACTIONS } from './share';
 import { TICKET_ACTIONS } from './ticket';
+import { WORLD_ACTION_DATA } from './world';
 
 export {
   DISABLED_NEEDS_ENABLING_REASON,
   DISABLED_NOT_LOCKED_REASON,
   EXPIRED_NOT_LOCKED_REASON,
+  NO_FREE_SEATS_REASON,
   NOT_DISABLED_REASON,
   NOT_LOCKED_REASON,
+  REVOKE_WITHOUT_FACTOR_REASON,
+  SEATS_PARAM,
 } from './account';
+export { STICKY_NOTE_ALREADY_REASON } from './facilities';
+export {
+  PHISH_CLICK_STRESS,
+  PHISH_CLICK_SUSPICION,
+  SOCIAL_ENGINEERING_REPUTATION,
+} from './security';
 export { FULL_BATTERY } from './device';
 export { HELPDESK_TIER, KIND_LABELS } from './helpers';
 export {
@@ -30,6 +42,9 @@ export {
   HELPDESK_ACTION_IDS,
   HELPDESK_ACTIONS,
   type HelpdeskActionId,
+  WORLD_ACTION_IDS,
+  WORLD_ACTIONS,
+  type WorldActionId,
 } from './ids';
 export {
   CLASSIFY_BREACHED_REASON,
@@ -50,11 +65,16 @@ export function helpdeskActions(): readonly ActionData[] {
     ...DEVICE_ACTIONS,
     ...MAIL_RULE_ACTIONS,
     ...SHARE_ACTIONS,
+    ...FACILITIES_ACTIONS,
+    ...SECURITY_ACTIONS,
     ...TICKET_ACTIONS,
     ...DAY_ACTION_DATA,
     ...METER_ACTION_DATA,
     ...BOSS_ACTION_DATA,
     ...CONSUMABLE_ACTION_DATA,
+    // The world's own verbs go in last and are offered by nothing: a cleaner's
+    // trolley and a maintenance window are not things a first-line tech does.
+    ...WORLD_ACTION_DATA,
   ];
 }
 

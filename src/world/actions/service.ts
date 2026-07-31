@@ -85,4 +85,35 @@ export const SERVICE_ACTIONS: readonly ActionData[] = [
       },
     ],
   },
+  {
+    id: HELPDESK_ACTIONS.serviceRenewCertificate,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('service'),
+      {
+        when: not(fieldIs(TARGET, FIELDS.certExpired, true)),
+        reason: 'The certificate on "{target.label}" is in date. Issuing a new '
+          + 'one because forty people are complaining is how a service ends up '
+          + 'with two, and one of them wrong.',
+      },
+    ],
+    // A new certificate, and the service picks it up: that is what makes this
+    // its own verb rather than a restart. Restarting it puts the same expired
+    // certificate back in front of the same forty people, which is why the
+    // flood keeps arriving while somebody keeps restarting things.
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.certExpired,
+        value: { const: false },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.status,
+        value: { const: SERVICE_STATUS.running },
+      },
+    ],
+  },
 ];

@@ -17,7 +17,39 @@ export const HELPDESK_ACTIONS = {
   accountResetPassword: 'account.reset_password',
   accountAddToGroup: 'account.add_to_group',
   accountRemoveFromGroup: 'account.remove_from_group',
+  /**
+   * Checking that the person on the other end of the call is the person whose
+   * account you are about to hand a new key to.
+   *
+   * A verb of its own, and deliberately not a parameter on the enrolment,
+   * because the whole failure mode is that it is SKIPPABLE: nothing refuses an
+   * enrolment for want of it, the ticket closes either way, and the difference
+   * only shows up a day later in somebody else's incident report. A tick-box on
+   * another action would have made it a thing the game insisted on, which is
+   * the one thing this trap must not be.
+   */
+  accountVerifyIdentity: 'account.verify_identity',
+  /** Binding a new authenticator to an account whose old one is gone. */
+  accountRegisterMfa: 'account.register_mfa',
+  /**
+   * Signing an account out of everything, everywhere.
+   *
+   * The right fix for a session somebody else is holding and the wrong one for
+   * a dead authenticator - and it says so, in a refusal, which is the only
+   * honest way to ship a wrong-flavour trap.
+   */
+  accountRevokeSessions: 'account.revoke_sessions',
+  /** Giving an account one of the seats the company actually bought. */
+  accountAssignLicence: 'account.assign_licence',
+  /** And taking one back off somebody who has not needed it since April. */
+  accountRevokeLicence: 'account.revoke_licence',
   serviceRestart: 'service.restart',
+  /**
+   * A new certificate on a service that is running perfectly and refusing
+   * everybody. Its own verb because it is its own fault: restarting it puts
+   * the same expired certificate back up, in front of the same forty people.
+   */
+  serviceRenewCertificate: 'service.renew_certificate',
   machineSetDisplayRotation: 'machine.set_display_rotation',
   machineSetResolution: 'machine.set_resolution',
   machineReboot: 'machine.reboot',
@@ -32,7 +64,34 @@ export const HELPDESK_ACTIONS = {
   machineRecordEvent: 'machine.record_event',
   devicePowerCycle: 'device.power_cycle',
   deviceReplaceBattery: 'device.replace_battery',
+  /**
+   * Taking the password out of a machine that has been offering it for months.
+   *
+   * The fix for an account that relocks minutes after every unlock, and the one
+   * that nobody looks for, because the thing typing the wrong password is not a
+   * person and is not in the room.
+   */
+  deviceForgetCredentials: 'device.forget_credentials',
   mailRuleDelete: 'mail_rule.delete',
+  /**
+   * Switching on a rule somebody wrote, tested once, and left off because
+   * switching it on was a change and a change needed a form.
+   */
+  mailRuleEnable: 'mail_rule.enable',
+  /**
+   * The fix made of paper: a note by the socket saying which plug is not
+   * yours. It is a real verb because it is a real repair - the outage stops -
+   * and it is the only one in the game that happens in the corridor.
+   */
+  facilitiesStickyNote: 'facilities.sticky_note',
+  /**
+   * Clicking the link in the suspicious mail, to see what it does.
+   *
+   * It is in the registry because it HAPPENS, and because a consequence the
+   * world does not record is a consequence the player can argue with. Nothing
+   * offers it but a conversation, and the conversation warns you first.
+   */
+  securityFollowLink: 'security.follow_link',
   shareGrantAccess: 'share.grant_access',
   printerClearQueue: 'printer.clear_queue',
   ticketSetWaiting: 'ticket.set_waiting',
@@ -166,6 +225,40 @@ export const DAY_ACTIONS = {
   /** The empties, into the bin, before somebody counts them. */
   deskTidy: 'desk.tidy',
 } as const;
+
+/**
+ * Things the WORLD does, on its own timetable, to itself.
+ *
+ * A cleaner unplugs a socket at four minutes to five. A tablet in a cupboard
+ * offers a password nobody has typed. A maintenance window opens at nine and
+ * takes a service down with it. None of that is the player working, and none of
+ * it is offered on a button anywhere - but all of it has to be a dispatched
+ * action, because everything that changes this world goes through the registry
+ * and gets written into the log a replay is rebuilt from.
+ *
+ * They are separated from the helpdesk verbs so that "what can a first-line tech
+ * do" stays an answerable question: this list is the answer to a different one,
+ * which is "what happens to you while you are answering it".
+ */
+export const WORLD_ACTIONS = {
+  /** The socket, and the trolley that wanted it. */
+  powerCut: 'world.power_cut',
+  /** A maintenance window opening on top of a service somebody was using. */
+  serviceStopped: 'world.service_stopped',
+  /** One more wrong password from something that is not a person. */
+  staleLogon: 'world.stale_logon',
+  /**
+   * The bill for an enrolment nobody checked, arriving a day late in somebody
+   * else's incident report - which is exactly how long it takes in real life.
+   */
+  securityFallout: 'world.security_fallout',
+} as const;
+
+export type WorldActionId = (typeof WORLD_ACTIONS)[keyof typeof WORLD_ACTIONS];
+
+export const WORLD_ACTION_IDS: readonly WorldActionId[] = Object.freeze(
+  Object.values(WORLD_ACTIONS),
+);
 
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
 

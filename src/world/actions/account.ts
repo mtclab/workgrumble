@@ -52,6 +52,27 @@ const IS_DISABLED: GuardData = {
   reason: DISABLED_NOT_LOCKED_REASON,
 };
 
+/**
+ * Why signing every device out is not the fix for a dead authenticator.
+ *
+ * The wrong-flavour trap, in one sentence the player can act on. It is a real
+ * verb with a real use - a session somebody else is holding - and this is the
+ * one case where doing it makes the ticket worse, so the refusal has to say
+ * which fix it is the wrong flavour OF.
+ */
+export const REVOKE_WITHOUT_FACTOR_REASON = '"{target.label}" has no working '
+  + 'second factor at the moment, so signing every device out is signing them '
+  + 'out of the one thing they can still get into. Revoking sessions is the fix '
+  + 'for a session somebody else is holding. This is a lost authenticator, and '
+  + 'the fix for that is a new enrolment.';
+
+/** The seat count, quoted back at whoever went looking for a spare one. */
+export const NO_FREE_SEATS_REASON = 'The licence pool has no free seats. '
+  + 'Somewhere on this estate somebody is holding one and not using it, and '
+  + 'until that seat comes back this is not a thing you can grant.';
+
+export const SEATS_PARAM = 'pool';
+
 export const ACCOUNT_ACTIONS: readonly ActionData[] = [
   {
     id: HELPDESK_ACTIONS.accountUnlock,
@@ -162,6 +183,165 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
         node: TARGET,
         field: FIELDS.pwMustChange,
         value: { const: true },
+      },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.accountVerifyIdentity,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('account'),
+      {
+        when: {
+          pred: 'field_is_number',
+          node: TARGET,
+          field: FIELDS.identityVerifiedAt,
+        },
+        reason: 'You have already checked who "{target.label}" is today. '
+          + 'Asking them their payroll number twice is not twice the security, '
+          + 'it is one security and one irritated person.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.identityVerifiedAt,
+        value: { now: true },
+      },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.accountRegisterMfa,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('account'),
+      {
+        when: fieldIs(TARGET, FIELDS.enabled, false),
+        reason: 'Binding a new authenticator to a disabled account is putting '
+          + 'a new lock on a door that has been bricked up. Whatever they are '
+          + 'really asking for, it starts somewhere else.',
+      },
+      {
+        when: fieldIs(TARGET, FIELDS.mfaEnrolled, true),
+        reason: '"{target.label}" already has a working second factor. '
+          + 'Re-enrolling one that works is how somebody ends up with two '
+          + 'codes and no idea which one the door wants.',
+      },
+    ],
+    // Nothing here asks whether anybody checked. That is not an oversight: an
+    // enrolment that refused without a verification would teach the player that
+    // the system does the checking, and the entire point of this trap is that
+    // it does not and never will.
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.mfaEnrolled,
+        value: { const: true },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.mfaEnrolledAt,
+        value: { now: true },
+      },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.accountRevokeSessions,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('account'),
+      {
+        when: not(fieldIs(TARGET, FIELDS.mfaEnrolled, true)),
+        reason: REVOKE_WITHOUT_FACTOR_REASON,
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.sessionsRevokedAt,
+        value: { now: true },
+      },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.accountRevokeLicence,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('account'),
+      ...paramNodeGuards(SEATS_PARAM, 'service'),
+      {
+        when: not(fieldIs(TARGET, FIELDS.licence, true)),
+        reason: '"{target.label}" is not holding a seat, so there is none to '
+          + 'take back. The one that is missing is being held by somebody '
+          + 'else, and the directory will say who.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.licence,
+        value: { const: false },
+      },
+      {
+        op: 'set_field',
+        node: param(SEATS_PARAM),
+        field: FIELDS.seatsFree,
+        value: {
+          add: {
+            node: param(SEATS_PARAM),
+            field: FIELDS.seatsFree,
+            by: { const: 1 },
+            clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
+          },
+        },
+      },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.accountAssignLicence,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('account'),
+      ...paramNodeGuards(SEATS_PARAM, 'service'),
+      {
+        when: fieldIs(TARGET, FIELDS.licence, true),
+        reason: '"{target.label}" already has a seat. Whatever they cannot '
+          + 'open, it is not the licence stopping them.',
+      },
+      {
+        when: {
+          pred: 'field_at_most',
+          node: param(SEATS_PARAM),
+          field: FIELDS.seatsFree,
+          value: 0,
+        },
+        reason: NO_FREE_SEATS_REASON,
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.licence,
+        value: { const: true },
+      },
+      {
+        op: 'set_field',
+        node: param(SEATS_PARAM),
+        field: FIELDS.seatsFree,
+        value: {
+          sub: {
+            node: param(SEATS_PARAM),
+            field: FIELDS.seatsFree,
+            by: { const: 1 },
+            clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
+          },
+        },
       },
     ],
   },

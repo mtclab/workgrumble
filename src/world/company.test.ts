@@ -31,17 +31,42 @@ describe('company world', () => {
       NODE_KINDS.map((kind) => [kind, graph.nodesOfKind(kind).length]),
     );
 
+    // Seventeen people, because a week of twenty-odd tickets is a week in a
+    // building with people in it: sixteen who report something and one leaver
+    // who reports nothing and is the cause of a Wednesday.
     expect(counts).toEqual({
-      person: 6,
-      account: 6,
-      machine: 4,
-      device: 3,
-      service: 3,
-      share: 1,
-      group: 2,
-      mail_rule: 1,
+      person: 17,
+      account: 17,
+      machine: 13,
+      device: 5,
+      service: 7,
+      share: 2,
+      group: 3,
+      mail_rule: 2,
       ticket: 0,
     });
+  });
+
+  /**
+   * The one account that starts switched off, and why that is not a fault.
+   *
+   * Everything else broken in this game arrives with the ticket that is about
+   * it. Colin Peach left in April and the leavers process did its job the same
+   * afternoon - the account is correct, the audit trail is clean, and the seat
+   * of the accounts suite he is still holding is what stops somebody's first
+   * morning six months later.
+   */
+  it('keeps the leaver switched off and still holding a seat', () => {
+    const graph = seeded();
+
+    expect(graph.getField(COMPANY_IDS.colinAccount, FIELDS.enabled)).toBe(false);
+    expect(graph.getField(COMPANY_IDS.colinAccount, FIELDS.licence)).toBe(true);
+    expect(graph.getField(COMPANY_IDS.suiteLicences, FIELDS.seatsFree)).toBe(0);
+    // And the new starter has neither, which is the ticket rather than the
+    // seed being unkind: nobody has been able to give him one.
+    expect(graph.getField(COMPANY_IDS.robAccount, FIELDS.licence))
+      .toBeUndefined();
+    expect(graph.getField(COMPANY_IDS.robAccount, FIELDS.enabled)).toBe(true);
   });
 
   it('gives every account exactly one owner and one username', () => {

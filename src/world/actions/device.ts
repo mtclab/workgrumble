@@ -86,6 +86,27 @@ export const DEVICE_ACTIONS: readonly ActionData[] = [
     ],
   },
   {
+    id: HELPDESK_ACTIONS.deviceForgetCredentials,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('device'),
+      {
+        when: not(fieldIs(TARGET, FIELDS.storedCredential, true)),
+        reason: '"{target.label}" is not holding anybody\'s password. '
+          + 'Whatever is trying the old one, it is something else - and there '
+          + 'is a list of what else is plugged in on the machine it hangs off.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.storedCredential,
+        value: { const: false },
+      },
+    ],
+  },
+  {
     id: HELPDESK_ACTIONS.printerClearQueue,
     tier: HELPDESK_TIER,
     validate: [
