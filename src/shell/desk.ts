@@ -21,6 +21,7 @@ import {
   MAX_CANS,
   nextTolerance,
 } from '../world/consumables';
+import { LATE_CAN_REASON } from '../world/actions';
 import { EMPTIES_TOLERATED } from '../world/boss';
 import { formatPence } from '../world/day';
 import { createIcon } from './icons';
@@ -195,8 +196,7 @@ function blockedReason(
       + 'will still be there at nine.';
   }
 
-  return now + buffTicks > shiftEndsAt
-    ? 'There is no point starting one now: it would wear off somewhere on '
-      + 'the way home, and you would still be paying for it.'
-    : null;
+  // The same sentence the engine refuses with, because it is the same rule:
+  // this half is the one that greys the can out before the click.
+  return now + buffTicks > shiftEndsAt ? LATE_CAN_REASON : null;
 }

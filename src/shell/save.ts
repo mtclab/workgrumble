@@ -52,31 +52,36 @@ function refuse(reason: string): SaveOutcome<never> {
 }
 
 /**
- * Screen state a schema-1 file predates.
+ * The oldest file this build can honestly read.
  *
- * Defaults rather than guesses: a session from before the Browser existed was
- * on no page, and a session from before the lead did rounds had never been
- * caught at anything. Both are true statements about that save.
+ * Schema 1 is refused rather than migrated, and the difference matters. A
+ * schema-1 file carries an ENGINE payload from before the pressure layer: a
+ * player node with no meters on it and an action registry with no meter, boss,
+ * consumable or triage verbs in it. The engine restores that world happily -
+ * it is a coherent world, just not this game's - and the session that comes
+ * back looks fine until the first meter tick refuses as an unknown action and
+ * the day quietly stops moving. Filling in the missing screens, which is all
+ * the old migration did, upgraded the wrapper around a world nobody can play.
+ *
+ * Those files only ever existed on the machines of people building this, which
+ * is why the answer is a sentence rather than a rebuild of the world.
  */
-function addM3Screens(app: unknown): unknown {
-  if (typeof app !== 'object' || app === null || Array.isArray(app)) {
-    return app;
-  }
+export const OLDEST_READABLE_SCHEMA = 2;
 
-  return {
-    browser: { siteId: null },
-    caught: { appId: null, at: null },
-    ...app,
-  };
-}
+export const PRE_RELEASE_SAVE_REASON = 'That save was written by a pre-release '
+  + 'build, before the shift had any pressure in it. The world inside it is '
+  + 'missing pieces this version cannot invent - the meters, the lead, the '
+  + 'machine in the corridor - so it is not something a day can be resumed '
+  + 'from. Nothing has been loaded; start a new week.';
 
 /**
  * Brings an older file forward.
  *
  * Each step upgrades one schema to the next, in order, so a file from any
- * version this build has ever written still loads. A file from a LATER schema
- * is refused outright - guessing at a field this code has never seen is how a
- * save silently loses a day.
+ * version this build can still make sense of keeps loading. A file from a
+ * LATER schema is refused outright - guessing at a field this code has never
+ * seen is how a save silently loses a day - and so is one from before the
+ * oldest schema whose world this build could stand up.
  */
 function migrate(file: Record<string, unknown>): SaveOutcome<
   Record<string, unknown>
@@ -94,12 +99,13 @@ function migrate(file: Record<string, unknown>): SaveOutcome<
     );
   }
 
-  return {
-    ok: true,
-    value: schema < 2
-      ? { ...file, schema: 2, app: addM3Screens(file.app) }
-      : file,
-  };
+  if (schema < OLDEST_READABLE_SCHEMA) {
+    return refuse(PRE_RELEASE_SAVE_REASON);
+  }
+
+  // The seam stays: schema 3 will be upgraded from 2 here, in order, and every
+  // file this build can read will keep loading.
+  return { ok: true, value: file };
 }
 
 export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {

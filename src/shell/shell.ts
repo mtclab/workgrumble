@@ -124,6 +124,17 @@ export class Shell {
     return this.desktop?.openSlackApps() ?? [];
   }
 
+  /**
+   * The slack app the player is actually in, if the front window is one.
+   *
+   * A window behind the one being typed into is something the lead can see and
+   * something the player is not looking at, which is why the two meters ask
+   * two different questions.
+   */
+  public focusedSlackApp(): string | null {
+    return this.desktop?.focusedSlackApp() ?? null;
+  }
+
   public dispose(): void {
     this.stopBootTimer();
     this.desktop?.dispose();

@@ -22,6 +22,7 @@ function apiFor(
     day: new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
       onDayBoundary: () => {},
       openSlackApps: () => [],
+      focusedSlackApp: () => null,
     }),
     dispatch: (id, dispatchActor, target, params) => session.engine.dispatch(
       id,

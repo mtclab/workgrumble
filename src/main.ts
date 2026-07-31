@@ -65,6 +65,9 @@ async function boot(): Promise<void> {
     // What the pressure layer cannot see for itself: which slack apps are
     // genuinely on screen right now.
     openSlackApps: () => shell.openSlackApps(),
+    // And the one the player is in, which is the only one calming anybody
+    // down. The lead sees the rest.
+    focusedSlackApp: () => shell.focusedSlackApp(),
     onNotice: (title, body) => {
       shell.notify(title, body);
     },
@@ -114,7 +117,11 @@ async function boot(): Promise<void> {
         + 'Any password works; nobody has checked since 1998.',
       node: COMPANY_IDS.player,
     },
-    dispatch: (id, actor, target, params) => engine.dispatch(
+    // Through the DAY rather than straight at the engine: a dispatch is not
+    // only a change to the world, it is the minute somebody first did
+    // something about a ticket and a line on the handoff form that ticket will
+    // eventually carry. Both are written where the action happens.
+    dispatch: (id, actor, target, params) => day.dispatch(
       id,
       actor,
       target,

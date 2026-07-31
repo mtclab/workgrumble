@@ -18,7 +18,9 @@ import { WindowRenderer } from './window-renderer';
 import {
   closeWindow,
   createWindowManager,
+  focusWindow,
   minimizeSlackWindows,
+  minimizeWindow,
   setWindowViewport,
   toggleTaskbarWindow,
   type Viewport,
@@ -100,6 +102,7 @@ export class Desktop {
   private unsubscribeClock: (() => void) | null = null;
   private unsubscribeDay: (() => void) | null = null;
   private unsubscribeWorld: (() => void) | null = null;
+  private unsubscribeScreens: (() => void) | null = null;
 
   private wm: WindowManagerState | null = null;
   private notifications: NotificationState = createNotificationState();
@@ -371,12 +374,28 @@ export class Desktop {
     });
     this.unsubscribeDay = this.context.day.onChanged(() => {
       this.renderDay();
+      // The corridor as well as the clock. A load announces the restored tick
+      // BEFORE the driver has rebuilt the day it belongs to, so the repaint
+      // that tick caused drew the boss from yesterday's patrol; this is the
+      // paint that happens once the driver has caught up, and without it a
+      // paused day-two telegraph loaded into a day-one session showed a clear
+      // corridor until something unrelated moved.
+      this.renderPressure();
       this.syncDayScreens();
     });
     // The meters live in the graph, and nothing about the clock says when one
     // moved: the fumble state has to follow the world, not the minute.
     this.unsubscribeWorld = this.context.onWorldChange(() => {
       this.renderPressure();
+    });
+    // A load replaces the screens wholesale, and the windows are one of them.
+    // They have to be back BEFORE the clock moves again: the pressure layer
+    // decides what the lead sees from what is up at his arrival, and a session
+    // that resumes with an empty desktop is a session that reloaded its way
+    // out of a conversation.
+    this.unsubscribeScreens = this.context.appState.onReplaced(() => {
+      this.restoreWindows();
+      this.syncDayScreens();
     });
 
     this.renderClock(this.context.clock.now());
@@ -395,6 +414,8 @@ export class Desktop {
     this.unsubscribeDay = null;
     this.unsubscribeWorld?.();
     this.unsubscribeWorld = null;
+    this.unsubscribeScreens?.();
+    this.unsubscribeScreens = null;
     this.abort.abort();
     this.renderer.dispose();
     this.taskbarButtons.clear();
@@ -698,6 +719,71 @@ export class Desktop {
     }
 
     this.wm = next;
+    this.rememberWindows();
+    this.renderWindows();
+  }
+
+  /**
+   * The screen, written into the store the save carries.
+   *
+   * Not `patchExternal`: the desktop is the thing that owns these windows and
+   * it is repainting them on the next line, so announcing would be telling
+   * itself. What it is FOR is the save - the pressure layer decides everything
+   * on what is genuinely up when the lead arrives, and a file that does not
+   * carry that is a file that changes the answer.
+   */
+  private rememberWindows(): void {
+    const state = this.wm;
+
+    if (state === null) {
+      return;
+    }
+
+    this.context.appState.patch('windows', {
+      open: state.windows.map((windowState) => ({
+        appId: windowState.appId,
+        minimized: windowState.minimized,
+      })),
+      focusedId: state.focusedId,
+    });
+  }
+
+  /**
+   * And back again, after a load.
+   *
+   * Windows are reopened bottom of the pile first, so the z-order the player
+   * left is the z-order they come back to - which decides which app the lead
+   * names when he catches them. Geometry is not restored because it was never
+   * saved: a window put back at coordinates from somebody else's screen is
+   * worse than one the cascade has placed.
+   */
+  private restoreWindows(): void {
+    if (this.wm === null) {
+      return;
+    }
+
+    const saved = this.context.appState.get().windows;
+    let next = createWindowManager(this.measureViewport());
+
+    for (const entry of saved.open) {
+      const definition = this.apps.find((app) => app.id === entry.appId);
+
+      if (definition === undefined) {
+        continue;
+      }
+
+      next = launchApp(next, definition);
+
+      if (entry.minimized) {
+        next = minimizeWindow(next, windowIdFor(definition));
+      }
+    }
+
+    if (saved.focusedId !== null) {
+      next = focusWindow(next, saved.focusedId);
+    }
+
+    this.wm = next;
     this.renderWindows();
   }
 
@@ -915,6 +1001,23 @@ export class Desktop {
     return (this.wm?.windows ?? [])
       .filter((windowState) => windowState.slack && !windowState.minimized)
       .map((windowState) => windowState.appId);
+  }
+
+  /**
+   * And which one the player is actually in.
+   *
+   * The front window is where the keyboard is, so it is the only one doing the
+   * player any good. Everything else that is up is something the lead can see
+   * and nobody is enjoying.
+   */
+  public focusedSlackApp(): string | null {
+    const focused = (this.wm?.windows ?? []).find(
+      (windowState) => windowState.id === this.wm?.focusedId,
+    );
+
+    return focused !== undefined && focused.slack && !focused.minimized
+      ? focused.appId
+      : null;
   }
 
   /**

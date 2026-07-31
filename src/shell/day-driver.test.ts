@@ -4,16 +4,35 @@ import { loadEngineForTests } from '../engine-api/load-node';
 import { HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import {
+  buildDaySchedule,
   DAY_RATE_PENCE,
   dayLedger,
   daySlip,
+  lunchWindow,
   shiftEndTick,
   shiftStartTick,
 } from '../world/day';
 import { FIELDS } from '../world/fields';
-import { METER_INTERVAL_TICKS, STARTING_REPUTATION } from '../world/meters';
+import { BOSS_TRAP_TICKET, buildPatrolSchedule } from '../world/boss';
+import { NO_RUN } from '../world/consumables';
+import {
+  COMFORTABLE_QUEUE,
+  METER_CEILING,
+  METER_INTERVAL_TICKS,
+  STARTING_REPUTATION,
+  STRESS_PER_BREACH,
+  STRESS_PER_EXCESS_TICKET,
+} from '../world/meters';
 import { createWorldSession, WORLD_SEED } from '../world/session';
-import { HANDOFF_BOUNCE } from '../world/tickets';
+import { SLA_TARGETS, UNTRIAGED_PRIORITY } from '../world/priority';
+import { isActiveWork, ticketClocks } from '../world/sla';
+import {
+  actionSummary,
+  HANDOFF_BOUNCE,
+  ticketArrivalPool,
+  TIDIED_LIST,
+  triedFromTouches,
+} from '../world/tickets';
 import {
   DayDriver,
   TICK_INTERVAL_MS,
@@ -30,17 +49,33 @@ interface Harness {
   readonly boundaries: () => number;
   readonly notices: () => readonly string[];
   /** What the shell would say is on screen. The tests move it about. */
-  readonly slack: { open: readonly string[] };
+  readonly slack: Screen;
+}
+
+/**
+ * The screen, as the driver is allowed to see it: what is up, and which one
+ * the player is in. Two questions rather than one, because the meters ask two.
+ */
+interface Screen {
+  open: readonly string[];
+  focused: string | null;
+}
+
+/** Opening windows: the last one opened is the one in front. */
+function show(slack: Screen, apps: readonly string[]): void {
+  slack.open = apps;
+  slack.focused = apps[apps.length - 1] ?? null;
 }
 
 function harness(): Harness {
   const { engine } = createWorldSession();
   const onDayBoundary = vi.fn();
   const notices: string[] = [];
-  const slack: { open: readonly string[] } = { open: [] };
+  const slack: Screen = { open: [], focused: null };
   const driver = new DayDriver(engine, COMPANY_IDS.player, WORLD_SEED, {
     onDayBoundary,
     openSlackApps: () => slack.open,
+    focusedSlackApp: () => slack.focused,
     onNotice: (title) => {
       notices.push(title);
     },
@@ -54,6 +89,20 @@ function harness(): Harness {
     slack,
   };
 }
+
+/** The one ticket that is not waiting for the player at 08:00. */
+const DRIP_TICKET = TIDIED_LIST.def.id;
+
+/**
+ * The minute it lands on day one, from the shipped seed. Not a magic number:
+ * `buildDaySchedule` produces it, and the test asserts the driver deals it on
+ * the same one.
+ */
+const DRIP_ARRIVAL_TICK = buildDaySchedule(1, WORLD_SEED, ticketArrivalPool())
+  .arrivals.find((entry) => entry.ticketId === TIDIED_LIST.def.id)?.tick ?? -1;
+
+/** When the lead sends his first message on day one of the shipped seed. */
+const FIRST_PING_TICK = buildPatrolSchedule(1, WORLD_SEED).pings[0]?.tick ?? 0;
 
 /** Real milliseconds that buy `ticks` simulated minutes at normal speed. */
 function realMs(ticks: number): number {
@@ -220,6 +269,50 @@ describe('the day driver', () => {
     expect(boundaries()).toBe(2);
   });
 
+  /**
+   * The other half of what a queue does to you: something arrives while you
+   * are working. Everything else in the shipped world is waiting at 08:00,
+   * which a player can read before the shift starts and plan around; this one
+   * lands on a minute the seeded schedule picks, announces itself, and is in
+   * the queue from then on.
+   */
+  it('drips the afternoon ticket in on the minute the schedule says', () => {
+    const { driver, engine } = harness();
+    const spawned: string[] = [];
+    engine.onEvent((event) => {
+      if (event.type === 'ticket:spawned' && event.id === DRIP_TICKET) {
+        spawned.push(event.id);
+      }
+    });
+
+    const arrival = driver.schedule().arrivals.find(
+      (entry) => entry.ticketId === DRIP_TICKET,
+    );
+    expect(arrival?.tick).toBe(DRIP_ARRIVAL_TICK);
+    // Early afternoon: after lunch is over, and with the rest of a shift left
+    // to do something about it.
+    expect(DRIP_ARRIVAL_TICK).toBeGreaterThan(lunchWindow(1).to);
+    expect(DRIP_ARRIVAL_TICK).toBeLessThan(shiftEndTick(1) - 90);
+
+    driver.startShift();
+    driver.step(realMs(DRIP_ARRIVAL_TICK - engine.now() - 1));
+    expect(engine.graph.getNode(DRIP_TICKET)).toBeUndefined();
+    expect(spawned).toEqual([]);
+
+    driver.step(realMs(1));
+    expect(engine.now()).toBe(DRIP_ARRIVAL_TICK);
+    expect(engine.ticketState(DRIP_TICKET)).toBe('open');
+    expect(engine.graph.getField(DRIP_TICKET, FIELDS.spawnedAt))
+      .toBe(DRIP_ARRIVAL_TICK);
+    // One announcement, on the minute, which is what the shell turns into the
+    // notification the player actually sees.
+    expect(spawned).toEqual([DRIP_TICKET]);
+
+    // And it stays in the queue rather than arriving again every minute.
+    driver.step(realMs(60));
+    expect(spawned).toEqual([DRIP_TICKET]);
+  });
+
   it('ignores a clock-off that is not at the end of a day', () => {
     const { driver, engine, boundaries } = harness();
     driver.clockOff();
@@ -293,7 +386,7 @@ describe('the pressure layer on the clock', () => {
 
   it('leaves the meters alone during the morning brief', () => {
     const { driver, engine, slack } = harness();
-    slack.open = ['bubbles'];
+    show(slack, ['bubbles']);
 
     driver.step(realMs(20));
 
@@ -305,7 +398,7 @@ describe('the pressure layer on the clock', () => {
   it('charges suspicion for what is on screen, per interval', () => {
     const { driver, engine, slack } = harness();
     driver.startShift();
-    slack.open = ['bubbles'];
+    show(slack, ['bubbles']);
 
     driver.step(realMs(METER_INTERVAL_TICKS));
     const afterOne = meter(engine, FIELDS.suspicion);
@@ -320,7 +413,7 @@ describe('the pressure layer on the clock', () => {
   it('does not move a meter on a minute that is not an interval', () => {
     const { driver, engine, slack } = harness();
     driver.startShift();
-    slack.open = ['bubbles'];
+    show(slack, ['bubbles']);
 
     driver.step(realMs(METER_INTERVAL_TICKS));
     const afterOne = meter(engine, FIELDS.suspicion);
@@ -332,11 +425,11 @@ describe('the pressure layer on the clock', () => {
   it('drains suspicion again once the screen is clean', () => {
     const { driver, engine, slack } = harness();
     driver.startShift();
-    slack.open = ['bubbles'];
+    show(slack, ['bubbles']);
     driver.step(realMs(METER_INTERVAL_TICKS * 3));
     const dirty = meter(engine, FIELDS.suspicion);
 
-    slack.open = [];
+    show(slack, []);
     driver.step(realMs(METER_INTERVAL_TICKS * 2));
 
     expect(meter(engine, FIELDS.suspicion)).toBeLessThan(dirty);
@@ -356,35 +449,205 @@ describe('the pressure layer on the clock', () => {
 
   /**
    * The response clock's second stop condition, wired: nobody said a word to
-   * the reporter, but somebody restarted the thing that was broken.
+   * the reporter, but somebody restarted the thing that was broken - and the
+   * mark lands in the MINUTE they did it, not on the next interval boundary.
+   * A touch one minute before the deadline used to be recorded at the
+   * deadline, which is a breach the player did not commit.
    */
-  it('stops a response clock when the ticket\'s own estate is touched', () => {
+  it('stops a response clock in the minute the estate was touched', () => {
+    const { driver, engine } = harness();
+    // One minute short of the untriaged response target, which is an interval
+    // boundary: the old sweep would have recorded this touch at the deadline
+    // and called it late.
+    driver.step(realMs(SLA_TARGETS[UNTRIAGED_PRIORITY].response - 1));
+    const touchedAt = engine.now();
+
+    expect(
+      driver.dispatch(
+        HELPDESK_ACTIONS.printerClearQueue,
+        COMPANY_IDS.player,
+        COMPANY_IDS.printer,
+        {},
+      ),
+    ).toEqual({ ok: true });
+
+    const spooler = engine.graph.getNode('ticket:wedged-spooler');
+    expect(spooler?.fields[FIELDS.respondedAt]).toBe(touchedAt);
+    expect(
+      spooler === undefined ? true : ticketClocks(spooler, engine.now()).response.breached,
+    ).toBe(false);
+
+    // And it is the FIRST touch that counts, not the tidiest later one.
+    driver.step(realMs(10));
+    driver.dispatch(
+      HELPDESK_ACTIONS.serviceRestart,
+      COMPANY_IDS.player,
+      COMPANY_IDS.spooler,
+      {},
+    );
+    expect(engine.graph.getField('ticket:wedged-spooler', FIELDS.respondedAt))
+      .toBe(touchedAt);
+  });
+
+  /**
+   * Resetting somebody's password before they have raised a ticket about it is
+   * not an answer to a ticket that does not exist yet. The old scan searched
+   * the whole log with no idea when the ticket had arrived, so the day's first
+   * housekeeping could be read back as a response to the afternoon's outage.
+   */
+  it('does not count a touch that happened before the ticket existed', () => {
     const { driver, engine } = harness();
     driver.startShift();
 
-    expect(engine.graph.getField('ticket:locked-account', FIELDS.respondedAt))
+    // The trap ticket is about the lead's ACCOUNT, and it is raised by the
+    // lead, mid-shift. Reset his password now, hours before he mentions it.
+    expect(engine.graph.getNode(BOSS_TRAP_TICKET)).toBeUndefined();
+    expect(
+      driver.dispatch(
+        HELPDESK_ACTIONS.accountResetPassword,
+        COMPANY_IDS.player,
+        COMPANY_IDS.bossAccount,
+        {},
+      ),
+    ).toEqual({ ok: true });
+
+    driver.step(realMs(FIRST_PING_TICK - engine.now()));
+    expect(engine.graph.getNode(BOSS_TRAP_TICKET)).toBeDefined();
+    expect(engine.graph.getField(BOSS_TRAP_TICKET, FIELDS.respondedAt))
       .toBeUndefined();
+    expect(engine.graph.getField(BOSS_TRAP_TICKET, FIELDS.touchLog))
+      .toBeUndefined();
+  });
 
-    engine.dispatch(
-      HELPDESK_ACTIONS.accountUnlock,
-      COMPANY_IDS.player,
-      COMPANY_IDS.garyAccount,
-      {},
-    );
-    driver.step(realMs(METER_INTERVAL_TICKS));
+  /**
+   * The one that was being forgiven. A fix that lands after the response
+   * target is a LATE first response - and refusing to stamp it because the fix
+   * also closed the ticket left no timestamp at all, which reads as "answered
+   * in time" everywhere that counts.
+   */
+  it('records a late first touch even when that touch closes the ticket', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+    driver.step(realMs(SLA_TARGETS[UNTRIAGED_PRIORITY].response + 5));
+    const late = engine.now();
 
-    // That ticket closed on the unlock, so the mark went onto a ticket the
-    // same estate is behind - the printer one is the live proof.
-    engine.dispatch(
+    expect(
+      driver.dispatch(
+        HELPDESK_ACTIONS.accountUnlock,
+        COMPANY_IDS.player,
+        COMPANY_IDS.garyAccount,
+        {},
+      ),
+    ).toEqual({ ok: true });
+
+    const closed = engine.graph.getNode('ticket:locked-account');
+    expect(closed?.fields[FIELDS.state]).toBe('resolved');
+    expect(closed?.fields[FIELDS.respondedAt]).toBe(late);
+    expect(
+      closed === undefined ? false : ticketClocks(closed, engine.now()).response.breached,
+    ).toBe(true);
+  });
+
+  /**
+   * The handoff form's evidence, written as it happens. The dispatch log knows
+   * the same thing until tonight's checkpoint drains it; the ticket has to
+   * still know tomorrow.
+   */
+  it('writes what was tried onto the ticket, refusals included', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+
+    driver.dispatch(
       HELPDESK_ACTIONS.printerClearQueue,
       COMPANY_IDS.player,
       COMPANY_IDS.printer,
       {},
     );
+    driver.dispatch(
+      HELPDESK_ACTIONS.serviceRestart,
+      COMPANY_IDS.player,
+      COMPANY_IDS.fan,
+      {},
+    );
+
+    const spooler = engine.graph.getField('ticket:wedged-spooler', FIELDS.touchLog);
+    expect(triedFromTouches(spooler)).toHaveLength(1);
+    expect(triedFromTouches(spooler)[0]?.worked).toBe(true);
+
+    // A fan is not a service, so that one refused - and a refusal is exactly
+    // the sort of thing second line want to know somebody had already tried.
+    const fan = triedFromTouches(
+      engine.graph.getField('ticket:fan-noise', FIELDS.touchLog),
+    );
+    expect(fan).toHaveLength(1);
+    expect(fan[0]?.worked).toBe(false);
+  });
+
+  /**
+   * A breached ticket is still a ticket. Both places that count the queue used
+   * to drop it the moment it went red, so a missed deadline bought a quieter
+   * afternoon and a scorecard reporting nothing left open.
+   */
+  it('keeps counting a breached ticket that nobody has fixed', () => {
+    const { driver, engine, slack } = harness();
+    driver.startShift();
+    show(slack, []);
+
+    // Triage one of the morning pile as a P1 and it blows its SLA on the
+    // spot: it has been sitting since eight, and a P1 gets an hour.
+    expect(
+      driver.dispatch(
+        HELPDESK_ACTIONS.ticketClassify,
+        COMPANY_IDS.player,
+        'ticket:rotated-screen',
+        { impact: 3, urgency: 3, priority: 1 },
+      ),
+    ).toEqual({ ok: true });
+    expect(engine.ticketState('ticket:rotated-screen')).toBe('breached');
+
+    const tickets = engine.graph.nodesOfKind('ticket');
+    const live = tickets.filter(
+      (node) => node.fields[FIELDS.state] === 'open'
+        || node.fields[FIELDS.state] === 'waiting_on_user',
+    ).length;
+    expect(dayLedger(tickets, 1).stillOpen).toBe(live + 1);
+    expect(tickets.filter(isActiveWork)).toHaveLength(live + 1);
+
+    // The interval the breach lands in pays for the breach as well, so the
+    // one after it is where the queue's own rate is legible - and it counts
+    // the red one, which is the whole point of not being able to ignore it.
+    driver.step(realMs(METER_INTERVAL_TICKS));
+    const before = meter(engine, FIELDS.stress);
+    expect(before).toBeGreaterThanOrEqual(STRESS_PER_BREACH);
+
+    const excess = tickets.filter(isActiveWork).length - COMFORTABLE_QUEUE;
     driver.step(realMs(METER_INTERVAL_TICKS));
 
-    expect(engine.graph.getField('ticket:wedged-spooler', FIELDS.respondedAt))
-      .toBeGreaterThan(0);
+    expect(meter(engine, FIELDS.stress) - before)
+      .toBe(excess * STRESS_PER_EXCESS_TICKET);
+    expect(meter(engine, FIELDS.stress)).toBeLessThan(METER_CEILING);
+  });
+
+  /**
+   * The shift-tail rule, through the shipped verb rather than through the
+   * button that greys itself out. It is refused, so there is no run for
+   * clocking off to quietly wipe.
+   */
+  it('refuses a can too late in the shift to be paid for', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+    driver.step(realMs(shiftEndTick(1) - engine.now() - 10));
+
+    const refused = driver.drink();
+    expect(refused.ok).toBe(false);
+    expect(engine.graph.getField(COMPANY_IDS.player, FIELDS.drinkStartedAt))
+      .toBe(NO_RUN);
+    expect(meter(engine, FIELDS.consumableSpend)).toBe(0);
+
+    driver.step(realMs(10));
+    expect(driver.state()).toBe('day_end');
+    driver.clockOff();
+    expect(meter(engine, FIELDS.consumableSpend)).toBe(0);
   });
 
   /**
@@ -419,6 +682,66 @@ describe('the pressure layer on the clock', () => {
   });
 
   /**
+   * The handoff form's evidence, a day later.
+   *
+   * Clocking off checkpoints the world and drains the dispatch log, which is
+   * what stops a save growing for as long as a career does. The log was also
+   * where "what I tried" came from, so a ticket worked on Monday and escalated
+   * on Tuesday reached second line claiming nobody had ever looked at it - and
+   * bounced, and cost the player reputation for work they had actually done.
+   */
+  it('still knows what was tried yesterday after the log is drained', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+
+    expect(
+      driver.dispatch(
+        HELPDESK_ACTIONS.machineReboot,
+        COMPANY_IDS.player,
+        COMPANY_IDS.playerMachine,
+        {},
+      ),
+    ).toEqual({ ok: true });
+
+    const yesterday = triedFromTouches(
+      engine.graph.getField('ticket:fan-noise', FIELDS.touchLog),
+    );
+    expect(yesterday).toHaveLength(1);
+
+    // Out through 17:00 and off home. The log starts again in the morning.
+    driver.step(realMs(shiftEndTick(1)));
+    driver.clockOff();
+    expect(engine.dispatchLog()).toEqual([]);
+    expect(driver.day()).toBe(2);
+
+    // Day two, and the form still has yesterday's work on it.
+    const tried = triedFromTouches(
+      engine.graph.getField('ticket:fan-noise', FIELDS.touchLog),
+    );
+    expect(tried).toEqual(yesterday);
+    expect(tried[0]?.text).toBe(actionSummary(HELPDESK_ACTIONS.machineReboot));
+
+    // So the escalation goes rather than bouncing: the handoff L2 keeps is
+    // one with something in both halves, and this is the half nobody types.
+    driver.startShift();
+    expect(
+      driver.dispatch(
+        HELPDESK_ACTIONS.ticketEscalate,
+        COMPANY_IDS.player,
+        'ticket:fan-noise',
+        {
+          reported: 'It sounds like a hornet in a biscuit tin.',
+          tried: tried.map((entry) => entry.text).join('\n'),
+        },
+      ),
+    ).toEqual({ ok: true });
+    expect(engine.graph.getField('ticket:fan-noise', FIELDS.handoffBouncedAt))
+      .toBeUndefined();
+    expect(engine.graph.getField('ticket:fan-noise', FIELDS.handoffTried))
+      .toContain('Rebooted it');
+  });
+
+  /**
    * Determinism, which is what the whole design is for: the meters are moved
    * by dispatched actions on the simulation clock, so the same day walked the
    * same way twice arrives at the same numbers and the same graph hash.
@@ -427,9 +750,9 @@ describe('the pressure layer on the clock', () => {
     const walk = (): { hash: string; stress: number; suspicion: number } => {
       const world = harness();
       world.driver.startShift();
-      world.slack.open = ['bubbles'];
+      show(world.slack, ['bubbles']);
       world.driver.step(realMs(METER_INTERVAL_TICKS * 6));
-      world.slack.open = [];
+      show(world.slack, []);
       world.driver.step(realMs(METER_INTERVAL_TICKS * 6));
 
       return {

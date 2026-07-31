@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs';
+
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { EngineApi } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
-import { HELPDESK_ACTIONS } from '../world/actions';
+import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS } from '../world/fields';
 import { createWorldSession, WORLD_SEED } from '../world/session';
@@ -10,7 +12,9 @@ import { AppStateStore } from './app-state';
 import { DayDriver } from './day-driver';
 import {
   createShellSession,
+  OLDEST_READABLE_SCHEMA,
   parseSaveFile,
+  PRE_RELEASE_SAVE_REASON,
   SAVE_SCHEMA,
   SaveSlot,
   type ShellSessionApi,
@@ -69,6 +73,7 @@ function session(storage: MemoryStorage = new MemoryStorage()): Session {
   const driver = new DayDriver(engine, COMPANY_IDS.player, WORLD_SEED, {
     onDayBoundary: () => {},
     openSlackApps: () => [],
+    focusedSlackApp: () => null,
   });
   const slot = new SaveSlot(storage);
 
@@ -261,37 +266,57 @@ describe('the save file', () => {
   });
 
   /**
-   * The migration seam, with its first real customer: a file written before
-   * the Browser and the boss existed still loads, and the slices it never had
-   * come back as the truth about that session - no page open, never caught.
+   * The migration seam, and the file it refuses.
+   *
+   * The fixture is a REAL schema-1 save, captured from the build that wrote
+   * them (`10aa005`) and committed alongside this test - not a current payload
+   * relabelled, which would prove nothing, because the whole problem is what
+   * is INSIDE the engine payload. That world has no meters on the player node
+   * and no meter, boss, consumable or triage verbs in its registry: restoring
+   * it succeeds and then the day stops moving, one refused action at a time.
    */
-  it('brings a save from the previous format forward', () => {
-    const live = session();
-    workUntilMidday(live);
-    live.session.save();
-
-    const raw = live.storage.getItem('it-career-sim/save');
-
-    if (raw === null) {
-      throw new Error('The save was not written.');
-    }
-
+  it('refuses a save from before the shift had any pressure in it', () => {
+    const raw = readFileSync(
+      new URL('./fixtures/save-schema-1.json', import.meta.url),
+      'utf8',
+    );
     const file = JSON.parse(raw) as Record<string, unknown>;
-    const app = { ...(file.app as Record<string, unknown>) };
-    delete app.browser;
-    delete app.caught;
+
+    // The fixture is what it claims to be, and the reasons it cannot be
+    // migrated are visible in it rather than taken on trust.
+    expect(file.schema).toBe(1);
+    const payload = JSON.parse(String(file.engine)) as {
+      graph: { nodes: { id: string; fields: Record<string, unknown> }[] };
+      registry: { actions: { id: string }[] };
+    };
+    const player = payload.graph.nodes.find(
+      (node) => node.id === COMPANY_IDS.player,
+    );
+    expect(player?.fields[FIELDS.stress]).toBeUndefined();
+    expect(player?.fields[FIELDS.suspicion]).toBeUndefined();
+    const verbs = new Set(payload.registry.actions.map((action) => action.id));
+    expect(verbs.has(DAY_ACTIONS.metersTick)).toBe(false);
+    expect(verbs.has(HELPDESK_ACTIONS.ticketClassify)).toBe(false);
 
     const older = session();
-    older.storage.setItem(
-      'it-career-sim/save',
-      JSON.stringify({ ...file, schema: 1, app }),
-    );
+    const before = older.engine.snapshotHash();
+    older.storage.setItem('it-career-sim/save', raw);
 
-    expect(older.session.load()).toEqual({ ok: true, value: undefined });
-    expect(older.engine.snapshotHash()).toBe(live.engine.snapshotHash());
-    expect(older.appState.get().browser).toEqual({ siteId: null });
-    expect(older.appState.get().caught).toEqual({ appId: null, at: null });
-    // And what the old file DID carry is untouched by the upgrade.
-    expect(older.appState.get().mail.read).toEqual(['mail/queue-nag']);
+    const outcome = older.session.load();
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok === false && outcome.reason)
+      .toBe(PRE_RELEASE_SAVE_REASON);
+
+    // Refused whole: the session the player was in is exactly as it was, and
+    // no half of that file reached the world or the screens.
+    expect(older.engine.snapshotHash()).toBe(before);
+    expect(older.engine.now()).toBe(0);
+    expect(older.driver.state()).toBe('morning_brief');
+    expect(older.appState.snapshot()).toEqual(new AppStateStore().snapshot());
+
+    // And the seam itself is still a seam: the parser reads the schema, says
+    // which one it will not take, and takes the current one.
+    expect(parseSaveFile(JSON.stringify({ ...file, schema: 0 })).ok).toBe(false);
+    expect(OLDEST_READABLE_SCHEMA).toBeLessThanOrEqual(SAVE_SCHEMA);
   });
 });

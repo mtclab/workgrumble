@@ -68,15 +68,17 @@ import {
   type MeterState,
   movesAnything,
 } from '../world/meters';
-import { needsResponse } from '../world/sla';
+import { isActiveWork, isUnresolved, needsResponse } from '../world/sla';
 import {
   bounceLandsAt,
+  countsAsWork,
   findWorldTicket,
   HANDOFF_BOUNCE,
   resolveCredit,
   ticketArrivalPool,
   ticketNodes,
   ticketTitle,
+  withTouch,
 } from '../world/tickets';
 
 /** Real milliseconds one simulated minute takes at normal speed. */
@@ -182,6 +184,15 @@ export interface DayDriverHandlers {
    * which is why it is not in this list.
    */
   openSlackApps(): readonly string[];
+  /**
+   * The slack app the player is actually working in, or null when the window
+   * with the keyboard in it is work - or when there is no window at all.
+   *
+   * The difference matters because the two meters ask different questions. The
+   * lead sees every window that is up; the player is only being calmed down by
+   * the one they are in.
+   */
+  focusedSlackApp(): string | null;
   /** Something the player ought to be told about. */
   onNotice?(title: string, body: string): void;
   /**
@@ -303,6 +314,31 @@ export class DayDriver implements DayApi {
 
   public tidyDesk(): DispatchResult {
     return this.engine.dispatch(DAY_ACTIONS.deskTidy, this.actor, null, {});
+  }
+
+  /**
+   * Everything the player does to the world, and what it meant to the queue.
+   *
+   * The shell dispatches through here rather than at the engine directly so
+   * that the two things a touch IS - the minute somebody first did something
+   * about this ticket, and the line about it on a handoff form - are written in
+   * the same minute as the action itself. Both used to be reconstructed later,
+   * one from a five-minute sweep and one from the dispatch log, and both were
+   * wrong in the same way: the record said when it was NOTICED rather than
+   * when it happened, and the log is drained every night.
+   */
+  public dispatch(
+    id: string,
+    actor: NodeId,
+    target: NodeId | null,
+    params: Record<string, string | number | boolean | null>,
+  ): DispatchResult {
+    // Read BEFORE: this dispatch may resolve the ticket it is about, and a
+    // fix that closes a ticket is still the first time anybody touched it.
+    const witnesses = target === null ? [] : this.ticketsAbout(target);
+    const result = this.engine.dispatch(id, actor, target, params);
+    this.recordTouches(id, witnesses, result.ok);
+    return result;
   }
 
   public paused(): boolean {
@@ -557,9 +593,13 @@ export class DayDriver implements DayApi {
   }
 
   /**
-   * The arrival. Being caught is decided once, on what is genuinely on the
-   * screen; the empties are a second, cheaper conversation for a desk that
-   * told the story on its own.
+   * The arrival: two observations, settled independently.
+   *
+   * Being caught is decided on what is genuinely on the screen. The empties
+   * are a second, cheaper conversation about a desk that told the story on its
+   * own - and a man who has just found a browser open does not stop noticing
+   * the cans. Settling only the first one made the screen a hiding place for
+   * the desk, which is the wrong way round.
    */
   private settleVisit(visit: Readonly<BossVisit>): void {
     const caught = caughtBy(this.handlers.openSlackApps());
@@ -575,8 +615,6 @@ export class DayDriver implements DayApi {
       if (result.ok) {
         this.handlers.onCaught?.(caught, visit.arrivalTick);
       }
-
-      return;
     }
 
     if (!emptiesNoticed(this.playerNumber(FIELDS.deskCans))) {
@@ -593,9 +631,12 @@ export class DayDriver implements DayApi {
     if (noticed.ok) {
       this.handlers.onNotice?.(
         'He counted them',
-        'The lead looked at your screen, found nothing to say about it, and '
-        + 'then looked at the cans. He did not mention the cans, which is '
-        + 'worse than mentioning them.',
+        caught === null
+          ? 'The lead looked at your screen, found nothing to say about it, '
+            + 'and then looked at the cans. He did not mention the cans, '
+            + 'which is worse than mentioning them.'
+          : 'On his way back up the corridor he did the arithmetic on the '
+            + 'cans as well. He did not mention those either.',
       );
     }
   }
@@ -645,17 +686,16 @@ export class DayDriver implements DayApi {
    * arrives at the same meters - which is the whole reason the deltas are
    * computed here and applied by the engine rather than the other way round.
    *
-   * The order matters and is not arbitrary. Response marks first, so a ticket
-   * touched this minute is not still counted as untouched; bounces next, so
-   * the reputation they cost is in the world before anything reads it; the
-   * meters last, so they see the day as it actually stands.
+   * The order matters and is not arbitrary. Bounces first, so the reputation
+   * they cost is in the world before anything reads it; the meters last, so
+   * they see the day as it actually stands. Response marks are NOT here: they
+   * belong to the minute the player touched the ticket, which is `dispatch`.
    */
   private applyPressure(now: number): void {
     if (this.state() !== 'shift' || !isMeterTick(now)) {
       return;
     }
 
-    this.recordResponses();
     this.settleBounces(now);
     this.settleCrash(now);
     this.tickMeters(now);
@@ -722,31 +762,46 @@ export class DayDriver implements DayApi {
     return this.engine.graph.nodesOfKind('ticket');
   }
 
+  /** The unresolved tickets this node is part of the story of. */
+  private ticketsAbout(target: NodeId): readonly ReadOnlyGraphNode[] {
+    return this.tickets().filter(
+      (ticket) => isUnresolved(ticket) && ticketNodes(ticket.id).includes(target),
+    );
+  }
+
   /**
-   * The other way a response clock stops: not a word to the reporter, but a
-   * dispatched action on the thing that is broken. Somebody who fixed the
-   * printer without saying anything did respond - they just did it in the
-   * order techs actually do it.
+   * What one dispatch meant to the tickets it was aimed at.
+   *
+   * Two records, both written now rather than worked out later. The response
+   * clock stops on the first touch, whether or not a word was said to the
+   * reporter and whether or not that touch also closed the ticket - somebody
+   * who fixed the printer without saying anything did respond, they just did
+   * it in the order techs actually do it. And the touch itself goes onto the
+   * ticket, refusals included, because that is the handoff form's evidence and
+   * it has to survive tonight's checkpoint.
    */
-  private recordResponses(): void {
-    const log = this.engine.dispatchLog();
+  private recordTouches(
+    id: string,
+    witnesses: readonly ReadOnlyGraphNode[],
+    ok: boolean,
+  ): void {
+    if (witnesses.length === 0 || !countsAsWork(id)) {
+      return;
+    }
 
-    for (const ticket of this.tickets()) {
-      if (!needsResponse(ticket)) {
-        continue;
-      }
+    const now = this.engine.now();
 
-      const nodes = new Set(ticketNodes(ticket.id));
-
-      if (nodes.size === 0) {
-        continue;
-      }
-
-      const touched = log.some(
-        (entry) => entry.ok && entry.target !== null && nodes.has(entry.target),
+    for (const ticket of witnesses) {
+      this.engine.dispatch(
+        HELPDESK_ACTIONS.ticketRecordTouch,
+        this.actor,
+        ticket.id,
+        {
+          touches: withTouch(ticket.fields[FIELDS.touchLog], now, id, ok),
+        },
       );
 
-      if (touched) {
+      if (ok && needsResponse(ticket)) {
         this.engine.dispatch(
           HELPDESK_ACTIONS.ticketRecordResponse,
           this.actor,
@@ -810,11 +865,11 @@ export class DayDriver implements DayApi {
     const tickets = this.tickets();
     const state = this.meterState();
     const deltas = meterDeltas({
-      // A parked ticket is not on your plate this minute, which is half the
-      // reason parking one is a relief rather than a formality.
-      openTickets: tickets.filter(
-        (ticket) => ticket.fields[FIELDS.state] === 'open',
-      ).length,
+      // Everything that is still somebody's problem and is not parked - a
+      // breached ticket very much included. The printer does not start working
+      // because its SLA ran out, and a queue that stopped counting it would
+      // pay the player to let the next one go the same way.
+      openTickets: tickets.filter(isActiveWork).length,
       breachedTickets: tickets.filter(
         (ticket) => ticket.fields[FIELDS.breached] === true,
       ).length,
@@ -822,6 +877,7 @@ export class DayDriver implements DayApi {
       resolveCredit: resolveCredit(tickets),
       resolveCreditPaid: state.resolveCreditPaid,
       openSlackApps: this.handlers.openSlackApps(),
+      focusedSlackApp: this.handlers.focusedSlackApp(),
       lunch: isLunchtime(now),
     });
 

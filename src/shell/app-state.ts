@@ -70,6 +70,35 @@ export interface CaughtState {
   readonly at: number | null;
 }
 
+/**
+ * One window, as a save remembers it.
+ *
+ * Where it was dragged to is deliberately not here: a window's geometry is a
+ * property of the screen it was on, and a save loaded on a different one would
+ * put it somewhere nobody left it. What IS here is the part the WORLD reacts
+ * to - whether it is up, and whether it is minimised - because the pressure
+ * layer reads exactly that to decide what the lead sees when he comes round.
+ */
+export interface OpenWindowState {
+  readonly appId: string;
+  readonly minimized: boolean;
+}
+
+/**
+ * The screen itself: which windows are open, bottom of the pile first, and
+ * which one the player is in.
+ *
+ * It lives with the app state rather than in the window manager's own memory
+ * because a save that does not carry it is a save that changes the answer to
+ * the only question the boss mechanic asks. Loading mid-telegraph with the
+ * Browser up used to bring the player back with a clean screen and no
+ * conversation, which is the reload button as a cheat code.
+ */
+export interface WindowsState {
+  readonly open: readonly OpenWindowState[];
+  readonly focusedId: string | null;
+}
+
 export interface AppState {
   readonly chat: ChatState;
   readonly mail: MailState;
@@ -77,6 +106,7 @@ export interface AppState {
   readonly day: DayScreensState;
   readonly browser: BrowserAppState;
   readonly caught: CaughtState;
+  readonly windows: WindowsState;
 }
 
 export function createAppState(): AppState {
@@ -87,6 +117,7 @@ export function createAppState(): AppState {
     day: { briefShownFor: null, scorecardShownFor: null },
     browser: { siteId: null },
     caught: { appId: null, at: null },
+    windows: { open: [], focusedId: null },
   };
 }
 
@@ -128,6 +159,36 @@ function stringList(value: unknown): readonly string[] | undefined {
   return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
     ? Object.freeze([...value] as string[])
     : undefined;
+}
+
+function readWindows(value: unknown): WindowsState | undefined {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const { open, focusedId } = value;
+  const focused = optionalId(focusedId);
+
+  if (!Array.isArray(open) || focused === undefined) {
+    return undefined;
+  }
+
+  const parsed: OpenWindowState[] = [];
+
+  for (const entry of open) {
+    if (
+      !isObject(entry)
+      || typeof entry.appId !== 'string'
+      || entry.appId.length === 0
+      || typeof entry.minimized !== 'boolean'
+    ) {
+      return undefined;
+    }
+
+    parsed.push({ appId: entry.appId, minimized: entry.minimized });
+  }
+
+  return Object.freeze({ open: Object.freeze(parsed), focusedId: focused });
 }
 
 function isSpeaker(value: unknown): value is ChatSpeaker {
@@ -204,7 +265,7 @@ export function parseAppState(value: unknown): AppState | null {
     return null;
   }
 
-  const { chat, mail, kb, day, browser, caught } = value;
+  const { chat, mail, kb, day, browser, caught, windows } = value;
 
   if (
     !isObject(chat)
@@ -213,6 +274,7 @@ export function parseAppState(value: unknown): AppState | null {
     || !isObject(day)
     || !isObject(browser)
     || !isObject(caught)
+    || !isObject(windows)
   ) {
     return null;
   }
@@ -227,6 +289,7 @@ export function parseAppState(value: unknown): AppState | null {
   const siteId = optionalId(browser.siteId);
   const caughtAppId = optionalId(caught.appId);
   const caughtAt = optionalTick(caught.at);
+  const screen = readWindows(windows);
 
   if (
     chatSelected === undefined
@@ -239,6 +302,7 @@ export function parseAppState(value: unknown): AppState | null {
     || siteId === undefined
     || caughtAppId === undefined
     || caughtAt === undefined
+    || screen === undefined
   ) {
     return null;
   }
@@ -250,6 +314,7 @@ export function parseAppState(value: unknown): AppState | null {
     day: { briefShownFor, scorecardShownFor },
     browser: { siteId },
     caught: { appId: caughtAppId, at: caughtAt },
+    windows: screen,
   };
 }
 
