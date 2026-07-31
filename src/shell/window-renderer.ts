@@ -32,6 +32,101 @@ const RESIZE_HANDLES: readonly ResizeHandle[] = [
   'nw',
 ];
 
+export interface MountRefusal {
+  /** The window manager with the window that would not open taken out of it. */
+  readonly state: WindowManagerState;
+  readonly title: string;
+  readonly body: string;
+}
+
+/**
+ * What happens when an app's `mount` throws.
+ *
+ * Two decisions, both of them made here rather than in the middle of a paint,
+ * so that both can be driven without a document: the window CLOSES - a frame
+ * with nothing in it is a dead end, and the next paint would only try to mount
+ * it again - and the player is told which app it was and what it actually said.
+ * "Something went wrong" is the one sentence a support game may not ship.
+ */
+export function refuseMount(
+  state: Readonly<WindowManagerState>,
+  windowState: Readonly<ManagedWindow>,
+  failure: unknown,
+): MountRefusal {
+  const said = failure instanceof Error && failure.message.trim().length > 0
+    ? failure.message
+    : 'It did not say why, which is worse.';
+
+  return {
+    state: closeWindow(state, windowState.id),
+    title: `${windowState.title} would not open`,
+    body: `The window has been closed rather than left there empty: ${said}`,
+  };
+}
+
+/**
+ * The pointer gestures in flight, by the window each one is dragging.
+ *
+ * A gesture used to be filed as "a gesture", which is fine right up until the
+ * window it belongs to closes underneath it - from its own close button, from
+ * the boss key's cousin, from a load that replaces the desktop. The listeners
+ * live on `window` and outlive the element, and the window ID an app gets is
+ * derived from the app, so REOPENING that app hands the ghost gesture a live
+ * window again: the new one jumps to the pointer on the first idle move. Filed
+ * by window, a close can end exactly the gestures that were about it.
+ */
+export class GestureBook {
+  private readonly byWindow = new Map<string, Set<AbortController>>();
+
+  public add(windowId: string, gesture: AbortController): void {
+    const live = this.byWindow.get(windowId) ?? new Set<AbortController>();
+    live.add(gesture);
+    this.byWindow.set(windowId, live);
+  }
+
+  /** One gesture finished the ordinary way: released, cancelled, blurred. */
+  public end(windowId: string, gesture: AbortController): void {
+    gesture.abort();
+    const live = this.byWindow.get(windowId);
+
+    if (live === undefined) {
+      return;
+    }
+
+    live.delete(gesture);
+
+    if (live.size === 0) {
+      this.byWindow.delete(windowId);
+    }
+  }
+
+  /** The window went away. Nothing that was dragging it may survive it. */
+  public abortWindow(windowId: string): void {
+    for (const gesture of this.byWindow.get(windowId) ?? []) {
+      gesture.abort();
+    }
+
+    this.byWindow.delete(windowId);
+  }
+
+  public abortAll(): void {
+    for (const windowId of [...this.byWindow.keys()]) {
+      this.abortWindow(windowId);
+    }
+  }
+
+  /** How many gestures are still in flight. For the tests and for nothing else. */
+  public get size(): number {
+    let total = 0;
+
+    for (const live of this.byWindow.values()) {
+      total += live.size;
+    }
+
+    return total;
+  }
+}
+
 interface RenderedWindow {
   readonly element: HTMLElement;
   readonly maximizeButton: HTMLButtonElement;
@@ -61,7 +156,7 @@ function titlebarButton(
 export class WindowRenderer {
   private readonly rendered = new Map<string, RenderedWindow>();
   private readonly definitions = new Map<string, AppDef>();
-  private readonly gestures = new Set<AbortController>();
+  private readonly gestures = new GestureBook();
   /** Intents addressed to a window that is not mounted yet. */
   private readonly pendingIntents = new Map<string, AppIntent>();
   /**
@@ -114,6 +209,9 @@ export class WindowRenderer {
 
     for (const [id, rendered] of this.rendered) {
       if (!openIds.has(id)) {
+        // The drag first: a gesture is listening on `window`, so it outlives
+        // the element it was moving unless it is told the window has gone.
+        this.gestures.abortWindow(id);
         rendered.abortController.abort();
         rendered.instance.unmount();
         rendered.element.remove();
@@ -124,9 +222,19 @@ export class WindowRenderer {
       }
     }
 
+    // Apps whose `mount` threw. They are being closed, and the paint that
+    // closes them has not run yet, so this pass must not try to place them.
+    const refused = new Set<string>();
+
     for (const windowState of state.windows) {
       if (!this.rendered.has(windowState.id)) {
         const rendered = this.createRenderedWindow(windowState);
+
+        if (rendered === null) {
+          refused.add(windowState.id);
+          continue;
+        }
+
         this.rendered.set(windowState.id, rendered);
       }
     }
@@ -135,6 +243,10 @@ export class WindowRenderer {
       const rendered = this.rendered.get(windowState.id);
 
       if (rendered === undefined) {
+        if (refused.has(windowState.id)) {
+          return;
+        }
+
         throw new Error(`Window renderer lost "${windowState.id}".`);
       }
 
@@ -162,11 +274,7 @@ export class WindowRenderer {
   }
 
   public dispose(): void {
-    for (const gesture of this.gestures) {
-      gesture.abort();
-    }
-
-    this.gestures.clear();
+    this.gestures.abortAll();
 
     for (const rendered of this.rendered.values()) {
       rendered.abortController.abort();
@@ -178,9 +286,18 @@ export class WindowRenderer {
     this.pendingIntents.clear();
   }
 
+  /**
+   * Builds one window, or refuses it.
+   *
+   * A `mount` that throws used to leave its chrome on the desktop with nothing
+   * inside it: an app that is not there, in a window that cannot be told
+   * anything, which the next paint would try to mount again. The element is
+   * taken back down, the window is closed in the model, and the player is told
+   * - a dead frame with no explanation is the dead end the house rules forbid.
+   */
   private createRenderedWindow(
     windowState: Readonly<ManagedWindow>,
-  ): RenderedWindow {
+  ): RenderedWindow | null {
     const definition = this.definitions.get(windowState.appId);
 
     if (definition === undefined) {
@@ -308,7 +425,19 @@ export class WindowRenderer {
     );
 
     this.layer.append(element);
-    const instance = definition.mount(content, this.api);
+    let instance: AppInstance;
+
+    try {
+      instance = definition.mount(content, this.api);
+    } catch (failure: unknown) {
+      abortController.abort();
+      element.remove();
+      this.pendingIntents.delete(windowState.id);
+      const refusal = refuseMount(this.readState(), windowState, failure);
+      this.commitState(refusal.state);
+      this.api.notify(refusal.title, refusal.body);
+      return null;
+    }
 
     // An intent that arrived while this window was still being painted waits
     // here rather than being dropped: the app it was addressed to only exists
@@ -407,8 +536,7 @@ export class WindowRenderer {
     const gesture = new AbortController();
 
     const endGesture = (): void => {
-      gesture.abort();
-      this.gestures.delete(gesture);
+      this.gestures.end(id, gesture);
     };
     const onMove = (moveEvent: PointerEvent): void => {
       if (moveEvent.pointerId !== pointerId) {
@@ -449,6 +577,6 @@ export class WindowRenderer {
     // Losing the window takes the release with it (alt-tab, a dev-tools break,
     // the OS stealing the pointer), so a blur ends the gesture outright.
     window.addEventListener('blur', endGesture, { signal: gesture.signal });
-    this.gestures.add(gesture);
+    this.gestures.add(id, gesture);
   }
 }

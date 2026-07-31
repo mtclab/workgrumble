@@ -202,6 +202,45 @@ test('drops a drag when the shell loses focus mid-gesture', async ({
 });
 
 /**
+ * The third way a drag ends badly: the window it is dragging goes away.
+ *
+ * The listeners live on `window`, so they outlive the element - and a window's
+ * id comes from its app, so the app that is opened again gets the SAME id. A
+ * gesture nobody ended is therefore not merely a leak: it is a window that
+ * jumps to the pointer the moment the player moves it with a button down.
+ */
+test('drops a drag when the window closes mid-gesture', async ({ page }) => {
+  await logIn(page);
+  await openFromDesktopIcon(page, 'about');
+
+  const grip = await boxOf(page.getByTestId('titlebar-about'));
+  const startX = grip.x + grip.width / 2;
+  const startY = grip.y + grip.height / 2;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 40, startY + 30, { steps: 6 });
+
+  // Closed from under the drag. A synthetic click, because the pointer is
+  // busy holding the titlebar - which is exactly the situation being tested.
+  await page.getByTestId('close-about').dispatchEvent('click');
+  await expect(page.getByTestId('window-about')).toHaveCount(0);
+
+  await page.mouse.move(startX + 260, startY + 200, { steps: 8 });
+  await page.mouse.up();
+
+  // Same app, same window id, freshly opened where the cascade puts it.
+  await openFromDesktopIcon(page, 'about');
+  const reopened = await boxOf(page.getByTestId('window-about'));
+
+  await page.mouse.move(startX + 320, startY + 260, { steps: 6 });
+  const settled = await boxOf(page.getByTestId('window-about'));
+
+  expect(settled.x).toBeCloseTo(reopened.x, 0);
+  expect(settled.y).toBeCloseTo(reopened.y, 0);
+});
+
+/**
  * One window per app, mounted exactly once. Every launch route - including an
  * app opening another app - has to land on the same single window, or the
  * renderer is mounting plugin code twice behind the player's back.
