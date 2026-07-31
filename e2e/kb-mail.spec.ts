@@ -144,7 +144,7 @@ test('reads the inbox on the shift clock and marks it read', async ({
   await logIn(page);
   await openFromStartMenu(page, 'mail');
 
-  await expect(page.getByTestId('mail-summary')).toContainText('2 unread');
+  await expect(page.getByTestId('mail-summary')).toContainText('3 unread');
   const nag = page.getByTestId('mail-row-queue-nag');
   await expect(nag).toHaveAttribute('data-unread', 'true');
   await expect(page.getByTestId('mail-empty')).toBeVisible();
@@ -166,11 +166,17 @@ test('reads the inbox on the shift clock and marks it read', async ({
   );
 
   await expect(nag).toHaveAttribute('data-unread', 'false');
-  await expect(page.getByTestId('mail-summary')).toContainText('1 unread');
+  await expect(page.getByTestId('mail-summary')).toContainText('2 unread');
 
   await page.getByTestId('mail-row-onboarding').click();
   await expect(page.getByTestId('mail-subject')).toContainText(
     'Welcome to Workgrumble',
   );
+  await expect(page.getByTestId('mail-summary')).toContainText('1 unread');
+
+  // The third thread is Wednesday's warning, sent well in advance so that
+  // nobody can say they were not told (they will say it anyway).
+  await page.getByTestId('mail-row-maintenance-window').click();
+  await expect(page.getByTestId('mail-subject')).toContainText('PLANNED');
   await expect(page.getByTestId('mail-summary')).toContainText('0 unread');
 });

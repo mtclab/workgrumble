@@ -109,8 +109,8 @@ test('closes the rotated-screen ticket through the terminal', async ({
 test('needs both halves of the spooler fix, in the honest order', async ({
   page,
 }) => {
-  // Thursday, which is where the week keeps its only office-wide fault.
-  await logInOnDay(page, 4);
+  // Tuesday, which is the morning the week hands over its office-wide fault.
+  await logInOnDay(page, 2);
   await openFromStartMenu(page, 'tickets');
   const row = page.getByTestId('ticket-row-wedged-spooler');
   await row.click();

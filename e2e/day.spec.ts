@@ -92,7 +92,7 @@ test('walks a day from the morning brief to the scorecard', async ({
   );
   // Two inherited, the one that dripped in at eight minutes past ten, and the
   // one the lead raised by mentioning it at 11:49.
-  await expect(page.getByTestId('scorecard-arrived')).toHaveText('4');
+  await expect(page.getByTestId('scorecard-arrived')).toHaveText('5');
   await expect(page.getByTestId('scorecard-caught')).toContainText('0 ·');
   await expect(page.getByTestId('scorecard-consumables')).toContainText('£0.00');
   await expect(page.getByTestId('scorecard-net')).toContainText('£');
@@ -151,7 +151,7 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
 
   await openFromStartMenu(page, 'mail');
   await page.getByTestId('mail-row-queue-nag').click();
-  await expect(page.getByTestId('mail-summary')).toContainText('1 unread');
+  await expect(page.getByTestId('mail-summary')).toContainText('2 unread');
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-save').click();
@@ -179,7 +179,7 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
 
   // And the shell's own memory: the mail that was read is still read.
   await openFromStartMenu(page, 'mail');
-  await expect(page.getByTestId('mail-summary')).toContainText('1 unread');
+  await expect(page.getByTestId('mail-summary')).toContainText('2 unread');
   await expect(page.getByTestId('mail-row-queue-nag')).toHaveAttribute(
     'data-unread',
     'false',

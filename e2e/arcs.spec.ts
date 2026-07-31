@@ -190,7 +190,13 @@ test('the printer on Tuesday is a timetable by the Thursday', async ({
   // in it, and they are at the same minute.
   await openFromStartMenu(page, 'tickets');
   await page.getByTestId('ticket-row-vacuum-thursday').click();
-  await page.getByTestId('ticket-open-events').click();
+  // The reporter has no workstation, so the ticket's own log button is
+  // honestly disabled and tells you to pick the box yourself. Do that.
+  const openEvents = page.getByTestId('ticket-open-events');
+  await expect(openEvents).toBeDisabled();
+  await expect(openEvents).toHaveAttribute('title', /Pick the box yourself/);
+  await openFromStartMenu(page, 'events');
+  await page.getByTestId('events-machine-print-warehouse').click();
   await expect(page.getByTestId('events-app')).toContainText('lost power');
 
   // Power alone is a standing appointment rather than a fix.

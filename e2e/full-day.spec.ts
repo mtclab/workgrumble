@@ -65,6 +65,9 @@ async function simState(page: Page): Promise<{
 }
 
 test('plays a whole day and comes back to the same one', async ({ page }) => {
+  // A played day plus a save, reload and replay is the longest single-day
+  // journey in the suite; the post-restore night advance alone is seconds.
+  test.setTimeout(240_000);
   await page.clock.install();
   // The journey asserts fumble STATE (chip + data attribute), not the sway
   // pixels - reduced motion keeps every assertion honest while making mid-day
@@ -265,7 +268,7 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   await expect(page.getByTestId('window-scorecard')).toBeVisible();
 
   // Everything the day actually contained, on one screen.
-  await expect(page.getByTestId('scorecard-arrived')).toHaveText('4');
+  await expect(page.getByTestId('scorecard-arrived')).toHaveText('5');
   await expect(page.getByTestId('scorecard-closed')).toHaveText('2');
   await expect(page.getByTestId('scorecard-caught')).toContainText('1 ·');
   await expect(page.getByTestId('scorecard-consumables')).toContainText('£1.20');

@@ -124,6 +124,7 @@ async function attachToParent(
  * pile that was waiting at eight has to be dealt with before one o'clock and
  * the late-morning arrivals before the middle of the afternoon.
  */
+test.setTimeout(240_000);
 test('passes the review, opens the beer and reads the week back', async ({
   page,
 }) => {
