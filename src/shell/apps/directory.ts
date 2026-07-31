@@ -31,7 +31,7 @@ export function accountKey(id: string): string {
 }
 
 function ownerOf(
-  api: GameApi,
+  api: Pick<GameApi, 'graph'>,
   account: Readonly<ReadOnlyGraphNode>,
 ): ReadOnlyGraphNode | undefined {
   return api.graph.neighbors(account.id, {
@@ -95,7 +95,7 @@ export interface AccountRow {
 }
 
 export function accountRows(
-  api: GameApi,
+  api: Pick<GameApi, 'graph'>,
   nodes: readonly Readonly<ReadOnlyGraphNode>[],
   selectedId: string | null,
 ): readonly AccountRow[] {
@@ -111,6 +111,130 @@ export function accountRows(
     locked: account.fields[FIELDS.locked] === true,
     selected: account.id === selectedId,
   }));
+}
+
+export interface DirectoryGroup {
+  readonly id: string;
+  readonly name: string;
+}
+
+export interface DirectoryView {
+  readonly allGroups: readonly Readonly<ReadOnlyGraphNode>[];
+  readonly selectedGroupId: string | null;
+  readonly outcome: string | null;
+  readonly refusal: string | null;
+}
+
+/**
+ * The account pane, as data.
+ *
+ * Everything the pane renders is in here and the pane reads NOTHING else,
+ * which is what lets the app compare two of these and skip a rebuild. The
+ * comparison is the point: this pane holds a group dropdown, and it was being
+ * rebuilt on every world change - which, with the meters moving every five
+ * minutes of the shift, meant the dropdown shut in the player's hand while
+ * they were choosing from it.
+ *
+ * Nothing here reads the clock. `formatSimTime` is applied to stamps the world
+ * wrote down, not to now, so a passing minute cannot move a single field.
+ */
+export function directoryDetail(
+  api: Pick<GameApi, 'graph'>,
+  account: Readonly<ReadOnlyGraphNode>,
+  view: Readonly<DirectoryView>,
+): DirectoryDetail {
+  const groups = api.graph.neighbors(account.id, {
+    direction: 'out',
+    edgeKind: 'member_of',
+  });
+  const shares = api.graph.neighbors(account.id, {
+    direction: 'out',
+    edgeKind: 'has_access',
+  });
+  const owner = ownerOf(api, account);
+  const reset = account.fields[FIELDS.passwordResetAt];
+  const badPasswords = account.fields[FIELDS.badPwCount];
+  const lockedSince = tickField(account, FIELDS.lockedSince);
+  const lastLogon = tickField(account, FIELDS.lastLogon);
+  const disabled = account.fields[FIELDS.enabled] === false;
+  const locked = account.fields[FIELDS.locked] === true;
+  const expired = account.fields[FIELDS.passwordExpired] === true;
+  const stamp = (tick: number): string => `${formatSimTime(tick).time} (${
+    formatSimTime(tick).day
+  })`;
+
+  return {
+    id: account.id,
+    username: usernameOf(account),
+    owner: textValue(owner?.fields[FIELDS.name], 'Nobody admits to it'),
+    title: textValue(owner?.fields[FIELDS.title], 'Unrecorded'),
+    status: statusOf(account),
+    state: disabled
+      ? 'disabled'
+      : locked
+        ? 'locked'
+        : expired
+          ? 'expired'
+          : 'fine',
+    locked,
+    disabled,
+    expired,
+    badPasswords: typeof badPasswords === 'number'
+      ? `${String(badPasswords)} since it was last cleared`
+      : 'Not counted on this account',
+    lockedSince: lockedSince === null ? 'Not locked' : stamp(lockedSince),
+    lastLogon: lastLogon === null
+      ? 'Not since before this log starts'
+      : stamp(lastLogon),
+    mustChange: account.fields[FIELDS.pwMustChange] === true
+      ? 'Yes, at next logon. Expect a second ticket about it.'
+      : 'No',
+    reset: typeof reset === 'number'
+      ? formatSimTime(reset).time
+      : 'Not this decade',
+    groups: groups.length === 0
+      ? 'None'
+      : groups
+        .map((group) => textValue(group.fields[FIELDS.name], group.id))
+        .join(', '),
+    shares: shares.length === 0
+      ? 'None'
+      : shares
+        .map((share) => textValue(share.fields[FIELDS.name], share.id))
+        .join(', '),
+    allGroups: view.allGroups.map((group) => ({
+      id: group.id,
+      name: textValue(group.fields[FIELDS.name], group.id),
+    })),
+    selectedGroupId: view.selectedGroupId,
+    member: groups.some((group) => group.id === view.selectedGroupId),
+    outcome: view.outcome,
+    refusal: view.refusal,
+  };
+}
+
+export interface DirectoryDetail {
+  readonly id: string;
+  readonly username: string;
+  readonly owner: string;
+  readonly title: string;
+  readonly status: string;
+  readonly state: string;
+  readonly locked: boolean;
+  readonly disabled: boolean;
+  readonly expired: boolean;
+  readonly badPasswords: string;
+  readonly lockedSince: string;
+  readonly lastLogon: string;
+  readonly mustChange: string;
+  readonly reset: string;
+  readonly groups: string;
+  readonly shares: string;
+  readonly allGroups: readonly DirectoryGroup[];
+  readonly selectedGroupId: string | null;
+  readonly member: boolean;
+  readonly outcome: string | null;
+  readonly refusal: string | null;
 }
 
 /**
@@ -236,12 +360,28 @@ export const DIRECTORY_APP: AppDef = {
       rows.sync(accountRows(api, nodes, selectedId), emptyRow);
     };
 
-    const renderDetail = (
-      account: ReadOnlyGraphNode | undefined,
-    ): void => {
+    /**
+     * The pane is rebuilt only when what it SAYS has changed.
+     *
+     * It is built from the model above and from nothing else, which is what
+     * makes the signature honest: a fact this pane can show and the signature
+     * cannot see would be a fact that stops updating. The rebuild itself is
+     * unavoidable - the pane is a form, not a row - so the answer is to do it
+     * rarely rather than to do it cheaply.
+     */
+    let painted: string | null = null;
+
+    const renderDetail = (model: DirectoryDetail | null): void => {
+      const signature = JSON.stringify(model);
+
+      if (signature === painted) {
+        return;
+      }
+
+      painted = signature;
       detail.replaceChildren();
 
-      if (account === undefined) {
+      if (model === null) {
         const empty = element(
           'p',
           'directory-placeholder',
@@ -253,85 +393,39 @@ export const DIRECTORY_APP: AppDef = {
         return;
       }
 
-      const groups = api.graph.neighbors(account.id, {
-        direction: 'out',
-        edgeKind: 'member_of',
-      });
-      const shares = api.graph.neighbors(account.id, {
-        direction: 'out',
-        edgeKind: 'has_access',
-      });
-      const locked = account.fields[FIELDS.locked] === true;
-      const disabled = account.fields[FIELDS.enabled] === false;
-      const expired = account.fields[FIELDS.passwordExpired] === true;
-      const reset = account.fields[FIELDS.passwordResetAt];
-      const badPasswords = account.fields[FIELDS.badPwCount];
-      const lockedSince = tickField(account, FIELDS.lockedSince);
-      const lastLogon = tickField(account, FIELDS.lastLogon);
-
-      const username = usernameOf(account);
+      const username = model.username;
       const heading = element('h2', undefined, 'directory-detail-username');
       heading.textContent = username;
 
       const facts = element('dl', 'directory-facts');
-      definitionRow(facts, 'Owner', 'directory-detail-owner').textContent = textValue(
-        ownerOf(api, account)?.fields[FIELDS.name],
-        'Nobody admits to it',
-      );
-      definitionRow(facts, 'Job title', 'directory-detail-title').textContent = textValue(
-        ownerOf(api, account)?.fields[FIELDS.title],
-        'Unrecorded',
-      );
+      definitionRow(facts, 'Owner', 'directory-detail-owner')
+        .textContent = model.owner;
+      definitionRow(facts, 'Job title', 'directory-detail-title')
+        .textContent = model.title;
       const statusRow = definitionRow(
         facts,
         'Status',
         'directory-detail-status',
       );
-      statusRow.textContent = statusOf(account);
-      statusRow.dataset.state = disabled
-        ? 'disabled'
-        : locked
-          ? 'locked'
-          : expired
-            ? 'expired'
-            : 'fine';
+      statusRow.textContent = model.status;
+      statusRow.dataset.state = model.state;
       // The lockout trail, which is what turns an unlock from a button press
       // into a read: how many wrong passwords, when the door shut, and whether
       // this account is even in use.
       definitionRow(facts, 'Bad passwords', 'directory-detail-bad-passwords')
-        .textContent = typeof badPasswords === 'number'
-          ? `${String(badPasswords)} since it was last cleared`
-          : 'Not counted on this account';
+        .textContent = model.badPasswords;
       definitionRow(facts, 'Locked since', 'directory-detail-locked-since')
-        .textContent = lockedSince === null
-          ? 'Not locked'
-          : `${formatSimTime(lockedSince).time} (${
-            formatSimTime(lockedSince).day
-          })`;
+        .textContent = model.lockedSince;
       definitionRow(facts, 'Last logon', 'directory-detail-last-logon')
-        .textContent = lastLogon === null
-          ? 'Not since before this log starts'
-          : `${formatSimTime(lastLogon).time} (${
-            formatSimTime(lastLogon).day
-          })`;
+        .textContent = model.lastLogon;
       definitionRow(facts, 'Must change password', 'directory-detail-must-change')
-        .textContent = account.fields[FIELDS.pwMustChange] === true
-          ? 'Yes, at next logon. Expect a second ticket about it.'
-          : 'No';
+        .textContent = model.mustChange;
       definitionRow(facts, 'Password reset', 'directory-detail-reset')
-        .textContent = typeof reset === 'number'
-          ? formatSimTime(reset).time
-          : 'Not this decade';
-      definitionRow(facts, 'Groups', 'directory-detail-groups').textContent = groups.length === 0
-        ? 'None'
-        : groups
-          .map((group) => textValue(group.fields[FIELDS.name], group.id))
-          .join(', ');
-      definitionRow(facts, 'Shares', 'directory-detail-shares').textContent = shares.length === 0
-        ? 'None'
-        : shares
-          .map((share) => textValue(share.fields[FIELDS.name], share.id))
-          .join(', ');
+        .textContent = model.reset;
+      definitionRow(facts, 'Groups', 'directory-detail-groups')
+        .textContent = model.groups;
+      definitionRow(facts, 'Shares', 'directory-detail-shares')
+        .textContent = model.shares;
 
       detail.append(heading, facts);
 
@@ -341,18 +435,18 @@ export const DIRECTORY_APP: AppDef = {
       });
       setAvailability(
         unlock,
-        disabled
+        model.disabled
           ? DISABLED_NOT_LOCKED_REASON.replace('{target.label}', username)
-          : locked
+          : model.locked
             ? null
-            : expired
+            : model.expired
               ? EXPIRED_NOT_LOCKED_REASON.replace('{target.label}', username)
               : NOT_LOCKED_REASON.replace('{target.label}', username),
       );
       unlock.addEventListener('click', () => {
         run(
           HELPDESK_ACTIONS.accountUnlock,
-          account.id,
+          model.id,
           {},
           `Unlocked ${username}. They are logging in already and they will `
             + 'not say thank you.',
@@ -365,14 +459,14 @@ export const DIRECTORY_APP: AppDef = {
       );
       setAvailability(
         resetPassword,
-        disabled
+        model.disabled
           ? DISABLED_NEEDS_ENABLING_REASON.replace('{target.label}', username)
           : null,
       );
       resetPassword.addEventListener('click', () => {
         run(
           HELPDESK_ACTIONS.accountResetPassword,
-          account.id,
+          model.id,
           {},
           'Temporary password issued, the lockout cleared with it, and they '
             + 'must change it at next logon. It will be on a sticky note by '
@@ -385,14 +479,14 @@ export const DIRECTORY_APP: AppDef = {
       const enable = osButton('Enable account', 'directory-enable');
       setAvailability(
         enable,
-        disabled
+        model.disabled
           ? null
           : NOT_DISABLED_REASON.replace('{target.label}', username),
       );
       enable.addEventListener('click', () => {
         run(
           HELPDESK_ACTIONS.accountEnable,
-          account.id,
+          model.id,
           {},
           `Enabled ${username}. Whoever disabled it had a reason, and it is `
             + 'now your name in the log next to putting it back.',
@@ -409,24 +503,16 @@ export const DIRECTORY_APP: AppDef = {
         'directory-group-picker',
       );
       picker.setAttribute('aria-label', 'Group');
-      const allGroups = api.graph.nodesOfKind('group');
 
-      for (const group of allGroups) {
+      for (const group of model.allGroups) {
         const option = element('option');
         option.value = group.id;
-        option.textContent = textValue(group.fields[FIELDS.name], group.id);
+        option.textContent = group.name;
         picker.append(option);
       }
 
-      if (
-        selectedGroupId === null
-        || !allGroups.some((group) => group.id === selectedGroupId)
-      ) {
-        selectedGroupId = allGroups[0]?.id ?? null;
-      }
-
-      if (selectedGroupId !== null) {
-        picker.value = selectedGroupId;
+      if (model.selectedGroupId !== null) {
+        picker.value = model.selectedGroupId;
       }
 
       picker.addEventListener('change', () => {
@@ -436,7 +522,7 @@ export const DIRECTORY_APP: AppDef = {
         render();
       });
 
-      const member = groups.some((group) => group.id === selectedGroupId);
+      const member = model.member;
       const addGroup = osButton('Add to group', 'directory-add-group');
       const removeGroup = osButton(
         'Remove from group',
@@ -444,7 +530,7 @@ export const DIRECTORY_APP: AppDef = {
       );
       setAvailability(
         addGroup,
-        selectedGroupId === null
+        model.selectedGroupId === null
           ? 'There are no groups in this directory yet.'
           : member
             ? 'Already a member of that group. Adding them twice is not how '
@@ -453,7 +539,7 @@ export const DIRECTORY_APP: AppDef = {
       );
       setAvailability(
         removeGroup,
-        selectedGroupId === null
+        model.selectedGroupId === null
           ? 'There are no groups in this directory yet.'
           : member
             ? null
@@ -464,7 +550,7 @@ export const DIRECTORY_APP: AppDef = {
         if (selectedGroupId !== null) {
           run(
             HELPDESK_ACTIONS.accountAddToGroup,
-            account.id,
+            model.id,
             { group: selectedGroupId },
             'Group membership added. It will apply at next logon, which is a '
               + 'sentence that has ended many conversations.',
@@ -475,7 +561,7 @@ export const DIRECTORY_APP: AppDef = {
         if (selectedGroupId !== null) {
           run(
             HELPDESK_ACTIONS.accountRemoveFromGroup,
-            account.id,
+            model.id,
             { group: selectedGroupId },
             'Group membership removed. Somebody will notice in about a week.',
           );
@@ -486,8 +572,8 @@ export const DIRECTORY_APP: AppDef = {
       detail.append(groupRow);
 
       detail.append(
-        outcomeLine('directory-outcome', outcome),
-        refusalLine('directory-refusal', refusal, createIcon('icon-lock')),
+        outcomeLine('directory-outcome', model.outcome),
+        refusalLine('directory-refusal', model.refusal, createIcon('icon-lock')),
       );
     };
 
@@ -505,13 +591,31 @@ export const DIRECTORY_APP: AppDef = {
         outcome = null;
       }
 
+      // The group the picker is standing on, resolved before the pane is
+      // modelled: a group that has gone takes the selection with it, and the
+      // model is a description rather than a decision.
+      const allGroups = api.graph.nodesOfKind('group');
+
+      if (
+        selectedGroupId === null
+        || !allGroups.some((group) => group.id === selectedGroupId)
+      ) {
+        selectedGroupId = allGroups[0]?.id ?? null;
+      }
+
       const focusedTestId = document.activeElement instanceof HTMLElement
         && root.contains(document.activeElement)
         ? document.activeElement.dataset.testid ?? null
         : null;
 
+      const account = nodes.find((candidate) => candidate.id === selectedId);
       renderList(nodes);
-      renderDetail(nodes.find((account) => account.id === selectedId));
+      renderDetail(account === undefined ? null : directoryDetail(api, account, {
+        allGroups,
+        selectedGroupId,
+        outcome,
+        refusal,
+      }));
 
       if (focusedTestId !== null && focusedTestId !== 'directory-search') {
         const restored = root.querySelector(

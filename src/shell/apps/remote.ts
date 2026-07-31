@@ -10,7 +10,7 @@ import {
 } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { createIcon } from '../icons';
-import type { AppDef, AppInstance } from './types';
+import type { AppDef, AppInstance, GameApi } from './types';
 import {
   definitionRow,
   element,
@@ -56,6 +56,154 @@ const STATUS_LABELS: Readonly<Record<string, string>> = {
   [SERVICE_STATUS.stopped]: 'Stopped',
   [SERVICE_STATUS.wedged]: 'Not responding',
 };
+
+function ownerOf(
+  api: Pick<GameApi, 'graph'>,
+  machine: Readonly<ReadOnlyGraphNode>,
+): ReadOnlyGraphNode | undefined {
+  return api.graph
+    .neighbors(machine.id, { direction: 'in', edgeKind: 'owns' })
+    .find((node) => node.kind === 'person');
+}
+
+function servicesOn(
+  api: Pick<GameApi, 'graph'>,
+  machine: Readonly<ReadOnlyGraphNode>,
+): readonly ReadOnlyGraphNode[] {
+  return api.graph
+    .neighbors(machine.id, { direction: 'in', edgeKind: 'runs_on' })
+    .filter((node) => node.kind === 'service');
+}
+
+function devicesOn(
+  api: Pick<GameApi, 'graph'>,
+  machine: Readonly<ReadOnlyGraphNode>,
+): readonly ReadOnlyGraphNode[] {
+  return api.graph
+    .neighbors(machine.id, { direction: 'in', edgeKind: 'connected_to' })
+    .filter((node) => node.kind === 'device');
+}
+
+export interface RemoteService {
+  readonly id: string;
+  readonly name: string;
+  readonly status: string;
+  readonly statusLabel: string;
+  readonly restartable: boolean;
+  /** Jobs still queued on whatever it feeds, or nothing waiting. */
+  readonly backlog: number | null;
+}
+
+export interface RemoteDevice {
+  readonly id: string;
+  readonly key: string;
+  readonly name: string;
+  readonly type: string;
+  readonly printer: boolean;
+  readonly queue: number;
+  readonly battery: number | null;
+  readonly powered: boolean;
+  readonly wedged: boolean;
+}
+
+export interface RemoteSessionView {
+  readonly picked: Rotation | null;
+  readonly outcome: string | null;
+  readonly refusal: string | null;
+}
+
+export interface RemoteSession {
+  readonly id: string;
+  readonly hostname: string;
+  readonly owner: string;
+  readonly rotation: Rotation;
+  /** What the dropdown is standing on, which is upright until it is moved. */
+  readonly picked: Rotation;
+  readonly resolution: string;
+  readonly booted: string;
+  readonly updates: boolean;
+  readonly services: readonly RemoteService[];
+  readonly devices: readonly RemoteDevice[];
+  readonly outcome: string | null;
+  readonly refusal: string | null;
+}
+
+/**
+ * Their screen and everything on it, as data.
+ *
+ * The session pane reads this and reads nothing else, which is what makes it
+ * comparable: two of these being equal is the whole reason the pane - and the
+ * rotation dropdown in it - can be left standing through a repaint.
+ *
+ * The remote taskbar CLOCK is deliberately absent. It is the one thing in that
+ * window which moves with the minute, and it is written straight into its own
+ * element on every tick; putting it here would make every minute a rebuild,
+ * which is the bug this model exists to fix.
+ */
+export function remoteSession(
+  api: Pick<GameApi, 'graph'>,
+  machine: Readonly<ReadOnlyGraphNode>,
+  view: Readonly<RemoteSessionView>,
+): RemoteSession {
+  // Guarded, not merely typed: `formatSimTime` throws on a negative or
+  // fractional tick, and the render this feeds has run inside the clock
+  // listener, where one throw would stop every other tick listener with it.
+  const uptime = machine.fields[FIELDS.uptimeSince];
+
+  return {
+    id: machine.id,
+    hostname: hostnameOf(machine),
+    owner: textValue(ownerOf(api, machine)?.fields[FIELDS.name], 'Unassigned'),
+    rotation: rotationOf(machine),
+    picked: view.picked ?? 0,
+    resolution: textValue(
+      machine.fields[FIELDS.resolution],
+      'Whatever the driver felt like',
+    ),
+    booted: typeof uptime === 'number'
+      && Number.isSafeInteger(uptime)
+      && uptime >= 0
+      ? formatSimTime(uptime).time
+      : 'Some time before the merger',
+    updates: machine.fields[FIELDS.pendingUpdates] === true,
+    services: servicesOn(api, machine).map((service) => {
+      const status = textValue(service.fields[FIELDS.status], 'unknown');
+      // Whatever this service feeds, and whether it is still backed up:
+      // starting it in front of a full queue only jams it again.
+      const backlog = api.graph
+        .neighbors(service.id, { direction: 'out', edgeKind: 'connected_to' })
+        .map((device) => device.fields[FIELDS.queueLen])
+        .find((queued) => typeof queued === 'number' && queued > 0);
+
+      return {
+        id: service.id,
+        name: textValue(service.fields[FIELDS.name], service.id),
+        status,
+        statusLabel: STATUS_LABELS[status] ?? status,
+        restartable: service.fields[FIELDS.restartable] === true,
+        backlog: typeof backlog === 'number' ? backlog : null,
+      };
+    }),
+    devices: devicesOn(api, machine).map((device) => {
+      const queue = device.fields[FIELDS.queueLen];
+      const battery = device.fields[FIELDS.batteryPct];
+
+      return {
+        id: device.id,
+        key: nodeKey(device.id),
+        name: textValue(device.fields[FIELDS.name], device.id),
+        type: textValue(device.fields[FIELDS.type], 'device'),
+        printer: device.fields[FIELDS.type] === DEVICE_TYPES.printer,
+        queue: typeof queue === 'number' ? queue : 0,
+        battery: typeof battery === 'number' ? battery : null,
+        powered: device.fields[FIELDS.powered] === true,
+        wedged: device.fields[FIELDS.wedged] === true,
+      };
+    }),
+    outcome: view.outcome,
+    refusal: view.refusal,
+  };
+}
 
 /**
  * Remote Assist - the signature tool.
@@ -103,24 +251,6 @@ export const REMOTE_APP: AppDef = {
 
     const machines = (): readonly ReadOnlyGraphNode[] => api.graph
       .nodesOfKind('machine');
-
-    const ownerOf = (
-      machine: Readonly<ReadOnlyGraphNode>,
-    ): ReadOnlyGraphNode | undefined => api.graph
-      .neighbors(machine.id, { direction: 'in', edgeKind: 'owns' })
-      .find((node) => node.kind === 'person');
-
-    const servicesOn = (
-      machine: Readonly<ReadOnlyGraphNode>,
-    ): readonly ReadOnlyGraphNode[] => api.graph
-      .neighbors(machine.id, { direction: 'in', edgeKind: 'runs_on' })
-      .filter((node) => node.kind === 'service');
-
-    const devicesOn = (
-      machine: Readonly<ReadOnlyGraphNode>,
-    ): readonly ReadOnlyGraphNode[] => api.graph
-      .neighbors(machine.id, { direction: 'in', edgeKind: 'connected_to' })
-      .filter((node) => node.kind === 'device');
 
     const run = (
       action: string,
@@ -176,7 +306,7 @@ export const REMOTE_APP: AppDef = {
         key: machineKey(machine.id),
         hostname: hostnameOf(machine),
         owner: textValue(
-          ownerOf(machine)?.fields[FIELDS.name],
+          ownerOf(api, machine)?.fields[FIELDS.name],
           'Nobody admits to it',
         ),
         sideways: rotationOf(machine) !== 0,
@@ -185,8 +315,8 @@ export const REMOTE_APP: AppDef = {
     };
 
     /** The parody desktop: their screen, drawn from their machine's state. */
-    const renderScreen = (machine: Readonly<ReadOnlyGraphNode>): HTMLElement => {
-      const rotation = rotationOf(machine);
+    const renderScreen = (model: Readonly<RemoteSession>): HTMLElement => {
+      const rotation = model.rotation;
       const frame = element('div', 'remote-frame', 'remote-frame');
       const viewport = element('div', 'remote-viewport', 'remote-viewport');
       viewport.dataset.rotation = String(rotation);
@@ -203,11 +333,11 @@ export const REMOTE_APP: AppDef = {
 
       const dialog = element('div', 'remote-dialog', 'remote-dialog');
       const dialogTitle = element('strong');
-      dialogTitle.textContent = machine.fields[FIELDS.pendingUpdates] === true
+      dialogTitle.textContent = model.updates
         ? 'Updates are ready when you are'
         : 'System Notice';
       const dialogBody = element('p');
-      dialogBody.textContent = machine.fields[FIELDS.pendingUpdates] === true
+      dialogBody.textContent = model.updates
         ? 'Your workstation will restart at a time chosen by somebody who '
           + 'does not use it.'
         : 'Nothing needs your attention, which is itself suspicious.';
@@ -220,31 +350,19 @@ export const REMOTE_APP: AppDef = {
       start.textContent = 'Start';
       taskbar.append(start);
 
-      const services = servicesOn(machine);
+      const services = model.services;
 
       for (const service of services) {
-        const status = textValue(service.fields[FIELDS.status], 'unknown');
-        // Whatever this service feeds, and whether it is still backed up:
-        // starting it in front of a full queue only jams it again.
-        const backlog = api.graph
-          .neighbors(service.id, {
-            direction: 'out',
-            edgeKind: 'connected_to',
-          })
-          .find((device) => {
-            const queued = device.fields[FIELDS.queueLen];
-            return typeof queued === 'number' && queued > 0;
-          });
         const chip = element(
           'div',
           'remote-service',
           `remote-service-${nodeKey(service.id)}`,
         );
-        chip.dataset.status = status;
+        chip.dataset.status = service.status;
         const label = element('span', 'remote-service-name');
-        label.textContent = textValue(service.fields[FIELDS.name], service.id);
+        label.textContent = service.name;
         const state = element('span', 'remote-service-status');
-        state.textContent = STATUS_LABELS[status] ?? status;
+        state.textContent = service.statusLabel;
 
         const restart = osButton(
           'Restart',
@@ -253,14 +371,14 @@ export const REMOTE_APP: AppDef = {
         );
         setAvailability(
           restart,
-          service.fields[FIELDS.restartable] !== true
+          !service.restartable
             ? 'This is hardware with a status light, not software. You cannot '
               + 'turn a fan off and on again. Well. You can. It will not help.'
-            : status === SERVICE_STATUS.running
+            : service.status === SERVICE_STATUS.running
               ? 'This one is running. Restarting a healthy service in front '
                 + 'of the user is how a small ticket becomes a big one.'
-              : backlog !== undefined
-                ? `${String(backlog.fields[FIELDS.queueLen])} job(s) are `
+              : service.backlog !== null
+                ? `${String(service.backlog)} job(s) are `
                   + 'still queued behind it. It will just choke on the same '
                   + 'job again. Empty the queue first.'
                 : null,
@@ -270,7 +388,7 @@ export const REMOTE_APP: AppDef = {
             HELPDESK_ACTIONS.serviceRestart,
             service.id,
             {},
-            `${textValue(service.fields[FIELDS.name], service.id)} started `
+            `${service.name} started `
               + 'again, with nothing left waiting to jam it.',
           );
         });
@@ -296,7 +414,7 @@ export const REMOTE_APP: AppDef = {
     };
 
     const renderDisplayPanel = (
-      machine: Readonly<ReadOnlyGraphNode>,
+      model: Readonly<RemoteSession>,
     ): HTMLElement => {
       const panel = element('div', 'remote-panel', 'remote-display-panel');
       const heading = element('h3');
@@ -304,20 +422,12 @@ export const REMOTE_APP: AppDef = {
       panel.append(heading);
 
       const facts = element('dl', 'remote-facts');
-      definitionRow(facts, 'Resolution', 'remote-resolution').textContent = textValue(
-        machine.fields[FIELDS.resolution],
-        'Whatever the driver felt like',
-      );
-      definitionRow(facts, 'Rotation', 'remote-rotation-state').textContent = `${String(rotationOf(machine))} degrees`;
-      // Guarded, not merely typed: `formatSimTime` throws on a negative or
-      // fractional tick, and this render runs inside the clock listener,
-      // where one throw would stop every other tick listener with it.
-      const uptime = machine.fields[FIELDS.uptimeSince];
-      definitionRow(facts, 'Booted', 'remote-uptime').textContent = typeof uptime === 'number'
-        && Number.isSafeInteger(uptime)
-        && uptime >= 0
-        ? formatSimTime(uptime).time
-        : 'Some time before the merger';
+      definitionRow(facts, 'Resolution', 'remote-resolution')
+        .textContent = model.resolution;
+      definitionRow(facts, 'Rotation', 'remote-rotation-state')
+        .textContent = `${String(model.rotation)} degrees`;
+      definitionRow(facts, 'Booted', 'remote-uptime')
+        .textContent = model.booted;
       panel.append(facts);
 
       const controls = element('div', 'app-action-row');
@@ -335,10 +445,10 @@ export const REMOTE_APP: AppDef = {
         picker.append(option);
       }
 
-      const current = rotationOf(machine);
+      const current = model.rotation;
       // Default the picker to upright: the overwhelmingly common fix is
       // "put it back", and it should be one click away.
-      const chosen = pickedRotation ?? 0;
+      const chosen = model.picked;
       picker.value = String(chosen);
       picker.addEventListener('change', () => {
         const value = Number(picker.value);
@@ -359,7 +469,7 @@ export const REMOTE_APP: AppDef = {
       apply.addEventListener('click', () => {
         run(
           HELPDESK_ACTIONS.machineSetDisplayRotation,
-          machine.id,
+          model.id,
           { rotation: chosen },
           `Screen set to ${String(chosen)} degrees. They will say it was like `
             + 'that all along.',
@@ -370,7 +480,7 @@ export const REMOTE_APP: AppDef = {
       reboot.addEventListener('click', () => {
         run(
           HELPDESK_ACTIONS.machineReboot,
-          machine.id,
+          model.id,
           {},
           'Rebooted. Ask what they had open only after it comes back.',
         );
@@ -382,14 +492,14 @@ export const REMOTE_APP: AppDef = {
     };
 
     const renderHardwarePanel = (
-      machine: Readonly<ReadOnlyGraphNode>,
+      model: Readonly<RemoteSession>,
     ): HTMLElement => {
       const panel = element('div', 'remote-panel', 'remote-hardware-panel');
       const heading = element('h3');
       heading.textContent = 'Attached hardware';
       panel.append(heading);
 
-      const devices = devicesOn(machine);
+      const devices = model.devices;
 
       if (devices.length === 0) {
         const empty = element('p', 'remote-placeholder', 'remote-no-devices');
@@ -400,18 +510,16 @@ export const REMOTE_APP: AppDef = {
       }
 
       for (const device of devices) {
-        const key = nodeKey(device.id);
+        const key = device.key;
         const card = element('div', 'remote-device', `remote-device-${key}`);
         const name = element('strong');
-        name.textContent = textValue(device.fields[FIELDS.name], device.id);
+        name.textContent = device.name;
         const kind = element('span', 'remote-device-type');
-        kind.textContent = textValue(device.fields[FIELDS.type], 'device');
+        kind.textContent = device.type;
         card.append(name, kind);
 
-        const queue = device.fields[FIELDS.queueLen];
-
-        if (device.fields[FIELDS.type] === DEVICE_TYPES.printer) {
-          const depth = typeof queue === 'number' ? queue : 0;
+        if (device.printer) {
+          const depth = device.queue;
           const queueLine = element('span', 'remote-queue', `remote-queue-${key}`);
           queueLine.textContent = `${String(depth)} job(s) queued`;
           const clear = osButton('Clear queue', `remote-clear-${key}`, {
@@ -435,9 +543,9 @@ export const REMOTE_APP: AppDef = {
           card.append(queueLine, clear);
         }
 
-        const battery = device.fields[FIELDS.batteryPct];
+        const battery = device.battery;
 
-        if (typeof battery === 'number') {
+        if (battery !== null) {
           const level = element('span', 'remote-battery', `remote-battery-${key}`);
           level.textContent = `Battery ${String(battery)}%`;
           const replace = osButton(
@@ -467,8 +575,7 @@ export const REMOTE_APP: AppDef = {
         });
         setAvailability(
           power,
-          device.fields[FIELDS.powered] === true
-            && device.fields[FIELDS.wedged] !== true
+          device.powered && !device.wedged
             ? 'It is on and behaving itself. Switching it off and on again '
               + 'now is superstition, not support.'
             : null,
@@ -489,12 +596,33 @@ export const REMOTE_APP: AppDef = {
       return panel;
     };
 
-    const renderSession = (
-      machine: ReadOnlyGraphNode | undefined,
-    ): void => {
-      session.replaceChildren();
+    /**
+     * The session is rebuilt only when what it SHOWS has changed.
+     *
+     * It holds the rotation dropdown - the one control this app exists for -
+     * and it was being rebuilt on every world change. The tick was already
+     * spared for exactly that reason; the meters moving every five minutes of
+     * the shift were not, so the dropdown still shut in the player's hand,
+     * just less often and less predictably.
+     *
+     * The remote clock in their taskbar is deliberately NOT in the model. It
+     * moves every minute and it is repainted on its own, which is the whole
+     * arrangement: if it were in here, every minute would be a rebuild again.
+     */
+    let painted: string | null = null;
 
-      if (machine === undefined) {
+    const renderSession = (model: RemoteSession | null): void => {
+      const signature = JSON.stringify(model);
+
+      if (signature === painted) {
+        return;
+      }
+
+      painted = signature;
+      session.replaceChildren();
+      remoteTray = null;
+
+      if (model === null) {
         const empty = element('p', 'remote-placeholder', 'remote-empty');
         empty.textContent = 'Pick a workstation to connect to. They have all '
           + 'agreed to this in the handbook nobody read.';
@@ -504,26 +632,23 @@ export const REMOTE_APP: AppDef = {
 
       const head = element('div', 'remote-head');
       const heading = element('h2', undefined, 'remote-hostname');
-      heading.textContent = hostnameOf(machine);
+      heading.textContent = model.hostname;
       const owner = element('span', 'remote-owner', 'remote-owner');
-      owner.textContent = textValue(
-        ownerOf(machine)?.fields[FIELDS.name],
-        'Unassigned',
-      );
+      owner.textContent = model.owner;
       head.append(heading, owner);
 
-      session.append(head, renderScreen(machine));
+      session.append(head, renderScreen(model));
 
       const panels = element('div', 'remote-panels');
       panels.append(
-        renderDisplayPanel(machine),
-        renderHardwarePanel(machine),
+        renderDisplayPanel(model),
+        renderHardwarePanel(model),
       );
       session.append(panels);
 
       session.append(
-        outcomeLine('remote-outcome', outcome),
-        refusalLine('remote-refusal', refusal, createIcon('icon-lock')),
+        outcomeLine('remote-outcome', model.outcome),
+        refusalLine('remote-refusal', model.refusal, createIcon('icon-lock')),
       );
     };
 
@@ -554,9 +679,15 @@ export const REMOTE_APP: AppDef = {
 
       // A repaint must not take the keyboard off the control the player is
       // standing on, the same rule the ticket queue follows.
+      const machine = nodes.find((candidate) => candidate.id === selectedId);
+
       withFocusRestored(root, () => {
         renderMachines(nodes);
-        renderSession(nodes.find((machine) => machine.id === selectedId));
+        renderSession(machine === undefined ? null : remoteSession(api, machine, {
+          picked: pickedRotation,
+          outcome,
+          refusal,
+        }));
       });
     };
 

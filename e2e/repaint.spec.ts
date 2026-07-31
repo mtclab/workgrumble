@@ -147,3 +147,66 @@ test('keeps the directory, event and remote rows across a world change', async (
   await expectSameElement(firstEvent, 'event-row');
   await expectSameElement(account, 'directory');
 });
+
+/**
+ * And the two DETAIL panes, which are the ones that actually cost the player
+ * something.
+ *
+ * Both hold a dropdown - the group picker in the directory, the rotation
+ * picker in Remote Assist - and both were rebuilt on every world change. The
+ * meters move every few minutes of every shift, so the pane was being thrown
+ * away and rebuilt under the player's cursor while they were choosing from it,
+ * which shuts an open dropdown and loses the choice.
+ *
+ * The clock is left running here rather than stepped: what is being proven is
+ * that ordinary time passing - meters ticking, suspicion draining, the remote
+ * taskbar clock ticking over - does not touch a pane whose subject has not
+ * changed. And then that changing the subject DOES rebuild it, because a pane
+ * that never repaints is not a fix, it is a worse bug.
+ */
+test('keeps the detail panes standing while the meters tick', async ({
+  page,
+}) => {
+  await startShiftWithQueue(page);
+
+  await openFromStartMenu(page, 'directory');
+  await page.getByTestId('directory-row-gary').click();
+  const accountPane = page.getByTestId('directory-detail-username');
+  const groupPicker = page.getByTestId('directory-group-picker');
+  await mark(accountPane, 'account-pane');
+  await mark(groupPicker, 'group-picker');
+
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-print').click();
+  const rotationPicker = page.getByTestId('remote-rotation-picker');
+  const remoteTray = page.getByTestId('remote-tray');
+  await mark(rotationPicker, 'rotation-picker');
+  const trayBefore = await textOf(remoteTray);
+
+  // Twenty minutes of an ordinary shift: four meter ticks at least, and
+  // twenty minutes on their taskbar clock.
+  await runSimMinutes(page, 20);
+
+  // Their clock moved, so this window is live rather than frozen...
+  await expect(remoteTray).not.toHaveText(trayBefore);
+  // ...and nothing else in either pane was rebuilt under it.
+  await expectSameElement(rotationPicker, 'rotation-picker');
+  await expectSameElement(accountPane, 'account-pane');
+  await expectSameElement(groupPicker, 'group-picker');
+
+  // The other half of the contract: a pane whose subject changes IS rebuilt,
+  // and says the new thing.
+  await rotationPicker.selectOption('180');
+  await page.getByTestId('remote-apply-rotation').click();
+  await expect(page.getByTestId('remote-rotation-state'))
+    .toHaveText('180 degrees');
+  await expect(rotationPicker).not.toHaveAttribute('data-probe', 'rotation-picker');
+
+  await page.getByTestId('taskbar-button-directory').click();
+  await page.getByTestId('directory-reset-password').click();
+  await expect(page.getByTestId('directory-outcome'))
+    .toContainText('Temporary password');
+  await expect(page.getByTestId('directory-detail-must-change'))
+    .toContainText('Yes');
+  await expect(accountPane).not.toHaveAttribute('data-probe', 'account-pane');
+});
