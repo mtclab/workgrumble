@@ -370,9 +370,14 @@ fn a_successful_call_still_reports_everything_it_did() {
         })
         .collect();
 
+    // Three mutations: the service status the action set, and the two fields
+    // the resolution writes on the ticket - its state and the minute it closed
+    // in. The stamp is what lets a day's ledger ask WHEN rather than only
+    // whether.
     assert_eq!(
         events,
         vec![
+            "mutated".to_owned(),
             "mutated".to_owned(),
             "mutated".to_owned(),
             "resolved:ticket:spooler".to_owned(),

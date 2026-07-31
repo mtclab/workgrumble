@@ -104,6 +104,60 @@ describe('what the scorecard counts as today', () => {
     expect(scorecardCounts(apiFor(session), 1).misclassified).toHaveLength(1);
   });
 
+  /**
+   * The two counts on this panel that used to be recomputed from NOW.
+   *
+   * A response answered on the Tuesday turned Monday's row from late to clean,
+   * days after Monday's pay had been banked; and a triage filed on the Tuesday
+   * for a Monday ticket was reported as Monday's misreading, which is a day
+   * the player had not touched it. Both questions are about a day, so both are
+   * asked of that day's own minutes.
+   */
+  it('does not let a later day rewrite an earlier one', () => {
+    const session = mondayMorning();
+    spawnWorldTicket(session.engine, 'ticket:fan-noise');
+
+    // Monday goes past with nobody saying a word to anybody.
+    session.engine.advance(dayOpensTick(2) - session.engine.now() - 1);
+    const monday = scorecardCounts(apiFor(session), 1);
+    expect(monday.lateResponses).toBe(INHERITED_ON_MONDAY + 1);
+    expect(monday.misclassified).toEqual([]);
+
+    // Late on Monday something else lands, untouched by anybody.
+    const late = 'ticket:wedged-spooler';
+    spawnWorldTicket(session.engine, late);
+
+    // Tuesday: somebody finally answers the fan, and triages the other one
+    // against the evidence while they are there.
+    session.engine.advance(shiftStartTick(2) - session.engine.now());
+    expect(session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketAddComment,
+      COMPANY_IDS.player,
+      'ticket:fan-noise',
+      { comment: 'Looking at it now, a day late.' },
+    )).toEqual({ ok: true });
+    expect(session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketClassify,
+      COMPANY_IDS.player,
+      late,
+      // Filed as a nothing job: one desk, whenever. It is the office-wide
+      // print outage.
+      { impact: 1, urgency: 1, priority: 4 },
+    )).toEqual({ ok: true });
+
+    // Monday is exactly what Monday was, and always will be.
+    expect(scorecardCounts(apiFor(session), 1).lateResponses)
+      .toBe(monday.lateResponses);
+    expect(scorecardCounts(apiFor(session), 1).misclassified).toEqual([]);
+
+    // And the misreading is on the day somebody actually made it, even though
+    // the ticket it is about arrived the day before.
+    expect(scorecardCounts(apiFor(session), 2).misclassified
+      .map((entry) => entry.id)).toEqual([late]);
+    expect(scorecardCounts(apiFor(session), 2).cohort
+      .map((node) => node.id)).not.toContain(late);
+  });
+
   /** And the three cohorts on that panel are the same cohort. */
   it('scores every count over the tickets that arrived that day', () => {
     const session = mondayMorning();

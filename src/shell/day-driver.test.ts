@@ -1026,6 +1026,69 @@ describe('the clock the deadlines are measured against', () => {
     expect(spooler(reloaded.engine).resolution.remaining).toBe(atClockOff - 30);
   });
 
+  /**
+   * The settlement the test above stops one minute short of - and the whole of
+   * WG-01, driven through the shipped driver and the shipped payslip.
+   *
+   * A ticket lands on the Monday, is still open at Monday's 17:00, and is
+   * closed on the Tuesday. Monday's pay is BANKED at Monday's clock-off, so
+   * the only honest place for the bonus is Tuesday's payslip; a ledger that
+   * read the ticket's state at any later moment credited Monday with a close
+   * that Monday had not been paid for, and the week card at the end recomputed
+   * the same cohort and put it back on Monday's row, in writing, above a fund
+   * that disagreed.
+   */
+  it('pays a carried ticket on the day it was actually closed', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+
+    // Three in the afternoon, and one more lands. Nobody touches it.
+    driver.step(realMs(shiftStartTick(1) + 360 - engine.now()));
+    spawnWorldTicket(engine, 'ticket:wedged-spooler');
+    driver.step(realMs(shiftEndTick(1) - engine.now()));
+
+    const tickets = (): readonly ReturnType<
+      typeof engine.graph.nodesOfKind
+    >[number][] => engine.graph.nodesOfKind('ticket');
+    const mondayLedger = dayLedger(tickets(), 1);
+    expect(mondayLedger.closed).toBe(0);
+    expect(engine.ticketState('ticket:wedged-spooler')).toBe('open');
+
+    const mondayPay = daySlip(mondayLedger).net;
+    driver.clockOff();
+    const banked = engine.graph.getField(COMPANY_IDS.player, FIELDS.farmFund);
+    expect(banked).toBe(mondayPay);
+
+    // Tuesday. Clear the queue, start the spooler, and the ticket closes.
+    driver.startShift();
+    driver.step(realMs(30));
+    driver.dispatch(
+      HELPDESK_ACTIONS.printerClearQueue,
+      COMPANY_IDS.player,
+      COMPANY_IDS.printer,
+      { spooler: COMPANY_IDS.spooler },
+    );
+    driver.dispatch(
+      HELPDESK_ACTIONS.serviceRestart,
+      COMPANY_IDS.player,
+      COMPANY_IDS.spooler,
+      {},
+    );
+    expect(engine.ticketState('ticket:wedged-spooler')).toBe('resolved');
+
+    // Monday's row has not moved a number, and cannot: the close is stamped
+    // with a Tuesday minute and Monday's ledger only reads Monday's minutes.
+    expect(dayLedger(tickets(), 1)).toEqual(mondayLedger);
+    expect(dayLedger(tickets(), 2).closed).toBe(1);
+
+    // And the week card - the screen that used to rewrite Monday - agrees with
+    // both of them and with the fund.
+    const card = driver.weekScorecard();
+    expect(card.days[0]?.ledger.closed).toBe(0);
+    expect(card.days[1]?.ledger.closed).toBe(1);
+    expect(card.days[0]?.ledger).toEqual(mondayLedger);
+  });
+
   /** One entry per transition, not one a minute: the log is a save file. */
   it('writes the clock into the log only when it moves', () => {
     const { driver, engine } = harness();

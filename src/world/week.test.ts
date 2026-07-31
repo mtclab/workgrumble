@@ -235,11 +235,17 @@ describe('the week against the roster', () => {
 
 /* -- the scorecard -------------------------------------------------------- */
 
+/**
+ * A ticket as the engine leaves one: the minute it arrived, and the minutes
+ * the two one-off events happened in. The stamps are not decoration - a day is
+ * answerable for what happened IN it, so a resolution with no minute on it
+ * belongs to no day at all.
+ */
 function ticketNode(
   id: string,
   spawnedAt: number,
   state: string,
-  breached = false,
+  stamps: Readonly<{ resolvedAt?: number; breachedAt?: number }> = {},
 ): ReadOnlyGraphNode {
   return {
     id,
@@ -247,16 +253,25 @@ function ticketNode(
     fields: {
       [FIELDS.state]: state,
       [FIELDS.spawnedAt]: spawnedAt,
-      [FIELDS.breached]: breached,
+      [FIELDS.breached]: stamps.breachedAt !== undefined,
+      ...(stamps.resolvedAt === undefined
+        ? {}
+        : { [FIELDS.resolvedAt]: stamps.resolvedAt }),
+      ...(stamps.breachedAt === undefined
+        ? {}
+        : { [FIELDS.breachedAt]: stamps.breachedAt }),
     },
   };
 }
 
 describe('the week, scored', () => {
   const tickets: readonly ReadOnlyGraphNode[] = [
-    ticketNode('ticket:a', 0, 'resolved'),
-    ticketNode('ticket:b', 120, 'breached', true),
-    ticketNode('ticket:c', 1_500, 'resolved', true),
+    ticketNode('ticket:a', 0, 'resolved', { resolvedAt: 90 }),
+    ticketNode('ticket:b', 120, 'breached', { breachedAt: 400 }),
+    ticketNode('ticket:c', 1_500, 'resolved', {
+      resolvedAt: 1_700,
+      breachedAt: 1_650,
+    }),
     ticketNode('ticket:d', 4_500, 'open'),
   ];
 

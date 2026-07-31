@@ -2,12 +2,14 @@ import type { ReadOnlyGraphNode } from '../../engine-api';
 import {
   type DayLedger,
   dayLedger,
+  dayOpensTick,
   daySlip,
   FARM_PRICE_PENCE,
   farmProgress,
   formatPence,
   type PaySlip,
   ticketsArrivedOn,
+  ticketsClassifiedOn,
 } from '../../world/day';
 import { FIELDS } from '../../world/fields';
 import { STARTING_REPUTATION } from '../../world/meters';
@@ -107,19 +109,23 @@ function spendLine(pence: number | null): string {
 
 /**
  * Tickets whose response clock ran out before anybody said a word - counted
- * over the day being scored and no other.
+ * over the day they ARRIVED in, as that day stood when it ended.
  *
- * It used to be handed every ticket in the world, so one missed response on
- * Monday was reported again on Tuesday's clean scorecard, and again on
- * Wednesday's, for the rest of the week. A day's scorecard scores that day;
- * the ledger beside it has always scoped its cohort the same way.
+ * Two scopings, and both had to be fixed. It used to be handed every ticket in
+ * the world, so one missed response on Monday was reported again on Tuesday's
+ * clean scorecard for the rest of the week. And it read the clock as it stands
+ * NOW, so a Monday ticket answered late on the Tuesday turned Monday's row
+ * from clean to late, days after Monday's pay was banked. A response is owed
+ * from the minute the ticket landed, so the arrival cohort is the right one -
+ * but the question is "had it been answered by the time this day ended", and
+ * that is a question about a moment which has to be the day's own.
  */
 function lateResponses(
-  api: GameApi,
   nodes: readonly ReadOnlyGraphNode[],
+  asOf: number,
 ): number {
   return nodes.filter(
-    (node) => ticketClocks(node, api.clock.now()).response.breached,
+    (node) => ticketClocks(node, asOf).response.breached,
   ).length;
 }
 
@@ -144,12 +150,22 @@ export function scorecardCounts(
   api: Pick<GameApi, 'graph' | 'clock'>,
   day: number,
 ): ScorecardCounts {
-  const cohort = ticketsArrivedOn(api.graph.nodesOfKind('ticket'), day);
+  const tickets = api.graph.nodesOfKind('ticket');
+  const cohort = ticketsArrivedOn(tickets, day);
+  // The day being scored, as it stood when it ended - or as it stands right
+  // now if it has not. Either way it is the moment the day is answerable for,
+  // and never a later one.
+  const asOf = Math.min(api.clock.now(), dayOpensTick(day + 1));
 
   return {
     cohort,
-    lateResponses: lateResponses(api as GameApi, cohort),
-    misclassified: misclassifiedTickets(api, cohort),
+    lateResponses: lateResponses(cohort, asOf),
+    // Scoped to the triage FILED in this day rather than to the tickets that
+    // arrived in it. A cell is mutable while a ticket is open, so reading the
+    // arrival cohort's current cells reported Monday's misreading again on
+    // every clean day after it - and hid a re-triage done on the Wednesday,
+    // which is the day somebody actually got it wrong.
+    misclassified: misclassifiedTickets(api, ticketsClassifiedOn(tickets, day)),
   };
 }
 

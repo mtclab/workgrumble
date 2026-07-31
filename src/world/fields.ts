@@ -319,6 +319,19 @@ export const FIELDS = {
   slaDeadline: 'sla_deadline',
   spawnedAt: 'spawned_at',
   breached: 'breached',
+  /**
+   * The minutes the two one-off ticket events happened in, written by the
+   * ENGINE in the same breath as the state they describe.
+   *
+   * `spawned_at` used to be the only tick a ticket carried, so every daily
+   * count except "arrived" was really a question about NOW wearing a day's
+   * name: a Monday ticket that resolved on Tuesday was reported as Monday's
+   * close, on a Monday whose pay had been banked at 17:00 without it, and the
+   * week card at the end rewrote Monday to disagree with the money. A day is
+   * answerable for what HAPPENED in it, and these are how it can tell.
+   */
+  resolvedAt: 'resolved_at',
+  breachedAt: 'breached_at',
   escalated: 'escalated',
   /**
    * The triage the PLAYER assigned: how many people this hits and how fast it
@@ -330,6 +343,16 @@ export const FIELDS = {
   impact: 'impact',
   urgency: 'urgency',
   priority: 'priority',
+  /**
+   * The minute the triage above was filed in.
+   *
+   * A day's scorecard reports what THAT day got wrong, and the cells are
+   * mutable - a ticket can be re-triaged any time it is open - so reading them
+   * without a stamp reported Monday's misreading again on Tuesday's clean
+   * scorecard, and again at the review. The stamp is what makes each filing
+   * count once, on the day somebody filed it.
+   */
+  classifiedAt: 'classified_at',
   /**
    * When the ticket was first touched in a way the reporter could see: a
    * customer-visible comment, or a dispatched action on the ticket's own

@@ -274,9 +274,25 @@ describe('the ticket drip', () => {
 
 describe('the day scorecard', () => {
   const tickets: readonly ReadOnlyGraphNode[] = [
-    ticket('ticket:closed', { spawned_at: 5, state: 'resolved', breached: false }),
-    ticket('ticket:late', { spawned_at: 30, state: 'resolved', breached: true }),
-    ticket('ticket:missed', { spawned_at: 60, state: 'breached', breached: true }),
+    ticket('ticket:closed', {
+      spawned_at: 5,
+      state: 'resolved',
+      breached: false,
+      resolved_at: 90,
+    }),
+    ticket('ticket:late', {
+      spawned_at: 30,
+      state: 'resolved',
+      breached: true,
+      breached_at: 300,
+      resolved_at: 320,
+    }),
+    ticket('ticket:missed', {
+      spawned_at: 60,
+      state: 'breached',
+      breached: true,
+      breached_at: 400,
+    }),
     ticket('ticket:open', { spawned_at: 61, state: 'open', breached: false }),
     ticket('ticket:parked', {
       spawned_at: 62,
@@ -291,11 +307,12 @@ describe('the day scorecard', () => {
   ];
 
   /**
-   * Scoped by the day a ticket ARRIVED in. Counting every ticket in the graph
-   * would have Wednesday taking credit for Tuesday's work - and the scorecard
-   * is the one screen the player is asked to believe.
+   * Every number here is a question about a MINUTE. Arrivals are scoped by the
+   * day the ticket landed in; closes and breaches by the day the event
+   * happened in, whichever day the ticket arrived on; and "still open" by how
+   * the queue stood when the day ended.
    */
-  it('counts only the tickets the day itself brought in', () => {
+  it('counts the events the day itself is answerable for', () => {
     // Still open counts everything that has not been FIXED - the open one, the
     // parked one and the one whose deadline ran out. A ticket does not stop
     // being somebody's problem by going red, and a day with breaches on it
@@ -310,7 +327,10 @@ describe('the day scorecard', () => {
       arrived: 1,
       closed: 0,
       breached: 0,
-      stillOpen: 1,
+      // Yesterday's three unfixed ones are still unfixed, and today's arrival
+      // joins them: "open at the close" is about the whole queue, not about
+      // one day's cohort.
+      stillOpen: 4,
     });
     expect(dayLedger([], 1)).toEqual({
       arrived: 0,
@@ -318,6 +338,89 @@ describe('the day scorecard', () => {
       breached: 0,
       stillOpen: 0,
     });
+  });
+
+  /**
+   * The whole of WG-01, in one fixture.
+   *
+   * A ticket arrives on the Monday, is still open at Monday's 17:00, and is
+   * worked on the Tuesday: it goes red at half nine and is closed at ten. The
+   * old ledger scoped everything to the ARRIVAL day and read the ticket's
+   * current state, so all three of these were wrong at once - Monday was
+   * credited with a close it did not have and charged for a breach it did not
+   * have, at a moment when Monday's pay had already been banked without
+   * either; Tuesday, which is the day somebody did the work, showed nothing;
+   * and the week card at the end recomputed the same cohort and rewrote Monday
+   * to disagree with the money in the fund.
+   */
+  it('gives a carried ticket to the day the work happened on', () => {
+    const carried = [
+      ticket('ticket:overnight', {
+        spawned_at: 600,
+        state: 'resolved',
+        breached: true,
+        breached_at: DAY_TWO_OPENS + 90,
+        resolved_at: DAY_TWO_OPENS + 120,
+      }),
+    ];
+
+    // Monday: it turned up, nobody finished it, and it was still on the pile
+    // at five. Nothing about Tuesday reaches this row.
+    expect(dayLedger(carried, 1)).toEqual({
+      arrived: 1,
+      closed: 0,
+      breached: 0,
+      stillOpen: 1,
+    });
+
+    // Tuesday: no arrival, one breach, one close, and an empty queue at the
+    // end of it. The day that did the work is the day that is scored for it.
+    expect(dayLedger(carried, 2)).toEqual({
+      arrived: 0,
+      closed: 1,
+      breached: 1,
+      stillOpen: 0,
+    });
+
+    // And the pennies, which is where this stopped being an accounting detail.
+    // Monday is paid for a day with nothing closed and nothing missed; Tuesday
+    // is paid the bonus and charged the service credit, once each, on the day
+    // the events happened.
+    expect(daySlip(dayLedger(carried, 1)).net)
+      .toBe(daySlip({ arrived: 1, closed: 0, breached: 0, stillOpen: 1 }).net);
+    expect(daySlip(dayLedger(carried, 2)).net)
+      .toBe(DAY_RATE_PENCE + 250 - (150 + 220 + 75) - 400);
+
+    // Every later day is untouched, forever: the events are stamped, so a
+    // Wednesday cannot rewrite a Tuesday any more than a Tuesday can a Monday.
+    expect(dayLedger(carried, 3)).toEqual({
+      arrived: 0,
+      closed: 0,
+      breached: 0,
+      stillOpen: 0,
+    });
+  });
+
+  /**
+   * The same event cannot be paid or charged twice, which is the other half of
+   * the bug: five daily ledgers that each read "is it resolved now" would have
+   * paid the bonus for one close five times over the week.
+   */
+  it('pays each event exactly once across the week', () => {
+    const carried = [
+      ticket('ticket:overnight', {
+        spawned_at: 600,
+        state: 'resolved',
+        breached: true,
+        breached_at: DAY_TWO_OPENS + 90,
+        resolved_at: DAY_TWO_OPENS + 120,
+      }),
+    ];
+    const days = [1, 2, 3, 4, 5].map((day) => dayLedger(carried, day));
+
+    expect(days.reduce((total, ledger) => total + ledger.closed, 0)).toBe(1);
+    expect(days.reduce((total, ledger) => total + ledger.breached, 0)).toBe(1);
+    expect(days.reduce((total, ledger) => total + ledger.arrived, 0)).toBe(1);
   });
 
   /**

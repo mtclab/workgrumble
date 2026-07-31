@@ -971,14 +971,26 @@ impl World {
         Ok(())
     }
 
+    /// Closing one, and stamping the MINUTE it closed in.
+    ///
+    /// The stamp is the point. A ticket carries the tick it spawned on, so a
+    /// day could say which tickets were its own - but "closed" and "breached"
+    /// were read as the state the ticket is in NOW, so a Monday ticket that
+    /// resolved on the Tuesday was counted against Monday, on a Monday whose
+    /// pay had already been banked at Monday's 17:00 without it. The day
+    /// disagreed with the money. Both events are one-off and the day's ledger
+    /// is a repeating read, so the ledger has to be able to ask WHEN.
     fn resolve_ticket(&mut self, id: &str) -> EngineResult<()> {
         if let Some(record) = self.tickets.records.get_mut(id) {
             record.resolved = true;
             record.waiting = false;
         }
 
+        let now = self.clock.now();
         self.updating(id, true);
-        let result = self.set_field(id, "state", FieldValue::Str("resolved".to_owned()));
+        let result = self
+            .set_field(id, "state", FieldValue::Str("resolved".to_owned()))
+            .and_then(|()| self.set_field(id, "resolved_at", FieldValue::Num(now as f64)));
         self.updating(id, false);
         result?;
 
@@ -987,16 +999,19 @@ impl World {
     }
 
     /// The breach latches on the record and on the node: a ticket closed late
-    /// is still closed late, however it ends.
+    /// is still closed late, however it ends. The minute it went red latches
+    /// with it, for the same reason a resolution's does.
     fn breach_ticket(&mut self, id: &str) -> EngineResult<()> {
         if let Some(record) = self.tickets.records.get_mut(id) {
             record.breached = true;
         }
 
+        let now = self.clock.now();
         self.updating(id, true);
         let result = self
             .set_field(id, "state", FieldValue::Str("breached".to_owned()))
-            .and_then(|()| self.set_field(id, "breached", FieldValue::Bool(true)));
+            .and_then(|()| self.set_field(id, "breached", FieldValue::Bool(true)))
+            .and_then(|()| self.set_field(id, "breached_at", FieldValue::Num(now as f64)));
         self.updating(id, false);
         result?;
 

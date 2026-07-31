@@ -390,6 +390,17 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
         field: FIELDS.priority,
         value: { param: 'priority' },
       },
+      // The minute the triage was filed in, stamped like the resolution and
+      // the breach and for the same reason: the scorecard reports what a DAY
+      // got wrong, and reading the cells that happen to be on the ticket now
+      // reported Monday's misreading again on Tuesday, and again at the
+      // review, on days the player had done nothing wrong.
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.classifiedAt,
+        value: { now: true },
+      },
       ...deadlineOps(),
     ],
   },

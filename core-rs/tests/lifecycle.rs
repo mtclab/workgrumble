@@ -148,6 +148,53 @@ fn latches_a_breach_at_the_deadline_and_stays_solvable() {
     assert_eq!(ticket_events(&mut world), vec!["resolved:ticket:breach"]);
 }
 
+/// The minute each one-off event happened in, written where a day can read it.
+///
+/// A ticket used to carry only the tick it SPAWNED on, so every daily count
+/// except "arrived" was really a question about the ticket's current state
+/// wearing a day's name: a ticket that arrived on one day and closed on the
+/// next was reported as the first day's close, on a day whose pay had already
+/// been banked without it. The stamps are what let a ledger ask WHEN.
+#[test]
+fn stamps_the_minute_a_ticket_closed_and_the_minute_it_went_red() {
+    let mut world = harness();
+    world
+        .spawn_ticket(&service_ticket("ticket:stamped", 2, "wedged"))
+        .expect("spawn");
+    world.drain_events();
+
+    // Nothing has happened yet, so there is nothing to stamp.
+    assert_eq!(world.graph.get_field("ticket:stamped", "breached_at"), None);
+    assert_eq!(world.graph.get_field("ticket:stamped", "resolved_at"), None);
+
+    world.advance(3).expect("advance");
+    assert_eq!(
+        world.graph.get_field("ticket:stamped", "breached_at"),
+        Some(&FieldValue::Num(2.0)),
+    );
+
+    world.advance(5).expect("advance");
+    world
+        .set_field(
+            "service:spooler",
+            "status",
+            FieldValue::Str("running".to_owned()),
+        )
+        .expect("fix");
+
+    // The close is stamped with the minute it closed in, and the breach still
+    // says the minute it went red: two events, two minutes, and a day that can
+    // tell which of them belongs to it.
+    assert_eq!(
+        world.graph.get_field("ticket:stamped", "resolved_at"),
+        Some(&FieldValue::Num(8.0)),
+    );
+    assert_eq!(
+        world.graph.get_field("ticket:stamped", "breached_at"),
+        Some(&FieldValue::Num(2.0)),
+    );
+}
+
 #[test]
 fn extends_the_deadline_by_exactly_the_ticks_spent_waiting() {
     let mut world = harness();

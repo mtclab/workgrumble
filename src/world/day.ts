@@ -249,12 +249,30 @@ export function arrivalsBetween(
 /* -- the scorecard -------------------------------------------------------- */
 
 /**
- * The day's ticket ledger, counted over the tickets that ARRIVED in it.
+ * The day's ticket ledger, counted over the EVENTS that happened in it.
  *
- * Scoping it by arrival is what keeps the scorecard honest across days: a
- * ticket closed on Tuesday must not still be being celebrated on Wednesday,
- * and the only thing in the graph that says which day a ticket belongs to is
- * the tick it spawned on.
+ * Every field here is a question about a minute, and every one of them used to
+ * be a question about now wearing a day's name. The ledger scoped itself to
+ * the tickets that ARRIVED in the day and then read their current state, so a
+ * Monday ticket still open at Monday's 17:00 and resolved on the Tuesday was
+ * reported as one of Monday's closes - on a Monday whose pay had already been
+ * banked, at Monday's 17:00, without it. The final week card recomputed the
+ * same historical cohort and rewrote Monday to disagree with the money in the
+ * fund. And Tuesday, which is the day somebody actually did the work, showed
+ * nothing for it, because the ticket had arrived the day before.
+ *
+ * So a day is answerable for what HAPPENED in it:
+ *
+ * - `arrived`: spawned in this day.
+ * - `closed`: RESOLVED in this day, whichever day it arrived on.
+ * - `breached`: went red in this day, same.
+ * - `stillOpen`: arrived on or before this day and was not resolved before it
+ *   ended - which is the one number that is a fact about a MOMENT rather than
+ *   about an interval, so it is measured at the day's own close.
+ *
+ * All four are immutable once the day is over: nothing that happens on the
+ * Wednesday can move a number in Monday's row, which is the property the pay
+ * needs, because the pay was banked on the Monday.
  */
 export interface DayLedger {
   readonly arrived: number;
@@ -270,27 +288,89 @@ function tickField(node: ReadOnlyGraphNode, field: string): number | null {
     : null;
 }
 
+/** Whether a stamped minute falls inside a given day. */
+function stampedIn(
+  ticket: ReadOnlyGraphNode,
+  field: string,
+  day: number,
+): boolean {
+  const at = tickField(ticket, field);
+  return at !== null && at >= dayOpensTick(day) && at < dayOpensTick(day + 1);
+}
+
 /**
  * The tickets a given day is answerable for: the ones that arrived in it.
  *
- * The cohort, exported, because more than one thing on the scorecard counts
- * over it and every one of them has to count over the SAME one. Two of them
- * did not - the late responses and the misclassified triage were counted over
- * every ticket in the world - so a Monday with one missed response reported
- * that same failure again on Tuesday, on Wednesday, and at the review, on days
- * the player had done nothing wrong.
+ * The arrival cohort, exported, because the two things that are genuinely
+ * about ARRIVALS both count over it and have to count over the SAME one: how
+ * many turned up, and how many of them went unanswered past their response
+ * target. Neither of the two event counts uses it - a resolution belongs to
+ * the day somebody did the work, not to the day the ticket landed.
  */
 export function ticketsArrivedOn(
   tickets: readonly ReadOnlyGraphNode[],
   day: number,
 ): readonly ReadOnlyGraphNode[] {
   requireDay(day);
-  const opens = dayOpensTick(day);
+  return tickets.filter((ticket) => stampedIn(ticket, FIELDS.spawnedAt, day));
+}
+
+/** The tickets somebody closed in this day, whenever they arrived. */
+export function ticketsResolvedOn(
+  tickets: readonly ReadOnlyGraphNode[],
+  day: number,
+): readonly ReadOnlyGraphNode[] {
+  requireDay(day);
+  return tickets.filter((ticket) => stampedIn(ticket, FIELDS.resolvedAt, day));
+}
+
+/** And the ones somebody filed a triage on in it, right or wrong. */
+export function ticketsClassifiedOn(
+  tickets: readonly ReadOnlyGraphNode[],
+  day: number,
+): readonly ReadOnlyGraphNode[] {
+  requireDay(day);
+  return tickets.filter((ticket) => stampedIn(ticket, FIELDS.classifiedAt, day));
+}
+
+/** And the ones whose deadline ran out in it. */
+export function ticketsBreachedOn(
+  tickets: readonly ReadOnlyGraphNode[],
+  day: number,
+): readonly ReadOnlyGraphNode[] {
+  requireDay(day);
+  return tickets.filter((ticket) => stampedIn(ticket, FIELDS.breachedAt, day));
+}
+
+/**
+ * The tickets that were still somebody's problem when this day ended.
+ *
+ * Arrived on or before it, and either never resolved or resolved after it
+ * closed. Breached ones very much included: a ticket whose deadline ran out is
+ * not a ticket that went away, and a scorecard reporting nothing still open on
+ * a day with four breaches in it is the day telling the player a story about
+ * itself.
+ *
+ * For the day that is still being worked, "the day's close" is in the future,
+ * so this reads exactly as "open right now" - which is what a preview should
+ * say. For a day that is over it never changes again.
+ */
+export function ticketsOpenAtCloseOf(
+  tickets: readonly ReadOnlyGraphNode[],
+  day: number,
+): readonly ReadOnlyGraphNode[] {
+  requireDay(day);
   const closes = dayOpensTick(day + 1);
 
   return tickets.filter((ticket) => {
     const spawned = tickField(ticket, FIELDS.spawnedAt);
-    return spawned !== null && spawned >= opens && spawned < closes;
+
+    if (spawned === null || spawned >= closes) {
+      return false;
+    }
+
+    const resolved = tickField(ticket, FIELDS.resolvedAt);
+    return resolved === null ? isUnresolved(ticket) : resolved >= closes;
   });
 }
 
@@ -298,21 +378,11 @@ export function dayLedger(
   tickets: readonly ReadOnlyGraphNode[],
   day: number,
 ): DayLedger {
-  const mine = ticketsArrivedOn(tickets, day);
-
   return {
-    arrived: mine.length,
-    closed: mine.filter(
-      (ticket) => ticket.fields[FIELDS.state] === 'resolved',
-    ).length,
-    breached: mine.filter(
-      (ticket) => ticket.fields[FIELDS.breached] === true,
-    ).length,
-    // Everything that has not been fixed, which includes the ones that went
-    // red: a ticket whose deadline ran out is not a ticket that went away, and
-    // a scorecard reporting nothing still open on a day with four breaches in
-    // it is the day telling the player a story about itself.
-    stillOpen: mine.filter(isUnresolved).length,
+    arrived: ticketsArrivedOn(tickets, day).length,
+    closed: ticketsResolvedOn(tickets, day).length,
+    breached: ticketsBreachedOn(tickets, day).length,
+    stillOpen: ticketsOpenAtCloseOf(tickets, day).length,
   };
 }
 

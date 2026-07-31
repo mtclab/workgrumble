@@ -162,6 +162,12 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
             assert_optional(fields, "spawned_at", is_number, "a number")?;
             assert_optional(fields, "sla_deadline", is_number, "a number")?;
             assert_optional(fields, "breached", is_boolean, "a boolean")?;
+            // The minutes the two one-off events happened in. Optional because
+            // an open ticket has had neither, and written by the engine rather
+            // than by content: a day's ledger has to be able to ask WHEN a
+            // ticket closed, not only whether it is closed now.
+            assert_optional(fields, "resolved_at", is_number, "a number")?;
+            assert_optional(fields, "breached_at", is_number, "a number")?;
 
             if !optional(fields, "state").is_some_and(is_ticket_state) {
                 return refuse!("Ticket nodes require a valid \"state\" field.");
