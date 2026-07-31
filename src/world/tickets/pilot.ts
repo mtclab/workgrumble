@@ -12,6 +12,12 @@ const PRINTER_QUEUE_DEPTH = 47;
  */
 export const ROTATED_SCREEN: WorldTicket = {
   arrival: 'morning',
+  nodes: [COMPANY_IDS.adaMachine],
+  // She has said the word "police". It is one desk and a keyboard shortcut,
+  // but she genuinely cannot work sideways, so it is not the bottom of the
+  // pile either.
+  claimed_urgency: 3,
+  true_urgency: 2,
   def: {
     id: 'ticket:rotated-screen',
     archetype: 'hidden_cause',
@@ -91,6 +97,11 @@ export const ROTATED_SCREEN: WorldTicket = {
  */
 export const LOCKED_ACCOUNT: WorldTicket = {
   arrival: 'morning',
+  nodes: [COMPANY_IDS.garyAccount],
+  // One person, and that person cannot do anything at all until it is
+  // cleared. High urgency is the one thing Gary is right about.
+  claimed_urgency: 3,
+  true_urgency: 3,
   def: {
     id: 'ticket:locked-account',
     archetype: 'read_the_screen',
@@ -158,6 +169,11 @@ export const LOCKED_ACCOUNT: WorldTicket = {
  */
 export const WEDGED_SPOOLER: WorldTicket = {
   arrival: 'morning',
+  nodes: [COMPANY_IDS.spooler, COMPANY_IDS.printer],
+  // The one ticket in the pile that really is what it says it is: nobody in
+  // the building can print, and forty-seven jobs are stacked behind it.
+  claimed_urgency: 3,
+  true_urgency: 3,
   def: {
     id: 'ticket:wedged-spooler',
     archetype: 'hidden_cause',

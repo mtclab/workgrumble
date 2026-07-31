@@ -1,5 +1,12 @@
-import type { ActionData, GuardData } from '../../engine-api';
+import type { ActionData, GuardData, OpData, PredData } from '../../engine-api';
 import { FIELDS } from '../fields';
+import {
+  PRIORITIES,
+  PRIORITY_MATRIX,
+  type Priority,
+  SLA_TARGETS,
+} from '../priority';
+import { HANDOFF_BOUNCE } from '../tickets/handoff';
 import {
   fieldIs,
   HELPDESK_TIER,
@@ -9,10 +16,13 @@ import {
 } from './helpers';
 import { HELPDESK_ACTIONS } from './ids';
 
-const CLUE_PARAM = 'clue';
+const NOTE_PARAM = 'note';
+const COMMENT_PARAM = 'comment';
+const REPORTED_PARAM = 'reported';
+const TRIED_PARAM = 'tried';
 
-/** The clue field is one string; the ticket app splits it back into lines. */
-export function clueLines(value: unknown): readonly string[] {
+/** A newline-joined field is one string; the apps split it back into lines. */
+export function fieldLines(value: unknown): readonly string[] {
   return typeof value === 'string' && value.length > 0
     ? value.split('\n').filter((line) => line.length > 0)
     : [];
@@ -35,6 +45,10 @@ const UNTRACKED_REASON = 'That ticket is not on the helpdesk system. It is a '
  * app disables its own toggle with the SAME sentence: a button that greys out
  * for one reason while the engine refuses for another is two rules pretending
  * to be one.
+ *
+ * What counts as evidence changed in M3 and the sentence did not: it used to
+ * be a flag some chat option set, and it is now the customer-visible comment
+ * stream - a question the reporter can actually see having been asked.
  */
 export const WAITING_NEEDS_QUESTION_REASON = 'You have not actually asked '
   + 'them anything yet. Stopping their clock on a question nobody put to them '
@@ -45,9 +59,138 @@ const UNTRACKED_GUARD: GuardData = {
   reason: UNTRACKED_REASON,
 };
 
-function stateIs(state: string): GuardData['when'] {
+function stateIs(state: string): PredData {
   return fieldIs(TARGET, FIELDS.state, state);
 }
+
+/** Whether a newline-joined stream on the ticket has anything in it. */
+function streamEmpty(field: string): PredData {
+  return {
+    pred: 'any',
+    of: [
+      { pred: 'field_missing', node: TARGET, field },
+      fieldIs(TARGET, field, ''),
+    ],
+  };
+}
+
+/** Appending one line to a newline-joined field, guards and all. */
+function appendStream(
+  id: string,
+  field: string,
+  paramName: string,
+  copy: Readonly<{ closed: string; blank: string; repeat: string }>,
+  extra: readonly OpData[] = [],
+): ActionData {
+  return {
+    id,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('ticket'),
+      { when: stateIs('resolved'), reason: copy.closed },
+      { when: { pred: 'param_blank', param: paramName }, reason: copy.blank },
+      {
+        when: {
+          pred: 'line_in_field',
+          node: TARGET,
+          field,
+          value: { param_trim: paramName },
+        },
+        reason: copy.repeat,
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field,
+        value: {
+          append_line: {
+            node: TARGET,
+            field,
+            value: { param_trim: paramName },
+          },
+        },
+      },
+      ...extra,
+    ],
+  };
+}
+
+/**
+ * The matrix as a refusal.
+ *
+ * The priority arriving as a parameter would otherwise be a third opinion
+ * beside impact and urgency - a caller could send "low, low, P1" and the world
+ * would keep it. This says the whole 3x3 table in the op language: the triple
+ * has to BE one of the nine cells, or the classification does not happen. The
+ * table is the same one the app reads, so there is one matrix in the codebase
+ * and the engine is the thing that enforces it.
+ */
+const MATRIX_GUARD: GuardData = {
+  when: not({
+    pred: 'any',
+    of: PRIORITY_MATRIX.map((cell) => ({
+      pred: 'all' as const,
+      of: [
+        { pred: 'param_int_in' as const, param: 'impact', values: [cell.impact] },
+        { pred: 'param_int_in' as const, param: 'urgency', values: [cell.urgency] },
+        {
+          pred: 'param_int_in' as const,
+          param: 'priority',
+          values: [cell.priority],
+        },
+      ],
+    })),
+  }),
+  reason: 'That is not a triage anybody could arrive at. Impact and urgency '
+    + 'are low, medium or high, and the priority is whatever the matrix makes '
+    + 'of them - it is not a third thing you get to pick.',
+};
+
+/**
+ * Re-cutting the resolution deadline to the priority that was just assigned.
+ *
+ * One op per priority, guarded on the priority the ops above have already
+ * written, because the deadline has to come from the TABLE rather than from a
+ * number the caller sent along with it. Assigning a P1 to something that has
+ * been sitting since nine therefore breaches it on the spot, which is the
+ * consequence of mis-triage made mechanical rather than narrated.
+ */
+function deadlineOps(): readonly OpData[] {
+  return PRIORITIES.map((priority: Priority) => ({
+    op: 'when' as const,
+    cond: fieldIs(TARGET, FIELDS.priority, priority),
+    ops: [
+      {
+        op: 'set_field' as const,
+        node: TARGET,
+        field: FIELDS.slaDeadline,
+        value: {
+          add: {
+            node: TARGET,
+            field: FIELDS.spawnedAt,
+            by: { const: SLA_TARGETS[priority].resolution },
+            // A deadline is a tick, and the engine holds ticks in the range
+            // JavaScript can read back exactly. Nothing here can get near it;
+            // the clamp is mandatory, and the honest bound for a tick is the
+            // tick range.
+            clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
+          },
+        },
+      },
+    ],
+  }));
+}
+
+/** The handoff L2 will actually keep: a symptom AND something tried. */
+const COMPLETE_HANDOFF: PredData = {
+  pred: 'all',
+  of: [
+    not({ pred: 'param_blank', param: REPORTED_PARAM }),
+    not({ pred: 'param_blank', param: TRIED_PARAM }),
+  ],
+};
 
 export const TICKET_ACTIONS: readonly ActionData[] = [
   {
@@ -68,40 +211,21 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
           + 'stopped as it is going to get.',
       },
       // The CYA rule: an SLA pauses because the reporter was asked something
-      // and has not answered, never because the queue looked frightening.
+      // and has not answered, never because the queue looked frightening. The
+      // evidence is the customer-visible stream, which is the only place a
+      // question the reporter could actually have seen can be.
       {
-        when: not(fieldIs(TARGET, FIELDS.questionAsked, true)),
+        when: streamEmpty(FIELDS.customerVisible),
         reason: WAITING_NEEDS_QUESTION_REASON,
       },
     ],
-    apply: [{ op: 'set_waiting', node: TARGET, waiting: true }],
-  },
-  {
-    id: HELPDESK_ACTIONS.ticketMarkAsked,
-    tier: HELPDESK_TIER,
-    validate: [
-      ...targetGuards('ticket'),
-      UNTRACKED_GUARD,
-      {
-        when: stateIs('resolved'),
-        reason: 'That ticket is already closed. There is nothing left to ask '
-          + 'them about.',
-      },
-      // Deliberately no "you already asked" refusal: asking a second
-      // question is normal support, and the mark simply stays set.
-    ],
     apply: [
+      { op: 'set_waiting', node: TARGET, waiting: true },
       {
-        op: 'when',
-        cond: not(fieldIs(TARGET, FIELDS.questionAsked, true)),
-        ops: [
-          {
-            op: 'set_field',
-            node: TARGET,
-            field: FIELDS.questionAsked,
-            value: { const: true },
-          },
-        ],
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.holdReason,
+        value: { const: 'awaiting_user' },
       },
     ],
   },
@@ -118,7 +242,131 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
           + 'running, and it is running at you.',
       },
     ],
-    apply: [{ op: 'set_waiting', node: TARGET, waiting: false }],
+    apply: [
+      { op: 'set_waiting', node: TARGET, waiting: false },
+      { op: 'clear_field', node: TARGET, field: FIELDS.holdReason },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.ticketClassify,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('ticket'),
+      UNTRACKED_GUARD,
+      {
+        when: stateIs('resolved'),
+        reason: 'That ticket is closed. Triaging it now is filing a weather '
+          + 'report for last Tuesday.',
+      },
+      // Classifying re-cuts the resolution deadline from the moment the
+      // ticket arrived, and time spent parked is not in that sum. Doing it
+      // while the ticket is on hold would quietly hand back the pause, so the
+      // order is: triage it, then park it.
+      {
+        when: stateIs('waiting_on_user'),
+        reason: 'It is parked on the user, and re-cutting its deadline now '
+          + 'would hand back the time it has spent waiting. Take it back off '
+          + 'them first, then triage it.',
+      },
+      MATRIX_GUARD,
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.impact,
+        value: { param: 'impact' },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.urgency,
+        value: { param: 'urgency' },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.priority,
+        value: { param: 'priority' },
+      },
+      ...deadlineOps(),
+    ],
+  },
+  appendStream(
+    HELPDESK_ACTIONS.ticketAddWorknote,
+    FIELDS.worknotes,
+    NOTE_PARAM,
+    {
+      closed: 'That ticket is already closed. Whatever you have just worked '
+        + 'out, it is history now.',
+      blank: 'There is nothing to write down. A work note that says nothing '
+        + 'is worse than no note at all.',
+      repeat: 'That is already on the ticket. Writing it twice does not make '
+        + 'it twice as true.',
+    },
+  ),
+  appendStream(
+    HELPDESK_ACTIONS.ticketAddComment,
+    FIELDS.customerVisible,
+    COMMENT_PARAM,
+    {
+      closed: 'That ticket is closed. Anything you send now arrives at '
+        + 'somebody who has stopped thinking about it.',
+      blank: 'An empty message is not a question. They will read it as one '
+        + 'anyway, which is worse.',
+      repeat: 'You have already put that to them, word for word. Asking '
+        + 'again gets the same answer, slightly colder.',
+    },
+    // First contact with the reporter stops the response clock, and only the
+    // first: the second question is not a faster answer to the first.
+    [
+      {
+        op: 'when',
+        cond: not({
+          pred: 'field_is_number',
+          node: TARGET,
+          field: FIELDS.respondedAt,
+        }),
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.respondedAt,
+            value: { now: true },
+          },
+        ],
+      },
+    ],
+  ),
+  {
+    id: HELPDESK_ACTIONS.ticketRecordResponse,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('ticket'),
+      UNTRACKED_GUARD,
+      {
+        when: stateIs('resolved'),
+        reason: 'That ticket is closed. Its response clock stopped when the '
+          + 'problem did.',
+      },
+      {
+        when: {
+          pred: 'field_is_number',
+          node: TARGET,
+          field: FIELDS.respondedAt,
+        },
+        reason: 'That ticket has already been touched once. A response clock '
+          + 'stops the first time, not the best time.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.respondedAt,
+        value: { now: true },
+      },
+    ],
   },
   {
     id: HELPDESK_ACTIONS.ticketEscalate,
@@ -144,52 +392,132 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
         reason: 'This is fixable from your desk, and everyone downstream '
           + 'knows it. Escalating it would be a career-limiting move.',
       },
+      // Blank halves are allowed - that is what a thin handoff IS, and it
+      // bounces rather than being refused. Halves that are not there at all
+      // are a form nobody filled in, which is a caller bug.
+      {
+        when: {
+          pred: 'any',
+          of: [
+            { pred: 'param_absent', param: REPORTED_PARAM },
+            { pred: 'param_absent', param: TRIED_PARAM },
+          ],
+        },
+        reason: 'The handoff form did not arrive. Second line take tickets on '
+          + 'a form, not on trust.',
+      },
     ],
     apply: [
       {
         op: 'set_field',
         node: TARGET,
-        field: FIELDS.escalated,
-        value: { const: true },
+        field: FIELDS.handoffReported,
+        value: { param_trim: REPORTED_PARAM },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.handoffTried,
+        value: { param_trim: TRIED_PARAM },
+      },
+      // A complete handoff goes. Whether it also CLOSES the ticket is the
+      // ticket's own resolution rule talking, and if it does not close, the
+      // ticket is now waiting on somebody else - which is a hold with a
+      // different reason on it, not the reporter's fault.
+      {
+        op: 'when',
+        cond: COMPLETE_HANDOFF,
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.escalated,
+            value: { const: true },
+          },
+          {
+            op: 'when',
+            cond: not(stateIs('resolved')),
+            ops: [
+              { op: 'set_waiting', node: TARGET, waiting: true },
+              {
+                op: 'set_field',
+                node: TARGET,
+                field: FIELDS.holdReason,
+                value: { const: 'awaiting_vendor' },
+              },
+            ],
+          },
+        ],
+      },
+      // A thin one is accepted, sent, and marked for the return journey.
+      {
+        op: 'when',
+        cond: not(COMPLETE_HANDOFF),
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.handoffBouncedAt,
+            value: { now: true },
+          },
+        ],
       },
     ],
   },
   {
-    id: HELPDESK_ACTIONS.ticketAddClue,
+    id: HELPDESK_ACTIONS.ticketBounceHandoff,
     tier: HELPDESK_TIER,
     validate: [
       ...targetGuards('ticket'),
+      UNTRACKED_GUARD,
       {
-        when: stateIs('resolved'),
-        reason: 'That ticket is already closed. Whatever they have just '
-          + 'remembered, it is history now.',
-      },
-      {
-        when: { pred: 'param_blank', param: CLUE_PARAM },
-        reason: 'There is nothing to write down. A note that says nothing is '
-          + 'worse than no note at all.',
+        when: not({
+          pred: 'field_is_number',
+          node: TARGET,
+          field: FIELDS.handoffBouncedAt,
+        }),
+        reason: 'Nothing has bounced on that ticket. Second line have not '
+          + 'seen it, which is its own kind of news.',
       },
       {
         when: {
-          pred: 'line_in_field',
+          pred: 'field_is_number',
           node: TARGET,
-          field: FIELDS.clues,
-          value: { param_trim: CLUE_PARAM },
+          field: FIELDS.handoffSettledAt,
         },
-        reason: 'That is already written on the ticket. Asking twice gets '
-          + 'the same answer, slightly colder.',
+        reason: 'That bounce has already landed, and you have already paid '
+          + 'for it. Once is the arrangement.',
       },
     ],
     apply: [
       {
         op: 'set_field',
         node: TARGET,
-        field: FIELDS.clues,
+        field: FIELDS.handoffSettledAt,
+        value: { now: true },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.worknotes,
         value: {
           append_line: {
             node: TARGET,
-            field: FIELDS.clues,
-            value: { param_trim: CLUE_PARAM },
+            field: FIELDS.worknotes,
+            value: { const: HANDOFF_BOUNCE.worknote },
+          },
+        },
+      },
+      {
+        op: 'set_field',
+        node: { ref: 'actor' },
+        field: FIELDS.reputation,
+        value: {
+          sub: {
+            node: { ref: 'actor' },
+            field: FIELDS.reputation,
+            by: { const: HANDOFF_BOUNCE.reputationCost },
+            clamp: { min: 0, max: 100 },
           },
         },
       },

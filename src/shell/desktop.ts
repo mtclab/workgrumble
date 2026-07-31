@@ -266,6 +266,7 @@ export class Desktop {
         now: () => context.clock.now(),
         onTick: (listener) => context.clock.onTick(listener),
       },
+      dispatchLog: () => context.dispatchLog(),
       onWorldChange: (listener) => context.onWorldChange(listener),
       notify: (title, body) => {
         this.notify(title, body);

@@ -13,7 +13,7 @@ import type {
 import { WasmEngine } from '../../engine-api';
 import { FIELDS } from '../fields';
 import { HELPDESK_ACTION_IDS, HELPDESK_ACTIONS } from './ids';
-import { clueLines, helpdeskActionPayload } from './index';
+import { fieldLines, helpdeskActionPayload } from './index';
 
 const ACTOR = 'person:tech';
 const ESCALATABLE_TICKET = 'ticket:hardware';
@@ -172,8 +172,9 @@ function fixtureSetup(): readonly SetupOp[] {
       spawned_at: 0,
       sla_deadline: 600,
       breached: false,
-      // Even fully "asked", it has no record behind it and no clock to stop.
-      question_asked: true,
+      // Even with a question on the record, it has no record behind it and
+      // no clock to stop.
+      customer_visible: 'Is it plugged in?',
     },
   });
   addEdge(ops, {
@@ -267,8 +268,8 @@ beforeEach(() => {
 
 describe('helpdesk action registry', () => {
   it('registers every advertised action exactly once', () => {
-    expect(HELPDESK_ACTION_IDS).toHaveLength(18);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(18);
+    expect(HELPDESK_ACTION_IDS).toHaveLength(21);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(21);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});
@@ -703,18 +704,27 @@ describe('share.grant_access', () => {
   });
 });
 
+/** Putting a question to the reporter, which is what buys a pause. */
+function ask(ticket: string, question = 'What were you doing when it went?'): void {
+  dispatch(HELPDESK_ACTIONS.ticketAddComment, ticket, { comment: question });
+}
+
 describe('ticket waiting state', () => {
   it('parks a ticket on the user and takes it back off again', () => {
-    dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET);
+    ask(PLAIN_TICKET);
     expect(
       dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET),
     ).toEqual({ ok: true });
     expect(fixture.ticketState(PLAIN_TICKET)).toBe('waiting_on_user');
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.holdReason))
+      .toBe('awaiting_user');
 
     expect(
       dispatch(HELPDESK_ACTIONS.ticketClearWaiting, PLAIN_TICKET),
     ).toEqual({ ok: true });
     expect(fixture.ticketState(PLAIN_TICKET)).toBe('open');
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.holdReason))
+      .toBeUndefined();
   });
 
   /**
@@ -732,8 +742,25 @@ describe('ticket waiting state', () => {
     expect(fixture.ticketState(PLAIN_TICKET)).toBe('open');
   });
 
+  /**
+   * The evidence is the customer-visible stream and nothing else. A work note
+   * saying "asked the user" is a note the user never saw, and it used to be
+   * exactly as good as asking them, because the old rule read a flag.
+   */
+  it('does not accept a work note as evidence that anybody was asked', () => {
+    dispatch(HELPDESK_ACTIONS.ticketAddWorknote, PLAIN_TICKET, {
+      note: 'Asked the user. Honestly. Ask anyone.',
+    });
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET),
+      'You have not actually asked them anything yet.',
+      before,
+    );
+  });
+
   it('refuses to park a ticket that is already parked', () => {
-    dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET);
+    ask(PLAIN_TICKET);
     dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET);
     const before = fixture.snapshotHash();
     expectRefusal(
@@ -771,7 +798,9 @@ describe('a ticket node the engine does not track', () => {
   it.each([
     HELPDESK_ACTIONS.ticketSetWaiting,
     HELPDESK_ACTIONS.ticketClearWaiting,
-    HELPDESK_ACTIONS.ticketMarkAsked,
+    HELPDESK_ACTIONS.ticketRecordResponse,
+    HELPDESK_ACTIONS.ticketClassify,
+    HELPDESK_ACTIONS.ticketBounceHandoff,
   ])('refuses %s instead of throwing', (action) => {
     const before = fixture.snapshotHash();
     let result: DispatchResult | null = null;
@@ -789,62 +818,110 @@ describe('a ticket node the engine does not track', () => {
 
   it('leaves the tickets it does track alone', () => {
     expect(
-      dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET),
+      dispatch(HELPDESK_ACTIONS.ticketRecordResponse, PLAIN_TICKET),
     ).toEqual({ ok: true });
   });
 });
 
-describe('ticket.mark_asked', () => {
-  it('records that the reporter was actually asked something', () => {
+describe('ticket.classify', () => {
+  it('writes the triage and re-cuts the deadline from the ticket\'s arrival', () => {
+    fixture.advance(20);
     expect(
-      dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET),
+      dispatch(HELPDESK_ACTIONS.ticketClassify, PLAIN_TICKET, {
+        impact: 3,
+        urgency: 2,
+        priority: 2,
+      }),
     ).toEqual({ ok: true });
-    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.questionAsked))
-      .toBe(true);
+
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.impact)).toBe(3);
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.urgency)).toBe(2);
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.priority)).toBe(2);
+    // Two hours from when it landed, not two hours from now: a ticket you
+    // ignored for twenty minutes does not get the twenty minutes back.
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.slaDeadline)).toBe(120);
   });
 
   /**
-   * The same hash is not the same as nothing happening: a mutation that wrote
-   * the value already there would leave the hash alone and still wake every
-   * app subscribed to the world. The no-op has to be silent as well as
-   * harmless.
+   * The matrix is enforced by the engine, not by the app that draws it. A
+   * caller sending a priority that is not the one those two axes produce is
+   * inventing a fourth field, and the world does not keep it.
    */
-  it('takes a second question as the no-op it is', () => {
-    dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET);
-    const before = fixture.snapshotHash();
-    drainEvents();
-
-    expect(
-      dispatch(HELPDESK_ACTIONS.ticketMarkAsked, PLAIN_TICKET),
-    ).toEqual({ ok: true });
-    expect(fixture.snapshotHash()).toBe(before);
-    expect(drainEvents()).toEqual([]);
-  });
-
-  it('refuses a ticket that is already closed', () => {
-    dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET);
+  it('refuses a priority the matrix would never have produced', () => {
     const before = fixture.snapshotHash();
     expectRefusal(
-      dispatch(HELPDESK_ACTIONS.ticketMarkAsked, ESCALATABLE_TICKET),
-      'nothing left to ask them about',
+      dispatch(HELPDESK_ACTIONS.ticketClassify, PLAIN_TICKET, {
+        impact: 1,
+        urgency: 1,
+        priority: 1,
+      }),
+      'not a triage anybody could arrive at',
+      before,
+    );
+
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketClassify, PLAIN_TICKET, {
+        impact: 4,
+        urgency: 1,
+        priority: 4,
+      }),
+      'not a triage anybody could arrive at',
       before,
     );
   });
 
-  it('refuses anything that is not a ticket', () => {
+  /**
+   * The consequence of mis-triage, made mechanical. Calling something a P1 at
+   * lunchtime does not give it a fresh hour: its deadline was an hour after it
+   * arrived, and that was two hours ago.
+   */
+  it('breaches on the spot when the new deadline is already behind us', () => {
+    fixture.advance(120);
+    drainEvents();
+
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketClassify, PLAIN_TICKET, {
+        impact: 3,
+        urgency: 3,
+        priority: 1,
+      }),
+    ).toEqual({ ok: true });
+
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.slaDeadline)).toBe(60);
+    expect(fixture.ticketState(PLAIN_TICKET)).toBe('breached');
+    expect(drainEvents()).toContainEqual({
+      type: 'ticket:breached',
+      id: PLAIN_TICKET,
+    });
+  });
+
+  it('refuses to re-cut the deadline of a ticket that is parked', () => {
+    ask(PLAIN_TICKET);
+    dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET);
     const before = fixture.snapshotHash();
+
     expectRefusal(
-      dispatch(HELPDESK_ACTIONS.ticketMarkAsked, 'device:printer'),
-      'only works on a ticket',
+      dispatch(HELPDESK_ACTIONS.ticketClassify, PLAIN_TICKET, {
+        impact: 1,
+        urgency: 3,
+        priority: 3,
+      }),
+      'hand back the time it has spent waiting',
       before,
     );
   });
 });
+
+/** A handoff L2 will keep, so escalation behaves as it always did. */
+const GOOD_HANDOFF: Record<string, FieldValue> = {
+  reported: 'It makes a noise like a bag of spanners.',
+  tried: 'Turned it off and on again\nListened to it, at length',
+};
 
 describe('ticket.escalate', () => {
   it('escalates a ticket whose own rules accept an escalation', () => {
     expect(
-      dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET),
+      dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET, GOOD_HANDOFF),
     ).toEqual({ ok: true });
     expect(fixture.graph.getField(ESCALATABLE_TICKET, FIELDS.escalated))
       .toBe(true);
@@ -854,82 +931,111 @@ describe('ticket.escalate', () => {
   it('refuses to escalate work that is fixable from the desk', () => {
     const before = fixture.snapshotHash();
     expectRefusal(
-      dispatch(HELPDESK_ACTIONS.ticketEscalate, PLAIN_TICKET),
+      dispatch(HELPDESK_ACTIONS.ticketEscalate, PLAIN_TICKET, GOOD_HANDOFF),
       'career-limiting move',
       before,
     );
   });
 
   it('refuses to escalate a ticket the escalation already closed', () => {
-    dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET);
+    dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET, GOOD_HANDOFF);
     const before = fixture.snapshotHash();
     expectRefusal(
-      dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET),
+      dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET, GOOD_HANDOFF),
       'already closed',
       before,
     );
   });
 
   it('refuses to escalate an open ticket a second time', () => {
-    expect(dispatch(HELPDESK_ACTIONS.ticketEscalate, TWO_STEP_TICKET)).toEqual({
-      ok: true,
-    });
-    expect(fixture.ticketState(TWO_STEP_TICKET)).toBe('open');
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketEscalate, TWO_STEP_TICKET, GOOD_HANDOFF),
+    ).toEqual({ ok: true });
+    expect(fixture.ticketState(TWO_STEP_TICKET)).toBe('waiting_on_user');
     const before = fixture.snapshotHash();
     expectRefusal(
-      dispatch(HELPDESK_ACTIONS.ticketEscalate, TWO_STEP_TICKET),
+      dispatch(HELPDESK_ACTIONS.ticketEscalate, TWO_STEP_TICKET, GOOD_HANDOFF),
       'already with the field team',
+      before,
+    );
+  });
+
+  /**
+   * An escalation that does not close the ticket has handed it to somebody
+   * else, and the resolution clock is not the player's any more. It is a hold
+   * with a different reason on it, which is what "awaiting vendor" means.
+   */
+  it('parks a still-open escalation on the field team rather than the user', () => {
+    dispatch(HELPDESK_ACTIONS.ticketEscalate, TWO_STEP_TICKET, GOOD_HANDOFF);
+    expect(fixture.graph.getField(TWO_STEP_TICKET, FIELDS.holdReason))
+      .toBe('awaiting_vendor');
+  });
+
+  it('refuses a handoff form that never arrived', () => {
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET),
+      'handoff form did not arrive',
       before,
     );
   });
 });
 
-describe('ticket.add_clue', () => {
+describe('ticket.add_worknote', () => {
   it('writes what the reporter let slip onto the ticket', () => {
     expect(
-      dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, {
-        clue: 'A colleague was at the desk on Friday.',
+      dispatch(HELPDESK_ACTIONS.ticketAddWorknote, PLAIN_TICKET, {
+        note: 'A colleague was at the desk on Friday.',
       }),
     ).toEqual({ ok: true });
-    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.clues))
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.worknotes))
       .toBe('A colleague was at the desk on Friday.');
   });
 
-  it('appends later clues as their own lines, in the order they landed', () => {
-    dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: 'First.' });
-    dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: 'Second.' });
+  it('appends later notes as their own lines, in the order they landed', () => {
+    dispatch(HELPDESK_ACTIONS.ticketAddWorknote, PLAIN_TICKET, { note: 'First.' });
+    dispatch(HELPDESK_ACTIONS.ticketAddWorknote, PLAIN_TICKET, { note: 'Second.' });
 
-    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.clues))
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.worknotes))
       .toBe('First.\nSecond.');
-    expect(clueLines(fixture.graph.getField(PLAIN_TICKET, FIELDS.clues)))
+    expect(fieldLines(fixture.graph.getField(PLAIN_TICKET, FIELDS.worknotes)))
       .toEqual(['First.', 'Second.']);
   });
 
-  it('refuses a clue with no words in it', () => {
+  /** An internal note is not a word to the reporter, so it stops no clock. */
+  it('leaves the response clock running', () => {
+    dispatch(HELPDESK_ACTIONS.ticketAddWorknote, PLAIN_TICKET, {
+      note: 'Had a think about it.',
+    });
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.respondedAt))
+      .toBeUndefined();
+  });
+
+  it('refuses a note with no words in it', () => {
     const before = fixture.snapshotHash();
     expectRefusal(
-      dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: '   ' }),
+      dispatch(HELPDESK_ACTIONS.ticketAddWorknote, PLAIN_TICKET, { note: '   ' }),
       'nothing to write down',
       before,
     );
   });
 
-  it('refuses to write the same clue twice', () => {
-    dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: 'Once.' });
+  it('refuses to write the same note twice', () => {
+    dispatch(HELPDESK_ACTIONS.ticketAddWorknote, PLAIN_TICKET, { note: 'Once.' });
     const before = fixture.snapshotHash();
     expectRefusal(
-      dispatch(HELPDESK_ACTIONS.ticketAddClue, PLAIN_TICKET, { clue: 'Once.' }),
-      'already written on the ticket',
+      dispatch(HELPDESK_ACTIONS.ticketAddWorknote, PLAIN_TICKET, { note: 'Once.' }),
+      'already on the ticket',
       before,
     );
   });
 
   it('refuses to add anything to a ticket that is already closed', () => {
-    dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET);
+    dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET, GOOD_HANDOFF);
     const before = fixture.snapshotHash();
     expectRefusal(
-      dispatch(HELPDESK_ACTIONS.ticketAddClue, ESCALATABLE_TICKET, {
-        clue: 'Too late.',
+      dispatch(HELPDESK_ACTIONS.ticketAddWorknote, ESCALATABLE_TICKET, {
+        note: 'Too late.',
       }),
       'already closed',
       before,
@@ -939,11 +1045,71 @@ describe('ticket.add_clue', () => {
   it('refuses a target that is not a ticket', () => {
     const before = fixture.snapshotHash();
     expectRefusal(
-      dispatch(HELPDESK_ACTIONS.ticketAddClue, 'account:ada', {
-        clue: 'Wrong shelf.',
+      dispatch(HELPDESK_ACTIONS.ticketAddWorknote, 'account:ada', {
+        note: 'Wrong shelf.',
       }),
       'only works on a ticket',
       before,
+    );
+  });
+});
+
+describe('ticket.add_comment', () => {
+  it('puts the question to the reporter and stops the response clock', () => {
+    fixture.advance(9);
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketAddComment, PLAIN_TICKET, {
+        comment: 'Which of the three printers is it?',
+      }),
+    ).toEqual({ ok: true });
+
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.customerVisible))
+      .toBe('Which of the three printers is it?');
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.respondedAt)).toBe(9);
+  });
+
+  /** A clock stops the first time, not the best time. */
+  it('leaves the response mark on the first thing that was said', () => {
+    dispatch(HELPDESK_ACTIONS.ticketAddComment, PLAIN_TICKET, { comment: 'One?' });
+    fixture.advance(30);
+    dispatch(HELPDESK_ACTIONS.ticketAddComment, PLAIN_TICKET, { comment: 'Two?' });
+
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.respondedAt)).toBe(0);
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.customerVisible))
+      .toBe('One?\nTwo?');
+  });
+
+  /** The two streams are separate records of separate things. */
+  it('keeps the internal and customer-visible streams apart', () => {
+    dispatch(HELPDESK_ACTIONS.ticketAddWorknote, PLAIN_TICKET, {
+      note: 'Reporter is wrong about the cause, as ever.',
+    });
+    dispatch(HELPDESK_ACTIONS.ticketAddComment, PLAIN_TICKET, {
+      comment: 'Could you tell me what it says on the screen?',
+    });
+
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.worknotes))
+      .toBe('Reporter is wrong about the cause, as ever.');
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.customerVisible))
+      .toBe('Could you tell me what it says on the screen?');
+  });
+
+  it('refuses an empty message and a repeated one', () => {
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketAddComment, PLAIN_TICKET, { comment: ' ' }),
+      'not a question',
+      before,
+    );
+
+    ask(PLAIN_TICKET, 'Same words.');
+    const asked = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketAddComment, PLAIN_TICKET, {
+        comment: 'Same words.',
+      }),
+      'already put that to them',
+      asked,
     );
   });
 });

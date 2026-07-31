@@ -67,6 +67,7 @@ async function boot(): Promise<void> {
       target,
       params,
     ),
+    dispatchLog: () => engine.dispatchLog(),
     // A load is a world change like any other, and the biggest one there is:
     // every open app is showing a world that no longer exists until it
     // repaints. Without this, the desktop kept the previous session on screen

@@ -36,7 +36,10 @@ describe('a breached ticket that gets closed', () => {
         HELPDESK_ACTIONS.ticketEscalate,
         COMPANY_IDS.player,
         FAN_TICKET,
-        {},
+        {
+          reported: 'It makes a noise like a bag of spanners.',
+          tried: 'Turned it off and on again',
+        },
       ),
     ).toEqual({ ok: true });
     expect(session.engine.ticketState(FAN_TICKET)).toBe('resolved');

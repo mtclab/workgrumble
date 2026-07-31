@@ -1,4 +1,5 @@
 import type {
+  DispatchLogEntry,
   DispatchResult,
 } from '../../engine-api';
 import type { ReadOnlyGraphView } from '../../engine-api';
@@ -58,6 +59,14 @@ export interface GameApi {
     /** Subscribe to simulation ticks. Apps must unsubscribe on unmount. */
     onTick(listener: (tick: number) => void): () => void;
   };
+  /**
+   * What has been dispatched since the last day boundary.
+   *
+   * The engine keeps it for determinism; the escalation form reads it so that
+   * "what I tried" is what the player actually did rather than what they can
+   * be bothered to type. Read-only, like the graph.
+   */
+  dispatchLog(): readonly DispatchLogEntry[];
   /** Fires after any world mutation. Apps must unsubscribe on unmount. */
   onWorldChange(listener: () => void): () => void;
   notify(title: string, body: string): void;

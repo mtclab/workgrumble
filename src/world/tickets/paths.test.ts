@@ -199,7 +199,10 @@ describe('escalation policy', () => {
         HELPDESK_ACTIONS.ticketEscalate,
         COMPANY_IDS.player,
         entry.def.id,
-        {},
+        {
+          reported: 'It makes a noise like a bag of spanners.',
+          tried: 'Turned it off and on again',
+        },
       );
 
       expect(result.ok, `${entry.def.id} offered=${String(offered)}`)
@@ -219,7 +222,10 @@ describe('escalation policy', () => {
       HELPDESK_ACTIONS.ticketEscalate,
       COMPANY_IDS.player,
       'ticket:locked-account',
-      {},
+      {
+          reported: 'It makes a noise like a bag of spanners.',
+          tried: 'Turned it off and on again',
+        },
     );
 
     expect(result).toEqual({
@@ -270,10 +276,10 @@ describe('waiting on the user', () => {
 
     expect(
       session.engine.dispatch(
-        HELPDESK_ACTIONS.ticketMarkAsked,
+        HELPDESK_ACTIONS.ticketAddComment,
         COMPANY_IDS.player,
         ticketId,
-        {},
+        { comment: 'Is it still doing it now?' },
       ),
     ).toEqual({ ok: true });
 

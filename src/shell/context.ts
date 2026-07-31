@@ -1,4 +1,4 @@
-import type { DispatchResult } from '../engine-api';
+import type { DispatchLogEntry, DispatchResult } from '../engine-api';
 import type { FieldValue, NodeId } from '../engine-api';
 import type { ReadOnlyGraphView } from '../engine-api';
 import type { AppStateStore } from './app-state';
@@ -46,6 +46,8 @@ export interface ShellContext {
     target: NodeId | null,
     params: Record<string, FieldValue>,
   ): DispatchResult;
+  /** What has been dispatched since the last day boundary. Read-only. */
+  dispatchLog(): readonly DispatchLogEntry[];
   /**
    * Fires after the world graph changed, whoever changed it. An app that has
    * to stay truthful (a ticket queue, a directory listing) repaints from this

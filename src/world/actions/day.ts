@@ -106,6 +106,16 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         field: FIELDS.dayState,
         value: { const: 'morning_brief' },
       },
+      // The meters carry over - stress is the whole point of a shift you
+      // survived - but the COUNT of suspicious intervals is a thing about one
+      // day, and a scorecard that added yesterday's in would stop meaning
+      // anything by Wednesday.
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.suspicionEvents,
+        value: { const: 0 },
+      },
     ],
   },
 ];

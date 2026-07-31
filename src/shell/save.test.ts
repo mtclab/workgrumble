@@ -92,7 +92,10 @@ function workUntilMidday(live: Session): void {
       HELPDESK_ACTIONS.ticketEscalate,
       COMPANY_IDS.player,
       'ticket:fan-noise',
-      {},
+      {
+          reported: 'It makes a noise like a bag of spanners.',
+          tried: 'Turned it off and on again',
+        },
     ),
   ).toEqual({ ok: true });
 

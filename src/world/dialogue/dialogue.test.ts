@@ -21,6 +21,8 @@ import {
 import type { DialogueTree } from './types';
 
 const CLUE = 'She mentions a colleague was at the keyboard on Friday.';
+/** What the player said to earn it - the line an `asks` puts on the record. */
+const SAID = 'Was anybody else at your desk on Friday?';
 
 function tree(overrides: Partial<DialogueTree> = {}): DialogueTree {
   return {
@@ -155,6 +157,7 @@ describe('dialogue effect dispatcher', () => {
     const result = applyDialogueEffect(
       { action: 'world.delete_everything', target: 'machine:ada' },
       {
+        said: 'Never said.',
         dispatch: (): DialogueEffectResult => {
           calls += 1;
           return { ok: true };
@@ -177,6 +180,7 @@ describe('dialogue effect dispatcher', () => {
         params: { rotation: 0 },
       },
       {
+        said: SAID,
         dispatch: (action, target, params): DialogueEffectResult => {
           seen.push(`${action}|${target}|${JSON.stringify(params)}`);
           return { ok: true };
@@ -196,20 +200,22 @@ describe('dialogue effect dispatcher', () => {
       { reveal: CLUE },
       {
         ticket: 'ticket:rotated-screen',
+        said: SAID,
         dispatch: (action, target, params): DialogueEffectResult => {
-          seen.push(`${action}|${target}|${String(params.clue)}`);
+          seen.push(`${action}|${target}|${String(params.note)}`);
           return { ok: true };
         },
       },
     );
 
     expect(seen).toEqual([
-      `ticket.add_clue|ticket:rotated-screen|${CLUE}`,
+      `ticket.add_worknote|ticket:rotated-screen|${CLUE}`,
     ]);
   });
 
   it('refuses a reveal with no ticket behind the conversation', () => {
     const result = applyDialogueEffect({ reveal: CLUE }, {
+      said: SAID,
       dispatch: (): DialogueEffectResult => ({ ok: true }),
     });
 
@@ -218,21 +224,28 @@ describe('dialogue effect dispatcher', () => {
       .toContain('nowhere to write that down');
   });
 
-  it('turns asking into the mark action aimed at the conversation ticket', () => {
+  /**
+   * Asking is not a flag any more: the question the player picked goes onto
+   * the ticket where the reporter can see it, which is the only evidence the
+   * CYA rule accepts.
+   */
+  it('turns asking into a customer-visible comment in the player\'s words', () => {
     const seen: string[] = [];
     applyDialogueEffect({ asks: true }, {
       ticket: 'ticket:rotated-screen',
-      dispatch: (action, target): DialogueEffectResult => {
-        seen.push(`${action}|${target}`);
+      said: SAID,
+      dispatch: (action, target, params): DialogueEffectResult => {
+        seen.push(`${action}|${target}|${String(params.comment)}`);
         return { ok: true };
       },
     });
 
-    expect(seen).toEqual(['ticket.mark_asked|ticket:rotated-screen']);
+    expect(seen).toEqual([`ticket.add_comment|ticket:rotated-screen|${SAID}`]);
   });
 
   it('refuses to log a question that has no ticket behind it', () => {
     const result = applyDialogueEffect({ asks: true }, {
+      said: SAID,
       dispatch: (): DialogueEffectResult => ({ ok: true }),
     });
 
@@ -252,9 +265,10 @@ describe('dialogue effect dispatcher', () => {
       [{ asks: true }, { reveal: CLUE }, { asks: true }],
       {
         ticket: 'ticket:rotated-screen',
+        said: SAID,
         dispatch: (action): DialogueEffectResult => {
           seen.push(action);
-          return action === HELPDESK_ACTIONS.ticketAddClue
+          return action === HELPDESK_ACTIONS.ticketAddWorknote
             ? { ok: false, reason: 'Already written on the ticket.' }
             : { ok: true };
         },
@@ -262,9 +276,9 @@ describe('dialogue effect dispatcher', () => {
     );
 
     expect(seen).toEqual([
-      HELPDESK_ACTIONS.ticketMarkAsked,
-      HELPDESK_ACTIONS.ticketAddClue,
-      HELPDESK_ACTIONS.ticketMarkAsked,
+      HELPDESK_ACTIONS.ticketAddComment,
+      HELPDESK_ACTIONS.ticketAddWorknote,
+      HELPDESK_ACTIONS.ticketAddComment,
     ]);
     expect(outcome.done).toEqual([{ asks: true }, { asks: true }]);
     expect(outcome.refusal).toBe('Already written on the ticket.');
@@ -390,10 +404,11 @@ describe('asking the right question', () => {
       return;
     }
 
-    expect(session.engine.graph.getField(entry.def.id, FIELDS.clues)).toBeUndefined();
+    expect(session.engine.graph.getField(entry.def.id, FIELDS.worknotes)).toBeUndefined();
 
     const result = applyDialogueEffect(reveal, {
       ticket: conversation.ticket,
+      said: SAID,
       dispatch: (action, target, params) => session.engine.dispatch(
         action,
         COMPANY_IDS.player,
@@ -403,12 +418,13 @@ describe('asking the right question', () => {
     });
 
     expect(result).toEqual({ ok: true });
-    expect(session.engine.graph.getField(entry.def.id, FIELDS.clues))
+    expect(session.engine.graph.getField(entry.def.id, FIELDS.worknotes))
       .toContain('colleague');
 
     // Asking the same question twice does not double the note, and says so.
     const again = applyDialogueEffect(reveal, {
       ticket: conversation.ticket,
+      said: SAID,
       dispatch: (action, target, params) => session.engine.dispatch(
         action,
         COMPANY_IDS.player,

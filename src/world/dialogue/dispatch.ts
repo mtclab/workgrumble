@@ -20,6 +20,15 @@ export type EffectDispatch = (
 export interface DialogueEffectContext {
   /** The ticket a `reveal` writes to. Absent for a chat with no ticket. */
   readonly ticket?: string | undefined;
+  /**
+   * What the player just said, word for word.
+   *
+   * An `asks` effect no longer sets a flag: it writes the question into the
+   * ticket's customer-visible stream, and the question is the line the player
+   * chose. Passing it in rather than duplicating it into every effect keeps
+   * the conversation and the record of it the same sentence.
+   */
+  readonly said: string;
   readonly dispatch: EffectDispatch;
 }
 
@@ -34,9 +43,16 @@ export function isDispatchableAction(action: string): boolean {
 }
 
 /**
- * Runs one dialogue effect. A reveal is not a special engine power - it is the
- * `ticket.add_clue` action, dispatched like everything else, so it validates,
- * refuses and shows up in the dispatch log the same way a button click does.
+ * Runs one dialogue effect. Neither shorthand is a special engine power: a
+ * reveal is `ticket.add_worknote` and an ask is `ticket.add_comment`,
+ * dispatched like everything else, so both validate, refuse and show up in the
+ * dispatch log the same way a button click does.
+ *
+ * They land in different streams on purpose. What the reporter let slip is
+ * internal - it is what the player worked out, and it is nobody's business
+ * outside the helpdesk. What the player ASKED is customer-visible, because
+ * that is the only place a question the reporter could have seen can be, and
+ * it is what buys the right to stop their clock.
  */
 export function applyDialogueEffect(
   effect: Readonly<DialogueEffect>,
@@ -52,9 +68,9 @@ export function applyDialogueEffect(
     }
 
     return context.dispatch(
-      HELPDESK_ACTIONS.ticketAddClue,
+      HELPDESK_ACTIONS.ticketAddWorknote,
       context.ticket,
-      { clue: effect.reveal },
+      { note: effect.reveal },
     );
   }
 
@@ -68,9 +84,9 @@ export function applyDialogueEffect(
     }
 
     return context.dispatch(
-      HELPDESK_ACTIONS.ticketMarkAsked,
+      HELPDESK_ACTIONS.ticketAddComment,
       context.ticket,
-      {},
+      { comment: context.said },
     );
   }
 

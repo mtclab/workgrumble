@@ -21,17 +21,32 @@ export const HELPDESK_ACTIONS = {
   ticketClearWaiting: 'ticket.clear_waiting',
   ticketEscalate: 'ticket.escalate',
   /**
-   * The CYA rule made mechanical: the reporter has actually been asked about
-   * their problem, so the SLA may honestly be stopped on them. Nothing else
-   * can set it, and `ticket.set_waiting` refuses without it.
+   * Impact and urgency, in the player's judgement, with the priority the
+   * matrix makes of them. The engine refuses any triple that is not a cell of
+   * that matrix, which is what keeps priority a consequence rather than a
+   * fourth thing somebody picked.
    */
-  ticketMarkAsked: 'ticket.mark_asked',
+  ticketClassify: 'ticket.classify',
   /**
-   * What the reporter just let slip, written onto the ticket. Chat reveals go
-   * through here rather than through a back door into the graph: a clue is a
-   * world mutation like any other, so it is an action like any other.
+   * The internal stream: what the player worked out, and what the reporter
+   * let slip in chat. Nobody outside the helpdesk ever sees it, which is the
+   * whole reason a real system has two of these.
    */
-  ticketAddClue: 'ticket.add_clue',
+  ticketAddWorknote: 'ticket.add_worknote',
+  /**
+   * The customer-visible stream: what was actually put TO the reporter. The
+   * CYA rule reads this one - a question nobody was asked cannot stop a clock
+   * - and the first line written here stops the response clock.
+   */
+  ticketAddComment: 'ticket.add_comment',
+  /**
+   * The response clock stopped by something other than a comment: the first
+   * dispatched action that touched the ticket's own nodes. The driver notices;
+   * the world records it, because a clock is world state.
+   */
+  ticketRecordResponse: 'ticket.record_response',
+  /** Second line sending a thin handoff back, with the bill attached. */
+  ticketBounceHandoff: 'ticket.bounce_handoff',
 } as const;
 
 export type HelpdeskActionId =
@@ -50,6 +65,12 @@ export const DAY_ACTIONS = {
   startShift: 'day.start_shift',
   endShift: 'day.end_shift',
   clockOff: 'day.clock_off',
+  /**
+   * One interval of pressure. The shell decides HOW MUCH from readable state;
+   * the engine decides what the meters end up being, so the numbers replay
+   * instead of being recomputed from a wall clock nobody wrote down.
+   */
+  metersTick: 'meters.tick',
 } as const;
 
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];

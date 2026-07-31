@@ -5,6 +5,7 @@ import { DEVICE_ACTIONS } from './device';
 import { KIND_LABELS } from './helpers';
 import { MACHINE_ACTIONS } from './machine';
 import { MAIL_RULE_ACTIONS } from './mail-rule';
+import { METER_ACTION_DATA } from './meters';
 import { SERVICE_ACTIONS } from './service';
 import { SHARE_ACTIONS } from './share';
 import { TICKET_ACTIONS } from './ticket';
@@ -19,7 +20,7 @@ export {
   HELPDESK_ACTIONS,
   type HelpdeskActionId,
 } from './ids';
-export { clueLines, WAITING_NEEDS_QUESTION_REASON } from './ticket';
+export { fieldLines, WAITING_NEEDS_QUESTION_REASON } from './ticket';
 
 /** Every tier-1 helpdesk action, in a stable order. */
 export function helpdeskActions(): readonly ActionData[] {
@@ -32,6 +33,7 @@ export function helpdeskActions(): readonly ActionData[] {
     ...SHARE_ACTIONS,
     ...TICKET_ACTIONS,
     ...DAY_ACTION_DATA,
+    ...METER_ACTION_DATA,
   ];
 }
 

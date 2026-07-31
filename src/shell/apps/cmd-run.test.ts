@@ -28,6 +28,7 @@ function apiFor(
       target,
       params,
     ),
+    dispatchLog: () => session.engine.dispatchLog(),
     clock: {
       now: () => session.engine.now(),
       onTick: (listener) => session.engine.onTick(listener),

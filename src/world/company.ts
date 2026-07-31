@@ -1,5 +1,6 @@
 import type { Edge, GraphNode, SetupOp } from '../engine-api';
 import { DEVICE_TYPES, FIELDS, SERVICE_STATUS } from './fields';
+import { STARTING_REPUTATION } from './meters';
 
 function addNode(ops: SetupOp[], node: GraphNode): void {
   ops.push({ op: 'addNode', node });
@@ -171,6 +172,16 @@ export function companySetup(): readonly SetupOp[] {
           ? {
             [FIELDS.dayState]: 'morning_brief',
             [FIELDS.farmFund]: 0,
+            // The meters are seeded rather than left absent because the op
+            // language moves a field it can read: arithmetic on a field that
+            // was never a number is a refusal, and it should be, so the
+            // world's opening position has to say what these start at.
+            [FIELDS.stress]: 0,
+            [FIELDS.suspicion]: 0,
+            [FIELDS.reputation]: STARTING_REPUTATION,
+            [FIELDS.suspicionEvents]: 0,
+            [FIELDS.breachesCharged]: 0,
+            [FIELDS.resolveCreditPaid]: 0,
           }
           : {}),
       },

@@ -24,9 +24,10 @@ export interface DialogueRevealEffect {
 }
 
 /**
- * Mark the tree's ticket as one whose reporter has genuinely been asked about
- * their problem - the option is a QUESTION put to them, not a statement made
- * at them. It is what buys the right to park the SLA on the user.
+ * Put this line to the reporter on the record - the option is a QUESTION
+ * asked of them, not a statement made at them. It lands in the ticket's
+ * customer-visible stream, which is what buys the right to park the SLA on
+ * them, and the line it writes is the one the player picked.
  */
 export interface DialogueAskEffect {
   readonly asks: true;

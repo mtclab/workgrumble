@@ -182,6 +182,8 @@ export const CHAT_APP: AppDef = {
 
       const played = applyDialogueEffects(option.effects ?? [], {
         ticket: tree.ticket,
+        // What goes on the ticket as the question is what the player said.
+        said: option.label,
         dispatch: (action, target, params) => api.dispatch(
           action,
           api.actor,
@@ -197,12 +199,14 @@ export const CHAT_APP: AppDef = {
       const reported: string[] = [];
 
       if (played.done.some(isAskEffect)) {
-        reported.push('Logged as asked, so the clock can honestly be stopped '
-          + 'on them.');
+        reported.push('On the ticket where they can see it, so the clock can '
+          + 'honestly be stopped on them.');
       }
 
       if (played.done.some(isRevealEffect)) {
-        reported.push(`Written onto ${ticketTitle(tree.ticket ?? '')}.`);
+        reported.push(`Filed as a work note on ${
+          ticketTitle(tree.ticket ?? '')
+        }.`);
       }
 
       if (

@@ -1,12 +1,25 @@
-import type { TicketDef } from '../../engine-api';
+import type { ReadOnlyGraphView, TicketDef } from '../../engine-api';
 import { HELPDESK_ACTION_IDS } from '../actions';
 import type { ScheduledTicket } from '../day';
 import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
+import { type Classification, classify, trueImpact } from '../priority';
 import { acceptsEscalation } from './escalation';
 import { PILOT_TICKETS } from './pilot';
 import type { WorldTicket } from './types';
 
 export { acceptsEscalation } from './escalation';
+export {
+  actionSummary,
+  bounceLandsAt,
+  type BounceRule,
+  type Handoff,
+  HANDOFF_BOUNCE,
+  isCompleteHandoff,
+  joinLines,
+  triedFromLog,
+  type TriedEntry,
+  whyThin,
+} from './handoff';
 export { PILOT_TICKETS } from './pilot';
 export type {
   TicketActionStep,
@@ -19,6 +32,12 @@ export type {
 const FAN_TICKET: WorldTicket = {
   def: DEMO_TICKET,
   arrival: 'morning',
+  nodes: [WORLD_IDS.fan],
+  // You filed it yourself, about your own desk, and you were annoyed enough
+  // at the time to tick the middle box. It has been making that noise for a
+  // fortnight.
+  claimed_urgency: 2,
+  true_urgency: 1,
   cause: 'The chassis fan is fouled and has wedged itself against the case.',
   dialogue_ref: 'dialogue/fan-noise',
   paths: [
@@ -35,7 +54,16 @@ const FAN_TICKET: WorldTicket = {
       app: 'tickets',
       label: 'Escalate it: this one wants a screwdriver and a spare part',
       steps: [
-        { action: 'ticket.escalate', target: WORLD_IDS.ticket },
+        {
+          action: 'ticket.escalate',
+          target: WORLD_IDS.ticket,
+          // Second line take tickets on a form. A path that skips it is a
+          // path that bounces, which is not a way to close anything.
+          params: {
+            reported: 'It sounds like a hornet in a biscuit tin.',
+            tried: 'Reseated the fan\nListened to it, at length',
+          },
+        },
       ],
     },
   ],
@@ -76,6 +104,17 @@ function validateWorldTickets(
 
     if (entry.paths.length === 0) {
       throw new Error(`Ticket "${def.id}" advertises no way to close it.`);
+    }
+
+    // Without a node set there is no impact to read off the estate, no way to
+    // tell which of the day's dispatches were about this fault, and no
+    // response clock. A ticket about nothing is a ticket nobody can triage.
+    if (entry.nodes.length === 0) {
+      throw new Error(`Ticket "${def.id}" names no nodes it is about.`);
+    }
+
+    if (entry.nodes.some((id) => id.length === 0)) {
+      throw new Error(`Ticket "${def.id}" names an empty node id.`);
     }
 
     const pathIds = new Set<string>();
@@ -142,6 +181,27 @@ export const MORNING_TICKET_DEFS: readonly TicketDef[] = Object.freeze(
 
 export function ticketTitle(id: string): string {
   return findWorldTicket(id)?.def.flavor.title ?? id;
+}
+
+/** The estate a ticket is about, or nothing when nobody wrote it down. */
+export function ticketNodes(ticketId: string): readonly string[] {
+  return findWorldTicket(ticketId)?.nodes ?? [];
+}
+
+/**
+ * The triage the world supports: impact read off the estate, urgency read off
+ * the content. It is what the scorecard compares the player's cell against,
+ * and it is deliberately not the reporter's opinion - theirs is the claim.
+ */
+export function trueClassification(
+  graph: ReadOnlyGraphView,
+  ticketId: string,
+): Classification | null {
+  const entry = findWorldTicket(ticketId);
+
+  return entry === undefined
+    ? null
+    : classify(trueImpact(graph, entry.nodes), entry.true_urgency);
 }
 
 /** The escalate policy the ticket actions ask before allowing an escalation. */
