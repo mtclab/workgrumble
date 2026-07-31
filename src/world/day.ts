@@ -49,6 +49,7 @@ export {
   shiftEndTick,
   shiftStartTick,
   shiftWindow,
+  tickAtMinute,
   type TickWindow,
 } from './hours';
 

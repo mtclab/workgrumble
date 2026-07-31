@@ -51,7 +51,7 @@ export const ROTATED_SCREEN: WorldTicket = {
   },
   cause: 'Somebody pressed the screen-rotation shortcut on SALES-02 and left '
     + 'for the weekend.',
-  dialogue_ref: 'dialogue/rotated-screen',
+  dialogue_ref: 'dialogue/sales',
   paths: [
     {
       id: 'cmd-rotate',
@@ -155,7 +155,7 @@ export const LOCKED_ACCOUNT: WorldTicket = {
     + 'nothing has cleared it since. Gary has been away a fortnight and has '
     + 'not signed in once in that time, which is the other half of the story '
     + 'the directory tells.',
-  dialogue_ref: 'dialogue/locked-account',
+  dialogue_ref: 'dialogue/payroll',
   paths: [
     {
       id: 'directory-unlock',
@@ -243,7 +243,7 @@ export const WEDGED_SPOOLER: WorldTicket = {
   },
   cause: 'The spooler on PRINT-01 wedged on a malformed job and everything '
     + 'sent since has piled up behind it.',
-  dialogue_ref: 'dialogue/wedged-spooler',
+  dialogue_ref: 'dialogue/logistics',
   paths: [
     {
       id: 'cmd-clear-and-restart',

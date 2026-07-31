@@ -36,6 +36,9 @@ import {
   shiftStartTick,
 } from './day';
 import type { ReadOnlyGraphNode } from '../engine-api';
+import { COMPANY_IDS } from './company';
+import { FIELDS } from './fields';
+import { findIncident, INCIDENTS } from './incidents';
 
 /** Monday to Friday. Saturday does not exist; that is the joke and the scope. */
 export const WEEK_DAYS = 5;
@@ -87,6 +90,49 @@ export interface DripSlot {
   readonly minute: number;
 }
 
+/**
+ * Something the world does to itself, at a minute of its own choosing.
+ *
+ * A cleaner's trolley wants a socket at four minutes to five. A maintenance
+ * window opens at nine. Neither is a ticket and neither has any jitter on it:
+ * the whole point of the recurring arc is that the two outages are at the SAME
+ * minute two days apart, and a schedule that wandered by twelve minutes would
+ * be a schedule with the clue taken out of it.
+ */
+export interface IncidentSlot {
+  readonly incidentId: string;
+  /** Minute of the day, on the clock the player reads. */
+  readonly minute: number;
+}
+
+/**
+ * Somebody messaging you directly instead of raising a ticket.
+ *
+ * Not an arrival: there is nothing in the queue and there is no clock. It is a
+ * conversation that opens itself, with a favour already in it, and both answers
+ * are legitimate - which is exactly why it is scheduled like everything else
+ * rather than being a special case somewhere in the shell.
+ */
+export interface DmSlot {
+  /** The person node who messages you. Their tree carries the opening. */
+  readonly speaker: string;
+  readonly minute: number;
+  /** The ticket they raise, properly, if you send them to the form. */
+  readonly raises: string;
+  /** How long it takes them to get round to raising it. */
+  readonly filesAfter: number;
+  /**
+   * The world fact that says you did it for them instead.
+   *
+   * A tick on a node: if it holds a number at or after the minute they asked,
+   * the favour was done and there is nothing left to raise. It is expressed as
+   * a field rather than as a flag on the conversation because the FAVOUR is a
+   * change to the world - a password actually reset - and reading the world is
+   * the only way to know whether it happened, whichever surface did it.
+   */
+  readonly doneWhen: { readonly node: string; readonly field: string };
+}
+
 export interface DayScript {
   readonly day: number;
   /** What the brief calls it. */
@@ -95,6 +141,10 @@ export interface DayScript {
   readonly inherited: readonly string[];
   /** Tickets that arrive while the player is working. */
   readonly drip: readonly DripSlot[];
+  /** What the world does today, whether or not anybody is watching. */
+  readonly incidents?: readonly IncidentSlot[];
+  /** Who messages you directly today, and when. */
+  readonly dms?: readonly DmSlot[];
   /**
    * A twist on the world seed for the lead's rounds, so two days do not walk
    * in lockstep even where their content is identical. Monday takes the seed
@@ -124,39 +174,87 @@ export const WEEK: readonly DayScript[] = validateWeek([
     day: 1,
     label: 'Monday',
     inherited: ['ticket:rotated-screen', 'ticket:locked-account'],
-    drip: [{ ticketId: 'ticket:fan-noise', minute: 10 * 60 + 20 }],
+    drip: [
+      { ticketId: 'ticket:fan-noise', minute: 10 * 60 + 20 },
+      { ticketId: 'ticket:flat-mouse', minute: 13 * 60 + 40 },
+    ],
+    // Four minutes to five, in a corridor nobody from this floor is in. The
+    // ticket about it is Tuesday's; tonight it is two lines in a log.
+    incidents: [
+      {
+        incidentId: INCIDENTS.cleanerNeedsTheSocket,
+        minute: 16 * 60 + 56,
+      },
+    ],
     patrolSeed: 0,
     load: 1,
   },
   {
     day: 2,
     label: 'Tuesday',
-    inherited: [],
-    drip: [{ ticketId: 'ticket:tidied-list', minute: 10 * 60 + 40 }],
+    inherited: ['ticket:vacuum-tuesday', 'ticket:wedged-spooler'],
+    drip: [
+      { ticketId: 'ticket:tidied-list', minute: 11 * 60 },
+      { ticketId: 'ticket:mailbox-access', minute: 13 * 60 },
+    ],
+    // Half past two, and somebody who would rather message you than file
+    // anything. Say no politely and there is a ticket at twenty past.
+    dms: [
+      {
+        speaker: COMPANY_IDS.terry,
+        minute: 14 * 60 + 10,
+        raises: 'ticket:must-change-password',
+        // Ten minutes, which is how long it takes him to find the form in a
+        // folder called Later.
+        filesAfter: 10,
+        doneWhen: {
+          node: COMPANY_IDS.terryAccount,
+          field: FIELDS.passwordResetAt,
+        },
+      },
+    ],
     patrolSeed: 1_301,
     load: 2,
   },
   {
     day: 3,
     label: 'Wednesday',
-    inherited: [],
-    drip: [],
+    inherited: ['ticket:licence-exhausted'],
+    drip: [
+      { ticketId: 'ticket:mfa-reregister', minute: 9 * 60 + 50 },
+      { ticketId: 'ticket:share-maintenance', minute: 10 * 60 + 20 },
+      { ticketId: 'ticket:share-dup-terry', minute: 11 * 60 + 10 },
+    ],
+    incidents: [
+      { incidentId: INCIDENTS.maintenanceWindow, minute: 9 * 60 },
+      {
+        incidentId: INCIDENTS.cleanerNeedsTheSocket,
+        minute: 16 * 60 + 56,
+      },
+    ],
     patrolSeed: 5_927,
     load: 3,
   },
   {
     day: 4,
     label: 'Thursday',
-    inherited: ['ticket:wedged-spooler'],
-    drip: [],
+    inherited: ['ticket:vacuum-thursday', 'ticket:stale-device-relock'],
+    drip: [
+      { ticketId: 'ticket:vpn-cert-expired', minute: 10 * 60 },
+      { ticketId: 'ticket:vpn-cert-dup-ada', minute: 10 * 60 + 15 },
+      { ticketId: 'ticket:vpn-cert-dup-gary', minute: 10 * 60 + 35 },
+    ],
     patrolSeed: 8_803,
     load: 4,
   },
   {
     day: 5,
     label: 'Friday',
-    inherited: [],
-    drip: [],
+    inherited: ['ticket:phishing-report'],
+    drip: [
+      { ticketId: 'ticket:coverup-backup', minute: 10 * 60 + 30 },
+      { ticketId: 'ticket:hr-report-macro', minute: 11 * 60 + 15 },
+    ],
     patrolSeed: 2_141,
     load: 2,
   },
@@ -235,6 +333,32 @@ export function validateWeek(
       }
     }
 
+    // Everything else in a day happens at a minute somebody chose, and a
+    // minute outside the hours anybody is at the desk is a beat nobody sees.
+    // No jitter on either: an incident is a timetable, which is the clue, and
+    // a message that wandered would be a message that could land at lunch.
+    for (const slot of script.incidents ?? []) {
+      if (findIncident(slot.incidentId) === undefined) {
+        throw new Error(
+          `Day ${String(script.day)} runs "${slot.incidentId}", which nobody `
+          + 'wrote.',
+        );
+      }
+
+      requireWorkingMinute(script.day, slot.minute, slot.incidentId);
+    }
+
+    for (const slot of script.dms ?? []) {
+      requireWorkingMinute(script.day, slot.minute, slot.speaker);
+      // And the ticket they eventually raise has to land inside the day as
+      // well: a favour refused at ten to five is a ticket nobody is here for.
+      requireWorkingMinute(
+        script.day,
+        slot.minute + slot.filesAfter,
+        slot.raises,
+      );
+    }
+
     for (const id of scheduledIds(script)) {
       if (scheduled.has(id)) {
         throw new Error(
@@ -248,6 +372,21 @@ export function validateWeek(
   });
 
   return Object.freeze(scripts.map((script) => Object.freeze({ ...script })));
+}
+
+function requireWorkingMinute(
+  day: number,
+  minute: number,
+  what: string,
+): void {
+  if (minute < SHIFT_START_MINUTE || minute > SHIFT_END_MINUTE) {
+    throw new Error(
+      `Day ${String(day)} puts "${what}" at `
+      + `${String(Math.floor(minute / 60)).padStart(2, '0')}:`
+      + `${String(minute % 60).padStart(2, '0')}, which is outside the hours `
+      + 'anybody is at the desk.',
+    );
+  }
 }
 
 function scheduledIds(script: Readonly<DayScript>): readonly string[] {
@@ -344,6 +483,15 @@ export function reviewTick(day: number): number {
 export function dayPlan(day: number): DayPlan {
   const script = dayScript(day);
   return { inherited: script.inherited, drip: script.drip };
+}
+
+/** What the world does today, and who messages you, earliest first. */
+export function incidentsOn(day: number): readonly IncidentSlot[] {
+  return isWeekDay(day) ? dayScript(day).incidents ?? [] : [];
+}
+
+export function directMessagesOn(day: number): readonly DmSlot[] {
+  return isWeekDay(day) ? dayScript(day).dms ?? [] : [];
 }
 
 /** The tickets waiting in the queue before the day starts. */

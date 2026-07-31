@@ -68,6 +68,69 @@ export const MAIL_THREADS: readonly MailThread[] = [
     ],
   },
   /**
+   * The announcement. It is in the inbox from Monday morning, it says exactly
+   * what will happen and exactly when it will stop, and on Wednesday the queue
+   * fills up with people reporting it anyway - which is not a failure of the
+   * mail. Its job is to be the thing you can point at, in one sentence, forty
+   * times, without composing forty explanations.
+   */
+  {
+    id: 'mail/maintenance-window',
+    subject: 'PLANNED: file sharing unavailable Wednesday 09:00-11:00',
+    messages: [
+      {
+        id: 'mail/maintenance-window#1',
+        from: COMPANY_IDS.boss,
+        tick: 8,
+        body: [
+          'Forwarding this on from the supplier, who sent it to me because I '
+          + 'am the one who signed for the box in 2019.',
+          'The common drive will be unavailable on WEDNESDAY from 09:00 until '
+          + '11:00 while they do whatever it is they do. Nothing else is '
+          + 'affected. Files are not being deleted, whatever anybody says on '
+          + 'the day, and somebody will say it on the day.',
+          'Please do not forward this to everybody. I have forwarded it to '
+          + 'everybody.',
+        ],
+      },
+    ],
+  },
+  /**
+   * The bill for an enrolment nobody checked. Gated on the account's own
+   * fallout field, so it exists exactly when it has happened, is stamped at the
+   * minute it landed, and never exists at all for a player who spent thirty
+   * seconds asking somebody their payroll number.
+   */
+  {
+    id: 'mail/security-incident',
+    subject: 'INCIDENT 4471 - account takeover, Accounts Payable',
+    arrival: {
+      node: COMPANY_IDS.priyaAccount,
+      field: FIELDS.securityFalloutAt,
+    },
+    messages: [
+      {
+        id: 'mail/security-incident#1',
+        from: COMPANY_IDS.boss,
+        tick: 0,
+        body: [
+          'Pat. Not a telling off. A thing that has happened, and a thing I '
+          + 'have to send round because somebody upstream has asked me to.',
+          'An authenticator was enrolled yesterday on an Accounts Payable '
+          + 'account. It was not enrolled by the person whose account it is. '
+          + 'She was, at the time, in a meeting, being extremely audible '
+          + 'about a payment run.',
+          'The service desk record says the enrolment happened. It does not '
+          + 'say anybody checked who they were speaking to, because nobody '
+          + 'did, and that sentence is now in a report with a number on it.',
+          'Nothing was taken. Everything was seen. Verify them next time - it '
+          + 'is thirty seconds and it is the only part of that job that was '
+          + 'ever the job.',
+        ],
+      },
+    ],
+  },
+  /**
    * Second line, returning a handoff nobody could work from. It is gated on
    * the ticket's own field, so it exists exactly when it has happened and is
    * stamped at the minute it landed - and if the player never sends a thin

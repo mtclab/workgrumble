@@ -110,16 +110,25 @@ function playDaysUpTo(world: Week, untilDay: number): void {
   }
 }
 
-/** Monday to Friday lunchtime, with the reputation put where it is wanted. */
+/**
+ * Monday to one minute before three on Friday, with the reputation put where
+ * it is wanted.
+ *
+ * The meter is moved at the LAST minute rather than at nine, because these
+ * tests are about the threshold and nothing else: a week nobody works loses
+ * reputation all the way through Friday, so setting it at the start of the day
+ * and walking six hours is a test that measures the drain instead of the line
+ * it was written about. The drain has its own gate, in the golden week.
+ */
 function playToTheReview(reputation: number): Week {
   const world = week();
   playDaysUpTo(world, REVIEW_DAY);
   expect(world.driver.day()).toBe(REVIEW_DAY);
 
   world.driver.startShift();
-  setReputation(world, reputation);
   world.driver.step(TICK_INTERVAL_MS * (reviewTick(REVIEW_DAY) - 1
     - world.engine.now()));
+  setReputation(world, reputation);
 
   expect(world.reviews).toEqual([]);
   expect(world.driver.reviewOutcome()).toBe('pending');

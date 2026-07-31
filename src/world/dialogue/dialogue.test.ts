@@ -329,8 +329,14 @@ describe('shipped conversations', () => {
       expect(reveals.size, `${conversation.id} hides its own causes`)
         .toBe(own.length);
 
-      if (conversation.tickets.length > 0) {
-        expect(conversation.resolved_root, conversation.id).toBeDefined();
+      // And a reaction for every one of them: the person who told two people
+      // she had been hacked has a different thing to say afterwards from the
+      // person whose mouse turned out to have batteries in it.
+      for (const ticket of conversation.tickets) {
+        expect(
+          conversation.resolved_roots?.[ticket] ?? conversation.resolved_root,
+          `${conversation.id} reacts to ${ticket}`,
+        ).toBeDefined();
       }
     }
   });
@@ -363,7 +369,7 @@ describe('shipped conversations', () => {
    * is what keeps the CYA rule from being self-service.
    */
   it('refuses to let the player ask themselves anything', () => {
-    const self = findDialogueTree('dialogue/fan-noise');
+    const self = findDialogueTree('dialogue/yourself');
 
     expect(self?.speaker).toBe(COMPANY_IDS.player);
     expect(
@@ -375,7 +381,7 @@ describe('shipped conversations', () => {
 
   it('opens on the reaction once the ticket is closed', () => {
     const session = createWorldSession();
-    const found = findDialogueTree('dialogue/rotated-screen');
+    const found = findDialogueTree('dialogue/sales');
     expect(found).toBeDefined();
 
     if (found === undefined) {
@@ -396,7 +402,7 @@ describe('shipped conversations', () => {
 
     const after = conversationFor(found, session.engine.graph);
     expect(after.open).toBe(false);
-    expect(after.root).toBe(found.resolved_root);
+    expect(after.root).toBe(found.resolved_roots?.['ticket:rotated-screen']);
     expect(dialogueNode(found, after.root)?.npc_line).toContain('right way up');
   });
 
@@ -407,7 +413,7 @@ describe('shipped conversations', () => {
    */
   it('is about nothing until one of their tickets exists', () => {
     const session = createWorldSession();
-    const found = findDialogueTree('dialogue/boss-phone');
+    const found = findDialogueTree('dialogue/the-lead');
     expect(found).toBeDefined();
 
     if (found === undefined) {

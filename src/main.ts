@@ -1,7 +1,7 @@
 import { loadEngine } from './engine-api';
 import { type AppState, AppStateStore } from './shell/app-state';
 import { APP_MANIFEST } from './shell/apps';
-import { pingBossThread } from './shell/boss-thread';
+import { openDirectMessage, pingBossThread } from './shell/boss-thread';
 import type { ShellContext } from './shell/context';
 import { DayDriver, DRIVER_INTERVAL_MS } from './shell/day-driver';
 import { carryFrom, hydrateFromRetry, RetrySlot } from './shell/retry';
@@ -107,6 +107,16 @@ async function boot(): Promise<void> {
           ? ping.line
           : `${ping.line} It is now a ticket, because you made it one.`,
       );
+    },
+    // And somebody who is not the lead, asking for a favour. Both answers are
+    // legitimate; the difference between them turns up on Friday's scorecard
+    // rather than in a telling off, which is the whole of the point.
+    onDirectMessage: (speaker) => {
+      const line = openDirectMessage(appState, speaker);
+
+      if (line !== null) {
+        shell.notify('Somebody has messaged you directly', line);
+      }
     },
     // Friday at three. The world has already decided - the verb is guarded on
     // the one number that decides it - so what is left is the conversation.

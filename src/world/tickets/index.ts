@@ -4,6 +4,7 @@ import type {
   TicketDef,
 } from '../../engine-api';
 import { HELPDESK_ACTION_IDS } from '../actions';
+import { companySetup } from '../company';
 import { FIELDS } from '../fields';
 import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
 import {
@@ -12,15 +13,22 @@ import {
   trueImpact,
   UNTRIAGED_SLA_TICKS,
 } from '../priority';
+import { ACCESS_TICKETS } from './access';
+import { ARC_TICKETS } from './arc';
 import { BOSS_PHONE } from './boss-trash';
+import { DESK_TICKETS } from './desk';
 import { TIDIED_LIST } from './drip';
 import { acceptsEscalation } from './escalation';
+import { FLOOD_TICKETS } from './flood';
+import { IDENTITY_TICKETS } from './identity';
 import { acceptsParent } from './parent';
 import { PILOT_TICKETS } from './pilot';
+import { assertPathsAimAtRealNodes, seededNodeIds } from './solvable';
 import type { WorldTicket } from './types';
 import { assertWeekTickets } from '../week';
 
 export { BOSS_PHONE } from './boss-trash';
+export { SHARE_PARENT, VPN_PARENT } from './flood';
 export { TIDIED_LIST } from './drip';
 export { acceptsEscalation } from './escalation';
 export {
@@ -50,6 +58,7 @@ export {
   withTouch,
 } from './handoff';
 export { PILOT_TICKETS } from './pilot';
+export { ticketsNeededFor } from './solvable';
 export type {
   TicketActionStep,
   TicketPath,
@@ -71,7 +80,7 @@ const FAN_TICKET: WorldTicket = {
   claimed_urgency: 2,
   true_urgency: 1,
   cause: 'The chassis fan is fouled and has wedged itself against the case.',
-  dialogue_ref: 'dialogue/fan-noise',
+  dialogue_ref: 'dialogue/yourself',
   paths: [
     {
       id: 'about-percussion',
@@ -167,6 +176,19 @@ function validateWorldTickets(
       throw new Error(`Ticket "${def.id}" advertises no way to close it.`);
     }
 
+    // A chain is two decisions written twice as well. A ticket raised by
+    // another ticket's fix cannot also be dealt by a day script - the week
+    // would deal it in the morning and the fix would find it already there -
+    // so it has to arrive summoned, and the week gate is what enforces the
+    // other half.
+    if (entry.follows !== undefined && entry.arrival !== 'summoned') {
+      throw new Error(
+        `Ticket "${def.id}" follows "${entry.follows}" and arrives `
+        + `"${entry.arrival}". A ticket a fix raises turns up when that fix `
+        + 'happens, which is not a slot anybody can put in a day.',
+      );
+    }
+
     // Without a node set there is no impact to read off the estate, no way to
     // tell which of the day's dispatches were about this fault, and no
     // response clock. A ticket about nothing is a ticket nobody can triage.
@@ -202,6 +224,11 @@ function validateWorldTickets(
     }
   }
 
+  // And the cheap half of the solvability gate, which is about ids rather than
+  // about outcomes: a step aimed at a node nobody built arrives as a refusal
+  // in front of a player rather than as an error in front of us.
+  assertPathsAimAtRealNodes(entries, seededNodeIds(companySetup()));
+
   return Object.freeze([...entries]);
 }
 
@@ -220,8 +247,22 @@ export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekTickets(
     ...PILOT_TICKETS,
     TIDIED_LIST,
     BOSS_PHONE,
+    ...IDENTITY_TICKETS,
+    ...ACCESS_TICKETS,
+    ...FLOOD_TICKETS,
+    ...ARC_TICKETS,
+    ...DESK_TICKETS,
   ]),
 );
+
+/**
+ * The ticket a fix raises, if it raises one. The day loop asks after every
+ * dispatch, which is what makes a follow-up arrive in the minute its parent
+ * closed rather than at the top of the next one.
+ */
+export function followUpTo(ticketId: string): string | undefined {
+  return WORLD_TICKETS.find((entry) => entry.follows === ticketId)?.def.id;
+}
 
 export const WORLD_TICKET_DEFS: readonly TicketDef[] = Object.freeze(
   WORLD_TICKETS.map(({ def }) => def),

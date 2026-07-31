@@ -70,6 +70,22 @@ export interface WorldTicket {
    * button that lies.
    */
   readonly duplicate?: boolean;
+  /**
+   * The ticket whose FIX raises this one.
+   *
+   * A chain, declared by the ticket at the end of it. Granting somebody access
+   * to a shared mailbox is not the end of that job, it is the middle: an hour
+   * later they are back because sending from it is a second permission with a
+   * different name in a different place, and that follow-up cannot be a slot in
+   * a day script because nobody knows when the first one will be fixed. So the
+   * roster says which ticket raises it and the day loop raises it in the minute
+   * that one closes.
+   *
+   * A ticket with this set arrives `summoned`: the week deals it no slot, for
+   * the same reason it deals none to the concern the lead raises by mentioning
+   * it.
+   */
+  readonly follows?: string;
   /** The real cause, for KB articles and chat reveals (lane B). */
   readonly cause: string;
   /** Dialogue tree id the reporter answers with. Lane B renders it. */

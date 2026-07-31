@@ -24,14 +24,48 @@ import type { AppStateStore, ChatThread } from './app-state';
  * only reachable once it does.
  */
 export function pingBossThread(store: AppStateStore, line: string): void {
-  const tree = dialogueForSpeaker(COMPANY_IDS.boss);
+  openThreadAt(store, COMPANY_IDS.boss, line);
+}
+
+/**
+ * Somebody who is not the lead, asking for a favour instead of raising a
+ * ticket.
+ *
+ * Identical machinery and deliberately so: being messaged directly is one beat
+ * with one shape, whoever is doing it, and the only thing that differs is whose
+ * thread it lands in. The line comes out of the person's own tree rather than
+ * being passed in, because a message that is not in the conversation it opens
+ * is a message the player cannot answer.
+ */
+export function openDirectMessage(
+  store: AppStateStore,
+  speaker: string,
+): string | null {
+  const tree = dialogueForSpeaker(speaker);
+  const landing = tree?.summoned_root;
+
+  if (tree === undefined || landing === undefined) {
+    return null;
+  }
+
+  const line = dialogueNode(tree, landing)?.npc_line ?? '';
+  openThreadAt(store, speaker, line);
+  return line;
+}
+
+function openThreadAt(
+  store: AppStateStore,
+  speaker: string,
+  line: string,
+): void {
+  const tree = dialogueForSpeaker(speaker);
 
   if (tree === undefined) {
     return;
   }
 
   const landing = tree.summoned_root ?? tree.root;
-  const existing = store.get().chat.threads[COMPANY_IDS.boss];
+  const existing = store.get().chat.threads[speaker];
   const opening = dialogueNode(tree, tree.root)?.npc_line ?? '';
   const before = existing?.lines ?? [
     // Somebody who has never opened the boss channel still gets a thread that
@@ -53,6 +87,6 @@ export function pingBossThread(store: AppStateStore, line: string): void {
 
   // External: the chat app did not do this and will not repaint itself for it.
   store.patchExternal('chat', {
-    threads: { ...store.get().chat.threads, [COMPANY_IDS.boss]: thread },
+    threads: { ...store.get().chat.threads, [speaker]: thread },
   });
 }

@@ -296,7 +296,12 @@ describe('the day driver', () => {
     driver.step(realMs(shiftEndTick(2)));
     const tuesday = daySlip(dayLedger(engine.graph.nodesOfKind('ticket'), 2));
     driver.clockOff();
-    expect(tuesday.net).toBeGreaterThan(DAY_RATE_PENCE - 1_000);
+    // Nobody worked either day, and Tuesday has six tickets on it now: the
+    // shift is still paid and the missed deadlines are what the gap is made
+    // of. Pinning a number here would be pinning the week's ramp in a test
+    // about banking, which is the golden week's job.
+    expect(tuesday.net).toBeGreaterThan(0);
+    expect(tuesday.net).toBeLessThan(DAY_RATE_PENCE);
     expect(engine.graph.getField(COMPANY_IDS.player, FIELDS.farmFund))
       .toBe(slip.net + tuesday.net);
     expect(boundaries()).toBe(2);

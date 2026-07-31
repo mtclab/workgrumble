@@ -62,7 +62,7 @@ export const BOSS_PHONE: WorldTicket = {
   },
   cause: 'Desmond\'s account came out of VPN Users in a group tidy-up, and the '
     + 'phone has had nothing to sync against since.',
-  dialogue_ref: 'dialogue/boss-phone',
+  dialogue_ref: 'dialogue/the-lead',
   paths: [
     {
       id: 'directory-restore-group',

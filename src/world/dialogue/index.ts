@@ -104,18 +104,20 @@ export function validateDialogueTrees(
       throw new Error(`Tree "${tree.id}" names the same ticket twice.`);
     }
 
-    for (const [ticket, node] of Object.entries(tree.roots ?? {})) {
-      if (!tree.tickets.includes(ticket)) {
-        throw new Error(
-          `Tree "${tree.id}" opens on "${node}" for "${ticket}", which is not `
-          + 'one of the tickets this person reports.',
-        );
-      }
+    for (const map of [tree.roots ?? {}, tree.resolved_roots ?? {}]) {
+      for (const [ticket, node] of Object.entries(map)) {
+        if (!tree.tickets.includes(ticket)) {
+          throw new Error(
+            `Tree "${tree.id}" opens on "${node}" for "${ticket}", which is `
+            + 'not one of the tickets this person reports.',
+          );
+        }
 
-      if (!nodeIds.has(node)) {
-        throw new Error(
-          `Tree "${tree.id}" opens "${ticket}" on missing node "${node}".`,
-        );
+        if (!nodeIds.has(node)) {
+          throw new Error(
+            `Tree "${tree.id}" opens "${ticket}" on missing node "${node}".`,
+          );
+        }
       }
     }
 
@@ -218,7 +220,11 @@ export function validateDialogueTrees(
  */
 function assertEveryNodeReachable(tree: Readonly<DialogueTree>): void {
   const seen = new Set<string>();
-  const queue: string[] = [tree.root, ...Object.values(tree.roots ?? {})];
+  const queue: string[] = [
+    tree.root,
+    ...Object.values(tree.roots ?? {}),
+    ...Object.values(tree.resolved_roots ?? {}),
+  ];
 
   if (tree.resolved_root !== undefined) {
     queue.push(tree.resolved_root);
@@ -327,7 +333,10 @@ export function conversationFor(
     ticket: last,
     root: last === undefined
       ? tree.root
-      : tree.resolved_root ?? tree.roots?.[last] ?? tree.root,
+      : tree.resolved_roots?.[last]
+        ?? tree.resolved_root
+        ?? tree.roots?.[last]
+        ?? tree.root,
     open: false,
   };
 }

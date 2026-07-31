@@ -126,6 +126,35 @@ function printerOf(api: GameApi, query: string): Lookup {
   );
 }
 
+function deviceOf(api: GameApi, query: string): Lookup {
+  return lookup(
+    api,
+    'device',
+    query,
+    `Nothing plugged in anywhere matches "${query}".`,
+  );
+}
+
+function mailRuleOf(api: GameApi, query: string): Lookup {
+  return lookup(
+    api,
+    'mail_rule',
+    query,
+    `No mail rule matches "${query}". They are named by what they do, which `
+      + 'is the one mercy in this part of the system.',
+  );
+}
+
+/**
+ * The licence pool. There is one, it is not a thing anybody names in a ticket,
+ * and asking the player to type its id would be asking them to know a schema.
+ */
+function licencePool(api: GameApi): ReadOnlyGraphNode | undefined {
+  return api.graph
+    .nodesOfKind('service')
+    .find((node) => typeof node.fields[FIELDS.seatsFree] === 'number');
+}
+
 function playerMachine(api: GameApi): ReadOnlyGraphNode | undefined {
   return api.graph
     .neighbors(api.actor, { direction: 'out', edgeKind: 'owns' })
@@ -389,6 +418,123 @@ function dispatchLines(
 ): CommandResult {
   const result = api.dispatch(action, api.actor, target, params);
   return result.ok ? lines(...success) : lines(result.reason);
+}
+
+/**
+ * The three account verbs the modern half of the week needs, and the sentences
+ * they answer with.
+ *
+ * `verify` is the one that changes nothing anybody can see. That is the point:
+ * it writes down that a human being checked, on a ticket, at a minute, and the
+ * only thing it ever affects is what a report says about you a day later.
+ */
+function accountVerbLines(
+  api: GameApi,
+  verb: 'verify' | 'mfa' | 'revoke',
+  query: string,
+): CommandResult {
+  const found = accountOf(api, query);
+
+  if (!found.ok) {
+    return lines(found.reason);
+  }
+
+  const label = labelOf(found.node);
+
+  switch (verb) {
+    case 'verify':
+      return dispatchLines(
+        api,
+        HELPDESK_ACTIONS.accountVerifyIdentity,
+        found.node.id,
+        {},
+        [
+          `Identity check recorded against ${label}.`,
+          'Nothing else about the account has changed, which is the whole of',
+          'what this verb is for.',
+        ],
+      );
+    case 'mfa':
+      return dispatchLines(
+        api,
+        HELPDESK_ACTIONS.accountRegisterMfa,
+        found.node.id,
+        {},
+        [
+          `New authenticator enrolled for ${label}.`,
+          'The old binding is gone. Whoever holds the new one is, as far as',
+          'this directory is concerned, them.',
+        ],
+      );
+    default:
+      return dispatchLines(
+        api,
+        HELPDESK_ACTIONS.accountRevokeSessions,
+        found.node.id,
+        {},
+        [
+          `Every session for ${label} has been signed out.`,
+          'They will be asked for a code on the next thing they touch, which',
+          'is fine if they have one.',
+        ],
+      );
+  }
+}
+
+/** Moving a seat, which is two halves and only ever works in one order. */
+function licenceLines(
+  api: GameApi,
+  sub: string,
+  query: string,
+): CommandResult {
+  if (sub !== 'take' && sub !== 'give') {
+    return lines(
+      `"licence ${sub}" is not something this terminal does.`,
+      'It does "licence take <account>" and "licence give <account>", in '
+        + 'that order, because the second one is refused while the pool is '
+        + 'full.',
+    );
+  }
+
+  const pool = licencePool(api);
+
+  if (pool === undefined) {
+    return lines(
+      'There is no licence pool on this estate, which would be a relief if it '
+        + 'were true.',
+    );
+  }
+
+  const found = accountOf(api, query);
+
+  if (!found.ok) {
+    return lines(found.reason);
+  }
+
+  const free = pool.fields[FIELDS.seatsFree];
+  const seats = typeof free === 'number' ? free : 0;
+
+  return sub === 'take'
+    ? dispatchLines(
+      api,
+      HELPDESK_ACTIONS.accountRevokeLicence,
+      found.node.id,
+      { pool: pool.id },
+      [
+        `Seat reclaimed from ${labelOf(found.node)}.`,
+        `${String(seats + 1)} seat(s) free on ${labelOf(pool)}.`,
+      ],
+    )
+    : dispatchLines(
+      api,
+      HELPDESK_ACTIONS.accountAssignLicence,
+      found.node.id,
+      { pool: pool.id },
+      [
+        `Seat assigned to ${labelOf(found.node)}.`,
+        `${String(Math.max(0, seats - 1))} seat(s) free on ${labelOf(pool)}.`,
+      ],
+    );
 }
 
 function rotateLines(
@@ -825,6 +971,78 @@ export function executeCommand(
           'It will be on a sticky note by lunchtime.',
         ],
       );
+  }
+
+  if (parsed.spec.name === 'verify' || parsed.spec.name === 'mfa'
+    || parsed.spec.name === 'revoke') {
+    return accountVerbLines(api, parsed.spec.name, parsed.query);
+  }
+
+  if (parsed.spec.name === 'licence') {
+    return licenceLines(api, parsed.sub, parsed.query);
+  }
+
+  if (parsed.spec.name === 'forget') {
+    const found = deviceOf(api, parsed.query);
+
+    return found.ok
+      ? dispatchLines(
+        api,
+        HELPDESK_ACTIONS.deviceForgetCredentials,
+        found.node.id,
+        {},
+        [
+          `Stored credentials cleared on ${labelOf(found.node)}.`,
+          'It will carry on asking for one, which is somebody else\'s',
+          'afternoon, and it will stop offering the old one, which is this',
+          'one.',
+        ],
+      )
+      : lines(found.reason);
+  }
+
+  if (parsed.spec.name === 'renewcert') {
+    const found = serviceOf(api, parsed.query);
+
+    return found.ok
+      ? dispatchLines(
+        api,
+        HELPDESK_ACTIONS.serviceRenewCertificate,
+        found.node.id,
+        {},
+        [
+          `New certificate issued to ${labelOf(found.node)} and picked up.`,
+          'Everybody who has been told the connection could not be verified',
+          'can be told, truthfully, that it can now.',
+        ],
+      )
+      : lines(found.reason);
+  }
+
+  if (parsed.spec.name === 'rule') {
+    if (parsed.sub !== 'on') {
+      return lines(
+        `"rule ${parsed.sub}" is not something this terminal does.`,
+        'It does "rule on <mail rule>", and it does not do off, because '
+          + 'switching a rule off is a change with a form attached.',
+      );
+    }
+
+    const found = mailRuleOf(api, parsed.query);
+
+    return found.ok
+      ? dispatchLines(
+        api,
+        HELPDESK_ACTIONS.mailRuleEnable,
+        found.node.id,
+        {},
+        [
+          `${labelOf(found.node)} is now on.`,
+          'It was written in March, tested once, and left off because',
+          'switching it on was a change and a change needed a form.',
+        ],
+      )
+      : lines(found.reason);
   }
 
   if (parsed.spec.name === 'restart') {

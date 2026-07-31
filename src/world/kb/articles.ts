@@ -386,6 +386,361 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     see_also: ['kb/print-spooler', 'kb/mail-on-a-phone'],
   },
   {
+    id: 'kb/second-factor',
+    title: 'A new phone, and an authenticator with nothing in it',
+    summary: 'The binding went with the old handset. Check who you are '
+      + 'talking to, then enrol a new one.',
+    state: 'published',
+    issue: 'I have a new phone. The code app is installed and it is empty, and '
+      + 'now the sign-in wants a code I do not have. I need this today.',
+    environment: 'Any account on the estate; everybody was enrolled in the '
+      + 'June rollout. Applies to a lost, stolen, wiped or traded-in handset.',
+    resolution: [
+      'Read the account first. If the second factor is still enrolled, the '
+        + 'problem is the app or the clock on the phone, not the account.',
+      'VERIFY WHO YOU ARE TALKING TO before you enrol anything. Not their '
+        + 'name - their name is on the ticket. Something only they have: the '
+        + 'payroll number, the manager who hired them, the desk they sit at.',
+      'Enrol the new device. The old binding is gone the moment the new one '
+        + 'exists, which is what makes this both the fix and the risk.',
+      'Write on the ticket HOW you verified them. "Verified" is not evidence; '
+        + '"confirmed payroll number and start date with HR" is.',
+      'Do not revoke their sessions to "clear it out". That signs them out of '
+        + 'the one place they can still get in from.',
+    ],
+    cause: [
+      'A second factor is a binding between an account and a device, not a '
+      + 'setting on the account. Restoring a phone from a backup does not '
+      + 'always carry it across, because the whole design of the thing is that '
+      + 'it cannot be copied - which is the property everybody wants until the '
+      + 'Tuesday they buy a new handset.',
+      'That is why re-enrolment is the fix and also the risk. Anybody who can '
+      + 'convince a service desk to bind a new device to an account has just '
+      + 'been handed that account, and they will not do it by hacking '
+      + 'anything: they will ring at ten to five, in a hurry, from a number '
+      + 'that is not on file, apologising for being a nuisance.',
+      'The check is the whole control. It is thirty seconds, nothing in the '
+      + 'system enforces it, no ticket has ever been reopened for want of it, '
+      + 'and the day it matters you will not know it mattered until somebody '
+      + 'else\'s report lands with your name in the timeline.',
+    ],
+    see_also: ['kb/three-ways-an-account-says-no', 'kb/reading-the-error'],
+  },
+  {
+    id: 'kb/the-account-that-relocks',
+    title: 'The account that locks itself again ten minutes later',
+    summary: 'Something is still typing the old password, and it is not a '
+      + 'person.',
+    state: 'published',
+    issue: 'You unlocked it yesterday and it locked itself again. I have '
+      + 'changed my password twice. What am I doing wrong?',
+    environment: 'Any account, and the thing at the other end is usually a '
+      + 'device: a tablet, a handset, a mapped drive, a machine in a cupboard.',
+    resolution: [
+      'Unlock it, then look at the bad password count over the next few '
+        + 'minutes. A count that climbs while the user is not typing is the '
+        + 'whole diagnosis.',
+      'Open Event Viewer on the machines around them and read the 4625s. The '
+        + 'interval between them is the giveaway: people are irregular, and a '
+        + 'device is not.',
+      'Find what holds the old credential - the tablet in the cupboard, the '
+        + 'scanner, the account on the shared machine - and clear it.',
+      'THEN unlock the account. Doing it the other way round works too, and '
+        + 'you will do it the other way round once, and then never again.',
+      'Tell the user what it was. They have spent a fortnight believing they '
+        + 'type their own password wrong.',
+    ],
+    cause: [
+      'A lockout counter does not care who is typing. It counts failed '
+      + 'attempts against the account, and a device that was set up with a '
+      + 'password months ago will offer that password every few minutes, '
+      + 'forever, with the patience of something that does not know it is '
+      + 'wrong.',
+      'So the shape is unmistakable once you have seen it once: unlock, ten '
+      + 'quiet minutes, locked again, at the same interval, all day. The user '
+      + 'is not doing anything and cannot stop doing it, which is why they '
+      + 'start apologising and changing their password, which achieves '
+      + 'nothing except making the tablet more wrong than it was.',
+      'The kit that does this is always kit nobody remembers: it was set up '
+      + 'for a project, it works, and it has therefore not been thought about '
+      + 'since. Ask what else signs in as this person and then go and look, '
+      + 'because the answer to "what else" is always "nothing" and is always '
+      + 'wrong.',
+    ],
+    see_also: ['kb/account-lockout', 'kb/event-log'],
+  },
+  {
+    id: 'kb/shared-mailbox-permissions',
+    title: 'Full Access and Send As are two permissions',
+    summary: 'Granting the mailbox does not grant sending from it. Do both, or '
+      + 'expect the second ticket.',
+    state: 'published',
+    issue: 'You added me to the shared mailbox and I can see everything, but '
+      + 'when I try to reply it will not let me send.',
+    environment: 'Shared mailboxes on this estate. Access is a permission on '
+      + 'the mailbox; sending as it is membership of a group beside it.',
+    resolution: [
+      'Grant Full Access on the mailbox. That is what lets somebody open it, '
+        + 'read it and file things in it.',
+      'Then ask the question the request did not: will they be REPLYING from '
+        + 'it? If anybody answers yes, they need Send As as well.',
+      'Add the account to the Send As group for that mailbox. On this estate '
+        + 'that is where the permission lives.',
+      'Say both out loud on the ticket. The next person to read the request '
+        + 'will read it exactly as literally as you did.',
+    ],
+    cause: [
+      'Opening a mailbox and sending from an address are different operations '
+      + 'and the mail system treats them as such, because they are different '
+      + 'risks: one lets somebody read what a department is saying, and the '
+      + 'other lets them say things as that department to a customer.',
+      'The trouble is that nobody outside IT has ever been told there are two, '
+      + 'so requests are written as "please add me to the Sales mailbox" and '
+      + 'granted exactly as written. The request is satisfied, the ticket '
+      + 'closes, and forty minutes later the same person is back, apologising '
+      + 'for coming back.',
+      'It is worth grating your teeth about, because it is the cheapest '
+      + 'possible repeat ticket and it is caused by doing the job correctly. '
+      + 'The fix is a habit rather than a setting: whenever a mailbox is '
+      + 'granted, ask what they intend to do with it, and grant the pair.',
+    ],
+    see_also: ['kb/print-permissions', 'kb/reading-the-error'],
+  },
+  {
+    id: 'kb/licence-seats',
+    title: 'No free seats, and the man who left in April',
+    summary: 'Disabling an account does not hand its licence back. Somebody '
+      + 'has to.',
+    state: 'published',
+    issue: 'The new starter cannot open the accounts package. It says it '
+      + 'cannot obtain a licence. Everything else on the machine is fine.',
+    environment: 'The Accounts Suite licence pool on the file server, and any '
+      + 'other pool with a fixed number of seats.',
+    resolution: [
+      'Read the pool before you touch an account: how many seats exist and '
+        + 'how many are free. Nought free is not a fault, it is arithmetic.',
+      'Find who is holding them. Sort the directory by the licence flag and '
+        + 'look for accounts that are disabled - a leaver holding a seat is '
+        + 'the classic, and there is almost always one.',
+      'Take the seat back off the leaver. Then assign it to the new starter. '
+        + 'That order, because the second one is refused until the first has '
+        + 'happened.',
+      'Raise the underlying problem separately: the leavers process should be '
+        + 'reclaiming these, and it is not, and that is a ticket about a '
+        + 'process rather than about a person.',
+    ],
+    cause: [
+      'Licences of this kind are counted, not granted: the company bought six '
+      + 'seats and the software will hand out six. It has no opinion about '
+      + 'whether the six people holding them still work here, because it has '
+      + 'no way of knowing and nobody has ever told it.',
+      'Disabling an account is a directory operation. It stops somebody '
+      + 'signing in and it does nothing whatever to a licence pool on another '
+      + 'system, which continues to count that seat as used for as long as '
+      + 'anybody keeps paying for it. Leavers processes almost always stop one '
+      + 'step short of this, because the step is on a different console.',
+      'The symptom is therefore always somebody innocent: a new starter, on '
+      + 'their first morning, in front of the manager who hired them, holding '
+      + 'a machine that works perfectly and one program that does not. The '
+      + 'cause is six months old and belongs to nobody in the room.',
+    ],
+    see_also: ['kb/three-ways-an-account-says-no'],
+  },
+  {
+    id: 'kb/expired-certificate',
+    title: 'Running perfectly and refusing everybody',
+    summary: 'An expired certificate is not an outage and does not restart '
+      + 'away.',
+    state: 'published',
+    issue: 'Nobody working from home can connect. The client says the '
+      + 'connection could not be verified. It worked yesterday.',
+    environment: 'The VPN concentrator on PRINT-01, and anything else on the '
+      + 'estate that presents a certificate.',
+    resolution: [
+      'Check the service is actually running before you believe anybody. In '
+        + 'this case it will be, and that is the diagnosis.',
+      'Read the certificate expiry. "Could not be verified", "not trusted" '
+        + 'and "the name on the certificate does not match" are three '
+        + 'different messages and only one of them is this.',
+      'Renew the certificate. Do NOT restart the service first: it comes back '
+        + 'with the same expired certificate and forty more people notice.',
+      'Raise the renewal date somewhere a human will see it. Certificates are '
+        + 'the only fault in this building that sends you a warning and picks '
+        + 'the date itself.',
+    ],
+    cause: [
+      'A certificate is a statement with an end date on it, and every client '
+      + 'checks the end date before it will talk. When the date passes, the '
+      + 'service carries on running, listening and answering, and refuses '
+      + 'every connection politely - which is the worst possible failure mode '
+      + 'to diagnose, because every monitoring check you have says it is up.',
+      'This is why the flood arrives all at once and why restarting is the '
+      + 'first thing everybody tries: the service looks healthy, so the '
+      + 'instinct is to make it more healthy. It comes back in four seconds '
+      + 'with the same expired certificate, which reads as "the restart did '
+      + 'not fix it" rather than as "you fixed the wrong thing".',
+      'It also expires at a time nobody chose, which is why these land at '
+      + 'half past nine on a Thursday and not during a change window. The '
+      + 'renewal date was set by whoever issued it, a year ago, and the '
+      + 'reminder went to an address belonging to somebody who has left.',
+    ],
+    see_also: ['kb/power-cycle', 'kb/vpn-on-the-print-server'],
+  },
+  {
+    id: 'kb/announced-maintenance',
+    title: 'It was announced, and it is still broken',
+    summary: 'A window that was announced can still leave a fault behind. '
+      + 'Check the clock before you close anybody down.',
+    state: 'published',
+    issue: 'The common drive has gone. All my files have been deleted. It has '
+      + 'been like this all morning and nobody has said anything.',
+    environment: 'Any announced maintenance window, and the flood of reports '
+      + 'that arrives during one regardless of what was announced.',
+    resolution: [
+      'Read your own inbox first. If there is a window, note when it OPENS '
+        + 'and when it CLOSES; the second one is the number that matters.',
+      'Inside the window: attach the reports to one parent incident, reply '
+        + 'with the announcement and the time it ends, and stop there.',
+      'Past the closing time: it is a fault, whatever the mail said. Check '
+        + 'the service actually came back and start it if it did not.',
+      'Close the duplicates with the parent so every reporter gets the same '
+        + 'sentence at the same minute. Forty different explanations of one '
+        + 'outage is how a service desk loses an argument it was winning.',
+    ],
+    cause: [
+      'People do not read maintenance announcements, and telling them to read '
+      + 'maintenance announcements has never once worked. The announcement is '
+      + 'still worth sending, because its job is not to prevent the tickets - '
+      + 'it is to be the thing you can point at, in one sentence, forty times, '
+      + 'without composing forty explanations.',
+      'The genuinely dangerous half is the opposite mistake: assuming every '
+      + 'report during a window is the window. A maintenance job that takes a '
+      + 'service down and does not bring it back leaves an outage that looks '
+      + 'exactly like the planned one and is not, and the complaints about it '
+      + 'are correct while the announcement is also correct.',
+      'So the discipline is the clock rather than the mail. Before the closing '
+      + 'time, it is expected. After it, somebody has to check the thing came '
+      + 'back - and "somebody" is not named in the announcement, which is how '
+      + 'a two-hour window becomes a five-hour one.',
+    ],
+    see_also: ['kb/event-log', 'kb/power-cycle'],
+  },
+  {
+    id: 'kb/the-same-thing-every-week',
+    title: 'The same fault, the same evening, every week',
+    summary: 'Two timestamps that match are a timetable. Find whose.',
+    state: 'published',
+    issue: 'The warehouse printer was dead again when I came in. Not jammed. '
+      + 'Off. It was like this on Tuesday as well.',
+    environment: 'Anything on a socket somebody else can reach: corridors, '
+      + 'store rooms, the space under a desk, the warehouse.',
+    resolution: [
+      'Stop fixing it. Open the Event Viewer for the machine and write down '
+        + 'the times it went down, not just the dates.',
+      'Compare them. Two outages at the same minute on different days is not '
+        + 'a coincidence and is not a hardware fault; it is somebody\'s round.',
+      'Work out whose round. Cleaning, security, deliveries and the people '
+        + 'who service the vending machine all have timetables, and Facilities '
+        + 'know all of them.',
+      'Fix it where the cause is: a note by the socket, a socket cover, or a '
+        + 'different socket. Then write down what it was, because the next '
+        + 'person to see this will not have the timestamps.',
+    ],
+    cause: [
+      'Kit in shared spaces shares those spaces with people doing jobs that '
+      + 'have nothing to do with computers, and those jobs need power. A '
+      + 'cleaner needs a socket for twenty minutes, finds one with something '
+      + 'beige plugged into it that nobody has ever mentioned, and gives it '
+      + 'back afterwards. Nobody has done anything wrong at any point.',
+      'What makes it a legendary sort of fault rather than an ordinary one is '
+      + 'that it is invisible to everything IT normally looks at. The machine '
+      + 'is healthy, the logs are clean apart from a power event nobody reads, '
+      + 'and the only witness is a pattern of timestamps across days - which '
+      + 'is exactly the thing an event log is for and exactly the thing nobody '
+      + 'looks at while a printer is down and a warehouse is waiting.',
+      'The repair is not technical and that is the point of writing it down. A '
+      + 'note on the wall by the socket ends it permanently, costs nothing, '
+      + 'and is the single highest-value thing anybody will do this week.',
+    ],
+    see_also: ['kb/event-log', 'kb/power-cycle'],
+  },
+  {
+    id: 'kb/known-since-spring',
+    title: 'Broken since March, needed by three',
+    summary: 'The deadline is not the same thing as the age. Fix it or hand it '
+      + 'on, and record both dates.',
+    state: 'published',
+    issue: 'The headcount report has not run since March and I need it for a '
+      + 'board pack at three o\'clock this afternoon.',
+    environment: 'Scheduled jobs on the file server, and every long-broken '
+      + 'thing that becomes urgent because somebody upstream has a meeting.',
+    resolution: [
+      'Find out when it actually broke, and put that date on the ticket in '
+        + 'the first work note. It is the most useful sentence on the record.',
+      'Check whether it is fixable from here. A scheduled job that has been '
+        + 'stopped since a maintenance window usually just needs starting.',
+      'If it is not - if it needs rewriting, or data nobody has - hand it on '
+        + 'with the date it broke and the deadline side by side, and say '
+        + 'plainly which of the two you can meet.',
+      'Either way, tell the requester what is possible before three, not at '
+        + 'three. The deadline is theirs; the surprise does not have to be.',
+    ],
+    cause: [
+      'Things that have been broken for months are not broken more slowly than '
+      + 'things that broke this morning; they are broken in a way everybody '
+      + 'has found a manual workaround for, which is why nobody raised them. '
+      + 'The workaround is somebody\'s Sunday, and it stays invisible right up '
+      + 'until the day the manual version cannot be done in time.',
+      'That is what makes the deadline feel unreasonable and what makes it '
+      + 'real anyway. The person asking is not being unfair - they have '
+      + 'genuinely only just been given the meeting - and the fact that it '
+      + 'could have been raised in March is true and is nobody in the room\'s '
+      + 'fault either.',
+      'The professional move is to separate the two dates on the record and '
+      + 'then work the deadline. "Broken since 14 March, needed 15:00 today" '
+      + 'is a sentence that fixes the process later without spending the '
+      + 'afternoon arguing about it now.',
+    ],
+    see_also: ['kb/reading-the-error', 'kb/event-log'],
+  },
+  {
+    id: 'kb/somebody-reported-a-phish',
+    title: 'Somebody reported a suspicious mail. Reward that.',
+    summary: 'Verify it, quarantine the sender, and thank them in writing.',
+    state: 'published',
+    issue: 'Probably nothing, but this email asking me to re-enter my password '
+      + 'looks wrong to me. Sorry to bother you.',
+    environment: 'Mail, everywhere, forever. The transport rules live beside '
+      + 'the mailbox settings.',
+    resolution: [
+      'Do not click the link. Not to check, not in a private window, not on '
+        + 'the spare machine. There is nothing at the other end you need.',
+      'Verify it from the headers and the sender domain: a lookalike domain, '
+        + 'a reply-to that does not match, an urgency that does not fit the '
+        + 'sender.',
+      'Quarantine the sender - the transport rule is where that is done - and '
+        + 'check whether it went to anybody else.',
+      'REPLY TO THE REPORTER, in words, saying they were right to send it. '
+        + 'This is the step people skip and it is the one that pays.',
+    ],
+    cause: [
+      'A phishing mail costs nothing to send and works on volume, so the only '
+      + 'defence that scales is people forwarding the odd ones to you. That '
+      + 'defence is made entirely of goodwill: nobody is paid to report mail, '
+      + 'and everybody who does it is briefly worried they are wasting your '
+      + 'time.',
+      'Which is why the reply matters more than the rule. Somebody who gets a '
+      + 'thank-you reports the next one; somebody who gets silence, or a '
+      + 'terse "yes that is spam", does not - and the next one is the one that '
+      + 'goes to forty people in Finance on a Friday afternoon.',
+      'As for clicking it to see: the link is not a link, it is a page '
+      + 'designed to look like your sign-in, and the only information it gives '
+      + 'you is information you already had. It also confirms, to the person '
+      + 'who sent it, that this address is real and reads its mail.',
+    ],
+    see_also: ['kb/reading-the-error', 'kb/second-factor'],
+  },
+  {
     /**
      * The draft. Every knowledge base has one: started by somebody who was
      * about to leave, never validated, and still sitting in the same list as

@@ -1,6 +1,7 @@
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { WORLD_IDS } from '../demo-world';
+import { STAFF_TREES } from './staff';
 import type { DialogueTree } from './types';
 
 /**
@@ -20,11 +21,24 @@ import type { DialogueTree } from './types';
  */
 
 const ROTATED_SCREEN: DialogueTree = {
-  id: 'dialogue/rotated-screen',
+  id: 'dialogue/sales',
   speaker: COMPANY_IDS.ada,
-  tickets: ['ticket:rotated-screen'],
+  tickets: [
+    'ticket:rotated-screen',
+    'ticket:flat-mouse',
+    'ticket:vpn-cert-dup-ada',
+  ],
   root: 'complaint',
-  resolved_root: 'after',
+  roots: {
+    'ticket:rotated-screen': 'complaint',
+    'ticket:flat-mouse': 'frozen',
+    'ticket:vpn-cert-dup-ada': 'vpn',
+  },
+  resolved_roots: {
+    'ticket:rotated-screen': 'after',
+    'ticket:flat-mouse': 'mouse-after',
+    'ticket:vpn-cert-dup-ada': 'vpn-after',
+  },
   nodes: [
     {
       id: 'complaint',
@@ -125,6 +139,102 @@ const ROTATED_SCREEN: DialogueTree = {
       ],
     },
     {
+      id: 'frozen',
+      npc_line: 'It has frozen. Completely. Nothing moves, nothing clicks, and '
+        + 'the arrow is exactly where I left it when I went to lunch.',
+      options: [
+        {
+          label: 'Ask her to read out everything on the screen, notices and all',
+          next: 'notice',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'She reads out a low-battery notice for a wireless mouse '
+                + 'and calls it a separate issue she will raise later.',
+            },
+          ],
+        },
+        {
+          label: 'Ask whether the keyboard still does anything',
+          next: 'keyboard',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her not to hold the power button in yet' },
+      ],
+    },
+    {
+      id: 'notice',
+      npc_line: 'There is a little box in the corner about a battery in a '
+        + 'mouse. That is a different thing. I will raise that separately, '
+        + 'when this is sorted.',
+      options: [
+        { label: 'Suggest, gently, that it might be the same thing', next: 'same' },
+        { label: 'Go back to the frozen machine', next: 'frozen' },
+      ],
+    },
+    {
+      id: 'same',
+      npc_line: 'It is not the same thing. The mouse is a mouse. The computer '
+        + 'is the computer. ... It is the same thing, is it.',
+      options: [
+        { label: 'Say nothing and go and find two batteries' },
+      ],
+    },
+    {
+      id: 'keyboard',
+      npc_line: 'The keyboard is fine. I have typed my password four times to '
+        + 'prove it and it has accepted all four, which I find infuriating.',
+      options: [
+        {
+          label: 'Ask her to read out everything on the screen, notices and all',
+          next: 'notice',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'She reads out a low-battery notice for a wireless mouse '
+                + 'and calls it a separate issue she will raise later.',
+            },
+          ],
+        },
+        { label: 'Go back to the frozen machine', next: 'frozen' },
+      ],
+    },
+    {
+      id: 'mouse-after',
+      npc_line: 'It was the mouse. It was two batteries. I am going to need a '
+        + 'moment with that, and then I am never going to mention it again.',
+      options: [
+        { label: 'Agree never to mention it again' },
+      ],
+    },
+    {
+      id: 'vpn',
+      npc_line: 'I am at home and I cannot reach anything. I have restarted '
+        + 'the laptop, the router and, at one point, my phone. Before '
+        + 'contacting anybody. Which I would like noted.',
+      options: [
+        { label: 'Note that she restarted everything first', next: 'noted' },
+        { label: 'Tell her the whole company is on this one' },
+      ],
+    },
+    {
+      id: 'noted',
+      npc_line: 'Thank you. Nobody ever notes it. I shall wait. I am extremely '
+        + 'good at waiting, as you know.',
+      options: [
+        { label: 'Go back to the connection', next: 'vpn' },
+        { label: 'Leave it there and go and fix the actual thing' },
+      ],
+    },
+    {
+      id: 'vpn-after',
+      npc_line: 'I am back in. So it was your end all along and my router has '
+        + 'been slandered. I shall apologise to it.',
+      options: [
+        { label: 'Suggest she apologises to the phone as well' },
+      ],
+    },
+    {
       id: 'after',
       npc_line: 'Oh. It is the right way up. So was it hackers, or was it '
         + 'Gareth? Because I have already told two people it was hackers.',
@@ -145,11 +255,18 @@ const ROTATED_SCREEN: DialogueTree = {
 };
 
 const LOCKED_ACCOUNT: DialogueTree = {
-  id: 'dialogue/locked-account',
+  id: 'dialogue/payroll',
   speaker: COMPANY_IDS.gary,
-  tickets: ['ticket:locked-account'],
+  tickets: ['ticket:locked-account', 'ticket:vpn-cert-dup-gary'],
   root: 'complaint',
-  resolved_root: 'after',
+  roots: {
+    'ticket:locked-account': 'complaint',
+    'ticket:vpn-cert-dup-gary': 'remote',
+  },
+  resolved_roots: {
+    'ticket:locked-account': 'after',
+    'ticket:vpn-cert-dup-gary': 'remote-after',
+  },
   nodes: [
     {
       id: 'complaint',
@@ -241,6 +358,33 @@ const LOCKED_ACCOUNT: DialogueTree = {
       ],
     },
     {
+      id: 'remote',
+      npc_line: 'The remote thing will not come up. I am at home on the '
+        + 'payroll run. I expect this is the same as my password, because both '
+        + 'of them are computers and both of them have now had a go at me.',
+      options: [
+        { label: 'Tell him it is not his account this time', next: 'not-you' },
+        { label: 'Tell him the whole building is on this one' },
+      ],
+    },
+    {
+      id: 'not-you',
+      npc_line: 'So this one is not me either. That is two things that were '
+        + 'not me. I am beginning to enjoy this fortnight.',
+      options: [
+        { label: 'Go back to the connection', next: 'remote' },
+        { label: 'Leave him enjoying it' },
+      ],
+    },
+    {
+      id: 'remote-after',
+      npc_line: 'I am on. Payroll will go out. Nobody will ever know how close '
+        + 'it was, which is how it has been for eleven years.',
+      options: [
+        { label: 'Tell him you will know' },
+      ],
+    },
+    {
       id: 'after',
       npc_line: 'I am in. So it WAS the password, then. I knew it was '
         + 'something at your end.',
@@ -261,11 +405,18 @@ const LOCKED_ACCOUNT: DialogueTree = {
 };
 
 const WEDGED_SPOOLER: DialogueTree = {
-  id: 'dialogue/wedged-spooler',
+  id: 'dialogue/logistics',
   speaker: COMPANY_IDS.nina,
-  tickets: ['ticket:wedged-spooler'],
+  tickets: ['ticket:wedged-spooler', 'ticket:vpn-cert-expired'],
   root: 'complaint',
-  resolved_root: 'after',
+  roots: {
+    'ticket:wedged-spooler': 'complaint',
+    'ticket:vpn-cert-expired': 'depot',
+  },
+  resolved_roots: {
+    'ticket:wedged-spooler': 'after',
+    'ticket:vpn-cert-expired': 'depot-after',
+  },
   nodes: [
     {
       id: 'complaint',
@@ -358,6 +509,72 @@ const WEDGED_SPOOLER: DialogueTree = {
       ],
     },
     {
+      id: 'depot',
+      npc_line: 'I am at the depot and I cannot get in. The client says the '
+        + 'connection could not be verified, which I assume is a computer '
+        + 'being sniffy rather than a sentence with information in it.',
+      options: [
+        {
+          label: 'Ask who else at the depot is having it',
+          next: 'everybody',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Everybody outside the building is affected and '
+                + 'everybody inside it is fine, which puts the fault on the '
+                + 'way in rather than on anybody\'s laptop.',
+            },
+          ],
+        },
+        {
+          label: 'Ask whether it worked yesterday',
+          next: 'yesterday',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her you are looking at the concentrator now' },
+      ],
+    },
+    {
+      id: 'everybody',
+      npc_line: 'All four of us out here, and the two drivers, and Ada is at '
+        + 'home saying the same thing on the other channel. Nobody in the '
+        + 'office has noticed a thing, obviously.',
+      options: [
+        { label: 'Go back to the depot', next: 'depot' },
+        { label: 'Tell her that is the answer and she has just given it' },
+      ],
+    },
+    {
+      id: 'yesterday',
+      npc_line: 'Yesterday it was fine. This morning it is not. Nothing has '
+        + 'changed at this end unless somebody has changed something at that '
+        + 'end, which is traditional.',
+      options: [
+        {
+          label: 'Ask who else at the depot is having it',
+          next: 'everybody',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Everybody outside the building is affected and '
+                + 'everybody inside it is fine, which puts the fault on the '
+                + 'way in rather than on anybody\'s laptop.',
+            },
+          ],
+        },
+        { label: 'Go back to the depot', next: 'depot' },
+      ],
+    },
+    {
+      id: 'depot-after',
+      npc_line: 'We are in. All of us, at once, which was quite the moment out '
+        + 'here. What was it, so I can tell them something better than '
+        + '"computers".',
+      options: [
+        { label: 'Tell her a certificate expired, and what that means' },
+      ],
+    },
+    {
       id: 'after',
       npc_line: 'It is printing. All of it. All forty-seven, and the sign '
         + 'about sending things twice is coming out four times.',
@@ -378,7 +595,7 @@ const WEDGED_SPOOLER: DialogueTree = {
 };
 
 const FAN_NOISE: DialogueTree = {
-  id: 'dialogue/fan-noise',
+  id: 'dialogue/yourself',
   speaker: COMPANY_IDS.player,
   tickets: [WORLD_IDS.ticket],
   root: 'complaint',
@@ -443,7 +660,7 @@ const FAN_NOISE: DialogueTree = {
  * land on, and a player who opens the boss channel unprompted gets the nag.
  */
 const BOSS_CHANNEL: DialogueTree = {
-  id: 'dialogue/boss-phone',
+  id: 'dialogue/the-lead',
   speaker: COMPANY_IDS.boss,
   tickets: ['ticket:boss-phone'],
   root: 'nag',
@@ -595,9 +812,16 @@ const BOSS_CHANNEL: DialogueTree = {
 const RECEPTION: DialogueTree = {
   id: 'dialogue/reception',
   speaker: COMPANY_IDS.bev,
-  tickets: ['ticket:tidied-list'],
+  tickets: ['ticket:tidied-list', 'ticket:share-maintenance'],
   root: 'hello',
-  resolved_root: 'after',
+  roots: {
+    'ticket:tidied-list': 'hello',
+    'ticket:share-maintenance': 'drive',
+  },
+  resolved_roots: {
+    'ticket:tidied-list': 'after',
+    'ticket:share-maintenance': 'drive-after',
+  },
   nodes: [
     {
       id: 'hello',
@@ -629,6 +853,70 @@ const RECEPTION: DialogueTree = {
           ],
         },
         { label: 'Go back to the top', next: 'hello' },
+      ],
+    },
+    {
+      id: 'drive',
+      npc_line: 'The common drive has gone. The visitor list is on the common '
+        + 'drive. There are auditors in reception and I am reading their names '
+        + 'off a post-it I wrote at half eight.',
+      options: [
+        {
+          label: 'Ask exactly when it went',
+          next: 'nine',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'It went at nine, which is the minute the announced '
+                + 'maintenance window opened - and the same mail says the '
+                + 'window closed at eleven.',
+            },
+          ],
+        },
+        {
+          label: 'Ask whether anything else has gone with it',
+          next: 'else',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her it is the drive and not her' },
+      ],
+    },
+    {
+      id: 'nine',
+      npc_line: 'Nine. On the dot. I know because I had just put the phone '
+        + 'down on somebody who wanted the postcode.',
+      options: [
+        { label: 'Go back to the drive', next: 'drive' },
+        { label: 'Tell her that is the most useful sentence of the morning' },
+      ],
+    },
+    {
+      id: 'else',
+      npc_line: 'Everything else is fine. Mail is fine. The printer is fine, '
+        + 'which after last week I do not say lightly.',
+      options: [
+        {
+          label: 'Ask exactly when it went',
+          next: 'nine',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'It went at nine, which is the minute the announced '
+                + 'maintenance window opened - and the same mail says the '
+                + 'window closed at eleven.',
+            },
+          ],
+        },
+        { label: 'Go back to the drive', next: 'drive' },
+      ],
+    },
+    {
+      id: 'drive-after',
+      npc_line: 'It is back. So it was the maintenance, which I was told about '
+        + 'in a mail I deleted, and it was also broken afterwards, which I was '
+        + 'not told about at all. I am going to hold onto the second half.',
+      options: [
+        { label: 'Concede the second half entirely' },
       ],
     },
     {
@@ -684,4 +972,5 @@ export const DIALOGUE_TREES: readonly DialogueTree[] = [
   FAN_NOISE,
   BOSS_CHANNEL,
   RECEPTION,
+  ...STAFF_TREES,
 ];

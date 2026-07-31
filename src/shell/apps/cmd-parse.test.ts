@@ -129,9 +129,13 @@ describe('command parser', () => {
   });
 
   it('gives up on input that is not a typo of anything', () => {
-    expect(parseCommand('sudo rm -rf /')).toEqual({
+    // Not "sudo" any more: the M4 verb set put "rule" in the list, which is
+    // three edits away, and three edits is what this terminal is willing to
+    // guess at. The probe has to be genuinely far from everything or it is
+    // measuring the command set rather than the giving-up.
+    expect(parseCommand('xyzzy the mainframe')).toEqual({
       kind: 'unknown',
-      name: 'sudo',
+      name: 'xyzzy',
       suggestion: null,
     });
   });

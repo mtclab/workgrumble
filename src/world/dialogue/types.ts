@@ -103,6 +103,15 @@ export interface DialogueTree {
   /** Where a conversation starts once the ticket in hand is closed. */
   readonly resolved_root?: string;
   /**
+   * And the same, per ticket: what they say about THAT fix.
+   *
+   * The reaction is where a conversation pays off - the woman who told two
+   * people she had been hacked, the man whose mouse turns out to have had
+   * batteries in it all along - and a person with three tickets who says the
+   * same sentence after each of them is a person with one joke.
+   */
+  readonly resolved_roots?: Readonly<Record<string, string>>;
+  /**
    * Where another system may DROP this conversation, unasked.
    *
    * The boss pinging you is not something the player navigated to: the chat

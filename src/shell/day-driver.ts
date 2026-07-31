@@ -18,7 +18,12 @@ import type {
   NodeId,
   ReadOnlyGraphNode,
 } from '../engine-api';
-import { DAY_ACTIONS, fieldLines, HELPDESK_ACTIONS } from '../world/actions';
+import {
+  DAY_ACTIONS,
+  fieldLines,
+  HELPDESK_ACTIONS,
+  WORLD_ACTIONS,
+} from '../world/actions';
 import {
   type BossPing,
   type BossVisit,
@@ -50,6 +55,7 @@ import {
   arrivalsBetween,
   buildDaySchedule,
   clockRuns,
+  tickAtMinute,
   type DaySchedule,
   type DayState,
   dayForTick,
@@ -62,8 +68,12 @@ import {
   isLunchtime,
   shiftStartTick,
 } from '../world/day';
+import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
+import { findIncident } from '../world/incidents';
 import {
   dayPlan,
+  directMessagesOn,
+  incidentsOn,
   isReviewDay,
   isReviewOutcome,
   isWeekDay,
@@ -87,6 +97,7 @@ import {
   cascadeComment,
   cascadesDue,
   countsAsWork,
+  followUpTo,
   HANDOFF_BOUNCE,
   resolveCredit,
   spawnWorldTicket,
@@ -233,6 +244,13 @@ export interface DayDriverHandlers {
    * conversation should be standing on rather than writing it itself.
    */
   onBossPing?(ping: Readonly<BossPing>): void;
+  /**
+   * Somebody who is not the lead has messaged you directly, asking for a
+   * favour instead of raising a ticket. Same shape and the same reason: the
+   * transcript is screen state, so the driver says who and the shell opens the
+   * conversation on the node their tree keeps for being summoned.
+   */
+  onDirectMessage?(speaker: NodeId, tick: number): void;
   /**
    * Friday, three o'clock, decided. The world already holds the outcome - the
    * reputation was read and the verb was dispatched - and what is left is the
@@ -383,6 +401,10 @@ export class DayDriver implements DayApi {
     // well, and they should hear about it in the minute it happened rather
     // than at the top of the next one.
     this.settleParentCascade();
+    // And a fix that finished one half of a chain has just raised the other
+    // half. The new starter is back before the window has repainted, which is
+    // both the joke and, in every shop this is drawn from, the truth.
+    this.settleFollowUps();
     return result;
   }
 
@@ -448,6 +470,13 @@ export class DayDriver implements DayApi {
       }
 
       this.spawnArrivals(before, now);
+      // Before the floor and before the queue: the world breaking is not
+      // something the player did, and everything else this minute has to see
+      // the world as it now is.
+      this.applyIncidents(before, now);
+      this.settleDirectMessages(before, now);
+      this.settleStaleAuth(now);
+      this.settleFollowUps();
       this.walkTheFloor(before, now);
       this.settleReview(before, now);
       // Before the meters read the queue: a child closed by its parent is a
@@ -489,8 +518,17 @@ export class DayDriver implements DayApi {
       this.syncSlaClock();
       this.engine.advance(start - now);
       this.spawnArrivals(now, this.engine.now());
+      // A window that opens at nine opens at nine, whether the player spent
+      // the hour reading the brief or skipped it in four seconds.
+      this.applyIncidents(now, this.engine.now());
     }
 
+    // Yesterday's shortcut, arriving in this morning's post. It is settled at
+    // the start of the shift rather than at last night's clock-off because a
+    // day is how long it takes somebody else to notice, and because a
+    // consequence that landed in the same evening would read as a punishment
+    // for the click rather than as the cost of the omission.
+    this.settleSecurityFallout();
     this.dispatchDay(DAY_ACTIONS.startShift, {});
     this.syncSlaClock();
     this.carriedMs = 0;
@@ -751,6 +789,160 @@ export class DayDriver implements DayApi {
       }
 
       spawnWorldTicket(this.engine, arrival.ticketId);
+    }
+  }
+
+  /* -- what the world does to itself -------------------------------------- */
+
+  /**
+   * The cleaner's trolley, and the maintenance window.
+   *
+   * Dispatched straight at the engine rather than through this driver's own
+   * `dispatch`, because that one records touches and stops response clocks -
+   * and a printer losing power in another building is emphatically not
+   * somebody working a ticket. No jitter either: the whole of the recurring arc
+   * is two outages at the SAME minute two days apart, and a schedule that
+   * wandered would be a schedule with the clue taken out of it.
+   */
+  private applyIncidents(after: number, now: number): void {
+    const day = this.day();
+
+    for (const slot of incidentsOn(day)) {
+      const at = tickAtMinute(day, slot.minute);
+
+      if (at <= after || at > now) {
+        continue;
+      }
+
+      const incident = findIncident(slot.incidentId);
+
+      if (incident === undefined) {
+        continue;
+      }
+
+      for (const step of incident.steps) {
+        this.engine.dispatch(
+          step.action,
+          this.actor,
+          step.target,
+          { ...step.params },
+        );
+      }
+
+      if (incident.notice !== null) {
+        this.handlers.onNotice?.(incident.notice.title, incident.notice.body);
+      }
+    }
+  }
+
+  /**
+   * Somebody asking a favour, and the ticket they raise when you say no.
+   *
+   * Both halves are here because they are one beat with a gap in it. The
+   * message lands, and ten minutes later either the world shows the favour was
+   * done - a password actually reset, whichever surface did it - or the person
+   * has got round to the form and there is a ticket, a clock and a resolution
+   * worth eight points. Neither answer is punished and the scorecard is where
+   * the difference shows up, which is the whole of the lesson.
+   */
+  private settleDirectMessages(after: number, now: number): void {
+    const day = this.day();
+
+    for (const slot of directMessagesOn(day)) {
+      const asked = tickAtMinute(day, slot.minute);
+      const files = tickAtMinute(day, slot.minute + slot.filesAfter);
+
+      if (asked > after && asked <= now) {
+        this.handlers.onDirectMessage?.(slot.speaker, asked);
+      }
+
+      if (files <= after || files > now) {
+        continue;
+      }
+
+      const done = this.engine.graph.getField(
+        slot.doneWhen.node,
+        slot.doneWhen.field,
+      );
+
+      // Done for them, off the books, since they asked: there is nothing left
+      // to raise and nothing on the scorecard either.
+      if (typeof done === 'number' && done >= asked) {
+        continue;
+      }
+
+      if (this.engine.graph.getNode(slot.raises) === undefined) {
+        spawnWorldTicket(this.engine, slot.raises);
+      }
+    }
+  }
+
+  /**
+   * The tablet in the cupboard, offering the password it was set up with.
+   *
+   * It is the world typing rather than a person, so it goes through the world's
+   * own verb and never through this driver's `dispatch`: a response clock
+   * stopped by a scanner would be a clock stopped by nobody.
+   */
+  private settleStaleAuth(now: number): void {
+    for (const attempt of staleLogonsDue(this.engine.graph, now)) {
+      this.engine.dispatch(
+        WORLD_ACTIONS.staleLogon,
+        this.actor,
+        attempt.account,
+        { count: attempt.count },
+      );
+    }
+  }
+
+  /** The other half of a chain, raised by the fix that finished the first. */
+  private settleFollowUps(): void {
+    for (const ticket of this.tickets()) {
+      if (ticket.fields[FIELDS.state] !== 'resolved') {
+        continue;
+      }
+
+      const next = followUpTo(ticket.id);
+
+      if (next === undefined || this.engine.graph.getNode(next) !== undefined) {
+        continue;
+      }
+
+      spawnWorldTicket(this.engine, next);
+      this.handlers.onNotice?.(
+        'They are back',
+        `${ticketTitle(next)} - raised by the same person, about the same `
+        + 'request, forty minutes after you closed it.',
+      );
+    }
+  }
+
+  /**
+   * The bill for an enrolment nobody checked, arriving the next morning.
+   *
+   * The world decides whether there is one: the verb refuses an account that
+   * was verified, an account with nothing enrolled, and an account that has
+   * already been charged, so this is a read followed by a dispatch rather than
+   * a decision made here.
+   */
+  private settleSecurityFallout(): void {
+    for (const account of socialEngineeringDue(this.engine.graph, this.engine.now())) {
+      const result = this.engine.dispatch(
+        WORLD_ACTIONS.securityFallout,
+        this.actor,
+        null,
+        { account },
+      );
+
+      if (result.ok) {
+        this.handlers.onNotice?.(
+          'Security incident report',
+          'Somebody else\'s incident report has landed with your name in the '
+          + 'timeline. An authenticator was enrolled yesterday for a person '
+          + 'nobody checked the identity of, and it was not the person whose '
+          + 'account it was.',
+        );
+      }
     }
   }
 
