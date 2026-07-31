@@ -58,7 +58,7 @@ export const MFA_REREGISTER: WorldTicket = {
       value: true,
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 5, money: 18 },
+    reward: { reputation: 5 },
     kb_ref: 'kb/second-factor',
   },
   cause: 'The second factor was bound to a phone that has been traded in. '
@@ -155,7 +155,7 @@ export const MUST_CHANGE_PASSWORD: WorldTicket = {
       value: false,
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 3, money: 10 },
+    reward: { reputation: 3 },
     kb_ref: 'kb/three-ways-an-account-says-no',
   },
   cause: 'The password policy expired his credential overnight, and the box on '
@@ -261,7 +261,7 @@ export const STALE_DEVICE_RELOCK: WorldTicket = {
       ],
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 6, money: 22 },
+    reward: { reputation: 6 },
     kb_ref: 'kb/the-account-that-relocks',
   },
   cause: 'The scanning tablet in the warehouse cupboard still holds the '

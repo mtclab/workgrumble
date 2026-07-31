@@ -48,7 +48,7 @@ fn service_ticket(id: &str, sla_ticks: i64, setup_status: &str) -> Json {
             "value": "running",
         },
         "sla_ticks": sla_ticks,
-        "reward": { "reputation": 2, "money": 10 },
+        "reward": { "reputation": 2 },
         "kb_ref": "kb/print-spooler",
     })
 }

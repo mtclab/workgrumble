@@ -96,7 +96,7 @@ fn lockout_ticket() -> Json {
             "value": false,
         },
         "sla_ticks": 12,
-        "reward": { "reputation": 1, "money": 1 },
+        "reward": { "reputation": 1 },
         "kb_ref": "kb/lockout",
     })
 }

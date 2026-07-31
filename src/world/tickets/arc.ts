@@ -70,7 +70,7 @@ export const VACUUM_TUESDAY: WorldTicket = {
       value: true,
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 4, money: 14 },
+    reward: { reputation: 4 },
     kb_ref: 'kb/the-same-thing-every-week',
   },
   cause: 'The printer lost power at four minutes to five yesterday evening. '
@@ -149,7 +149,7 @@ export const VACUUM_THURSDAY: WorldTicket = {
       ],
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 7, money: 26 },
+    reward: { reputation: 7 },
     kb_ref: 'kb/the-same-thing-every-week',
   },
   cause: 'The cleaner\'s trolley needs a socket on Tuesday and Thursday '

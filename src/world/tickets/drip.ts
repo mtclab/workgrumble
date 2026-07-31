@@ -60,7 +60,7 @@ export const TIDIED_LIST: WorldTicket = {
       kind: 'member_of',
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 3, money: 12 },
+    reward: { reputation: 3 },
     kb_ref: 'kb/print-permissions',
   },
   cause: 'Bev\'s account was taken out of Print Users during a tidy-up in '

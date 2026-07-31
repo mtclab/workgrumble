@@ -327,6 +327,17 @@ export const PENCE_PER_POUND = 100;
 
 /** Eight hours at a rate nobody has renegotiated since the refurbishment. */
 export const DAY_RATE_PENCE = 9_600;
+/**
+ * What a closed ticket is worth on the payslip: the same £2.50 for all of
+ * them, whatever it was.
+ *
+ * FLAT, and deliberately. A ticket is written with a `reward.reputation` that
+ * IS weighted - the office-wide outage is worth more than a rotated screen,
+ * and the meters read it - but the money is not, because the joke of the
+ * payslip is that the company does not distinguish. Twelve minutes on a
+ * printer and half a day on a certificate pay the same, and both are less than
+ * the desk levy.
+ */
 export const CLOSED_TICKET_BONUS_PENCE = 250;
 export const BREACH_DEDUCTION_PENCE = 400;
 

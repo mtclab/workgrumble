@@ -57,7 +57,7 @@ export const BOSS_PHONE: WorldTicket = {
     // Four hours, which is what the ladder gives a P4 that arrives at eleven -
     // and comfortably longer than the eleven o'clock he keeps mentioning.
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 1, money: 5 },
+    reward: { reputation: 1 },
     kb_ref: 'kb/mail-on-a-phone',
   },
   cause: 'Desmond\'s account came out of VPN Users in a group tidy-up, and the '

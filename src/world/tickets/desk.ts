@@ -54,7 +54,7 @@ export const FLAT_MOUSE: WorldTicket = {
       value: 100,
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 2, money: 8 },
+    reward: { reputation: 2 },
     kb_ref: 'kb/reading-the-error',
   },
   cause: 'The mouse batteries are flat. The machine is fine and has been fine '
@@ -118,7 +118,7 @@ export const COVERUP_BACKUP: WorldTicket = {
       value: SERVICE_STATUS.running,
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 4, money: 14 },
+    reward: { reputation: 4 },
     kb_ref: 'kb/event-log',
   },
   cause: 'The backup agent was stopped from the console on ACCTS-03, on a '
@@ -205,7 +205,7 @@ export const HR_REPORT_MACRO: WorldTicket = {
       ],
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 4, money: 16 },
+    reward: { reputation: 4 },
     kb_ref: 'kb/known-since-spring',
   },
   cause: 'The scheduled reports service on the file server has been stopped '
@@ -335,7 +335,7 @@ export const PHISHING_REPORT: WorldTicket = {
       ],
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 5, money: 18 },
+    reward: { reputation: 5 },
     kb_ref: 'kb/somebody-reported-a-phish',
   },
   cause: 'A lookalike domain, and a quarantine rule somebody wrote in March, '

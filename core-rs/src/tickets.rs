@@ -151,20 +151,21 @@ impl TicketDef {
                 EngineError::new("Ticket sla_ticks must be a non-negative safe integer.")
             })?;
 
+        // Reputation, and only reputation. A ticket used to carry a `money`
+        // reward as well; nothing ever read it, because a closed ticket is
+        // worth a flat bonus on the payslip rather than its own price, so the
+        // field could be edited from 30 to 5 without moving a single number a
+        // player sees. Requiring it here was the last thing keeping it alive.
         let reward = object.get("reward").and_then(Json::as_object);
         let has_reward = reward.is_some_and(|reward| {
             reward
                 .get("reputation")
                 .and_then(Json::as_f64)
                 .is_some_and(f64::is_finite)
-                && reward
-                    .get("money")
-                    .and_then(Json::as_f64)
-                    .is_some_and(f64::is_finite)
         });
 
         if !has_reward {
-            return refuse!("Ticket reward values must be finite numbers.");
+            return refuse!("Ticket reward must carry a finite \"reputation\".");
         }
 
         if object.get("kb_ref").and_then(Json::as_str).is_none() {
@@ -321,7 +322,7 @@ mod tests {
                 "value": "running",
             },
             "sla_ticks": 10,
-            "reward": { "reputation": 1, "money": 2 },
+            "reward": { "reputation": 1 },
             "kb_ref": "kb/x",
         })
     }
@@ -371,7 +372,7 @@ mod tests {
                 }),
             ),
             (
-                "Ticket reward values must be finite numbers.",
+                "Ticket reward must carry a finite \"reputation\".",
                 json!({
                     "id": "t", "archetype": "flood",
                     "flavor": { "title": "a", "body": "b" }, "reporter": "p", "setup": [],
@@ -385,7 +386,7 @@ mod tests {
                     "id": "t", "archetype": "flood",
                     "flavor": { "title": "a", "body": "b" }, "reporter": "p", "setup": [],
                     "resolved_when": { "op": "exists", "kind": "person" },
-                    "sla_ticks": 1, "reward": { "reputation": 1, "money": 1 },
+                    "sla_ticks": 1, "reward": { "reputation": 1 },
                 }),
             ),
         ];

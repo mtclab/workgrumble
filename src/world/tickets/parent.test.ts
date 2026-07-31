@@ -110,7 +110,7 @@ function ticket(id: string, resolvedWhen: Expr): TicketDef {
     setup: [],
     resolved_when: resolvedWhen,
     sla_ticks: 240,
-    reward: { reputation: 1, money: 1 },
+    reward: { reputation: 1 },
     kb_ref: 'kb/power-cycle',
   };
 }

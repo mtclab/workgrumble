@@ -425,7 +425,7 @@ const DECORATIVE_FIX: WorldTicket = {
       value: true,
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 1, money: 1 },
+    reward: { reputation: 1 },
     kb_ref: 'kb/the-same-thing-every-week',
   } satisfies TicketDef,
   cause: 'Nothing. It is a fixture.',

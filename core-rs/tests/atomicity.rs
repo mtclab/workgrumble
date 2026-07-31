@@ -95,7 +95,7 @@ fn harness() -> World {
                 "value": "running",
             },
             "sla_ticks": 500,
-            "reward": { "reputation": 2, "money": 10 },
+            "reward": { "reputation": 2 },
             "kb_ref": "kb/print-spooler",
         }))
         .expect("ticket");
@@ -206,7 +206,7 @@ fn a_ticket_that_cannot_spawn_leaves_its_setup_behind() {
             ],
             "resolved_when": { "op": "exists", "kind": "person" },
             "sla_ticks": 10,
-            "reward": { "reputation": 1, "money": 1 },
+            "reward": { "reputation": 1 },
             "kb_ref": "kb/doomed",
         }))
         .expect_err("the reporter does not exist");
@@ -336,7 +336,7 @@ fn a_refused_advance_leaves_the_clock_where_it_was() {
             "setup": [],
             "resolved_when": { "op": "exists", "kind": "machine" },
             "sla_ticks": 9_007_199_254_740_991_i64,
-            "reward": { "reputation": 1, "money": 1 },
+            "reward": { "reputation": 1 },
             "kb_ref": "kb/parked",
         }))
         .expect("ticket parked at the end of time");

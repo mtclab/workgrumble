@@ -58,7 +58,7 @@ export const MAILBOX_ACCESS: WorldTicket = {
       kind: 'has_access',
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 3, money: 12 },
+    reward: { reputation: 3 },
     kb_ref: 'kb/shared-mailbox-permissions',
   },
   cause: 'Nobody has ever granted him access. The mailbox is fine and the '
@@ -129,7 +129,7 @@ export const SENDAS_MISSING: WorldTicket = {
       kind: 'member_of',
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 4, money: 14 },
+    reward: { reputation: 4 },
     kb_ref: 'kb/shared-mailbox-permissions',
   },
   cause: 'Full Access lets somebody open a mailbox. Sending as it is a second '
@@ -192,7 +192,7 @@ export const LICENCE_EXHAUSTED: WorldTicket = {
       value: true,
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 5, money: 20 },
+    reward: { reputation: 5 },
     kb_ref: 'kb/licence-seats',
   },
   cause: 'Every seat in the pool is held, and one of them is held by an '

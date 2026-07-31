@@ -191,9 +191,20 @@ export interface TicketDef {
   setup: SetupOp[];
   resolved_when: Expr;
   sla_ticks: number;
+  /**
+   * What closing it is worth, and it is worth REPUTATION only.
+   *
+   * There used to be a `money` beside it, from 5 to 30 per ticket, and nothing
+   * anywhere read it: resolution credit is archetype-weighted reputation
+   * (`resolveCredit`), and the payslip pays a flat
+   * `CLOSED_TICKET_BONUS_PENCE` per ticket closed that day (`daySlip`). A
+   * difficult ticket's money could be edited from 30 to 5 and neither the
+   * gameplay, the payslip nor a single golden would notice - content that
+   * looked balanced and gated while being unable to affect anything. The flat
+   * bonus is the shipped design, so the dead half of the pair is gone.
+   */
   reward: {
     reputation: number;
-    money: number;
   };
   kb_ref: string;
 }

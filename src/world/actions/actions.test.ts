@@ -227,7 +227,7 @@ function createFixture(): WasmEngine {
       setup: [],
       resolved_when: resolvedWhen,
       sla_ticks: 600,
-      reward: { reputation: 1, money: 1 },
+      reward: { reputation: 1 },
       kb_ref: 'kb/fixture',
     };
     engine.registerTicket(def);

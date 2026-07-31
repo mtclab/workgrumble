@@ -69,7 +69,7 @@ export const DEMO_TICKET: TicketDef = {
     ],
   },
   sla_ticks: UNTRIAGED_SLA_TICKS,
-  reward: { reputation: 3, money: 12 },
+  reward: { reputation: 3 },
   kb_ref: 'kb/chassis-fan',
 };
 

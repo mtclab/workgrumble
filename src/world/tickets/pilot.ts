@@ -46,7 +46,7 @@ export const ROTATED_SCREEN: WorldTicket = {
       value: 0,
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 4, money: 15 },
+    reward: { reputation: 4 },
     kb_ref: 'kb/display-rotation',
   },
   cause: 'Somebody pressed the screen-rotation shortcut on SALES-02 and left '
@@ -148,7 +148,7 @@ export const LOCKED_ACCOUNT: WorldTicket = {
       value: false,
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 2, money: 8 },
+    reward: { reputation: 2 },
     kb_ref: 'kb/account-lockout',
   },
   cause: 'The lockout tripped this morning after five failed attempts and '
@@ -238,7 +238,7 @@ export const WEDGED_SPOOLER: WorldTicket = {
       ],
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 5, money: 20 },
+    reward: { reputation: 5 },
     kb_ref: 'kb/print-spooler',
   },
   cause: 'The spooler on PRINT-01 wedged on a malformed job and everything '
