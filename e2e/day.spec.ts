@@ -119,7 +119,9 @@ test('walks a day from the morning brief to the scorecard', async ({
   // there is, taken the moment the dispatch log was checkpointed.
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-load').click();
-  await expect(page.getByTestId('toast')).toContainText('Game loaded');
+  await expect(
+    page.getByTestId('toast').filter({ hasText: 'Game loaded' }),
+  ).toHaveCount(1);
   await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 2');
   await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
 });
@@ -164,7 +166,9 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-load').click();
-  await expect(page.getByTestId('toast')).toContainText('Game loaded');
+  await expect(
+    page.getByTestId('toast').filter({ hasText: 'Game loaded' }),
+  ).toHaveCount(1);
 
   // The same minute, in the same day, in the same state.
   await expect(page.getByTestId('sim-clock-time')).toHaveText('09:35');
