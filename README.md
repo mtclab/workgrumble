@@ -1,6 +1,8 @@
-# it-career-sim (working title)
+# Workgrumble
 
-Parody IT-career simulator in a fake-OS UI, in the browser. Start as a helpdesk drone, solve absurd-but-real tickets under SLA pressure, slack off without getting caught, and save up to quit and buy that farm.
+Parody IT-career simulator in a fake-OS UI, in the browser. Start as a helpdesk drone at Workgrumble Ltd, solve absurd-but-real tickets under SLA pressure, slack off without getting caught, and save up to quit and buy that farm.
+
+(The game is named after its own fictional employer - you do not work at the game, you work at Workgrumble.)
 
 - Design: `docs/DESIGN_POC.md`
 - Build plan: `docs/BUILD_PLAN.md`
