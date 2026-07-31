@@ -29,6 +29,7 @@ import {
   hydrateFromRetry,
   parseRetryRecord,
   recordFrom,
+  RETRY_KEY,
   RetrySlot,
   screensFrom,
 } from './retry';
@@ -147,7 +148,7 @@ describe('what a firing leaves behind', () => {
     expect(slot.take()).toBeNull();
 
     // And rubbish in the slot is a week that starts fresh, not a crash.
-    storage.setItem('it-career-sim/retry', '{not json');
+    storage.setItem(RETRY_KEY, '{not json');
     expect(slot.take()).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { isLunchtime, shiftStartTick } from '../../world/day';
 import { FIELDS } from '../../world/fields';
 import { latestTick, type MailThread, visibleMail } from '../../world/mail';
 import { findWorldTicket } from '../../world/tickets';
+import { dayScript, isWeekDay } from '../../world/week';
 import { formatSimTime } from '../clock-format';
 import type { AppDef, AppInstance, GameApi } from './types';
 import {
@@ -184,7 +185,12 @@ export const BRIEF_APP: AppDef = {
       const state = api.day.state();
       const display = formatSimTime(api.clock.now());
 
-      heading.textContent = `Day ${String(day)}, and it is ${display.time}`;
+      // The day has a name as well as a number now: five of them, and the
+      // last one has a conversation at three o'clock in it.
+      const named = isWeekDay(day) ? `${dayScript(day).label}, ` : '';
+      heading.textContent = `Day ${String(day)}, ${named}and it is ${
+        display.time
+      }`;
       stamp.textContent = state === 'morning_brief'
         ? 'The shift is at 09:00. Lunch is at 12:00 and lasts exactly as long '
           + 'as it is allowed to.'

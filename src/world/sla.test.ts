@@ -17,7 +17,13 @@ import { COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
 import { SLA_TARGETS, UNTRIAGED_PRIORITY } from './priority';
 import { DAY_ACTIONS } from './actions';
-import { serviceDeadline, serviceMinutesBetween } from './hours';
+import {
+  countsAgainstSla,
+  MINUTES_PER_DAY,
+  serviceDeadline,
+  serviceMinutesAt,
+  serviceMinutesBetween,
+} from './hours';
 import { createWorldSession } from './session';
 import { spawnWorldTicket } from './tickets';
 import {
@@ -310,6 +316,23 @@ describe('hold reasons', () => {
  * ticket is lying and there is no way to tell which from inside the app.
  */
 describe('business hours', () => {
+  /**
+   * The rule, said once and computed once, checked against each other.
+   *
+   * `countsAgainstSla` is the sentence - the minute the clock arrives at is
+   * inside the shift - and `serviceMinutesAt` is the arithmetic every deadline
+   * is built out of. A day walked minute by minute has to agree with itself,
+   * or one of the two is a comment.
+   */
+  it('adds a minute exactly when the minute was one somebody worked', () => {
+    for (let tick = 1; tick <= 2 * MINUTES_PER_DAY; tick += 1) {
+      expect(
+        serviceMinutesAt(tick) - serviceMinutesAt(tick - 1),
+        `tick ${String(tick)}`,
+      ).toBe(countsAgainstSla(tick) ? 1 : 0);
+    }
+  });
+
   /** The desk is empty outside 09:00-17:00, so nothing is owed there. */
   it('counts the shift and nothing else', () => {
     // Tick 0 is 08:00. Nothing is owed until nine.

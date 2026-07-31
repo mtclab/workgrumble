@@ -31,7 +31,6 @@ import {
   type DayLedger,
   dayLedger,
   dripWindow,
-  minuteOfDay,
   SHIFT_END_MINUTE,
   SHIFT_START_MINUTE,
   shiftStartTick,
@@ -430,9 +429,4 @@ export function weekScorecard(
     reputation: totals.reputation,
     outcome: totals.outcome,
   };
-}
-
-/** Whether a tick is the minute the review lands on. */
-export function isReviewTick(tick: number, day: number): boolean {
-  return isReviewDay(day) && minuteOfDay(tick) === REVIEW_MINUTE;
 }
