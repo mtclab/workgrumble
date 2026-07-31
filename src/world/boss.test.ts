@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BOSS_TRAP_TICKET,
   buildPatrolSchedule,
+  type PatrolSchedule,
   caughtBy,
   EMPTIES_TOLERATED,
   emptiesNoticed,
@@ -30,7 +31,7 @@ import {
   visitsArrivingBetween,
   visitsTelegraphingBetween,
 } from './boss';
-import { isLunchtime, shiftWindow } from './day';
+import { isLunchtime, lunchWindow, shiftWindow } from './day';
 import { WORLD_SEED } from './session';
 
 const SEEDS = [WORLD_SEED, 1, 7, 0x5eed_1234, 999_331];
@@ -112,15 +113,61 @@ describe('the patrol schedule', () => {
       expect(patrolsClearOfLunch(schedule)).toBe(true);
 
       for (const visit of schedule.visits) {
+        // Half-open: the departure tick is the minute he is already gone.
         for (
           let tick = visit.telegraphTick;
-          tick <= visit.departureTick;
+          tick < visit.departureTick;
           tick += 1
         ) {
           expect(isLunchtime(tick), `tick ${String(tick)}`).toBe(false);
         }
       }
     }
+  });
+});
+
+/**
+ * The lunch invariant is checked by the builder itself, so how it reads the
+ * presence window decides whether a perfectly good schedule is thrown out. A
+ * round that ENDS as lunch starts never happened during lunch - reading
+ * `departureTick` as inclusive would refuse it, and the refusal is an error
+ * on a seed nobody would ever reproduce on purpose.
+ */
+describe('the lunch invariant', () => {
+  const lunch = lunchWindow(1);
+
+  function scheduleWith(arrivalTick: number): PatrolSchedule {
+    return {
+      day: 1,
+      shift: shiftWindow(1),
+      visits: [{
+        index: 0,
+        telegraphTick: arrivalTick - TELEGRAPH_TICKS,
+        arrivalTick,
+        departureTick: arrivalTick + PRESENCE_TICKS,
+      }],
+      pings: [],
+    };
+  }
+
+  it('reads the presence window half-open, like the rest of the day', () => {
+    expect(patrolsClearOfLunch(scheduleWith(lunch.from - PRESENCE_TICKS)))
+      .toBe(true);
+    expect(patrolsClearOfLunch(scheduleWith(lunch.from))).toBe(false);
+    expect(patrolsClearOfLunch(scheduleWith(lunch.to + TELEGRAPH_TICKS)))
+      .toBe(true);
+    // Footsteps inside lunch count too: the reaction window is part of the
+    // round, so a man who arrives the second lunch ends set off during it.
+    expect(patrolsClearOfLunch(scheduleWith(lunch.to))).toBe(false);
+  });
+
+  it('catches a ping inside the half hour as well', () => {
+    const withPing: PatrolSchedule = {
+      ...scheduleWith(lunch.to + TELEGRAPH_TICKS),
+      pings: [{ index: 0, tick: lunch.from + 5, line: 'Quick one.', ticketId: null }],
+    };
+
+    expect(patrolsClearOfLunch(withPing)).toBe(false);
   });
 });
 

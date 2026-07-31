@@ -245,12 +245,23 @@ export function buildPatrolSchedule(day: number, seed: number): PatrolSchedule {
     ticketId: index === 0 ? BOSS_TRAP_TICKET : null,
   }));
 
-  return {
+  const schedule: PatrolSchedule = {
     day,
     shift,
     visits: Object.freeze(visits),
     pings: Object.freeze(pings),
   };
+
+  // The one invariant a jitter can quietly break. A bad seed would not look
+  // like a bug: it would look like the lunch tutorial being a lie one day in
+  // twenty, which is exactly the kind of thing nobody reports.
+  if (!patrolsClearOfLunch(schedule)) {
+    throw new Error(
+      `The patrol schedule for day ${String(day)} walks through lunch.`,
+    );
+  }
+
+  return schedule;
 }
 
 /* -- reading the schedule ------------------------------------------------- */
@@ -341,17 +352,27 @@ export function emptiesNoticed(cans: number): boolean {
 }
 
 /**
- * A last invariant the day owes the tutorial: nothing about a patrol may
- * happen inside the lunch window. Asserted rather than assumed, because the
- * jitter is what decides where a round lands and a bad seed is a silent
- * regression - it would simply catch somebody at lunch one day in twenty.
+ * The invariant the day owes the tutorial: nothing about a patrol may happen
+ * inside the lunch window. `buildPatrolSchedule` checks its own work with it,
+ * and the unit suite checks it across a spread of seeds and days.
  */
 export function patrolsClearOfLunch(
   schedule: Readonly<PatrolSchedule>,
 ): boolean {
-  return schedule.visits.every(
-    (visit) => !isLunchtime(visit.telegraphTick)
-      && !isLunchtime(visit.arrivalTick)
-      && !isLunchtime(visit.departureTick),
-  ) && schedule.pings.every((ping) => !isLunchtime(ping.tick));
+  // Half-open, like every other window in the day: `departureTick` is the
+  // minute he is already gone, so a round that ends exactly as lunch starts
+  // never happened during lunch. Reading it as inclusive would refuse a
+  // perfectly good schedule - and the refusal is a thrown error.
+  const during = (visit: Readonly<BossVisit>): boolean => {
+    for (let tick = visit.telegraphTick; tick < visit.departureTick; tick += 1) {
+      if (isLunchtime(tick)) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  return schedule.visits.every((visit) => !during(visit))
+    && schedule.pings.every((ping) => !isLunchtime(ping.tick));
 }
