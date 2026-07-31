@@ -47,6 +47,24 @@ function isVisible(element: HTMLElement): boolean {
   return element.hidden === false;
 }
 
+/**
+ * Whether the player is in the middle of a sentence.
+ *
+ * The one exception to giving a scene the keyboard. A caught scene arriving
+ * mid-command in the terminal, or mid-name in the directory search, must not
+ * take the cursor out of the box that has half a word in it - the words would
+ * carry on being typed into a button. The boss key has no such exception and
+ * should not: that one is a panic key, and a panic key that waits for a field
+ * to lose focus is not one.
+ */
+function typingSomewhere(): boolean {
+  const active = document.activeElement;
+
+  return (active instanceof HTMLInputElement && active.type !== 'checkbox')
+    || active instanceof HTMLTextAreaElement
+    || (active instanceof HTMLElement && active.isContentEditable);
+}
+
 function menuItem(
   label: string,
   icon: string,
@@ -455,6 +473,14 @@ export class Desktop {
 
     if (intent !== undefined) {
       this.renderer.deliverIntent(windowIdFor(definition), intent);
+    }
+
+    // The day's own screens are put up BY the day - a manager in the doorway,
+    // a review at three - so the keyboard goes to them. Not the tools: those
+    // are opened deliberately, and stealing the cursor out of a window
+    // somebody chose to leave it in is its own rudeness.
+    if (definition.desktop === false && !typingSomewhere()) {
+      this.renderer.focusPrimaryControl(windowIdFor(definition));
     }
   }
 

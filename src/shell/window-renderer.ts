@@ -260,6 +260,46 @@ export class WindowRenderer {
   }
 
   /**
+   * Puts the keyboard inside a window, on the control it is mostly about.
+   *
+   * The day's own screens are put on the desktop BY the day - a manager in the
+   * doorway, a review at three o'clock - and a keyboard player was left to Tab
+   * in from the top of the document to reach "Take it on the chin". The
+   * primary button first, because that is the sentence the window is asking;
+   * then any control it does have (the fridge's button is disabled all week,
+   * and a disabled button cannot hold a cursor); and the close button last,
+   * which every window has and which is never a dead end.
+   */
+  public focusPrimaryControl(windowId: string): void {
+    const rendered = this.rendered.get(windowId);
+
+    if (rendered === undefined) {
+      return;
+    }
+
+    const content = rendered.element.querySelector('.window-content');
+    const enabled = content === null
+      ? undefined
+      : [
+        ...content.querySelectorAll('.os-button-primary'),
+        ...content.querySelectorAll('button'),
+      ].find((candidate) => (
+        candidate instanceof HTMLButtonElement && !candidate.disabled
+      ));
+
+    if (enabled instanceof HTMLButtonElement) {
+      enabled.focus();
+      return;
+    }
+
+    const close = rendered.element.querySelector('.window-close');
+
+    if (close instanceof HTMLButtonElement) {
+      close.focus();
+    }
+  }
+
+  /**
    * The window that currently holds `node`, if any. The desktop asks before a
    * paint so it can follow keyboard focus out of a window it is about to hide.
    */
