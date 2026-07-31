@@ -1576,10 +1576,18 @@ test('walks every function of a probation week that goes well', async ({
   });
 
   await step('cmd.verify', async () => {
-    await runCommand(page, 'verify praval');
+    // A check is a CHANNEL. The bare verb used to write down that somebody had
+    // been proved to be themselves on the strength of nothing at all.
+    await runCommand(page, 'verify sounded-right praval');
     await expect(page.getByTestId('cmd-output'))
-      .toContainText('Identity check recorded');
-    await runCommand(page, 'verify nobodyhere');
+      .toContainText('is not a way of proving who somebody is');
+    await runCommand(page, 'verify inperson praval');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('proves nothing about whoever is on the phone');
+    await runCommand(page, 'verify callback praval');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('a callback to the number on file');
+    await runCommand(page, 'verify callback nobodyhere');
     await expect(page.getByTestId('cmd-output')).toContainText('No account matches');
   });
 
@@ -1587,6 +1595,11 @@ test('walks every function of a probation week that goes well', async ({
     await runCommand(page, 'mfa praval');
     await expect(page.getByTestId('cmd-output'))
       .toContainText('New authenticator enrolled');
+    // A recovery owes both of these, and neither used to happen.
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('previous binding has been invalidated');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('recovery notice');
     await expectClosed(page, 'mfa-reregister');
     // And now there IS a factor to sign out of everything, which is the other
     // half of the verb the refusal above was about.
@@ -2105,9 +2118,12 @@ test('walks the thirty seconds of checking that stops the post', async ({
   await step('chat.option-verify', async () => {
     await openFromStartMenu(page, 'chat');
     await page.getByTestId('chat-person-priya').click();
-    await chatOption(page, /confirm her payroll number/);
-    await chatOption(page, /having it and hearing it are different things/);
+    await chatOption(page, /how you are meant to prove she is her/);
+    // She offers the payroll number, the manager and the desk. None of them is
+    // evidence, and the option that says so is the one that leads anywhere.
     await expect(page.getByTestId('chat-transcript')).toContainText('4471');
+    await chatOption(page, /none of that is evidence/);
+    await chatOption(page, /ring her back on the number the directory holds/);
     await chatOption(page, /Enrol the new phone now that you know who she is/);
     await expectClosed(page, 'mfa-reregister');
   });

@@ -117,11 +117,12 @@ export const COMMANDS: readonly CommandSpec[] = [
   },
   {
     name: 'verify',
-    usage: 'verify <account>',
-    summary: 'Record that you checked who you were talking to.',
-    minArgs: 1,
-    maxArgs: 4,
+    usage: 'verify <callback|code|inperson|contact> <account>',
+    summary: 'Record HOW you proved who you were talking to.',
+    minArgs: 2,
+    maxArgs: 5,
     joined: true,
+    subcommand: true,
   },
   {
     name: 'mfa',

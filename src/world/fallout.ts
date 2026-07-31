@@ -27,6 +27,57 @@ import { FIELDS, LOCKOUT_THRESHOLD } from './fields';
 export const IDENTITY_VERIFICATION_TICKS = SHIFT_MINUTES;
 
 /**
+ * The ways somebody at this desk may prove who they are before an
+ * authenticator is bound to a new device.
+ *
+ * All four are the same shape and it is the shape that matters: the evidence
+ * was arranged BEFORE the call, and it is held by the account rather than
+ * offered by the caller. A payroll number, a hiring manager and the desk
+ * somebody sits at are none of those things - they are on a payslip, a company
+ * blog and a seating plan, and the person ringing at ten to five in a hurry can
+ * have all three.
+ *
+ * The list is short on purpose. A desk with nine approved channels has no
+ * approved channels.
+ */
+export const VERIFICATION_METHODS = {
+  /** Ring them back on the number the directory already holds. */
+  callback: 'registered_callback',
+  /** A one-time code issued at enrolment, before anybody needed it. */
+  recoveryCode: 'recovery_code',
+  /** They are standing in front of you with a pass on. */
+  inPerson: 'in_person',
+  /** A person nominated in advance, confirming it is them. */
+  recoveryContact: 'recovery_contact',
+} as const;
+
+export type VerificationMethod =
+  (typeof VERIFICATION_METHODS)[keyof typeof VERIFICATION_METHODS];
+
+export const VERIFICATION_METHOD_LABELS: Readonly<
+  Record<VerificationMethod, string>
+> = {
+  [VERIFICATION_METHODS.callback]: 'a callback to the number on file',
+  [VERIFICATION_METHODS.recoveryCode]: 'the recovery code issued at enrolment',
+  [VERIFICATION_METHODS.inPerson]: 'an in-person check at the desk',
+  [VERIFICATION_METHODS.recoveryContact]: 'a confirmed recovery contact',
+};
+
+export function isVerificationMethod(
+  value: unknown,
+): value is VerificationMethod {
+  return typeof value === 'string'
+    && Object.values(VERIFICATION_METHODS).some((method) => method === value);
+}
+
+/** What the account carries: one approved channel per line. */
+export function verificationChannels(
+  methods: readonly VerificationMethod[],
+): string {
+  return methods.join('\n');
+}
+
+/**
  * How often something with a stored password tries it.
  *
  * Five minutes, which is short enough that a player who unlocks the account and

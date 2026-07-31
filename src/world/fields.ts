@@ -166,6 +166,42 @@ export const FIELDS = {
   mfaEnrolledAt: 'mfa_enrolled_at',
   identityVerifiedAt: 'identity_verified_at',
   /**
+   * WHICH approved method the check was made with, written beside the minute.
+   *
+   * A stamp on its own says a box was ticked. The verb used to write only the
+   * stamp, and the KB used to call a payroll number, a hiring manager and a
+   * desk "something only they have" - three facts an attacker reads off a
+   * signature block, a company blog and a seating plan. So the check now
+   * NAMES its channel and the world holds the answer, because "how did you
+   * verify them" is the question the incident report asks, and "verified" has
+   * never been an answer to it.
+   */
+  identityVerifiedMethod: 'identity_verified_method',
+  /**
+   * The identity-proofing channels this account actually has registered, one
+   * per line.
+   *
+   * Prearranged, on the record, and a property of the ACCOUNT rather than of
+   * the conversation - which is the whole distinction the lesson turns on. A
+   * caller can supply a payroll number; a caller cannot supply the number the
+   * directory already holds for that person, a recovery code issued before
+   * they rang, or a face at the desk.
+   */
+  verificationChannels: 'verification_channels',
+  /**
+   * The minute the OLD binding was explicitly destroyed, and the minute the
+   * account owner was told an authenticator had been re-enrolled.
+   *
+   * Two separate facts, both written by the enrolment. The KB used to say the
+   * old binding "is gone the moment the new one exists", which is a hopeful
+   * description of a directory rather than a control: the invalidation is a
+   * thing somebody does, and account-recovery notification is a thing the
+   * account owner is owed - through a channel already on file, so that a
+   * recovery nobody asked for is a recovery they hear about.
+   */
+  mfaPreviousRevokedAt: 'mfa_previous_revoked_at',
+  recoveryNoticeAt: 'recovery_notice_at',
+  /**
    * Whether anybody had checked, AT THE MOMENT the authenticator was bound.
    *
    * The latch is the whole of the lesson. `identityVerifiedAt` is a field that

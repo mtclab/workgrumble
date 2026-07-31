@@ -106,7 +106,7 @@ test('the new phone is enrolled after somebody checks who she is', async ({
   await expect(page.getByTestId('cmd-output'))
     .toContainText('the fix for that is a new enrolment');
 
-  await runCommand(page, 'verify praval');
+  await runCommand(page, 'verify callback praval');
   await expect(page.getByTestId('cmd-output'))
     .toContainText('Identity check recorded');
   await runCommand(page, 'mfa praval');

@@ -14,6 +14,9 @@ import { HELPDESK_ACTIONS } from './ids';
 
 const GROUP_PARAM = 'group';
 
+/** Which approved channel the identity was proved through. */
+export const METHOD_PARAM = 'method';
+
 const MEMBER_OF_GROUP = {
   pred: 'has_edge',
   from: TARGET,
@@ -192,6 +195,29 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
     tier: HELPDESK_TIER,
     validate: [
       ...targetGuards('account'),
+      // A check is a METHOD, and the method has to be one this account
+      // actually has registered. Without this the verb wrote a stamp for
+      // nothing: a player typed a word during an attacker's phone call and the
+      // world recorded that somebody had been proved to be themselves.
+      {
+        when: { pred: 'param_string_missing', param: METHOD_PARAM },
+        reason: 'An identity check is a method, not a word. Say how you '
+          + 'proved it: a callback to the number on file, the recovery code '
+          + 'issued at enrolment, an in-person check, or a recovery contact '
+          + 'who was nominated before any of this started.',
+      },
+      {
+        when: not({
+          pred: 'line_in_field',
+          node: TARGET,
+          field: FIELDS.verificationChannels,
+          value: { param: METHOD_PARAM },
+        }),
+        reason: `There is no "{v:${METHOD_PARAM}}" on file for `
+          + '"{target.label}", so it proves nothing about whoever is on the '
+          + 'phone. What an account HAS was arranged before the call; what a '
+          + 'caller can tell you was not.',
+      },
       // TODAY, and the word is load-bearing. The refusal used to read any
       // stamp at all, so a check done on Monday refused a check on Wednesday
       // and left the player with an enrolment they could not verify - which is
@@ -203,9 +229,9 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
           field: FIELDS.identityVerifiedAt,
           ticks: IDENTITY_VERIFICATION_TICKS,
         },
-        reason: 'You have already checked who "{target.label}" is today. '
-          + 'Asking them their payroll number twice is not twice the security, '
-          + 'it is one security and one irritated person.',
+        reason: 'You have already checked who "{target.label}" is today, and '
+          + 'the way you did it is on the record. Doing it twice is not twice '
+          + 'the security, it is one security and one irritated person.',
       },
     ],
     apply: [
@@ -214,6 +240,15 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
         node: TARGET,
         field: FIELDS.identityVerifiedAt,
         value: { now: true },
+      },
+      // The answer to "how did you verify them", written where a report can
+      // read it. A stamp with no method behind it is the thing the incident
+      // report cannot use.
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.identityVerifiedMethod,
+        value: { param: METHOD_PARAM },
       },
     ],
   },
@@ -246,6 +281,12 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
     // can be written at any time - verifying the next morning used to cancel a
     // consequence that had already been earned, and a speculative check on
     // Monday used to excuse an enrolment on Wednesday.
+    //
+    // Two things it now also does, because a re-enrolment is an account
+    // RECOVERY and both are what a recovery owes: the old binding is
+    // explicitly destroyed rather than assumed to have evaporated, and the
+    // account owner is told through a channel already on file. The second is
+    // the only control that survives a desk being talked into the first.
     apply: [
       {
         op: 'set_field',
@@ -257,6 +298,18 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
         op: 'set_field',
         node: TARGET,
         field: FIELDS.mfaEnrolledAt,
+        value: { now: true },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.mfaPreviousRevokedAt,
+        value: { now: true },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.recoveryNoticeAt,
         value: { now: true },
       },
       {

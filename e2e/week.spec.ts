@@ -173,7 +173,7 @@ test('passes the review, opens the beer and reads the week back', async ({
   await runCommand(page, 'licence take cpeach');
   await runCommand(page, 'licence give rtulliver');
   await expect(page.getByTestId('cmd-output')).toContainText('Seat assigned');
-  await runCommand(page, 'verify praval');
+  await runCommand(page, 'verify callback praval');
   await runCommand(page, 'mfa praval');
   await expect(page.getByTestId('cmd-output'))
     .toContainText('New authenticator enrolled');

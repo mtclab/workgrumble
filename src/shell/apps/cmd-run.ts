@@ -2,6 +2,11 @@ import type { ReadOnlyGraphNode } from '../../engine-api';
 import type { NodeKind } from '../../engine-api';
 import { HELPDESK_ACTIONS } from '../../world/actions';
 import { COMPANY } from '../../world/company';
+import {
+  VERIFICATION_METHOD_LABELS,
+  VERIFICATION_METHODS,
+  type VerificationMethod,
+} from '../../world/fallout';
 import { DEVICE_TYPES, FIELDS, isRotation } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import {
@@ -421,17 +426,33 @@ function dispatchLines(
 }
 
 /**
+ * How the terminal spells the four approved identity-proofing channels.
+ *
+ * Short words because a player types them, and a fixed list because the point
+ * of an approved channel is that it is a list. `verify praval` used to be the
+ * whole command, which recorded that somebody had been proved to be themselves
+ * on the strength of nothing at all.
+ */
+const VERIFY_SUBCOMMANDS: Readonly<Record<string, VerificationMethod>> = {
+  callback: VERIFICATION_METHODS.callback,
+  code: VERIFICATION_METHODS.recoveryCode,
+  inperson: VERIFICATION_METHODS.inPerson,
+  contact: VERIFICATION_METHODS.recoveryContact,
+};
+
+/**
  * The three account verbs the modern half of the week needs, and the sentences
  * they answer with.
  *
  * `verify` is the one that changes nothing anybody can see. That is the point:
- * it writes down that a human being checked, on a ticket, at a minute, and the
+ * it writes down HOW a human being checked, on a ticket, at a minute, and the
  * only thing it ever affects is what a report says about you a day later.
  */
 function accountVerbLines(
   api: GameApi,
   verb: 'verify' | 'mfa' | 'revoke',
   query: string,
+  method = '',
 ): CommandResult {
   const found = accountOf(api, query);
 
@@ -442,18 +463,33 @@ function accountVerbLines(
   const label = labelOf(found.node);
 
   switch (verb) {
-    case 'verify':
+    case 'verify': {
+      const chosen = VERIFY_SUBCOMMANDS[method];
+
+      if (chosen === undefined) {
+        return lines(
+          `"${method}" is not a way of proving who somebody is.`,
+          `Pick one of: ${Object.keys(VERIFY_SUBCOMMANDS).join(', ')}.`,
+          'What an account HAS was arranged before the call. What a caller',
+          'can tell you was not, however much of it they know.',
+        );
+      }
+
       return dispatchLines(
         api,
         HELPDESK_ACTIONS.accountVerifyIdentity,
         found.node.id,
-        {},
+        { method: chosen },
         [
-          `Identity check recorded against ${label}.`,
+          `Identity check recorded against ${label}: ${
+            VERIFICATION_METHOD_LABELS[chosen]
+          }.`,
           'Nothing else about the account has changed, which is the whole of',
-          'what this verb is for.',
+          'what this verb is for - and the METHOD is on the record, because',
+          '"verified" is not an answer to how.',
         ],
       );
+    }
     case 'mfa':
       return dispatchLines(
         api,
@@ -462,8 +498,11 @@ function accountVerbLines(
         {},
         [
           `New authenticator enrolled for ${label}.`,
-          'The old binding is gone. Whoever holds the new one is, as far as',
-          'this directory is concerned, them.',
+          'The previous binding has been invalidated, and a recovery notice',
+          'has gone to the address on file - so if this was not them, they',
+          'find out today rather than in somebody else\'s report.',
+          'Whoever holds the new one is, as far as this directory is',
+          'concerned, them.',
         ],
       );
     default:
@@ -1015,7 +1054,7 @@ export function executeCommand(
 
   if (parsed.spec.name === 'verify' || parsed.spec.name === 'mfa'
     || parsed.spec.name === 'revoke') {
-    return accountVerbLines(api, parsed.spec.name, parsed.query);
+    return accountVerbLines(api, parsed.spec.name, parsed.query, parsed.sub);
   }
 
   if (parsed.spec.name === 'licence') {

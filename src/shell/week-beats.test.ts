@@ -26,6 +26,7 @@ import {
 import { COMPANY_IDS } from '../world/company';
 import { MINUTES_PER_DAY, shiftEndTick, tickAtMinute } from '../world/day';
 import { EVENT_IDS, readEventLog } from '../world/events';
+import { VERIFICATION_METHODS } from '../world/fallout';
 import { FIELDS, LOCKOUT_THRESHOLD } from '../world/fields';
 import { visibleMail } from '../world/mail';
 import { createWorldSession } from '../world/session';
@@ -125,6 +126,7 @@ describe('the shortcut on the new phone', () => {
         scene,
         HELPDESK_ACTIONS.accountVerifyIdentity,
         COMPANY_IDS.priyaAccount,
+        { method: VERIFICATION_METHODS.callback },
       );
     }
 
@@ -236,6 +238,7 @@ describe('the shortcut on the new phone', () => {
       scene,
       HELPDESK_ACTIONS.accountVerifyIdentity,
       COMPANY_IDS.priyaAccount,
+      { method: VERIFICATION_METHODS.callback },
     );
     expect(
       scene.engine.graph.getField(
@@ -301,6 +304,7 @@ describe('the shortcut on the new phone', () => {
       scene,
       HELPDESK_ACTIONS.accountVerifyIdentity,
       COMPANY_IDS.priyaAccount,
+      { method: VERIFICATION_METHODS.callback },
     );
 
     while (scene.driver.day() < 3) {
@@ -317,6 +321,7 @@ describe('the shortcut on the new phone', () => {
       scene,
       HELPDESK_ACTIONS.accountVerifyIdentity,
       COMPANY_IDS.priyaAccount,
+      { method: VERIFICATION_METHODS.callback },
     );
     dispatch(
       scene,
@@ -339,6 +344,7 @@ describe('the shortcut on the new phone', () => {
       scene,
       HELPDESK_ACTIONS.accountVerifyIdentity,
       COMPANY_IDS.priyaAccount,
+      { method: VERIFICATION_METHODS.callback },
     );
 
     while (scene.driver.day() < 3) {

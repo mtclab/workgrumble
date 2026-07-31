@@ -80,7 +80,15 @@ function fixtureSetup(): readonly SetupOp[] {
   addNode(ops, {
     id: 'account:ada',
     kind: 'account',
-    fields: { username: 'ada', locked: true, enabled: true },
+    fields: {
+      username: 'ada',
+      locked: true,
+      enabled: true,
+      // The channels the June rollout put on file: a number the directory can
+      // ring back, and a code issued in an envelope. Both arranged before
+      // anybody needed them, which is what makes them evidence.
+      verification_channels: 'registered_callback\nrecovery_code',
+    },
   });
   addNode(ops, {
     id: 'account:gone',
@@ -812,6 +820,103 @@ describe('printer.clear_queue', () => {
       'is already empty',
       before,
     );
+  });
+});
+
+describe('account.verify_identity', () => {
+  /**
+   * The finding this whole block exists for. `verify <account>` used to record
+   * that somebody had been proved to be themselves on the strength of nothing
+   * at all: no method, no evidence, no channel. A player typed a word during
+   * an attacker's phone call and the world wrote down that a check happened.
+   */
+  it('refuses a check with no method behind it', () => {
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.accountVerifyIdentity, 'account:ada'),
+      'An identity check is a method, not a word.',
+      before,
+    );
+  });
+
+  it('refuses a channel this account does not have on file', () => {
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.accountVerifyIdentity, 'account:ada', {
+        method: 'in_person',
+      }),
+      'so it proves nothing about whoever is on the phone',
+      before,
+    );
+  });
+
+  it('refuses an invented channel', () => {
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.accountVerifyIdentity, 'account:ada', {
+        method: 'sounded_like_her',
+      }),
+      'so it proves nothing about whoever is on the phone',
+      before,
+    );
+  });
+
+  it('records the channel it was proved through, not just the minute', () => {
+    fixture.advance(11);
+    expect(
+      dispatch(HELPDESK_ACTIONS.accountVerifyIdentity, 'account:ada', {
+        method: 'registered_callback',
+      }),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.getField('account:ada', FIELDS.identityVerifiedAt))
+      .toBe(11);
+    expect(fixture.graph.getField('account:ada', FIELDS.identityVerifiedMethod))
+      .toBe('registered_callback');
+  });
+
+  it('refuses a second check on the same day', () => {
+    dispatch(HELPDESK_ACTIONS.accountVerifyIdentity, 'account:ada', {
+      method: 'recovery_code',
+    });
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.accountVerifyIdentity, 'account:ada', {
+        method: 'registered_callback',
+      }),
+      'already checked who "ada" is today',
+      before,
+    );
+  });
+});
+
+describe('account.register_mfa', () => {
+  /**
+   * A re-enrolment is an account RECOVERY, and a recovery owes two things the
+   * old verb only assumed: the previous binding is destroyed rather than
+   * imagined to have evaporated, and the account owner is told - through a
+   * channel already on file, so a recovery nobody asked for is one they hear
+   * about today rather than in somebody else's report.
+   */
+  it('invalidates the old binding and notifies the account owner', () => {
+    fixture.applySetup([
+      {
+        op: 'setField',
+        id: 'account:ada',
+        field: FIELDS.mfaEnrolled,
+        value: false,
+      },
+    ]);
+    fixture.advance(7);
+
+    expect(
+      dispatch(HELPDESK_ACTIONS.accountRegisterMfa, 'account:ada'),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.getField('account:ada', FIELDS.mfaEnrolled))
+      .toBe(true);
+    expect(fixture.graph.getField('account:ada', FIELDS.mfaPreviousRevokedAt))
+      .toBe(7);
+    expect(fixture.graph.getField('account:ada', FIELDS.recoveryNoticeAt))
+      .toBe(7);
   });
 });
 

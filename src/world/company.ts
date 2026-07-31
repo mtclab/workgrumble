@@ -1,7 +1,26 @@
 import type { Edge, GraphNode, SetupOp } from '../engine-api';
 import { NO_RUN } from './consumables';
+import {
+  VERIFICATION_METHODS,
+  verificationChannels,
+} from './fallout';
 import { DEVICE_TYPES, FIELDS, SERVICE_STATUS } from './fields';
 import { STARTING_REPUTATION } from './meters';
+
+/**
+ * What everybody on this estate has on file, from the June rollout: a number
+ * the directory can ring back, and a recovery code in an envelope.
+ *
+ * The other two approved channels are not seeded because this building cannot
+ * offer them. Nobody has a nominated recovery contact - the rollout never
+ * asked - and nobody comes to the desk, because there is no desk to come to:
+ * the service desk is a phone number and a form, which is exactly how a
+ * fifty-person company with one first-line tech works.
+ */
+const VERIFICATION_CHANNELS_ON_FILE = verificationChannels([
+  VERIFICATION_METHODS.callback,
+  VERIFICATION_METHODS.recoveryCode,
+]);
 
 function addNode(ops: SetupOp[], node: GraphNode): void {
   ops.push({ op: 'addNode', node });
@@ -472,6 +491,13 @@ export function companySetup(): readonly SetupOp[] {
         // which is what makes losing the phone a support call rather than a
         // shrug. A ticket is what takes somebody back off it.
         [FIELDS.mfaEnrolled]: true,
+        // And the same rollout is where the identity-proofing channels came
+        // from: a callback number the directory holds, and a recovery code
+        // handed out in an envelope nobody has thrown away yet. Both were
+        // arranged BEFORE anybody needed them, which is the entire property
+        // that makes them evidence - unlike a payroll number, which is on a
+        // payslip, or a hiring manager, who is on the company blog.
+        [FIELDS.verificationChannels]: VERIFICATION_CHANNELS_ON_FILE,
         ...(member.lastLogon === undefined
           ? {}
           : { [FIELDS.lastLogon]: member.lastLogon }),

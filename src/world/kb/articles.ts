@@ -402,23 +402,37 @@ export const KB_ARTICLES: readonly KbArticle[] = [
   {
     id: 'kb/second-factor',
     title: 'A new phone, and an authenticator with nothing in it',
-    summary: 'The binding went with the old handset. Check who you are '
-      + 'talking to, then enrol a new one.',
+    summary: 'The binding went with the old handset. Prove who you are '
+      + 'talking to through a channel the account already has, then enrol a '
+      + 'new one and tell them you did.',
     state: 'published',
     issue: 'I have a new phone. The code app is installed and it is empty, and '
       + 'now the sign-in wants a code I do not have. I need this today.',
     environment: 'Any account on the estate; everybody was enrolled in the '
-      + 'June rollout. Applies to a lost, stolen, wiped or traded-in handset.',
+      + 'June rollout, which is also where the callback number and the '
+      + 'recovery code came from. Applies to a lost, stolen, wiped or '
+      + 'traded-in handset.',
     resolution: [
       'Read the account first. If the second factor is still enrolled, the '
         + 'problem is the app or the clock on the phone, not the account.',
-      'VERIFY WHO YOU ARE TALKING TO before you enrol anything. Not their '
-        + 'name - their name is on the ticket. Something only they have: the '
-        + 'payroll number, the manager who hired them, the desk they sit at.',
-      'Enrol the new device. The old binding is gone the moment the new one '
-        + 'exists, which is what makes this both the fix and the risk.',
-      'Write on the ticket HOW you verified them. "Verified" is not evidence; '
-        + '"confirmed payroll number and start date with HR" is.',
+      'PROVE WHO YOU ARE TALKING TO before you enrol anything, and prove it '
+        + 'with something the ACCOUNT has rather than something the caller '
+        + 'can tell you. Four channels count on this estate: a callback to '
+        + 'the number the directory already holds, the recovery code issued '
+        + 'in the June envelope, an in-person check, or a recovery contact '
+        + 'nominated in advance.',
+      'A payroll number, a hiring manager and a desk are NOT any of those. '
+        + 'They are on a payslip, on the company website and on a seating '
+        + 'plan. Somebody ringing to take an account off you will have all '
+        + 'three, and will be apologetic about only having three.',
+      'Record which channel you used - "verify callback <account>", or the '
+        + 'option in the conversation. "Verified" is not an answer to how, '
+        + 'and how is what the incident report asks.',
+      'Enrol the new device. That invalidates the old binding, and it sends '
+        + 'the account owner a notice that their authenticator was '
+        + 're-registered - which is the one control that still works after a '
+        + 'desk has been talked into the rest of it. Do not switch that off '
+        + 'because somebody finds it annoying.',
       'Do not revoke their sessions to "clear it out". That signs them out of '
         + 'the one place they can still get in from.',
     ],
@@ -433,10 +447,21 @@ export const KB_ARTICLES: readonly KbArticle[] = [
       + 'been handed that account, and they will not do it by hacking '
       + 'anything: they will ring at ten to five, in a hurry, from a number '
       + 'that is not on file, apologising for being a nuisance.',
-      'The check is the whole control. It is thirty seconds, nothing in the '
-      + 'system enforces it, no ticket has ever been reopened for want of it, '
-      + 'and the day it matters you will not know it mattered until somebody '
-      + 'else\'s report lands with your name in the timeline.',
+      'So the guidance everybody\'s policy is copied from - NIST SP 800-63B '
+      + 'on account recovery - does not say "check something only they '
+      + 'know". It says use what was arranged BEFORE the loss: a prearranged '
+      + 'recovery code or contact, a retained authenticator, an address of '
+      + 'record you already hold, or identity proofing done again from '
+      + 'scratch. And it says NOTIFY the subscriber when a recovery happens, '
+      + 'through a channel that is already on file, because that is the only '
+      + 'step an attacker cannot be charming past.',
+      'Facts about a person are not authentication. Knowledge that is '
+      + 'discoverable is knowledge the caller can have, and a desk that '
+      + 'accepts it has a control that only works on people who were not '
+      + 'trying. The channel is the whole control. It is a minute, nothing in '
+      + 'this system enforces it, no ticket has ever been reopened for want '
+      + 'of it, and the day it matters you will not know it mattered until '
+      + 'somebody else\'s report lands with your name in the timeline.',
     ],
     see_also: ['kb/three-ways-an-account-says-no', 'kb/reading-the-error'],
   },

@@ -1252,8 +1252,9 @@ const ENTRIES = [
     id: 'chat.option-mfa',
     surface: 'chat',
     control: 'chat-option-<n> (enrol it now)',
-    does: 'Enrols the new authenticator from the conversation, without '
-      + 'checking who is on the other end of it.',
+    does: 'Enrols the new authenticator from the conversation on the strength '
+      + 'of a payroll number and a manager\'s name, which is to say on the '
+      + 'strength of nothing.',
     actions: [HELPDESK_ACTIONS.accountRegisterMfa, WORLD_ACTIONS.securityFallout],
     run: 'shortcut',
     why: 'The bill for skipping the check arrives the next morning, and a '
@@ -1262,9 +1263,10 @@ const ENTRIES = [
   {
     id: 'chat.option-verify',
     surface: 'chat',
-    control: 'chat-option-<n> (check who she is)',
-    does: 'Checks who you are talking to first, which changes nothing anybody '
-      + 'can see and everything about the next morning.',
+    control: 'chat-option-<n> (ring her back, or the June envelope)',
+    does: 'Proves who is on the phone through a channel the account already '
+      + 'had - which changes nothing anybody can see and everything about the '
+      + 'next morning.',
     actions: [HELPDESK_ACTIONS.accountVerifyIdentity],
     run: 'checked',
     why: 'The other half of the same fork.',
@@ -1474,8 +1476,9 @@ const ENTRIES = [
   {
     id: 'cmd.verify',
     surface: 'cmd',
-    control: 'verify <account>',
-    does: 'Records that a human being checked who they were talking to.',
+    control: 'verify <callback|code|inperson|contact> <account>',
+    does: 'Records WHICH approved channel the identity was proved through, '
+      + 'and refuses a channel the account does not have on file.',
     command: 'verify',
     actions: [HELPDESK_ACTIONS.accountVerifyIdentity],
     run: 'week',

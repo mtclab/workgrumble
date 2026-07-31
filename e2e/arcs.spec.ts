@@ -63,7 +63,7 @@ test('thirty seconds of checking means the post never comes', async ({
   await workUntil(page, 140);
 
   await openFromStartMenu(page, 'cmd');
-  await runCommand(page, 'verify praval');
+  await runCommand(page, 'verify callback praval');
   await runCommand(page, 'mfa praval');
 
   await nextDay(page, 3);

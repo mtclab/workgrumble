@@ -10,6 +10,7 @@
 
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
+import { VERIFICATION_METHODS } from '../fallout';
 import { FIELDS, LOCKOUT_THRESHOLD } from '../fields';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import type { WorldTicket } from './types';
@@ -69,12 +70,14 @@ export const MFA_REREGISTER: WorldTicket = {
     {
       id: 'verify-then-enrol',
       app: 'cmd',
-      label: 'Check who she is with verify praval, then enrol the new phone '
-        + 'with mfa praval',
+      label: 'Prove who she is through a channel her account already has - '
+        + '"verify callback praval" or "verify code praval" - then enrol the '
+        + 'new phone with "mfa praval"',
       steps: [
         {
           action: HELPDESK_ACTIONS.accountVerifyIdentity,
           target: COMPANY_IDS.priyaAccount,
+          params: { method: VERIFICATION_METHODS.callback },
           // The enrolment closes the ticket with or without this, which is
           // the entire trap: nothing in the system does the checking, and the
           // difference arrives a day later in somebody else's incident

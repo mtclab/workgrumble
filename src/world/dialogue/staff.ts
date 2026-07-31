@@ -18,6 +18,7 @@
 
 import { COMPANY_IDS } from '../company';
 import { HELPDESK_ACTIONS } from '../actions/ids';
+import { VERIFICATION_METHODS } from '../fallout';
 import { PHISH_PRAISE } from '../tickets/desk';
 import type { DialogueEffect, DialogueTree } from './types';
 
@@ -46,7 +47,7 @@ const ACCOUNTS_PAYABLE: DialogueTree = {
           ],
         },
         {
-          label: 'Ask her to confirm her payroll number and her start date',
+          label: 'Ask how you are meant to prove she is her',
           next: 'verify',
           effects: [{ asks: true }],
         },
@@ -61,7 +62,7 @@ const ACCOUNTS_PAYABLE: DialogueTree = {
         + 'watched, which at the time felt like the responsible thing.',
       options: [
         {
-          label: 'Ask her to confirm her payroll number and her start date',
+          label: 'Ask how you are meant to prove she is her',
           next: 'verify',
           effects: [{ asks: true }],
         },
@@ -70,28 +71,70 @@ const ACCOUNTS_PAYABLE: DialogueTree = {
       ],
     },
     {
+      // The node the whole lesson turns on. She offers the facts everybody
+      // offers - a payroll number, a manager, a desk - and every one of them
+      // is on a payslip, a company blog and a seating plan. The two options
+      // that VERIFY her are the two channels the June rollout put on her
+      // account before any of this happened: a number the directory can ring,
+      // and a code issued in an envelope. Neither is something a caller can
+      // supply, which is the entire property being taught.
       id: 'verify',
-      npc_line: 'My payroll number? Do you not have my payroll number? You are '
-        + 'IT. You have everything. I have seen the screens.',
+      npc_line: 'Prove it? I can give you my payroll number. 4471. My manager '
+        + 'is Yolanda, my desk is under the vent that works, and I started the '
+        + 'March before last. Is that enough of me?',
       options: [
         {
-          label: 'Explain that having it and hearing it are different things',
-          next: 'checked',
-          effects: [
-            {
-              action: HELPDESK_ACTIONS.accountVerifyIdentity,
-              target: COMPANY_IDS.priyaAccount,
-            },
-          ],
+          label: 'Say none of that is evidence, and ask which it is to be: a '
+            + 'callback, or the recovery code',
+          next: 'channels',
+          effects: [{ asks: true }],
         },
         { label: 'Go back to the top', next: 'phone' },
       ],
     },
     {
+      id: 'channels',
+      npc_line: 'The payroll number is on my payslip and my manager is on the '
+        + 'website, yes, all right. The envelope from June is in my drawer, '
+        + 'and my desk phone works, obviously, it is the phone that does not.',
+      options: [
+        {
+          label: 'Hang up and ring her back on the number the directory holds',
+          next: 'checked',
+          effects: [
+            {
+              action: HELPDESK_ACTIONS.accountVerifyIdentity,
+              target: COMPANY_IDS.priyaAccount,
+              params: { method: VERIFICATION_METHODS.callback },
+            },
+          ],
+        },
+        {
+          label: 'Ask her to open the June envelope and read the recovery code',
+          next: 'checked',
+          effects: [
+            { asks: true },
+            {
+              action: HELPDESK_ACTIONS.accountVerifyIdentity,
+              target: COMPANY_IDS.priyaAccount,
+              params: { method: VERIFICATION_METHODS.recoveryCode },
+            },
+          ],
+        },
+        {
+          // Offered because it is what everybody does, and because the lesson
+          // is a choice rather than a puzzle. It proves nothing and it records
+          // nothing, and the enrolment below is unchecked whichever way she
+          // sounded.
+          label: 'Take the payroll number and the manager\'s name and move on',
+          next: 'hurry',
+        },
+      ],
+    },
+    {
       id: 'checked',
-      npc_line: 'Fine. 4471, and I started the March before last, and my '
-        + 'manager is Yolanda, and my desk is under the vent that works. Is '
-        + 'that enough of me?',
+      npc_line: 'Right. Yes. That is me, then, officially, which is a strange '
+        + 'thing to be told by somebody who has known me for two years.',
       options: [
         {
           label: 'Enrol the new phone now that you know who she is',
@@ -108,9 +151,9 @@ const ACCOUNTS_PAYABLE: DialogueTree = {
     },
     {
       id: 'hurry',
-      npc_line: 'Since seven. There is a payment run at eleven and I cannot '
-        + 'approve it. Can you not just do it? You know it is me. We have '
-        + 'spoken about the kettle.',
+      npc_line: 'There is a payment run at eleven and I cannot approve it. Can '
+        + 'you not just do it? You know it is me. We have spoken about the '
+        + 'kettle.',
       options: [
         {
           // The shortcut, offered plainly. It works. It closes the ticket. The
@@ -126,7 +169,7 @@ const ACCOUNTS_PAYABLE: DialogueTree = {
           ],
         },
         {
-          label: 'Ask her to confirm her payroll number and her start date',
+          label: 'Ask how you are meant to prove she is her',
           next: 'verify',
           effects: [{ asks: true }],
         },
@@ -136,9 +179,12 @@ const ACCOUNTS_PAYABLE: DialogueTree = {
     {
       id: 'done',
       npc_line: 'There is a code. There is a code and it is changing and I '
-        + 'have never been so pleased to see six numbers.',
+        + 'have never been so pleased to see six numbers. There is also an '
+        + 'email telling me somebody re-registered my authenticator, which I '
+        + 'assume is you, and which I would very much want to see if it were '
+        + 'not.',
       options: [
-        { label: 'Tell her to keep the recovery code somewhere else' },
+        { label: 'Confirm it was you, and say that is exactly what it is for' },
       ],
     },
     {
