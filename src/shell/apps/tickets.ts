@@ -58,6 +58,7 @@ import {
   setFlag,
   setText,
   textValue,
+  withFocusRestored,
 } from './ui';
 
 const STATE_LABELS: Readonly<Record<TicketState, string>> = {
@@ -1152,25 +1153,14 @@ export const TICKETS_APP: AppDef = {
         + `${String(breachedCount)} breached · `
         + `${String(nodes.length)} total`;
 
-      const focusedTestId = document.activeElement instanceof HTMLElement
-        && root.contains(document.activeElement)
-        ? document.activeElement.dataset.testid ?? null
-        : null;
-
-      renderQueue(nodes);
-      renderDetail(nodes.find((node) => node.id === selectedId), nodes);
-
-      // A repaint triggered by a tick must not steal the keyboard from the
-      // control the player is standing on.
-      if (focusedTestId !== null) {
-        const restored = root.querySelector(
-          `[data-testid="${focusedTestId}"]`,
-        );
-
-        if (restored instanceof HTMLElement) {
-          restored.focus();
-        }
-      }
+      // The detail pane is still rebuilt whenever the world moves, so the
+      // keyboard is put back where it was afterwards - the shared rule, which
+      // also declines to restore focus to a control the repaint has just
+      // disabled, because focusing one drops the cursor on the body anyway.
+      withFocusRestored(root, () => {
+        renderQueue(nodes);
+        renderDetail(nodes.find((node) => node.id === selectedId), nodes);
+      });
     };
 
     /**
