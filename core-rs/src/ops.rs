@@ -24,9 +24,11 @@ use crate::value::FieldValue;
 
 /// What the op language is allowed to say at this point in a definition.
 ///
-/// Two things vary with position and both used to be checked nowhere. Dice may
-/// only be rolled while APPLYING - a guard that consumed rng would make replay
-/// a fiction, and the evaluator silently answered `null` instead of saying so.
+/// Two things vary with position and both used to be checked nowhere. Some
+/// forms may only appear while APPLYING - dice, because a guard that consumed
+/// rng would make replay a fiction, and arithmetic, because a guard is
+/// evaluated by a total function that has nowhere to put "that field is not a
+/// number". Both used to answer `null` in a guard instead of saying so.
 /// And a `bind` names a node some enclosing `neighbor_where` found, so it means
 /// something inside that search's `matching` and nothing anywhere else; an op
 /// that referred to one was accepted at registration and failed at dispatch,
@@ -35,31 +37,31 @@ use crate::value::FieldValue;
 pub struct ParseScope {
     /// Bind names an enclosing `neighbor_where` has brought into scope.
     binds: Vec<String>,
-    /// Whether the rng-consuming value forms are legal here.
-    rng: bool,
+    /// Whether the apply-only value forms - dice and arithmetic - are legal.
+    applying: bool,
 }
 
 impl ParseScope {
-    /// Inside `apply`: dice are legal, and nothing is bound.
+    /// Inside `apply`: dice and arithmetic are legal, and nothing is bound.
     pub fn apply() -> Self {
         Self {
             binds: Vec::new(),
-            rng: true,
+            applying: true,
         }
     }
 
-    /// Inside `validate`, and inside any `when` condition: no dice.
+    /// Inside `validate`, and inside any `when` condition: reads only.
     pub fn guard() -> Self {
         Self {
             binds: Vec::new(),
-            rng: false,
+            applying: false,
         }
     }
 
-    fn without_rng(&self) -> Self {
+    fn read_only(&self) -> Self {
         Self {
             binds: self.binds.clone(),
-            rng: false,
+            applying: false,
         }
     }
 
@@ -72,7 +74,7 @@ impl ParseScope {
 
         Self {
             binds,
-            rng: self.rng,
+            applying: self.applying,
         }
     }
 
@@ -157,9 +159,62 @@ impl NodeRef {
     }
 }
 
-/// A value computed at apply time. The rng variants are the reason `apply`
-/// and `validate` are different languages: a validator that consumed rng
-/// would skew replay, so none of these can appear in a guard.
+/// Which way arithmetic moves a field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArithOp {
+    Add,
+    Sub,
+}
+
+/// The range arithmetic is not allowed to leave.
+///
+/// It is mandatory rather than optional because every number this language can
+/// move is a number somebody reads back: a meter is 0-100, a fund is pence at
+/// or above zero. An unbounded `add` is a stress meter at 3,000 and a bar that
+/// renders off the side of the window - so the bound is part of saying "add",
+/// not a decoration on it.
+#[derive(Clone, Copy, Debug)]
+pub struct Clamp {
+    pub min: i64,
+    pub max: i64,
+}
+
+impl Clamp {
+    fn parse(value: Option<&Json>, key: &str) -> EngineResult<Self> {
+        let object = value.and_then(Json::as_object).ok_or_else(|| {
+            EngineError::new(format!(
+                "\"{key}\" needs a \"clamp\" with a \"min\" and a \"max\"."
+            ))
+        })?;
+        let bound = |name: &str| -> EngineResult<i64> {
+            object.get(name).and_then(safe_int).ok_or_else(|| {
+                EngineError::new(format!(
+                    "\"{key}\" needs a safe integer clamp \"{name}\"."
+                ))
+            })
+        };
+        let min = bound("min")?;
+        let max = bound("max")?;
+
+        if max < min {
+            return refuse!("\"{key}\" needs a clamp whose \"max\" is at least its \"min\".");
+        }
+
+        Ok(Self { min, max })
+    }
+
+    /// Applied AFTER the arithmetic, so a step that would have overshot lands
+    /// on the boundary instead of being refused - a meter at 99 hit for 10 is
+    /// a meter at 100, which is what a ceiling means.
+    pub fn apply(self, value: i64) -> i64 {
+        value.clamp(self.min, self.max)
+    }
+}
+
+/// A value computed at apply time. The rng and arithmetic variants are the
+/// reason `apply` and `validate` are different languages: a validator that
+/// consumed rng would skew replay and one that did arithmetic would have to
+/// answer for a field that is not a number, so neither can appear in a guard.
 #[derive(Clone, Debug)]
 pub enum ValueExpr {
     Const(FieldValue),
@@ -185,9 +240,23 @@ pub enum ValueExpr {
         max: i64,
     },
     Eq(Box<ValueExpr>, Box<ValueExpr>),
+    /// A field moved by a whole number and held inside a range.
+    ///
+    /// The one thing the language could not say. Everything a world MEASURES -
+    /// a stress meter, a suspicion meter, a running total - is the old value
+    /// plus a decision, and without this the decision had to be made in
+    /// TypeScript and arrive as a finished number, which puts the arithmetic
+    /// outside the thing that replays it.
+    Arith {
+        op: ArithOp,
+        node: NodeRef,
+        field: String,
+        by: Box<ValueExpr>,
+        clamp: Clamp,
+    },
 }
 
-const VALUE_KEYS: [&str; 10] = [
+const VALUE_KEYS: [&str; 12] = [
     "const",
     "param",
     "param_trim",
@@ -198,6 +267,8 @@ const VALUE_KEYS: [&str; 10] = [
     "rng_pick",
     "rng_int",
     "eq",
+    "add",
+    "sub",
 ];
 
 impl ValueExpr {
@@ -221,16 +292,18 @@ impl ValueExpr {
                 .map(str::to_owned)
                 .ok_or_else(|| EngineError::new(format!("\"{key}\" must be a non-empty string.")))
         };
-        let dice = || -> EngineResult<()> {
-            if scope.rng {
+        // A guard that rolled dice would consume the stream a replay depends
+        // on, and a guard that did arithmetic would have to answer for a field
+        // that is not a number - so the evaluator refuses both there, which
+        // used to mean the guard silently compared against `null` instead.
+        let applying = |what: &str| -> EngineResult<()> {
+            if scope.applying {
                 return Ok(());
             }
 
-            // A guard that rolled dice would consume the stream a replay
-            // depends on, so the evaluator refuses to roll there - which used
-            // to mean the guard silently compared against `null` instead.
-            refuse!("\"{key}\" rolls dice, which only an apply op may do.")
+            refuse!("\"{key}\" {what}, which only an apply op may do.")
         };
+        let dice = || applying("rolls dice");
 
         match key {
             "const" => Ok(Self::Const(
@@ -312,7 +385,7 @@ impl ValueExpr {
 
                 Ok(Self::RngInt { min, max })
             }
-            _ => {
+            "eq" => {
                 let pair = entry
                     .as_array()
                     .ok_or_else(|| EngineError::new("eq needs exactly two value expressions."))?;
@@ -324,6 +397,70 @@ impl ValueExpr {
                     Box::new(Self::parse_in(left, scope)?),
                     Box::new(Self::parse_in(right, scope)?),
                 ))
+            }
+            _ => {
+                applying("does arithmetic")?;
+                let op = if key == "add" {
+                    ArithOp::Add
+                } else {
+                    ArithOp::Sub
+                };
+                let (node, field) = parse_node_and_field(entry, scope)?;
+                let operand = entry
+                    .as_object()
+                    .and_then(|object| object.get("by"))
+                    .ok_or_else(|| {
+                        EngineError::new(format!("\"{key}\" needs a \"by\" to move the field by."))
+                    })?;
+                let by = Self::parse_in(operand, scope)?;
+                // Refused HERE rather than at dispatch: a `by` that can only
+                // ever be a string or a boolean is a definition that cannot
+                // work, and the evaluator finding that out mid-apply is the
+                // exact failure the registration gate exists to stop.
+                by.must_be_numeric(key)?;
+
+                Ok(Self::Arith {
+                    op,
+                    node,
+                    field,
+                    by: Box::new(by),
+                    clamp: Clamp::parse(
+                        entry.as_object().and_then(|object| object.get("clamp")),
+                        key,
+                    )?,
+                })
+            }
+        }
+    }
+
+    /// Whether this form could ever produce a number, judged at registration.
+    ///
+    /// Only the forms whose type is fixed by their own shape can be settled
+    /// here - a `param` or a `field` is whatever the world hands over, and
+    /// that is checked when the arithmetic actually runs.
+    fn must_be_numeric(&self, key: &str) -> EngineResult<()> {
+        let never = |what: &str| -> EngineResult<()> {
+            refuse!("\"{key}\" is given {what}, which is never a number.")
+        };
+
+        match self {
+            Self::Const(FieldValue::Num(_))
+            | Self::Param(_)
+            | Self::Now
+            | Self::Field { .. }
+            | Self::RngInt { .. }
+            | Self::Arith { .. } => Ok(()),
+            Self::Const(_) => never("a constant that is not a number"),
+            Self::ParamTrim(_) => never("trimmed text"),
+            Self::NotField { .. } => never("the opposite of a flag"),
+            Self::AppendLine { .. } => never("an appended line"),
+            Self::Eq(_, _) => never("a comparison"),
+            Self::RngPick(choices) => {
+                if choices.iter().all(|choice| choice.as_f64().is_some()) {
+                    return Ok(());
+                }
+
+                never("a draw that can come up something other than a number")
             }
         }
     }
@@ -529,10 +666,10 @@ impl Pred {
         Self::parse_in(value, &ParseScope::guard(), 0)
     }
 
-    /// A predicate never rolls dice, wherever it appears, so the scope it is
-    /// given is stripped of rng before anything inside it is read.
+    /// A predicate only ever reads, wherever it appears, so the scope it is
+    /// given is stripped of the apply-only forms before anything inside it is.
     pub fn parse_in(value: &Json, scope: &ParseScope, depth: usize) -> EngineResult<Self> {
-        Self::parse_at(value, &scope.without_rng(), depth)
+        Self::parse_at(value, &scope.read_only(), depth)
     }
 
     fn parse_at(value: &Json, scope: &ParseScope, depth: usize) -> EngineResult<Self> {
@@ -1052,7 +1189,9 @@ pub fn eval_value(context: &EvalContext<'_>, value: &ValueExpr) -> FieldValue {
         // Unreachable: `ParseScope` refuses these in every position this
         // function is called from. Kept total rather than panicking, because a
         // boundary that can panic is a boundary that can poison the module.
-        ValueExpr::RngPick(_) | ValueExpr::RngInt { .. } => FieldValue::Null,
+        ValueExpr::RngPick(_) | ValueExpr::RngInt { .. } | ValueExpr::Arith { .. } => {
+            FieldValue::Null
+        }
     }
 }
 
@@ -1590,6 +1729,179 @@ mod tests {
             "value": rolled,
         }))
         .is_ok());
+    }
+
+    /// The shape of an arithmetic value, checked where a broken one is still
+    /// cheap: at registration, before any world has been moved by it.
+    #[test]
+    fn arithmetic_names_a_field_a_whole_operand_and_a_range() {
+        let well_formed = json!({
+            "add": {
+                "node": { "ref": "actor" },
+                "field": "stress",
+                "by": { "const": 3 },
+                "clamp": { "min": 0, "max": 100 },
+            },
+        });
+        assert!(ValueExpr::parse(&well_formed).is_ok());
+        assert!(ValueExpr::parse(&json!({
+            "sub": {
+                "node": { "ref": "target" },
+                "field": "stress",
+                "by": { "param": "relief" },
+                "clamp": { "min": 0, "max": 100 },
+            },
+        }))
+        .is_ok());
+
+        // Every part of it is required, and every part is checked.
+        let missing = |entry: Json| ValueExpr::parse(&json!({ "add": entry }));
+        assert!(missing(json!({ "field": "stress", "by": { "const": 1 }, "clamp": { "min": 0, "max": 1 } })).is_err());
+        assert!(missing(json!({ "node": { "ref": "actor" }, "by": { "const": 1 }, "clamp": { "min": 0, "max": 1 } })).is_err());
+
+        let no_operand = missing(json!({
+            "node": { "ref": "actor" },
+            "field": "stress",
+            "clamp": { "min": 0, "max": 100 },
+        }))
+        .expect_err("no \"by\"");
+        assert!(no_operand.message().contains("needs a \"by\""), "{no_operand}");
+
+        // The clamp is mandatory, both bounds are, and they have to be a range.
+        let unbounded = missing(json!({
+            "node": { "ref": "actor" },
+            "field": "stress",
+            "by": { "const": 3 },
+        }))
+        .expect_err("no clamp");
+        assert!(unbounded.message().contains("\"clamp\""), "{unbounded}");
+        assert!(missing(json!({
+            "node": { "ref": "actor" }, "field": "stress", "by": { "const": 3 },
+            "clamp": { "min": 0 },
+        }))
+        .is_err());
+        assert!(missing(json!({
+            "node": { "ref": "actor" }, "field": "stress", "by": { "const": 3 },
+            "clamp": { "min": 0, "max": 1.5 },
+        }))
+        .is_err());
+        let backwards = missing(json!({
+            "node": { "ref": "actor" }, "field": "stress", "by": { "const": 3 },
+            "clamp": { "min": 100, "max": 0 },
+        }))
+        .expect_err("an empty range");
+        assert!(backwards.message().contains("at least its \"min\""), "{backwards}");
+    }
+
+    /// An operand whose own shape says it can never be a number is refused at
+    /// registration rather than at dispatch, where it would fail in the middle
+    /// of an action with the ops before it already applied.
+    #[test]
+    fn arithmetic_refuses_an_operand_that_could_never_be_a_number() {
+        let by = |operand: Json| {
+            ValueExpr::parse(&json!({
+                "add": {
+                    "node": { "ref": "actor" },
+                    "field": "stress",
+                    "by": operand,
+                    "clamp": { "min": 0, "max": 100 },
+                },
+            }))
+        };
+
+        // Anything whose type is only known at dispatch is allowed through.
+        assert!(by(json!({ "const": 7 })).is_ok());
+        assert!(by(json!({ "param": "amount" })).is_ok());
+        assert!(by(json!({ "field": { "node": { "ref": "target" }, "field": "queue_len" } })).is_ok());
+        assert!(by(json!({ "now": true })).is_ok());
+        assert!(by(json!({ "rng_int": { "min": 1, "max": 6 } })).is_ok());
+        assert!(by(json!({ "rng_pick": [1, 2, 3] })).is_ok());
+        assert!(by(json!({
+            "add": {
+                "node": { "ref": "actor" }, "field": "stress",
+                "by": { "const": 1 }, "clamp": { "min": 0, "max": 100 },
+            },
+        }))
+        .is_ok());
+
+        // And anything whose type is fixed and wrong is refused here.
+        let text = by(json!({ "const": "three" })).expect_err("text is not a number");
+        assert!(text.message().contains("is never a number"), "{text}");
+        assert!(by(json!({ "const": true })).is_err());
+        assert!(by(json!({ "const": null })).is_err());
+        assert!(by(json!({ "param_trim": "note" })).is_err());
+        assert!(by(json!({ "not_field": { "node": { "ref": "target" }, "field": "locked" } })).is_err());
+        assert!(by(json!({
+            "append_line": {
+                "node": { "ref": "target" }, "field": "clues", "value": { "param": "clue" },
+            },
+        }))
+        .is_err());
+        assert!(by(json!({ "eq": [{ "const": 1 }, { "const": 1 }] })).is_err());
+        assert!(by(json!({ "rng_pick": [1, "two"] })).is_err());
+    }
+
+    /// Arithmetic belongs to `apply` for the same reason dice do: the guard
+    /// evaluator is a total function with nowhere to put "that field is not a
+    /// number", so it would answer `null` and the guard would quietly pass.
+    #[test]
+    fn arithmetic_is_refused_everywhere_a_guard_can_reach() {
+        let moved = json!({
+            "add": {
+                "node": { "ref": "actor" },
+                "field": "stress",
+                "by": { "const": 3 },
+                "clamp": { "min": 0, "max": 100 },
+            },
+        });
+
+        assert!(ValueExpr::parse_in(&moved, &ParseScope::apply()).is_ok());
+        let guarded = ValueExpr::parse_in(&moved, &ParseScope::guard())
+            .expect_err("no arithmetic in a guard");
+        assert!(
+            guarded.message().contains("only an apply op may do"),
+            "{guarded}",
+        );
+
+        assert!(Pred::parse(&json!({
+            "pred": "field_eq",
+            "node": { "ref": "actor" },
+            "field": "stress",
+            "value": moved,
+        }))
+        .is_err());
+
+        // Including the condition of a `when`, which is a guard in every way
+        // that matters.
+        assert!(Op::parse(&json!({
+            "op": "when",
+            "cond": {
+                "pred": "field_eq",
+                "node": { "ref": "actor" },
+                "field": "stress",
+                "value": moved,
+            },
+            "ops": [],
+        }))
+        .is_err());
+    }
+
+    #[test]
+    fn a_clamp_holds_a_value_inside_its_range() {
+        let clamp = Clamp { min: 0, max: 100 };
+
+        assert_eq!(clamp.apply(50), 50);
+        assert_eq!(clamp.apply(0), 0);
+        assert_eq!(clamp.apply(100), 100);
+        assert_eq!(clamp.apply(-1), 0);
+        assert_eq!(clamp.apply(101), 100);
+        assert_eq!(clamp.apply(i64::MIN), 0);
+        assert_eq!(clamp.apply(i64::MAX), 100);
+
+        // A range of one is a range: the value it allows is the only one.
+        let pinned = Clamp { min: 7, max: 7 };
+        assert_eq!(pinned.apply(0), 7);
+        assert_eq!(pinned.apply(9), 7);
     }
 
     #[test]

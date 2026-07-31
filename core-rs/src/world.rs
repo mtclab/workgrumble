@@ -18,8 +18,8 @@ use crate::events::{EngineEvent, GraphMutation};
 use crate::graph::EntityGraph;
 use crate::num::MAX_SAFE_INT;
 use crate::ops::{
-    evaluate_pred, field_lines, render_template, EvalContext, FieldName, NodeRef, Op, Params, Pred,
-    ValueExpr,
+    evaluate_pred, field_lines, render_template, ArithOp, Clamp, EvalContext, FieldName, NodeRef,
+    Op, Params, Pred, ValueExpr,
 };
 use crate::refuse;
 use crate::rng::Rng;
@@ -464,26 +464,28 @@ impl World {
 
     /// Computes an op's value. The rng lives here rather than in `ops.rs`
     /// because only `apply` may consume it - a validator that rolled dice
-    /// would make replay a fiction.
+    /// would make replay a fiction - and so does arithmetic, because it is the
+    /// one value form that can fail: a field that is not a whole number is a
+    /// refusal, not a `null` quietly written over a meter.
     fn value(
         &mut self,
         value: &ValueExpr,
         actor: &str,
         target: Option<&str>,
         params: &Params,
-    ) -> FieldValue {
+    ) -> EngineResult<FieldValue> {
         match value {
             ValueExpr::RngPick(choices) => {
-                self.rng.pick(choices).cloned().unwrap_or(FieldValue::Null)
+                Ok(self.rng.pick(choices).cloned().unwrap_or(FieldValue::Null))
             }
-            ValueExpr::RngInt { min, max } => FieldValue::Num(self.rng.int(*min, *max) as f64),
+            ValueExpr::RngInt { min, max } => Ok(FieldValue::Num(self.rng.int(*min, *max) as f64)),
             ValueExpr::Eq(left, right) => {
-                let left = self.value(left, actor, target, params);
-                let right = self.value(right, actor, target, params);
-                FieldValue::Bool(left.same_value(&right))
+                let left = self.value(left, actor, target, params)?;
+                let right = self.value(right, actor, target, params)?;
+                Ok(FieldValue::Bool(left.same_value(&right)))
             }
             ValueExpr::AppendLine { node, field, value } => {
-                let addition = self.value(value, actor, target, params);
+                let addition = self.value(value, actor, target, params)?;
                 let existing = self
                     .resolve_ref(node, actor, target, params)
                     .ok()
@@ -495,8 +497,15 @@ impl World {
                     lines.push(text.to_owned());
                 }
 
-                FieldValue::Str(lines.join("\n"))
+                Ok(FieldValue::Str(lines.join("\n")))
             }
+            ValueExpr::Arith {
+                op,
+                node,
+                field,
+                by,
+                clamp,
+            } => self.arithmetic(*op, node, field, by, *clamp, actor, target, params),
             pure => {
                 let context = EvalContext {
                     graph: &self.graph,
@@ -507,9 +516,63 @@ impl World {
                     tickets: &self.tickets,
                     binds: BTreeMap::new(),
                 };
-                crate::ops::eval_value(&context, pure)
+                Ok(crate::ops::eval_value(&context, pure))
             }
         }
+    }
+
+    /// Moves a field by a whole number and holds the answer inside its range.
+    ///
+    /// Every step of it can be a refusal, and each one is a different mistake
+    /// worth naming: a meter that was never seeded, an operand that arrived as
+    /// text, a total the browser could not read back. The transaction around
+    /// the dispatch puts the world back, so a refusal here leaves nothing
+    /// half-added - including a die rolled for an operand that was then thrown
+    /// away.
+    #[allow(clippy::too_many_arguments)]
+    fn arithmetic(
+        &mut self,
+        op: ArithOp,
+        node: &NodeRef,
+        field: &str,
+        by: &ValueExpr,
+        clamp: Clamp,
+        actor: &str,
+        target: Option<&str>,
+        params: &Params,
+    ) -> EngineResult<FieldValue> {
+        let id = self.resolve_ref(node, actor, target, params)?;
+        let base = self
+            .graph
+            .get_field(&id, field)
+            .and_then(FieldValue::as_safe_int)
+            .ok_or_else(|| {
+                EngineError::new(format!(
+                    "Field \"{field}\" on \"{id}\" is not a whole number, so there is nothing \
+                     here to move."
+                ))
+            })?;
+        let operand = self
+            .value(by, actor, target, params)?
+            .as_safe_int()
+            .ok_or_else(|| {
+                EngineError::new(format!(
+                    "Field \"{field}\" on \"{id}\" can only be moved by a whole number."
+                ))
+            })?;
+        let moved = match op {
+            ArithOp::Add => base.checked_add(operand),
+            ArithOp::Sub => base.checked_sub(operand),
+        }
+        .filter(|moved| moved.abs() <= MAX_SAFE_INT)
+        .ok_or_else(|| {
+            EngineError::new(format!(
+                "Moving \"{field}\" on \"{id}\" leaves the range a whole number can be read \
+                 back from."
+            ))
+        })?;
+
+        Ok(FieldValue::Num(clamp.apply(moved) as f64))
     }
 
     fn apply_ops(
@@ -537,7 +600,7 @@ impl World {
             Op::SetField { node, field, value } => {
                 let id = self.resolve_ref(node, actor, target, params)?;
                 let field = self.field_name(field, params)?;
-                let value = self.value(value, actor, target, params);
+                let value = self.value(value, actor, target, params)?;
                 self.set_field(&id, &field, value)
             }
             Op::ClearField { node, field } => {

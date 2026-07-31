@@ -213,8 +213,24 @@ export interface FieldRefData {
 }
 
 /**
- * A value computed when an action applies. The `rng_*` forms are only legal
- * in `apply`: a validator that rolled dice would make replay a fiction.
+ * Moving a field by a whole number and holding the answer inside a range.
+ *
+ * The clamp is mandatory because every number the world keeps is a number
+ * somebody reads back - a meter is 0-100, a fund is pence at or above zero -
+ * so the bound is part of saying "add", not a decoration on it. The operand
+ * has to be a form that could be a number: the engine refuses the rest at
+ * registration rather than halfway through an apply.
+ */
+export interface ArithData extends FieldRefData {
+  by: ValueData;
+  clamp: { min: number; max: number };
+}
+
+/**
+ * A value computed when an action applies. The `rng_*` and arithmetic forms
+ * are only legal in `apply`: a validator that rolled dice would make replay a
+ * fiction, and one that did arithmetic would have nowhere to put "that field
+ * is not a number".
  */
 export type ValueData =
   | { const: FieldValue }
@@ -226,7 +242,9 @@ export type ValueData =
   | { append_line: FieldRefData & { value: ValueData } }
   | { rng_pick: FieldValue[] }
   | { rng_int: { min: number; max: number } }
-  | { eq: [ValueData, ValueData] };
+  | { eq: [ValueData, ValueData] }
+  | { add: ArithData }
+  | { sub: ArithData };
 
 /** A field name, or the parameter carrying one. */
 export type FieldNameData = string | { param: string };
