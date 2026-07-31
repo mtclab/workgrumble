@@ -482,8 +482,21 @@ const GOLDEN_DAY = {
    * new field is Monday's fifty folded into the 26 this day ends on, which
    * is 38 at midnight - a day whose queue went unworked, read as the review
    * would read it.
+   *
+   * And a sixth time, for the M5 close-out, and again the hash is the only
+   * number here that has moved. Three things are in Monday's graph that were
+   * not: every account carries the identity-proofing channels the June rollout
+   * put on file (a callback number and a recovery code, one string per
+   * account), and every ticket that went red now carries the MINUTE it went
+   * red as well as the flag. This day's four breaches therefore write four
+   * `breached_at` stamps - the same four events, timestamped - which is what
+   * makes a day answerable for what happened IN it rather than for what its
+   * tickets happen to look like afterwards. Nothing resolves in this scripted
+   * day and nobody triages anything, so no `resolved_at` or `classified_at`
+   * appears in it at all. Every meter, minute, timeline entry and penny below
+   * is the number it was.
    */
-  hash: '4f8dd70e17293355',
+  hash: 'ad90e64a9f00c43e',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */

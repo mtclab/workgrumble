@@ -377,9 +377,33 @@ interface GoldenWeek {
  * meter has a ceiling at 100 and a properly worked week reaches it by about
  * the Wednesday, after which nothing done on the Thursday or the Friday could
  * reach the review at all.
+ *
+ * FIFTH MOVE (M5 close-out, event-time accounting). Both hashes, and - for the
+ * first time in this file - two numbers inside the IDLE week's day rows.
+ *
+ * The graph gained three things. Every account carries the identity-proofing
+ * channels the June rollout put on file. Every ticket that closes carries the
+ * minute it closed in, every ticket that goes red carries the minute it went
+ * red, and every triage carries the minute it was filed. That is what moved
+ * both hashes, and in the WORKED week it moved nothing else at all: every
+ * ticket in it is closed on the day it arrived, so an arrival-scoped ledger
+ * and an event-scoped one agree line for line.
+ *
+ * The idle week is where they disagree, which is the whole finding.
+ * `ticket:flat-mouse` arrives at 13:34 on the Monday and its deadline runs out
+ * at 09:34 on the Tuesday; `ticket:must-change-password` is filed on the
+ * Tuesday afternoon and goes red on the Wednesday morning. The old ledger
+ * counted both against the day they ARRIVED on, so Monday was charged a
+ * service credit for a deadline that had not yet been missed - on a payslip
+ * banked at Monday's 17:00 - and Wednesday, where the deadline actually ran
+ * out, showed nothing. Monday's row is four now and Wednesday's is five. Every
+ * total is unchanged: twenty-two arrived, none closed, twenty-two breached,
+ * twenty-two still open, and the same 37,775 pence, because the same
+ * twenty-two events are still charged exactly once each - on the days they
+ * happened.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: '44adc1e7afffe482',
+  hash: '8ad9ea1f830bcb32',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -450,13 +474,23 @@ const GOLDEN_WORKED: GoldenWeek = {
  * and the world does not pretend otherwise.
  */
 const GOLDEN_IDLE: GoldenWeek = {
-  hash: '5eea8d601fd63298',
+  hash: 'c6254da2bc3dd9a4',
   tick: 6_300,
   outcome: 'fired',
+  // Two of these rows moved for the M5 close-out, and the move IS the fix.
+  // `ticket:flat-mouse` arrives at twenty to two on the Monday and its
+  // deadline runs out at half nine on the TUESDAY; `ticket:must-change-password`
+  // is filed on the Tuesday afternoon and goes red on the WEDNESDAY. Both used
+  // to be counted against the day they arrived on - Monday and Tuesday - which
+  // is a day whose pay had already been banked without the deduction, and a
+  // day on which the deadline had not yet run out. A day is answerable for
+  // what happened in it, so Monday reports four and Wednesday five, and the
+  // week's totals are exactly what they were: twenty-two arrivals, twenty-two
+  // breaches, nothing closed.
   days: [
+    [5, 0, 4],
     [5, 0, 5],
-    [5, 0, 5],
-    [4, 0, 4],
+    [4, 0, 5],
     [5, 0, 5],
     [3, 0, 3],
   ],
@@ -464,8 +498,21 @@ const GOLDEN_IDLE: GoldenWeek = {
   closed: 0,
   breached: 22,
   stillOpen: 22,
-  /** Still paid, right up until they stop paying you. */
-  earnedPence: 37_775,
+  /**
+   * Still paid, right up until they stop paying you - and eight hundred pence
+   * less than it used to be, which is the money half of the same finding.
+   *
+   * Under the old ledger a day was charged for the breaches its OWN arrivals
+   * had accumulated BY THE TIME its payslip was written. `flat-mouse` had not
+   * gone red by Monday's 17:00 and `must-change-password` had not gone red by
+   * Tuesday's, so neither was on the payslip of the day it arrived on - and
+   * neither could ever appear on the payslip of the day it actually breached,
+   * because that day's ledger only looked at its own arrivals. Two service
+   * credits, 400 pence each, that the week card printed as missed deadlines
+   * and the fund was never charged for. They are charged now, on the days the
+   * deadlines ran out.
+   */
+  earnedPence: 36_975,
   reviewRead: 4,
   meters: {
     stress: 98,
@@ -475,7 +522,7 @@ const GOLDEN_IDLE: GoldenWeek = {
     // answer by Friday, and everything since has been zero - and two by five.
     week_reputation: 2,
     caught_events: 3,
-    farm_fund: 37_775,
+    farm_fund: 36_975,
     week_attempt: 1,
   },
   timeline: [
