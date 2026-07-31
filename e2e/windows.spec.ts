@@ -295,3 +295,39 @@ test('closes the start menu with Escape and with an outside click', async ({
   });
   await expect(menu).toBeHidden();
 });
+
+/**
+ * Escape on the day's own screens, which two of them claimed in their own
+ * source and none of them did: the key reached the start menu and the tray
+ * panel and stopped there.
+ *
+ * It is deliberately not extended to the tools. Escape means something else
+ * inside a terminal and a search box, and the screens the day puts up are the
+ * ones with nothing in them to lose.
+ */
+test('dismisses the day screen in front with Escape, and nothing else', async ({
+  page,
+}) => {
+  await logIn(page);
+
+  for (const scene of ['caught', 'review', 'weekend']) {
+    await openFromStartMenu(page, scene);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId(`window-${scene}`)).toHaveCount(0);
+  }
+
+  // A tool in front of a scene: Escape is the tool's business, so both stay.
+  await openFromStartMenu(page, 'caught');
+  await openFromStartMenu(page, 'cmd');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('window-cmd')).toHaveCount(1);
+  await expect(page.getByTestId('window-caught')).toHaveCount(1);
+
+  // And with the start menu up, Escape closes the menu first - one press, one
+  // surface, the nearest one.
+  await page.getByTestId('start-button').click();
+  await expect(page.getByTestId('start-menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('start-menu')).toBeHidden();
+  await expect(page.getByTestId('window-cmd')).toHaveCount(1);
+});

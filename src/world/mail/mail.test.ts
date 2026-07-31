@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { formatSimTime } from '../../shell/clock-format';
 import { COMPANY_IDS } from '../company';
+import { shiftStartTick } from '../day';
 import { createWorldSession } from '../session';
 import { spawnWorldTicket } from '../tickets';
 import {
@@ -104,6 +105,30 @@ describe('shipped inbox', () => {
     expect(findMailThread('mail/queue-nag')?.messages[0]?.from)
       .toBe(COMPANY_IDS.boss);
     expect(mailKey('mail/queue-nag')).toBe('queue-nag');
+  });
+
+  /**
+   * The first-run gate: the panic key is taught before it is needed.
+   *
+   * Everything else in this game can be learned by being caught. Not this one
+   * - the boss key IS the skill the corridor tests, and a player who has not
+   * been told about it is not being tested, they are being ambushed. It was
+   * only ever mentioned inside the slack apps themselves, which is to say only
+   * to players who had already opened one and had already started building
+   * suspicion. This says it in the inbox, before the shift starts, in the
+   * voice of the person who would say it.
+   */
+  it('teaches the boss key in the Monday inbox before the shift starts', () => {
+    const onboarding = findMailThread('mail/onboarding');
+    const taught = onboarding?.messages.filter(
+      (message) => message.body.some(
+        (line) => /left of the 1/i.test(line),
+      ),
+    ) ?? [];
+
+    expect(taught).toHaveLength(1);
+    // Before 09:00, so it cannot arrive after the first patrol of the week.
+    expect(taught[0]?.tick).toBeLessThan(shiftStartTick(1));
   });
 
   it('is sent by people who exist in the company', () => {

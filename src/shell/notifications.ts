@@ -9,6 +9,18 @@ export const TOAST_TTL_TICKS = 10;
 /** Newest-first history depth kept for the tray panel. */
 export const NOTIFICATION_HISTORY_LIMIT = 24;
 
+/**
+ * How many toasts may be on screen at once.
+ *
+ * The stack is a column down the right-hand side of the desktop and nothing
+ * was stopping it. A day-end pile-up is real - five tickets breaching in the
+ * same minute, a drip arriving on top of them - and eight toasts is the queue
+ * covered by an account of the queue, which is the joke going one step too
+ * far. The oldest ones go; nothing is LOST, because the notification centre
+ * keeps every one of them and the badge still counts them all.
+ */
+export const TOAST_STACK_LIMIT = 4;
+
 export interface ShellNotification {
   readonly id: string;
   readonly title: string;
@@ -64,7 +76,9 @@ export function pushNotification(
   };
 
   return {
-    toasts: [...state.toasts, notification],
+    // Newest wins the screen: the oldest fall off the top of the stack rather
+    // than the newest being refused a place on it.
+    toasts: [...state.toasts, notification].slice(-TOAST_STACK_LIMIT),
     history: [notification, ...state.history].slice(
       0,
       NOTIFICATION_HISTORY_LIMIT,

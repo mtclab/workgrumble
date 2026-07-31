@@ -11,6 +11,18 @@ const CASCADE_OFFSET = 28;
 const CASCADE_ORIGIN_X = 140;
 const CASCADE_ORIGIN_Y = 32;
 const CASCADE_SLOTS = 7;
+/**
+ * Where the cascade goes when all seven slots are taken.
+ *
+ * Counting slots and taking the next one is right until the eighth window,
+ * which used to land exactly on top of the first - same corner, same size,
+ * indistinguishable, and the titlebar of the one underneath unreachable
+ * without the taskbar. Three shelves offset by half a step give twenty-one
+ * distinct places before anything is buried, which is more windows than this
+ * desktop has apps.
+ */
+const CASCADE_SHELVES = 3;
+const CASCADE_SHELF_OFFSET = CASCADE_OFFSET / 2;
 const BOUNDS_EPSILON = 0.001;
 
 export interface Viewport {
@@ -180,20 +192,60 @@ function bringToFront(
   ];
 }
 
-function cascadeBounds(
+function slotBounds(
   viewport: Readonly<Viewport>,
-  cascadeIndex: number,
+  slot: number,
+  shelf: number,
 ): WindowBounds {
-  const slot = cascadeIndex % CASCADE_SLOTS;
   return clampWindowBounds(
     {
-      x: CASCADE_ORIGIN_X + slot * CASCADE_OFFSET,
-      y: CASCADE_ORIGIN_Y + slot * CASCADE_OFFSET,
+      x: CASCADE_ORIGIN_X
+        + slot * CASCADE_OFFSET
+        + shelf * CASCADE_SHELF_OFFSET,
+      y: CASCADE_ORIGIN_Y
+        + slot * CASCADE_OFFSET
+        + shelf * CASCADE_SHELF_OFFSET,
       width: DEFAULT_WINDOW_WIDTH,
       height: DEFAULT_WINDOW_HEIGHT,
     },
     viewport,
   );
+}
+
+/**
+ * Where the next window goes: the next slot in the cascade that nothing is
+ * already sitting exactly on.
+ *
+ * Opening apps one after another walks down the same staircase it always did,
+ * because each new window finds the previous one in the slot above it. What is
+ * new is that it LOOKS: a window opened after another was closed takes the
+ * corner that is free rather than one it happened to have counted to, and the
+ * eighth window on a full desktop steps onto the next shelf instead of
+ * vanishing behind the first.
+ */
+function cascadeBounds(
+  state: Readonly<WindowManagerState>,
+): WindowBounds {
+  const occupied = (bounds: Readonly<WindowBounds>): boolean => (
+    state.windows.some((windowState) => (
+      Math.abs(windowState.bounds.x - bounds.x) < 1
+      && Math.abs(windowState.bounds.y - bounds.y) < 1
+    ))
+  );
+
+  for (let shelf = 0; shelf < CASCADE_SHELVES; shelf += 1) {
+    for (let slot = 0; slot < CASCADE_SLOTS; slot += 1) {
+      const bounds = slotBounds(state.viewport, slot, shelf);
+
+      if (!occupied(bounds)) {
+        return bounds;
+      }
+    }
+  }
+
+  // Twenty-one windows deep, or a viewport too small to tell the slots apart.
+  // Somebody is going to have to use the taskbar.
+  return slotBounds(state.viewport, state.cascadeIndex % CASCADE_SLOTS, 0);
 }
 
 function finish(
@@ -234,7 +286,7 @@ export function openWindow(
   }
 
   const bounds = clampWindowBounds(
-    seed.bounds ?? cascadeBounds(state.viewport, state.cascadeIndex),
+    seed.bounds ?? cascadeBounds(state),
     state.viewport,
   );
   const opened: ManagedWindow = {

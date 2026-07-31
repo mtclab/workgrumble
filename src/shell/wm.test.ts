@@ -296,6 +296,64 @@ describe('window manager movement, resize, and viewport constraints', () => {
     assertWindowManagerInvariants(state);
   });
 
+  /**
+   * The ninth window.
+   *
+   * The cascade counted slots and wrapped at seven, so the eighth window
+   * landed exactly on the first: same corner, same size, and the titlebar of
+   * the one underneath unreachable except from the taskbar. Two windows in
+   * precisely the same place is not a stack, it is a window that has gone
+   * missing.
+   */
+  it('never puts a new window exactly on top of an open one', () => {
+    let state = createWindowManager({ width: 1_600, height: 1_000 });
+
+    for (let index = 0; index < 12; index += 1) {
+      state = openWindow(state, {
+        id: `window-${String(index)}`,
+        appId: 'demo',
+        title: `Window ${String(index)}`,
+        icon: 'icon-about',
+        slack: false,
+      });
+    }
+
+    const corners = state.windows.map(
+      ({ bounds }) => `${String(bounds.x)}:${String(bounds.y)}`,
+    );
+
+    expect(new Set(corners).size).toBe(corners.length);
+    assertWindowManagerInvariants(state);
+  });
+
+  /**
+   * And the corner a closed window leaves behind is offered to the next one
+   * rather than being counted past - a desktop worked through app by app used
+   * to walk the staircase off the bottom while the top of it stood empty.
+   */
+  it('reuses a slot that a closed window has given back', () => {
+    let state = createWindowManager({ width: 1_600, height: 1_000 });
+    const open = (id: string): void => {
+      state = openWindow(state, {
+        id,
+        appId: id,
+        title: id,
+        icon: 'icon-about',
+        slack: false,
+      });
+    };
+
+    open('window-a');
+    open('window-b');
+    const first = state.windows[0]?.bounds;
+    state = closeWindow(state, 'window-a');
+    open('window-c');
+
+    expect(state.windows.map(({ id }) => id))
+      .toEqual(['window-b', 'window-c']);
+    expect(state.windows[1]?.bounds).toEqual(first);
+  });
+
   it('degrades configured minimums only for a viewport smaller than them', () => {
     const state = openWindow(
       createWindowManager({ width: 180, height: 120 }),

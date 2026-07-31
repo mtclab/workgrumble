@@ -34,6 +34,14 @@ export const MAIL_THREADS: readonly MailThread[] = [
           + 'the promotion.',
           'People will come to your desk instead of raising a ticket. That is '
           + 'not your fault and it is also now your problem.',
+          // The one thing a player has to know before the corridor is used
+          // against them, said before the shift starts and by the person who
+          // would say it. Learning the panic key by being caught is a tutorial
+          // written by the boss.
+          'Last thing, and I have not told you this. The key to the left of '
+          + 'the 1, above Tab, tidies your screen of anything that is not '
+          + 'work. Instantly. Desmond has never worked out why everyone types '
+          + 'so fast when he walks past.',
         ],
       },
     ],

@@ -483,7 +483,25 @@ export class Desktop {
     const list = document.createElement('div');
     list.className = 'start-menu-list';
 
-    for (const app of this.apps) {
+    // The tools first, the day's own screens after them.
+    //
+    // The manifest is in installation order, which puts the brief, the
+    // scorecard, the week, the telling-off, the review and the fridge above
+    // the ticket queue - six screens the day opens by itself, standing in
+    // front of the thing the player actually came to open. The menu is a
+    // question about what gets used, and it is answered here rather than by
+    // reordering the manifest, which is also the taskbar's order and the
+    // order a loaded save reopens its windows in.
+    const tools = this.apps.filter((app) => app.desktop !== false);
+    const screens = this.apps.filter((app) => app.desktop === false);
+
+    for (const app of [...tools, ...screens]) {
+      if (app === screens[0]) {
+        const rule = document.createElement('div');
+        rule.className = 'menu-separator';
+        list.append(rule);
+      }
+
       const item = menuItem(app.title, app.icon, `start-menu-item-${app.id}`);
       item.addEventListener(
         'click',
@@ -630,7 +648,12 @@ export class Desktop {
 
   private handleKeyDown(event: KeyboardEvent): void {
     if (event.key === DISMISS_KEY) {
-      this.closeTransientSurfaces();
+      if (isVisible(this.startMenu) || isVisible(this.trayPanel)) {
+        this.closeTransientSurfaces();
+        return;
+      }
+
+      this.dismissFocusedScene();
       return;
     }
 
@@ -644,6 +667,38 @@ export class Desktop {
     event.preventDefault();
     this.closeTransientSurfaces();
     this.commitWindows(minimizeSlackWindows(this.requireWindowManager()));
+  }
+
+  /**
+   * Escape, on the window in front, when that window is one of the day's own
+   * screens.
+   *
+   * The caught scene and the review both SAY they close on Escape, in their
+   * own source, and neither did: Escape reached the start menu and the tray
+   * panel and stopped there. It is not extended to the tools, because a
+   * terminal and a search box are places where Escape means something else -
+   * and the day's screens are the ones with nothing in them to lose.
+   */
+  private dismissFocusedScene(): void {
+    const state = this.wm;
+    const focusedId = state?.focusedId ?? null;
+
+    if (state === null || focusedId === null) {
+      return;
+    }
+
+    const focused = state.windows.find(
+      (windowState) => windowState.id === focusedId,
+    );
+    const definition = this.apps.find(
+      (app) => app.id === focused?.appId,
+    );
+
+    if (definition === undefined || definition.desktop !== false) {
+      return;
+    }
+
+    this.commitWindows(closeWindow(state, focusedId));
   }
 
   private handleOutsidePointerDown(event: PointerEvent): void {

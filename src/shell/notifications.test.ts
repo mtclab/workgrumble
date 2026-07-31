@@ -8,6 +8,7 @@ import {
   NOTIFICATION_HISTORY_LIMIT,
   type NotificationState,
   pushNotification,
+  TOAST_STACK_LIMIT,
   TOAST_TTL_TICKS,
 } from './notifications';
 
@@ -78,6 +79,29 @@ describe('notification centre model', () => {
     expect(state.history[0]?.title).toBe(
       `Title ${String(NOTIFICATION_HISTORY_LIMIT + 2)}`,
     );
+  });
+
+  /**
+   * The day-end pile-up: five deadlines going at once, a drip arriving on top
+   * of them, and the scorecard landing behind the lot. The stack is a column
+   * down the right of the desktop and nothing was stopping it - eight toasts
+   * is the queue covered by an account of the queue.
+   */
+  it('caps the toasts on screen without losing one of them', () => {
+    const state = pushMany(TOAST_STACK_LIMIT + 4);
+
+    expect(state.toasts).toHaveLength(TOAST_STACK_LIMIT);
+    // The newest are the ones on screen, oldest-first as the stack renders.
+    expect(state.toasts.map(({ title }) => title)).toEqual([
+      'Title 4',
+      'Title 5',
+      'Title 6',
+      'Title 7',
+    ]);
+    // And nothing was lost: the centre has every one, and the badge counted
+    // every one.
+    expect(state.history).toHaveLength(TOAST_STACK_LIMIT + 4);
+    expect(state.unread).toBe(TOAST_STACK_LIMIT + 4);
   });
 
   it('rejects blank copy and invalid ticks', () => {

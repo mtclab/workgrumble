@@ -287,6 +287,29 @@ test('completes a full session with no console errors and no runtime requests', 
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('notification-panel')).toBeHidden();
 
+  // The QoL sweep, run over the desktop this journey has just filled: every
+  // control that is switched off says why, in a tooltip, in the same words the
+  // engine would refuse it with. A dead button with no explanation is the dead
+  // end the house rules forbid, and this is the standing gate for the whole
+  // class rather than for the four the journey happens to click.
+  const unexplained = await page.locator('button:disabled').evaluateAll(
+    (nodes) => nodes
+      .filter((node) => (node.getAttribute('title') ?? '').trim().length === 0)
+      .map((node) => node.dataset.testid ?? node.textContent ?? '?'),
+  );
+  expect(unexplained).toEqual([]);
+
+  // And the start menu lists the tools before the day's own screens: the
+  // manifest is in installation order, which is not an order anybody uses.
+  await page.getByTestId('start-button').click();
+  const menuOrder = await page
+    .getByTestId('start-menu')
+    .locator('.menu-item')
+    .evaluateAll((nodes) => nodes.map((node) => node.dataset.testid ?? ''));
+  expect(menuOrder.indexOf('start-menu-item-tickets'))
+    .toBeLessThan(menuOrder.indexOf('start-menu-item-brief'));
+  await page.keyboard.press('Escape');
+
   // Session: log off and back on, then restart, all without a reload.
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-log-off').click();
