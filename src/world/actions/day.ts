@@ -1,4 +1,5 @@
 import type { ActionData, NodeRefData } from '../../engine-api';
+import { NO_RUN } from '../consumables';
 import { FIELDS } from '../fields';
 import { HELPDESK_TIER, not } from './helpers';
 import { DAY_ACTIONS } from './ids';
@@ -107,14 +108,52 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         value: { const: 'morning_brief' },
       },
       // The meters carry over - stress is the whole point of a shift you
-      // survived - but the COUNT of suspicious intervals is a thing about one
-      // day, and a scorecard that added yesterday's in would stop meaning
-      // anything by Wednesday.
+      // survived - but the COUNTS are things about one day, and a scorecard
+      // that added yesterday's in would stop meaning anything by Wednesday.
       {
         op: 'set_field',
         node: ACTOR,
         field: FIELDS.suspicionEvents,
         value: { const: 0 },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.caughtEvents,
+        value: { const: 0 },
+      },
+      // And the desk is cleared overnight by somebody who is paid less than
+      // you and says nothing about it. The empties, the money the machine had
+      // off you, and whatever is still in your blood all end with the day.
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.deskCans,
+        value: { const: 0 },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.consumableSpend,
+        value: { const: 0 },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.drinkStartedAt,
+        value: { const: NO_RUN },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.drinkTolerance,
+        value: { const: 0 },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.drinkCrashCharged,
+        value: { const: NO_RUN },
       },
     ],
   },

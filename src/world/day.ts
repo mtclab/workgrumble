@@ -146,8 +146,11 @@ export function dueTransition(
  * `morning` is the queue that was waiting when the player sat down - the
  * inherited pile, and where the shipped content starts. `drip` is an arrival
  * during the shift, which is the other half of what a queue does to you.
+ * `summoned` is neither: it is a ticket some other system raises when it feels
+ * like it - the lead deciding, at 11:40, that his phone is now everybody's
+ * problem - so the day scheduler deals it no slot at all.
  */
-export type TicketArrival = 'morning' | 'drip';
+export type TicketArrival = 'morning' | 'drip' | 'summoned';
 
 export interface ScheduledTicket {
   readonly id: string;
@@ -176,16 +179,30 @@ const DRIP_CLOSES_BEFORE = 90;
 const DRIP_JITTER = 12;
 
 /**
- * A stable offset for one arrival, in [-DRIP_JITTER, +DRIP_JITTER].
+ * A stable offset for one scheduled thing, in [-spread, +spread].
  *
- * FNV-1a over the things that identify this arrival, which makes the schedule
- * a function of the world seed, the day and the ticket - the same three times
- * running, and the same again after a save. It is a spreader, not a source of
- * randomness for the simulation: the engine's own generator is the only thing
- * allowed to roll dice that the world remembers.
+ * FNV-1a over the things that identify it, which makes a schedule a function of
+ * the world seed, the day and a key - the same three times running, and the
+ * same again after a save. It is a spreader, not a source of randomness for the
+ * simulation: the engine's own generator is the only thing allowed to roll dice
+ * that the world remembers, and a schedule is decided before the day starts.
+ *
+ * Two schedules that want different answers pass different keys; the drip uses
+ * the ticket id, the boss uses which round of the corridor he is on.
  */
-function jitterFor(seed: number, day: number, ticketId: string): number {
-  const text = `${String(seed)}:${String(day)}:${ticketId}`;
+export function seededOffset(
+  seed: number,
+  day: number,
+  key: string,
+  spread: number,
+): number {
+  requireDay(day);
+
+  if (!Number.isSafeInteger(spread) || spread < 0) {
+    throw new TypeError('A jitter spread must be a whole number of minutes.');
+  }
+
+  const text = `${String(seed)}:${String(day)}:${key}`;
   let hash = 0x811c_9dc5;
 
   for (let index = 0; index < text.length; index += 1) {
@@ -193,7 +210,7 @@ function jitterFor(seed: number, day: number, ticketId: string): number {
     hash = Math.imul(hash, 0x0100_0193) >>> 0;
   }
 
-  return (hash % (DRIP_JITTER * 2 + 1)) - DRIP_JITTER;
+  return (hash % (spread * 2 + 1)) - spread;
 }
 
 function clamp(value: number, low: number, high: number): number {
@@ -229,7 +246,7 @@ export function buildDaySchedule(
     ...dripping.map((entry, index) => ({
       tick: clamp(
         Math.round(first + step * (index + 1))
-          + jitterFor(seed, day, entry.id),
+          + seededOffset(seed, day, entry.id, DRIP_JITTER),
         first,
         last,
       ),
@@ -343,7 +360,22 @@ export interface PaySlip {
   readonly net: number;
 }
 
-export function daySlip(ledger: Readonly<DayLedger>): PaySlip {
+/**
+ * The day's pay, and what the day took back off it.
+ *
+ * `spentPence` is what the player put through the vending machine on their own
+ * card - so it is a deduction rather than a cost of doing business, and it is
+ * on the payslip because a mechanic the scorecard does not price is a mechanic
+ * with no downside except the one you cannot see.
+ */
+export function daySlip(
+  ledger: Readonly<DayLedger>,
+  spentPence = 0,
+): PaySlip {
+  if (!Number.isSafeInteger(spentPence) || spentPence < 0) {
+    throw new TypeError('Consumable spend is counted in whole pence.');
+  }
+
   const bonus = ledger.closed * CLOSED_TICKET_BONUS_PENCE;
   const breaches = ledger.breached * BREACH_DEDUCTION_PENCE;
   const lines: PaySlipLine[] = [
@@ -370,6 +402,13 @@ export function daySlip(ledger: Readonly<DayLedger>): PaySlip {
     lines.push({
       label: `Service credit, ${String(ledger.breached)} missed deadline(s)`,
       pence: -breaches,
+    });
+  }
+
+  if (spentPence > 0) {
+    lines.push({
+      label: 'Vending machine, on your own card, at your own request',
+      pence: -spentPence,
     });
   }
 

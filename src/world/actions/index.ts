@@ -1,5 +1,7 @@
 import type { ActionData, ActionPayload } from '../../engine-api';
 import { ACCOUNT_ACTIONS } from './account';
+import { BOSS_ACTION_DATA } from './boss';
+import { CONSUMABLE_ACTION_DATA } from './consumables';
 import { DAY_ACTION_DATA } from './day';
 import { DEVICE_ACTIONS } from './device';
 import { KIND_LABELS } from './helpers';
@@ -39,6 +41,8 @@ export function helpdeskActions(): readonly ActionData[] {
     ...TICKET_ACTIONS,
     ...DAY_ACTION_DATA,
     ...METER_ACTION_DATA,
+    ...BOSS_ACTION_DATA,
+    ...CONSUMABLE_ACTION_DATA,
   ];
 }
 

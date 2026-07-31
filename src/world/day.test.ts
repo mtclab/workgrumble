@@ -339,6 +339,30 @@ describe('the day scorecard', () => {
       .toBe(true);
   });
 
+  /**
+   * The vending machine is on the payslip because a mechanic the scorecard
+   * does not price is a mechanic with no downside except the invisible one.
+   */
+  it('takes the vending machine off the day it was spent on', () => {
+    const dry = daySlip({ arrived: 2, closed: 2, breached: 0, stillOpen: 0 });
+    const wired = daySlip(
+      { arrived: 2, closed: 2, breached: 0, stillOpen: 0 },
+      360,
+    );
+
+    expect(wired.gross).toBe(dry.gross);
+    expect(wired.deducted).toBe(dry.deducted + 360);
+    expect(wired.net).toBe(dry.net - 360);
+    expect(wired.lines.some((line) => line.label.includes('Vending machine')))
+      .toBe(true);
+    // A day nobody spent anything on does not get a line saying so.
+    expect(dry.lines.some((line) => line.label.includes('Vending machine')))
+      .toBe(false);
+    expect(
+      () => daySlip({ arrived: 1, closed: 0, breached: 0, stillOpen: 1 }, -5),
+    ).toThrow(TypeError);
+  });
+
   /** A day cannot end owing the company money. It is a gag, not a bailiff. */
   it('never pays out less than nothing', () => {
     const disaster = daySlip({

@@ -145,4 +145,32 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/account-lockout'],
   },
+  {
+    id: 'kb/mail-on-a-phone',
+    title: 'A phone that has stopped getting mail',
+    summary: 'It is almost never the phone, and almost always a group.',
+    body: [
+      'A phone does not hold a mailbox; it holds a connection to one. When '
+      + 'mail stops arriving on the handset and keeps arriving on the desktop, '
+      + 'the mailbox is fine and the path to it is not - which means the '
+      + 'answer is on the account, not on the device the reporter is waving '
+      + 'at you.',
+      'Check group membership first. Remote mail on this estate is gated '
+      + 'behind the VPN group, and group membership is the single most likely '
+      + 'thing to have changed underneath somebody: tidy-ups, leavers '
+      + 'processes and well-meaning scripts all take people out of groups '
+      + 'without ever telling them what they took.',
+      'Only then look at the phone. Re-adding an account on a handset is '
+      + 'twenty minutes of somebody else\'s time and it fixes nothing when the '
+      + 'account is not allowed through; it also destroys the evidence, '
+      + 'because the phone that now says "cannot connect" said something more '
+      + 'specific before it was wiped.',
+      'Urgency and importance are not the same field, and a phone is where '
+      + 'that difference shows up hardest. One handset not syncing affects one '
+      + 'person, however loudly that person mentions their eleven o\'clock. '
+      + 'File it honestly, fix it in order, and let the matrix take the '
+      + 'argument for you.',
+    ],
+    see_also: ['kb/account-lockout'],
+  },
 ];

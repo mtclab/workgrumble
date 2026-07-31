@@ -71,6 +71,23 @@ export const DAY_ACTIONS = {
    * instead of being recomputed from a wall clock nobody wrote down.
    */
   metersTick: 'meters.tick',
+  /**
+   * The lead arriving to find something on the screen. Suspicion drops to a
+   * floor - being spoken to does not launder the morning, it resets the meter
+   * to somebody who has just been spoken to - and the price is taken off
+   * reputation, which is the meter that does not drain.
+   */
+  bossCaught: 'boss.caught',
+  /** He noticed the empties rather than the screen. Cheaper. Not free. */
+  bossNoticedEmpties: 'boss.noticed_empties',
+  /** A chat nag, which costs a few points of stress and raises no ticket. */
+  bossPing: 'boss.ping',
+  /** Opening a can: money out, empties up, and a clock the crash reads. */
+  consumableDrink: 'consumable.drink',
+  /** The bill for the can, billed once against the run that bought it. */
+  consumableCrash: 'consumable.crash',
+  /** The empties, into the bin, before somebody counts them. */
+  deskTidy: 'desk.tidy',
 } as const;
 
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];

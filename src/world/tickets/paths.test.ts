@@ -7,7 +7,22 @@ import { FIELDS } from '../fields';
 import { createWorldSession, type WorldSession } from '../session';
 import { acceptsEscalation } from './escalation';
 import { allowsEscalation, WORLD_TICKETS } from './index';
-import type { TicketActionStep } from './types';
+import type { TicketActionStep, WorldTicket } from './types';
+
+/**
+ * Puts a ticket in the world that the morning does not.
+ *
+ * Not every shipped ticket is in the queue at 08:00 any more: a summoned one
+ * is raised mid-shift by the system that raises it - the lead, in chat - and
+ * this is the same call the day driver makes when he does. Everything below
+ * still drives the real registry against the real world; the only difference
+ * is which minute the ticket arrived in.
+ */
+function spawnIfAbsent(session: WorldSession, entry: WorldTicket): void {
+  if (session.engine.graph.getNode(entry.def.id) === undefined) {
+    session.engine.registerTicket(entry.def);
+  }
+}
 
 function drive(session: WorldSession, step: Readonly<TicketActionStep>): void {
   const result = session.engine.dispatch(
@@ -29,6 +44,15 @@ describe('shipped tickets', () => {
     const session = createWorldSession();
 
     for (const entry of WORLD_TICKETS) {
+      // The morning pile is in the world before anybody has clicked anything;
+      // the summoned one is not there until it is raised, and asserting it
+      // WERE there would be asserting the queue lies about the day.
+      expect(
+        session.engine.ticketState(entry.def.id),
+        entry.def.id,
+      ).toBe(entry.arrival === 'summoned' ? undefined : 'open');
+
+      spawnIfAbsent(session, entry);
       expect(session.engine.ticketState(entry.def.id)).toBe('open');
       expect(session.engine.graph.getField(entry.def.id, FIELDS.slaDeadline))
         .toBe(entry.def.sla_ticks);
@@ -39,6 +63,7 @@ describe('shipped tickets', () => {
       'ticket:rotated-screen',
       'ticket:locked-account',
       'ticket:wedged-spooler',
+      'ticket:boss-phone',
     ]);
   });
 
@@ -69,6 +94,7 @@ describe.each(WORLD_TICKETS.map((entry) => [entry.def.id, entry] as const))(
       'closes through the %s path',
       (_pathId, path) => {
         const session = createWorldSession();
+        spawnIfAbsent(session, entry);
         expect(session.engine.ticketState(ticketId)).toBe('open');
 
         path.steps.forEach((step, index) => {
@@ -86,6 +112,7 @@ describe.each(WORLD_TICKETS.map((entry) => [entry.def.id, entry] as const))(
 
     it('stays open until a path is actually driven', () => {
       const session = createWorldSession();
+      spawnIfAbsent(session, entry);
       session.engine.advance(1);
       expect(session.engine.ticketState(ticketId)).toBe('open');
     });

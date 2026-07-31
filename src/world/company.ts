@@ -1,4 +1,5 @@
 import type { Edge, GraphNode, SetupOp } from '../engine-api';
+import { NO_RUN } from './consumables';
 import { DEVICE_TYPES, FIELDS, SERVICE_STATUS } from './fields';
 import { STARTING_REPUTATION } from './meters';
 
@@ -182,6 +183,13 @@ export function companySetup(): readonly SetupOp[] {
             [FIELDS.suspicionEvents]: 0,
             [FIELDS.breachesCharged]: 0,
             [FIELDS.resolveCreditPaid]: 0,
+            [FIELDS.caughtEvents]: 0,
+            // The desk, on a morning nobody has needed a can yet.
+            [FIELDS.deskCans]: 0,
+            [FIELDS.drinkStartedAt]: NO_RUN,
+            [FIELDS.drinkTolerance]: 0,
+            [FIELDS.drinkCrashCharged]: NO_RUN,
+            [FIELDS.consumableSpend]: 0,
           }
           : {}),
       },

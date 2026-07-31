@@ -86,6 +86,12 @@ export function validateDialogueTrees(
       );
     }
 
+    if (tree.summoned_root !== undefined && !nodeIds.has(tree.summoned_root)) {
+      throw new Error(
+        `Tree "${tree.id}" has no summoned root "${tree.summoned_root}".`,
+      );
+    }
+
     if (tree.resolved_root !== undefined && tree.ticket === undefined) {
       throw new Error(
         `Tree "${tree.id}" reacts to a resolution but names no ticket.`,
@@ -180,6 +186,12 @@ function assertEveryNodeReachable(tree: Readonly<DialogueTree>): void {
 
   if (tree.resolved_root !== undefined) {
     queue.push(tree.resolved_root);
+  }
+
+  // A summoned node is reachable - by the system that summons it. It is still
+  // an entry point, so everything hanging off it is still gated by this walk.
+  if (tree.summoned_root !== undefined) {
+    queue.push(tree.summoned_root);
   }
 
   while (queue.length > 0) {

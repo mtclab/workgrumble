@@ -431,10 +431,24 @@ const FAN_NOISE: DialogueTree = {
   ],
 };
 
-const BOSS_NAG: DialogueTree = {
-  id: 'dialogue/boss-nag',
+/**
+ * The lead's channel. It is one thread, because he is one man and he has one
+ * way of raising things: at you, in chat, when it occurs to him.
+ *
+ * The `phone` node is the exception to the tree's own rules and the reason it
+ * is written like this: NOTHING in the tree points at it. The boss system drops
+ * the conversation onto that node when he pings, which is also the tick the
+ * trap ticket is raised - so the question that stops his clock and the note
+ * that records the cause are only reachable once there is a ticket for them to
+ * land on, and a player who opens the boss channel unprompted gets the nag.
+ */
+const BOSS_CHANNEL: DialogueTree = {
+  id: 'dialogue/boss-phone',
   speaker: COMPANY_IDS.boss,
+  ticket: 'ticket:boss-phone',
   root: 'nag',
+  resolved_root: 'after',
+  summoned_root: 'phone',
   nodes: [
     {
       id: 'nag',
@@ -481,6 +495,92 @@ const BOSS_NAG: DialogueTree = {
       options: [
         { label: 'Go back to the top', next: 'nag' },
         { label: 'Accept the system for concerns' },
+      ],
+    },
+    {
+      id: 'phone',
+      npc_line: 'My phone has stopped getting email. I need it for the eleven '
+        + 'o\'clock. Top priority, please.',
+      options: [
+        {
+          label: 'Ask whether mail is still arriving on his desktop',
+          next: 'desktop',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Mail is still landing on his desktop, so the mailbox is '
+                + 'fine and the phone has lost its way in rather than its mail.',
+            },
+          ],
+        },
+        {
+          label: 'Ask when the phone last had anything',
+          next: 'yesterday',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Ask how many people are affected by this',
+          next: 'affected',
+          effects: [{ asks: true }],
+        },
+        { label: 'Say you will look at it and go back to the queue' },
+      ],
+    },
+    {
+      id: 'desktop',
+      npc_line: 'The desktop is fine. The desktop has always been fine. The '
+        + 'desktop is not the one I take into the eleven o\'clock.',
+      options: [
+        { label: 'Ask when the phone last had anything', next: 'yesterday',
+          effects: [{ asks: true }] },
+        { label: 'Go back to the top', next: 'nag' },
+        { label: 'Tell him it is the account, not the handset' },
+      ],
+    },
+    {
+      id: 'yesterday',
+      npc_line: 'Yesterday afternoon. Around the time somebody sent a mail '
+        + 'about tidying up the groups, which I did not read, because I was '
+        + 'in a meeting about reading things.',
+      options: [
+        {
+          label: 'Ask whether mail is still arriving on his desktop',
+          next: 'desktop',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Mail is still landing on his desktop, so the mailbox is '
+                + 'fine and the phone has lost its way in rather than its mail.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'nag' },
+      ],
+    },
+    {
+      id: 'affected',
+      npc_line: 'One. Me. I would have thought that was the point rather than '
+        + 'the objection.',
+      options: [
+        { label: 'Agree, and file it honestly anyway', next: 'phone' },
+        { label: 'Go back to the top', next: 'nag' },
+      ],
+    },
+    {
+      id: 'after',
+      npc_line: 'It is coming through. All of it, at once, including the one '
+        + 'about tidying up the groups. Was that us?',
+      options: [
+        { label: 'Explain what a group membership is, briefly', next: 'lesson' },
+        { label: 'Say it was one of those things' },
+      ],
+    },
+    {
+      id: 'lesson',
+      npc_line: 'So I was taken out of a list and the phone did as it was '
+        + 'told. I shall raise a concern about the list.',
+      options: [
+        { label: 'Suggest he raises it as a ticket' },
       ],
     },
   ],
@@ -543,6 +643,6 @@ export const DIALOGUE_TREES: readonly DialogueTree[] = [
   LOCKED_ACCOUNT,
   WEDGED_SPOOLER,
   FAN_NOISE,
-  BOSS_NAG,
+  BOSS_CHANNEL,
   RECEPTION,
 ];

@@ -8,10 +8,12 @@ import type { ScheduledTicket } from '../day';
 import { FIELDS } from '../fields';
 import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
 import { type Classification, classify, trueImpact } from '../priority';
+import { BOSS_PHONE } from './boss-trash';
 import { acceptsEscalation } from './escalation';
 import { PILOT_TICKETS } from './pilot';
 import type { WorldTicket } from './types';
 
+export { BOSS_PHONE } from './boss-trash';
 export { acceptsEscalation } from './escalation';
 export {
   actionSummary,
@@ -152,10 +154,11 @@ function validateWorldTickets(
   return Object.freeze([...entries]);
 }
 
-/** Everything spawned into the shipped world, in spawn order. */
+/** Everything the shipped world can put on the desk, in spawn order. */
 export const WORLD_TICKETS: readonly WorldTicket[] = validateWorldTickets([
   FAN_TICKET,
   ...PILOT_TICKETS,
+  BOSS_PHONE,
 ]);
 
 export const WORLD_TICKET_DEFS: readonly TicketDef[] = Object.freeze(
@@ -174,10 +177,16 @@ export function findWorldTicket(id: string): WorldTicket | undefined {
  * into. The scheduler does not care - it deals whatever the pool declares.
  */
 export function ticketArrivalPool(): readonly ScheduledTicket[] {
-  return WORLD_TICKETS.map((entry) => ({
-    id: entry.def.id,
-    arrival: entry.arrival,
-  }));
+  // A summoned ticket has no slot in anybody's day: it turns up when the man
+  // who raised it decides it has, and the boss system is what puts it on the
+  // desk. Handing it to the scheduler at all would be a slot the scheduler
+  // then had to know to ignore.
+  return WORLD_TICKETS
+    .filter((entry) => entry.arrival !== 'summoned')
+    .map((entry) => ({
+      id: entry.def.id,
+      arrival: entry.arrival,
+    }));
 }
 
 /** The tickets that are already in the queue when the player sits down. */

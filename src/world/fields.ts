@@ -46,6 +46,30 @@ export const FIELDS = {
    */
   breachesCharged: 'breaches_charged',
   resolveCreditPaid: 'resolve_credit_paid',
+  /**
+   * How many times the lead came round the corner and found something on the
+   * screen. Counted per day, like the suspicious minutes, because it is a thing
+   * that happened to a day rather than a level the player is at.
+   */
+  caughtEvents: 'caught_events',
+  /**
+   * The desk itself. `deskCans` is the empties standing on it - evidence, and
+   * the reason there is a tidy-desk action at all. `drinkStartedAt` is the
+   * minute the current can was opened (-1 when there is no run), and
+   * `drinkTolerance` is how many cans that run is up to, which is what makes
+   * each additional one a weaker buff and a harder crash.
+   */
+  deskCans: 'desk_cans',
+  drinkStartedAt: 'drink_started_at',
+  drinkTolerance: 'drink_tolerance',
+  /**
+   * Which run's crash has already been paid for. The crash is a one-off event
+   * and the day driver is a repeating one, so it needs a watermark to bill
+   * against - the same shape the meters use for breaches.
+   */
+  drinkCrashCharged: 'drink_crash_charged',
+  /** What the machine has had off you today, in whole pence. */
+  consumableSpend: 'consumable_spend',
   /** account */
   username: 'username',
   locked: 'locked',

@@ -81,5 +81,15 @@ export interface DialogueTree {
   readonly ticket?: string;
   /** Where a conversation starts once that ticket is closed. */
   readonly resolved_root?: string;
+  /**
+   * Where another system may DROP this conversation, unasked.
+   *
+   * The boss pinging you is not something the player navigated to: the chat
+   * window opens itself with a question already in it. A node named here is a
+   * legitimate entry point that nothing in the tree points at - which is also
+   * how it stays unreachable until that system says so, so a question about a
+   * ticket nobody has raised yet cannot be asked early.
+   */
+  readonly summoned_root?: string;
   readonly nodes: readonly DialogueNode[];
 }
