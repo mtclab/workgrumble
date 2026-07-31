@@ -471,8 +471,19 @@ const GOLDEN_DAY = {
    * warehouse printer counts how many times it has lost power, which is what
    * the note by the socket is earned by; the trolley writes the first of
    * those at 16:56 on this very Monday.
+   *
+   * And a fifth time, for M5's weighted review, and once again the hash is the
+   * only thing on this screen that moved. The player node carries one more
+   * number - `week_reputation`, the week as the Friday conversation will read
+   * it - seeded at fifty on the Monday morning and written once at clock-off,
+   * where this day ends. Nothing about how reputation MOVES changed, which is
+   * why every meter below is the number it was: this day's stress, suspicion
+   * and reputation, its pay, its patrols and its cans are untouched, and the
+   * new field is Monday's fifty folded into the 26 this day ends on, which
+   * is 38 at midnight - a day whose queue went unworked, read as the review
+   * would read it.
    */
-  hash: 'de732e1ab79732ca',
+  hash: '4f8dd70e17293355',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */

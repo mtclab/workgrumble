@@ -169,6 +169,12 @@ const METERS: readonly string[] = [
   FIELDS.stress,
   FIELDS.suspicion,
   FIELDS.reputation,
+  // The number the conversation on Friday actually reads: the week, weighted
+  // toward how it ended. It is in the golden because it is what decides the
+  // ending - a rate change that moved the meter without moving this would be
+  // a change to the game that the review never hears about, and the other way
+  // round is worse.
+  FIELDS.weekReputation,
   FIELDS.caughtEvents,
   FIELDS.farmFund,
   FIELDS.weekAttempt,
@@ -299,6 +305,8 @@ interface GoldenWeek {
   readonly breached: number;
   readonly stillOpen: number;
   readonly earnedPence: number;
+  /** What the lead read out at three o'clock, and decided on. */
+  readonly reviewRead: number;
   readonly meters: Record<string, number>;
   readonly timeline: readonly string[];
 }
@@ -348,9 +356,30 @@ interface GoldenWeek {
  * The coalesced night is in this diff too and moved NOTHING: the same nine
  * hundred minutes, in one call instead of nine hundred, is a performance
  * change and `night.test.ts` is the proof that it is only that.
+ *
+ * FOURTH MOVE (M5, the weighted review). Both hashes again, and this time two
+ * numbers with them - and it is worth being exact about which:
+ *
+ *  - `week_reputation` is new on the player node, seeded at fifty and written
+ *    at every clock-off and once more in the minute the review happens. It is
+ *    the week as the conversation reads it: today folded into the days behind
+ *    it, half and half. Worked: 98 by Friday evening (96 at three, folded once
+ *    more by the last clock-off). Idle: 2 by Friday evening, 4 at three -
+ *    Monday's fifty is worth about a sixteenth of the answer by then, and
+ *    everything since has been nothing.
+ *  - `reviewRead` - the number on the week screen - is 96 for the worked week
+ *    and 4 for the idle one, where both used to be the live meter (100 and 0).
+ *
+ * Nothing else moved, and that is the claim: `reputation` is still 100 and 0,
+ * every count, every penny, both timelines and both endings came through
+ * untouched. How reputation MOVES was not touched - only what Friday at three
+ * makes of where it got to. The reason is in `weightedWeekReputation`: the
+ * meter has a ceiling at 100 and a properly worked week reaches it by about
+ * the Wednesday, after which nothing done on the Thursday or the Friday could
+ * reach the review at all.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: 'fefc3253776af51b',
+  hash: '44adc1e7afffe482',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -375,6 +404,7 @@ const GOLDEN_WORKED: GoldenWeek = {
   /** Five days at the rate, twenty-three resolution bonuses, the deductions
    * nobody agreed to, and the probation bonus for surviving Friday. */
   earnedPence: 76_525,
+  reviewRead: 96,
   meters: {
     // Twenty-three closed tickets carry the reputation from fifty to its
     // ceiling well before Friday, which is what a week worked properly looks
@@ -384,6 +414,9 @@ const GOLDEN_WORKED: GoldenWeek = {
     stress: 11,
     suspicion: 0,
     reputation: 100,
+    // The week as the review read it, folded once more by Friday's own
+    // clock-off: 96 at three o'clock, 98 by five.
+    week_reputation: 98,
     // Counted per day and cleared at every clock-off: Friday was clean.
     caught_events: 0,
     farm_fund: 76_525,
@@ -417,7 +450,7 @@ const GOLDEN_WORKED: GoldenWeek = {
  * and the world does not pretend otherwise.
  */
 const GOLDEN_IDLE: GoldenWeek = {
-  hash: 'fc07799712f6733e',
+  hash: '5eea8d601fd63298',
   tick: 6_300,
   outcome: 'fired',
   days: [
@@ -433,10 +466,14 @@ const GOLDEN_IDLE: GoldenWeek = {
   stillOpen: 22,
   /** Still paid, right up until they stop paying you. */
   earnedPence: 37_775,
+  reviewRead: 4,
   meters: {
     stress: 98,
     suspicion: 96,
     reputation: 0,
+    // Four at three o'clock - Monday's fifty is down to a sixteenth of the
+    // answer by Friday, and everything since has been zero - and two by five.
+    week_reputation: 2,
     caught_events: 3,
     farm_fund: 37_775,
     week_attempt: 1,
@@ -475,7 +512,10 @@ function expectGolden(walked: WalkedWeek, golden: GoldenWeek): void {
   expect(walked.card.breached).toBe(golden.breached);
   expect(walked.card.stillOpen).toBe(golden.stillOpen);
   expect(walked.card.earnedPence).toBe(golden.earnedPence);
-  expect(walked.card.reputation).toBe(golden.meters[FIELDS.reputation]);
+  // The card shows what the CONVERSATION read, which is the week weighted
+  // toward how it ended - not the live meter, which carries on moving all
+  // Friday afternoon and is on this screen too, one line up.
+  expect(walked.card.reputation).toBe(golden.reviewRead);
   expect(walked.meters).toEqual(golden.meters);
   expect(walked.timeline).toEqual(golden.timeline);
 }
@@ -524,20 +564,22 @@ describe('the probation week, twice', () => {
  * miss the work, or be seen not doing it - and the week forgives EITHER of
  * them on its own and neither of them together:
  *
- *   worked properly ............ 23 of 23, no breaches ..... 100, passed
- *   half the roster ............ 13 of 22, ten breaches ..... 69, passed
- *   worked, browser up all week . 23 of 23, caught 15 times .. 50, passed
- *   half the roster, browser up . 13 of 22, caught 15 times ... 0, FIRED
- *   nothing at all .............. 0 of 22, everything late .... 0, FIRED
+ *   worked properly ............ 23 of 23, no breaches ...... 96, passed
+ *   half the roster ............ 13 of 22, ten breaches ..... 67, passed
+ *   worked, browser up all week . 23 of 23, caught 15 times .. 51, passed
+ *   half the roster, browser up . 13 of 22, caught 15 times ... 5, FIRED
+ *   nothing at all .............. 0 of 22, everything late .... 4, FIRED
  *
  * with the line at 40. Nothing was tuned to produce that: these are the rates
  * as M3 and M4 left them, and the table is committed here so that a change to
  * any of them shows up as a diff in a shape rather than as a number in a file.
  *
- * The one thing it says about the design, which is a note rather than a bug:
- * a properly worked week reaches the reputation CEILING by about Wednesday, so
- * the last two days of it are invisible to the review. That is a meter-model
- * question, not a rate.
+ * The figures are what the REVIEW read - the week weighted toward how it ended
+ * - rather than the live meter, because that is the number the conversation is
+ * had about. They were 100 / 69 / 50 / 0 / 0 on the meter before the weighting
+ * landed, so the shape is unchanged and the top of it is no longer flat: a
+ * week worked properly used to sit on the ceiling from about the Wednesday,
+ * which meant the Thursday and the Friday could not reach the review at all.
  */
 describe('the week at four skill levels', () => {
   interface Profile {
@@ -545,7 +587,10 @@ describe('the week at four skill levels', () => {
     readonly play: (world: Week, day: number) => void;
     readonly closed: number;
     readonly breached: number;
+    /** Where the live meter ended up. */
     readonly reputation: number;
+    /** And what the conversation on Friday actually read out of it. */
+    readonly reviewRead: number;
     readonly outcome: ReviewOutcome;
     readonly caught: number;
   }
@@ -557,6 +602,7 @@ describe('the week at four skill levels', () => {
       closed: 23,
       breached: 0,
       reputation: 100,
+      reviewRead: 96,
       outcome: 'passed',
       // One browser, on the Wednesday, hidden before the second round - and
       // found once, which is the week's own texture rather than a profile.
@@ -568,6 +614,7 @@ describe('the week at four skill levels', () => {
       closed: 13,
       breached: 10,
       reputation: 69,
+      reviewRead: 67,
       outcome: 'passed',
       caught: 0,
     },
@@ -577,6 +624,7 @@ describe('the week at four skill levels', () => {
       closed: 23,
       breached: 0,
       reputation: 50,
+      reviewRead: 51,
       outcome: 'passed',
       caught: 15,
     },
@@ -586,6 +634,7 @@ describe('the week at four skill levels', () => {
       closed: 13,
       breached: 10,
       reputation: 0,
+      reviewRead: 5,
       outcome: 'fired',
       caught: 15,
     },
@@ -595,6 +644,7 @@ describe('the week at four skill levels', () => {
       closed: 0,
       breached: 22,
       reputation: 0,
+      reviewRead: 4,
       outcome: 'fired',
       // A game of Bubble Break left up from the Tuesday morning, found on
       // every round of the corridor for the rest of the week.
@@ -610,10 +660,11 @@ describe('the week at four skill levels', () => {
     }
   });
 
-  const reputationOf = (name: string): number => {
+  /** What the review read for a profile, which is the number that decided it. */
+  const readingOf = (name: string): number => {
     const week = walked.get(name);
     expect(week).toBeDefined();
-    return week?.meters[FIELDS.reputation] ?? Number.NaN;
+    return week?.card.reputation ?? Number.NaN;
   };
 
   it.each(PROFILES)('plays $name the way it says', (profile) => {
@@ -622,6 +673,7 @@ describe('the week at four skill levels', () => {
     expect(week?.card.closed).toBe(profile.closed);
     expect(week?.card.breached).toBe(profile.breached);
     expect(week?.meters[FIELDS.reputation]).toBe(profile.reputation);
+    expect(week?.card.reputation).toBe(profile.reviewRead);
     expect(
       week?.timeline.filter((line) => line.startsWith('caught:')),
     ).toHaveLength(profile.caught);
@@ -636,7 +688,7 @@ describe('the week at four skill levels', () => {
     // The threshold is what decided all five, and it decided them by the
     // number rather than by anything the profiles were told.
     for (const profile of PROFILES) {
-      const reputation = reputationOf(profile.name);
+      const reputation = readingOf(profile.name);
 
       if (profile.outcome === 'passed') {
         expect(reputation, profile.name)
@@ -654,10 +706,10 @@ describe('the week at four skill levels', () => {
    * from "did half of it" from "did it with the forum open".
    */
   it('marks the week down for each thing that went wrong', () => {
-    const worked = reputationOf('worked properly');
-    const half = reputationOf('half the roster');
-    const slacked = reputationOf('worked, with the browser up all week');
-    const both = reputationOf('half the roster, with the browser up all week');
+    const worked = readingOf('worked properly');
+    const half = readingOf('half the roster');
+    const slacked = readingOf('worked, with the browser up all week');
+    const both = readingOf('half the roster, with the browser up all week');
 
     expect(worked).toBeGreaterThan(half);
     expect(half).toBeGreaterThan(slacked);
