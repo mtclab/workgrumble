@@ -62,7 +62,13 @@ export interface SlackRate {
 export const DEFAULT_SLACK_RATE: SlackRate = { stressRelief: 2, suspicion: 3 };
 
 export const SLACK_RATES: Readonly<Record<string, SlackRate>> = {
+  // A puzzle you can look away from. Small window, small relief, and the one
+  // thing on this list you can plausibly claim was a morale exercise.
   bubbles: { stressRelief: 2, suspicion: 3 },
+  // A forum thread and a page of cat pictures. It is the better medicine and
+  // it is the worse hiding place: text fills the window, it is legible from
+  // the doorway, and nobody has ever mistaken it for work.
+  browser: { stressRelief: 3, suspicion: 5 },
 };
 
 export function slackRate(appId: string): SlackRate {

@@ -76,6 +76,13 @@ export interface GameApi {
    * every M1 caller already makes.
    */
   openApp(id: string, intent?: AppIntent): void;
+  /**
+   * Closes an app's window, if it has one open. It exists for the screens the
+   * DAY puts up rather than the player - a caught scene needs a button that
+   * says "take it on the chin" and means it, and a window whose only exit is
+   * the titlebar is a window somebody will sit and stare at.
+   */
+  closeApp(id: string): void;
   /** True when an app is installed at the current tier, for cross-app links. */
   hasApp(id: string): boolean;
   /** The person node the shell dispatches actions as. */

@@ -20,8 +20,14 @@ import { formatSimTime } from './clock-format';
 import type { DriverSaveSeam, DriverState } from './day-driver';
 import { parseDriverState } from './day-driver';
 
-/** The shape written today. Bumped when the file's meaning changes. */
-export const SAVE_SCHEMA = 1;
+/**
+ * The shape written today. Bumped when the file's meaning changes.
+ *
+ * 1: the M2 shell - chat, mail, kb and the day screens.
+ * 2: M3's pressure layer adds two screen slices, the Browser's page and the
+ *    scene the lead's last visit left behind.
+ */
+export const SAVE_SCHEMA = 2;
 
 export const SAVE_KEY = 'it-career-sim/save';
 
@@ -46,12 +52,31 @@ function refuse(reason: string): SaveOutcome<never> {
 }
 
 /**
+ * Screen state a schema-1 file predates.
+ *
+ * Defaults rather than guesses: a session from before the Browser existed was
+ * on no page, and a session from before the lead did rounds had never been
+ * caught at anything. Both are true statements about that save.
+ */
+function addM3Screens(app: unknown): unknown {
+  if (typeof app !== 'object' || app === null || Array.isArray(app)) {
+    return app;
+  }
+
+  return {
+    browser: { siteId: null },
+    caught: { appId: null, at: null },
+    ...app,
+  };
+}
+
+/**
  * Brings an older file forward.
  *
- * There is one schema so far, so this is the seam rather than the work: when
- * schema 2 arrives, its predecessor is upgraded here and every older save
- * keeps loading. A file from a LATER schema is refused outright - guessing at
- * a field this code has never seen is how a save silently loses a day.
+ * Each step upgrades one schema to the next, in order, so a file from any
+ * version this build has ever written still loads. A file from a LATER schema
+ * is refused outright - guessing at a field this code has never seen is how a
+ * save silently loses a day.
  */
 function migrate(file: Record<string, unknown>): SaveOutcome<
   Record<string, unknown>
@@ -69,7 +94,12 @@ function migrate(file: Record<string, unknown>): SaveOutcome<
     );
   }
 
-  return { ok: true, value: file };
+  return {
+    ok: true,
+    value: schema < 2
+      ? { ...file, schema: 2, app: addM3Screens(file.app) }
+      : file,
+  };
 }
 
 export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {

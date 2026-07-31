@@ -259,4 +259,39 @@ describe('the save file', () => {
     expect(parseSaveFile('[]').ok).toBe(false);
     expect(parseSaveFile('42').ok).toBe(false);
   });
+
+  /**
+   * The migration seam, with its first real customer: a file written before
+   * the Browser and the boss existed still loads, and the slices it never had
+   * come back as the truth about that session - no page open, never caught.
+   */
+  it('brings a save from the previous format forward', () => {
+    const live = session();
+    workUntilMidday(live);
+    live.session.save();
+
+    const raw = live.storage.getItem('it-career-sim/save');
+
+    if (raw === null) {
+      throw new Error('The save was not written.');
+    }
+
+    const file = JSON.parse(raw) as Record<string, unknown>;
+    const app = { ...(file.app as Record<string, unknown>) };
+    delete app.browser;
+    delete app.caught;
+
+    const older = session();
+    older.storage.setItem(
+      'it-career-sim/save',
+      JSON.stringify({ ...file, schema: 1, app }),
+    );
+
+    expect(older.session.load()).toEqual({ ok: true, value: undefined });
+    expect(older.engine.snapshotHash()).toBe(live.engine.snapshotHash());
+    expect(older.appState.get().browser).toEqual({ siteId: null });
+    expect(older.appState.get().caught).toEqual({ appId: null, at: null });
+    // And what the old file DID carry is untouched by the upgrade.
+    expect(older.appState.get().mail.read).toEqual(['mail/queue-nag']);
+  });
 });

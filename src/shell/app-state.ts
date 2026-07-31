@@ -52,11 +52,31 @@ export interface DayScreensState {
   readonly scorecardShownFor: number | null;
 }
 
+/** Which parody site the Browser was left on. */
+export interface BrowserAppState {
+  readonly siteId: string | null;
+}
+
+/**
+ * The last thing the lead caught you at.
+ *
+ * It is screen state rather than world state: the CONSEQUENCE of being caught
+ * is meters in the graph, and this is only which scene the window shows and
+ * what time it says at the top of it. Kept in the store so the window can be
+ * closed and reopened without the scene becoming a blank telling-off.
+ */
+export interface CaughtState {
+  readonly appId: string | null;
+  readonly at: number | null;
+}
+
 export interface AppState {
   readonly chat: ChatState;
   readonly mail: MailState;
   readonly kb: KbState;
   readonly day: DayScreensState;
+  readonly browser: BrowserAppState;
+  readonly caught: CaughtState;
 }
 
 export function createAppState(): AppState {
@@ -65,6 +85,8 @@ export function createAppState(): AppState {
     mail: { selectedId: null, read: [] },
     kb: { selectedId: null },
     day: { briefShownFor: null, scorecardShownFor: null },
+    browser: { siteId: null },
+    caught: { appId: null, at: null },
   };
 }
 
@@ -88,6 +110,16 @@ function optionalDay(value: unknown): number | null | undefined {
   }
 
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1
+    ? value
+    : undefined;
+}
+
+function optionalTick(value: unknown): number | null | undefined {
+  if (value === null) {
+    return null;
+  }
+
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
     ? value
     : undefined;
 }
@@ -172,9 +204,16 @@ export function parseAppState(value: unknown): AppState | null {
     return null;
   }
 
-  const { chat, mail, kb, day } = value;
+  const { chat, mail, kb, day, browser, caught } = value;
 
-  if (!isObject(chat) || !isObject(mail) || !isObject(kb) || !isObject(day)) {
+  if (
+    !isObject(chat)
+    || !isObject(mail)
+    || !isObject(kb)
+    || !isObject(day)
+    || !isObject(browser)
+    || !isObject(caught)
+  ) {
     return null;
   }
 
@@ -185,6 +224,9 @@ export function parseAppState(value: unknown): AppState | null {
   const kbSelected = optionalId(kb.selectedId);
   const briefShownFor = optionalDay(day.briefShownFor);
   const scorecardShownFor = optionalDay(day.scorecardShownFor);
+  const siteId = optionalId(browser.siteId);
+  const caughtAppId = optionalId(caught.appId);
+  const caughtAt = optionalTick(caught.at);
 
   if (
     chatSelected === undefined
@@ -194,6 +236,9 @@ export function parseAppState(value: unknown): AppState | null {
     || kbSelected === undefined
     || briefShownFor === undefined
     || scorecardShownFor === undefined
+    || siteId === undefined
+    || caughtAppId === undefined
+    || caughtAt === undefined
   ) {
     return null;
   }
@@ -203,6 +248,8 @@ export function parseAppState(value: unknown): AppState | null {
     mail: { selectedId: mailSelected, read },
     kb: { selectedId: kbSelected },
     day: { briefShownFor, scorecardShownFor },
+    browser: { siteId },
+    caught: { appId: caughtAppId, at: caughtAt },
   };
 }
 
@@ -233,6 +280,25 @@ export class AppStateStore {
       ...this.state,
       [key]: { ...this.state[key], ...change },
     };
+  }
+
+  /**
+   * The same patch, made by something that is NOT the app that owns the slice
+   * - the day driver writing the lead's message into his chat thread, the
+   * boss system naming the scene that has just happened.
+   *
+   * It announces, and it has to: the app whose state just changed is not the
+   * one that changed it, so nothing else is going to repaint it. An app
+   * patching its OWN slice still uses `patch`, because it repaints itself and
+   * a listener firing back into that paint is a loop looking for its first
+   * re-entrant caller.
+   */
+  public patchExternal<Key extends keyof AppState>(
+    key: Key,
+    change: Partial<AppState[Key]>,
+  ): void {
+    this.patch(key, change);
+    this.announce();
   }
 
   /** The JSON-safe form a save carries. */

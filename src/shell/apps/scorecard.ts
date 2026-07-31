@@ -73,6 +73,37 @@ function reputationLine(reputation: number | null): string {
   return 'Friday is going to be a conversation, and it will be short.';
 }
 
+/**
+ * How many times the lead came round the corner and found something. Said in
+ * words as well as a number, because "1" is a fact and "once" is a review.
+ */
+function caughtLine(caught: number | null): string {
+  if (caught === null) {
+    return 'Not measured';
+  }
+
+  if (caught === 0) {
+    return '0 · Nobody came round at a bad moment. That is skill, or it is '
+      + 'Tuesday.';
+  }
+
+  return caught === 1
+    ? '1 · One conversation, which is one more than the review would like.'
+    : `${String(caught)} · He has started walking past on purpose.`;
+}
+
+/** What the machine had off you today, in money rather than in cans. */
+function spendLine(pence: number | null): string {
+  if (pence === null) {
+    return 'Not measured';
+  }
+
+  return pence === 0
+    ? '£0.00 · The machine went unfed. Your hands are your own.'
+    : `£${formatPence(pence)} · Taken off the take-home below, because the `
+      + 'machine does not do invoices.';
+}
+
 /** Tickets whose response clock ran out before anybody said a word. */
 function lateResponses(
   api: GameApi,
@@ -152,6 +183,13 @@ export const SCORECARD_APP: AppDef = {
         .textContent = meterLine(api, FIELDS.suspicion, ' of 100');
       definitionRow(list, 'Suspicious minutes', 'scorecard-suspicion-events')
         .textContent = meterLine(api, FIELDS.suspicionEvents);
+      // What the lead actually saw, which is a different number from what he
+      // might have: a day can be full of suspicious minutes and clean of
+      // conversations, and the review reads both.
+      definitionRow(list, 'Caught in the act', 'scorecard-caught')
+        .textContent = caughtLine(meterValue(api, FIELDS.caughtEvents));
+      definitionRow(list, 'Desk consumables', 'scorecard-consumables')
+        .textContent = spendLine(meterValue(api, FIELDS.consumableSpend));
 
       const reputation = meterValue(api, FIELDS.reputation);
       definitionRow(list, 'Reputation', 'scorecard-reputation')
@@ -263,7 +301,7 @@ export const SCORECARD_APP: AppDef = {
       // yet. Both are said out loud rather than dressed up as a result.
       const day = api.day.day();
       const ledger = ledgerFor(api, day);
-      const slip = daySlip(ledger);
+      const slip = daySlip(ledger, meterValue(api, FIELDS.consumableSpend) ?? 0);
       const bankedBefore = api.graph.getField(api.actor, FIELDS.farmFund);
       const banked = typeof bankedBefore === 'number' ? bankedBefore : 0;
 

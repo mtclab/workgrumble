@@ -296,6 +296,146 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { points: '9 14 12 17 15 14' },
     },
   ],
+  'icon-browser': [
+    {
+      element: 'circle',
+      attributes: { cx: '12', cy: '12', r: '9' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '3', y1: '12', x2: '21', y2: '12' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M12 3c3.2 3.6 3.2 14.4 0 18' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M12 3c-3.2 3.6-3.2 14.4 0 18' },
+    },
+  ],
+  'icon-can': [
+    {
+      element: 'rect',
+      attributes: { x: '8', y: '4', width: '8', height: '17', rx: '1' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '8', x2: '16', y2: '8' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '17', x2: '16', y2: '17' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '10 4 10 2 14 2 14 4' },
+    },
+  ],
+  'icon-beer': [
+    {
+      element: 'rect',
+      attributes: { x: '5', y: '8', width: '10', height: '13', rx: '1' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M15 11h3a2 2 0 0 1 0 5h-3' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '5', y1: '12', x2: '15', y2: '12' },
+    },
+  ],
+  'icon-bin': [
+    {
+      element: 'polyline',
+      attributes: { points: '5 7 6 21 18 21 19 7' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '3', y1: '7', x2: '21', y2: '7' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M9 7V4h6v3' },
+    },
+  ],
+  'icon-door': [
+    {
+      element: 'rect',
+      attributes: { x: '6', y: '3', width: '12', height: '18', rx: '1' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '14', cy: '12', r: '1' },
+    },
+  ],
+  'icon-cat-sitting': [
+    {
+      element: 'circle',
+      attributes: { cx: '12', cy: '8', r: '4' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '9 5 8 2 11.5 3.6' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '15 5 16 2 12.5 3.6' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M8.5 11.4c-1.2 3-1.2 6.6-0.5 8.6h8c0.7-2 0.7-5.6-0.5-8.6' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M16 20c3.2 0.4 4.4-2 3-4.4' },
+    },
+  ],
+  'icon-cat-loaf': [
+    {
+      element: 'path',
+      attributes: { d: 'M3 20c0-5.5 4-9 9-9s9 3.5 9 9z' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '7.5 12 7 8.5 10 10.5' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '16.5 12 17 8.5 14 10.5' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '9.5', y1: '15', x2: '10.5', y2: '15' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '13.5', y1: '15', x2: '14.5', y2: '15' },
+    },
+  ],
+  'icon-cat-box': [
+    {
+      element: 'rect',
+      attributes: { x: '3', y: '13', width: '18', height: '8', rx: '1' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '12', cy: '9', r: '3.2' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '9.6 6.8 9 4 11.4 5.4' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '14.4 6.8 15 4 12.6 5.4' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '3', y1: '16', x2: '21', y2: '16' },
+    },
+  ],
   'icon-lock': [
     {
       element: 'rect',

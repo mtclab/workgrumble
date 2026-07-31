@@ -82,6 +82,20 @@ export const CHAT_APP: AppDef = {
       && api.graph.getField(tree.ticket, FIELDS.state) === 'resolved'
     );
 
+    /**
+     * Whether this person has something open RIGHT NOW.
+     *
+     * A tree can name a ticket that has not been raised yet - the lead's does,
+     * because he raises his by mentioning it halfway through the morning - and
+     * a contact list that flagged him from 08:00 would be advertising a ticket
+     * nobody has.
+     */
+    const hasOpenTicket = (tree: Readonly<DialogueTree> | undefined): boolean => (
+      tree?.ticket !== undefined
+      && api.graph.getNode(tree.ticket) !== undefined
+      && api.graph.getField(tree.ticket, FIELDS.state) !== 'resolved'
+    );
+
     const startThread = (
       tree: Readonly<DialogueTree>,
       rootId: string,
@@ -247,10 +261,7 @@ export const CHAT_APP: AppDef = {
         );
         row.append(name, title);
 
-        if (
-          tree?.ticket !== undefined
-          && api.graph.getField(tree.ticket, FIELDS.state) !== 'resolved'
-        ) {
+        if (hasOpenTicket(tree)) {
           const flag = element('span', 'chat-person-flag');
           flag.textContent = 'Open ticket';
           row.append(flag);
@@ -385,11 +396,9 @@ export const CHAT_APP: AppDef = {
         );
       }
 
-      const open = nodes.filter((person) => {
-        const tree = dialogueForSpeaker(person.id);
-        return tree?.ticket !== undefined
-          && api.graph.getField(tree.ticket, FIELDS.state) !== 'resolved';
-      }).length;
+      const open = nodes.filter(
+        (person) => hasOpenTicket(dialogueForSpeaker(person.id)),
+      ).length;
       summary.textContent = `${String(nodes.length)} contacts · `
         + `${String(open)} with something open`;
 

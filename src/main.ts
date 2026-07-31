@@ -1,6 +1,7 @@
 import { loadEngine } from './engine-api';
 import { AppStateStore } from './shell/app-state';
 import { APP_MANIFEST } from './shell/apps';
+import { pingBossThread } from './shell/boss-thread';
 import type { ShellContext } from './shell/context';
 import { DayDriver, DRIVER_INTERVAL_MS } from './shell/day-driver';
 import { createShellSession, SaveSlot } from './shell/save';
@@ -44,6 +45,30 @@ async function boot(): Promise<void> {
     openSlackApps: () => shell.openSlackApps(),
     onNotice: (title, body) => {
       shell.notify(title, body);
+    },
+    // The world has already been told what being caught costs. What is left is
+    // the scene, which is a window like any other - closeable, on top of a
+    // queue that is still there underneath it.
+    onCaught: (appId, tick) => {
+      appState.patchExternal('caught', { appId, at: tick });
+      shell.openApp('caught');
+      shell.notify(
+        'A quick word',
+        'The lead saw what was on your screen. It has been mentioned, which '
+          + 'is how these things start.',
+      );
+    },
+    // He does not raise tickets. He raises concerns, in the thread he has
+    // always used, and the thread is the shell's memory rather than the
+    // world's - so the driver hands the line over rather than writing it.
+    onBossPing: (ping) => {
+      pingBossThread(appState, ping.line);
+      shell.notify(
+        'Message from the lead',
+        ping.ticketId === null
+          ? ping.line
+          : `${ping.line} It is now a ticket, because you made it one.`,
+      );
     },
   });
 

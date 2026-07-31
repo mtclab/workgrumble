@@ -138,6 +138,10 @@
   --size-scanline: 3px;
   --size-day-controls: 26px;
   --size-progress-bar: 14px;
+  --size-desk-item: 64px;
+  --size-desk-empties: 148px;
+  --size-door-flash: 10px;
+  --size-cat: 132px;
   --measure-boot: 62ch;
   --measure-field: 140px;
   --stroke-icon: 1.75;
@@ -156,6 +160,12 @@
   /* Slow enough to read as a room swimming rather than a broken animation. */
   --duration-sway: 3.4s;
   --offset-sway: 3px;
+  /* The corridor: a reflection crossing the monitor, and a floor with
+     somebody on it. Fast enough to notice out of the corner of an eye. */
+  --duration-door: 2.2s;
+  --offset-door: 60%;
+  --duration-tremor: 0.5s;
+  --offset-tremor: 1px;
   --angle-sway: 0.4deg;
   --opacity-dim: 0.35;
   --scale-press: 0.92;
@@ -175,6 +185,14 @@
   /* The gag is a wobble. Somebody who has asked for no motion still gets the
      chip that explains it, which is the half that carries the joke. */
   .screen-desktop[data-fumbling="true"] .window-layer {
+    animation: none;
+  }
+
+  /* Same rule for the corridor, and it matters more: the telegraph is a
+     mechanic, not decoration, so the motion goes and the chip, the
+     notification and the reflection itself all stay. */
+  .screen-desktop[data-boss="telegraph"] .door-flash,
+  .screen-desktop[data-boss="telegraph"] .taskbar {
     animation: none;
   }
 }
@@ -2616,6 +2634,390 @@ input {
 }
 
 .scorecard-farm-note {
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+/* ------------------------------------------------------------- the desk */
+
+/*
+ * The desk overlay: things you own, drawn over the wallpaper in the corner
+ * nearest you. Deliberately not windows - a can of energy drink with a
+ * titlebar would be a program - so it sits above the icons and below the
+ * windows, and the window layer is free to cover it.
+ */
+.desk-overlay {
+  position: absolute;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: var(--z-desktop-icons);
+  display: grid;
+  gap: var(--space-2);
+  justify-items: end;
+}
+
+.desk-items {
+  display: flex;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.desk-item {
+  display: grid;
+  gap: var(--space-1);
+  place-items: center;
+  width: var(--size-desk-item);
+  padding: var(--space-2);
+  border: none;
+  background: var(--color-surface);
+  box-shadow: var(--bevel-raised);
+  color: var(--color-ink);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.desk-item:hover {
+  background: var(--color-surface-raised);
+}
+
+.desk-item:active {
+  box-shadow: var(--bevel-sunken);
+}
+
+.desk-item[data-blocked="true"] {
+  background: var(--color-surface-sunken);
+  color: var(--color-ink-disabled);
+  cursor: not-allowed;
+}
+
+.desk-item[data-phase="buff"] {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.desk-item[data-phase="buff"] .svg-icon {
+  color: var(--color-accent-ink);
+}
+
+.desk-item[data-phase="crash"] {
+  background: var(--color-alarm-soft);
+  color: var(--color-alarm);
+}
+
+.desk-item-label {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Locked, visible, and it says why on hover. That is the whole M3 beer. */
+.desk-item-locked,
+.desk-item-locked:hover {
+  background: var(--color-surface-sunken);
+  color: var(--color-ink-disabled);
+}
+
+.desk-item-locked .svg-icon {
+  color: var(--color-ink-disabled);
+}
+
+.desk-empties {
+  display: flex;
+  gap: var(--space-1);
+  justify-content: end;
+  max-width: var(--size-desk-empties);
+  flex-wrap: wrap-reverse;
+}
+
+.desk-empty .svg-icon {
+  color: var(--color-ink-soft);
+}
+
+/* Past the number at which somebody counts them, they stop being litter. */
+.desk-empties[data-too-many="true"] .svg-icon {
+  color: var(--color-alarm);
+}
+
+/* --------------------------------------------------------- the corridor */
+
+/*
+ * The telegraph, said two ways at once and both of them visual: the
+ * reflection crossing the top of the monitor, and the taskbar going unsteady
+ * under your hand. The reaction window is the mechanic, so it has to be
+ * unmissable without a sound card.
+ */
+.door-flash {
+  position: absolute;
+  top: var(--space-0);
+  right: var(--space-0);
+  left: var(--space-0);
+  height: var(--size-door-flash);
+  background: linear-gradient(
+    var(--angle-sweep),
+    var(--color-clear) 0%,
+    var(--color-bevel-light) 45%,
+    var(--color-clear) 100%
+  );
+  opacity: var(--opacity-dim);
+  pointer-events: none;
+}
+
+.screen-desktop[data-boss="telegraph"] .door-flash {
+  animation: door-sweep var(--duration-door) linear infinite;
+}
+
+.screen-desktop[data-boss="present"] .door-flash {
+  background: var(--color-alarm-soft);
+  opacity: var(--opacity-dim);
+}
+
+@keyframes door-sweep {
+  0% {
+    transform: translateX(calc(-1 * var(--offset-door)));
+  }
+
+  100% {
+    transform: translateX(var(--offset-door));
+  }
+}
+
+.screen-desktop[data-boss="telegraph"] .taskbar {
+  animation: taskbar-tremor var(--duration-tremor) ease-in-out infinite;
+}
+
+@keyframes taskbar-tremor {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  25% {
+    transform: translate(var(--offset-tremor), 0);
+  }
+
+  75% {
+    transform: translate(calc(-1 * var(--offset-tremor)), 0);
+  }
+}
+
+.boss-chip {
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-ink);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.boss-chip[data-phase="present"] {
+  background: var(--color-alarm);
+  color: var(--color-alarm-ink);
+}
+
+/* ----------------------------------------------------------- the browser */
+
+.browser-app {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: var(--space-0);
+  height: 100%;
+  padding: var(--space-0);
+}
+
+.browser-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  box-shadow: var(--bevel-raised);
+  font-size: var(--text-xs);
+}
+
+.browser-address {
+  flex: 1;
+  overflow: hidden;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface-field);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-ink-soft);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.browser-tip {
+  color: var(--color-ink-soft);
+  font-style: italic;
+}
+
+.browser-viewport {
+  overflow-y: auto;
+  padding: var(--space-5);
+  background: var(--color-surface-field);
+}
+
+.browser-crumbs {
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+}
+
+.browser-forum h2,
+.browser-gallery-heading {
+  margin: var(--space-2) var(--space-0) var(--space-4);
+  font-size: var(--text-lg);
+}
+
+.browser-thread {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-0);
+  list-style: none;
+}
+
+.browser-post {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-sunken);
+  font-family: var(--font-read);
+  font-size: var(--text-md);
+}
+
+.browser-post-head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.browser-post-when {
+  color: var(--color-ink-soft);
+}
+
+.browser-signature {
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+.browser-footer,
+.browser-tagline {
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.browser-footer {
+  margin-top: var(--space-4);
+}
+
+.browser-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--size-cat), 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding: var(--space-0);
+  list-style: none;
+}
+
+.browser-picture {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.browser-frame {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: var(--space-5);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-ink);
+}
+
+.browser-hits {
+  margin-top: var(--space-5);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.browser-home-list {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-left: var(--space-6);
+  font-family: var(--font-read);
+  font-size: var(--text-md);
+}
+
+/* ------------------------------------------------------ the caught scene */
+
+.caught-app {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.caught-head {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.caught-portrait {
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+}
+
+.caught-head-copy {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.caught-stamp {
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+}
+
+.caught-line {
+  margin: var(--space-0);
+  padding: var(--space-4);
+  border-left: var(--border-note) solid var(--color-accent);
+  background: var(--color-surface-raised);
+  font-family: var(--font-read);
+  font-size: var(--text-lg);
+}
+
+.caught-narration,
+.caught-reply {
+  font-family: var(--font-read);
+  font-size: var(--text-md);
+}
+
+.caught-reply {
+  color: var(--color-ink-soft);
+}
+
+.caught-footer {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.caught-note {
   color: var(--color-ink-soft);
   font-family: var(--font-read);
   font-size: var(--text-sm);

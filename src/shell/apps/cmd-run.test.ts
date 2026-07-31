@@ -39,6 +39,7 @@ function apiFor(
     }),
     notify: () => {},
     openApp: () => {},
+    closeApp: () => {},
     hasApp: () => false,
     actor,
   };

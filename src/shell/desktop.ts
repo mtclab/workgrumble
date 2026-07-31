@@ -24,9 +24,11 @@ import {
   type Viewport,
   type WindowManagerState,
 } from './wm';
-import { isLunchtime } from '../world/day';
+import { buffTicks } from '../world/consumables';
+import { isLunchtime, shiftEndTick } from '../world/day';
 import { FIELDS } from '../world/fields';
-import { isFumbling } from '../world/meters';
+import { isFumblingWith } from '../world/consumables';
+import { Desk, deskState } from './desk';
 import { SPEEDS, type Speed } from './day-driver';
 
 export interface DesktopHandlers {
@@ -84,6 +86,9 @@ export class Desktop {
   private readonly dayState: HTMLButtonElement;
   private readonly pauseButton: HTMLButtonElement;
   private readonly fumbleChip: HTMLElement;
+  private readonly bossChip: HTMLElement;
+  private readonly doorFlash: HTMLElement;
+  private readonly desk: Desk;
   private readonly speedButtons = new Map<Speed, HTMLButtonElement>();
 
   private readonly taskbarButtons = new Map<string, TaskbarButton>();
@@ -127,7 +132,32 @@ export class Desktop {
     this.toastStack.setAttribute('role', 'status');
     this.toastStack.setAttribute('aria-live', 'polite');
 
-    this.surface.append(icons, this.windowLayer, this.toastStack);
+    // The corridor, in the only two places an office worker ever sees it: the
+    // reflection in the top of the monitor, and the feeling in the floor. Both
+    // are visual and both are cheap on purpose - the reaction window is the
+    // mechanic, and it has to be legible without a sound card.
+    this.doorFlash = document.createElement('div');
+    this.doorFlash.className = 'door-flash';
+    this.doorFlash.dataset.testid = 'door-flash';
+    this.doorFlash.setAttribute('aria-hidden', 'true');
+    this.doorFlash.hidden = true;
+
+    this.desk = new Desk({
+      drink: () => {
+        this.drink();
+      },
+      tidy: () => {
+        this.tidyDesk();
+      },
+    });
+
+    this.surface.append(
+      icons,
+      this.windowLayer,
+      this.desk.element,
+      this.doorFlash,
+      this.toastStack,
+    );
 
     const taskbar = document.createElement('div');
     taskbar.className = 'taskbar';
@@ -240,7 +270,14 @@ export class Desktop {
       + 'than can be said for the rest of this job.';
     this.fumbleChip.hidden = true;
 
-    tray.append(this.fumbleChip, dayControls, this.trayButton, clock);
+    // The other chip: the one that says what the shaking taskbar means, for
+    // anybody who has not learned the language of the floorboards yet.
+    this.bossChip = document.createElement('span');
+    this.bossChip.className = 'boss-chip';
+    this.bossChip.dataset.testid = 'boss-chip';
+    this.bossChip.hidden = true;
+
+    tray.append(this.bossChip, this.fumbleChip, dayControls, this.trayButton, clock);
 
     taskbar.append(this.startButton, divider, this.taskbarWindows, tray);
 
@@ -290,6 +327,9 @@ export class Desktop {
       openApp: (id, intent) => {
         this.openApp(id, intent);
       },
+      closeApp: (id) => {
+        this.closeWindowIfOpen(id);
+      },
       hasApp: (id) => this.apps.some((app) => app.id === id),
       actor: context.user.node,
     };
@@ -324,6 +364,9 @@ export class Desktop {
     this.unsubscribeClock = this.context.clock.onTick((tick) => {
       this.renderClock(tick);
       this.renderDay();
+      // The desk and the corridor both move with the minute rather than with
+      // the world: a can wears off, and a man comes round a corner.
+      this.renderPressure();
       this.commitNotifications(expireToasts(this.notifications, tick));
     });
     this.unsubscribeDay = this.context.day.onChanged(() => {
@@ -963,21 +1006,87 @@ export class Desktop {
    * dressed as a joke, and this game does not do that.
    */
   private renderPressure(): void {
-    const stress = this.context.graph.getField(
-      this.context.user.node,
-      FIELDS.stress,
+    const player = this.context.user.node;
+    const read = (field: string): unknown => this.context.graph.getField(
+      player,
+      field,
     );
+    const stress = read(FIELDS.stress);
     // Hands only go during the shift: once the clock stops, the sway stops -
     // and the scorecard stays still enough to actually click.
-    const onShift = this.context.graph.getField(
-      this.context.user.node,
-      FIELDS.dayState,
-    ) === 'shift';
+    const onShift = read(FIELDS.dayState) === 'shift';
+    const now = this.context.clock.now();
+    const desk = deskState(
+      {
+        startedAt: read(FIELDS.drinkStartedAt),
+        tolerance: read(FIELDS.drinkTolerance),
+        cans: read(FIELDS.deskCans),
+      },
+      now,
+      onShift,
+      shiftEndTick(this.context.day.day()),
+      buffTicks,
+    );
     const fumbling = onShift && typeof stress === 'number'
-      && isFumbling(stress);
+      && isFumblingWith(stress, desk.phase);
 
     this.element.dataset.fumbling = String(fumbling);
+    this.element.dataset.drink = desk.phase;
     this.fumbleChip.hidden = !fumbling;
+    this.fumbleChip.textContent = desk.phase === 'crash'
+      ? 'Coming down'
+      : 'Hands going';
+    this.desk.render(desk);
+    this.renderBoss();
+  }
+
+  /**
+   * The corridor. Telegraph is the whole mechanic, so it is said three ways at
+   * once - the taskbar goes unsteady, the reflection crosses the top of the
+   * screen, and a chip spells out what both of those mean - and it is only
+   * ever a LOOK: nothing here dispatches, and the arrival decides everything.
+   */
+  private renderBoss(): void {
+    const boss = this.context.day.boss();
+
+    this.element.dataset.boss = boss.phase;
+    this.doorFlash.hidden = boss.phase === 'clear';
+    this.bossChip.hidden = boss.phase === 'clear';
+    this.bossChip.dataset.phase = boss.phase;
+
+    if (boss.phase === 'telegraph') {
+      const left = boss.ticksToArrival ?? 0;
+      this.bossChip.textContent = `Footsteps · ${String(left)}m`;
+      this.bossChip.title = 'Somebody is coming down the corridor. Anything '
+        + 'you would rather not explain has about a minute.';
+      return;
+    }
+
+    if (boss.phase === 'present') {
+      this.bossChip.textContent = 'He is here';
+      this.bossChip.title = 'The lead is at your shoulder, being encouraging.';
+    }
+  }
+
+  /** The two things you can do to a desk, both through the registry. */
+  private drink(): void {
+    const outcome = this.context.day.drink();
+
+    if (!outcome.ok) {
+      this.notify('Not now', outcome.reason);
+    }
+  }
+
+  private tidyDesk(): void {
+    const outcome = this.context.day.tidyDesk();
+
+    this.notify(
+      outcome.ok ? 'Desk tidied' : 'Nothing to tidy',
+      outcome.ok
+        ? 'The empties are in the bin under the desk, where they will be found '
+          + 'eventually, but not today.'
+        : outcome.reason,
+    );
   }
 
   private renderClock(tick: number): void {

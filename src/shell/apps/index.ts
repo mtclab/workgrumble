@@ -1,6 +1,9 @@
+import { assertCaughtScenes } from '../../world/scenes';
 import { ABOUT_APP } from './about';
 import { BRIEF_APP } from './brief';
+import { BROWSER_APP } from './browser';
 import { BUBBLES_APP } from './bubbles';
+import { CAUGHT_APP } from './caught';
 import { CHAT_APP } from './chat';
 import { CMD_APP } from './cmd';
 import { DIRECTORY_APP } from './directory';
@@ -17,10 +20,16 @@ import { TICKETS_APP } from './tickets';
  * reading, then the toys. Installing an app is a manifest entry and nothing
  * else - which is the seam a later tier (or an in-fiction "web store") uses
  * without touching the shell.
+ *
+ * The scene check is part of installing one: an app with `slack: true` is an
+ * app somebody can be caught at, and shipping it without the content for what
+ * happens then is a blank window with a manager in it. It fails the boot here
+ * rather than failing a player later.
  */
-export const APP_MANIFEST = loadManifest([
+export const APP_MANIFEST = assertCaughtScenes(loadManifest([
   BRIEF_APP,
   SCORECARD_APP,
+  CAUGHT_APP,
   TICKETS_APP,
   DIRECTORY_APP,
   REMOTE_APP,
@@ -30,4 +39,5 @@ export const APP_MANIFEST = loadManifest([
   KB_APP,
   ABOUT_APP,
   BUBBLES_APP,
-]);
+  BROWSER_APP,
+]));

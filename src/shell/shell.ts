@@ -103,6 +103,17 @@ export class Shell {
   }
 
   /**
+   * Puts an app on screen from outside the app layer.
+   *
+   * The day uses it for the screens it puts up rather than the player - the
+   * caught scene. With no desktop mounted there is nothing to open onto, and
+   * nothing to open FOR: nobody can be caught at a screen that is not there.
+   */
+  public openApp(id: string): void {
+    this.desktop?.openApp(id);
+  }
+
+  /**
    * Slack apps with a window open and not minimised.
    *
    * The pressure layer needs to know what is genuinely ON SCREEN - a minimised

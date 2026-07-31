@@ -25,6 +25,8 @@ function worked(store: AppStateStore): AppState {
     },
   });
   store.patch('day', { briefShownFor: 1, scorecardShownFor: null });
+  store.patch('browser', { siteId: 'cats' });
+  store.patch('caught', { appId: 'bubbles', at: 220 });
 
   return store.snapshot();
 }
@@ -37,6 +39,8 @@ describe('the shell-owned app state', () => {
     expect(fresh.kb.selectedId).toBeNull();
     expect(fresh.chat).toEqual({ selectedId: null, threads: {} });
     expect(fresh.day).toEqual({ briefShownFor: null, scorecardShownFor: null });
+    expect(fresh.browser).toEqual({ siteId: null });
+    expect(fresh.caught).toEqual({ appId: null, at: null });
   });
 
   it('patches one slice without disturbing the others', () => {
@@ -90,6 +94,9 @@ describe('the shell-owned app state', () => {
       { ...(good as object), kb: {} },
       { ...(good as object), day: { briefShownFor: 0, scorecardShownFor: null } },
       { ...(good as object), day: { briefShownFor: 1.5, scorecardShownFor: null } },
+      { ...(good as object), browser: { siteId: 7 } },
+      { ...(good as object), caught: { appId: 'bubbles', at: -1 } },
+      { ...(good as object), caught: { appId: 4, at: null } },
       {
         ...(good as object),
         chat: { selectedId: null, threads: { 'person:ada': { lines: [] } } },
@@ -134,19 +141,25 @@ describe('the shell-owned app state', () => {
     store.patch('kb', { selectedId: 'kb/power-cycle' });
     expect(listener).not.toHaveBeenCalled();
 
-    expect(store.hydrate(createAppState())).toBe(true);
+    // A write from OUTSIDE the app layer does announce: the app whose slice
+    // changed is not the one that changed it, so nothing else repaints it.
+    store.patchExternal('caught', { appId: 'browser', at: 12 });
     expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.get().caught).toEqual({ appId: 'browser', at: 12 });
+
+    expect(store.hydrate(createAppState())).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(2);
 
     store.reset();
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(3);
 
     // A refused hydrate changed nothing, so it announces nothing.
     expect(store.hydrate('rubbish')).toBe(false);
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(3);
 
     unsubscribe();
     store.reset();
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(3);
     // Unsubscribing twice is a no-op, not a second removal.
     unsubscribe();
   });

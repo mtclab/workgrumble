@@ -99,6 +99,24 @@ export function caughtScene(appId: string): CaughtScene | undefined {
  * name an app this build no longer has, and a blank window with a boss in it is
  * worse than a general-purpose telling-off.
  */
+/**
+ * What the window says when it is opened cold - from the start menu, by
+ * somebody who has not been caught at anything. It is not a scene, it is the
+ * absence of one, and saying so is better than showing a telling-off that
+ * never happened.
+ */
+export const UNCAUGHT_SCENE: CaughtScene = Object.freeze({
+  appId: '',
+  title: 'Nothing to report',
+  bossLine: 'The lead is in his office with the door, and as far as he knows '
+    + 'you have been working all morning.',
+  narration: 'This window is where the conversation goes when there is one. '
+    + 'There has not been one.',
+  reply: 'Keep it that way, or do not - the bubbles are not going to catch '
+    + 'themselves.',
+  dismissLabel: 'Back to work',
+});
+
 export const GENERIC_CAUGHT_SCENE: CaughtScene = Object.freeze({
   appId: '',
   title: 'A quick word',
@@ -125,9 +143,9 @@ export interface SlackAppEntry {
  * reverse - a scene for an app that is not installed - is left alone on
  * purpose: content may land before the app it belongs to does.
  */
-export function assertCaughtScenes(
-  apps: readonly SlackAppEntry[],
-): readonly SlackAppEntry[] {
+export function assertCaughtScenes<Entry extends SlackAppEntry>(
+  apps: readonly Entry[],
+): readonly Entry[] {
   for (const app of apps) {
     if (app.slack && caughtScene(app.id) === undefined) {
       throw new Error(

@@ -12,8 +12,40 @@
  * again each morning.
  */
 
-import type { EngineApi, NodeId, ReadOnlyGraphNode } from '../engine-api';
+import type {
+  DispatchResult,
+  EngineApi,
+  NodeId,
+  ReadOnlyGraphNode,
+} from '../engine-api';
 import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
+import {
+  type BossPing,
+  type BossVisit,
+  buildPatrolSchedule,
+  CAUGHT_REPUTATION_COST,
+  caughtBy,
+  EMPTIES_SUSPICION_BUMP,
+  emptiesNoticed,
+  type PatrolPhase,
+  type PatrolSchedule,
+  patrolPhase,
+  PING_STRESS,
+  pingsBetween,
+  TELEGRAPH_TICKS,
+  ticksToArrival,
+  visitsArrivingBetween,
+  visitsTelegraphingBetween,
+} from '../world/boss';
+import {
+  crashStartsAt,
+  crashStress,
+  DRINK_PRICE_PENCE,
+  type DrinkState,
+  drinkState,
+  nextTolerance,
+  NO_RUN,
+} from '../world/consumables';
 import {
   arrivalsBetween,
   buildDaySchedule,
@@ -99,10 +131,18 @@ export function ticksFromElapsed(
   };
 }
 
+/** Where the lead is, as the taskbar needs to know it. */
+export interface BossView {
+  readonly phase: PatrolPhase;
+  /** Minutes left to do something about it, while there are any. */
+  readonly ticksToArrival: number | null;
+}
+
 /**
- * What the apps and the taskbar may ask of the day. Reading is free; the two
- * things that MOVE it are the two the player does - start the shift, clock
- * off - and both go through the engine's action registry like everything else.
+ * What the apps and the taskbar may ask of the day. Reading is free; the
+ * things that MOVE it - starting the shift, clocking off, opening a can,
+ * clearing the desk - all go through the engine's action registry like every
+ * other change to the world.
  */
 export interface DayApi {
   day(): number;
@@ -114,6 +154,15 @@ export interface DayApi {
   setSpeed(speed: Speed): void;
   startShift(): void;
   clockOff(): void;
+  /** Where the lead is this minute. Reading it is free and changes nothing. */
+  boss(): BossView;
+  /**
+   * The desk. Both answer rather than throw: a refused can is a sentence the
+   * player reads, not a crash, and the shell is the half that knows WHEN a can
+   * is a bad idea while the engine is the half that knows whether it is legal.
+   */
+  drink(): DispatchResult;
+  tidyDesk(): DispatchResult;
   /** Fires when the day, its state, the pause or the speed changed. */
   onChanged(listener: () => void): () => void;
 }
@@ -135,6 +184,18 @@ export interface DayDriverHandlers {
   openSlackApps(): readonly string[];
   /** Something the player ought to be told about. */
   onNotice?(title: string, body: string): void;
+  /**
+   * The lead has arrived and there was something on the screen. The world has
+   * already been told - suspicion, reputation and the count are moved before
+   * this is called - and what is left is the scene, which is the shell's.
+   */
+  onCaught?(appId: string, tick: number): void;
+  /**
+   * He has sent one of his messages. The chat thread is the shell's memory of
+   * what was said, so the driver hands over the line and the node the
+   * conversation should be standing on rather than writing it itself.
+   */
+  onBossPing?(ping: Readonly<BossPing>): void;
 }
 
 /**
@@ -166,6 +227,7 @@ export function parseDriverState(value: unknown): DriverState | null {
 
 export class DayDriver implements DayApi {
   private schedule_: DaySchedule;
+  private patrol_: PatrolSchedule;
   private paused_ = false;
   private speed_: Speed = 1;
   private carriedMs = 0;
@@ -178,6 +240,7 @@ export class DayDriver implements DayApi {
     private readonly handlers: Readonly<DayDriverHandlers>,
   ) {
     this.schedule_ = this.scheduleFor(this.day());
+    this.patrol_ = buildPatrolSchedule(this.day(), this.seed);
   }
 
   public day(): number {
@@ -203,6 +266,43 @@ export class DayDriver implements DayApi {
 
   public schedule(): DaySchedule {
     return this.schedule_;
+  }
+
+  /**
+   * Where the lead is this minute, worked out from the day's seeded schedule
+   * rather than from anything the driver has been remembering - which is why
+   * a save carries no boss state and a load lands him exactly where the day
+   * says he is.
+   */
+  public boss(): BossView {
+    if (this.state() !== 'shift') {
+      return { phase: 'clear', ticksToArrival: null };
+    }
+
+    const now = this.engine.now();
+
+    return {
+      phase: patrolPhase(this.patrol_, now),
+      ticksToArrival: ticksToArrival(this.patrol_, now),
+    };
+  }
+
+  /**
+   * Opening a can. The shell decides which can of the run it is - a pure
+   * function of the graph and the clock - and the engine decides what that
+   * does to the desk, the money and the minute the crash is measured from.
+   */
+  public drink(): DispatchResult {
+    const now = this.engine.now();
+
+    return this.engine.dispatch(DAY_ACTIONS.consumableDrink, this.actor, null, {
+      tolerance: nextTolerance(this.drinkRun(), now),
+      pence: DRINK_PRICE_PENCE,
+    });
+  }
+
+  public tidyDesk(): DispatchResult {
+    return this.engine.dispatch(DAY_ACTIONS.deskTidy, this.actor, null, {});
   }
 
   public paused(): boolean {
@@ -263,6 +363,7 @@ export class DayDriver implements DayApi {
       }
 
       this.spawnArrivals(before, now);
+      this.walkTheFloor(before, now);
       this.applyPressure(now);
 
       if (this.applyDueTransition()) {
@@ -314,7 +415,13 @@ export class DayDriver implements DayApi {
     }
 
     const day = this.day();
-    const slip = daySlip(dayLedger(this.engine.graph.nodesOfKind('ticket'), day));
+    // The same slip the scorecard is showing, vending machine and all: a
+    // banked total that disagreed with the screen it was read off would be a
+    // lie the player could only catch by adding it up themselves.
+    const slip = daySlip(
+      dayLedger(this.engine.graph.nodesOfKind('ticket'), day),
+      this.playerNumber(FIELDS.consumableSpend),
+    );
     const banked = this.farmFund() + slip.net;
 
     this.dispatchDay(DAY_ACTIONS.clockOff, { banked });
@@ -327,6 +434,7 @@ export class DayDriver implements DayApi {
     }
 
     this.schedule_ = this.scheduleFor(day + 1);
+    this.patrol_ = buildPatrolSchedule(day + 1, this.seed);
     this.spawnArrivals(now, this.engine.now());
     this.carriedMs = 0;
     this.engine.checkpoint();
@@ -352,6 +460,7 @@ export class DayDriver implements DayApi {
    */
   public resync(): void {
     this.schedule_ = this.scheduleFor(this.day());
+    this.patrol_ = buildPatrolSchedule(this.day(), this.seed);
     this.carriedMs = 0;
     this.announce();
   }
@@ -405,6 +514,126 @@ export class DayDriver implements DayApi {
     }
   }
 
+  /* -- the lead, doing his rounds ---------------------------------------- */
+
+  /**
+   * Everything the boss did in the minutes just gone: footsteps, arrivals, and
+   * the messages he sends instead of raising tickets.
+   *
+   * All of it is keyed to the day's seeded schedule, and all of it is decided
+   * against the world as it stands AT THE ARRIVAL - which is the mechanic: the
+   * player's move is what is on their screen when he gets there, made several
+   * minutes earlier, when the floor started creaking.
+   */
+  private walkTheFloor(after: number, now: number): void {
+    if (this.state() !== 'shift') {
+      return;
+    }
+
+    if (visitsTelegraphingBetween(this.patrol_, after, now).length > 0) {
+      this.announceFootsteps();
+    }
+
+    for (const visit of visitsArrivingBetween(this.patrol_, after, now)) {
+      this.settleVisit(visit);
+    }
+
+    for (const ping of pingsBetween(this.patrol_, after, now)) {
+      this.settlePing(ping);
+    }
+  }
+
+  private announceFootsteps(): void {
+    this.handlers.onNotice?.(
+      'Footsteps',
+      'Somebody is coming down the corridor at the pace of a man who has '
+      + `nothing to do and a floor to walk. You have ${
+        String(TELEGRAPH_TICKS)
+      } minutes and one key.`,
+    );
+    // The taskbar and the door reflection are driven off `boss()`, which is a
+    // function of the clock - so all this has to do is ask for a repaint.
+    this.announce();
+  }
+
+  /**
+   * The arrival. Being caught is decided once, on what is genuinely on the
+   * screen; the empties are a second, cheaper conversation for a desk that
+   * told the story on its own.
+   */
+  private settleVisit(visit: Readonly<BossVisit>): void {
+    const caught = caughtBy(this.handlers.openSlackApps());
+
+    if (caught !== null) {
+      const result = this.engine.dispatch(
+        DAY_ACTIONS.bossCaught,
+        this.actor,
+        null,
+        { reputation_cost: CAUGHT_REPUTATION_COST },
+      );
+
+      if (result.ok) {
+        this.handlers.onCaught?.(caught, visit.arrivalTick);
+      }
+
+      return;
+    }
+
+    if (!emptiesNoticed(this.playerNumber(FIELDS.deskCans))) {
+      return;
+    }
+
+    const noticed = this.engine.dispatch(
+      DAY_ACTIONS.bossNoticedEmpties,
+      this.actor,
+      null,
+      { suspicion_up: EMPTIES_SUSPICION_BUMP },
+    );
+
+    if (noticed.ok) {
+      this.handlers.onNotice?.(
+        'He counted them',
+        'The lead looked at your screen, found nothing to say about it, and '
+        + 'then looked at the cans. He did not mention the cans, which is '
+        + 'worse than mentioning them.',
+      );
+    }
+  }
+
+  private settlePing(ping: Readonly<BossPing>): void {
+    if (ping.ticketId !== null) {
+      this.raiseSummonedTicket(ping.ticketId);
+    }
+
+    const result = this.engine.dispatch(
+      DAY_ACTIONS.bossPing,
+      this.actor,
+      null,
+      { stress_up: PING_STRESS },
+    );
+
+    if (result.ok) {
+      this.handlers.onBossPing?.(ping);
+    }
+  }
+
+  /** A ticket the day scheduler was never given a slot for. */
+  private raiseSummonedTicket(ticketId: string): void {
+    if (this.engine.graph.getNode(ticketId) !== undefined) {
+      return;
+    }
+
+    const entry = findWorldTicket(ticketId);
+
+    if (entry === undefined) {
+      throw new Error(
+        `The boss raised a ticket nobody wrote: "${ticketId}".`,
+      );
+    }
+
+    this.engine.registerTicket(entry.def);
+  }
+
   /* -- the pressure layer ------------------------------------------------ */
 
   /**
@@ -428,7 +657,65 @@ export class DayDriver implements DayApi {
 
     this.recordResponses();
     this.settleBounces(now);
+    this.settleCrash(now);
     this.tickMeters(now);
+  }
+
+  /**
+   * The bill for the can, billed once against the run that bought it.
+   *
+   * The watermark is the minute the can was opened, so a crash cannot be paid
+   * for twice however often this runs - the same shape the meters use for
+   * breaches, and for the same reason: this is a repeating tick settling a
+   * one-off event.
+   */
+  private settleCrash(now: number): void {
+    const run = this.drinkRun();
+
+    if (run.startedAt === null) {
+      return;
+    }
+
+    if (this.playerNumber(FIELDS.drinkCrashCharged, NO_RUN) === run.startedAt) {
+      return;
+    }
+
+    if (now < crashStartsAt(run.startedAt, run.tolerance)) {
+      return;
+    }
+
+    const result = this.engine.dispatch(
+      DAY_ACTIONS.consumableCrash,
+      this.actor,
+      null,
+      {
+        stress_up: crashStress(run.tolerance),
+        charged_for: run.startedAt,
+      },
+    );
+
+    if (result.ok) {
+      this.handlers.onNotice?.(
+        'That is the can, then',
+        'The lights are suddenly quite bright and the queue has not moved. '
+        + 'It wears off. Everything does.',
+      );
+    }
+  }
+
+  private drinkRun(): DrinkState {
+    return drinkState(
+      this.engine.graph.getField(this.actor, FIELDS.drinkStartedAt),
+      this.engine.graph.getField(this.actor, FIELDS.drinkTolerance),
+    );
+  }
+
+  /** A number off the player node, or the fallback when it is not one. */
+  private playerNumber(field: string, fallback = 0): number {
+    const value = this.engine.graph.getField(this.actor, field);
+    return typeof value === 'number' && Number.isSafeInteger(value)
+      ? value
+      : fallback;
   }
 
   private tickets(): readonly ReadOnlyGraphNode[] {
