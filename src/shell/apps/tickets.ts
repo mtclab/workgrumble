@@ -667,6 +667,13 @@ export const TICKETS_APP: AppDef = {
         })) {
           handoffOpen = false;
           handoffReported = '';
+          // And then paint, which is the whole reason this line exists: every
+          // repaint the dispatch caused happened while the form was still
+          // open - it has to, because a REFUSED handoff belongs on the form
+          // that was refused - so without this the form that went stays on
+          // screen until something unrelated moves. A send that looks like it
+          // did nothing is a send the player does twice.
+          render();
         }
       });
 
