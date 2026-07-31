@@ -1004,6 +1004,17 @@ pub enum Op {
         node: NodeRef,
         waiting: bool,
     },
+    /// Starts or stops the clock every ticket's SLA is measured against.
+    ///
+    /// The engine knows nothing about office hours - a shift, a night, a
+    /// weekend are all the world's idea - so this is how a world says "nobody
+    /// is at the desk from here". While it is stopped every unresolved
+    /// ticket's deadline moves out a minute per minute, which is the same
+    /// mechanism a parked ticket already uses and the same reason: time
+    /// nobody could have worked in is not time the service level counts.
+    SetSlaClock {
+        running: bool,
+    },
     /// Applies its ops only when the predicate holds, which is how an action
     /// stays a no-op instead of writing a value that is already there.
     When {
@@ -1096,6 +1107,14 @@ impl Op {
                     .get("waiting")
                     .and_then(Json::as_bool)
                     .ok_or_else(|| EngineError::new("set_waiting needs a boolean \"waiting\"."))?,
+            }),
+            "set_sla_clock" => Ok(Self::SetSlaClock {
+                running: object
+                    .get("running")
+                    .and_then(Json::as_bool)
+                    .ok_or_else(|| {
+                        EngineError::new("set_sla_clock needs a boolean \"running\".")
+                    })?,
             }),
             "when" => {
                 let ops: EngineResult<Vec<Op>> = object

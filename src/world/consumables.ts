@@ -218,3 +218,18 @@ export const DRINK_LABELS: Readonly<Record<DrinkPhase, string>> = {
 
 export const BEER_TOOLTIP = 'Not during probation. It is in the fridge with '
   + 'your name on it, which is somehow worse.';
+
+/**
+ * The beer, which is the other kind of consumable entirely.
+ *
+ * The can is a decision with a bill attached. The beer is a REWARD, and it is
+ * priced like one: it takes most of a week off the stress meter in one go, and
+ * it is the single most incriminating thing that could be on the desk when
+ * anybody walks past. Nobody is walking past at five o'clock on a Friday, which
+ * is exactly why it unlocks then and not before.
+ */
+export const BEER_STRESS_RELIEF = 40;
+export const BEER_SUSPICION = 25;
+
+export const BEER_UNLOCKED_TOOLTIP = 'Probation is over, the office is empty, '
+  + 'and it has been in that fridge with your name on it since Monday.';

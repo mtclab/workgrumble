@@ -182,8 +182,18 @@ const MATRIX_GUARD: GuardData = {
  * One op per priority, guarded on the priority the ops above have already
  * written, because the deadline has to come from the TABLE rather than from a
  * number the caller sent along with it. Assigning a P1 to something that has
- * been sitting since nine therefore breaches it on the spot, which is the
- * consequence of mis-triage made mechanical rather than narrated.
+ * been sitting all morning therefore leaves it with very little of its hour
+ * left, which is the consequence of mis-triage made mechanical rather than
+ * narrated.
+ *
+ * The sum is built in a scratch field and the real deadline is written ONCE,
+ * at the end. Adding the terms straight onto `sla_deadline` put the ticket on
+ * a partial sum for one mutation - the arrival plus the new target, before the
+ * pause and the overnight hours went back on - and the engine breaches on
+ * whatever the deadline says the moment it says it. A ticket carried over from
+ * yesterday was therefore breached BY BEING TRIAGED, and a breach latches: the
+ * player never saw a deadline that had passed, only a red badge that arrived
+ * with the classification.
  */
 function deadlineOps(): readonly OpData[] {
   return PRIORITIES.map((priority: Priority) => ({
@@ -193,7 +203,7 @@ function deadlineOps(): readonly OpData[] {
       {
         op: 'set_field' as const,
         node: TARGET,
-        field: FIELDS.slaDeadline,
+        field: FIELDS.slaRecut,
         value: {
           add: {
             node: TARGET,
@@ -207,35 +217,44 @@ function deadlineOps(): readonly OpData[] {
           },
         },
       },
-      // And the pause the ticket has already earned goes back on top. The
-      // target is measured from the minute the ticket ARRIVED, and the minutes
-      // it spent waiting on somebody else are not minutes anybody was allowed
-      // to work in. Without this, following the app's own instruction - clear
-      // the hold, then triage - cost the player every minute of it, and could
-      // breach the ticket on the spot.
-      {
+      // And every minute the ticket was already excused goes back on top: the
+      // pause it spent on somebody else, and the hours the office was dark.
+      // The target is measured from the minute the ticket ARRIVED, and neither
+      // of those is a minute anybody was allowed to work in. Without this,
+      // following the app's own instruction - clear the hold, then triage -
+      // cost the player every minute of it, and a ticket inherited on Monday
+      // and triaged on Tuesday breached the moment it was classified.
+      ...[FIELDS.heldTicks, FIELDS.offHoursTicks].map((counter) => ({
         op: 'when' as const,
         cond: {
           pred: 'field_is_number' as const,
           node: TARGET,
-          field: FIELDS.heldTicks,
+          field: counter,
         },
         ops: [
           {
             op: 'set_field' as const,
             node: TARGET,
-            field: FIELDS.slaDeadline,
+            field: FIELDS.slaRecut,
             value: {
               add: {
                 node: TARGET,
-                field: FIELDS.slaDeadline,
-                by: { field: { node: TARGET, field: FIELDS.heldTicks } },
+                field: FIELDS.slaRecut,
+                by: { field: { node: TARGET, field: counter } },
                 clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
               },
             },
           },
         ],
+      })),
+      // The one write anybody sees, and the only one the breach check reads.
+      {
+        op: 'set_field' as const,
+        node: TARGET,
+        field: FIELDS.slaDeadline,
+        value: { field: { node: TARGET, field: FIELDS.slaRecut } },
       },
+      { op: 'clear_field' as const, node: TARGET, field: FIELDS.slaRecut },
     ],
   }));
 }

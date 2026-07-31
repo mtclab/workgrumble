@@ -15,6 +15,7 @@ import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
 import { STARTING_REPUTATION } from '../meters';
 import { createWorldSession } from '../session';
+import { spawnWorldTicket } from './index';
 import {
   actionSummary,
   bounceLandsAt,
@@ -34,6 +35,19 @@ beforeAll(() => {
 });
 
 const TICKET = 'ticket:fan-noise';
+
+/**
+ * A world with the escalatable ticket in it.
+ *
+ * The fan is Monday's mid-morning drip rather than part of the pile now, so a
+ * test about escalating it has to deal it first - the same call the driver
+ * makes when the week says it turns up.
+ */
+function escalationWorld(): ReturnType<typeof createWorldSession> {
+  const session = createWorldSession();
+  spawnWorldTicket(session.engine, TICKET);
+  return session;
+}
 
 describe('what makes a handoff complete', () => {
   it('needs a symptom AND something tried', () => {
@@ -161,7 +175,7 @@ describe('reading "what I tried" off the ticket', () => {
 
 describe('a handoff through the engine', () => {
   it('goes when it is complete, and does not come back', () => {
-    const { engine } = createWorldSession();
+    const { engine } = escalationWorld();
 
     expect(engine.dispatch(
       HELPDESK_ACTIONS.ticketEscalate,
@@ -186,7 +200,7 @@ describe('a handoff through the engine', () => {
    * un-escalate, because it was never escalated.
    */
   it('is marked for the return journey when it is thin', () => {
-    const { engine } = createWorldSession();
+    const { engine } = escalationWorld();
 
     engine.advance(9);
     expect(engine.dispatch(
@@ -203,7 +217,7 @@ describe('a handoff through the engine', () => {
   });
 
   it('costs a reputation and a work note when it lands, once', () => {
-    const { engine } = createWorldSession();
+    const { engine } = escalationWorld();
 
     engine.dispatch(HELPDESK_ACTIONS.ticketEscalate, COMPANY_IDS.player, TICKET, {
       reported: '',
@@ -238,7 +252,7 @@ describe('a handoff through the engine', () => {
   });
 
   it('refuses to settle a bounce that never happened', () => {
-    const { engine } = createWorldSession();
+    const { engine } = escalationWorld();
     const result = engine.dispatch(
       HELPDESK_ACTIONS.ticketBounceHandoff,
       COMPANY_IDS.player,
@@ -252,7 +266,7 @@ describe('a handoff through the engine', () => {
 
   /** The ticket came back, so the second attempt is a real one. */
   it('lets a bounced ticket be escalated again, properly', () => {
-    const { engine } = createWorldSession();
+    const { engine } = escalationWorld();
 
     engine.dispatch(HELPDESK_ACTIONS.ticketEscalate, COMPANY_IDS.player, TICKET, {
       reported: '',

@@ -1,34 +1,56 @@
 /**
  * The working day, as data.
  *
- * A tick is a simulated minute and tick 0 is 08:00 on day one. Everything the
- * day loop needs to decide - when the shift starts, when lunch is, when the
- * scorecard is due, what a ticket arriving at 10:20 costs - is a pure function
- * of the tick and the day's schedule. The engine holds one field for it
+ * Everything the day loop needs to decide - what state the day is in, what the
+ * queue does at 10:20, what the day was worth at 17:00 - is a pure function of
+ * the tick and the day's schedule. The engine holds one field for it
  * (`day_state` on the player node), because the state has to survive a save
  * and be replayed rather than be re-derived from a wall clock nobody recorded.
+ *
+ * The clock arithmetic underneath it lives in `hours.ts` and is re-exported
+ * here, so everything that reads the shape of a day still reads it from one
+ * place.
  *
  * Nothing here touches the DOM, dispatches, or reads the time of day.
  */
 
 import type { ReadOnlyGraphNode } from '../engine-api';
 import { FIELDS } from './fields';
+import {
+  dayForTick,
+  dayOpensTick,
+  lunchWindow,
+  requireDay,
+  shiftEndTick,
+  shiftStartTick,
+  shiftWindow,
+  tickAtMinute,
+  type TickWindow,
+} from './hours';
 import { isUnresolved } from './sla';
 
-/** Minutes in a simulated day. A tick is one minute. */
-export const MINUTES_PER_DAY = 24 * 60;
-
-/**
- * The minute tick 0 sits on: 08:00, an hour before the shift. That hour is the
- * morning brief - long enough to read one mail and look at the queue, and the
- * reason the clock is already running when the player logs on.
- */
-export const DAY_OPENS_MINUTE = 8 * 60;
-
-export const SHIFT_START_MINUTE = 9 * 60;
-export const SHIFT_END_MINUTE = 17 * 60;
-export const LUNCH_START_MINUTE = 12 * 60;
-export const LUNCH_END_MINUTE = 12 * 60 + 30;
+export {
+  countsAgainstSla,
+  DAY_OPENS_MINUTE,
+  dayForTick,
+  dayOpensTick,
+  isLunchtime,
+  LUNCH_END_MINUTE,
+  LUNCH_START_MINUTE,
+  lunchWindow,
+  MINUTES_PER_DAY,
+  minuteOfDay,
+  serviceDeadline,
+  serviceMinutesAt,
+  serviceMinutesBetween,
+  SHIFT_END_MINUTE,
+  SHIFT_MINUTES,
+  SHIFT_START_MINUTE,
+  shiftEndTick,
+  shiftStartTick,
+  shiftWindow,
+  type TickWindow,
+} from './hours';
 
 export const DAY_STATES = ['morning_brief', 'shift', 'day_end'] as const;
 
@@ -37,74 +59,6 @@ export type DayState = (typeof DAY_STATES)[number];
 export function isDayState(value: unknown): value is DayState {
   return typeof value === 'string'
     && DAY_STATES.some((state) => state === value);
-}
-
-/** A half-open span of ticks: `from` counts, `to` does not. */
-export interface TickWindow {
-  readonly from: number;
-  readonly to: number;
-}
-
-function requireTick(tick: number, what: string): void {
-  if (!Number.isSafeInteger(tick) || tick < 0) {
-    throw new TypeError(`${what} must be a non-negative safe integer.`);
-  }
-}
-
-function requireDay(day: number): void {
-  if (!Number.isSafeInteger(day) || day < 1) {
-    throw new TypeError('A day number starts at 1 and counts up.');
-  }
-}
-
-/** Which day a tick falls on, counting from 1. Days roll at midnight. */
-export function dayForTick(tick: number): number {
-  requireTick(tick, 'A simulation tick');
-  return Math.floor((DAY_OPENS_MINUTE + tick) / MINUTES_PER_DAY) + 1;
-}
-
-export function minuteOfDay(tick: number): number {
-  requireTick(tick, 'A simulation tick');
-  return (DAY_OPENS_MINUTE + tick) % MINUTES_PER_DAY;
-}
-
-/** The tick a given day opens on: 08:00, where its morning brief begins. */
-export function dayOpensTick(day: number): number {
-  requireDay(day);
-  return (day - 1) * MINUTES_PER_DAY;
-}
-
-function tickAtMinute(day: number, minute: number): number {
-  return dayOpensTick(day) + (minute - DAY_OPENS_MINUTE);
-}
-
-export function shiftStartTick(day: number): number {
-  return tickAtMinute(day, SHIFT_START_MINUTE);
-}
-
-export function shiftEndTick(day: number): number {
-  return tickAtMinute(day, SHIFT_END_MINUTE);
-}
-
-export function lunchWindow(day: number): TickWindow {
-  return {
-    from: tickAtMinute(day, LUNCH_START_MINUTE),
-    to: tickAtMinute(day, LUNCH_END_MINUTE),
-  };
-}
-
-/**
- * The half hour the boss is at lunch too. Lane B hangs the safe-slack rules on
- * it; the day loop only has to know it is on, so the clock can say so.
- */
-export function isLunchtime(tick: number): boolean {
-  const minute = minuteOfDay(tick);
-  return minute >= LUNCH_START_MINUTE && minute < LUNCH_END_MINUTE;
-}
-
-/** The shift, as the span the scorecard scores. */
-export function shiftWindow(day: number): TickWindow {
-  return { from: shiftStartTick(day), to: shiftEndTick(day) };
 }
 
 /**
@@ -153,14 +107,24 @@ export function dueTransition(
  */
 export type TicketArrival = 'morning' | 'drip' | 'summoned';
 
-export interface ScheduledTicket {
-  readonly id: string;
-  readonly arrival: TicketArrival;
-}
-
 export interface DayArrival {
   readonly tick: number;
   readonly ticketId: string;
+}
+
+/**
+ * One day's queue, as the week's table declares it: what was already there at
+ * 08:00, and what turns up during the shift with the minute it nominally does.
+ *
+ * The scheduler takes a PLAN rather than a pool it has to spread out for
+ * itself. A drip minute is a content decision - the vacuum comes round in the
+ * evening, the cert expires at half nine - and a scheduler that decided them
+ * by dividing the shift into equal parts was a scheduler content could not
+ * write against.
+ */
+export interface DayPlan {
+  readonly inherited: readonly string[];
+  readonly drip: readonly { readonly ticketId: string; readonly minute: number }[];
 }
 
 export interface DaySchedule {
@@ -218,40 +182,44 @@ function clamp(value: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, value));
 }
 
+/** The hours of a day a new ticket may land in, with both ends inclusive. */
+export function dripWindow(day: number): TickWindow {
+  const shift = shiftWindow(day);
+  const from = shift.from + DRIP_OPENS_AFTER;
+
+  return { from, to: Math.max(from, shift.to - DRIP_CLOSES_BEFORE) };
+}
+
 /**
  * The day's arrivals: what is already in the queue, and what turns up while
  * the player is working.
  *
- * Dripped tickets are spread evenly across the middle of the shift and nudged
- * by a seeded offset, so two days with the same content do not arrive in
- * lockstep and the same day always arrives the same way. Ordering is by tick;
- * two tickets landing in the same minute is a bad minute, not a bug.
+ * A dripped ticket lands on the minute its day script names, nudged by a
+ * seeded offset - so the same week always arrives the same way, and a week
+ * played again after a firing arrives slightly differently because the seed
+ * moved. Anything the jitter would push outside the hours a ticket can be
+ * started in is pulled back inside them. Ordering is by tick; two tickets
+ * landing in the same minute is a bad minute, not a bug.
  */
 export function buildDaySchedule(
   day: number,
   seed: number,
-  pool: readonly ScheduledTicket[],
+  plan: Readonly<DayPlan>,
 ): DaySchedule {
   requireDay(day);
-  const shift = shiftWindow(day);
   const opensTick = dayOpensTick(day);
-  const dripping = pool.filter((entry) => entry.arrival === 'drip');
-  const first = shift.from + DRIP_OPENS_AFTER;
-  const last = Math.max(first, shift.to - DRIP_CLOSES_BEFORE);
-  const step = (last - first) / (dripping.length + 1);
+  const window = dripWindow(day);
 
   const arrivals: DayArrival[] = [
-    ...pool
-      .filter((entry) => entry.arrival === 'morning')
-      .map((entry) => ({ tick: opensTick, ticketId: entry.id })),
-    ...dripping.map((entry, index) => ({
+    ...plan.inherited.map((ticketId) => ({ tick: opensTick, ticketId })),
+    ...plan.drip.map((slot) => ({
       tick: clamp(
-        Math.round(first + step * (index + 1))
-          + seededOffset(seed, day, entry.id, DRIP_JITTER),
-        first,
-        last,
+        tickAtMinute(day, slot.minute)
+          + seededOffset(seed, day, slot.ticketId, DRIP_JITTER),
+        window.from,
+        window.to,
       ),
-      ticketId: entry.id,
+      ticketId: slot.ticketId,
     })),
   ];
 
@@ -260,7 +228,7 @@ export function buildDaySchedule(
   return {
     day,
     opensTick,
-    shift,
+    shift: shiftWindow(day),
     lunch: lunchWindow(day),
     arrivals: Object.freeze(arrivals),
   };

@@ -8,6 +8,7 @@ import {
   WORLD_SEED,
   type WorldSession,
 } from '../../world/session';
+import { spawnWorldTicket } from '../../world/tickets';
 import { parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
 import type { GameApi } from './types';
@@ -44,6 +45,23 @@ function apiFor(
     hasApp: () => false,
     actor,
   };
+}
+
+/**
+ * A world with the named tickets in it.
+ *
+ * The week deals its queue across five days, so a terminal test about the
+ * spooler has to put the spooler ticket in first - and with it the fault it
+ * brings, because the ticket's setup is what wedges the service.
+ */
+function sessionWith(...ticketIds: readonly string[]): WorldSession {
+  const session = createWorldSession();
+
+  for (const id of ticketIds) {
+    spawnWorldTicket(session.engine, id);
+  }
+
+  return session;
 }
 
 function run(api: GameApi, input: string): string {
@@ -83,7 +101,7 @@ describe('support terminal commands', () => {
    * the player to stop looking exactly where the fault is.
    */
   it('never calls a host healthy on the strength of a ping', () => {
-    const session = createWorldSession();
+    const session = sessionWith('ticket:wedged-spooler');
     const api = apiFor(session);
 
     expect(session.engine.graph.getField(COMPANY_IDS.spooler, 'status'))
@@ -113,7 +131,7 @@ describe('support terminal commands', () => {
   });
 
   it('closes the locked-account ticket through unlock', () => {
-    const session = createWorldSession();
+    const session = sessionWith('ticket:locked-account');
     const api = apiFor(session);
 
     expect(session.engine.ticketState('ticket:locked-account')).toBe('open');
@@ -136,7 +154,7 @@ describe('support terminal commands', () => {
   });
 
   it('needs both halves of the spooler fix, in the right order', () => {
-    const session = createWorldSession();
+    const session = sessionWith('ticket:wedged-spooler');
     const api = apiFor(session);
 
     expect(run(api, 'services PRINT-01')).toContain('WEDGED');
@@ -162,7 +180,7 @@ describe('support terminal commands', () => {
    * unadvertised way to close the fan ticket and a lie about a fan.
    */
   it('refuses to restart the chassis fan and leaves its ticket open', () => {
-    const session = createWorldSession();
+    const session = sessionWith('ticket:fan-noise');
     const api = apiFor(session);
     const before = session.engine.snapshotHash();
 
@@ -182,7 +200,7 @@ describe('support terminal commands', () => {
   });
 
   it('issues a temporary password and clears the lockout with it', () => {
-    const session = createWorldSession();
+    const session = sessionWith('ticket:locked-account');
     const api = apiFor(session);
     session.engine.advance(17);
 

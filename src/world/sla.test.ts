@@ -16,7 +16,10 @@ import { HELPDESK_ACTIONS } from './actions';
 import { COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
 import { SLA_TARGETS, UNTRIAGED_PRIORITY } from './priority';
+import { DAY_ACTIONS } from './actions';
+import { serviceDeadline, serviceMinutesBetween } from './hours';
 import { createWorldSession } from './session';
+import { spawnWorldTicket } from './tickets';
 import {
   HOLD_REASON_LABELS,
   holdReasonOf,
@@ -44,6 +47,14 @@ interface Harness {
 
 function harness(ticketId: string = TICKET): Harness {
   const { engine } = createWorldSession();
+
+  if (engine.graph.getNode(ticketId) === undefined) {
+    // The week deals its queue across five days, so a test about one ticket
+    // puts that ticket in the world at 08:00 - which is where an inherited
+    // one starts, and the reason the response clock has to know about
+    // business hours at all.
+    spawnWorldTicket(engine, ticketId);
+  }
   const node = (): ReadOnlyGraphNode => {
     const found = engine.graph.getNode(ticketId);
 
@@ -73,8 +84,13 @@ describe('the response clock', () => {
     const world = harness();
 
     expect(world.clocks().response.running).toBe(true);
+    // An hour of DESK time from a ticket that was waiting at eight: the first
+    // hour of it is not an hour anybody was at the desk for, so the answer is
+    // owed by ten. This ticket used to arrive already late.
     expect(world.clocks().response.dueAt)
-      .toBe(SLA_TARGETS[UNTRIAGED_PRIORITY].response);
+      .toBe(serviceDeadline(0, SLA_TARGETS[UNTRIAGED_PRIORITY].response));
+    expect(world.clocks().response.dueAt)
+      .toBeGreaterThan(SLA_TARGETS[UNTRIAGED_PRIORITY].response);
     expect(needsResponse(world.node())).toBe(true);
 
     world.engine.advance(12);
@@ -99,7 +115,8 @@ describe('the response clock', () => {
     });
 
     expect(world.clocks().priority).toBe(1);
-    expect(world.clocks().response.dueAt).toBe(SLA_TARGETS[1].response);
+    expect(world.clocks().response.dueAt)
+      .toBe(serviceDeadline(0, SLA_TARGETS[1].response));
     expect(world.clocks().resolution.dueAt).toBe(SLA_TARGETS[1].resolution);
   });
 
@@ -111,7 +128,7 @@ describe('the response clock', () => {
       priority: 1,
     });
 
-    world.engine.advance(SLA_TARGETS[1].response);
+    world.engine.advance(serviceDeadline(0, SLA_TARGETS[1].response));
     expect(world.clocks().response.breached).toBe(true);
     expect(world.clocks().response.running).toBe(true);
 
@@ -219,7 +236,8 @@ describe('the resolution clock', () => {
 
     expect(world.clocks().priority).toBeNull();
     expect(world.clocks().resolution.dueAt).toBe(untriaged.resolution);
-    expect(world.clocks().response.dueAt).toBe(untriaged.response);
+    expect(world.clocks().response.dueAt)
+      .toBe(serviceDeadline(0, untriaged.response));
     expect(world.clocks().response.running).toBe(true);
 
     // Every shipped ticket, not just this one: content carrying its own
@@ -278,5 +296,136 @@ describe('hold reasons', () => {
     // This one closes on escalation, so there is nothing left to hold.
     expect(escalatable.node().fields[FIELDS.state]).toBe('resolved');
     expect(world.clocks().onHold).toBe(false);
+  });
+});
+
+/**
+ * Business hours, which is the whole of M4's first item.
+ *
+ * The two clocks arrive at it from opposite ends and have to agree. The
+ * RESPONSE clock is derived: a pure function turns "an hour at the desk" into
+ * the minute that hour runs out on. The RESOLUTION clock is the engine's own
+ * field, pushed out a minute at a time by every minute the office was dark.
+ * If those two ever stop landing on the same tick, one of the badges on a
+ * ticket is lying and there is no way to tell which from inside the app.
+ */
+describe('business hours', () => {
+  /** The desk is empty outside 09:00-17:00, so nothing is owed there. */
+  it('counts the shift and nothing else', () => {
+    // Tick 0 is 08:00. Nothing is owed until nine.
+    expect(serviceMinutesBetween(0, 60)).toBe(0);
+    expect(serviceMinutesBetween(0, 120)).toBe(60);
+    // A whole day is eight hours of it, however many minutes the clock ran.
+    expect(serviceMinutesBetween(0, 1_440)).toBe(480);
+    expect(serviceMinutesBetween(60, 540)).toBe(480);
+    // And the night pays nothing at all: 17:00 to 09:00 is sixteen hours of
+    // clock and no minutes of anybody's service level.
+    expect(serviceMinutesBetween(540, 1_500)).toBe(0);
+    expect(serviceMinutesBetween(540, 1_560)).toBe(60);
+  });
+
+  it('lands a target on the minute the desk has been sat at that long', () => {
+    // 08:00 + one desk hour is 10:00, not 09:00.
+    expect(serviceDeadline(0, 60)).toBe(120);
+    // Four desk hours from 16:00 on Monday is midday on Tuesday: one of them
+    // before everybody goes home, three after everybody comes back.
+    expect(serviceDeadline(480, 240)).toBe(1_680);
+    // The last minute of a shift is reachable; the first of the next one is
+    // where the eight-hundred-and-first minute goes.
+    expect(serviceDeadline(60, 480)).toBe(540);
+    expect(serviceDeadline(60, 481)).toBe(1_501);
+    expect(serviceDeadline(0, 0)).toBe(0);
+  });
+
+  /**
+   * The two clocks, driven against each other through the real engine.
+   *
+   * The engine is told the desk is empty and extends every unresolved deadline
+   * minute by minute; the derived clock computes where that lands in closed
+   * form. Same tick, or the app is showing two different Tuesdays.
+   */
+  it('pushes the engine deadline exactly where the derivation says', () => {
+    const { engine } = createWorldSession();
+    const ticketId = 'ticket:wedged-spooler';
+    const target = SLA_TARGETS[UNTRIAGED_PRIORITY].resolution;
+    const day = (id: string): void => {
+      const result = engine.dispatch(id, COMPANY_IDS.player, null, {});
+
+      if (!result.ok) {
+        throw new Error(`"${id}" was refused: ${result.reason}`);
+      }
+    };
+    const dueAt = (): number => {
+      const node = engine.graph.getNode(ticketId);
+      return node === undefined ? -1 : ticketClocks(node, engine.now()).resolution.dueAt;
+    };
+
+    // Four in the afternoon, and a ticket lands with four desk hours on it.
+    day(DAY_ACTIONS.startShift);
+    engine.advance(480);
+    spawnWorldTicket(engine, ticketId);
+    expect(dueAt()).toBe(720);
+
+    // One of those hours is spent before everybody goes home.
+    engine.advance(60);
+    expect(dueAt()).toBe(720);
+
+    // Then sixteen hours in which the office is dark and the deadline moves
+    // with it, minute for minute, and the ticket does not go red overnight.
+    day(DAY_ACTIONS.endShift);
+    day(DAY_ACTIONS.slaClockHold);
+    engine.advance(960);
+    expect(engine.ticketState(ticketId)).toBe('open');
+    expect(dueAt()).toBe(serviceDeadline(480, target));
+    expect(engine.graph.getField(ticketId, FIELDS.offHoursTicks)).toBe(960);
+
+    // And the three hours it has left are three hours of the next morning.
+    const clockedOff = engine.dispatch(
+      DAY_ACTIONS.clockOff,
+      COMPANY_IDS.player,
+      null,
+      { banked: 0 },
+    );
+    expect(clockedOff).toEqual({ ok: true });
+    day(DAY_ACTIONS.startShift);
+    day(DAY_ACTIONS.slaClockRun);
+    engine.advance(179);
+    expect(engine.ticketState(ticketId)).toBe('open');
+    engine.advance(1);
+    expect(engine.now()).toBe(serviceDeadline(480, target));
+    expect(engine.ticketState(ticketId)).toBe('breached');
+  });
+
+  /**
+   * The bug that hid inside the fix. A re-cut deadline is four terms added one
+   * at a time, and the engine breaches on whatever the deadline says the
+   * moment it says it - so a ticket carried overnight was breached BY BEING
+   * TRIAGED, on a partial sum it was never actually on, and a breach latches.
+   */
+  it('does not breach a carried-over ticket on the way through its own triage', () => {
+    const world = harness();
+
+    world.engine.dispatch(DAY_ACTIONS.slaClockHold, COMPANY_IDS.player, null, {});
+    world.engine.advance(60);
+    world.engine.dispatch(DAY_ACTIONS.startShift, COMPANY_IDS.player, null, {});
+    world.engine.dispatch(DAY_ACTIONS.slaClockRun, COMPANY_IDS.player, null, {});
+    world.engine.advance(30);
+
+    // A P1 gets an hour, and it has been at the desk for half of one: the
+    // deadline is 10:00 and the ticket is open. The arithmetic that went via
+    // "arrived plus an hour" put it, for one mutation, on 09:00 - which had
+    // already gone - and it came out of its own triage red.
+    world.act(HELPDESK_ACTIONS.ticketClassify, {
+      impact: 3,
+      urgency: 3,
+      priority: 1,
+    });
+
+    expect(world.node().fields[FIELDS.state]).toBe('open');
+    expect(world.clocks().resolution.dueAt)
+      .toBe(serviceDeadline(0, SLA_TARGETS[1].resolution));
+    expect(world.clocks().resolution.breached).toBe(false);
+    // The scratch the sum was built in does not outlive the action.
+    expect(world.node().fields[FIELDS.slaRecut]).toBeUndefined();
   });
 });

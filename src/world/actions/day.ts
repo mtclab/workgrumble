@@ -1,6 +1,7 @@
-import type { ActionData, NodeRefData } from '../../engine-api';
+import type { ActionData, NodeRefData, PredData } from '../../engine-api';
 import { NO_RUN } from '../consumables';
 import { FIELDS } from '../fields';
+import { PROBATION_BONUS_PENCE, REVIEW_PASS_REPUTATION } from '../week';
 import { HELPDESK_TIER, not } from './helpers';
 import { DAY_ACTIONS } from './ids';
 
@@ -24,6 +25,14 @@ function stateIs(state: string): {
     value: { const: state },
   };
 }
+
+/** The review has not happened yet, which is what makes it happen once. */
+const REVIEW_PENDING: PredData = {
+  pred: 'field_eq',
+  node: ACTOR,
+  field: FIELDS.reviewOutcome,
+  value: { const: 'pending' },
+};
 
 /**
  * The three moves a day makes, as verbs rather than as shell state.
@@ -70,6 +79,180 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         node: ACTOR,
         field: FIELDS.dayState,
         value: { const: 'day_end' },
+      },
+    ],
+  },
+  // The service clock, kept honest by the state it belongs to: one of these is
+  // legal during a shift and the other is legal outside one, so the pair can
+  // never leave the engine counting minutes at an empty desk - or refusing to
+  // count minutes at a full one - however they are dispatched.
+  {
+    id: DAY_ACTIONS.slaClockRun,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: not(stateIs('shift')),
+        reason: 'The service clock runs while the shift does. This is not a '
+          + 'shift, and a deadline nobody could work towards is not a deadline.',
+      },
+    ],
+    apply: [{ op: 'set_sla_clock', running: true }],
+  },
+  {
+    id: DAY_ACTIONS.slaClockHold,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: stateIs('shift'),
+        reason: 'The shift is on. Stopping every clock in the building while '
+          + 'you are sitting at the desk is not a feature anybody is getting.',
+      },
+    ],
+    apply: [{ op: 'set_sla_clock', running: false }],
+  },
+  /**
+   * Friday at three, in the two sentences it can end with.
+   *
+   * The threshold lives in the GUARDS. A single verb taking an outcome would
+   * put the decision in whatever code called it, and there are three screens
+   * that want to know how the review went - so the world is the thing that
+   * decides, once, and everybody else reads the field afterwards.
+   */
+  {
+    id: DAY_ACTIONS.reviewPassed,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: not(stateIs('shift')),
+        reason: 'Reviews happen during working hours. He is very clear about '
+          + 'that, in a way he is not clear about anything else.',
+      },
+      {
+        when: not(REVIEW_PENDING),
+        reason: 'That conversation has already happened. Whatever was decided '
+          + 'in it has been decided.',
+      },
+      {
+        when: not({
+          pred: 'field_at_least',
+          node: ACTOR,
+          field: FIELDS.reputation,
+          value: REVIEW_PASS_REPUTATION,
+        }),
+        reason: 'Nothing in the file supports keeping you on, and the file is '
+          + 'the only thing in the room he is reading from.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reviewOutcome,
+        value: { const: 'passed' },
+      },
+      // The probation ends, which is one thing on the desk and one thing in
+      // the fridge: the beer stops being a tooltip about probation.
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.beerUnlocked,
+        value: { const: true },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.farmFund,
+        value: {
+          add: {
+            node: ACTOR,
+            field: FIELDS.farmFund,
+            by: { const: PROBATION_BONUS_PENCE },
+            clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
+          },
+        },
+      },
+    ],
+  },
+  {
+    id: DAY_ACTIONS.reviewFired,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: not(stateIs('shift')),
+        reason: 'Reviews happen during working hours. He is very clear about '
+          + 'that, in a way he is not clear about anything else.',
+      },
+      {
+        when: not(REVIEW_PENDING),
+        reason: 'That conversation has already happened. Whatever was decided '
+          + 'in it has been decided.',
+      },
+      {
+        when: {
+          pred: 'field_at_least',
+          node: ACTOR,
+          field: FIELDS.reputation,
+          value: REVIEW_PASS_REPUTATION,
+        },
+        reason: 'There is enough in the file to keep you on, and he is not a '
+          + 'man who does paperwork he does not have to.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reviewOutcome,
+        value: { const: 'fired' },
+      },
+    ],
+  },
+  /**
+   * Clocking off on the last day, which is not the same verb as clocking off
+   * on any other one: there is no tomorrow to advance into, the counts are not
+   * cleared for a day that will not happen, and the world stops here so the
+   * week scorecard has something to be a scorecard OF.
+   */
+  {
+    id: DAY_ACTIONS.endWeek,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: not(stateIs('day_end')),
+        reason: 'The week ends when the day does, and this one has not.',
+      },
+      {
+        when: REVIEW_PENDING,
+        reason: 'Nobody has had the conversation yet. Going home now would be '
+          + 'leaving before your own review, which is a way of answering it.',
+      },
+      {
+        when: {
+          pred: 'field_eq',
+          node: ACTOR,
+          field: FIELDS.weekEnded,
+          value: { const: true },
+        },
+        reason: 'The week is over. It was over the first time.',
+      },
+      {
+        when: not({ pred: 'param_is_whole_number', param: 'banked', value: 0 }),
+        reason: 'The farm fund is counted in whole pence, and this is not a '
+          + 'number of them.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.farmFund,
+        value: { param: 'banked' },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.weekEnded,
+        value: { const: true },
       },
     ],
   },

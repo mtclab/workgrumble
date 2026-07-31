@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { formatSimTime } from '../../shell/clock-format';
 import { COMPANY_IDS } from '../company';
 import { createWorldSession } from '../session';
+import { spawnWorldTicket } from '../tickets';
 import {
   arrivedAt,
   findMailThread,
@@ -142,6 +143,9 @@ describe('shipped inbox', () => {
    */
   it('hides a gated thread until the world says it arrived, then stamps it', () => {
     const { engine } = createWorldSession();
+    // The gate is a field on a ticket, so the ticket has to be in the world:
+    // the fan arrives mid-morning on Monday rather than with the pile.
+    spawnWorldTicket(engine, 'ticket:fan-noise');
     const gated: MailThread = {
       id: 'mail/gated',
       subject: 'Sent back',

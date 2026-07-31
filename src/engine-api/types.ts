@@ -323,6 +323,13 @@ export type OpData =
   | { op: 'remove_edge'; from: NodeRefData; to: NodeRefData; kind: EdgeKind }
   | { op: 'remove_node'; node: NodeRefData }
   | { op: 'set_waiting'; node: NodeRefData; waiting: boolean }
+  /**
+   * Starts or stops the clock every ticket's SLA is measured against. While it
+   * is stopped, every unresolved deadline moves out a minute per minute - the
+   * same mechanism a parked ticket uses, for the same reason. The engine knows
+   * nothing about office hours; this is how a world tells it about them.
+   */
+  | { op: 'set_sla_clock'; running: boolean }
   | { op: 'when'; cond: PredData; ops: OpData[] };
 
 export interface ActionData {

@@ -57,10 +57,23 @@ import {
   dayOpensTick,
   daySlip,
   dueTransition,
+  type PaySlip,
   isDayState,
   isLunchtime,
   shiftStartTick,
 } from '../world/day';
+import {
+  dayPlan,
+  isReviewDay,
+  isReviewOutcome,
+  isWeekDay,
+  patrolSeedFor,
+  type ReviewOutcome,
+  reviewOutcomeFor,
+  reviewTick,
+  type WeekScorecard,
+  weekScorecard,
+} from '../world/week';
 import { FIELDS } from '../world/fields';
 import {
   isMeterTick,
@@ -72,10 +85,9 @@ import { isActiveWork, isUnresolved, needsResponse } from '../world/sla';
 import {
   bounceLandsAt,
   countsAsWork,
-  findWorldTicket,
   HANDOFF_BOUNCE,
   resolveCredit,
-  ticketArrivalPool,
+  spawnWorldTicket,
   ticketNodes,
   ticketTitle,
   withTouch,
@@ -165,6 +177,18 @@ export interface DayApi {
    */
   drink(): DispatchResult;
   tidyDesk(): DispatchResult;
+  /**
+   * The bottle at the end of the week. Locked until a review says otherwise,
+   * which is the engine's opinion rather than the button's - so this answers
+   * with the refusal a player can read.
+   */
+  beer(): DispatchResult;
+  /** How Friday at three went, as the world recorded it. */
+  reviewOutcome(): ReviewOutcome;
+  /** Whether the week has been clocked off for the last time. */
+  weekEnded(): boolean;
+  /** Five days, added up out of the tickets they were made of. */
+  weekScorecard(): WeekScorecard;
   /** Fires when the day, its state, the pause or the speed changed. */
   onChanged(listener: () => void): () => void;
 }
@@ -207,6 +231,20 @@ export interface DayDriverHandlers {
    * conversation should be standing on rather than writing it itself.
    */
   onBossPing?(ping: Readonly<BossPing>): void;
+  /**
+   * Friday, three o'clock, decided. The world already holds the outcome - the
+   * reputation was read and the verb was dispatched - and what is left is the
+   * conversation, which is a window like every other scene in this game.
+   */
+  onReview?(outcome: ReviewOutcome, tick: number): void;
+  /**
+   * Five o'clock on a Friday that went well: the probation is over and there
+   * is a bottle in the fridge with your name on it. Fires once, at the day
+   * end, and only when the review passed.
+   */
+  onBeerUnlocked?(): void;
+  /** The week is over. There is no Saturday, so there is a screen instead. */
+  onWeekEnd?(outcome: ReviewOutcome): void;
 }
 
 /**
@@ -251,7 +289,8 @@ export class DayDriver implements DayApi {
     private readonly handlers: Readonly<DayDriverHandlers>,
   ) {
     this.schedule_ = this.scheduleFor(this.day());
-    this.patrol_ = buildPatrolSchedule(this.day(), this.seed);
+    this.patrol_ = this.patrolFor(this.day());
+    this.syncSlaClock();
   }
 
   public day(): number {
@@ -390,6 +429,10 @@ export class DayDriver implements DayApi {
     this.carriedMs = elapsed.carriedMs;
 
     for (let tick = 0; tick < elapsed.ticks; tick += 1) {
+      // Before the minute is spent, not after: the engine decides whether the
+      // minute it is about to step counts against every open deadline, and it
+      // decides it from the state the day is in as that minute begins.
+      this.syncSlaClock();
       const before = this.engine.now();
       this.engine.advance(1);
       const now = this.engine.now();
@@ -400,6 +443,7 @@ export class DayDriver implements DayApi {
 
       this.spawnArrivals(before, now);
       this.walkTheFloor(before, now);
+      this.settleReview(before, now);
       this.applyPressure(now);
 
       if (this.applyDueTransition()) {
@@ -423,15 +467,22 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    this.dispatchDay(DAY_ACTIONS.startShift, {});
+    // The clock is moved to nine BEFORE the shift is started, and the two
+    // lines are in that order for a reason a player would notice: whatever is
+    // left of the morning is time nobody is being paid for, so it must not
+    // come off anybody's SLA. Starting the shift first would sell the last
+    // fifty minutes of the brief as working hours.
     const start = shiftStartTick(this.day());
     const now = this.engine.now();
 
     if (now < start) {
+      this.syncSlaClock();
       this.engine.advance(start - now);
       this.spawnArrivals(now, this.engine.now());
     }
 
+    this.dispatchDay(DAY_ACTIONS.startShift, {});
+    this.syncSlaClock();
     this.carriedMs = 0;
     this.announce();
   }
@@ -451,14 +502,16 @@ export class DayDriver implements DayApi {
     }
 
     const day = this.day();
+
+    if (isReviewDay(day)) {
+      this.endWeek(day);
+      return;
+    }
+
     // The same slip the scorecard is showing, vending machine and all: a
     // banked total that disagreed with the screen it was read off would be a
     // lie the player could only catch by adding it up themselves.
-    const slip = daySlip(
-      dayLedger(this.engine.graph.nodesOfKind('ticket'), day),
-      this.playerNumber(FIELDS.consumableSpend),
-    );
-    const banked = this.farmFund() + slip.net;
+    const banked = this.farmFund() + this.slipFor(day).net;
 
     this.dispatchDay(DAY_ACTIONS.clockOff, { banked });
 
@@ -470,12 +523,62 @@ export class DayDriver implements DayApi {
     }
 
     this.schedule_ = this.scheduleFor(day + 1);
-    this.patrol_ = buildPatrolSchedule(day + 1, this.seed);
+    this.patrol_ = this.patrolFor(day + 1);
     this.spawnArrivals(now, this.engine.now());
     this.carriedMs = 0;
     this.engine.checkpoint();
     this.announce();
     this.handlers.onDayBoundary();
+  }
+
+  /**
+   * Friday's clock-off, which is a different thing entirely.
+   *
+   * There is no night to sleep through and no queue to deal, because there is
+   * no Saturday: the clock stays on Friday evening, the fund takes the last
+   * day's pay, and what happens next is a screen rather than a morning. The
+   * checkpoint is still taken - it is the cheapest save there is - and the
+   * week is announced so the shell can put the scorecard up.
+   */
+  private endWeek(day: number): void {
+    const banked = this.farmFund() + this.slipFor(day).net;
+
+    this.dispatchDay(DAY_ACTIONS.endWeek, { banked });
+    this.carriedMs = 0;
+    this.engine.checkpoint();
+    this.announce();
+    this.handlers.onDayBoundary();
+    this.handlers.onWeekEnd?.(this.reviewOutcome());
+  }
+
+  /** How the conversation on Friday went, as the world recorded it. */
+  public reviewOutcome(): ReviewOutcome {
+    const value = this.engine.graph.getField(this.actor, FIELDS.reviewOutcome);
+    return isReviewOutcome(value) ? value : 'pending';
+  }
+
+  public weekEnded(): boolean {
+    return this.engine.graph.getField(this.actor, FIELDS.weekEnded) === true;
+  }
+
+  /** The week, added up out of the days it was made of. */
+  public weekScorecard(): WeekScorecard {
+    return weekScorecard(this.engine.graph.nodesOfKind('ticket'), {
+      banked: this.farmFund(),
+      opening: this.playerNumber(FIELDS.weekOpeningFund),
+      reputation: this.playerNumber(FIELDS.reputation),
+      outcome: this.reviewOutcome(),
+    });
+  }
+
+  /** The bottle in the fridge with your name on it. */
+  public beer(): DispatchResult {
+    return this.engine.dispatch(
+      DAY_ACTIONS.consumableBeer,
+      this.actor,
+      null,
+      {},
+    );
   }
 
   public driverState(): DriverState {
@@ -496,7 +599,12 @@ export class DayDriver implements DayApi {
    */
   public resync(): void {
     this.schedule_ = this.scheduleFor(this.day());
-    this.patrol_ = buildPatrolSchedule(this.day(), this.seed);
+    this.patrol_ = this.patrolFor(this.day());
+    // A save carries the service clock, so this is a check rather than a
+    // correction - but it is the check that catches a world restored into a
+    // day it does not agree with, which is the one place the two halves could
+    // drift apart without anybody seeing it happen.
+    this.syncSlaClock();
     this.carriedMs = 0;
     this.announce();
   }
@@ -515,8 +623,96 @@ export class DayDriver implements DayApi {
     };
   }
 
+  /**
+   * Keeps the engine's service clock in step with the day the world is in.
+   *
+   * The day state is the single truth - it is in the graph, it is saved, it is
+   * replayed - and the engine's flag is the consequence of it. Deriving the
+   * flag here rather than hanging it off the transitions is what makes a load,
+   * a replay and a cold boot all agree: a session that starts at 08:00 on
+   * Monday has to start with the clock stopped, and nothing transitioned to
+   * get there.
+   *
+   * It dispatches only when the two disagree, so the log carries the moments
+   * the clock started and stopped rather than one entry a minute.
+   */
+  private syncSlaClock(): void {
+    const shouldRun = this.state() === 'shift';
+
+    if (this.engine.slaRunning() === shouldRun) {
+      return;
+    }
+
+    this.dispatchDay(
+      shouldRun ? DAY_ACTIONS.slaClockRun : DAY_ACTIONS.slaClockHold,
+      {},
+    );
+  }
+
+  /**
+   * Friday, three o'clock.
+   *
+   * The world decides which way it goes - both verbs are guarded on the
+   * reputation that earns them - so all this does is offer the one the meters
+   * support and hand the answer to the shell, which is where a scene lives.
+   * Reading the outcome back off the graph rather than trusting the dispatch
+   * is what makes a refused review a review that did not happen.
+   */
+  private settleReview(after: number, now: number): void {
+    const day = this.day();
+
+    if (!isReviewDay(day) || this.state() !== 'shift') {
+      return;
+    }
+
+    const due = reviewTick(day);
+
+    if (due <= after || due > now || this.reviewOutcome() !== 'pending') {
+      return;
+    }
+
+    const outcome = reviewOutcomeFor(this.playerNumber(FIELDS.reputation));
+    const result = this.engine.dispatch(
+      outcome === 'passed'
+        ? DAY_ACTIONS.reviewPassed
+        : DAY_ACTIONS.reviewFired,
+      this.actor,
+      null,
+      {},
+    );
+
+    if (!result.ok) {
+      throw new Error(`The review could not happen: ${result.reason}`);
+    }
+
+    this.announce();
+    this.handlers.onReview?.(this.reviewOutcome(), due);
+  }
+
+  /** What a day is worth, vending machine and all. */
+  private slipFor(day: number): PaySlip {
+    return daySlip(
+      dayLedger(this.engine.graph.nodesOfKind('ticket'), day),
+      this.playerNumber(FIELDS.consumableSpend),
+    );
+  }
+
   private scheduleFor(day: number): DaySchedule {
-    return buildDaySchedule(day, this.seed, ticketArrivalPool());
+    // Off the end of the week there is nothing left to deal: the world stops
+    // on Friday evening, and a driver asked for Saturday's queue is a driver
+    // that has been left running past the end of its own week.
+    return buildDaySchedule(
+      day,
+      this.seed,
+      isWeekDay(day) ? dayPlan(day) : { inherited: [], drip: [] },
+    );
+  }
+
+  private patrolFor(day: number): PatrolSchedule {
+    return buildPatrolSchedule(
+      day,
+      isWeekDay(day) ? patrolSeedFor(day, this.seed) : this.seed,
+    );
   }
 
   private farmFund(): number {
@@ -538,15 +734,7 @@ export class DayDriver implements DayApi {
         continue;
       }
 
-      const entry = findWorldTicket(arrival.ticketId);
-
-      if (entry === undefined) {
-        throw new Error(
-          `The day schedule names a ticket nobody wrote: "${arrival.ticketId}".`,
-        );
-      }
-
-      this.engine.registerTicket(entry.def);
+      spawnWorldTicket(this.engine, arrival.ticketId);
     }
   }
 
@@ -664,15 +852,7 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    const entry = findWorldTicket(ticketId);
-
-    if (entry === undefined) {
-      throw new Error(
-        `The boss raised a ticket nobody wrote: "${ticketId}".`,
-      );
-    }
-
-    this.engine.registerTicket(entry.def);
+    spawnWorldTicket(this.engine, ticketId);
   }
 
   /* -- the pressure layer ------------------------------------------------ */
@@ -910,8 +1090,22 @@ export class DayDriver implements DayApi {
       due === 'shift' ? DAY_ACTIONS.startShift : DAY_ACTIONS.endShift,
       {},
     );
+    // The clock the deadlines are measured against follows the day it belongs
+    // to, in the same breath as the transition rather than at the top of the
+    // next minute: a shift that ended at 17:00 must not sell 17:01 as work.
+    this.syncSlaClock();
     this.announce();
+
+    if (due === 'day_end' && this.probationOver()) {
+      this.handlers.onBeerUnlocked?.();
+    }
+
     return due === 'day_end';
+  }
+
+  /** Friday evening, review passed: the fridge stops being a joke. */
+  private probationOver(): boolean {
+    return isReviewDay(this.day()) && this.reviewOutcome() === 'passed';
   }
 
   /**

@@ -293,6 +293,10 @@ export class WasmEngine implements EngineApi {
     return this.core.now();
   }
 
+  public slaRunning(): boolean {
+    return this.query({ kind: 'sla_running' }) === true;
+  }
+
   public get graph(): ReadOnlyGraphView {
     return this.view;
   }

@@ -4,6 +4,7 @@ import { HELPDESK_ACTIONS } from '../../world/actions';
 import { COMPANY_IDS } from '../../world/company';
 import { FIELDS } from '../../world/fields';
 import { createWorldSession } from '../../world/session';
+import { spawnWorldTicket } from '../../world/tickets';
 import {
   breachedTicketCount,
   ticketStateLabel,
@@ -24,6 +25,13 @@ const UNTRIAGED_SLA_TICKS = 240;
 describe('a breached ticket that gets closed', () => {
   it('keeps saying it breached, in the queue and in the tally', () => {
     const session = createWorldSession();
+    // A morning is at most two tickets now, so the pile this test is about -
+    // three that get missed and one that was triaged out of trouble - is
+    // dealt here rather than inherited. They are the same tickets the week
+    // hands out across Monday to Thursday.
+    for (const id of [FAN_TICKET, 'ticket:locked-account', 'ticket:wedged-spooler']) {
+      spawnWorldTicket(session.engine, id);
+    }
 
     // Every untriaged ticket runs on the same clock now, so the one that is
     // going to survive the morning is the one somebody triaged: filed low and

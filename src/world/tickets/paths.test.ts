@@ -5,8 +5,9 @@ import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
 import { createWorldSession, type WorldSession } from '../session';
+import { inheritedTicketIds } from '../week';
 import { acceptsEscalation } from './escalation';
-import { allowsEscalation, WORLD_TICKETS } from './index';
+import { allowsEscalation, spawnWorldTicket, WORLD_TICKETS } from './index';
 import type { TicketActionStep, WorldTicket } from './types';
 
 /**
@@ -22,6 +23,32 @@ function spawnIfAbsent(session: WorldSession, entry: WorldTicket): void {
   if (session.engine.graph.getNode(entry.def.id) === undefined) {
     session.engine.registerTicket(entry.def);
   }
+}
+
+/**
+ * A world with the named tickets already in it.
+ *
+ * Monday's queue is one ticket now - the week deals the rest across five days -
+ * so a test about a ticket has to put that ticket in the world first. It is the
+ * same call the day driver makes at the minute the week says it arrives, and it
+ * carries the ticket's setup mutations with it: the rotated screen, the locked
+ * account and the wedged spooler are FAULTS THE TICKET BRINGS, so a world
+ * without the ticket is a world where nothing is broken yet.
+ */
+function sessionWith(...ticketIds: readonly string[]): WorldSession {
+  const session = createWorldSession();
+
+  for (const id of ticketIds) {
+    if (session.engine.graph.getNode(id) === undefined) {
+      spawnWorldTicket(session.engine, id);
+    }
+  }
+
+  return session;
+}
+
+function sessionWithEveryTicket(): WorldSession {
+  return sessionWith(...WORLD_TICKETS.map(({ def }) => def.id));
 }
 
 function drive(session: WorldSession, step: Readonly<TicketActionStep>): void {
@@ -51,7 +78,9 @@ describe('shipped tickets', () => {
       expect(
         session.engine.ticketState(entry.def.id),
         entry.def.id,
-      ).toBe(entry.arrival === 'morning' ? 'open' : undefined);
+      ).toBe(
+        inheritedTicketIds(1).includes(entry.def.id) ? 'open' : undefined,
+      );
 
       spawnIfAbsent(session, entry);
       expect(session.engine.ticketState(entry.def.id)).toBe('open');
@@ -70,7 +99,7 @@ describe('shipped tickets', () => {
   });
 
   it('leaves the reported symptom in the world it spawns into', () => {
-    const session = createWorldSession();
+    const session = sessionWithEveryTicket();
 
     expect(
       session.engine.graph.getField(COMPANY_IDS.adaMachine, FIELDS.displayRotation),
@@ -95,8 +124,7 @@ describe.each(WORLD_TICKETS.map((entry) => [entry.def.id, entry] as const))(
     it.each(entry.paths.map((path) => [path.id, path] as const))(
       'closes through the %s path',
       (_pathId, path) => {
-        const session = createWorldSession();
-        spawnIfAbsent(session, entry);
+        const session = sessionWith(ticketId);
         expect(session.engine.ticketState(ticketId)).toBe('open');
 
         path.steps.forEach((step, index) => {
@@ -113,8 +141,7 @@ describe.each(WORLD_TICKETS.map((entry) => [entry.def.id, entry] as const))(
     );
 
     it('stays open until a path is actually driven', () => {
-      const session = createWorldSession();
-      spawnIfAbsent(session, entry);
+      const session = sessionWith(ticketId);
       session.engine.advance(1);
       expect(session.engine.ticketState(ticketId)).toBe('open');
     });
@@ -128,7 +155,7 @@ describe.each(WORLD_TICKETS.map((entry) => [entry.def.id, entry] as const))(
  */
 describe('hardware that reports a status', () => {
   it('refuses to restart the chassis fan and leaves its ticket open', () => {
-    const session = createWorldSession();
+    const session = sessionWith('ticket:fan-noise');
     const before = session.engine.snapshotHash();
 
     const result = session.engine.dispatch(
@@ -147,7 +174,7 @@ describe('hardware that reports a status', () => {
   });
 
   it('still restarts the software on the same estate', () => {
-    const session = createWorldSession();
+    const session = sessionWith('ticket:wedged-spooler');
 
     // The queue goes first, which is the spooler ticket's whole lesson.
     session.engine.dispatch(
@@ -222,7 +249,7 @@ describe('escalation policy', () => {
    */
   it('agrees with the engine on every shipped ticket', () => {
     for (const entry of WORLD_TICKETS) {
-      const session = createWorldSession();
+      const session = sessionWith(entry.def.id);
       const offered = allowsEscalation(entry.def.id);
       const result = session.engine.dispatch(
         HELPDESK_ACTIONS.ticketEscalate,
@@ -246,7 +273,7 @@ describe('escalation policy', () => {
   });
 
   it('refuses to escalate a ticket that is fixable from the desk', () => {
-    const session = createWorldSession();
+    const session = sessionWith('ticket:locked-account');
     const result = session.engine.dispatch(
       HELPDESK_ACTIONS.ticketEscalate,
       COMPANY_IDS.player,
@@ -273,8 +300,8 @@ describe('waiting on the user', () => {
    * the refusal leaves the deadline exactly where it was.
    */
   it('will not stop a shipped ticket clock before the question is asked', () => {
-    const session = createWorldSession();
     const ticketId = 'ticket:locked-account';
+    const session = sessionWith(ticketId);
     const before = session.engine.snapshotHash();
     const deadline = session.engine.graph.getField(ticketId, FIELDS.slaDeadline);
 
@@ -299,8 +326,8 @@ describe('waiting on the user', () => {
   });
 
   it('pushes the SLA deadline out while the ticket is parked', () => {
-    const session = createWorldSession();
     const ticketId = 'ticket:locked-account';
+    const session = sessionWith(ticketId);
     const before = session.engine.graph.getField(ticketId, FIELDS.slaDeadline);
 
     expect(

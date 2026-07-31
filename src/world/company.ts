@@ -190,6 +190,17 @@ export function companySetup(): readonly SetupOp[] {
             [FIELDS.drinkTolerance]: 0,
             [FIELDS.drinkCrashCharged]: NO_RUN,
             [FIELDS.consumableSpend]: 0,
+            // The week itself: which attempt this is, what the fund held when
+            // it started, and how the conversation on Friday went. All three
+            // are seeded for the same reason the meters are - a field that was
+            // never there is a field the op language refuses to move.
+            [FIELDS.weekAttempt]: 1,
+            [FIELDS.weekOpeningFund]: 0,
+            [FIELDS.reviewOutcome]: 'pending',
+            [FIELDS.weekEnded]: false,
+            // Probation. It is in the fridge with your name on it.
+            [FIELDS.beerUnlocked]: false,
+            [FIELDS.beerOpened]: false,
           }
           : {}),
       },

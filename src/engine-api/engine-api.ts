@@ -41,6 +41,13 @@ export interface EngineApi {
 
   advance(ticks: number): void;
   now(): number;
+  /**
+   * Whether the ticks going past are ticks a service level counts. It is world
+   * state - a save carries it - and the only thing that moves it is a
+   * dispatched verb, so the day driver reads it to find out whether the engine
+   * still agrees with the day it has just loaded, replayed or booted into.
+   */
+  slaRunning(): boolean;
 
   readonly graph: ReadOnlyGraphView;
   evaluate(expr: Expr): boolean;

@@ -7,6 +7,7 @@ import { COMPANY_IDS } from './company';
 import {
   arrivalsBetween,
   buildDaySchedule,
+  type DayPlan,
   clockRuns,
   DAY_RATE_PENCE,
   dayForTick,
@@ -20,13 +21,13 @@ import {
   isDayState,
   isLunchtime,
   lunchWindow,
-  type ScheduledTicket,
   shiftEndTick,
   shiftStartTick,
 } from './day';
 import { FIELDS } from './fields';
 import { createWorldSession, WORLD_SEED } from './session';
-import { ticketArrivalPool } from './tickets';
+import { spawnWorldTicket } from './tickets';
+import { dayPlan } from './week';
 
 /** 08:00 is tick 0; the shift is 09:00-17:00; day two opens 24 hours on. */
 const SHIFT_START = 60;
@@ -177,16 +178,17 @@ describe('the day state machine', () => {
 });
 
 describe('the ticket drip', () => {
-  const pool: readonly ScheduledTicket[] = [
-    { id: 'ticket:one', arrival: 'morning' },
-    { id: 'ticket:two', arrival: 'morning' },
-    { id: 'ticket:three', arrival: 'drip' },
-    { id: 'ticket:four', arrival: 'drip' },
-    { id: 'ticket:five', arrival: 'drip' },
-  ];
+  const plan: DayPlan = {
+    inherited: ['ticket:one', 'ticket:two'],
+    drip: [
+      { ticketId: 'ticket:three', minute: 10 * 60 },
+      { ticketId: 'ticket:four', minute: 13 * 60 },
+      { ticketId: 'ticket:five', minute: 15 * 60 },
+    ],
+  };
 
   it('opens with the inherited pile and spreads the rest across the shift', () => {
-    const schedule = buildDaySchedule(1, WORLD_SEED, pool);
+    const schedule = buildDaySchedule(1, WORLD_SEED, plan);
 
     expect(schedule.day).toBe(1);
     expect(schedule.shift).toEqual({ from: SHIFT_START, to: SHIFT_END });
@@ -217,10 +219,10 @@ describe('the ticket drip', () => {
   });
 
   it('deals the same day twice and different days differently', () => {
-    const first = buildDaySchedule(1, WORLD_SEED, pool);
-    expect(buildDaySchedule(1, WORLD_SEED, pool)).toEqual(first);
+    const first = buildDaySchedule(1, WORLD_SEED, plan);
+    expect(buildDaySchedule(1, WORLD_SEED, plan)).toEqual(first);
 
-    const second = buildDaySchedule(2, WORLD_SEED, pool);
+    const second = buildDaySchedule(2, WORLD_SEED, plan);
     const offsets = (day: number, ticks: readonly number[]): number[] => ticks
       .map((tick) => tick - dayOpensTick(day));
 
@@ -229,11 +231,11 @@ describe('the ticket drip', () => {
     ).not.toEqual(offsets(1, first.arrivals.map((arrival) => arrival.tick)));
 
     // A different world is a different day too.
-    expect(buildDaySchedule(1, WORLD_SEED + 1, pool)).not.toEqual(first);
+    expect(buildDaySchedule(1, WORLD_SEED + 1, plan)).not.toEqual(first);
   });
 
   it('hands the driver exactly the arrivals one clock step passed', () => {
-    const schedule = buildDaySchedule(1, WORLD_SEED, pool);
+    const schedule = buildDaySchedule(1, WORLD_SEED, plan);
     const dripped = schedule.arrivals.filter(
       (arrival) => arrival.tick > schedule.opensTick,
     );
@@ -255,7 +257,7 @@ describe('the ticket drip', () => {
   });
 
   it('schedules the shipped queue as the morning it is', () => {
-    const schedule = buildDaySchedule(1, WORLD_SEED, ticketArrivalPool());
+    const schedule = buildDaySchedule(1, WORLD_SEED, dayPlan(1));
     const { engine } = createWorldSession();
 
     // Everything the schedule says is already here IS already here, and
@@ -407,9 +409,12 @@ describe('the day scorecard', () => {
 describe('a worked day', () => {
   it('shows up on the ledger the scorecard is built from', () => {
     const session = createWorldSession();
+    // Monday's own queue, dealt as the week deals it: the rotated screen was
+    // waiting at eight and the fan turns up mid-morning.
+    spawnWorldTicket(session.engine, 'ticket:fan-noise');
     const before = dayLedger(session.engine.graph.nodesOfKind('ticket'), 1);
     expect(before.closed).toBe(0);
-    expect(before.arrived).toBe(4);
+    expect(before.arrived).toBe(2);
 
     expect(
       session.engine.dispatch(
@@ -425,7 +430,7 @@ describe('a worked day', () => {
 
     const after = dayLedger(session.engine.graph.nodesOfKind('ticket'), 1);
     expect(after.closed).toBe(1);
-    expect(after.stillOpen).toBe(3);
+    expect(after.stillOpen).toBe(1);
     expect(daySlip(after).net).toBeGreaterThan(daySlip(before).net);
   });
 });

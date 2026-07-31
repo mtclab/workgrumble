@@ -449,15 +449,18 @@ describe('the can, on the clock', () => {
  */
 const GOLDEN_DAY = {
   /** The world at the end of it, in sixteen characters. */
-  hash: 'b7bfd3b19d73b1f3',
+  hash: '1ba421b5f998896f',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */
   onTheWay: {
     // 09:45. The browser has been up since five past and nothing has been
-    // closed, but the queue is still inside what a person can hold.
+    // closed. Monday's queue is one inherited ticket and one that has not
+    // arrived yet, so there is nothing on the stress meter at all - a queue
+    // inside what a person can hold costs nothing, which is the rate saying
+    // so rather than a meter that has stopped working.
     105: {
-      stress: 2,
+      stress: 0,
       suspicion: 34,
       reputation: 50,
       suspicion_events: 7,
@@ -470,10 +473,10 @@ const GOLDEN_DAY = {
       drink_tolerance: 0,
       drink_crash_charged: -1,
     },
-    // 11:00. One can open, the screen clean since twenty to ten, and the
-    // queue charging for itself every interval.
+    // 11:00. One can open and paid for, the screen clean since twenty to ten,
+    // and the morning's arrival now in the queue beside the inherited one.
     180: {
-      stress: 38,
+      stress: 6,
       suspicion: 19,
       reputation: 50,
       suspicion_events: 7,
@@ -489,15 +492,20 @@ const GOLDEN_DAY = {
   } as Record<string, Record<string, number>>,
   /** Every number the pressure layer ended the day holding. */
   atSeventeen: {
-    // Two cans, two conversations with the lead and a queue nobody closed.
-    stress: 97,
+    // A queue of three that nobody closed, two cans, and two conversations
+    // with the lead. Stress ends on the floor because the browser is open at
+    // the end of the day and a three-ticket queue charges one point an
+    // interval against three points of relief - the queue is what does it to
+    // you, and this queue is small.
+    stress: 0,
     suspicion: 100,
-    reputation: 20,
+    reputation: 29,
     suspicion_events: 58,
     caught_events: 2,
-    // Six deadlines missed and charged once each; nothing was resolved, so
-    // there was no credit to pay out.
-    breaches_charged: 6,
+    // Three deadlines missed and charged once each: the ticket inherited at
+    // eight, the one that arrived mid-morning, and the one the lead raised by
+    // mentioning it. Nothing was resolved, so there was no credit to pay out.
+    breaches_charged: 3,
     resolve_credit_paid: 0,
     consumable_spend: 240,
     desk_cans: 2,
@@ -506,7 +514,7 @@ const GOLDEN_DAY = {
     drink_tolerance: 2,
     drink_crash_charged: 234,
   } as Record<string, number>,
-  banked: 6_515,
+  banked: 7_715,
   /**
    * Every minute the day announced something, in order: the bill for a can,
    * the footsteps, the lead's messages, and the two rounds that found

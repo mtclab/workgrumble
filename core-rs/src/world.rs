@@ -171,6 +171,10 @@ impl World {
                 "tick": self.clock.now(),
                 "paused": self.clock.is_paused(),
                 "speed": self.clock.speed(),
+                // Part of the clock, so part of the baseline: a log replayed
+                // from a checkpoint taken overnight has to start with the same
+                // answer to "is anybody at the desk" as the world it replaces.
+                "sla_running": self.clock.sla_runs(),
             }),
             graph: json!({
                 "nodes": self
@@ -662,6 +666,10 @@ impl World {
                 let id = self.resolve_ref(node, actor, target, params)?;
                 self.set_waiting(&id, *waiting)
             }
+            Op::SetSlaClock { running } => {
+                self.clock.set_sla_running(*running);
+                Ok(())
+            }
             Op::When { cond, ops } => {
                 if self.predicate_holds(cond, actor, target, params) {
                     self.apply_ops(ops, actor, target, params)?;
@@ -706,22 +714,43 @@ impl World {
         })
     }
 
-    /// A parked ticket's deadline moves with the clock: time spent waiting on
-    /// the user is time the SLA does not count.
+    /// A minute nobody could have worked in is a minute the SLA does not
+    /// count, and there are exactly two of those: the ticket is parked on
+    /// somebody else, or the desk is empty because the shift is not on.
     ///
-    /// The same minute is added to `held_ticks`, which is the ticket's own
-    /// record of how long it has been parked ALTOGETHER. The deadline alone
-    /// cannot say that: re-cutting it from a triage - which is what assigning
-    /// a priority does - would silently hand back every pause the ticket had
-    /// earned, and "clear the hold, then triage it" is the order the app tells
-    /// the player to work in.
+    /// Either way the deadline moves out by one, ONCE, and the minute is
+    /// attributed to whichever reason it was - `held_ticks` for a pause,
+    /// `off_hours_ticks` for a night. Two counters rather than one because
+    /// they are two different sentences on a screen, and one deadline
+    /// extension rather than two because a parked ticket at midnight is not
+    /// twice as excused as a parked ticket at noon.
+    ///
+    /// The counters are what a triage re-cut adds back. Re-cutting the
+    /// deadline from the minute the ticket ARRIVED - which is what assigning a
+    /// priority does - would otherwise hand back every pause and every night
+    /// the ticket had earned, and "clear the hold, then triage it" is the
+    /// order the app tells the player to work in.
+    ///
+    /// The invariant this keeps, for every unresolved ticket:
+    /// `sla_deadline == spawned_at + target + held_ticks + off_hours_ticks`.
     fn handle_tick(&mut self) -> EngineResult<()> {
+        let off_hours = !self.clock.sla_runs();
+
         for id in self.tickets.sorted_ids() {
             let Some(record) = self.tickets.records.get(&id) else {
                 continue;
             };
 
-            if record.resolved || !record.waiting {
+            // A breached ticket's deadline has already done its work: moving
+            // it would walk a red badge back towards green without the ticket
+            // having been touched, and the breach itself is latched anyway.
+            if record.resolved || record.breached {
+                continue;
+            }
+
+            let waiting = record.waiting;
+
+            if !waiting && !off_hours {
                 continue;
             }
 
@@ -740,21 +769,23 @@ impl World {
                 return refuse!("Ticket \"{id}\" cannot have its SLA extended any further.");
             };
 
-            // An absent counter is a ticket that has never been parked, which
-            // is the same claim as zero and the one every ticket starts with.
-            let held = self
+            // An absent counter is a ticket that has never been parked - or
+            // never been carried overnight - which is the same claim as zero
+            // and the one every ticket starts with.
+            let counter = if waiting { "held_ticks" } else { "off_hours_ticks" };
+            let counted = self
                 .graph
-                .get_field(&id, "held_ticks")
+                .get_field(&id, counter)
                 .and_then(FieldValue::as_safe_int)
                 .unwrap_or(0);
-            let Some(held) = held.checked_add(1).filter(|held| *held <= MAX_SAFE_INT) else {
-                return refuse!("Ticket \"{id}\" cannot have been on hold any longer.");
+            let Some(counted) = counted.checked_add(1).filter(|held| *held <= MAX_SAFE_INT) else {
+                return refuse!("Ticket \"{id}\" cannot have been waiting any longer.");
             };
 
             self.updating(&id, true);
             let result = self
                 .set_field(&id, "sla_deadline", FieldValue::Num(extended as f64))
-                .and_then(|()| self.set_field(&id, "held_ticks", FieldValue::Num(held as f64)));
+                .and_then(|()| self.set_field(&id, counter, FieldValue::Num(counted as f64)));
             self.updating(&id, false);
             result?;
         }

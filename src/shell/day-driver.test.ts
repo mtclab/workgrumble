@@ -1,12 +1,13 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { loadEngineForTests } from '../engine-api/load-node';
-import { HELPDESK_ACTIONS } from '../world/actions';
+import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import {
   buildDaySchedule,
   DAY_RATE_PENCE,
   dayLedger,
+  dayOpensTick,
   daySlip,
   lunchWindow,
   shiftEndTick,
@@ -24,13 +25,14 @@ import {
   STRESS_PER_EXCESS_TICKET,
 } from '../world/meters';
 import { createWorldSession, WORLD_SEED } from '../world/session';
+import { dayPlan, dayScript, inheritedTicketIds } from '../world/week';
 import { SLA_TARGETS, UNTRIAGED_PRIORITY } from '../world/priority';
+import { serviceDeadline } from '../world/hours';
 import { isActiveWork, ticketClocks } from '../world/sla';
 import {
   actionSummary,
   HANDOFF_BOUNCE,
-  ticketArrivalPool,
-  TIDIED_LIST,
+  spawnWorldTicket,
   triedFromTouches,
 } from '../world/tickets';
 import {
@@ -38,6 +40,8 @@ import {
   TICK_INTERVAL_MS,
   ticksFromElapsed,
 } from './day-driver';
+
+const MONDAY = dayScript(1);
 
 beforeAll(() => {
   loadEngineForTests();
@@ -67,8 +71,22 @@ function show(slack: Screen, apps: readonly string[]): void {
   slack.focused = apps[apps.length - 1] ?? null;
 }
 
-function harness(): Harness {
+/**
+ * A driver over a world with the named tickets already dealt.
+ *
+ * Monday's own queue is one ticket - the week spreads the rest across five
+ * days - so a test about a particular ticket deals it here, exactly as the
+ * driver would on the day the week says it turns up. The ticket brings its own
+ * fault with it, which is why this is a spawn rather than a fixture.
+ */
+function harness(...ticketIds: readonly string[]): Harness {
   const { engine } = createWorldSession();
+
+  for (const id of ticketIds) {
+    if (engine.graph.getNode(id) === undefined) {
+      spawnWorldTicket(engine, id);
+    }
+  }
   const onDayBoundary = vi.fn();
   const notices: string[] = [];
   const slack: Screen = { open: [], focused: null };
@@ -90,16 +108,16 @@ function harness(): Harness {
   };
 }
 
-/** The one ticket that is not waiting for the player at 08:00. */
-const DRIP_TICKET = TIDIED_LIST.def.id;
+/** Monday's mid-morning arrival: the ticket you filed about your own desk. */
+const DRIP_TICKET = MONDAY.drip[0]?.ticketId ?? '';
 
 /**
- * The minute it lands on day one, from the shipped seed. Not a magic number:
- * `buildDaySchedule` produces it, and the test asserts the driver deals it on
- * the same one.
+ * The minute it lands, from the shipped seed. Not a magic number: the week
+ * names the minute, `buildDaySchedule` jitters it, and the test asserts the
+ * driver deals it on the one that comes out.
  */
-const DRIP_ARRIVAL_TICK = buildDaySchedule(1, WORLD_SEED, ticketArrivalPool())
-  .arrivals.find((entry) => entry.ticketId === TIDIED_LIST.def.id)?.tick ?? -1;
+const DRIP_ARRIVAL_TICK = buildDaySchedule(1, WORLD_SEED, dayPlan(1))
+  .arrivals.find((entry) => entry.ticketId === DRIP_TICKET)?.tick ?? -1;
 
 /** When the lead sends his first message on day one of the shipped seed. */
 const FIRST_PING_TICK = buildPatrolSchedule(1, WORLD_SEED).pings[0]?.tick ?? 0;
@@ -260,12 +278,16 @@ describe('the day driver', () => {
       entries: 0,
     });
 
-    // A second day banks on top of the first rather than replacing it.
+    // A second day banks on top of the first rather than replacing it, and
+    // exactly on top: the fund is yesterday's take-home plus today's, counted
+    // off the day Tuesday actually had rather than off a rule of thumb.
     driver.startShift();
     driver.step(realMs(shiftEndTick(2)));
+    const tuesday = daySlip(dayLedger(engine.graph.nodesOfKind('ticket'), 2));
     driver.clockOff();
+    expect(tuesday.net).toBeGreaterThan(DAY_RATE_PENCE - 1_000);
     expect(engine.graph.getField(COMPANY_IDS.player, FIELDS.farmFund))
-      .toBeGreaterThanOrEqual(slip.net + DAY_RATE_PENCE - 500);
+      .toBe(slip.net + tuesday.net);
     expect(boundaries()).toBe(2);
   });
 
@@ -289,10 +311,10 @@ describe('the day driver', () => {
       (entry) => entry.ticketId === DRIP_TICKET,
     );
     expect(arrival?.tick).toBe(DRIP_ARRIVAL_TICK);
-    // Early afternoon: after lunch is over, and with the rest of a shift left
-    // to do something about it.
-    expect(DRIP_ARRIVAL_TICK).toBeGreaterThan(lunchWindow(1).to);
-    expect(DRIP_ARRIVAL_TICK).toBeLessThan(shiftEndTick(1) - 90);
+    // Mid-morning: the queue has had half an hour to settle first, and there
+    // is most of a shift left to do something about it.
+    expect(DRIP_ARRIVAL_TICK).toBeGreaterThan(shiftStartTick(1) + 30);
+    expect(DRIP_ARRIVAL_TICK).toBeLessThan(lunchWindow(1).from);
 
     driver.startShift();
     driver.step(realMs(DRIP_ARRIVAL_TICK - engine.now() - 1));
@@ -439,7 +461,13 @@ describe('the pressure layer on the clock', () => {
 
   /** The queue is what does it to you, and it does it whether you look or not. */
   it('builds stress from a queue nobody is closing', () => {
-    const { driver, engine } = harness();
+    // Three open tickets, which is one more than a person can hold in their
+    // head: the rate is charged on the excess, so a comfortable queue is a
+    // queue that costs nothing and proves nothing.
+    const { driver, engine } = harness(
+      'ticket:locked-account',
+      'ticket:wedged-spooler',
+    );
     driver.startShift();
 
     driver.step(realMs(METER_INTERVAL_TICKS * 10));
@@ -455,11 +483,14 @@ describe('the pressure layer on the clock', () => {
    * deadline, which is a breach the player did not commit.
    */
   it('stops a response clock in the minute the estate was touched', () => {
-    const { driver, engine } = harness();
-    // One minute short of the untriaged response target, which is an interval
+    const { driver, engine } = harness('ticket:wedged-spooler');
+    // One minute short of the response deadline, which is an interval
     // boundary: the old sweep would have recorded this touch at the deadline
-    // and called it late.
-    driver.step(realMs(SLA_TARGETS[UNTRIAGED_PRIORITY].response - 1));
+    // and called it late. The deadline is an hour of DESK TIME after the
+    // ticket arrived, so on a ticket inherited at eight it is ten o'clock.
+    driver.step(realMs(
+      serviceDeadline(0, SLA_TARGETS[UNTRIAGED_PRIORITY].response) - 1,
+    ));
     const touchedAt = engine.now();
 
     expect(
@@ -526,9 +557,12 @@ describe('the pressure layer on the clock', () => {
    * in time" everywhere that counts.
    */
   it('records a late first touch even when that touch closes the ticket', () => {
-    const { driver, engine } = harness();
+    const { driver, engine } = harness('ticket:locked-account');
     driver.startShift();
-    driver.step(realMs(SLA_TARGETS[UNTRIAGED_PRIORITY].response + 5));
+    driver.step(realMs(
+      serviceDeadline(0, SLA_TARGETS[UNTRIAGED_PRIORITY].response)
+      + 5 - engine.now(),
+    ));
     const late = engine.now();
 
     expect(
@@ -554,7 +588,10 @@ describe('the pressure layer on the clock', () => {
    * still know tomorrow.
    */
   it('writes what was tried onto the ticket, refusals included', () => {
-    const { driver, engine } = harness();
+    const { driver, engine } = harness(
+      'ticket:wedged-spooler',
+      'ticket:fan-noise',
+    );
     driver.startShift();
 
     driver.dispatch(
@@ -589,12 +626,19 @@ describe('the pressure layer on the clock', () => {
    * afternoon and a scorecard reporting nothing left open.
    */
   it('keeps counting a breached ticket that nobody has fixed', () => {
-    const { driver, engine, slack } = harness();
+    const { driver, engine, slack } = harness(
+      'ticket:locked-account',
+      'ticket:wedged-spooler',
+    );
     driver.startShift();
     show(slack, []);
 
-    // Triage one of the morning pile as a P1 and it blows its SLA on the
-    // spot: it has been sitting since eight, and a P1 gets an hour.
+    // Eleven o'clock, with the morning's arrival already in the queue so that
+    // nothing else lands while the meter is being read. Triage the ticket
+    // that has been sitting since eight as a P1: an hour of desk time from
+    // 09:00 ran out at ten, so classifying it now breaches it on the spot -
+    // the consequence of mis-triage, mechanical rather than narrated.
+    driver.step(realMs(3 * 60 - engine.now()));
     expect(
       driver.dispatch(
         HELPDESK_ACTIONS.ticketClassify,
@@ -620,7 +664,11 @@ describe('the pressure layer on the clock', () => {
     const before = meter(engine, FIELDS.stress);
     expect(before).toBeGreaterThanOrEqual(STRESS_PER_BREACH);
 
-    const excess = tickets.filter(isActiveWork).length - COMFORTABLE_QUEUE;
+    // Read at the minute it is charged for, not five minutes earlier: the
+    // week drips a ticket into this morning, and a queue measured before it
+    // arrived is a queue the meter has stopped agreeing with.
+    const excess = engine.graph.nodesOfKind('ticket').filter(isActiveWork).length
+      - COMFORTABLE_QUEUE;
     driver.step(realMs(METER_INTERVAL_TICKS));
 
     expect(meter(engine, FIELDS.stress) - before)
@@ -655,7 +703,7 @@ describe('the pressure layer on the clock', () => {
    * the action only knows that a bounce has not been settled yet.
    */
   it('lands a thin handoff back on the desk after the delay, once', () => {
-    const { driver, engine, notices } = harness();
+    const { driver, engine, notices } = harness('ticket:fan-noise');
     driver.startShift();
 
     engine.dispatch(
@@ -691,7 +739,7 @@ describe('the pressure layer on the clock', () => {
    * bounced, and cost the player reputation for work they had actually done.
    */
   it('still knows what was tried yesterday after the log is drained', () => {
-    const { driver, engine } = harness();
+    const { driver, engine } = harness('ticket:fan-noise');
     driver.startShift();
 
     expect(
@@ -763,5 +811,147 @@ describe('the pressure layer on the clock', () => {
     };
 
     expect(walk()).toEqual(walk());
+  });
+});
+
+/**
+ * The service clock, which is the day driver's other job.
+ *
+ * The engine has no idea what a shift is; the day state does, and it lives in
+ * the graph. The driver keeps the two in step, and every one of the moments
+ * below is one where they could quietly stop agreeing - a boot, a transition,
+ * a night that passes inside one call, a load.
+ */
+describe('the clock the deadlines are measured against', () => {
+  it('follows the day through every state it has', () => {
+    const { driver, engine } = harness();
+
+    // Eight in the morning. Nobody is being paid and no clock is running.
+    expect(driver.state()).toBe('morning_brief');
+    expect(engine.slaRunning()).toBe(false);
+
+    driver.startShift();
+    expect(engine.now()).toBe(shiftStartTick(1));
+    expect(engine.slaRunning()).toBe(true);
+
+    driver.step(realMs(shiftEndTick(1) - engine.now()));
+    expect(driver.state()).toBe('day_end');
+    expect(engine.slaRunning()).toBe(false);
+
+    driver.clockOff();
+    expect(driver.state()).toBe('morning_brief');
+    expect(engine.slaRunning()).toBe(false);
+  });
+
+  /**
+   * The carried M3 flag, fixed and gated: a ticket that was waiting in the
+   * queue at 08:00 used to spawn one minute of clock away from its own
+   * response deadline, because the hour before the shift was charged to it.
+   */
+  it('does not charge an inherited ticket for the hour before the shift', () => {
+    const { driver, engine } = harness();
+    const inherited = inheritedTicketIds(1)[0] ?? '';
+    const spawned = engine.graph.getField(inherited, FIELDS.spawnedAt);
+    expect(spawned).toBe(0);
+
+    const clocksNow = (): ReturnType<typeof ticketClocks> => {
+      const node = engine.graph.getNode(inherited);
+
+      if (node === undefined) {
+        throw new Error(`The morning has no "${inherited}" in it.`);
+      }
+
+      return ticketClocks(node, engine.now());
+    };
+
+    const target = SLA_TARGETS[UNTRIAGED_PRIORITY];
+    // At 08:00 it owes an answer by 10:00 and a fix by one in the afternoon -
+    // a full untriaged clock, all of it inside a shift somebody is at.
+    expect(clocksNow().response.dueAt).toBe(serviceDeadline(0, target.response));
+    expect(clocksNow().resolution.remaining).toBe(target.resolution);
+
+    // And the whole morning brief costs it nothing at all.
+    driver.startShift();
+    expect(engine.now()).toBe(shiftStartTick(1));
+    expect(clocksNow().response.breached).toBe(false);
+    expect(clocksNow().resolution.remaining).toBe(target.resolution);
+    expect(engine.graph.getField(inherited, FIELDS.offHoursTicks)).toBe(60);
+  });
+
+  /**
+   * A night, and a save taken on either side of it.
+   *
+   * The service clock is world state, so it is in the save - and a load has to
+   * put the driver back in step with it rather than assume the day it left.
+   * Restoring a checkpoint into a fresh driver is exactly what a reloaded tab
+   * does, and getting it wrong means the first minute of the new session
+   * charges a ticket for the night it just slept through.
+   */
+  it('keeps a carried ticket whole across the night, and across a load', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+
+    // Three in the afternoon, and something lands with four desk hours on it:
+    // two of them are today's and the rest belong to tomorrow morning.
+    driver.step(realMs(shiftStartTick(1) + 360 - engine.now()));
+    spawnWorldTicket(engine, 'ticket:wedged-spooler');
+
+    driver.step(realMs(shiftEndTick(1) - engine.now()));
+    expect(driver.state()).toBe('day_end');
+
+    const spooler = (world: typeof engine): ReturnType<typeof ticketClocks> => {
+      const node = world.graph.getNode('ticket:wedged-spooler');
+
+      if (node === undefined) {
+        throw new Error('The spooler ticket went missing.');
+      }
+
+      return ticketClocks(node, world.now());
+    };
+
+    const atClockOff = spooler(engine).resolution.remaining;
+    expect(atClockOff).toBeGreaterThan(0);
+
+    driver.clockOff();
+    // Sixteen hours of clock and not one minute of anybody's service level.
+    expect(engine.now()).toBe(dayOpensTick(2));
+    expect(spooler(engine).resolution.remaining).toBe(atClockOff);
+    expect(engine.ticketState('ticket:wedged-spooler')).toBe('open');
+
+    // And the same again through a save: a new session, handed the file and
+    // nothing else, agrees about the clock and about the ticket.
+    const saved = engine.serialize();
+    const reloaded = harness();
+    reloaded.engine.restore(saved);
+    reloaded.driver.resync();
+
+    expect(reloaded.engine.slaRunning()).toBe(false);
+    expect(reloaded.driver.state()).toBe('morning_brief');
+    expect(spooler(reloaded.engine).resolution.remaining).toBe(atClockOff);
+    expect(reloaded.engine.snapshotHash()).toBe(engine.snapshotHash());
+
+    // Tuesday morning costs it nothing either, and the shift costs it minutes.
+    reloaded.driver.startShift();
+    expect(spooler(reloaded.engine).resolution.remaining).toBe(atClockOff);
+    reloaded.driver.step(realMs(30));
+    expect(spooler(reloaded.engine).resolution.remaining).toBe(atClockOff - 30);
+  });
+
+  /** One entry per transition, not one a minute: the log is a save file. */
+  it('writes the clock into the log only when it moves', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+    driver.step(realMs(120));
+
+    const moves = engine.dispatchLog().filter(
+      (entry) => entry.id === DAY_ACTIONS.slaClockRun
+        || entry.id === DAY_ACTIONS.slaClockHold,
+    );
+
+    // Held at the boot, started when the shift did. Nothing since.
+    expect(moves.map((entry) => entry.id)).toEqual([
+      DAY_ACTIONS.slaClockHold,
+      DAY_ACTIONS.slaClockRun,
+    ]);
   });
 });

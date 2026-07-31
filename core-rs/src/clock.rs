@@ -23,6 +23,7 @@ pub struct SimClock {
     tick: i64,
     paused: bool,
     speed: f64,
+    sla_running: bool,
 }
 
 impl Default for SimClock {
@@ -31,6 +32,7 @@ impl Default for SimClock {
             tick: 0,
             paused: false,
             speed: 1.0,
+            sla_running: true,
         }
     }
 }
@@ -40,11 +42,12 @@ impl SimClock {
         Self::default()
     }
 
-    pub fn from_parts(tick: i64, paused: bool, speed: f64) -> Self {
+    pub fn from_parts(tick: i64, paused: bool, speed: f64, sla_running: bool) -> Self {
         Self {
             tick,
             paused,
             speed,
+            sla_running,
         }
     }
 
@@ -54,6 +57,21 @@ impl SimClock {
 
     pub fn is_paused(&self) -> bool {
         self.paused
+    }
+
+    /// Whether the ticks going past are ticks a service level counts.
+    ///
+    /// A world where nobody has said otherwise counts every minute, which is
+    /// what a clock with no opinion about office hours has to mean. The world
+    /// that HAS an opinion - a shift with a start and an end - turns this off
+    /// while the desk is empty, and every unresolved ticket's deadline moves
+    /// out by the minutes nobody was there to work in.
+    pub fn sla_runs(&self) -> bool {
+        self.sla_running
+    }
+
+    pub fn set_sla_running(&mut self, running: bool) {
+        self.sla_running = running;
     }
 
     pub fn speed(&self) -> f64 {
@@ -147,6 +165,19 @@ mod tests {
         assert_eq!(clock.speed(), 2.0);
     }
 
+    /// A clock nobody has told about office hours counts every minute.
+    #[test]
+    fn counts_service_time_until_told_not_to() {
+        let mut clock = SimClock::new();
+        assert!(clock.sla_runs());
+
+        clock.set_sla_running(false);
+        assert!(!clock.sla_runs());
+        // And it is a property of the clock, so it survives being rebuilt from
+        // a save exactly as the tick does.
+        assert!(!SimClock::from_parts(clock.now(), false, 1.0, false).sla_runs());
+    }
+
     /// The tab-freezing pair: a quadrillion ticks is a synchronous loop nobody
     /// survives, and a clock parked at the end of the safe range cannot take
     /// even one more without becoming a number the browser reads back wrong.
@@ -160,11 +191,11 @@ mod tests {
         assert!(clock.validate_advance(f64::MAX).is_err());
         assert!(clock.validate_advance(f64::INFINITY).is_err());
 
-        let late = SimClock::from_parts(MAX_SAFE_INT, false, 1.0);
+        let late = SimClock::from_parts(MAX_SAFE_INT, false, 1.0, true);
         assert!(late.validate_advance(0.0).is_ok());
         assert!(late.validate_advance(1.0).is_err());
 
-        let mut stuck = SimClock::from_parts(MAX_SAFE_INT, false, 1.0);
+        let mut stuck = SimClock::from_parts(MAX_SAFE_INT, false, 1.0, true);
         assert!(!stuck.step());
         assert_eq!(stuck.now(), MAX_SAFE_INT);
     }

@@ -1,5 +1,13 @@
 import type { ActionData, GuardData, NodeRefData } from '../../engine-api';
-import { buffTicks, MAX_CANS, MAX_TOLERANCE, NO_RUN } from '../consumables';
+import {
+  BEER_STRESS_RELIEF,
+  BEER_SUSPICION,
+  BEER_TOOLTIP,
+  buffTicks,
+  MAX_CANS,
+  MAX_TOLERANCE,
+  NO_RUN,
+} from '../consumables';
 import { DAY_OPENS_MINUTE, MINUTES_PER_DAY, SHIFT_END_MINUTE } from '../day';
 import { FIELDS } from '../fields';
 import { METER_CEILING, METER_FLOOR } from '../meters';
@@ -190,6 +198,88 @@ export const CONSUMABLE_ACTION_DATA: readonly ActionData[] = [
         node: ACTOR,
         field: FIELDS.drinkCrashCharged,
         value: { param: 'charged_for' },
+      },
+    ],
+  },
+  /**
+   * The beer, which the whole week has been a tooltip about.
+   *
+   * No shift guard: the point of it is that the shift is over. What it does
+   * have is the lock, and the lock is the probation - the field is only ever
+   * turned on by a review that went the right way, so "unlocked" cannot be
+   * claimed by anybody dispatching this early. One bottle: the mechanics are
+   * a reward, not a second stacking run with a crash on the end.
+   */
+  {
+    id: DAY_ACTIONS.consumableBeer,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: not({
+          pred: 'field_eq',
+          node: ACTOR,
+          field: FIELDS.beerUnlocked,
+          value: { const: true },
+        }),
+        reason: BEER_TOOLTIP,
+      },
+      {
+        when: {
+          pred: 'field_eq',
+          node: ACTOR,
+          field: FIELDS.beerOpened,
+          value: { const: true },
+        },
+        reason: 'That was the one with your name on it. The rest of them '
+          + 'belong to people who have been here longer than a week.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.stress,
+        value: {
+          sub: {
+            node: ACTOR,
+            field: FIELDS.stress,
+            by: { const: BEER_STRESS_RELIEF },
+            clamp: { min: METER_FLOOR, max: METER_CEILING },
+          },
+        },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.suspicion,
+        value: {
+          add: {
+            node: ACTOR,
+            field: FIELDS.suspicion,
+            by: { const: BEER_SUSPICION },
+            clamp: { min: METER_FLOOR, max: METER_CEILING },
+          },
+        },
+      },
+      // It leaves evidence like everything else on this desk does.
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.deskCans,
+        value: {
+          add: {
+            node: ACTOR,
+            field: FIELDS.deskCans,
+            by: { const: 1 },
+            clamp: { min: 0, max: MAX_CANS },
+          },
+        },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.beerOpened,
+        value: { const: true },
       },
     ],
   },

@@ -402,3 +402,112 @@ fn a_refusal_leaves_the_world_exactly_as_it_was() {
     }
     assert_eq!(world.graph.snapshot_hash(), before);
 }
+
+/// Business hours, from the engine's side of the fence.
+///
+/// The engine has no idea what a shift is. What it has is a clock that can be
+/// told the minutes going past are minutes nobody is at the desk, and every
+/// unresolved ticket's deadline moves with them. The counter is separate from
+/// the pause counter because they are two different sentences on a screen, and
+/// the deadline moves once even when both are true.
+#[test]
+fn holds_every_deadline_while_the_service_clock_is_stopped() {
+    let mut world = harness();
+    world
+        .spawn_ticket(&service_ticket("ticket:overnight", 4, "wedged"))
+        .expect("spawn");
+    world.drain_events();
+
+    world.clock.set_sla_running(false);
+    world.advance(10).expect("the night");
+
+    // Ten minutes nobody could have worked in, so ten minutes back on the
+    // clock and no breach - which is the whole bug this fixes: a ticket
+    // inherited at eight used to arrive already late for a nine o'clock desk.
+    assert_eq!(state(&world, "ticket:overnight"), "open");
+    assert_eq!(
+        world.graph.get_field("ticket:overnight", "sla_deadline"),
+        Some(&FieldValue::Num(14.0)),
+    );
+    assert_eq!(
+        world.graph.get_field("ticket:overnight", "off_hours_ticks"),
+        Some(&FieldValue::Num(10.0)),
+    );
+    // A pause is a different reason and gets a different counter.
+    assert_eq!(world.graph.get_field("ticket:overnight", "held_ticks"), None);
+
+    // Parked AND out of hours is still one minute of excuse, not two: the
+    // deadline moves by one and the minute is booked to the pause.
+    world.set_waiting("ticket:overnight", true).expect("park");
+    world.advance(3).expect("parked overnight");
+    assert_eq!(
+        world.graph.get_field("ticket:overnight", "sla_deadline"),
+        Some(&FieldValue::Num(17.0)),
+    );
+    assert_eq!(
+        world.graph.get_field("ticket:overnight", "held_ticks"),
+        Some(&FieldValue::Num(3.0)),
+    );
+    assert_eq!(
+        world.graph.get_field("ticket:overnight", "off_hours_ticks"),
+        Some(&FieldValue::Num(10.0)),
+    );
+
+    // The invariant the triage re-cut relies on: the deadline is the target
+    // plus every minute the ticket was excused, and nothing else.
+    let number = |field: &str| -> i64 {
+        world
+            .graph
+            .get_field("ticket:overnight", field)
+            .and_then(FieldValue::as_safe_int)
+            .unwrap_or(0)
+    };
+    assert_eq!(
+        number("sla_deadline"),
+        number("spawned_at") + 4 + number("held_ticks") + number("off_hours_ticks"),
+    );
+
+    // And once the desk is staffed again the clock is a clock.
+    world.set_waiting("ticket:overnight", false).expect("unpark");
+    world.clock.set_sla_running(true);
+    world.advance(4).expect("the shift");
+    assert_eq!(state(&world, "ticket:overnight"), "breached");
+}
+
+/// The op is the only way a world says it: a verb in the registry, dispatched
+/// like everything else, so a replayed log stops the clock in the same minute.
+#[test]
+fn the_sla_clock_is_moved_by_a_dispatched_verb() {
+    let mut world = harness();
+    world
+        .register_actions(&json!({
+            "actions": [
+                {
+                    "id": "day.hold_sla",
+                    "tier": 1,
+                    "apply": [{ "op": "set_sla_clock", "running": false }],
+                },
+                {
+                    "id": "day.run_sla",
+                    "tier": 1,
+                    "apply": [{ "op": "set_sla_clock", "running": true }],
+                },
+            ],
+        }))
+        .expect("register");
+
+    let call = |world: &mut World, id: &str| {
+        world.dispatch(
+            id,
+            "person:reporter",
+            None,
+            parse_params(None).expect("params"),
+        )
+    };
+
+    assert!(world.clock.sla_runs());
+    call(&mut world, "day.hold_sla");
+    assert!(!world.clock.sla_runs());
+    call(&mut world, "day.run_sla");
+    assert!(world.clock.sla_runs());
+}

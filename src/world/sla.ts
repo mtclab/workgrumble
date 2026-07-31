@@ -13,6 +13,7 @@
  * Everything here is derivation. Nothing writes; the actions do that.
  */
 
+import { serviceDeadline, serviceMinutesBetween } from './day';
 import type { ReadOnlyGraphNode } from '../engine-api';
 import { FIELDS } from './fields';
 import { isPriority, type Priority, targetsFor } from './priority';
@@ -59,6 +60,17 @@ function numberField(
   return typeof value === 'number' && Number.isSafeInteger(value)
     ? value
     : null;
+}
+
+/**
+ * Minutes of DESK TIME between two ticks, negative once the second one is in
+ * the past. Both clocks report what is left in the currency their targets are
+ * written in, which is the only currency a player can act on.
+ */
+function signedServiceMinutes(from: number, to: number): number {
+  return to >= from
+    ? serviceMinutesBetween(from, to)
+    : -serviceMinutesBetween(to, from);
 }
 
 function ticketPriority(
@@ -122,7 +134,11 @@ export function ticketClocks(
   const resolved = state === 'resolved';
   const onHold = state === 'waiting_on_user';
 
-  const responseDueAt = spawnedAt + targetsFor(priority).response;
+  // Business hours, said once: a target is a number of minutes at the desk,
+  // so the minute it runs out on is the minute the desk has been sat at that
+  // long. A ticket inherited at 08:00 owes its first word by half past nine,
+  // not by half past eight with the office still dark.
+  const responseDueAt = serviceDeadline(spawnedAt, targetsFor(priority).response);
   const responseRunning = respondedAt === null && !resolved;
   // A ticket that was fixed before anybody logged a word to the reporter is
   // not a missed response - it is a problem that stopped existing. Saying so
@@ -138,7 +154,13 @@ export function ticketClocks(
       stoppedAt: respondedAt,
       running: responseRunning,
       breached: responseBreached,
-      remaining: responseDueAt - (respondedAt ?? (responseRunning ? now : responseDueAt)),
+      // Counted in minutes at the desk, like the target it is measured
+      // against: "four hours left" over a night nobody works is a promise the
+      // clock cannot keep, and the number is what the app puts on a badge.
+      remaining: signedServiceMinutes(
+        respondedAt ?? (responseRunning ? now : responseDueAt),
+        responseDueAt,
+      ),
     },
     // The resolution deadline IS the engine's field: it moves out while the
     // ticket is parked, and the engine breaches against it.
@@ -147,6 +169,12 @@ export function ticketClocks(
       stoppedAt: null,
       running: !resolved && !onHold,
       breached: node.fields[FIELDS.breached] === true,
+      // Already counted in minutes at the desk, by construction: the engine
+      // moves this deadline one minute forward for every minute that does not
+      // count - a pause, a night, the hour before the shift - so the plain
+      // subtraction only falls when a minute somebody could have worked in
+      // goes past. Converting it again would say "no time left" at 17:00 on a
+      // ticket with half of tomorrow morning still on it.
       remaining: deadline - now,
     },
     onHold,

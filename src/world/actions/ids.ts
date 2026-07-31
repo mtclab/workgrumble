@@ -73,6 +73,17 @@ export const DAY_ACTIONS = {
   endShift: 'day.end_shift',
   clockOff: 'day.clock_off',
   /**
+   * The service clock, started and stopped with the desk.
+   *
+   * Two verbs rather than one with a parameter, because each of them is only
+   * legal in one half of the day and the engine is the half that says so: the
+   * clock runs during a shift and stops the moment one is not on. The driver
+   * keeps them in step with the day state, so a load, a replay and a fresh
+   * session all arrive at the same answer to "is anybody at the desk".
+   */
+  slaClockRun: 'day.sla_clock_run',
+  slaClockHold: 'day.sla_clock_hold',
+  /**
    * One interval of pressure. The shell decides HOW MUCH from readable state;
    * the engine decides what the meters end up being, so the numbers replay
    * instead of being recomputed from a wall clock nobody wrote down.
@@ -89,8 +100,22 @@ export const DAY_ACTIONS = {
   bossNoticedEmpties: 'boss.noticed_empties',
   /** A chat nag, which costs a few points of stress and raises no ticket. */
   bossPing: 'boss.ping',
+  /**
+   * Friday, three o'clock, both ways it goes.
+   *
+   * Two verbs rather than one with an outcome parameter, because the outcome
+   * is not something a caller gets to pick: each one is guarded on the
+   * reputation that earns it, so the threshold is enforced by the world rather
+   * than by whichever screen happened to do the arithmetic.
+   */
+  reviewPassed: 'day.review_passed',
+  reviewFired: 'day.review_fired',
+  /** Friday's clock-off. There is no Saturday, so the week stops here. */
+  endWeek: 'day.end_week',
   /** Opening a can: money out, empties up, and a clock the crash reads. */
   consumableDrink: 'consumable.drink',
+  /** The one at the end of the week, and only once the probation is over. */
+  consumableBeer: 'consumable.beer',
   /** The bill for the can, billed once against the run that bought it. */
   consumableCrash: 'consumable.crash',
   /** The empties, into the bin, before somebody counts them. */

@@ -349,6 +349,11 @@ impl Engine {
                 Some(id) => value_result(json!(self.world.was_breached(id))),
                 None => value_refusal("ticket_breached needs an \"id\"."),
             },
+            // Whether the ticks going past are ticks a service level counts.
+            // The world that decides this - a shift with a start and an end -
+            // has to be able to ask, so that a load or a fresh session can put
+            // the engine's answer back in step with the day it restored.
+            "sla_running" => value_result(json!(self.world.clock.sla_runs())),
             "action_ids" => value_result(json!(self.world.registry.ids())),
             "tier" => value_result(json!(self.world.registry.tier())),
             // What the log is measured from, and how much of it there is: the
@@ -513,6 +518,13 @@ impl Engine {
             .get("paused")
             .and_then(Json::as_bool)
             .ok_or_else(|| EngineError::new("Saved clock needs a boolean paused flag."))?;
+        // Required rather than defaulted, for the reason every other flag in a
+        // save is: a missing one silently reading "true" is a night's worth of
+        // SLA eaten by a load, on a ticket the player parked before going home.
+        let sla_running = clock
+            .get("sla_running")
+            .and_then(Json::as_bool)
+            .ok_or_else(|| EngineError::new("Saved clock needs a boolean sla_running flag."))?;
 
         let graph = object
             .get("graph")
@@ -592,7 +604,7 @@ impl Engine {
         world.tickets.restore(tickets)?;
         check_ticket_coherence(&world)?;
         world.rng = Rng::from_parts(seed, rng_state);
-        world.clock = SimClock::from_parts(tick, paused, speed);
+        world.clock = SimClock::from_parts(tick, paused, speed, sla_running);
         world.drain_events();
 
         // The world the shell is looking at has just been replaced wholesale.

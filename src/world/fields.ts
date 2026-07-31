@@ -21,6 +21,30 @@ export const FIELDS = {
   /** Everything banked towards the farm, in whole pence. */
   farmFund: 'farm_fund',
   /**
+   * The probation week, on the player node because all of it has to survive a
+   * save and be replayed.
+   *
+   * `weekAttempt` counts the goes the player has had at it - a firing does not
+   * end the game, it starts the week again with the seed moved on.
+   * `weekOpeningFund` is what the fund held on Monday morning, so the week
+   * scorecard can report what the WEEK was worth rather than what the player
+   * has ever earned. `reviewOutcome` is how Friday at three went - `pending`
+   * until it has. `weekEnded` is the Friday clock-off: there is no Saturday,
+   * so the week stops rather than rolling into one.
+   */
+  weekAttempt: 'week_attempt',
+  weekOpeningFund: 'week_opening_fund',
+  reviewOutcome: 'review_outcome',
+  weekEnded: 'week_ended',
+  /**
+   * The beer: visible from the first morning, locked until the probation ends,
+   * and the whole reason the tooltip on it is worth reading. `beerOpened` is
+   * whether the one at the end of the week has been had, which is what the
+   * scene at 17:00 on Friday shows the second half of.
+   */
+  beerUnlocked: 'beer_unlocked',
+  beerOpened: 'beer_opened',
+  /**
    * The pressure meters, on the player node so that a save carries them and a
    * replay arrives at the same numbers. Nothing outside the op language moves
    * them: the shell decides how much, the engine decides what the field ends
@@ -147,6 +171,32 @@ export const FIELDS = {
    * following the instruction.
    */
   heldTicks: 'held_ticks',
+  /**
+   * And how long it has spent waiting for somebody to come back to WORK, in
+   * simulated minutes: nights, the morning brief, the hour after the scorecard.
+   *
+   * The engine keeps it in the same breath as `held_ticks` and for the same
+   * reason - both are minutes the deadline was pushed out by, and the triage
+   * re-cut has to add both back or it hands the ticket a night's grace it
+   * already spent. Two counters rather than one because they answer two
+   * different questions: "how long were they sitting on it" and "how much of
+   * this ticket's life happened while the office was dark".
+   */
+  offHoursTicks: 'off_hours_ticks',
+  /**
+   * The deadline being rebuilt, mid-triage, and never anything else.
+   *
+   * A re-cut deadline is four terms - the minute the ticket arrived, the
+   * target its new priority buys, the pause it has already earned and the
+   * hours the office was dark - and the op language adds one term at a time.
+   * Writing those partial sums into `sla_deadline` itself put the ticket, for
+   * one mutation, on a deadline in the past: the engine breached it on a
+   * number it was never actually on, and the breach latches. So the sum is
+   * built here, the real deadline is written once, and this is cleared again
+   * in the same action - it exists in the graph for three mutations and never
+   * appears on a screen.
+   */
+  slaRecut: 'sla_recut',
   /**
    * What has been done to this ticket's estate, kept on the ticket.
    *

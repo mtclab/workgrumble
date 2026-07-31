@@ -4,7 +4,6 @@ import type {
   TicketDef,
 } from '../../engine-api';
 import { HELPDESK_ACTION_IDS } from '../actions';
-import type { ScheduledTicket } from '../day';
 import { FIELDS } from '../fields';
 import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
 import {
@@ -18,6 +17,7 @@ import { TIDIED_LIST } from './drip';
 import { acceptsEscalation } from './escalation';
 import { PILOT_TICKETS } from './pilot';
 import type { WorldTicket } from './types';
+import { assertWeekTickets } from '../week';
 
 export { BOSS_PHONE } from './boss-trash';
 export { TIDIED_LIST } from './drip';
@@ -177,13 +177,23 @@ function validateWorldTickets(
   return Object.freeze([...entries]);
 }
 
-/** Everything the shipped world can put on the desk, in spawn order. */
-export const WORLD_TICKETS: readonly WorldTicket[] = validateWorldTickets([
-  FAN_TICKET,
-  ...PILOT_TICKETS,
-  TIDIED_LIST,
-  BOSS_PHONE,
-]);
+/**
+ * Everything the shipped world can put on the desk, in spawn order.
+ *
+ * The week is checked against it here, where the roster exists: every ticket
+ * the week deals has to be one of these, and every one of these that is not
+ * summoned has to be dealt by some day. A ticket nobody's week includes is
+ * content that ships dead, and a Thursday that schedules a ticket nobody wrote
+ * is a Thursday with a hole in it - neither looks like a bug from the inside.
+ */
+export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekTickets(
+  validateWorldTickets([
+    FAN_TICKET,
+    ...PILOT_TICKETS,
+    TIDIED_LIST,
+    BOSS_PHONE,
+  ]),
+);
 
 export const WORLD_TICKET_DEFS: readonly TicketDef[] = Object.freeze(
   WORLD_TICKETS.map(({ def }) => def),
@@ -194,31 +204,25 @@ export function findWorldTicket(id: string): WorldTicket | undefined {
 }
 
 /**
- * The shipped content as the day scheduler reads it.
+ * Puts one of the shipped tickets into a world.
  *
- * Four tickets are the pile you inherit at 08:00 and one arrives while you are
- * working, on a minute the seeded schedule picks. The scheduler does not care
- * which is which - it deals whatever the pool declares.
+ * Every caller that spawns a ticket - the session dealing Monday's pile, the
+ * day driver dealing a drip, the lead raising one by mentioning it - goes
+ * through here, so "the day schedule names a ticket nobody wrote" is one
+ * sentence in one place rather than three that could drift.
  */
-export function ticketArrivalPool(): readonly ScheduledTicket[] {
-  // A summoned ticket has no slot in anybody's day: it turns up when the man
-  // who raised it decides it has, and the boss system is what puts it on the
-  // desk. Handing it to the scheduler at all would be a slot the scheduler
-  // then had to know to ignore.
-  return WORLD_TICKETS
-    .filter((entry) => entry.arrival !== 'summoned')
-    .map((entry) => ({
-      id: entry.def.id,
-      arrival: entry.arrival,
-    }));
-}
+export function spawnWorldTicket(
+  engine: { registerTicket(def: TicketDef): void },
+  id: string,
+): void {
+  const entry = findWorldTicket(id);
 
-/** The tickets that are already in the queue when the player sits down. */
-export const MORNING_TICKET_DEFS: readonly TicketDef[] = Object.freeze(
-  WORLD_TICKETS
-    .filter((entry) => entry.arrival === 'morning')
-    .map(({ def }) => def),
-);
+  if (entry === undefined) {
+    throw new Error(`Nobody wrote a ticket called "${id}".`);
+  }
+
+  engine.registerTicket(entry.def);
+}
 
 export function ticketTitle(id: string): string {
   return findWorldTicket(id)?.def.flavor.title ?? id;
