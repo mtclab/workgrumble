@@ -48,11 +48,15 @@ import {
   definitionRow,
   element,
   formatDuration,
+  type KeyedRow,
+  KeyedRows,
   osButton,
   outcomeLine,
   refusalLine,
   resolveSelection,
   setAvailability,
+  setFlag,
+  setText,
   textValue,
 } from './ui';
 
@@ -134,7 +138,10 @@ function deadlineOf(node: Readonly<ReadOnlyGraphNode>): number {
   return typeof deadline === 'number' ? deadline : 0;
 }
 
-function reporterName(api: GameApi, entry: WorldTicket | undefined): string {
+function reporterName(
+  api: Pick<GameApi, 'graph'>,
+  entry: WorldTicket | undefined,
+): string {
   if (entry === undefined) {
     return 'Unknown reporter';
   }
@@ -164,6 +171,21 @@ function clocksFor(
   return ticketClocks(node, api.clock.now());
 }
 
+/** The two sentences the detail pane's SLA rows carry, built in one place so
+ * the minute-by-minute repaint and the full one cannot come to disagree. */
+function responseLine(clocks: Readonly<TicketClocks>): string {
+  return `${clockSummary(clocks.response, 'Answered')}`
+    + ` · target ${formatDuration(targetsFor(clocks.priority).response)}`;
+}
+
+function resolutionLine(clocks: Readonly<TicketClocks>): string {
+  return `${clockSummary(clocks.resolution, 'Closed')}`
+    + ` · due ${formatSimTime(clocks.resolution.dueAt).time}`
+    + (clocks.heldTicks > 0
+      ? ` · paused ${formatDuration(clocks.heldTicks)}`
+      : '');
+}
+
 /** One clock, said the way a queue says it. */
 function clockSummary(
   clock: Readonly<TicketClocks['response' | 'resolution']>,
@@ -178,6 +200,63 @@ function clockSummary(
   return clock.running
     ? `${formatDuration(clock.remaining)} left`
     : `${stoppedWord}, in time`;
+}
+
+/**
+ * One line of the queue, as data.
+ *
+ * The row is modelled before it is drawn so the thing that moves every minute
+ * can be seen for what it is: of the ten values below, exactly one - `sla` -
+ * changes when nothing has happened but time. A row is therefore never rebuilt
+ * on a tick; it is told the new sentence and keeps its element, its checkbox
+ * and whatever the player was doing to it.
+ */
+export interface TicketRow {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string;
+  readonly reporter: string;
+  readonly state: TicketState;
+  readonly breached: boolean;
+  readonly selected: boolean;
+  readonly picked: boolean;
+  readonly priority: string;
+  readonly priorityLabel: string;
+  readonly badge: string;
+  /** The countdown, and the only part of a row a passing minute may move. */
+  readonly sla: string;
+}
+
+export interface QueueView {
+  readonly selectedId: string | null;
+  readonly picked: ReadonlySet<string>;
+}
+
+export function ticketRows(
+  api: Pick<GameApi, 'graph'>,
+  nodes: readonly Readonly<ReadOnlyGraphNode>[],
+  now: number,
+  view: Readonly<QueueView>,
+): readonly TicketRow[] {
+  return nodes.map((node) => {
+    const entry = findWorldTicket(node.id);
+    const clocks = ticketClocks(node, now);
+
+    return {
+      id: node.id,
+      key: ticketKey(node.id),
+      title: entry?.def.flavor.title ?? node.id,
+      reporter: reporterName(api, entry),
+      state: ticketState(node),
+      breached: wasBreached(node),
+      selected: node.id === view.selectedId,
+      picked: view.picked.has(node.id),
+      priority: clocks.priority === null ? 'none' : String(clocks.priority),
+      priorityLabel: priorityLabel(clocks.priority),
+      badge: ticketStateLabel(node),
+      sla: clockSummary(clocks.resolution, 'Closed'),
+    };
+  });
 }
 
 export const TICKETS_APP: AppDef = {
@@ -207,6 +286,17 @@ export const TICKETS_APP: AppDef = {
     // names the incident they are all duplicates of.
     const picked = new Set<string>();
     let linkOutcome: string | null = null;
+    /**
+     * The detail pane's two countdown cells, and which ticket they are about.
+     * A minute passing moves those two sentences and nothing else on the pane,
+     * so the minute writes them directly instead of rebuilding a panel with a
+     * pair of dropdowns in it that the player may well have open.
+     */
+    let detailClocks: {
+      readonly id: string;
+      readonly response: HTMLElement;
+      readonly resolution: HTMLElement;
+    } | null = null;
 
     const root = element('section', 'app-page tickets-app', 'tickets-app');
 
@@ -251,96 +341,102 @@ export const TICKETS_APP: AppDef = {
       return result.ok;
     };
 
-    const renderQueue = (nodes: readonly ReadOnlyGraphNode[]): void => {
-      queue.replaceChildren();
+    const emptyRow = element('li', 'tickets-empty', 'tickets-empty');
+    emptyRow.textContent = 'Queue empty. Somebody is about to fix that.';
 
-      for (const node of nodes) {
-        const entry = findWorldTicket(node.id);
-        const state = ticketState(node);
-        const clocks = clocksFor(api, node);
-        const item = element('li');
-        const row = element(
-          'button',
-          'ticket-row',
-          `ticket-row-${ticketKey(node.id)}`,
-        );
-        row.type = 'button';
-        row.dataset.state = state;
-        row.dataset.breached = String(wasBreached(node));
-        row.dataset.selected = String(node.id === selectedId);
-        row.dataset.priority = clocks.priority === null
-          ? 'none'
-          : String(clocks.priority);
+    /**
+     * Builds one queue row, once. Everything the row can ever say is written
+     * by `update`; the listeners close over the ticket ID rather than over a
+     * graph node, because the node is a snapshot and the id is the ticket.
+     */
+    const createRow = (
+      model: Readonly<TicketRow>,
+    ): KeyedRow<TicketRow, HTMLLIElement> => {
+      const id = model.id;
+      const item = element('li');
+      const row = element('button', 'ticket-row', `ticket-row-${model.key}`);
+      row.type = 'button';
 
-        const title = element('strong');
-        title.textContent = entry?.def.flavor.title ?? node.id;
-        const meta = element('span', 'ticket-row-meta');
-        meta.textContent = reporterName(api, entry);
-        const status = element('span', 'ticket-row-status');
-        const priority = element(
-          'span',
-          'ticket-priority',
-          `ticket-row-priority-${ticketKey(node.id)}`,
-        );
-        priority.dataset.priority = clocks.priority === null
-          ? 'none'
-          : String(clocks.priority);
-        priority.textContent = priorityLabel(clocks.priority);
-        const badge = element('span', 'ticket-badge');
-        badge.dataset.state = state;
-        badge.dataset.breached = String(wasBreached(node));
-        badge.textContent = ticketStateLabel(node);
-        const sla = element('span', 'ticket-row-sla');
-        sla.textContent = clockSummary(clocks.resolution, 'Closed');
-        status.append(priority, badge, sla);
+      const title = element('strong');
+      const meta = element('span', 'ticket-row-meta');
+      const status = element('span', 'ticket-row-status');
+      const priority = element(
+        'span',
+        'ticket-priority',
+        `ticket-row-priority-${model.key}`,
+      );
+      const badge = element('span', 'ticket-badge');
+      const sla = element('span', 'ticket-row-sla');
+      status.append(priority, badge, sla);
 
-        // The tick box is a SIBLING of the row rather than a control inside
-        // it: a button in a button is not a thing, and selecting a duplicate
-        // must not also re-open the detail pane of the ticket you are about to
-        // attach to something else.
-        const pick = element(
-          'input',
-          'ticket-pick',
-          `ticket-pick-${ticketKey(node.id)}`,
-        );
-        pick.type = 'checkbox';
-        pick.checked = picked.has(node.id);
-        pick.setAttribute(
-          'aria-label',
-          `Select ${entry?.def.flavor.title ?? node.id} as a duplicate`,
-        );
-        pick.addEventListener('change', () => {
-          if (pick.checked) {
-            picked.add(node.id);
-          } else {
-            picked.delete(node.id);
+      // The tick box is a SIBLING of the row rather than a control inside
+      // it: a button in a button is not a thing, and selecting a duplicate
+      // must not also re-open the detail pane of the ticket you are about to
+      // attach to something else.
+      const pick = element('input', 'ticket-pick', `ticket-pick-${model.key}`);
+      pick.type = 'checkbox';
+      pick.addEventListener('change', () => {
+        if (pick.checked) {
+          picked.add(id);
+        } else {
+          picked.delete(id);
+        }
+
+        refusal = null;
+        render();
+      });
+
+      row.append(title, meta, status);
+      row.addEventListener('click', () => {
+        selectedId = id;
+        refusal = null;
+        pickedImpact = null;
+        pickedUrgency = null;
+        pickedArticle = null;
+        handoffOpen = false;
+        handoffReported = '';
+        render();
+      });
+      item.append(pick, row);
+
+      return {
+        element: item,
+        update: (next: Readonly<TicketRow>): void => {
+          setFlag(row, 'state', next.state);
+          setFlag(row, 'breached', String(next.breached));
+          setFlag(row, 'selected', String(next.selected));
+          setFlag(row, 'priority', next.priority);
+          setText(title, next.title);
+          setText(meta, next.reporter);
+          setFlag(priority, 'priority', next.priority);
+          setText(priority, next.priorityLabel);
+          setFlag(badge, 'state', next.state);
+          setFlag(badge, 'breached', String(next.breached));
+          setText(badge, next.badge);
+          setText(sla, next.sla);
+          pick.setAttribute(
+            'aria-label',
+            `Select ${next.title} as a duplicate`,
+          );
+
+          if (pick.checked !== next.picked) {
+            pick.checked = next.picked;
           }
+        },
+      };
+    };
 
-          refusal = null;
-          render();
-        });
-        item.append(pick);
+    const queueRows = new KeyedRows<TicketRow, HTMLLIElement>(
+      queue,
+      (model) => model.id,
+      createRow,
+    );
 
-        row.append(title, meta, status);
-        row.addEventListener('click', () => {
-          selectedId = node.id;
-          refusal = null;
-          pickedImpact = null;
-          pickedUrgency = null;
-          pickedArticle = null;
-          handoffOpen = false;
-          handoffReported = '';
-          render();
-        });
-        item.append(row);
-        queue.append(item);
-      }
-
-      if (nodes.length === 0) {
-        const empty = element('li', 'tickets-empty', 'tickets-empty');
-        empty.textContent = 'Queue empty. Somebody is about to fix that.';
-        queue.append(empty);
-      }
+    const renderQueue = (nodes: readonly ReadOnlyGraphNode[]): void => {
+      queueRows.sync(
+        ticketRows(api, nodes, api.clock.now(), { selectedId, picked }),
+        emptyRow,
+      );
     };
 
     /** One of the two triage dropdowns. */
@@ -781,6 +877,7 @@ export const TICKETS_APP: AppDef = {
       nodes: readonly ReadOnlyGraphNode[],
     ): void => {
       detail.replaceChildren();
+      detailClocks = null;
 
       if (node === undefined) {
         const empty = element('p', 'tickets-placeholder', 'ticket-detail-empty');
@@ -834,8 +931,7 @@ export const TICKETS_APP: AppDef = {
         'Response SLA',
         'ticket-detail-response',
       );
-      responseRow.textContent = `${clockSummary(clocks.response, 'Answered')}`
-        + ` · target ${formatDuration(targetsFor(clocks.priority).response)}`;
+      responseRow.textContent = responseLine(clocks);
       responseRow.dataset.due = formatSimTime(clocks.response.dueAt).time;
 
       const resolutionRow = definitionRow(
@@ -843,12 +939,16 @@ export const TICKETS_APP: AppDef = {
         'Resolution SLA',
         'ticket-detail-resolution',
       );
-      resolutionRow.textContent = `${clockSummary(clocks.resolution, 'Closed')}`
-        + ` · due ${formatSimTime(clocks.resolution.dueAt).time}`
-        + (clocks.heldTicks > 0
-          ? ` · paused ${formatDuration(clocks.heldTicks)}`
-          : '');
+      resolutionRow.textContent = resolutionLine(clocks);
       resolutionRow.dataset.due = formatSimTime(clocks.resolution.dueAt).time;
+      // The two cells the next minute is allowed to move on their own. Every
+      // other thing on this pane is a fact about the world, and the world
+      // announces itself.
+      detailClocks = {
+        id: node.id,
+        response: responseRow,
+        resolution: resolutionRow,
+      };
 
       const body = element('p', 'ticket-body', 'ticket-detail-body');
       body.textContent = entry?.def.flavor.body
@@ -1073,11 +1173,47 @@ export const TICKETS_APP: AppDef = {
       }
     };
 
+    /**
+     * A minute, and nothing else.
+     *
+     * The queue rows are told the new countdown - they are not rebuilt, and
+     * the detail pane is not touched at all beyond its two clock cells. A tick
+     * that repainted this window wholesale shut the triage dropdowns in the
+     * player's hand once a second and threw away every row element in the
+     * queue with them.
+     */
+    const paintClocks = (): void => {
+      const nodes = ticketNodes();
+      renderQueue(nodes);
+
+      const cells = detailClocks;
+
+      if (cells === null) {
+        return;
+      }
+
+      const node = nodes.find((candidate) => candidate.id === cells.id);
+
+      if (node === undefined) {
+        return;
+      }
+
+      const clocks = clocksFor(api, node);
+      setText(cells.response, responseLine(clocks));
+      setFlag(cells.response, 'due', formatSimTime(clocks.response.dueAt).time);
+      setText(cells.resolution, resolutionLine(clocks));
+      setFlag(
+        cells.resolution,
+        'due',
+        formatSimTime(clocks.resolution.dueAt).time,
+      );
+    };
+
     host.replaceChildren(root);
     render();
 
     const unsubscribeTick = api.clock.onTick(() => {
-      render();
+      paintClocks();
     });
     const unsubscribeWorld = api.onWorldChange(() => {
       render();

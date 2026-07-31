@@ -11,7 +11,11 @@ import { formatSimTime } from '../clock-format';
 import type { AppDef, AppInstance } from './types';
 import {
   element,
+  type KeyedRow,
+  KeyedRows,
   nodeKey,
+  setFlag,
+  setText,
   textValue,
   withFocusRestored,
 } from './ui';
@@ -27,6 +31,43 @@ const ALL_LEVELS = 'all';
 
 function hostnameOf(machine: Readonly<ReadOnlyGraphNode>): string {
   return textValue(machine.fields[FIELDS.hostname], nodeKey(machine.id));
+}
+
+/** One machine on the left-hand list, as data. */
+interface MachineRow {
+  readonly id: string;
+  readonly key: string;
+  readonly hostname: string;
+  readonly summary: string;
+  readonly worst: string;
+  readonly selected: boolean;
+}
+
+/** One line of the log, as data. The table is append-only, so a row keeps its
+ * element for as long as the machine keeps writing underneath it. */
+interface LogRow {
+  readonly key: string;
+  readonly time: string;
+  readonly day: string;
+  readonly level: EventLevel;
+  readonly levelLabel: string;
+  readonly source: string;
+  readonly id: string;
+  readonly message: string;
+}
+
+function worstLevel(log: readonly MachineEvent[]): string {
+  if (log.length === 0) {
+    return 'none';
+  }
+
+  if (log.some((entry) => entry.level === 'error')) {
+    return 'error';
+  }
+
+  return log.some((entry) => entry.level === 'warning')
+    ? 'warning'
+    : 'information';
 }
 
 /**
@@ -97,54 +138,120 @@ export const EVENTS_APP: AppDef = {
         : log.filter((entry) => entry.level === level)
     );
 
-    const renderMachines = (nodes: readonly ReadOnlyGraphNode[]): void => {
-      machineList.replaceChildren();
+    const machineRow = (
+      first: Readonly<MachineRow>,
+    ): KeyedRow<MachineRow, HTMLLIElement> => {
+      const id = first.id;
+      const item = element('li');
+      const row = element(
+        'button',
+        'events-machine',
+        `events-machine-${first.key}`,
+      );
+      row.type = 'button';
+      const name = element('strong');
+      const summary = element('span', 'events-machine-meta');
+      row.append(name, summary);
 
-      for (const machine of nodes) {
-        const item = element('li');
-        const row = element(
-          'button',
-          'events-machine',
-          `events-machine-${nodeKey(machine.id)}`,
-        );
-        row.type = 'button';
-        row.dataset.selected = String(machine.id === selectedId);
+      row.addEventListener('click', () => {
+        selectedId = id;
+        render();
+      });
+      item.append(row);
 
-        const name = element('strong');
-        name.textContent = hostnameOf(machine);
-        const summary = element('span', 'events-machine-meta');
-        const log = logFor(machine.id);
-        const worst = log.some((entry) => entry.level === 'error')
-          ? 'error'
-          : log.some((entry) => entry.level === 'warning')
-            ? 'warning'
-            : 'information';
-        // The worst thing in the log, on the row: a list of machines that all
-        // look identical is a list nobody reads twice.
-        row.dataset.worst = log.length === 0 ? 'none' : worst;
-        summary.textContent = log.length === 0
-          ? 'Nothing logged'
-          : `${String(log.length)} event(s)`;
-        row.append(name, summary);
-
-        row.addEventListener('click', () => {
-          selectedId = machine.id;
-          render();
-        });
-        item.append(row);
-        machineList.append(item);
-      }
+      return {
+        element: item,
+        update: (next: Readonly<MachineRow>): void => {
+          setFlag(row, 'selected', String(next.selected));
+          // The worst thing in the log, on the row: a list of machines that
+          // all look identical is a list nobody reads twice.
+          setFlag(row, 'worst', next.worst);
+          setText(name, next.hostname);
+          setText(summary, next.summary);
+        },
+      };
     };
 
-    const renderTable = (machine: ReadOnlyGraphNode | undefined): void => {
-      table.replaceChildren();
+    const machineRows = new KeyedRows<MachineRow, HTMLLIElement>(
+      machineList,
+      (model) => model.id,
+      machineRow,
+    );
 
+    const renderMachines = (nodes: readonly ReadOnlyGraphNode[]): void => {
+      machineRows.sync(nodes.map((machine) => {
+        const log = logFor(machine.id);
+
+        return {
+          id: machine.id,
+          key: nodeKey(machine.id),
+          hostname: hostnameOf(machine),
+          summary: log.length === 0
+            ? 'Nothing logged'
+            : `${String(log.length)} event(s)`,
+          worst: worstLevel(log),
+          selected: machine.id === selectedId,
+        };
+      }));
+    };
+
+    // Built once. The header is a fixed sticky row, the two placeholders are
+    // copy, and the log itself is keyed by position - which is what a log is:
+    // a list that only ever grows at the bottom.
+    const header = element('div', 'events-row events-head');
+
+    for (const heading of ['Time', 'Level', 'Source', 'Event', 'Message']) {
+      const cell = element('span');
+      cell.textContent = heading;
+      header.append(cell);
+    }
+
+    const noMachines = element('p', 'events-placeholder', 'events-empty');
+    noMachines.textContent = 'There are no machines in this estate, which is '
+      + 'either a very good day or a very bad one.';
+    const noEntries = element('p', 'events-placeholder', 'events-log-empty');
+
+    const logRow = (
+      first: Readonly<LogRow>,
+    ): KeyedRow<LogRow, HTMLDivElement> => {
+      const row = element('div', 'events-row', `events-row-${first.key}`);
+      const time = element('span', 'events-time');
+      const clock = element('span');
+      const day = element('span', 'events-day');
+      time.append(clock, day);
+      const levelCell = element('span', 'events-level');
+      const source = element('span', 'events-source');
+      const id = element('span', 'events-id');
+      const message = element('span', 'events-message');
+      row.append(time, levelCell, source, id, message);
+
+      return {
+        element: row,
+        update: (next: Readonly<LogRow>): void => {
+          setFlag(row, 'level', next.level);
+          setFlag(row, 'event', next.id);
+          setText(clock, next.time);
+          setText(day, next.day);
+          setText(levelCell, next.levelLabel);
+          setText(source, next.source);
+          setText(id, next.id);
+          setText(message, next.message);
+        },
+      };
+    };
+
+    const logRows = new KeyedRows<LogRow, HTMLDivElement>(
+      // The header never moves and is never rebuilt: it is put back in front
+      // of whatever the list is showing, as the same element.
+      { replaceChildren: (...rows) => { table.replaceChildren(header, ...rows); } },
+      (model) => model.key,
+      logRow,
+    );
+
+    const renderTable = (machine: ReadOnlyGraphNode | undefined): void => {
       if (machine === undefined) {
-        const empty = element('p', 'events-placeholder', 'events-empty');
-        empty.textContent = 'There are no machines in this estate, which is '
-          + 'either a very good day or a very bad one.';
-        table.append(empty);
         count.textContent = '';
+        logRows.sync([], noMachines);
         return;
       }
 
@@ -153,55 +260,25 @@ export const EVENTS_APP: AppDef = {
       count.textContent = `${String(rows.length)} of ${
         String(log.length)
       } event(s) on ${hostnameOf(machine)}`;
+      noEntries.textContent = log.length === 0
+        ? `${hostnameOf(machine)} has nothing to report. Either it has been `
+          + 'behaving, or nobody has asked it to do anything yet.'
+        : `Nothing at that level on ${hostnameOf(machine)}. The quiet ones `
+          + 'are usually where it started.';
 
-      const header = element('div', 'events-row events-head');
-
-      for (const heading of ['Time', 'Level', 'Source', 'Event', 'Message']) {
-        const cell = element('span');
-        cell.textContent = heading;
-        header.append(cell);
-      }
-
-      table.append(header);
-
-      if (rows.length === 0) {
-        const empty = element('p', 'events-placeholder', 'events-log-empty');
-        empty.textContent = log.length === 0
-          ? `${hostnameOf(machine)} has nothing to report. Either it has been `
-            + 'behaving, or nobody has asked it to do anything yet.'
-          : `Nothing at that level on ${hostnameOf(machine)}. The quiet ones `
-            + 'are usually where it started.';
-        table.append(empty);
-        return;
-      }
-
-      for (const [index, entry] of rows.entries()) {
-        const row = element(
-          'div',
-          'events-row',
-          `events-row-${String(index)}`,
-        );
-        row.dataset.level = entry.level;
-        row.dataset.event = String(entry.id);
-
-        const time = element('span', 'events-time');
-        time.textContent = formatSimTime(entry.tick).time;
-        const day = element('span', 'events-day');
-        day.textContent = formatSimTime(entry.tick).day;
-        time.append(day);
-
-        const levelCell = element('span', 'events-level');
-        levelCell.textContent = LEVEL_LABELS[entry.level];
-        const source = element('span', 'events-source');
-        source.textContent = entry.source;
-        const id = element('span', 'events-id');
-        id.textContent = String(entry.id);
-        const message = element('span', 'events-message');
-        message.textContent = entry.message;
-
-        row.append(time, levelCell, source, id, message);
-        table.append(row);
-      }
+      logRows.sync(
+        rows.map((entry, index) => ({
+          key: String(index),
+          time: formatSimTime(entry.tick).time,
+          day: formatSimTime(entry.tick).day,
+          level: entry.level,
+          levelLabel: LEVEL_LABELS[entry.level],
+          source: entry.source,
+          id: String(entry.id),
+          message: entry.message,
+        })),
+        noEntries,
+      );
     };
 
     const render = (): void => {

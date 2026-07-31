@@ -14,11 +14,15 @@ import type { AppDef, GameApi } from './types';
 import {
   definitionRow,
   element,
+  type KeyedRow,
+  KeyedRows,
   osButton,
   outcomeLine,
   refusalLine,
   resolveSelection,
   setAvailability,
+  setFlag,
+  setText,
   textValue,
 } from './ui';
 
@@ -71,6 +75,42 @@ function tickField(
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
     ? value
     : null;
+}
+
+/**
+ * One line of the directory, as data.
+ *
+ * Same rule as the ticket queue: the list is modelled before it is drawn, so a
+ * repaint driven by something happening elsewhere in the building can be seen
+ * for what it usually is - every one of these values unchanged.
+ */
+export interface AccountRow {
+  readonly id: string;
+  readonly key: string;
+  readonly username: string;
+  readonly owner: string;
+  readonly state: string;
+  readonly locked: boolean;
+  readonly selected: boolean;
+}
+
+export function accountRows(
+  api: GameApi,
+  nodes: readonly Readonly<ReadOnlyGraphNode>[],
+  selectedId: string | null,
+): readonly AccountRow[] {
+  return nodes.map((account) => ({
+    id: account.id,
+    key: accountKey(account.id),
+    username: usernameOf(account),
+    owner: textValue(
+      ownerOf(api, account)?.fields[FIELDS.name],
+      'No owner on file',
+    ),
+    state: statusOf(account).toLowerCase().replace(' ', '-'),
+    locked: account.fields[FIELDS.locked] === true,
+    selected: account.id === selectedId,
+  }));
 }
 
 /**
@@ -143,55 +183,57 @@ export const DIRECTORY_APP: AppDef = {
       render();
     };
 
+    const emptyRow = element('li', 'directory-empty', 'directory-empty');
+    emptyRow.textContent = 'Nobody matches that. Try fewer letters, or try '
+      + 'the name they actually use.';
+
+    const createRow = (
+      first: Readonly<AccountRow>,
+    ): KeyedRow<AccountRow, HTMLLIElement> => {
+      const id = first.id;
+      const item = element('li');
+      const row = element('button', 'directory-row', `directory-row-${first.key}`);
+      row.type = 'button';
+
+      const name = element('strong');
+      const owner = element('span', 'directory-row-owner');
+      const lock = createIcon('icon-lock');
+      lock.classList.add('directory-row-lock');
+      row.append(name, owner, lock);
+
+      row.addEventListener('click', () => {
+        selectedId = id;
+        refusal = null;
+        outcome = null;
+        render();
+      });
+      item.append(row);
+
+      return {
+        element: item,
+        update: (next: Readonly<AccountRow>): void => {
+          setFlag(row, 'selected', String(next.selected));
+          setFlag(row, 'locked', String(next.locked));
+          // The row says WHICH fault, because a list where every unhappy
+          // account looks the same is a list that teaches "click unlock and
+          // see".
+          setFlag(row, 'state', next.state);
+          setText(name, next.username);
+          setText(owner, next.owner);
+          lock.style.display = next.locked ? '' : 'none';
+        },
+      };
+    };
+
+    const rows = new KeyedRows<AccountRow, HTMLLIElement>(
+      list,
+      (model) => model.id,
+      createRow,
+    );
+
     const renderList = (nodes: readonly ReadOnlyGraphNode[]): void => {
-      list.replaceChildren();
       count.textContent = `${String(nodes.length)} accounts`;
-
-      for (const account of nodes) {
-        const item = element('li');
-        const row = element(
-          'button',
-          'directory-row',
-          `directory-row-${accountKey(account.id)}`,
-        );
-        row.type = 'button';
-        row.dataset.selected = String(account.id === selectedId);
-        row.dataset.locked = String(account.fields[FIELDS.locked] === true);
-        // The row says WHICH fault, because a list where every unhappy account
-        // looks the same is a list that teaches "click unlock and see".
-        row.dataset.state = statusOf(account).toLowerCase().replace(' ', '-');
-
-        const name = element('strong');
-        name.textContent = usernameOf(account);
-        const owner = element('span', 'directory-row-owner');
-        owner.textContent = textValue(
-          ownerOf(api, account)?.fields[FIELDS.name],
-          'No owner on file',
-        );
-        row.append(name, owner);
-
-        if (account.fields[FIELDS.locked] === true) {
-          const lock = createIcon('icon-lock');
-          lock.classList.add('directory-row-lock');
-          row.append(lock);
-        }
-
-        row.addEventListener('click', () => {
-          selectedId = account.id;
-          refusal = null;
-          outcome = null;
-          render();
-        });
-        item.append(row);
-        list.append(item);
-      }
-
-      if (nodes.length === 0) {
-        const empty = element('li', 'directory-empty', 'directory-empty');
-        empty.textContent = 'Nobody matches that. Try fewer letters, or try '
-          + 'the name they actually use.';
-        list.append(empty);
-      }
+      rows.sync(accountRows(api, nodes, selectedId), emptyRow);
     };
 
     const renderDetail = (

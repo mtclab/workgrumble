@@ -7,6 +7,8 @@ import { createWorldSession } from '../../world/session';
 import { spawnWorldTicket } from '../../world/tickets';
 import {
   breachedTicketCount,
+  type TicketRow,
+  ticketRows,
   ticketStateLabel,
   wasBreached,
 } from './tickets';
@@ -88,5 +90,67 @@ describe('a breached ticket that gets closed', () => {
     const session = createWorldSession();
 
     expect(breachedTicketCount(session.engine.graph.nodesOfKind('ticket'))).toBe(0);
+  });
+});
+
+/**
+ * The queue as data, which is where the repaint question is actually decided.
+ *
+ * The rows are keyed by ticket id and the list app builds one element per key
+ * (see `KeyedRows`), so what a minute is ALLOWED to change here is what a
+ * minute changes on screen. If a passing tick moved anything but the countdown
+ * - the title, the badge, the order, the key set - it would be a row rebuilt
+ * once a second in front of somebody trying to tick three duplicates.
+ */
+describe('the queue between two minutes', () => {
+  const view = { selectedId: null, picked: new Set<string>() };
+
+  function rowsNow(
+    session: ReturnType<typeof createWorldSession>,
+  ): readonly TicketRow[] {
+    return ticketRows(
+      { graph: session.engine.graph },
+      session.engine.graph.nodesOfKind('ticket'),
+      session.engine.now(),
+      view,
+    );
+  }
+
+  it('moves the countdown and leaves every other cell alone', () => {
+    const session = createWorldSession();
+    spawnWorldTicket(session.engine, FAN_TICKET);
+
+    const before = rowsNow(session);
+    session.engine.advance(1);
+    const after = rowsNow(session);
+
+    expect(after.map((row) => row.id)).toEqual(before.map((row) => row.id));
+    expect(before.length).toBeGreaterThan(1);
+
+    for (const [index, row] of after.entries()) {
+      const was = before[index];
+      expect(was).toBeDefined();
+      // Everything except the one cell the clock owns.
+      expect({ ...row, sla: '' }).toEqual({ ...was, sla: '' });
+    }
+
+    // And the cell the clock owns did move, or this test proves nothing.
+    expect(after.map((row) => row.sla))
+      .not.toEqual(before.map((row) => row.sla));
+  });
+
+  it('keys every row by its ticket, so an arrival is the only new row', () => {
+    const session = createWorldSession();
+    const before = rowsNow(session);
+
+    spawnWorldTicket(session.engine, FAN_TICKET);
+    const after = rowsNow(session);
+
+    const arrived = after
+      .map((row) => row.id)
+      .filter((id) => !before.some((row) => row.id === id));
+
+    expect(arrived).toEqual([FAN_TICKET]);
+    expect(new Set(after.map((row) => row.key)).size).toBe(after.length);
   });
 });

@@ -14,12 +14,16 @@ import type { AppDef, AppInstance } from './types';
 import {
   definitionRow,
   element,
+  type KeyedRow,
+  KeyedRows,
   nodeKey,
   osButton,
   outcomeLine,
   refusalLine,
   resolveSelection,
   setAvailability,
+  setFlag,
+  setText,
   textValue,
   withFocusRestored,
 } from './ui';
@@ -35,6 +39,16 @@ function hostnameOf(machine: Readonly<ReadOnlyGraphNode>): string {
 function rotationOf(machine: Readonly<ReadOnlyGraphNode>): Rotation {
   const rotation = machine.fields[FIELDS.displayRotation];
   return isRotation(rotation) ? rotation : 0;
+}
+
+/** One workstation on the left-hand list, as data. */
+interface MachineRow {
+  readonly id: string;
+  readonly key: string;
+  readonly hostname: string;
+  readonly owner: string;
+  readonly sideways: boolean;
+  readonly selected: boolean;
 }
 
 const STATUS_LABELS: Readonly<Record<string, string>> = {
@@ -120,41 +134,54 @@ export const REMOTE_APP: AppDef = {
       render();
     };
 
+    const machineRow = (
+      first: Readonly<MachineRow>,
+    ): KeyedRow<MachineRow, HTMLLIElement> => {
+      const id = first.id;
+      const item = element('li');
+      const row = element('button', 'remote-machine', `remote-machine-${first.key}`);
+      row.type = 'button';
+      const name = element('strong');
+      const owner = element('span', 'remote-machine-owner');
+      const tilted = element('span', 'remote-machine-flag');
+      tilted.textContent = 'Sideways';
+      row.append(name, owner, tilted);
+
+      row.addEventListener('click', () => {
+        selectMachine(id);
+        render();
+      });
+      item.append(row);
+
+      return {
+        element: item,
+        update: (next: Readonly<MachineRow>): void => {
+          setFlag(row, 'selected', String(next.selected));
+          setText(name, next.hostname);
+          setText(owner, next.owner);
+          tilted.hidden = !next.sideways;
+        },
+      };
+    };
+
+    const machineRows = new KeyedRows<MachineRow, HTMLLIElement>(
+      machineList,
+      (model) => model.id,
+      machineRow,
+    );
+
     const renderMachines = (nodes: readonly ReadOnlyGraphNode[]): void => {
-      machineList.replaceChildren();
-
-      for (const machine of nodes) {
-        const item = element('li');
-        const row = element(
-          'button',
-          'remote-machine',
-          `remote-machine-${machineKey(machine.id)}`,
-        );
-        row.type = 'button';
-        row.dataset.selected = String(machine.id === selectedId);
-
-        const name = element('strong');
-        name.textContent = hostnameOf(machine);
-        const owner = element('span', 'remote-machine-owner');
-        owner.textContent = textValue(
+      machineRows.sync(nodes.map((machine) => ({
+        id: machine.id,
+        key: machineKey(machine.id),
+        hostname: hostnameOf(machine),
+        owner: textValue(
           ownerOf(machine)?.fields[FIELDS.name],
           'Nobody admits to it',
-        );
-        row.append(name, owner);
-
-        if (rotationOf(machine) !== 0) {
-          const tilted = element('span', 'remote-machine-flag');
-          tilted.textContent = 'Sideways';
-          row.append(tilted);
-        }
-
-        row.addEventListener('click', () => {
-          selectMachine(machine.id);
-          render();
-        });
-        item.append(row);
-        machineList.append(item);
-      }
+        ),
+        sideways: rotationOf(machine) !== 0,
+        selected: machine.id === selectedId,
+      })));
     };
 
     /** The parody desktop: their screen, drawn from their machine's state. */

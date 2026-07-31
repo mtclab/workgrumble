@@ -175,6 +175,115 @@ export function withFocusRestored(root: HTMLElement, paint: () => void): void {
   }
 }
 
+/**
+ * Writes text into a node only when it would change.
+ *
+ * Assigning `textContent` is not free even when the string is identical: it
+ * drops the existing text node and builds another, which is a mutation record
+ * for anything observing, a fresh layout box, and - on a row the player is
+ * dragging a selection across - a selection that ends. These lists repaint
+ * every minute of the shift, so the compare is worth the line.
+ */
+export function setText(
+  node: { textContent: string | null },
+  text: string,
+): void {
+  if (node.textContent !== text) {
+    node.textContent = text;
+  }
+}
+
+/** The same rule for a data attribute, which styling and tests both read. */
+export function setFlag(
+  element: HTMLElement,
+  key: string,
+  value: string,
+): void {
+  if (element.dataset[key] !== value) {
+    element.dataset[key] = value;
+  }
+}
+
+/**
+ * One row of a keyed list: the element that IS the row, and the single call
+ * that writes an item's current values into it.
+ *
+ * `update` exists so a row can change what it SAYS without changing what it
+ * IS. That distinction is the whole point of the type: a countdown ticking
+ * down is not a new row, and rebuilding it as one throws away the checkbox
+ * state, the keyboard focus and any text selection standing on it once a
+ * minute, for every ticket in the queue.
+ */
+export interface KeyedRow<Item, Node> {
+  readonly element: Node;
+  update(item: Item): void;
+}
+
+/** The slice of a container this list needs. Declared rather than imported so
+ * the reconciler can be driven, and proven, without a document. */
+export interface KeyedRowsHost<Node> {
+  replaceChildren(...nodes: Node[]): void;
+}
+
+/**
+ * A list whose rows survive a repaint.
+ *
+ * Every list app in this shell repaints on every world change and some of them
+ * on every tick, and each one used to answer that by emptying its container and
+ * building every row again. The rows are keyed instead: an item that was on the
+ * list before keeps the element it had, an item that has arrived gets one made,
+ * and the container is only touched when the ORDER of the keys changes.
+ *
+ * Keys must be unique within one sync - node ids, which the graph guarantees.
+ */
+export class KeyedRows<Item, Node> {
+  private rows = new Map<string, KeyedRow<Item, Node>>();
+  private order: readonly string[] = [];
+  private painted = false;
+
+  public constructor(
+    private readonly host: KeyedRowsHost<Node>,
+    private readonly keyOf: (item: Item) => string,
+    private readonly create: (item: Item) => KeyedRow<Item, Node>,
+  ) {}
+
+  /**
+   * Brings the list up to date. `fallback` is what an EMPTY list shows - the
+   * "nobody matches that" line - and is left to the caller because it is copy,
+   * not structure.
+   */
+  public sync(items: readonly Item[], fallback: Node | null = null): void {
+    const kept = new Map<string, KeyedRow<Item, Node>>();
+    const keys: string[] = [];
+    const nodes: Node[] = [];
+
+    for (const item of items) {
+      const key = this.keyOf(item);
+      const row = this.rows.get(key) ?? this.create(item);
+      row.update(item);
+      kept.set(key, row);
+      keys.push(key);
+      nodes.push(row.element);
+    }
+
+    const moved = !this.painted
+      || keys.length !== this.order.length
+      || keys.some((key, index) => key !== this.order[index]);
+
+    this.rows = kept;
+    this.order = keys;
+    this.painted = true;
+
+    if (!moved) {
+      return;
+    }
+
+    this.host.replaceChildren(
+      ...(nodes.length === 0 && fallback !== null ? [fallback] : nodes),
+    );
+  }
+}
+
 export function definitionRow(
   list: HTMLElement,
   label: string,
