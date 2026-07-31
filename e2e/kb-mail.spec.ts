@@ -18,8 +18,16 @@ test('opens the KB at the article the ticket names', async ({ page }) => {
   await expect(page.getByTestId('window-kb')).toBeVisible();
   await expect(page.getByTestId('kb-reference')).toHaveText('kb/print-spooler');
   await expect(page.getByTestId('kb-title')).toContainText('print spooler');
+  // Filed the way a real one is: the symptom in the reporter's words, where
+  // it happens, the steps in order, and then why.
+  await expect(page.getByTestId('kb-state')).toHaveText('Published');
+  await expect(page.getByTestId('kb-issue')).toContainText('haunted');
+  await expect(page.getByTestId('kb-environment')).toContainText('PRINT-01');
+  await expect(page.getByTestId('kb-resolution')).toContainText(
+    'Empty the queue FIRST',
+  );
   // The learner path: it says WHY the queue goes first, and in which order.
-  await expect(page.getByTestId('kb-body')).toContainText(
+  await expect(page.getByTestId('kb-cause')).toContainText(
     'stop, clear, start',
   );
   await expect(page.getByTestId('kb-body')).toContainText(
@@ -54,6 +62,80 @@ test('opens the KB at the article the ticket names', async ({ page }) => {
     'kb/account-lockout',
   );
   await expect(page.getByTestId('kb-body')).toContainText('lockout');
+});
+
+/**
+ * The KCS loop, end to end: read the base while working the ticket, then say
+ * which article you actually used. The link is the solve - it lands on the
+ * ticket as a reference a report can count and as a work note the next person
+ * can read, and the ticket's own KB button follows it afterwards.
+ */
+test('links the article that solved it onto the ticket', async ({ page }) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('ticket-row-locked-account').click();
+  await expect(page.getByTestId('ticket-article-current')).toContainText(
+    'Nothing linked yet',
+  );
+
+  // Read the base first, which is the half of the loop that teaches anything.
+  await page.getByTestId('ticket-open-kb').click();
+  await expect(page.getByTestId('kb-reference')).toHaveText(
+    'kb/account-lockout',
+  );
+  await page.getByTestId('kb-see-also-three-ways-an-account-says-no').click();
+  await expect(page.getByTestId('kb-resolution')).toContainText(
+    'Disabled: somebody switched the account off on purpose',
+  );
+
+  await focusWindow(page, 'tickets');
+  await page
+    .getByTestId('ticket-article-picker')
+    .selectOption('kb/three-ways-an-account-says-no');
+  await page.getByTestId('ticket-link-article').click();
+
+  await expect(page.getByTestId('ticket-article-current')).toContainText(
+    'kb/three-ways-an-account-says-no',
+  );
+  // It counts as a work note, which is where the evidence of a solve lives.
+  await expect(page.getByTestId('ticket-worknotes')).toContainText(
+    'Linked knowledge article kb/three-ways-an-account-says-no',
+  );
+  // Linking it twice is refused, in the words the button already carried.
+  await expect(page.getByTestId('ticket-link-article')).toBeDisabled();
+  await expect(page.getByTestId('ticket-link-article')).toHaveAttribute(
+    'title',
+    /already the article on this ticket/,
+  );
+
+  // And the ticket's own KB button now follows what was linked rather than
+  // what the ticket was filed under.
+  await page.getByTestId('ticket-open-kb').click();
+  await expect(page.getByTestId('kb-reference')).toHaveText(
+    'kb/three-ways-an-account-says-no',
+  );
+});
+
+/**
+ * Every shelf has a draft on it. This one is in the list where anybody can
+ * find it, flagged on the row and on the page, with the wrong step called out
+ * by the editor who never got round to fixing it.
+ */
+test('shows the draft article as a draft, in the list with the rest', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'kb');
+
+  const row = page.getByTestId('kb-row-vpn-on-the-print-server');
+  await expect(row).toHaveAttribute('data-state', 'draft');
+  await row.click();
+
+  await expect(page.getByTestId('kb-state')).toContainText('Draft');
+  await expect(page.getByTestId('kb-resolution')).toContainText(
+    'Do not do this in working hours',
+  );
+  await expect(page.getByTestId('kb-cause')).toContainText('load-bearing beige');
 });
 
 test('reads the inbox on the shift clock and marks it read', async ({

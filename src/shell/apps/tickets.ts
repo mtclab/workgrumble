@@ -6,9 +6,11 @@ import {
   CLASSIFY_ON_HOLD_REASON,
   fieldLines,
   HELPDESK_ACTIONS,
+  LINK_CLOSED_REASON,
   WAITING_NEEDS_QUESTION_REASON,
 } from '../../world/actions';
 import { FIELDS } from '../../world/fields';
+import { articleLinkNote, findKbArticle, WORLD_KB } from '../../world/kb';
 import {
   type Classification,
   classify,
@@ -82,6 +84,20 @@ function ticketState(node: Readonly<ReadOnlyGraphNode>): TicketState {
  */
 export function wasBreached(node: Readonly<ReadOnlyGraphNode>): boolean {
   return node.fields[FIELDS.breached] === true;
+}
+
+/**
+ * The article somebody linked while working this ticket, or nothing.
+ *
+ * Deliberately not the same question as "which article is this ticket about":
+ * the definition's `kb_ref` is where a player is told to start reading, and
+ * this is what they say they actually used. A report counts the second one.
+ */
+export function linkedArticle(
+  node: Readonly<ReadOnlyGraphNode>,
+): string | null {
+  const value = node.fields[FIELDS.kbRef];
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 export function ticketStateLabel(node: Readonly<ReadOnlyGraphNode>): string {
@@ -178,6 +194,9 @@ export const TICKETS_APP: AppDef = {
     // write. Everything else on the form is read off the dispatch log.
     let handoffOpen = false;
     let handoffReported = '';
+    // Which article the player has picked but not yet linked. Like the triage
+    // dropdowns, it is not world state until they say so.
+    let pickedArticle: string | null = null;
 
     const root = element('section', 'app-page tickets-app', 'tickets-app');
 
@@ -271,6 +290,7 @@ export const TICKETS_APP: AppDef = {
           refusal = null;
           pickedImpact = null;
           pickedUrgency = null;
+          pickedArticle = null;
           handoffOpen = false;
           handoffReported = '';
           render();
@@ -529,6 +549,95 @@ export const TICKETS_APP: AppDef = {
       return panel;
     };
 
+    /**
+     * The KCS loop, made a control: read the base while you work, then say
+     * which article you used.
+     *
+     * It is on the ticket rather than in the KB because the ticket is the
+     * thing being solved and the ticket is what the link is evidence about -
+     * and because a player who has just read four articles should not have to
+     * remember which window the ticket was in.
+     */
+    const renderArticleLink = (
+      node: Readonly<ReadOnlyGraphNode>,
+    ): HTMLElement => {
+      const panel = element('section', 'ticket-article', 'ticket-article');
+      const heading = element('h3');
+      heading.textContent = 'Knowledge article';
+      const linked = linkedArticle(node);
+      const current = element(
+        'p',
+        'ticket-article-current',
+        'ticket-article-current',
+      );
+      current.textContent = linked === null
+        ? 'Nothing linked yet. The article this one was filed under is where '
+          + 'to start reading; what you link is what you actually used.'
+        : `Linked: ${findKbArticle(linked)?.title ?? linked} (${linked})`;
+
+      const row = element('div', 'ticket-article-row');
+      const picker = element(
+        'select',
+        'os-select',
+        'ticket-article-picker',
+      );
+      picker.setAttribute('aria-label', 'Knowledge article');
+
+      for (const article of WORLD_KB) {
+        const option = element('option');
+        option.value = article.id;
+        option.textContent = article.state === 'draft'
+          ? `${article.title} [draft]`
+          : article.title;
+        picker.append(option);
+      }
+
+      const fallback = linked
+        ?? findWorldTicket(node.id)?.def.kb_ref
+        ?? WORLD_KB[0]?.id
+        ?? '';
+      const chosen = pickedArticle ?? fallback;
+
+      if (WORLD_KB.some((article) => article.id === chosen)) {
+        picker.value = chosen;
+      }
+
+      picker.addEventListener('change', () => {
+        pickedArticle = picker.value;
+        refusal = null;
+        render();
+      });
+
+      const link = osButton('Link this article', 'ticket-link-article');
+      const article = findKbArticle(chosen);
+      setAvailability(
+        link,
+        ticketState(node) === 'resolved'
+          ? LINK_CLOSED_REASON
+          : article === undefined
+            ? 'That reference is not an article anybody wrote.'
+            : article.id === linked
+              ? `"${article.title}" is already the article on this ticket.`
+              : null,
+      );
+      link.addEventListener('click', () => {
+        if (article === undefined) {
+          return;
+        }
+
+        if (dispatchOn(HELPDESK_ACTIONS.ticketLinkArticle, node.id, {
+          article: article.id,
+          note: articleLinkNote(article),
+        })) {
+          pickedArticle = null;
+        }
+      });
+
+      row.append(picker, link);
+      panel.append(heading, current, row);
+      return panel;
+    };
+
     const renderDetail = (node: ReadOnlyGraphNode | undefined): void => {
       detail.replaceChildren();
 
@@ -726,7 +835,10 @@ export const TICKETS_APP: AppDef = {
         }
       });
 
-      const kbRef = entry?.def.kb_ref ?? '';
+      // The article somebody LINKED beats the one the ticket was written
+      // with: the second is where to start reading, the first is what was
+      // actually used, and only one of them is evidence.
+      const kbRef = linkedArticle(node) ?? entry?.def.kb_ref ?? '';
       const kbButton = osButton('Open KB article', 'ticket-open-kb');
       setAvailability(
         kbButton,
@@ -750,7 +862,7 @@ export const TICKETS_APP: AppDef = {
         remoteButton,
         kbButton,
       );
-      detail.append(actions);
+      detail.append(actions, renderArticleLink(node));
 
       detail.append(
         refusalLine('ticket-refusal', refusal, createIcon('icon-lock')),

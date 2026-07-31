@@ -208,6 +208,17 @@ export const FIELDS = {
    * second line claiming nobody had touched it.
    */
   touchLog: 'touch_log',
+  /**
+   * The knowledge article this ticket was actually solved with.
+   *
+   * A ticket is WRITTEN with a `kb_ref` in its definition - the article whose
+   * cause it is - and this is the one somebody linked while working it, which
+   * is not always the same article and is the only one that counts as
+   * evidence. KCS calls the link the solve: an article with tickets on it is
+   * an article that has earned its shelf space, and one with none is a draft
+   * somebody's notice period produced.
+   */
+  kbRef: 'kb_ref',
   /** The escalation handoff: what the user reported, and what was tried. */
   handoffReported: 'handoff_reported',
   handoffTried: 'handoff_tried',

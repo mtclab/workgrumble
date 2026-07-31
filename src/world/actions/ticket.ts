@@ -18,6 +18,7 @@ import { HELPDESK_ACTIONS } from './ids';
 
 const NOTE_PARAM = 'note';
 const COMMENT_PARAM = 'comment';
+const ARTICLE_PARAM = 'article';
 const REPORTED_PARAM = 'reported';
 const TRIED_PARAM = 'tried';
 const TOUCHES_PARAM = 'touches';
@@ -81,6 +82,17 @@ export const CLASSIFY_ON_HOLD_REASON = 'It is parked, and re-cutting its '
 export const CLASSIFY_BREACHED_REASON = 'That one has already blown its SLA. '
   + 'Re-cutting the deadline now would move a line it has already crossed, '
   + 'which is the sort of tidying-up that gets read back to you at a review.';
+
+/**
+ * Why a closed ticket takes no article, in the words the player reads.
+ *
+ * Exported because the Tickets app greys its own picker out with the same
+ * sentence: two rules pretending to be one is the bug this codebase keeps
+ * refusing to ship.
+ */
+export const LINK_CLOSED_REASON = 'That ticket is closed. An article linked '
+  + 'afterwards is a tidy record of a decision nobody made at the time - link '
+  + 'it while it is still work, which is also when it is true.';
 
 const UNTRACKED_GUARD: GuardData = {
   when: { pred: 'ticket_untracked', node: TARGET },
@@ -458,6 +470,71 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
         node: TARGET,
         field: FIELDS.touchLog,
         value: { param: TOUCHES_PARAM },
+      },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.ticketLinkArticle,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('ticket'),
+      UNTRACKED_GUARD,
+      // A closed ticket is a record, and a record is not where the reading
+      // goes: link it while it is still work, which is also the only time the
+      // link is true about how it was solved.
+      { when: stateIs('resolved'), reason: LINK_CLOSED_REASON },
+      {
+        when: { pred: 'param_blank', param: ARTICLE_PARAM },
+        reason: 'No article arrived with that link. An empty reference on a '
+          + 'ticket is worse than none, because a report counts it.',
+      },
+      {
+        when: { pred: 'param_blank', param: NOTE_PARAM },
+        reason: 'A link with nothing written beside it tells the next person '
+          + 'which article, and not why.',
+      },
+      {
+        when: {
+          pred: 'field_eq',
+          node: TARGET,
+          field: FIELDS.kbRef,
+          value: { param_trim: ARTICLE_PARAM },
+        },
+        reason: `"{v:${ARTICLE_PARAM}}" is already the article on this ticket. `
+          + 'Linking it twice does not make it twice as relevant.',
+      },
+      {
+        when: {
+          pred: 'line_in_field',
+          node: TARGET,
+          field: FIELDS.worknotes,
+          value: { param_trim: NOTE_PARAM },
+        },
+        reason: 'That note is already on the ticket, word for word.',
+      },
+    ],
+    // Two writes, one act: the reference a report reads, and the sentence the
+    // next human reads. Splitting them across two actions would let a ticket
+    // carry a link nobody explained, or an explanation of a link that is not
+    // there.
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.kbRef,
+        value: { param_trim: ARTICLE_PARAM },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.worknotes,
+        value: {
+          append_line: {
+            node: TARGET,
+            field: FIELDS.worknotes,
+            value: { param_trim: NOTE_PARAM },
+          },
+        },
       },
     ],
   },

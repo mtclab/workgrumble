@@ -268,8 +268,8 @@ beforeEach(() => {
 
 describe('helpdesk action registry', () => {
   it('registers every advertised action exactly once', () => {
-    expect(HELPDESK_ACTION_IDS).toHaveLength(22);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(22);
+    expect(HELPDESK_ACTION_IDS).toHaveLength(23);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(23);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});
@@ -1231,6 +1231,106 @@ describe('ticket.add_comment', () => {
       }),
       'already put that to them',
       asked,
+    );
+  });
+});
+
+/**
+ * KCS calls linking the article the solve. Mechanically it is two writes and
+ * one refusal set - the reference a report reads, the sentence the next human
+ * reads, and the rule that both belong on work rather than on a record.
+ */
+describe('ticket.link_article', () => {
+  const LINK = {
+    article: 'kb/print-spooler',
+    note: 'Linked knowledge article kb/print-spooler - "The print spooler".',
+  };
+
+  it('writes the reference and the note in one move', () => {
+    expect(dispatch(HELPDESK_ACTIONS.ticketLinkArticle, PLAIN_TICKET, LINK))
+      .toEqual({ ok: true });
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.kbRef))
+      .toBe('kb/print-spooler');
+    expect(fieldLines(fixture.graph.getField(PLAIN_TICKET, FIELDS.worknotes)))
+      .toEqual([LINK.note]);
+  });
+
+  /**
+   * Reading the knowledge base is not contact with the reporter and is not
+   * work on the fault. A response clock stopped by it would be a clock stopped
+   * by somebody reading, which is the exact opposite of what it measures.
+   */
+  it('stops no clock and claims no work', () => {
+    dispatch(HELPDESK_ACTIONS.ticketLinkArticle, PLAIN_TICKET, LINK);
+
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.respondedAt))
+      .toBeUndefined();
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.touchLog))
+      .toBeUndefined();
+  });
+
+  it('lets a second article replace the first, and says so on the ticket', () => {
+    dispatch(HELPDESK_ACTIONS.ticketLinkArticle, PLAIN_TICKET, LINK);
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketLinkArticle, PLAIN_TICKET, {
+        article: 'kb/power-cycle',
+        note: 'Linked knowledge article kb/power-cycle - "Off and on again".',
+      }),
+    ).toEqual({ ok: true });
+
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.kbRef))
+      .toBe('kb/power-cycle');
+    // Both notes survive: the record is what was read, in order, not the last
+    // thing anybody clicked.
+    expect(fieldLines(fixture.graph.getField(PLAIN_TICKET, FIELDS.worknotes)))
+      .toHaveLength(2);
+  });
+
+  it('refuses the same article twice, and a link with nothing in it', () => {
+    dispatch(HELPDESK_ACTIONS.ticketLinkArticle, PLAIN_TICKET, LINK);
+    const linked = fixture.snapshotHash();
+
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketLinkArticle, PLAIN_TICKET, LINK),
+      'already the article on this ticket',
+      linked,
+    );
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketLinkArticle, PLAIN_TICKET, {
+        article: '  ',
+        note: 'Something.',
+      }),
+      'No article arrived',
+      linked,
+    );
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketLinkArticle, PLAIN_TICKET, {
+        article: 'kb/power-cycle',
+        note: '   ',
+      }),
+      'which article, and not why',
+      linked,
+    );
+  });
+
+  it('refuses a closed ticket, an untracked one and a target that is neither', () => {
+    dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET, GOOD_HANDOFF);
+    const before = fixture.snapshotHash();
+
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketLinkArticle, ESCALATABLE_TICKET, LINK),
+      'That ticket is closed',
+      before,
+    );
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketLinkArticle, ORPHAN_TICKET, LINK),
+      'not on the helpdesk system',
+      before,
+    );
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketLinkArticle, 'account:ada', LINK),
+      'only works on a ticket',
+      before,
     );
   });
 });

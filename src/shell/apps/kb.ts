@@ -60,6 +60,10 @@ export const KB_APP: AppDef = {
         );
         row.type = 'button';
         row.dataset.selected = String(article.id === selected());
+        // On the row as well as in the reader: an unvalidated article is a
+        // thing to know BEFORE opening it, which is the whole difference
+        // between a shelf and a filing system.
+        row.dataset.state = article.state;
 
         const title = element('strong');
         title.textContent = article.title;
@@ -72,6 +76,43 @@ export const KB_APP: AppDef = {
         item.append(row);
         list.append(item);
       }
+    };
+
+    /** One named section of prose, heading and all. */
+    const prose = (
+      heading: string,
+      testId: string,
+      paragraphs: readonly string[],
+    ): HTMLElement => {
+      const section = element('section', 'kb-section', testId);
+      const title = element('h3', 'kb-section-title');
+      title.textContent = heading;
+      section.append(title);
+
+      for (const paragraph of paragraphs) {
+        const line = element('p');
+        line.textContent = paragraph;
+        section.append(line);
+      }
+
+      return section;
+    };
+
+    /** The Resolution section: numbered, because the order is the content. */
+    const steps = (resolution: readonly string[]): HTMLElement => {
+      const section = element('section', 'kb-section', 'kb-resolution');
+      const title = element('h3', 'kb-section-title');
+      title.textContent = 'Resolution';
+      const list = element('ol', 'kb-steps');
+
+      for (const step of resolution) {
+        const item = element('li');
+        item.textContent = step;
+        list.append(item);
+      }
+
+      section.append(title, list);
+      return section;
     };
 
     const renderReader = (article: KbArticle | undefined): void => {
@@ -97,19 +138,32 @@ export const KB_APP: AppDef = {
 
       const heading = element('h2', undefined, 'kb-title');
       heading.textContent = article.title;
+      // The reference and the state are two facts and two elements: a test -
+      // or a player - reading "kb/print-spoolerPublished" out of one line is
+      // reading a sentence nobody wrote.
+      const filing = element('div', 'kb-filing');
       const reference = element('p', 'kb-reference', 'kb-reference');
       reference.textContent = article.id;
+      const state = element('span', 'kb-state', 'kb-state');
+      state.dataset.state = article.state;
+      state.textContent = article.state === 'draft'
+        ? 'Draft - nobody has checked this'
+        : 'Published';
+      filing.append(reference, state);
       const summary = element('p', 'kb-summary', 'kb-summary');
       summary.textContent = article.summary;
-      reader.append(heading, reference, summary);
+      reader.append(heading, filing, summary);
 
       const body = element('div', 'kb-body', 'kb-body');
-
-      for (const paragraph of article.body) {
-        const line = element('p');
-        line.textContent = paragraph;
-        body.append(line);
-      }
+      // The four sections a real article is filed in, in the order a tech
+      // reads them under a deadline: what it looks like, where, what to do,
+      // and - once the fire is out - why.
+      body.append(
+        prose('Issue', 'kb-issue', [article.issue]),
+        prose('Environment', 'kb-environment', [article.environment]),
+        steps(article.resolution),
+        prose('Cause', 'kb-cause', article.cause),
+      );
 
       reader.append(body);
 

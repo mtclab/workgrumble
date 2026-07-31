@@ -49,6 +49,7 @@ const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.ticketSetWaiting]: 'Parked it on the reporter',
   [HELPDESK_ACTIONS.ticketClearWaiting]: 'Took it back off the reporter',
   [HELPDESK_ACTIONS.ticketClassify]: 'Triaged it',
+  [HELPDESK_ACTIONS.ticketLinkArticle]: 'Linked the knowledge article',
 };
 
 export function actionSummary(id: string): string {
@@ -69,6 +70,12 @@ const NOT_WORK: ReadonlySet<string> = new Set<string>([
   HELPDESK_ACTIONS.ticketAddWorknote,
   HELPDESK_ACTIONS.ticketRecordTouch,
   HELPDESK_ACTIONS.ticketRecordResponse,
+  // Reading the knowledge base is not something that was done to the fault,
+  // and it is emphatically not contact with the reporter: a handoff listing
+  // "linked an article" where L2 asked what happens when you power-cycle it is
+  // a form that answers the wrong question, and a response clock stopped by it
+  // would be a clock stopped by somebody reading.
+  HELPDESK_ACTIONS.ticketLinkArticle,
 ]);
 
 export function countsAsWork(actionId: string): boolean {

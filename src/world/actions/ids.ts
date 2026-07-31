@@ -54,6 +54,16 @@ export const HELPDESK_ACTIONS = {
   ticketRecordTouch: 'ticket.record_touch',
   /** Second line sending a thin handoff back, with the bill attached. */
   ticketBounceHandoff: 'ticket.bounce_handoff',
+  /**
+   * The KCS solve: the article that was actually used, put on the ticket.
+   *
+   * It writes the reference and a work note in one move, because those are two
+   * halves of one act - the reference is what a report counts and the note is
+   * what the next human reads. Nothing about it is scored: linking the right
+   * article is worth doing because the ticket after this one is the same
+   * ticket, which is a lesson a reward would get in the way of.
+   */
+  ticketLinkArticle: 'ticket.link_article',
 } as const;
 
 export type HelpdeskActionId =

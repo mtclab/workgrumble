@@ -1,7 +1,12 @@
 import { KB_ARTICLES } from './articles';
-import type { KbArticle } from './types';
+import { isArticleState, type KbArticle } from './types';
 
-export type { KbArticle } from './types';
+export {
+  ARTICLE_STATES,
+  type ArticleState,
+  isArticleState,
+  type KbArticle,
+} from './types';
 
 const ID_PREFIX = 'kb/';
 
@@ -34,8 +39,33 @@ export function validateKbArticles(
       throw new Error(`Article "${article.id}" has no summary.`);
     }
 
-    if (article.body.length === 0
-      || article.body.some((paragraph) => paragraph.trim().length === 0)) {
+    if (!isArticleState(article.state)) {
+      throw new Error(
+        `Article "${article.id}" is in no state anybody files an article in.`,
+      );
+    }
+
+    if (article.issue.trim().length === 0) {
+      throw new Error(
+        `Article "${article.id}" has no Issue: nobody could match it to a `
+        + 'ticket, which is the one thing an article is for.',
+      );
+    }
+
+    if (article.environment.trim().length === 0) {
+      throw new Error(`Article "${article.id}" has no Environment.`);
+    }
+
+    if (article.resolution.length === 0
+      || article.resolution.some((step) => step.trim().length === 0)) {
+      throw new Error(`Article "${article.id}" has an empty Resolution step.`);
+    }
+
+    // The Cause section is optional in the standard and mandatory here: it is
+    // the honest explanation this product's learner path is made of, and an
+    // article without one is a recipe rather than knowledge.
+    if (article.cause.length === 0
+      || article.cause.some((paragraph) => paragraph.trim().length === 0)) {
       throw new Error(`Article "${article.id}" has an empty paragraph.`);
     }
   }
@@ -61,6 +91,23 @@ export const WORLD_KB: readonly KbArticle[] = validateKbArticles(KB_ARTICLES);
 
 export function findKbArticle(id: string): KbArticle | undefined {
   return WORLD_KB.find((article) => article.id === id);
+}
+
+/**
+ * The line a link writes into the ticket's internal record.
+ *
+ * KCS calls linking the article the solve, and the reason is bookkeeping
+ * rather than ceremony: an article with tickets hanging off it is an article
+ * somebody can prove is worth keeping. So the link leaves a work note, one
+ * sentence, built here so the ticket, the KB and the tests all say it the same
+ * way - and it says out loud when what was linked is a draft.
+ */
+export function articleLinkNote(article: Readonly<KbArticle>): string {
+  return `Linked knowledge article ${article.id} - "${article.title}".${
+    article.state === 'draft'
+      ? ' It is a draft, which is worth saying before somebody follows it.'
+      : ''
+  }`;
 }
 
 /** `kb/print-spooler` -> `print-spooler`, for element ids and test hooks. */
