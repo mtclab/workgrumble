@@ -22,7 +22,7 @@ import type { DialogueTree } from './types';
 const ROTATED_SCREEN: DialogueTree = {
   id: 'dialogue/rotated-screen',
   speaker: COMPANY_IDS.ada,
-  ticket: 'ticket:rotated-screen',
+  tickets: ['ticket:rotated-screen'],
   root: 'complaint',
   resolved_root: 'after',
   nodes: [
@@ -147,7 +147,7 @@ const ROTATED_SCREEN: DialogueTree = {
 const LOCKED_ACCOUNT: DialogueTree = {
   id: 'dialogue/locked-account',
   speaker: COMPANY_IDS.gary,
-  ticket: 'ticket:locked-account',
+  tickets: ['ticket:locked-account'],
   root: 'complaint',
   resolved_root: 'after',
   nodes: [
@@ -263,7 +263,7 @@ const LOCKED_ACCOUNT: DialogueTree = {
 const WEDGED_SPOOLER: DialogueTree = {
   id: 'dialogue/wedged-spooler',
   speaker: COMPANY_IDS.nina,
-  ticket: 'ticket:wedged-spooler',
+  tickets: ['ticket:wedged-spooler'],
   root: 'complaint',
   resolved_root: 'after',
   nodes: [
@@ -380,7 +380,7 @@ const WEDGED_SPOOLER: DialogueTree = {
 const FAN_NOISE: DialogueTree = {
   id: 'dialogue/fan-noise',
   speaker: COMPANY_IDS.player,
-  ticket: WORLD_IDS.ticket,
+  tickets: [WORLD_IDS.ticket],
   root: 'complaint',
   resolved_root: 'after',
   nodes: [
@@ -445,7 +445,7 @@ const FAN_NOISE: DialogueTree = {
 const BOSS_CHANNEL: DialogueTree = {
   id: 'dialogue/boss-phone',
   speaker: COMPANY_IDS.boss,
-  ticket: 'ticket:boss-phone',
+  tickets: ['ticket:boss-phone'],
   root: 'nag',
   resolved_root: 'after',
   summoned_root: 'phone',
@@ -595,7 +595,7 @@ const BOSS_CHANNEL: DialogueTree = {
 const RECEPTION: DialogueTree = {
   id: 'dialogue/reception',
   speaker: COMPANY_IDS.bev,
-  ticket: 'ticket:tidied-list',
+  tickets: ['ticket:tidied-list'],
   root: 'hello',
   resolved_root: 'after',
   nodes: [

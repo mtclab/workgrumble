@@ -72,14 +72,35 @@ export interface DialogueTree {
   readonly id: string;
   /** Person node who does the talking. */
   readonly speaker: string;
-  /** Where a conversation starts while the ticket is still open. */
+  /**
+   * Where a conversation starts when nothing more specific applies: the person
+   * with nothing open, and the fallback for a person with exactly one ticket.
+   */
   readonly root: string;
   /**
-   * The ticket this conversation is about, if any. It is what a `reveal`
-   * writes to, and what decides which root the thread opens on.
+   * The tickets this person reports, in the order they arrive.
+   *
+   * A list rather than a single id, because a week long enough to be a week has
+   * people in it who report more than one thing. The receptionist whose printing
+   * was fixed on Tuesday is the same receptionist who cannot reach the share on
+   * Wednesday; the new starter who was given the mailbox on Tuesday is the same
+   * new starter who cannot send from it an hour later, and that chain is the
+   * entire lesson of those two tickets. One tree per person is what makes the
+   * contact list a list of PEOPLE, and it is the only shape in which the
+   * follow-up can arrive in the same conversation the first one closed in.
+   *
+   * Empty for somebody who is in the building and never files anything -
+   * Facilities, whose whole contribution is a note on a socket.
    */
-  readonly ticket?: string;
-  /** Where a conversation starts once that ticket is closed. */
+  readonly tickets: readonly string[];
+  /**
+   * Where the conversation starts for each of those tickets, keyed by ticket
+   * id. Required once a person has more than one, because two different
+   * complaints opening on the same line is a person who has not noticed which
+   * of their problems you are ringing about.
+   */
+  readonly roots?: Readonly<Record<string, string>>;
+  /** Where a conversation starts once the ticket in hand is closed. */
   readonly resolved_root?: string;
   /**
    * Where another system may DROP this conversation, unasked.

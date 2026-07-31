@@ -1,11 +1,12 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import {
   applyDialogueEffects,
+  type Conversation,
+  conversationFor,
   type DialogueOption,
   type DialogueTree,
   dialogueForSpeaker,
   dialogueNode,
-  dialogueRoot,
   isAskEffect,
   isRevealEffect,
 } from '../../world/dialogue';
@@ -77,23 +78,23 @@ export const CHAT_APP: AppDef = {
     const persons = (): readonly ReadOnlyGraphNode[] => api.graph
       .nodesOfKind('person');
 
-    const ticketResolved = (tree: Readonly<DialogueTree>): boolean => (
-      tree.ticket !== undefined
-      && api.graph.getField(tree.ticket, FIELDS.state) === 'resolved'
-    );
-
     /**
-     * Whether this person has something open RIGHT NOW.
+     * What this person is ringing about right now, and where the conversation
+     * opens because of it.
      *
-     * A tree can name a ticket that has not been raised yet - the lead's does,
-     * because he raises his by mentioning it halfway through the morning - and
-     * a contact list that flagged him from 08:00 would be advertising a ticket
-     * nobody has.
+     * One read for the three questions the window asks - which ticket a reveal
+     * lands on, which line they open with, and whether the contact list flags
+     * them - because they are one question. A tree can name tickets that have
+     * not been raised yet: the lead raises his by mentioning it halfway through
+     * the morning, and the new starter's follow-up does not exist until the
+     * first one is fixed.
      */
+    const talking = (
+      tree: Readonly<DialogueTree>,
+    ): Conversation => conversationFor(tree, api.graph);
+
     const hasOpenTicket = (tree: Readonly<DialogueTree> | undefined): boolean => (
-      tree?.ticket !== undefined
-      && api.graph.getNode(tree.ticket) !== undefined
-      && api.graph.getField(tree.ticket, FIELDS.state) !== 'resolved'
+      tree !== undefined && talking(tree).open
     );
 
     const startThread = (
@@ -120,7 +121,7 @@ export const CHAT_APP: AppDef = {
       personId: string,
       tree: Readonly<DialogueTree>,
     ): ChatThread => {
-      const activeRoot = dialogueRoot(tree, ticketResolved(tree));
+      const activeRoot = talking(tree).root;
       const existing = chat().threads[personId];
 
       if (existing === undefined) {
@@ -195,7 +196,7 @@ export const CHAT_APP: AppDef = {
       );
 
       const played = applyDialogueEffects(option.effects ?? [], {
-        ticket: tree.ticket,
+        ticket: talking(tree).ticket,
         // What goes on the ticket as the question is what the player said.
         said: option.label,
         dispatch: (action, target, params) => api.dispatch(
@@ -219,7 +220,7 @@ export const CHAT_APP: AppDef = {
 
       if (played.done.some(isRevealEffect)) {
         reported.push(`Filed as a work note on ${
-          ticketTitle(tree.ticket ?? '')
+          ticketTitle(talking(tree).ticket ?? '')
         }.`);
       }
 
@@ -297,9 +298,11 @@ export const CHAT_APP: AppDef = {
       heading.textContent = name;
       head.append(heading);
 
-      if (tree?.ticket !== undefined) {
+      const about = tree === undefined ? undefined : talking(tree).ticket;
+
+      if (about !== undefined) {
         const context = element('span', 'chat-context', 'chat-context');
-        context.textContent = ticketTitle(tree.ticket);
+        context.textContent = ticketTitle(about);
         const open = osButton('Open the queue', 'chat-open-tickets', {
           compact: true,
         });
@@ -345,7 +348,7 @@ export const CHAT_APP: AppDef = {
       if (thread.ended || node === undefined) {
         const again = osButton('Bring it up again', 'chat-restart');
         again.addEventListener('click', () => {
-          const activeRoot = dialogueRoot(tree, ticketResolved(tree));
+          const activeRoot = talking(tree).root;
           putThread(person.id, {
             nodeId: activeRoot,
             rootUsed: activeRoot,

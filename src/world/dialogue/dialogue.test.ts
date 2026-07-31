@@ -8,10 +8,10 @@ import { findWorldTicket, WORLD_TICKETS } from '../tickets';
 import {
   applyDialogueEffect,
   applyDialogueEffects,
+  conversationFor,
   type DialogueEffectResult,
   dialogueForSpeaker,
   dialogueNode,
-  dialogueRoot,
   findDialogueTree,
   isAskEffect,
   isRevealEffect,
@@ -29,6 +29,7 @@ function tree(overrides: Partial<DialogueTree> = {}): DialogueTree {
     id: 'dialogue/fixture',
     speaker: 'person:fixture',
     root: 'start',
+    tickets: [],
     nodes: [
       {
         id: 'start',
@@ -108,7 +109,7 @@ describe('dialogue content gate', () => {
     expect(() => validateDialogueTrees([tree({ root: 'nowhere' })]))
       .toThrow('no root node');
     expect(() => validateDialogueTrees([
-      tree({ ticket: 'ticket:x', resolved_root: 'nowhere' }),
+      tree({ tickets: ['ticket:x'], resolved_root: 'nowhere' }),
     ])).toThrow('no resolved root');
   });
 
@@ -291,7 +292,7 @@ describe('shipped conversations', () => {
       const found = findDialogueTree(entry.dialogue_ref);
       expect(found, `${entry.def.id} names ${entry.dialogue_ref}`)
         .toBeDefined();
-      expect(found?.ticket).toBe(entry.def.id);
+      expect(found?.tickets).toContain(entry.def.id);
       expect(found?.speaker).toBe(entry.def.reporter);
     }
   });
@@ -303,18 +304,34 @@ describe('shipped conversations', () => {
     }
   });
 
-  it('hides exactly one cause behind a question in every ticket tree', () => {
-    for (const entry of WORLD_TICKETS) {
-      const found = findDialogueTree(entry.dialogue_ref);
+  /**
+   * One hidden cause per fault of the person's own.
+   *
+   * It used to be one per TREE, which was the same rule while every reporter
+   * had exactly one ticket. A week with a flood in it needs the other half
+   * said out loud: a duplicate has no cause of its own to hide, because its
+   * cause is the parent's, and inventing a second explanation for the same
+   * outage would be a conversation that lies to forty people in four different
+   * ways.
+   */
+  it('hides one cause behind a question for every fault of its own', () => {
+    for (const conversation of WORLD_DIALOGUE) {
+      const own = conversation.tickets.filter(
+        (id) => findWorldTicket(id)?.duplicate !== true,
+      );
       const reveals = new Set(
-        (found?.nodes ?? []).flatMap((node) => node.options
+        conversation.nodes.flatMap((node) => node.options
           .flatMap((option) => option.effects ?? [])
           .filter(isRevealEffect)
           .map((effect) => effect.reveal)),
       );
 
-      expect(reveals.size, `${entry.def.id} reveals one cause`).toBe(1);
-      expect(found?.resolved_root).toBeDefined();
+      expect(reveals.size, `${conversation.id} hides its own causes`)
+        .toBe(own.length);
+
+      if (conversation.tickets.length > 0) {
+        expect(conversation.resolved_root, conversation.id).toBeDefined();
+      }
     }
   });
 
@@ -357,6 +374,7 @@ describe('shipped conversations', () => {
   });
 
   it('opens on the reaction once the ticket is closed', () => {
+    const session = createWorldSession();
     const found = findDialogueTree('dialogue/rotated-screen');
     expect(found).toBeDefined();
 
@@ -364,10 +382,42 @@ describe('shipped conversations', () => {
       return;
     }
 
-    expect(dialogueRoot(found, false)).toBe(found.root);
-    expect(dialogueRoot(found, true)).toBe(found.resolved_root);
-    expect(dialogueNode(found, dialogueRoot(found, true))?.npc_line)
-      .toContain('right way up');
+    const complaining = conversationFor(found, session.engine.graph);
+    expect(complaining.open).toBe(true);
+    expect(complaining.ticket).toBe('ticket:rotated-screen');
+    expect(complaining.root).toBe(found.root);
+
+    session.engine.dispatch(
+      HELPDESK_ACTIONS.machineSetDisplayRotation,
+      COMPANY_IDS.player,
+      COMPANY_IDS.adaMachine,
+      { rotation: 0 },
+    );
+
+    const after = conversationFor(found, session.engine.graph);
+    expect(after.open).toBe(false);
+    expect(after.root).toBe(found.resolved_root);
+    expect(dialogueNode(found, after.root)?.npc_line).toContain('right way up');
+  });
+
+  /**
+   * And a person with nothing raised yet has nothing to be about. The lead's
+   * concern is not a ticket until he mentions it, and a contact list that
+   * flagged him at eight o'clock would be advertising somebody's future.
+   */
+  it('is about nothing until one of their tickets exists', () => {
+    const session = createWorldSession();
+    const found = findDialogueTree('dialogue/boss-phone');
+    expect(found).toBeDefined();
+
+    if (found === undefined) {
+      return;
+    }
+
+    const idle = conversationFor(found, session.engine.graph);
+    expect(idle.ticket).toBeUndefined();
+    expect(idle.open).toBe(false);
+    expect(idle.root).toBe(found.root);
   });
 
   it('speaks only for people who exist in the company', () => {
@@ -407,7 +457,7 @@ describe('asking the right question', () => {
     expect(session.engine.graph.getField(entry.def.id, FIELDS.worknotes)).toBeUndefined();
 
     const result = applyDialogueEffect(reveal, {
-      ticket: conversation.ticket,
+      ticket: conversation.tickets[0],
       said: SAID,
       dispatch: (action, target, params) => session.engine.dispatch(
         action,
@@ -423,7 +473,7 @@ describe('asking the right question', () => {
 
     // Asking the same question twice does not double the note, and says so.
     const again = applyDialogueEffect(reveal, {
-      ticket: conversation.ticket,
+      ticket: conversation.tickets[0],
       said: SAID,
       dispatch: (action, target, params) => session.engine.dispatch(
         action,

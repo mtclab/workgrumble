@@ -13,7 +13,7 @@
  */
 
 import { COMPANY_IDS } from '../world/company';
-import { dialogueForSpeaker, dialogueNode, dialogueRoot } from '../world/dialogue';
+import { dialogueForSpeaker, dialogueNode } from '../world/dialogue';
 import type { AppStateStore, ChatThread } from './app-state';
 
 /**
@@ -43,8 +43,10 @@ export function pingBossThread(store: AppStateStore, line: string): void {
     nodeId: landing,
     // The root the thread is running FROM is unchanged: the chat app moves a
     // thread when its root changes, and being pinged is not a new root - it
-    // is him arriving in the middle of the one that was already open.
-    rootUsed: dialogueRoot(tree, false),
+    // is him arriving in the middle of the one that was already open. His
+    // concern has not been raised yet at the minute he pings, so the root the
+    // chat app will compute for him is still the tree's own.
+    rootUsed: tree.root,
     ended: false,
     lines: [...before, { who: 'them', text: line }],
   };

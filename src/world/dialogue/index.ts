@@ -1,3 +1,5 @@
+import type { ReadOnlyGraphView } from '../../engine-api';
+import { FIELDS } from '../fields';
 import { isDispatchableAction } from './dispatch';
 import { DIALOGUE_TREES } from './trees';
 import {
@@ -92,10 +94,44 @@ export function validateDialogueTrees(
       );
     }
 
-    if (tree.resolved_root !== undefined && tree.ticket === undefined) {
+    if (tree.resolved_root !== undefined && tree.tickets.length === 0) {
       throw new Error(
         `Tree "${tree.id}" reacts to a resolution but names no ticket.`,
       );
+    }
+
+    if (new Set(tree.tickets).size !== tree.tickets.length) {
+      throw new Error(`Tree "${tree.id}" names the same ticket twice.`);
+    }
+
+    for (const [ticket, node] of Object.entries(tree.roots ?? {})) {
+      if (!tree.tickets.includes(ticket)) {
+        throw new Error(
+          `Tree "${tree.id}" opens on "${node}" for "${ticket}", which is not `
+          + 'one of the tickets this person reports.',
+        );
+      }
+
+      if (!nodeIds.has(node)) {
+        throw new Error(
+          `Tree "${tree.id}" opens "${ticket}" on missing node "${node}".`,
+        );
+      }
+    }
+
+    // One opening line per complaint, once there is more than one complaint.
+    // Two tickets sharing a root is a person who answers the phone about the
+    // wrong problem - which reads, in play, as content that has not noticed
+    // itself.
+    if (tree.tickets.length > 1) {
+      for (const ticket of tree.tickets) {
+        if (tree.roots?.[ticket] === undefined) {
+          throw new Error(
+            `Tree "${tree.id}" reports ${String(tree.tickets.length)} tickets `
+            + `and has no opening line for "${ticket}".`,
+          );
+        }
+      }
     }
 
     for (const node of tree.nodes) {
@@ -132,7 +168,7 @@ export function validateDialogueTrees(
               );
             }
 
-            if (tree.ticket === undefined) {
+            if (tree.tickets.length === 0) {
               throw new Error(
                 `Option "${option.label}" of "${tree.id}" reveals a clue with `
                 + 'no ticket to write it on.',
@@ -143,7 +179,7 @@ export function validateDialogueTrees(
           }
 
           if (isAskEffect(effect)) {
-            if (tree.ticket === undefined) {
+            if (tree.tickets.length === 0) {
               throw new Error(
                 `Option "${option.label}" of "${tree.id}" asks a question `
                 + 'with no ticket to log it against.',
@@ -182,7 +218,7 @@ export function validateDialogueTrees(
  */
 function assertEveryNodeReachable(tree: Readonly<DialogueTree>): void {
   const seen = new Set<string>();
-  const queue: string[] = [tree.root];
+  const queue: string[] = [tree.root, ...Object.values(tree.roots ?? {})];
 
   if (tree.resolved_root !== undefined) {
     queue.push(tree.resolved_root);
@@ -242,14 +278,56 @@ export function dialogueNode(
 }
 
 /**
- * Where a thread starts right now. A person whose ticket is closed opens on
- * their reaction to the fix, not on the complaint they no longer have.
+ * What this person is ringing about right now, and where the conversation
+ * starts because of it.
+ *
+ * Three questions with one answer, because they are one question. Which of
+ * their tickets is live decides which complaint they open on, whether they are
+ * flagged in the contact list, and which ticket a `reveal` writes to - and
+ * working any of those out separately is how the three come to disagree.
+ *
+ * The rule is the order the person experiences: the first of their tickets that
+ * is in the world and still open is the one they want to talk about. When they
+ * are all closed it is the last one, so they react to the fix instead of
+ * repeating a complaint they no longer have; when none of them exists yet -
+ * a follow-up that has not been earned, a concern the lead has not raised - it
+ * is nothing, and the tree's own root is small talk.
  */
-export function dialogueRoot(
+export interface Conversation {
+  /** The ticket the thread is about, or nothing while none exists. */
+  readonly ticket: string | undefined;
+  /** Where the thread opens. */
+  readonly root: string;
+  /** Whether they have something live - what the contact list flags. */
+  readonly open: boolean;
+}
+
+export function conversationFor(
   tree: Readonly<DialogueTree>,
-  ticketResolved: boolean,
-): string {
-  return ticketResolved && tree.resolved_root !== undefined
-    ? tree.resolved_root
-    : tree.root;
+  graph: ReadOnlyGraphView,
+): Conversation {
+  const raised = tree.tickets.filter(
+    (id) => graph.getNode(id) !== undefined,
+  );
+  const live = raised.find(
+    (id) => graph.getField(id, FIELDS.state) !== 'resolved',
+  );
+
+  if (live !== undefined) {
+    return {
+      ticket: live,
+      root: tree.roots?.[live] ?? tree.root,
+      open: true,
+    };
+  }
+
+  const last = raised[raised.length - 1];
+
+  return {
+    ticket: last,
+    root: last === undefined
+      ? tree.root
+      : tree.resolved_root ?? tree.roots?.[last] ?? tree.root,
+    open: false,
+  };
 }
