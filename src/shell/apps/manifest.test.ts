@@ -84,6 +84,8 @@ describe('shipped manifest', () => {
       'cmd',
       'kb',
       'about',
+      'updates',
+      'feedback',
       'bubbles',
       'browser',
     ]);
@@ -100,9 +102,18 @@ describe('shipped manifest', () => {
     expect(APP_MANIFEST.some((app) => !app.slack)).toBe(true);
   });
 
+  /**
+   * Tier zero is the bare workstation, and the three things on it are the
+   * three that are about the MACHINE rather than about the job: what this is,
+   * what it just installed, and how to say it is broken. A tester whose build
+   * fails before it can hand out a helpdesk still has to be able to report
+   * that, so neither of the two new ones is gated behind a promotion.
+   */
   it('hides tier-gated apps from a tier-zero desktop', () => {
     expect(appsForTier(APP_MANIFEST, 0).map(({ id }) => id)).toEqual([
       'about',
+      'updates',
+      'feedback',
     ]);
     expect(appsForTier(APP_MANIFEST, 1).map(({ id }) => id)).toEqual([
       'brief',
@@ -120,6 +131,8 @@ describe('shipped manifest', () => {
       'cmd',
       'kb',
       'about',
+      'updates',
+      'feedback',
       'bubbles',
       'browser',
     ]);

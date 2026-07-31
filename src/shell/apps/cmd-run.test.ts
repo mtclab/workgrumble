@@ -42,6 +42,9 @@ function apiFor(
       listener();
     }),
     notify: () => {},
+    // Nothing in the terminal files a bug report; the seam exists so the one
+    // window that does can be handed a function rather than a network.
+    report: () => Promise.resolve({ ok: true, value: undefined }),
     openApp: () => {},
     closeApp: () => {},
     hasApp: () => false,

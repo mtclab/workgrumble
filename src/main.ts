@@ -1,4 +1,5 @@
 import { loadEngine, WasmEngine } from './engine-api';
+import { createCloudApi } from './shell/api';
 import { type AppState, AppStateStore } from './shell/app-state';
 import { APP_MANIFEST } from './shell/apps';
 import { openDirectMessage, pingBossThread } from './shell/boss-thread';
@@ -14,6 +15,9 @@ import { createShellSession, type SaveOutcome, SaveSlot } from './shell/save';
 import { SaveHealth } from './shell/save-health';
 import { Shell } from './shell/shell';
 import { openStorage } from './shell/storage';
+import { CloudSaves } from './shell/sync';
+import { updateOnBoot, VersionSlot } from './shell/updates';
+import { BUILD_VERSION } from './shared/build';
 import { COMPANY, COMPANY_IDS } from './world/company';
 import { createWorldSession, FIRST_WEEK } from './world/session';
 import { ticketTitle } from './world/tickets';
@@ -114,6 +118,14 @@ async function boot(): Promise<void> {
   // rather than at the first day boundary.
   const store = openStorage(() => window.localStorage);
   const health = new SaveHealth(store.reason);
+  // The one place in this product that knows a URL exists. Everything else is
+  // handed a function that answers, so an app can be reasoned about - and
+  // tested - without a network being one of the things it depends on.
+  const api = createCloudApi((input, init) => window.fetch(input, init));
+  // What the browser is playing as. It starts as nothing and is filled in once
+  // the Worker has been asked, which happens after the shell is on screen: the
+  // badge is HttpOnly, so being told is the only way to know.
+  let badge: string | null = null;
 
   // A week that was played before and ended badly leaves exactly three things
   // behind: the fund, the article that was up, and which attempt this is.
@@ -250,6 +262,10 @@ async function boot(): Promise<void> {
     onWrite: (outcome: SaveOutcome) => {
       if (outcome.ok) {
         health.succeeded();
+        // And up to the badge, if there is one and the two copies have been
+        // compared. Nothing waits for this: the day has already been kept in
+        // the place that matters, and the player has already been told so.
+        cloud.push();
         return;
       }
 
@@ -260,6 +276,24 @@ async function boot(): Promise<void> {
     // again is to start the page again.
     restart: () => {
       window.location.reload();
+    },
+  });
+
+  // The badge's copy of the week. It is built here, before the carry-over is
+  // acknowledged, because that acknowledgement WRITES a save - and a push that
+  // happened before the two copies had been compared would send a fresh Monday
+  // up over somebody's Thursday. `CloudSaves` starts with pushing switched off
+  // for exactly that reason; `settle()` below is what switches it on.
+  const cloud = new CloudSaves({
+    api,
+    slot,
+    storage: store.storage,
+    load: () => {
+      const loaded = session.load();
+
+      if (!loaded.ok) {
+        shell.notify('The badge\'s copy would not open', loaded.reason);
+      }
     },
   });
 
@@ -276,6 +310,33 @@ async function boot(): Promise<void> {
   const context: ShellContext = {
     manifest: APP_MANIFEST,
     saveHealth: health,
+    identity: {
+      badge: () => badge,
+      signIn: async (typed) => {
+        const answer = await api.logIn(typed);
+
+        if (answer.ok) {
+          badge = answer.value;
+          void settleWithBadge();
+        }
+
+        return answer;
+      },
+      issueBadge: async () => {
+        const answer = await api.register();
+
+        if (answer.ok) {
+          badge = answer.value;
+          // A brand-new badge has nothing on it, so this is a push rather than
+          // a pull - but it goes through the same comparison, because "nothing
+          // on the badge" is a thing worth being told rather than assumed.
+          void settleWithBadge();
+        }
+
+        return answer;
+      },
+    },
+    report: (submission) => api.sendFeedback(submission),
     tier,
     graph: engine.graph,
     appState,
@@ -347,6 +408,48 @@ async function boot(): Promise<void> {
     screens: () => appState.snapshot(),
   });
 
+  /**
+   * The badge's copy of the week, compared with this browser's, once.
+   *
+   * It runs when a badge turns up - at boot if the browser is already carrying
+   * one, or the moment somebody types theirs on the log-on screen - and the
+   * only outcome that says anything out loud is the one where the badge was
+   * ahead. Nothing waits for it, and nothing depends on it having happened:
+   * `settle` answers `unavailable` for a build served without a Worker behind
+   * it, which is what the local journey suite runs against.
+   */
+  async function settleWithBadge(): Promise<void> {
+    if (await cloud.settle() !== 'adopted') {
+      return;
+    }
+
+    shell.notify(
+      'Your badge had a later week on it',
+      'The week saved against your badge was newer than the one in this '
+        + 'browser, so it is the one you are looking at. The other one has '
+        + 'not been thrown away.',
+    );
+  }
+
+  // What the workstation installed overnight.
+  //
+  // The version is recorded BEFORE the window is opened rather than when it is
+  // closed. A player who shuts the tab during the boot gag has still had this
+  // build installed, and a record that only lands if somebody reads the notes
+  // is a record that shows the same notes every morning until they do.
+  const versions = new VersionSlot(store.storage);
+  const installed = updateOnBoot(versions.read(), BUILD_VERSION);
+  versions.write(BUILD_VERSION);
+
+  if (installed.length > 0) {
+    shell.openApp('updates');
+    shell.notify(
+      'DeskPro WorkGroup has been updated',
+      `Update ${BUILD_VERSION} was installed while nobody was at the desk. `
+        + 'The window says what it was for.',
+    );
+  }
+
   // Both of these are raised BEFORE the shell starts, with no desktop on
   // screen to raise them on - which is exactly the case the notification queue
   // exists for, and now the only one that can happen: the day itself is frozen
@@ -371,6 +474,19 @@ async function boot(): Promise<void> {
   window.setInterval(() => {
     day.step(DRIVER_INTERVAL_MS);
   }, DRIVER_INTERVAL_MS);
+
+  // Asking the building who this browser is - AFTER the shell is on screen,
+  // and without anything waiting for the answer. The badge is a convenience
+  // and the week is not: a boot that blocked on a network call would make the
+  // optional half of this product the reason the essential half was slow.
+  void (async (): Promise<void> => {
+    const who = await api.session();
+
+    if (who.ok && who.value !== null) {
+      badge = who.value;
+      await settleWithBadge();
+    }
+  })();
 }
 
 void boot().catch((failure: unknown) => {

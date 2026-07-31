@@ -6,6 +6,7 @@ import type { ReadOnlyGraphView } from '../../engine-api';
 import type {
   FieldValue,
 } from '../../engine-api';
+import type { ApiResult, FeedbackSubmission } from '../api';
 import type { AppStateStore } from '../app-state';
 import type { DayApi } from '../day-driver';
 
@@ -94,6 +95,13 @@ export interface GameApi {
    * a world that has never happened.
    */
   restartWeek(): void;
+  /**
+   * Files a report about the GAME - not about the estate, and not a world
+   * change of any kind. It is the one call an app can make that leaves the
+   * browser, and it answers rather than throwing: a form that took the tab
+   * down because a network was busy would be a worse bug than any it collects.
+   */
+  report(submission: Readonly<FeedbackSubmission>): Promise<ApiResult<void>>;
   /** The person node the shell dispatches actions as. */
   readonly actor: string;
 }

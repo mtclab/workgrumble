@@ -470,6 +470,41 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { d: 'M8 10V7a4 4 0 0 1 8 0v3' },
     },
   ],
+  // Something arriving in a tray overnight, which is what an update is.
+  'icon-update': [
+    {
+      element: 'line',
+      attributes: { x1: '12', y1: '3', x2: '12', y2: '13' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '7 9 12 14 17 9' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4' },
+    },
+  ],
+  // A form with a fault on it. The one thing in this building that is not a
+  // joke, so it looks like the paperwork it is.
+  'icon-report': [
+    {
+      element: 'path',
+      attributes: { d: 'M6 3h8l4 4v14H6z' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '14 3 14 7 18 7' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '12', y1: '10', x2: '12', y2: '15' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '12', cy: '18', r: '1' },
+    },
+  ],
 };
 
 /** Every icon id drawn in this repo. Manifest icons must come from this set. */

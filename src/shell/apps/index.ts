@@ -9,6 +9,7 @@ import { CHAT_APP } from './chat';
 import { CMD_APP } from './cmd';
 import { DIRECTORY_APP } from './directory';
 import { EVENTS_APP } from './events';
+import { FEEDBACK_APP } from './feedback';
 import { KB_APP } from './kb';
 import { MAIL_APP } from './mail';
 import { loadManifest } from './manifest';
@@ -16,6 +17,7 @@ import { REMOTE_APP } from './remote';
 import { REVIEW_APP } from './review';
 import { SCORECARD_APP } from './scorecard';
 import { TICKETS_APP } from './tickets';
+import { UPDATES_APP } from './updates';
 import { WEEKEND_APP } from './weekend';
 
 /**
@@ -46,6 +48,12 @@ export const APP_MANIFEST = assertCaughtScenes(loadManifest([
   CMD_APP,
   KB_APP,
   ABOUT_APP,
+  // The two that are about the product rather than about the job. They sit at
+  // the end of the roster on purpose: a tester needs them at any moment and a
+  // player needs them never, so they are last in the menu and last on the
+  // desktop rather than in among the tools somebody is trying to work with.
+  UPDATES_APP,
+  FEEDBACK_APP,
   BUBBLES_APP,
   BROWSER_APP,
 ]));

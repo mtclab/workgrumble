@@ -1,6 +1,7 @@
 import type { DispatchLogEntry, DispatchResult } from '../engine-api';
 import type { FieldValue, NodeId } from '../engine-api';
 import type { ReadOnlyGraphView } from '../engine-api';
+import type { ApiResult, FeedbackSubmission } from './api';
 import type { AppStateStore } from './app-state';
 import type { AppDef } from './apps/types';
 import type { DayApi } from './day-driver';
@@ -26,6 +27,21 @@ export interface ShellUser {
 }
 
 /**
+ * Who this browser is, as far as the building is concerned.
+ *
+ * All three answer rather than throwing, and `badge()` is a READ of what is
+ * known right now rather than a question asked over the wire: the cookie
+ * behind it is HttpOnly, so nothing in the browser can see it, and the only
+ * way the player ever learns their own number is for the shell to be told once
+ * at boot and to remember.
+ */
+export interface ShellIdentity {
+  badge(): string | null;
+  signIn(badge: string): Promise<ApiResult<string>>;
+  issueBadge(): Promise<ApiResult<string>>;
+}
+
+/**
  * Everything the view layer receives from the wiring in `main.ts`. There is no
  * writable graph handle here by design: the shell mutates the world only by
  * dispatching registered actions.
@@ -48,6 +64,17 @@ export interface ShellContext {
    * toast that scrolled past while they were in a ticket.
    */
   readonly saveHealth: SaveHealthView;
+  /** The badge this browser plays as, and the two ways to get one. */
+  readonly identity: ShellIdentity;
+  /**
+   * Filing a report about the game itself.
+   *
+   * On the context rather than inside the feedback app because it is the one
+   * seam in this product that leaves the browser, and `main.ts` is where the
+   * decision about what the browser is allowed to talk to is made. An app is
+   * handed a function that answers; it never learns what a URL is.
+   */
+  report(submission: Readonly<FeedbackSubmission>): Promise<ApiResult<void>>;
   dispatch(
     id: string,
     actor: NodeId,

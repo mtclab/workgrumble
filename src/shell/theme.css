@@ -475,6 +475,7 @@ input {
 }
 
 .field-static,
+.field textarea,
 .field input {
   padding: var(--space-3) var(--space-4);
   border: none;
@@ -496,6 +497,33 @@ input {
   background: var(--color-surface-sunken);
   box-shadow: var(--bevel-sunken);
   color: var(--color-ink-soft);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.field textarea {
+  font-family: var(--font-read);
+  resize: vertical;
+}
+
+/* A tick and its sentence, on one line, both of them clickable. */
+.field-check {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  font-size: var(--text-sm);
+}
+
+/*
+ * The badge number, the moment it is issued. It reads as the sticky note it
+ * is meant to become - the one surface in this product that is genuinely
+ * telling somebody to write something down.
+ */
+.login-issued {
+  padding: var(--space-4);
+  border-left: var(--border-note) solid var(--color-note-edge);
+  background: var(--color-note);
+  color: var(--color-ink);
   font-family: var(--font-read);
   font-size: var(--text-sm);
 }
@@ -1227,6 +1255,134 @@ input {
   color: var(--color-ink-soft);
   font-family: var(--font-read);
   font-size: var(--text-md);
+}
+
+/* ------------------------------------------------ update history + reports */
+
+/*
+ * The two windows that are about the product rather than about the job. They
+ * borrow the About page's masthead deliberately: those three are the same kind
+ * of screen - the machine talking about itself - and a third and fourth look
+ * would be three and four looks for one idea.
+ */
+
+.updates-masthead,
+.feedback-masthead {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  padding-bottom: var(--space-4);
+  border-bottom: var(--border-bevel) solid var(--color-surface-sunken);
+}
+
+.updates-mark,
+.feedback-mark {
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.updates-masthead h2,
+.feedback-masthead h2 {
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+
+.updates-masthead p,
+.feedback-masthead p {
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+}
+
+.updates-list {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.update-entry {
+  padding: var(--space-4);
+  background: var(--color-surface);
+  box-shadow: var(--bevel-sunken);
+}
+
+/* The one that was installed this boot, marked the way a KB marks current. */
+.update-entry[data-installed="true"] {
+  border-left: var(--border-note) solid var(--color-accent);
+}
+
+.update-entry-head {
+  display: flex;
+  gap: var(--space-4);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.update-entry-head h3 {
+  font-size: var(--text-md);
+}
+
+.update-entry-head time {
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.update-summary {
+  margin: var(--space-3) 0;
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.update-lines {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding-left: var(--space-6);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  list-style: square;
+}
+
+.feedback-form {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+/* Not a joke, and it does not look like one. */
+.feedback-notice {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.feedback-context {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  box-shadow: var(--bevel-sunken);
+  font-size: var(--text-sm);
+}
+
+.feedback-context h3 {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-xs);
+  text-transform: none;
+}
+
+.feedback-context ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: var(--space-6);
+  color: var(--color-ink-soft);
+  list-style: square;
 }
 
 .bubbles-app {

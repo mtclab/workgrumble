@@ -37,6 +37,16 @@ export class Shell {
    * announces there has to wait for a desktop rather than vanish.
    */
   private readonly queued: QueuedNotification[] = [];
+  /**
+   * Windows asked for before there was anywhere to put one.
+   *
+   * The same problem the notification queue solves, arriving from the other
+   * direction: the update window is decided during BOOT, when the screen is a
+   * fake POST and the desktop does not exist yet, and an `openApp` that
+   * silently did nothing would mean a build could install itself and never say
+   * so. One entry per app, in order, opened the moment there is a desktop.
+   */
+  private readonly pendingApps: string[] = [];
 
   public constructor(
     private readonly root: HTMLElement,
@@ -51,6 +61,9 @@ export class Shell {
         restart: () => {
           this.dispatch({ type: 'session:restart' });
         },
+        signIn: (badge) => context.identity.signIn(badge),
+        issueBadge: () => context.identity.issueBadge(),
+        knownBadge: () => context.identity.badge(),
       },
       this.abort.signal,
     );
@@ -123,7 +136,18 @@ export class Shell {
    * nothing to open FOR: nobody can be caught at a screen that is not there.
    */
   public openApp(id: string): void {
-    this.desktop?.openApp(id);
+    if (this.desktop === null) {
+      // Nobody can be caught at a screen that is not there, so the day never
+      // reaches this - but the boot does, and a window it asked for has to
+      // wait rather than evaporate.
+      if (!this.pendingApps.includes(id)) {
+        this.pendingApps.push(id);
+      }
+
+      return;
+    }
+
+    this.desktop.openApp(id);
   }
 
   /**
@@ -195,6 +219,10 @@ export class Shell {
         },
       });
       this.desktop.mount(this.root);
+      // Windows before toasts: the day's own screens are put up by the mount
+      // itself, and a queued window arriving after a toast that talks about it
+      // reads as the toast having lied.
+      this.flushPendingApps(this.desktop);
       this.flushQueuedNotifications(this.desktop);
       return;
     }
@@ -210,6 +238,13 @@ export class Shell {
    * first. The stamp is delivery time, not raise time: a toast that is handed
    * over late still deserves its full time on screen.
    */
+  /** Opens what was asked for while there was no desktop, once, in order. */
+  private flushPendingApps(desktop: Desktop): void {
+    for (const id of this.pendingApps.splice(0, this.pendingApps.length)) {
+      desktop.openApp(id);
+    }
+  }
+
   private flushQueuedNotifications(desktop: Desktop): void {
     const held = this.queued.splice(0, this.queued.length);
 

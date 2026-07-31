@@ -48,6 +48,11 @@ export const WALK_RUNS = {
     + 'it becomes overnight. A week can hold this branch or the next one.',
   checked: 'Wednesday, thirty seconds of checking first, and the post that '
     + 'never comes.',
+  deploy: 'The tester build with its Worker behind it: the link that lets '
+    + 'somebody in, the badge that is the whole of an account, a week that '
+    + 'follows the badge to a browser that has never seen it, the form for '
+    + 'saying the game is broken, and the update window on a workstation that '
+    + 'remembers an older build.',
 } as const;
 
 export type WalkRunId = keyof typeof WALK_RUNS;
@@ -60,6 +65,12 @@ export const WINDOW_ROUTES = [
   'day',
   /** Another app opened it, usually with somewhere to land. */
   'link',
+  /**
+   * The SHELL puts it up, before anybody has logged on. One window uses this
+   * and it is the update notes: a build that installed itself overnight has
+   * to say so without waiting to be asked, and "overnight" is boot.
+   */
+  'boot',
 ] as const;
 
 export type WindowRoute = (typeof WINDOW_ROUTES)[number];
@@ -70,6 +81,13 @@ export type WindowRoute = (typeof WINDOW_ROUTES)[number];
  */
 export const SHELL_SURFACES = [
   'boot',
+  /**
+   * The tester door. It is not a window and not a control - it is a URL
+   * somebody was sent - but it is unquestionably a thing a player uses, and a
+   * surface with no entry here would be the one part of the product nobody had
+   * written down.
+   */
+  'door',
   'login',
   'desktop',
   'taskbar',
@@ -116,6 +134,28 @@ export interface CoverageEntry {
  * `COVERAGE` below, which is the same array under the shared interface.
  */
 const ENTRIES = [
+  /* -- the door ----------------------------------------------------------- */
+  {
+    id: 'door.admission',
+    surface: 'door',
+    control: '/t/<token>',
+    does: 'Spends one admission off a tester link and lets the browser in, '
+      + 'for thirty days or until the link is revoked.',
+    run: 'deploy',
+    why: 'There is no door in front of a build served off a file server; this '
+      + 'one needs the Worker and a token somebody minted.',
+  },
+  {
+    id: 'door.refusal',
+    surface: 'door',
+    control: '/t/<token> (revoked, spent, expired or invented)',
+    does: 'Refuses with the same page and the same status for every reason, '
+      + 'so guessing at links teaches nobody anything.',
+    run: 'deploy',
+    why: 'The four refusals need four seeded token records, which only exist '
+      + 'against a Worker with a KV behind it.',
+  },
+
   /* -- boot and the login screen ------------------------------------------ */
   {
     id: 'boot.skip',
@@ -137,6 +177,37 @@ const ENTRIES = [
     control: 'login-restart',
     does: 'Restarts the workstation from the login screen, without a reload.',
     run: 'week',
+  },
+  {
+    id: 'login.issue-badge',
+    surface: 'login',
+    control: 'login-issue-badge',
+    does: 'Issues a badge number to this browser and says, once, that nobody '
+      + 'can look it up again.',
+    run: 'deploy',
+    why: 'A badge is minted by the Worker; there is nothing to mint one with '
+      + 'on a build served as files.',
+  },
+  {
+    id: 'login.badge',
+    surface: 'login',
+    control: 'login-badge, login-submit',
+    does: 'Logs on as a badge that was issued somewhere else, which is how a '
+      + 'week reaches a browser that has never seen it.',
+    run: 'deploy',
+    why: 'Proving a badge is a question for the building, and the building is '
+      + 'the Worker.',
+  },
+  {
+    id: 'login.badge-refused',
+    surface: 'login',
+    control: 'login-badge (a number nobody was issued)',
+    does: 'Says the badge is not one this building recognises and stays on '
+      + 'the log-on screen, rather than letting somebody into a week that is '
+      + 'not theirs.',
+    run: 'deploy',
+    why: 'Only a Worker can refuse a badge; without one the game logs on and '
+      + 'plays offline, which is the deliberate other behaviour.',
   },
 
   /* -- the desktop -------------------------------------------------------- */
@@ -244,6 +315,16 @@ const ENTRIES = [
     control: 'start-menu-load',
     does: 'Puts the saved world back, to the byte, under every open window.',
     run: 'week',
+  },
+  {
+    id: 'start-menu.badge-sync',
+    surface: 'start-menu',
+    control: 'start-menu-save (with a badge)',
+    does: 'Sends the same week up to the badge it was saved under, so a '
+      + 'browser that has never played it can be handed it.',
+    run: 'deploy',
+    why: 'There is nowhere to send a week without a Worker, and the outcome '
+      + 'is only visible from a second browser.',
   },
   {
     id: 'start-menu.load-refused',
@@ -1676,6 +1757,72 @@ const ENTRIES = [
     run: 'week',
   },
 
+  /* -- Update History ----------------------------------------------------- */
+  {
+    id: 'updates.window',
+    surface: 'updates',
+    control: 'window-updates',
+    does: 'What the workstation installed overnight and what the notes claim '
+      + 'it was for, readable again afterwards rather than once.',
+    window: { routes: ['start-menu', 'desktop-icon', 'boot'] },
+    run: 'week',
+  },
+  {
+    id: 'updates.report',
+    surface: 'updates',
+    control: 'updates-report',
+    does: 'Opens the form for telling the people who wrote the update that it '
+      + 'is the thing that broke.',
+    run: 'week',
+  },
+  {
+    id: 'updates.installed',
+    surface: 'updates',
+    control: 'updates-installed (first boot of a newer build)',
+    does: 'Puts the notes on screen unasked, once, on a workstation that '
+      + 'remembers an older version - and never on one that does not.',
+    run: 'deploy',
+    why: 'A workstation with no history has not been updated, so the window '
+      + 'needs a browser seeded with an older version and a reload.',
+  },
+
+  /* -- Report a Problem --------------------------------------------------- */
+  {
+    id: 'feedback.window',
+    surface: 'feedback',
+    control: 'window-feedback',
+    does: 'A ticket about the game rather than about the estate, which is the '
+      + 'only window in the building that is not in character.',
+    window: { routes: ['start-menu', 'desktop-icon', 'link'] },
+    run: 'week',
+  },
+  {
+    id: 'feedback.context',
+    surface: 'feedback',
+    control: 'feedback-context, feedback-notice',
+    does: 'Prints everything the report will carry besides the words, before '
+      + 'it is sent, and says not to type anything personal.',
+    run: 'week',
+  },
+  {
+    id: 'feedback.empty-refusal',
+    surface: 'feedback',
+    control: 'feedback-send (with nothing in it)',
+    does: 'Asks for a line saying what happened rather than filing a blank '
+      + 'report against somebody\'s badge.',
+    run: 'week',
+  },
+  {
+    id: 'feedback.send',
+    surface: 'feedback',
+    control: 'feedback-summary, feedback-details, feedback-contact, '
+      + 'feedback-send',
+    does: 'Files the report, attaching the badge only if the box was ticked.',
+    run: 'deploy',
+    why: 'A report has to go somewhere, and the somewhere is a Worker with a '
+      + 'tracker behind it.',
+  },
+
   /* -- Bubble Break ------------------------------------------------------- */
   {
     id: 'bubbles.window',
@@ -1810,6 +1957,8 @@ export const SCENES_WITHOUT_A_ROUTE: Readonly<Record<string, string>> = {
 export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   /* -- boot and login ----------------------------------------------------- */
   'login-password',
+  'login-badge',
+  'login-issue-badge',
   'login-submit',
   'login-restart',
 
@@ -1892,6 +2041,11 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'bubbles-reset',
   'bubbles-initials',
   'bubble-target',
+  'updates-report',
+  'feedback-summary',
+  'feedback-details',
+  'feedback-contact',
+  'feedback-send',
 
   /* -- the screens the day puts up ---------------------------------------- */
   'brief-start-shift',

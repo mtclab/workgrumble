@@ -379,6 +379,7 @@ export class Desktop {
       restartWeek: () => {
         this.restartWeek();
       },
+      report: (submission) => context.report(submission),
       actor: context.user.node,
     };
 
