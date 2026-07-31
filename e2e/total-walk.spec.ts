@@ -1323,11 +1323,19 @@ test('walks every function of a probation week that goes well', async ({
   });
 
   await step('cmd.cls', async () => {
-    await runCommand(page, 'cls');
+    // Typed rather than run through `runCommand`: that helper waits for the
+    // line it typed to be echoed back, and this is the one command whose whole
+    // job is to take the echo away with everything else. What is left is the
+    // banner the terminal opens with, and nothing before it.
+    const input = page.getByTestId('cmd-input');
+    await input.fill('cls');
+    await input.press('Enter');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Type "help" for the commands');
     await expect(page.getByTestId('cmd-output'))
       .not.toContainText('Reply from');
     await expect(page.getByTestId('cmd-output'))
-      .toContainText('Type "help" for the commands');
+      .not.toContainText('C:\\SUPPORT> cls');
   });
 
   /* -- the end of the day --------------------------------------------------- */
