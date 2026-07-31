@@ -1078,6 +1078,9 @@ export class Desktop {
     this.dayState.textContent = paused ? `${label} · paused` : label;
     this.dayState.dataset.state = state;
     this.dayState.dataset.lunch = String(lunch);
+    // A paused game is a frozen scene: the sway and the tremor hold still
+    // with the clock instead of wobbling over a world where no time passes.
+    this.element.dataset.paused = String(paused);
     this.dayState.title = state === 'day_end'
       ? 'Open the day scorecard'
       : 'Open the morning brief';

@@ -88,8 +88,13 @@ test('delivers engine notifications raised before the desktop existed', async ({
   // and raised his usual concern in the meantime - what matters here is that
   // the breach raised at 12:00 survived a login screen, not that it was the
   // only thing that happened.
+  // Since M3-13 every untriaged ticket shares the P3 clock, so the whole
+  // morning pile breaches together - at least one of them must have made it
+  // through the login screen, and the fan ticket is the one this test tracks.
   const toasts = page.getByTestId('toast');
-  await expect(toasts.filter({ hasText: 'SLA breached' })).toHaveCount(1);
+  await expect(
+    toasts.filter({ hasText: 'SLA breached' }).first(),
+  ).toBeVisible();
   await expect(page.getByTestId('notification-badge')).not.toHaveAttribute(
     'data-unread',
     '0',
@@ -100,8 +105,10 @@ test('delivers engine notifications raised before the desktop existed', async ({
   await expect(panel).toBeVisible();
   await expect(panel).toContainText('SLA breached');
   await expect(
-    page.getByTestId('notification-panel-item').filter({ hasText: 'SLA breached' }),
-  ).toHaveCount(1);
+    page.getByTestId('notification-panel-item')
+      .filter({ hasText: 'SLA breached' })
+      .first(),
+  ).toBeVisible();
 
   // Doing the work late does not un-breach the ticket. The queue keeps the
   // marker, the detail keeps it, and the day's tally keeps counting it -
@@ -110,7 +117,7 @@ test('delivers engine notifications raised before the desktop existed', async ({
   await openFromStartMenu(page, 'tickets');
   const row = page.getByTestId('ticket-row-fan-noise');
   await expect(row).toHaveAttribute('data-state', 'breached');
-  await expect(page.getByTestId('tickets-summary')).toContainText('1 breached');
+  await expect(page.getByTestId('tickets-summary')).toContainText("4 breached");
 
   // The queue redraws its countdowns while the clock moves; hold the day
   // still so the row is a stable click target under fake-timer speeds.
@@ -139,7 +146,7 @@ test('delivers engine notifications raised before the desktop existed', async ({
   await expect(page.getByTestId('ticket-detail-state')).toContainText(
     'Closed (breached)',
   );
-  await expect(page.getByTestId('tickets-summary')).toContainText('1 breached');
+  await expect(page.getByTestId('tickets-summary')).toContainText("4 breached");
 });
 
 test('reports engine outcomes and refusals instead of failing silently', async ({

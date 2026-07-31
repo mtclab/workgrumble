@@ -3032,3 +3032,11 @@ input {
     animation: none;
   }
 }
+
+/* A paused day is a frozen scene: every ambient animation holds its frame.
+   Lives below the base rules for the same cascade reason as reduced-motion. */
+.screen-desktop[data-paused="true"] .window-layer,
+.screen-desktop[data-paused="true"] .taskbar,
+.screen-desktop[data-paused="true"] .door-flash {
+  animation-play-state: paused;
+}

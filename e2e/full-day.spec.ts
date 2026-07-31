@@ -65,6 +65,10 @@ async function simState(page: Page): Promise<{
 
 test('plays a whole day and comes back to the same one', async ({ page }) => {
   await page.clock.install();
+  // The journey asserts fumble STATE (chip + data attribute), not the sway
+  // pixels - reduced motion keeps every assertion honest while making mid-day
+  // clicks stable under strict actionability checks.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await completeLogin(page, { brief: 'keep' });
 

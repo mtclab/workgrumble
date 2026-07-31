@@ -212,7 +212,7 @@ test('parks a ticket on the evidence in the customer stream', async ({
   await expect(page.getByTestId('triage-file')).toBeDisabled();
   await expect(page.getByTestId('triage-file')).toHaveAttribute(
     'title',
-    /hand back the time it has spent waiting/,
+    /time it has already spent waiting comes with it/,
   );
 });
 
@@ -332,6 +332,9 @@ test('shows the right corridor the moment a paused save is loaded', async ({
   page,
 }) => {
   await page.clock.install();
+  // Day one runs untouched, so day two opens with the player fumbling; this
+  // test is about the corridor, not the hands - shipped reduced-motion path.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await startShift(page);
   await hurry(page);
