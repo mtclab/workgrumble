@@ -40,6 +40,25 @@ export interface EngineApi {
   tier(): number;
 
   advance(ticks: number): void;
+  /**
+   * A stretch of time nobody is at the desk, converted in one go.
+   *
+   * A night is nine hundred minutes and the world does exactly one thing in
+   * each of them: every unresolved deadline moves out by a minute and the
+   * counter behind it goes up by one. Announced minute by minute, that is nine
+   * hundred tick fan-outs and tens of thousands of mutation events, and every
+   * open window repaints on all of them - which is the whole of the measured
+   * delay between clocking off and seeing tomorrow morning.
+   *
+   * So it is one core call, no intermediate fan-out, and one tick at the end.
+   * It is legal ONLY while the service clock is held, and that is the load-
+   * bearing half: with the clock held no deadline can be crossed, so no ticket
+   * can breach, resolve or spawn - the events a listener timestamps with
+   * `now()` cannot happen, and there is nothing whose honest minute could be
+   * lost. Anything else in the batch is a broken assumption rather than a
+   * quiet coalesce, and this throws rather than swallowing it.
+   */
+  advanceOffHours(ticks: number): void;
   now(): number;
   /**
    * Whether the ticks going past are ticks a service level counts. It is world

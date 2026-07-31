@@ -289,6 +289,55 @@ export class WasmEngine implements EngineApi {
     }
   }
 
+  /**
+   * The night, in one call.
+   *
+   * See `EngineApi.advanceOffHours` for why this is safe and why it is not a
+   * general-purpose batch: the held service clock is what guarantees the only
+   * mutations in the batch are the deadline-and-counter pairs the tick handler
+   * writes, and those are the ones nobody stamps a time onto. Every other
+   * event carries a minute that would be reported as this one, so finding one
+   * here is a broken assumption and is thrown rather than coalesced away.
+   */
+  public advanceOffHours(ticks: number): void {
+    requireSafeInteger(ticks, 'Clock advance', 0, MAX_ADVANCE_TICKS);
+
+    if (ticks === 0) {
+      return;
+    }
+
+    if (this.slaRunning()) {
+      throw new Error(
+        'Off-hours advance was asked for while the service clock is running. '
+        + 'Those are minutes somebody is being paid for, and they are lived '
+        + 'one at a time.',
+      );
+    }
+
+    const before = this.core.now();
+    const answer = parseAnswer(this.core.advance(ticks));
+
+    if (!answer.ok) {
+      throw new Error(answer.reason ?? 'The engine refused without saying why.');
+    }
+
+    const unexpected = (answer.events ?? []).filter(
+      (event) => !isOffHoursCounterEvent(event),
+    );
+
+    if (unexpected.length > 0) {
+      throw new Error(
+        `${String(unexpected.length)} event(s) happened during an off-hours `
+        + 'advance. Coalescing them would report every one of them as having '
+        + 'happened at the end of the night.',
+      );
+    }
+
+    if (this.core.now() !== before) {
+      this.fanOut.tick(this.core.now());
+    }
+  }
+
   public now(): number {
     return this.core.now();
   }
@@ -428,6 +477,26 @@ export class WasmEngine implements EngineApi {
       ),
     });
   }
+}
+
+/**
+ * The three fields a held clock moves, and nothing else.
+ *
+ * They are named here rather than imported from the world because they are the
+ * ENGINE's: the tick handler in `world.rs` writes exactly these, and the point
+ * of this list is to notice the day one of them stops being the only thing an
+ * off-hours minute does.
+ */
+const OFF_HOURS_FIELDS: ReadonlySet<string> = new Set([
+  'sla_deadline',
+  'off_hours_ticks',
+  'held_ticks',
+]);
+
+function isOffHoursCounterEvent(event: Readonly<EngineEvent>): boolean {
+  return event.type === 'graph:mutated'
+    && event.mutation.type === 'field:set'
+    && OFF_HOURS_FIELDS.has(event.mutation.field);
 }
 
 function freezeNode(node: ReadOnlyGraphNode): ReadOnlyGraphNode {

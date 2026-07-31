@@ -259,6 +259,14 @@ export type PredData =
   | { pred: 'field_is_bool'; node: NodeRefData; field: string }
   | { pred: 'field_at_least'; node: NodeRefData; field: string; value: number }
   | { pred: 'field_at_most'; node: NodeRefData; field: string; value: number }
+  /**
+   * A timestamp that is still recent: the field is a number and no more than
+   * `ticks` have gone by since it was written. The window is the world's - the
+   * engine has no opinion about what "today" means - but the clock is the
+   * engine's, so a rule about the AGE of a stamp has to live here rather than
+   * in whichever caller happened to think of it.
+   */
+  | { pred: 'field_within'; node: NodeRefData; field: string; ticks: number }
   | { pred: 'param_absent'; param: string }
   | { pred: 'param_string_missing'; param: string }
   | { pred: 'param_blank'; param: string }

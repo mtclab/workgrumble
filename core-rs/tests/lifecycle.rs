@@ -240,6 +240,29 @@ fn applies_every_setup_mutation_through_the_graph() {
     assert_eq!(members, vec!["group:new"]);
 }
 
+/// Construction says what the world IS, not what to do to it.
+///
+/// A ticket whose setup takes an edge away is describing a fault: this account
+/// is not in that group. It has to describe it just as truthfully when the
+/// player got there first - otherwise a summoned ticket throws as it spawns,
+/// in front of somebody, because they tidied a group by hand an hour earlier.
+#[test]
+fn setup_that_removes_an_edge_describes_a_world_rather_than_a_diff() {
+    let mut world = harness();
+    let mut definition = service_ticket("ticket:no-such-edge", 4, "wedged");
+    definition["setup"] = json!([
+        { "op": "setField", "id": "service:spooler", "field": "status", "value": "wedged" },
+        { "op": "removeEdge", "edge": { "from": "person:reporter", "to": "group:absent", "kind": "member_of" } },
+    ]);
+
+    world.spawn_ticket(&definition).expect("spawn");
+
+    assert_eq!(state(&world, "ticket:no-such-edge"), "open");
+    assert!(!world
+        .graph
+        .has_edge("person:reporter", "group:absent", "member_of"));
+}
+
 #[test]
 fn refuses_a_ticket_that_would_collide_or_orphan_itself() {
     let mut world = harness();

@@ -590,6 +590,19 @@ pub enum Pred {
         field: String,
         value: f64,
     },
+    /// A timestamp field that is still recent: the field is a number and no
+    /// more than `ticks` have gone by since it was written.
+    ///
+    /// The engine has no opinion about what "recent" means - the world names
+    /// the window - but it is the only thing that knows the clock, so a rule
+    /// about the AGE of a stamp has to be a predicate rather than a comparison
+    /// somebody does in a caller. A check nobody does in the engine is a check
+    /// the second caller walks straight past.
+    FieldWithin {
+        node: NodeRef,
+        field: String,
+        ticks: i64,
+    },
     ParamAbsent {
         param: String,
     },
@@ -787,6 +800,25 @@ impl Pred {
                 field: field()?,
                 value: number()?,
             }),
+            "field_within" => {
+                let ticks = object
+                    .get("ticks")
+                    .and_then(Json::as_i64)
+                    .ok_or_else(|| EngineError::new("field_within needs a whole \"ticks\"."))?;
+
+                // A window of nothing is a stamp that is never recent, which
+                // is a definition bug rather than a rule: the place to say so
+                // is registration, not the first guard that reads it.
+                if ticks <= 0 {
+                    return refuse!("field_within needs a positive \"ticks\".");
+                }
+
+                Ok(Self::FieldWithin {
+                    node: node()?,
+                    field: field()?,
+                    ticks,
+                })
+            }
             "param_absent" => Ok(Self::ParamAbsent { param: param()? }),
             "param_string_missing" => Ok(Self::ParamStringMissing { param: param()? }),
             "param_blank" => Ok(Self::ParamBlank { param: param()? }),
@@ -1279,6 +1311,13 @@ pub fn evaluate_pred(context: &mut EvalContext<'_>, predicate: &Pred) -> bool {
             .field(node, field)
             .and_then(FieldValue::as_f64)
             .is_some_and(|actual| actual <= *value),
+        // A stamp from the future is "recent" rather than an error: nothing in
+        // this engine can write one, and a rule that refused on it would be a
+        // rule about a state the clock cannot reach.
+        Pred::FieldWithin { node, field, ticks } => context
+            .field(node, field)
+            .and_then(FieldValue::as_f64)
+            .is_some_and(|stamped| context.now as f64 - stamped <= *ticks as f64),
         Pred::ParamAbsent { param } => context.param(param).is_none(),
         Pred::ParamStringMissing { param } => context
             .param(param)
@@ -1590,6 +1629,68 @@ mod tests {
         assert!(Pred::parse(&json!({ "pred": "tick_of_day_at_most", "value": 1 })).is_err());
         assert!(Pred::parse(&json!({
             "pred": "tick_of_day_at_most", "day_ticks": 1.5, "value": 1,
+        }))
+        .is_err());
+    }
+
+    /// Whether a stamp is still recent, which is the only question about the
+    /// clock a guard could not previously ask.
+    ///
+    /// It exists because "somebody checked who they were TODAY" is a rule, and
+    /// a rule the engine cannot state is a rule only the one wired-up caller
+    /// obeys. A verification from Monday satisfying an enrolment on Wednesday
+    /// is the exact shape of that bug.
+    #[test]
+    fn a_guard_can_ask_how_old_a_stamp_is() {
+        let mut graph = fixture();
+        graph
+            .add_node_json(&json!({
+                "id": "account:priya",
+                "kind": "account",
+                "fields": { "username": "pnand" },
+            }))
+            .expect("account");
+
+        let params = Params::new();
+        let predicate = Pred::parse(&json!({
+            "pred": "field_within",
+            "node": { "id": "account:priya" },
+            "field": "identity_verified_at",
+            "ticks": 480,
+        }))
+        .expect("valid predicate");
+        let holds = |graph: &EntityGraph, now: i64| -> bool {
+            let mut evaluation = EvalContext {
+                now,
+                ..context(graph, &params, None)
+            };
+            evaluate_pred(&mut evaluation, &predicate)
+        };
+
+        // Nothing stamped is nothing recent, which is not the same claim as
+        // "stamped a long time ago" and must not read as one.
+        assert!(!holds(&graph, 1_000));
+
+        graph
+            .set_field(
+                "account:priya",
+                "identity_verified_at",
+                FieldValue::Num(1_000.0),
+            )
+            .expect("stamp");
+
+        assert!(holds(&graph, 1_000));
+        assert!(holds(&graph, 1_480));
+        assert!(!holds(&graph, 1_481));
+        // Two days later is emphatically not today.
+        assert!(!holds(&graph, 1_000 + 2 * 1_440));
+
+        assert!(Pred::parse(&json!({
+            "pred": "field_within", "node": { "ref": "target" }, "field": "x", "ticks": 0,
+        }))
+        .is_err());
+        assert!(Pred::parse(&json!({
+            "pred": "field_within", "node": { "ref": "target" }, "field": "x",
         }))
         .is_err());
     }

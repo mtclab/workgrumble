@@ -267,7 +267,22 @@ impl World {
                 self.set_field(id, field, value.clone())
             }
             SetupMutation::AddEdge(edge) => self.add_edge(edge.clone()),
-            SetupMutation::RemoveEdge(edge) => self.remove_edge(edge.clone()),
+            // Construction says what the world IS, not what to do to it. A
+            // ticket whose setup takes an edge away is describing a fault -
+            // "this account is not in that group" - and it has to describe it
+            // just as truthfully when a player got there first. Refusing left
+            // a summoned ticket that threw as it spawned, in front of a player,
+            // because they had already tidied the group by hand.
+            //
+            // The op language's own `remove_edge` stays strict: an ACTION that
+            // takes away an edge nobody had is a refusal somebody should read.
+            SetupMutation::RemoveEdge(edge) => {
+                if self.graph.has_edge(&edge.from, &edge.to, &edge.kind) {
+                    self.remove_edge(edge.clone())
+                } else {
+                    Ok(())
+                }
+            }
         }
     }
 
