@@ -107,11 +107,13 @@ test('offers both launch routes for both apps and closes cleanly', async ({
   await page.getByTestId('close-bubbles').click();
   await expect(page.getByTestId('window-bubbles')).toHaveCount(0);
 
-  // Both apps are reachable again after being closed - no dead end.
-  await openFromStartMenu(page, 'about');
-  await expect(page.getByTestId('about-app')).toBeVisible();
+  // Both apps are reachable again after being closed - no dead end. Icon
+  // route first: the reopened About window's cascade slot sits over the
+  // wrapped icon column, and an icon under a window is not a dead end.
   await openFromDesktopIcon(page, 'bubbles');
   await expect(page.getByTestId('bubbles-app')).toBeVisible();
+  await openFromStartMenu(page, 'about');
+  await expect(page.getByTestId('about-app')).toBeVisible();
 });
 
 declare global {

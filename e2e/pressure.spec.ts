@@ -278,9 +278,16 @@ test('bounces a thin handoff and passes a complete one', async ({ page }) => {
   // Second line get round to it, and it lands back on the desk with a note,
   // a toast and a reputation attached.
   await page.clock.runFor(realMs(25));
+  // The toast stack is capped and a busy morning displaces quickly - the
+  // notification centre is the durable record of the bounce.
+  await page.getByTestId('notification-tray').click();
   await expect(
-    page.getByTestId('toast').filter({ hasText: 'Returned by second line' }),
-  ).toHaveCount(1);
+    page
+      .getByTestId('notification-panel-item')
+      .filter({ hasText: 'Returned by second line' })
+      .first(),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect(page.getByTestId('ticket-worknotes'))
     .toContainText('Returned by second line');
 

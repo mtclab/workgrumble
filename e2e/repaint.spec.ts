@@ -124,8 +124,10 @@ test('keeps the directory, event and remote rows across a world change', async (
   await mark(account, 'directory');
 
   await openFromStartMenu(page, 'events');
-  await page.getByTestId('events-machine-print').click();
-  const machine = page.getByTestId('events-machine-print');
+  // Gary's machine is the one with a Monday log (his lockout landed there);
+  // the print server's Monday is honestly empty and has no rows to keep.
+  await page.getByTestId('events-machine-gary').click();
+  const machine = page.getByTestId('events-machine-gary');
   await mark(machine, 'events');
   const firstEvent = page.getByTestId('events-row-0');
   await mark(firstEvent, 'event-row');
