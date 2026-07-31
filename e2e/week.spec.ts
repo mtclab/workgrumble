@@ -1,10 +1,13 @@
 import { expect, type Page, test } from '@playwright/test';
 
 import {
+  beginShift,
+  clockOffFor,
   completeLogin,
   openFromStartMenu,
   runCommand,
-  runSimMinutes,
+  runToDayEnd,
+  workUntilMinute,
 } from './helpers';
 
 /**
@@ -17,67 +20,11 @@ import {
  * what has to survive being played.
  */
 
-/** Starts the shift from a morning brief that is on screen. */
-async function beginShift(page: Page): Promise<void> {
-  await page.getByTestId('brief-start-shift').click();
-  // At x4 a few sim-minutes pass between the click and the read.
-  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
-  await page.getByTestId('close-brief').click();
-}
-
-/**
- * Runs the clock until the day is actually over.
- *
- * Bounded stepping rather than one fixed eight-hour run, and read off the
- * badge's ATTRIBUTE rather than its text. Both halves matter now: a journey
- * that has done a morning's work has already spent some of the day, so "run
- * exactly a shift's worth" lands somewhere that depends on how many buttons
- * were pressed, and the day-state badge is the one control on the taskbar whose
- * label is styled per state - an attribute is what it MEANS, and text is only
- * what it happens to say.
- */
-async function runToDayEnd(page: Page): Promise<void> {
-  const badge = page.getByTestId('day-state');
-
-  for (let step = 0; step < 20; step += 1) {
-    if (await badge.getAttribute('data-state') === 'day_end') {
-      break;
-    }
-
-    await runSimMinutes(page, 60);
-  }
-
-  await expect(badge).toHaveAttribute('data-state', 'day_end');
-}
-
-/** Runs whatever is left of the day out and clocks off into the next one. */
-async function clockOffFor(page: Page, day: number): Promise<void> {
-  await runToDayEnd(page);
-  await page.getByTestId('scorecard-clock-off').click();
-  await expect(page.getByTestId('sim-clock-day'))
-    .toHaveText(`Day ${String(day + 1)}`);
-  await expect(page.getByTestId('window-brief')).toBeVisible();
-}
-
 /** Every day between here and Friday, worked or not, and clocked off. */
 async function walkToFriday(page: Page, from: number): Promise<void> {
   for (let day = from; day < 5; day += 1) {
     await clockOffFor(page, day);
     await beginShift(page);
-  }
-}
-
-/**
- * Runs the clock to a minute of the day that is on screen, counting from 08:00
- * like everything else in the schedule, and never backwards.
- */
-async function workUntilMinute(page: Page, tickOfDay: number): Promise<void> {
-  const now = await page.getByTestId('sim-clock-time').textContent() ?? '09:00';
-  const [hours, minutes] = now.split(':').map(Number);
-  const at = (hours ?? 9) * 60 + (minutes ?? 0) - 8 * 60;
-
-  if (tickOfDay > at) {
-    await runSimMinutes(page, tickOfDay - at);
   }
 }
 
