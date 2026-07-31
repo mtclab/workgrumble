@@ -582,7 +582,7 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('kb-reference')).toHaveText('kb/print-spooler');
     await expect(page.getByTestId('kb-issue')).toContainText('haunted');
     await expect(page.getByTestId('kb-resolution'))
-      .toContainText('Empty the queue FIRST');
+      .toContainText('STOP THE SPOOLER, then empty the queue');
     await expect(page.getByTestId('kb-state')).toHaveText('Published');
   });
 

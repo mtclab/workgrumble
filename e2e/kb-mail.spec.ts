@@ -24,7 +24,7 @@ test('opens the KB at the article the ticket names', async ({ page }) => {
   await expect(page.getByTestId('kb-issue')).toContainText('haunted');
   await expect(page.getByTestId('kb-environment')).toContainText('PRINT-01');
   await expect(page.getByTestId('kb-resolution')).toContainText(
-    'Empty the queue FIRST',
+    'STOP THE SPOOLER, then empty the queue',
   );
   // The learner path: it says WHY the queue goes first, and in which order.
   await expect(page.getByTestId('kb-cause')).toContainText(

@@ -180,14 +180,20 @@ test('announces a breach that happens while the player is working', async ({
   // Four hours of shift, worked by nobody.
   await page.clock.runFor(FAN_BREACH_MS);
 
-  const toasts = page.getByTestId('toast');
-  await expect(
-    toasts.filter({ hasText: 'SLA breached' }).first(),
-  ).toBeVisible();
+  // Toasts expire on ticks and this run keeps going after the deadline, so
+  // the durable half is what proves the announcement: the badge counted it
+  // and the centre still holds it.
   await expect(page.getByTestId('notification-badge')).not.toHaveAttribute(
     'data-unread',
     '0',
   );
+  await page.getByTestId('notification-tray').click();
+  await expect(
+    page.getByTestId('notification-panel-item')
+      .filter({ hasText: 'SLA breached' })
+      .first(),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
 
   await page.getByTestId('notification-tray').click();
   const panel = page.getByTestId('notification-panel');
