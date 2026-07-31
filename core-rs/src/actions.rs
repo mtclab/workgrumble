@@ -50,7 +50,7 @@ pub struct LogCheckpoint {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CheckpointBaseline {
     pub rng_state: u32,
-    /// `{ tick, paused, speed }`, exactly as `serialize` writes a clock.
+    /// `{ tick, sla_running }`, exactly as `serialize` writes a clock.
     pub clock: Json,
     /// `{ nodes, edges }`, exactly as `serialize` writes a graph.
     pub graph: Json,

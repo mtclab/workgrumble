@@ -648,7 +648,7 @@ fn refuses_a_save_missing_any_part_of_itself() {
         );
     }
 
-    for key in ["tick", "speed", "paused"] {
+    for key in ["tick", "sla_running"] {
         let mut broken = saved.clone();
         broken["clock"]
             .as_object_mut()
@@ -687,15 +687,25 @@ fn refuses_a_save_missing_any_part_of_itself() {
         );
     }
 
-    // A paused flag that is not a boolean used to restore as "running".
+    // A service-clock flag that is not a boolean used to restore as "running",
+    // which is a night's worth of SLA eaten by a load.
     let mut wrong = saved.clone();
-    wrong["clock"]["paused"] = json!("yes");
+    wrong["clock"]["sla_running"] = json!("yes");
     expect_refusal(
         &mut engine,
         Entry::Restore,
         &wrong.to_string(),
-        "restore with a non-boolean paused flag",
+        "restore with a non-boolean sla_running flag",
     );
+
+    // And the two the shell owns are not part of a save at all: a file that
+    // still carries them is a file from a build that thought the engine knew
+    // whether the player had paused it.
+    let mut stale = saved.clone();
+    stale["clock"]["paused"] = json!(false);
+    stale["clock"]["speed"] = json!(2.0);
+    let answer = parse(&engine.restore(&stale.to_string()));
+    assert_eq!(answer["ok"], json!(true), "a save may carry spare keys");
 }
 
 /// A ticket record and its node are two halves of one claim. A save where they

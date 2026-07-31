@@ -11,6 +11,16 @@ beforeAll(() => {
   loadEngineForTests();
 });
 
+/**
+ * The engine contract version, written down a second time on purpose.
+ *
+ * The first is `core-rs/Cargo.toml`. A save is stamped with this and read back
+ * ONLY under this, so changing it invalidates every file already written -
+ * which is the right answer when the save shape changes, and must never be
+ * something that happens without somebody deciding it.
+ */
+const ENGINE_VERSION = '0.4.0';
+
 /** What the wasm module actually exports, as wasm-bindgen declares it. */
 function engineSurface(): string {
   return readFileSync(
@@ -382,5 +392,37 @@ describe('WasmEngine', () => {
     }).toThrow();
     expect(events).toEqual([]);
     expect(engine.graph.getField('account:ada', 'locked')).toBe(true);
+  });
+
+  /**
+   * The version a save is stamped with, pinned.
+   *
+   * The engine refuses any save that is not stamped with exactly this string,
+   * so the string is a contract with every file already on a player's disk:
+   * changing it invalidates all of them. That is the right answer when the
+   * shape changes - it did here, when the clock stopped carrying whether the
+   * game was paused and how fast it was being watched - and it must never be
+   * something that happens by accident, so it is written down twice and this
+   * is the second place.
+   */
+  it('stamps a save with the engine version, and reads back only that', () => {
+    const engine = seeded();
+    const saved = JSON.parse(engine.serialize()) as Record<string, unknown>;
+
+    expect(saved.version).toBe(ENGINE_VERSION);
+    // The clock is the tick and the service-hours flag. Whether the player had
+    // paused, and how fast, are the shell's - and a save that carried them was
+    // a save claiming the simulation knew.
+    expect(saved.clock).toEqual({ tick: 0, sla_running: true });
+
+    for (const version of ['0.3.0', '0.4.0-rc', '', '1.0.0']) {
+      if (version === ENGINE_VERSION) {
+        continue;
+      }
+
+      expect(() => {
+        engine.restore(JSON.stringify({ ...saved, version }));
+      }).toThrow(version.length === 0 ? /version/ : new RegExp(version));
+    }
   });
 });

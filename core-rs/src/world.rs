@@ -169,8 +169,6 @@ impl World {
             rng_state: self.rng.state(),
             clock: json!({
                 "tick": self.clock.now(),
-                "paused": self.clock.is_paused(),
-                "speed": self.clock.speed(),
                 // Part of the clock, so part of the baseline: a log replayed
                 // from a checkpoint taken overnight has to start with the same
                 // answer to "is anybody at the desk" as the world it replaces.

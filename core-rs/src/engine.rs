@@ -509,15 +509,6 @@ impl Engine {
             .ok_or_else(|| {
                 EngineError::new("Saved clock needs a tick inside the safe integer range.")
             })?;
-        let speed = clock
-            .get("speed")
-            .and_then(Json::as_f64)
-            .filter(|speed| speed.is_finite() && *speed > 0.0)
-            .ok_or_else(|| EngineError::new("Saved clock needs a positive speed."))?;
-        let paused = clock
-            .get("paused")
-            .and_then(Json::as_bool)
-            .ok_or_else(|| EngineError::new("Saved clock needs a boolean paused flag."))?;
         // Required rather than defaulted, for the reason every other flag in a
         // save is: a missing one silently reading "true" is a night's worth of
         // SLA eaten by a load, on a ticket the player parked before going home.
@@ -604,7 +595,7 @@ impl Engine {
         world.tickets.restore(tickets)?;
         check_ticket_coherence(&world)?;
         world.rng = Rng::from_parts(seed, rng_state);
-        world.clock = SimClock::from_parts(tick, paused, speed, sla_running);
+        world.clock = SimClock::from_parts(tick, sla_running);
         world.drain_events();
 
         // The world the shell is looking at has just been replaced wholesale.
