@@ -11,7 +11,11 @@ One CF Worker serves everything: the static bundle (assets binding) plus a small
 
 ## 2. Door: tester tokens
 
-- KV `TOKENS/<token>` -> `{ label, uses_max: number|null, uses_count, expires_at: number|null, revoked: boolean }`. `uses_max: null` = a shared link; a number = N admissions; revocation is a field, checked every request.
+- KV, **two keys with split ownership** (amended 2026-07-31 after a live defect: a single record let the door's read-modify-write restore a `revoked` flag it had read before the revocation):
+  - `<token>` -> `{ label, uses_max: number|null, expires_at: number|null, revoked: boolean }` - the POLICY. Written by `scripts/tokens.mjs` and by nothing else.
+  - `uses/<token>` -> the count. Written by the door and by nothing else. The slash is load-bearing: a token id cannot contain one, so the two can never be confused.
+  - `uses_max: null` = a shared link; a number = N admissions. Revocation is checked on EVERY request, so a pass issued moments before a revoke dies on that browser's next request.
+  - Known and accepted: two admissions in the same instant can both spend the same count, so a counted link may leak one extra admission. KV has no compare-and-swap; the policy cannot be lost either way, which is the property that matters.
 - `GET /t/<token>` validates, increments `uses_count`, sets a signed HttpOnly session cookie (30 days), redirects to `/`. Any other path without a valid cookie = a plain, non-jokey "this build is invite-only" page. No enumeration hints, generic failure text, per-IP rate limit on `/t/`.
 - Admin: a `scripts/tokens.mjs` CLI (mint/list/revoke via wrangler KV) - owner-run, never a web surface.
 
