@@ -12,6 +12,7 @@ import {
   osButton,
   setAvailability,
   textValue,
+  withFocusRestored,
 } from './ui';
 
 /**
@@ -190,8 +191,12 @@ export const BRIEF_APP: AppDef = {
         : 'The shift is under way. This is the brief you already read.';
       root.dataset.dayState = state;
 
-      renderMail();
-      renderQueue();
+      // The panels are rebuilt every minute, and the player may be standing on
+      // one of the buttons inside them when the clock moves.
+      withFocusRestored(root, () => {
+        renderMail();
+        renderQueue();
+      });
 
       const started = state !== 'morning_brief';
       setAvailability(

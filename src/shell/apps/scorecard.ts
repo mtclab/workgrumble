@@ -192,13 +192,13 @@ export const SCORECARD_APP: AppDef = {
     host.replaceChildren(root);
     render();
 
+    // Deliberately not on the tick. Nothing here is a clock: the ledger moves
+    // when the world does, and the day moves when the day does. Repainting a
+    // scorecard 900 times while the night goes past is work nobody sees.
     const unsubscribeDay = api.day.onChanged(() => {
       render();
     });
     const unsubscribeWorld = api.onWorldChange(() => {
-      render();
-    });
-    const unsubscribeTick = api.clock.onTick(() => {
       render();
     });
 
@@ -206,7 +206,6 @@ export const SCORECARD_APP: AppDef = {
       unmount: (): void => {
         unsubscribeDay();
         unsubscribeWorld();
-        unsubscribeTick();
         root.remove();
       },
     };
