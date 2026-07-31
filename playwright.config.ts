@@ -16,7 +16,11 @@ if (baseURL.length === 0) {
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
-  forbidOnly: Boolean(process.env.CI),
+  // Unconditional, and not `Boolean(process.env.CI)`. The documented gate for
+  // this repo is the LOCAL two-step one - there is no CI by policy - so a
+  // CI-only guard is a guard that never runs: a committed `test.only` would
+  // make `npm run gate:e2e` drive one test and exit green.
+  forbidOnly: true,
   reporter: 'list',
   use: {
     baseURL,

@@ -12,6 +12,13 @@ Status: design phase. POC scope = fully built helpdesk slice (probation week dem
 
 PRIVATE repo - no GitHub Actions workflows by policy; all gates run locally.
 
+This build is a static, LOCAL-SAVE-ONLY artifact: the world lives in this
+browser's `localStorage` and nowhere else, so clearing site data clears the
+week. The hosted side of the roadmap - a Worker, badge accounts, KV sync,
+token limits and in-game feedback (`docs/ROADMAP.md`, "Deploy milestone") - is
+a separate milestone and is deliberately absent from this repository. Nothing
+here talks to a server, and nothing here expects one.
+
 ## Milestone gate
 
 A milestone is green when BOTH halves of the gate are, and they are two
