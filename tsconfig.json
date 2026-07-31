@@ -20,6 +20,7 @@
   "include": [
     "e2e",
     "src",
+    "worker",
     "vite.config.ts",
     "playwright.config.ts"
   ]

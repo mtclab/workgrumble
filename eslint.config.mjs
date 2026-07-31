@@ -49,6 +49,20 @@ export default defineConfig(
     },
   },
   {
+    // The owner's token CLI runs on Node, not in a browser and not in a
+    // Worker. The three globals it uses are named rather than pulled in from
+    // the `globals` package, because one script does not earn a dependency.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        Date: 'readonly',
+        JSON: 'readonly',
+      },
+    },
+  },
+  {
     files: ['src/**/*.ts'],
     rules: {
       'no-restricted-properties': [

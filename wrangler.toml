@@ -1,0 +1,56 @@
+# Workgrumble: one Worker serving the game and its small API.
+#
+# The KV ids below are DELIBERATELY not real. The namespaces are the owner's to
+# create (`wrangler kv namespace create ...`), and a placeholder that happens to
+# be a valid-looking id is a placeholder that binds to somebody else's data; one
+# that cannot parse fails the deploy out loud, which is the failure worth
+# having. See the deploy notes for the exact commands.
+#
+# There are no GitHub Actions in this repo by policy, so there is no CI to
+# deploy this. It ships by hand from a clean `main` that matches origin.
+
+name = "workgrumble"
+main = "worker/index.ts"
+compatibility_date = "2026-07-30"
+
+# The estate does not expose workers.dev. The custom domain is the only way in,
+# and wrangler removes any domain that is not listed here - so this list is the
+# whole truth about where this Worker answers.
+workers_dev = false
+
+[[routes]]
+pattern = "workgrumble.mtclab.net"
+custom_domain = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+# The whole point of this deployment. Without it Cloudflare serves a matching
+# static file BEFORE the Worker runs, which would hand the entire game to
+# anybody who typed the address - the door would only ever have guarded the
+# handful of paths that are not files.
+run_worker_first = true
+
+[vars]
+FEEDBACK_REPO = "mtclab/workgrumble"
+FEEDBACK_API_BASE = "https://api.github.com"
+
+# Secrets, set with `wrangler secret put` and never written here:
+#   SIGNING_KEY        - HMAC secret behind the pass and badge cookies.
+#   FEEDBACK_GH_TOKEN  - least-privilege GitHub token, issues:write on
+#                        mtclab/workgrumble only.
+#
+# Staging only, and never set in production:
+#   FEEDBACK_DRY_RUN = "true"  - accept a report, check it, file nothing.
+
+[[kv_namespaces]]
+binding = "TOKENS"
+id = "SET-ME-tokens"
+
+[[kv_namespaces]]
+binding = "PLAYERS"
+id = "SET-ME-players"
+
+[[kv_namespaces]]
+binding = "SAVES"
+id = "SET-ME-saves"
