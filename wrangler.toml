@@ -45,12 +45,12 @@ FEEDBACK_API_BASE = "https://api.github.com"
 
 [[kv_namespaces]]
 binding = "TOKENS"
-id = "SET-ME-tokens"
+id = "b67e1629f9b041f9acb6ed07731144bd"
 
 [[kv_namespaces]]
 binding = "PLAYERS"
-id = "SET-ME-players"
+id = "767ddbdbf8a743ff8dbfb57c43f2f23e"
 
 [[kv_namespaces]]
 binding = "SAVES"
-id = "SET-ME-saves"
+id = "1b39cd204ee044278aa5f5940d346c8b"

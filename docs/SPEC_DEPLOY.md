@@ -6,7 +6,7 @@ Contract for the deploy milestone. Owner decisions recorded in `docs/ROADMAP.md`
 
 One CF Worker serves everything: the static bundle (assets binding) plus a small API. The game stays client-side; the Worker owns the door, the badges and the saves.
 
-- `wrangler.toml`: worker name `workgrumble`, custom domain `workgrumble.mtclab.net`, assets from `dist/`, KV namespaces `TOKENS`, `PLAYERS`, `SAVES`, secrets `FEEDBACK_GH_TOKEN` (least-priv, issues:write on mtclab/workgrumble only), `SIGNING_KEY`.
+- `wrangler.toml`: worker name `workgrumble`, custom domain `workgrumble.mtclab.net`, assets from `dist/`, KV namespaces `TOKENS`, `PLAYERS`, `SAVES`, secrets `FEEDBACK_GH_TOKEN`, `SIGNING_KEY`. **The feedback token already exists**: the owner extended vahti's feedback GH token to cover `mtclab/workgrumble` (2026-07-31), so the deploy step is `wrangler secret put FEEDBACK_GH_TOKEN` with that value - no new token is minted, and its issue-create scope on this repo is verified during the staging smoke before prod.
 - Local dev + staging: `wrangler dev` **on the staging box** (never this workspace), Playwright over LAN as usual.
 
 ## 2. Door: tester tokens
