@@ -20,6 +20,7 @@ import { formatSimTime } from './clock-format';
 import type { DriverSaveSeam, DriverState } from './day-driver';
 import { DayDriver, parseDriverState } from './day-driver';
 import { recordFrom, type RetrySlot } from './retry';
+import { BUILD_VERSION } from '../shared/build';
 import { FIELDS } from '../world/fields';
 
 /**
@@ -28,8 +29,13 @@ import { FIELDS } from '../world/fields';
  * 1: the M2 shell - chat, mail, kb and the day screens.
  * 2: M3's pressure layer adds two screen slices, the Browser's page and the
  *    scene the lead's last visit left behind.
+ * 3: the deploy milestone. A save can now exist in two places - this browser
+ *    and the badge it is synced to - so it has to carry a WALL CLOCK, because
+ *    "which of these two is newer" is a question the simulation tick cannot
+ *    answer: the tick restarts every week and goes backwards on a retry. And
+ *    the build that wrote it, so a file from a future version can say which.
  */
-export const SAVE_SCHEMA = 2;
+export const SAVE_SCHEMA = 3;
 
 export const SAVE_KEY = 'workgrumble/save';
 
@@ -37,6 +43,17 @@ export interface SaveFile {
   readonly schema: number;
   /** Simulation tick the save was taken at - what the slot advertises. */
   readonly savedAtTick: number;
+  /**
+   * Real milliseconds since the epoch, from the machine that wrote it.
+   *
+   * The one number in the file that is about the world outside the game, and
+   * it is here for exactly one job: deciding which of two copies of a badge's
+   * week is the later one. Clocks disagree between machines, which is why the
+   * rule is "newest wins AND the loser is kept" rather than "newest wins".
+   */
+  readonly savedAt: number;
+  /** Which build wrote it. Null for a file from before builds said. */
+  readonly version: string | null;
   /** How the slot reads in a menu: "Day 2, 12:35". */
   readonly label: string;
   /** The engine's own serialization, carried verbatim. */
@@ -105,8 +122,24 @@ function migrate(file: Record<string, unknown>): SaveOutcome<
     return refuse(PRE_RELEASE_SAVE_REASON);
   }
 
-  // The seam stays: schema 3 will be upgraded from 2 here, in order, and every
-  // file this build can read will keep loading.
+  // 2 -> 3. The seam was written for this and this is the first time it has
+  // been used, so it is worth saying what it is doing rather than what it is
+  // for. A schema-2 file has a complete world in it - nothing about the
+  // pressure layer changed - and is missing only the two facts that were added
+  // for a save that can live in two places at once.
+  //
+  // `savedAt: 0` is not a guess dressed as a fact. It means "older than
+  // anything with a real stamp on it", which is exactly right: a file written
+  // before this build existed cannot have been written after one that was, and
+  // a sync that treated an unknown time as NOW would let a stale local copy
+  // beat the badge's own.
+  if (schema < 3) {
+    return {
+      ok: true,
+      value: { ...file, schema: 3, savedAt: 0, version: null },
+    };
+  }
+
   return { ok: true, value: file };
 }
 
@@ -133,6 +166,10 @@ export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {
   const app = parseAppState(file.app);
   const driver = parseDriverState(file.driver);
 
+  const version = file.version === null || typeof file.version === 'string'
+    ? file.version
+    : undefined;
+
   if (
     typeof file.engine !== 'string'
     || file.engine.length === 0
@@ -140,6 +177,10 @@ export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {
     || typeof file.savedAtTick !== 'number'
     || !Number.isSafeInteger(file.savedAtTick)
     || file.savedAtTick < 0
+    || typeof file.savedAt !== 'number'
+    || !Number.isSafeInteger(file.savedAt)
+    || file.savedAt < 0
+    || version === undefined
     || app === null
     || driver === null
   ) {
@@ -152,6 +193,8 @@ export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {
     value: {
       schema: SAVE_SCHEMA,
       savedAtTick: file.savedAtTick,
+      savedAt: file.savedAt,
+      version,
       label: file.label,
       engine: file.engine,
       app,
@@ -187,17 +230,47 @@ export class SaveSlot {
   }
 
   public read(): SaveOutcome<SaveFile> {
-    let raw: string | null;
-
-    try {
-      raw = this.storage.getItem(this.key);
-    } catch {
-      return refuse('This window is not allowed to read saved games.');
-    }
+    const raw = this.readRaw();
 
     return raw === null
       ? refuse('There is no saved game to load.')
       : parseSaveFile(raw);
+  }
+
+  /**
+   * The file as text, unparsed.
+   *
+   * The cloud copy is this slot's bytes and nothing else - the Worker keeps
+   * the game's own file verbatim rather than a re-serialization of it, so what
+   * goes up and what comes down is what was written here. Anything that PARSES
+   * it (deciding which of two copies is newer, refusing one this build cannot
+   * read) does that on top; this is the seam that hands over the bytes.
+   */
+  public readRaw(): string | null {
+    try {
+      return this.storage.getItem(this.key);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * And back in, unparsed, for a file that came from the badge rather than
+   * from this session. It is checked before it gets here; writing it verbatim
+   * is what keeps the copy in the browser byte-identical to the copy on the
+   * badge, which is what makes "these two are the same save" a thing anybody
+   * can check rather than believe.
+   */
+  public writeRaw(text: string): SaveOutcome {
+    try {
+      this.storage.setItem(this.key, text);
+      return { ok: true, value: undefined };
+    } catch {
+      return refuse(
+        'The browser would not keep that save. Storage is full, or this '
+        + 'window is not allowed any.',
+      );
+    }
   }
 
   public exists(): boolean {
@@ -269,6 +342,16 @@ export interface SessionParts {
    * and those are exactly the two whose failures used to vanish.
    */
   onWrite?(outcome: SaveOutcome): void;
+  /**
+   * Real time, injected.
+   *
+   * The save is the one file in this product that has to know what the clock
+   * on the wall says, because a badge can hold a copy written on another
+   * machine and "which of these is newer" has no answer in simulation ticks.
+   * It comes in through the seam rather than being read here so that a test
+   * about two saves an hour apart is a test rather than a wait.
+   */
+  now?(): number;
 }
 
 /**
@@ -375,6 +458,8 @@ export function createShellSession(
       const outcome = slot.write({
         schema: SAVE_SCHEMA,
         savedAtTick: engine.now(),
+        savedAt: (parts.now ?? Date.now)(),
+        version: BUILD_VERSION,
         label: `${display.day}, ${display.time}`,
         engine: engine.serialize(),
         app: appState.snapshot(),

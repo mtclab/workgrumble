@@ -27,6 +27,7 @@ import {
   SaveSlot,
   type ShellSessionApi,
 } from './save';
+import { BUILD_VERSION } from '../shared/build';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -81,6 +82,8 @@ interface Session {
 function session(
   storage: MemoryStorage = new MemoryStorage(),
   carry: Readonly<WeekCarry> = FIRST_WEEK,
+  /** The wall clock the save stamps itself with, when a test cares. */
+  now?: () => number,
 ): Session {
   const { engine, seed } = createWorldSession(carry);
   const appState = new AppStateStore();
@@ -114,6 +117,7 @@ function session(
       restart: () => {
         restarts += 1;
       },
+      ...(now === undefined ? {} : { now }),
     }),
   };
 }
@@ -350,6 +354,89 @@ describe('the save file', () => {
     // which one it will not take, and takes the current one.
     expect(parseSaveFile(JSON.stringify({ ...file, schema: 0 })).ok).toBe(false);
     expect(OLDEST_READABLE_SCHEMA).toBeLessThanOrEqual(SAVE_SCHEMA);
+  });
+
+  /**
+   * The stamp the badge sync is decided on, and the migration that gives one
+   * to files written before there was anything to decide.
+   *
+   * Everything about the cloud copy hangs on `savedAt` being a real wall clock
+   * from the machine that wrote the file. The simulation tick cannot do this
+   * job and it is worth saying why in a test rather than only in a comment: it
+   * restarts at zero every Monday and goes BACKWARDS on a retry, so a week
+   * played to Thursday on one machine and restarted on another would hand the
+   * argument to whichever copy happened to be further into its day.
+   */
+  it('stamps a save with the wall clock and the build that wrote it', () => {
+    const at = 1_764_500_000_000;
+    const live = session(new MemoryStorage(), FIRST_WEEK, () => at);
+    workUntilMidday(live);
+    live.session.save();
+
+    const raw = live.storage.getItem('workgrumble/save') ?? '';
+    const file = parseSaveFile(raw);
+
+    expect(file.ok).toBe(true);
+    expect(file.ok && file.value.savedAt).toBe(at);
+    expect(file.ok && file.value.version).toBe(BUILD_VERSION);
+    // The two clocks are different clocks and neither stands in for the other.
+    expect(file.ok && file.value.savedAtTick).not.toBe(at);
+  });
+
+  it('refuses a save whose wall clock is not one', () => {
+    const live = session();
+    live.session.save();
+    const file = JSON.parse(live.storage.getItem('workgrumble/save') ?? '{}') as
+      Record<string, unknown>;
+
+    const damagedStamps: Record<string, unknown>[] = [
+      { ...file, savedAt: undefined },
+      { ...file, savedAt: -1 },
+      { ...file, savedAt: 'yesterday' },
+      { ...file, savedAt: 1.5 },
+      { ...file, version: 7 },
+    ];
+
+    for (const broken of damagedStamps) {
+      expect(parseSaveFile(JSON.stringify(broken)).ok, JSON.stringify(broken))
+        .toBe(false);
+    }
+  });
+
+  /**
+   * A schema-2 file has a complete, playable world in it and is missing only
+   * the two facts the sync added, so it is migrated rather than refused - and
+   * the stamp it is given is ZERO rather than "now".
+   *
+   * That is the whole assertion. A file written before this build existed
+   * cannot have been written after one that was, and a migration that filled
+   * in the current time would let a stale copy in this browser beat the badge's
+   * own - silently, once, at the worst possible moment.
+   */
+  it('brings a schema-2 save forward with a stamp of zero', () => {
+    const live = session();
+    workUntilMidday(live);
+    live.session.save();
+
+    const current = JSON.parse(live.storage.getItem('workgrumble/save') ?? '{}') as
+      Record<string, unknown>;
+    const older: Record<string, unknown> = { ...current, schema: 2 };
+    delete older.savedAt;
+    delete older.version;
+
+    const migrated = parseSaveFile(JSON.stringify(older));
+
+    expect(migrated.ok).toBe(true);
+    expect(migrated.ok && migrated.value.savedAt).toBe(0);
+    expect(migrated.ok && migrated.value.version).toBeNull();
+    // And it is still the same world: a migration that lost the day would be
+    // a refusal with extra steps.
+    expect(migrated.ok && migrated.value.savedAtTick).toBe(current.savedAtTick);
+
+    const fresh = session();
+    fresh.storage.setItem('workgrumble/save', JSON.stringify(older));
+    expect(fresh.session.load().ok).toBe(true);
+    expect(fresh.engine.snapshotHash()).toBe(live.engine.snapshotHash());
   });
 
   /**
