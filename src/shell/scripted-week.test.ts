@@ -73,6 +73,20 @@ function startWeek(): Week {
     onCaught: (appId, tick) => {
       timeline.push(`caught:${appId}@${String(tick)}`);
     },
+    // The week's own beats, in the minute they land: somebody messaging you
+    // instead of raising a ticket, a chain coming back, a maintenance window
+    // opening, and the bill for a shortcut arriving a day later.
+    onNotice: (title) => {
+      // The lead's footsteps are the DAY's beat and the day golden already
+      // pins them three times over; a week timeline with fifteen of them in it
+      // is a timeline nobody reads, which defeats the point of committing one.
+      if (title !== 'Footsteps') {
+        timeline.push(`notice:${title}@${String(engine.now())}`);
+      }
+    },
+    onDirectMessage: (speaker, tick) => {
+      timeline.push(`dm:${speaker}@${String(tick)}`);
+    },
     onReview: (outcome, tick) => {
       timeline.push(`review:${outcome}@${String(tick)}`);
     },
@@ -196,7 +210,13 @@ function workedWeek(world: Week, day: number): void {
     show(world, []);
   }
 
-  runTo(world, start + 330);
+  // Three sweeps rather than two. The week deals its heaviest arrivals in the
+  // late morning and its chains come back within the hour, so a shift with two
+  // passes in it is not competent play any more - it is somebody who went home
+  // at half two.
+  runTo(world, start + 240);
+  workTheQueue(world);
+  runTo(world, start + 400);
   workTheQueue(world);
 }
 
@@ -231,46 +251,62 @@ interface GoldenWeek {
  * by - and the diff is the review: which day closed what, what the week paid,
  * and whether Friday still went the way the meters said it should.
  *
- * Both hashes moved once in M4 lane B and nothing else did: the machines keep
- * event logs now and the accounts carry a lockout trail, both of which are
- * graph state. Every count, every meter, every minute on both timelines is
- * unchanged, which is what says the week itself did not move.
+ * They moved for M4 lane C, which put the roster the week was always shaped
+ * for into it: twenty-three tickets across five days instead of six, a chain
+ * that raises its own second half, a message from somebody who would rather
+ * not use the form, a maintenance window, and a cleaner with a trolley. Both
+ * hashes, every count and both timelines moved together, and the shape of the
+ * week - worked passes, idle is fired - did not.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: 'bd4139cd5b5569c1',
+  hash: '48d6402eb017de2b',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
-  // Monday brings four - the two that were waiting, the one that drips in
-  // mid-morning, and the one the lead raises by mentioning it. Tuesday drips
-  // one, Thursday inherits the office-wide fault, and the two blank days are
-  // days lane C has not filled yet. All of them close, none of them go red.
+  // The ramp, as arrivals: Monday two inherited, two dripped and the concern
+  // the lead raises by mentioning it. Tuesday inherits the overnight outage
+  // and the spooler, drips two more, and gains both a chain follow-up and the
+  // ticket Terry files when nobody does him a favour. Wednesday is a licence,
+  // an enrolment and a maintenance flood; Thursday is the arc, a relock and a
+  // certificate with two duplicates hanging off it; Friday is three and a
+  // conversation at three o'clock. Every one of them closes.
   days: [
+    [5, 5, 0],
+    [6, 6, 0],
     [4, 4, 0],
-    [1, 1, 0],
-    [0, 0, 0],
-    [1, 1, 0],
-    [0, 0, 0],
+    [5, 5, 0],
+    [3, 3, 0],
   ],
-  arrived: 6,
-  closed: 6,
+  arrived: 23,
+  closed: 23,
   breached: 0,
   stillOpen: 0,
-  /** Five days at the rate, six resolution bonuses, the deductions nobody
-   * agreed to, and the probation bonus for surviving Friday. */
-  earnedPence: 72_275,
+  /** Five days at the rate, twenty-three resolution bonuses, the deductions
+   * nobody agreed to, and the probation bonus for surviving Friday. */
+  earnedPence: 76_525,
   meters: {
-    // Six closed tickets carry the reputation up from fifty; one round of the
-    // corridor found the browser on the Wednesday, which cost six of it.
-    stress: 8,
+    // Twenty-three closed tickets carry the reputation from fifty to its
+    // ceiling well before Friday, which is what a week worked properly looks
+    // like - the review is survived rather than won, and this one is survived
+    // with room. One round of the corridor found the browser on the
+    // Wednesday, and the six points it cost were earned back inside the hour.
+    stress: 11,
     suspicion: 0,
-    reputation: 62,
+    reputation: 100,
     // Counted per day and cleared at every clock-off: Friday was clean.
     caught_events: 0,
-    farm_fund: 72_275,
+    farm_fund: 76_525,
     week_attempt: 1,
   },
+  // The week's own beats, in the minute they land. The lead's footsteps are
+  // left out on purpose - the day golden pins those - so what is left is the
+  // content: a chain coming back forty minutes after it was closed, somebody
+  // asking for a favour instead of filing, a maintenance window opening at
+  // nine on the Wednesday, and one browser found on a screen.
   timeline: [
+    'notice:They are back@1740',
+    'dm:person:terry@1810',
+    'notice:Maintenance window@2940',
     'caught:browser@3076',
     'review:passed@6180',
     'beer@6300',
@@ -280,38 +316,46 @@ const GOLDEN_WORKED: GoldenWeek = {
 
 /**
  * And the week nobody worked: a game of Bubble Break left up from Tuesday
- * morning, six deadlines missed, twelve conversations with the lead and a
- * reputation on the floor by Friday afternoon.
+ * morning, twenty-two deadlines missed, fourteen rounds of the corridor that
+ * all found the same window, and a reputation on the floor by Wednesday.
+ *
+ * Twenty-two rather than twenty-three, and the missing one is the point: the
+ * second half of the mailbox chain is raised by fixing the first half, and
+ * nobody fixed anything. The ticket Terry files when the favour is not done
+ * arrives regardless, because ignoring a message is not the same as saying no
+ * and the world does not pretend otherwise.
  */
 const GOLDEN_IDLE: GoldenWeek = {
-  hash: '3d7cedd31feea60b',
+  hash: '9a6cfda6bb41d4e7',
   tick: 6_300,
   outcome: 'fired',
   days: [
+    [5, 0, 5],
+    [5, 0, 5],
     [4, 0, 4],
-    [1, 0, 1],
-    [0, 0, 0],
-    [1, 0, 1],
-    [0, 0, 0],
+    [5, 0, 5],
+    [3, 0, 3],
   ],
-  arrived: 6,
+  arrived: 22,
   closed: 0,
-  breached: 6,
-  stillOpen: 6,
+  breached: 22,
+  stillOpen: 22,
   /** Still paid, right up until they stop paying you. */
-  earnedPence: 43_375,
+  earnedPence: 37_775,
   meters: {
     stress: 98,
     suspicion: 96,
     reputation: 0,
     caught_events: 3,
-    farm_fund: 43_375,
+    farm_fund: 37_775,
     week_attempt: 1,
   },
   timeline: [
     'caught:bubbles@1632',
     'caught:bubbles@1723',
+    'dm:person:terry@1810',
     'caught:bubbles@1839',
+    'notice:Maintenance window@2940',
     'caught:bubbles@3076',
     'caught:bubbles@3179',
     'caught:bubbles@3283',

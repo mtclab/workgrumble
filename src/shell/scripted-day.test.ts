@@ -451,13 +451,14 @@ const GOLDEN_DAY = {
   /**
    * The world at the end of it, in sixteen characters.
    *
-   * It moved once in M4 lane B, and only here: the machines now keep their own
-   * event logs, and an event log is graph state. Every other number on this
-   * screen - meters, watermarks, the pay, the minute the lead arrived on - is
-   * exactly what it was, which is the proof that what moved was the log and
-   * not the day.
+   * It has moved twice. In lane B the machines started keeping event logs, and
+   * an event log is graph state; in lane C the building gained eleven more
+   * people, the estate they sit at, and a Monday with five tickets on it
+   * instead of four. Both times every other number was read rather than
+   * assumed, and the one that moved with the hash - stress at five o'clock -
+   * moved for a reason written beside it.
    */
-  hash: '941ce0e7dfac1975',
+  hash: '3eb8015e1fd80024',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */
@@ -501,18 +502,21 @@ const GOLDEN_DAY = {
   } as Record<string, Record<string, number>>,
   /** Every number the pressure layer ended the day holding. */
   atSeventeen: {
-    // A queue of four that nobody closed, two cans, and two conversations
-    // with the lead. The browser is open at the end of the day, so two points
-    // of queue an interval are working against three of relief - stress comes
-    // down through the afternoon without reaching the floor.
-    stress: 49,
+    // A queue of FIVE that nobody closed, two cans, and two conversations
+    // with the lead. Monday's roster grew by one in lane C - the mouse that
+    // drips in after lunch - and one more ticket sitting in the queue all
+    // afternoon is worth forty-two points of stress by five o'clock, which is
+    // the queue rate doing exactly what it says it does.
+    stress: 91,
     suspicion: 100,
     reputation: 26,
     suspicion_events: 58,
     caught_events: 2,
     // Four deadlines missed and charged once each: the two tickets inherited
     // at eight, the one that arrived mid-morning, and the one the lead raised
-    // by mentioning it. Nothing was resolved, so there was no credit to pay.
+    // by mentioning it. The fifth - the mouse, dripped in at twenty to two -
+    // is still inside its four hours when the office closes and its clock
+    // stops with the shift. Nothing was resolved, so there was no credit.
     breaches_charged: 4,
     resolve_credit_paid: 0,
     consumable_spend: 240,
