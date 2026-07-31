@@ -54,7 +54,8 @@ test('closes the locked-account ticket through Active Dictionary', async ({
   await focusWindow(page, 'tickets');
   await expect(row).toHaveAttribute('data-state', 'resolved');
   await expect(page.getByTestId('ticket-detail-state')).toContainText('Closed');
-  await expect(page.getByTestId('ticket-detail-sla')).toHaveText('Closed');
+  await expect(page.getByTestId('ticket-detail-resolution'))
+    .toContainText('Closed');
 });
 
 test('closes the locked-account ticket through the terminal', async ({
@@ -329,10 +330,19 @@ test('offers escalation only where the ticket allows it', async ({ page }) => {
     /No workstation is signed out to this reporter/,
   );
 
-  // The hardware ticket is the one that earns a van.
+  // The hardware ticket is the one that earns a van - but second line wants
+  // a real handoff: something tried, something the user reported.
+  await openFromStartMenu(page, 'about');
+  await page.getByTestId('about-run-diagnostics').click();
+  await focusWindow(page, 'tickets');
   await page.getByTestId('ticket-row-fan-noise').click();
   await expect(escalate).toBeEnabled();
   await escalate.click();
+  await expect(page.getByTestId('handoff-tried-empty')).toHaveCount(0);
+  await page
+    .getByTestId('handoff-reported')
+    .fill('Fan screams like a biscuit tin full of hornets.');
+  await page.getByTestId('handoff-send').click();
   await expect(
     page.getByTestId('toast').filter({ hasText: 'Ticket resolved' }),
   ).toHaveCount(1);

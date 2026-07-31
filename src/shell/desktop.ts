@@ -967,7 +967,14 @@ export class Desktop {
       this.context.user.node,
       FIELDS.stress,
     );
-    const fumbling = typeof stress === 'number' && isFumbling(stress);
+    // Hands only go during the shift: once the clock stops, the sway stops -
+    // and the scorecard stays still enough to actually click.
+    const onShift = this.context.graph.getField(
+      this.context.user.node,
+      FIELDS.dayState,
+    ) === 'shift';
+    const fumbling = onShift && typeof stress === 'number'
+      && isFumbling(stress);
 
     this.element.dataset.fumbling = String(fumbling);
     this.fumbleChip.hidden = !fumbling;
