@@ -7,13 +7,14 @@ import {
   farmProgress,
   formatPence,
   type PaySlip,
+  ticketsArrivedOn,
 } from '../../world/day';
 import { FIELDS } from '../../world/fields';
 import { STARTING_REPUTATION } from '../../world/meters';
 import { cellLabel } from '../../world/priority';
 import { isReviewDay } from '../../world/week';
 import { ticketClocks } from '../../world/sla';
-import { misclassifiedTickets, ticketKey } from './tickets';
+import { type Misclassified, misclassifiedTickets, ticketKey } from './tickets';
 import type { AppDef, AppInstance, GameApi } from './types';
 import {
   definitionRow,
@@ -104,7 +105,15 @@ function spendLine(pence: number | null): string {
       + 'machine does not do invoices.';
 }
 
-/** Tickets whose response clock ran out before anybody said a word. */
+/**
+ * Tickets whose response clock ran out before anybody said a word - counted
+ * over the day being scored and no other.
+ *
+ * It used to be handed every ticket in the world, so one missed response on
+ * Monday was reported again on Tuesday's clean scorecard, and again on
+ * Wednesday's, for the rest of the week. A day's scorecard scores that day;
+ * the ledger beside it has always scoped its cohort the same way.
+ */
 function lateResponses(
   api: GameApi,
   nodes: readonly ReadOnlyGraphNode[],
@@ -112,6 +121,36 @@ function lateResponses(
   return nodes.filter(
     (node) => ticketClocks(node, api.clock.now()).response.breached,
   ).length;
+}
+
+/** What a day is answerable for, and the two counts scored over it. */
+export interface ScorecardCounts {
+  readonly cohort: readonly ReadOnlyGraphNode[];
+  readonly lateResponses: number;
+  readonly misclassified: readonly Misclassified[];
+}
+
+/**
+ * The day's cohort and everything counted over it, in one place.
+ *
+ * One function rather than three call sites, because the bug was that they
+ * disagreed: the ledger scoped itself to the tickets that arrived today and
+ * the other two were handed every ticket in the world, so one missed response
+ * on Monday was reported again on Tuesday's clean scorecard, and Wednesday's,
+ * and at the review. Any number this screen prints about "today" comes from
+ * here, so there is one answer to "which tickets is today".
+ */
+export function scorecardCounts(
+  api: Pick<GameApi, 'graph' | 'clock'>,
+  day: number,
+): ScorecardCounts {
+  const cohort = ticketsArrivedOn(api.graph.nodesOfKind('ticket'), day);
+
+  return {
+    cohort,
+    lateResponses: lateResponses(api as GameApi, cohort),
+    misclassified: misclassifiedTickets(api, cohort),
+  };
 }
 
 /**
@@ -156,14 +195,15 @@ export const SCORECARD_APP: AppDef = {
       api.day.clockOff();
     });
 
-    const renderLedger = (ledger: Readonly<DayLedger>): void => {
+    const renderLedger = (
+      ledger: Readonly<DayLedger>,
+      counts: Readonly<ScorecardCounts>,
+    ): void => {
       ledgerPanel.replaceChildren();
       const title = element('h3');
       title.textContent = 'The work';
       const list = element('dl', 'scorecard-rows');
       ledgerPanel.append(title, list);
-
-      const tickets = api.graph.nodesOfKind('ticket');
 
       definitionRow(list, 'Arrived today', 'scorecard-arrived')
         .textContent = String(ledger.arrived);
@@ -172,7 +212,7 @@ export const SCORECARD_APP: AppDef = {
       definitionRow(list, 'Resolution SLAs missed', 'scorecard-breaches')
         .textContent = String(ledger.breached);
       definitionRow(list, 'Response SLAs missed', 'scorecard-late-response')
-        .textContent = String(lateResponses(api, tickets));
+        .textContent = String(counts.lateResponses);
       definitionRow(list, 'Still open at 17:00', 'scorecard-open')
         .textContent = String(ledger.stillOpen);
       definitionRow(list, 'Stress carried', 'scorecard-stress')
@@ -195,7 +235,7 @@ export const SCORECARD_APP: AppDef = {
           ? 'Not measured'
           : `${String(reputation)} · ${reputationLine(reputation)}`;
 
-      renderTriage(tickets);
+      renderTriage(counts.misclassified);
     };
 
     /**
@@ -203,8 +243,7 @@ export const SCORECARD_APP: AppDef = {
      * until a review does. A wrong cell is not a wrong number - it is a wrong
      * reading of the estate, so both cells are printed side by side.
      */
-    const renderTriage = (nodes: readonly ReadOnlyGraphNode[]): void => {
-      const wrong = misclassifiedTickets(api, nodes);
+    const renderTriage = (wrong: readonly Misclassified[]): void => {
       const panel = element('div', 'scorecard-triage', 'scorecard-triage');
       const title = element('h4');
       title.textContent = 'Triage';
@@ -312,7 +351,9 @@ export const SCORECARD_APP: AppDef = {
         : 'The scorecard is written at 17:00. Until then this is a preview, '
           + 'and it will change under you.';
 
-      renderLedger(ledger);
+      // One cohort, read once, for every number on this panel: the tickets
+      // that arrived on the day being scored.
+      renderLedger(ledger, scorecardCounts(api, day));
       renderPay(slip);
       renderFarm(scored ? banked + slip.net : banked);
 

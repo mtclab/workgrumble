@@ -699,9 +699,14 @@ export const TICKETS_APP: AppDef = {
         'ticket-parent-standing',
         'ticket-parent-standing',
       );
+      const closed = ticketState(node) === 'resolved';
       standing.textContent = parentId === null
         ? children.length === 0
-          ? 'Nothing is attached to this one.'
+          ? closed
+            ? 'Nothing is attached to this one. Anything attached now closes '
+              + 'straight away, with the same words to its reporter - which is '
+              + 'what the late ones are.'
+            : 'Nothing is attached to this one.'
           : `${String(children.length)} ticket(s) attached. They close when `
             + 'this one does, with the same words to their reporters.'
         : `Attached to ${ticketTitle(parentId)} (${parentId}). It closes when `
@@ -718,16 +723,21 @@ export const TICKETS_APP: AppDef = {
         'ticket-link-parent',
         { primary: true },
       );
+      // A CLOSED parent is still a parent, and the state of it is deliberately
+      // not asked about here. Refusing one was the queue disagreeing with the
+      // world: the engine takes the link and the cascade closes the child in
+      // the same minute. It made both of this week's delayed floods unclosable
+      // through the shipped UI for anybody who repaired the fault before the
+      // last report arrived - Ada is fifteen minutes behind Thursday's parent,
+      // Gary thirty-five, Terry the best part of an hour behind Wednesday's -
+      // which is to say, for anybody working quickly.
       setAvailability(
         attach,
-        ticketState(node) === 'resolved' && children.length === 0
-          ? 'This one is closed. A parent has to be the incident somebody is '
-            + 'still working.'
-          : selected.length === 0
-            ? 'Tick the tickets on the left that are the same fault as this '
-              + 'one. A duplicate is a report of the same outage, not another '
-              + 'job you would rather not do.'
-            : null,
+        selected.length === 0
+          ? 'Tick the tickets on the left that are the same fault as this '
+            + 'one. A duplicate is a report of the same outage, not another '
+            + 'job you would rather not do.'
+          : null,
       );
       attach.addEventListener('click', () => {
         let attached = 0;

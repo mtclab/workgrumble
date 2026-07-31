@@ -4,7 +4,12 @@ import { APP_MANIFEST } from './shell/apps';
 import { openDirectMessage, pingBossThread } from './shell/boss-thread';
 import type { ShellContext } from './shell/context';
 import { DayDriver, DRIVER_INTERVAL_MS } from './shell/day-driver';
-import { carryFrom, hydrateFromRetry, RetrySlot } from './shell/retry';
+import {
+  acknowledgeCarry,
+  carryFrom,
+  hydrateFromRetry,
+  RetrySlot,
+} from './shell/retry';
 import { createShellSession, SaveSlot } from './shell/save';
 import { Shell } from './shell/shell';
 import { COMPANY, COMPANY_IDS } from './world/company';
@@ -49,10 +54,10 @@ async function boot(): Promise<void> {
   await loadEngine();
 
   // A week that was played before and ended badly leaves exactly three things
-  // behind: the fund, what had been read, and which attempt this is. Reading
-  // the slot CLEARS it - a carry-over is used once, by the week it starts.
+  // behind: the fund, the article that was up, and which attempt this is.
+  // Reading the slot LEAVES it - see below for when it is finally let go of.
   const retry = new RetrySlot(window.localStorage);
-  const carried = retry.take();
+  const carried = retry.peek();
   const { engine, tier, seed } = createWorldSession(
     carried === null ? FIRST_WEEK : carryFrom(carried),
   );
@@ -167,6 +172,13 @@ async function boot(): Promise<void> {
       window.location.reload();
     },
   });
+
+  // And here is where the carry-over is finally let go of, and not a line
+  // earlier: the new week is saved first, and the record is dropped only if
+  // that write worked. See `acknowledgeCarry` for what this is protecting.
+  if (carried !== null) {
+    acknowledgeCarry(retry, () => session.save());
+  }
 
   const context: ShellContext = {
     manifest: APP_MANIFEST,

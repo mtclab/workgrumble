@@ -22,7 +22,7 @@ import {
   MAX_CANS,
   nextTolerance,
 } from '../world/consumables';
-import { LATE_CAN_REASON } from '../world/actions';
+import { BEER_TOO_EARLY_REASON, LATE_CAN_REASON } from '../world/actions';
 import { EMPTIES_TOLERATED } from '../world/boss';
 import { formatPence } from '../world/day';
 import { createIcon } from './icons';
@@ -213,7 +213,16 @@ export function deskState(
     cans,
     blocked: blockedReason(now, onShift, shiftEndsAt, buffTicksFor(tolerance)),
     tooltip: drinkTooltip(phase, tolerance),
-    beerBlocked: fields.beerUnlocked === true ? null : BEER_TOOLTIP,
+    // The same three sentences the engine refuses with, in the same order,
+    // because they are the same three rules: a button that greys out for one
+    // reason while the engine refuses for another is two rules pretending to
+    // be one. The middle one is the one this half exists for - a bottle that
+    // could be clicked at ten past three would be the joke told early.
+    beerBlocked: fields.beerUnlocked !== true
+      ? BEER_TOOLTIP
+      : onShift
+        ? BEER_TOO_EARLY_REASON
+        : null,
     beerOpened: fields.beerOpened === true,
   };
 }

@@ -8,13 +8,20 @@
  * retry keeps three things and throws the rest away.
  *
  *  - The farm fund, in whole pence, because that is the joke.
- *  - What the player had READ - the mail they had opened, the article they had
- *    left up - because knowing where the answer is written down is the only
- *    thing a week at a helpdesk actually teaches, and taking it back would
- *    make a second attempt a memory test rather than a second attempt.
+ *  - The article the player had left up, because knowing where the answer is
+ *    written down is the only thing a week at a helpdesk actually teaches, and
+ *    taking it back would make a second attempt a memory test rather than a
+ *    second attempt.
  *  - Which attempt this is, because that is what moves the seed: the same
  *    week, the same tickets, the same review on Friday, and not the same
  *    minutes.
+ *
+ * The MAIL is deliberately not on that list, and it used to be. A thread that
+ * is still marked read on the Monday of a new week is a thread with its unread
+ * cue taken off - the security incident report and the maintenance notice both
+ * arrive again, both matter again, and both arrived looking like something
+ * already dealt with. Knowing an article exists is a skill; having already
+ * opened this week's post is not.
  *
  * Everything else - the world, the meters, the queue, the reputation that got
  * you fired - is built again from nothing.
@@ -35,8 +42,6 @@ export interface RetryRecord {
   /** Which attempt the NEXT week is, counting from 1. */
   readonly attempt: number;
   readonly farmFund: number;
-  /** The mail threads that had been opened. */
-  readonly mailRead: readonly string[];
   /** The article that was up in the knowledge base, if there was one. */
   readonly kbSelected: string | null;
 }
@@ -54,7 +59,6 @@ export function recordFrom(
   return {
     attempt: attempt + 1,
     farmFund: Math.max(0, farmFund),
-    mailRead: [...screens.mail.read],
     kbSelected: screens.kb.selectedId,
   };
 }
@@ -64,8 +68,7 @@ export function parseRetryRecord(value: unknown): RetryRecord | null {
     return null;
   }
 
-  const { attempt, farmFund, mailRead, kbSelected } = value as
-    Record<string, unknown>;
+  const { attempt, farmFund, kbSelected } = value as Record<string, unknown>;
   const whole = (candidate: unknown, least: number): number | null => (
     typeof candidate === 'number'
       && Number.isSafeInteger(candidate)
@@ -75,27 +78,20 @@ export function parseRetryRecord(value: unknown): RetryRecord | null {
   );
   const nextAttempt = whole(attempt, 1);
   const fund = whole(farmFund, 0);
-  const read = Array.isArray(mailRead)
-    && mailRead.every((entry) => typeof entry === 'string')
-    ? mailRead
-    : null;
   const selected = kbSelected === null || typeof kbSelected === 'string'
     ? kbSelected
     : undefined;
 
-  if (
-    nextAttempt === null
-    || fund === null
-    || read === null
-    || selected === undefined
-  ) {
+  if (nextAttempt === null || fund === null || selected === undefined) {
     return null;
   }
 
+  // Anything else in the record - a `mailRead` list written by a build that
+  // still carried one - is read past rather than refused: a carry-over from
+  // yesterday's build is still a fund somebody earned.
   return {
     attempt: nextAttempt,
     farmFund: fund,
-    mailRead: Object.freeze([...read]),
     kbSelected: selected,
   };
 }
@@ -106,16 +102,16 @@ export function carryFrom(record: Readonly<RetryRecord>): WeekCarry {
 }
 
 /**
- * The screens a retried week opens with: a clean session, with what had been
- * read still read. The windows are deliberately NOT carried - a new week opens
- * on a desktop, not on the four windows the last one was fired in front of.
+ * The screens a retried week opens with: a clean session with the article
+ * still up. The windows are deliberately NOT carried - a new week opens on a
+ * desktop, not on the four windows the last one was fired in front of - and
+ * neither is the post, which is a new week's post.
  */
 export function screensFrom(record: Readonly<RetryRecord>): AppState {
   const fresh = createAppState();
 
   return {
     ...fresh,
-    mail: { selectedId: null, read: Object.freeze([...record.mailRead]) },
     kb: { selectedId: record.kbSelected },
   };
 }
@@ -143,8 +139,18 @@ export class RetrySlot {
     }
   }
 
-  /** Reads and CLEARS: a carry-over is used once, by the week it starts. */
-  public take(): RetryRecord | null {
+  /**
+   * Reads and LEAVES IT THERE.
+   *
+   * A carry-over is used once, but "used" means the new week has been written
+   * down somewhere that survives the tab - not that a variable in this session
+   * has read it. Clearing it here destroyed the only copy of the fund before
+   * anything had been saved: a refresh, a crash or a closed laptop in the
+   * seconds between boot and the first day boundary came back as attempt one
+   * with nothing in the fund, which is the one joke this game cannot afford to
+   * get wrong. The caller acknowledges it once the new attempt is durable.
+   */
+  public peek(): RetryRecord | null {
     let raw: string | null;
 
     try {
@@ -152,8 +158,6 @@ export class RetrySlot {
     } catch {
       return null;
     }
-
-    this.clear();
 
     if (raw === null) {
       return null;
@@ -181,4 +185,36 @@ export function hydrateFromRetry(
   record: Readonly<RetryRecord>,
 ): void {
   store.hydrate(screensFrom(record));
+}
+
+/**
+ * Letting go of the carry-over, once the week it started is durable.
+ *
+ * The order is the whole of it, and it is a transaction rather than three
+ * lines that happen to be next to each other - which is what it used to be.
+ * Boot read the slot and CLEARED it, then built the week; between those two
+ * moments the only record of the fund was a value in a variable, so a refresh,
+ * a crash or a shut laptop at any point before the first day boundary came
+ * back as attempt one with nothing banked. The fund surviving a firing is the
+ * one joke this game is built on.
+ *
+ * So: the new week is written to the save slot FIRST, and the record is only
+ * dropped once that write says it worked. A browser with no storage left keeps
+ * its carry-over and gets asked again next boot, which is the honest failure.
+ *
+ * Answers rather than throws, and says whether the record was let go of, so a
+ * caller can be tested on the difference.
+ */
+export function acknowledgeCarry(
+  slot: RetrySlot,
+  save: () => SaveOutcome,
+): boolean {
+  const written = save();
+
+  if (!written.ok) {
+    return false;
+  }
+
+  slot.clear();
+  return true;
 }

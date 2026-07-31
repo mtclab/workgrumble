@@ -20,7 +20,6 @@ import type {
 } from '../engine-api';
 import {
   DAY_ACTIONS,
-  fieldLines,
   HELPDESK_ACTIONS,
   WORLD_ACTIONS,
 } from '../world/actions';
@@ -85,6 +84,7 @@ import {
   weekScorecard,
 } from '../world/week';
 import { FIELDS } from '../world/fields';
+import { seedForAttempt } from '../world/session';
 import {
   isMeterTick,
   meterDeltas,
@@ -297,6 +297,7 @@ export function parseDriverState(value: unknown): DriverState | null {
 export class DayDriver implements DayApi {
   private schedule_: DaySchedule;
   private patrol_: PatrolSchedule;
+  private seed_: number;
   private paused_ = false;
   private speed_: Speed = 1;
   private carriedMs = 0;
@@ -305,9 +306,10 @@ export class DayDriver implements DayApi {
   public constructor(
     private readonly engine: EngineApi,
     private readonly actor: NodeId,
-    private readonly seed: number,
+    seed: number,
     private readonly handlers: Readonly<DayDriverHandlers>,
   ) {
+    this.seed_ = seed;
     this.schedule_ = this.scheduleFor(this.day());
     this.patrol_ = this.patrolFor(this.day());
     this.syncSlaClock();
@@ -478,12 +480,18 @@ export class DayDriver implements DayApi {
       this.settleStaleAuth(now);
       this.settleFollowUps();
       this.walkTheFloor(before, now);
-      this.settleReview(before, now);
       // Before the meters read the queue: a child closed by its parent is a
       // ticket off the pile this minute, and charging stress for it would be
       // charging for work that is finished.
       this.settleParentCascade();
+      // And BOTH of these before the conversation at three o'clock. The
+      // reputation the review reads has to be the reputation the minute has
+      // finished producing: a ticket closed at 14:59 is paid at 15:00, a
+      // deadline crossed at 15:00 is charged at 15:00, and a review that ran
+      // first read a number that was one meter tick out of date. In the one
+      // direction that is somebody fired for work they had already done.
       this.applyPressure(now);
+      this.settleReview(before, now);
 
       if (this.applyDueTransition()) {
         // The day ended inside this batch. The rest of the batch belongs to
@@ -516,7 +524,8 @@ export class DayDriver implements DayApi {
 
     if (now < start) {
       this.syncSlaClock();
-      this.engine.advance(start - now);
+      // Same as the night, and the same reason: the brief is not paid time.
+      this.engine.advanceOffHours(start - now);
       this.spawnArrivals(now, this.engine.now());
       // A window that opens at nine opens at nine, whether the player spent
       // the hour reading the brief or skipped it in four seconds.
@@ -573,7 +582,12 @@ export class DayDriver implements DayApi {
     const now = this.engine.now();
 
     if (now < morning) {
-      this.engine.advance(morning - now);
+      // The night, in one call. Nobody is at the desk for any of it and the
+      // service clock is held, so the only thing those nine hundred minutes do
+      // is push every open deadline out by nine hundred - and living that a
+      // minute at a time was most of the wait between clocking off and seeing
+      // tomorrow morning.
+      this.engine.advanceOffHours(morning - now);
     }
 
     this.schedule_ = this.scheduleFor(day + 1);
@@ -617,11 +631,24 @@ export class DayDriver implements DayApi {
 
   /** The week, added up out of the days it was made of. */
   public weekScorecard(): WeekScorecard {
+    const outcome = this.reviewOutcome();
+
     return weekScorecard(this.engine.graph.nodesOfKind('ticket'), {
       banked: this.farmFund(),
       opening: this.playerNumber(FIELDS.weekOpeningFund),
-      reputation: this.playerNumber(FIELDS.reputation),
-      outcome: this.reviewOutcome(),
+      // The number the conversation was decided on, which stopped moving when
+      // the conversation happened. Reading the live meter let the week screen
+      // print "37 of 40 needed" directly above "Probation: passed", because
+      // reputation carries on moving all Friday afternoon. Before three
+      // o'clock there is nothing to snapshot and the live number is the
+      // honest one - it is what the review WOULD read.
+      reputation: outcome === 'pending'
+        ? this.playerNumber(FIELDS.reputation)
+        : this.playerNumber(
+          FIELDS.reviewReputation,
+          this.playerNumber(FIELDS.reputation),
+        ),
+      outcome,
     });
   }
 
@@ -652,6 +679,9 @@ export class DayDriver implements DayApi {
    * driver was walking belongs to a session that is no longer running.
    */
   public resync(): void {
+    // The seed first: everything below is built from it, and a load may have
+    // replaced this session's week with a later attempt at the same one.
+    this.seed_ = this.seedFromWorld();
     this.schedule_ = this.scheduleFor(this.day());
     this.patrol_ = this.patrolFor(this.day());
     // A save carries the service clock, so this is a check rather than a
@@ -757,7 +787,7 @@ export class DayDriver implements DayApi {
     // that has been left running past the end of its own week.
     return buildDaySchedule(
       day,
-      this.seed,
+      this.seed_,
       isWeekDay(day) ? dayPlan(day) : { inherited: [], drip: [] },
     );
   }
@@ -765,8 +795,22 @@ export class DayDriver implements DayApi {
   private patrolFor(day: number): PatrolSchedule {
     return buildPatrolSchedule(
       day,
-      isWeekDay(day) ? patrolSeedFor(day, this.seed) : this.seed,
+      isWeekDay(day) ? patrolSeedFor(day, this.seed_) : this.seed_,
     );
+  }
+
+  /**
+   * Which week this is, and therefore which minutes it deals.
+   *
+   * Read off the graph rather than remembered, because the graph is the half
+   * that survives a load: the attempt number is written into the world when
+   * the week is built, and a driver that kept its own copy handed a restored
+   * second attempt the first attempt's drip jitter and the first attempt's
+   * patrols. The engine restored the right world and the schedule beside it
+   * belonged to a week nobody was playing.
+   */
+  private seedFromWorld(): number {
+    return seedForAttempt(Math.max(1, this.playerNumber(FIELDS.weekAttempt, 1)));
   }
 
   private farmFund(): number {
@@ -1232,7 +1276,7 @@ export class DayDriver implements DayApi {
           parent: due.parent,
           comment: cascadeComment(
             ticketTitle(parent.id),
-            fieldLines(parent.fields[FIELDS.customerVisible]),
+            parent.fields[FIELDS.replyToReporter],
           ),
         },
       );
