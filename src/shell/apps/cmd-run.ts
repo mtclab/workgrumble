@@ -1004,8 +1004,10 @@ export function executeCommand(
         found.node.id,
         {},
         [
-          `Temporary password issued for ${labelOf(found.node)} and the `
-            + 'lockout cleared with it.',
+          `Temporary password issued for ${labelOf(found.node)}.`,
+          'This box ticks both boxes for you every time: the lockout is',
+          'cleared and "must change at next logon" is set. A real reset',
+          'dialog asks; this one has never asked anybody anything.',
           'It will be on a sticky note by lunchtime.',
         ],
       );

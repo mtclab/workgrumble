@@ -453,8 +453,16 @@ export const DIRECTORY_APP: AppDef = {
         );
       });
 
+      // The label says what the button DOES, all of it, because in a real
+      // directory the reset dialog has two tick boxes beside the new password -
+      // "unlock the user's account" and "user must change password at next
+      // logon" - and both are choices somebody makes. This desk has neither
+      // box: it has one button that always makes both choices the same way. A
+      // label reading "Reset password" taught the player that a reset unlocks
+      // and forces a change by its nature, which is the wrong lesson about
+      // somebody else's tool.
       const resetPassword = osButton(
-        'Reset password',
+        'Reset password + unlock + force change',
         'directory-reset-password',
       );
       setAvailability(
@@ -468,8 +476,9 @@ export const DIRECTORY_APP: AppDef = {
           HELPDESK_ACTIONS.accountResetPassword,
           model.id,
           {},
-          'Temporary password issued, the lockout cleared with it, and they '
-            + 'must change it at next logon. It will be on a sticky note by '
+          'Temporary password issued, the lockout cleared and "must change at '
+            + 'next logon" ticked - this desk\'s reset does all three every '
+            + 'time, where a real one asks. It will be on a sticky note by '
             + 'lunchtime.',
         );
       });

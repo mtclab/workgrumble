@@ -104,6 +104,12 @@ export const KB_ARTICLES: readonly KbArticle[] = [
       'Password expired: reset the password. The account is fine, the '
         + 'credential is out of date, and unlocking an account nobody locked '
         + 'is a button press with no effect on anything.',
+      'Know what YOUR reset button does. In a real directory the reset '
+        + 'dialog puts two tick boxes beside the new password - unlock the '
+        + 'account, and make them change it at next logon - and both are '
+        + 'choices somebody makes. This desk has no boxes: the button always '
+        + 'does all three, every time, whether or not there was a lockout to '
+        + 'clear. That is a property of this tool, not of resets.',
       'Write the state you found onto the ticket. "Fixed" tells the next '
         + 'person nothing; "was disabled on the 3rd by the leavers process" '
         + 'tells them everything.',
@@ -117,8 +123,9 @@ export const KB_ARTICLES: readonly KbArticle[] = [
       + 'clock running out on the credential while the account itself is '
       + 'perfectly healthy.',
       'The tools are just as specific. Unlock clears a lockout and nothing '
-      + 'else. A reset issues a new password and clears the lockout with it, '
-      + 'which is why it looks like a cure-all and is not: it does nothing '
+      + 'else. A reset issues a new password, and on this desk it is wired to '
+      + 'clear the lockout and set must-change alongside it - which is why it '
+      + 'looks like a cure-all and is not: it does nothing '
       + 'whatever for a disabled account. Enabling puts back an account '
       + 'somebody switched off, and it is the one action here that deserves a '
       + 'moment of thought, because somebody meant to switch it off.',

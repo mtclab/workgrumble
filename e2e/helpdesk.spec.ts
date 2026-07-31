@@ -532,18 +532,25 @@ test('tells the lockout story in Active Dictionary, and refuses the wrong fixes'
 
 /**
  * A reset is the fix for an expired password and a sticky note for everything
- * else - and it leaves the "must change at next logon" flag every real reset
- * leaves, which is a follow-up ticket rather than a second fault.
+ * else - and on this desk it also clears the lockout and sets "must change at
+ * next logon", which is a bundle rather than a law of nature. The control has
+ * to SAY so: a button labelled "Reset password" that silently ticks two boxes
+ * teaches that a directory reset unlocks and forces a change by its nature,
+ * and a real reset dialog asks about both.
  */
-test('leaves the must-change flag behind after a reset', async ({ page }) => {
+test('says on the button that a reset here does all three', async ({ page }) => {
   await logIn(page);
   await openFromStartMenu(page, 'directory');
   await page.getByTestId('directory-row-ada').click();
   await expect(page.getByTestId('directory-detail-must-change')).toHaveText('No');
 
-  await page.getByTestId('directory-reset-password').click();
+  const reset = page.getByTestId('directory-reset-password');
+  await expect(reset).toContainText('unlock');
+  await expect(reset).toContainText('force change');
+
+  await reset.click();
   await expect(page.getByTestId('directory-outcome')).toContainText(
-    'Temporary password issued',
+    'this desk\'s reset does all three every time, where a real one asks',
   );
   await expect(page.getByTestId('directory-detail-must-change')).toContainText(
     'at next logon',

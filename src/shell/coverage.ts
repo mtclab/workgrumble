@@ -916,7 +916,9 @@ const ENTRIES = [
     id: 'directory.reset-password',
     surface: 'directory',
     control: 'directory-reset-password',
-    does: 'Issues a temporary password and leaves the must-change flag.',
+    does: 'Issues a temporary password, and says on the button that it clears '
+      + 'the lockout and forces a change as well - three things one button '
+      + 'does here and a real reset dialog asks about.',
     actions: [HELPDESK_ACTIONS.accountResetPassword],
     run: 'week',
   },
