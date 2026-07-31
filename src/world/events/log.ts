@@ -54,6 +54,12 @@ export const EVENT_IDS = {
   rebooted: 1074,
   /** The device came back after being turned off and on again. */
   devicePowered: 6005,
+  /**
+   * The previous shutdown was unexpected - which is the machine's way of
+   * saying somebody pulled the plug, and the only witness the recurring arc
+   * has. A device losing power writes nothing anywhere else.
+   */
+  powerLost: 6008,
   /** An account failed to log on. The one that comes in fives. */
   logonFailed: 4625,
   /** A user account was locked out. */
@@ -200,6 +206,11 @@ export function serviceRunningMessage(name: string): string {
 export function rebootedMessage(hostname: string): string {
   return `The system ${hostname} has been restarted. Nothing that was written `
     + 'down has gone anywhere, which is the half people forget.';
+}
+
+export function powerLostMessage(name: string): string {
+  return `${name} lost power without being shut down. The previous shutdown `
+    + 'was unexpected, which is this log being tactful about a socket.';
 }
 
 export function devicePoweredMessage(name: string): string {

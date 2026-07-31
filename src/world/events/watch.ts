@@ -44,6 +44,7 @@ import {
   type MachineEvent,
   passwordResetMessage,
   printFailedMessage,
+  powerLostMessage,
   printQueueClearedMessage,
   readEventLog,
   rebootedMessage,
@@ -268,15 +269,26 @@ function draftFor(
 
     if (
       mutation.field === FIELDS.powered
-      && mutation.value === true
       && node.fields[FIELDS.type] === DEVICE_TYPES.printer
     ) {
-      return draft(
-        'information',
-        EVENT_SOURCES.kernel,
-        EVENT_IDS.devicePowered,
-        devicePoweredMessage(name),
-      );
+      // Both directions, and the DOWN one is the important half. A printer
+      // that comes back is a fix somebody did; a printer that loses power is
+      // the only trace a socket in another corridor ever leaves, and two of
+      // those at the same minute on different days is the whole of the
+      // recurring arc's evidence.
+      return mutation.value === true
+        ? draft(
+          'information',
+          EVENT_SOURCES.kernel,
+          EVENT_IDS.devicePowered,
+          devicePoweredMessage(name),
+        )
+        : draft(
+          'error',
+          EVENT_SOURCES.kernel,
+          EVENT_IDS.powerLost,
+          powerLostMessage(name),
+        );
     }
   }
 

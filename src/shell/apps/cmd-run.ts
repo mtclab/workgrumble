@@ -537,6 +537,44 @@ function licenceLines(
     );
 }
 
+/**
+ * Access on a share, which is the only two-noun verb on this terminal: the
+ * person and the thing, in the order a human says them.
+ */
+function grantLines(api: GameApi, args: readonly string[]): CommandResult {
+  const account = accountOf(api, args[0] ?? '');
+
+  if (!account.ok) {
+    return lines(account.reason);
+  }
+
+  const share = lookup(
+    api,
+    'share',
+    args[1] ?? '',
+    `No share matches "${args[1] ?? ''}". They are named after what is in `
+      + 'them, which is the last helpful thing about any of them.',
+  );
+
+  if (!share.ok) {
+    return lines(share.reason);
+  }
+
+  return dispatchLines(
+    api,
+    HELPDESK_ACTIONS.shareGrantAccess,
+    share.node.id,
+    { account: account.node.id },
+    [
+      `${labelOf(account.node)} now has Full Access to `
+        + `${labelOf(share.node)}.`,
+      'Which lets them open it and read it. Whether it lets them SEND from',
+      'it is a different permission with a different name, and they will be',
+      'back about it within the hour.',
+    ],
+  );
+}
+
 function rotateLines(
   api: GameApi,
   args: readonly string[],
@@ -980,6 +1018,10 @@ export function executeCommand(
 
   if (parsed.spec.name === 'licence') {
     return licenceLines(api, parsed.sub, parsed.query);
+  }
+
+  if (parsed.spec.name === 'grant') {
+    return grantLines(api, parsed.args);
   }
 
   if (parsed.spec.name === 'forget') {

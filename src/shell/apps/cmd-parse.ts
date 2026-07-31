@@ -149,6 +149,14 @@ export const COMMANDS: readonly CommandSpec[] = [
     subcommand: true,
   },
   {
+    name: 'grant',
+    usage: 'grant <account> <share>',
+    summary: 'Give somebody access to a share or a shared mailbox.',
+    minArgs: 2,
+    maxArgs: 2,
+    joined: false,
+  },
+  {
     name: 'forget',
     usage: 'forget <device>',
     summary: 'Clear the password a device has been offering for months.',
