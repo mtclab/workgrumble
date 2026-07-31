@@ -9,7 +9,7 @@
 use serde_json::{json, Value as Json};
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::actions::{parse_params, DispatchLogEntry, LogCheckpoint};
+use crate::actions::{parse_params, CheckpointBaseline, DispatchLogEntry, LogCheckpoint};
 use crate::assertions::evaluate_json;
 use crate::clock::SimClock;
 use crate::error::{EngineError, EngineResult};
@@ -352,10 +352,11 @@ impl Engine {
             "action_ids" => value_result(json!(self.world.registry.ids())),
             "tier" => value_result(json!(self.world.registry.tier())),
             // What the log is measured from, and how much of it there is: the
-            // two numbers a save system needs to decide whether to drain.
+            // two numbers a save system needs to decide whether to drain. The
+            // baseline WORLD is a separate question with a much bigger answer,
+            // and it has its own query.
             "checkpoint" => {
-                let checkpoint = self.world.registry.checkpoint().to_json();
-                let mut answer = checkpoint;
+                let mut answer = self.world.registry.checkpoint().summary_json();
 
                 if let Json::Object(object) = &mut answer {
                     object.insert("entries".to_owned(), json!(self.world.registry.log().len()));
@@ -363,43 +364,45 @@ impl Engine {
 
                 value_result(answer)
             }
+            // The world the log is measured from, as a state a restore takes.
+            //
+            // This is what makes one save file replayable on its own: restore
+            // the answer, apply the save's log, and arrive at the save. The
+            // verb set comes from the save rather than from the baseline
+            // because actions are the BUILD's, not the moment's, and nothing
+            // in a dispatch log registers one.
+            "checkpoint_baseline" => match self.world.registry.checkpoint().baseline.as_ref() {
+                Some(baseline) => value_result(self.baseline_state(baseline)),
+                None => value_refusal(
+                    "This world has never been checkpointed, so its log is still its whole \
+                     history and its baseline is where the world began.",
+                ),
+            },
             other => value_refusal(&format!("Query kind \"{other}\" is not known.")),
         })
     }
 
     /// The save seam: everything needed to stand this engine up again.
+    ///
+    /// The world half is written by `World::baseline` - the same code that
+    /// captures a checkpoint - so a saved world and a saved BASELINE cannot
+    /// drift into two different ideas of what a serialized graph looks like.
     pub fn serialize(&self) -> String {
+        let current = self.world.baseline();
+
         json!({
             "version": crate::ENGINE_VERSION,
             "seed": self.world.rng.seed(),
-            "rng_state": self.world.rng.state(),
-            "clock": {
-                "tick": self.world.clock.now(),
-                "paused": self.world.clock.is_paused(),
-                "speed": self.world.clock.speed(),
-            },
-            "graph": {
-                "nodes": self
-                    .world
-                    .graph
-                    .all_nodes()
-                    .into_iter()
-                    .map(node_to_json)
-                    .collect::<Vec<Json>>(),
-                "edges": self
-                    .world
-                    .graph
-                    .edges()
-                    .iter()
-                    .map(|edge| json!({ "from": edge.from, "to": edge.to, "kind": edge.kind }))
-                    .collect::<Vec<Json>>(),
-            },
+            "rng_state": current.rng_state,
+            "clock": current.clock,
+            "graph": current.graph,
             "registry": {
                 "tier": self.world.registry.tier(),
                 "kind_labels": self.world.registry.kind_labels,
                 "actions": self.world.registry.definitions(),
-                // The log SINCE the checkpoint, and the checkpoint it is since.
-                // Either half without the other is a history nobody can place.
+                // The log SINCE the checkpoint, the checkpoint it is since, and
+                // the world that checkpoint names. Any half without the others
+                // is a history nobody can place, or one nobody can replay.
                 "checkpoint": self.world.registry.checkpoint().to_json(),
                 "log": self
                     .world
@@ -409,9 +412,33 @@ impl Engine {
                     .map(DispatchLogEntry::to_json)
                     .collect::<Vec<Json>>(),
             },
-            "tickets": self.world.tickets.to_json(),
+            "tickets": current.tickets,
         })
         .to_string()
+    }
+
+    /// A checkpoint baseline, dressed as a saved state a restore will take.
+    ///
+    /// Its own checkpoint is itself: the baseline world was drained at that
+    /// tick, its log is empty, and saying so is what makes the answer a save
+    /// this engine would have written rather than a special case it has to
+    /// know about on the way back in.
+    fn baseline_state(&self, baseline: &CheckpointBaseline) -> Json {
+        json!({
+            "version": crate::ENGINE_VERSION,
+            "seed": self.world.rng.seed(),
+            "rng_state": baseline.rng_state,
+            "clock": baseline.clock,
+            "graph": baseline.graph,
+            "registry": {
+                "tier": self.world.registry.tier(),
+                "kind_labels": self.world.registry.kind_labels,
+                "actions": self.world.registry.definitions(),
+                "checkpoint": self.world.registry.checkpoint().to_json(),
+                "log": [],
+            },
+            "tickets": baseline.tickets,
+        })
     }
 
     pub fn restore(&mut self, payload: &str) -> String {

@@ -169,9 +169,21 @@ fn extends_the_deadline_by_exactly_the_ticks_spent_waiting() {
         world.graph.get_field("ticket:waiting", "sla_deadline"),
         Some(&FieldValue::Num(7.0)),
     );
+    // The pause is counted as well as spent. The deadline alone cannot say
+    // how long a ticket has been parked once anything re-cuts it from the
+    // minute it arrived - which is exactly what triaging one does.
+    assert_eq!(
+        world.graph.get_field("ticket:waiting", "held_ticks"),
+        Some(&FieldValue::Num(3.0)),
+    );
 
     world.set_waiting("ticket:waiting", false).expect("unpark");
     world.advance(3).expect("advance");
+    // And it stops counting the moment the ticket is back on the player.
+    assert_eq!(
+        world.graph.get_field("ticket:waiting", "held_ticks"),
+        Some(&FieldValue::Num(3.0)),
+    );
     assert_eq!(state(&world, "ticket:waiting"), "open");
     assert!(ticket_events(&mut world).is_empty());
 

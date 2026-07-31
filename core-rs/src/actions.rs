@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use serde_json::{json, Value as Json};
 
 use crate::error::{EngineError, EngineResult};
-use crate::num::{safe_int_at_least, MAX_SAFE_INT};
+use crate::num::{safe_int_at_least, safe_u32, MAX_SAFE_INT};
 use crate::ops::{Guard, Op, Params};
 use crate::refuse;
 use crate::value::FieldValue;
@@ -30,14 +30,91 @@ use crate::value::FieldValue;
 /// log IS the whole history and the world's own beginning is the baseline.
 /// The M0 determinism fixture never checkpoints, which is why its golden hash
 /// is untouched by any of this.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct LogCheckpoint {
     pub tick: i64,
     pub hash: Option<String>,
+    /// The world the log is measured from, kept whole.
+    ///
+    /// `hash` NAMES that world; this IS it. Without it a save carries a
+    /// history since a baseline it does not contain, so the replay it promises
+    /// needs a second file nobody kept - and replaying the log against the
+    /// save's own current graph applies the same day twice. Present exactly
+    /// when `hash` is: both are set by the same drain.
+    pub baseline: Option<CheckpointBaseline>,
+}
+
+/// The world at the checkpoint: everything a restore rebuilds except the verb
+/// set and the log, neither of which a baseline has anything to say about - the
+/// actions are the build's, and the log at a checkpoint is empty by definition.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CheckpointBaseline {
+    pub rng_state: u32,
+    /// `{ tick, paused, speed }`, exactly as `serialize` writes a clock.
+    pub clock: Json,
+    /// `{ nodes, edges }`, exactly as `serialize` writes a graph.
+    pub graph: Json,
+    pub tickets: Json,
+}
+
+impl CheckpointBaseline {
+    pub fn to_json(&self) -> Json {
+        json!({
+            "rng_state": self.rng_state,
+            "clock": self.clock,
+            "graph": self.graph,
+            "tickets": self.tickets,
+        })
+    }
+
+    pub fn from_json(value: &Json) -> EngineResult<Self> {
+        let object = value
+            .as_object()
+            .ok_or_else(|| EngineError::new("Saved checkpoint baseline must be an object."))?;
+        // Shape only: what these parts MEAN is checked where they are read
+        // back in, by the same code that reads a saved world - one parser for
+        // a graph, not two that can come to disagree.
+        let part = |key: &str, wanted: fn(&Json) -> bool| -> EngineResult<Json> {
+            object
+                .get(key)
+                .filter(|part| wanted(part))
+                .cloned()
+                .ok_or_else(|| {
+                    EngineError::new(format!("Saved checkpoint baseline needs its \"{key}\"."))
+                })
+        };
+
+        Ok(Self {
+            rng_state: object.get("rng_state").and_then(safe_u32).ok_or_else(|| {
+                EngineError::new("Saved checkpoint baseline needs an rng state.")
+            })?,
+            clock: part("clock", Json::is_object)?,
+            graph: part("graph", Json::is_object)?,
+            tickets: part("tickets", Json::is_array)?,
+        })
+    }
 }
 
 impl LogCheckpoint {
+    /// What the save carries: the baseline included, because that is the half
+    /// that makes the file replayable on its own.
     pub fn to_json(&self) -> Json {
+        json!({
+            "tick": self.tick,
+            "hash": match &self.hash {
+                Some(hash) => json!(hash),
+                None => Json::Null,
+            },
+            "baseline": match &self.baseline {
+                Some(baseline) => baseline.to_json(),
+                None => Json::Null,
+            },
+        })
+    }
+
+    /// What a caller asking "where is the log measured from" wants: the two
+    /// numbers, without a copy of the world attached to the answer.
+    pub fn summary_json(&self) -> Json {
         json!({
             "tick": self.tick,
             "hash": match &self.hash {
@@ -62,8 +139,25 @@ impl LogCheckpoint {
             Some(Json::String(hash)) if !hash.is_empty() => Some(hash.clone()),
             Some(_) => return refuse!("Saved checkpoint hash must be a hash or null."),
         };
+        let baseline = match object.get("baseline") {
+            None | Some(Json::Null) => None,
+            Some(baseline) => Some(CheckpointBaseline::from_json(baseline)?),
+        };
 
-        Ok(Self { tick, hash })
+        // The two halves are one claim. A drained log with no world behind it
+        // is the save shape this policy exists to stop, and a world with
+        // nothing drained is a baseline nobody measured anything from.
+        if hash.is_some() != baseline.is_some() {
+            return refuse!(
+                "Saved checkpoint must carry the world it names, and name the world it carries."
+            );
+        }
+
+        Ok(Self {
+            tick,
+            hash,
+            baseline,
+        })
     }
 }
 
@@ -333,12 +427,18 @@ impl ActionRegistry {
     /// would replay into is the checkpoint itself, and keeping both is keeping
     /// the same information twice - which is the growth this policy exists to
     /// stop. Whoever wants the old log keeps the old SAVE.
-    pub fn set_checkpoint(&mut self, tick: i64, hash: String) -> usize {
+    pub fn set_checkpoint(
+        &mut self,
+        tick: i64,
+        hash: String,
+        baseline: CheckpointBaseline,
+    ) -> usize {
         let drained = self.log.len();
         self.log.clear();
         self.checkpoint = LogCheckpoint {
             tick,
             hash: Some(hash),
+            baseline: Some(baseline),
         };
         drained
     }

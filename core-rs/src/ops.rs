@@ -618,6 +618,19 @@ pub enum Pred {
         param: String,
         format: ParamFormat,
     },
+    /// Where the clock stands INSIDE a repeating period: `now % day_ticks` is
+    /// at or below `value`.
+    ///
+    /// The engine knows nothing about shifts, lunches or closing time - the
+    /// period and the boundary are both world content, and all this does is
+    /// the modulo. It exists because some rules are about the SHAPE of the day
+    /// rather than about the graph ("there is no point opening that now, it
+    /// wears off after everybody has gone home"), and a rule the engine cannot
+    /// state is a rule only the button that happens to be wired up obeys.
+    TickOfDayAtMost {
+        day_ticks: i64,
+        value: i64,
+    },
     HasEdge {
         from: NodeRef,
         to: NodeRef,
@@ -794,6 +807,30 @@ impl Pred {
                 param: param()?,
                 value: number()?,
             }),
+            "tick_of_day_at_most" => {
+                let whole = |key: &str| -> EngineResult<i64> {
+                    object
+                        .get(key)
+                        .and_then(safe_int)
+                        .ok_or_else(|| {
+                            EngineError::new(format!(
+                                "tick_of_day_at_most needs a whole number \"{key}\"."
+                            ))
+                        })
+                };
+                let day_ticks = whole("day_ticks")?;
+                let value = whole("value")?;
+
+                // A period of zero is a modulo by zero, and a negative one is
+                // a day that runs backwards. Both are definition bugs, and the
+                // place to say so is registration rather than the first
+                // dispatch that happens to hit the guard.
+                if day_ticks <= 0 {
+                    return refuse!("tick_of_day_at_most needs a positive \"day_ticks\".");
+                }
+
+                Ok(Self::TickOfDayAtMost { day_ticks, value })
+            }
             "param_format" => {
                 let format = object
                     .get("format")
@@ -1241,6 +1278,9 @@ pub fn evaluate_pred(context: &mut EvalContext<'_>, predicate: &Pred) -> bool {
             .param(param)
             .and_then(FieldValue::as_f64)
             .is_some_and(|actual| is_safe_int(actual) && actual >= *value),
+        Pred::TickOfDayAtMost { day_ticks, value } => {
+            context.now.rem_euclid(*day_ticks) <= *value
+        }
         Pred::ParamFormat { param, format } => context
             .param(param)
             .and_then(FieldValue::as_str)
@@ -1487,6 +1527,52 @@ mod tests {
             tickets: &NoTickets,
             binds: BTreeMap::new(),
         }
+    }
+
+    /// Where the clock stands inside a repeating day. It is what lets a rule
+    /// about the SHAPE of a day - closing time, in this world - be a guard the
+    /// engine enforces rather than a check the one wired-up button happens to
+    /// do before dispatching.
+    #[test]
+    fn a_guard_can_ask_where_the_clock_is_in_the_day() {
+        let graph = fixture();
+        let params = Params::new();
+        let holds = |now: i64, day_ticks: i64, value: i64| -> bool {
+            let predicate = Pred::parse(&json!({
+                "pred": "tick_of_day_at_most",
+                "day_ticks": day_ticks,
+                "value": value,
+            }))
+            .expect("valid predicate");
+            let mut evaluation = EvalContext {
+                now,
+                ..context(&graph, &params, None)
+            };
+            evaluate_pred(&mut evaluation, &predicate)
+        };
+
+        // Day one, and the same minute of the day one and two days later.
+        assert!(holds(480, 1_440, 480));
+        assert!(!holds(481, 1_440, 480));
+        assert!(holds(1_440 + 480, 1_440, 480));
+        assert!(!holds(1_440 + 481, 1_440, 480));
+        assert!(holds(0, 1_440, 0));
+
+        // A period of zero is a modulo by zero and a negative one is a day
+        // that runs backwards. Both are refused where they are written.
+        assert!(Pred::parse(&json!({
+            "pred": "tick_of_day_at_most", "day_ticks": 0, "value": 1,
+        }))
+        .is_err());
+        assert!(Pred::parse(&json!({
+            "pred": "tick_of_day_at_most", "day_ticks": -1, "value": 1,
+        }))
+        .is_err());
+        assert!(Pred::parse(&json!({ "pred": "tick_of_day_at_most", "value": 1 })).is_err());
+        assert!(Pred::parse(&json!({
+            "pred": "tick_of_day_at_most", "day_ticks": 1.5, "value": 1,
+        }))
+        .is_err());
     }
 
     /// A number the world is going to keep - a running total, a balance - has

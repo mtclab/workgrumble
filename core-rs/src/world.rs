@@ -8,14 +8,16 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::Value as Json;
+use serde_json::{json, Value as Json};
 
-use crate::actions::{ActionDef, ActionRegistry, DispatchLogEntry, DispatchResult};
+use crate::actions::{
+    ActionDef, ActionRegistry, CheckpointBaseline, DispatchLogEntry, DispatchResult,
+};
 use crate::assertions::evaluate;
 use crate::clock::SimClock;
 use crate::error::{EngineError, EngineResult};
 use crate::events::{EngineEvent, GraphMutation};
-use crate::graph::EntityGraph;
+use crate::graph::{node_to_json, EntityGraph};
 use crate::num::MAX_SAFE_INT;
 use crate::ops::{
     evaluate_pred, field_lines, render_template, ArithOp, Clamp, EvalContext, FieldName, NodeRef,
@@ -146,12 +148,45 @@ impl World {
     pub fn take_checkpoint(&mut self) -> CheckpointOutcome {
         let tick = self.clock.now();
         let hash = self.graph.snapshot_hash();
-        let drained = self.registry.set_checkpoint(tick, hash.clone());
+        let baseline = self.baseline();
+        let drained = self.registry.set_checkpoint(tick, hash.clone(), baseline);
 
         CheckpointOutcome {
             tick,
             hash,
             drained,
+        }
+    }
+
+    /// The world as it stands, in the shape a restore reads it back in.
+    ///
+    /// Everything a replay needs and nothing it does not: the verb set is the
+    /// build's rather than the moment's, and the log at a checkpoint is empty
+    /// by construction. Written as the same JSON `serialize` writes so the two
+    /// cannot drift into disagreeing about what a saved graph looks like.
+    pub fn baseline(&self) -> CheckpointBaseline {
+        CheckpointBaseline {
+            rng_state: self.rng.state(),
+            clock: json!({
+                "tick": self.clock.now(),
+                "paused": self.clock.is_paused(),
+                "speed": self.clock.speed(),
+            }),
+            graph: json!({
+                "nodes": self
+                    .graph
+                    .all_nodes()
+                    .into_iter()
+                    .map(node_to_json)
+                    .collect::<Vec<Json>>(),
+                "edges": self
+                    .graph
+                    .edges()
+                    .iter()
+                    .map(|edge| json!({ "from": edge.from, "to": edge.to, "kind": edge.kind }))
+                    .collect::<Vec<Json>>(),
+            }),
+            tickets: self.tickets.to_json(),
         }
     }
 
@@ -673,6 +708,13 @@ impl World {
 
     /// A parked ticket's deadline moves with the clock: time spent waiting on
     /// the user is time the SLA does not count.
+    ///
+    /// The same minute is added to `held_ticks`, which is the ticket's own
+    /// record of how long it has been parked ALTOGETHER. The deadline alone
+    /// cannot say that: re-cutting it from a triage - which is what assigning
+    /// a priority does - would silently hand back every pause the ticket had
+    /// earned, and "clear the hold, then triage it" is the order the app tells
+    /// the player to work in.
     fn handle_tick(&mut self) -> EngineResult<()> {
         for id in self.tickets.sorted_ids() {
             let Some(record) = self.tickets.records.get(&id) else {
@@ -698,8 +740,21 @@ impl World {
                 return refuse!("Ticket \"{id}\" cannot have its SLA extended any further.");
             };
 
+            // An absent counter is a ticket that has never been parked, which
+            // is the same claim as zero and the one every ticket starts with.
+            let held = self
+                .graph
+                .get_field(&id, "held_ticks")
+                .and_then(FieldValue::as_safe_int)
+                .unwrap_or(0);
+            let Some(held) = held.checked_add(1).filter(|held| *held <= MAX_SAFE_INT) else {
+                return refuse!("Ticket \"{id}\" cannot have been on hold any longer.");
+            };
+
             self.updating(&id, true);
-            let result = self.set_field(&id, "sla_deadline", FieldValue::Num(extended as f64));
+            let result = self
+                .set_field(&id, "sla_deadline", FieldValue::Num(extended as f64))
+                .and_then(|()| self.set_field(&id, "held_ticks", FieldValue::Num(held as f64)));
             self.updating(&id, false);
             result?;
         }

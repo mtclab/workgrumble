@@ -135,6 +135,13 @@ fn log(engine: &Engine) -> Vec<Json> {
         .clone()
 }
 
+/// The world the log is measured from, read back out of the save itself.
+fn baseline_of(engine: &Engine) -> String {
+    let answer = parse(&engine.query(&json!({ "kind": "checkpoint_baseline" }).to_string()));
+    assert_eq!(answer["ok"], json!(true), "{answer}");
+    answer["value"].to_string()
+}
+
 fn checkpoint_query(engine: &Engine) -> Json {
     let answer = parse(&engine.query(&json!({ "kind": "checkpoint" }).to_string()));
     assert_eq!(answer["ok"], json!(true));
@@ -340,6 +347,89 @@ fn a_save_is_refused_when_its_log_and_its_checkpoint_disagree() {
     // Three refusals, and the running world is exactly where it was.
     assert_eq!(engine.snapshot_hash(), hash_before);
     assert_eq!(log(&engine).len(), 1);
+}
+
+/// The promise from the player's side: ONE file, on its own, is replayable.
+///
+/// The previous gate proved a replay works when somebody had separately kept
+/// the baseline save. Nobody does that. A player clocks off, works the next
+/// morning, and overwrites the single slot - so if the file does not carry the
+/// world its own log is measured from, the log in it can only be replayed
+/// against the world it already produced, which applies the day twice.
+#[test]
+fn one_post_checkpoint_save_carries_the_world_its_log_is_measured_from() {
+    let mut source = engine();
+    work(&mut source);
+    expect_ok(&source.checkpoint(), "checkpoint");
+
+    let checkpoint_hash = source.snapshot_hash();
+    let checkpoint_tick = source.now();
+    let checkpoint_rng = source.world().rng.state();
+
+    // A day on top of the baseline, and then the ONLY file that survives.
+    work(&mut source);
+    let saved = source.serialize();
+
+    let mut loaded = engine();
+    expect_ok(&loaded.restore(&saved), "restore");
+
+    // The baseline comes out of that one file, and it IS the world at the
+    // drain: a different hash, an earlier tick, an earlier die.
+    let baseline = baseline_of(&loaded);
+    let mut replayed = engine();
+    expect_ok(&replayed.restore(&baseline), "restore the baseline");
+
+    assert_eq!(replayed.snapshot_hash(), checkpoint_hash);
+    assert_eq!(replayed.now(), checkpoint_tick);
+    assert_eq!(replayed.world().rng.state(), checkpoint_rng);
+    assert_ne!(replayed.snapshot_hash(), source.snapshot_hash());
+    assert!(log(&replayed).is_empty(), "a baseline carries no history");
+
+    // And the log the file carried, applied to the world the file carried,
+    // lands on the world the file describes - hash, tick and dice.
+    let carried = log(&loaded);
+    assert_eq!(carried.len(), 4);
+    let rebuilt = replay(&baseline, &carried);
+
+    assert_eq!(rebuilt.snapshot_hash(), source.snapshot_hash());
+    assert_eq!(rebuilt.now(), source.now());
+    assert_eq!(rebuilt.world().rng.state(), source.world().rng.state());
+}
+
+/// A checkpoint that names a world it does not carry is the save shape this
+/// policy exists to stop, and so is a world nobody drained anything into.
+#[test]
+fn a_checkpoint_must_carry_the_world_it_names() {
+    let mut engine = engine();
+    work(&mut engine);
+    expect_ok(&engine.checkpoint(), "checkpoint");
+    let saved: Json = parse(&engine.serialize());
+
+    let mut nameless = saved.clone();
+    nameless["registry"]["checkpoint"]["baseline"] = Json::Null;
+    let refusal = parse(&engine.restore(&nameless.to_string()));
+    assert_eq!(refusal["ok"], json!(false));
+    assert!(
+        refusal["reason"]
+            .as_str()
+            .expect("a reason")
+            .contains("carry the world it names"),
+        "{refusal}",
+    );
+
+    let mut unnamed = saved.clone();
+    unnamed["registry"]["checkpoint"]["hash"] = Json::Null;
+    assert_eq!(
+        parse(&engine.restore(&unnamed.to_string()))["ok"],
+        json!(false),
+    );
+
+    let mut half = saved;
+    half["registry"]["checkpoint"]["baseline"]
+        .as_object_mut()
+        .expect("baseline")
+        .remove("graph");
+    assert_eq!(parse(&engine.restore(&half.to_string()))["ok"], json!(false));
 }
 
 /// A fresh world has no baseline, and that is a claim rather than a gap: the

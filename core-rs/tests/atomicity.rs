@@ -273,9 +273,18 @@ fn a_restored_log_that_predates_its_checkpoint_is_refused() {
             .collect::<Result<Vec<_>, _>>()
             .expect("valid entries")
     };
-    let baseline = |tick: i64| LogCheckpoint {
-        tick,
-        hash: Some("0123456789abcdef".to_owned()),
+    let baseline = |tick: i64| {
+        LogCheckpoint::from_json(&json!({
+            "tick": tick,
+            "hash": "0123456789abcdef",
+            "baseline": {
+                "rng_state": 1,
+                "clock": { "tick": tick, "paused": false, "speed": 1.0 },
+                "graph": { "nodes": [], "edges": [] },
+                "tickets": [],
+            },
+        }))
+        .expect("a baseline")
     };
 
     assert!(registry
