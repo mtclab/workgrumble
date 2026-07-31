@@ -58,6 +58,18 @@ export interface WorldTicket {
    * first thing a player reads.
    */
   readonly arrival: TicketArrival;
+  /**
+   * Whether this ticket may be attached to a parent incident as a duplicate.
+   *
+   * It is a content decision and it is checked against the ticket's own
+   * resolution rule at load: a duplicate carries an `or` branch on its
+   * `parent_resolved` marker (see `closesWithParent`), and a ticket without
+   * one can never be bulk-closed. The two have to agree, because the flag is
+   * what the queue offers and the rule is what the engine enforces - and a
+   * queue offering a close the engine refuses is a player left holding a
+   * button that lies.
+   */
+  readonly duplicate?: boolean;
   /** The real cause, for KB articles and chat reveals (lane B). */
   readonly cause: string;
   /** Dialogue tree id the reporter answers with. Lane B renders it. */

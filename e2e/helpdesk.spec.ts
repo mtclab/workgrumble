@@ -415,3 +415,52 @@ test('walks the ipconfig family without changing a thing', async ({ page }) => {
   await runCommand(page, 'net view PRINT-01');
   await expect(output).toContainText('is not something this terminal does');
 });
+
+/**
+ * The rail on bulk-close, walked as a player would hit it.
+ *
+ * Attaching duplicates to a parent is the real flood workflow and it is also
+ * the obvious way to cheat: tick everything, attach it to the one ticket you
+ * fixed, and forty reporters are told their problem is solved. The queue lets
+ * the player try, and the engine says no in a sentence - because whether a
+ * ticket is somebody's duplicate is a fact about that ticket, written into its
+ * own resolution rule by the person who wrote it.
+ *
+ * The cascade journey itself needs duplicate-capable content, which arrives
+ * with lane C's certificate flood; the mechanism is proven at graph level in
+ * `src/world/tickets/parent.test.ts` and through the shipped driver in
+ * `src/shell/day-driver.test.ts`.
+ */
+test('refuses to attach a ticket that is nobody\'s duplicate', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'tickets');
+
+  // The parent is the ticket you have open; the duplicates are the ones you
+  // tick. Neither of Monday's two is a duplicate of anything.
+  await page.getByTestId('ticket-row-rotated-screen').click();
+  const attach = page.getByTestId('ticket-link-parent');
+  await expect(attach).toBeDisabled();
+  await expect(attach).toHaveAttribute('title', /Tick the tickets on the left/);
+  await expect(page.getByTestId('ticket-parent-standing')).toContainText(
+    'Nothing is attached to this one',
+  );
+
+  await page.getByTestId('ticket-pick-locked-account').check();
+  await expect(attach).toBeEnabled();
+  await expect(attach).toContainText('Attach 1 ticked to this');
+  await attach.click();
+
+  await expect(page.getByTestId('ticket-refusal')).toContainText(
+    'not a duplicate of anything',
+  );
+  // Nothing moved: the ticket is still its own problem, still on the queue.
+  await expect(page.getByTestId('ticket-parent-standing')).toContainText(
+    'Nothing is attached to this one',
+  );
+  await expect(
+    page.getByTestId('ticket-row-locked-account'),
+  ).toHaveAttribute('data-state', 'open');
+  await expect(page.getByTestId('ticket-parent-outcome')).toBeHidden();
+});

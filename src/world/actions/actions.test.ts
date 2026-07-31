@@ -268,8 +268,8 @@ beforeEach(() => {
 
 describe('helpdesk action registry', () => {
   it('registers every advertised action exactly once', () => {
-    expect(HELPDESK_ACTION_IDS).toHaveLength(23);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(23);
+    expect(HELPDESK_ACTION_IDS).toHaveLength(25);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(25);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});

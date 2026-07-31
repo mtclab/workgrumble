@@ -15,6 +15,7 @@ import {
 import { BOSS_PHONE } from './boss-trash';
 import { TIDIED_LIST } from './drip';
 import { acceptsEscalation } from './escalation';
+import { acceptsParent } from './parent';
 import { PILOT_TICKETS } from './pilot';
 import type { WorldTicket } from './types';
 import { assertWeekTickets } from '../week';
@@ -22,6 +23,16 @@ import { assertWeekTickets } from '../week';
 export { BOSS_PHONE } from './boss-trash';
 export { TIDIED_LIST } from './drip';
 export { acceptsEscalation } from './escalation';
+export {
+  acceptsParent,
+  type Cascade,
+  cascadeComment,
+  cascadesDue,
+  childrenOf,
+  closesWithParent,
+  linkNote,
+  parentOf,
+} from './parent';
 export {
   actionSummary,
   bounceLandsAt,
@@ -132,6 +143,23 @@ function validateWorldTickets(
         `Ticket "${def.id}" arrives with ${String(def.sla_ticks)} minutes to `
         + `resolve; an untriaged ticket gets ${String(UNTRIAGED_SLA_TICKS)}, `
         + 'because that is what "treated as P3" means.',
+      );
+    }
+
+    // The duplicate flag and the ticket's own rule have to agree. The flag is
+    // what the queue offers; the rule is what the engine enforces, and a
+    // button that offers a close the engine will refuse is worse than no
+    // button at all - while a rule that quietly allows one the queue never
+    // offers is a bulk close nobody can see coming.
+    const closesWithAParent = acceptsParent(def.resolved_when, def.id);
+
+    if ((entry.duplicate === true) !== closesWithAParent) {
+      throw new Error(
+        `Ticket "${def.id}" is ${
+          entry.duplicate === true ? '' : 'not '
+        }declared a duplicate, and its resolution rule ${
+          closesWithAParent ? 'does' : 'does not'
+        } accept a parent. Those are the same decision written twice.`,
       );
     }
 

@@ -11,6 +11,8 @@ import {
   fieldIs,
   HELPDESK_TIER,
   not,
+  param,
+  paramNodeGuards,
   TARGET,
   targetGuards,
 } from './helpers';
@@ -19,6 +21,7 @@ import { HELPDESK_ACTIONS } from './ids';
 const NOTE_PARAM = 'note';
 const COMMENT_PARAM = 'comment';
 const ARTICLE_PARAM = 'article';
+const PARENT_PARAM = 'parent';
 const REPORTED_PARAM = 'reported';
 const TRIED_PARAM = 'tried';
 const TOUCHES_PARAM = 'touches';
@@ -93,6 +96,24 @@ export const CLASSIFY_BREACHED_REASON = 'That one has already blown its SLA. '
 export const LINK_CLOSED_REASON = 'That ticket is closed. An article linked '
   + 'afterwards is a tidy record of a decision nobody made at the time - link '
   + 'it while it is still work, which is also when it is true.';
+
+/**
+ * Why a ticket cannot be somebody's duplicate, in the words the player reads.
+ *
+ * This refusal is the whole safety rail on bulk-close: a queue that could
+ * attach anything to anything would be a queue where the fastest play is to
+ * fix one ticket and claim the other nineteen. It arrives per ticket, from the
+ * engine, because whether a ticket is a duplicate is a fact about THAT ticket
+ * and the app attaches several at once - so the button stays live and the
+ * sentence comes back about the one it was wrong about. Exported so the gate
+ * that proves the rail has teeth can name it.
+ */
+export const LINK_PARENT_REFUSED_REASON = 'That ticket is not a duplicate of '
+  + 'anything. Its own fault is still its own fault, and closing something '
+  + 'else would close it on paper while the reporter sits there.';
+
+export const LINK_PARENT_CLOSED_REASON = 'That ticket is already closed. '
+  + 'Attaching it to a parent now is filing, not support.';
 
 const UNTRACKED_GUARD: GuardData = {
   when: { pred: 'ticket_untracked', node: TARGET },
@@ -535,6 +556,146 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
             value: { param_trim: NOTE_PARAM },
           },
         },
+      },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.ticketLinkToParent,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('ticket'),
+      UNTRACKED_GUARD,
+      { when: stateIs('resolved'), reason: LINK_PARENT_CLOSED_REASON },
+      ...paramNodeGuards(PARENT_PARAM, 'ticket'),
+      {
+        when: { pred: 'ticket_untracked', node: param(PARENT_PARAM) },
+        reason: `"{p:${PARENT_PARAM}.label}" is a record in the estate and in `
+          + 'nobody\'s queue. A parent has to be a ticket somebody is working.',
+      },
+      // The rule is the ticket's own, read by the engine: a ticket that was
+      // not written as somebody's duplicate cannot be closed by closing
+      // something else, however much the queue would like it to be.
+      {
+        when: {
+          pred: 'resolution_refuses_field',
+          node: TARGET,
+          field: FIELDS.parentResolved,
+          value: true,
+        },
+        reason: LINK_PARENT_REFUSED_REASON,
+      },
+      {
+        when: {
+          pred: 'field_eq',
+          node: TARGET,
+          field: FIELDS.parent,
+          value: { param_trim: PARENT_PARAM },
+        },
+        reason: `That ticket is already attached to "{p:${PARENT_PARAM}.label}".`,
+      },
+      {
+        when: { pred: 'param_blank', param: NOTE_PARAM },
+        reason: 'A link with nothing written beside it is a decision the next '
+          + 'person has to guess at.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.parent,
+        value: { param_trim: PARENT_PARAM },
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.worknotes,
+        value: {
+          append_line: {
+            node: TARGET,
+            field: FIELDS.worknotes,
+            value: { param_trim: NOTE_PARAM },
+          },
+        },
+      },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.ticketResolveWithParent,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('ticket'),
+      UNTRACKED_GUARD,
+      { when: stateIs('resolved'), reason: CLOSED_REASON },
+      ...paramNodeGuards(PARENT_PARAM, 'ticket'),
+      {
+        when: not({
+          pred: 'field_eq',
+          node: TARGET,
+          field: FIELDS.parent,
+          value: { param_trim: PARENT_PARAM },
+        }),
+        reason: `"{p:${PARENT_PARAM}.label}" is not this ticket's parent. A `
+          + 'ticket closes with the incident it was attached to, and with no '
+          + 'other.',
+      },
+      // The parent's own state, read off the parent. A child closed while its
+      // parent is still open would be a ticket closed because somebody said
+      // so, which is the one thing this game does not have.
+      {
+        when: not(fieldIs(param(PARENT_PARAM), FIELDS.state, 'resolved')),
+        reason: `"{p:${PARENT_PARAM}.label}" has not been fixed yet, so there `
+          + 'is nothing to tell anybody and nothing to close.',
+      },
+      {
+        when: fieldIs(TARGET, FIELDS.parentResolved, true),
+        reason: 'That one has already been closed with its parent. Telling '
+          + 'them twice is how a flood becomes a complaint.',
+      },
+      {
+        when: { pred: 'param_blank', param: COMMENT_PARAM },
+        reason: 'A ticket closed without a word to the reporter is how a '
+          + 'service desk earns the reputation it has.',
+      },
+    ],
+    // The order is load-bearing: the reporter is told FIRST, and the marker
+    // that closes the ticket is written last. Marking first would resolve the
+    // ticket, and a resolved ticket refuses comments - which would close forty
+    // people's tickets in silence.
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.customerVisible,
+        value: {
+          append_line: {
+            node: TARGET,
+            field: FIELDS.customerVisible,
+            value: { param_trim: COMMENT_PARAM },
+          },
+        },
+      },
+      {
+        op: 'when',
+        cond: not({
+          pred: 'field_is_number',
+          node: TARGET,
+          field: FIELDS.respondedAt,
+        }),
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.respondedAt,
+            value: { now: true },
+          },
+        ],
+      },
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.parentResolved,
+        value: { const: true },
       },
     ],
   },

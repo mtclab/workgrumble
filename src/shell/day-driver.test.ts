@@ -1,7 +1,12 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
+import type { Expr, TicketDef } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
-import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
+import {
+  DAY_ACTIONS,
+  fieldLines,
+  HELPDESK_ACTIONS,
+} from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import {
   buildDaySchedule,
@@ -26,12 +31,18 @@ import {
 } from '../world/meters';
 import { createWorldSession, WORLD_SEED } from '../world/session';
 import { dayPlan, dayScript, inheritedTicketIds } from '../world/week';
-import { SLA_TARGETS, UNTRIAGED_PRIORITY } from '../world/priority';
+import {
+  SLA_TARGETS,
+  UNTRIAGED_PRIORITY,
+  UNTRIAGED_SLA_TICKS,
+} from '../world/priority';
 import { serviceDeadline } from '../world/hours';
 import { isActiveWork, ticketClocks } from '../world/sla';
 import {
   actionSummary,
+  closesWithParent,
   HANDOFF_BOUNCE,
+  linkNote,
   spawnWorldTicket,
   triedFromTouches,
 } from '../world/tickets';
@@ -953,5 +964,134 @@ describe('the clock the deadlines are measured against', () => {
       DAY_ACTIONS.slaClockHold,
       DAY_ACTIONS.slaClockRun,
     ]);
+  });
+});
+
+/**
+ * The flood, through the shipped driver.
+ *
+ * The fixture duplicates are registered straight into the world the session
+ * built - the driver neither knows nor cares where a ticket came from - so
+ * what is on trial here is the DRIVER's half: that it notices a parent has
+ * closed, tells every child, and does it once.
+ */
+describe('duplicates closing with their parent', () => {
+  const PARENT = 'ticket:fixture-parent';
+  const CHILD = 'ticket:fixture-child';
+
+  /** Nothing on this desk fixes one person's certificate. */
+  const PER_USER: Expr = {
+    op: 'eq',
+    selector: { id: COMPANY_IDS.vpn },
+    field: 'reissued_per_user',
+    value: true,
+  };
+
+  const VPN_BACK: Expr = {
+    op: 'eq',
+    selector: { id: COMPANY_IDS.vpn },
+    field: FIELDS.status,
+    value: 'running',
+  };
+
+  function fixture(
+    id: string,
+    resolvedWhen: Expr,
+    setup: TicketDef['setup'] = [],
+  ): TicketDef {
+    return {
+      id,
+      archetype: 'flood',
+      flavor: { title: `Fixture ${id}`, body: 'Fixture ticket.' },
+      reporter: COMPANY_IDS.ada,
+      setup,
+      resolved_when: resolvedWhen,
+      sla_ticks: UNTRIAGED_SLA_TICKS,
+      reward: { reputation: 1, money: 1 },
+      kb_ref: 'kb/power-cycle',
+    };
+  }
+
+  function flood(): Harness {
+    const world = harness();
+    // The outage the flood is about: the concentrator is down, and putting it
+    // back is the one fix that closes anything.
+    world.engine.registerTicket(fixture(PARENT, VPN_BACK, [
+      {
+        op: 'setField',
+        id: COMPANY_IDS.vpn,
+        field: FIELDS.status,
+        value: 'stopped',
+      },
+    ]));
+    world.engine.registerTicket(
+      fixture(CHILD, closesWithParent(CHILD, PER_USER)),
+    );
+    world.driver.startShift();
+
+    expect(
+      world.driver.dispatch(
+        HELPDESK_ACTIONS.ticketLinkToParent,
+        COMPANY_IDS.player,
+        CHILD,
+        { parent: PARENT, note: linkNote('The VPN certificate', PARENT) },
+      ).ok,
+    ).toBe(true);
+
+    return world;
+  }
+
+  it('tells the child\'s reporter in the minute the parent closed', () => {
+    const world = flood();
+
+    world.driver.dispatch(
+      HELPDESK_ACTIONS.ticketAddComment,
+      COMPANY_IDS.player,
+      PARENT,
+      { comment: 'Certificate replaced. Remote access is back.' },
+    );
+    // The parent's own fix, which is a change to the world and nothing else.
+    world.driver.dispatch(
+      HELPDESK_ACTIONS.serviceRestart,
+      COMPANY_IDS.player,
+      COMPANY_IDS.vpn,
+      {},
+    );
+
+    expect(world.engine.ticketState(PARENT)).toBe('resolved');
+    expect(world.engine.ticketState(CHILD)).toBe('resolved');
+    expect(
+      fieldLines(world.engine.graph.getField(CHILD, FIELDS.customerVisible)),
+    ).toEqual([
+      expect.stringContaining('Certificate replaced.') as unknown as string,
+    ]);
+  });
+
+  /**
+   * And it settles from the TICK as well, because a parent can close without
+   * anybody dispatching anything at it - a colleague's fix, a scripted world
+   * event, tomorrow's content.
+   */
+  it('settles on the next tick when nothing was dispatched', () => {
+    const world = flood();
+
+    world.engine.dispatch(
+      HELPDESK_ACTIONS.serviceRestart,
+      COMPANY_IDS.player,
+      COMPANY_IDS.vpn,
+      {},
+    );
+    expect(world.engine.ticketState(PARENT)).toBe('resolved');
+    expect(world.engine.ticketState(CHILD)).toBe('open');
+
+    world.driver.step(realMs(1));
+
+    expect(world.engine.ticketState(CHILD)).toBe('resolved');
+
+    // Once, however many minutes go past afterwards.
+    world.driver.step(realMs(30));
+    expect(
+      fieldLines(world.engine.graph.getField(CHILD, FIELDS.customerVisible)),
+    ).toHaveLength(1);
   });
 });

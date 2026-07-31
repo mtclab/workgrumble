@@ -18,7 +18,7 @@ import type {
   NodeId,
   ReadOnlyGraphNode,
 } from '../engine-api';
-import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
+import { DAY_ACTIONS, fieldLines, HELPDESK_ACTIONS } from '../world/actions';
 import {
   type BossPing,
   type BossVisit,
@@ -84,6 +84,8 @@ import {
 import { isActiveWork, isUnresolved, needsResponse } from '../world/sla';
 import {
   bounceLandsAt,
+  cascadeComment,
+  cascadesDue,
   countsAsWork,
   HANDOFF_BOUNCE,
   resolveCredit,
@@ -377,6 +379,10 @@ export class DayDriver implements DayApi {
     const witnesses = target === null ? [] : this.ticketsAbout(target);
     const result = this.engine.dispatch(id, actor, target, params);
     this.recordTouches(id, witnesses, result.ok);
+    // A fix that closed a parent has closed forty other people's tickets as
+    // well, and they should hear about it in the minute it happened rather
+    // than at the top of the next one.
+    this.settleParentCascade();
     return result;
   }
 
@@ -444,6 +450,10 @@ export class DayDriver implements DayApi {
       this.spawnArrivals(before, now);
       this.walkTheFloor(before, now);
       this.settleReview(before, now);
+      // Before the meters read the queue: a child closed by its parent is a
+      // ticket off the pile this minute, and charging stress for it would be
+      // charging for work that is finished.
+      this.settleParentCascade();
       this.applyPressure(now);
 
       if (this.applyDueTransition()) {
@@ -995,6 +1005,45 @@ export class DayDriver implements DayApi {
           {},
         );
       }
+    }
+  }
+
+  /**
+   * The bulk close, once the fault behind a flood has actually been fixed.
+   *
+   * Nobody presses a button for this: the children were attached to a parent
+   * by the player, the parent closed because the world was repaired, and the
+   * duplicates close the way the real workflow closes them - with the parent's
+   * own last word to its reporter copied onto each of them.
+   *
+   * It is driven rather than derived because a comment is a WRITE, and writes
+   * go through dispatched verbs. Each child is settled once: the marker on the
+   * child is the watermark, the same shape the meters use for breaches, so
+   * running this every tick and after every dispatch costs nothing and cannot
+   * tell anybody twice.
+   */
+  private settleParentCascade(): void {
+    const tickets = this.tickets();
+
+    for (const due of cascadesDue(tickets)) {
+      const parent = tickets.find((ticket) => ticket.id === due.parent);
+
+      if (parent === undefined) {
+        continue;
+      }
+
+      this.engine.dispatch(
+        HELPDESK_ACTIONS.ticketResolveWithParent,
+        this.actor,
+        due.child,
+        {
+          parent: due.parent,
+          comment: cascadeComment(
+            ticketTitle(parent.id),
+            fieldLines(parent.fields[FIELDS.customerVisible]),
+          ),
+        },
+      );
     }
   }
 

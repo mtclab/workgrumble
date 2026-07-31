@@ -30,8 +30,12 @@ import {
 } from '../../world/sla';
 import {
   allowsEscalation,
+  childrenOf,
   findWorldTicket,
   joinLines,
+  linkNote,
+  parentOf,
+  ticketTitle,
   triedFromTouches,
   trueClassification,
   whyThin,
@@ -45,6 +49,7 @@ import {
   element,
   formatDuration,
   osButton,
+  outcomeLine,
   refusalLine,
   resolveSelection,
   setAvailability,
@@ -197,6 +202,11 @@ export const TICKETS_APP: AppDef = {
     // Which article the player has picked but not yet linked. Like the triage
     // dropdowns, it is not world state until they say so.
     let pickedArticle: string | null = null;
+    // The tickets ticked on the left, waiting to be attached to a parent. A
+    // selection is not a link: nothing happens to any of them until the player
+    // names the incident they are all duplicates of.
+    const picked = new Set<string>();
+    let linkOutcome: string | null = null;
 
     const root = element('section', 'app-page tickets-app', 'tickets-app');
 
@@ -283,6 +293,33 @@ export const TICKETS_APP: AppDef = {
         const sla = element('span', 'ticket-row-sla');
         sla.textContent = clockSummary(clocks.resolution, 'Closed');
         status.append(priority, badge, sla);
+
+        // The tick box is a SIBLING of the row rather than a control inside
+        // it: a button in a button is not a thing, and selecting a duplicate
+        // must not also re-open the detail pane of the ticket you are about to
+        // attach to something else.
+        const pick = element(
+          'input',
+          'ticket-pick',
+          `ticket-pick-${ticketKey(node.id)}`,
+        );
+        pick.type = 'checkbox';
+        pick.checked = picked.has(node.id);
+        pick.setAttribute(
+          'aria-label',
+          `Select ${entry?.def.flavor.title ?? node.id} as a duplicate`,
+        );
+        pick.addEventListener('change', () => {
+          if (pick.checked) {
+            picked.add(node.id);
+          } else {
+            picked.delete(node.id);
+          }
+
+          refusal = null;
+          render();
+        });
+        item.append(pick);
 
         row.append(title, meta, status);
         row.addEventListener('click', () => {
@@ -638,7 +675,101 @@ export const TICKETS_APP: AppDef = {
       return panel;
     };
 
-    const renderDetail = (node: ReadOnlyGraphNode | undefined): void => {
+    /**
+     * The flood workflow: forty reports, one fault, one incident that matters.
+     *
+     * The parent is the ticket the player is LOOKING at, and the children are
+     * the ones they have ticked - which is the way round a service desk works
+     * it, because the parent is the one you have opened, read and understood.
+     * Nothing here closes anything: attaching a duplicate is filing, and the
+     * children close when the parent's fault is actually fixed.
+     */
+    const renderParentPanel = (
+      node: Readonly<ReadOnlyGraphNode>,
+      nodes: readonly Readonly<ReadOnlyGraphNode>[],
+    ): HTMLElement => {
+      const panel = element('section', 'ticket-parent', 'ticket-parent');
+      const heading = element('h3');
+      heading.textContent = 'Duplicates';
+
+      const parentId = parentOf(node);
+      const children = childrenOf(nodes, node.id);
+      const standing = element(
+        'p',
+        'ticket-parent-standing',
+        'ticket-parent-standing',
+      );
+      standing.textContent = parentId === null
+        ? children.length === 0
+          ? 'Nothing is attached to this one.'
+          : `${String(children.length)} ticket(s) attached. They close when `
+            + 'this one does, with the same words to their reporters.'
+        : `Attached to ${ticketTitle(parentId)} (${parentId}). It closes when `
+          + 'that one does.';
+
+      // Itself is never one of its own duplicates, so it is filtered out here
+      // rather than refused later: a player who ticked everything meant
+      // everything else.
+      const selected = [...picked].filter((id) => id !== node.id);
+      const attach = osButton(
+        selected.length === 0
+          ? 'Attach the ticked ones to this'
+          : `Attach ${String(selected.length)} ticked to this`,
+        'ticket-link-parent',
+        { primary: true },
+      );
+      setAvailability(
+        attach,
+        ticketState(node) === 'resolved' && children.length === 0
+          ? 'This one is closed. A parent has to be the incident somebody is '
+            + 'still working.'
+          : selected.length === 0
+            ? 'Tick the tickets on the left that are the same fault as this '
+              + 'one. A duplicate is a report of the same outage, not another '
+              + 'job you would rather not do.'
+            : null,
+      );
+      attach.addEventListener('click', () => {
+        let attached = 0;
+        refusal = null;
+
+        for (const child of selected) {
+          const result = api.dispatch(
+            HELPDESK_ACTIONS.ticketLinkToParent,
+            api.actor,
+            child,
+            { parent: node.id, note: linkNote(ticketTitle(node.id), node.id) },
+          );
+
+          if (result.ok) {
+            attached += 1;
+            picked.delete(child);
+          } else if (refusal === null) {
+            // The first refusal is the one that gets the screen: forty
+            // identical sentences would bury it.
+            refusal = result.reason;
+          }
+        }
+
+        linkOutcome = attached === 0
+          ? null
+          : `${String(attached)} ticket(s) attached to this one.`;
+        render();
+      });
+
+      panel.append(
+        heading,
+        standing,
+        attach,
+        outcomeLine('ticket-parent-outcome', linkOutcome),
+      );
+      return panel;
+    };
+
+    const renderDetail = (
+      node: ReadOnlyGraphNode | undefined,
+      nodes: readonly ReadOnlyGraphNode[],
+    ): void => {
       detail.replaceChildren();
 
       if (node === undefined) {
@@ -862,7 +993,11 @@ export const TICKETS_APP: AppDef = {
         remoteButton,
         kbButton,
       );
-      detail.append(actions, renderArticleLink(node));
+      detail.append(
+        actions,
+        renderArticleLink(node),
+        renderParentPanel(node, nodes),
+      );
 
       detail.append(
         refusalLine('ticket-refusal', refusal, createIcon('icon-lock')),
@@ -890,7 +1025,7 @@ export const TICKETS_APP: AppDef = {
         : null;
 
       renderQueue(nodes);
-      renderDetail(nodes.find((node) => node.id === selectedId));
+      renderDetail(nodes.find((node) => node.id === selectedId), nodes);
 
       // A repaint triggered by a tick must not steal the keyboard from the
       // control the player is standing on.

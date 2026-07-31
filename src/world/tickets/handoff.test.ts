@@ -167,6 +167,9 @@ describe('reading "what I tried" off the ticket', () => {
           HELPDESK_ACTIONS.ticketRecordResponse,
           HELPDESK_ACTIONS.ticketRecordTouch,
           HELPDESK_ACTIONS.ticketBounceHandoff,
+          // The day loop's verb, not the player's: nobody presses this one,
+          // so it has no line on a form somebody fills in.
+          HELPDESK_ACTIONS.ticketResolveWithParent,
         ]).toContain(id);
       }
     }

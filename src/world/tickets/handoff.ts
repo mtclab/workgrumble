@@ -50,6 +50,7 @@ const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.ticketClearWaiting]: 'Took it back off the reporter',
   [HELPDESK_ACTIONS.ticketClassify]: 'Triaged it',
   [HELPDESK_ACTIONS.ticketLinkArticle]: 'Linked the knowledge article',
+  [HELPDESK_ACTIONS.ticketLinkToParent]: 'Attached it to a parent incident',
 };
 
 export function actionSummary(id: string): string {
@@ -76,6 +77,11 @@ const NOT_WORK: ReadonlySet<string> = new Set<string>([
   // a form that answers the wrong question, and a response clock stopped by it
   // would be a clock stopped by somebody reading.
   HELPDESK_ACTIONS.ticketLinkArticle,
+  // Bookkeeping on the ticket rather than work on the fault: attaching a
+  // duplicate to its parent is filing, and the parent's own close is the day
+  // loop telling forty people at once.
+  HELPDESK_ACTIONS.ticketLinkToParent,
+  HELPDESK_ACTIONS.ticketResolveWithParent,
 ]);
 
 export function countsAsWork(actionId: string): boolean {

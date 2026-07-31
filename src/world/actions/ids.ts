@@ -64,6 +64,23 @@ export const HELPDESK_ACTIONS = {
    * ticket, which is a lesson a reward would get in the way of.
    */
   ticketLinkArticle: 'ticket.link_article',
+  /**
+   * Attaching a duplicate to the incident it is a duplicate OF.
+   *
+   * The whole of first line's job in a flood: forty reports, one fault, and
+   * the work is bookkeeping rather than repair. It refuses any ticket whose
+   * own resolution rule does not accept a parent, which is what stops a bulk
+   * close being a way to shift work nobody did.
+   */
+  ticketLinkToParent: 'ticket.link_to_parent',
+  /**
+   * The parent has been fixed, so the child is told and closed.
+   *
+   * Dispatched by the day loop rather than by a button: nobody presses
+   * "resolve" in this game, and a child closes because the fault behind it
+   * stopped existing - which is the same rule every other ticket closes by.
+   */
+  ticketResolveWithParent: 'ticket.resolve_with_parent',
 } as const;
 
 export type HelpdeskActionId =

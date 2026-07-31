@@ -209,6 +209,18 @@ export const FIELDS = {
    */
   touchLog: 'touch_log',
   /**
+   * The parent incident this ticket has been attached to as a duplicate, and
+   * the marker that says the parent has been fixed.
+   *
+   * Two fields because they answer two questions: `parent` is a decision the
+   * player made and can be read back at a review, and `parent_resolved` is the
+   * fact that closes the ticket - it is the field the child's own resolution
+   * rule watches, which is what keeps a bulk close a consequence of the world
+   * being fixed rather than of a button being pressed.
+   */
+  parent: 'parent',
+  parentResolved: 'parent_resolved',
+  /**
    * The knowledge article this ticket was actually solved with.
    *
    * A ticket is WRITTEN with a `kb_ref` in its definition - the article whose
