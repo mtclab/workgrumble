@@ -242,6 +242,12 @@ test('parks a ticket only once the user has actually been asked', async ({
   page,
 }) => {
   await logIn(page);
+  // Business hours: before 09:00 the SLA clock is held and every deadline
+  // drifts outward by the minute - "the deadline does not move" is only a
+  // promise the shift makes. Start it.
+  await page.getByTestId('day-state').click();
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('close-brief').click();
   await openFromStartMenu(page, 'tickets');
   await page.getByTestId('ticket-row-locked-account').click();
 

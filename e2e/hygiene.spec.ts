@@ -196,7 +196,11 @@ test('completes a full session with no console errors and no runtime requests', 
     'transform',
     'matrix(-1, 0, 0, -1, 0, 0)',
   );
-  await page.getByTestId('remote-clear-printer').click();
+  // Monday's world ships an empty print queue since the spooler ticket moved
+  // to Thursday - the surface is exercised by its honest refusal instead.
+  const clearPrinter = page.getByTestId('remote-clear-printer');
+  await expect(clearPrinter).toBeDisabled();
+  await expect(clearPrinter).toHaveAttribute('title', /already empty/);
   await expect(page.getByTestId('remote-queue-printer')).toHaveText(
     '0 job(s) queued',
   );

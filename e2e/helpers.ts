@@ -105,6 +105,10 @@ export async function logInOnDay(
   options: Readonly<LoginOptions> = {},
 ): Promise<void> {
   await page.clock.install();
+  // Idle days breach their queues, so any multi-day session arrives with the
+  // player fumbling; the sway never settles under strict actionability
+  // checks. Cross-day tests assert state, not pixels - reduced-motion path.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await completeLogin(page, { brief: 'keep' });
 
@@ -193,11 +197,19 @@ export async function openFromDesktopIcon(
 
 /** Brings an already-open window to the front from the taskbar. */
 export async function focusWindow(page: Page, appId: string): Promise<void> {
-  await page.getByTestId(`taskbar-button-${appId}`).click();
-  await expect(page.getByTestId(`window-${appId}`)).toHaveAttribute(
-    'data-focused',
-    'true',
-  );
+  // The taskbar button TOGGLES: clicking it on an already-focused window
+  // minimizes it. Focus can land on this window by itself (e.g. after the
+  // boss key minimizes the slack window above it), so only click when the
+  // window actually needs focusing.
+  const window = page.getByTestId(`window-${appId}`);
+  const focused = await window.getAttribute('data-focused');
+  const minimized = await window.getAttribute('data-minimized');
+
+  if (focused !== 'true' || minimized === 'true') {
+    await page.getByTestId(`taskbar-button-${appId}`).click();
+  }
+
+  await expect(window).toHaveAttribute('data-focused', 'true');
 }
 
 /** Runs one line in the Support Terminal and waits for it to echo back. */

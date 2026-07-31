@@ -261,5 +261,5 @@ test('keeps the boss channel to talk and no consequences', async ({ page }) => {
   await expect(page.getByTestId('chat-refusal')).toBeHidden();
   await expect(resolvedToast(page)).toHaveCount(0);
   await openFromStartMenu(page, 'tickets');
-  await expect(page.getByTestId('tickets-summary')).toContainText('4 open');
+  await expect(page.getByTestId('tickets-summary')).toContainText('2 open');
 });

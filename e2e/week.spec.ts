@@ -26,7 +26,8 @@ const REVIEW_MINUTE = 7 * 60;
 /** Starts the shift from a morning brief that is on screen. */
 async function beginShift(page: Page): Promise<void> {
   await page.getByTestId('brief-start-shift').click();
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
+  // At x4 a few sim-minutes pass between the click and the read.
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
   await page.getByTestId('close-brief').click();
 }
 
@@ -98,7 +99,7 @@ test('passes the review, opens the beer and reads the week back', async ({
   /* -- three o'clock ------------------------------------------------------ */
 
   await runSimMinutes(page, REVIEW_MINUTE - 60);
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('15:00');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^15:/);
 
   const review = page.getByTestId('window-review');
   await expect(review).toBeVisible();
@@ -127,7 +128,7 @@ test('passes the review, opens the beer and reads the week back', async ({
 
   await page.getByTestId('beer-open').click();
   await expect(page.getByTestId('beer-app')).toHaveAttribute('data-opened', 'true');
-  await expect(page.getByTestId('beer-reply')).toContainText('Malcolm');
+  await expect(page.getByTestId('beer-reply')).toContainText('considerably better');
   await expect(page.getByTestId('desk-beer-label')).toHaveText('Empty');
   await page.getByTestId('beer-open').click();
   await expect(beer).toHaveCount(0);

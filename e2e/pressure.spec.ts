@@ -37,7 +37,7 @@ async function startShift(page: Page): Promise<void> {
 /** The same, from a morning brief that is already on screen. */
 async function beginShift(page: Page): Promise<void> {
   await page.getByTestId('brief-start-shift').click();
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
   await page.getByTestId('close-brief').click();
 }
 
