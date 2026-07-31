@@ -37,7 +37,10 @@ export type {
 const FAN_TICKET: WorldTicket = {
   def: DEMO_TICKET,
   arrival: 'morning',
-  nodes: [WORLD_IDS.fan],
+  // The fan and the box it is bolted into. The machine is in the set because
+  // it is what a tech actually touches while chasing a noise - and it is what
+  // makes "what I tried" on the handoff form have anything in it.
+  nodes: [WORLD_IDS.fan, WORLD_IDS.machine],
   // You filed it yourself, about your own desk, and you were annoyed enough
   // at the time to tick the middle box. It has been making that noise for a
   // fortnight.

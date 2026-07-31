@@ -31,7 +31,9 @@ test('reveals the hidden cause when the right question is asked', async ({
   await page.getByTestId('ticket-row-rotated-screen').click();
 
   // Nothing has been learned yet, so there is nothing on the ticket.
-  await expect(page.getByTestId('ticket-clues')).toHaveCount(0);
+  await expect(page.getByTestId('ticket-worknotes')).toContainText(
+    'Nothing worked out yet',
+  );
 
   await page.getByTestId('ticket-open-chat').click();
   await expect(page.getByTestId('chat-heading')).toHaveText('Ada Whitlock');
@@ -46,31 +48,37 @@ test('reveals the hidden cause when the right question is asked', async ({
     .click();
   await expect(transcript).toContainText('I locked it, I went home');
   await focusWindow(page, 'tickets');
-  await expect(page.getByTestId('ticket-clues')).toHaveCount(0);
+  await expect(page.getByTestId('ticket-worknotes')).toContainText(
+    'Nothing worked out yet',
+  );
 
   // The right question.
   await focusWindow(page, 'chat');
   await options.getByRole('button', { name: /anybody else was at her desk/ })
     .click();
-  await expect(page.getByTestId('chat-outcome')).toContainText('Written onto');
+  await expect(page.getByTestId('chat-outcome')).toContainText(
+    'Filed as a work note',
+  );
   await expect(transcript).toContainText('Gareth was showing me a shortcut');
 
   // And it lands on the ticket, where the player will actually see it.
   await focusWindow(page, 'tickets');
-  await expect(page.getByTestId('ticket-clues')).toContainText(
+  await expect(page.getByTestId('ticket-worknotes')).toContainText(
     'showing her something',
   );
 
-  // Asking it twice does not write it twice, and explains itself.
+  // Asking it twice does not write it twice, and explains itself. The first
+  // thing that refuses is the question, because the question is now a line on
+  // the ticket rather than a flag, and it is already on there word for word.
   await focusWindow(page, 'chat');
   await options.getByRole('button', { name: /Go back to the top/ }).click();
   await options.getByRole('button', { name: /anybody else was at her desk/ })
     .click();
   await expect(page.getByTestId('chat-refusal')).toContainText(
-    'already written on the ticket',
+    'already put that to them',
   );
   await focusWindow(page, 'tickets');
-  await expect(page.getByTestId('ticket-clues').getByRole('listitem'))
+  await expect(page.getByTestId('ticket-worknotes').getByRole('listitem'))
     .toHaveCount(1);
 });
 

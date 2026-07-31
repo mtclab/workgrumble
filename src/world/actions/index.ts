@@ -20,7 +20,12 @@ export {
   HELPDESK_ACTIONS,
   type HelpdeskActionId,
 } from './ids';
-export { fieldLines, WAITING_NEEDS_QUESTION_REASON } from './ticket';
+export {
+  CLASSIFY_CLOSED_REASON,
+  CLASSIFY_ON_HOLD_REASON,
+  fieldLines,
+  WAITING_NEEDS_QUESTION_REASON,
+} from './ticket';
 
 /** Every tier-1 helpdesk action, in a stable order. */
 export function helpdeskActions(): readonly ActionData[] {

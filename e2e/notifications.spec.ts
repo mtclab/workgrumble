@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test';
 
-import { logIn, openFromDesktopIcon, openFromStartMenu } from './helpers';
+import {
+  focusWindow,
+  logIn,
+  openFromDesktopIcon,
+  openFromStartMenu,
+} from './helpers';
 
 /**
  * Real milliseconds the seeded ticket needs to run out its SLA: 240 sim
@@ -98,7 +103,23 @@ test('delivers engine notifications raised before the desktop existed', async ({
   await expect(page.getByTestId('tickets-summary')).toContainText('1 breached');
 
   await row.click();
+
+  // Escalating is a form now, and second line will not take a form with
+  // nothing in it. What was tried fills itself in from what was actually
+  // done, so the journey has to have done something first.
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-beige-box').click();
+  await page.getByTestId('remote-reboot').click();
+  await focusWindow(page, 'tickets');
+
   await page.getByTestId('ticket-escalate').click();
+  await expect(page.getByTestId('handoff-tried')).toContainText('Rebooted it');
+  await page
+    .getByTestId('handoff-reported')
+    .fill('It sounds like a hornet in a biscuit tin.');
+  await expect(page.getByTestId('handoff-warning')).toBeHidden();
+  await page.getByTestId('handoff-send').click();
+
   await expect(row).toHaveAttribute('data-state', 'resolved');
   await expect(row).toHaveAttribute('data-breached', 'true');
   await expect(row).toContainText('Closed (breached)');

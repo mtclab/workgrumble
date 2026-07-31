@@ -243,9 +243,11 @@ test('parks a ticket only once the user has actually been asked', async ({
   await page.getByTestId('ticket-row-locked-account').click();
 
   const toggle = page.getByTestId('ticket-waiting-toggle');
-  const due = page.getByTestId('ticket-detail-due');
-  const remaining = page.getByTestId('ticket-detail-sla');
-  const firstDue = (await due.textContent())?.trim() ?? '';
+  // The resolution clock: the countdown is in the text and the deadline is on
+  // the element, because one of them moves every minute and the other must
+  // not move at all until the ticket is parked.
+  const remaining = page.getByTestId('ticket-detail-resolution');
+  const firstDue = (await remaining.getAttribute('data-due'))?.trim() ?? '';
   expect(firstDue).toMatch(/^\d{2}:\d{2}$/);
 
   // Nobody has spoken to Gary yet, so the toggle is refused BEFORE the click
@@ -263,7 +265,7 @@ test('parks a ticket only once the user has actually been asked', async ({
     (await remaining.textContent())?.trim() ?? '',
     { timeout: 10_000 },
   );
-  await expect(due).toHaveText(firstDue);
+  await expect(remaining).toHaveAttribute('data-due', firstDue);
   await expect(page.getByTestId('ticket-detail-state')).toContainText('Open');
 
   // Ask him something. That is the whole price.
@@ -274,20 +276,27 @@ test('parks a ticket only once the user has actually been asked', async ({
     .getByRole('button', { name: /when he last logged in/ })
     .click();
   await expect(page.getByTestId('chat-outcome')).toContainText(
-    'Logged as asked',
+    'where they can see it',
   );
 
   await focusWindow(page, 'tickets');
+  // And the question is on the ticket, in the customer-visible stream, which
+  // is the only evidence the rule accepts.
+  await expect(page.getByTestId('ticket-comments')).toContainText(
+    'when he last logged in',
+  );
   await expect(toggle).toBeEnabled();
   await toggle.click();
   await expect(page.getByTestId('ticket-detail-state')).toContainText(
-    'Waiting on user',
+    'Awaiting the user',
   );
-  await expect(toggle).toContainText('Take it back off the user');
+  await expect(toggle).toContainText('Take it back off hold');
 
   // Parked, the deadline itself moves out - the SLA is being bought back a
   // minute at a time, which is exactly the CYA mechanic.
-  await expect(due).not.toHaveText(firstDue, { timeout: 10_000 });
+  await expect(remaining).not.toHaveAttribute('data-due', firstDue, {
+    timeout: 10_000,
+  });
 
   await toggle.click();
   await expect(page.getByTestId('ticket-detail-state')).toContainText('Open');

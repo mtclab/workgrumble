@@ -99,7 +99,7 @@ test('completes a full session with no console errors and no runtime requests', 
   await focusWindow(page, 'tickets');
   await page.getByTestId('ticket-waiting-toggle').click();
   await expect(page.getByTestId('ticket-detail-state')).toContainText(
-    'Waiting on user',
+    'Awaiting the user',
   );
   await page.getByTestId('ticket-waiting-toggle').click();
   await expect(page.getByTestId('ticket-detail-state')).toContainText('Open');

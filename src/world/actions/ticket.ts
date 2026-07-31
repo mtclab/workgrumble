@@ -54,6 +54,20 @@ export const WAITING_NEEDS_QUESTION_REASON = 'You have not actually asked '
   + 'them anything yet. Stopping their clock on a question nobody put to them '
   + 'is the kind of thing that gets read back to you at a review.';
 
+/**
+ * Why triage is refused, in the words the player reads.
+ *
+ * Exported for the same reason the CYA sentence is: the Tickets app greys its
+ * own button out with these, and a button that refuses for one reason while
+ * the engine refuses for another is two rules pretending to be one.
+ */
+export const CLASSIFY_CLOSED_REASON = 'That ticket is closed. Triaging it now '
+  + 'is filing a weather report for last Tuesday.';
+
+export const CLASSIFY_ON_HOLD_REASON = 'It is parked, and re-cutting its '
+  + 'deadline now would hand back the time it has spent waiting. Take it back '
+  + 'off hold first, then triage it.';
+
 const UNTRACKED_GUARD: GuardData = {
   when: { pred: 'ticket_untracked', node: TARGET },
   reason: UNTRACKED_REASON,
@@ -253,21 +267,12 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
     validate: [
       ...targetGuards('ticket'),
       UNTRACKED_GUARD,
-      {
-        when: stateIs('resolved'),
-        reason: 'That ticket is closed. Triaging it now is filing a weather '
-          + 'report for last Tuesday.',
-      },
+      { when: stateIs('resolved'), reason: CLASSIFY_CLOSED_REASON },
       // Classifying re-cuts the resolution deadline from the moment the
       // ticket arrived, and time spent parked is not in that sum. Doing it
       // while the ticket is on hold would quietly hand back the pause, so the
       // order is: triage it, then park it.
-      {
-        when: stateIs('waiting_on_user'),
-        reason: 'It is parked on the user, and re-cutting its deadline now '
-          + 'would hand back the time it has spent waiting. Take it back off '
-          + 'them first, then triage it.',
-      },
+      { when: stateIs('waiting_on_user'), reason: CLASSIFY_ON_HOLD_REASON },
       MATRIX_GUARD,
     ],
     apply: [

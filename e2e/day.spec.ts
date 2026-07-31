@@ -90,9 +90,11 @@ test('walks a day from the morning brief to the scorecard', async ({
   );
   await expect(page.getByTestId('scorecard-arrived')).toHaveText('4');
   await expect(page.getByTestId('scorecard-net')).toContainText('£');
-  // The slots lane B fills say so rather than showing a confident zero.
-  await expect(page.getByTestId('scorecard-stress')).toContainText(
-    'Not measured yet',
+  // The pressure layer's own numbers, measured rather than promised.
+  await expect(page.getByTestId('scorecard-stress')).toContainText(' of 100');
+  await expect(page.getByTestId('scorecard-suspicion')).toContainText(' of 100');
+  await expect(page.getByTestId('scorecard-reputation')).not.toContainText(
+    'Not measured',
   );
 
   // The clock is stopped at the day end: the scorecard waits to be read.

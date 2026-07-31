@@ -1,13 +1,14 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import { isTicketState, type TicketState } from '../../engine-api';
 import {
+  CLASSIFY_CLOSED_REASON,
+  CLASSIFY_ON_HOLD_REASON,
   fieldLines,
   HELPDESK_ACTIONS,
   WAITING_NEEDS_QUESTION_REASON,
 } from '../../world/actions';
 import { FIELDS } from '../../world/fields';
 import {
-  cellLabel,
   type Classification,
   classify,
   isLevel,
@@ -374,11 +375,9 @@ export const TICKETS_APP: AppDef = {
       setAvailability(
         file,
         ticketState(node) === 'resolved'
-          ? 'This ticket is closed. Triaging it now is filing a weather '
-            + 'report for last Tuesday.'
+          ? CLASSIFY_CLOSED_REASON
           : clocks.onHold
-            ? 'It is on hold. Take it back off hold before you re-cut its '
-              + 'deadline, or the pause comes back to you as free time.'
+            ? CLASSIFY_ON_HOLD_REASON
             : pair === null
               ? 'Pick an impact and an urgency first.'
               : null,
@@ -572,16 +571,30 @@ export const TICKETS_APP: AppDef = {
         : priorityLabel(clocks.priority);
       priorityValue.append(priorityBadge);
 
-      definitionRow(facts, 'Response SLA', 'ticket-detail-response')
-        .textContent = `${clockSummary(clocks.response, 'Answered')} · target ${
-          formatDuration(targetsFor(clocks.priority).response)
-        }`;
-      definitionRow(facts, 'Resolution SLA', 'ticket-detail-resolution')
-        .textContent = `${clockSummary(clocks.resolution, 'Closed')} · due ${
-          formatSimTime(clocks.resolution.dueAt).time
-        }${clocks.heldTicks > 0
+      // The countdown moves every minute and the deadline does not, so the
+      // deadline gets an attribute of its own: a test that reads them out of
+      // one sentence cannot tell "the clock is running" from "the clock has
+      // been quietly bought back".
+      const responseRow = definitionRow(
+        facts,
+        'Response SLA',
+        'ticket-detail-response',
+      );
+      responseRow.textContent = `${clockSummary(clocks.response, 'Answered')}`
+        + ` · target ${formatDuration(targetsFor(clocks.priority).response)}`;
+      responseRow.dataset.due = formatSimTime(clocks.response.dueAt).time;
+
+      const resolutionRow = definitionRow(
+        facts,
+        'Resolution SLA',
+        'ticket-detail-resolution',
+      );
+      resolutionRow.textContent = `${clockSummary(clocks.resolution, 'Closed')}`
+        + ` · due ${formatSimTime(clocks.resolution.dueAt).time}`
+        + (clocks.heldTicks > 0
           ? ` · paused ${formatDuration(clocks.heldTicks)}`
-          : ''}`;
+          : '');
+      resolutionRow.dataset.due = formatSimTime(clocks.resolution.dueAt).time;
 
       const body = element('p', 'ticket-body', 'ticket-detail-body');
       body.textContent = entry?.def.flavor.body
@@ -834,5 +847,3 @@ export function misclassifiedTickets(
 
   return found;
 }
-
-export { cellLabel };
