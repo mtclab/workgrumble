@@ -1,6 +1,6 @@
 {
-  "name": "it-career-sim",
-  "version": "0.0.0",
+  "name": "workgrumble",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {

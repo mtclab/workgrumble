@@ -2037,7 +2037,7 @@ test('walks the week nobody worked, the firing, and the retry', async ({
   await step('start-menu.load-refused', async () => {
     await page.evaluate(() => {
       window.localStorage.setItem(
-        'it-career-sim/save',
+        'workgrumble/save',
         JSON.stringify({ schema: 99, engine: '{}' }),
       );
     });

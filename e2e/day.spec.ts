@@ -204,7 +204,7 @@ test('refuses a damaged save without taking the session with it', async ({
 
   await page.evaluate(() => {
     window.localStorage.setItem(
-      'it-career-sim/save',
+      'workgrumble/save',
       JSON.stringify({ schema: 99, engine: '{}' }),
     );
   });

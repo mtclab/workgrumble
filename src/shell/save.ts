@@ -31,7 +31,7 @@ import { FIELDS } from '../world/fields';
  */
 export const SAVE_SCHEMA = 2;
 
-export const SAVE_KEY = 'it-career-sim/save';
+export const SAVE_KEY = 'workgrumble/save';
 
 export interface SaveFile {
   readonly schema: number;

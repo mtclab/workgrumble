@@ -260,7 +260,7 @@ describe('the save file', () => {
     workUntilMidday(live);
     live.session.save();
 
-    const raw = live.storage.getItem('it-career-sim/save');
+    const raw = live.storage.getItem('workgrumble/save');
 
     if (raw === null) {
       throw new Error('The save was not written.');
@@ -283,7 +283,7 @@ describe('the save file', () => {
     for (const broken of damaged) {
       const fresh = session();
       const before = fresh.engine.snapshotHash();
-      fresh.storage.setItem('it-career-sim/save', JSON.stringify(broken));
+      fresh.storage.setItem('workgrumble/save', JSON.stringify(broken));
 
       const outcome = fresh.session.load();
       expect(outcome.ok, JSON.stringify(broken.schema)).toBe(false);
@@ -332,7 +332,7 @@ describe('the save file', () => {
 
     const older = session();
     const before = older.engine.snapshotHash();
-    older.storage.setItem('it-career-sim/save', raw);
+    older.storage.setItem('workgrumble/save', raw);
 
     const outcome = older.session.load();
     expect(outcome.ok).toBe(false);
@@ -371,7 +371,7 @@ describe('the save file', () => {
     const source = session();
     workUntilMidday(source);
     source.session.save();
-    const raw = source.storage.getItem('it-career-sim/save');
+    const raw = source.storage.getItem('workgrumble/save');
 
     if (raw === null) {
       throw new Error('The save was not written.');
@@ -410,7 +410,7 @@ describe('the save file', () => {
       speed: live.driver.speed(),
       screens: live.appState.snapshot(),
     };
-    live.storage.setItem('it-career-sim/save', foreign);
+    live.storage.setItem('workgrumble/save', foreign);
 
     const outcome = live.session.load();
     expect(outcome.ok).toBe(false);

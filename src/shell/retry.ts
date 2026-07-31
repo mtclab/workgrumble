@@ -36,7 +36,7 @@ import { createAppState } from './app-state';
 import type { SaveOutcome } from './save';
 import type { WeekCarry } from '../world/session';
 
-export const RETRY_KEY = 'it-career-sim/retry';
+export const RETRY_KEY = 'workgrumble/retry';
 
 export interface RetryRecord {
   /** Which attempt the NEXT week is, counting from 1. */
