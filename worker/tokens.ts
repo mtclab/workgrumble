@@ -1,30 +1,63 @@
 /**
  * The door: tester tokens, and the one decision they exist to make.
  *
- * A token is a KV record with four facts on it - what it is called, how many
- * admissions it is worth, how many it has spent, and when it stops working -
- * plus a revocation flag that is checked on every single request rather than
- * being a deletion, because a link that has been handed out cannot be taken
- * back and the honest answer is to make it stop working with a record of why.
+ * A token is TWO keys in KV, and the split is the whole design.
  *
- * The decision is pure and lives here on its own. It is the piece with five
- * outcomes and four of them are refusals, which is exactly the shape of thing
- * that gets written once, tested once through the happy path, and then quietly
+ *  - `<token>` is the POLICY: what it is called, how many admissions it is
+ *    worth, when it stops working, and whether it has been revoked. It is
+ *    written by the owner's CLI and by nothing else, ever.
+ *  - `uses/<token>` is the COUNT, and it is the only thing the door writes.
+ *
+ * They used to be one record, and that shipped a defect that was found live on
+ * the first day: an admission read the record, added one to the count, and
+ * wrote the WHOLE record back. Any admission whose read happened before a
+ * revocation landed put its stale copy back afterwards - `revoked: true`
+ * quietly became `revoked: false`, and the link carried on letting people in.
+ * Revocation was only as durable as the absence of traffic, which is precisely
+ * backwards for the one field whose entire job is to work in a hurry.
+ *
+ * So no field has two writers. The door can still lose a COUNT to a race - two
+ * admissions in the same instant both read four and both write five, and
+ * somebody gets a free admission - and that is a miscount rather than a hole.
+ * The policy cannot be lost at all, and `stillAdmitted` re-reads it on every
+ * request, so a pass issued in the last stale moment before a revoke is dead by
+ * that browser's next request.
+ *
+ * The decision itself is pure and lives here on its own. It is the piece with
+ * six outcomes and five of them are refusals, which is exactly the shape of
+ * thing that gets written once, tested through the happy path, and then quietly
  * lets an expired link in for a year.
  */
+
+import type { KVNamespace } from './types';
 
 /** What a token is allowed to look like before KV is asked anything. */
 const TOKEN_SHAPE = /^[A-Za-z0-9_-]{8,64}$/;
 
-export interface TokenRecord {
+/**
+ * The policy record. Owner-written, door-read.
+ *
+ * There is deliberately no live count on it. A count here would be a field two
+ * writers could reach, which is the whole of what this shape exists to make
+ * impossible.
+ */
+export interface TokenPolicy {
   /** Who it was given to, for the owner's own list. Never shown to anybody. */
   readonly label: string;
   /** How many admissions it is worth; null is a shared link with no limit. */
   readonly uses_max: number | null;
-  readonly uses_count: number;
   /** Epoch milliseconds, or null for a link that does not time out. */
   readonly expires_at: number | null;
   readonly revoked: boolean;
+  /**
+   * A count found ON the policy record, which only a record written before the
+   * split can have.
+   *
+   * It is read as the STARTING VALUE for the counter and never written back,
+   * so a token minted by the old build keeps the admissions it had already
+   * spent instead of quietly getting them all again. Nothing writes it.
+   */
+  readonly legacy_uses: number;
 }
 
 /**
@@ -44,7 +77,12 @@ export type AdmissionRefusal =
   | 'exhausted';
 
 export type Admission =
-  | { readonly ok: true; readonly spent: TokenRecord }
+  | {
+    readonly ok: true;
+    readonly policy: TokenPolicy;
+    /** What the COUNTER should say once this admission is counted. */
+    readonly spent: number;
+  }
   | { readonly ok: false; readonly why: AdmissionRefusal };
 
 export function isTokenShape(token: string): boolean {
@@ -52,13 +90,25 @@ export function isTokenShape(token: string): boolean {
 }
 
 /**
- * A record out of KV, read strictly.
+ * Where the count lives.
+ *
+ * The slash is load-bearing: `isTokenShape` forbids one, so a counter key can
+ * never be mistaken for a token and a token can never be mistaken for a
+ * counter - which also means the CLI's listing can tell them apart without
+ * having to know anything about either.
+ */
+export function usesKey(token: string): string {
+  return `uses/${token}`;
+}
+
+/**
+ * A policy record out of KV, read strictly.
  *
  * Anything that is not exactly this shape comes back null and the admission is
  * refused. A half-read token record is a door with an opinion about what the
  * missing half probably said.
  */
-export function parseTokenRecord(raw: string | null): TokenRecord | null {
+export function parseTokenPolicy(raw: string | null): TokenPolicy | null {
   if (raw === null) {
     return null;
   }
@@ -90,19 +140,13 @@ export function parseTokenRecord(raw: string | null): TokenRecord | null {
 
   const max = whole(uses_max);
   const expires = whole(expires_at);
-  const count = typeof uses_count === 'number'
-    && Number.isSafeInteger(uses_count)
-    && uses_count >= 0
-    ? uses_count
-    : uses_count === undefined
-      ? 0
-      : null;
+  const legacy = whole(uses_count);
 
   if (
     typeof label !== 'string'
     || max === undefined
     || expires === undefined
-    || count === null
+    || legacy === undefined
   ) {
     return null;
   }
@@ -110,8 +154,8 @@ export function parseTokenRecord(raw: string | null): TokenRecord | null {
   return {
     label,
     uses_max: max,
-    uses_count: count,
     expires_at: expires,
+    legacy_uses: legacy ?? 0,
     // Anything that is not literally `false` is a revoked token: a record with
     // the flag missing or misspelled must fail shut.
     revoked: revoked !== false,
@@ -119,7 +163,29 @@ export function parseTokenRecord(raw: string | null): TokenRecord | null {
 }
 
 /**
- * Whether this token admits this request, and what the record looks like
+ * How many admissions have been spent.
+ *
+ * A counter that is missing or unreadable falls back to whatever the policy
+ * record carried: zero for anything minted since the split, and the real count
+ * for anything minted before it.
+ */
+export function parseUses(raw: string | null, policy: TokenPolicy): number {
+  // Digits and nothing else. `Number` is far too willing here - it reads an
+  // EMPTY string as zero, which would turn a counter that had been blanked by
+  // a bad write into a link with all its admissions back, and it reads `1e3`
+  // and `0x10` as numbers nobody wrote. The door only ever puts `String(n)`,
+  // so anything that is not a run of digits did not come from the door.
+  if (raw === null || !/^\d+$/.test(raw)) {
+    return policy.legacy_uses;
+  }
+
+  const count = Number(raw);
+
+  return Number.isSafeInteger(count) ? count : policy.legacy_uses;
+}
+
+/**
+ * Whether this token admits this request, and what the COUNTER should say
  * afterwards.
  *
  * The order is the whole of it. Revocation first, because it is the one that
@@ -130,34 +196,66 @@ export function parseTokenRecord(raw: string | null): TokenRecord | null {
  */
 export function admit(
   token: string,
-  raw: string | null,
+  record: string | null,
+  counter: string | null,
   now: number,
 ): Admission {
   if (!isTokenShape(token)) {
     return { ok: false, why: 'malformed' };
   }
 
-  if (raw === null) {
+  if (record === null) {
     return { ok: false, why: 'unknown' };
   }
 
-  const record = parseTokenRecord(raw);
+  const policy = parseTokenPolicy(record);
 
-  if (record === null) {
+  if (policy === null) {
     return { ok: false, why: 'unreadable' };
   }
 
-  if (record.revoked) {
+  if (policy.revoked) {
     return { ok: false, why: 'revoked' };
   }
 
-  if (record.expires_at !== null && record.expires_at <= now) {
+  if (policy.expires_at !== null && policy.expires_at <= now) {
     return { ok: false, why: 'expired' };
   }
 
-  if (record.uses_max !== null && record.uses_count >= record.uses_max) {
+  const used = parseUses(counter, policy);
+
+  if (policy.uses_max !== null && used >= policy.uses_max) {
     return { ok: false, why: 'exhausted' };
   }
 
-  return { ok: true, spent: { ...record, uses_count: record.uses_count + 1 } };
+  return { ok: true, policy, spent: used + 1 };
+}
+
+/**
+ * The same decision against a real KV, spending one admission.
+ *
+ * THE ONLY WRITE IS THE COUNTER. That is not tidiness and it is not an
+ * optimisation - it is the invariant that keeps a revocation durable, and it is
+ * asserted directly rather than left to be read off the code: the test drives
+ * this function with a revoke landing between its read and its write, and
+ * fails if the token key is written at all, for any reason, in any outcome.
+ */
+export async function spendAdmission(
+  kv: KVNamespace,
+  token: string,
+  now: number,
+): Promise<Admission> {
+  if (!isTokenShape(token)) {
+    return { ok: false, why: 'malformed' };
+  }
+
+  const record = await kv.get(token);
+  const counter = await kv.get(usesKey(token));
+  const outcome = admit(token, record, counter, now);
+
+  if (outcome.ok) {
+    await kv.put(usesKey(token), String(outcome.spent));
+  }
+
+  return outcome;
 }

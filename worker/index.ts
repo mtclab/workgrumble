@@ -47,7 +47,7 @@ import {
 import { assetHeaders, invitePage, json, refuse } from './http';
 import { consumeRate } from './rate-limit';
 import { checkSave, MAX_SAVE_BYTES, SAVE_TOO_BIG } from './saves';
-import { admit, isTokenShape, parseTokenRecord } from './tokens';
+import { isTokenShape, parseTokenPolicy, spendAdmission } from './tokens';
 import type { Env, KVNamespace } from './types';
 
 const HOUR = 60 * 60 * 1_000;
@@ -135,10 +135,14 @@ async function withinRate(
  * after the thing it is protecting has already been read is a limiter that
  * still lets somebody walk the token space, just with a 403 at the end of it.
  *
- * The count is written back before the cookie is issued. Getting that order
- * wrong is how a single-use link admits two people: the failure mode of doing
- * it this way is a spent use nobody got, which is a token the owner can mint
+ * The count is written before the cookie is issued. Getting that order wrong
+ * is how a single-use link admits two people: the failure mode of doing it
+ * this way is a spent use nobody got, which is a token the owner can mint
  * again, and the failure mode of the other way is a limit that is not one.
+ *
+ * What is NOT written here is the token record. `spendAdmission` touches the
+ * counter and nothing else, which is what stops an admission that read a
+ * pre-revocation record from putting `revoked: false` back afterwards.
  */
 async function admitTester(
   request: Request,
@@ -154,8 +158,7 @@ async function admitTester(
     return invitePage();
   }
 
-  const raw = isTokenShape(token) ? await env.TOKENS.get(token) : null;
-  const outcome = admit(token, raw, now);
+  const outcome = await spendAdmission(env.TOKENS, token, now);
 
   if (!outcome.ok) {
     // Every refusal, one answer. `outcome.why` exists for the tests and for
@@ -163,13 +166,11 @@ async function admitTester(
     return invitePage();
   }
 
-  await env.TOKENS.put(token, JSON.stringify(outcome.spent));
-
   // A pass never outlives the link that issued it: a two-week token that let
   // somebody in on its last day does not buy them another month.
-  const lifetime = outcome.spent.expires_at === null
+  const lifetime = outcome.policy.expires_at === null
     ? now + PASS_MAX_AGE_SECONDS * 1_000
-    : Math.min(now + PASS_MAX_AGE_SECONDS * 1_000, outcome.spent.expires_at);
+    : Math.min(now + PASS_MAX_AGE_SECONDS * 1_000, outcome.policy.expires_at);
   const cookie = await seal(key, token, lifetime);
 
   return new Response(null, {
@@ -195,6 +196,9 @@ async function admitTester(
  * mean something. A cookie is good for thirty days; without this, revoking a
  * link would stop it admitting anybody new and leave everybody it had already
  * admitted inside for a month.
+ *
+ * It reads the POLICY, which the door never writes - so what it sees is what
+ * the owner last put there, and nothing an admission did can have undone it.
  */
 async function stillAdmitted(
   env: Env,
@@ -209,11 +213,11 @@ async function stillAdmitted(
     return false;
   }
 
-  const record = parseTokenRecord(await env.TOKENS.get(token));
+  const policy = parseTokenPolicy(await env.TOKENS.get(token));
 
-  return record !== null
-    && !record.revoked
-    && (record.expires_at === null || record.expires_at > now);
+  return policy !== null
+    && !policy.revoked
+    && (policy.expires_at === null || policy.expires_at > now);
 }
 
 /* -- identity ------------------------------------------------------------- */

@@ -11,7 +11,7 @@
  * and `--remote` is the default because the production namespace is the one
  * anybody actually needs to change):
  *
- *   node scripts/tokens.mjs mint --label "Ada" [--uses 3] [--days 14]
+ *   node scripts/tokens.mjs mint --label "Ada" [--uses 3] [--days 14] [--quiet]
  *   node scripts/tokens.mjs list
  *   node scripts/tokens.mjs show <token>
  *   node scripts/tokens.mjs revoke <token>
@@ -21,6 +21,13 @@
  * one that does not time out. Both are recorded on the record rather than
  * enforced by deleting it, so a link that stops working leaves evidence of
  * having been given to somebody.
+ *
+ * THIS SCRIPT OWNS THE RECORD AND THE DOOR OWNS THE COUNT. `<token>` holds the
+ * label, the limit, the expiry and the revocation flag and is written here and
+ * nowhere else; `uses/<token>` holds the number of admissions and is written by
+ * the Worker and nowhere else. They were one key until a revocation was found
+ * live to have been undone by an admission that had read the record a moment
+ * too early, and no field in this system has two writers now.
  *
  * `seed-fixtures` writes the four tokens `e2e/tokens.ts` drives the door with.
  * It is for a staging KV and says so: those four strings are in the repository,
@@ -65,7 +72,10 @@ function readFlags(argv) {
 
     const name = arg.slice(2);
 
-    if (name === 'local' || name === 'remote') {
+    // The flags that take no value. Anything else consumes the next argument,
+    // so a new switch that is not listed here would silently eat the token id
+    // standing behind it.
+    if (name === 'local' || name === 'remote' || name === 'quiet') {
       flags[name] = true;
       continue;
     }
@@ -92,18 +102,48 @@ function wrangler(args, flags) {
   return result.stdout;
 }
 
-function put(token, record, flags) {
-  wrangler(['key', 'put', token, JSON.stringify(record)], flags);
+/**
+ * Where the count lives, and the reason it is not on the record.
+ *
+ * The door writes `uses/<token>` and NOTHING else; this CLI writes the record
+ * and nothing else. They used to share one key, and an admission that had read
+ * it before a revoke landed put `revoked: false` back afterwards - found live
+ * on the first day. No field with two writers, ever.
+ */
+function usesKey(token) {
+  return `uses/${token}`;
+}
+
+function put(key, value, flags) {
+  wrangler(['key', 'put', key, value], flags);
+}
+
+function putRecord(token, record, flags) {
+  put(token, JSON.stringify(record), flags);
+}
+
+function read(key, flags) {
+  return wrangler(['key', 'get', key], flags).trim();
 }
 
 function get(token, flags) {
-  const raw = wrangler(['key', 'get', token], flags).trim();
+  const raw = read(token, flags);
 
   if (raw.length === 0) {
     fail(`No token record for "${token}".`);
   }
 
   return JSON.parse(raw);
+}
+
+/**
+ * How many admissions a link has spent: the counter, or the count left on an
+ * old record if the counter has not been written yet. The same fallback the
+ * door uses, so the listing and the door never disagree about a number.
+ */
+function usesOf(token, record, flags) {
+  const raw = read(usesKey(token), flags);
+  return /^\d+$/.test(raw) ? Number(raw) : (record.uses_count ?? 0);
 }
 
 function newToken() {
@@ -129,15 +169,23 @@ function mint(flags) {
   }
 
   const token = newToken();
+  // No count on it. The record is policy, and policy is this script's alone.
   const record = {
     label: label.trim(),
     uses_max: uses,
-    uses_count: 0,
     expires_at: days === null ? null : Date.now() + days * 86400000,
     revoked: false,
   };
 
-  put(token, record, flags);
+  putRecord(token, record, flags);
+
+  // `--quiet` prints the id and nothing else, for a caller that is a program
+  // rather than a person - the revocation journey mints its own link.
+  if (flags.quiet === true) {
+    console.log(token);
+    return;
+  }
+
   console.log(`Minted for ${record.label}`);
   console.log(`  https://workgrumble.mtclab.net/t/${token}`);
   console.log(`  uses: ${uses === null ? 'shared link' : uses}`);
@@ -149,14 +197,17 @@ function list(flags) {
   const keys = JSON.parse(raw);
 
   for (const key of keys) {
-    if (key.name.startsWith('rate/')) {
+    // Counters and rate windows are not tokens. Neither can be mistaken for
+    // one: a token id may not contain a slash.
+    if (key.name.includes('/')) {
       continue;
     }
 
     const record = get(key.name, flags);
+    const used = usesOf(key.name, record, flags);
     const spent = record.uses_max === null
-      ? `${record.uses_count} admissions (shared)`
-      : `${record.uses_count}/${record.uses_max}`;
+      ? `${used} admissions (shared)`
+      : `${used}/${record.uses_max}`;
     console.log(
       `${record.revoked ? 'REVOKED' : 'live   '}  ${spent.padEnd(24)}  `
       + `${key.name}  ${record.label}`,
@@ -165,14 +216,38 @@ function list(flags) {
 }
 
 function show(token, flags) {
-  console.log(JSON.stringify(get(token, flags), null, 2));
+  const record = get(token, flags);
+  console.log(JSON.stringify(
+    { ...record, uses_spent: usesOf(token, record, flags) },
+    null,
+    2,
+  ));
 }
 
+/**
+ * Revoking, and then CHECKING.
+ *
+ * The read-back is not belt and braces. This script printed "Anybody it let in
+ * is out at their next request" while the door was quietly putting the flag
+ * back, and the confident sentence is exactly why nobody looked again - a
+ * command that claims an outcome it has not checked is how a live defect gets
+ * past a smoke test. So the write is read back and the flag is asserted, and
+ * the sentence is only printed once it is true.
+ */
 function revoke(token, flags) {
   const record = get(token, flags);
-  put(token, { ...record, revoked: true }, flags);
-  console.log(`Revoked "${record.label}". Anybody it let in is out at their `
-    + 'next request.');
+  putRecord(token, { ...record, revoked: true }, flags);
+
+  const after = get(token, flags);
+
+  if (after.revoked !== true) {
+    fail(`REVOCATION DID NOT TAKE for "${token}". The record still reads `
+      + `revoked=${JSON.stringify(after.revoked)}. The link is still live; do `
+      + 'not tell anybody otherwise.');
+  }
+
+  console.log(`Revoked "${record.label}", and read it back to be sure. `
+    + 'Anybody it let in is out at their next request.');
 }
 
 function seedFixtures(flags) {
@@ -181,13 +256,18 @@ function seedFixtures(flags) {
       + 'token strings are in the repository.');
   }
 
-  for (const [token, record] of Object.entries(FIXTURES)) {
+  for (const [token, fixture] of Object.entries(FIXTURES)) {
     // The file carries its own explanation under a key no token can wear.
     if (token.startsWith('_')) {
       continue;
     }
 
-    put(token, record, flags);
+    // The fixture file declares a count; it is seeded into the COUNTER, not
+    // onto the record, so the "already spent" link is spent for the same
+    // reason a real one would be rather than through the legacy fallback.
+    const { uses_count: spent = 0, ...record } = fixture;
+    putRecord(token, record, flags);
+    put(usesKey(token), String(spent), flags);
     console.log(`seeded ${token}`);
   }
 }

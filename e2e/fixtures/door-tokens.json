@@ -9,9 +9,15 @@
     "limit, so admitting through it a thousand times only counts to a thousand;",
     "the other three are refused before anything is written, so the suite never",
     "changes a record and never needs re-seeding between runs. The one thing",
-    "deliberately not walked end to end is spending the LAST use of a counted",
-    "link - that is a state change, and it is proven in worker/tokens.test.ts",
-    "where it can be run a hundred times."
+    "deliberately not walked here is spending the LAST use of a counted link -",
+    "that is a state change, and it is proven in worker/tokens.test.ts where it",
+    "can be run a hundred times.",
+    "",
+    "`uses_count` below is a SEED FOR THE COUNTER, not a field on the record.",
+    "The record is policy and the owner's CLI owns it; the count lives under",
+    "`uses/<token>` and the door owns that. `seed-fixtures` splits these two",
+    "lines into the two keys, so the spent link is spent for the same reason a",
+    "real one would be."
   ],
   "wg-fixture-shared-0000000000": {
     "label": "e2e: the shared link every journey walks in through",

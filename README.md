@@ -71,6 +71,12 @@ than against a directory of files. `PLAYWRIGHT_BASE_URL` is still the only
 environment input - the suite lets itself in through a fixture link whose id is
 a constant in `e2e/tokens.ts`, seeded from the same file the CLI reads.
 
+Run it FROM THE HOST SERVING `wrangler dev`, in the repo root. Both the seeding
+step and `revocation.spec.ts` reach the simulated KV under `.wrangler/`
+directly - revoking a link is administration, and there is deliberately no web
+surface that does it, so the one journey that proves revocation works uses the
+owner's own CLI the way a human would.
+
 The journey suite in `e2e/` drives the SHIPPED artifact through a real browser
 as a player: the day loop, the boss key, the caught scene, triage, the handoff
 form, the scorecard, a save/reload that has to come back to the same world, and
