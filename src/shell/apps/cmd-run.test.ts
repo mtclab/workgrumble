@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { HELPDESK_ACTIONS } from '../../world/actions';
 import { COMPANY_IDS } from '../../world/company';
 import { AppStateStore } from '../app-state';
 import { DayDriver } from '../day-driver';
+import { addressOf, GATEWAY, macOf, NAME_SERVER } from './cmd-net';
 import {
   createWorldSession,
   WORLD_SEED,
@@ -211,6 +213,142 @@ describe('support terminal commands', () => {
     expect(session.engine.graph.getField(COMPANY_IDS.garyAccount, 'password_reset_at'))
       .toBe(17);
     expect(run(api, 'users gpoole')).toContain('Password set : 08:17');
+  });
+
+  /* -- the looking commands ---------------------------------------------- */
+
+  it('prints this desk\'s address, and more of it on /all', () => {
+    const api = apiFor(createWorldSession());
+    const plain = run(api, 'ipconfig');
+
+    expect(plain).toContain('IPv4 Address');
+    expect(plain).toContain(addressOf(COMPANY_IDS.playerMachine));
+    expect(plain).toContain(`Default Gateway . . . . . . . . . : ${GATEWAY}`);
+    expect(plain).not.toContain('Physical Address');
+
+    const all = run(api, 'ipconfig /all');
+    expect(all).toContain(macOf(COMPANY_IDS.playerMachine));
+    expect(all).toContain('DHCP Enabled');
+    expect(all).toContain('BEIGE-BOX');
+
+    expect(run(api, 'ipconfig /renew')).toContain('is not a switch');
+  });
+
+  /**
+   * The gag with a straight face: it prints the sentence every tech has typed
+   * a thousand times, and it changes nothing at all. A flushdns that quietly
+   * fixed something would teach exactly the wrong lesson.
+   */
+  it('flushes a DNS cache and changes nothing whatsoever', () => {
+    const session = createWorldSession();
+    const api = apiFor(session);
+    const before = session.engine.snapshotHash();
+    const dispatched = session.engine.dispatchLog().length;
+    const output = run(api, 'ipconfig /flushdns');
+
+    expect(output).toContain('Successfully flushed the DNS Resolver Cache.');
+    expect(session.engine.snapshotHash()).toBe(before);
+    // Not one verb reached the world: the command is a sentence, not a fix.
+    expect(session.engine.dispatchLog()).toHaveLength(dispatched);
+  });
+
+  it('says which account this session is actually running as', () => {
+    const api = apiFor(createWorldSession());
+
+    expect(run(api, 'whoami')).toContain('workgrumble\\ppending');
+    expect(run(api, 'whoami /groups')).toContain('WORKGRUMBLE\\Print Users');
+    expect(run(api, 'whoami /groups')).toContain('WORKGRUMBLE\\VPN Users');
+    expect(run(api, 'whoami /elevate')).toContain('is not a switch');
+
+    // Somebody with no account on file gets told so rather than a blank line.
+    expect(run(apiFor(createWorldSession(), COMPANY_IDS.printServer), 'whoami'))
+      .toContain('no record of');
+  });
+
+  it('reads a machine back off the graph, this one by default', () => {
+    const session = sessionWith('ticket:wedged-spooler');
+    const api = apiFor(session);
+    const mine = run(api, 'systeminfo');
+
+    expect(mine).toContain('BEIGE-BOX');
+    expect(mine).toContain('1024x768');
+
+    const server = run(api, 'systeminfo PRINT-01');
+    expect(server).toContain('PRINT-01');
+    // Everything on the box, including the one nobody remembers is on it.
+    expect(server).toContain('Print Spooler');
+    expect(server).toContain('VPN Concentrator');
+    expect(server).toContain('Pending Updates:           Yes');
+    expect(run(api, 'systeminfo SALES-99')).toContain('Unknown host');
+  });
+
+  /**
+   * A reboot is the one thing in this world that sets an uptime, so the two
+   * have to agree: the command is only worth typing if it can tell the player
+   * whether the machine has actually been restarted since the fault started.
+   */
+  it('shows a boot time only once something has been rebooted', () => {
+    const session = createWorldSession();
+    const api = apiFor(session);
+
+    expect(run(api, 'systeminfo SALES-02')).toContain('unrecorded');
+
+    session.engine.advance(42);
+    expect(
+      api.dispatch(
+        HELPDESK_ACTIONS.machineReboot,
+        COMPANY_IDS.player,
+        COMPANY_IDS.adaMachine,
+        {},
+      ).ok,
+    ).toBe(true);
+
+    expect(run(api, 'systeminfo SALES-02'))
+      .toContain('System Boot Time:          08:42');
+  });
+
+  it('traces the route through the box everything goes through', () => {
+    const api = apiFor(createWorldSession());
+    const trace = run(api, 'tracert SALES-02');
+
+    expect(trace).toContain('Tracing route to sales-02.workgrumble.local');
+    expect(trace).toContain('print-01.workgrumble.local');
+    expect(trace).toContain('Trace complete.');
+
+    // Its own desk is one hop and says so instead of printing an empty list.
+    expect(run(api, 'tracert BEIGE-BOX'))
+      .toContain('It is this machine.');
+    expect(run(api, 'tracert SALES-99')).toContain('Unknown host');
+  });
+
+  it('gives up on a route with stars, and blames the wire', () => {
+    // Nobody has run a cable to the payroll machine in this fiction: it is
+    // wired to the print server like everything else, so the honest way to
+    // see a dead trace is from a desk that has no machine at all.
+    const api = apiFor(createWorldSession(), COMPANY_IDS.nina);
+
+    expect(run(api, 'tracert PRINT-01')).toContain('no workstation signed out');
+  });
+
+  it('resolves a name and refuses to call the box healthy for it', () => {
+    const api = apiFor(createWorldSession());
+    const found = run(api, 'nslookup PRINT-01');
+
+    expect(found).toContain(`Server:  ${NAME_SERVER}`);
+    expect(found).toContain(addressOf(COMPANY_IDS.printServer));
+    expect(found).toContain('may still be on fire');
+
+    const missing = run(api, 'nslookup wibble');
+    expect(missing).toContain('Non-existent domain');
+    expect(missing).toContain('only knows the machines');
+  });
+
+  it('answers net user with the same read as users', () => {
+    const api = apiFor(createWorldSession());
+
+    expect(run(api, 'net user gpoole')).toBe(run(api, 'users gpoole'));
+    expect(run(api, 'net view PRINT-01')).toContain('is not something this '
+      + 'terminal does');
   });
 
   it('clears the screen without touching the world', () => {

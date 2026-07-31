@@ -55,6 +55,57 @@ describe('command parser', () => {
     expect(parsed.query).toBe('SALES-02');
   });
 
+  /**
+   * `net user gpoole` is three tokens and two of them are the command. A
+   * parser that hands "user gpoole" to the account lookup looks up nobody, so
+   * the sub-command comes off the front here rather than in the runner.
+   */
+  it('takes the sub-command off the front of a net line', () => {
+    const parsed = parseCommand('NET User  gpoole');
+
+    expect(parsed.kind).toBe('command');
+
+    if (parsed.kind !== 'command') {
+      return;
+    }
+
+    expect(parsed.spec.name).toBe('net');
+    expect(parsed.sub).toBe('user');
+    expect(parsed.query).toBe('gpoole');
+    // And a name with a space in it still arrives whole.
+    expect(parseCommand('net user Gary Poole')).toMatchObject({
+      sub: 'user',
+      query: 'Gary Poole',
+    });
+    // `net` on its own is a usage problem, not a lookup of nothing.
+    expect(parseCommand('net').kind).toBe('usage');
+    expect(parseCommand('net user').kind).toBe('usage');
+  });
+
+  it('leaves every other command without a sub-command', () => {
+    expect(parseCommand('users gpoole')).toMatchObject({
+      sub: '',
+      query: 'gpoole',
+    });
+    expect(parseCommand('ipconfig /all')).toMatchObject({
+      sub: '',
+      query: '/all',
+    });
+  });
+
+  it('parses the reading commands with and without their switches', () => {
+    expect(parseCommand('ipconfig').kind).toBe('command');
+    expect(parseCommand('whoami').kind).toBe('command');
+    expect(parseCommand('systeminfo').kind).toBe('command');
+    expect(parseCommand('ipconfig /all /flushdns').kind).toBe('usage');
+    expect(parseCommand('tracert').kind).toBe('usage');
+    expect(parseCommand('nslookup').kind).toBe('usage');
+    expect(parseCommand('tracert PRINT-01')).toMatchObject({
+      kind: 'command',
+      query: 'PRINT-01',
+    });
+  });
+
   it('flags too few and too many arguments as a usage problem', () => {
     expect(parseCommand('rotate SALES-02').kind).toBe('usage');
     expect(parseCommand('ver now').kind).toBe('usage');

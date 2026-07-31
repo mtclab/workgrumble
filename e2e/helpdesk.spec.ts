@@ -360,3 +360,58 @@ test('offers escalation only where the ticket allows it', async ({ page }) => {
     page.getByTestId('ticket-row-fan-noise'),
   ).toHaveAttribute('data-state', 'resolved');
 });
+
+/**
+ * The looking commands, walked end to end.
+ *
+ * They fix nothing, which is the point: first line LOOKS with these and fixes
+ * with about four verbs. The journey asserts the two halves that make them
+ * worth shipping - every number on screen is derived from the estate the
+ * player can see, and `ipconfig /flushdns` prints the sentence every tech has
+ * typed a thousand times while changing absolutely nothing.
+ */
+test('walks the ipconfig family without changing a thing', async ({ page }) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'cmd');
+  const output = page.getByTestId('cmd-output');
+
+  await runCommand(page, 'ipconfig');
+  await expect(output).toContainText('IPv4 Address');
+  await expect(output).toContainText('Default Gateway . . . . . . . . . : 10.42.0.1');
+
+  await runCommand(page, 'ipconfig /all');
+  await expect(output).toContainText('Physical Address');
+  await expect(output).toContainText('BEIGE-BOX');
+
+  await runCommand(page, 'ipconfig /flushdns');
+  await expect(output).toContainText('Successfully flushed the DNS Resolver Cache.');
+  // Nothing was fixed by saying the words, so nothing closed.
+  await expect(page.getByTestId('toast')).toHaveCount(0);
+
+  await runCommand(page, 'whoami');
+  await expect(output).toContainText('workgrumble\\ppending');
+
+  await runCommand(page, 'whoami /groups');
+  await expect(output).toContainText('WORKGRUMBLE\\Print Users');
+
+  await runCommand(page, 'systeminfo PRINT-01');
+  await expect(output).toContainText('VPN Concentrator');
+
+  // The route out of this desk goes through the box that also carries the VPN
+  // and the printer, which is the estate's whole personality in three lines.
+  await runCommand(page, 'tracert SALES-02');
+  await expect(output).toContainText('print-01.workgrumble.local');
+  await expect(output).toContainText('Trace complete.');
+
+  await runCommand(page, 'nslookup PRINT-01');
+  await expect(output).toContainText('may still be on fire');
+
+  await runCommand(page, 'nslookup wibble');
+  await expect(output).toContainText('Non-existent domain');
+
+  // The trade's spelling of a command the terminal already had.
+  await runCommand(page, 'net user gpoole');
+  await expect(output).toContainText('LOCKED OUT');
+  await runCommand(page, 'net view PRINT-01');
+  await expect(output).toContainText('is not something this terminal does');
+});

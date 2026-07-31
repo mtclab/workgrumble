@@ -1,8 +1,18 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import type { NodeKind } from '../../engine-api';
 import { HELPDESK_ACTIONS } from '../../world/actions';
+import { COMPANY } from '../../world/company';
 import { DEVICE_TYPES, FIELDS, isRotation } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
+import {
+  addressOf,
+  DNS_SUFFIX,
+  fqdn,
+  GATEWAY,
+  macOf,
+  NAME_SERVER,
+  traceLine,
+} from './cmd-net';
 import { COMMANDS, type ParsedCommand } from './cmd-parse';
 import type { GameApi } from './types';
 import { textValue } from './ui';
@@ -390,6 +400,303 @@ function rotateLines(
   );
 }
 
+/* -- the looking commands ------------------------------------------------- */
+
+/**
+ * The address family, and the one thing they all have in common: they READ.
+ *
+ * Not one of them dispatches. That is the shape of the job rather than a
+ * limitation of the terminal - first line looks with `ipconfig`, `tracert`,
+ * `nslookup`, `whoami` and `systeminfo`, and fixes with about four verbs - and
+ * `ipconfig /flushdns` is in here rather than beside `restart` precisely
+ * because it is the most-typed command in support that has never once fixed
+ * anything the person typing it was looking at.
+ */
+
+/** The maximum a real tracert prints in its header, and never reaches here. */
+const MAX_HOPS = 30;
+
+function accountOfActor(api: GameApi): ReadOnlyGraphNode | undefined {
+  return api.graph
+    .neighbors(api.actor, { direction: 'out', edgeKind: 'owns' })
+    .find((node) => node.kind === 'account');
+}
+
+function noWorkstation(): CommandResult {
+  return lines(
+    'There is no workstation signed out to you, which the asset register '
+      + 'has always insisted is fine.',
+    'Whatever you are typing this on does not officially exist.',
+  );
+}
+
+function adapterLines(
+  machine: Readonly<ReadOnlyGraphNode>,
+  all: boolean,
+): readonly string[] {
+  const hostname = labelOf(machine);
+  const address = addressOf(machine.id);
+
+  return [
+    `${COMPANY.domain} IP Configuration`,
+    '',
+    'Ethernet adapter Local Area Connection:',
+    '',
+    `   Connection-specific DNS Suffix  . : ${DNS_SUFFIX}`,
+    ...(all
+      ? [
+        '   Description . . . . . . . . . . . : Beige Ethernet Adapter (rev C)',
+        `   Physical Address. . . . . . . . . : ${macOf(machine.id)}`,
+        '   DHCP Enabled. . . . . . . . . . . : Yes',
+      ]
+      : []),
+    `   IPv4 Address. . . . . . . . . . . : ${address}`,
+    '   Subnet Mask . . . . . . . . . . . : 255.255.255.0',
+    `   Default Gateway . . . . . . . . . : ${GATEWAY}`,
+    ...(all
+      ? [
+        `   DHCP Server . . . . . . . . . . . : ${GATEWAY}`,
+        `   DNS Servers . . . . . . . . . . . : ${GATEWAY}`,
+        `   Host Name . . . . . . . . . . . . : ${hostname}`,
+        '',
+        'One subnet, one gateway, one box doing all three jobs. Every '
+          + 'address in this building',
+        'is on the other side of that one plug.',
+      ]
+      : []),
+  ];
+}
+
+function ipconfigLines(api: GameApi, flag: string): CommandResult {
+  const switchName = flag.toLowerCase();
+
+  if (switchName === '/flushdns') {
+    // A gag, and a true one: it prints the sentence, it changes nothing in the
+    // world, and it is the most-typed command in support for that reason.
+    return lines(
+      `${COMPANY.domain} IP Configuration`,
+      '',
+      'Successfully flushed the DNS Resolver Cache.',
+      'Nothing that was wrong a moment ago is right now. The ritual has been',
+      'observed and may be reported as such.',
+    );
+  }
+
+  if (switchName !== '' && switchName !== '/all') {
+    return lines(
+      `"${flag}" is not a switch this ipconfig has.`,
+      'It knows /all and /flushdns. The rest were on the other machine.',
+    );
+  }
+
+  const machine = playerMachine(api);
+
+  return machine === undefined
+    ? noWorkstation()
+    : lines(...adapterLines(machine, switchName === '/all'));
+}
+
+function whoamiLines(api: GameApi, flag: string): CommandResult {
+  const switchName = flag.toLowerCase();
+
+  if (switchName !== '' && switchName !== '/groups') {
+    return lines(
+      `"${flag}" is not a switch this whoami has. It knows /groups.`,
+    );
+  }
+
+  const account = accountOfActor(api);
+
+  if (account === undefined) {
+    return lines(
+      `${COMPANY.domain}\\nobody`,
+      'You are logged in as an account the directory has no record of, which '
+        + 'is either a bug or a promotion.',
+    );
+  }
+
+  const identity = `${COMPANY.domain.toLowerCase()}\\${labelOf(account)}`;
+
+  if (switchName !== '/groups') {
+    return lines(
+      identity,
+      // The whole point of the command in the trade: people fix the wrong
+      // account for twenty minutes because they never checked this line.
+      'That is the account this session is running as, whatever the sticker '
+        + 'on the front of the machine says.',
+    );
+  }
+
+  const groups = api.graph.neighbors(account.id, {
+    direction: 'out',
+    edgeKind: 'member_of',
+  });
+
+  return lines(
+    identity,
+    '',
+    'GROUP INFORMATION',
+    '-----------------',
+    ...(groups.length === 0
+      ? ['(none, which is why half of this building does not work for you)']
+      : groups.map(
+        (group) => `  ${COMPANY.domain}\\${labelOf(group)}`,
+      )),
+  );
+}
+
+function systeminfoLines(api: GameApi, query: string): CommandResult {
+  // No argument means this desk, which is what a tech types nine times out of
+  // ten; a name means somebody else's, and a name nobody answers to is the
+  // same refusal `ping` gives, in the same words.
+  const found = query.trim().length > 0 ? machineOf(api, query) : null;
+
+  if (found !== null && !found.ok) {
+    return lines(found.reason);
+  }
+
+  const machine = found === null ? playerMachine(api) : found.node;
+
+  if (machine === undefined) {
+    return noWorkstation();
+  }
+
+  const booted = machine.fields[FIELDS.uptimeSince];
+  const services = api.graph.neighbors(machine.id, {
+    direction: 'in',
+    edgeKind: 'runs_on',
+  });
+  const devices = api.graph.neighbors(machine.id, {
+    direction: 'in',
+    edgeKind: 'connected_to',
+  });
+
+  return lines(
+    `Host Name:                 ${labelOf(machine)}`,
+    `OS Name:                   ${COMPANY.domain} Workstation`,
+    'OS Version:                4.10.1998, Service Pack (declined)',
+    `Domain:                    ${DNS_SUFFIX}`,
+    `System Boot Time:          ${
+      typeof booted === 'number'
+        ? formatSimTime(booted).time
+        : 'unrecorded - it has been up since before anybody here was'
+    }`,
+    `Display Resolution:        ${
+      textValue(machine.fields[FIELDS.resolution], 'whatever it came with')
+    }`,
+    `Pending Updates:           ${
+      machine.fields[FIELDS.pendingUpdates] === true
+        ? 'Yes (scheduled for a convenient moment, since 1998)'
+        : 'None outstanding'
+    }`,
+    `Registered Services:       ${
+      services.length === 0 ? 'none' : services.map(labelOf).join(', ')
+    }`,
+    `Attached Hardware:         ${
+      devices.length === 0 ? 'none' : devices.map(labelOf).join(', ')
+    }`,
+    'Total Physical Memory:     as much as it shipped with, which nobody '
+      + 'wrote down',
+  );
+}
+
+function tracertLines(api: GameApi, query: string): CommandResult {
+  const found = machineOf(api, query);
+
+  if (!found.ok) {
+    return lines(found.reason);
+  }
+
+  const target = found.node;
+  const header = `Tracing route to ${fqdn(labelOf(target))} [${
+    addressOf(target.id)
+  }]`;
+  const origin = playerMachine(api);
+
+  if (origin === undefined) {
+    return noWorkstation();
+  }
+
+  if (origin.id === target.id) {
+    return lines(
+      header,
+      `over a maximum of ${String(MAX_HOPS)} hops:`,
+      '',
+      traceLine(1, labelOf(target), target.id),
+      '',
+      'Trace complete. It is this machine. You are sitting on the far end of '
+        + 'that route.',
+    );
+  }
+
+  const route = routeTo(api, target);
+
+  if (route === null) {
+    // Three stars and a stop, exactly as the real one gives up - and the last
+    // line says the useful half: the wire, not the name, is what failed.
+    return lines(
+      header,
+      `over a maximum of ${String(MAX_HOPS)} hops:`,
+      '',
+      '  1     *        *        *     Request timed out.',
+      '  2     *        *        *     Request timed out.',
+      '  3     *        *        *     Request timed out.',
+      '',
+      `Trace incomplete. Nothing on this network admits to knowing a way to ${
+        labelOf(target)
+      },`,
+      'which is a cabling answer rather than a name-resolution one.',
+    );
+  }
+
+  const hops = route.slice(1).map((id, index) => {
+    const node = api.graph.getNode(id);
+    return traceLine(index + 1, node === undefined ? id : labelOf(node), id);
+  });
+
+  return lines(
+    header,
+    `over a maximum of ${String(MAX_HOPS)} hops:`,
+    '',
+    ...hops,
+    '',
+    // The gag IS the estate: everything in this building goes through the one
+    // box, and the trace is where a player sees that for themselves.
+    'Trace complete. Every route out of this desk goes through the same box, '
+      + 'which is',
+    'either elegant or the reason Thursday happens.',
+  );
+}
+
+function nslookupLines(api: GameApi, query: string): CommandResult {
+  const header = [
+    `Server:  ${NAME_SERVER}`,
+    `Address:  ${GATEWAY}`,
+    '',
+  ];
+  const found = machineOf(api, query);
+
+  if (!found.ok) {
+    return lines(
+      ...header,
+      `*** ${NAME_SERVER} can't find ${query}: Non-existent domain`,
+      'The name server only knows the machines. People, printers and '
+        + 'grievances are filed elsewhere.',
+    );
+  }
+
+  return lines(
+    ...header,
+    `Name:    ${fqdn(labelOf(found.node))}`,
+    `Address:  ${addressOf(found.node.id)}`,
+    '',
+    // Resolution proves a name maps to a number. It proves nothing else, and
+    // the terminal has one job here: not to let the player stop looking.
+    'The name resolves. That is all it means - the box behind it may still be '
+      + 'on fire.',
+  );
+}
+
 /**
  * Runs one parsed command against the world. Kept DOM-free on purpose: the
  * terminal is the second skin over the same verb set, and both skins are worth
@@ -431,8 +738,29 @@ export function executeCommand(
       );
     case 'ping':
       return pingLines(api, parsed.query);
+    case 'ipconfig':
+      return ipconfigLines(api, parsed.query);
+    case 'whoami':
+      return whoamiLines(api, parsed.query);
+    case 'systeminfo':
+      return systeminfoLines(api, parsed.query);
+    case 'tracert':
+      return tracertLines(api, parsed.query);
+    case 'nslookup':
+      return nslookupLines(api, parsed.query);
     case 'users':
       return usersLines(api, parsed.query);
+    case 'net':
+      // One sub-command, and a refusal that lists it rather than pretending
+      // the whole `net` family is in here. `net use`, `net share` and the rest
+      // are a different job with a different set of consequences.
+      return parsed.sub === 'user'
+        ? usersLines(api, parsed.query)
+        : lines(
+          `"net ${parsed.sub}" is not something this terminal does.`,
+          'It answers "net user <account>", which is the same read as '
+            + '"users <account>".',
+        );
     case 'services':
       return servicesLines(api, parsed.query);
     case 'queue':

@@ -12,6 +12,17 @@ export interface CommandSpec {
   readonly maxArgs: number;
   /** When true the arguments are one value that happens to contain spaces. */
   readonly joined: boolean;
+  /**
+   * When true the FIRST argument is a sub-command rather than part of the
+   * value: `net user awhitlock` is the `net` command doing `user` to an
+   * account, and the account is everything after it.
+   *
+   * It exists because the real tools spell it that way and the player types
+   * what they know. Left off everywhere else, because one command in eighteen
+   * having a verb of its own is a property of that command rather than a shape
+   * the parser should impose on the other seventeen.
+   */
+  readonly subcommand?: boolean;
 }
 
 export const COMMANDS: readonly CommandSpec[] = [
@@ -32,12 +43,61 @@ export const COMMANDS: readonly CommandSpec[] = [
     joined: true,
   },
   {
+    name: 'ipconfig',
+    usage: 'ipconfig [/all | /flushdns]',
+    summary: 'Print this workstation\'s address, or all of it.',
+    minArgs: 0,
+    maxArgs: 1,
+    joined: false,
+  },
+  {
+    name: 'tracert',
+    usage: 'tracert <host>',
+    summary: 'Follow the wire hop by hop until it stops.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+  },
+  {
+    name: 'nslookup',
+    usage: 'nslookup <name>',
+    summary: 'Ask the name server whether a name is anybody.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+  },
+  {
+    name: 'whoami',
+    usage: 'whoami [/groups]',
+    summary: 'Print the account you are actually logged in as.',
+    minArgs: 0,
+    maxArgs: 1,
+    joined: false,
+  },
+  {
+    name: 'systeminfo',
+    usage: 'systeminfo [machine]',
+    summary: 'Print what a machine is and how long it has been up.',
+    minArgs: 0,
+    maxArgs: 4,
+    joined: true,
+  },
+  {
     name: 'users',
     usage: 'users <account>',
     summary: 'Print an account, its state and its groups.',
     minArgs: 1,
     maxArgs: 4,
     joined: true,
+  },
+  {
+    name: 'net',
+    usage: 'net user <account>',
+    summary: 'The same read as users, spelled the way the trade spells it.',
+    minArgs: 2,
+    maxArgs: 5,
+    joined: true,
+    subcommand: true,
   },
   {
     name: 'unlock',
@@ -121,12 +181,15 @@ export type ParsedCommand =
     spec: CommandSpec;
     args: readonly string[];
     query: string;
+    sub: string;
   }
   | {
     kind: 'command';
     spec: CommandSpec;
     args: readonly string[];
     query: string;
+    /** The sub-command, lower-cased, or '' for the commands that have none. */
+    sub: string;
   };
 
 /** Longest typo we are willing to read the player's mind about. */
@@ -190,11 +253,17 @@ export function parseCommand(input: string): ParsedCommand {
     return { kind: 'unknown', name, suggestion: suggestCommand(name) };
   }
 
-  const query = spec.joined ? args.join(' ') : (args[0] ?? '');
+  // A sub-command is not part of the value it is aimed at: `net user gpoole`
+  // looks up gpoole, and looking up an account called "user gpoole" is the bug
+  // this line exists to not have.
+  const subcommand = spec.subcommand === true;
+  const sub = subcommand ? (args[0] ?? '').toLowerCase() : '';
+  const value = subcommand ? args.slice(1) : args;
+  const query = spec.joined ? value.join(' ') : (value[0] ?? '');
 
   return args.length < spec.minArgs || args.length > spec.maxArgs
-    ? { kind: 'usage', spec, args, query }
-    : { kind: 'command', spec, args, query };
+    ? { kind: 'usage', spec, args, query, sub }
+    : { kind: 'command', spec, args, query, sub };
 }
 
 /**
