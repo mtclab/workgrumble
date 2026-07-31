@@ -61,7 +61,7 @@ function numberField(
     : null;
 }
 
-export function ticketPriority(
+function ticketPriority(
   node: Readonly<ReadOnlyGraphNode>,
 ): Priority | null {
   const value = node.fields[FIELDS.priority];

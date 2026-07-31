@@ -1,6 +1,7 @@
 import { COMPANY_IDS } from '../company';
 import { WORLD_IDS } from '../demo-world';
 import { FIELDS } from '../fields';
+import { HANDOFF_BOUNCE } from '../tickets/handoff';
 import type { MailThread } from './types';
 
 /** The inbox, as it stood when the shift started. */
@@ -73,7 +74,7 @@ export const MAIL_THREADS: readonly MailThread[] = [
    * handoff, nobody in the game ever writes this.
    */
   {
-    id: 'mail/handoff-bounce',
+    id: HANDOFF_BOUNCE.mailRef,
     subject: 'RE: escalation - returning this one',
     arrival: {
       node: WORLD_IDS.ticket,

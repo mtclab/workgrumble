@@ -564,7 +564,10 @@ impl World {
             ArithOp::Add => base.checked_add(operand),
             ArithOp::Sub => base.checked_sub(operand),
         }
-        .filter(|moved| moved.abs() <= MAX_SAFE_INT)
+        // Ranged rather than `abs()`: the operands are both safe integers so
+        // this cannot be reached, and `i64::MIN.abs()` panics - a boundary
+        // that can panic is a boundary that can poison the module.
+        .filter(|moved| (-MAX_SAFE_INT..=MAX_SAFE_INT).contains(moved))
         .ok_or_else(|| {
             EngineError::new(format!(
                 "Moving \"{field}\" on \"{id}\" leaves the range a whole number can be read \

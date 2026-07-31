@@ -98,17 +98,12 @@ export interface Handoff {
 }
 
 /**
- * Whether L2 will keep it.
+ * What is missing, or null when nothing is.
  *
- * Both halves are required and neither is negotiable: a handoff with no
- * symptom is a ticket number, and one with nothing tried is a ticket number
- * with a name on it.
+ * The reason this is the primitive and "is it complete" is derived from it:
+ * the form has to TELL the player which half is missing, so the rule and the
+ * sentence explaining it must be the same piece of code. Two of them drift.
  */
-export function isCompleteHandoff(handoff: Readonly<Handoff>): boolean {
-  return handoff.reported.trim().length > 0
-    && handoff.tried.some((line) => line.trim().length > 0);
-}
-
 export function whyThin(handoff: Readonly<Handoff>): string | null {
   if (handoff.reported.trim().length === 0) {
     return 'Nothing in "what the user reported". L2 will read the title and '
@@ -121,6 +116,15 @@ export function whyThin(handoff: Readonly<Handoff>): string | null {
   }
 
   return null;
+}
+
+/**
+ * Whether L2 will keep it. Both halves are required and neither is
+ * negotiable: a handoff with no symptom is a ticket number, and one with
+ * nothing tried is a ticket number with a name on it.
+ */
+export function isCompleteHandoff(handoff: Readonly<Handoff>): boolean {
+  return whyThin(handoff) === null;
 }
 
 /** The lines the form joins into one field. */
