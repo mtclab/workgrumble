@@ -1118,19 +1118,33 @@ export function executeCommand(
     }
 
     const depth = found.node.fields[FIELDS.queueLen];
+    // The spool files belong to the service, so the command stops it and says
+    // so, in the order the machine did it. Starting it again is the third step
+    // and it is deliberately not this command's.
+    const spooler = api.graph
+      .neighbors(found.node.id, { direction: 'in', edgeKind: 'connected_to' })
+      .find((node) => node.kind === 'service');
 
     return dispatchLines(
       api,
       HELPDESK_ACTIONS.printerClearQueue,
       found.node.id,
-      {},
+      spooler === undefined ? {} : { spooler: spooler.id },
       [
+        ...(spooler === undefined
+          ? []
+          : [`Stopping ${labelOf(spooler)} ... service reports STOPPED.`]),
         `Queue on ${labelOf(found.node)} emptied: ${
           typeof depth === 'number' ? String(depth) : 'all'
         } job(s) dropped.`,
         'They went wherever the odd socks go. Nobody will re-send more than',
-        'four of them. The spooler can be started now that there is nothing',
-        'left for it to choke on.',
+        'four of them.',
+        ...(spooler === undefined
+          ? []
+          : [
+            `${labelOf(spooler)} is still stopped, which is where the`,
+            'procedure leaves it. "restart spooler" is step three.',
+          ]),
       ],
     );
   }

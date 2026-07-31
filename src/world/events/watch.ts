@@ -159,7 +159,12 @@ function draftFor(
   const name = label(node);
 
   if (node.kind === 'service' && mutation.field === FIELDS.status) {
-    if (isDown(mutation.value)) {
+    // A service that was ALREADY down has not fallen over again. Wedged to
+    // stopped is somebody stopping a service that had already jammed - which
+    // is the first half of clearing a print queue - and counting it as a
+    // second crash would turn the count into a count of button presses. The
+    // count is the diagnosis; it has to count falls.
+    if (isDown(mutation.value) && !isDown(mutation.previous)) {
       return {
         level: 'error',
         source: EVENT_SOURCES.scm,

@@ -84,6 +84,23 @@ function devicesOn(
     .filter((node) => node.kind === 'device');
 }
 
+/**
+ * The service on the other end of a printer's wire, if the estate models one.
+ *
+ * Written down as an edge rather than guessed from "whatever else is plugged
+ * into that box": the VPN concentrator shares the print server and has nothing
+ * to do with anybody's backlog.
+ */
+function spoolerFeeding(
+  api: Pick<GameApi, 'graph'>,
+  printer: Readonly<ReadOnlyGraphNode>,
+): string | null {
+  return api.graph
+    .neighbors(printer.id, { direction: 'in', edgeKind: 'connected_to' })
+    .find((node) => node.kind === 'service')
+    ?.id ?? null;
+}
+
 export interface RemoteService {
   readonly id: string;
   readonly name: string;
@@ -101,6 +118,12 @@ export interface RemoteDevice {
   readonly type: string;
   readonly printer: boolean;
   readonly queue: number;
+  /**
+   * The service that owns this printer's spool files, when the estate has one
+   * written down. Emptying the queue means stopping it, so the control has to
+   * be able to name it.
+   */
+  readonly spooler: string | null;
   readonly battery: number | null;
   readonly powered: boolean;
   readonly wedged: boolean;
@@ -195,6 +218,7 @@ export function remoteSession(
         type: textValue(device.fields[FIELDS.type], 'device'),
         printer: device.fields[FIELDS.type] === DEVICE_TYPES.printer,
         queue: typeof queue === 'number' ? queue : 0,
+        spooler: spoolerFeeding(api, device),
         battery: typeof battery === 'number' ? battery : null,
         powered: device.fields[FIELDS.powered] === true,
         wedged: device.fields[FIELDS.wedged] === true,
@@ -380,7 +404,8 @@ export const REMOTE_APP: AppDef = {
               : service.backlog !== null
                 ? `${String(service.backlog)} job(s) are `
                   + 'still queued behind it. It will just choke on the same '
-                  + 'job again. Empty the queue first.'
+                  + 'job again. Clearing that queue stops this service and '
+                  + 'drops the files; this button is the step after.'
                 : null,
         );
         restart.addEventListener('click', () => {
@@ -522,9 +547,16 @@ export const REMOTE_APP: AppDef = {
           const depth = device.queue;
           const queueLine = element('span', 'remote-queue', `remote-queue-${key}`);
           queueLine.textContent = `${String(depth)} job(s) queued`;
-          const clear = osButton('Clear queue', `remote-clear-${key}`, {
-            compact: true,
-          });
+          // The label is the whole procedure, because the button is: the
+          // spool files belong to a running service, so the queue cannot be
+          // dropped without stopping it first. Leaving that off is what made
+          // the old lesson tell the player to delete files out from under a
+          // service that still had them open.
+          const clear = osButton(
+            device.spooler === null ? 'Clear queue' : 'Stop spooler + clear queue',
+            `remote-clear-${key}`,
+            { compact: true },
+          );
           setAvailability(
             clear,
             depth === 0
@@ -535,9 +567,13 @@ export const REMOTE_APP: AppDef = {
             run(
               HELPDESK_ACTIONS.printerClearQueue,
               device.id,
-              {},
-              `${String(depth)} job(s) dropped. They went wherever the odd `
-                + 'socks go.',
+              device.spooler === null ? {} : { spooler: device.spooler },
+              device.spooler === null
+                ? `${String(depth)} job(s) dropped. They went wherever the `
+                  + 'odd socks go.'
+                : `Spooler stopped, ${String(depth)} job(s) dropped, and the `
+                  + 'spooler LEFT stopped - the files were its, and starting '
+                  + 'it again is the third step and yours.',
             );
           });
           card.append(queueLine, clear);

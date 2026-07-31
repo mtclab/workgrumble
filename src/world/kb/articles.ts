@@ -148,12 +148,17 @@ export const KB_ARTICLES: readonly KbArticle[] = [
       + 'any spooler and any queue.',
     resolution: [
       'Look at the queue: "queue <printer>" says how many jobs are stacked up '
-        + 'behind whatever jammed.',
-      'Empty the queue FIRST - "clearqueue <printer>", or the hardware panel '
-        + 'in Remote Assist.',
-      'Then restart the spooler - "restart spooler", or its taskbar entry on '
-        + 'the print server. Doing it the other way round is refused, and the '
-        + 'refusal says why.',
+        + 'behind whatever jammed, and what the spooler reports.',
+      'STOP THE SPOOLER, then empty the queue. The queued jobs are files on '
+        + 'disk and the running service has them open, which is exactly when '
+        + 'deleting them fails. On this estate those are one control - '
+        + '"clearqueue <printer>", or the hardware panel in Remote Assist - '
+        + 'and it stops the service before it drops anything.',
+      'Start the spooler again: "restart spooler", or its taskbar entry on '
+        + 'the print server. It is deliberately left stopped until you do, '
+        + 'because that is the third step and it is yours.',
+      'Starting it before the queue is empty is refused, and the refusal says '
+        + 'why: it would be handed the same bad job within seconds.',
       'Tell the reporter which jobs were dropped, because somebody always '
         + 're-sent the same delivery note four times and all four are gone.',
     ],
@@ -168,10 +173,12 @@ export const KB_ARTICLES: readonly KbArticle[] = [
       + 'disk, and they survive a restart on purpose, so a crash does not eat '
       + 'somebody\'s hundred-page report. Start the service in front of that '
       + 'backlog and it is handed the same bad job within seconds.',
-      'So the order is stop, clear, start - not start and hope. Doing it the '
-      + 'other way round is refused by this workstation, and the refusal says '
-      + 'which printer is still holding how many jobs, which is the number '
-      + 'the reporter is about to ask you for anyway.',
+      'So the order is stop, clear, start - not start and hope, and not clear '
+      + 'while it is still running either. A service that is up owns those '
+      + 'spool files, and the delete is the operation that fails. Starting it '
+      + 'in front of the backlog is refused by this workstation, and the '
+      + 'refusal says which printer is still holding how many jobs, which is '
+      + 'the number the reporter is about to ask you for anyway.',
     ],
     see_also: ['kb/power-cycle'],
   },

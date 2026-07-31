@@ -247,7 +247,7 @@ describe('the remote session pane', () => {
       HELPDESK_ACTIONS.printerClearQueue,
       COMPANY_IDS.player,
       COMPANY_IDS.printer,
-      {},
+      { spooler: COMPANY_IDS.spooler },
     ).ok).toBe(true);
     const drained = paneOf(world);
     expect(drained).not.toBe(wedged);

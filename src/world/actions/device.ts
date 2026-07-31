@@ -1,9 +1,10 @@
-import type { ActionData } from '../../engine-api';
-import { DEVICE_TYPES, FIELDS } from '../fields';
+import type { ActionData, GuardData, PredData } from '../../engine-api';
+import { DEVICE_TYPES, FIELDS, SERVICE_STATUS } from '../fields';
 import {
   fieldIs,
   HELPDESK_TIER,
   not,
+  param,
   TARGET,
   targetGuards,
 } from './helpers';
@@ -11,6 +12,73 @@ import { HELPDESK_ACTIONS } from './ids';
 
 /** What a fresh set of batteries reads. The UI gates on the same number. */
 export const FULL_BATTERY = 100;
+
+/**
+ * The spooler feeding the printer whose queue is being emptied.
+ *
+ * It is a parameter rather than something the action goes looking for because
+ * the op language writes to nodes it has been NAMED, and because the surface
+ * that offers the button is the surface that can see which service is on the
+ * other end of the wire. The guards below make sure the one it names is
+ * actually that service.
+ */
+const SPOOLER_PARAM = 'spooler';
+
+/** The service found on the other end of the wire, for the refusal to name. */
+const FEEDER = 'feeder';
+
+/** True while nobody has named a spooler. */
+const NO_SPOOLER_NAMED = {
+  pred: 'param_string_missing',
+  param: SPOOLER_PARAM,
+} as const;
+
+/** A service `connected_to` the printer this action is aimed at. */
+const SPOOLER_FEEDS_TARGET = {
+  pred: 'has_edge',
+  from: param(SPOOLER_PARAM),
+  to: TARGET,
+  kind: 'connected_to',
+} as const;
+
+/**
+ * Guards that only have an opinion once a spooler HAS been named.
+ *
+ * The parameter is optional on purpose: the warehouse printer hangs off no
+ * spooler this estate models, and a printer with nothing feeding it is a queue
+ * that can be dropped on its own. What is not optional is naming the spooler
+ * when there is one - the guard above refuses that - and naming the right one.
+ */
+function namedSpoolerGuards(): readonly GuardData[] {
+  const named = (of: PredData): PredData => ({
+    pred: 'all',
+    of: [not(NO_SPOOLER_NAMED), of],
+  });
+
+  return [
+    {
+      when: named({ pred: 'node_missing', node: param(SPOOLER_PARAM) }),
+      reason: `There is no record of "{v:${SPOOLER_PARAM}}" anywhere in the `
+        + 'estate, so there is nothing to stop before the queue goes.',
+    },
+    {
+      when: named(not({
+        pred: 'kind_is',
+        node: param(SPOOLER_PARAM),
+        kind: 'service',
+      })),
+      reason: `"{p:${SPOOLER_PARAM}.label}" is {p:${SPOOLER_PARAM}.kind_label}, `
+        + 'not a service. A print queue is emptied by stopping the spooler '
+        + 'that owns the files, and that is a service.',
+    },
+    {
+      when: named(not(SPOOLER_FEEDS_TARGET)),
+      reason: `"{p:${SPOOLER_PARAM}.label}" does not feed "{target.label}". `
+        + 'Stopping somebody else\'s spooler takes their printing down and '
+        + 'leaves this queue exactly where it was.',
+    },
+  ];
+}
 
 export const DEVICE_ACTIONS: readonly ActionData[] = [
   {
@@ -136,8 +204,54 @@ export const DEVICE_ACTIONS: readonly ActionData[] = [
         reason: 'The queue on "{target.label}" is already empty. '
           + 'Whatever is not printing, it is not the backlog.',
       },
+      // The order the trade actually works in, and the order Microsoft
+      // documents: STOP the spooler, delete the spool files, start it again.
+      // The queued jobs are files on disk owned by a running service, and
+      // deleting them out from under it is exactly when deletion fails. This
+      // action does the first two halves in one breath, so it has to be told
+      // which service it is stopping.
+      {
+        when: {
+          pred: 'all',
+          of: [
+            NO_SPOOLER_NAMED,
+            {
+              pred: 'neighbor_where',
+              node: TARGET,
+              direction: 'in',
+              edge_kind: 'connected_to',
+              bind: FEEDER,
+              matching: {
+                pred: 'kind_is',
+                node: { bind: FEEDER },
+                kind: 'service',
+              },
+            },
+          ],
+        },
+        reason: `The jobs queued on "{target.label}" are files on disk that `
+          + `"{b:${FEEDER}.label}" has open. Emptying the queue means stopping `
+          + 'that service first and starting it again afterwards, and this '
+          + `action will do the stopping - name it in "${SPOOLER_PARAM}".`,
+      },
+      ...namedSpoolerGuards(),
     ],
+    // Stop, then clear. The service is deliberately LEFT stopped: starting it
+    // again is the third step of the procedure and it is the player's, which
+    // is what the ticket about the haunted printer is teaching.
     apply: [
+      {
+        op: 'when',
+        cond: not(NO_SPOOLER_NAMED),
+        ops: [
+          {
+            op: 'set_field',
+            node: param(SPOOLER_PARAM),
+            field: FIELDS.status,
+            value: { const: SERVICE_STATUS.stopped },
+          },
+        ],
+      },
       {
         op: 'set_field',
         node: TARGET,

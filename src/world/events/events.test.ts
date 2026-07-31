@@ -291,7 +291,7 @@ describe('the log the world writes for itself', () => {
         HELPDESK_ACTIONS.printerClearQueue,
         COMPANY_IDS.player,
         COMPANY_IDS.printer,
-        {},
+        { spooler: COMPANY_IDS.spooler },
       );
       session.engine.dispatch(
         HELPDESK_ACTIONS.serviceRestart,

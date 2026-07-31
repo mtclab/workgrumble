@@ -179,13 +179,21 @@ test('closes the spooler ticket from the remote services taskbar', async ({
     /choke on the same job again/,
   );
 
-  // Queue first, from the hardware panel. That alone is still not a fix.
-  await page.getByTestId('remote-clear-printer').click();
+  // Queue first, from the hardware panel - and that button STOPS the spooler
+  // before it drops anything, because the spool files belong to the running
+  // service. The label says so, the service ends up stopped rather than
+  // wedged, and this alone is still not a fix.
+  const clear = page.getByTestId('remote-clear-printer');
+  await expect(clear).toContainText('Stop spooler + clear queue');
+  await clear.click();
   await expect(page.getByTestId('remote-queue-printer')).toHaveText(
     '0 job(s) queued',
   );
-  await expect(page.getByTestId('remote-clear-printer')).toBeDisabled();
-  await expect(spooler).toContainText('Not responding');
+  await expect(clear).toBeDisabled();
+  await expect(spooler).toContainText('Stopped');
+  await expect(page.getByTestId('remote-outcome')).toContainText(
+    'starting it again is the third step and yours',
+  );
   await expect(resolvedToast(page)).toHaveCount(0);
   await focusWindow(page, 'tickets');
   await expect(row).toHaveAttribute('data-state', 'open');

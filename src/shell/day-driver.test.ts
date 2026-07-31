@@ -514,7 +514,7 @@ describe('the pressure layer on the clock', () => {
         HELPDESK_ACTIONS.printerClearQueue,
         COMPANY_IDS.player,
         COMPANY_IDS.printer,
-        {},
+        { spooler: COMPANY_IDS.spooler },
       ),
     ).toEqual({ ok: true });
 
@@ -614,7 +614,7 @@ describe('the pressure layer on the clock', () => {
       HELPDESK_ACTIONS.printerClearQueue,
       COMPANY_IDS.player,
       COMPANY_IDS.printer,
-      {},
+      { spooler: COMPANY_IDS.spooler },
     );
     driver.dispatch(
       HELPDESK_ACTIONS.serviceRestart,

@@ -1478,6 +1478,10 @@ test('walks every function of a probation week that goes well', async ({
     await page.getByTestId('remote-clear-printer').click();
     await expect(page.getByTestId('remote-queue-printer'))
       .toHaveText('0 job(s) queued');
+    // Stop, clear, start: the spooler is left stopped for the restart below,
+    // because the files it was holding are what the clear had to get past.
+    await expect(page.getByTestId('remote-service-spooler'))
+      .toContainText('Stopped');
   });
 
   await step('cmd.clearqueue', async () => {

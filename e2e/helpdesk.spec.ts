@@ -106,7 +106,7 @@ test('closes the rotated-screen ticket through the terminal', async ({
   ).toHaveAttribute('data-state', 'resolved');
 });
 
-test('needs both halves of the spooler fix, in the honest order', async ({
+test('needs all three steps of the spooler fix, in the honest order', async ({
   page,
 }) => {
   // Tuesday, which is the morning the week hands over its office-wide fault.
@@ -133,16 +133,25 @@ test('needs both halves of the spooler fix, in the honest order', async ({
   await runCommand(page, 'services PRINT-01');
   await expect(page.getByTestId('cmd-output')).toContainText('WEDGED');
 
-  // Step one on its own is not a fix either: the service is still wedged.
+  // Clearing the queue IS stopping the spooler - the spool files belong to
+  // that service, and deleting them while it holds them is precisely when
+  // deletion fails. So the command says it stopped the service, and leaves it
+  // stopped: this half is not a fix on its own.
   await runCommand(page, 'clearqueue hercules');
+  await expect(page.getByTestId('cmd-output')).toContainText(
+    'Stopping Print Spooler ... service reports STOPPED.',
+  );
   await expect(page.getByTestId('cmd-output')).toContainText('job(s) dropped');
+  await expect(page.getByTestId('cmd-output')).toContainText('step three');
+  await runCommand(page, 'services PRINT-01');
+  await expect(page.getByTestId('cmd-output')).toContainText('STOPPED');
   await focusWindow(page, 'tickets');
   await expect(row).toHaveAttribute('data-state', 'open');
   await expect(
     page.getByTestId('toast').filter({ hasText: 'Ticket resolved' }),
   ).toHaveCount(0);
 
-  // Step two closes it.
+  // Step three closes it.
   await focusWindow(page, 'cmd');
   await runCommand(page, 'restart spooler');
   await expect(page.getByTestId('cmd-output')).toContainText('RUNNING');

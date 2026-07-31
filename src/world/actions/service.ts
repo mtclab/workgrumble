@@ -39,7 +39,9 @@ export const SERVICE_ACTIONS: readonly ActionData[] = [
       },
       // Queued work survives a restart on purpose, so a service brought back
       // in front of a full queue is handed the job that jammed it within
-      // seconds. Real order: empty the queue, then start the service.
+      // seconds. The real order is stop, clear, start - and `printer.clear_queue`
+      // does the stopping, so from here the instruction is simply "clear it
+      // first, then start this".
       //
       // "The backlog" is specifically a PRINTER on the other end of the wire.
       // Binding whatever connected node happens to carry a `queue_len` first
@@ -73,7 +75,8 @@ export const SERVICE_ACTIONS: readonly ActionData[] = [
         },
         reason: `{b:${BACKLOG}.f:${FIELDS.queueLen}} job(s) are still queued `
           + `on "{b:${BACKLOG}.label}". It will just choke on the same job `
-          + 'again. Empty the queue first, then start the service.',
+          + 'again. Clearing that queue stops this service and drops the '
+          + 'files; starting it again is this button, afterwards.',
       },
     ],
     apply: [

@@ -1027,7 +1027,9 @@ const ENTRIES = [
     id: 'remote.clear-queue',
     surface: 'remote',
     control: 'remote-clear-<printer>',
-    does: 'Empties a print queue, and everybody in it.',
+    does: 'Stops the spooler that owns the spool files and empties the print '
+      + 'queue in the same breath, leaving the service stopped for the '
+      + 'restart that is step three.',
     actions: [HELPDESK_ACTIONS.printerClearQueue],
     run: 'week',
   },

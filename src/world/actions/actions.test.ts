@@ -556,7 +556,9 @@ describe('account.remove_from_group', () => {
 
 describe('service.restart', () => {
   it('brings a wedged service back once its queue is empty', () => {
-    dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer');
+    dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer', {
+      spooler: 'service:spooler',
+    });
     expect(
       dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:spooler'),
     ).toEqual({ ok: true });
@@ -605,7 +607,9 @@ describe('service.restart', () => {
         value: 3,
       },
     ]);
-    dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer');
+    dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer', {
+      spooler: 'service:spooler',
+    });
 
     expect(
       dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:spooler'),
@@ -735,11 +739,58 @@ describe('device.replace_battery', () => {
 });
 
 describe('printer.clear_queue', () => {
-  it('empties the backlog', () => {
+  /**
+   * Stop, clear, start - the order Microsoft documents and the order the trade
+   * works in, because the queued jobs are files on disk that the running
+   * service has open. So the verb does the first two halves in one breath and
+   * LEAVES the spooler stopped: starting it again is the third step and it is
+   * the player's.
+   */
+  it('stops the spooler, empties the backlog, and leaves it stopped', () => {
     expect(
-      dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer'),
+      dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer', {
+        spooler: 'service:spooler',
+      }),
     ).toEqual({ ok: true });
     expect(fixture.graph.getField('device:printer', FIELDS.queueLen)).toBe(0);
+    expect(fixture.graph.getField('service:spooler', FIELDS.status))
+      .toBe('stopped');
+  });
+
+  /**
+   * The gate this whole finding is about. Emptying a queue while the service
+   * that owns the files is still running is precisely when the deletion fails,
+   * and the old lesson told the player to do exactly that.
+   */
+  it('refuses to drop files a running spooler still has open', () => {
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer'),
+      'files on disk that "Print Spooler" has open',
+      before,
+    );
+  });
+
+  it('refuses a spooler that feeds somebody else', () => {
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer', {
+        spooler: 'service:vpn',
+      }),
+      'does not feed',
+      before,
+    );
+  });
+
+  it('refuses a spooler that is not a service at all', () => {
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer', {
+        spooler: 'account:ada',
+      }),
+      'not a service',
+      before,
+    );
   });
 
   it('refuses a device with no queue at all', () => {
@@ -752,7 +803,9 @@ describe('printer.clear_queue', () => {
   });
 
   it('refuses a queue that is already empty', () => {
-    dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer');
+    dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer', {
+      spooler: 'service:spooler',
+    });
     const before = fixture.snapshotHash();
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer'),

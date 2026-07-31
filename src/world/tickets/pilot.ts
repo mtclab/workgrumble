@@ -248,11 +248,16 @@ export const WEDGED_SPOOLER: WorldTicket = {
     {
       id: 'cmd-clear-and-restart',
       app: 'cmd',
-      label: 'clearqueue on the Hercules, then restart spooler',
+      label: 'clearqueue on the Hercules - which stops the spooler and drops '
+        + 'the files it had open - then restart spooler',
       steps: [
         {
           action: HELPDESK_ACTIONS.printerClearQueue,
           target: COMPANY_IDS.printer,
+          // Clearing the queue IS stopping the spooler: the queued jobs are
+          // files that service has open, so the action is told which one it
+          // is stopping and leaves it stopped for the step below.
+          params: { spooler: COMPANY_IDS.spooler },
         },
         {
           action: HELPDESK_ACTIONS.serviceRestart,
@@ -263,12 +268,16 @@ export const WEDGED_SPOOLER: WorldTicket = {
     {
       id: 'remote-services-panel',
       app: 'remote',
-      label: 'Empty the queue from the hardware panel on PRINT-01, then start '
-        + 'the spooler from its taskbar',
+      label: 'Stop the spooler and empty the queue from the hardware panel on '
+        + 'PRINT-01, then start the spooler again from its taskbar',
       steps: [
         {
           action: HELPDESK_ACTIONS.printerClearQueue,
           target: COMPANY_IDS.printer,
+          // Clearing the queue IS stopping the spooler: the queued jobs are
+          // files that service has open, so the action is told which one it
+          // is stopping and leaves it stopped for the step below.
+          params: { spooler: COMPANY_IDS.spooler },
         },
         {
           action: HELPDESK_ACTIONS.serviceRestart,
