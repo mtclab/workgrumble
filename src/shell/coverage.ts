@@ -780,8 +780,9 @@ const ENTRIES = [
   {
     id: 'tickets.escalate-refused',
     surface: 'tickets',
-    control: 'ticket-escalate (fixable from your desk)',
-    does: 'Says which tickets do not earn a van, and why.',
+    control: 'ticket-escalate (fixable from your desk, or closed)',
+    does: 'Says which tickets do not earn a van - the ones fixable from your '
+      + 'own desk, and the ones that are already shut.',
     run: 'week',
   },
   {

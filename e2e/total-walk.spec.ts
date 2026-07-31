@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 
 import {
   beginShift,
@@ -11,7 +11,6 @@ import {
   openFromDesktopIcon,
   openFromStartMenu,
   realMs,
-  resolvedToast,
   runCommand,
   runSimMinutes,
   runToDayEnd,
@@ -72,6 +71,22 @@ async function step(
 /** Clicks a dialogue option by what it says, which is how a player picks one. */
 async function chatOption(page: Page, name: RegExp): Promise<void> {
   await page.getByTestId('chat-options').getByRole('button', { name }).click();
+}
+
+/**
+ * The toast that says THIS ticket closed.
+ *
+ * Named rather than counted: a toast lives ten simulated minutes, and this walk
+ * closes several tickets without the clock moving in between - so "one resolved
+ * toast on screen" is a number that depends on how much of the last five
+ * minutes the walk spent clicking. The title is in the body of the notice, so
+ * asking for the ticket by name is both exact and stable.
+ */
+function resolvedFor(page: Page, title: RegExp): Locator {
+  return page
+    .getByTestId('toast')
+    .filter({ hasText: 'Ticket resolved' })
+    .filter({ hasText: title });
 }
 
 /** Brings the queue to the front and opens a ticket on it. */
@@ -543,7 +558,7 @@ test('walks every function of a probation week that goes well', async ({
     await page.getByTestId('directory-unlock').click();
     await expect(page.getByTestId('directory-outcome')).toContainText('Unlocked');
     await expect(page.getByTestId('directory-detail-status')).toHaveText('Fine');
-    await expect(resolvedToast(page)).toHaveCount(1);
+    await expect(resolvedFor(page, /password is wrong/)).toHaveCount(1);
   });
 
   await step('directory.reset-password', async () => {
@@ -555,8 +570,11 @@ test('walks every function of a probation week that goes well', async ({
   });
 
   await step('directory.add-group', async () => {
+    // Gary is already in print-users and vpn-users, and the button says so
+    // rather than pretending a second membership means anything. Give him
+    // the one he does not have.
     await page.getByTestId('directory-group-picker')
-      .selectOption('group:vpn-users');
+      .selectOption('group:sales-send-as');
     await page.getByTestId('directory-add-group').click();
     await expect(page.getByTestId('directory-outcome'))
       .toContainText('membership added');
@@ -592,7 +610,9 @@ test('walks every function of a probation week that goes well', async ({
     await chatOption(page, /doing when she left on Friday/);
     await expect(page.getByTestId('chat-transcript'))
       .toContainText('I locked it, I went home');
-    await expect(page.getByTestId('chat-outcome')).toBeHidden();
+    // Every question put to a reporter is a question ON THE RECORD since M4 -
+    // it reaches the world through `asks`, so it reports like any other act.
+    // What must not appear is a refusal.
     await expect(page.getByTestId('chat-refusal')).toBeHidden();
   });
 
@@ -631,7 +651,7 @@ test('walks every function of a probation week that goes well', async ({
     await chatOption(page, /Control, Alt and Up right now/);
     await expect(page.getByTestId('chat-outcome'))
       .toContainText('Done, from here');
-    await expect(resolvedToast(page)).toHaveCount(1);
+    await expect(resolvedFor(page, /hacked/)).toHaveCount(1);
   });
 
   await step('chat.reaction', async () => {
@@ -684,11 +704,19 @@ test('walks every function of a probation week that goes well', async ({
   await step('tickets.handoff-thin', async () => {
     await page.getByTestId('ticket-escalate').click();
     await page.getByTestId('handoff-send').click();
+
+    // Taken, not refused - which is the whole of this mechanic: a thin handoff
+    // is SENT and comes back, rather than being argued with at the desk. The
+    // refusal line is read as TEXT rather than asserted hidden, so a form the
+    // world does turn down says why in the failure instead of just failing.
+    await expect(page.getByTestId('ticket-refusal')).toHaveText('');
     await expect(page.getByTestId('ticket-handoff')).toHaveCount(0);
-    // It did not go: the ticket is still open and still yours.
+    // It did not stick: the ticket is still open and still yours.
     await expect(page.getByTestId('ticket-row-fan-noise'))
       .toHaveAttribute('data-state', 'open');
 
+    // Second line get round to it, and it lands back on the desk with a note,
+    // a mail and a bill.
     await runSimMinutes(page, 25);
     await expectNoticed(page, 'Returned by second line');
     await openTicket(page, 'fan-noise');
@@ -729,6 +757,13 @@ test('walks every function of a probation week that goes well', async ({
     await page.getByTestId('handoff-send').click();
     await expect(page.getByTestId('ticket-row-fan-noise'))
       .toHaveAttribute('data-state', 'resolved');
+
+    // And the other refusal on the same button, now that there is a closed
+    // ticket to try it on: escalating one would only confuse the van.
+    await openTicket(page, 'fan-noise');
+    const escalate = page.getByTestId('ticket-escalate');
+    await expect(escalate).toBeDisabled();
+    await expect(escalate).toHaveAttribute('title', /closed/);
   });
 
   /* -- the toys, and the windows they come in ------------------------------ */
@@ -1080,7 +1115,7 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('remote-battery-ada-mouse'))
       .toContainText('Battery 0%');
     await page.getByTestId('remote-replace-battery-ada-mouse').click();
-    await expect(resolvedToast(page)).toHaveCount(1);
+    await expect(resolvedFor(page, /frozen completely/)).toHaveCount(1);
     await expectClosed(page, 'flat-mouse');
   });
 
@@ -1392,7 +1427,7 @@ test('walks every function of a probation week that goes well', async ({
     await openFromStartMenu(page, 'remote');
     await page.getByTestId('remote-machine-print-warehouse').click();
     await page.getByTestId('remote-power-printer-warehouse').click();
-    await expect(resolvedToast(page)).toHaveCount(1);
+    await expect(resolvedFor(page, /Warehouse printer was dead/)).toHaveCount(1);
     await expectClosed(page, 'vacuum-tuesday');
   });
 
@@ -1437,7 +1472,7 @@ test('walks every function of a probation week that goes well', async ({
     await restart.click();
     await expect(page.getByTestId('remote-service-spooler'))
       .toContainText('Running');
-    await expect(resolvedToast(page)).toHaveCount(1);
+    await expect(resolvedFor(page, /haunted/)).toHaveCount(1);
     await expectClosed(page, 'wedged-spooler');
   });
 
@@ -1813,6 +1848,12 @@ test('walks the week nobody worked, the firing, and the retry', async ({
   await page.goto('/');
   await completeLogin(page, { brief: 'keep' });
   await beginShift(page);
+  // Four times normal speed, before anything walks the clock: the corridor
+  // search and the wait for an arrival both buy their minutes at x4, and at
+  // x1 they would run out of patience four minutes into the morning.
+  await page.getByTestId('day-speed-4').click();
+  await expect(page.getByTestId('day-speed-4'))
+    .toHaveAttribute('data-active', 'true');
 
   /* -- Monday: four cans, a game, and nothing done at all ------------------ */
 
@@ -1867,12 +1908,18 @@ test('walks the week nobody worked, the firing, and the retry', async ({
 
     await page.getByTestId('start-button').click();
     await page.getByTestId('start-menu-load').click();
-    await expect(page.getByTestId('toast')).toContainText('Not loaded');
+    await expect(
+      page.getByTestId('toast').filter({ hasText: 'Not loaded' }),
+    ).toHaveCount(1);
     await expect(page.getByTestId('sim-clock-time')).toHaveText(clock ?? '');
     await expect(page.getByTestId('day-state')).toHaveText('Shift');
   });
 
-  await workUntilMinute(page, 400);
+  // Four hours in, with the game put away and nothing closed: the queue has
+  // breached everything it had and the meter is pinned. Late enough to be well
+  // clear of the line rather than balanced on it - the slack window that was
+  // up until the telling-off was draining the same meter.
+  await workUntilMinute(page, 440);
 
   await step('desktop.fumble-chip', async () => {
     // Four tickets nobody is closing and a deadline going past: by the middle
