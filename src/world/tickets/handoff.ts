@@ -7,12 +7,11 @@
  * is not refused here. It is accepted, sent, and sent straight back with a
  * note, which is what actually happens.
  *
- * "What I tried" is not typed by anybody: the engine already keeps a dispatch
- * log for determinism, so the form is filled in from what the player DID to
- * this ticket's nodes. Pure functions over readable state, all of it.
+ * "What I tried" is not typed by anybody: it is filled in from what the player
+ * DID to this ticket's nodes, recorded onto the ticket as they did it. Pure
+ * functions over readable state, all of it.
  */
 
-import type { DispatchLogEntry } from '../../engine-api';
 import { HELPDESK_ACTIONS } from '../actions/ids';
 
 /** One line of the "what I tried" list, as it goes onto the form. */
@@ -57,37 +56,113 @@ export function actionSummary(id: string): string {
 }
 
 /**
- * The "what I tried" list, read off the dispatch log.
+ * What counts as having been TRIED on the fault.
  *
- * Only entries aimed at this ticket's own nodes count: the log is the whole
- * day, and "I restarted a service on the other side of the building" is not
- * evidence about this fault. The ticket's own bookkeeping verbs are left out
- * for the same reason - triaging a ticket is not something that was tried on
- * the problem.
+ * The ticket's own bookkeeping is not work on the problem: triaging one,
+ * writing a note about one and escalating one are things done to the ticket,
+ * and a handoff that lists them is a handoff that says "I filled this form in"
+ * where second line asked what happens when you power-cycle it.
  */
 const NOT_WORK: ReadonlySet<string> = new Set<string>([
   HELPDESK_ACTIONS.ticketClassify,
   HELPDESK_ACTIONS.ticketEscalate,
   HELPDESK_ACTIONS.ticketAddWorknote,
+  HELPDESK_ACTIONS.ticketRecordTouch,
+  HELPDESK_ACTIONS.ticketRecordResponse,
 ]);
 
-export function triedFromLog(
-  log: readonly DispatchLogEntry[],
-  nodes: readonly string[],
-): readonly TriedEntry[] {
-  const aimedHere = new Set(nodes);
+export function countsAsWork(actionId: string): boolean {
+  return !NOT_WORK.has(actionId);
+}
 
-  return log
-    .filter((entry) => entry.target !== null
-      && aimedHere.has(entry.target)
-      && !NOT_WORK.has(entry.id))
-    .map((entry) => ({
-      tick: entry.tick,
-      text: entry.ok
-        ? actionSummary(entry.id)
-        : `${actionSummary(entry.id)} - refused`,
-      worked: entry.ok,
-    }));
+/**
+ * How much of it a ticket keeps.
+ *
+ * The evidence lives on the ticket rather than in the dispatch log because the
+ * log is drained at every day boundary - see the checkpoint policy - and a
+ * ticket worked on Monday and escalated on Tuesday would otherwise reach
+ * second line claiming nobody had ever looked at it. It is bounded for the
+ * same reason the log is: this is a field in every save from here on, and the
+ * last twenty things you did to a printer is already more than anybody at L2
+ * is going to read.
+ */
+export const TOUCH_LOG_LIMIT = 20;
+
+const TOUCH_SEPARATOR = '|';
+
+/** One touch, as the ticket keeps it: `tick|action|ok`. */
+export function encodeTouch(
+  tick: number,
+  actionId: string,
+  ok: boolean,
+): string {
+  return [String(tick), actionId, ok ? '1' : '0'].join(TOUCH_SEPARATOR);
+}
+
+function decodeTouch(line: string): TriedEntry | null {
+  const parts = line.split(TOUCH_SEPARATOR);
+  const [tick, actionId, ok] = parts;
+  // `Number('')` is zero, which is a perfectly good tick and not what an empty
+  // field means.
+  const at = tick === undefined || tick.length === 0 ? Number.NaN : Number(tick);
+
+  if (
+    parts.length !== 3
+    || actionId === undefined
+    || actionId.length === 0
+    || (ok !== '0' && ok !== '1')
+    || !Number.isSafeInteger(at)
+    || at < 0
+  ) {
+    return null;
+  }
+
+  const worked = ok === '1';
+
+  return {
+    tick: at,
+    text: worked ? actionSummary(actionId) : `${actionSummary(actionId)} - refused`,
+    worked,
+  };
+}
+
+/**
+ * The "what I tried" list, read off the ticket's own record of it.
+ *
+ * A line this build cannot read is dropped rather than shown: a save is a file
+ * on the player's machine, anything can have been at it, and a handoff form
+ * that renders `undefined - refused` is worse than one line shorter.
+ */
+export function triedFromTouches(value: unknown): readonly TriedEntry[] {
+  if (typeof value !== 'string' || value.length === 0) {
+    return [];
+  }
+
+  return Object.freeze(
+    value
+      .split('\n')
+      .map(decodeTouch)
+      .filter((entry): entry is TriedEntry => entry !== null),
+  );
+}
+
+/**
+ * The ticket's evidence with one more touch on the end, oldest dropped once it
+ * is full. Pure: the caller dispatches the result, so the whole field is one
+ * value in the log and a replay writes exactly the same string.
+ */
+export function withTouch(
+  existing: unknown,
+  tick: number,
+  actionId: string,
+  ok: boolean,
+): string {
+  const lines = typeof existing === 'string' && existing.length > 0
+    ? existing.split('\n').filter((line) => line.length > 0)
+    : [];
+
+  lines.push(encodeTouch(tick, actionId, ok));
+  return lines.slice(-TOUCH_LOG_LIMIT).join('\n');
 }
 
 /** The form, as the player is about to send it. */

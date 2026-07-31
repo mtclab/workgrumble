@@ -268,8 +268,8 @@ beforeEach(() => {
 
 describe('helpdesk action registry', () => {
   it('registers every advertised action exactly once', () => {
-    expect(HELPDESK_ACTION_IDS).toHaveLength(21);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(21);
+    expect(HELPDESK_ACTION_IDS).toHaveLength(22);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(22);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});
@@ -906,7 +906,128 @@ describe('ticket.classify', () => {
         urgency: 3,
         priority: 3,
       }),
-      'hand back the time it has spent waiting',
+      'move a clock that is supposed to be stopped',
+      before,
+    );
+  });
+
+  /**
+   * The instruction the refusal above gives - clear the hold, then triage it -
+   * has to be safe to follow. Every minute the ticket spent parked goes back
+   * on top of the new target, or "take it off hold first" is a trap: the
+   * player does as they are told and the ticket breaches in their hand.
+   */
+  it('keeps every minute of the hold when the deadline is re-cut', () => {
+    ask(PLAIN_TICKET);
+    dispatch(HELPDESK_ACTIONS.ticketSetWaiting, PLAIN_TICKET);
+    fixture.advance(60);
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.heldTicks)).toBe(60);
+
+    dispatch(HELPDESK_ACTIONS.ticketClearWaiting, PLAIN_TICKET);
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketClassify, PLAIN_TICKET, {
+        impact: 1,
+        urgency: 3,
+        priority: 3,
+      }),
+    ).toEqual({ ok: true });
+
+    // P3 resolves in 240 minutes, measured from the minute it arrived, plus
+    // the hour nobody was allowed to work in.
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.slaDeadline))
+      .toBe(240 + 60);
+
+    // And again on the second triage: the pause is the ticket's, not a bonus
+    // that one classification happened to catch.
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketClassify, PLAIN_TICKET, {
+        impact: 1,
+        urgency: 1,
+        priority: 4,
+      }),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.slaDeadline))
+      .toBe(480 + 60);
+  });
+
+  /**
+   * A missed deadline is history. Re-cutting one moves a line the ticket has
+   * already crossed while the breach stays latched, which renders as "Overdue
+   * 0m" - a number somebody has plainly been at.
+   */
+  it('refuses to re-cut the deadline of a ticket that has already blown it', () => {
+    fixture.advance(600);
+    expect(fixture.ticketState(PLAIN_TICKET)).toBe('breached');
+    const before = fixture.snapshotHash();
+    const deadline = fixture.graph.getField(PLAIN_TICKET, FIELDS.slaDeadline);
+
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketClassify, PLAIN_TICKET, {
+        impact: 1,
+        urgency: 1,
+        priority: 4,
+      }),
+      'already blown its SLA',
+      before,
+    );
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.slaDeadline))
+      .toBe(deadline);
+  });
+});
+
+describe('ticket.record_response', () => {
+  /**
+   * The commonest first touch there is closes the ticket as it lands. Refusing
+   * to stamp a response on a resolved ticket left exactly those tickets with
+   * no timestamp at all - and a missing timestamp reads as "answered in time",
+   * so the latest possible answer was the one nothing was said about.
+   */
+  it('stamps the response of a ticket the same touch closed', () => {
+    fixture.advance(90);
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET, GOOD_HANDOFF),
+    ).toEqual({ ok: true });
+    expect(fixture.ticketState(ESCALATABLE_TICKET)).toBe('resolved');
+
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketRecordResponse, ESCALATABLE_TICKET),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.getField(ESCALATABLE_TICKET, FIELDS.respondedAt))
+      .toBe(90);
+  });
+
+  it('stops the clock once, at the first touch and not the best one', () => {
+    fixture.advance(10);
+    expect(dispatch(HELPDESK_ACTIONS.ticketRecordResponse, PLAIN_TICKET))
+      .toEqual({ ok: true });
+    fixture.advance(10);
+
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketRecordResponse, PLAIN_TICKET),
+      'stops the first time, not the best time',
+      before,
+    );
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.respondedAt)).toBe(10);
+  });
+});
+
+describe('ticket.record_touch', () => {
+  it('keeps what was tried on the ticket, and refuses anything else', () => {
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketRecordTouch, PLAIN_TICKET, {
+        touches: '4|device.power_cycle|1',
+      }),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.touchLog))
+      .toBe('4|device.power_cycle|1');
+
+    const before = fixture.snapshotHash();
+    expectRefusal(
+      dispatch(HELPDESK_ACTIONS.ticketRecordTouch, PLAIN_TICKET, {
+        touches: 12,
+      }),
+      'a list of things that were tried',
       before,
     );
   });

@@ -101,6 +101,17 @@ export interface MeterInputs {
   readonly resolveCreditPaid: number;
   /** Slack apps with a window open and not minimised, by app id. */
   readonly openSlackApps: readonly string[];
+  /**
+   * The one the player is actually IN, when it is one of those.
+   *
+   * Suspicion is about what a man walking past would see, so every visible
+   * window charges for itself. Relief is about what the player is doing, and
+   * nobody is being soothed by a browser behind the ticket queue they are
+   * typing into: a second window used to double the medicine while the work
+   * carried on in front of it, which made the safest thing to do with the boss
+   * key the opposite of what it is for.
+   */
+  readonly focusedSlackApp: string | null;
   /** Whether the half hour nobody is watching is on. */
   readonly lunch: boolean;
 }
@@ -158,7 +169,9 @@ export function meterDeltas(inputs: Readonly<MeterInputs>): MeterDeltas {
   const excess = Math.max(0, openTickets - COMFORTABLE_QUEUE);
 
   const rates = inputs.openSlackApps.map(slackRate);
-  const relief = rates.reduce((total, rate) => total + rate.stressRelief, 0);
+  const relief = inputs.focusedSlackApp === null
+    ? 0
+    : slackRate(inputs.focusedSlackApp).stressRelief;
   // Lunch is the safe window: the drain doubles, and nobody is walking past
   // to notice what is on the screen. That is the tutorial, and it is why the
   // suspicion below is charged outside lunch only.

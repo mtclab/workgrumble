@@ -44,13 +44,14 @@ describe('shipped tickets', () => {
     const session = createWorldSession();
 
     for (const entry of WORLD_TICKETS) {
-      // The morning pile is in the world before anybody has clicked anything;
-      // the summoned one is not there until it is raised, and asserting it
-      // WERE there would be asserting the queue lies about the day.
+      // The morning pile is in the world before anybody has clicked anything.
+      // The one that drips in and the one the lead summons are not there yet,
+      // and asserting they WERE would be asserting the queue lies about the
+      // day: the whole point of an arrival is that it arrives.
       expect(
         session.engine.ticketState(entry.def.id),
         entry.def.id,
-      ).toBe(entry.arrival === 'summoned' ? undefined : 'open');
+      ).toBe(entry.arrival === 'morning' ? 'open' : undefined);
 
       spawnIfAbsent(session, entry);
       expect(session.engine.ticketState(entry.def.id)).toBe('open');
@@ -63,6 +64,7 @@ describe('shipped tickets', () => {
       'ticket:rotated-screen',
       'ticket:locked-account',
       'ticket:wedged-spooler',
+      'ticket:tidied-list',
       'ticket:boss-phone',
     ]);
   });

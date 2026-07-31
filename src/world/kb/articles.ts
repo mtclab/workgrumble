@@ -173,4 +173,36 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/account-lockout'],
   },
+  {
+    id: 'kb/print-permissions',
+    title: 'When the printer works for everybody except one person',
+    summary: 'One desk failing is a permission; every desk failing is a fault.',
+    body: [
+      'A printer that has stopped for the whole floor is broken. A printer '
+      + 'that has stopped for exactly one person is working perfectly and has '
+      + 'been told not to serve them, which is a different job with a '
+      + 'different answer - and the two get confused constantly, because from '
+      + 'the reporter\'s chair they look identical.',
+      'On this estate the print server checks membership of Print Users '
+      + 'before it accepts a job. An account outside that group gets no '
+      + 'error worth reading: the job leaves the machine, arrives nowhere, '
+      + 'and the queue on the printer never hears about it. That silence is '
+      + 'the symptom, and it is why the reporter starts sending it again.',
+      'So the first question is never "is the printer broken", it is "who '
+      + 'else". One desk means permissions; the floor means the spooler. '
+      + 'Check the group in Active Dictionary before you touch the hardware, '
+      + 'and check it against somebody who CAN print rather than against what '
+      + 'you expect to see.',
+      'Memberships change without anybody telling the person they changed '
+      + 'for. Leavers processes, tidy-ups and scripts written by people who '
+      + 'have themselves left all remove names from groups; none of them send '
+      + 'the user an email about it, and the user experiences it months later '
+      + 'as a printer with a grudge.',
+      'Put the account back into the group and say so on the ticket, in the '
+      + 'words of what actually happened. "Re-added to Print Users" is a '
+      + 'record. "Printer fixed" is what the next person will read three '
+      + 'weeks from now when it happens to somebody else.',
+    ],
+    see_also: ['kb/print-spooler', 'kb/mail-on-a-phone'],
+  },
 ];

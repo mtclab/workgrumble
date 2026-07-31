@@ -271,6 +271,14 @@ export type PredData =
    */
   | { pred: 'param_is_whole_number'; param: string; value: number }
   | { pred: 'param_format'; param: string; format: 'resolution' }
+  /**
+   * Where the clock stands INSIDE a repeating period: `now % day_ticks` at or
+   * below `value`. The engine knows nothing about shifts or closing time - the
+   * period and the boundary are the world's - so this is how a rule about the
+   * SHAPE of the day becomes a guard the engine enforces rather than a check
+   * the one wired-up button happens to do first.
+   */
+  | { pred: 'tick_of_day_at_most'; day_ticks: number; value: number }
   | {
     pred: 'has_edge';
     from: NodeRefData;

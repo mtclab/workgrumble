@@ -586,19 +586,58 @@ const BOSS_CHANNEL: DialogueTree = {
   ],
 };
 
+/**
+ * Reception. It was small talk before it was a ticket, and it stays small
+ * talk: the afternoon's arrival hangs off the same conversation, because Bev
+ * has one channel and one manner, and the question that gets the truth out of
+ * her is the one nobody thinks to ask a receptionist - when did it last work.
+ */
 const RECEPTION: DialogueTree = {
   id: 'dialogue/reception',
   speaker: COMPANY_IDS.bev,
+  ticket: 'ticket:tidied-list',
   root: 'hello',
+  resolved_root: 'after',
   nodes: [
     {
       id: 'hello',
       npc_line: 'Is this about the printer? Everything is about the printer. '
         + 'I have a sign about the printer.',
       options: [
+        { label: 'Ask when her printing last worked', next: 'march' },
         { label: 'Ask whether anything else is broken', next: 'buzzer' },
         { label: 'Ask about the visitor biscuits', next: 'biscuits' },
         { label: 'Say you were only passing through' },
+      ],
+    },
+    {
+      id: 'march',
+      npc_line: 'March. I know because it was the week they went through the '
+        + 'systems taking out everybody who had left, and I made them a pot '
+        + 'of coffee for it. It has never printed since. I did not connect '
+        + 'the two, because why would I.',
+      options: [
+        {
+          label: 'Put it to her that it stopped when the lists were tidied',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Reporter says printing stopped the week the group '
+                + 'lists were tidied up, in March. Nothing was wrong with '
+                + 'the printer then either.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'hello' },
+      ],
+    },
+    {
+      id: 'after',
+      npc_line: 'It has just printed the visitor list. All four pages, one of '
+        + 'which is the auditors. I shall put the sign about the printer away, '
+        + 'but not far away.',
+      options: [
+        { label: 'Log what actually happened, in those words' },
       ],
     },
     {

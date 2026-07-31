@@ -122,6 +122,17 @@ export function targetsFor(priority: Priority | null): SlaTarget {
   return SLA_TARGETS[priority ?? UNTRIAGED_PRIORITY];
 }
 
+/**
+ * The clock every ticket arrives with, before anybody has looked at it.
+ *
+ * Content names THIS rather than a number of its own. A ticket written with
+ * its own `sla_ticks` is a ticket whose two clocks disagree: the app says
+ * "untriaged, treated as P3" and prints P3's response target beside a
+ * resolution deadline nobody can find in the table - the spooler said P3 and
+ * had six hours, which is the tier above.
+ */
+export const UNTRIAGED_SLA_TICKS: number = targetsFor(null).resolution;
+
 export function priorityLabel(priority: Priority | null): string {
   return priority === null ? 'Untriaged' : `P${String(priority)}`;
 }

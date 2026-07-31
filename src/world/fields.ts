@@ -136,6 +136,28 @@ export const FIELDS = {
    */
   worknotes: 'worknotes',
   customerVisible: 'customer_visible',
+  /**
+   * How long this ticket has been parked ALTOGETHER, in simulated minutes.
+   *
+   * The engine adds a minute to it every minute the ticket spends on hold, in
+   * the same breath as it pushes the deadline out. The deadline on its own
+   * cannot say this: triaging a ticket re-cuts the deadline from the minute it
+   * arrived, and without the counter that hands back every pause the ticket had
+   * earned - which made "take it off hold, then triage it" a punishment for
+   * following the instruction.
+   */
+  heldTicks: 'held_ticks',
+  /**
+   * What has been done to this ticket's estate, kept on the ticket.
+   *
+   * One line per dispatched action that touched a node the ticket is about,
+   * written at the moment it was dispatched: `tick|action|ok`. It is the
+   * handoff form's evidence, and it lives HERE rather than being read back out
+   * of the dispatch log because the log is drained at every day boundary - a
+   * ticket worked yesterday and escalated today would otherwise arrive at
+   * second line claiming nobody had touched it.
+   */
+  touchLog: 'touch_log',
   /** The escalation handoff: what the user reported, and what was tried. */
   handoffReported: 'handoff_reported',
   handoffTried: 'handoff_tried',

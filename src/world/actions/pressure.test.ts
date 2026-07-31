@@ -192,6 +192,37 @@ describe('consumable.drink', () => {
     expect(engine.snapshotHash()).toBe(before);
   });
 
+  /**
+   * The shift-tail rule, asked of the WORLD rather than of the button.
+   *
+   * The desk overlay greys the can out in the last three quarters of an hour,
+   * and until now that was the only thing stopping anybody: a second caller -
+   * a terminal command, a dialogue effect, the next surface anybody wires up -
+   * got a buff whose bill lands after 17:00, where the day ends before the
+   * meters can settle it and clocking off wipes the run.
+   */
+  it('refuses a can that would wear off after everybody has gone home', () => {
+    startShift();
+    // 16:16, one minute past the last one a first can can be started at: it
+    // runs 45 minutes and the shift has 44 left. The second of a run is a
+    // shorter thing - 33 minutes - so that one is still legal here, which is
+    // the difference the guard has to know about.
+    engine.advance(496);
+    const before = engine.snapshotHash();
+
+    expectRefusal(drink(1), 'wear off somewhere on the way home');
+    expect(engine.snapshotHash()).toBe(before);
+
+    expect(drink(2)).toEqual({ ok: true });
+    expect(field(FIELDS.drinkStartedAt)).toBe(496);
+
+    // And by 16:49 there is no can in the machine short enough to fit: even
+    // the fourth of a run, which is barely a buff, would run past five.
+    engine.advance(33);
+    expectRefusal(drink(2), 'wear off somewhere on the way home');
+    expectRefusal(drink(4), 'wear off somewhere on the way home');
+  });
+
   it('stops stacking empties somewhere short of a sculpture', () => {
     startShift();
 

@@ -12,7 +12,6 @@ import { FIELDS } from '../../world/fields';
 import { STARTING_REPUTATION } from '../../world/meters';
 import { cellLabel } from '../../world/priority';
 import { ticketClocks } from '../../world/sla';
-import { findWorldTicket } from '../../world/tickets';
 import { misclassifiedTickets, ticketKey } from './tickets';
 import type { AppDef, AppInstance, GameApi } from './types';
 import {
@@ -109,11 +108,9 @@ function lateResponses(
   api: GameApi,
   nodes: readonly ReadOnlyGraphNode[],
 ): number {
-  return nodes.filter((node) => ticketClocks(
-    node,
-    api.clock.now(),
-    findWorldTicket(node.id)?.def.sla_ticks ?? 0,
-  ).response.breached).length;
+  return nodes.filter(
+    (node) => ticketClocks(node, api.clock.now()).response.breached,
+  ).length;
 }
 
 /**

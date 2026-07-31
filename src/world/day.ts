@@ -13,6 +13,7 @@
 
 import type { ReadOnlyGraphNode } from '../engine-api';
 import { FIELDS } from './fields';
+import { isUnresolved } from './sla';
 
 /** Minutes in a simulated day. A tick is one minute. */
 export const MINUTES_PER_DAY = 24 * 60;
@@ -320,10 +321,11 @@ export function dayLedger(
     breached: mine.filter(
       (ticket) => ticket.fields[FIELDS.breached] === true,
     ).length,
-    stillOpen: mine.filter((ticket) => {
-      const state = ticket.fields[FIELDS.state];
-      return state === 'open' || state === 'waiting_on_user';
-    }).length,
+    // Everything that has not been fixed, which includes the ones that went
+    // red: a ticket whose deadline ran out is not a ticket that went away, and
+    // a scorecard reporting nothing still open on a day with four breaches in
+    // it is the day telling the player a story about itself.
+    stillOpen: mine.filter(isUnresolved).length,
   };
 }
 

@@ -1,6 +1,7 @@
 import type { ActionData, TicketDef } from '../engine-api';
 import { COMPANY_IDS } from './company';
 import { FIELDS, SERVICE_STATUS } from './fields';
+import { UNTRIAGED_SLA_TICKS } from './priority';
 
 /**
  * The M1 demo apps, still wired to the world - only now the world is the real
@@ -67,7 +68,7 @@ export const DEMO_TICKET: TicketDef = {
       },
     ],
   },
-  sla_ticks: 240,
+  sla_ticks: UNTRIAGED_SLA_TICKS,
   reward: { reputation: 3, money: 12 },
   kb_ref: 'kb/chassis-fan',
 };

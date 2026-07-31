@@ -45,6 +45,13 @@ export const HELPDESK_ACTIONS = {
    * the world records it, because a clock is world state.
    */
   ticketRecordResponse: 'ticket.record_response',
+  /**
+   * What was done to the ticket's estate, written onto the TICKET as it is
+   * done. The dispatch log knows the same thing until the day boundary drains
+   * it; the ticket has to still know tomorrow, because that is when the
+   * handoff form asks.
+   */
+  ticketRecordTouch: 'ticket.record_touch',
   /** Second line sending a thin handoff back, with the bill attached. */
   ticketBounceHandoff: 'ticket.bounce_handoff',
 } as const;

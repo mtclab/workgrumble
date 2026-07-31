@@ -1,6 +1,7 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import { isTicketState, type TicketState } from '../../engine-api';
 import {
+  CLASSIFY_BREACHED_REASON,
   CLASSIFY_CLOSED_REASON,
   CLASSIFY_ON_HOLD_REASON,
   fieldLines,
@@ -29,7 +30,7 @@ import {
   allowsEscalation,
   findWorldTicket,
   joinLines,
-  triedFromLog,
+  triedFromTouches,
   trueClassification,
   whyThin,
   type WorldTicket,
@@ -139,8 +140,7 @@ function clocksFor(
   api: GameApi,
   node: Readonly<ReadOnlyGraphNode>,
 ): TicketClocks {
-  const entry = findWorldTicket(node.id);
-  return ticketClocks(node, api.clock.now(), entry?.def.sla_ticks ?? 0);
+  return ticketClocks(node, api.clock.now());
 }
 
 /** One clock, said the way a queue says it. */
@@ -378,7 +378,9 @@ export const TICKETS_APP: AppDef = {
           ? CLASSIFY_CLOSED_REASON
           : clocks.onHold
             ? CLASSIFY_ON_HOLD_REASON
-            : pair === null
+            : ticketState(node) === 'breached'
+              ? CLASSIFY_BREACHED_REASON
+              : pair === null
               ? 'Pick an impact and an urgency first.'
               : null,
       );
@@ -435,8 +437,10 @@ export const TICKETS_APP: AppDef = {
     };
 
     const renderHandoff = (node: Readonly<ReadOnlyGraphNode>): HTMLElement => {
-      const entry = findWorldTicket(node.id);
-      const tried = triedFromLog(api.dispatchLog(), entry?.nodes ?? []);
+      // Off the TICKET, not off the dispatch log: the log is drained at every
+      // day boundary, and a ticket worked yesterday and escalated this morning
+      // would otherwise reach second line claiming nobody had touched it.
+      const tried = triedFromTouches(node.fields[FIELDS.touchLog]);
       const panel = element('section', 'ticket-handoff', 'ticket-handoff');
 
       const heading = element('h3');

@@ -1,5 +1,6 @@
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
+import { UNTRIAGED_SLA_TICKS } from '../priority';
 import type { WorldTicket } from './types';
 
 /**
@@ -55,7 +56,7 @@ export const BOSS_PHONE: WorldTicket = {
     },
     // Four hours, which is what the ladder gives a P4 that arrives at eleven -
     // and comfortably longer than the eleven o'clock he keeps mentioning.
-    sla_ticks: 240,
+    sla_ticks: UNTRIAGED_SLA_TICKS,
     reward: { reputation: 1, money: 5 },
     kb_ref: 'kb/mail-on-a-phone',
   },

@@ -1,6 +1,7 @@
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { FIELDS, SERVICE_STATUS } from '../fields';
+import { UNTRIAGED_SLA_TICKS } from '../priority';
 import type { WorldTicket } from './types';
 
 const PRINTER_QUEUE_DEPTH = 47;
@@ -44,7 +45,7 @@ export const ROTATED_SCREEN: WorldTicket = {
       field: FIELDS.displayRotation,
       value: 0,
     },
-    sla_ticks: 300,
+    sla_ticks: UNTRIAGED_SLA_TICKS,
     reward: { reputation: 4, money: 15 },
     kb_ref: 'kb/display-rotation',
   },
@@ -129,7 +130,7 @@ export const LOCKED_ACCOUNT: WorldTicket = {
       field: FIELDS.locked,
       value: false,
     },
-    sla_ticks: 480,
+    sla_ticks: UNTRIAGED_SLA_TICKS,
     reward: { reputation: 2, money: 8 },
     kb_ref: 'kb/account-lockout',
   },
@@ -217,7 +218,7 @@ export const WEDGED_SPOOLER: WorldTicket = {
         },
       ],
     },
-    sla_ticks: 360,
+    sla_ticks: UNTRIAGED_SLA_TICKS,
     reward: { reputation: 5, money: 20 },
     kb_ref: 'kb/print-spooler',
   },

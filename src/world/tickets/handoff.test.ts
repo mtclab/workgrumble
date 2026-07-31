@@ -9,7 +9,6 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { DispatchLogEntry } from '../../engine-api';
 import { loadEngineForTests } from '../../engine-api/load-node';
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
@@ -19,11 +18,15 @@ import { createWorldSession } from '../session';
 import {
   actionSummary,
   bounceLandsAt,
+  countsAsWork,
+  encodeTouch,
   HANDOFF_BOUNCE,
   isCompleteHandoff,
   joinLines,
-  triedFromLog,
+  TOUCH_LOG_LIMIT,
+  triedFromTouches,
   whyThin,
+  withTouch,
 } from './handoff';
 
 beforeAll(() => {
@@ -31,18 +34,6 @@ beforeAll(() => {
 });
 
 const TICKET = 'ticket:fan-noise';
-
-function entry(overrides: Partial<DispatchLogEntry> = {}): DispatchLogEntry {
-  return {
-    tick: 0,
-    id: HELPDESK_ACTIONS.serviceRestart,
-    actor: COMPANY_IDS.player,
-    target: COMPANY_IDS.spooler,
-    params: {},
-    ok: true,
-    ...overrides,
-  };
-}
 
 describe('what makes a handoff complete', () => {
   it('needs a symptom AND something tried', () => {
@@ -76,24 +67,24 @@ describe('what makes a handoff complete', () => {
   });
 });
 
-describe('reading "what I tried" off the dispatch log', () => {
-  it('keeps only what was aimed at this ticket\'s own estate', () => {
+describe('reading "what I tried" off the ticket', () => {
+  it('reads back the touches it was given, newest last', () => {
     const log = [
-      entry(),
-      entry({ target: 'account:ada', id: HELPDESK_ACTIONS.accountUnlock }),
-      entry({ target: null }),
-    ];
+      encodeTouch(4, HELPDESK_ACTIONS.serviceRestart, true),
+      encodeTouch(9, HELPDESK_ACTIONS.printerClearQueue, true),
+    ].join('\n');
+    const tried = triedFromTouches(log);
 
-    const tried = triedFromLog(log, [COMPANY_IDS.spooler]);
-    expect(tried).toHaveLength(1);
+    expect(tried).toHaveLength(2);
+    expect(tried[0]?.tick).toBe(4);
     expect(tried[0]?.text).toBe(actionSummary(HELPDESK_ACTIONS.serviceRestart));
+    expect(tried[1]?.tick).toBe(9);
   });
 
   /** What did NOT work is required content on a real handoff form. */
   it('keeps the refusals, and says they refused', () => {
-    const tried = triedFromLog(
-      [entry({ ok: false, tick: 12 })],
-      [COMPANY_IDS.spooler],
+    const tried = triedFromTouches(
+      encodeTouch(12, HELPDESK_ACTIONS.serviceRestart, false),
     );
 
     expect(tried[0]?.worked).toBe(false);
@@ -103,18 +94,52 @@ describe('reading "what I tried" off the dispatch log', () => {
 
   /** Triaging a ticket is not something that was tried on the problem. */
   it('leaves the ticket\'s own bookkeeping out of it', () => {
-    const log = [
-      entry({ id: HELPDESK_ACTIONS.ticketClassify, target: TICKET }),
-      entry({ id: HELPDESK_ACTIONS.ticketAddWorknote, target: TICKET }),
-      entry({ id: HELPDESK_ACTIONS.ticketEscalate, target: TICKET }),
-    ];
-
-    expect(triedFromLog(log, [TICKET])).toHaveLength(0);
+    expect(countsAsWork(HELPDESK_ACTIONS.ticketClassify)).toBe(false);
+    expect(countsAsWork(HELPDESK_ACTIONS.ticketAddWorknote)).toBe(false);
+    expect(countsAsWork(HELPDESK_ACTIONS.ticketEscalate)).toBe(false);
+    expect(countsAsWork(HELPDESK_ACTIONS.ticketRecordTouch)).toBe(false);
+    expect(countsAsWork(HELPDESK_ACTIONS.serviceRestart)).toBe(true);
   });
 
   it('has nothing to say about a ticket nobody has touched', () => {
-    expect(triedFromLog([], [COMPANY_IDS.spooler])).toHaveLength(0);
-    expect(triedFromLog([entry()], [])).toHaveLength(0);
+    expect(triedFromTouches(undefined)).toHaveLength(0);
+    expect(triedFromTouches('')).toHaveLength(0);
+    expect(triedFromTouches(12)).toHaveLength(0);
+  });
+
+  /**
+   * The field lives in a save file on somebody's own machine. A line this
+   * build cannot read is dropped rather than rendered as `undefined -
+   * refused`, and the lines around it still arrive.
+   */
+  it('drops a line it cannot read rather than showing nonsense', () => {
+    const tried = triedFromTouches([
+      'not a touch',
+      '|service.restart|1',
+      '4|service.restart|7',
+      '-3|service.restart|1',
+      encodeTouch(6, HELPDESK_ACTIONS.serviceRestart, true),
+    ].join('\n'));
+
+    expect(tried).toHaveLength(1);
+    expect(tried[0]?.tick).toBe(6);
+  });
+
+  /**
+   * Bounded, because this is a field in every save from here on. The oldest
+   * go: what a handoff wants is what was tried most recently.
+   */
+  it('keeps the last twenty touches and no more', () => {
+    let log = '';
+
+    for (let touch = 0; touch < TOUCH_LOG_LIMIT + 5; touch += 1) {
+      log = withTouch(log, touch, HELPDESK_ACTIONS.serviceRestart, true);
+    }
+
+    const tried = triedFromTouches(log);
+    expect(tried).toHaveLength(TOUCH_LOG_LIMIT);
+    expect(tried[0]?.tick).toBe(5);
+    expect(tried[TOUCH_LOG_LIMIT - 1]?.tick).toBe(TOUCH_LOG_LIMIT + 4);
   });
 
   it('names every verb the player has, so no line reads as an id', () => {
@@ -126,6 +151,7 @@ describe('reading "what I tried" off the dispatch log', () => {
         expect([
           HELPDESK_ACTIONS.ticketEscalate,
           HELPDESK_ACTIONS.ticketRecordResponse,
+          HELPDESK_ACTIONS.ticketRecordTouch,
           HELPDESK_ACTIONS.ticketBounceHandoff,
         ]).toContain(id);
       }

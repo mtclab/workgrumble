@@ -294,11 +294,15 @@ describe('the day scorecard', () => {
    * is the one screen the player is asked to believe.
    */
   it('counts only the tickets the day itself brought in', () => {
+    // Still open counts everything that has not been FIXED - the open one, the
+    // parked one and the one whose deadline ran out. A ticket does not stop
+    // being somebody's problem by going red, and a day with breaches on it
+    // that reports nothing still open is a day telling a story about itself.
     expect(dayLedger(tickets, 1)).toEqual({
       arrived: 5,
       closed: 2,
       breached: 2,
-      stillOpen: 2,
+      stillOpen: 3,
     });
     expect(dayLedger(tickets, 2)).toEqual({
       arrived: 1,

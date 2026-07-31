@@ -1,5 +1,6 @@
 import type { ActionData, GuardData, NodeRefData } from '../../engine-api';
-import { MAX_CANS, MAX_TOLERANCE, NO_RUN } from '../consumables';
+import { buffTicks, MAX_CANS, MAX_TOLERANCE, NO_RUN } from '../consumables';
+import { DAY_OPENS_MINUTE, MINUTES_PER_DAY, SHIFT_END_MINUTE } from '../day';
 import { FIELDS } from '../fields';
 import { METER_CEILING, METER_FLOOR } from '../meters';
 import { HELPDESK_TIER, not } from './helpers';
@@ -30,6 +31,48 @@ const SPEND_IS_MONEY: GuardData = {
     + 'a number of them.',
 };
 
+/**
+ * There is no point starting one now, and the world says so rather than the
+ * button.
+ *
+ * A can bought at ten to five is a buff with no bill: the crash would land
+ * after everybody has gone home, the day ends before the meters can settle it,
+ * and clocking off clears the run - so the player gets the steady hands for
+ * free. The desk overlay explains this in a sentence the player reads, but a
+ * rule only the wired-up button obeys is a rule any second caller walks
+ * straight past, and this one is worth money.
+ *
+ * One guard per tolerance because the window a can needs is how long that can
+ * lasts, and the fourth of a run is a shorter thing than the first.
+ */
+export const LATE_CAN_REASON = 'There is no point starting one now: it would wear '
+  + 'off somewhere on the way home, and you would still be paying for it.';
+
+const NOT_IN_THE_SHIFT_TAIL: readonly GuardData[] = Array.from(
+  { length: MAX_TOLERANCE },
+  (_unused, index): GuardData => {
+    const tolerance = index + 1;
+
+    return {
+      when: {
+        pred: 'all',
+        of: [
+          { pred: 'param_int_in', param: 'tolerance', values: [tolerance] },
+          not({
+            pred: 'tick_of_day_at_most',
+            day_ticks: MINUTES_PER_DAY,
+            // Tick 0 of a day is when the day OPENS, so closing time is the
+            // shift's end measured from there - and the can has to have worn
+            // off by then, not started by then.
+            value: SHIFT_END_MINUTE - DAY_OPENS_MINUTE - buffTicks(tolerance),
+          }),
+        ],
+      },
+      reason: LATE_CAN_REASON,
+    };
+  },
+);
+
 const TOLERANCE_IS_A_RUN: GuardData = {
   when: not({
     pred: 'param_int_in',
@@ -53,7 +96,12 @@ export const CONSUMABLE_ACTION_DATA: readonly ActionData[] = [
   {
     id: DAY_ACTIONS.consumableDrink,
     tier: HELPDESK_TIER,
-    validate: [DURING_SHIFT, SPEND_IS_MONEY, TOLERANCE_IS_A_RUN],
+    validate: [
+      DURING_SHIFT,
+      SPEND_IS_MONEY,
+      TOLERANCE_IS_A_RUN,
+      ...NOT_IN_THE_SHIFT_TAIL,
+    ],
     apply: [
       // The minute the can was opened comes from the engine's own clock, not
       // from a number the shell passed in: everything downstream - the buff,

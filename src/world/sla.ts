@@ -76,16 +76,43 @@ export function holdReasonOf(
 }
 
 /**
+ * Whether this ticket is still somebody's problem.
+ *
+ * One predicate, read everywhere, because "unresolved" was being spelled three
+ * different ways and a BREACHED ticket fell through all of them: the deadline
+ * running out does not fix the printer, and a queue that stopped counting a
+ * ticket the moment it went red is a queue that pays you to let it.
+ */
+export function isUnresolved(node: Readonly<ReadOnlyGraphNode>): boolean {
+  return node.fields[FIELDS.state] !== 'resolved';
+}
+
+/**
+ * Whether it is on your plate THIS minute - which is what the stress meter is
+ * about. A parked ticket is unresolved and is still not work you can do, which
+ * is half the reason parking one is a relief rather than a formality.
+ */
+export function isActiveWork(node: Readonly<ReadOnlyGraphNode>): boolean {
+  return isUnresolved(node) && node.fields[FIELDS.state] !== 'waiting_on_user';
+}
+
+/** Minutes this ticket has spent parked, as the engine has been counting. */
+export function heldTicksOf(node: Readonly<ReadOnlyGraphNode>): number {
+  return Math.max(0, numberField(node, FIELDS.heldTicks) ?? 0);
+}
+
+/**
  * Both clocks for one ticket, as of `now`.
  *
- * `slaTicks` is what the ticket was written with - the deadline it spawned on
- * before anybody triaged it - and it is only used to work out how much of the
- * engine's current deadline is time the ticket spent parked.
+ * Both targets come from the triage - and from `targetsFor(null)` until there
+ * is one, which is what "untriaged is treated as P3" has to MEAN if the app is
+ * going to print it. There is deliberately no fallback to the number the
+ * ticket was written with: a second ladder beside the table is a ticket whose
+ * two clocks disagree about which priority it is.
  */
 export function ticketClocks(
   node: Readonly<ReadOnlyGraphNode>,
   now: number,
-  slaTicks: number,
 ): TicketClocks {
   const priority = ticketPriority(node);
   const spawnedAt = numberField(node, FIELDS.spawnedAt) ?? 0;
@@ -104,12 +131,6 @@ export function ticketClocks(
     ? !resolved && now >= responseDueAt
     : respondedAt >= responseDueAt;
 
-  // The resolution deadline IS the engine's field: it moves out while the
-  // ticket is parked, and the engine breaches against it.
-  const resolutionTarget = priority === null
-    ? slaTicks
-    : targetsFor(priority).resolution;
-
   return {
     priority,
     response: {
@@ -119,6 +140,8 @@ export function ticketClocks(
       breached: responseBreached,
       remaining: responseDueAt - (respondedAt ?? (responseRunning ? now : responseDueAt)),
     },
+    // The resolution deadline IS the engine's field: it moves out while the
+    // ticket is parked, and the engine breaches against it.
     resolution: {
       dueAt: deadline,
       stoppedAt: null,
@@ -127,14 +150,21 @@ export function ticketClocks(
       remaining: deadline - now,
     },
     onHold,
-    heldTicks: Math.max(0, deadline - spawnedAt - resolutionTarget),
+    // The engine's own counter rather than a subtraction: a deadline minus a
+    // target only tells you about the pause while nothing else has moved the
+    // deadline, and re-cutting one at triage is exactly that.
+    heldTicks: heldTicksOf(node),
   };
 }
 
 /**
- * Whether the response clock has anything left to stop. Reading it in one
- * place keeps the driver's sweep and the app's badge agreeing about when a
- * ticket counts as touched.
+ * Whether the response clock has anything left to stop.
+ *
+ * Read BEFORE a dispatch: a ticket somebody is about to touch for the first
+ * time counts, and a ticket that was closed before anybody said a word to the
+ * reporter does not get a response stamped on it a day later. The action that
+ * writes the stamp is the one that allows the resolving case - it runs in the
+ * same minute as the fix, which is when the touch actually happened.
  */
 export function needsResponse(node: Readonly<ReadOnlyGraphNode>): boolean {
   return numberField(node, FIELDS.respondedAt) === null

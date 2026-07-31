@@ -7,25 +7,36 @@ import { HELPDESK_ACTION_IDS } from '../actions';
 import type { ScheduledTicket } from '../day';
 import { FIELDS } from '../fields';
 import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
-import { type Classification, classify, trueImpact } from '../priority';
+import {
+  type Classification,
+  classify,
+  trueImpact,
+  UNTRIAGED_SLA_TICKS,
+} from '../priority';
 import { BOSS_PHONE } from './boss-trash';
+import { TIDIED_LIST } from './drip';
 import { acceptsEscalation } from './escalation';
 import { PILOT_TICKETS } from './pilot';
 import type { WorldTicket } from './types';
 
 export { BOSS_PHONE } from './boss-trash';
+export { TIDIED_LIST } from './drip';
 export { acceptsEscalation } from './escalation';
 export {
   actionSummary,
   bounceLandsAt,
   type BounceRule,
+  countsAsWork,
+  encodeTouch,
   type Handoff,
   HANDOFF_BOUNCE,
   isCompleteHandoff,
   joinLines,
-  triedFromLog,
+  TOUCH_LOG_LIMIT,
+  triedFromTouches,
   type TriedEntry,
   whyThin,
+  withTouch,
 } from './handoff';
 export { PILOT_TICKETS } from './pilot';
 export type {
@@ -112,6 +123,18 @@ function validateWorldTickets(
       throw new Error(`Ticket "${def.id}" has no KB reference.`);
     }
 
+    // Both clocks of an untriaged ticket come from the same place, and the
+    // app says out loud which place that is. A ticket carrying its own
+    // deadline is a ticket whose badge reads "treated as P3" next to a
+    // resolution target from a tier the player was never shown.
+    if (def.sla_ticks !== UNTRIAGED_SLA_TICKS) {
+      throw new Error(
+        `Ticket "${def.id}" arrives with ${String(def.sla_ticks)} minutes to `
+        + `resolve; an untriaged ticket gets ${String(UNTRIAGED_SLA_TICKS)}, `
+        + 'because that is what "treated as P3" means.',
+      );
+    }
+
     if (entry.paths.length === 0) {
       throw new Error(`Ticket "${def.id}" advertises no way to close it.`);
     }
@@ -158,6 +181,7 @@ function validateWorldTickets(
 export const WORLD_TICKETS: readonly WorldTicket[] = validateWorldTickets([
   FAN_TICKET,
   ...PILOT_TICKETS,
+  TIDIED_LIST,
   BOSS_PHONE,
 ]);
 
@@ -172,9 +196,9 @@ export function findWorldTicket(id: string): WorldTicket | undefined {
 /**
  * The shipped content as the day scheduler reads it.
  *
- * Everything here arrives in the morning today: four tickets is the pile you
- * inherit at 08:00, and the shift's own arrivals are what the M4 content lands
- * into. The scheduler does not care - it deals whatever the pool declares.
+ * Four tickets are the pile you inherit at 08:00 and one arrives while you are
+ * working, on a minute the seeded schedule picks. The scheduler does not care
+ * which is which - it deals whatever the pool declares.
  */
 export function ticketArrivalPool(): readonly ScheduledTicket[] {
   // A summoned ticket has no slot in anybody's day: it turns up when the man

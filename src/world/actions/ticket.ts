@@ -20,6 +20,7 @@ const NOTE_PARAM = 'note';
 const COMMENT_PARAM = 'comment';
 const REPORTED_PARAM = 'reported';
 const TRIED_PARAM = 'tried';
+const TOUCHES_PARAM = 'touches';
 
 /** A newline-joined field is one string; the apps split it back into lines. */
 export function fieldLines(value: unknown): readonly string[] {
@@ -65,8 +66,21 @@ export const CLASSIFY_CLOSED_REASON = 'That ticket is closed. Triaging it now '
   + 'is filing a weather report for last Tuesday.';
 
 export const CLASSIFY_ON_HOLD_REASON = 'It is parked, and re-cutting its '
-  + 'deadline now would hand back the time it has spent waiting. Take it back '
-  + 'off hold first, then triage it.';
+  + 'deadline now would move a clock that is supposed to be stopped. Take it '
+  + 'back off hold first, then triage it - the time it has already spent '
+  + 'waiting comes with it.';
+
+/**
+ * And a missed deadline is a missed deadline.
+ *
+ * Triaging a breached ticket used to move its deadline into the future while
+ * the breach stayed latched, which reads as "Overdue 0m" and is the exact
+ * shape of a number somebody has been at. The breach is history; the way to
+ * make it stop being true is to fix the thing.
+ */
+export const CLASSIFY_BREACHED_REASON = 'That one has already blown its SLA. '
+  + 'Re-cutting the deadline now would move a line it has already crossed, '
+  + 'which is the sort of tidying-up that gets read back to you at a review.';
 
 const UNTRACKED_GUARD: GuardData = {
   when: { pred: 'ticket_untracked', node: TARGET },
@@ -193,6 +207,35 @@ function deadlineOps(): readonly OpData[] {
           },
         },
       },
+      // And the pause the ticket has already earned goes back on top. The
+      // target is measured from the minute the ticket ARRIVED, and the minutes
+      // it spent waiting on somebody else are not minutes anybody was allowed
+      // to work in. Without this, following the app's own instruction - clear
+      // the hold, then triage - cost the player every minute of it, and could
+      // breach the ticket on the spot.
+      {
+        op: 'when' as const,
+        cond: {
+          pred: 'field_is_number' as const,
+          node: TARGET,
+          field: FIELDS.heldTicks,
+        },
+        ops: [
+          {
+            op: 'set_field' as const,
+            node: TARGET,
+            field: FIELDS.slaDeadline,
+            value: {
+              add: {
+                node: TARGET,
+                field: FIELDS.slaDeadline,
+                by: { field: { node: TARGET, field: FIELDS.heldTicks } },
+                clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
+              },
+            },
+          },
+        ],
+      },
     ],
   }));
 }
@@ -268,11 +311,12 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
       ...targetGuards('ticket'),
       UNTRACKED_GUARD,
       { when: stateIs('resolved'), reason: CLASSIFY_CLOSED_REASON },
-      // Classifying re-cuts the resolution deadline from the moment the
-      // ticket arrived, and time spent parked is not in that sum. Doing it
-      // while the ticket is on hold would quietly hand back the pause, so the
-      // order is: triage it, then park it.
+      // Classifying re-cuts the resolution deadline, and a stopped clock is
+      // not a clock anybody may re-cut: the order is take it off hold, then
+      // triage it. The pause itself is not lost by waiting - `held_ticks` goes
+      // back on top of whatever the new target is.
       { when: stateIs('waiting_on_user'), reason: CLASSIFY_ON_HOLD_REASON },
+      { when: stateIs('breached'), reason: CLASSIFY_BREACHED_REASON },
       MATRIX_GUARD,
     ],
     apply: [
@@ -349,11 +393,11 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
     validate: [
       ...targetGuards('ticket'),
       UNTRACKED_GUARD,
-      {
-        when: stateIs('resolved'),
-        reason: 'That ticket is closed. Its response clock stopped when the '
-          + 'problem did.',
-      },
+      // There is deliberately no guard on the ticket being closed. The one
+      // caller stamps this in the same minute as the action it is recording,
+      // and the commonest first touch there is - the fix - closes the ticket
+      // as it lands. Refusing it left a ticket that was answered LATE with no
+      // timestamp at all, and a missing timestamp reads as "in time".
       {
         when: {
           pred: 'field_is_number',
@@ -370,6 +414,31 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
         node: TARGET,
         field: FIELDS.respondedAt,
         value: { now: true },
+      },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.ticketRecordTouch,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('ticket'),
+      UNTRACKED_GUARD,
+      // The whole field arrives, already bounded, from the one place that
+      // knows what the ticket's evidence looks like. The engine's job here is
+      // to insist it IS a field: a touch record that arrives as a number is a
+      // caller bug, and a ticket carrying one is evidence nobody can read.
+      {
+        when: { pred: 'param_string_missing', param: TOUCHES_PARAM },
+        reason: 'A record of what was tried is a list of things that were '
+          + 'tried, and this is not one.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.touchLog,
+        value: { param: TOUCHES_PARAM },
       },
     ],
   },

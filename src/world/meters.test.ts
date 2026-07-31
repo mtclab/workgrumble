@@ -42,8 +42,14 @@ const QUIET: MeterInputs = {
   resolveCredit: 0,
   resolveCreditPaid: 0,
   openSlackApps: [],
+  focusedSlackApp: null,
   lunch: false,
 };
+
+/** On screen AND in front of the player: the shape of one window, open. */
+function inFrontOf(appId: string): Partial<MeterInputs> {
+  return { openSlackApps: [appId], focusedSlackApp: appId };
+}
 
 function deltas(overrides: Partial<MeterInputs> = {}): MeterDeltas {
   return meterDeltas({ ...QUIET, ...overrides });
@@ -83,16 +89,41 @@ describe('stress', () => {
   });
 
   it('drains while something restful is genuinely on screen', () => {
-    const one = deltas({ openSlackApps: ['bubbles'] });
+    const one = deltas(inFrontOf('bubbles'));
     expect(one.stressDown).toBe(slackRate('bubbles').stressRelief);
+  });
 
-    const two = deltas({ openSlackApps: ['bubbles', 'bubbles'] });
-    expect(two.stressDown).toBe(slackRate('bubbles').stressRelief * 2);
+  /**
+   * Relief is about what the player is DOING; suspicion is about what a man
+   * walking past can see. A second window behind the ticket queue used to
+   * double the medicine while the work carried on in front of it, which made
+   * the safest thing to do with the boss key the opposite of what it is for.
+   */
+  it('gives nothing back for a window the player is not in', () => {
+    const background = deltas({
+      openSlackApps: ['browser', 'bubbles'],
+      focusedSlackApp: null,
+    });
+
+    expect(background.stressDown).toBe(0);
+    expect(background.suspicionUp).toBe(
+      slackRate('browser').suspicion + slackRate('bubbles').suspicion,
+    );
+    expect(background.suspicionEvent).toBe(true);
+
+    // And two open, one focused: charged for both, soothed by one.
+    const working = deltas({
+      openSlackApps: ['browser', 'bubbles'],
+      focusedSlackApp: 'bubbles',
+    });
+
+    expect(working.stressDown).toBe(slackRate('bubbles').stressRelief);
+    expect(working.suspicionUp).toBe(background.suspicionUp);
   });
 
   /** The safe window: the drain doubles and nobody is walking past. */
   it('doubles the drain at lunch and throws in the half hour itself', () => {
-    const lunch = deltas({ openSlackApps: ['bubbles'], lunch: true });
+    const lunch = deltas({ ...inFrontOf('bubbles'), lunch: true });
 
     expect(lunch.stressDown)
       .toBe(slackRate('bubbles').stressRelief * 2 + STRESS_LUNCH_RELIEF);
@@ -119,7 +150,7 @@ describe('suspicion', () => {
    * trying to teach before it starts charging for it.
    */
   it('costs nothing at lunch, however visible the screen is', () => {
-    const lunch = deltas({ openSlackApps: ['bubbles'], lunch: true });
+    const lunch = deltas({ ...inFrontOf('bubbles'), lunch: true });
 
     expect(lunch.suspicionUp).toBe(0);
     expect(lunch.suspicionEvent).toBe(false);
@@ -193,7 +224,7 @@ describe('applying the deltas', () => {
   });
 
   it('cannot push a meter below the floor', () => {
-    const next = applyDeltas(FRESH, deltas({ openSlackApps: ['bubbles'] }));
+    const next = applyDeltas(FRESH, deltas(inFrontOf('bubbles')));
 
     expect(next.stress).toBe(METER_FLOOR);
     expect(next.suspicion).toBe(slackRate('bubbles').suspicion);
@@ -203,7 +234,7 @@ describe('applying the deltas', () => {
     const next = applyDeltas(FRESH, deltas({
       breachedTickets: 2,
       resolveCredit: 3,
-      openSlackApps: ['bubbles'],
+      ...inFrontOf('bubbles'),
     }));
 
     expect(next.breachesCharged).toBe(2);

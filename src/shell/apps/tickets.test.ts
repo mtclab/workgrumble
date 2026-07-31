@@ -12,8 +12,8 @@ import {
 
 const FAN_TICKET = 'ticket:fan-noise';
 const ROTATED_TICKET = 'ticket:rotated-screen';
-/** The fan ticket's SLA, and the first one the day's clock eats. */
-const FAN_SLA_TICKS = 240;
+/** What every untriaged ticket arrives with: P3's four hours. */
+const UNTRIAGED_SLA_TICKS = 240;
 
 /**
  * A breach is a thing that happened, and closing the ticket afterwards does
@@ -25,8 +25,19 @@ describe('a breached ticket that gets closed', () => {
   it('keeps saying it breached, in the queue and in the tally', () => {
     const session = createWorldSession();
 
-    // Let the shortest SLA in the queue run out. Nothing else is due yet.
-    session.engine.advance(FAN_SLA_TICKS);
+    // Every untriaged ticket runs on the same clock now, so the one that is
+    // going to survive the morning is the one somebody triaged: filed low and
+    // low, the matrix makes it a P4 and its deadline moves to eight hours.
+    expect(
+      session.engine.dispatch(
+        HELPDESK_ACTIONS.ticketClassify,
+        COMPANY_IDS.player,
+        ROTATED_TICKET,
+        { impact: 1, urgency: 1, priority: 4 },
+      ),
+    ).toEqual({ ok: true });
+
+    session.engine.advance(UNTRIAGED_SLA_TICKS);
     expect(session.engine.ticketState(FAN_TICKET)).toBe('breached');
     expect(session.engine.ticketState(ROTATED_TICKET)).toBe('open');
 
@@ -57,8 +68,12 @@ describe('a breached ticket that gets closed', () => {
     expect(clean === undefined ? '' : ticketStateLabel(clean)).toBe('Open');
     expect(clean !== undefined && wasBreached(clean)).toBe(false);
 
-    // And the day's tally still counts it, because the day still counts it.
-    expect(breachedTicketCount(nodes)).toBe(1);
+    // And the day's tally still counts it, because the day still counts it -
+    // alongside the two the player never got to, and not the P4 that had
+    // another four hours on it.
+    expect(breachedTicketCount(nodes)).toBe(3);
+    expect(nodes.filter((node) => !wasBreached(node)).map((node) => node.id))
+      .toEqual([ROTATED_TICKET]);
   });
 
   it('counts nothing on a queue that has missed nothing', () => {

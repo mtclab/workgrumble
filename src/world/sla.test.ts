@@ -24,7 +24,7 @@ import {
   needsResponse,
   ticketClocks,
 } from './sla';
-import { findWorldTicket } from './tickets';
+import { WORLD_TICKETS } from './tickets';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -57,11 +57,7 @@ function harness(ticketId: string = TICKET): Harness {
   return {
     engine,
     node,
-    clocks: () => ticketClocks(
-      node(),
-      engine.now(),
-      findWorldTicket(ticketId)?.def.sla_ticks ?? 0,
-    ),
+    clocks: () => ticketClocks(node(), engine.now()),
     act: (id, params = {}) => {
       const result = engine.dispatch(id, COMPANY_IDS.player, ticketId, params);
 
@@ -210,14 +206,49 @@ describe('the resolution clock', () => {
     expect(world.clocks().heldTicks).toBe(20);
   });
 
-  /** A ticket nobody triaged still has a clock, or ignoring the queue wins. */
-  it('holds an untriaged ticket to the deadline it spawned with', () => {
+  /**
+   * A ticket nobody triaged still has a clock, or ignoring the queue wins -
+   * and it is P3's clock on BOTH ends, which is what the badge in the app
+   * promises out loud. The resolution deadline used to come from a number the
+   * ticket was written with instead: the spooler said "treated as P3" and had
+   * six hours, which is the tier above.
+   */
+  it('holds every untriaged ticket to P3, on both clocks', () => {
     const world = harness();
-    const spawned = findWorldTicket(TICKET)?.def.sla_ticks ?? 0;
+    const untriaged = SLA_TARGETS[UNTRIAGED_PRIORITY];
 
     expect(world.clocks().priority).toBeNull();
-    expect(world.clocks().resolution.dueAt).toBe(spawned);
+    expect(world.clocks().resolution.dueAt).toBe(untriaged.resolution);
+    expect(world.clocks().response.dueAt).toBe(untriaged.response);
     expect(world.clocks().response.running).toBe(true);
+
+    // Every shipped ticket, not just this one: content carrying its own
+    // deadline is content whose two clocks disagree about what it is.
+    for (const entry of WORLD_TICKETS) {
+      expect(entry.def.sla_ticks).toBe(untriaged.resolution);
+    }
+  });
+
+  /**
+   * And the pause the ticket earned survives being triaged. The app tells the
+   * player to clear the hold before triaging; doing as they are told used to
+   * cost them every minute of it, and could breach the ticket in their hand.
+   */
+  it('keeps the time already spent parked when the triage re-cuts it', () => {
+    const world = harness();
+    world.act(HELPDESK_ACTIONS.ticketAddComment, { comment: 'Which one?' });
+    world.act(HELPDESK_ACTIONS.ticketSetWaiting);
+    world.engine.advance(45);
+    world.act(HELPDESK_ACTIONS.ticketClearWaiting);
+    world.act(HELPDESK_ACTIONS.ticketClassify, {
+      impact: 2,
+      urgency: 3,
+      priority: 2,
+    });
+
+    expect(world.clocks().resolution.dueAt)
+      .toBe(SLA_TARGETS[2].resolution + 45);
+    expect(world.clocks().heldTicks).toBe(45);
   });
 });
 

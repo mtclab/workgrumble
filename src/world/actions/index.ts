@@ -2,6 +2,8 @@ import type { ActionData, ActionPayload } from '../../engine-api';
 import { ACCOUNT_ACTIONS } from './account';
 import { BOSS_ACTION_DATA } from './boss';
 import { CONSUMABLE_ACTION_DATA } from './consumables';
+
+export { LATE_CAN_REASON } from './consumables';
 import { DAY_ACTION_DATA } from './day';
 import { DEVICE_ACTIONS } from './device';
 import { KIND_LABELS } from './helpers';
@@ -23,6 +25,7 @@ export {
   type HelpdeskActionId,
 } from './ids';
 export {
+  CLASSIFY_BREACHED_REASON,
   CLASSIFY_CLOSED_REASON,
   CLASSIFY_ON_HOLD_REASON,
   fieldLines,
