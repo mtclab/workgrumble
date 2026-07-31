@@ -1,7 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
-  clearCookie,
   PASS_COOKIE,
   readCookie,
   seal,
@@ -47,12 +46,28 @@ describe('reading a cookie header', () => {
 
 describe('the Set-Cookie line', () => {
   it('is http-only, secure and scoped to the whole site', () => {
-    const line = setCookie(PASS_COOKIE, 'value', 60);
+    const line = setCookie(PASS_COOKIE, 'value', 60, true);
 
     expect(line).toContain('HttpOnly');
     expect(line).toContain('Secure');
     expect(line).toContain('Path=/');
     expect(line).toContain('Max-Age=60');
+  });
+
+  /**
+   * The flag follows the scheme, and leaving it unconditional would not be
+   * "more secure" - it would be a product nobody can reach on the staging box.
+   * A browser REFUSES to store a Secure cookie from an http origin, so every
+   * journey against `wrangler dev` would meet the invite-only page holding a
+   * pass that was never kept. Production is https; the flag is on where it
+   * means anything.
+   */
+  it('drops Secure where there is no transport to secure', () => {
+    const insecure = setCookie(PASS_COOKIE, 'value', 60, false);
+
+    expect(insecure).not.toContain('Secure');
+    expect(insecure).toContain('HttpOnly');
+    expect(insecure).toContain('SameSite=Lax');
   });
 
   /**
@@ -62,11 +77,7 @@ describe('the Set-Cookie line', () => {
    * carry, and the tester lands on the invite-only page holding a valid pass.
    */
   it('is SameSite=Lax, because the door is reached from elsewhere', () => {
-    expect(setCookie(PASS_COOKIE, 'value', 60)).toContain('SameSite=Lax');
-  });
-
-  it('clears by expiring rather than by being absent', () => {
-    expect(clearCookie(PASS_COOKIE)).toContain('Max-Age=0');
+    expect(setCookie(PASS_COOKIE, 'value', 60, true)).toContain('SameSite=Lax');
   });
 });
 

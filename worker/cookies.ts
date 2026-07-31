@@ -64,23 +64,29 @@ export function readCookie(header: string | null, name: string): string | null {
  * A `Set-Cookie` line.
  *
  * `HttpOnly` because no script in this game has any business reading either of
- * these - the client asks the Worker who it is instead. `Secure` because the
- * site is https and a cookie that will travel in clear is a cookie that will.
+ * these - the client asks the Worker who it is instead.
+ *
  * `SameSite=Lax` rather than `Strict` because admission ARRIVES by following a
  * link from somewhere else, and a Strict cookie set on that redirect is a
  * cookie the very next request does not send.
+ *
+ * `Secure` follows the SCHEME rather than being unconditional, and that is not
+ * a weakening. Browsers REFUSE to store a Secure cookie from an insecure
+ * origin - so an unconditional flag would mean the whole product worked in
+ * production and was completely unreachable on the staging box, where the
+ * Worker is served over plain http by `wrangler dev`: no pass would ever
+ * stick, and every journey would meet the invite-only page. Production is
+ * https, so the flag is always on where it means anything, and where it is off
+ * there is no transport to protect.
  */
 export function setCookie(
   name: string,
   value: string,
   maxAgeSeconds: number,
+  secure: boolean,
 ): string {
-  return `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; `
-    + `Max-Age=${String(maxAgeSeconds)}`;
-}
-
-export function clearCookie(name: string): string {
-  return `${name}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+  return `${name}=${value}; Path=/; HttpOnly; ${secure ? 'Secure; ' : ''}`
+    + `SameSite=Lax; Max-Age=${String(maxAgeSeconds)}`;
 }
 
 /** Wraps a value and its expiry in a signature. */

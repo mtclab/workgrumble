@@ -146,6 +146,7 @@ async function admitTester(
   key: CryptoKey,
   token: string,
   now: number,
+  secure: boolean,
 ): Promise<Response> {
   const caller = await callerKey(key, request);
 
@@ -180,6 +181,7 @@ async function admitTester(
         PASS_COOKIE,
         cookie,
         Math.max(1, Math.floor((lifetime - now) / 1_000)),
+        secure,
       ),
     },
   });
@@ -227,8 +229,18 @@ async function badgeOf(
   return badge === null ? null : normalizeBadge(badge);
 }
 
-function badgeCookie(value: string): Record<string, string> {
-  return { 'Set-Cookie': setCookie(BADGE_COOKIE, value, BADGE_MAX_AGE_SECONDS) };
+function badgeCookie(
+  value: string,
+  secure: boolean,
+): Record<string, string> {
+  return {
+    'Set-Cookie': setCookie(
+      BADGE_COOKIE,
+      value,
+      BADGE_MAX_AGE_SECONDS,
+      secure,
+    ),
+  };
 }
 
 /**
@@ -260,6 +272,7 @@ async function register(
   env: Env,
   key: CryptoKey,
   now: number,
+  secure: boolean,
 ): Promise<Response> {
   const caller = await callerKey(key, request);
   const rate = await withinRate(env.PLAYERS, 'register', caller, now);
@@ -278,7 +291,7 @@ async function register(
   await env.PLAYERS.put(badge, JSON.stringify({ created_at: now }));
 
   const cookie = await seal(key, badge, now + BADGE_MAX_AGE_SECONDS * 1_000);
-  return json({ ok: true, badge }, 200, badgeCookie(cookie));
+  return json({ ok: true, badge }, 200, badgeCookie(cookie, secure));
 }
 
 async function login(
@@ -286,6 +299,7 @@ async function login(
   env: Env,
   key: CryptoKey,
   now: number,
+  secure: boolean,
 ): Promise<Response> {
   const caller = await callerKey(key, request);
   const rate = await withinRate(env.PLAYERS, 'login', caller, now);
@@ -314,7 +328,7 @@ async function login(
   }
 
   const cookie = await seal(key, badge, now + BADGE_MAX_AGE_SECONDS * 1_000);
-  return json({ ok: true, badge }, 200, badgeCookie(cookie));
+  return json({ ok: true, badge }, 200, badgeCookie(cookie, secure));
 }
 
 /* -- saves ---------------------------------------------------------------- */
@@ -485,6 +499,7 @@ async function api(
   key: CryptoKey,
   pathname: string,
   now: number,
+  secure: boolean,
 ): Promise<Response> {
   if (pathname === '/api/session') {
     return request.method === 'GET'
@@ -494,13 +509,13 @@ async function api(
 
   if (pathname === '/api/register') {
     return request.method === 'POST'
-      ? register(request, env, key, now)
+      ? register(request, env, key, now, secure)
       : wrongMethod();
   }
 
   if (pathname === '/api/login') {
     return request.method === 'POST'
-      ? login(request, env, key, now)
+      ? login(request, env, key, now, secure)
       : wrongMethod();
   }
 
@@ -542,10 +557,14 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   const key = await importSigningKey(secret);
   const now = Date.now();
+  // See `setCookie`: an unconditional Secure flag is a product that works in
+  // production and cannot be reached at all on the staging box, because a
+  // browser will not store a Secure cookie from an http origin.
+  const secure = url.protocol === 'https:';
 
   if (pathname.startsWith('/t/')) {
     return request.method === 'GET'
-      ? admitTester(request, env, key, pathname.slice(3), now)
+      ? admitTester(request, env, key, pathname.slice(3), now, secure)
       : invitePage();
   }
 
@@ -557,7 +576,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
 
   return pathname.startsWith('/api/')
-    ? api(request, env, key, pathname, now)
+    ? api(request, env, key, pathname, now, secure)
     : serveAsset(request, env, pathname);
 }
 
