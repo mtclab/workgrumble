@@ -275,24 +275,6 @@ const SCRIPT: readonly Step[] = [
     params: { rotation: 180 },
   },
   {
-    label: 'set a resolution that is not one',
-    id: HELPDESK_ACTIONS.machineSetResolution,
-    target: COMPANY_IDS.adaMachine,
-    params: { resolution: 'as big as possible' },
-  },
-  {
-    label: 'set the resolution it already runs at',
-    id: HELPDESK_ACTIONS.machineSetResolution,
-    target: COMPANY_IDS.adaMachine,
-    params: { resolution: '1024x768' },
-  },
-  {
-    label: 'set a resolution',
-    id: HELPDESK_ACTIONS.machineSetResolution,
-    target: COMPANY_IDS.adaMachine,
-    params: { resolution: '800x600' },
-  },
-  {
     label: 'reboot something that is not a workstation',
     id: HELPDESK_ACTIONS.machineReboot,
     target: COMPANY_IDS.printer,
@@ -546,16 +528,6 @@ const SCRIPT: readonly Step[] = [
       breaches_charged: 0,
       resolve_credit_paid: 2,
     },
-  },
-  {
-    label: 'delete something that is not a mail rule',
-    id: HELPDESK_ACTIONS.mailRuleDelete,
-    target: COMPANY_IDS.garyAccount,
-  },
-  {
-    label: 'delete the mail rule',
-    id: HELPDESK_ACTIONS.mailRuleDelete,
-    target: COMPANY_IDS.garyMailRule,
   },
 ];
 

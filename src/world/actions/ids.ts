@@ -51,7 +51,6 @@ export const HELPDESK_ACTIONS = {
    */
   serviceRenewCertificate: 'service.renew_certificate',
   machineSetDisplayRotation: 'machine.set_display_rotation',
-  machineSetResolution: 'machine.set_resolution',
   machineReboot: 'machine.reboot',
   /**
    * One line into a machine's own log, written as the thing happened.
@@ -72,7 +71,6 @@ export const HELPDESK_ACTIONS = {
    * person and is not in the room.
    */
   deviceForgetCredentials: 'device.forget_credentials',
-  mailRuleDelete: 'mail_rule.delete',
   /**
    * Switching on a rule somebody wrote, tested once, and left off because
    * switching it on was a change and a change needed a form.

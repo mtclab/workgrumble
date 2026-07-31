@@ -1768,15 +1768,6 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'top of a service somebody was using.',
   [WORLD_ACTIONS.staleLogon]: 'A tablet in a cupboard offering a password '
     + 'that was changed in the spring, every five minutes.',
-  // Two verbs with no surface anywhere: no button, no command, no dialogue
-  // option, and no resolution rule that asks for them. They are registered and
-  // named in the handoff form's label table, and that is all. Recorded rather
-  // than deleted: removing a verb is a change to the payload the engine is
-  // handed, and this lane does not move the goldens.
-  [HELPDESK_ACTIONS.machineSetResolution]: 'Registered, labelled on the '
-    + 'handoff form, and reachable from nothing - see the M5 lane-B notes.',
-  [HELPDESK_ACTIONS.mailRuleDelete]: 'The same: a verb with no surface, kept '
-    + 'in the registry and unreachable by any control.',
 };
 
 /**

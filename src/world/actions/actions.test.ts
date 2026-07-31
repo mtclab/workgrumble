@@ -281,14 +281,17 @@ beforeEach(() => {
 
 describe('helpdesk action registry', () => {
   it('registers every advertised action exactly once', () => {
-    // Thirty-eight, because M4's roster asked the tier for verbs it did not
-    // have: an identity check, an enrolment, a session revoke that is the
-    // wrong flavour of fix, two ends of a licence seat, a certificate, a
-    // stored credential, a mail rule switch, a note for a socket, a link
-    // nobody should follow, and a reply to the one man this week who did the
-    // right thing.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(38);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(38);
+    // Thirty-six. M4's roster asked the tier for verbs it did not have: an
+    // identity check, an enrolment, a session revoke that is the wrong flavour
+    // of fix, two ends of a licence seat, a certificate, a stored credential, a
+    // mail rule switch, a note for a socket, a link nobody should follow, and a
+    // reply to the one man this week who did the right thing. M5 took two back
+    // off: `machine.set_resolution` and `mail_rule.delete` were registered,
+    // labelled on the handoff form and reachable from nothing at all - no
+    // button, no command, no dialogue option, no resolution rule - so they were
+    // deleted rather than exempted from the coverage gate a second time.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(36);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(36);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});
@@ -672,29 +675,6 @@ describe('machine.set_display_rotation', () => {
   });
 });
 
-describe('machine.set_resolution', () => {
-  it('sets a sane resolution', () => {
-    expect(
-      dispatch(HELPDESK_ACTIONS.machineSetResolution, 'machine:ada', {
-        resolution: '1024x768',
-      }),
-    ).toEqual({ ok: true });
-    expect(fixture.graph.getField('machine:ada', FIELDS.resolution))
-      .toBe('1024x768');
-  });
-
-  it('refuses something that is not a resolution', () => {
-    const before = fixture.snapshotHash();
-    expectRefusal(
-      dispatch(HELPDESK_ACTIONS.machineSetResolution, 'machine:ada', {
-        resolution: 'as big as possible',
-      }),
-      'Resolutions look like 1024x768',
-      before,
-    );
-  });
-});
-
 describe('machine.reboot', () => {
   it('clears pending updates and stamps the new uptime', () => {
     fixture.advance(9);
@@ -777,24 +757,6 @@ describe('printer.clear_queue', () => {
     expectRefusal(
       dispatch(HELPDESK_ACTIONS.printerClearQueue, 'device:printer'),
       'is already empty',
-      before,
-    );
-  });
-});
-
-describe('mail_rule.delete', () => {
-  it('deletes the rule', () => {
-    expect(
-      dispatch(HELPDESK_ACTIONS.mailRuleDelete, 'mail_rule:autofile'),
-    ).toEqual({ ok: true });
-    expect(fixture.graph.getNode('mail_rule:autofile')).toBeUndefined();
-  });
-
-  it('refuses anything that is not a mail rule', () => {
-    const before = fixture.snapshotHash();
-    expectRefusal(
-      dispatch(HELPDESK_ACTIONS.mailRuleDelete, 'account:ada'),
-      'only works on a mail rule',
       before,
     );
   });

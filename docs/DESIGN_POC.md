@@ -96,7 +96,9 @@ This is the no-dead-end core: sysadmin tier later = new node kinds (`dns_record`
 
 ## 8. POC content target
 
-~20 launch tickets, each `trope + hidden cause + fix path(s)`. Seed list: rotated "hacked" screen; caps-lock password; vacation-locked account; spooler wedge; unplugged monitor power; mouse battery; resolution "everything tiny"; toolbar-infested "slow" PC; new-hire onboarding chain (mail-driven); offboarding while user still logged in; mail-rule "all my email gone"; missing share = group membership; scareware popup "virus!"; meeting-room wrong HDMI input; expired VPN password; gibberish printer driver; files "deleted" (saved to weird folder); coffee keyboard (escalate); boss phone sync (priority trap); friday-17:55 P1 (cliffhanger for review day).
+~20 launch tickets, each `trope + hidden cause + fix path(s)`. Seed list: rotated "hacked" screen; caps-lock password; vacation-locked account; spooler wedge; unplugged monitor power; mouse battery; toolbar-infested "slow" PC; new-hire onboarding chain (mail-driven); offboarding while user still logged in; missing share = group membership; scareware popup "virus!"; meeting-room wrong HDMI input; expired VPN password; gibberish printer driver; files "deleted" (saved to weird folder); coffee keyboard (escalate); boss phone sync (priority trap); friday-17:55 P1 (cliffhanger for review day).
+
+**The seed list is FUTURE CONTENT, not the shipped roster.** What actually ships is `src/world/tickets/`; the list above is where the lane picked from and what it may pick from next. Two entries were struck rather than left standing - resolution "everything tiny" and mail-rule "all my email gone" - because the verbs they would have needed (`machine.set_resolution`, `mail_rule.delete`) were registered, reachable from nothing, and are deleted as of M5 close-out. Restoring either ticket means restoring its verb, its control and its walk with it.
 
 Each ticket: flavor text (English office-comedy voice), KB article, assertion, 1-3 valid paths.
 

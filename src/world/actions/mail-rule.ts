@@ -10,12 +10,6 @@ import { HELPDESK_ACTIONS } from './ids';
 
 export const MAIL_RULE_ACTIONS: readonly ActionData[] = [
   {
-    id: HELPDESK_ACTIONS.mailRuleDelete,
-    tier: HELPDESK_TIER,
-    validate: [...targetGuards('mail_rule')],
-    apply: [{ op: 'remove_node', node: TARGET }],
-  },
-  {
     id: HELPDESK_ACTIONS.mailRuleEnable,
     tier: HELPDESK_TIER,
     validate: [

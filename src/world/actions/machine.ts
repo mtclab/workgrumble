@@ -9,7 +9,6 @@ import {
 import { HELPDESK_ACTIONS } from './ids';
 
 const ROTATION_PARAM = 'rotation';
-const RESOLUTION_PARAM = 'resolution';
 const EVENTS_PARAM = 'events';
 
 export const MACHINE_ACTIONS: readonly ActionData[] = [
@@ -45,39 +44,6 @@ export const MACHINE_ACTIONS: readonly ActionData[] = [
         node: TARGET,
         field: FIELDS.displayRotation,
         value: { param: ROTATION_PARAM },
-      },
-    ],
-  },
-  {
-    id: HELPDESK_ACTIONS.machineSetResolution,
-    tier: HELPDESK_TIER,
-    validate: [
-      ...targetGuards('machine'),
-      {
-        when: not({
-          pred: 'param_format',
-          param: RESOLUTION_PARAM,
-          format: 'resolution',
-        }),
-        reason: 'Resolutions look like 1024x768. Anything else and the driver '
-          + 'will pick something worse out of spite.',
-      },
-      {
-        when: {
-          pred: 'field_eq',
-          node: TARGET,
-          field: FIELDS.resolution,
-          value: { param: RESOLUTION_PARAM },
-        },
-        reason: `"{target.label}" already runs at {v:${RESOLUTION_PARAM}}.`,
-      },
-    ],
-    apply: [
-      {
-        op: 'set_field',
-        node: TARGET,
-        field: FIELDS.resolution,
-        value: { param: RESOLUTION_PARAM },
       },
     ],
   },
