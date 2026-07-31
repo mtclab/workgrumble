@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { loadEngineForTests } from '../engine-api/load-node';
+import { HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import {
   DAY_RATE_PENCE,
@@ -10,7 +11,9 @@ import {
   shiftStartTick,
 } from '../world/day';
 import { FIELDS } from '../world/fields';
+import { METER_INTERVAL_TICKS, STARTING_REPUTATION } from '../world/meters';
 import { createWorldSession, WORLD_SEED } from '../world/session';
+import { HANDOFF_BOUNCE } from '../world/tickets';
 import {
   DayDriver,
   TICK_INTERVAL_MS,
@@ -270,5 +273,172 @@ describe('the day driver', () => {
     expect(fresh.driver.schedule().day).toBe(2);
     expect(fresh.driver.state()).toBe('morning_brief');
     expect(fresh.driver.paused()).toBe(false);
+  });
+});
+
+/**
+ * The pressure layer, as the driver actually runs it. The rates themselves are
+ * `meters.test.ts`'s job; what is proved here is the WIRING - that it runs on
+ * the simulation clock at the cadence it claims, only while the shift is on,
+ * and that the numbers it sends reach the fields they are about.
+ */
+describe('the pressure layer on the clock', () => {
+  const meter = (
+    engine: Harness['engine'],
+    field: string,
+  ): number => {
+    const value = engine.graph.getField(COMPANY_IDS.player, field);
+    return typeof value === 'number' ? value : -1;
+  };
+
+  it('leaves the meters alone during the morning brief', () => {
+    const { driver, engine, slack } = harness();
+    slack.open = ['bubbles'];
+
+    driver.step(realMs(20));
+
+    expect(driver.state()).toBe('morning_brief');
+    expect(meter(engine, FIELDS.suspicion)).toBe(0);
+    expect(meter(engine, FIELDS.stress)).toBe(0);
+  });
+
+  it('charges suspicion for what is on screen, per interval', () => {
+    const { driver, engine, slack } = harness();
+    driver.startShift();
+    slack.open = ['bubbles'];
+
+    driver.step(realMs(METER_INTERVAL_TICKS));
+    const afterOne = meter(engine, FIELDS.suspicion);
+    expect(afterOne).toBeGreaterThan(0);
+
+    driver.step(realMs(METER_INTERVAL_TICKS));
+    expect(meter(engine, FIELDS.suspicion)).toBe(afterOne * 2);
+    expect(meter(engine, FIELDS.suspicionEvents)).toBe(2);
+  });
+
+  /** Between the intervals nothing moves: the cadence is the cadence. */
+  it('does not move a meter on a minute that is not an interval', () => {
+    const { driver, engine, slack } = harness();
+    driver.startShift();
+    slack.open = ['bubbles'];
+
+    driver.step(realMs(METER_INTERVAL_TICKS));
+    const afterOne = meter(engine, FIELDS.suspicion);
+    driver.step(realMs(METER_INTERVAL_TICKS - 1));
+
+    expect(meter(engine, FIELDS.suspicion)).toBe(afterOne);
+  });
+
+  it('drains suspicion again once the screen is clean', () => {
+    const { driver, engine, slack } = harness();
+    driver.startShift();
+    slack.open = ['bubbles'];
+    driver.step(realMs(METER_INTERVAL_TICKS * 3));
+    const dirty = meter(engine, FIELDS.suspicion);
+
+    slack.open = [];
+    driver.step(realMs(METER_INTERVAL_TICKS * 2));
+
+    expect(meter(engine, FIELDS.suspicion)).toBeLessThan(dirty);
+    // The MINUTES stand, though: a meter that drained back does not unhappen.
+    expect(meter(engine, FIELDS.suspicionEvents)).toBe(3);
+  });
+
+  /** The queue is what does it to you, and it does it whether you look or not. */
+  it('builds stress from a queue nobody is closing', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+
+    driver.step(realMs(METER_INTERVAL_TICKS * 10));
+
+    expect(meter(engine, FIELDS.stress)).toBeGreaterThan(0);
+  });
+
+  /**
+   * The response clock's second stop condition, wired: nobody said a word to
+   * the reporter, but somebody restarted the thing that was broken.
+   */
+  it('stops a response clock when the ticket\'s own estate is touched', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+
+    expect(engine.graph.getField('ticket:locked-account', FIELDS.respondedAt))
+      .toBeUndefined();
+
+    engine.dispatch(
+      HELPDESK_ACTIONS.accountUnlock,
+      COMPANY_IDS.player,
+      COMPANY_IDS.garyAccount,
+      {},
+    );
+    driver.step(realMs(METER_INTERVAL_TICKS));
+
+    // That ticket closed on the unlock, so the mark went onto a ticket the
+    // same estate is behind - the printer one is the live proof.
+    engine.dispatch(
+      HELPDESK_ACTIONS.printerClearQueue,
+      COMPANY_IDS.player,
+      COMPANY_IDS.printer,
+      {},
+    );
+    driver.step(realMs(METER_INTERVAL_TICKS));
+
+    expect(engine.graph.getField('ticket:wedged-spooler', FIELDS.respondedAt))
+      .toBeGreaterThan(0);
+  });
+
+  /**
+   * Second line, getting round to it. The delay is the driver's to enforce -
+   * the action only knows that a bounce has not been settled yet.
+   */
+  it('lands a thin handoff back on the desk after the delay, once', () => {
+    const { driver, engine, notices } = harness();
+    driver.startShift();
+
+    engine.dispatch(
+      HELPDESK_ACTIONS.ticketEscalate,
+      COMPANY_IDS.player,
+      'ticket:fan-noise',
+      { reported: '', tried: '' },
+    );
+
+    driver.step(realMs(METER_INTERVAL_TICKS));
+    expect(engine.graph.getField('ticket:fan-noise', FIELDS.handoffSettledAt))
+      .toBeUndefined();
+    expect(notices()).toHaveLength(0);
+
+    driver.step(realMs(HANDOFF_BOUNCE.delayTicks));
+    expect(engine.graph.getField('ticket:fan-noise', FIELDS.handoffSettledAt))
+      .toBeGreaterThan(0);
+    expect(notices()).toEqual(['Returned by second line']);
+    expect(meter(engine, FIELDS.reputation))
+      .toBe(STARTING_REPUTATION - HANDOFF_BOUNCE.reputationCost);
+
+    driver.step(realMs(HANDOFF_BOUNCE.delayTicks));
+    expect(notices()).toHaveLength(1);
+  });
+
+  /**
+   * Determinism, which is what the whole design is for: the meters are moved
+   * by dispatched actions on the simulation clock, so the same day walked the
+   * same way twice arrives at the same numbers and the same graph hash.
+   */
+  it('arrives at the same meters when the same day is walked twice', () => {
+    const walk = (): { hash: string; stress: number; suspicion: number } => {
+      const world = harness();
+      world.driver.startShift();
+      world.slack.open = ['bubbles'];
+      world.driver.step(realMs(METER_INTERVAL_TICKS * 6));
+      world.slack.open = [];
+      world.driver.step(realMs(METER_INTERVAL_TICKS * 6));
+
+      return {
+        hash: world.engine.snapshotHash(),
+        stress: meter(world.engine, FIELDS.stress),
+        suspicion: meter(world.engine, FIELDS.suspicion),
+      };
+    };
+
+    expect(walk()).toEqual(walk());
   });
 });
