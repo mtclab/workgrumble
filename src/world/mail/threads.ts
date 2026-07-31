@@ -29,7 +29,7 @@ export const MAIL_THREADS: readonly MailThread[] = [
         from: COMPANY_IDS.bev,
         tick: 12,
         body: [
-          'Correction to the below: the good kettle has been moved into your '
+          'Correction to the above: the good kettle has been moved into your '
           + 'cupboard, which is now technically an office. Congratulations on '
           + 'the promotion.',
           'People will come to your desk instead of raising a ticket. That is '
@@ -67,7 +67,7 @@ export const MAIL_THREADS: readonly MailThread[] = [
         from: COMPANY_IDS.boss,
         tick: 25,
         body: [
-          'Following up on the below. Still no rush. I have moved the call to '
+          'Following up on the above. Still no rush. I have moved the call to '
           + 'half ten, so if anything there is now less rush, compressed.',
           'Also Sales are saying they have been hacked. I have said we are '
           + 'all over it. Please be all over it.',
