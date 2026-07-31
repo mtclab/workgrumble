@@ -451,14 +451,18 @@ const GOLDEN_DAY = {
   /**
    * The world at the end of it, in sixteen characters.
    *
-   * It has moved twice. In lane B the machines started keeping event logs, and
-   * an event log is graph state; in lane C the building gained eleven more
-   * people, the estate they sit at, and a Monday with five tickets on it
-   * instead of four. Both times every other number was read rather than
-   * assumed, and the one that moved with the hash - stress at five o'clock -
-   * moved for a reason written beside it.
+   * It has moved three times, and the third one is smaller than it looks. In
+   * lane B the machines started keeping event logs, and an event log is graph
+   * state; in lane C the building gained eleven more people, the estate they
+   * sit at, and a Monday with five tickets on it instead of four; and then the
+   * event log learned to record a printer LOSING power as well as getting it
+   * back, which is the only witness the recurring arc has and which the
+   * cleaner's trolley writes into PRINT-02 at four minutes to five on the
+   * Monday. Every time, every other number on this screen was read rather than
+   * assumed, and the only one that has ever moved with the hash - stress at
+   * five o'clock - moved for a reason written beside it.
    */
-  hash: '3eb8015e1fd80024',
+  hash: 'c60aaaf3a800a7c8',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */

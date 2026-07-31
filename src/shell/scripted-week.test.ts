@@ -257,9 +257,14 @@ interface GoldenWeek {
  * not use the form, a maintenance window, and a cleaner with a trolley. Both
  * hashes, every count and both timelines moved together, and the shape of the
  * week - worked passes, idle is fired - did not.
+ *
+ * Both hashes then moved a second time, and only the hashes: the machine event
+ * log learned to record a printer LOSING power as well as coming back. That is
+ * two lines on PRINT-02 a week, it is the only evidence the recurring arc has,
+ * and it changed no count, no meter and no minute on either timeline.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: '48d6402eb017de2b',
+  hash: '70d995d48767efe3',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -326,7 +331,7 @@ const GOLDEN_WORKED: GoldenWeek = {
  * and the world does not pretend otherwise.
  */
 const GOLDEN_IDLE: GoldenWeek = {
-  hash: '9a6cfda6bb41d4e7',
+  hash: 'b06f8bfb6fa6e7dc',
   tick: 6_300,
   outcome: 'fired',
   days: [
