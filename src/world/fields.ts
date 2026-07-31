@@ -48,6 +48,17 @@ export const FIELDS = {
    */
   reviewReputation: 'review_reputation',
   /**
+   * The week as the review reads it: today's standing folded into the days
+   * before it, each older day counting half as much as the one after it.
+   *
+   * It exists because reputation is a meter with a ceiling, and a week worked
+   * properly reaches that ceiling by about the Wednesday - after which nothing
+   * the player does on the Thursday or the Friday can move the number the
+   * review looks at. A weighted read has no ceiling problem: it is a fresh
+   * question every day, and the last day asked it loudest.
+   */
+  weekReputation: 'week_reputation',
+  /**
    * The beer: visible from the first morning, locked until the probation ends,
    * and the whole reason the tooltip on it is worth reading. `beerOpened` is
    * whether the one at the end of the week has been had, which is what the

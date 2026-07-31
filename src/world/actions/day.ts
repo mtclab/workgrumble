@@ -159,7 +159,7 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         when: not({
           pred: 'field_at_least',
           node: ACTOR,
-          field: FIELDS.reputation,
+          field: FIELDS.weekReputation,
           value: REVIEW_PASS_REPUTATION,
         }),
         reason: 'Nothing in the file supports keeping you on, and the file is '
@@ -173,14 +173,15 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         field: FIELDS.reviewOutcome,
         value: { const: 'passed' },
       },
-      // What the conversation was decided on, kept as it was read. Reputation
-      // carries on moving all afternoon and the week screen was showing the
-      // live number beside the verdict it did not produce.
+      // What the conversation was decided on, kept as it was read. The
+      // weighted figure carries on moving after three - the last clock-off
+      // folds Friday in again - and the week screen was showing a live number
+      // beside a verdict it did not produce.
       {
         op: 'set_field',
         node: ACTOR,
         field: FIELDS.reviewReputation,
-        value: { field: { node: ACTOR, field: FIELDS.reputation } },
+        value: { field: { node: ACTOR, field: FIELDS.weekReputation } },
       },
       {
         op: 'set_field',
@@ -215,7 +216,7 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         when: {
           pred: 'field_at_least',
           node: ACTOR,
-          field: FIELDS.reputation,
+          field: FIELDS.weekReputation,
           value: REVIEW_PASS_REPUTATION,
         },
         reason: 'There is enough in the file to keep you on, and he is not a '
@@ -230,14 +231,14 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         value: { const: 'fired' },
       },
       // The same snapshot on the way out. A week screen that read the live
-      // meter could say "41 of 40 needed" above "Probation: not continued",
+      // figure could say "41 of 40 needed" above "Probation: not continued",
       // which is the screen arguing with itself about the one number the
       // player is owed an honest account of.
       {
         op: 'set_field',
         node: ACTOR,
         field: FIELDS.reviewReputation,
-        value: { field: { node: ACTOR, field: FIELDS.reputation } },
+        value: { field: { node: ACTOR, field: FIELDS.weekReputation } },
       },
     ],
   },

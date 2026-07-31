@@ -105,10 +105,14 @@ export const WEEKEND_APP: AppDef = {
         .textContent = String(card.breached);
       definitionRow(list, 'Still open', 'weekend-open')
         .textContent = String(card.stillOpen);
-      definitionRow(list, 'Reputation at the review', 'weekend-reputation')
+      // Said as what it is. The lead does not read the meter at five past
+      // three, he reads the week - and a screen that printed the live number
+      // beside a verdict that number did not produce is a screen arguing with
+      // itself about the one thing the player is owed an honest account of.
+      definitionRow(list, 'The week, as he read it', 'weekend-reputation')
         .textContent = `${String(card.reputation)} of ${
           String(REVIEW_PASS_REPUTATION)
-        } needed`;
+        } needed, weighted toward how it ended`;
 
       const earned = definitionRow(list, 'Earned this week', 'weekend-earned');
       earned.textContent = `£${formatPence(card.earnedPence)}`;

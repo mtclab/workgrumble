@@ -83,6 +83,40 @@ export function reviewOutcomeFor(reputation: number): 'passed' | 'fired' {
   return reputation >= REVIEW_PASS_REPUTATION ? 'passed' : 'fired';
 }
 
+/**
+ * How much of the review's number is TODAY.
+ *
+ * A half. Which makes the day before it a quarter, the day before that an
+ * eighth, and Monday - by the time anybody is reading this out in a small room
+ * on a Friday - worth about a sixteenth of the answer. That is the shape of
+ * the thing being modelled: a lead who has an impression of your week, mostly
+ * made of the last two days of it, and a Monday he could not swear to.
+ */
+export const REVIEW_WEIGHT = 0.5;
+
+/**
+ * The week's standing after a day of it, and the reason this exists at all.
+ *
+ * Reputation is a meter with a ceiling at 100, and a week worked properly
+ * reaches that ceiling by about the Wednesday. From there the meter cannot go
+ * up, so nothing done on the Thursday or the Friday reaches the review - two
+ * days of a five-day week, invisible to the only conversation that reads it.
+ * Raising the ceiling would not fix that; it would rescale every rate in the
+ * game to buy back the same two days.
+ *
+ * So the review stops reading the meter and reads this instead: today's
+ * standing, folded into everything before it, weighted so that the end of the
+ * week is what it mostly hears. Nothing about how reputation MOVES changes -
+ * the breaches still cost what they cost - only what Friday at three makes of
+ * where it got to.
+ *
+ * Whole numbers, and rounded rather than truncated, because the review reads
+ * this out and half a reputation point is not a thing anybody says.
+ */
+export function weightedWeekReputation(carried: number, today: number): number {
+  return Math.round(carried * (1 - REVIEW_WEIGHT) + today * REVIEW_WEIGHT);
+}
+
 /** A ticket that turns up during a shift, and the minute it nominally does. */
 export interface DripSlot {
   readonly ticketId: string;

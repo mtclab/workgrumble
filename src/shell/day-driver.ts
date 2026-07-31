@@ -79,6 +79,7 @@ import {
   patrolSeedFor,
   type ReviewOutcome,
   reviewOutcomeFor,
+  weightedWeekReputation,
   reviewTick,
   type WeekScorecard,
   weekScorecard,
@@ -576,6 +577,11 @@ export class DayDriver implements DayApi {
     // lie the player could only catch by adding it up themselves.
     const banked = this.farmFund() + this.slipFor(day).net;
 
+    // The day, folded into the week, before the world moves on to the next
+    // one. It is written at the boundary rather than continuously because a
+    // DAY is the unit the review weighs: an afternoon is not a day, and a
+    // reading taken every five minutes would weigh the long days heaviest.
+    this.recordWeekReading();
     this.dispatchDay(DAY_ACTIONS.clockOff, { banked });
 
     const morning = dayOpensTick(day + 1);
@@ -611,6 +617,7 @@ export class DayDriver implements DayApi {
   private endWeek(day: number): void {
     const banked = this.farmFund() + this.slipFor(day).net;
 
+    this.recordWeekReading();
     this.dispatchDay(DAY_ACTIONS.endWeek, { banked });
     this.carriedMs = 0;
     this.engine.checkpoint();
@@ -755,7 +762,14 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    const outcome = reviewOutcomeFor(this.playerNumber(FIELDS.reputation));
+    // Friday's own day, folded in before anybody reads the file: the review
+    // happens at three and the clock-off that would otherwise record it is two
+    // hours away, so without this the conversation would be about a week that
+    // stopped on Thursday evening.
+    this.recordWeekReading();
+    const outcome = reviewOutcomeFor(
+      this.playerNumber(FIELDS.weekReputation),
+    );
     const result = this.engine.dispatch(
       outcome === 'passed'
         ? DAY_ACTIONS.reviewPassed
@@ -771,6 +785,32 @@ export class DayDriver implements DayApi {
 
     this.announce();
     this.handlers.onReview?.(this.reviewOutcome(), due);
+  }
+
+  /**
+   * The week as the review will read it, written into the world.
+   *
+   * Today's standing folded into the days behind it, each of those worth half
+   * of the one after. The number is computed here and decided there, exactly
+   * as the meters are: the shell can read the graph, the world says where a
+   * number stops, and the dispatch log carries what was actually written so a
+   * replay arrives at the same Friday instead of recomputing one.
+   */
+  private recordWeekReading(): void {
+    const reading = weightedWeekReputation(
+      this.playerNumber(FIELDS.weekReputation),
+      this.playerNumber(FIELDS.reputation),
+    );
+    const result = this.engine.dispatch(
+      DAY_ACTIONS.weekReading,
+      this.actor,
+      null,
+      { reading },
+    );
+
+    if (!result.ok) {
+      throw new Error(`The week could not be read: ${result.reason}`);
+    }
   }
 
   /** What a day is worth, vending machine and all. */

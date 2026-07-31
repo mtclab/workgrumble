@@ -84,9 +84,11 @@ export const REVIEW_APP: AppDef = {
         : outcome === 'passed'
           ? 'The probation is over. Whatever is in the fridge with your name '
             + 'on it is now, technically, yours.'
-          : `It is decided on one number, and the number has to be at least ${
-            String(REVIEW_PASS_REPUTATION)
-          } when he opens the folder.`;
+          : 'It is decided on one number: the week, weighted toward how it '
+            + 'ended - yesterday counts double the day before it, and Monday '
+            + `is a rounding error by Friday. It has to be at least ${
+              String(REVIEW_PASS_REPUTATION)
+            } when he opens the folder.`;
     };
 
     host.replaceChildren(root);

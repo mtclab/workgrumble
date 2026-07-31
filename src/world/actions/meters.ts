@@ -133,4 +133,42 @@ export const METER_ACTION_DATA: readonly ActionData[] = [
       },
     ],
   },
+  /**
+   * The week's standing, weighted, as the review will read it.
+   *
+   * Same split as the meters above and for the same reason: the shell works
+   * out the number from state anybody can read - what the days before were
+   * worth, where reputation stands now - and the world decides what it ends up
+   * being. The ceiling is applied HERE rather than trusted from the caller,
+   * which is why the field is zeroed and then added to: a clamped add is the
+   * only arithmetic in this language that says "and no further".
+   */
+  {
+    id: DAY_ACTIONS.weekReading,
+    tier: HELPDESK_TIER,
+    validate: [
+      wholeNumber('reading', 'The week as it stands'),
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.weekReputation,
+        value: { const: METER_FLOOR },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.weekReputation,
+        value: {
+          add: {
+            node: ACTOR,
+            field: FIELDS.weekReputation,
+            by: { param: 'reading' },
+            clamp: { min: METER_FLOOR, max: METER_CEILING },
+          },
+        },
+      },
+    ],
+  },
 ];

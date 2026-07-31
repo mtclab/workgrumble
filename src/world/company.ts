@@ -415,6 +415,9 @@ export function companySetup(): readonly SetupOp[] {
             [FIELDS.stress]: 0,
             [FIELDS.suspicion]: 0,
             [FIELDS.reputation]: STARTING_REPUTATION,
+            // The weighted read starts where the meter does: a Monday morning
+            // has no days behind it to weigh.
+            [FIELDS.weekReputation]: STARTING_REPUTATION,
             [FIELDS.suspicionEvents]: 0,
             [FIELDS.breachesCharged]: 0,
             [FIELDS.resolveCreditPaid]: 0,

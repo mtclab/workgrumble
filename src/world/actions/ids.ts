@@ -206,6 +206,16 @@ export const DAY_ACTIONS = {
    */
   metersTick: 'meters.tick',
   /**
+   * The week's standing, weighted, written down at the end of each day and
+   * once more in the minute the review happens.
+   *
+   * Same split as the meters: the shell works out the number from readable
+   * state, the world decides what it ends up being (and where it stops), and
+   * the number is in the dispatch log so a replay arrives at it rather than
+   * recomputing it against days it no longer has.
+   */
+  weekReading: 'day.week_reading',
+  /**
    * The lead arriving to find something on the screen. Suspicion drops to a
    * floor - being spoken to does not launder the morning, it resets the meter
    * to somebody who has just been spoken to - and the price is taken off
