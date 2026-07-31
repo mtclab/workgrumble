@@ -149,6 +149,53 @@ test('keeps the directory, event and remote rows across a world change', async (
 });
 
 /**
+ * And the conversation, which is the one made entirely of controls.
+ *
+ * Chat rebuilt its contact list and its whole panel on every world change, so
+ * the meters moving every five minutes threw away the option the player was
+ * reading and put an identical-looking new one in its place - along with the
+ * transcript, its scroll position and anything they had selected in it. The
+ * list is keyed and the panel is compared now, the same two answers the other
+ * lists and panes got.
+ */
+test('keeps the contact and the option in the player\'s hand while the meters tick', async ({
+  page,
+}) => {
+  await startShiftWithQueue(page);
+  await openFromStartMenu(page, 'chat');
+  await page.getByTestId('chat-person-ada').click();
+
+  const contact = page.getByTestId('chat-person-ada');
+  const option = page
+    .getByTestId('chat-options')
+    .getByRole('button', { name: /anybody else was at her desk/ });
+  const transcript = page.getByTestId('chat-transcript');
+  await mark(contact, 'contact');
+  await mark(option, 'option');
+  await mark(transcript, 'transcript');
+
+  // Twenty minutes of an ordinary shift: four meter ticks at least, and a
+  // queue moving underneath a window that is not about the queue.
+  await runSimMinutes(page, 20);
+
+  await expectSameElement(contact, 'contact');
+  await expectSameElement(option, 'option');
+  await expectSameElement(transcript, 'transcript');
+
+  // The other half of the contract: saying something DOES rebuild it, and the
+  // panel says the new thing.
+  await option.click();
+  await expect(page.getByTestId('chat-outcome'))
+    .toContainText('Filed as a work note');
+  await expect(transcript).not.toHaveAttribute('data-probe', 'transcript');
+  await expect(
+    page
+      .getByTestId('chat-options')
+      .getByRole('button', { name: /which keys Gareth pressed/ }),
+  ).toBeVisible();
+});
+
+/**
  * And the two DETAIL panes, which are the ones that actually cost the player
  * something.
  *

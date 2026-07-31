@@ -17,16 +17,60 @@ import { createIcon } from '../icons';
 import type { AppDef, AppInstance } from './types';
 import {
   element,
+  type KeyedRow,
+  KeyedRows,
   nodeKey,
   osButton,
   outcomeLine,
   refusalLine,
+  setFlag,
+  setText,
   textValue,
   withFocusRestored,
 } from './ui';
 
 export function personKey(id: string): string {
   return nodeKey(id);
+}
+
+/**
+ * One contact, as data. Same rule as every other list in this shell: the row is
+ * modelled before it is drawn, so a repaint driven by something happening
+ * elsewhere in the building can be seen for what it usually is - every one of
+ * these values unchanged.
+ */
+export interface ChatPersonRow {
+  readonly id: string;
+  readonly name: string;
+  readonly title: string;
+  /** Whether this is the player, who is in their own contact list. */
+  readonly self: boolean;
+  readonly selected: boolean;
+  /** Whether they have something open, which is why anybody rings anybody. */
+  readonly openTicket: boolean;
+}
+
+/**
+ * The conversation panel, as data.
+ *
+ * Everything the panel draws is in here and it reads nothing else, which is
+ * what lets the app compare two of these and skip a rebuild. The comparison is
+ * the point: this panel is made of buttons, and it was being rebuilt on every
+ * world change - which, with the meters moving every five minutes of the shift,
+ * meant the option the player was reading became a different element while they
+ * were reading it.
+ */
+export interface ChatPanelModel {
+  readonly id: string;
+  readonly name: string;
+  /** What this conversation is about, as a title, or nothing. */
+  readonly about: string | null;
+  readonly hasTree: boolean;
+  readonly lines: readonly { readonly who: string; readonly text: string }[];
+  /** The options on offer, or null once the thread has ended. */
+  readonly options: readonly string[] | null;
+  readonly outcome: string | null;
+  readonly refusal: string | null;
 }
 
 /**
@@ -237,92 +281,126 @@ export const CHAT_APP: AppDef = {
       render();
     };
 
-    const renderPeople = (nodes: readonly ReadOnlyGraphNode[]): void => {
-      people.replaceChildren();
+    const createPersonRow = (
+      first: Readonly<ChatPersonRow>,
+    ): KeyedRow<ChatPersonRow, HTMLLIElement> => {
+      const id = first.id;
+      const item = element('li');
+      const row = element(
+        'button',
+        'chat-person',
+        `chat-person-${personKey(id)}`,
+      );
+      row.type = 'button';
 
-      for (const person of nodes) {
-        const tree = dialogueForSpeaker(person.id);
-        const item = element('li');
-        const row = element(
-          'button',
-          'chat-person',
-          `chat-person-${personKey(person.id)}`,
-        );
-        row.type = 'button';
-        row.dataset.selected = String(person.id === chat().selectedId);
-        row.dataset.self = String(person.id === api.actor);
+      const name = element('strong');
+      const title = element('span', 'chat-person-title');
+      // The flag is part of the row rather than something appended when it
+      // applies: a row is a thing, and a thing that grows a child is a thing
+      // that has to be rebuilt. It says nothing at all when there is nothing
+      // open, so a test - or a screen reader - reading the row reads the truth.
+      const flag = element('span', 'chat-person-flag');
+      row.append(name, title, flag);
 
-        const name = element('strong');
-        name.textContent = textValue(person.fields[FIELDS.name], person.id)
-          + (person.id === api.actor ? ' (you)' : '');
-        const title = element('span', 'chat-person-title');
-        title.textContent = textValue(
-          person.fields[FIELDS.title],
-          'Job title unrecorded',
-        );
-        row.append(name, title);
+      row.addEventListener('click', () => {
+        select(id);
+        refusal = null;
+        outcome = null;
+        render();
+      });
+      item.append(row);
 
-        if (hasOpenTicket(tree)) {
-          const flag = element('span', 'chat-person-flag');
-          flag.textContent = 'Open ticket';
-          row.append(flag);
-        }
-
-        row.addEventListener('click', () => {
-          select(person.id);
-          refusal = null;
-          outcome = null;
-          render();
-        });
-        item.append(row);
-        people.append(item);
-      }
+      return {
+        element: item,
+        update: (next: Readonly<ChatPersonRow>): void => {
+          setFlag(row, 'selected', String(next.selected));
+          setFlag(row, 'self', String(next.self));
+          setText(name, next.name);
+          setText(title, next.title);
+          setText(flag, next.openTicket ? 'Open ticket' : '');
+          flag.hidden = !next.openTicket;
+        },
+      };
     };
 
+    const peopleRows = new KeyedRows<ChatPersonRow, HTMLLIElement>(
+      people,
+      (model) => model.id,
+      createPersonRow,
+    );
+
+    const renderPeople = (nodes: readonly ReadOnlyGraphNode[]): void => {
+      const selectedId = chat().selectedId;
+
+      peopleRows.sync(nodes.map((person) => ({
+        id: person.id,
+        name: textValue(person.fields[FIELDS.name], person.id)
+          + (person.id === api.actor ? ' (you)' : ''),
+        title: textValue(person.fields[FIELDS.title], 'Job title unrecorded'),
+        self: person.id === api.actor,
+        selected: person.id === selectedId,
+        openTicket: hasOpenTicket(dialogueForSpeaker(person.id)),
+      })));
+    };
+
+    /**
+     * The panel is rebuilt only when what it SAYS has changed.
+     *
+     * It holds the option buttons - the only controls this app has - and it was
+     * being thrown away and built again on every world change. The meters move
+     * every five minutes of every shift, so a conversation was being rebuilt
+     * under the player's cursor while they were reading it: the transcript
+     * jumped back to the bottom, any text they had selected went, and the
+     * button they were about to press was a different element by the time they
+     * pressed it. Same rule as the directory and Remote Assist, for the same
+     * reason and in the same shape.
+     */
+    let painted: string | null = null;
+
     const renderPanel = (person: ReadOnlyGraphNode | undefined): void => {
+      const tree = person === undefined
+        ? undefined
+        : dialogueForSpeaker(person.id);
+      const name = person === undefined
+        ? ''
+        : textValue(person.fields[FIELDS.name], person.id);
+      const about = tree === undefined ? undefined : talking(tree).ticket;
+      // Reading the thread is what MOVES it onto the reaction branch, so it is
+      // read on every paint whether or not the panel is rebuilt afterwards.
+      const thread = person === undefined || tree === undefined
+        ? undefined
+        : threadFor(person.id, tree);
+      const node = tree === undefined || thread === undefined
+        ? undefined
+        : dialogueNode(tree, thread.nodeId);
+      const model: ChatPanelModel | null = person === undefined ? null : {
+        id: person.id,
+        name,
+        about: about === undefined ? null : ticketTitle(about),
+        hasTree: tree !== undefined,
+        lines: thread?.lines ?? [],
+        options: thread === undefined || thread.ended || node === undefined
+          ? null
+          : node.options.map((option) => option.label),
+        outcome,
+        refusal,
+      };
+      const signature = JSON.stringify(model);
+
+      if (signature === painted) {
+        return;
+      }
+
+      painted = signature;
       panel.replaceChildren();
 
-      if (person === undefined) {
-        const empty = element('p', 'chat-placeholder', 'chat-empty');
-        empty.textContent = 'Pick somebody. Half of support is asking the '
-          + 'right person the right question in the right order.';
-        panel.append(empty);
+      if (person === undefined || tree === undefined || thread === undefined) {
+        renderPanelWithoutThread(name, person !== undefined);
         return;
       }
 
-      const tree = dialogueForSpeaker(person.id);
-      const name = textValue(person.fields[FIELDS.name], person.id);
+      panel.append(chatHead(name, model?.about ?? null));
 
-      const head = element('div', 'chat-head');
-      const heading = element('h2', undefined, 'chat-heading');
-      heading.textContent = name;
-      head.append(heading);
-
-      const about = tree === undefined ? undefined : talking(tree).ticket;
-
-      if (about !== undefined) {
-        const context = element('span', 'chat-context', 'chat-context');
-        context.textContent = ticketTitle(about);
-        const open = osButton('Open the queue', 'chat-open-tickets', {
-          compact: true,
-        });
-        open.addEventListener('click', () => {
-          api.openApp('tickets');
-        });
-        head.append(context, open);
-      }
-
-      panel.append(head);
-
-      if (tree === undefined) {
-        const silent = element('p', 'chat-placeholder', 'chat-no-thread');
-        silent.textContent = `${name} has never once opened the chat client. `
-          + 'If it is urgent, it is a walk.';
-        panel.append(silent);
-        return;
-      }
-
-      const thread = threadFor(person.id, tree);
       const transcript = element('ol', 'chat-transcript', 'chat-transcript');
 
       for (const line of thread.lines) {
@@ -343,7 +421,6 @@ export const CHAT_APP: AppDef = {
       panel.append(transcript);
 
       const options = element('div', 'chat-options', 'chat-options');
-      const node = dialogueNode(tree, thread.nodeId);
 
       if (thread.ended || node === undefined) {
         const again = osButton('Bring it up again', 'chat-restart');
@@ -382,6 +459,53 @@ export const CHAT_APP: AppDef = {
         outcomeLine('chat-outcome', outcome),
         refusalLine('chat-refusal', refusal, createIcon('icon-lock')),
       );
+
+      // Pinned to the newest line, and only after a rebuild: a conversation
+      // that silently scrolls away from the player is a conversation they lose,
+      // and one that jumps to the bottom every time a meter moves is worse.
+      transcript.scrollTop = transcript.scrollHeight;
+    };
+
+    /** The head every panel has: who you are talking to, and what about. */
+    const chatHead = (name: string, about: string | null): HTMLElement => {
+      const head = element('div', 'chat-head');
+      const heading = element('h2', undefined, 'chat-heading');
+      heading.textContent = name;
+      head.append(heading);
+
+      if (about !== null) {
+        const context = element('span', 'chat-context', 'chat-context');
+        context.textContent = about;
+        const open = osButton('Open the queue', 'chat-open-tickets', {
+          compact: true,
+        });
+        open.addEventListener('click', () => {
+          api.openApp('tickets');
+        });
+        head.append(context, open);
+      }
+
+      return head;
+    };
+
+    /**
+     * The two panels with no conversation in them: nobody picked, and somebody
+     * who has never once opened the chat client.
+     */
+    const renderPanelWithoutThread = (name: string, picked: boolean): void => {
+      if (!picked) {
+        const empty = element('p', 'chat-placeholder', 'chat-empty');
+        empty.textContent = 'Pick somebody. Half of support is asking the '
+          + 'right person the right question in the right order.';
+        panel.append(empty);
+        return;
+      }
+
+      panel.append(chatHead(name, null));
+      const silent = element('p', 'chat-placeholder', 'chat-no-thread');
+      silent.textContent = `${name} has never once opened the chat client. `
+        + 'If it is urgent, it is a walk.';
+      panel.append(silent);
     };
 
     const render = (): void => {
@@ -405,21 +529,13 @@ export const CHAT_APP: AppDef = {
       summary.textContent = `${String(nodes.length)} contacts · `
         + `${String(open)} with something open`;
 
-      // A world change repaints the whole panel underneath the player, so the
-      // option they were standing on has to survive the paint.
+      // A rebuild takes the keyboard off whatever the player was standing on,
+      // so the paint puts it back - on the rare occasions there is a rebuild.
       withFocusRestored(root, () => {
         renderPeople(nodes);
         const showing = chat().selectedId;
         renderPanel(nodes.find((person) => person.id === showing));
       });
-
-      // Keep the transcript pinned to the newest line: a conversation that
-      // silently scrolls away from the player is a conversation they lose.
-      const transcript = panel.querySelector('[data-testid="chat-transcript"]');
-
-      if (transcript instanceof HTMLElement) {
-        transcript.scrollTop = transcript.scrollHeight;
-      }
     };
 
     host.replaceChildren(root);
