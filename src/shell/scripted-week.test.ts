@@ -96,6 +96,13 @@ function startWeek(): Week {
     onDirectMessage: (speaker, tick) => {
       timeline.push(`dm:${speaker}@${String(tick)}`);
     },
+    // The minute the screen stopped being the player's. The END is left out
+    // for the same reason the footsteps are: a call that arrived has an end
+    // six minutes later by arithmetic, and the meeting's end says so itself,
+    // in the notice about the recap.
+    onInterruption: (view) => {
+      timeline.push(`interrupted:${view.entry.id}@${String(view.entry.tick)}`);
+    },
     onReview: (outcome, tick) => {
       timeline.push(`review:${outcome}@${String(tick)}`);
     },
@@ -589,9 +596,43 @@ interface GoldenWeek {
  * twenty-two still open, and the same 37,775 pence, because the same
  * twenty-two events are still charged exactly once each - on the days they
  * happened.
+ *
+ * THIRTEENTH MOVE (0.3.0 lane B, the interruptions fire). Both hashes, both
+ * timelines, and ONE meter in ONE of the two weeks. Everything the week is
+ * scored on came through untouched, and that is the claim worth being exact
+ * about: same arrivals (25 and 24), same closes, same breaches, same pence,
+ * same review reading, same bar, same file, same caught counts, same endings.
+ *
+ *  - THE TIMELINES gain three `interrupted:` lines apiece, in both weeks,
+ *    because being taken off the work does not care whether the work was being
+ *    done. `call:spooler` at 1566 - Tuesday 10:06, five past ten plus a minute
+ *    of jitter; `meeting:hygiene-sync` at 3030 - Wednesday 10:30 exactly,
+ *    because an announced hour takes no jitter and the summons mail names it;
+ *    `call:annexe-printer` at 4522 - Thursday 11:18, twenty past minus two.
+ *    The end of a call is left off (it is arithmetic), and the end of the
+ *    meeting says so itself in the fourth new line, `notice:That could have
+ *    been an email@3060`, which is the recap landing in the inbox at eleven.
+ *  - THE HASHES move for four things, all of them state rather than balance:
+ *    three ids in `interruption_answered` and `refocus_until` on the player
+ *    (both written by the meeting, which is answered at the END of its block
+ *    because a junior cannot skip it), `meeting_recap_at` (the minute the room
+ *    emptied, which the recap thread is gated on), and the stress below.
+ *  - ONE METER MOVED, and only in the worked week: stress 11 -> 15. Three
+ *    arrivals are charged in both weeks - 2 for the call about a ticket
+ *    nobody was on, 6 for the half hour, 4 for the printer in the annexe - and
+ *    in the IDLE week all twelve points land on a meter that has been pinned
+ *    at 98 since the Wednesday, so they are clamped away as fast as they are
+ *    charged. That is the same shape the conduct slice found and it is a
+ *    coincidence rather than a claim: the idle week is saturated, so it cannot
+ *    show a new cost, and the worked week can.
+ *  - NOTHING IN THE FIVE-PROFILE TABLE MOVED. Interruptions cost stress and
+ *    focus, and the review reads neither: it reads how much of the week's own
+ *    work was closed and how much of it kept its deadline. A slice that
+ *    quietly put being interrupted into the mark would separate the pairs at
+ *    the bottom of this file, and that is the assertion which would go red.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: '8348c936e7883a9b',
+  hash: '6f3b040aad9925b8',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -633,7 +674,10 @@ const GOLDEN_WORKED: GoldenWeek = {
     // found the browser on the Wednesday, and the six points it cost were
     // earned back inside the hour; the conversation on Friday never hears
     // about either.
-    stress: 11,
+    // Eleven of it is the queue, and four of it is having been reachable:
+    // three arrivals at 2, 6 and 4 points, mostly worked off again by the
+    // five-minute interval before the week ends.
+    stress: 15,
     suspicion: 0,
     reputation: 100,
     // The week as the review read it: a hundred percent of the work, every
@@ -652,11 +696,15 @@ const GOLDEN_WORKED: GoldenWeek = {
   // asking for a favour instead of filing, a maintenance window opening at
   // nine on the Wednesday, and one browser found on a screen.
   timeline: [
+    'interrupted:call:spooler@1566',
     'notice:They are back@1740',
     'dm:person:terry@1810',
     'notice:Maintenance window@2940',
+    'interrupted:meeting:hygiene-sync@3030',
+    'notice:That could have been an email@3060',
     'caught:browser@3076',
     'notice:That is 10 minutes@3076',
+    'interrupted:call:annexe-printer@4522',
     'review:passed@6180',
     'beer@6300',
     'week:passed@6300',
@@ -679,7 +727,7 @@ const GOLDEN_IDLE: GoldenWeek = {
   // this week takes on the way through are completely different and every one
   // of them is overwritten by the next. Moved by 0.2.7 for the same single
   // integer the worked week moved for, and for nothing else.
-  hash: '6441750e9d4f891e',
+  hash: '3c7626b18073176b',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.
@@ -742,6 +790,7 @@ const GOLDEN_IDLE: GoldenWeek = {
     week_attempt: 1,
   },
   timeline: [
+    'interrupted:call:spooler@1566',
     'caught:bubbles@1632',
     'notice:That is 10 minutes@1632',
     'caught:bubbles@1723',
@@ -750,6 +799,8 @@ const GOLDEN_IDLE: GoldenWeek = {
     'caught:bubbles@1839',
     'notice:That is 10 minutes@1839',
     'notice:Maintenance window@2940',
+    'interrupted:meeting:hygiene-sync@3030',
+    'notice:That could have been an email@3060',
     'caught:bubbles@3076',
     'notice:That is 10 minutes@3076',
     'caught:bubbles@3179',
@@ -758,6 +809,7 @@ const GOLDEN_IDLE: GoldenWeek = {
     'notice:That is 10 minutes@3283',
     'caught:bubbles@4512',
     'notice:That is 10 minutes@4512',
+    'interrupted:call:annexe-printer@4522',
     'caught:bubbles@4615',
     'notice:That is 10 minutes@4615',
     'caught:bubbles@4719',
