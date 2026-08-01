@@ -451,7 +451,8 @@ test('walks every function of a probation week that goes well', async ({
   });
 
   await step('mail.window', async () => {
-    await expect(page.getByTestId('mail-summary')).toContainText('3 unread');
+    // Four since 0.3.0: the sync on the Wednesday is booked from the Monday.
+    await expect(page.getByTestId('mail-summary')).toContainText('4 unread');
     await expect(page.getByTestId('mail-empty')).toBeVisible();
   });
 
@@ -463,7 +464,7 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('mail-message-from-queue-nag-1'))
       .toHaveText('Desmond Frisk');
     await expect(nag).toHaveAttribute('data-unread', 'false');
-    await expect(page.getByTestId('mail-summary')).toContainText('2 unread');
+    await expect(page.getByTestId('mail-summary')).toContainText('3 unread');
   });
 
   await step('brief.open-tickets', async () => {

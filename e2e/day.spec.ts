@@ -160,7 +160,9 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
 
   await openFromStartMenu(page, 'mail');
   await page.getByTestId('mail-row-queue-nag').click();
-  await expect(page.getByTestId('mail-summary')).toContainText('2 unread');
+  // Three of the four left unread: the fourth is the sync booked from the
+  // Monday, which is in this inbox from 0.3.0 onwards.
+  await expect(page.getByTestId('mail-summary')).toContainText('3 unread');
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-save').click();
@@ -190,7 +192,7 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
 
   // And the shell's own memory: the mail that was read is still read.
   await openFromStartMenu(page, 'mail');
-  await expect(page.getByTestId('mail-summary')).toContainText('2 unread');
+  await expect(page.getByTestId('mail-summary')).toContainText('3 unread');
   await expect(page.getByTestId('mail-row-queue-nag')).toHaveAttribute(
     'data-unread',
     'false',

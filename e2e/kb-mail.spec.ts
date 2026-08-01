@@ -144,7 +144,10 @@ test('reads the inbox on the shift clock and marks it read', async ({
   await logIn(page);
   await openFromStartMenu(page, 'mail');
 
-  await expect(page.getByTestId('mail-summary')).toContainText('3 unread');
+  // Four rather than three since 0.3.0: the sync on the Wednesday is booked
+  // from the Monday, because an invitation that turns up when the meeting
+  // starts is not an invitation.
+  await expect(page.getByTestId('mail-summary')).toContainText('4 unread');
   const nag = page.getByTestId('mail-row-queue-nag');
   await expect(nag).toHaveAttribute('data-unread', 'true');
   await expect(page.getByTestId('mail-empty')).toBeVisible();
@@ -166,17 +169,23 @@ test('reads the inbox on the shift clock and marks it read', async ({
   );
 
   await expect(nag).toHaveAttribute('data-unread', 'false');
-  await expect(page.getByTestId('mail-summary')).toContainText('2 unread');
+  await expect(page.getByTestId('mail-summary')).toContainText('3 unread');
 
   await page.getByTestId('mail-row-onboarding').click();
   await expect(page.getByTestId('mail-subject')).toContainText(
     'Welcome to Workgrumble',
   );
-  await expect(page.getByTestId('mail-summary')).toContainText('1 unread');
+  await expect(page.getByTestId('mail-summary')).toContainText('2 unread');
 
   // The third thread is Wednesday's warning, sent well in advance so that
   // nobody can say they were not told (they will say it anyway).
   await page.getByTestId('mail-row-maintenance-window').click();
   await expect(page.getByTestId('mail-subject')).toContainText('PLANNED');
+  await expect(page.getByTestId('mail-summary')).toContainText('1 unread');
+
+  // And the fourth, which is the other thing sent well in advance and for the
+  // same reason. It names the hour, and the hour is the one the day uses.
+  await page.getByTestId('mail-row-hygiene-sync').click();
+  await expect(page.getByTestId('mail-subject')).toContainText('10:30');
   await expect(page.getByTestId('mail-summary')).toContainText('0 unread');
 });
