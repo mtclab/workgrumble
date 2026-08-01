@@ -21,8 +21,10 @@ not ship without its fidelity row.
    deferred, declined, completed) lives in the world graph, written by actions, so it rides the
    existing checkpoint/replay and needs no save-schema change.
 2. **An interruption is data.** Each entry carries `source` (call / meeting / walk_up / boss /
-   chat), `related_ticket` (id or none), `declinable`, `synchronous`, `severity`, and its authored
-   flavor (caller, subject, dialogue). The engine feature is the COST MODEL and CHOICE GRAMMAR;
+   chat), `related_ticket` (id or none), `declinable`, `severity`, and its authored
+   flavor (caller, subject, dialogue). *Amended at review (2026-08-02): `synchronous` was specced
+   but nothing in this slice reads it - a carried-but-unread field is a dead contract, so it is
+   dropped and returns with the first slice that behaves differently on it.* The engine feature is the COST MODEL and CHOICE GRAMMAR;
    payloads are content rows. Build the family once and the rest of the wave is authoring.
 3. **One cost model: benign vs malignant.** An interruption related to the ticket the player is
    actually touching (the touch log knows) is benign - no refocus cost, and handling it writes
@@ -34,8 +36,13 @@ not ship without its fidelity row.
 4. **One choice grammar: accept / defer / decline.** Three world actions with guards and
    player-facing refusal reasons, dispatched through the op-language like every other verb.
    Defer re-queues the entry a fixed number of minutes out (once - the second arrival is not
-   declinable, which is true to life). Decline is only legal where `declinable` says so, and what
-   it costs depends on `source` - declining a colleague reads different from declining the boss.
+   declinable, which is true to life). Decline is only legal where `declinable` says so.
+   *Amended at review (2026-08-02): the source-dependent SOCIAL cost of declining is deferred to
+   the tones/presence slices, which own the machinery it needs - in this slice a decline is
+   recorded and costs the record only, and nothing printed claims otherwise. A call that rings
+   out unanswered is also recorded, and a malignant one still collects a reduced refocus debuff -
+   the ringing pulled focus whether or not anybody picked it up, and ignoring must not dominate
+   answering.*
 5. **Precedence is explicit, not emergent.** The screen can hold one takeover at a time. The
    scheduler avoids overlaps the way the patrol already avoids lunch: no interruption fires
    during a caught scene, a patrol arrival, or another interruption; a blocked entry slides to
