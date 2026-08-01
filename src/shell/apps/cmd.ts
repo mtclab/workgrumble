@@ -1,7 +1,7 @@
 import { FIELDS } from '../../world/fields';
 import { DEFAULT_CWD } from '../../world/filesystem';
 import { promptPath } from '../../world/fs';
-import { isFumbling } from '../../world/meters';
+import { isFumbling, isRefocusing } from '../../world/meters';
 import { fumbleTypo, parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
 import type { AppDef } from './types';
@@ -85,10 +85,20 @@ export const CMD_APP: AppDef = {
       output.scrollTop = output.scrollHeight;
     };
 
-    /** Over 80 stress, the room swims and so does the keyboard. */
+    /**
+     * Over 80 stress, the room swims and so does the keyboard - and lower than
+     * that while the last interruption is still being recovered from, which is
+     * the one place the refocus debuff is something the player can feel with
+     * their hands rather than read on a chip.
+     */
     const fumbling = (): boolean => {
       const stress = api.graph.getField(api.actor, FIELDS.stress);
-      return typeof stress === 'number' && isFumbling(stress);
+      const refocusing = isRefocusing(
+        api.graph.getField(api.actor, FIELDS.refocusUntil),
+        api.clock.now(),
+      );
+
+      return typeof stress === 'number' && isFumbling(stress, refocusing);
     };
 
     const submit = (): void => {

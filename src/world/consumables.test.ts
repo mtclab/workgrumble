@@ -34,7 +34,11 @@ import {
   NO_RUN,
   TOLERANCE_WINDOW_TICKS,
 } from './consumables';
-import { FUMBLE_THRESHOLD, METER_CEILING } from './meters';
+import {
+  FUMBLE_THRESHOLD,
+  METER_CEILING,
+  REFOCUS_FUMBLE_DROP,
+} from './meters';
 
 const NO_CAN: DrinkState = { startedAt: null, tolerance: 0 };
 
@@ -129,6 +133,29 @@ describe('what it does to the hands', () => {
     expect(isFumblingWith(CRASH_FUMBLE_THRESHOLD, 'crash')).toBe(false);
     // The same stress, with nothing in your blood, is a perfectly good day.
     expect(isFumblingWith(CRASH_FUMBLE_THRESHOLD + 1, 'none')).toBe(false);
+  });
+
+  /**
+   * The interruption debuff is a second reason the hands are unreliable, and
+   * two true reasons stack. The can is the exception, and it is an exception
+   * rather than an oversight: a ceiling above the top of the meter is above
+   * every subtraction as well, which is what "no such number" means.
+   */
+  it('stacks the refocus debuff onto a sober day and onto a crash', () => {
+    expect(fumbleLimit('none', true))
+      .toBe(FUMBLE_THRESHOLD - REFOCUS_FUMBLE_DROP);
+    expect(fumbleLimit('crash', true))
+      .toBe(CRASH_FUMBLE_THRESHOLD - REFOCUS_FUMBLE_DROP);
+    expect(isFumblingWith(FUMBLE_THRESHOLD - REFOCUS_FUMBLE_DROP + 1, 'none'))
+      .toBe(false);
+    expect(
+      isFumblingWith(FUMBLE_THRESHOLD - REFOCUS_FUMBLE_DROP + 1, 'none', true),
+    ).toBe(true);
+  });
+
+  it('leaves the can working: a bought twenty minutes is still bought', () => {
+    expect(fumbleLimit('buff', true)).toBe(fumbleLimit('buff', false));
+    expect(isFumblingWith(METER_CEILING, 'buff', true)).toBe(false);
   });
 });
 

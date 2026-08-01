@@ -194,6 +194,41 @@ export const FIELDS = {
    */
   caughtEvents: 'caught_events',
   /**
+   * The minute the player stops looking for their place again, or absent when
+   * they are not.
+   *
+   * An interruption that had nothing to do with the work in hand does not stop
+   * costing when it ends: the honest, visible version of the twenty-three
+   * minutes the research measures is a short window in which the fumble
+   * threshold behaves as if stress were higher. One field with an expiry tick,
+   * set by the verb that ends the interruption and read by
+   * `meters.isRefocusing` - not a state the player manages, because it is a
+   * cost rather than a mechanic to play around.
+   *
+   * It is a player-node field for the same reason the meters are: a save
+   * carries it, a replay arrives at it, and nothing outside the op language
+   * moves it.
+   */
+  refocusUntil: 'refocus_until',
+  /**
+   * What the player did about each interruption, as three lists of ids.
+   *
+   * Three fields rather than one line-per-event log, and the split is the
+   * whole reason the guards work. The op language matches a WHOLE line
+   * (`line_in_field`), so a record carrying a minute and a verb could only be
+   * checked by a caller that already knew the minute - which is a caller
+   * checking its own homework. An id on its own is a thing the world can be
+   * asked about with nothing but the id: "has this been answered", "has this
+   * been pushed once already". Which list an id is in is what the player did.
+   *
+   * A deferred interruption is not settled - it is coming back - so it stays
+   * out of the other two lists until the second arrival is dealt with, and its
+   * presence in this one is what makes the second arrival undeclinable.
+   */
+  interruptionAnswered: 'interruption_answered',
+  interruptionDeferred: 'interruption_deferred',
+  interruptionDeclined: 'interruption_declined',
+  /**
    * The desk itself. `deskCans` is the empties standing on it - evidence, and
    * the reason there is a tidy-desk action at all. `drinkStartedAt` is the
    * minute the current can was opened (-1 when there is no run), and

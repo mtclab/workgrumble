@@ -16,8 +16,10 @@ import {
   COMFORTABLE_QUEUE,
   DEFAULT_SLACK_RATE,
   FUMBLE_THRESHOLD,
+  fumbleThreshold,
   isFumbling,
   isMeterTick,
+  isRefocusing,
   METER_CEILING,
   METER_FLOOR,
   METER_INTERVAL_TICKS,
@@ -26,6 +28,8 @@ import {
   type MeterInputs,
   type MeterState,
   movesAnything,
+  REFOCUS_FUMBLE_DROP,
+  REFOCUS_TICKS,
   REPUTATION_PER_BREACH,
   slackRate,
   STARTING_REPUTATION,
@@ -283,6 +287,52 @@ describe('the cadence and the fumble line', () => {
     expect(isFumbling(FUMBLE_THRESHOLD + 1)).toBe(true);
     expect(isFumbling(0)).toBe(false);
     expect(isFumbling(METER_CEILING)).toBe(true);
+  });
+});
+
+/**
+ * The debuff the research is named after: for a short window after an
+ * interruption that had nothing to do with the work in hand, the line the
+ * hands go at is lower. It is one field with an expiry and two pure functions,
+ * and it is deliberately not a state the player can manage.
+ */
+describe('finding your place again', () => {
+  it('lowers the line while the window is open and puts it back after', () => {
+    expect(fumbleThreshold(false)).toBe(FUMBLE_THRESHOLD);
+    expect(fumbleThreshold(true)).toBe(FUMBLE_THRESHOLD - REFOCUS_FUMBLE_DROP);
+    expect(REFOCUS_FUMBLE_DROP).toBeGreaterThan(0);
+  });
+
+  it('makes a stress that was fine a minute ago the stress that fumbles', () => {
+    const fine = FUMBLE_THRESHOLD - REFOCUS_FUMBLE_DROP + 1;
+
+    expect(isFumbling(fine)).toBe(false);
+    expect(isFumbling(fine, true)).toBe(true);
+    // And the line still exists: a debuff is not "always fumbling".
+    expect(isFumbling(FUMBLE_THRESHOLD - REFOCUS_FUMBLE_DROP, true)).toBe(false);
+  });
+
+  it('runs for the twenty-three minutes the research measured', () => {
+    const started = 400;
+    const until = started + REFOCUS_TICKS;
+
+    expect(REFOCUS_TICKS).toBe(23);
+    expect(isRefocusing(until, started)).toBe(true);
+    expect(isRefocusing(until, until - 1)).toBe(true);
+    expect(isRefocusing(until, until)).toBe(false);
+    expect(isRefocusing(until, until + 1)).toBe(false);
+  });
+
+  it('reads an absent or nonsense field as "no", which is most players', () => {
+    expect(isRefocusing(undefined, 100)).toBe(false);
+    expect(isRefocusing(null, 100)).toBe(false);
+    expect(isRefocusing('soon', 100)).toBe(false);
+    expect(isRefocusing(1.5, 100)).toBe(false);
+    expect(isRefocusing(200, 1.5)).toBe(false);
+  });
+
+  it('never puts the line below the bottom of the meter', () => {
+    expect(fumbleThreshold(true)).toBeGreaterThanOrEqual(METER_FLOOR);
   });
 });
 

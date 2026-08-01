@@ -27,8 +27,60 @@ export const STARTING_REPUTATION = 50;
 /** Above this, the hands stop doing what they are told. */
 export const FUMBLE_THRESHOLD = 80;
 
-export function isFumbling(stress: number): boolean {
-  return stress > FUMBLE_THRESHOLD;
+/**
+ * How long it takes to find your place again after an interruption that had
+ * nothing to do with the work in hand.
+ *
+ * Twenty-three minutes is the figure the research is built on ([chi08]), and
+ * it is used literally rather than rounded to something tidier: the mechanic
+ * IS the citation made visible, and a number nobody can point at is a number
+ * somebody will quietly tune until the point is gone.
+ */
+export const REFOCUS_TICKS = 23;
+
+/**
+ * What the debuff is worth: the fumble threshold, lowered, for that window.
+ *
+ * Deliberately conservative - OVERSEER TUNING KNOB. Ten points means the
+ * debuff is felt by a player who was already having a bad morning (71 to 80
+ * stress) and is invisible to one who was not, which is the honest shape of
+ * "you are worse at this for a bit" and not a punishment for being
+ * interrupted. It moves nothing in the shipped week until content authors an
+ * interruption against these rails.
+ */
+export const REFOCUS_FUMBLE_DROP = 10;
+
+/**
+ * Whether the player is still looking for their place, given what the graph
+ * holds in `refocus_until` and what minute it is.
+ *
+ * Absent, or anything that is not a minute, is "no" - which is what every
+ * player who has never been interrupted carries, and what the field looks like
+ * on a save written before this existed.
+ */
+export function isRefocusing(refocusUntil: unknown, now: number): boolean {
+  return typeof refocusUntil === 'number'
+    && Number.isSafeInteger(refocusUntil)
+    && Number.isSafeInteger(now)
+    && now < refocusUntil;
+}
+
+/**
+ * The stress the hands start going at, given whether the last interruption is
+ * still being recovered from.
+ *
+ * One function rather than two constants read in two places: the desk, the
+ * terminal and the can all have to agree about where the line is, and a
+ * threshold each surface derives for itself is a threshold that drifts.
+ */
+export function fumbleThreshold(refocusing = false): number {
+  return refocusing
+    ? Math.max(METER_FLOOR, FUMBLE_THRESHOLD - REFOCUS_FUMBLE_DROP)
+    : FUMBLE_THRESHOLD;
+}
+
+export function isFumbling(stress: number, refocusing = false): boolean {
+  return stress > fumbleThreshold(refocusing);
 }
 
 /* -- the rates ------------------------------------------------------------ */

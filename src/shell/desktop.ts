@@ -30,6 +30,7 @@ import { buffTicks } from '../world/consumables';
 import { isLunchtime, shiftEndTick } from '../world/day';
 import { FIELDS } from '../world/fields';
 import { isFumblingWith } from '../world/consumables';
+import { isRefocusing } from '../world/meters';
 import { Desk, deskState } from './desk';
 import { SPEEDS, type Speed } from './day-driver';
 
@@ -1250,8 +1251,12 @@ export class Desktop {
       shiftEndTick(this.context.day.day()),
       buffTicks,
     );
+    // The interruption debuff is the third thing that moves the line, beside
+    // the can and the crash, and it is read off the world exactly as they are:
+    // one field with an expiry, so a save carries it and a load lands on it.
+    const refocusing = isRefocusing(read(FIELDS.refocusUntil), now);
     const fumbling = onShift && typeof stress === 'number'
-      && isFumblingWith(stress, desk.phase);
+      && isFumblingWith(stress, desk.phase, refocusing);
 
     this.element.dataset.fumbling = String(fumbling);
     this.element.dataset.drink = desk.phase;

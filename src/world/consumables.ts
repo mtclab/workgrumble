@@ -13,7 +13,12 @@
  * what those numbers MEAN at a given minute.
  */
 
-import { FUMBLE_THRESHOLD, METER_CEILING } from './meters';
+import {
+  fumbleThreshold,
+  METER_CEILING,
+  METER_FLOOR,
+  REFOCUS_FUMBLE_DROP,
+} from './meters';
 
 /** What the machine takes for one can. It does not give change. */
 export const DRINK_PRICE_PENCE = 120;
@@ -192,21 +197,35 @@ export function nextTolerance(
  * ceiling" the design asks for, said as one number rather than as two rules
  * that could disagree. While the crash is on it is LOWER than usual, which is
  * what makes chaining cans a decision rather than a free action.
+ *
+ * `refocusing` is the interruption debuff, and it stacks with the crash
+ * because they are two different reasons the hands are unreliable and both are
+ * true at once. It does NOT touch the buff: a can that has put the ceiling
+ * above the top of the meter has put it above every subtraction as well, which
+ * is what "no such number" means. Buying your way out of a bad twenty minutes
+ * with a can is a legitimate move and it costs what a can always costs.
  */
-export function fumbleLimit(phase: DrinkPhase): number {
+export function fumbleLimit(phase: DrinkPhase, refocusing = false): number {
   switch (phase) {
     case 'buff':
       return METER_CEILING + 1;
     case 'crash':
-      return CRASH_FUMBLE_THRESHOLD;
+      return Math.max(
+        METER_FLOOR,
+        CRASH_FUMBLE_THRESHOLD - (refocusing ? REFOCUS_FUMBLE_DROP : 0),
+      );
     case 'none':
-      return FUMBLE_THRESHOLD;
+      return fumbleThreshold(refocusing);
   }
 }
 
 /** Whether the hands are going, given the stress and what is in the blood. */
-export function isFumblingWith(stress: number, phase: DrinkPhase): boolean {
-  return stress > fumbleLimit(phase);
+export function isFumblingWith(
+  stress: number,
+  phase: DrinkPhase,
+  refocusing = false,
+): boolean {
+  return stress > fumbleLimit(phase, refocusing);
 }
 
 /** What the desk says about itself while a can is working. */
