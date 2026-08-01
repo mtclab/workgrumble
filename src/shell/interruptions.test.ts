@@ -48,6 +48,7 @@ import { interruptionPlanFor } from '../world/week';
 import {
   DayDriver,
   DRIVER_INTERVAL_MS,
+  IN_A_MEETING_REASON,
   type InterruptionView,
   TICK_INTERVAL_MS,
 } from './day-driver';
@@ -213,11 +214,22 @@ describe('a call about something that is not the work in hand', () => {
     const entry = entryOn(world.session, 4, 'call:annexe-printer');
 
     runTo(world.driver, world.session, entry.tick);
+
+    // Wednesday's meeting left one behind and it expired long ago; the claim
+    // is about what THIS call writes, so it is compared against that.
+    const stale = player(world.session, FIELDS.refocusUntil);
+
     expect(world.driver.answerInterruption()).toEqual({ ok: true });
+    // Not yet: the window is measured from the minute the desk comes back,
+    // so it does not start while the player is still on the phone.
+    expect(player(world.session, FIELDS.refocusUntil)).toBe(stale);
+
+    runTo(world.driver, world.session, entry.endsTick);
 
     const answeredAt = world.session.engine.now();
     const until = player(world.session, FIELDS.refocusUntil);
 
+    expect(answeredAt).toBe(entry.endsTick);
     expect(until).toBe(answeredAt + REFOCUS_TICKS);
     expect(isRefocusing(until, answeredAt)).toBe(true);
 
@@ -326,6 +338,52 @@ describe('"can I call you back"', () => {
       reason: ALREADY_DEFERRED_REASON,
     });
     expect(world.driver.answerInterruption()).toEqual({ ok: true });
+  });
+
+  /**
+   * The bug a hundred green tests did not see, and the reason this one is
+   * written as a JOURNEY rather than as a state.
+   *
+   * WHERE a deferred entry lives and WHAT was decided about it are two
+   * questions, and reading them in the wrong order made the second answer the
+   * first: an answered callback fell back to the ORIGINAL entry, whose minutes
+   * were twenty minutes in the past. So `interruption()` went null the instant
+   * the player pressed Answer - the conversation vanished out from under them,
+   * the window closed, and nothing ever fired to say it had ended. Every
+   * assertion about deferring still passed, because deferring worked; it was
+   * the minute AFTER answering that was broken, and nothing looked there.
+   */
+  it('stays on the phone once the callback is answered', () => {
+    const world = harnessOn(4);
+    const entry = entryOn(world.session, 4, 'call:annexe-printer');
+
+    runTo(world.driver, world.session, entry.tick);
+    world.driver.deferInterruption();
+    runTo(world.driver, world.session, entry.tick + DEFER_MINUTES);
+
+    const back = world.driver.interruption();
+
+    expect(back?.callback).toBe(true);
+    expect(world.driver.answerInterruption()).toEqual({ ok: true });
+
+    // Still there, still the callback, still answered - and it lasts the
+    // minutes it was given rather than ending in the one it started in.
+    const talking = world.driver.interruption();
+
+    expect(talking?.entry.id).toBe('call:annexe-printer');
+    expect(talking?.answered).toBe(true);
+    expect(talking?.entry.tick).toBe(back?.entry.tick);
+
+    const lastMinute = (back?.entry.endsTick ?? 0) - 1;
+
+    runTo(world.driver, world.session, lastMinute);
+    expect(world.driver.interruption()?.answered).toBe(true);
+
+    // And the far side of it happens, once, at the minute the window says.
+    runTo(world.driver, world.session, back?.entry.endsTick ?? 0);
+    expect(world.driver.interruption()).toBeNull();
+    expect(world.ended.filter((done) => done.id === 'call:annexe-printer'))
+      .toHaveLength(1);
   });
 
   /**
@@ -438,6 +496,203 @@ describe('the mandatory sync', () => {
   });
 });
 
+/**
+ * A week played the way the browser walk plays one: the days in between are
+ * RUN rather than worked.
+ *
+ * It is a different world from the worked harness above - every meter is at
+ * its ceiling by the Wednesday - and a mechanic that only behaves on a tidy
+ * desk is a mechanic that behaves for nobody, so the cases that care drive
+ * this one.
+ */
+function idleTo(day: number): Harness {
+  const session = createWorldSession();
+  const arrivals: InterruptionView[] = [];
+  const ended: InterruptionEntry[] = [];
+  const driver = new DayDriver(
+    session.engine,
+    COMPANY_IDS.player,
+    session.seed,
+    {
+      onDayBoundary: () => {},
+      openSlackApps: () => [],
+      focusedSlackApp: () => null,
+      onInterruption: (view) => {
+        arrivals.push(view);
+      },
+      onInterruptionEnded: (entry) => {
+        ended.push(entry);
+      },
+    },
+  );
+
+  for (let played = 1; played < day; played += 1) {
+    driver.startShift();
+    runTo(driver, session, shiftEndTick(played));
+    driver.clockOff();
+  }
+
+  driver.startShift();
+  arrivals.length = 0;
+  ended.length = 0;
+  return { driver, session, arrivals, ended };
+}
+
+/* -- what a meeting does to the queue -------------------------------------- */
+
+/**
+ * The invariant the whole family sits on, asserted where a meeting actually
+ * exists.
+ *
+ * There is a cargo test that walks the same arithmetic over a plain world, and
+ * it is worth keeping for what it is - the engine's own claim that a half hour
+ * of held nothing moves no deadline - but it is NOT this gate and no longer
+ * says it is: a meeting is a shell-level thing and the core has never heard of
+ * one. So this drives the real Wednesday, through the real driver, and asks
+ * the two questions a player would notice the answer to.
+ */
+describe('a meeting holds nothing and pauses nothing', () => {
+  /** Every unresolved ticket's resolution deadline, by id. */
+  function deadlines(session: WorldSession): ReadonlyMap<string, number> {
+    const found = new Map<string, number>();
+
+    for (const ticket of session.engine.graph.nodesOfKind('ticket')) {
+      const due = ticket.fields[FIELDS.slaDeadline];
+
+      if (typeof due === 'number' && isUnresolved(ticket)) {
+        found.set(ticket.id, due);
+      }
+    }
+
+    return found;
+  }
+
+  function breachedCount(session: WorldSession): number {
+    return session.engine.graph.nodesOfKind('ticket').filter(
+      (ticket) => ticket.fields[FIELDS.breached] === true,
+    ).length;
+  }
+
+  /**
+   * Per MINUTE, not at the end. A meeting that quietly handed its half hour
+   * back would satisfy an end-to-end comparison perfectly well, because every
+   * deadline would have moved together and moved back; the only place that
+   * shows up is inside the block.
+   */
+  it('moves no deadline, on any minute of the block', () => {
+    const world = idleTo(3);
+    const entry = entryOn(world.session, 3, 'meeting:hygiene-sync');
+
+    runTo(world.driver, world.session, entry.tick);
+    expect(world.driver.interruption()?.entry.source).toBe('meeting');
+
+    const before = deadlines(world.session);
+
+    expect(before.size).toBeGreaterThan(0);
+
+    for (let minute = entry.tick; minute < entry.endsTick; minute += 1) {
+      runTo(world.driver, world.session, minute + 1);
+
+      for (const [id, due] of before) {
+        const now = world.session.engine.graph.getField(id, FIELDS.slaDeadline);
+
+        // Resolved tickets drop out of the map's purpose but keep their
+        // field; either way the number must be the one it was.
+        expect(now, `${id} at ${String(world.session.engine.now())}`).toBe(due);
+      }
+    }
+
+    expect(world.session.engine.now()).toBe(entry.endsTick);
+  });
+
+  /**
+   * And the other half, which is what makes the first half worth asserting:
+   * the clock the deadlines are measured against RUNS for every minute of it.
+   *
+   * A meeting that held it would be a meeting in which the queue was safe, and
+   * a queue that is safe while the player is trapped is not a cost at all - it
+   * is a break. So: the service clock is on at every minute, the headroom on
+   * an open ticket shrinks by exactly the length of the block while its
+   * deadline does not move, and - so that none of that is vacuous - tickets in
+   * this world do genuinely go red as the morning runs out.
+   */
+  it('runs every clock through the block, and shortens what is left', () => {
+    const world = idleTo(3);
+    const entry = entryOn(world.session, 3, 'meeting:hygiene-sync');
+    const wentRed = breachedCount(world.session);
+
+    runTo(world.driver, world.session, entry.tick);
+
+    const watched = [...deadlines(world.session)][0];
+
+    expect(watched).toBeDefined();
+
+    const due = watched?.[1] ?? 0;
+    const headroomBefore = due - world.session.engine.now();
+
+    for (let minute = entry.tick; minute < entry.endsTick; minute += 1) {
+      expect(world.session.engine.slaRunning(), String(minute)).toBe(true);
+      runTo(world.driver, world.session, minute + 1);
+    }
+
+    const headroomAfter = due - world.session.engine.now();
+
+    expect(headroomBefore - headroomAfter).toBe(entry.endsTick - entry.tick);
+    // And the morning really is one in which deadlines run out, so the
+    // per-minute assertions above are about a queue with clocks on it.
+    runTo(world.driver, world.session, shiftEndTick(3));
+    expect(breachedCount(world.session)).toBeGreaterThan(wentRed);
+  });
+
+  /** And the desk is not merely awkward to reach: it cannot be worked. */
+  it('refuses the work, whichever surface asks', () => {
+    const world = idleTo(3);
+    const entry = entryOn(world.session, 3, 'meeting:hygiene-sync');
+    const open = world.session.engine.graph.nodesOfKind('ticket')
+      .find(isUnresolved);
+
+    expect(open).toBeDefined();
+
+    runTo(world.driver, world.session, entry.tick);
+
+    // The terminal, the queue, Remote Assist and the chat window all reach the
+    // world through this one call, so one refusal covers every keyboard in the
+    // building - which is the point, because the pointer rules covered none of
+    // them.
+    const refused = world.driver.dispatch(
+      HELPDESK_ACTIONS.ticketClassify,
+      COMPANY_IDS.player,
+      open?.id ?? '',
+      { impact: 1, urgency: 1 },
+    );
+
+    expect(refused).toEqual({ ok: false, reason: IN_A_MEETING_REASON });
+    expect(world.driver.drink().ok).toBe(false);
+    expect(world.driver.tidyDesk().ok).toBe(false);
+
+    // And the moment the room empties the door is open again: whatever the
+    // world then makes of the request, it is no longer the meeting refusing
+    // it - which is the claim, because a rule that never lifted would be a
+    // desk nobody could ever work at.
+    runTo(world.driver, world.session, entry.endsTick);
+
+    const after = world.driver.dispatch(
+      HELPDESK_ACTIONS.ticketClassify,
+      COMPANY_IDS.player,
+      open?.id ?? '',
+      { impact: 1, urgency: 1 },
+    );
+
+    expect(after.ok || after.reason !== IN_A_MEETING_REASON).toBe(true);
+
+    const desk = world.driver.tidyDesk();
+
+    // Whatever the desk then says - an empty desk has its own opinion about
+    // being tidied - it is no longer the meeting saying it.
+    expect(desk.ok || desk.reason !== IN_A_MEETING_REASON).toBe(true);
+  });
+});
+
 /* -- the mid-state promise ------------------------------------------------- */
 
 describe('a world picked back up in the middle of one', () => {
@@ -539,39 +794,6 @@ describe('a world picked back up in the middle of one', () => {
  * has a place to be settled offline.
  */
 describe('a week nobody worked', () => {
-  function idleTo(day: number): Harness {
-    const session = createWorldSession();
-    const arrivals: InterruptionView[] = [];
-    const ended: InterruptionEntry[] = [];
-    const driver = new DayDriver(
-      session.engine,
-      COMPANY_IDS.player,
-      session.seed,
-      {
-        onDayBoundary: () => {},
-        openSlackApps: () => [],
-        focusedSlackApp: () => null,
-        onInterruption: (view) => {
-          arrivals.push(view);
-        },
-        onInterruptionEnded: (entry) => {
-          ended.push(entry);
-        },
-      },
-    );
-
-    for (let played = 1; played < day; played += 1) {
-      driver.startShift();
-      runTo(driver, session, shiftEndTick(played));
-      driver.clockOff();
-    }
-
-    driver.startShift();
-    arrivals.length = 0;
-    ended.length = 0;
-    return { driver, session, arrivals, ended };
-  }
-
   it('still rings, still comes back, and still knows it is a callback', () => {
     const world = idleTo(2);
     const entry = entryOn(world.session, 2, 'call:spooler');

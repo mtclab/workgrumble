@@ -544,23 +544,30 @@ fn holds_every_deadline_while_the_service_clock_is_stopped() {
     assert_eq!(state(&world, "ticket:overnight"), "breached");
 }
 
-/// A meeting holds nothing and pauses nothing.
+/// Half an hour in which nobody touches the queue holds nothing and pauses
+/// nothing.
 ///
-/// This is the invariant the whole interruption family is built on top of, and
-/// it is asserted here rather than in the shell because it is a claim about the
-/// ENGINE: a takeover that owns the screen is not a reason the queue stops. The
-/// mandatory sync is thirty minutes in which the player can see the shape of
-/// the queue and cannot touch it, and every clock runs - which is the comedy
-/// and is also the only honest arithmetic. If a later lane were to "help" by
-/// holding the service clock for the meeting's duration, or by parking the
-/// tickets it interrupts, `off_hours_ticks` or `held_ticks` would start moving
-/// and this test goes red on the exact line that describes the lie.
+/// It is worth being exact about what this is and is NOT, because it used to
+/// claim to be the meeting gate and could not have been one: a meeting is a
+/// shell-level thing built out of a seeded schedule and a window, and this
+/// crate has never heard of one. What is asserted here is the ENGINE's half -
+/// that a stretch of minutes in which no verb is dispatched moves the deadline
+/// and nothing else, and that the four-term identity survives every minute of
+/// it. If a later lane "helped" by holding the service clock over a stretch
+/// like this, or by parking the tickets inside it, `off_hours_ticks` or
+/// `held_ticks` would start moving and this goes red on the line that
+/// describes the lie.
 ///
-/// The four-term identity is checked before, during and after, because a
-/// meeting that quietly handed back thirty minutes would still satisfy it at
-/// the end: the terms would all have moved together.
+/// THE MEETING GATE is `src/shell/interruptions.test.ts`, which drives the real
+/// Wednesday through the real driver: the block on the calendar, the deadlines
+/// that do not move on any minute of it, the service clock that is on for every
+/// one of them, and a desk that refuses the work while it runs.
+///
+/// The identity is checked before, during and after, because a stretch that
+/// quietly handed back thirty minutes would still satisfy it at the end: the
+/// terms would all have moved together.
 #[test]
-fn a_meeting_holds_nothing_and_pauses_nothing() {
+fn a_half_hour_nobody_works_holds_nothing_and_pauses_nothing() {
     const TARGET: i64 = 90;
     const MEETING_MINUTES: i64 = 30;
 

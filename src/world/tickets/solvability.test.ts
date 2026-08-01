@@ -575,7 +575,6 @@ describe('every advertised path is reachable under the worst schedule', () => {
       minutes: to - from,
       relatedTicket: null,
       declinable: false,
-      synchronous: true,
       severity: 3,
       flavor: {
         scene: TICKET_HYGIENE_SYNC.id,

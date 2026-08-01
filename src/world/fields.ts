@@ -229,6 +229,18 @@ export const FIELDS = {
   interruptionDeferred: 'interruption_deferred',
   interruptionDeclined: 'interruption_declined',
   /**
+   * And the fourth: the ones nobody answered.
+   *
+   * A phone that rings out is not a decision, which is exactly why it needs a
+   * record of its own rather than a place in the three above. It is evidence
+   * in the same class as the conduct file - it costs nothing today, it is
+   * written in the minute it happened, and it is the surface a later slice
+   * reads when somebody asks how often this desk does not pick up. Without it
+   * the cheapest thing a player can do about a ringing phone is nothing at
+   * all, and a choice grammar whose best answer is "ignore it" is decoration.
+   */
+  interruptionMissed: 'interruption_missed',
+  /**
    * The minute the room emptied after the mandatory sync, or absent while
    * nobody has sat through one.
    *

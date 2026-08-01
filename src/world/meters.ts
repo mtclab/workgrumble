@@ -39,6 +39,24 @@ export const FUMBLE_THRESHOLD = 80;
 export const REFOCUS_TICKS = 23;
 
 /**
+ * And what a phone you did NOT pick up costs, which is not nothing.
+ *
+ * Eleven, which is fewer than half of twenty-three and is deliberately
+ * conservative - OVERSEER TUNING KNOB. The science this whole family is built
+ * on is about attention residue rather than about conversations: the ringing
+ * pulls the thread whether or not anybody answers, and the reason a shorter
+ * window is right is that there was no conversation to have to come back from,
+ * not that the interruption did not happen.
+ *
+ * It exists because the alternative is a game in which ignoring the phone is
+ * free and therefore always correct, which would make the three answers
+ * decoration. Answering still costs more than ignoring - that is the honest
+ * ordering, and it is why the ring-out leaves a RECORD as well: the minutes
+ * are cheaper and the evidence is worse.
+ */
+export const RING_OUT_REFOCUS_TICKS = 11;
+
+/**
  * What the debuff is worth: the fumble threshold, lowered, for that window.
  *
  * Deliberately conservative - OVERSEER TUNING KNOB. Ten points means the

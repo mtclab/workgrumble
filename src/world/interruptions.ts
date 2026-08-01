@@ -209,13 +209,23 @@ export interface InterruptionSlot {
   readonly source: InterruptionSource;
   /** Minute of the day, on the clock the player reads. */
   readonly minute: number;
-  /** How long it owns the screen once it starts. */
+  /**
+   * How long it owns the screen once it starts - which is the same number
+   * whether it is answered or rings out, because it is the minutes the thing
+   * TAKES rather than the minutes a conversation lasts.
+   *
+   * PARKING LOT, and it is a real one: at x4 a six-minute window is a second
+   * and a half of real time, which is not long enough for three buttons to be
+   * a choice. The fix is not a longer window - that would be balance bent
+   * around a frame rate - it is dropping the clock to x1 when a synchronous
+   * takeover arrives, so the player gets the whole window in seconds they can
+   * use. It changes what one run of the clock buys mid-stretch, so it is its
+   * own slice with its own walk.
+   */
   readonly minutes: number;
   /** The ticket it is about, or nothing at all - which is the cost model. */
   readonly relatedTicket: string | null;
   readonly declinable: boolean;
-  /** Whether saying yes consumes the player's minutes while it runs. */
-  readonly synchronous: boolean;
   readonly severity: InterruptionSeverity;
   readonly flavor: InterruptionFlavor;
   /** Minutes either side of `minute` the seed may move it. Announced things
@@ -233,7 +243,6 @@ export interface InterruptionEntry {
   readonly endsTick: number;
   readonly relatedTicket: string | null;
   readonly declinable: boolean;
-  readonly synchronous: boolean;
   readonly severity: InterruptionSeverity;
   readonly flavor: InterruptionFlavor;
   /** How far it had to slide off its authored minute to find clear air. */
@@ -274,6 +283,25 @@ export interface InterruptionSchedule {
   readonly entries: readonly InterruptionEntry[];
   /** And the ids of everything that could not, because the day ran out. */
   readonly dropped: readonly string[];
+}
+
+/**
+ * Two ids, ordered by codepoint.
+ *
+ * `localeCompare` was here and was wrong for the one job this comparator has:
+ * it is a tie-break inside a SEEDED schedule, so its answer is part of what
+ * "the same seed gives the same week" means - and `localeCompare` answers
+ * according to the reader's locale and the browser's collation tables. Two
+ * players on one seed would get two different weeks, in the one place nobody
+ * would ever look. Codepoint order is the same everywhere, and it is the
+ * ordering discipline the Rust side already keeps.
+ */
+export function byCodepoint(left: string, right: string): number {
+  if (left === right) {
+    return 0;
+  }
+
+  return left < right ? -1 : 1;
 }
 
 /* -- precedence ----------------------------------------------------------- */
@@ -448,7 +476,7 @@ export function buildInterruptionSchedule(
     }))
     .sort((left, right) => (
       left.at === right.at
-        ? left.slot.id.localeCompare(right.slot.id)
+        ? byCodepoint(left.slot.id, right.slot.id)
         : left.at - right.at
     ));
 
@@ -479,7 +507,6 @@ export function buildInterruptionSchedule(
       endsTick: tick + slot.minutes,
       relatedTicket: slot.relatedTicket,
       declinable: slot.declinable,
-      synchronous: slot.synchronous,
       severity: slot.severity,
       flavor: Object.freeze({ ...slot.flavor }),
       slidFrom: tick === at ? null : at,

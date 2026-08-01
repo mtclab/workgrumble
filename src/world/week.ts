@@ -438,7 +438,6 @@ export const WEEK: readonly DayScript[] = validateWeek([
         minutes: 6,
         relatedTicket: 'ticket:wedged-spooler',
         declinable: true,
-        synchronous: true,
         severity: 1,
         // Somebody deciding to pick the phone up is not an appointment, so it
         // is allowed to wander - unlike the meeting two days later, which is
@@ -505,7 +504,6 @@ export const WEEK: readonly DayScript[] = validateWeek([
         minutes: HYGIENE_SYNC_MINUTES,
         relatedTicket: null,
         declinable: false,
-        synchronous: true,
         severity: 3,
         flavor: {
           [FLAVOR.scene]: TICKET_HYGIENE_SYNC.id,
@@ -537,7 +535,6 @@ export const WEEK: readonly DayScript[] = validateWeek([
         minutes: 5,
         relatedTicket: null,
         declinable: true,
-        synchronous: true,
         severity: 2,
         jitter: 6,
         flavor: {

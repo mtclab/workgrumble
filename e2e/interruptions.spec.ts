@@ -8,6 +8,7 @@ import {
   logInOnDay,
   openFromStartMenu,
   runCommand,
+  runOnlyCommand,
   runSimMinutes,
   workUntil,
   workUntilMinute,
@@ -220,10 +221,19 @@ test('the sync is announced, taken, and mailed round afterwards', async ({
 
   // Neither refusal works, and both say why rather than being missing.
   await page.getByTestId('meeting-decline').click();
-  await expect(page.getByTestId('meeting-refusal')).toBeVisible();
+  await expect(page.getByTestId('meeting-refusal')).toContainText('Attendance');
   await page.getByTestId('meeting-defer').click();
-  await expect(page.getByTestId('meeting-refusal')).toBeVisible();
+  await expect(page.getByTestId('meeting-refusal')).toContainText('Attendance');
   await expect(page.getByTestId('meeting-app')).toBeVisible();
+
+  // And the desk is unreachable by KEYBOARD as well as by mouse, which is the
+  // half a pointer rule cannot cover: the terminal was open before the block
+  // started, so it may still have the cursor - and Enter must not close a
+  // ticket from inside a meeting.
+  await openFromStartMenu(page, 'cmd');
+  await runOnlyCommand(page, 'restart PRINT-01\\spooler');
+  await expect(page.getByTestId('cmd-output')).toContainText('in a meeting');
+  await expect(page.getByTestId('cmd-output')).not.toContainText('RUNNING');
 
   // The room fills up a minute at a time, and the queue is counted beside it.
   const room = page.getByTestId('meeting-room');

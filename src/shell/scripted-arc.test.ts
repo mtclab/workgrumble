@@ -161,6 +161,29 @@ function halfTheRoster(id: string): boolean {
   return total % 2 === 1;
 }
 
+/**
+ * The queue, worked at the first minute the player is actually at the desk.
+ *
+ * The Wednesday sync means it - nothing dispatched from a meeting reaches the
+ * world - so competent play waits the block out, which is what a person does
+ * and is exactly what the half hour costs. Waiting rather than typing a
+ * different minute, so it stays right the day the meeting moves.
+ */
+function workWhenAble(
+  world: Week,
+  skip?: (id: string) => boolean,
+): void {
+  for (let waited = 0; waited < 60; waited += 1) {
+    if (world.driver.interruption()?.entry.source !== 'meeting') {
+      break;
+    }
+
+    world.driver.step(TICK_INTERVAL_MS);
+  }
+
+  workTheQueue(world, skip);
+}
+
 function sweeps(
   world: Week,
   day: number,
@@ -169,11 +192,11 @@ function sweeps(
   const start = shiftStartTick(day);
 
   runTo(world, start + 90);
-  workTheQueue(world, skip);
+  workWhenAble(world, skip);
   runTo(world, start + 240);
-  workTheQueue(world, skip);
+  workWhenAble(world, skip);
   runTo(world, start + 400);
-  workTheQueue(world, skip);
+  workWhenAble(world, skip);
 }
 
 type Play = (world: Week, day: number) => void;
@@ -182,7 +205,7 @@ const PLAYS: Readonly<Record<string, Play>> = {
   worked: (world, day) => {
     const start = shiftStartTick(day);
     runTo(world, start + 90);
-    workTheQueue(world);
+    workWhenAble(world);
 
     if (day === 3) {
       show(world, ['browser']);
@@ -191,9 +214,9 @@ const PLAYS: Readonly<Record<string, Play>> = {
     }
 
     runTo(world, start + 240);
-    workTheQueue(world);
+    workWhenAble(world);
     runTo(world, start + 400);
-    workTheQueue(world);
+    workWhenAble(world);
   },
   half: (world, day) => {
     sweeps(world, day, halfTheRoster);

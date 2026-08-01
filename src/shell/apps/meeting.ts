@@ -162,6 +162,23 @@ export const MEETING_APP: AppDef = {
     host.replaceChildren(root);
     render();
 
+    /**
+     * And the keyboard, which the pointer rules could not take.
+     *
+     * A terminal that still had focus when the block started kept it: the
+     * takeover made the desk unclickable and left Enter working, so half an
+     * hour nobody could work through was half an hour anybody could work
+     * through as long as they did not touch the mouse. The world refuses the
+     * dispatch now - that is the load-bearing half, in `day-driver.ts` - and
+     * this is the half that means the player is not typing into a window that
+     * is going to refuse them. It is only done when a block is actually
+     * running, so opening this cold from the start menu steals nothing.
+     */
+    if (api.day.interruption()?.entry.source === 'meeting') {
+      root.tabIndex = -1;
+      root.focus();
+    }
+
     const unsubscribeDay = api.day.onChanged(() => {
       render();
     });

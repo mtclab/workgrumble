@@ -8,7 +8,13 @@ import type {
 } from '../../engine-api';
 import { WasmEngine } from '../../engine-api';
 import { FIELDS } from '../fields';
-import { fumbleThreshold, isFumbling, isRefocusing, REFOCUS_TICKS } from '../meters';
+import {
+  fumbleThreshold,
+  isFumbling,
+  isRefocusing,
+  REFOCUS_TICKS,
+  RING_OUT_REFOCUS_TICKS,
+} from '../meters';
 import { helpdeskActionPayload } from './index';
 import { DAY_ACTIONS } from './ids';
 import {
@@ -122,6 +128,13 @@ describe('answering an interruption', () => {
     });
 
     expect(result.ok).toBe(true);
+    // Picking the phone up does not start the window: the twenty-three
+    // minutes are measured from the minute the desk comes BACK, so the verb
+    // that starts them is the one the far side of the conversation.
+    expect(player(FIELDS.refocusUntil)).toBeUndefined();
+    expect(dispatch(DAY_ACTIONS.interruptionRefocus, null, {
+      id: 'call:printer',
+    }).ok).toBe(true);
     expect(player(FIELDS.refocusUntil)).toBe(now + REFOCUS_TICKS);
     expect(isRefocusing(player(FIELDS.refocusUntil), now)).toBe(true);
 
@@ -135,6 +148,7 @@ describe('answering an interruption', () => {
   it('lets the window expire quietly, and slacking does not clear it', () => {
     const now = fixture.now();
     dispatch(DAY_ACTIONS.interruptionAccept, null, { id: 'call:printer' });
+    dispatch(DAY_ACTIONS.interruptionRefocus, null, { id: 'call:printer' });
     const until = player(FIELDS.refocusUntil);
 
     expect(isRefocusing(until, now + REFOCUS_TICKS - 1)).toBe(true);
@@ -163,6 +177,19 @@ describe('answering an interruption', () => {
     expect(isRefocusing(player(FIELDS.refocusUntil), fixture.now())).toBe(false);
     expect(fixture.graph.getField(TICKET, FIELDS.touchLog))
       .toBe('12|interruption.accept|ok');
+  });
+
+  /**
+   * And there is no coming back from a conversation nobody had. A window that
+   * could be opened without an answer is twenty-three bad minutes any caller
+   * could hand the player for nothing.
+   */
+  it('refuses to start a recovery window for a call nobody answered', () => {
+    expectRefusal(
+      dispatch(DAY_ACTIONS.interruptionRefocus, null, { id: 'call:printer' }),
+      'nothing to come back from',
+    );
+    expect(player(FIELDS.refocusUntil)).toBeUndefined();
   });
 
   it('refuses a call claiming to be about something that is not a ticket', () => {
@@ -303,9 +330,11 @@ describe('deferring', () => {
     expect(lines(FIELDS.interruptionDeclined)).toEqual([]);
 
     // Answering it, though, is exactly what is left - and it is a malignant
-    // one, so it costs what a malignant one costs.
+    // one, so it costs what a malignant one costs, from the minute it ends.
     const now = fixture.now();
     expect(dispatch(DAY_ACTIONS.interruptionAccept, null, { id: 'call:x' }).ok)
+      .toBe(true);
+    expect(dispatch(DAY_ACTIONS.interruptionRefocus, null, { id: 'call:x' }).ok)
       .toBe(true);
     expect(player(FIELDS.refocusUntil)).toBe(now + REFOCUS_TICKS);
   });
@@ -313,6 +342,71 @@ describe('deferring', () => {
   it('costs no focus on its own - you did not have the conversation', () => {
     dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:x', declinable: 1 });
     expect(player(FIELDS.refocusUntil)).toBeUndefined();
+  });
+});
+
+describe('a phone that rang out', () => {
+  /**
+   * The finding this verb exists for: without it, ignoring the phone was free
+   * and therefore always correct, which makes three buttons decoration.
+   *
+   * The ordering is the assertion, and it is written as a comparison rather
+   * than as two numbers: ignoring costs FEWER minutes than answering, and
+   * leaves a record answering does not. That is a trade rather than a strictly
+   * better move, which is what "answering must not be dominated" means.
+   */
+  it('costs less than answering, and leaves worse evidence', () => {
+    const now = fixture.now();
+
+    expect(dispatch(DAY_ACTIONS.interruptionMissed, null, {
+      id: 'call:printer',
+      benign: 0,
+    }).ok).toBe(true);
+
+    const ignored = player(FIELDS.refocusUntil);
+
+    expect(ignored).toBe(now + RING_OUT_REFOCUS_TICKS);
+    expect(isRefocusing(ignored, now)).toBe(true);
+    // Not free, and not as expensive as the conversation would have been.
+    expect(ignored).toBeGreaterThan(now);
+    expect(ignored).toBeLessThan(now + REFOCUS_TICKS);
+    // And the thing answering never writes: a record that nobody picked up.
+    expect(lines(FIELDS.interruptionMissed)).toEqual(['call:printer']);
+    expect(lines(FIELDS.interruptionAnswered)).toEqual([]);
+  });
+
+  /** A phone ringing about the ticket on your screen took nothing from you. */
+  it('costs nothing at all when it was about the work in hand', () => {
+    expect(dispatch(DAY_ACTIONS.interruptionMissed, null, {
+      id: 'call:reporter',
+      benign: 1,
+    }).ok).toBe(true);
+
+    expect(player(FIELDS.refocusUntil)).toBeUndefined();
+    expect(lines(FIELDS.interruptionMissed)).toEqual(['call:reporter']);
+  });
+
+  it('cannot ring out twice, or after it was dealt with', () => {
+    dispatch(DAY_ACTIONS.interruptionMissed, null, { id: 'call:printer', benign: 0 });
+    expectRefusal(
+      dispatch(DAY_ACTIONS.interruptionMissed, null, {
+        id: 'call:printer',
+        benign: 0,
+      }),
+      'already rung out once',
+    );
+
+    dispatch(DAY_ACTIONS.interruptionDecline, null, {
+      id: 'call:sales',
+      declinable: 1,
+    });
+    expectRefusal(
+      dispatch(DAY_ACTIONS.interruptionMissed, null, {
+        id: 'call:sales',
+        benign: 0,
+      }),
+      ALREADY_SETTLED_REASON,
+    );
   });
 });
 
@@ -359,7 +453,15 @@ describe('the whole grammar, replayed', () => {
       touches: '20|interruption.accept|ok',
     });
     dispatch(DAY_ACTIONS.interruptionAccept, null, { id: 'call:accounts' });
+    dispatch(DAY_ACTIONS.interruptionRefocus, null, { id: 'call:accounts' });
+    // And one nobody got to at all, which is the fourth thing that can happen
+    // to a ringing phone and the only one nobody decided.
+    dispatch(DAY_ACTIONS.interruptionMissed, null, {
+      id: 'call:warehouse',
+      benign: 0,
+    });
 
+    expect(lines(FIELDS.interruptionMissed)).toEqual(['call:warehouse']);
     expect(lines(FIELDS.interruptionAnswered))
       .toEqual(['call:reporter', 'call:accounts']);
     expect(lines(FIELDS.interruptionDeclined)).toEqual(['call:sales']);

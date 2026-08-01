@@ -214,10 +214,17 @@ describe('the night, taken in one go', () => {
    * forbidden list names the mechanic instead, and it is the line that has to
    * be deleted before anybody can quietly add `refocus_until` to the three.
    *
-   * It is asserted against the classifier rather than through a night, because
-   * the engine emits these events from its own tick handler: the only honest
-   * way to plant an interruption in the forbidden window is to hand the guard
-   * the event an interruption would have produced.
+   * The per-field half is asserted against the classifier, because the engine
+   * emits these events from its own tick handler and the only honest way to
+   * plant an interruption in the forbidden window is to hand the guard the
+   * event an interruption would have produced.
+   *
+   * The WIRING is asserted separately and through the real call, because the
+   * per-field half is worthless on its own: a classifier nobody calls is a
+   * table that stays perfectly correct while the night stops being checked at
+   * all. So the last block below makes `advanceOffHours` actually throw, and
+   * asserts the sentence it throws is the one this same function produced -
+   * which is a claim about the two being connected rather than about either.
    */
   it('refuses a night an interruption happened in, and says which', () => {
     const planted = (field: string): EngineEvent => ({
@@ -257,6 +264,45 @@ describe('the night, taken in one go', () => {
     // And anything else is still refused, in the words it always was.
     expect(offHoursRefusal([planted(FIELDS.stress)]))
       .toContain('1 event(s) happened');
+  });
+
+  /**
+   * And the real call refuses and permits, rather than being a table nobody
+   * asks.
+   *
+   * The block above is a claim about the CLASSIFIER, and a classifier nobody
+   * calls stays perfectly correct while the night stops being checked at all.
+   * This is the other half, through `advanceOffHours` itself: a batch it
+   * cannot vouch for is thrown and the clock does not move, and a batch it can
+   * is lived and the clock does.
+   *
+   * The forbidden-FIELD branch is deliberately not driven from here, and that
+   * is a property rather than a gap: nothing in this engine writes any of
+   * those five fields on a tick, so a real night cannot produce one. The
+   * branch exists for the tick handler somebody adds later, and the sentence
+   * it carries is what will name the mechanic when they do. `assertCaughtScenes`
+   * has the same shape - a loader guarding content that does not exist yet.
+   */
+  it('refuses a night it cannot vouch for, and lives one it can', () => {
+    const refused = night();
+    refused.driver.startShift();
+
+    // A batch with the service clock running: minutes somebody is being paid
+    // for, which is the state the whole coalesce is illegal in.
+    expect(() => {
+      refused.engine.advanceOffHours(60);
+    }).toThrow();
+    expect(refused.engine.now()).toBe(shiftStartTick(1));
+
+    // And the same call over minutes nobody is at the desk for, which is what
+    // every clock-off in the game does: lived, in one batch, and the clock is
+    // where it was asked to be.
+    const lived = night();
+    const from = lived.engine.now();
+
+    expect(lived.engine.slaRunning()).toBe(false);
+    lived.engine.advanceOffHours(30);
+    expect(lived.engine.now()).toBe(from + 30);
   });
 
   /** And the shipped night, walked, produces none of them. */

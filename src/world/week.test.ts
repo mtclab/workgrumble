@@ -84,7 +84,6 @@ function interruption(
     minutes,
     relatedTicket: null,
     declinable: true,
-    synchronous: true,
     severity: 2,
     flavor: {
       caller: 'Somebody in accounts',

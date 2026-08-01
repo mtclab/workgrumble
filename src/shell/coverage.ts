@@ -2167,6 +2167,16 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'nobody can: it is the day loop settling the minute the schedule says '
     + 'an interruption starts on, and what the player does about it is the '
     + 'three verbs above.',
+  [DAY_ACTIONS.interruptionRefocus]: 'The screen coming back, and the '
+    + 'twenty-three minutes starting from there. The day loop dispatches it on '
+    + 'the far side of every conversation that was not about the work in hand; '
+    + 'the player meets it as the chip on the taskbar and as a keyboard that '
+    + 'is briefly worse than it was.',
+  [DAY_ACTIONS.interruptionMissed]: 'A phone that rang out. Nobody pressed '
+    + 'anything - that is what it records - so there is nothing for a control '
+    + 'to be: the day loop settles it at the minute the ringing stops, and '
+    + 'what the player sees is a notice and a shorter version of the same '
+    + 'debuff.',
   [DAY_ACTIONS.meetingRecap]: 'The room emptying, which is what the recap '
     + 'mail is stamped from. Dispatched by the day loop at the end of a block '
     + 'nobody chose to be in; the player meets it as a thread in the inbox '

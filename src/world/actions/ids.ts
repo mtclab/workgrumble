@@ -280,6 +280,24 @@ export const DAY_ACTIONS = {
    */
   interruptionArrived: 'interruption.arrived',
   /**
+   * The screen coming back, and the twenty-three minutes starting from there.
+   *
+   * Its own verb rather than a branch of `accept`, and the reason is a minute
+   * rather than tidiness: `accept` happens when the player picks the phone up
+   * and the debuff is measured from when they put it DOWN. Writing both in one
+   * action meant a six-minute call spent six of its own window recovering from
+   * itself, which is not what the research measures and is not what the spec
+   * says. The meeting already worked this way - it is answered at the end of
+   * its block - and this is what makes a call behave the same.
+   */
+  interruptionRefocus: 'interruption.refocus',
+  /**
+   * A phone that rang out. Not a decision and not a refusal: a record that it
+   * happened and nobody was there, plus the shorter window the ringing costs
+   * on its own.
+   */
+  interruptionMissed: 'interruption.missed',
+  /**
    * The mail that goes round after the sync, stamped by the world at the
    * minute the room emptied.
    *

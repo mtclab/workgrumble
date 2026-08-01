@@ -6,7 +6,12 @@ import type {
   PredData,
 } from '../../engine-api';
 import { FIELDS } from '../fields';
-import { METER_CEILING, METER_FLOOR, REFOCUS_TICKS } from '../meters';
+import {
+  METER_CEILING,
+  METER_FLOOR,
+  REFOCUS_TICKS,
+  RING_OUT_REFOCUS_TICKS,
+} from '../meters';
 import { HELPDESK_TIER, not, TARGET } from './helpers';
 import { DAY_ACTIONS } from './ids';
 
@@ -33,6 +38,8 @@ const ACTOR: NodeRefData = { ref: 'actor' };
 const ID_PARAM = 'id';
 const TOUCHES_PARAM = 'touches';
 const DECLINABLE_PARAM = 'declinable';
+/** Whether the thing that rang out was about the ticket in hand. */
+const BENIGN_PARAM = 'benign';
 
 /** Which interruption this is, named once, and never blank. */
 const NAMED: GuardData[] = [
@@ -89,8 +96,13 @@ export const ALREADY_SETTLED_REASON = 'That one is already dealt with. It '
 export const ALREADY_DEFERRED_REASON = 'You have already asked them to come '
   + 'back, and this IS them coming back. The second time is the conversation.';
 
-export const NOT_DECLINABLE_REASON = 'This is not one you can wave off. Some '
-  + 'of them you can; the world says which, and it says no about this one.';
+export const NOT_DECLINABLE_REASON = 'Attendance is expected. That is the '
+  + 'phrase on the invitation and it is doing a lot of work: nobody would stop '
+  + 'you, and everybody would notice. You are four days into a probation, you '
+  + 'are the newest person in the building, and the newest person does not '
+  + 'skip the sync - or catch up on it afterwards, which is the same sentence '
+  + 'said more politely. Some interruptions you can wave off. This is the one '
+  + 'the hierarchy is made of.';
 
 const SETTLED_GUARD: GuardData = { when: SETTLED, reason: ALREADY_SETTLED_REASON };
 
@@ -104,7 +116,7 @@ const SETTLED_GUARD: GuardData = { when: SETTLED, reason: ALREADY_SETTLED_REASON
  * added to it, both inside the same action, which is one transaction - nothing
  * outside ever sees the intermediate value.
  */
-function startRefocus(): OpData[] {
+function startRefocus(ticks: number): OpData[] {
   return [
     {
       op: 'set_field',
@@ -120,7 +132,7 @@ function startRefocus(): OpData[] {
         add: {
           node: ACTOR,
           field: FIELDS.refocusUntil,
-          by: { const: REFOCUS_TICKS },
+          by: { const: ticks },
           clamp: { min: METER_FLOOR, max: Number.MAX_SAFE_INTEGER },
         },
       },
@@ -141,6 +153,14 @@ function startRefocus(): OpData[] {
  * Neither branch is a parameter saying "this was benign", because a boolean
  * like that is a claim; a target is a thing the world can look at, refuse for
  * being the wrong kind, and write to.
+ *
+ * What `accept` does NOT do is start the refocus window. That is
+ * `interruption.refocus`, dispatched when the screen comes back, because the
+ * twenty-three minutes are measured from the minute the player is handed their
+ * desk rather than from the minute they were taken off it - and a call that
+ * started its own recovery window while the conversation was still running
+ * spent a third of that window recovering from something that had not finished
+ * happening.
  */
 export const INTERRUPTION_ACTION_DATA: readonly ActionData[] = [
   {
@@ -210,12 +230,6 @@ export const INTERRUPTION_ACTION_DATA: readonly ActionData[] = [
           },
         ],
       },
-      // About something else entirely: the twenty-three minutes.
-      {
-        op: 'when',
-        cond: { pred: 'target_missing' },
-        ops: startRefocus(),
-      },
     ],
   },
   {
@@ -264,6 +278,69 @@ export const INTERRUPTION_ACTION_DATA: readonly ActionData[] = [
       },
     ],
     apply: [record(FIELDS.interruptionDeclined)],
+  },
+  /**
+   * The screen, handed back, and the window that starts from there.
+   *
+   * Guarded on the id being in the ANSWERED list, because that is what this is
+   * the far side of: there is no coming back from a conversation nobody had,
+   * and a caller that could write the debuff without one would be a caller
+   * that could hand the player twenty-three bad minutes for nothing.
+   */
+  {
+    id: DAY_ACTIONS.interruptionRefocus,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...NAMED,
+      {
+        when: not(listed(FIELDS.interruptionAnswered)),
+        reason: 'There is nothing to come back from. That one was never '
+          + 'answered, and a window for finding your place again after a '
+          + 'conversation that did not happen is a cost with no cause.',
+      },
+    ],
+    apply: startRefocus(REFOCUS_TICKS),
+  },
+  /**
+   * The phone that rang out.
+   *
+   * Two things, and the second is the one that stops "ignore it" from being
+   * the correct answer to everything. The RECORD is the fourth list - not a
+   * decision, because nobody decided, but evidence that the desk did not pick
+   * up. The shorter window is the ringing itself: attention residue is about
+   * the interruption rather than about the conversation, so a phone nobody
+   * answered still pulled the thread, and it pulled it for less time because
+   * there was no conversation to come back from.
+   *
+   * The window is skipped entirely when it was about the work in hand, which
+   * is the same rule `accept` keeps: a colleague ringing about the ticket on
+   * your screen is not the thing that costs you your place.
+   */
+  {
+    id: DAY_ACTIONS.interruptionMissed,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...NAMED,
+      SETTLED_GUARD,
+      {
+        when: listed(FIELDS.interruptionMissed),
+        reason: 'That one has already rung out once. A phone cannot go '
+          + 'unanswered twice in the same minute it went unanswered in.',
+      },
+      {
+        when: not({ pred: 'param_int_in', param: BENIGN_PARAM, values: [0, 1] }),
+        reason: 'Whether it was about the work in hand is a yes or a no, and '
+          + 'this is neither.',
+      },
+    ],
+    apply: [
+      record(FIELDS.interruptionMissed),
+      {
+        op: 'when',
+        cond: not({ pred: 'param_int_in', param: BENIGN_PARAM, values: [1] }),
+        ops: startRefocus(RING_OUT_REFOCUS_TICKS),
+      },
+    ],
   },
   /**
    * The arrival itself, which is charged before anybody has decided anything.

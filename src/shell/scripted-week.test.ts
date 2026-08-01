@@ -166,6 +166,32 @@ function workTheQueue(
   }
 }
 
+/**
+ * The queue, worked at the first minute the player is actually at the desk.
+ *
+ * A sweep booked for half past ten on the Wednesday is a sweep that runs
+ * straight into the sync, and the sync means it: nothing dispatched from a
+ * meeting reaches the world. So competent play waits the block out, which is
+ * what a person does and is why the meeting costs what it costs. It is
+ * expressed as "wait for the room to empty" rather than as a different minute
+ * because a minute typed around a meeting would stop being right the day the
+ * meeting moves.
+ */
+function workWhenAble(
+  world: Week,
+  skip?: (id: string) => boolean,
+): void {
+  for (let waited = 0; waited < 60; waited += 1) {
+    if (world.driver.interruption()?.entry.source !== 'meeting') {
+      break;
+    }
+
+    world.driver.step(TICK_INTERVAL_MS);
+  }
+
+  workTheQueue(world, skip);
+}
+
 interface WalkedWeek {
   readonly hash: string;
   readonly tick: number;
@@ -267,7 +293,7 @@ function workedWeek(world: Week, day: number): void {
   const start = shiftStartTick(day);
 
   runTo(world, start + 90);
-  workTheQueue(world);
+  workWhenAble(world);
 
   if (day === 3) {
     show(world, ['browser']);
@@ -280,9 +306,9 @@ function workedWeek(world: Week, day: number): void {
   // passes in it is not competent play any more - it is somebody who went home
   // at half two.
   runTo(world, start + 240);
-  workTheQueue(world);
+  workWhenAble(world);
   runTo(world, start + 400);
-  workTheQueue(world);
+  workWhenAble(world);
 }
 
 /** And the week nobody did. The queue is left exactly as it arrives. */
@@ -321,11 +347,11 @@ function sweeps(
   const start = shiftStartTick(day);
 
   runTo(world, start + 90);
-  workTheQueue(world, skip);
+  workWhenAble(world, skip);
   runTo(world, start + 240);
-  workTheQueue(world, skip);
+  workWhenAble(world, skip);
   runTo(world, start + 400);
-  workTheQueue(world, skip);
+  workWhenAble(world, skip);
 }
 
 function halfWeek(world: Week, day: number): void {
@@ -630,9 +656,37 @@ interface GoldenWeek {
  *    work was closed and how much of it kept its deadline. A slice that
  *    quietly put being interrupted into the mark would separate the pairs at
  *    the bottom of this file, and that is the assertion which would go red.
+ *
+ * FOURTEENTH MOVE (0.3.0, the adversarial review). Both hashes and two lines
+ * per timeline. Not one count, not one meter, not one penny, not one ending -
+ * which is the claim, because three of the five findings behind it changed
+ * what the world WRITES rather than what the week is worth.
+ *
+ *  - THE TIMELINES gain `notice:You did not get to that one` twice apiece, at
+ *    1572 and 4527, which are the minutes the two calls stop ringing. Neither
+ *    profile answers a phone, and until this review that was FREE: ignoring a
+ *    call cost nothing at all, which made "ignore it" the correct answer to
+ *    every phone and the three buttons decoration. A ring-out now writes the
+ *    fourth list (`interruption_missed`) and, for a malignant one, a shorter
+ *    recovery window - eleven minutes against twenty-three. Answering still
+ *    costs more; the difference is that ignoring now leaves the worse record.
+ *  - THE HASHES move for that fourth list and for `refocus_until`, which is
+ *    now written when the DESK COMES BACK rather than when the phone was
+ *    picked up. The meeting already worked that way, so its own figure is
+ *    unchanged; what is new in these two weeks is the eleven-minute window
+ *    each rung-out call leaves.
+ *  - THE WEDNESDAY SWEEP MOVED HALF AN HOUR and moved nothing else. Both
+ *    profiles book their first sweep for half past ten, which is the minute
+ *    the sync starts, and the sync now MEANS it: nothing dispatched from a
+ *    meeting reaches the world, on a keyboard as well as on a mouse. So the
+ *    walk waits the block out, the way a person does, and every ticket still
+ *    closes on the day it arrived - five in, five closed on the Wednesday,
+ *    same as before. That the row did not move is the interesting part: half
+ *    an hour is expensive and this week had it to spare, which is what a
+ *    meeting is supposed to feel like rather than what it is supposed to cost.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: '6f3b040aad9925b8',
+  hash: '53291124ae96c862',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -697,6 +751,7 @@ const GOLDEN_WORKED: GoldenWeek = {
   // nine on the Wednesday, and one browser found on a screen.
   timeline: [
     'interrupted:call:spooler@1566',
+    'notice:You did not get to that one@1572',
     'notice:They are back@1740',
     'dm:person:terry@1810',
     'notice:Maintenance window@2940',
@@ -705,6 +760,7 @@ const GOLDEN_WORKED: GoldenWeek = {
     'caught:browser@3076',
     'notice:That is 10 minutes@3076',
     'interrupted:call:annexe-printer@4522',
+    'notice:You did not get to that one@4527',
     'review:passed@6180',
     'beer@6300',
     'week:passed@6300',
@@ -727,7 +783,7 @@ const GOLDEN_IDLE: GoldenWeek = {
   // this week takes on the way through are completely different and every one
   // of them is overwritten by the next. Moved by 0.2.7 for the same single
   // integer the worked week moved for, and for nothing else.
-  hash: '3c7626b18073176b',
+  hash: '3fd276447876719c',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.
@@ -791,6 +847,7 @@ const GOLDEN_IDLE: GoldenWeek = {
   },
   timeline: [
     'interrupted:call:spooler@1566',
+    'notice:You did not get to that one@1572',
     'caught:bubbles@1632',
     'notice:That is 10 minutes@1632',
     'caught:bubbles@1723',
@@ -810,6 +867,7 @@ const GOLDEN_IDLE: GoldenWeek = {
     'caught:bubbles@4512',
     'notice:That is 10 minutes@4512',
     'interrupted:call:annexe-printer@4522',
+    'notice:You did not get to that one@4527',
     'caught:bubbles@4615',
     'notice:That is 10 minutes@4615',
     'caught:bubbles@4719',

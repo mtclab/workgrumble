@@ -156,6 +156,23 @@ export const DRIVER_INTERVAL_MS = 250;
 export const NOTHING_RINGING = 'Nothing is interrupting you. Whatever this '
   + 'was about, it has stopped being about it.';
 
+/**
+ * What the world says to anything the player tries to DO while a block owns
+ * the screen.
+ *
+ * It is a refusal from the driver rather than a disabled button, and that is
+ * the whole point of it. Making the desk unreachable with pointer-events was
+ * making it unreachable with a MOUSE: a terminal that still had the keyboard
+ * when the meeting started would take a command and Enter would still submit
+ * it, so the half hour nobody can work through was a half hour anybody could
+ * work through as long as they did not click anything. A rule that only holds
+ * for one input device is a rule the product does not have.
+ */
+export const IN_A_MEETING_REASON = 'You are in a meeting. Not at the desk, '
+  + 'not near the desk, and not in a position to do anything about any of it '
+  + 'until the room empties - which is the entire cost of the half hour and '
+  + 'is why everybody dreads it.';
+
 export const SPEEDS = [1, 2, 4] as const;
 
 export type Speed = (typeof SPEEDS)[number];
@@ -540,6 +557,10 @@ export class DayDriver implements DayApi {
    * does to the desk, the money and the minute the crash is measured from.
    */
   public drink(): DispatchResult {
+    if (this.blockedByTakeover()) {
+      return { ok: false, reason: IN_A_MEETING_REASON };
+    }
+
     const now = this.engine.now();
 
     return this.engine.dispatch(DAY_ACTIONS.consumableDrink, this.actor, null, {
@@ -549,7 +570,9 @@ export class DayDriver implements DayApi {
   }
 
   public tidyDesk(): DispatchResult {
-    return this.engine.dispatch(DAY_ACTIONS.deskTidy, this.actor, null, {});
+    return this.blockedByTakeover()
+      ? { ok: false, reason: IN_A_MEETING_REASON }
+      : this.engine.dispatch(DAY_ACTIONS.deskTidy, this.actor, null, {});
   }
 
   /**
@@ -569,6 +592,10 @@ export class DayDriver implements DayApi {
     target: NodeId | null,
     params: Record<string, string | number | boolean | null>,
   ): DispatchResult {
+    if (this.blockedByTakeover()) {
+      return { ok: false, reason: IN_A_MEETING_REASON };
+    }
+
     // Read BEFORE: this dispatch may resolve the ticket it is about, and a
     // fix that closes a ticket is still the first time anybody touched it.
     const witnesses = target === null ? [] : this.ticketsAbout(target);
@@ -906,12 +933,9 @@ export class DayDriver implements DayApi {
 
   /** The bottle in the fridge with your name on it. */
   public beer(): DispatchResult {
-    return this.engine.dispatch(
-      DAY_ACTIONS.consumableBeer,
-      this.actor,
-      null,
-      {},
-    );
+    return this.blockedByTakeover()
+      ? { ok: false, reason: IN_A_MEETING_REASON }
+      : this.engine.dispatch(DAY_ACTIONS.consumableBeer, this.actor, null, {});
   }
 
   public driverState(): DriverState {
@@ -1705,38 +1729,54 @@ export class DayDriver implements DayApi {
     const live: InterruptionEntry[] = [];
 
     for (const entry of this.interruptions_.entries) {
-      if (
-        this.hasDecided(FIELDS.interruptionAnswered, entry.id)
-        || this.hasDecided(FIELDS.interruptionDeclined, entry.id)
-      ) {
-        // An answered call still owns its minutes - the conversation is
-        // happening - so it stays live until the window runs out. A declined
-        // one does not, and the meeting is answered at the END of its block
-        // rather than at the start, so neither of them is cut short by this.
-        if (this.hasDecided(FIELDS.interruptionAnswered, entry.id)) {
-          live.push(entry);
-        }
-
+      // Declining is the one answer that hands the screen straight back, so a
+      // declined entry owns no minutes at all from the minute it was refused.
+      if (this.hasDecided(FIELDS.interruptionDeclined, entry.id)) {
         continue;
       }
 
-      if (!this.hasDecided(FIELDS.interruptionDeferred, entry.id)) {
-        live.push(entry);
-        continue;
-      }
+      // WHERE it is comes first, and it is asked of the world rather than of
+      // what has been decided since. An entry somebody pushed back lives at
+      // the minute the callback was placed on, and it goes on living there
+      // once it has been answered - the conversation is happening, and it is
+      // happening in the callback's window rather than in the one twenty
+      // minutes earlier that nobody was in.
+      //
+      // Reading those two questions in the wrong order is a real bug and was
+      // one: an answered callback fell back to the ORIGINAL entry, whose
+      // minutes were long past, so `interruption()` went null the instant the
+      // player picked the phone up and the conversation vanished out from
+      // under them.
+      const placed = this.hasDecided(FIELDS.interruptionDeferred, entry.id)
+        ? placeDeferred(entry, this.interruptions_, this.interruptionsBlocked_)
+        : entry;
 
-      const callback = placeDeferred(
-        entry,
-        this.interruptions_,
-        this.interruptionsBlocked_,
-      );
-
-      if (callback !== null) {
-        live.push(callback);
+      // A callback with nowhere left in the day to go is a call that never
+      // came back, which is a thing that happens.
+      if (placed !== null) {
+        live.push(placed);
       }
     }
 
     return live;
+  }
+
+  /**
+   * Whether something is holding the screen in a way that makes work
+   * impossible rather than merely awkward.
+   *
+   * A MEETING does. A ringing phone deliberately does not: a call is a window,
+   * the normal rules keep applying underneath one, and being on the phone has
+   * never been a defence for anything. The line is drawn on the source rather
+   * than on "is a takeover on" so that the two stay different things.
+   *
+   * It is checked in the driver rather than in each surface because the shell
+   * has five ways to reach a verb and a rule enforced in four of them is a
+   * rule with a hole in it - which is exactly what the pointer-events version
+   * of this was: a terminal with the keyboard still submitted commands.
+   */
+  private blockedByTakeover(): boolean {
+    return this.interruption()?.entry.source === 'meeting';
   }
 
   /** Whether an id is in one of the three lists the world keeps. */
@@ -1861,6 +1901,44 @@ export class DayDriver implements DayApi {
         'The recap is in your inbox. It is the meeting, in full, with '
         + 'nothing taken out of it, because nothing was said that could be.',
       );
+    }
+
+    const benign = isBenign(entry, this.ticketInHand());
+
+    if (this.hasDecided(FIELDS.interruptionAnswered, entry.id)) {
+      // The screen is the player's again, and THIS is the minute the
+      // twenty-three start from. A window opened when the phone was picked up
+      // would have spent a third of itself recovering from a conversation that
+      // had not finished happening.
+      //
+      // Benign is asked here rather than remembered from the answer, for the
+      // same reason it is asked at both ends everywhere else in this family:
+      // somebody who took a call about the ticket on their screen and is
+      // still on it when they put the phone down did not lose their place.
+      if (!benign) {
+        this.engine.dispatch(DAY_ACTIONS.interruptionRefocus, this.actor, null, {
+          id: entry.id,
+        });
+      }
+    } else {
+      // Nobody got to it. That is not a decision and it is not free: the
+      // ringing pulled the thread whether or not anybody answered, and the
+      // world keeps a record that this desk did not pick up - which is what
+      // stops "ignore it" from being the correct answer to every phone.
+      const missed = this.engine.dispatch(
+        DAY_ACTIONS.interruptionMissed,
+        this.actor,
+        null,
+        { id: entry.id, benign: benign ? 1 : 0 },
+      );
+
+      if (missed.ok) {
+        this.handlers.onNotice?.(
+          'You did not get to that one',
+          'It rang out. Nobody is going to mention it, and it is written '
+          + 'down, which is how most of the things nobody mentions work.',
+        );
+      }
     }
 
     this.handlers.onInterruptionEnded?.(entry);

@@ -9,6 +9,7 @@ import {
 } from './hours';
 import {
   buildInterruptionSchedule,
+  byCodepoint,
   DEFER_MINUTES,
   deferredArrival,
   EMPTY_INTERRUPTION_PLAN,
@@ -41,7 +42,6 @@ function slot(
     minutes: 6,
     relatedTicket: null,
     declinable: true,
-    synchronous: true,
     severity: 2,
     flavor: {
       caller: 'Somebody in accounts',
@@ -133,7 +133,6 @@ describe('the interruption schedule', () => {
       source: 'chat',
       relatedTicket: 'ticket:locked-account',
       declinable: false,
-      synchronous: false,
       severity: 3,
       flavor: { caller: 'Ada Mchale', line: 'It is doing it again.' },
     });
@@ -146,12 +145,38 @@ describe('the interruption schedule', () => {
     expect(entry?.source).toBe('chat');
     expect(entry?.relatedTicket).toBe('ticket:locked-account');
     expect(entry?.declinable).toBe(false);
-    expect(entry?.synchronous).toBe(false);
     expect(entry?.severity).toBe(3);
     expect(entry?.flavor).toEqual({
       caller: 'Ada Mchale',
       line: 'It is doing it again.',
     });
+  });
+});
+
+/**
+ * Two ids on one minute, ordered by the only ordering that is the same
+ * everywhere.
+ *
+ * The tie-break lives inside a SEEDED schedule, so its answer is part of what
+ * "the same seed gives the same week" means. `localeCompare` was here, and it
+ * answers according to the reader's locale: in most English collations a
+ * lower-case letter sorts before an upper-case one, and by codepoint it does
+ * not. Two players on one seed would have got two different weeks, in the one
+ * place nobody would ever have looked.
+ */
+describe('the tie-break, which is part of the seed', () => {
+  it('orders equal minutes by codepoint rather than by the reader', () => {
+    expect(byCodepoint('Zed', 'alpha')).toBeLessThan(0);
+    expect('Zed'.localeCompare('alpha')).toBeGreaterThan(0);
+
+    const schedule = buildInterruptionSchedule(SEED, DAY, plan([
+      slot('call:alpha', 11 * 60),
+      slot('call:Zed', 11 * 60),
+    ]));
+
+    // Upper case first, because 'Z' is 90 and 'a' is 97 - and because that is
+    // the answer on every machine rather than on this one.
+    expect(ids(schedule.entries)).toEqual(['call:Zed', 'call:alpha']);
   });
 });
 
