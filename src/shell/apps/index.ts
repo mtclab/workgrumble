@@ -4,6 +4,7 @@ import { BEER_APP } from './beer';
 import { BRIEF_APP } from './brief';
 import { BROWSER_APP } from './browser';
 import { BUBBLES_APP } from './bubbles';
+import { CALL_APP } from './call';
 import { CAUGHT_APP } from './caught';
 import { CHAT_APP } from './chat';
 import { CMD_APP } from './cmd';
@@ -12,6 +13,7 @@ import { EVENTS_APP } from './events';
 import { FEEDBACK_APP } from './feedback';
 import { KB_APP } from './kb';
 import { MAIL_APP } from './mail';
+import { MEETING_APP } from './meeting';
 import { loadManifest } from './manifest';
 import { REMOTE_APP } from './remote';
 import { REVIEW_APP } from './review';
@@ -37,6 +39,8 @@ export const APP_MANIFEST = assertCaughtScenes(loadManifest([
   SCORECARD_APP,
   WEEKEND_APP,
   CAUGHT_APP,
+  CALL_APP,
+  MEETING_APP,
   REVIEW_APP,
   BEER_APP,
   TICKETS_APP,

@@ -213,6 +213,30 @@ async function boot(): Promise<void> {
         shell.notify('Somebody has messaged you directly', line);
       }
     },
+    // The phone, and the half hour that was in the summons mail on Monday.
+    // Two windows because they are two different things: a call is a window
+    // like any other and the normal rules keep applying underneath it - the
+    // boss key works, the lead still comes round - while the meeting is a
+    // takeover and the desk is genuinely unreachable for the whole of it.
+    onInterruption: (view) => {
+      const meeting = view.entry.source === 'meeting';
+      shell.openApp(meeting ? 'meeting' : 'call');
+      shell.notify(
+        meeting ? 'You are in a meeting' : 'The phone is ringing',
+        meeting
+          ? 'The one from the summons mail. It is half an hour, it is not '
+            + 'optional, and the queue has not been told about it.'
+          : view.callback
+            ? 'They are ringing back, which is the one you said you would '
+              + 'take. This time it is the conversation.'
+            : 'Somebody wants you. The queue carries on either way.',
+      );
+    },
+    // And the minute the screen is yours again, however it ended. The world
+    // has already been told everything it is owed by the time this fires.
+    onInterruptionEnded: (entry) => {
+      shell.closeApp(entry.source === 'meeting' ? 'meeting' : 'call');
+    },
     // Friday at three. The world has already decided - the verb is guarded on
     // the one number that decides it - so what is left is the conversation.
     onReview: (outcome) => {

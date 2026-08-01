@@ -712,6 +712,92 @@ const ENTRIES = [
     run: 'week',
   },
 
+  /* -- the phone -----------------------------------------------------------
+   *
+   * A call is a window rather than a takeover, deliberately: the boss key
+   * still works underneath one and the lead still comes round, because being
+   * on the phone is not a defence and never has been.
+   */
+  {
+    id: 'call.window',
+    surface: 'call',
+    control: 'window-call',
+    does: 'A phone ringing, with a name and a subject on it, over a queue '
+      + 'whose deadlines are all still running.',
+    window: { routes: ['start-menu', 'day'] },
+    run: 'week',
+  },
+  {
+    id: 'call.answer',
+    surface: 'call',
+    control: 'call-answer',
+    does: 'Picks it up, which opens a conversation that costs the rest of the '
+      + 'window and starts the refocus debuff when it was about nothing.',
+    actions: [DAY_ACTIONS.interruptionAccept],
+    run: 'week',
+  },
+  {
+    id: 'call.conversation',
+    surface: 'call',
+    control: 'call-option-<n>',
+    does: 'One line of the call, which on a related one lands a work note on '
+      + 'the ticket - a call can be how a ticket moves.',
+    run: 'week',
+  },
+  {
+    id: 'call.defer',
+    surface: 'call',
+    control: 'call-defer',
+    does: 'Asks them to ring back, which sends a line now and buys twenty '
+      + 'minutes, once.',
+    actions: [DAY_ACTIONS.interruptionDefer],
+    run: 'week',
+  },
+  {
+    id: 'call.callback',
+    surface: 'call',
+    control: 'call-decline at the second arrival',
+    does: 'The call coming back, and refusing to be waved off the second '
+      + 'time, in the world\'s own sentence.',
+    run: 'week',
+  },
+  {
+    id: 'call.decline',
+    surface: 'call',
+    control: 'call-decline',
+    does: 'Says no, where the entry says no is available, and hands the rest '
+      + 'of the minutes straight back.',
+    actions: [DAY_ACTIONS.interruptionDecline],
+    run: 'week',
+  },
+
+  /* -- the half hour nobody chose ----------------------------------------- */
+  {
+    id: 'meeting.window',
+    surface: 'meeting',
+    control: 'window-meeting',
+    does: 'The mandatory sync: authored beats on their own minutes, a count '
+      + 'of the queue that cannot be touched, and every clock running.',
+    window: { routes: ['start-menu', 'day'] },
+    run: 'week',
+  },
+  {
+    id: 'meeting.decline',
+    surface: 'meeting',
+    control: 'meeting-decline',
+    does: 'Tries to skip the sync and is told, by the world rather than by a '
+      + 'missing button, why a junior does not.',
+    run: 'week',
+  },
+  {
+    id: 'meeting.defer',
+    surface: 'meeting',
+    control: 'meeting-defer',
+    does: 'Tries to catch up on it afterwards instead, and gets the same '
+      + 'answer for the same reason.',
+    run: 'week',
+  },
+
   /* -- the review --------------------------------------------------------- */
   {
     id: 'review.window',
@@ -2076,18 +2162,6 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'same matrix on the review window and the evening scorecard for three '
     + 'weeks. It cannot happen in the probation week, which is the only week '
     + 'the shipped game deals - the pacing rules forbid it.',
-  [DAY_ACTIONS.interruptionAccept]: 'Answering an interruption. The rails '
-    + 'shipped ahead of the content they carry: the choice grammar, the cost '
-    + 'model and the refocus debuff are the world\'s, and the shipped '
-    + 'probation week schedules no interruption at all, so there is no window '
-    + 'on the artifact for anybody to press yet. The verbs are driven against '
-    + 'the real engine in `world/actions/interruptions.test.ts`, and they move '
-    + 'to this list\'s sibling above - with a control apiece - in the release '
-    + 'that authors the calls and the meeting.',
-  [DAY_ACTIONS.interruptionDefer]: 'Asking them to come back, which they do, '
-    + 'once, and not declinably. Same rails, same reason, same release.',
-  [DAY_ACTIONS.interruptionDecline]: 'Saying no, where the world says no is '
-    + 'available. Same rails, same reason, same release.',
   [DAY_ACTIONS.interruptionArrived]: 'The phone ringing, which is charged '
     + 'before anybody has decided anything about it. Nobody presses it and '
     + 'nobody can: it is the day loop settling the minute the schedule says '
@@ -2244,6 +2318,12 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'brief-open-mail',
   'scorecard-clock-off',
   'caught-dismiss',
+  'call-answer',
+  'call-defer',
+  'call-decline',
+  'call-option-*',
+  'meeting-defer',
+  'meeting-decline',
   'review-dismiss',
   'beer-open',
   'weekend-onward',

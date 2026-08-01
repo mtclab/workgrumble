@@ -3586,6 +3586,143 @@ input {
   color: var(--color-ink-soft);
 }
 
+
+/* ------------------------------------------------ the phone, and the room */
+
+/* The ringing window. It is a window like any other on purpose: a call is not
+   a caught scene, so the boss key still works underneath it and the lead can
+   still find a forum on the screen behind it. */
+.call-app {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.call-head {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.call-portrait {
+  display: grid;
+  place-items: center;
+  width: var(--size-portrait);
+  height: var(--size-portrait);
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+}
+
+.call-subject,
+.call-state {
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+}
+
+/* The one that is about the work in hand reads differently, because it IS
+   different: it is the job arriving by phone rather than instead of it. */
+.call-app[data-benign="true"] .call-state {
+  color: var(--color-ink);
+}
+
+.call-answers {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* Still on the screen where the world will refuse it. The refusal is the
+   teaching; a button that vanished would teach the rule without saying it. */
+.call-answers button[data-available="false"] {
+  opacity: 0.7;
+}
+
+.call-note,
+.meeting-note {
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+}
+
+/* The meeting. Same furniture as the caught scene, because it is the same
+   class of thing: a screen the day put in front of you. */
+.meeting-app {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.meeting-head {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.meeting-room {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-height: var(--size-transcript);
+  max-height: var(--size-transcript);
+  padding: var(--space-3);
+  overflow-y: auto;
+  background: var(--color-surface-field);
+  box-shadow: var(--bevel-sunken);
+  list-style: none;
+}
+
+.meeting-beat {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.meeting-beat-who {
+  font-weight: 700;
+  font-size: var(--text-xs);
+  color: var(--color-ink-soft);
+}
+
+/* The queue, counted rather than listed: a list is a thing somebody would try
+   to click, and the whole point is that they cannot. */
+.meeting-desk {
+  padding: var(--space-3);
+  background: var(--color-alarm-soft);
+  color: var(--color-alarm);
+  font-weight: 700;
+}
+
+/*
+ * The takeover itself.
+ *
+ * The desk is unreachable for the whole of a booked half hour, and it is done
+ * with pointer-events rather than with a modal because this shell has no
+ * modals and a mechanic is not a reason to grow one. Everything stays VISIBLE
+ * - the clock runs, the taskbar clock runs, the queue is right there - which
+ * is the joke and is also the honest arithmetic. The meeting window itself is
+ * exempt, and so is the pause button, because pause is the one control this
+ * product promises is always available.
+ */
+.screen-desktop[data-takeover="meeting"] .desktop-icons,
+.screen-desktop[data-takeover="meeting"] .desk-overlay,
+.screen-desktop[data-takeover="meeting"] .start-button,
+.screen-desktop[data-takeover="meeting"] .taskbar-windows,
+.screen-desktop[data-takeover="meeting"] .tray-button {
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+.screen-desktop[data-takeover="meeting"] .window-layer > *:not([data-app-id="meeting"]) {
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+/* The debuff, on the taskbar beside the chip that says the hands are going.
+   Two sentences rather than one: what is happening, and why. */
+.refocus-chip {
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-ink-soft);
+}
+
 /* ------------------------------------------------- reduced motion (LAST) */
 /* Declared after every base animation rule on purpose: same specificity,
    so source order is the only thing keeping these wins honest. */

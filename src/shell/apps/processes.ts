@@ -44,6 +44,8 @@ export const PROGRAM_IMAGES: Readonly<Record<string, ProgramImage>> = {
   scorecard: { image: 'DAYEND.EXE', title: 'Day scorecard' },
   weekend: { image: 'WEEKEND.EXE', title: 'Week summary' },
   caught: { image: 'MANAGER.EXE', title: 'A word' },
+  call: { image: 'PHONE.EXE', title: 'Incoming call' },
+  meeting: { image: 'CALENDAR.EXE', title: 'In a meeting' },
   review: { image: 'REVIEW.EXE', title: 'Probation review' },
   beer: { image: 'FRIDGE.EXE', title: 'The fridge' },
   tickets: { image: 'HELPDESK.EXE', title: 'Ticket queue' },

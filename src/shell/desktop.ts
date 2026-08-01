@@ -107,6 +107,7 @@ export class Desktop {
   private readonly dayState: HTMLButtonElement;
   private readonly pauseButton: HTMLButtonElement;
   private readonly fumbleChip: HTMLElement;
+  private readonly refocusChip: HTMLElement;
   private readonly saveChip: HTMLElement;
   private readonly bossChip: HTMLElement;
   private readonly doorFlash: HTMLElement;
@@ -299,6 +300,23 @@ export class Desktop {
       + 'than can be said for the rest of this job.';
     this.fumbleChip.hidden = true;
 
+    // The debuff, said out loud while it runs.
+    //
+    // It is a chip rather than a number because that is what it is: a short
+    // window in which the hands are worse, ending on its own, managed by
+    // nobody. A player who was quietly made worse at their job and never told
+    // would experience the twenty-three minutes as the game being broken, and
+    // the whole reason this mechanic is in the world at all is that it is the
+    // honest, VISIBLE version of a thing the research measures.
+    this.refocusChip = document.createElement('span');
+    this.refocusChip.className = 'fumble-chip refocus-chip';
+    this.refocusChip.dataset.testid = 'refocus-chip';
+    this.refocusChip.textContent = 'Where was I...';
+    this.refocusChip.title = 'Something took you off the work. For a few '
+      + 'minutes the shakes come easier than they otherwise would. It wears '
+      + 'off on its own and there is nothing to do about it.';
+    this.refocusChip.hidden = true;
+
     // The other chip: the one that says what the shaking taskbar means, for
     // anybody who has not learned the language of the floorboards yet.
     this.bossChip = document.createElement('span');
@@ -319,6 +337,7 @@ export class Desktop {
     tray.append(
       this.bossChip,
       this.saveChip,
+      this.refocusChip,
       this.fumbleChip,
       dayControls,
       this.trayButton,
@@ -1170,6 +1189,15 @@ export class Desktop {
     }
   }
 
+  /**
+   * Closes a window the DAY opened and has finished with. Named separately
+   * from `openApp` because it has one caller and one job: the shell hands it
+   * the id of a scene that is over.
+   */
+  public closeApp(appId: string): void {
+    this.closeWindowIfOpen(appId);
+  }
+
   private closeWindowIfOpen(appId: string): void {
     const state = this.requireWindowManager();
 
@@ -1190,6 +1218,22 @@ export class Desktop {
         : lunch
           ? 'Lunch'
           : 'Shift';
+
+    // The desk, unreachable, for exactly as long as the block runs.
+    //
+    // It is an attribute on the screen rather than a modal, because a modal is
+    // a thing this shell does not have and should not grow one for a mechanic:
+    // the CSS takes the pointer off everything except the meeting window, the
+    // clock and the queue carry on underneath it in full view, and the minute
+    // the half hour is over the attribute goes and everything is live again. A
+    // ringing phone deliberately does NOT do this - a call is a window, and
+    // the normal rules keep applying underneath one.
+    const takeover = day.interruption();
+
+    this.element.dataset.takeover = takeover !== null
+      && takeover.entry.source === 'meeting'
+      ? 'meeting'
+      : 'none';
 
     this.dayState.textContent = paused ? `${label} · paused` : label;
     this.dayState.dataset.state = state;
@@ -1259,7 +1303,13 @@ export class Desktop {
       && isFumblingWith(stress, desk.phase, refocusing);
 
     this.element.dataset.fumbling = String(fumbling);
+    this.element.dataset.refocusing = String(onShift && refocusing);
     this.element.dataset.drink = desk.phase;
+    // On while the window runs and off the minute it expires - which is the
+    // whole of the interaction, because there is none. It is deliberately not
+    // hidden by the fumble chip: they are two different sentences, one about
+    // what is happening to the hands and one about why.
+    this.refocusChip.hidden = !(onShift && refocusing);
     this.fumbleChip.hidden = !fumbling;
     this.fumbleChip.textContent = desk.phase === 'crash'
       ? 'Coming down'

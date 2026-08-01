@@ -165,6 +165,20 @@ export class Shell {
   }
 
   /**
+   * And takes one back off it, from outside the app layer.
+   *
+   * The day uses it for the windows it opened ITSELF and has now finished
+   * with: a call that has been answered, waved off or simply rung out, and a
+   * meeting whose half hour is over. A window left standing after the thing it
+   * was about has ended is a screen telling the player something that is no
+   * longer true - and with no desktop there is nothing to close, which is not
+   * an error.
+   */
+  public closeApp(id: string): void {
+    this.desktop?.closeApp(id);
+  }
+
+  /**
    * Slack apps with a window open and not minimised.
    *
    * The pressure layer needs to know what is genuinely ON SCREEN - a minimised

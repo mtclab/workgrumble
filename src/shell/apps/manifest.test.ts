@@ -73,6 +73,8 @@ describe('shipped manifest', () => {
       'scorecard',
       'weekend',
       'caught',
+      'call',
+      'meeting',
       'review',
       'beer',
       'tickets',
@@ -120,6 +122,8 @@ describe('shipped manifest', () => {
       'scorecard',
       'weekend',
       'caught',
+      'call',
+      'meeting',
       'review',
       'beer',
       'tickets',
@@ -147,7 +151,18 @@ describe('shipped manifest', () => {
   it('keeps the day screens off the desktop and in the start menu', () => {
     const hidden = APP_MANIFEST.filter((app) => app.desktop === false);
     expect(hidden.map(({ id }) => id))
-      .toEqual(['brief', 'scorecard', 'weekend', 'caught', 'review', 'beer']);
+      .toEqual([
+        'brief',
+        'scorecard',
+        'weekend',
+        'caught',
+        // The two the DAY opens and the player never asks for: a phone that
+        // is ringing, and half an hour that was booked on the Monday.
+        'call',
+        'meeting',
+        'review',
+        'beer',
+      ]);
 
     const dayScreens = new Set(hidden.map(({ id }) => id));
 
@@ -164,6 +179,8 @@ describe('shipped manifest', () => {
       'scorecard',
       'weekend',
       'caught',
+      'call',
+      'meeting',
       'review',
       'beer',
       'tickets',
