@@ -386,6 +386,17 @@ interface GoldenWeek {
  * cables that were always implied - all seeded, none of it moved by anything
  * in either week, and therefore visible only in the hash of the world.
  *
+ * EIGHTH MOVE (0.2.3, the filesystem). Both hashes, and nothing else in either
+ * week again: same arrivals (22 and 22), same closes, same breaches, same
+ * pence, same meters, same timelines, same outcome on the Friday. Two hundred
+ * directories and files are in Monday's graph, with the `contains` edges under
+ * them and a free-space figure on every machine - all seeded. One drive fact
+ * MOVES in the worked week and it moves with the queue it belongs to: the
+ * spooler ticket fills the spool directory on PRINT-01 with the jobs behind
+ * its queue, and clearing that queue empties it in the same breath, which is
+ * asserted after every mutation that touches a queue rather than left to a
+ * hash. The idle week never touches it, and neither week's numbers move.
+ *
  * One thing that is NOT in these numbers is worth writing down beside them:
  * impact is now the count of PEOPLE downstream of a fault rather than of
  * people and services. It had to change - a machine with twenty-odd services
@@ -420,7 +431,7 @@ interface GoldenWeek {
  * happened.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: '6c16e0e39e3cb04f',
+  hash: 'c9f068a51484032a',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -491,7 +502,7 @@ const GOLDEN_WORKED: GoldenWeek = {
  * and the world does not pretend otherwise.
  */
 const GOLDEN_IDLE: GoldenWeek = {
-  hash: 'd9f4d5b0a0b6259b',
+  hash: 'c5e3af67e45e06a0',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.

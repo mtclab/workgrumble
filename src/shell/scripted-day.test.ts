@@ -506,8 +506,20 @@ const GOLDEN_DAY = {
    * day, nothing new writes to an event log, and the day's own numbers are
    * therefore untouched. Every meter, minute, timeline entry and penny below
    * is again the number it was.
+   *
+   * EIGHTH MOVE (0.2.3, the filesystem). The hash, and the hash alone, for the
+   * third slice running. Monday's graph now holds two hundred directories and
+   * files - fourteen boxes each built from one image, plus what each role adds
+   * and a profile for whoever logs on there - joined by the `contains` edges
+   * that make a drive a drive, and one more field on every machine saying how
+   * much of that drive is free. The spooler ticket is not in this scripted day
+   * at all, so the one field the world MOVES on a drive - the list of jobs
+   * behind a print queue - is empty here from the first minute to the last.
+   * Every directory in it is seeded, nothing in this day writes to one, and
+   * every meter, minute, timeline entry and penny below is once again the
+   * number it was.
    */
-  hash: '32d29a6b28c5b147',
+  hash: 'a514dc46baf448d4',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */
