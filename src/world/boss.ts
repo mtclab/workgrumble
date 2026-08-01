@@ -356,6 +356,26 @@ export function pingsBetween(
 }
 
 /**
+ * The minutes of the day a patrol has already spoken for, as windows.
+ *
+ * From the first footstep to the far side of the conversation, which is longer
+ * than the visit itself: `departureTick` is when he walks off, and
+ * `CAUGHT_MINUTES` is what the conversation costs the shift whether or not he
+ * found anything. Anything else that wants the screen has to get out of the
+ * way of the whole of it - one takeover at a time - and the interruption
+ * schedule is handed this list rather than working out the shape of a patrol
+ * for itself.
+ */
+export function patrolWindows(
+  schedule: Readonly<PatrolSchedule>,
+): readonly TickWindow[] {
+  return schedule.visits.map((visit) => ({
+    from: visit.telegraphTick,
+    to: Math.max(visit.departureTick, visit.arrivalTick + CAUGHT_MINUTES),
+  }));
+}
+
+/**
  * Which slack app gets you caught.
  *
  * The first one in the shell's own list, which is z-order from the bottom up:
