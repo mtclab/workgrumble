@@ -51,7 +51,7 @@ import { DayDriver } from '../../shell/day-driver';
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
-import { spoolDisagreements } from '../fs';
+import { spoolDisagreements, storedDisagreements } from '../fs';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import { createWorldSession, type WorldSession } from '../session';
 import {
@@ -226,7 +226,16 @@ export function auditPath(
     // Every step, not only the ones about printing: the queue and the spool
     // directory are two windows onto one pile, and the mutation that takes
     // them apart is exactly the one nobody thinks to look at afterwards.
-    complaints.push(...spoolDisagreements(session.engine.graph).map(
+    //
+    // The same question of the other pile the world holds twice: what a
+    // directory a program fills LISTS, against the byte total the drive gets
+    // back when somebody empties it. A purge that moved one and not the other
+    // would be a drive that had gained three hundred megabytes and a listing
+    // that still said where they were.
+    complaints.push(...[
+      ...spoolDisagreements(session.engine.graph),
+      ...storedDisagreements(session.engine.graph),
+    ].map(
       (complaint) => `${ticketId}/${path.id} after step `
         + `${String(index + 1)}: ${complaint}`,
     ));
