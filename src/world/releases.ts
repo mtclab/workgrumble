@@ -31,6 +31,46 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.2.7',
+    date: '2026-08-01',
+    summary: 'This update adds the consultation and selection screens '
+      + 'required by our commitments on organisational change.',
+    lines: Object.freeze([
+      'Where a reduction in roles is proposed, the announcement will state '
+        + 'the number of roles, the selection pool, the criteria and the date '
+        + 'consultation closes. It will be sent to everybody at the site and '
+        + 'it will be sent at least thirty days before any decision takes '
+        + 'effect. This is longer than we are obliged to give at this '
+        + 'headcount. It is what we are giving.',
+      'Selection is scored on a published matrix with three criteria: your '
+        + 'performance for the period, your disciplinary record where it is '
+        + 'current and relevant, and your length of service. Performance is '
+        + 'weighted heaviest. Length of service is capped at ten years, so '
+        + 'that colleagues past that point are level with each other.',
+      'Your own scores and everybody else\'s in the pool are visible to you '
+        + 'from the day consultation opens, in the review window and on the '
+        + 'day scorecard, and they update as the period goes on. Colleagues '
+        + 'have asked whether the scores are visible before the decision. '
+        + 'They are. That is the point of them.',
+      'Where no reduction is proposed, all of the above screens say so. There '
+        + 'is no round on during the probation week and there will not be one '
+        + 'in the two weeks after any consultation closes.',
+      'A role ending by redundancy is not a dismissal for conduct or '
+        + 'capability and is not recorded as one. Notice is paid in lieu. '
+        + 'Statutory redundancy pay requires two years of continuous service; '
+        + 'below that, notice is what is owed, and for a colleague at this '
+        + 'stage that is one week.',
+      'Personnel confirm that a conduct file does not follow a colleague to a '
+        + 'subsequent employer, as it is a record made by the people who made '
+        + 'it. Colleagues have asked us to state this more prominently. It is '
+        + 'stated here.',
+      'Known issue: a week that comfortably clears the probation pass mark '
+        + 'may still be the lowest-scoring week in a pool. The pass mark and '
+        + 'the matrix answer different questions. Personnel confirm this is '
+        + 'not an issue.',
+    ]),
+  },
+  {
     version: '0.2.6',
     date: '2026-08-01',
     summary: 'This update clarifies how informal conduct discussions are '

@@ -166,6 +166,91 @@ to be mark-against-bar with no third input; and a **sixth driven week** - thick 
 grievance, bar of 70, twenty-four of twenty-five closed - which survives being read, because a
 build where a thick file is fatal regardless of the numbers passes everything else and fails that.
 
+## Slice 0.2.7 - the pressure catalogue, the pool, and a third ending
+
+**Option D from `docs/research/review-scoring.md`, the SYSTEMIC half.** 0.2.6 shipped the latent
+file and the three people who have a reason to read it. This is the other reason somebody reads
+it, and it is the one that actually ends most first-line jobs: not something you did. The whole
+layer is career-layer by construction - the pacing rules put the first beat no earlier than the
+fourth week of an employer arc - so **nothing in it fires in the probation week**, and the golden
+weeks are the proof.
+
+1. **The catalogue is data.** Nine entries (`src/world/pressure.ts`), each with what it looks like
+   from a first-line chair, the four signals it has to fire, what it changes mechanically, whether
+   it cuts both ways, and whether this build has implemented it. **One is implemented** - the
+   redundancy round, because it is the most legible and the most citable - and the arc loader
+   REFUSES to schedule the other eight, which is the difference between a catalogue and eight dead
+   code paths. Six of the nine cut both ways, asserted, because a catalogue of threats only is a
+   misery simulator.
+2. **The arc is a table of weeks** the way `WEEK` is a table of days, and the pacing rules are its
+   loader: nothing in the probation week, two quiet weeks before the first beat, one season per
+   employer, never two live at once, two clear weeks after resolution, and at least thirty days
+   between the announcement and the decision - the collective-consultation floor, held to even
+   though a round of two out of six does not trigger it. A game may not be less legible than
+   employment law. Shipped arc: twelve weeks, weather in 4, notice in 6, consultation 7-9,
+   decision on the Friday of 10, quiet in 11 and 12.
+3. **The four-beat contract is a TYPE.** `telegraph()` is the only function that produces the
+   season the decision will accept, its brand is keyed on a symbol nothing exports, and it answers
+   null unless all four beats have fired in order AND each left an artefact the player could read
+   (the two announcements are mail gated on world fields; the criteria beat is the matrix; the
+   decision is the conversation). A future entry cannot skip a beat because it cannot be scheduled
+   without four of them, and a future caller cannot skip the check because there is no other way
+   to build the argument.
+4. **Comparative survival.** `src/world/pool.ts` scores three lines - performance (0.6),
+   disciplinary record (0.2, six points per line of the file), length of service (0.2, capped at
+   ten years) - the same way for the player and for five named colleagues. The pool is drawn the
+   way a small employer actually draws one ("support and administrative roles at this site"),
+   because this building has ONE first-line technician and inventing five more would rewrite the
+   company's own fiction to make a mechanic fit. Ties break on service and then on node id, so the
+   newest person loses a tie - which is harsh, true, and on the screen in advance.
+5. **`redundant`, and it is not a loss state.** The fund is kept, one week of notice is paid into
+   it (statutory redundancy pay needs two years and nobody here has two years - the payment is
+   correct and it is small), the file does not travel, and the week card routes toward employer
+   switching rather than the retry loop. **`fired` is now explicitly for cause.** The bar is asked
+   FIRST and the ranking second, so a round can never launder a week somebody actually lost.
+6. **The world holds the ranking.** `review_position` and `review_cut_from` are written a minute
+   before the conversation by a verb of its own, exactly as the conduct bar is, and all three
+   review verbs are guarded on `field_at_least_field` over them. In a quiet week neither field
+   exists, so the guard answers no and the two shipped verbs behave exactly as they did.
+
+**The five profiles in a decision week** (`scripted-arc.test.ts`, same days, same seed, arc week
+10). Every mark, bar and file is the number the probation week produces; what moves is who goes:
+
+```
+worked properly ............ 99 vs 45 · composite 79 · 1st of 6 ... passed
+worked, browser up all week  99 vs 45 · composite 62 · 3rd of 6 ... passed, file read out
+half the roster ............ 56 vs 45 · composite 54 · 5th of 6 ... MADE REDUNDANT
+half the roster, browser up  56 vs 70 · composite 36 · 6th of 6 ... FIRED (for cause)
+nothing at all .............. 4 vs 70 · composite  8 · 6th of 6 ... FIRED (for cause)
+```
+
+The two that move are the layer earning its place. An honest-but-thin week keeps the job on
+probation with eleven points to spare and loses the round by ONE point of composite, against
+Owen, who does the late shift and whose fifty-five has been on the screen for three weeks. And the
+week that closed everything with the forum up survives at third of six, with the file mentioned
+for the first time in the game: eighteen points of composite and two places. The two that were
+already going still go, and they go as firings, because both missed the bar their own week set.
+
+Gates: unit tests for the catalogue and every pacing refusal, for the matrix arithmetic, and for
+the ranking at the edges that decide one (a tie, the place either side of the line, a player
+nowhere near it, a round with nobody going); **a walked season** through the real driver and the
+real engine on the arc week it belongs to, with the legibility contract asserted on every profile
+- four beats in order an hour early, the announcement in the inbox with the number and the date
+and stamped before three, the ranking at two identical to the one at three, the reasons printed
+beside the verdict; **the same week with the announcement made unreadable, which must end exactly
+as a quiet week ends with no ranking written at all** (proven red by reverting the contract
+check); the 0.2.5 scaling invariant and the 0.2.6 conduct gates unchanged; and three golden hashes
+moved by ONE seeded integer with every other number in all three byte-identical.
+
+Known and accepted: **the round is unreachable on the shipped artifact.** The pacing rules forbid
+it in the probation week and there is no week two to reach week four from, so the e2e asserts the
+quiet state - the screens say nothing is proposed, and the announcement is NOT in the inbox, which
+is the failure mode that would otherwise ship silently. The season is walked in full offline. The
+`redundant` scene is in `SCENES_WITHOUT_A_ROUTE` with that reason written down.
+
+Deliberately not here: employer switching itself (the week card says what happens next and that it
+is not built), the other eight catalogue entries, and tier scaling.
+
 ## Standing bar added in this version
 
 **Terminal fidelity.** Every command declares a tier: FAITHFUL (real syntax, flags, output shape, error wording), SHAPED (right concept and shape, smaller data, nothing false), or REFUSED HONESTLY (answers like a real shell would for an unsupported flag, or says plainly it is not simulated). A refusal teaches nothing; a fake teaches something wrong. Families are not one shell in hats. `docs/research/terminal-fidelity.md` carries one row per command - real syntax, cited real output, claimed tier, deliberate omissions - and no new command ships without its row.
