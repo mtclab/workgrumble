@@ -40,7 +40,14 @@ import { buildPatrolSchedule, patrolWindows } from './boss';
 import { COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
 import { findIncident, INCIDENTS } from './incidents';
-import type { InterruptionPlan, InterruptionSlot } from './interruptions';
+import { FLAVOR, flavorText, type InterruptionPlan, type InterruptionSlot } from './interruptions';
+import {
+  HYGIENE_SYNC_MINUTE,
+  HYGIENE_SYNC_MINUTES,
+  meetingRuns,
+  meetingScene,
+  TICKET_HYGIENE_SYNC,
+} from './scenes/meeting';
 
 /** Monday to Friday. Saturday does not exist; that is the joke and the scope. */
 export const WEEK_DAYS = 5;
@@ -347,11 +354,12 @@ export interface DayScript {
   /**
    * What takes the screen off you today: the calls, the summons, the meeting.
    *
-   * Absent on every day of the shipped week, which is the honest state of it
-   * rather than an oversight - 0.3.0 lane A builds the rails and lane B
-   * authors what rides them. An empty column here is a week whose interruption
-   * schedule is empty, which is why the goldens did not move when the rails
-   * landed.
+   * Three of them in the shipped week, one per shape the cost model has: a
+   * call that CAN be benign because it carries the ticket it is about
+   * (Tuesday), a block nobody can refuse (Wednesday), and a call about
+   * nothing anybody here is responsible for (Thursday). Monday is left alone
+   * because Monday is the day the two basic tools are taught, and Friday
+   * because Friday already has a conversation at three o'clock in it.
    */
   readonly interruptions?: readonly InterruptionSlot[];
   /**
@@ -415,6 +423,35 @@ export const WEEK: readonly DayScript[] = validateWeek([
       { ticketId: 'ticket:tidied-list', minute: 11 * 60 },
       { ticketId: 'ticket:mailbox-access', minute: 13 * 60 },
     ],
+    // Five past ten, and the woman whose printer it is has remembered
+    // something. It carries the ticket it is about, which is what makes it
+    // capable of being BENIGN - and whether it actually is one is decided at
+    // the minute it lands, by whether the player is on that ticket. A call
+    // about the work in hand costs no focus and moves the ticket; the same
+    // call to somebody who has wandered off it costs the twenty-three
+    // minutes, and the row cannot know which it will be.
+    interruptions: [
+      {
+        id: 'interruption:spooler-call',
+        source: 'call',
+        minute: 10 * 60 + 5,
+        minutes: 6,
+        relatedTicket: 'ticket:wedged-spooler',
+        declinable: true,
+        synchronous: true,
+        severity: 1,
+        // Somebody deciding to pick the phone up is not an appointment, so it
+        // is allowed to wander - unlike the meeting two days later, which is
+        // announced and therefore cannot.
+        jitter: 4,
+        flavor: {
+          [FLAVOR.caller]: COMPANY_IDS.nina,
+          [FLAVOR.subject]: 'The printer, and a thing she left off the ticket',
+          [FLAVOR.opens]: 'ringing-spooler',
+          [FLAVOR.opensFumbling]: 'ringing-spooler-shaky',
+        },
+      },
+    ],
     // Half past two, and somebody who would rather message you than file
     // anything. Say no politely and there is a ticket at twenty past.
     dms: [
@@ -455,6 +492,27 @@ export const WEEK: readonly DayScript[] = validateWeek([
         minute: 16 * 60 + 56,
       },
     ],
+    // Half past ten, mid-week, prime working time, on the morning the flood
+    // arrives - which is the whole of the mechanic. It is announced from the
+    // Monday, it takes no jitter because a wandering appointment would make
+    // the summons mail a lie, and it is neither declinable nor deferrable:
+    // the two refusals exist to say WHY, which is the point of them.
+    interruptions: [
+      {
+        id: 'interruption:hygiene-sync',
+        source: 'meeting',
+        minute: HYGIENE_SYNC_MINUTE,
+        minutes: HYGIENE_SYNC_MINUTES,
+        relatedTicket: null,
+        declinable: false,
+        synchronous: true,
+        severity: 3,
+        flavor: {
+          [FLAVOR.scene]: TICKET_HYGIENE_SYNC.id,
+          [FLAVOR.subject]: TICKET_HYGIENE_SYNC.subject,
+        },
+      },
+    ],
     patrolSeed: 5_927,
     load: 3,
   },
@@ -466,6 +524,29 @@ export const WEEK: readonly DayScript[] = validateWeek([
       { ticketId: 'ticket:vpn-cert-expired', minute: 10 * 60 },
       { ticketId: 'ticket:vpn-cert-dup-ada', minute: 10 * 60 + 15 },
       { ticketId: 'ticket:vpn-cert-dup-gary', minute: 10 * 60 + 35 },
+    ],
+    // Twenty past eleven, in the middle of a certificate flood, about a
+    // printer in a building this desk does not hold the contract for. It
+    // carries no ticket at all, which is not an omission - it is the malignant
+    // half of the cost model, and the reason it costs what it costs.
+    interruptions: [
+      {
+        id: 'interruption:annexe-printer',
+        source: 'call',
+        minute: 11 * 60 + 20,
+        minutes: 5,
+        relatedTicket: null,
+        declinable: true,
+        synchronous: true,
+        severity: 2,
+        jitter: 6,
+        flavor: {
+          [FLAVOR.caller]: COMPANY_IDS.vic,
+          [FLAVOR.subject]: 'A printer in the annexe, making a noise',
+          [FLAVOR.opens]: 'ringing-annexe',
+          [FLAVOR.opensFumbling]: 'ringing-annexe-shaky',
+        },
+      },
     ],
     patrolSeed: 8_803,
     load: 4,
@@ -596,6 +677,7 @@ export function validateWeek(
     // is not cleared overnight.
     for (const slot of script.interruptions ?? []) {
       requireWorkingMinute(script.day, slot.minute, slot.id);
+      requireMeetingContent(script.day, slot);
 
       if (interruptions.has(slot.id)) {
         throw new Error(
@@ -634,6 +716,43 @@ function requireWorkingMinute(
       + `${String(Math.floor(minute / 60)).padStart(2, '0')}:`
       + `${String(minute % 60).padStart(2, '0')}, which is outside the hours `
       + 'anybody is at the desk.',
+    );
+  }
+}
+
+/**
+ * A meeting has a room in it, and the room has to have been written.
+ *
+ * `interruptions.ts` already refuses a meeting that carries no scene NAME -
+ * that is structure, and it is the only half that module can check without
+ * knowing what a meeting scene is. This is the other half: the name has to be
+ * one somebody wrote, and the block has to be long enough to hold everything
+ * said in it. Both failures look identical in play - a window that goes quiet
+ * halfway through - and neither looks like a bug in the file.
+ */
+function requireMeetingContent(
+  day: number,
+  slot: Readonly<InterruptionSlot>,
+): void {
+  if (slot.source !== 'meeting') {
+    return;
+  }
+
+  const named = flavorText(slot, FLAVOR.scene) ?? '';
+  const scene = meetingScene(named);
+
+  if (scene === undefined) {
+    throw new Error(
+      `Day ${String(day)} sits the player in "${named}", which nobody wrote.`,
+    );
+  }
+
+  if (meetingRuns(scene) >= slot.minutes) {
+    throw new Error(
+      `Day ${String(day)} books ${String(slot.minutes)} minutes for `
+      + `"${scene.id}" and the room is still talking at minute `
+      + `${String(meetingRuns(scene))}. A beat nobody hears is a beat nobody `
+      + 'wrote.',
     );
   }
 }

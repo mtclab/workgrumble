@@ -15,13 +15,15 @@ import type { ReadOnlyGraphNode } from '../engine-api';
 import { buildPatrolSchedule, patrolWindows } from './boss';
 import { DAY_RATE_PENCE, dripWindow, shiftStartTick } from './day';
 import { FIELDS } from './fields';
-import { minuteOfDay } from './hours';
+import { minuteOfDay, tickAtMinute } from './hours';
 import {
   buildInterruptionSchedule,
   type InterruptionSlot,
   interruptionsClearOf,
 } from './interruptions';
 import { STARTING_REPUTATION } from './meters';
+import { HYGIENE_SYNC_MINUTE, HYGIENE_SYNC_MINUTES } from './scenes/meeting';
+import { seedForAttempt } from './session';
 import { WORLD_TICKETS } from './tickets';
 import {
   assertWeekTickets,
@@ -84,7 +86,11 @@ function interruption(
     declinable: true,
     synchronous: true,
     severity: 2,
-    flavor: { caller: 'Somebody in accounts' },
+    flavor: {
+      caller: 'Somebody in accounts',
+      subject: 'The printer again',
+      opens: 'ringing',
+    },
   };
 }
 
@@ -306,19 +312,58 @@ describe('the loader', () => {
 
 describe('the day\'s interruptions', () => {
   /**
-   * The shipped week authors none, and that is the state 0.3.0 lane A ships
-   * in: the rails are the world's, the content is not written yet, and this is
-   * what keeps every golden where it was. It is asserted rather than assumed
-   * because the day the first one is authored, this line is the one that says
-   * the goldens are now allowed to move.
+   * The shipped column, named day by day.
+   *
+   * This assertion replaced the one that said the column was empty everywhere,
+   * which is the line lane A left as the marker for "the goldens may now
+   * move". It is written as an exact per-day list rather than as a count
+   * because the SHAPE is the claim the slice makes: one call that carries a
+   * ticket, one block nobody can refuse, one call that carries nothing. A week
+   * that quietly grew a fourth, or lost the malignant one, would still have
+   * "some interruptions in it" and would no longer be teaching the cost model.
    */
-  it('is empty in every day of the shipped probation week', () => {
-    for (const script of WEEK) {
-      expect(interruptionsOn(script.day), script.label).toEqual([]);
-    }
+  it('authors one of each shape into the shipped probation week', () => {
+    expect(WEEK.map((script) => interruptionsOn(script.day).map(
+      (slot) => [slot.id, slot.source, slot.relatedTicket],
+    ))).toEqual([
+      [],
+      [['interruption:spooler-call', 'call', 'ticket:wedged-spooler']],
+      [['interruption:hygiene-sync', 'meeting', null]],
+      [['interruption:annexe-printer', 'call', null]],
+      [],
+    ]);
 
     expect(interruptionsOn(0)).toEqual([]);
     expect(interruptionsOn(WEEK_DAYS + 1)).toEqual([]);
+  });
+
+  /**
+   * The announced one lands on the minute it was announced for, and it is
+   * pinned against THE SHIPPED SEED rather than in the abstract.
+   *
+   * Two ways for that to stop being true, and both are silent: a jitter typed
+   * onto the row, or the lead's rounds moving over the half hour so the block
+   * slides out from under the mail that names it. Either way the summons in
+   * the inbox becomes a lie about the day, which is the one thing this beat
+   * cannot survive - the dread is the mechanic, and dread needs a time.
+   */
+  it('lands the announced meeting on the minute the summons names', () => {
+    const seed = seedForAttempt(1);
+    const schedule = buildInterruptionSchedule(
+      seed,
+      3,
+      interruptionPlanFor(3, seed),
+    );
+    const meeting = schedule.entries.find(
+      (entry) => entry.source === 'meeting',
+    );
+
+    expect(meeting?.tick).toBe(tickAtMinute(3, HYGIENE_SYNC_MINUTE));
+    expect(meeting?.endsTick)
+      .toBe(tickAtMinute(3, HYGIENE_SYNC_MINUTE + HYGIENE_SYNC_MINUTES));
+    // Not merely "it is at half ten": it never had to move to get there.
+    expect(meeting?.slidFrom).toBeNull();
+    expect(schedule.dropped).toEqual([]);
   });
 
   /**
@@ -332,7 +377,7 @@ describe('the day\'s interruptions', () => {
     const plan = interruptionPlanFor(3, seed);
     const patrol = buildPatrolSchedule(3, patrolSeedFor(3, seed));
 
-    expect(plan.slots).toEqual([]);
+    expect(plan.slots).toEqual(interruptionsOn(3));
     expect(plan.blocked).toEqual(patrolWindows(patrol));
     expect(plan.blocked.length).toBe(patrol.visits.length);
     expect(plan.blocked.length).toBeGreaterThan(0);
