@@ -30,6 +30,10 @@ test('announces itself once on the first boot of a newer build', async ({
   // again on every navigation, which would re-forget the build on the reload
   // below and announce it honestly a second time - proving nothing.
   await page.goto('/');
+  // Wait for the workstation to finish booting before telling it what it last
+  // ran: boot records the build it is, and a seed written mid-boot is a seed
+  // the boot overwrites a moment later.
+  await expect(page.getByTestId('login-screen')).toBeVisible();
   await page.evaluate((key: string) => {
     window.localStorage.setItem(key, '0.0.1');
   }, SEEN_VERSION_KEY);

@@ -118,9 +118,11 @@ test('starts a stated Monday on a badge with nothing filed against it', async ({
     other.getByTestId('toast').filter({ hasText: 'Nothing is filed' }),
   ).toBeVisible();
 
-  // Monday morning, first day, and the clock has not been anywhere else.
+  // Monday morning, first day, and the clock has not been anywhere else. A
+  // fresh week opens on the morning brief at eight, not on the shift: nobody
+  // has clicked Start the shift yet, and the pre-shift clock does run.
   await expect(other.getByTestId('sim-clock-day')).toHaveText('Day 1');
-  await expect(other.getByTestId('sim-clock-time')).toHaveText('09:00');
+  await expect(other.getByTestId('sim-clock-time')).toHaveText(/^08:/);
 
   // And it is the SAME badge: the record card is drawn from what the building
   // said this browser is carrying, so a second account minted to hold the

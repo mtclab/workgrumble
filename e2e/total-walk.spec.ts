@@ -2382,7 +2382,8 @@ test('walks the door, the badge and the report the tester build adds', async ({
       monday.getByTestId('toast').filter({ hasText: 'Nothing is filed' }),
     ).toBeVisible();
     await expect(monday.getByTestId('sim-clock-day')).toHaveText('Day 1');
-    await expect(monday.getByTestId('sim-clock-time')).toHaveText('09:00');
+    // Eight o'clock: a fresh week opens on the brief, not on the shift.
+    await expect(monday.getByTestId('sim-clock-time')).toHaveText(/^08:/);
 
     await monday.getByTestId('start-button').click();
     await monday.getByTestId('start-menu-log-off').click();
