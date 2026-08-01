@@ -1218,6 +1218,40 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('caught-line')).toContainText('forum');
   });
 
+  /**
+   * The half of that window that outlives the conversation. It costs no
+   * points, it is dated, and it is readable from the minute it is written -
+   * which is the whole legibility contract, on the built artifact.
+   */
+  await step('caught.file', async () => {
+    const file = page.getByTestId('caught-file');
+    await expect(file).toBeVisible();
+    // At least the conversation that just happened, and said in the voice a
+    // personnel note is written in rather than the voice he used.
+    await expect(page.getByTestId('caught-file-line-0'))
+      .toContainText('Screen observed to be non-work-related');
+    await expect(page.getByTestId('caught-file-line-0'))
+      .toContainText('discussion forum');
+    await expect(file).not.toHaveAttribute('data-lines', '0');
+  });
+
+  /**
+   * And WHO would read it, said before anybody does. The three reasons are on
+   * the screen with the live ones marked and the mark Friday now has to reach
+   * printed underneath, so nothing at three o'clock can arrive unannounced.
+   */
+  await step('caught.criteria', async () => {
+    const criteria = page.getByTestId('caught-criteria');
+    await expect(criteria).toBeVisible();
+    await expect(page.getByTestId('caught-criteria-customer')).toBeVisible();
+    await expect(page.getByTestId('caught-criteria-colleague')).toBeVisible();
+    await expect(page.getByTestId('caught-criteria-lead')).toBeVisible();
+    await expect(page.getByTestId('caught-criteria-summary'))
+      .toContainText('file');
+    // The bar is a number on the screen, days before it decides anything.
+    await expect(criteria).toHaveAttribute('data-bar', /^\d+$/);
+  });
+
   await step('caught.dismiss', async () => {
     await page.getByTestId('caught-dismiss').click();
     await expect(page.getByTestId('window-caught')).toHaveCount(0);
@@ -2169,6 +2203,20 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('review-line'))
       .toContainText('the week is fine');
     await expect(page.getByTestId('review-note')).toContainText('fridge');
+  });
+
+  /**
+   * Somebody opened the file a minute before that, and the reason the bar was
+   * what it was is printed beside the verdict rather than left to be guessed
+   * at. A week that dealt with its queue has nobody with a reason to look, and
+   * the window says exactly that.
+   */
+  await step('review.file-read', async () => {
+    const conduct = page.getByTestId('review-conduct');
+    await expect(conduct).toBeVisible();
+    await expect(conduct).toContainText('file');
+    await expect(page.getByTestId('review-app'))
+      .toHaveAttribute('data-bar', /^\d+$/);
     await page.getByTestId('review-dismiss').click();
     await expect(page.getByTestId('window-review')).toHaveCount(0);
   });

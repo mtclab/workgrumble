@@ -31,6 +31,45 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.2.6',
+    date: '2026-08-01',
+    summary: 'This update clarifies how informal conduct discussions are '
+      + 'recorded and used.',
+    lines: Object.freeze([
+      'Following the scoring correction in 0.2.5, conversations about what is '
+        + 'open on your screen no longer affect any figure at the time they '
+        + 'happen. They are recorded. A dated note is added to your file '
+        + 'stating what was observed and when, in line with Personnel\'s '
+        + 'documentation-first guidance, and the note is added whether or not '
+        + 'anybody ever reads it.',
+      'Your file is now available to you, under "A quick word" in the Start '
+        + 'menu, at any time, in full. Colleagues have asked why this was not '
+        + 'previously the case. Personnel have asked us to say that it now is.',
+      'The same window states the circumstances in which your file would be '
+        + 'consulted at review. There are three: a reported fault that passed '
+        + 'its resolution target without the person who raised it being '
+        + 'contacted at all; a colleague directed to the request form and not '
+        + 'subsequently dealt with; and a fault raised by your own line '
+        + 'manager left to pass its target. Where none of these applies, your '
+        + 'file is not consulted and the review is decided on the percentage '
+        + 'alone.',
+      'Where your file IS consulted, the pass mark for the review rises by 5 '
+        + 'for each note on it, to a maximum of 70 out of 100. The mark you '
+        + 'have to reach is shown on the day scorecard every evening, in the '
+        + 'review window, and on the week summary, together with the reason '
+        + 'it is the number it is. It is never below 45.',
+      'Time taken by these conversations is not credited back to the shift. A '
+        + 'ten-minute discussion at your desk is ten minutes in which no fault '
+        + 'was worked and no resolution target moved. This has always been the '
+        + 'case and is now stated.',
+      'The desk itself continues to be observed separately. Empties above the '
+        + 'permitted number are noted on the same file and are not raised with '
+        + 'the employee.',
+      'Known issue: a note cannot be removed from a file by tidying anything. '
+        + 'Personnel confirm this is not an issue.',
+    ]),
+  },
+  {
     version: '0.2.5',
     date: '2026-08-01',
     summary: 'This update improves the consistency of probation review '

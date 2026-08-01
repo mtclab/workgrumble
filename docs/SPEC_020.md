@@ -66,7 +66,8 @@ caught did not, so the pass bar drifted downward with every ticket added and the
 roster size at which openly slacking beats quietly doing half the job - was about twenty-six
 tickets against a shipped roster of twenty-five. **Option A only.** Option D (the latent conduct
 record, social and systemic triggers, comparative survival) is the next slice and is deliberately
-not in this one: shipped together, the goldens would be unreadable.
+not in this one: shipped together, the goldens would be unreadable. Its social half shipped in
+0.2.6, below.
 
 1. **The review's input is a normalised composite**, in the MetricNet balanced-scorecard shape:
    `100 * (0.5 * closed/arrived + 0.5 * (arrived - breached)/arrived)`, taken over the week TO
@@ -94,6 +95,76 @@ Known and accepted: the two-by-two collapses. "Worked" and "worked with the brow
 now read the same number, as do "half the roster" and "half with the browser up" - which is
 Option A's stated cost and the reason it forces the conduct decision to be made explicitly in the
 next slice instead of smuggled in as a coefficient.
+
+## Slice 0.2.6 - the conduct file, and who has a reason to read it
+
+**Option D from `docs/research/review-scoring.md`, the SOCIAL half only.** 0.2.5 took conduct off
+the review's number and left the corridor charging six points of reputation in a currency the
+review had stopped spending - a mechanic that looked like it mattered and did not. This is what
+replaces it. The systemic pressure catalogue, `redundant` as a third outcome and employer
+switching are **deliberately not in this slice**: shipped together the goldens would be unreadable
+and the design unreviewable. They are 0.2.7.
+
+1. **The file.** Being caught, and being noticed with a desk full of empties, append one dated
+   line to `conduct_file` on the player - what was noticed, when, in the passive voice a personnel
+   note is actually written in ("Screen observed to be non-work-related on passing (a discussion
+   forum). Employee spoken to informally. No further action at this time."). Week-cumulative,
+   unlike `caught_events`, because the thing that eventually reads it is reading a week. It costs
+   nothing when it is written: contact-centre QA reviews 1-3 percent of interactions, and the
+   longitudinal field work on monitoring records "the relative scarcity of enforced sanctions".
+2. **The price moves to the clock.** `CAUGHT_REPUTATION_COST` is gone; `CAUGHT_MINUTES = 10`. The
+   driver spends them through the same per-minute machinery every other minute goes through, so
+   the conversation is minutes in which tickets still arrive and deadlines still run out and the
+   player can do nothing about either. Nobody docks you for being seen on a forum; what it costs
+   is ten minutes the queue did not stop for, and SLA attainment is half of the mark.
+3. **Three social triggers, no rng.** A customer whose ticket went red and who was never told
+   anything; a colleague sent to the form and left on it (read off the week's own `dms` rows, so
+   a second one is content rather than an edit here); the lead's own ticket left to go red. All
+   pure functions of the ticket nodes.
+4. **Contribution is the shield.** Each line raises the bar 5, to a ceiling of 25 - so a full file
+   asks for 70, which is MetricNet's top quartile: a thick file does not mean he wants you gone,
+   it means he now needs a top-quartile week to justify the paperwork. That is Hollander's
+   idiosyncrasy credit as arithmetic. Both fizzles are legible and are driven in tests: nobody
+   looked, and somebody looked and found nothing.
+5. **The bar is world state.** `review_bar` is seeded at 45 and rewritten at three o'clock beside
+   `review_reputation`, with `review_conduct` carrying the sentence that explains it. Both review
+   verbs are guarded on a new engine predicate, `field_at_least_field`, so the threshold is
+   enforced by the world rather than by whichever screen did the arithmetic - and the sentence is
+   snapshotted because the queue carries on all afternoon and a reason that had gone away would be
+   printed above the verdict it caused.
+6. **Legibility contract.** `A quick word` shows the file, every line, plus the three reasons
+   somebody would read it with the live ones named and the bar they produce - from Monday morning,
+   changing as the week does. The evening scorecard says it in one row; the review and week
+   screens print the world's own sentence beside the verdict.
+
+**The five profiles, re-measured** (`scripted-week.test.ts`):
+
+```
+worked properly ............ 25 of 25, no breaches ... 99 vs 45, passed
+worked, browser up all week  25 of 25, caught 15x .... 99 vs 45, passed
+half the roster ............ 13 of 24, twelve red .... 56 vs 45, passed
+half the roster, browser up  13 of 24, caught 15x .... 56 vs 70, FIRED
+nothing at all ............. 0 of 24, everything red .. 4 vs 70, FIRED
+```
+
+The mark is unchanged from 0.2.5 in all five and has to be - conduct is not in it. What moved is
+the bar. **The two-by-two is back, and this time it is the design**: two ways to lose the job,
+either forgiven alone, neither forgiven together, separated by a triggered consequence rather than
+a subtracted score.
+
+Known and accepted: the reputation meter no longer tells the pairs apart either (100 / 63 /
+100 / 63 where it read 100 / 63 / 57 / 0). The record moved to the file, in dated sentences, and
+the assertion that used to hold the meter apart was repointed rather than deleted.
+
+Gates: unit tests for the file (append, ordering, wording, what a blank line is refused with), for
+the trigger rule (both fizzles and the landing, all driven), and for the clock cost (one day
+played twice, counting the minutes the player got); the 0.2.5 scaling invariant unchanged at
+1x/2x/4x; a **legibility assertion** run on every golden week - the walk stops at two o'clock on
+the Friday, reads the shipped screens, and the bar and trigger set it finds are asserted to be the
+ones three o'clock used, with every filed line proven to predate the review and the verdict proven
+to be mark-against-bar with no third input; and a **sixth driven week** - thick file, real
+grievance, bar of 70, twenty-four of twenty-five closed - which survives being read, because a
+build where a thick file is fatal regardless of the numbers passes everything else and fails that.
 
 ## Standing bar added in this version
 
