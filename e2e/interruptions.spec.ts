@@ -40,30 +40,40 @@ import {
 /** How long to look for a ringing phone before calling it a missing beat. */
 const HUNT_MINUTES = 90;
 
+/** Every `data-` attribute a takeover window carries, read in one go. */
+type Takeover = Readonly<Record<string, string | undefined>>;
+
 /**
  * Runs the clock a minute at a time until something is actually taking the
- * screen, or gives up and says what never turned up.
+ * screen, and answers with the WINDOW'S OWN ATTRIBUTES as they stood in the
+ * read that decided to stop.
  *
- * It watches the window's own attribute rather than whether the window
- * EXISTS, and that is the difference between a search and a coincidence: both
- * of these windows can be open with nothing in them - a call that was waved
- * off leaves its window up with the outcome on it, and either can be opened
- * cold from the start menu on a quiet Monday.
+ * Two things make that the shape rather than a bare wait. It watches the
+ * window's attribute rather than whether the window EXISTS, because both of
+ * these windows can be open with nothing in them - a call that was waved off
+ * leaves its window up with the outcome on it, and either opens cold from the
+ * start menu. And it hands the whole snapshot BACK, because a call rings for
+ * the minutes its row says and no longer: a second round-trip to ask "and was
+ * it a callback?" is a question asked of a later paint, and the honest answer
+ * to it may be that the phone has stopped ringing. One read, one paint, one
+ * set of facts about it.
  */
 async function huntFor(
   page: import('@playwright/test').Page,
   appId: 'call' | 'meeting',
   limit = HUNT_MINUTES,
-): Promise<void> {
+): Promise<Takeover> {
   const app = page.getByTestId(`${appId}-app`);
-  const attribute = appId === 'call' ? 'data-call' : 'data-meeting';
 
   for (let minute = 0; minute < limit; minute += 1) {
-    if (
-      await app.count() > 0
-      && await app.getAttribute(attribute) !== 'none'
-    ) {
-      return;
+    if (await app.count() > 0) {
+      const snapshot: Takeover = await app.evaluate(
+        (node) => ({ ...(node as HTMLElement).dataset }),
+      );
+
+      if (snapshot[appId] !== undefined && snapshot[appId] !== 'none') {
+        return snapshot;
+      }
     }
 
     await runSimMinutes(page, 1, 1);
@@ -112,10 +122,14 @@ test('a call about nothing costs the focus and not the ticket', async ({
 
   expect(dueBefore).not.toBeNull();
 
-  await huntFor(page, 'call');
+  const ringing = await huntFor(page, 'call');
+
+  // Read off the paint that found it, not off a later one: the phone rings
+  // for six minutes and a second round-trip is a different minute.
+  expect(ringing.benign).toBe('false');
+  expect(ringing.answered).toBe('false');
 
   const call = page.getByTestId('call-app');
-  await expect(call).toHaveAttribute('data-benign', 'false');
 
   await page.getByTestId('call-answer').click();
   await expect(call).toHaveAttribute('data-answered', 'true');
@@ -249,10 +263,10 @@ test('a save taken while the phone is ringing comes back ringing', async ({
   await beginShift(page);
 
   await workUntilMinute(page, 10 * 60 - 8 * 60);
-  await huntFor(page, 'call');
+  const ringing = await huntFor(page, 'call');
+  const ringingFor = ringing.call;
 
   const before = await page.getByTestId('sim-clock-time').textContent();
-  const ringingFor = await page.getByTestId('call-app').getAttribute('data-call');
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-save').click();
@@ -347,17 +361,18 @@ test('a call pushed back comes back, and cannot be pushed again', async ({
 
   // And then it is not. The second arrival opens itself, exactly as the first
   // one did, and the world refuses both ways out of it.
-  await huntFor(page, 'call', 40);
+  const second = await huntFor(page, 'call', 40);
 
-  // The claim goes through the WORLD's own sentence first, because that is the
-  // claim: asking somebody to ring back does not buy the right to refuse them
-  // when they do. A rendered flag is a paint, and under a frozen clock a paint
-  // that has not happened yet never will - so the button is pressed first, and
-  // the flag is read off the paint that press forced.
+  // The flag comes off the paint that FOUND the second arrival. Asking again
+  // afterwards would be asking a later minute, and a call that has rung out
+  // by then honestly answers that nothing is ringing.
+  expect(second.callback).toBe('true');
+
+  // And the claim itself goes through the world's own sentence, which outlives
+  // the ringing: asking somebody to ring back does not buy the right to refuse
+  // them when they do.
   await page.getByTestId('call-decline').click();
   await expect(page.getByTestId('call-refusal')).toContainText('coming back');
-  await expect(page.getByTestId('call-app'))
-    .toHaveAttribute('data-callback', 'true');
 
   await page.getByTestId('call-answer').click();
   await expect(page.getByTestId('call-app'))

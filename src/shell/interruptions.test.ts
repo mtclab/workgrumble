@@ -28,8 +28,9 @@ import {
   NOT_DECLINABLE_REASON,
 } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
-import { shiftEndTick, shiftStartTick } from '../world/day';
+import { LUNCH_START_MINUTE, shiftEndTick, shiftStartTick } from '../world/day';
 import { FIELDS } from '../world/fields';
+import { minuteOfDay } from '../world/hours';
 import { arrivedAt, findMailThread } from '../world/mail';
 import { MEETING_MAIL } from '../world/mail/threads';
 import { isRefocusing, REFOCUS_TICKS } from '../world/meters';
@@ -44,7 +45,12 @@ import { createWorldSession, type WorldSession } from '../world/session';
 import { isUnresolved } from '../world/sla';
 import { findWorldTicket, triedFromTouches } from '../world/tickets';
 import { interruptionPlanFor } from '../world/week';
-import { DayDriver, type InterruptionView, TICK_INTERVAL_MS } from './day-driver';
+import {
+  DayDriver,
+  DRIVER_INTERVAL_MS,
+  type InterruptionView,
+  TICK_INTERVAL_MS,
+} from './day-driver';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -604,6 +610,79 @@ describe('a week nobody worked', () => {
       FIELDS.meetingRecapAt,
     )).toBe(entry.endsTick);
   }, 20_000);
+});
+
+/* -- the minutes the day is allowed to spend ------------------------------- */
+
+/**
+ * A day with nothing on the calendar spends exactly the minutes it is given,
+ * and not one more.
+ *
+ * This exists because a browser run reported the Monday clock arriving at
+ * 12:20 where the walk had bought 150 minutes from 09:30, and +20 minutes on
+ * the quietest day of the week is the sort of thing that has to be provable
+ * offline before anybody argues about a browser. There are only two ways this
+ * driver can spend a minute the caller did not buy - the conversation drain
+ * (`owedMinutes_`, ten at a time) and a batch that converted more real time
+ * than it was handed - and both of them show up here as a tick count.
+ *
+ * It is walked the way `e2e/day.spec.ts` walks it, through the interval the
+ * browser actually uses: `main.ts` hands `step` the CONSTANT, four times a
+ * second, so a fixed number of turns must buy a fixed number of minutes at
+ * every speed. Monday authors no interruptions at all, so anything this finds
+ * is the day loop spending minutes on something it did not say out loud.
+ */
+describe('the minutes a quiet Monday spends', () => {
+  /** One turn of the browser's interval, at the constant it passes. */
+  function turns(driver: DayDriver, count: number): void {
+    for (let turn = 0; turn < count; turn += 1) {
+      driver.step(DRIVER_INTERVAL_MS);
+    }
+  }
+
+  it('buys exactly the minutes it was handed, at x1 and at x4', () => {
+    const session = createWorldSession();
+    const driver = new DayDriver(
+      session.engine,
+      COMPANY_IDS.player,
+      session.seed,
+      {
+        onDayBoundary: () => {},
+        // Nothing on the screen, so nothing to be caught at - which is the
+        // only way this driver spends a minute nobody bought.
+        openSlackApps: () => [],
+        focusedSlackApp: () => null,
+      },
+    );
+
+    driver.startShift();
+    expect(session.engine.now()).toBe(shiftStartTick(1));
+
+    // Paused: real time buys nothing at all.
+    driver.setPaused(true);
+    turns(driver, 10_000 / DRIVER_INTERVAL_MS);
+    expect(session.engine.now()).toBe(shiftStartTick(1));
+
+    driver.setPaused(false);
+    turns(driver, 10_000 / DRIVER_INTERVAL_MS);
+    expect(session.engine.now()).toBe(shiftStartTick(1) + 10);
+
+    driver.setSpeed(4);
+    turns(driver, 5_000 / DRIVER_INTERVAL_MS);
+    expect(session.engine.now()).toBe(shiftStartTick(1) + 30);
+
+    // The stretch the browser reported drifting on: 09:30 to noon, which is
+    // 150 minutes and a hundred and fifty turns of the interval at x4.
+    turns(driver, 37_500 / DRIVER_INTERVAL_MS);
+    expect(session.engine.now()).toBe(shiftStartTick(1) + 180);
+    expect(minuteOfDay(session.engine.now())).toBe(LUNCH_START_MINUTE);
+    // And nobody was caught at anything, which is the arithmetic the +20
+    // would have had to come out of: a conversation costs ten.
+    expect(session.engine.graph.getField(
+      COMPANY_IDS.player,
+      FIELDS.caughtEvents,
+    )).toBe(0);
+  });
 });
 
 /* -- the hours nobody is at the desk --------------------------------------- */

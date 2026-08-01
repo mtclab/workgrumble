@@ -160,26 +160,36 @@ async function collectControls(page: Page): Promise<void> {
 }
 
 
+/** Every `data-` attribute a takeover window carries, read in one go. */
+type Takeover = Readonly<Record<string, string | undefined>>;
+
 /**
  * Runs the clock a minute at a time until something is actually taking the
- * screen off the player, or says what never turned up.
+ * screen off the player, and answers with the window's own attributes as they
+ * stood in the read that decided to stop.
  *
- * It watches the window's own attribute rather than whether the window exists,
- * because both of these windows can be up with nothing in them: a call that
- * was waved off leaves its window open with the outcome on it, and either can
- * be opened cold from the start menu.
+ * It watches the attribute rather than whether the window exists, because both
+ * of these windows can be up with nothing in them. And it hands the snapshot
+ * BACK rather than leaving the caller to ask again: a call rings for the
+ * minutes its row says, so a second round-trip is a question put to a later
+ * paint, whose honest answer may be that the phone has stopped.
  */
 async function huntForTakeover(
   page: Page,
   appId: 'call' | 'meeting',
   limit = 90,
-): Promise<void> {
+): Promise<Takeover> {
   const app = page.getByTestId(`${appId}-app`);
-  const attribute = appId === 'call' ? 'data-call' : 'data-meeting';
 
   for (let minute = 0; minute < limit; minute += 1) {
-    if (await app.count() > 0 && await app.getAttribute(attribute) !== 'none') {
-      return;
+    if (await app.count() > 0) {
+      const snapshot: Takeover = await app.evaluate(
+        (node) => ({ ...(node as HTMLElement).dataset }),
+      );
+
+      if (snapshot[appId] !== undefined && snapshot[appId] !== 'none') {
+        return snapshot;
+      }
     }
 
     await runSimMinutes(page, 1, 1);
@@ -1859,11 +1869,13 @@ test('walks every function of a probation week that goes well', async ({
   });
 
   await step('call.callback', async () => {
-    await huntForTakeover(page, 'call', 40);
-    await expect(page.getByTestId('call-app'))
-      .toHaveAttribute('data-callback', 'true');
+    // The flag comes off the paint that FOUND the second arrival: asking again
+    // afterwards is asking a later minute, and a call that has rung out by
+    // then honestly answers that nothing is ringing.
+    const second = await huntForTakeover(page, 'call', 40);
+    expect(second.callback).toBe('true');
     // And the one button that is not on offer the second time says so rather
-    // than being missing.
+    // than being missing - which is the half that outlives the ringing.
     await page.getByTestId('call-decline').click();
     await expect(page.getByTestId('call-refusal')).toContainText('coming back');
   });
