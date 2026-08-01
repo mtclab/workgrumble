@@ -3700,19 +3700,34 @@ input {
 /*
  * The takeover itself.
  *
- * The desk is unreachable for the whole of a booked half hour, and it is done
+ * THE DESK is unreachable for the whole of a booked half hour, and it is done
  * with pointer-events rather than with a modal because this shell has no
  * modals and a mechanic is not a reason to grow one. Everything stays VISIBLE
  * - the clock runs, the taskbar clock runs, the queue is right there - which
- * is the joke and is also the honest arithmetic. The meeting window itself is
- * exempt, and so is the pause button, because pause is the one control this
- * product promises is always available.
+ * is the joke and is also the honest arithmetic.
+ *
+ * THE WORKSTATION is not. The desk is the work: the icons, the tools, the cans
+ * standing on it, the windows that were open. The start menu and the
+ * notification tray are the MACHINE - saving, loading, logging off, reading
+ * what the building has been shouting, reporting that the game is broken - and
+ * half an hour is long enough that a player who could not reach any of those
+ * would be in a dead end with a clock on it, which is the one thing the house
+ * rules forbid however funny the meeting is. The pause and speed controls are
+ * exempt for the same reason and always were.
+ *
+ * This was found by a save taken mid-meeting coming back at 11:00 instead of
+ * 10:38: the save button was behind a start menu nobody could open, so the
+ * click sat there being retried until the block ended and the takeover lifted,
+ * and the file was written at the minute the room emptied. The clock landing
+ * exactly on the end of the meeting is the fingerprint of a blocked control,
+ * and it is worth writing down because the next one will look the same.
+ *
+ * This is not a hole in the mechanic. What the meeting takes is the ability to
+ * WORK, and none of the exempt controls close a ticket.
  */
 .screen-desktop[data-takeover="meeting"] .desktop-icons,
 .screen-desktop[data-takeover="meeting"] .desk-overlay,
-.screen-desktop[data-takeover="meeting"] .start-button,
-.screen-desktop[data-takeover="meeting"] .taskbar-windows,
-.screen-desktop[data-takeover="meeting"] .tray-button {
+.screen-desktop[data-takeover="meeting"] .taskbar-windows {
   pointer-events: none;
   opacity: 0.55;
 }

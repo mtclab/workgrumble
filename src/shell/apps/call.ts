@@ -321,6 +321,13 @@ export const CALL_APP: AppDef = {
     const renderSilence = (): void => {
       root.dataset.call = 'none';
       root.dataset.answered = 'false';
+      // All four, and the last two matter as much as the first two: a window
+      // that kept `data-callback` from the call before it is a window saying
+      // something true about a conversation that is over, to anybody reading
+      // it - a test, a screen reader, the next paint. A silent phone is not
+      // benign and is not a callback; it is silent.
+      root.dataset.benign = 'false';
+      root.dataset.callback = 'false';
       heading.textContent = 'The phone is not ringing';
       subject.textContent = 'It does that most of the day, which is the part '
         + 'nobody thanks you for.';

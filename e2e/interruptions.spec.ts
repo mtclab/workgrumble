@@ -95,15 +95,23 @@ test('a call about nothing costs the focus and not the ticket', async ({
   await row.click();
   await expect(page.getByTestId('ticket-detail-title')).toContainText('haunted');
 
+  // Ten o'clock, with the ticket open, in the queue, and untouched: which is
+  // what makes the call about it a call about NOTHING - the cost model reads
+  // what the player is doing rather than what the row says.
+  await workUntil(page, 10 * 60 - 8 * 60);
+
+  // The deadline is read HERE and not before the shift, and the difference is
+  // the invariant rather than a subtlety. A resolution clock is pushed out by
+  // every minute nobody was at the desk, and the hour of morning brief is
+  // fifty-eight of those: a figure read at 08:02 and again at 10:00 differs by
+  // exactly the brief, which is `off_hours` doing its job. What this test is
+  // about is whether a PHONE CALL moves it, so the reading has to start from
+  // inside the shift.
   const deadline = page.getByTestId('ticket-detail-resolution');
   const dueBefore = await deadline.getAttribute('data-due');
 
   expect(dueBefore).not.toBeNull();
 
-  // Ten o'clock, with the ticket open, in the queue, and untouched: which is
-  // what makes the call about it a call about NOTHING - the cost model reads
-  // what the player is doing rather than what the row says.
-  await workUntil(page, 10 * 60 - 8 * 60);
   await huntFor(page, 'call');
 
   const call = page.getByTestId('call-app');
@@ -261,7 +269,7 @@ test('a save taken while the phone is ringing comes back ringing', async ({
   // The same minute, the same call, and the same three answers - because none
   // of it was ever saved: occupancy is a function of the schedule and the
   // clock, and both of those came back.
-  expect(await page.getByTestId('sim-clock-time').textContent()).toBe(before);
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(before ?? '');
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-item-call').click();
   await expect(page.getByTestId('call-app'))
@@ -282,6 +290,10 @@ test('a save taken in the meeting comes back in the meeting', async ({
   const before = await page.getByTestId('sim-clock-time').textContent();
   const beats = await page.getByTestId('meeting-room').getAttribute('data-beats');
 
+  // Reachable FROM INSIDE the meeting, which is the point of the exemption:
+  // the block takes the desk, not the workstation. A start menu nobody could
+  // open for half an hour would be a dead end with a clock on it, and this
+  // click is what proves the exemption is really there.
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-save').click();
   await expect(page.getByTestId('toast').filter({ hasText: 'Game saved' }))
@@ -294,7 +306,7 @@ test('a save taken in the meeting comes back in the meeting', async ({
   await expect(page.getByTestId('toast').filter({ hasText: 'Game loaded' }))
     .toHaveCount(1);
 
-  expect(await page.getByTestId('sim-clock-time').textContent()).toBe(before);
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(before ?? '');
   // Still in the room, at the same point in it, with the desk still
   // unreachable - which is the half a save file could most easily lose.
   await expect(page.getByTestId('desktop'))
@@ -336,11 +348,16 @@ test('a call pushed back comes back, and cannot be pushed again', async ({
   // And then it is not. The second arrival opens itself, exactly as the first
   // one did, and the world refuses both ways out of it.
   await huntFor(page, 'call', 40);
-  await expect(page.getByTestId('call-app'))
-    .toHaveAttribute('data-callback', 'true');
 
+  // The claim goes through the WORLD's own sentence first, because that is the
+  // claim: asking somebody to ring back does not buy the right to refuse them
+  // when they do. A rendered flag is a paint, and under a frozen clock a paint
+  // that has not happened yet never will - so the button is pressed first, and
+  // the flag is read off the paint that press forced.
   await page.getByTestId('call-decline').click();
   await expect(page.getByTestId('call-refusal')).toContainText('coming back');
+  await expect(page.getByTestId('call-app'))
+    .toHaveAttribute('data-callback', 'true');
 
   await page.getByTestId('call-answer').click();
   await expect(page.getByTestId('call-app'))

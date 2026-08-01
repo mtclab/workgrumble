@@ -467,6 +467,143 @@ describe('a world picked back up in the middle of one', () => {
     expect(before?.entry.source).toBe('meeting');
     expect(before?.minutesIn).toBe(11);
   });
+
+  /**
+   * The same claim through the SAVE FILE rather than through `resync` alone,
+   * which is the half `resync` cannot make on its own: a reload is a different
+   * engine, built from nothing, handed a string.
+   *
+   * It is the two lines `ShellSession.load` runs - `engine.restore` and
+   * `restoreDriverState` - against a world that is halfway through a block
+   * nobody could refuse. A driver that had been remembering ANY part of where
+   * it was in the meeting would come back somewhere else, and the minute would
+   * be the first thing to go.
+   */
+  it('comes out of a save file on the same minute of the same meeting', () => {
+    const world = harnessOn(3);
+    const entry = entryOn(world.session, 3, 'meeting:hygiene-sync');
+
+    runTo(world.driver, world.session, entry.tick + 8);
+
+    const savedAt = world.session.engine.now();
+    const file = world.session.engine.serialize();
+    const driverState = world.driver.driverState();
+
+    // A session nobody has played, exactly as a reloaded tab gives one.
+    const fresh = createWorldSession();
+    const loaded = new DayDriver(
+      fresh.engine,
+      COMPANY_IDS.player,
+      fresh.seed,
+      {
+        onDayBoundary: () => {},
+        openSlackApps: () => [],
+        focusedSlackApp: () => null,
+      },
+    );
+
+    expect(fresh.engine.now()).not.toBe(savedAt);
+
+    fresh.engine.restore(file);
+    loaded.restoreDriverState(driverState);
+
+    expect(fresh.engine.now()).toBe(savedAt);
+    expect(loaded.interruption()?.entry.id).toBe('meeting:hygiene-sync');
+    expect(loaded.interruption()?.minutesIn).toBe(8);
+    // And it has not been quietly settled on the way through: the meeting is
+    // answered at the END of its block, and this one has not reached it.
+    expect(fresh.engine.graph.getField(
+      COMPANY_IDS.player,
+      FIELDS.meetingRecapAt,
+    )).toBeUndefined();
+  });
+});
+
+/* -- the week the walk actually plays -------------------------------------- */
+
+/**
+ * The same beats against a week nobody worked, which is what the browser walk
+ * plays: `logInOnDay` runs the days in between rather than working them.
+ *
+ * It is a separate case rather than a parameter because the two weeks are
+ * genuinely different worlds - every meter is at its ceiling by the Wednesday
+ * of an idle week - and a mechanic that only behaves on a tidy desk is a
+ * mechanic that behaves for nobody. This is the harness the e2e failures were
+ * diagnosed against, and it is kept so the next disagreement between the two
+ * has a place to be settled offline.
+ */
+describe('a week nobody worked', () => {
+  function idleTo(day: number): Harness {
+    const session = createWorldSession();
+    const arrivals: InterruptionView[] = [];
+    const ended: InterruptionEntry[] = [];
+    const driver = new DayDriver(
+      session.engine,
+      COMPANY_IDS.player,
+      session.seed,
+      {
+        onDayBoundary: () => {},
+        openSlackApps: () => [],
+        focusedSlackApp: () => null,
+        onInterruption: (view) => {
+          arrivals.push(view);
+        },
+        onInterruptionEnded: (entry) => {
+          ended.push(entry);
+        },
+      },
+    );
+
+    for (let played = 1; played < day; played += 1) {
+      driver.startShift();
+      runTo(driver, session, shiftEndTick(played));
+      driver.clockOff();
+    }
+
+    driver.startShift();
+    arrivals.length = 0;
+    ended.length = 0;
+    return { driver, session, arrivals, ended };
+  }
+
+  it('still rings, still comes back, and still knows it is a callback', () => {
+    const world = idleTo(2);
+    const entry = entryOn(world.session, 2, 'call:spooler');
+
+    runTo(world.driver, world.session, entry.tick);
+    expect(world.driver.interruption()?.entry.id).toBe('call:spooler');
+    expect(world.driver.deferInterruption()).toEqual({ ok: true });
+    // The world has it written down, which is what the second arrival is read
+    // off - and it is written as the id on its own, so the question can be
+    // asked with nothing but the id.
+    expect(world.session.engine.graph.getField(
+      COMPANY_IDS.player,
+      FIELDS.interruptionDeferred,
+    )).toBe('call:spooler');
+    expect(world.driver.interruption()).toBeNull();
+
+    runTo(world.driver, world.session, entry.tick + DEFER_MINUTES);
+
+    const again = world.driver.interruption();
+
+    expect(again?.entry.tick).toBe(entry.tick + DEFER_MINUTES);
+    expect(again?.callback).toBe(true);
+    expect(world.arrivals.map((view) => view.callback)).toEqual([false, true]);
+  }, 20_000);
+
+  it('still sits the player through the sync', () => {
+    const world = idleTo(3);
+    const entry = entryOn(world.session, 3, 'meeting:hygiene-sync');
+
+    runTo(world.driver, world.session, entry.tick);
+    expect(world.driver.interruption()?.entry.source).toBe('meeting');
+
+    runTo(world.driver, world.session, entry.endsTick);
+    expect(world.session.engine.graph.getField(
+      COMPANY_IDS.player,
+      FIELDS.meetingRecapAt,
+    )).toBe(entry.endsTick);
+  }, 20_000);
 });
 
 /* -- the hours nobody is at the desk --------------------------------------- */
