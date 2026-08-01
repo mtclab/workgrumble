@@ -555,6 +555,28 @@ interface GoldenWeek {
  * nothing on the file anybody has a reason to read, and idle is fired on the
  * numbers alone, at 4 against a bar of 70 it would have missed at 45.
  *
+ * TWELFTH MOVE (0.2.7, the systemic layer). Both hashes, and NOTHING ELSE in
+ * either week: not an arrival, not a close, not a breach, not a penny, not one
+ * of the seven meters, not a line on either timeline, not a line on either
+ * file, not a bar, and not an ending. One integer moved both of them.
+ *
+ * `arc_week` is seeded at 1 on the player node. A career is a table of weeks
+ * the way a week is a table of days (`src/world/pressure.ts`), and where the
+ * player is in it has to be world state: it is saved, it is replayed, and one
+ * line of the redundancy matrix - length of service, the line nobody can move
+ * - is read straight off it.
+ *
+ * What did NOT arrive in these two weeks is the point of the slice, so it is
+ * worth listing what was deliberately not seeded. The probation week is week
+ * one of the arc and the pacing rules give week one nothing at all: no season
+ * is live, so the two mail gates the announcements arrive as are ABSENT rather
+ * than false, the inbox holds the same threads it always held, no pool is
+ * scored, `review_position` and `review_cut_from` do not exist, and the guard
+ * that reads them therefore answers no. Both review verbs are guarded exactly
+ * as they were, both weeks end exactly as they did, and the third ending is
+ * unreachable from here by design rather than by omission - it is walked, on
+ * the arc week it belongs to, in `scripted-arc.test.ts`.
+ *
  * The idle week is where they disagree, which is the whole finding.
  * `ticket:flat-mouse` arrives at 13:34 on the Monday and its deadline runs out
  * at 09:34 on the Tuesday; `ticket:must-change-password` is filed on the
@@ -569,7 +591,7 @@ interface GoldenWeek {
  * happened.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: 'd701afdfc4598e4f',
+  hash: '8348c936e7883a9b',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -655,8 +677,9 @@ const GOLDEN_WORKED: GoldenWeek = {
 const GOLDEN_IDLE: GoldenWeek = {
   // Unchanged by 0.2.5, to the byte. See the TENTH MOVE above: the readings
   // this week takes on the way through are completely different and every one
-  // of them is overwritten by the next.
-  hash: '8de884e5c493b90c',
+  // of them is overwritten by the next. Moved by 0.2.7 for the same single
+  // integer the worked week moved for, and for nothing else.
+  hash: '6441750e9d4f891e',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.

@@ -655,8 +655,22 @@ const GOLDEN_DAY = {
    * conversations, the same four breaches charged once each, the same two
    * cans, the same crash, the same 7,315 pence, and the same `week_reputation`
    * of 30 - because nothing in this slice touches what the review reads.
+   *
+   * TWELFTH MOVE (0.2.7, the systemic layer). The hash, and NOTHING ELSE - not
+   * a meter, not a minute, not a breach, not a penny, not a timeline entry -
+   * and the cause is one integer.
+   *
+   * `arc_week` is seeded on the player node at 1, because a career is a table
+   * of weeks the way a week is a table of days and the world has to carry
+   * where the player is in it: it is saved, it is replayed, and one line of a
+   * redundancy matrix is read straight off it. This day is week one, week one
+   * is the probation week, and the probation week carries no weather by rule -
+   * so the two mail gates the systemic layer would arrive as are ABSENT rather
+   * than false, no ranking is written, and both review verbs behave exactly as
+   * they did. One number in the graph is the entire footprint of a slice that
+   * added a third ending, and that is the claim this hash is the proof of.
    */
-  hash: '673109081cdf3cfa',
+  hash: '700bc1695430eea8',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */
