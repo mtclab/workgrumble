@@ -544,6 +544,85 @@ fn holds_every_deadline_while_the_service_clock_is_stopped() {
     assert_eq!(state(&world, "ticket:overnight"), "breached");
 }
 
+/// A meeting holds nothing and pauses nothing.
+///
+/// This is the invariant the whole interruption family is built on top of, and
+/// it is asserted here rather than in the shell because it is a claim about the
+/// ENGINE: a takeover that owns the screen is not a reason the queue stops. The
+/// mandatory sync is thirty minutes in which the player can see the shape of
+/// the queue and cannot touch it, and every clock runs - which is the comedy
+/// and is also the only honest arithmetic. If a later lane were to "help" by
+/// holding the service clock for the meeting's duration, or by parking the
+/// tickets it interrupts, `off_hours_ticks` or `held_ticks` would start moving
+/// and this test goes red on the exact line that describes the lie.
+///
+/// The four-term identity is checked before, during and after, because a
+/// meeting that quietly handed back thirty minutes would still satisfy it at
+/// the end: the terms would all have moved together.
+#[test]
+fn a_meeting_holds_nothing_and_pauses_nothing() {
+    const TARGET: i64 = 90;
+    const MEETING_MINUTES: i64 = 30;
+
+    let mut world = harness();
+    world
+        .spawn_ticket(&service_ticket("ticket:hygiene-sync", TARGET, "wedged"))
+        .expect("spawn");
+    world.drain_events();
+
+    let number = |world: &World, field: &str| -> i64 {
+        world
+            .graph
+            .get_field("ticket:hygiene-sync", field)
+            .and_then(FieldValue::as_safe_int)
+            .unwrap_or(0)
+    };
+    let invariant = |world: &World| {
+        assert_eq!(
+            number(world, "sla_deadline"),
+            number(world, "spawned_at")
+                + TARGET
+                + number(world, "held_ticks")
+                + number(world, "off_hours_ticks"),
+            "deadline == spawn + target + held + off_hours",
+        );
+    };
+
+    // Ten minutes of ordinary work first, so "nothing moved" is a claim about
+    // the meeting rather than about a world that has not started.
+    world.advance(10).expect("the morning");
+    invariant(&world);
+    let deadline_before = number(&world, "sla_deadline");
+
+    // The meeting. Nobody parks the ticket, nobody stops the service clock,
+    // and the player cannot reach the desk for any of it.
+    for minute in 1..=MEETING_MINUTES {
+        world.advance(1).expect("a minute of the sync");
+        invariant(&world);
+        assert_eq!(
+            number(&world, "sla_deadline"),
+            deadline_before,
+            "the deadline moved during minute {minute} of a meeting",
+        );
+        assert_eq!(number(&world, "held_ticks"), 0);
+        assert_eq!(number(&world, "off_hours_ticks"), 0);
+    }
+
+    assert_eq!(state(&world, "ticket:hygiene-sync"), "open");
+    invariant(&world);
+
+    // And the arithmetic is honest at the far end of it: the deadline is where
+    // it always was, so the half hour spent in a room came straight off the
+    // time there was to fix anything, and the ticket goes red on the minute it
+    // was always going to.
+    let spent = 10 + MEETING_MINUTES;
+    world.advance(TARGET - spent - 1).expect("up to the wire");
+    assert_eq!(world.clock.now(), deadline_before - 1);
+    assert_eq!(state(&world, "ticket:hygiene-sync"), "open");
+    world.advance(1).expect("past it");
+    assert_eq!(state(&world, "ticket:hygiene-sync"), "breached");
+}
+
 /// The op is the only way a world says it: a verb in the registry, dispatched
 /// like everything else, so a replayed log stops the clock in the same minute.
 #[test]
