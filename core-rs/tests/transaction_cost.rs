@@ -171,10 +171,10 @@ fn dispatch(world: &mut World, action: &str) -> DispatchResult {
 
 /// The best of several batches, because the worst of them is measuring the
 /// machine rather than the engine.
-fn per_dispatch(world: &mut World, action: &str, batch: usize, rounds: usize) -> Duration {
+fn best_of(world: &mut World, batch: usize, rounds: usize, mut once: impl FnMut(&mut World)) -> Duration {
     // Warm the allocator and the branch predictor before anything is counted.
     for _ in 0..batch {
-        dispatch(world, action);
+        once(world);
         world.drain_events();
     }
 
@@ -184,7 +184,7 @@ fn per_dispatch(world: &mut World, action: &str, batch: usize, rounds: usize) ->
         let started = Instant::now();
 
         for _ in 0..batch {
-            dispatch(world, action);
+            once(world);
         }
 
         let elapsed = started.elapsed();
@@ -195,26 +195,34 @@ fn per_dispatch(world: &mut World, action: &str, batch: usize, rounds: usize) ->
     best
 }
 
+fn per_dispatch(world: &mut World, action: &str, batch: usize, rounds: usize) -> Duration {
+    best_of(world, batch, rounds, |world| {
+        dispatch(world, action);
+    })
+}
+
+/// One simulated minute. The other way into a transaction: an advance wraps
+/// its whole tick loop in one, because time either passed or it did not.
+fn per_tick(world: &mut World, batch: usize, rounds: usize) -> Duration {
+    best_of(world, batch, rounds, |world| {
+        world.advance(1).expect("a minute passes");
+    })
+}
+
 /// Not a gate - a number. Run with `--nocapture` to read it.
 #[test]
 fn reports_what_a_dispatch_costs() {
-    let mut world = estate(0);
-    let applied = per_dispatch(&mut world, "bench.touch", 200, 5);
-    let refused = per_dispatch(&mut world, "bench.touch_then_fail", 200, 5);
-    let nodes = world.graph.all_nodes().len();
+    for (label, mut world) in [("estate", estate(0)), ("padded", estate(PADDING))] {
+        let applied = per_dispatch(&mut world, "bench.touch", 200, 5);
+        let refused = per_dispatch(&mut world, "bench.touch_then_fail", 200, 5);
+        let tick = per_tick(&mut world, 200, 5);
+        let nodes = world.graph.all_nodes().len();
 
-    println!(
-        "estate {nodes} nodes: applied {applied:?}/dispatch, rolled back {refused:?}/dispatch",
-    );
-
-    let mut padded = estate(PADDING);
-    let applied = per_dispatch(&mut padded, "bench.touch", 200, 5);
-    let refused = per_dispatch(&mut padded, "bench.touch_then_fail", 200, 5);
-    let nodes = padded.graph.all_nodes().len();
-
-    println!(
-        "padded {nodes} nodes: applied {applied:?}/dispatch, rolled back {refused:?}/dispatch",
-    );
+        println!(
+            "{label} {nodes} nodes: applied {applied:?}/dispatch, \
+             rolled back {refused:?}/dispatch, {tick:?}/tick",
+        );
+    }
 }
 
 /// THE GATE. A transaction may not cost the world.
@@ -234,14 +242,30 @@ fn a_transaction_does_not_cost_the_world() {
     let mut small = estate(0);
     let mut large = estate(PADDING);
 
+    let mut measured: Vec<(&str, Duration, Duration)> = Vec::new();
+
     for action in ["bench.touch", "bench.touch_then_fail"] {
-        let lean = per_dispatch(&mut small, action, 200, 5);
-        let padded = per_dispatch(&mut large, action, 200, 5);
+        measured.push((
+            action,
+            per_dispatch(&mut small, action, 200, 5),
+            per_dispatch(&mut large, action, 200, 5),
+        ));
+    }
+
+    // And the other way into a transaction: one simulated minute, which is
+    // what the day loop asks for over and over while nobody clicks anything.
+    measured.push((
+        "advance(1)",
+        per_tick(&mut small, 200, 5),
+        per_tick(&mut large, 200, 5),
+    ));
+
+    for (what, lean, padded) in measured {
         let ratio = padded.as_secs_f64() / lean.as_secs_f64();
 
         assert!(
             ratio < 4.0,
-            "\"{action}\" costs {ratio:.1}x more against a world {PADDING} nodes bigger \
+            "\"{what}\" costs {ratio:.1}x more against a world {PADDING} nodes bigger \
              ({lean:?} -> {padded:?}); a transaction has started scaling with the world again",
         );
     }
