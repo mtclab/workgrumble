@@ -12,9 +12,15 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ReadOnlyGraphNode } from '../engine-api';
+import { buildPatrolSchedule, patrolWindows } from './boss';
 import { DAY_RATE_PENCE, dripWindow, shiftStartTick } from './day';
 import { FIELDS } from './fields';
 import { minuteOfDay } from './hours';
+import {
+  buildInterruptionSchedule,
+  type InterruptionSlot,
+  interruptionsClearOf,
+} from './interruptions';
 import { STARTING_REPUTATION } from './meters';
 import { WORLD_TICKETS } from './tickets';
 import {
@@ -24,6 +30,8 @@ import {
   dayScript,
   inheritedTicketIds,
   isReviewDay,
+  interruptionPlanFor,
+  interruptionsOn,
   isReviewOutcome,
   isWeekDay,
   MAX_INHERITED,
@@ -60,6 +68,24 @@ function monday(over: Partial<DayScript> = {}): DayScript {
 
 function week(...days: readonly DayScript[]): readonly DayScript[] {
   return validateWeek(days);
+}
+
+function interruption(
+  id: string,
+  minute: number,
+  minutes = 6,
+): InterruptionSlot {
+  return {
+    id,
+    source: 'call',
+    minute,
+    minutes,
+    relatedTicket: null,
+    declinable: true,
+    synchronous: true,
+    severity: 2,
+    flavor: { caller: 'Somebody in accounts' },
+  };
 }
 
 const FILLER: readonly DayScript[] = [2, 3, 4, 5].map((day) => monday({
@@ -250,6 +276,86 @@ describe('the loader', () => {
       monday({ day: 2, label: 'Tuesday', inherited: ['ticket:twice'] }),
       ...FILLER.slice(1),
     )).toThrow(/arrives twice in one week/);
+  });
+
+  it('refuses an interruption outside the hours anybody is at the desk', () => {
+    expect(() => week(
+      monday({ interruptions: [interruption('call:dawn', 6 * 60)] }),
+      ...FILLER,
+    )).toThrow(/outside the hours anybody is at the desk/);
+  });
+
+  /**
+   * Two interruptions with one id would share the record of what was done
+   * about them, so the second would arrive already answered and its window
+   * would refuse every button on it. That is a Thursday that quietly does
+   * nothing, which is the class of bug this loader exists for.
+   */
+  it('refuses the same interruption id twice in one week', () => {
+    expect(() => week(
+      monday({ interruptions: [interruption('call:twice', 10 * 60)] }),
+      monday({
+        day: 2,
+        label: 'Tuesday',
+        interruptions: [interruption('call:twice', 14 * 60)],
+      }),
+      ...FILLER.slice(1),
+    )).toThrow(/interrupts twice in one week/);
+  });
+});
+
+describe('the day\'s interruptions', () => {
+  /**
+   * The shipped week authors none, and that is the state 0.3.0 lane A ships
+   * in: the rails are the world's, the content is not written yet, and this is
+   * what keeps every golden where it was. It is asserted rather than assumed
+   * because the day the first one is authored, this line is the one that says
+   * the goldens are now allowed to move.
+   */
+  it('is empty in every day of the shipped probation week', () => {
+    for (const script of WEEK) {
+      expect(interruptionsOn(script.day), script.label).toEqual([]);
+    }
+
+    expect(interruptionsOn(0)).toEqual([]);
+    expect(interruptionsOn(WEEK_DAYS + 1)).toEqual([]);
+  });
+
+  /**
+   * Where the two schedules meet. The lead's rounds are handed over as blocked
+   * windows so that nothing can be authored on top of a patrol - the boss
+   * cannot be at your shoulder while he is also chairing the meeting - and the
+   * whole plan is a function of the day and the world seed.
+   */
+  it('hands the builder the lead\'s rounds as minutes already spoken for', () => {
+    const seed = 0x5eed_0303;
+    const plan = interruptionPlanFor(3, seed);
+    const patrol = buildPatrolSchedule(3, patrolSeedFor(3, seed));
+
+    expect(plan.slots).toEqual([]);
+    expect(plan.blocked).toEqual(patrolWindows(patrol));
+    expect(plan.blocked.length).toBe(patrol.visits.length);
+    expect(plan.blocked.length).toBeGreaterThan(0);
+    // Same day, same seed, same plan - which is what the schedule's
+    // determinism rests on.
+    expect(interruptionPlanFor(3, seed)).toEqual(plan);
+  });
+
+  it('deals a day off the end of the week nothing at all', () => {
+    expect(interruptionPlanFor(WEEK_DAYS + 1, 1))
+      .toEqual({ slots: [], blocked: [] });
+  });
+
+  it('builds a schedule that clears the rounds it was handed', () => {
+    const seed = 0x5eed_0303;
+    const plan = interruptionPlanFor(4, seed);
+    const schedule = buildInterruptionSchedule(seed, 4, {
+      slots: [interruption('call:accounts', 10 * 60, 12)],
+      blocked: plan.blocked,
+    });
+
+    expect(schedule.entries).toHaveLength(1);
+    expect(interruptionsClearOf(schedule, plan.blocked)).toBeNull();
   });
 });
 

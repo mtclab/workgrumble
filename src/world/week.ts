@@ -36,9 +36,11 @@ import {
   shiftStartTick,
 } from './day';
 import type { ReadOnlyGraphNode } from '../engine-api';
+import { buildPatrolSchedule, patrolWindows } from './boss';
 import { COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
 import { findIncident, INCIDENTS } from './incidents';
+import type { InterruptionPlan, InterruptionSlot } from './interruptions';
 
 /** Monday to Friday. Saturday does not exist; that is the joke and the scope. */
 export const WEEK_DAYS = 5;
@@ -343,6 +345,16 @@ export interface DayScript {
   /** Who messages you directly today, and when. */
   readonly dms?: readonly DmSlot[];
   /**
+   * What takes the screen off you today: the calls, the summons, the meeting.
+   *
+   * Absent on every day of the shipped week, which is the honest state of it
+   * rather than an oversight - 0.3.0 lane A builds the rails and lane B
+   * authors what rides them. An empty column here is a week whose interruption
+   * schedule is empty, which is why the goldens did not move when the rails
+   * landed.
+   */
+  readonly interruptions?: readonly InterruptionSlot[];
+  /**
    * A twist on the world seed for the lead's rounds, so two days do not walk
    * in lockstep even where their content is identical. Monday takes the seed
    * as it comes: it is the day every other schedule is read against.
@@ -497,6 +509,7 @@ export function validateWeek(
   }
 
   const scheduled = new Set<string>();
+  const interruptions = new Set<string>();
 
   scripts.forEach((script, index) => {
     if (script.day !== index + 1) {
@@ -574,6 +587,25 @@ export function validateWeek(
         slot.minute + slot.filesAfter,
         slot.raises,
       );
+    }
+
+    // An interruption's id is what the world records the player's decision
+    // against, so two of them sharing one would share the record - and the
+    // second would arrive already answered. The check is week-wide rather than
+    // per day for the same reason a ticket's is: the field it is written into
+    // is not cleared overnight.
+    for (const slot of script.interruptions ?? []) {
+      requireWorkingMinute(script.day, slot.minute, slot.id);
+
+      if (interruptions.has(slot.id)) {
+        throw new Error(
+          `"${slot.id}" interrupts twice in one week. Two interruptions with `
+          + 'one id share the record of what was done about them, so the '
+          + 'second arrives already answered.',
+        );
+      }
+
+      interruptions.add(slot.id);
     }
 
     for (const id of scheduledIds(script)) {
@@ -733,6 +765,39 @@ export function incidentsOn(day: number): readonly IncidentSlot[] {
 
 export function directMessagesOn(day: number): readonly DmSlot[] {
   return isWeekDay(day) ? dayScript(day).dms ?? [] : [];
+}
+
+/** What takes the screen off you today, as the week's table declares it. */
+export function interruptionsOn(day: number): readonly InterruptionSlot[] {
+  return isWeekDay(day) ? dayScript(day).interruptions ?? [] : [];
+}
+
+/**
+ * Everything `buildInterruptionSchedule` needs for a day of this week: what
+ * was authored, and which minutes the screen is already spoken for.
+ *
+ * This is where the two schedules meet, and it is the only place they do. The
+ * lead's rounds are built first and handed over as windows, so an interruption
+ * cannot land on top of a patrol, a caught scene, or the walk back from one -
+ * one takeover at a time - and the boss cannot be at your shoulder while he is
+ * also chairing the meeting. `interruptions.ts` stays ignorant of what a
+ * patrol is shaped like, which is what lets a test construct a collision by
+ * hand instead of reverse-engineering a seed that produces one.
+ */
+export function interruptionPlanFor(
+  day: number,
+  worldSeed: number,
+): InterruptionPlan {
+  if (!isWeekDay(day)) {
+    return { slots: [], blocked: [] };
+  }
+
+  return {
+    slots: interruptionsOn(day),
+    blocked: patrolWindows(
+      buildPatrolSchedule(day, patrolSeedFor(day, worldSeed)),
+    ),
+  };
 }
 
 /** The tickets waiting in the queue before the day starts. */
