@@ -79,10 +79,11 @@ import {
   patrolSeedFor,
   type ReviewOutcome,
   reviewOutcomeFor,
-  weightedWeekReputation,
   reviewTick,
   type WeekScorecard,
   weekScorecard,
+  weekStanding,
+  weekWorkThrough,
 } from '../world/week';
 import { FIELDS } from '../world/fields';
 import { seedForAttempt } from '../world/session';
@@ -197,6 +198,12 @@ export interface DayApi {
    * with the refusal a player can read.
    */
   beer(): DispatchResult;
+  /**
+   * The week as the review would read it if it happened this minute: a mark
+   * out of a hundred, half of it the queue closed and half of it the deadlines
+   * kept, weighted toward how the week has been ending.
+   */
+  weekReading(): number;
   /** How Friday at three went, as the world recorded it. */
   reviewOutcome(): ReviewOutcome;
   /** Whether the week has been clocked off for the last time. */
@@ -671,18 +678,15 @@ export class DayDriver implements DayApi {
     return weekScorecard(this.engine.graph.nodesOfKind('ticket'), {
       banked: this.farmFund(),
       opening: this.playerNumber(FIELDS.weekOpeningFund),
-      // The number the conversation was decided on, which stopped moving when
-      // the conversation happened. Reading the live meter let the week screen
-      // print "37 of 40 needed" directly above "Probation: passed", because
-      // reputation carries on moving all Friday afternoon. Before three
-      // o'clock there is nothing to snapshot and the live number is the
-      // honest one - it is what the review WOULD read.
-      reputation: outcome === 'pending'
-        ? this.playerNumber(FIELDS.reputation)
-        : this.playerNumber(
-          FIELDS.reviewReputation,
-          this.playerNumber(FIELDS.reputation),
-        ),
+      // The mark the conversation was decided on, which stopped moving when
+      // the conversation happened. Reading it live let the week screen print
+      // "37 of 45 needed" directly above "Probation: passed", because the week
+      // carries on being worked all Friday afternoon. Before three o'clock
+      // there is nothing to snapshot and the live number is the honest one -
+      // it is what the review WOULD read.
+      performance: outcome === 'pending'
+        ? this.weekReading()
+        : this.playerNumber(FIELDS.reviewReputation, this.weekReading()),
       outcome,
     });
   }
@@ -771,9 +775,9 @@ export class DayDriver implements DayApi {
   /**
    * Friday, three o'clock.
    *
-   * The world decides which way it goes - both verbs are guarded on the
-   * reputation that earns them - so all this does is offer the one the meters
-   * support and hand the answer to the shell, which is where a scene lives.
+   * The world decides which way it goes - both verbs are guarded on the mark
+   * that earns them - so all this does is offer the one the week supports and
+   * hand the answer to the shell, which is where a scene lives.
    * Reading the outcome back off the graph rather than trusting the dispatch
    * is what makes a refused review a review that did not happen.
    */
@@ -816,19 +820,31 @@ export class DayDriver implements DayApi {
   }
 
   /**
-   * The week as the review will read it, written into the world.
+   * The week as the review will read it, right now.
    *
-   * Today's standing folded into the days behind it, each of those worth half
-   * of the one after. The number is computed here and decided there, exactly
-   * as the meters are: the shell can read the graph, the world says where a
-   * number stops, and the dispatch log carries what was actually written so a
-   * replay arrives at the same Friday instead of recomputing one.
+   * The mark for the week to date - how much of what arrived was closed, and
+   * how much of it never went red - folded into the days behind it, each of
+   * those worth half of the one after. Free to call and changes nothing, which
+   * is what lets the day scorecard show the player the number they are being
+   * judged on every evening rather than for the first time on a Friday.
+   */
+  public weekReading(): number {
+    return weekStanding(
+      this.playerNumber(FIELDS.weekReputation),
+      weekWorkThrough(this.engine.graph.nodesOfKind('ticket'), this.day()),
+    );
+  }
+
+  /**
+   * The same number, written into the world.
+   *
+   * Computed here and decided there, exactly as the meters are: the shell can
+   * read the graph, the world says where a number stops, and the dispatch log
+   * carries what was actually written so a replay arrives at the same Friday
+   * instead of recomputing one.
    */
   private recordWeekReading(): void {
-    const reading = weightedWeekReputation(
-      this.playerNumber(FIELDS.weekReputation),
-      this.playerNumber(FIELDS.reputation),
-    );
+    const reading = this.weekReading();
     const result = this.engine.dispatch(
       DAY_ACTIONS.weekReading,
       this.actor,

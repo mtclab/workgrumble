@@ -1,7 +1,7 @@
 import type { ActionData, NodeRefData, PredData } from '../../engine-api';
 import { NO_RUN } from '../consumables';
 import { FIELDS } from '../fields';
-import { PROBATION_BONUS_PENCE, REVIEW_PASS_REPUTATION } from '../week';
+import { PROBATION_BONUS_PENCE, REVIEW_PASS_PERFORMANCE } from '../week';
 import { HELPDESK_TIER, not } from './helpers';
 import { DAY_ACTIONS } from './ids';
 
@@ -160,7 +160,7 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
           pred: 'field_at_least',
           node: ACTOR,
           field: FIELDS.weekReputation,
-          value: REVIEW_PASS_REPUTATION,
+          value: REVIEW_PASS_PERFORMANCE,
         }),
         reason: 'Nothing in the file supports keeping you on, and the file is '
           + 'the only thing in the room he is reading from.',
@@ -173,10 +173,10 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         field: FIELDS.reviewOutcome,
         value: { const: 'passed' },
       },
-      // What the conversation was decided on, kept as it was read. The
-      // weighted figure carries on moving after three - the last clock-off
-      // folds Friday in again - and the week screen was showing a live number
-      // beside a verdict it did not produce.
+      // What the conversation was decided on, kept as it was read. The mark
+      // carries on moving after three - the queue does not stop, and the last
+      // clock-off folds Friday in again - and the week screen was showing a
+      // live number beside a verdict it did not produce.
       {
         op: 'set_field',
         node: ACTOR,
@@ -217,7 +217,7 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
           pred: 'field_at_least',
           node: ACTOR,
           field: FIELDS.weekReputation,
-          value: REVIEW_PASS_REPUTATION,
+          value: REVIEW_PASS_PERFORMANCE,
         },
         reason: 'There is enough in the file to keep you on, and he is not a '
           + 'man who does paperwork he does not have to.',
@@ -231,7 +231,7 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         value: { const: 'fired' },
       },
       // The same snapshot on the way out. A week screen that read the live
-      // figure could say "41 of 40 needed" above "Probation: not continued",
+      // figure could say "46 of 45 needed" above "Probation: not continued",
       // which is the screen arguing with itself about the one number the
       // player is owed an honest account of.
       {

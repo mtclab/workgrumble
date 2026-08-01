@@ -51,15 +51,29 @@ export const REVIEW_MINUTE = 15 * 60;
 export const MAX_INHERITED = 2;
 
 /**
- * Reputation at the review, at or above which the probation ends.
+ * The mark the week has to reach for the probation to continue, out of a
+ * hundred - and it is a percentage of the work rather than a score.
  *
- * It is below where the week starts (50) on purpose: the pass condition is
- * "did not go backwards very far", not "excelled". A first week at a helpdesk
- * is survived rather than won, and the engine enforces this number in the
- * guards of the two review verbs so the threshold cannot drift between the
- * screen that shows it and the world that applies it.
+ * Forty-five, and the number is borrowed rather than invented. MetricNet run
+ * hundreds of real service desks through a balanced scorecard built exactly
+ * the way `weekPerformance` is built - weighted ratios, normalised so that the
+ * answer always lands between nought and a hundred - and the distribution that
+ * comes out of it is centred on 50, with the third quartile from 39 to 50 and
+ * the bottom quartile below 39. A probation bar just under the median is
+ * therefore a bar with a published meaning: not "excellent", not "the worst
+ * desk in the country", but somewhere a real first-line desk actually sits.
+ *
+ * It replaced a bar of 40 on a summed reputation meter, and it is not the same
+ * 40 wearing a new hat. Under the meter a week that quietly let half the queue
+ * go red read 63 and cleared the line by twenty-three points, and got SAFER
+ * with every ticket added to the roster. Under the ratio that week reads about
+ * fifty and clears the line by a handful, which is what a first week at a
+ * helpdesk is supposed to feel like: survived rather than won.
+ *
+ * The engine enforces it in the guards of the two review verbs, so it cannot
+ * drift between the screen that shows it and the world that applies it.
  */
-export const REVIEW_PASS_REPUTATION = 40;
+export const REVIEW_PASS_PERFORMANCE = 45;
 
 /**
  * What surviving is worth, in pence, straight into the farm fund.
@@ -79,8 +93,8 @@ export function isReviewOutcome(value: unknown): value is ReviewOutcome {
 }
 
 /** Which way the conversation goes, from the one number it reads. */
-export function reviewOutcomeFor(reputation: number): 'passed' | 'fired' {
-  return reputation >= REVIEW_PASS_REPUTATION ? 'passed' : 'fired';
+export function reviewOutcomeFor(performance: number): 'passed' | 'fired' {
+  return performance >= REVIEW_PASS_PERFORMANCE ? 'passed' : 'fired';
 }
 
 /**
@@ -95,26 +109,112 @@ export function reviewOutcomeFor(reputation: number): 'passed' | 'fired' {
 export const REVIEW_WEIGHT = 0.5;
 
 /**
- * The week's standing after a day of it, and the reason this exists at all.
- *
- * Reputation is a meter with a ceiling at 100, and a week worked properly
- * reaches that ceiling by about the Wednesday. From there the meter cannot go
- * up, so nothing done on the Thursday or the Friday reaches the review - two
- * days of a five-day week, invisible to the only conversation that reads it.
- * Raising the ceiling would not fix that; it would rescale every rate in the
- * game to buy back the same two days.
- *
- * So the review stops reading the meter and reads this instead: today's
- * standing, folded into everything before it, weighted so that the end of the
- * week is what it mostly hears. Nothing about how reputation MOVES changes -
- * the breaches still cost what they cost - only what Friday at three makes of
- * where it got to.
+ * The week's standing after a day of it, folded into the days behind it.
  *
  * Whole numbers, and rounded rather than truncated, because the review reads
- * this out and half a reputation point is not a thing anybody says.
+ * this out and half a percentage point is not a thing anybody says.
  */
-export function weightedWeekReputation(carried: number, today: number): number {
+export function weightedWeekPerformance(
+  carried: number,
+  today: number,
+): number {
   return Math.round(carried * (1 - REVIEW_WEIGHT) + today * REVIEW_WEIGHT);
+}
+
+/* -- the performance axis -------------------------------------------------- */
+
+/**
+ * How much of the mark each half of it is worth.
+ *
+ * Even, and both halves are ratios of the same denominator, which is what
+ * makes them comparable. Closing the queue and closing it in time are two
+ * different competences - a desk can resolve everything late, and a desk can
+ * hit every deadline by triaging fast and fixing nothing - so the mark asks
+ * both and averages them rather than crediting one twice.
+ */
+export const RESOLUTION_WEIGHT = 0.5;
+export const SLA_WEIGHT = 1 - RESOLUTION_WEIGHT;
+
+/** What the week handed over, and what happened to it. */
+export interface WeekWork {
+  readonly arrived: number;
+  readonly closed: number;
+  readonly breached: number;
+}
+
+/**
+ * The week as a percentage of the work it was given, and the whole reason the
+ * review stopped reading a meter.
+ *
+ * The meter was a SUM. Every ticket resolved paid its own `reward.reputation`,
+ * every added ticket therefore put more credit on the table, and the price of
+ * being seen on a forum was a function of the clock rather than of the roster:
+ * the lead walks the corridor fifteen times a week whether the week holds
+ * twenty tickets or sixty. Two lines, one scaling with content and one flat,
+ * and the shipped roster of twenty-five was about two tickets short of the
+ * crossover where closing the lot with the browser up beats quietly letting
+ * half the queue go red. The pass bar drifted with it: a half-effort week
+ * scored 63 at twenty-five tickets and would have scored more at forty,
+ * because the denominator was nothing at all.
+ *
+ * So the answer is a fraction of what was available, in the shape service
+ * desks actually use - MetricNet's balanced scorecard, COPC's weighted
+ * categories - which is a weighted composite of ratios that always lands
+ * between nought and a hundred:
+ *
+ *     resolution   = closed / arrived
+ *     attainment   = (arrived - breached) / arrived
+ *     mark         = 100 * (0.5 * resolution + 0.5 * attainment)
+ *
+ * Both are counted over the same arrivals, so a week twice the size scores
+ * exactly the same for the same proportion of work done. That is the property
+ * `week.test.ts` re-walks at a doubled roster and refuses to lose.
+ *
+ * A ticket closed after its deadline ran out is credited in the first term and
+ * not in the second, which is the honest reading: it was done, and it was late.
+ * Nought arrivals is not a nought mark - it is no evidence - so it answers null
+ * and the standing stands.
+ */
+export function weekPerformance(work: Readonly<WeekWork>): number | null {
+  if (work.arrived <= 0) {
+    return null;
+  }
+
+  const share = (part: number): number => Math.min(
+    1,
+    Math.max(0, part / work.arrived),
+  );
+
+  return Math.round(100 * (
+    RESOLUTION_WEIGHT * share(work.closed)
+    + SLA_WEIGHT * share(work.arrived - work.breached)
+  ));
+}
+
+/**
+ * Where the week stands once a day of it is over: the mark for the week SO
+ * FAR, folded into what the days before it read.
+ *
+ * The fold is what it always was and it is doing the same job - a lead whose
+ * impression of you is mostly made of the last two days - but it now folds a
+ * percentage rather than a meter, and the two behave differently in the one
+ * way that matters. A meter accumulated: what happened on the Monday was still
+ * physically in it on the Friday. A ratio does not, so the fold is the only
+ * thing carrying the early week at all, and it carries it at a sixteenth.
+ *
+ * The mark is taken over the week TO DATE rather than over the day alone,
+ * because a day's own counts do not divide: a ticket that arrives at ten to
+ * five on the Monday goes red on the Tuesday, so the Tuesday would be five
+ * arrivals and six breaches and a negative attainment. Arrivals and their
+ * outcomes only balance once you look at the same tickets, which the week to
+ * date does and a single day does not.
+ */
+export function weekStanding(
+  carried: number,
+  work: Readonly<WeekWork>,
+): number {
+  const mark = weekPerformance(work);
+  return mark === null ? carried : weightedWeekPerformance(carried, mark);
 }
 
 /** A ticket that turns up during a shift, and the minute it nominally does. */
@@ -603,7 +703,8 @@ export interface WeekScorecard {
   /** What the week put in the fund, which is what the week was worth. */
   readonly earnedPence: number;
   readonly bankedPence: number;
-  readonly reputation: number;
+  /** The mark out of a hundred the conversation on Friday was had about. */
+  readonly performance: number;
   readonly outcome: ReviewOutcome;
 }
 
@@ -612,8 +713,38 @@ export interface WeekTotals {
   readonly banked: number;
   /** What it held when the week started - nought, or a survived firing. */
   readonly opening: number;
-  readonly reputation: number;
+  readonly performance: number;
   readonly outcome: ReviewOutcome;
+}
+
+/**
+ * The work the week has handed over up to and including a day, out of the
+ * ticket nodes themselves.
+ *
+ * The same day ledgers the scorecard is built from, added up - so the number
+ * the review is decided on and the numbers on the screen beside it cannot come
+ * from two different readings of the same week. Days that have not happened
+ * yet contribute nothing, because a ticket that has not arrived is not a node.
+ */
+export function weekWorkThrough(
+  tickets: readonly ReadOnlyGraphNode[],
+  day: number,
+): WeekWork {
+  const through = Math.min(Math.max(day, 0), WEEK_DAYS);
+  const days = Array.from(
+    { length: through },
+    (_, index) => dayLedger(tickets, index + 1),
+  );
+  const sum = (read: (line: DayLedger) => number): number => days.reduce(
+    (total, ledger) => total + read(ledger),
+    0,
+  );
+
+  return {
+    arrived: sum((ledger) => ledger.arrived),
+    closed: sum((ledger) => ledger.closed),
+    breached: sum((ledger) => ledger.breached),
+  };
 }
 
 /**
@@ -652,7 +783,7 @@ export function weekScorecard(
     ).length,
     earnedPence: Math.max(0, totals.banked - totals.opening),
     bankedPence: totals.banked,
-    reputation: totals.reputation,
+    performance: totals.performance,
     outcome: totals.outcome,
   };
 }

@@ -37,25 +37,37 @@ export const FIELDS = {
   reviewOutcome: 'review_outcome',
   weekEnded: 'week_ended',
   /**
-   * The number the conversation at three o'clock was actually decided on.
+   * The mark the conversation at three o'clock was actually decided on.
    *
-   * Snapshotted by the review itself, because reputation carries on moving
+   * Snapshotted by the review itself, because the week carries on being worked
    * afterwards: a ticket closed at half past three moves it up, a deadline
    * missed at four moves it down, and the week screen was reading it live. It
-   * could therefore say "37 of 40 needed" directly above "Probation: passed",
+   * could therefore say "37 of 45 needed" directly above "Probation: passed",
    * which is a screen arguing with itself about something the player cannot
    * check.
    */
   reviewReputation: 'review_reputation',
   /**
-   * The week as the review reads it: today's standing folded into the days
-   * before it, each older day counting half as much as the one after it.
+   * The week as the review reads it: a mark out of a hundred for the week to
+   * date, folded into the days before it, each older day counting half as much
+   * as the one after it.
    *
-   * It exists because reputation is a meter with a ceiling, and a week worked
-   * properly reaches that ceiling by about the Wednesday - after which nothing
-   * the player does on the Thursday or the Friday can move the number the
-   * review looks at. A weighted read has no ceiling problem: it is a fresh
-   * question every day, and the last day asked it loudest.
+   * What it HOLDS changed in 0.2.5 and the id did not, on purpose. It used to
+   * be the reputation meter folded day over day; it is now `weekPerformance` -
+   * how much of the week's own work was closed, and how much of it was closed
+   * in time - folded the same way. A field id is save state: every week saved
+   * mid-probation by a shipped build carries this key, and renaming it would
+   * quietly hand those weeks a standing of nought while the graph still held
+   * the old one under the old name. The name is a fossil of what the number
+   * used to be; the number is what this comment says it is.
+   *
+   * It exists because the meter was a sum. Every ticket added to the roster
+   * put more credit on the table, so the mark a week had to beat drifted with
+   * the content, and the day the roster grew past about twenty-six the week
+   * that slacked openly would have overtaken the week that quietly did half
+   * the job. A ratio has a denominator that grows with the numerator, so it
+   * cannot drift - and it has no ceiling problem either: it is a fresh
+   * question every day, and the last day asks it loudest.
    */
   weekReputation: 'week_reputation',
   /**
