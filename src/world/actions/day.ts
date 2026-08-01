@@ -35,6 +35,22 @@ const REVIEW_PENDING: PredData = {
 };
 
 /**
+ * The mark, held against the bar the world is carrying.
+ *
+ * `field_at_least` would compare it against a constant, which is what this
+ * used to be. The bar moves now - it starts at `REVIEW_PASS_PERFORMANCE` and
+ * is raised by what somebody found on the conduct file - so both review verbs
+ * compare two fields, and a bar that was never written is a bar nobody has
+ * cleared.
+ */
+const MARK_CLEARS_THE_BAR: PredData = {
+  pred: 'field_at_least_field',
+  node: ACTOR,
+  field: FIELDS.weekReputation,
+  than: { node: ACTOR, field: FIELDS.reviewBar },
+};
+
+/**
  * The three moves a day makes, as verbs rather than as shell state.
  *
  * Everything about the day that has to survive a save goes through here, so a
@@ -134,6 +150,65 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
     apply: [{ op: 'set_sla_clock', running: false }],
   },
   /**
+   * Somebody opening the file, a minute before the conversation.
+   *
+   * The bar and the sentence explaining it are snapshotted for the same reason
+   * the mark is: everything they are computed from carries on moving after
+   * three o'clock. A ticket closed at half past would retire the aggrieved
+   * customer who caused the whole thing, and the review window would then be
+   * printing a reason that no longer existed above a verdict it had caused.
+   *
+   * The bar may not be BELOW the published pass mark. A caller that could send
+   * a lower one could hand somebody a job by arithmetic, which is the one
+   * direction this must not be able to fail in.
+   */
+  {
+    id: DAY_ACTIONS.reviewFileRead,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: not(stateIs('shift')),
+        reason: 'Nobody reads anybody\'s file outside working hours. He is '
+          + 'very clear about that, in a way he is not clear about anything '
+          + 'else.',
+      },
+      {
+        when: not(REVIEW_PENDING),
+        reason: 'That conversation has already happened, and the file was '
+          + 'read before it, which is the whole order of these things.',
+      },
+      {
+        when: not({
+          pred: 'param_is_whole_number',
+          param: 'bar',
+          value: REVIEW_PASS_PERFORMANCE,
+        }),
+        reason: 'The bar is a whole mark out of a hundred and it never goes '
+          + `below ${String(REVIEW_PASS_PERFORMANCE)}. What is on a file can `
+          + 'raise the line. Nothing lowers it.',
+      },
+      {
+        when: { pred: 'param_blank', param: 'conduct' },
+        reason: 'A bar was set and nobody wrote down why. The reason is the '
+          + 'half of this the player is owed.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reviewBar,
+        value: { param: 'bar' },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reviewConduct,
+        value: { param_trim: 'conduct' },
+      },
+    ],
+  },
+  /**
    * Friday at three, in the two sentences it can end with.
    *
    * The threshold lives in the GUARDS. A single verb taking an outcome would
@@ -156,12 +231,7 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
           + 'in it has been decided.',
       },
       {
-        when: not({
-          pred: 'field_at_least',
-          node: ACTOR,
-          field: FIELDS.weekReputation,
-          value: REVIEW_PASS_PERFORMANCE,
-        }),
+        when: not(MARK_CLEARS_THE_BAR),
         reason: 'Nothing in the file supports keeping you on, and the file is '
           + 'the only thing in the room he is reading from.',
       },
@@ -213,12 +283,7 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
           + 'in it has been decided.',
       },
       {
-        when: {
-          pred: 'field_at_least',
-          node: ACTOR,
-          field: FIELDS.weekReputation,
-          value: REVIEW_PASS_PERFORMANCE,
-        },
+        when: MARK_CLEARS_THE_BAR,
         reason: 'There is enough in the file to keep you on, and he is not a '
           + 'man who does paperwork he does not have to.',
       },

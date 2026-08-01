@@ -25,6 +25,16 @@ export interface CaughtScene {
   readonly reply: string;
   /** The button that closes it, which is always there. */
   readonly dismissLabel: string;
+  /**
+   * What the FILE calls it, which is not what he calls it.
+   *
+   * The scene is a man being funny at your desk; the line that goes on the
+   * record afterwards is written by somebody with a template, in the passive
+   * voice, weeks later. Both are true about the same minute and neither is a
+   * paraphrase of the other, which is the joke and is also why this is content
+   * beside the scene rather than a label the shell invents.
+   */
+  readonly fileSubject: string;
 }
 
 /**
@@ -73,6 +83,7 @@ export const CAUGHT_SCENES: readonly CaughtScene[] = validateCaughtScenes([
     reply: 'You explain that it is a morale exercise. He writes the phrase '
       + '"morale exercise" down, which is the worst possible outcome.',
     dismissLabel: 'Take it on the chin',
+    fileSubject: 'a puzzle game',
   },
   {
     appId: 'browser',
@@ -85,6 +96,7 @@ export const CAUGHT_SCENES: readonly CaughtScene[] = validateCaughtScenes([
     reply: 'You call it research. He agrees that it is research, in the tone '
       + 'of a man who intends to use that word again at your review.',
     dismissLabel: 'Close the tab, and the conversation',
+    fileSubject: 'a discussion forum',
   },
 ]);
 
@@ -115,6 +127,7 @@ export const UNCAUGHT_SCENE: CaughtScene = Object.freeze({
   reply: 'Keep it that way, or do not - the bubbles are not going to catch '
     + 'themselves.',
   dismissLabel: 'Back to work',
+  fileSubject: 'nothing',
 });
 
 export const GENERIC_CAUGHT_SCENE: CaughtScene = Object.freeze({
@@ -127,6 +140,7 @@ export const GENERIC_CAUGHT_SCENE: CaughtScene = Object.freeze({
   reply: 'You say nothing, which is the first correct thing you have done all '
     + 'afternoon.',
   dismissLabel: 'Take it on the chin',
+  fileSubject: 'a non-work application',
 });
 
 /** The shape the loader needs: an app roster it can check itself against. */

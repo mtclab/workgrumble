@@ -40,6 +40,8 @@ export const REVIEW_APP: AppDef = {
     const narration = element('p', 'caught-narration', 'review-narration');
     const reply = element('p', 'caught-reply', 'review-reply');
 
+    const conduct = element('p', 'caught-narration', 'review-conduct');
+
     const footer = element('div', 'caught-footer');
     const dismiss = osButton('Take it on the chin', 'review-dismiss', {
       primary: true,
@@ -47,7 +49,7 @@ export const REVIEW_APP: AppDef = {
     const note = element('p', 'caught-note', 'review-note');
     footer.append(dismiss, note);
 
-    root.append(head, line, narration, reply, footer);
+    root.append(head, line, narration, reply, conduct, footer);
 
     dismiss.addEventListener('click', () => {
       api.closeApp('review');
@@ -74,15 +76,29 @@ export const REVIEW_APP: AppDef = {
      * drifted away from the verdict above it would be this window arguing with
      * itself.
      */
-    const marked = (): string => `${
-      String(api.day.weekScorecard().performance)
-    } out of 100, against the ${String(REVIEW_PASS_PERFORMANCE)} he wanted`;
+    const marked = (): string => {
+      const card = api.day.weekScorecard();
+      return `${String(card.performance)} out of 100, against the ${
+        String(card.bar)
+      } he wanted`;
+    };
 
     const render = (): void => {
       const outcome = api.day.reviewOutcome();
       const scene = reviewScene(outcome) ?? PENDING;
+      const card = api.day.weekScorecard();
 
       root.dataset.outcome = outcome;
+      root.dataset.bar = String(card.bar);
+      // The reason the bar is that number, printed beside the verdict in the
+      // world's own words rather than re-derived here. It is written into the
+      // graph a minute before the conversation and never recomputed, so this
+      // window cannot end up explaining a verdict with a reason that has since
+      // gone away - which it would, because the queue carries on all
+      // afternoon and closing a red ticket retires the person who complained.
+      conduct.textContent = outcome === 'pending'
+        ? `As it stands: ${card.conduct}`
+        : card.conduct;
       heading.textContent = scene.title;
       stamp.textContent = outcome === 'pending'
         ? 'Friday, three o\'clock. It has not happened yet.'
@@ -103,9 +119,10 @@ export const REVIEW_APP: AppDef = {
             + 'the work: half of it is how much of what came in you closed, '
             + 'half is how much of it never went red. It has to reach '
             + `${String(REVIEW_PASS_PERFORMANCE)} out of 100 when he opens `
-            + 'the folder, and it leans on how the week ended - yesterday '
-            + 'counts double the day before it, and Monday is a rounding '
-            + 'error by Friday.';
+            + 'the folder - more if somebody has had a reason to open the '
+            + 'other folder first - and it leans on how the week ended: '
+            + 'yesterday counts double the day before it, and Monday is a '
+            + 'rounding error by Friday.';
     };
 
     host.replaceChildren(root);

@@ -14,12 +14,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { DispatchResult, EngineApi, FieldValue } from '../../engine-api';
 import {
-  CAUGHT_REPUTATION_COST,
   CAUGHT_SUSPICION_FLOOR,
   EMPTIES_SUSPICION_BUMP,
   PING_STRESS,
 } from '../boss';
 import { COMPANY_IDS } from '../company';
+import { conductEntries, conductLine } from '../conduct';
 import { DRINK_PRICE_PENCE, MAX_CANS, NO_RUN } from '../consumables';
 import { FIELDS } from '../fields';
 import { METER_CEILING, STARTING_REPUTATION } from '../meters';
@@ -64,7 +64,9 @@ beforeEach(() => {
 });
 
 describe('boss.caught', () => {
-  it('resets suspicion to a floor and takes the price off reputation', () => {
+  const CAUGHT_AT_A_FORUM = conductLine(120, 'screen', 'a discussion forum');
+
+  it('resets suspicion to a floor and writes one line on the file', () => {
     dispatch(DAY_ACTIONS.metersTick, {
       stress_up: 0,
       stress_down: 0,
@@ -79,15 +81,39 @@ describe('boss.caught', () => {
     expect(field(FIELDS.suspicion)).toBe(60);
 
     expect(
-      dispatch(DAY_ACTIONS.bossCaught, {
-        reputation_cost: CAUGHT_REPUTATION_COST,
-      }),
+      dispatch(DAY_ACTIONS.bossCaught, { file_line: CAUGHT_AT_A_FORUM }),
     ).toEqual({ ok: true });
 
     expect(field(FIELDS.suspicion)).toBe(CAUGHT_SUSPICION_FLOOR);
-    expect(field(FIELDS.reputation))
-      .toBe(STARTING_REPUTATION - CAUGHT_REPUTATION_COST);
     expect(field(FIELDS.caughtEvents)).toBe(1);
+    const filed = conductEntries(field(FIELDS.conductFile));
+    expect(filed).toHaveLength(1);
+    expect(filed[0]?.tick).toBe(120);
+    expect(filed[0]?.kind).toBe('screen');
+    expect(filed[0]?.text).toContain('forum');
+  });
+
+  /**
+   * THE STANDING ASSERTION OF SLICE 0.2.6, and it is written as an equality
+   * with the untouched value on purpose.
+   *
+   * Being caught costs no points at all. It used to cost six off reputation,
+   * which 0.2.5 stopped the review reading, so the fine was levied in a
+   * currency nobody spends. The price is the clock (`CAUGHT_MINUTES`, charged
+   * by the driver) and the line above. Any conduct term put back onto a meter
+   * - however small, however well meant - turns this red, which is the
+   * conversation that has to happen before it ships.
+   */
+  it('takes nothing off any meter but the one it resets', () => {
+    const stress = field(FIELDS.stress);
+
+    for (let round = 0; round < 12; round += 1) {
+      dispatch(DAY_ACTIONS.bossCaught, { file_line: CAUGHT_AT_A_FORUM });
+    }
+
+    expect(field(FIELDS.reputation)).toBe(STARTING_REPUTATION);
+    expect(field(FIELDS.stress)).toBe(stress);
+    expect(field(FIELDS.caughtEvents)).toBe(12);
   });
 
   /**
@@ -96,49 +122,62 @@ describe('boss.caught', () => {
    */
   it('raises suspicion to the floor when it was below it', () => {
     expect(field(FIELDS.suspicion)).toBe(0);
-    dispatch(DAY_ACTIONS.bossCaught, { reputation_cost: 1 });
+    dispatch(DAY_ACTIONS.bossCaught, { file_line: CAUGHT_AT_A_FORUM });
     expect(field(FIELDS.suspicion)).toBe(CAUGHT_SUSPICION_FLOOR);
   });
 
-  it('counts every round he wins', () => {
-    dispatch(DAY_ACTIONS.bossCaught, { reputation_cost: 1 });
-    dispatch(DAY_ACTIONS.bossCaught, { reputation_cost: 1 });
+  it('counts every round he wins, and files every one of them', () => {
+    dispatch(DAY_ACTIONS.bossCaught, {
+      file_line: conductLine(120, 'screen', 'a discussion forum'),
+    });
+    dispatch(DAY_ACTIONS.bossCaught, {
+      file_line: conductLine(240, 'screen', 'a puzzle game'),
+    });
+
     expect(field(FIELDS.caughtEvents)).toBe(2);
+    // Order is the file's own, oldest first, because a file that reordered
+    // itself could not be checked against the clock.
+    expect(conductEntries(field(FIELDS.conductFile)).map((line) => line.tick))
+      .toEqual([120, 240]);
   });
 
-  it('cannot take reputation below the floor', () => {
-    for (let round = 0; round < 12; round += 1) {
-      dispatch(DAY_ACTIONS.bossCaught, { reputation_cost: 10 });
-    }
-
-    expect(field(FIELDS.reputation)).toBe(0);
-  });
-
-  it('refuses a cost that is not a number of points', () => {
+  it('refuses to file a line nobody wrote', () => {
     const before = engine.snapshotHash();
     expectRefusal(
-      dispatch(DAY_ACTIONS.bossCaught, { reputation_cost: -3 }),
-      'whole number of points',
+      dispatch(DAY_ACTIONS.bossCaught, { file_line: '   ' }),
+      'blank line',
     );
     expect(engine.snapshotHash()).toBe(before);
   });
 });
 
 describe('boss.noticed_empties and boss.ping', () => {
+  const THE_DESK = conductLine(120, 'desk', '5 empty cans');
+
   it('bumps suspicion for the desk and stress for the nag', () => {
     dispatch(DAY_ACTIONS.bossNoticedEmpties, {
       suspicion_up: EMPTIES_SUSPICION_BUMP,
+      file_line: THE_DESK,
     });
     dispatch(DAY_ACTIONS.bossPing, { stress_up: PING_STRESS });
 
     expect(field(FIELDS.suspicion)).toBe(EMPTIES_SUSPICION_BUMP);
     expect(field(FIELDS.stress)).toBe(PING_STRESS);
+    // The desk is the other thing that gets noticed, so it is the other thing
+    // that goes on the file - and it says which of the two it was.
+    const filed = conductEntries(field(FIELDS.conductFile));
+    expect(filed).toHaveLength(1);
+    expect(filed[0]?.kind).toBe('desk');
+    expect(filed[0]?.text).toContain('5 empty cans');
   });
 
   it('holds both inside the meter range', () => {
     for (let round = 0; round < 40; round += 1) {
       dispatch(DAY_ACTIONS.bossPing, { stress_up: 9 });
-      dispatch(DAY_ACTIONS.bossNoticedEmpties, { suspicion_up: 9 });
+      dispatch(DAY_ACTIONS.bossNoticedEmpties, {
+        suspicion_up: 9,
+        file_line: THE_DESK,
+      });
     }
 
     expect(field(FIELDS.stress)).toBe(METER_CEILING);
@@ -290,7 +329,9 @@ describe('clocking off', () => {
     startShift();
     drink();
     dispatch(DAY_ACTIONS.bossPing, { stress_up: PING_STRESS });
-    dispatch(DAY_ACTIONS.bossCaught, { reputation_cost: CAUGHT_REPUTATION_COST });
+    dispatch(DAY_ACTIONS.bossCaught, {
+      file_line: conductLine(120, 'screen', 'a discussion forum'),
+    });
     dispatch(DAY_ACTIONS.endShift);
 
     expect(dispatch(DAY_ACTIONS.clockOff, { banked: 4_200 })).toEqual({ ok: true });
@@ -308,7 +349,12 @@ describe('clocking off', () => {
     // What the day did to you comes home with you.
     expect(field(FIELDS.stress)).toBe(PING_STRESS);
     expect(field(FIELDS.suspicion)).toBe(CAUGHT_SUSPICION_FLOOR);
-    expect(field(FIELDS.reputation))
-      .toBe(STARTING_REPUTATION - CAUGHT_REPUTATION_COST);
+    expect(field(FIELDS.reputation)).toBe(STARTING_REPUTATION);
+
+    // And so does the file, which is the whole difference between it and the
+    // caught count above: `caught_events` is a fact about a day and is cleared
+    // with the day, and the file is a fact about a WEEK, because the thing
+    // that eventually reads it is reading a week.
+    expect(conductEntries(field(FIELDS.conductFile))).toHaveLength(1);
   });
 });

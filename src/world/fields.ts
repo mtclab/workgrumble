@@ -48,6 +48,41 @@ export const FIELDS = {
    */
   reviewReputation: 'review_reputation',
   /**
+   * The mark the conversation actually had to clear, and the reason it was
+   * that number.
+   *
+   * The bar used to be a constant in a guard, because a bar that only ever
+   * says 45 is a constant. It is not one any more: it starts at
+   * `REVIEW_PASS_PERFORMANCE`, and if somebody had a reason to open the
+   * conduct file it is raised by what was in it (`src/world/conduct.ts`). It
+   * has to be world state rather than arithmetic in the driver for the same
+   * reason `review_reputation` does - three screens read it, the guards of
+   * both review verbs enforce it, and a threshold the world applies and the
+   * screen re-derives is a threshold that can drift.
+   *
+   * `reviewConduct` is the sentence that goes beside the verdict, written in
+   * the same breath and never recomputed: the queue carries on all Friday
+   * afternoon, so a summary re-read at five would describe a different week
+   * from the one that decided anything.
+   */
+  reviewBar: 'review_bar',
+  reviewConduct: 'review_conduct',
+  /**
+   * The file: one dated line per thing the lead noticed, for the whole week.
+   *
+   * The week-cumulative sibling of `caughtEvents`, which is cleared every
+   * clock-off because it is a fact about a day. This is not cleared, because
+   * the whole point of it is that it accumulates while nothing happens - and
+   * because the thing that eventually reads it is reading a WEEK.
+   *
+   * It costs nothing when it is written. Being seen with a forum up used to
+   * take six points off the reputation meter, which 0.2.5 stopped the review
+   * reading, so the price had nothing on the other end of it. The price is now
+   * the minutes the conversation takes (`CAUGHT_MINUTES`) and this line, and
+   * the line only converts into anything when somebody has a reason to look.
+   */
+  conductFile: 'conduct_file',
+  /**
    * The week as the review reads it: a mark out of a hundred for the week to
    * date, folded into the days before it, each older day counting half as much
    * as the one after it.

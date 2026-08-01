@@ -138,9 +138,19 @@ export const WEEKEND_APP: AppDef = {
       // which is which.
       definitionRow(list, 'The week, as he read it', 'weekend-performance')
         .textContent = `${String(card.performance)} out of 100, against the ${
-          String(REVIEW_PASS_PERFORMANCE)
+          String(card.bar)
         } he needs. The two rows above, taken at the end of every day and `
           + 'weighted toward how the week ended.';
+      // And why the number beside it is the number it is. The bar is the
+      // published 45 in a week nobody had a reason to look into, and higher in
+      // one somebody did - so the row that names it has to say which week this
+      // was, in the words the world wrote down at three o'clock.
+      definitionRow(list, 'Why that number', 'weekend-conduct')
+        .textContent = card.conduct === ''
+          ? `The published pass mark, which is ${
+            String(REVIEW_PASS_PERFORMANCE)
+          }. Nobody opened anything.`
+          : card.conduct;
 
       const earned = definitionRow(list, 'Earned this week', 'weekend-earned');
       earned.textContent = `£${formatPence(card.earnedPence)}`;

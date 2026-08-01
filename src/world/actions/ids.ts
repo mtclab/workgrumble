@@ -237,8 +237,9 @@ export const DAY_ACTIONS = {
   /**
    * The lead arriving to find something on the screen. Suspicion drops to a
    * floor - being spoken to does not launder the morning, it resets the meter
-   * to somebody who has just been spoken to - and the price is taken off
-   * reputation, which is the meter that does not drain.
+   * to somebody who has just been spoken to - and one dated line goes onto the
+   * conduct file, which is all it costs the world. What it costs the PLAYER is
+   * `CAUGHT_MINUTES` off the shift, charged by the driver on the clock.
    */
   bossCaught: 'boss.caught',
   /** He noticed the empties rather than the screen. Cheaper. Not free. */
@@ -246,12 +247,23 @@ export const DAY_ACTIONS = {
   /** A chat nag, which costs a few points of stress and raises no ticket. */
   bossPing: 'boss.ping',
   /**
+   * Somebody opening the conduct file, a minute before the conversation.
+   *
+   * It writes down what the bar became and why, so that both review verbs are
+   * guarded against a number in the graph rather than against arithmetic
+   * whichever screen happened to do. Its own verb because it is its own event:
+   * the file is opened because somebody had a reason to, and the reason is
+   * written beside the number it produced.
+   */
+  reviewFileRead: 'day.review_file_read',
+  /**
    * Friday, three o'clock, both ways it goes.
    *
    * Two verbs rather than one with an outcome parameter, because the outcome
-   * is not something a caller gets to pick: each one is guarded on the
-   * reputation that earns it, so the threshold is enforced by the world rather
-   * than by whichever screen happened to do the arithmetic.
+   * is not something a caller gets to pick: each one is guarded on the mark
+   * that earns it against the bar the world is holding, so the threshold is
+   * enforced by the world rather than by whichever screen happened to do the
+   * arithmetic.
    */
   reviewPassed: 'day.review_passed',
   reviewFired: 'day.review_fired',

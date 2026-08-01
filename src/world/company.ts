@@ -705,6 +705,10 @@ export function companySetup(): readonly SetupOp[] {
             [FIELDS.weekOpeningFund]: 0,
             [FIELDS.reviewOutcome]: 'pending',
             [FIELDS.weekEnded]: false,
+            // The bar Friday has to clear is seeded too, and it is seeded in
+            // `session.ts` rather than here: it is the WEEK's published figure,
+            // and this module is one the week imports, so reaching the other
+            // way would be a cycle that runs at module load.
             // Probation. It is in the fridge with your name on it.
             [FIELDS.beerUnlocked]: false,
             [FIELDS.beerOpened]: false,

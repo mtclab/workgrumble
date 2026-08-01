@@ -13,7 +13,7 @@ import { DEMO_ACTION_DATA } from './demo-world';
 import { watchMachineEvents } from './events';
 import { FIELDS } from './fields';
 import { spawnWorldTicket } from './tickets';
-import { inheritedTicketIds } from './week';
+import { inheritedTicketIds, REVIEW_PASS_PERFORMANCE } from './week';
 
 /**
  * Where the first week is dealt from. The working day is replayable, so the
@@ -95,7 +95,11 @@ export function createWorldSession(
 ): WorldSession {
   const start = requireCarry(carry);
   engine.setTier(HELPDESK_TIER);
-  engine.applySetup([...companySetup(), ...carrySetup(start)]);
+  engine.applySetup([
+    ...companySetup(),
+    ...weekOpeningSetup(),
+    ...carrySetup(start),
+  ]);
   engine.registerActions({
     kind_labels: KIND_LABELS,
     actions: DEMO_ACTION_DATA,
@@ -123,6 +127,30 @@ export function createWorldSession(
     seed: seedForAttempt(start.attempt),
     carry: start,
   };
+}
+
+/**
+ * What a Monday morning owes the Friday: the bar the conversation at three
+ * will be held against, at the figure a week with nothing on anybody's file
+ * leaves it at.
+ *
+ * It is world state rather than a constant in a guard because it MOVES - a
+ * conduct file somebody has a reason to open raises it, and the review verbs
+ * compare the mark against whatever the graph is holding. And it is written
+ * here rather than in `companySetup` because the number belongs to the week
+ * and `week.ts` imports the company: reaching back the other way would be an
+ * import cycle that runs at module load, which is a `WEEK` table built out of
+ * a `COMPANY_IDS` that does not exist yet.
+ */
+function weekOpeningSetup(): readonly SetupOp[] {
+  return [
+    {
+      op: 'setField',
+      id: COMPANY_IDS.player,
+      field: FIELDS.reviewBar,
+      value: REVIEW_PASS_PERFORMANCE,
+    },
+  ];
 }
 
 /**

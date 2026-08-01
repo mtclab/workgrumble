@@ -285,6 +285,8 @@ describe('the week, scored', () => {
       banked: 40_000,
       opening: 5_000,
       performance: 44,
+      bar: REVIEW_PASS_PERFORMANCE,
+      conduct: 'Nobody has a reason to open your file.',
       outcome: 'passed',
     });
 
@@ -297,6 +299,12 @@ describe('the week, scored', () => {
     // A ticket that closed late still closed late.
     expect(card.breached).toBe(2);
     expect(card.performance).toBe(44);
+    // And the bar it was held to, which is on the card because it is not
+    // always the published one: a conduct file somebody opened raises it, and
+    // a screen that printed the constant beside a verdict the constant did not
+    // produce would be a screen arguing with itself.
+    expect(card.bar).toBe(REVIEW_PASS_PERFORMANCE);
+    expect(card.conduct).toContain('file');
     expect(card.outcome).toBe('passed');
   });
 
@@ -312,6 +320,8 @@ describe('the week, scored', () => {
       banked: 40_000,
       opening: 5_000,
       performance: 44,
+      bar: REVIEW_PASS_PERFORMANCE,
+      conduct: 'Nobody has a reason to open your file.',
       outcome: 'passed',
     });
 
@@ -328,6 +338,8 @@ describe('the week, scored', () => {
       banked: 1_000,
       opening: 5_000,
       performance: 10,
+      bar: REVIEW_PASS_PERFORMANCE,
+      conduct: 'Somebody has a reason to open your file.',
       outcome: 'fired',
     }).earnedPence).toBe(0);
   });

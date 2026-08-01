@@ -11,10 +11,11 @@ import {
   ticketsArrivedOn,
   ticketsClassifiedOn,
 } from '../../world/day';
+import { conductSummary } from '../../world/conduct';
 import { FIELDS } from '../../world/fields';
 import { STARTING_REPUTATION } from '../../world/meters';
 import { cellLabel } from '../../world/priority';
-import { isReviewDay, REVIEW_PASS_PERFORMANCE } from '../../world/week';
+import { isReviewDay } from '../../world/week';
 import { ticketClocks } from '../../world/sla';
 import { type Misclassified, misclassifiedTickets, ticketKey } from './tickets';
 import type { AppDef, AppInstance, GameApi } from './types';
@@ -87,18 +88,18 @@ function reputationLine(reputation: number | null): string {
  * against the bar rather than against a hundred, because the bar is the only
  * part of the scale that decides anything.
  */
-function weekLine(reading: number): string {
-  if (reading >= REVIEW_PASS_PERFORMANCE + 25) {
+function weekLine(reading: number, bar: number): string {
+  if (reading >= bar + 25) {
     return 'Comfortably above the line, which at this stage of a probation is '
       + 'as much as anybody gets.';
   }
 
-  if (reading >= REVIEW_PASS_PERFORMANCE + 5) {
+  if (reading >= bar + 5) {
     return 'Above the line, with enough in hand that one bad afternoon would '
       + 'not decide it.';
   }
 
-  if (reading >= REVIEW_PASS_PERFORMANCE) {
+  if (reading >= bar) {
     return 'Above the line by the width of the line. A day like today again '
       + 'and Friday is a coin toss.';
   }
@@ -287,10 +288,17 @@ export const SCORECARD_APP: AppDef = {
       // about you, this is how much of the work got done and how much of it
       // got done in time.
       const reading = api.day.weekReading();
+      const conduct = api.day.conductReading();
       definitionRow(list, 'The week, so far', 'scorecard-week')
         .textContent = `${String(reading)} of 100, and ${
-          String(REVIEW_PASS_PERFORMANCE)
-        } is the pass · ${weekLine(reading)}`;
+          String(conduct.bar)
+        } is the pass · ${weekLine(reading, conduct.bar)}`;
+
+      // And the other folder, which is not a score and never becomes one. It
+      // is on the evening scorecard for the same reason the mark is: a thing
+      // first seen at the verdict is a thing nobody could have played toward.
+      definitionRow(list, 'On file', 'scorecard-file')
+        .textContent = conductSummary(conduct);
 
       renderTriage(counts.misclassified);
     };

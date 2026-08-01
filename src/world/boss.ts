@@ -61,11 +61,31 @@ export const PING_STRESS = 4;
  * Where suspicion lands after being caught.
  *
  * A floor rather than zero: being caught does not launder the morning, it
- * resets the meter to the level of somebody who has just been spoken to. The
- * price is paid in reputation, which is the meter that does not drain.
+ * resets the meter to the level of somebody who has just been spoken to.
  */
 export const CAUGHT_SUSPICION_FLOOR = 15;
-export const CAUGHT_REPUTATION_COST = 6;
+
+/**
+ * What one of these conversations costs, in minutes of your shift.
+ *
+ * It used to cost six points of reputation. Reputation is not what Friday
+ * reads any more - 0.2.5 moved the review onto a percentage of the work - so
+ * the six points were a fine levied in a currency nobody spends, which is the
+ * worst kind of mechanic: one that looks like it matters.
+ *
+ * The price is the clock instead, and that is not a substitution, it is the
+ * true version. Nobody docks you for being seen on a forum. What being seen
+ * costs is ten minutes of being asked how you are getting on, and ten minutes
+ * is ten minutes the queue did not stop for - which lands on SLA attainment,
+ * which is half of the mark the review is decided on. The threat is indirect
+ * and completely real, and it is the reason the boss key is still worth
+ * pressing minute to minute now that the score has stopped noticing.
+ *
+ * He stands there for `PRESENCE_TICKS` of it. The rest is the walk back to
+ * what you were doing, which is the part of an interruption nobody counts and
+ * everybody pays.
+ */
+export const CAUGHT_MINUTES = 10;
 
 /** Empties he will walk past without comment. The fourth one he counts. */
 export const EMPTIES_TOLERATED = 3;

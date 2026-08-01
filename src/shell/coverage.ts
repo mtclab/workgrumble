@@ -695,6 +695,23 @@ const ENTRIES = [
       + 'spare one of those, not two.',
   },
 
+  {
+    id: 'caught.file',
+    surface: 'caught',
+    control: 'caught-file',
+    does: 'The conduct file itself: one dated line per thing that was '
+      + 'noticed, readable from the Monday, costing nothing.',
+    run: 'week',
+  },
+  {
+    id: 'caught.criteria',
+    surface: 'caught',
+    control: 'caught-criteria',
+    does: 'The three reasons somebody would open it, and the mark Friday '
+      + 'therefore has to reach - said before any of it decides anything.',
+    run: 'week',
+  },
+
   /* -- the review --------------------------------------------------------- */
   {
     id: 'review.window',
@@ -712,6 +729,15 @@ const ENTRIES = [
     does: 'Opened before Friday, it says nothing has been decided and what '
       + 'decides it.',
     scene: 'review.pending',
+    run: 'week',
+  },
+  {
+    id: 'review.file-read',
+    surface: 'review',
+    control: 'review-conduct',
+    does: 'Somebody opens the file a minute before the conversation, and the '
+      + 'reason the bar is what it is gets printed beside the verdict.',
+    actions: [DAY_ACTIONS.reviewFileRead],
     run: 'week',
   },
   {

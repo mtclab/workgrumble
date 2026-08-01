@@ -27,7 +27,7 @@ import {
   type BossPing,
   type BossVisit,
   buildPatrolSchedule,
-  CAUGHT_REPUTATION_COST,
+  CAUGHT_MINUTES,
   caughtBy,
   EMPTIES_SUSPICION_BUMP,
   emptiesNoticed,
@@ -67,8 +67,15 @@ import {
   isLunchtime,
   shiftStartTick,
 } from '../world/day';
+import {
+  type ConductReading,
+  conductLine,
+  conductSummary,
+  readConductFile,
+} from '../world/conduct';
 import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
 import { findIncident } from '../world/incidents';
+import { caughtScene, GENERIC_CAUGHT_SCENE } from '../world/scenes';
 import {
   dayPlan,
   directMessagesOn,
@@ -78,6 +85,7 @@ import {
   isWeekDay,
   patrolSeedFor,
   type ReviewOutcome,
+  REVIEW_PASS_PERFORMANCE,
   reviewOutcomeFor,
   reviewTick,
   type WeekScorecard,
@@ -204,6 +212,16 @@ export interface DayApi {
    * kept, weighted toward how the week has been ending.
    */
   weekReading(): number;
+  /**
+   * The conduct file, and what it would be worth if somebody opened it this
+   * minute. Free to read and changes nothing, which is the whole point of it
+   * being on this interface: the file, the three reasons somebody might come
+   * looking and the bar they would produce are readable all week, in a window,
+   * before any of it decides anything.
+   */
+  conductReading(): ConductReading;
+  /** The file itself, one line per thing that was noticed. */
+  conductFile(): string;
   /** How Friday at three went, as the world recorded it. */
   reviewOutcome(): ReviewOutcome;
   /** Whether the week has been clocked off for the last time. */
@@ -329,6 +347,17 @@ export class DayDriver implements DayApi {
   private paused_ = false;
   private speed_: Speed = 1;
   private carriedMs = 0;
+  /**
+   * Minutes of this shift that have been spent on somebody standing at the
+   * desk and are not yet off the clock.
+   *
+   * It is never anything but nought between two calls to `step`: the drain is
+   * in the same loop as the minute that created it, so nothing about a
+   * conversation survives a save, a pause or a load. That is on purpose - the
+   * cost is paid at the moment it is incurred, and a debt in driver state
+   * would be a debt the world could not replay.
+   */
+  private owedMinutes_ = 0;
   private readonly listeners = new Set<() => void>();
 
   public constructor(
@@ -484,6 +513,12 @@ export class DayDriver implements DayApi {
    * One turn of the real clock. Ticks are applied one at a time so that
    * everything a tick causes - an arrival, a breach, the end of the day -
    * happens in the minute it belongs to rather than at the end of a batch.
+   *
+   * A minute can cost more than a minute. Being caught takes `CAUGHT_MINUTES`
+   * off the shift, and they are spent HERE, through the same machinery every
+   * other minute goes through: a conversation the clock skipped over would be
+   * a conversation during which no ticket arrived, no deadline ran out and no
+   * meter moved, which is not what standing at somebody's desk is like.
    */
   public step(elapsedMs: number): void {
     if (!this.running()) {
@@ -495,47 +530,76 @@ export class DayDriver implements DayApi {
     this.carriedMs = elapsed.carriedMs;
 
     for (let tick = 0; tick < elapsed.ticks; tick += 1) {
-      // Before the minute is spent, not after: the engine decides whether the
-      // minute it is about to step counts against every open deadline, and it
-      // decides it from the state the day is in as that minute begins.
-      this.syncSlaClock();
-      const before = this.engine.now();
-      this.engine.advance(1);
-      const now = this.engine.now();
-
-      if (now === before) {
+      if (!this.spendMinute()) {
         return;
       }
 
-      this.spawnArrivals(before, now);
-      // Before the floor and before the queue: the world breaking is not
-      // something the player did, and everything else this minute has to see
-      // the world as it now is.
-      this.applyIncidents(before, now);
-      this.settleDirectMessages(before, now);
-      this.settleStaleAuth(now);
-      this.settleFollowUps();
-      this.walkTheFloor(before, now);
-      // Before the meters read the queue: a child closed by its parent is a
-      // ticket off the pile this minute, and charging stress for it would be
-      // charging for work that is finished.
-      this.settleParentCascade();
-      // And BOTH of these before the conversation at three o'clock. The
-      // reputation the review reads has to be the reputation the minute has
-      // finished producing: a ticket closed at 14:59 is paid at 15:00, a
-      // deadline crossed at 15:00 is charged at 15:00, and a review that ran
-      // first read a number that was one meter tick out of date. In the one
-      // direction that is somebody fired for work they had already done.
-      this.applyPressure(now);
-      this.settleReview(before, now);
+      // The rounds are `PATROL_MIN_GAP` apart and a conversation is shorter
+      // than that, so this cannot cascade - but a drain whose bound is an
+      // invariant somewhere else is a loop nobody has bounded, and the clock
+      // is not the place to find out.
+      for (let spent = 0; this.owedMinutes_ > 0 && spent < CAUGHT_MINUTES;) {
+        this.owedMinutes_ -= 1;
+        spent += 1;
 
-      if (this.applyDueTransition()) {
-        // The day ended inside this batch. The rest of the batch belongs to
-        // tomorrow, and tomorrow has not been started yet.
-        this.carriedMs = 0;
-        return;
+        if (!this.spendMinute()) {
+          return;
+        }
       }
     }
+  }
+
+  /**
+   * One simulated minute, spent, with everything it causes settled inside it.
+   *
+   * Answers whether the clock may keep going: false when the day ended in this
+   * minute (the rest of the batch belongs to a tomorrow nobody has started) or
+   * when the engine refused to move at all.
+   */
+  private spendMinute(): boolean {
+    // Before the minute is spent, not after: the engine decides whether the
+    // minute it is about to step counts against every open deadline, and it
+    // decides it from the state the day is in as that minute begins.
+    this.syncSlaClock();
+    const before = this.engine.now();
+    this.engine.advance(1);
+    const now = this.engine.now();
+
+    if (now === before) {
+      return false;
+    }
+
+    this.spawnArrivals(before, now);
+    // Before the floor and before the queue: the world breaking is not
+    // something the player did, and everything else this minute has to see
+    // the world as it now is.
+    this.applyIncidents(before, now);
+    this.settleDirectMessages(before, now);
+    this.settleStaleAuth(now);
+    this.settleFollowUps();
+    this.walkTheFloor(before, now);
+    // Before the meters read the queue: a child closed by its parent is a
+    // ticket off the pile this minute, and charging stress for it would be
+    // charging for work that is finished.
+    this.settleParentCascade();
+    // And BOTH of these before the conversation at three o'clock. The mark the
+    // review reads has to be the mark the minute has finished producing: a
+    // ticket closed at 14:59 is paid at 15:00, a deadline crossed at 15:00 is
+    // charged at 15:00, and a review that ran first read a number that was one
+    // meter tick out of date. In the one direction that is somebody fired for
+    // work they had already done.
+    this.applyPressure(now);
+    this.settleReview(before, now);
+
+    if (this.applyDueTransition()) {
+      // The day ended inside this batch, and the minutes anybody still owed
+      // for a conversation go with it: there is no shift left to take them off.
+      this.owedMinutes_ = 0;
+      this.carriedMs = 0;
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -674,10 +738,22 @@ export class DayDriver implements DayApi {
   /** The week, added up out of the days it was made of. */
   public weekScorecard(): WeekScorecard {
     const outcome = this.reviewOutcome();
+    // The same rule the mark obeys, for the same reason. Before three o'clock
+    // the honest answer is what the file WOULD be worth if somebody opened it
+    // now; afterwards it is what it was worth when somebody did, because the
+    // queue carries on all afternoon and a reason that had gone away would be
+    // printed above the verdict it caused.
+    const reading = this.conductReading();
 
     return weekScorecard(this.engine.graph.nodesOfKind('ticket'), {
       banked: this.farmFund(),
       opening: this.playerNumber(FIELDS.weekOpeningFund),
+      bar: outcome === 'pending'
+        ? reading.bar
+        : this.playerNumber(FIELDS.reviewBar, REVIEW_PASS_PERFORMANCE),
+      conduct: outcome === 'pending'
+        ? conductSummary(reading)
+        : this.playerText(FIELDS.reviewConduct),
       // The mark the conversation was decided on, which stopped moving when
       // the conversation happened. Reading it live let the week screen print
       // "37 of 45 needed" directly above "Probation: passed", because the week
@@ -799,8 +875,15 @@ export class DayDriver implements DayApi {
     // hours away, so without this the conversation would be about a week that
     // stopped on Thursday evening.
     this.recordWeekReading();
+    // And then somebody opens the file, which is a separate event with its own
+    // verb: whether anybody had a reason to, what was in it, and what the bar
+    // became are all written into the world in the minute before the
+    // conversation, so the guards below compare against a number the world is
+    // carrying and the window afterwards prints the world's own sentence.
+    this.readTheFile();
     const outcome = reviewOutcomeFor(
       this.playerNumber(FIELDS.weekReputation),
+      this.playerNumber(FIELDS.reviewBar, REVIEW_PASS_PERFORMANCE),
     );
     const result = this.engine.dispatch(
       outcome === 'passed'
@@ -817,6 +900,51 @@ export class DayDriver implements DayApi {
 
     this.announce();
     this.handlers.onReview?.(this.reviewOutcome(), due);
+  }
+
+  /**
+   * The conduct file as it stands, and what it would be worth if somebody
+   * opened it this minute.
+   *
+   * Free to call and changes nothing, which is the whole point: the caught
+   * window shows it all week, the day scorecard says every evening whether
+   * anybody has a reason to look, and neither of them is being shown a
+   * different rule from the one that applies. Nothing here may fire from a
+   * state the player could not read first.
+   */
+  public conductReading(): ConductReading {
+    return readConductFile(
+      this.tickets(),
+      this.engine.graph.getField(this.actor, FIELDS.conductFile),
+    );
+  }
+
+  /** The file itself, as the world holds it. */
+  public conductFile(): string {
+    return this.playerText(FIELDS.conductFile);
+  }
+
+  /**
+   * Somebody opening it, in the minute before the conversation.
+   *
+   * The reading is taken here and written down, because everything it is
+   * computed from carries on moving all Friday afternoon: a ticket closed at
+   * half past three retires the customer whose grievance caused the whole
+   * thing, and a window that re-derived the reason would print one that no
+   * longer existed above a verdict it had caused.
+   */
+  private readTheFile(): void {
+    const reading = this.conductReading();
+    const result = this.engine.dispatch(
+      DAY_ACTIONS.reviewFileRead,
+      this.actor,
+      null,
+      { bar: reading.bar, conduct: conductSummary(reading) },
+    );
+
+    if (!result.ok) {
+      throw new Error(`Nobody could open the file: ${result.reason}`);
+    }
   }
 
   /**
@@ -1133,15 +1261,33 @@ export class DayDriver implements DayApi {
         DAY_ACTIONS.bossCaught,
         this.actor,
         null,
-        { reputation_cost: CAUGHT_REPUTATION_COST },
+        {
+          file_line: conductLine(
+            visit.arrivalTick,
+            'screen',
+            caughtScene(caught)?.fileSubject ?? GENERIC_CAUGHT_SCENE.fileSubject,
+          ),
+        },
       );
 
       if (result.ok) {
+        // And the price, which is the clock rather than the scoreboard: he is
+        // here now, and getting back to what you were doing is the rest of it.
+        this.owedMinutes_ += CAUGHT_MINUTES;
         this.handlers.onCaught?.(caught, visit.arrivalTick);
+        this.handlers.onNotice?.(
+          `That is ${String(CAUGHT_MINUTES)} minutes`,
+          'He was at the desk for a while and the queue was not. The shift is '
+          + `${String(CAUGHT_MINUTES)} minutes shorter than it was and not one `
+          + 'deadline moved with it. Nothing came off your reputation. A line '
+          + 'has gone on your file, which you can read.',
+        );
       }
     }
 
-    if (!emptiesNoticed(this.playerNumber(FIELDS.deskCans))) {
+    const cans = this.playerNumber(FIELDS.deskCans);
+
+    if (!emptiesNoticed(cans)) {
       return;
     }
 
@@ -1149,7 +1295,14 @@ export class DayDriver implements DayApi {
       DAY_ACTIONS.bossNoticedEmpties,
       this.actor,
       null,
-      { suspicion_up: EMPTIES_SUSPICION_BUMP },
+      {
+        suspicion_up: EMPTIES_SUSPICION_BUMP,
+        file_line: conductLine(
+          visit.arrivalTick,
+          'desk',
+          `${String(cans)} empty cans`,
+        ),
+      },
     );
 
     if (noticed.ok) {
@@ -1264,6 +1417,12 @@ export class DayDriver implements DayApi {
       this.engine.graph.getField(this.actor, FIELDS.drinkStartedAt),
       this.engine.graph.getField(this.actor, FIELDS.drinkTolerance),
     );
+  }
+
+  /** Text off the player node, or nothing at all when it is not there. */
+  private playerText(field: string): string {
+    const value = this.engine.graph.getField(this.actor, field);
+    return typeof value === 'string' ? value : '';
   }
 
   /** A number off the player node, or the fallback when it is not one. */

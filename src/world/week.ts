@@ -92,9 +92,21 @@ export function isReviewOutcome(value: unknown): value is ReviewOutcome {
     && REVIEW_OUTCOMES.some((outcome) => outcome === value);
 }
 
-/** Which way the conversation goes, from the one number it reads. */
-export function reviewOutcomeFor(performance: number): 'passed' | 'fired' {
-  return performance >= REVIEW_PASS_PERFORMANCE ? 'passed' : 'fired';
+/**
+ * Which way the conversation goes: the mark, against the bar it was held to.
+ *
+ * The bar defaults to the published figure because that is what it is in a
+ * week nobody had a reason to look into. It is a PARAMETER because it moves -
+ * a conduct file somebody opened raises it (`src/world/conduct.ts`) - and
+ * because the same comparison is made twice, once here so the driver knows
+ * which verb to offer and once in the guards of the verbs themselves, so the
+ * two must be one function rather than two readings of one constant.
+ */
+export function reviewOutcomeFor(
+  performance: number,
+  bar: number = REVIEW_PASS_PERFORMANCE,
+): 'passed' | 'fired' {
+  return performance >= bar ? 'passed' : 'fired';
 }
 
 /**
@@ -705,6 +717,13 @@ export interface WeekScorecard {
   readonly bankedPence: number;
   /** The mark out of a hundred the conversation on Friday was had about. */
   readonly performance: number;
+  /**
+   * And the mark it had to reach, which is not always the published one: a
+   * conduct file somebody had a reason to open raises it.
+   */
+  readonly bar: number;
+  /** Why the bar is that number, in the world's own words. Empty until read. */
+  readonly conduct: string;
   readonly outcome: ReviewOutcome;
 }
 
@@ -714,6 +733,8 @@ export interface WeekTotals {
   /** What it held when the week started - nought, or a survived firing. */
   readonly opening: number;
   readonly performance: number;
+  readonly bar: number;
+  readonly conduct: string;
   readonly outcome: ReviewOutcome;
 }
 
@@ -784,6 +805,8 @@ export function weekScorecard(
     earnedPence: Math.max(0, totals.banked - totals.opening),
     bankedPence: totals.banked,
     performance: totals.performance,
+    bar: totals.bar,
+    conduct: totals.conduct,
     outcome: totals.outcome,
   };
 }
