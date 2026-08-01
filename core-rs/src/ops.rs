@@ -590,6 +590,23 @@ pub enum Pred {
         field: String,
         value: f64,
     },
+    /// One field at or above ANOTHER field, both read off the graph.
+    ///
+    /// Every other threshold in this language is a constant, because every
+    /// other threshold in a world is: a lockout is five attempts whoever is
+    /// typing. A bar that MOVES is not, and there is one - the mark the
+    /// probation review is decided on starts at the published figure and is
+    /// raised by what is on the player's file. Comparing against it in a
+    /// caller would put the decision that ends a run outside the thing that
+    /// replays it, and would let the screen showing the bar and the world
+    /// applying it drift apart, which is the one thing a threshold may never
+    /// do.
+    FieldAtLeastField {
+        node: NodeRef,
+        field: String,
+        than_node: NodeRef,
+        than_field: String,
+    },
     /// A timestamp field that is still recent: the field is a number and no
     /// more than `ticks` have gone by since it was written.
     ///
@@ -800,6 +817,18 @@ impl Pred {
                 field: field()?,
                 value: number()?,
             }),
+            "field_at_least_field" => {
+                let than = object.get("than").ok_or_else(|| {
+                    EngineError::new("field_at_least_field needs a \"than\" node and field.")
+                })?;
+                let (than_node, than_field) = parse_node_and_field(than, scope)?;
+                Ok(Self::FieldAtLeastField {
+                    node: node()?,
+                    field: field()?,
+                    than_node,
+                    than_field,
+                })
+            }
             "field_within" => {
                 let ticks = object
                     .get("ticks")
@@ -1311,6 +1340,24 @@ pub fn evaluate_pred(context: &mut EvalContext<'_>, predicate: &Pred) -> bool {
             .field(node, field)
             .and_then(FieldValue::as_f64)
             .is_some_and(|actual| actual <= *value),
+        // A missing number on either side is not "at least", which is the same
+        // answer `field_at_least` gives an absent field and is the same reason:
+        // a guard that passed on a bar nobody had written would be a threshold
+        // nobody had to clear.
+        Pred::FieldAtLeastField {
+            node,
+            field,
+            than_node,
+            than_field,
+        } => match (
+            context.field(node, field).and_then(FieldValue::as_f64),
+            context
+                .field(than_node, than_field)
+                .and_then(FieldValue::as_f64),
+        ) {
+            (Some(actual), Some(bar)) => actual >= bar,
+            _ => false,
+        },
         // A stamp from the future is "recent" rather than an error: nothing in
         // this engine can write one, and a rule that refused on it would be a
         // rule about a state the clock cannot reach.
@@ -1691,6 +1738,60 @@ mod tests {
         .is_err());
         assert!(Pred::parse(&json!({
             "pred": "field_within", "node": { "ref": "target" }, "field": "x",
+        }))
+        .is_err());
+    }
+
+    /// A threshold that is itself world state, which is the one shape
+    /// `field_at_least` could not express.
+    ///
+    /// It exists for the probation bar: a mark that has to clear a line which
+    /// the player's own conduct file moves. Comparing the two in a caller
+    /// would put the decision that ends a run outside the thing that replays
+    /// it, so the comparison is a predicate and the bar is a field.
+    #[test]
+    fn a_guard_can_hold_one_field_against_another() {
+        let mut graph = fixture();
+        let params = Params::new();
+        let predicate = Pred::parse(&json!({
+            "pred": "field_at_least_field",
+            "node": { "id": "device:printer" },
+            "field": "queue_len",
+            "than": { "node": { "id": "service:spooler" }, "field": "seats_free" },
+        }))
+        .expect("valid predicate");
+        let holds = |graph: &EntityGraph| -> bool {
+            let mut evaluation = context(graph, &params, None);
+            evaluate_pred(&mut evaluation, &predicate)
+        };
+
+        // A bar nobody has written is not a bar anybody has cleared.
+        assert!(!holds(&graph));
+
+        graph
+            .set_field("service:spooler", "seats_free", FieldValue::Num(12.0))
+            .expect("bar");
+        assert!(holds(&graph), "twelve is at least twelve");
+
+        graph
+            .set_field("service:spooler", "seats_free", FieldValue::Num(13.0))
+            .expect("bar raised");
+        assert!(!holds(&graph), "twelve is not at least thirteen");
+
+        // And a bar that is not a number is not a bar either.
+        graph
+            .set_field(
+                "service:spooler",
+                "seats_free",
+                FieldValue::Str("plenty".to_owned()),
+            )
+            .expect("bar in words");
+        assert!(!holds(&graph));
+
+        assert!(Pred::parse(&json!({
+            "pred": "field_at_least_field",
+            "node": { "ref": "actor" },
+            "field": "week_reputation",
         }))
         .is_err());
     }

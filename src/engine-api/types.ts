@@ -280,6 +280,23 @@ export type PredData =
   | { pred: 'field_at_least'; node: NodeRefData; field: string; value: number }
   | { pred: 'field_at_most'; node: NodeRefData; field: string; value: number }
   /**
+   * One field at or above ANOTHER field, both read off the graph.
+   *
+   * Every other threshold this language can say is a constant, because every
+   * other threshold in a world is one: a lockout is five attempts whoever is
+   * typing. The probation bar is not. It starts at the published figure and is
+   * raised by what is on the player's conduct file, so the comparison the
+   * review's guards have to make is between two things the graph holds - and
+   * doing it in a caller would put the decision that ends a run outside the
+   * thing that replays it.
+   */
+  | {
+    pred: 'field_at_least_field';
+    node: NodeRefData;
+    field: string;
+    than: FieldRefData;
+  }
+  /**
    * A timestamp that is still recent: the field is a number and no more than
    * `ticks` have gone by since it was written. The window is the world's - the
    * engine has no opinion about what "today" means - but the clock is the
