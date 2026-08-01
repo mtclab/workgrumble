@@ -1,12 +1,14 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
-import type { ApiResult, CloudApi } from './api';
+import type { Account, ApiResult, CloudApi } from './api';
 import { OFFLINE_REASON } from './api';
 import { SaveSlot } from './save';
 import {
-  chooseSave,
   CloudSaves,
   CONFLICT_KEY,
+  planWeek,
   stampOf,
 } from './sync';
 
@@ -74,6 +76,25 @@ function saveAt(savedAt: number, mark = 'here'): string {
   });
 }
 
+/**
+ * A save this build genuinely cannot open: a REAL schema-1 file, captured from
+ * the build that wrote them. It is the fixture `save.test.ts` uses to prove the
+ * refusal, and it is here for the same reason - a relabelled current payload
+ * would prove nothing, because the whole problem is what is inside the engine
+ * payload.
+ */
+const TOO_OLD = readFileSync(
+  new URL('./fixtures/save-schema-1.json', import.meta.url),
+  'utf8',
+);
+
+const ACCOUNT: Account = {
+  badge: 'WG-1234-AB',
+  createdAt: 1_000,
+  lastSeen: 2_000,
+  lapsesAt: 3_000,
+};
+
 interface Badge {
   readonly api: CloudApi;
   /** What the badge is holding right now. */
@@ -87,9 +108,9 @@ function badge(held: string | null, reachable = true): Badge {
     stored: held,
     pushes: [],
     api: {
-      session: () => Promise.resolve({ ok: true, value: 'WG-1234-AB' }),
-      register: () => Promise.resolve({ ok: true, value: 'WG-1234-AB' }),
-      logIn: () => Promise.resolve({ ok: true, value: 'WG-1234-AB' }),
+      session: () => Promise.resolve({ ok: true, value: ACCOUNT }),
+      register: () => Promise.resolve({ ok: true, value: ACCOUNT }),
+      logIn: () => Promise.resolve({ ok: true, value: ACCOUNT }),
       fetchSave: (): Promise<ApiResult<string | null>> => Promise.resolve(
         reachable
           ? { ok: true, value: state.stored }
@@ -148,10 +169,14 @@ function wire(local: string | null, remote: Badge): Wired {
   };
 }
 
-describe('which copy is later', () => {
+/**
+ * Resume, or start the week again - the decision the owner found this product
+ * making silently. Both directions, and every way of arriving at each.
+ */
+describe('what week this is, once the badge has answered', () => {
   it('takes the badge when it is ahead, and this browser when it is', () => {
-    expect(chooseSave(100, 200)).toBe('remote');
-    expect(chooseSave(200, 100)).toBe('local');
+    expect(planWeek(saveAt(100), saveAt(200))).toEqual({ kind: 'adopt' });
+    expect(planWeek(saveAt(200), saveAt(100))).toEqual({ kind: 'push' });
   });
 
   /**
@@ -159,20 +184,51 @@ describe('which copy is later', () => {
    * has been copied, and picking a side would send it back and forth forever.
    */
   it('does nothing when the two agree', () => {
-    expect(chooseSave(100, 100)).toBe('same');
-    expect(chooseSave(0, 0)).toBe('same');
+    expect(planWeek(saveAt(100), saveAt(100))).toEqual({ kind: 'agree' });
+    expect(planWeek(saveAt(0), saveAt(0))).toEqual({ kind: 'agree' });
+  });
+
+  it('resumes from whichever side is the only one holding a week', () => {
+    expect(planWeek(null, saveAt(1))).toEqual({ kind: 'adopt' });
+    expect(planWeek(saveAt(1), null)).toEqual({ kind: 'push' });
   });
 
   /**
-   * "No readable copy here" loses to anything, and it covers three cases at
-   * once: a browser that has never played, a slot somebody cleared, and a file
-   * this build cannot parse. None of the three is a week anybody can resume.
+   * THE DEFECT. A badge with nothing on it used to arrive here as "this
+   * browser wins" - which is true, and which is not the question. The answer
+   * is that there is no week to resume, said in as many words, so the shell
+   * can tell somebody who has just typed a badge number in specifically to get
+   * their week back that Monday is what the badge holds.
    */
-  it('lets anything beat a browser with nothing readable in it', () => {
-    expect(chooseSave(null, 1)).toBe('remote');
-    expect(chooseSave(null, 0)).toBe('remote');
-    expect(chooseSave(null, null)).toBe('local');
-    expect(chooseSave(5, null)).toBe('local');
+  it('starts a fresh week when there is nothing on either side', () => {
+    expect(planWeek(null, null)).toEqual({ kind: 'fresh', why: 'nothing' });
+  });
+
+  /**
+   * And the other direction of the same sentence: there WAS a file, and this
+   * build cannot open it. The player still starts at Monday, and is owed a
+   * different explanation - the fixture is a real save from a build whose
+   * world this one cannot stand up, which is the case that actually happens.
+   */
+  it('starts a fresh week when the badge holds a save it cannot open', () => {
+    expect(planWeek(null, TOO_OLD)).toEqual({
+      kind: 'fresh',
+      why: 'unreadable',
+    });
+    expect(planWeek('{ not a save', null)).toEqual({
+      kind: 'fresh',
+      why: 'unreadable',
+    });
+    expect(planWeek('{ not a save', TOO_OLD)).toEqual({
+      kind: 'fresh',
+      why: 'unreadable',
+    });
+  });
+
+  /** A file nobody can open loses to one somebody can, from either side. */
+  it('lets a readable week beat an unreadable one', () => {
+    expect(planWeek(TOO_OLD, saveAt(1))).toEqual({ kind: 'adopt' });
+    expect(planWeek(saveAt(1), TOO_OLD)).toEqual({ kind: 'push' });
   });
 
   it('reads the stamp out of a real file and nothing out of rubbish', () => {
@@ -180,6 +236,7 @@ describe('which copy is later', () => {
     expect(stampOf(null)).toBeNull();
     expect(stampOf('{ not json')).toBeNull();
     expect(stampOf(JSON.stringify({ schema: 99 }))).toBeNull();
+    expect(stampOf(TOO_OLD)).toBeNull();
   });
 });
 
@@ -239,6 +296,41 @@ describe('settling at boot', () => {
     expect(await wired.cloud.settle()).toBe('pushed');
     expect(remote.stored).toBe(saveAt(2_000, 'new'));
     expect(wired.loads()).toBe(0);
+  });
+
+  /**
+   * The badge that was minted and never played. It is an outcome with a name,
+   * and the shell turns that name into the sentence a player reads - which is
+   * the whole of the fix: the same state used to be reported as "settled",
+   * indistinguishable from two copies that already agreed.
+   */
+  it('says a badge with nothing on it is a fresh week', async () => {
+    const remote = badge(null);
+    const wired = wire(null, remote);
+
+    expect(await wired.cloud.settle()).toBe('fresh');
+    expect(remote.pushes).toEqual([]);
+    expect(wired.loads()).toBe(0);
+  });
+
+  it('says so differently when the week on the badge will not open', async () => {
+    const wired = wire(null, badge(TOO_OLD));
+
+    expect(await wired.cloud.settle()).toBe('fresh-broken');
+  });
+
+  /**
+   * And nothing goes up. A browser whose slot holds a file this build refuses
+   * has no idea what that file is; writing it over a badge would be a session
+   * overwriting a week with rubbish it could not read either.
+   */
+  it('pushes nothing when neither side holds a week it can read', async () => {
+    const remote = badge(TOO_OLD);
+    const wired = wire('{ not a save', remote);
+
+    expect(await wired.cloud.settle()).toBe('fresh-broken');
+    expect(remote.pushes).toEqual([]);
+    expect(remote.stored).toBe(TOO_OLD);
   });
 
   it('leaves an agreeing pair alone', async () => {

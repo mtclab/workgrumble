@@ -1,33 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
+import { fakeKv } from './kv-fake';
 import {
   consumeRate,
   parseRateWindow,
   rateDecision,
   type RateWindow,
 } from './rate-limit';
-import type { KVNamespace } from './types';
 
 const NOW = 1_700_000_000_000;
 const WINDOW = 60_000;
-
-/** KV, as far as a counter is concerned: a map that answers promises. */
-function fakeKv(): KVNamespace & { readonly entries: Map<string, string> } {
-  const entries = new Map<string, string>();
-
-  return {
-    entries,
-    get: (key) => Promise.resolve(entries.get(key) ?? null),
-    put: (key, value) => {
-      entries.set(key, value);
-      return Promise.resolve();
-    },
-    delete: (key) => {
-      entries.delete(key);
-      return Promise.resolve();
-    },
-  };
-}
 
 describe('reading a counter', () => {
   it('reads what it wrote, and refuses everything else', () => {

@@ -19,6 +19,8 @@
  * in.
  */
 
+import { lapsesAt, parseAccountRecord } from '../shared/retention';
+
 export interface ApiFailure {
   readonly ok: false;
   /** True when there was nothing to talk to, which is not an error. */
@@ -32,6 +34,24 @@ export type ApiResult<Value> =
 
 export const OFFLINE_REASON = 'There is nothing on the other end of the wire '
   + 'right now. The week is in this browser and carries on regardless.';
+
+/**
+ * The badge, and the three dates that make it an account rather than a number.
+ *
+ * All three are the building's, not this browser's: the stamps come from the
+ * Worker, and the date it lapses is worked out from the same constant the
+ * Worker hands to KV - so the date the badge screen shows is the date the
+ * record actually has, rather than a second opinion about it.
+ */
+export interface Account {
+  readonly badge: string;
+  /** Epoch milliseconds the badge was minted at. */
+  readonly createdAt: number;
+  /** Epoch milliseconds of the last login or cloud save. */
+  readonly lastSeen: number;
+  /** When it goes, badge and week together, if nobody comes back. */
+  readonly lapsesAt: number;
+}
 
 /** What a report carries besides what the player typed. */
 export interface FeedbackContext {
@@ -53,9 +73,9 @@ export interface FeedbackSubmission {
 
 export interface CloudApi {
   /** The badge this browser is carrying, if the Worker recognises one. */
-  session(): Promise<ApiResult<string | null>>;
-  register(): Promise<ApiResult<string>>;
-  logIn(badge: string): Promise<ApiResult<string>>;
+  session(): Promise<ApiResult<Account | null>>;
+  register(): Promise<ApiResult<Account>>;
+  logIn(badge: string): Promise<ApiResult<Account>>;
   /** The save on this badge as raw text, or null when there is not one. */
   fetchSave(): Promise<ApiResult<string | null>>;
   storeSave(body: string): Promise<ApiResult<void>>;
@@ -136,11 +156,30 @@ async function ask(
   return { status: response.status, text, json };
 }
 
-function badgeFrom(answer: Answer): ApiResult<string> {
+/**
+ * The badge and its record out of an answer, or the conclusion that whatever
+ * sent this is not the Worker.
+ *
+ * The account block is REQUIRED rather than optional, and that is deliberate:
+ * one Worker serves this bundle and its API, so an answer carrying a badge with
+ * no record behind it did not come from the half of the product that owns
+ * badges. Treating it as an absence keeps a proxy, a cache or a file server
+ * from becoming a session with dates the player might read.
+ */
+function accountFrom(answer: Answer): ApiResult<Account> {
   const badge = answer.json?.badge;
+  const record = parseAccountRecord(answer.json?.account);
 
-  return typeof badge === 'string' && badge.length > 0
-    ? { ok: true, value: badge }
+  return typeof badge === 'string' && badge.length > 0 && record !== null
+    ? {
+      ok: true,
+      value: {
+        badge,
+        createdAt: record.created_at,
+        lastSeen: record.last_seen,
+        lapsesAt: lapsesAt(record),
+      },
+    }
     : offline();
 }
 
@@ -156,38 +195,48 @@ export function createCloudApi(fetcher: Fetcher): CloudApi {
   );
 
   return {
-    session: async (): Promise<ApiResult<string | null>> => {
+    session: async (): Promise<ApiResult<Account | null>> => {
       const answer = await ask(fetcher, '/api/session');
 
       if (answer === null || answer.json === null) {
         return offline();
       }
 
-      const badge = answer.json.badge;
+      if (answer.status !== 200) {
+        return refusalFrom(answer);
+      }
 
-      return answer.status === 200
-        ? { ok: true, value: typeof badge === 'string' ? badge : null }
-        : refusalFrom(answer);
+      // A browser carrying nothing, and a browser carrying a badge the
+      // building has since cleared out, are the same answer: no badge. Both
+      // are states the log-on screen already knows what to do with.
+      if (answer.json.badge === null) {
+        return { ok: true, value: null };
+      }
+
+      // Anything else is either a whole account or something that did not come
+      // from this Worker, and `accountFrom` already answers with the offline
+      // failure for the second.
+      return accountFrom(answer);
     },
 
-    register: async (): Promise<ApiResult<string>> => {
+    register: async (): Promise<ApiResult<Account>> => {
       const answer = await post('/api/register');
 
       if (answer === null) {
         return offline();
       }
 
-      return answer.status === 200 ? badgeFrom(answer) : refusalFrom(answer);
+      return answer.status === 200 ? accountFrom(answer) : refusalFrom(answer);
     },
 
-    logIn: async (badge: string): Promise<ApiResult<string>> => {
+    logIn: async (badge: string): Promise<ApiResult<Account>> => {
       const answer = await post('/api/login', { badge });
 
       if (answer === null) {
         return offline();
       }
 
-      return answer.status === 200 ? badgeFrom(answer) : refusalFrom(answer);
+      return answer.status === 200 ? accountFrom(answer) : refusalFrom(answer);
     },
 
     fetchSave: async (): Promise<ApiResult<string | null>> => {

@@ -76,6 +76,64 @@ test('carries a week to a browser that has never seen it', async ({
 });
 
 /**
+ * The other direction of the same decision, and the defect the owner found by
+ * playing: a badge with nothing filed against it used to start a new week in
+ * silence, which from the player's chair is indistinguishable from a save that
+ * has gone missing - and the player it happens to is the one who has just typed
+ * a badge number in specifically to get their week back.
+ *
+ * So: a badge is minted, nothing is ever saved against it, and it is carried to
+ * a browser that has never seen it. The week starts at Monday morning, it says
+ * so out loud, and it starts on THAT BADGE - no second account quietly minted
+ * to hold the week nobody could find.
+ */
+test('starts a stated Monday on a badge with nothing filed against it', async ({
+  browser,
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/');
+  await page.keyboard.press('Space');
+
+  const badge = await issueBadge(page);
+
+  // The account exists from the moment it is minted, and the badge screen says
+  // what the building knows about it: three dates and nothing else.
+  const record = page.getByTestId('login-badge-account');
+  await expect(record).toContainText(badge);
+  await expect(record).toContainText('Issued');
+  await expect(record).toContainText('Last seen');
+  await expect(record).toContainText('Cleared on');
+  await expect(record).toContainText('180 days');
+
+  // Nothing is played and nothing is saved: the badge is carried away empty.
+  const elsewhere = await browser.newContext();
+  const other = await elsewhere.newPage();
+  await other.clock.install();
+  await other.goto(`/t/${SHARED_TOKEN}`);
+  await other.keyboard.press('Space');
+  await logOnWithBadge(other, badge);
+
+  await expect(
+    other.getByTestId('toast').filter({ hasText: 'Nothing is filed' }),
+  ).toBeVisible();
+
+  // Monday morning, first day, and the clock has not been anywhere else.
+  await expect(other.getByTestId('sim-clock-day')).toHaveText('Day 1');
+  await expect(other.getByTestId('sim-clock-time')).toHaveText('09:00');
+
+  // And it is the SAME badge: the record card is drawn from what the building
+  // said this browser is carrying, so a second account minted to hold the
+  // fresh week would show a different number here.
+  await other.getByTestId('start-button').click();
+  await other.getByTestId('start-menu-log-off').click();
+  await expect(other.getByTestId('login-screen')).toBeVisible();
+  await expect(other.getByTestId('login-badge-account')).toContainText(badge);
+
+  await elsewhere.close();
+});
+
+/**
  * And the badge is a credential rather than a formality: one nobody was issued
  * does not get in, and the refusal happens on the log-on screen where it is
  * cheap rather than three days into a week that was never going to sync.

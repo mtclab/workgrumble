@@ -199,6 +199,28 @@ const ENTRIES = [
       + 'the Worker.',
   },
   {
+    id: 'login.account',
+    surface: 'login',
+    control: 'login-badge-account',
+    does: 'Reads the record IT holds on this badge: when it was issued, when '
+      + 'it was last used, and the date it gets cleared out if nobody comes '
+      + 'back.',
+    run: 'deploy',
+    why: 'The dates come from the badge record in the Worker\'s KV; a build '
+      + 'served as files has no account to hold one.',
+  },
+  {
+    id: 'login.fresh-week',
+    surface: 'login',
+    control: 'login-badge, login-submit (a badge with no week on it)',
+    does: 'Logs on as a badge nothing has been saved against, starts Monday '
+      + 'morning on that same badge, and says that is what happened rather '
+      + 'than leaving somebody to wonder where their week went.',
+    run: 'deploy',
+    why: 'The other direction of the badge decision, and it needs a badge the '
+      + 'Worker has minted and nothing has been filed against.',
+  },
+  {
     id: 'login.badge-refused',
     surface: 'login',
     control: 'login-badge (a number nobody was issued)',

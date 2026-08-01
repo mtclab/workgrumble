@@ -528,6 +528,30 @@ input {
   font-size: var(--text-sm);
 }
 
+/*
+ * The record IT holds on a badge: four rows of it, laid out as the card it is
+ * rather than as a paragraph, because these are dates somebody reads one at a
+ * time and one of them is a deadline.
+ */
+.login-account {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-3);
+}
+
+.login-account dt {
+  font-weight: 700;
+}
+
+.login-account dd {
+  margin: 0;
+}
+
+.login-account-note {
+  margin: 0;
+}
+
 .login-actions {
   display: flex;
   gap: var(--space-3);

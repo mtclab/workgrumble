@@ -1,7 +1,9 @@
-import type { ApiResult } from './api';
+import { accountFacts, retentionNote } from './account';
+import type { Account, ApiResult } from './api';
 import type { ShellUser } from './context';
 import { createIcon } from './icons';
 import { setAvailability } from './apps/ui';
+import { RETENTION_DAYS } from '../shared/retention';
 
 export interface LoginScreenHandlers {
   logOn(): void;
@@ -13,22 +15,34 @@ export interface LoginScreenHandlers {
    * screen is a screen: it collects a badge, shows what it was told, and knows
    * nothing about how the telling happened.
    */
-  signIn(badge: string): Promise<ApiResult<string>>;
+  signIn(badge: string): Promise<ApiResult<Account>>;
   /** Issues a new badge number to this browser. */
-  issueBadge(): Promise<ApiResult<string>>;
-  /** The badge this browser is already carrying, once anything knows. */
-  knownBadge(): string | null;
+  issueBadge(): Promise<ApiResult<Account>>;
+  /** The account this browser is already carrying, once anything knows. */
+  knownAccount(): Account | null;
 }
 
 export interface LoginScreen {
   readonly element: HTMLElement;
   /** Called every time the screen becomes visible. */
   reset(): void;
+  /**
+   * Called when the building has said who this browser is.
+   *
+   * It is separate from `reset` because it arrives at a moment nobody chose:
+   * the badge is asked about after the shell is already on screen, so the
+   * answer can land while somebody is typing their password, and a redraw that
+   * cleared the field and stole the focus would be the network interrupting a
+   * log-on. This one touches only what the answer is about.
+   */
+  identityChanged(): void;
 }
 
 const ISSUED_NOTE = 'Write it down. IT cannot look it up, which is the point: '
   + 'nobody here knows your name, and the badge is the only thing that knows '
-  + 'which week is yours. Lose it and you lose the week.';
+  + 'which week is yours. Lose it and you lose the week. Use it, too: a badge '
+  + `nobody logs on with for ${String(RETENTION_DAYS)} days gets cleared out `
+  + 'with the rest of the dormant accounts, and the week goes with it.';
 
 /**
  * The log-on screen, which used to be a joke and is now a joke with a door
@@ -49,6 +63,13 @@ const ISSUED_NOTE = 'Write it down. IT cannot look it up, which is the point: '
  * And a badge that cannot be checked because there is nothing to check it
  * against does NOT stop anybody: offline-first means the door is the cloud's
  * door, not the game's.
+ *
+ * This is also the BADGE SCREEN, which is why the record card lives here: once
+ * a browser is carrying a badge, this is the one place that says when it was
+ * issued, when it was last used and the date it gets cleared out if nobody
+ * comes back. It is reachable at any time - Log off from the start menu comes
+ * straight back here - so the answer to "how long have I got" is never more
+ * than two clicks away.
  */
 export function createLoginScreen(
   user: Readonly<ShellUser>,
@@ -129,6 +150,20 @@ export function createLoginScreen(
   refusal.dataset.testid = 'login-badge-refusal';
   refusal.hidden = true;
 
+  // The record IT holds on this badge, which is four lines long and is the
+  // whole of what the building knows about anybody. It is only on screen when
+  // there is a badge to hold a record on.
+  const record = document.createElement('div');
+  record.className = 'login-hint';
+  record.dataset.testid = 'login-badge-account';
+  record.hidden = true;
+  const facts = document.createElement('dl');
+  facts.className = 'login-account';
+  const retention = document.createElement('p');
+  retention.className = 'login-account-note';
+  retention.textContent = retentionNote();
+  record.append(facts, retention);
+
   const passwordField = document.createElement('label');
   passwordField.className = 'field';
   const passwordLabel = document.createElement('span');
@@ -165,6 +200,7 @@ export function createLoginScreen(
     badgeNote,
     issue,
     issued,
+    record,
     refusal,
     passwordField,
     hint,
@@ -178,16 +214,53 @@ export function createLoginScreen(
     refusal.textContent = problem ?? '';
   };
 
-  const syncIssueButton = (): void => {
-    const known = handlers.knownBadge();
+  /**
+   * The record card, redrawn from whatever the building last said.
+   *
+   * It is rebuilt rather than patched because it is four rows of text and the
+   * dates change the moment somebody logs on - a card showing a "last seen"
+   * from before this log-on would be the screen quietly disagreeing with the
+   * thing it is a record of.
+   */
+  const showAccount = (known: Account | null): void => {
+    record.hidden = known === null;
 
+    if (known === null) {
+      facts.replaceChildren();
+      return;
+    }
+
+    facts.replaceChildren(...accountFacts(known).flatMap((fact) => {
+      const term = document.createElement('dt');
+      term.textContent = fact.term;
+      const value = document.createElement('dd');
+      value.textContent = fact.value;
+      return [term, value];
+    }));
+  };
+
+  const syncIssueButton = (known: Account | null): void => {
     setAvailability(
       issue,
       known === null
         ? null
-        : `This browser is already carrying badge ${known}. A second badge `
-          + 'would be a second week, and the first one would be nobody\'s.',
+        : `This browser is already carrying badge ${known.badge}. A second `
+          + 'badge would be a second week, and the first one would be '
+          + 'nobody\'s.',
     );
+  };
+
+  /** Everything on this screen that depends on which badge this browser has. */
+  const showBadge = (known: Account | null): void => {
+    // The badge the browser already proved is filled in rather than asked for
+    // again: it is HttpOnly, so this is the only way the player ever sees the
+    // number they were given. Anything already typed is left alone.
+    if (known !== null && badge.value.trim().length === 0) {
+      badge.value = known.badge;
+    }
+
+    syncIssueButton(known);
+    showAccount(known);
   };
 
   const onSubmit = (event: SubmitEvent): void => {
@@ -196,7 +269,7 @@ export function createLoginScreen(
 
     // The path every existing session takes: no badge, no network, straight
     // in. It is also the path a browser with nothing on the other end takes.
-    if (typed.length === 0 || typed === handlers.knownBadge()) {
+    if (typed.length === 0 || typed === handlers.knownAccount()?.badge) {
       handlers.logOn();
       return;
     }
@@ -230,10 +303,10 @@ export function createLoginScreen(
         return;
       }
 
-      badge.value = answer.value;
+      badge.value = answer.value.badge;
       issued.hidden = false;
-      issued.textContent = `Badge ${answer.value}. ${ISSUED_NOTE}`;
-      syncIssueButton();
+      issued.textContent = `Badge ${answer.value.badge}. ${ISSUED_NOTE}`;
+      showBadge(answer.value);
     });
   };
 
@@ -250,19 +323,13 @@ export function createLoginScreen(
   return {
     element,
     reset: (): void => {
-      const known = handlers.knownBadge();
-
-      // The badge the browser already proved is filled in rather than asked
-      // for again: it is HttpOnly, so this is the only way the player ever
-      // sees the number they were given.
-      if (known !== null && badge.value.trim().length === 0) {
-        badge.value = known;
-      }
-
-      syncIssueButton();
+      showBadge(handlers.knownAccount());
       say(null);
       password.value = '';
       password.focus();
+    },
+    identityChanged: (): void => {
+      showBadge(handlers.knownAccount());
     },
   };
 }

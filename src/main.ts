@@ -1,5 +1,5 @@
 import { loadEngine, WasmEngine } from './engine-api';
-import { createCloudApi } from './shell/api';
+import { type Account, createCloudApi } from './shell/api';
 import { type AppState, AppStateStore } from './shell/app-state';
 import { APP_MANIFEST } from './shell/apps';
 import { openDirectMessage, pingBossThread } from './shell/boss-thread';
@@ -122,10 +122,11 @@ async function boot(): Promise<void> {
   // handed a function that answers, so an app can be reasoned about - and
   // tested - without a network being one of the things it depends on.
   const api = createCloudApi((input, init) => window.fetch(input, init));
-  // What the browser is playing as. It starts as nothing and is filled in once
-  // the Worker has been asked, which happens after the shell is on screen: the
-  // badge is HttpOnly, so being told is the only way to know.
-  let badge: string | null = null;
+  // What the browser is playing as, and the three dates that make it an
+  // account. It starts as nothing and is filled in once the Worker has been
+  // asked, which happens after the shell is on screen: the badge is HttpOnly,
+  // so being told is the only way to know.
+  let account: Account | null = null;
 
   // A week that was played before and ended badly leaves exactly three things
   // behind: the fund, the article that was up, and which attempt this is.
@@ -311,12 +312,13 @@ async function boot(): Promise<void> {
     manifest: APP_MANIFEST,
     saveHealth: health,
     identity: {
-      badge: () => badge,
+      account: () => account,
       signIn: async (typed) => {
         const answer = await api.logIn(typed);
 
         if (answer.ok) {
-          badge = answer.value;
+          account = answer.value;
+          shell.identityChanged();
           void settleWithBadge();
         }
 
@@ -326,10 +328,12 @@ async function boot(): Promise<void> {
         const answer = await api.register();
 
         if (answer.ok) {
-          badge = answer.value;
+          account = answer.value;
+          shell.identityChanged();
           // A brand-new badge has nothing on it, so this is a push rather than
           // a pull - but it goes through the same comparison, because "nothing
-          // on the badge" is a thing worth being told rather than assumed.
+          // on the badge" is a thing to be TOLD rather than assumed: a week
+          // that starts at Monday because the badge was empty says so.
           void settleWithBadge();
         }
 
@@ -412,23 +416,48 @@ async function boot(): Promise<void> {
    * The badge's copy of the week, compared with this browser's, once.
    *
    * It runs when a badge turns up - at boot if the browser is already carrying
-   * one, or the moment somebody types theirs on the log-on screen - and the
-   * only outcome that says anything out loud is the one where the badge was
-   * ahead. Nothing waits for it, and nothing depends on it having happened:
-   * `settle` answers `unavailable` for a build served without a Worker behind
-   * it, which is what the local journey suite runs against.
+   * one, or the moment somebody types theirs on the log-on screen - and three
+   * of its outcomes say something out loud. Nothing waits for it, and nothing
+   * depends on it having happened: `settle` answers `unavailable` for a build
+   * served without a Worker behind it, which is what the local journey suite
+   * runs against.
+   *
+   * The two FRESH answers are the ones this slice exists for. A badge with no
+   * week on it used to start a new one in silence, which is indistinguishable
+   * from a save that went missing - and the player it happens to is the player
+   * who has just typed in a number specifically to get their week back.
    */
   async function settleWithBadge(): Promise<void> {
-    if (await cloud.settle() !== 'adopted') {
+    const outcome = await cloud.settle();
+
+    if (outcome === 'adopted') {
+      shell.notify(
+        'Your badge had a later week on it',
+        'The week saved against your badge was newer than the one in this '
+          + 'browser, so it is the one you are looking at. The other one has '
+          + 'not been thrown away.',
+      );
       return;
     }
 
-    shell.notify(
-      'Your badge had a later week on it',
-      'The week saved against your badge was newer than the one in this '
-        + 'browser, so it is the one you are looking at. The other one has '
-        + 'not been thrown away.',
-    );
+    if (outcome === 'fresh') {
+      shell.notify(
+        'Nothing is filed against that badge',
+        'There is no week on it yet, so this is Monday morning, first day, '
+          + 'same as everybody else got. Anything kept from here on goes up '
+          + 'against the badge.',
+      );
+      return;
+    }
+
+    if (outcome === 'fresh-broken') {
+      shell.notify(
+        'The week on that badge will not open',
+        'It was written by a version of this workstation that no longer '
+          + 'exists, and nothing here can make sense of it. You are starting '
+          + 'the week again; the next day kept will file over it.',
+      );
+    }
   }
 
   // What the workstation installed overnight.
@@ -483,7 +512,10 @@ async function boot(): Promise<void> {
     const who = await api.session();
 
     if (who.ok && who.value !== null) {
-      badge = who.value;
+      account = who.value;
+      // The log-on screen has already been painted, with no badge on it: this
+      // is what puts the record card on a screen that is currently up.
+      shell.identityChanged();
       await settleWithBadge();
     }
   })();

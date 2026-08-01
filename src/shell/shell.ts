@@ -63,7 +63,7 @@ export class Shell {
         },
         signIn: (badge) => context.identity.signIn(badge),
         issueBadge: () => context.identity.issueBadge(),
-        knownBadge: () => context.identity.badge(),
+        knownAccount: () => context.identity.account(),
       },
       this.abort.signal,
     );
@@ -93,6 +93,20 @@ export class Shell {
 
   public start(): void {
     this.render();
+  }
+
+  /**
+   * The building has answered the question of who this browser is.
+   *
+   * It arrives late by design - the badge is asked about after the shell is on
+   * screen, because a boot that waited on the network would make the optional
+   * half of this product the reason the essential half was slow - so the log-on
+   * screen is already painted, with no badge on it, by the time there is one.
+   * Without this the record card was only ever right on the second visit to
+   * that screen.
+   */
+  public identityChanged(): void {
+    this.login.identityChanged();
   }
 
   /**

@@ -1,7 +1,7 @@
 import type { DispatchLogEntry, DispatchResult } from '../engine-api';
 import type { FieldValue, NodeId } from '../engine-api';
 import type { ReadOnlyGraphView } from '../engine-api';
-import type { ApiResult, FeedbackSubmission } from './api';
+import type { Account, ApiResult, FeedbackSubmission } from './api';
 import type { AppStateStore } from './app-state';
 import type { AppDef } from './apps/types';
 import type { DayApi } from './day-driver';
@@ -29,16 +29,21 @@ export interface ShellUser {
 /**
  * Who this browser is, as far as the building is concerned.
  *
- * All three answer rather than throwing, and `badge()` is a READ of what is
+ * All three answer rather than throwing, and `account()` is a READ of what is
  * known right now rather than a question asked over the wire: the cookie
  * behind it is HttpOnly, so nothing in the browser can see it, and the only
  * way the player ever learns their own number is for the shell to be told once
  * at boot and to remember.
+ *
+ * It is the whole ACCOUNT rather than the number alone because the number
+ * alone is not what the badge screen has to state: an account has a date it
+ * was made, a date it was last used and a date it lapses, and all three come
+ * from the building at the same moment as the badge itself.
  */
 export interface ShellIdentity {
-  badge(): string | null;
-  signIn(badge: string): Promise<ApiResult<string>>;
-  issueBadge(): Promise<ApiResult<string>>;
+  account(): Account | null;
+  signIn(badge: string): Promise<ApiResult<Account>>;
+  issueBadge(): Promise<ApiResult<Account>>;
 }
 
 /**

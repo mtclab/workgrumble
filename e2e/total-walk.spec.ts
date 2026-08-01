@@ -2345,6 +2345,52 @@ test('walks the door, the badge and the report the tester build adds', async ({
       .toContainText('IT cannot look it up');
   });
 
+  await step('login.account', async () => {
+    // The whole of what this company holds about anybody: a number and three
+    // dates, one of which is a deadline.
+    const record = page.getByTestId('login-badge-account');
+
+    await expect(record).toContainText(badge);
+    await expect(record).toContainText('Issued');
+    await expect(record).toContainText('Last seen');
+    await expect(record).toContainText('Cleared on');
+    await expect(record).toContainText('180 days');
+  });
+
+  await step('login.fresh-week', async () => {
+    // A badge minted and never played, carried to a browser that has never
+    // seen it. The outcome a player is after is being told which of the two
+    // things happened - resumed, or started again - and being started again
+    // ON THE SAME BADGE rather than on a second one nobody asked for.
+    const empty = await browser.newContext();
+    const minted = await empty.newPage();
+
+    await minted.goto(`/t/${SHARED_TOKEN}`);
+    await minted.keyboard.press('Space');
+    const unused = await issueBadge(minted);
+    await empty.close();
+
+    const arriving = await browser.newContext();
+    const monday = await arriving.newPage();
+
+    await monday.clock.install();
+    await monday.goto(`/t/${SHARED_TOKEN}`);
+    await monday.keyboard.press('Space');
+    await logOnWithBadge(monday, unused);
+
+    await expect(
+      monday.getByTestId('toast').filter({ hasText: 'Nothing is filed' }),
+    ).toBeVisible();
+    await expect(monday.getByTestId('sim-clock-day')).toHaveText('Day 1');
+    await expect(monday.getByTestId('sim-clock-time')).toHaveText('09:00');
+
+    await monday.getByTestId('start-button').click();
+    await monday.getByTestId('start-menu-log-off').click();
+    await expect(monday.getByTestId('login-badge-account')).toContainText(unused);
+
+    await arriving.close();
+  });
+
   await page.getByTestId('login-submit').click();
   await expect(page.getByTestId('desktop')).toBeVisible();
   await dismissBrief(page);

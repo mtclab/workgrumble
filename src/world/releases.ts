@@ -31,6 +31,25 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.2.1',
+    date: '2026-08-01',
+    summary: 'This update improves the handling of workstation accounts.',
+    lines: Object.freeze([
+      'Addresses an issue in which logging on with a badge number that had no '
+        + 'week saved against it started a new week without saying so. The '
+        + 'workstation now states which of the two happened, on the same '
+        + 'badge, before you have had time to wonder.',
+      'Adds an account record to the log-on screen. Your badge number now '
+        + 'shows the date it was issued and the date it was last used, which '
+        + 'are the only two facts this company holds about you.',
+      'Adds a retention period. IT clears out dormant accounts after six '
+        + 'months, which is the most realistic thing in this building. '
+        + 'Logging on or saving a day pushes the date another 180 days out; '
+        + 'the date is on the log-on screen and it is not a threat.',
+      'Known issue: this is still a helpdesk. No fix is planned.',
+    ]),
+  },
+  {
     version: '0.1.0',
     date: '2026-07-31',
     summary: 'This update improves the reliability of the working day.',

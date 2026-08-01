@@ -10,8 +10,11 @@
  *
  * Two rules run through all of it.
  *
- * NOTHING PERSONAL IS STORED. A player record is a badge and the minute it was
- * minted. There is no email, no name, no analytics and no IP: the rate limits
+ * NOTHING PERSONAL IS STORED. A player record is a badge, the minute it was
+ * minted and the minute it was last used - the third of those so that an
+ * account nobody has come back to can expire on its own, which is the whole of
+ * the retention rule and the only reason anything here is dated at all.
+ * There is no email, no name, no analytics and no IP: the rate limits
  * need to tell one caller from another for an hour, so they key on an HMAC of
  * the address with a one-hour life rather than on the address, and the address
  * itself is never written anywhere.
@@ -45,10 +48,18 @@ import {
   parseFeedback,
 } from './feedback';
 import { assetHeaders, invitePage, json, refuse } from './http';
+import { keepAccount, mintedAt, readAccount, touchAccount } from './players';
 import { consumeRate } from './rate-limit';
-import { checkSave, MAX_SAVE_BYTES, SAVE_TOO_BIG } from './saves';
+import {
+  checkSave,
+  keepSave,
+  MAX_SAVE_BYTES,
+  refreshSave,
+  SAVE_TOO_BIG,
+} from './saves';
 import { isTokenShape, parseTokenPolicy, spendAdmission } from './tokens';
 import type { Env, KVNamespace } from './types';
+import type { AccountRecord } from '../src/shared/retention';
 
 const HOUR = 60 * 60 * 1_000;
 const DAY = 24 * HOUR;
@@ -85,6 +96,19 @@ const FEEDBACK_TOO_MANY = 'That is ten reports from this badge today, which '
   + 'and if it will not, the ten already filed are the ones being read.';
 
 const MISCONFIGURED = 'This deployment is not finished being set up.';
+
+/**
+ * A badge that was on file when the browser got its cookie and is not on file
+ * now: six months of silence, or a record the owner removed by hand.
+ *
+ * It is a refusal rather than a quiet re-mint. Issuing a new badge to somebody
+ * whose old one lapsed would be a second account created by accident, and the
+ * week they are looking at would be filed under a number they have never seen.
+ */
+const LAPSED = 'That badge is not on file any more. Nothing has been uploaded, '
+  + 'and the week in this browser is untouched. IT clears out accounts nobody '
+  + 'has used for six months; ask for a new badge and this week goes under '
+  + 'that one instead.';
 
 /**
  * Who is asking, for the purposes of a counter, without recording who is
@@ -233,6 +257,39 @@ async function badgeOf(
   return badge === null ? null : normalizeBadge(badge);
 }
 
+/**
+ * Who this browser is, and what its account says about itself.
+ *
+ * It does NOT stamp `last_seen`. A tab left open on the log-on screen asks this
+ * on every reload, and an account that renews its six months because a browser
+ * is still pointed at it is an account with no retention rule - the rule is
+ * about somebody coming back, and a page load is not somebody.
+ *
+ * A cookie whose badge is no longer on file answers as NO badge rather than as
+ * a badge with no record. From the shell's chair those are the same state - a
+ * browser that has to be told a number before it can sync - and the difference
+ * between them would only ever be a screen saying a badge exists that does not.
+ */
+async function session(
+  request: Request,
+  env: Env,
+  key: CryptoKey,
+  now: number,
+): Promise<{
+  readonly ok: true;
+  readonly badge: string | null;
+  readonly account: AccountRecord | null;
+}> {
+  const badge = await badgeOf(request, key, now);
+  const account = badge === null ? null : await readAccount(env.PLAYERS, badge);
+
+  return {
+    ok: true,
+    badge: account === null ? null : badge,
+    account,
+  };
+}
+
 function badgeCookie(
   value: string,
   secure: boolean,
@@ -291,11 +348,16 @@ async function register(
     return refuse(503, 'The badge machine is jammed. Try again in a moment.');
   }
 
-  // The whole player record. There is nothing else to put in it.
-  await env.PLAYERS.put(badge, JSON.stringify({ created_at: now }));
+  // The whole player record, and the moment its six months start running.
+  const record = mintedAt(now);
+  await keepAccount(env.PLAYERS, badge, record);
 
   const cookie = await seal(key, badge, now + BADGE_MAX_AGE_SECONDS * 1_000);
-  return json({ ok: true, badge }, 200, badgeCookie(cookie, secure));
+  return json(
+    { ok: true, badge, account: record },
+    200,
+    badgeCookie(cookie, secure),
+  );
 }
 
 async function login(
@@ -327,12 +389,27 @@ async function login(
       + 'or ask for a new badge - a new one starts a new week.',
   );
 
-  if (badge === null || await env.PLAYERS.get(badge) === null) {
+  if (badge === null) {
     return unknown;
   }
 
+  // Logging on IS the account being used, so this is where the six months
+  // start again - on the badge, and on the week filed against it, which
+  // otherwise would only ever be renewed by playing.
+  const record = await touchAccount(env.PLAYERS, badge, now);
+
+  if (record === null) {
+    return unknown;
+  }
+
+  await refreshSave(env.SAVES, badge);
+
   const cookie = await seal(key, badge, now + BADGE_MAX_AGE_SECONDS * 1_000);
-  return json({ ok: true, badge }, 200, badgeCookie(cookie, secure));
+  return json(
+    { ok: true, badge, account: record },
+    200,
+    badgeCookie(cookie, secure),
+  );
 }
 
 /* -- saves ---------------------------------------------------------------- */
@@ -380,9 +457,22 @@ async function writeSave(
     return refuse(checked.status, checked.reason);
   }
 
+  // The badge is stamped BEFORE the week is filed, and a badge that is no
+  // longer on file stops the write. The other order would leave a save under a
+  // number nobody can log in as - an orphan the retention rule could not even
+  // clear, because the thing whose expiry it rides on is already gone.
+  //
+  // The stamped record is deliberately not sent back. Saving is fire and
+  // forget by design - the day has already been kept in the place that matters
+  // and the player has already been told so - and a screen nobody is looking
+  // at does not need refreshing from a response nobody is waiting for.
+  if (await touchAccount(env.PLAYERS, badge, now) === null) {
+    return refuse(401, LAPSED);
+  }
+
   // Last write wins, and the copy in the browser is still the one being
   // played: this is a spare key under a mat, not the front door.
-  await env.SAVES.put(badge, body);
+  await keepSave(env.SAVES, badge, body);
   return json({ ok: true, savedAt: checked.envelope.savedAt });
 }
 
@@ -507,7 +597,7 @@ async function api(
 ): Promise<Response> {
   if (pathname === '/api/session') {
     return request.method === 'GET'
-      ? json({ ok: true, badge: await badgeOf(request, key, now) })
+      ? json(await session(request, env, key, now))
       : wrongMethod();
   }
 

@@ -26,7 +26,11 @@ needs and a static file cannot do:
   on the owner's machine; there is no web surface anywhere that writes one.
 - **a badge number** - `WG-####-XX`, which is the whole of an account. No email,
   no name, no analytics, no IP. Lose the badge and you lose the save, said once
-  at the moment it is issued.
+  at the moment it is issued. An account is durable but not immortal: the badge
+  and the week under it carry a 180-day KV TTL, re-armed on every login and
+  every cloud save, and the log-on screen states when the badge was issued, when
+  it was last used and the date it gets cleared out. No cron, no cleanup
+  endpoint - the expiry rides on the write.
 - **a copy of the save on that badge** - written on the same events that already
   autosave, read once at boot. Newest stamp wins and the loser is kept, never
   destroyed.

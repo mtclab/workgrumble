@@ -15,6 +15,11 @@
  *    adopted - written into the local slot and loaded into the session, which
  *    at boot means the player logs on into the week they left rather than into
  *    a Monday. A copy that is older loses and gets overwritten by this one.
+ *    And when there is no week anywhere - a badge that was minted and never
+ *    played, or one holding a file this build cannot open - that is an outcome
+ *    with a name rather than a gap: the week starts at Monday and the player is
+ *    told it did, because a badge that silently began again is the bug this
+ *    file was found to have.
  *  - After every write that lands locally: push the same bytes up.
  *
  * NOTHING IS DESTROYED WHEN THEY DISAGREE. The losing copy is kept, verbatim,
@@ -30,44 +35,72 @@ import { parseSaveFile, type SaveSlot } from './save';
 /** Where a save that lost an argument goes, rather than nowhere. */
 export const CONFLICT_KEY = 'workgrumble/save.conflict';
 
-export type SyncChoice =
-  /** Nothing on the badge, or what is here is newer. Push. */
-  | 'local'
-  /** The badge has the later copy. Adopt it. */
-  | 'remote'
-  /** The same file, by its own stamp. Do nothing. */
-  | 'same';
+/** Why there is no week to resume, which is not the same as "there is one". */
+export type FreshReason =
+  /** Neither side has anything. A first day, and an ordinary one. */
+  | 'nothing'
+  /** There was a file. This build cannot open it. */
+  | 'unreadable';
+
+export type WeekPlan =
+  /** The badge's copy is the later readable one: take it and load it. */
+  | { readonly kind: 'adopt' }
+  /** This browser's copy stands, and the badge does not have it. Send it. */
+  | { readonly kind: 'push' }
+  /** The same file, by its own stamp, on both sides. Do nothing. */
+  | { readonly kind: 'agree' }
+  /** No week anywhere that anybody can resume. Monday, deliberately. */
+  | { readonly kind: 'fresh'; readonly why: FreshReason };
 
 /**
- * When two copies of a week disagree, which one is later.
+ * What week this is, once a badge has said what it is holding.
  *
- * `null` means "there is no readable copy here", which loses to anything. That
- * covers three cases that would otherwise each need their own branch: a
- * browser that has never played, a slot that was cleared, and a save this
- * build cannot parse - and losing is the right answer to all three, because
- * none of them is a week anybody can resume.
+ * ONE decision rather than two, and that is the fix rather than a tidy-up. The
+ * defect this replaces was a badge with no save "silently starting a new week":
+ * the sync answered which of two copies to keep, nobody answered whether there
+ * was a week at all, and the two questions have different answers when the
+ * badge is empty. So the branch that starts a Monday is now a value with a name
+ * on it, which is what lets the shell SAY so - and what makes both directions
+ * something a test can hold.
  *
- * Ties go to `same` rather than to either side. Two files with the same stamp
- * are the same file: one of them arrived here from the other, and copying it
- * back and forth is how a sync loop starts.
+ * `null` from `stampOf` means "no readable week here", and it covers three
+ * cases on purpose: a browser that has never played, a slot somebody cleared,
+ * and a file this build refuses - the last being a save written by a version
+ * whose world this one cannot stand up. None of the three is a week that can be
+ * resumed, and the difference between them is only ever what is SAID: `fresh`
+ * carries whether there was a file at all, because "there is nothing filed
+ * against this badge" and "there is, and it is too old to open" are two very
+ * different sentences to be shown by a game that just started you at Monday.
  */
-export function chooseSave(
-  localStamp: number | null,
-  remoteStamp: number | null,
-): SyncChoice {
-  if (remoteStamp === null) {
-    return 'local';
+export function planWeek(
+  localRaw: string | null,
+  remoteRaw: string | null,
+): WeekPlan {
+  const here = stampOf(localRaw);
+  const there = stampOf(remoteRaw);
+
+  if (there === null) {
+    if (here !== null) {
+      return { kind: 'push' };
+    }
+
+    return {
+      kind: 'fresh',
+      why: localRaw === null && remoteRaw === null ? 'nothing' : 'unreadable',
+    };
   }
 
-  if (localStamp === null) {
-    return 'remote';
+  if (here === null) {
+    return { kind: 'adopt' };
   }
 
-  if (remoteStamp === localStamp) {
-    return 'same';
+  // Ties are not an argument. Two files with the same stamp are one file that
+  // has been copied, and picking a side is how a sync loop starts.
+  if (there === here) {
+    return { kind: 'agree' };
   }
 
-  return remoteStamp > localStamp ? 'remote' : 'local';
+  return there > here ? { kind: 'adopt' } : { kind: 'push' };
 }
 
 /** The wall clock inside a save file, or null if that is not what this is. */
@@ -87,6 +120,10 @@ export type PullOutcome =
   | 'pushed'
   /** Both sides already agree, or there was nothing to do. */
   | 'settled'
+  /** Nothing is filed against this badge. The week starts here, on purpose. */
+  | 'fresh'
+  /** There is a week on the badge and this build cannot open it. */
+  | 'fresh-broken'
   /** There was no answer. The game carries on exactly as it would have. */
   | 'unavailable';
 
@@ -143,17 +180,25 @@ export class CloudSaves {
     }
 
     const here = this.parts.slot.readRaw();
-    const choice = chooseSave(stampOf(here), stampOf(remote.value));
+    const plan = planWeek(here, remote.value);
     this.pushing = true;
 
-    if (choice === 'same') {
+    if (plan.kind === 'agree') {
       return 'settled';
     }
 
-    if (choice === 'local') {
-      return here === null || !(await this.send(here))
-        ? 'settled'
-        : 'pushed';
+    // Nothing readable on either side. Nothing goes up either: a browser whose
+    // slot holds a file this build refuses has no business writing it over a
+    // badge, and there is nothing else here to write.
+    if (plan.kind === 'fresh') {
+      return plan.why === 'nothing' ? 'fresh' : 'fresh-broken';
+    }
+
+    if (plan.kind === 'push') {
+      // `push` is only chosen when the local copy PARSED, so `here` is a
+      // string; the check is what says so to the type system, and it costs
+      // nothing to keep.
+      return here !== null && await this.send(here) ? 'pushed' : 'settled';
     }
 
     return this.adopt(remote.value, here);

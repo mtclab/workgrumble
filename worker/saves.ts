@@ -13,6 +13,9 @@
  * by the half of the product that can explain it.
  */
 
+import { RETENTION_SECONDS } from '../src/shared/retention';
+import type { KVNamespace } from './types';
+
 /** Half a megabyte. A real week's save is a few tens of kilobytes. */
 export const MAX_SAVE_BYTES = 512 * 1_024;
 
@@ -71,4 +74,47 @@ export function checkSave(body: string): SaveCheck {
   }
 
   return { ok: true, envelope: { schema, savedAt } };
+}
+
+/**
+ * Files a week against a badge, for as long as the badge itself lasts.
+ *
+ * The save carries the SAME time-to-live as the badge record and is re-armed at
+ * the same two moments, so the two halves of an account go together. A save
+ * that outlived its badge would be a week nobody could ever log in to reach,
+ * and a badge that outlived its save would be an account that silently forgot
+ * the only thing it was holding.
+ */
+export async function keepSave(
+  saves: KVNamespace,
+  badge: string,
+  body: string,
+): Promise<void> {
+  await saves.put(badge, body, { expirationTtl: RETENTION_SECONDS });
+}
+
+/**
+ * Re-arms the save's six months without changing a byte of it, for the login
+ * that did not write one.
+ *
+ * KV cannot touch an expiry, so the only way to push it out is to write the
+ * value again - which is why this reads first and puts the SAME bytes back.
+ * The alternative was refreshing only on save, and that quietly means a player
+ * who logs on every month but has not clocked off a day since spring loses the
+ * week the badge exists to hold.
+ *
+ * Answers whether there was anything to refresh.
+ */
+export async function refreshSave(
+  saves: KVNamespace,
+  badge: string,
+): Promise<boolean> {
+  const raw = await saves.get(badge);
+
+  if (raw === null) {
+    return false;
+  }
+
+  await keepSave(saves, badge, raw);
+  return true;
 }
