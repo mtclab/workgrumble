@@ -31,6 +31,45 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.2.4',
+    date: '2026-08-01',
+    summary: 'This update improves the handling of files that were never lost.',
+    lines: Object.freeze([
+      'Addresses reports of documents disappearing after being saved. The '
+        + 'documents had not disappeared. A file opened out of a mail is '
+        + 'opened from C:\\WINDOWS\\TEMP, and Save writes it back to where '
+        + 'it was opened from, every time, including the ninth time. Adds '
+        + '"move <file> <directory>" to the Support Terminal for putting one '
+        + 'back where the person who saved it believes it already is.',
+      'The temp directory is now visible on every workstation, along with the '
+        + 'note the build left in it in 1994 explaining that the machine '
+        + 'treats everything in there as disposable. It has been doing that '
+        + 'quietly for four years.',
+      'Adds "purge <directory>" for a directory a program has filled and '
+        + 'nobody has emptied. It will empty a directory whose contents have '
+        + 'already been sent somewhere else, and it will refuse every other '
+        + 'directory on the estate, including the one next door with the same '
+        + 'software\'s name on it. That refusal is the feature.',
+      'Resolves a condition in which a warehouse workstation reported '
+        + 'insufficient disk space while containing four documents. It also '
+        + 'contained twelve monthly scanner exports going back to 1997, '
+        + 'totalling rather more than the drive had. Head office has had all '
+        + 'twelve since the nights they were written.',
+      'The print queue now lists its jobs rather than counting them: the job '
+        + 'number, the size and the minute each one arrived, under the same '
+        + 'numbers as the files in the spool folder. There are still no '
+        + 'document names and no owners, because this spooler has never '
+        + 'recorded either and this update will not invent them.',
+      'The Event Viewer now dates each line the way the rest of the system '
+        + 'dates a file. A log line and a directory listing describing the '
+        + 'same evening now say so in the same words.',
+      'Known issue: the pallet scanner will write next month\'s export next '
+        + 'month. This update does not include a schedule for deleting them, '
+        + 'because deleting things on a schedule is a change and a change '
+        + 'needs a form.',
+    ]),
+  },
+  {
     version: '0.2.3',
     date: '2026-08-01',
     summary: 'This update improves access to local and networked storage.',
