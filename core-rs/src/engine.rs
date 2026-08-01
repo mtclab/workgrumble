@@ -615,7 +615,7 @@ impl Engine {
 /// engine can never move - parked according to one half, running according to
 /// the other.
 fn check_ticket_coherence(world: &World) -> EngineResult<()> {
-    for (id, record) in &world.tickets.records {
+    for (id, record) in world.tickets.iter() {
         let Some(node) = world.graph.get_node(id) else {
             return refuse!("Saved ticket \"{id}\" has no ticket node in the graph.");
         };

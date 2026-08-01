@@ -36,6 +36,8 @@ pub struct World {
     pub tickets: TicketEngine,
     pub registry: ActionRegistry,
     events: Vec<EngineEvent>,
+    /// How many transactions are open. The journals belong to the outermost.
+    depth: usize,
 }
 
 /// What a checkpoint moved: the baseline it set, and how much log it drained.
@@ -46,14 +48,33 @@ pub struct CheckpointOutcome {
     pub drained: usize,
 }
 
-/// Everything an operation can change, kept aside so a failure can put it back.
+/// Where a call started, in every sense that a refusal has to be able to
+/// return to.
 ///
 /// An action is one thing the player did, so it either happened or it did not:
 /// a second op refusing after the first resolved a ticket and rolled the dice
-/// used to leave `{ ok: false }` on top of a world that had moved. The graph
-/// and the ticket records are cloned outright - the graph is dozens of nodes,
-/// not a database - while the log and the event stream are append-only, so a
-/// length is a complete undo record for them.
+/// used to leave `{ ok: false }` on top of a world that had moved.
+///
+/// Four of the six halves of that are O(1) and are simply kept here - the rng
+/// is two words, the clock is two, and the dispatch log and the event stream
+/// are append-only, so a length is a complete undo record for them. The graph
+/// and the ticket records are the two that are not, and they are handled by
+/// their own undo journals: this holds a MARK into each, and a rollback walks
+/// the entries recorded past that mark backwards.
+///
+/// The mark is also what makes nesting free. A transaction inside a
+/// transaction marks a later place in the same journal; unwinding to it leaves
+/// the outer one's entries exactly where they were.
+///
+/// WHY A JOURNAL AND NOT `Rc` NODES. The alternative was copy-on-write: hold
+/// the nodes behind `Rc` so that copying the graph copies pointers instead of
+/// fields. That makes the copy cheaper by a constant and leaves it O(nodes) -
+/// the BTreeMap itself still has to be rebuilt, once per dispatch, forever,
+/// and every write still has to `Rc::make_mut` its node. The journal makes the
+/// cost proportional to what the call TOUCHED instead, which for one action is
+/// a handful of fields and does not move when the estate doubles. It also
+/// leaves the data structures as they are: a `Node` is still a `Node`, and
+/// nothing outside this file has to learn about a smart pointer.
 ///
 /// The registry's verb set is deliberately absent: nothing that runs inside a
 /// transaction registers an action or changes tier, and `register_actions`
@@ -63,8 +84,8 @@ pub struct CheckpointOutcome {
 /// one is a transaction's undo record and lives for one call, that one is the
 /// baseline a save is measured from and outlives the session.
 struct Savepoint {
-    graph: EntityGraph,
-    tickets: TicketEngine,
+    graph_mark: usize,
+    ticket_mark: usize,
     rng: Rng,
     clock: SimClock,
     log_len: usize,
@@ -80,6 +101,7 @@ impl World {
             tickets: TicketEngine::new(),
             registry: ActionRegistry::new(1),
             events: Vec::new(),
+            depth: 0,
         }
     }
 
@@ -97,10 +119,14 @@ impl World {
 
     // -- atomicity ---------------------------------------------------------
 
-    fn savepoint(&self) -> Savepoint {
+    fn savepoint(&mut self) -> Savepoint {
+        self.depth += 1;
+        self.graph.begin_journal();
+        self.tickets.begin_journal();
+
         Savepoint {
-            graph: self.graph.clone(),
-            tickets: self.tickets.clone(),
+            graph_mark: self.graph.journal_mark(),
+            ticket_mark: self.tickets.journal_mark(),
             rng: self.rng.clone(),
             clock: self.clock.clone(),
             log_len: self.registry.log().len(),
@@ -108,13 +134,25 @@ impl World {
         }
     }
 
+    /// Closes a transaction. The journals are only thrown away when the
+    /// OUTERMOST one closes: until then an enclosing call may still need them.
+    fn release(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
+
+        if self.depth == 0 {
+            self.graph.end_journal();
+            self.tickets.end_journal();
+        }
+    }
+
     fn rollback(&mut self, savepoint: Savepoint) {
-        self.graph = savepoint.graph;
-        self.tickets = savepoint.tickets;
+        self.graph.rollback_to(savepoint.graph_mark);
+        self.tickets.rollback_to(savepoint.ticket_mark);
         self.rng = savepoint.rng;
         self.clock = savepoint.clock;
         self.registry.truncate_log(savepoint.log_len);
         self.events.truncate(savepoint.events_len);
+        self.release();
     }
 
     /// Runs `body` all the way or not at all. A refusal leaves the world, the
@@ -127,7 +165,10 @@ impl World {
         let savepoint = self.savepoint();
 
         match body(self) {
-            Ok(value) => Ok(value),
+            Ok(value) => {
+                self.release();
+                Ok(value)
+            }
             Err(error) => {
                 self.rollback(savepoint);
                 Err(error)
@@ -750,7 +791,7 @@ impl World {
         let off_hours = !self.clock.sla_runs();
 
         for id in self.tickets.sorted_ids() {
-            let Some(record) = self.tickets.records.get(&id) else {
+            let Some(record) = self.tickets.get(&id) else {
                 continue;
             };
 
@@ -819,7 +860,7 @@ impl World {
     fn spawn_parsed_ticket(&mut self, definition: TicketDef) -> EngineResult<()> {
         let id = definition.id.clone();
 
-        if self.tickets.records.contains_key(&id) || self.graph.get_node(&id).is_some() {
+        if self.tickets.contains(&id) || self.graph.get_node(&id).is_some() {
             return refuse!("Ticket \"{id}\" already exists.");
         }
 
@@ -864,22 +905,19 @@ impl World {
         });
         self.add_node_json(&node)?;
 
-        self.tickets.records.insert(
-            id.clone(),
-            TicketRecord {
-                def: definition,
-                waiting: false,
-                resolved: false,
-                breached: false,
-                updating: false,
-            },
-        );
+        self.tickets.insert(TicketRecord {
+            def: definition,
+            waiting: false,
+            resolved: false,
+            breached: false,
+            updating: false,
+        });
         self.events.push(EngineEvent::TicketSpawned(id.clone()));
         self.check_ticket(&id)
     }
 
     pub fn set_waiting(&mut self, id: &str, waiting: bool) -> EngineResult<()> {
-        let Some(record) = self.tickets.records.get(id) else {
+        let Some(record) = self.tickets.get(id) else {
             return refuse!("Ticket \"{id}\" is not active.");
         };
 
@@ -895,9 +933,7 @@ impl World {
             return Ok(());
         }
 
-        if let Some(record) = self.tickets.records.get_mut(id) {
-            record.waiting = waiting;
-        }
+        self.tickets.set_waiting(id, waiting);
 
         let state = if waiting { "waiting_on_user" } else { "open" };
         self.updating(id, true);
@@ -910,20 +946,17 @@ impl World {
 
     pub fn ticket_state(&self, id: &str) -> Option<&FieldValue> {
         self.tickets
-            .records
-            .contains_key(id)
+            .contains(id)
             .then(|| self.graph.get_field(id, "state"))
             .flatten()
     }
 
     pub fn was_breached(&self, id: &str) -> Option<bool> {
-        self.tickets.records.get(id).map(|record| record.breached)
+        self.tickets.get(id).map(|record| record.breached)
     }
 
     fn updating(&mut self, id: &str, updating: bool) {
-        if let Some(record) = self.tickets.records.get_mut(id) {
-            record.updating = updating;
-        }
+        self.tickets.set_updating(id, updating);
     }
 
     fn check_all_tickets(&mut self) -> EngineResult<()> {
@@ -935,7 +968,7 @@ impl World {
     }
 
     fn check_ticket(&mut self, id: &str) -> EngineResult<()> {
-        let Some(record) = self.tickets.records.get(id) else {
+        let Some(record) = self.tickets.get(id) else {
             return Ok(());
         };
 
@@ -957,7 +990,7 @@ impl World {
             .graph
             .get_field(id, "sla_deadline")
             .and_then(FieldValue::as_f64);
-        let Some(record) = self.tickets.records.get(id) else {
+        let Some(record) = self.tickets.get(id) else {
             return Ok(());
         };
 
@@ -981,10 +1014,7 @@ impl World {
     /// disagreed with the money. Both events are one-off and the day's ledger
     /// is a repeating read, so the ledger has to be able to ask WHEN.
     fn resolve_ticket(&mut self, id: &str) -> EngineResult<()> {
-        if let Some(record) = self.tickets.records.get_mut(id) {
-            record.resolved = true;
-            record.waiting = false;
-        }
+        self.tickets.set_resolved(id);
 
         let now = self.clock.now();
         self.updating(id, true);
@@ -1002,9 +1032,7 @@ impl World {
     /// is still closed late, however it ends. The minute it went red latches
     /// with it, for the same reason a resolution's does.
     fn breach_ticket(&mut self, id: &str) -> EngineResult<()> {
-        if let Some(record) = self.tickets.records.get_mut(id) {
-            record.breached = true;
-        }
+        self.tickets.set_breached(id);
 
         let now = self.clock.now();
         self.updating(id, true);

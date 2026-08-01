@@ -32,10 +32,53 @@ impl Direction {
     }
 }
 
+/// One change to this graph, written backwards.
+///
+/// A transaction used to be a COPY of the whole graph, kept aside until the
+/// call either finished or refused. That is correct and it is the wrong price:
+/// the copy is proportional to the estate, so every action in the game got
+/// slower the moment the world got bigger, whether or not anything refused.
+/// These entries are proportional to what the call actually TOUCHED instead,
+/// which for one action is a handful of fields.
+///
+/// Every variant restores the exact bytes, including where an edge sat in the
+/// vector - the edge order is what `World::baseline` serializes, so an undo
+/// that put an edge back in a different place would write a different save for
+/// a world that had not moved.
+#[derive(Clone, Debug)]
+enum GraphUndo {
+    NodeAdded {
+        id: String,
+    },
+    /// The node and every edge that went with it, each at the index it held.
+    NodeRemoved {
+        node: Node,
+        edges: Vec<(usize, Edge)>,
+    },
+    /// `None` means the field was not there at all, which is a different world
+    /// from the field being there and null.
+    FieldSet {
+        id: String,
+        field: String,
+        previous: Option<FieldValue>,
+    },
+    EdgeAdded {
+        index: usize,
+    },
+    EdgeRemoved {
+        index: usize,
+        edge: Edge,
+    },
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct EntityGraph {
     nodes: BTreeMap<String, Node>,
     edges: Vec<Edge>,
+    /// The undo record for the transaction in progress. Empty, and not
+    /// written to at all, whenever no transaction is open.
+    journal: Vec<GraphUndo>,
+    journaling: bool,
 }
 
 impl EntityGraph {
@@ -43,12 +86,105 @@ impl EntityGraph {
         Self::default()
     }
 
+    // -- the undo journal ---------------------------------------------------
+    //
+    // The world owns the transaction; the graph owns knowing how to take its
+    // own changes back. Nothing outside the crate can reach any of this.
+
+    /// Starts recording. Idempotent: a nested transaction marks its place in
+    /// the journal the outer one is already keeping.
+    pub(crate) fn begin_journal(&mut self) {
+        self.journaling = true;
+    }
+
+    /// Stops recording and forgets everything recorded. Called when the
+    /// outermost transaction commits, at which point no undo will be wanted.
+    pub(crate) fn end_journal(&mut self) {
+        self.journaling = false;
+        self.journal.clear();
+    }
+
+    pub(crate) fn journal_mark(&self) -> usize {
+        self.journal.len()
+    }
+
+    /// Puts the graph back the way it was at `mark`, newest change first.
+    pub(crate) fn rollback_to(&mut self, mark: usize) {
+        while self.journal.len() > mark {
+            let Some(entry) = self.journal.pop() else {
+                return;
+            };
+
+            self.undo(entry);
+        }
+    }
+
+    fn record_undo(&mut self, entry: GraphUndo) {
+        if self.journaling {
+            self.journal.push(entry);
+        }
+    }
+
+    /// Applies one inverse. Deliberately silent where the entry cannot be
+    /// applied: every one of those is unreachable while the journal is only
+    /// written by the mutators above, and a panic here would poison the wasm
+    /// module for the rest of the session.
+    fn undo(&mut self, entry: GraphUndo) {
+        match entry {
+            GraphUndo::NodeAdded { id } => {
+                self.nodes.remove(&id);
+            }
+            GraphUndo::NodeRemoved { node, edges } => {
+                self.nodes.insert(node.id.clone(), node);
+
+                // Ascending, so each index means the same thing when its turn
+                // comes as it did when the edge was taken out.
+                for (index, edge) in edges {
+                    if index <= self.edges.len() {
+                        self.edges.insert(index, edge);
+                    }
+                }
+            }
+            GraphUndo::FieldSet {
+                id,
+                field,
+                previous,
+            } => {
+                if let Some(node) = self.nodes.get_mut(&id) {
+                    match previous {
+                        Some(value) => {
+                            node.fields.insert(field, value);
+                        }
+                        None => {
+                            node.fields.remove(&field);
+                        }
+                    }
+                }
+            }
+            GraphUndo::EdgeAdded { index } => {
+                if index < self.edges.len() {
+                    self.edges.remove(index);
+                }
+            }
+            GraphUndo::EdgeRemoved { index, edge } => {
+                if index <= self.edges.len() {
+                    self.edges.insert(index, edge);
+                }
+            }
+        }
+    }
+
+    // -- mutations ----------------------------------------------------------
+
     pub fn add_node(&mut self, node: Node) -> EngineResult<GraphMutation> {
         if self.nodes.contains_key(&node.id) {
             let id = &node.id;
             return refuse!("Node \"{id}\" already exists.");
         }
 
+        self.record_undo(GraphUndo::NodeAdded {
+            id: node.id.clone(),
+        });
         self.nodes.insert(node.id.clone(), node.clone());
         Ok(GraphMutation::NodeAdded { node })
     }
@@ -64,19 +200,31 @@ impl EntityGraph {
             .remove(id)
             .ok_or_else(|| EngineError::new(format!("Node \"{id}\" does not exist.")))?;
 
-        let mut removed = Vec::new();
+        // The index each edge held is recorded with it: `retain` visits the
+        // vector in order, so the counter is the position the edge is being
+        // taken out of, and putting them back in that order restores the
+        // vector exactly.
+        let mut removed: Vec<(usize, Edge)> = Vec::new();
+        let mut index = 0;
         self.edges.retain(|edge| {
-            if edge.from == id || edge.to == id {
-                removed.push(edge.clone());
-                false
-            } else {
-                true
+            let keep = edge.from != id && edge.to != id;
+
+            if !keep {
+                removed.push((index, edge.clone()));
             }
+
+            index += 1;
+            keep
+        });
+
+        self.record_undo(GraphUndo::NodeRemoved {
+            node: node.clone(),
+            edges: removed.clone(),
         });
 
         Ok(GraphMutation::NodeRemoved {
             node,
-            edges: removed,
+            edges: removed.into_iter().map(|(_, edge)| edge).collect(),
         })
     }
 
@@ -90,17 +238,31 @@ impl EntityGraph {
             return refuse!("Field name must be a non-empty string.");
         }
 
+        // Written in place and taken back out again if the schema refuses it,
+        // exactly as `clear_field` below does. The alternative - validating a
+        // whole cloned node and only then storing it - copies every OTHER
+        // field on the node for every single write, which on a machine node
+        // with a dozen of them is most of the cost of a set.
         let node = self
             .nodes
-            .get(id)
+            .get_mut(id)
             .ok_or_else(|| EngineError::new(format!("Node \"{id}\" does not exist.")))?;
+        let previous = node.fields.insert(field.to_owned(), value.clone());
 
-        let previous = node.fields.get(field).cloned();
-        let mut candidate = node.clone();
-        candidate.fields.insert(field.to_owned(), value.clone());
-        validate_fields(&candidate.kind, &candidate.fields)?;
+        if let Err(error) = validate_fields(&node.kind, &node.fields) {
+            match previous {
+                Some(previous) => node.fields.insert(field.to_owned(), previous),
+                None => node.fields.remove(field),
+            };
 
-        self.nodes.insert(id.to_owned(), candidate);
+            return Err(error);
+        }
+
+        self.record_undo(GraphUndo::FieldSet {
+            id: id.to_owned(),
+            field: field.to_owned(),
+            previous: previous.clone(),
+        });
 
         Ok(GraphMutation::FieldSet {
             id: id.to_owned(),
@@ -133,6 +295,12 @@ impl EntityGraph {
             return Err(error);
         }
 
+        self.record_undo(GraphUndo::FieldSet {
+            id: id.to_owned(),
+            field: field.to_owned(),
+            previous: Some(previous.clone()),
+        });
+
         Ok(Some(GraphMutation::FieldSet {
             id: id.to_owned(),
             field: field.to_owned(),
@@ -153,6 +321,9 @@ impl EntityGraph {
         }
 
         self.edges.push(edge.clone());
+        self.record_undo(GraphUndo::EdgeAdded {
+            index: self.edges.len() - 1,
+        });
         Ok(GraphMutation::EdgeAdded { edge })
     }
 
@@ -164,6 +335,10 @@ impl EntityGraph {
         };
 
         let removed = self.edges.remove(position);
+        self.record_undo(GraphUndo::EdgeRemoved {
+            index: position,
+            edge: removed.clone(),
+        });
         Ok(GraphMutation::EdgeRemoved { edge: removed })
     }
 

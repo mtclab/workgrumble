@@ -200,14 +200,155 @@ pub struct TicketRecord {
     pub updating: bool,
 }
 
+/// The four flags a record carries, so one can be put back as a unit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TicketFlags {
+    waiting: bool,
+    resolved: bool,
+    breached: bool,
+    updating: bool,
+}
+
+/// One change to the ticket records, written backwards - the same bargain the
+/// graph's journal makes, for the same reason: the records carry a parsed
+/// definition and the raw JSON it was parsed from, so copying all of them to
+/// guard one flag was the most expensive half of a savepoint.
+#[derive(Clone, Debug)]
+enum TicketUndo {
+    Spawned(String),
+    Flags { id: String, flags: TicketFlags },
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct TicketEngine {
-    pub records: BTreeMap<String, TicketRecord>,
+    /// Private, and every mutation below goes through a method that journals
+    /// it first. That is what makes the undo record complete by construction
+    /// rather than by everybody remembering.
+    records: BTreeMap<String, TicketRecord>,
+    journal: Vec<TicketUndo>,
+    journaling: bool,
 }
 
 impl TicketEngine {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    // -- the undo journal ---------------------------------------------------
+
+    pub(crate) fn begin_journal(&mut self) {
+        self.journaling = true;
+    }
+
+    pub(crate) fn end_journal(&mut self) {
+        self.journaling = false;
+        self.journal.clear();
+    }
+
+    pub(crate) fn journal_mark(&self) -> usize {
+        self.journal.len()
+    }
+
+    pub(crate) fn rollback_to(&mut self, mark: usize) {
+        while self.journal.len() > mark {
+            let Some(entry) = self.journal.pop() else {
+                return;
+            };
+
+            match entry {
+                TicketUndo::Spawned(id) => {
+                    self.records.remove(&id);
+                }
+                TicketUndo::Flags { id, flags } => {
+                    if let Some(record) = self.records.get_mut(&id) {
+                        record.waiting = flags.waiting;
+                        record.resolved = flags.resolved;
+                        record.breached = flags.breached;
+                        record.updating = flags.updating;
+                    }
+                }
+            }
+        }
+    }
+
+    fn remember(&mut self, id: &str) {
+        if !self.journaling {
+            return;
+        }
+
+        if let Some(record) = self.records.get(id) {
+            self.journal.push(TicketUndo::Flags {
+                id: id.to_owned(),
+                flags: TicketFlags {
+                    waiting: record.waiting,
+                    resolved: record.resolved,
+                    breached: record.breached,
+                    updating: record.updating,
+                },
+            });
+        }
+    }
+
+    // -- the records --------------------------------------------------------
+
+    pub fn contains(&self, id: &str) -> bool {
+        self.records.contains_key(id)
+    }
+
+    /// Every record, in the map's own order. Read-only: the lifecycle is the
+    /// world's, and this is for callers that only want to look.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &TicketRecord)> {
+        self.records.iter()
+    }
+
+    pub fn insert(&mut self, record: TicketRecord) {
+        let id = record.def.id.clone();
+
+        if self.journaling {
+            self.journal.push(TicketUndo::Spawned(id.clone()));
+        }
+
+        self.records.insert(id, record);
+    }
+
+    /// Whether the ticket is parked on somebody else. Parking and unparking a
+    /// resolved or breached ticket is refused by the world, which owns the
+    /// rule; this only writes the flag.
+    pub fn set_waiting(&mut self, id: &str, waiting: bool) {
+        self.remember(id);
+
+        if let Some(record) = self.records.get_mut(id) {
+            record.waiting = waiting;
+        }
+    }
+
+    /// Closed, and no longer parked on anybody: a resolved ticket waits for
+    /// nothing.
+    pub fn set_resolved(&mut self, id: &str) {
+        self.remember(id);
+
+        if let Some(record) = self.records.get_mut(id) {
+            record.resolved = true;
+            record.waiting = false;
+        }
+    }
+
+    pub fn set_breached(&mut self, id: &str) {
+        self.remember(id);
+
+        if let Some(record) = self.records.get_mut(id) {
+            record.breached = true;
+        }
+    }
+
+    /// Set while the engine writes the ticket's own bookkeeping fields, so the
+    /// mutation that results does not re-enter the check that caused it.
+    pub fn set_updating(&mut self, id: &str, updating: bool) {
+        self.remember(id);
+
+        if let Some(record) = self.records.get_mut(id) {
+            record.updating = updating;
+        }
     }
 
     /// Ticket ids in JavaScript string order: the order the reference engine
