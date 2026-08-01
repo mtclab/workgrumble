@@ -540,6 +540,53 @@ mod tests {
         }
     }
 
+    /// The record journal on its own. A spawn inside a transaction that then
+    /// refuses has to leave no record at all - the world can only reach that
+    /// through a spawn whose own bookkeeping fails, which nothing can arrange
+    /// today, so the variant is proven here rather than left on trust.
+    #[test]
+    fn the_journal_takes_a_spawn_and_a_flag_back() {
+        let mut engine = TicketEngine::new();
+        let record = |id: &str| {
+            let mut def = valid_def();
+            def["id"] = json!(id);
+
+            TicketRecord {
+                def: TicketDef::parse(&def).expect("valid"),
+                waiting: false,
+                resolved: false,
+                breached: false,
+                updating: false,
+            }
+        };
+
+        engine.insert(record("ticket:kept"));
+        engine.begin_journal();
+        let mark = engine.journal_mark();
+
+        engine.insert(record("ticket:doomed"));
+        engine.set_waiting("ticket:kept", true);
+        engine.set_updating("ticket:kept", true);
+        engine.set_resolved("ticket:kept");
+        engine.set_breached("ticket:kept");
+
+        engine.rollback_to(mark);
+
+        assert!(!engine.contains("ticket:doomed"), "the spawn survived");
+        let kept = engine.get("ticket:kept").expect("still there");
+        assert!(!kept.waiting);
+        assert!(!kept.resolved);
+        assert!(!kept.breached);
+        assert!(!kept.updating);
+
+        // Committing forgets the record rather than leaving it to be replayed.
+        engine.set_waiting("ticket:kept", true);
+        engine.end_journal();
+        assert_eq!(engine.journal_mark(), 0);
+        engine.set_waiting("ticket:kept", false);
+        assert_eq!(engine.journal_mark(), 0, "a closed journal is still writing");
+    }
+
     #[test]
     fn refuses_a_broken_setup_mutation() {
         let mut def = valid_def();

@@ -634,6 +634,78 @@ mod tests {
             .is_empty());
     }
 
+    /// The journal on its own, without a world around it: every mutator
+    /// records its inverse, and unwinding to a mark restores the nodes, the
+    /// fields AND the order the edges were in.
+    #[test]
+    fn the_journal_takes_every_kind_of_change_back() {
+        let mut graph = graph_with_two_people();
+        graph
+            .add_node_json(&json!({ "id": "group:print", "kind": "group", "fields": {} }))
+            .expect("group");
+
+        let owns = Edge {
+            from: "person:a".to_owned(),
+            to: "person:b".to_owned(),
+            kind: "owns".to_owned(),
+        };
+        let member = Edge {
+            from: "person:b".to_owned(),
+            to: "group:print".to_owned(),
+            kind: "member_of".to_owned(),
+        };
+        graph.add_edge(owns.clone()).expect("owns");
+        graph.add_edge(member).expect("member");
+        graph
+            .set_field("person:a", "name", FieldValue::Str("Ada".to_owned()))
+            .expect("name");
+
+        let before = graph.snapshot_hash();
+        let edges_before = graph.edges().to_vec();
+
+        graph.begin_journal();
+        let mark = graph.journal_mark();
+
+        graph
+            .set_field("person:a", "name", FieldValue::Str("Grace".to_owned()))
+            .expect("rename");
+        graph
+            .set_field("person:b", "name", FieldValue::Str("New".to_owned()))
+            .expect("a name it never had");
+        graph.remove_edge(owns).expect("unlink");
+        graph
+            .add_node_json(&json!({ "id": "person:c", "kind": "person", "fields": {} }))
+            .expect("add c");
+        graph
+            .add_edge(Edge {
+                from: "person:c".to_owned(),
+                to: "group:print".to_owned(),
+                kind: "member_of".to_owned(),
+            })
+            .expect("link c");
+        // Takes its edge with it, from the middle of the vector.
+        graph.remove_node("person:b").expect("remove b");
+        graph.clear_field("person:a", "name").expect("clear");
+
+        assert_ne!(graph.snapshot_hash(), before, "nothing happened to undo");
+
+        graph.rollback_to(mark);
+
+        assert_eq!(graph.snapshot_hash(), before);
+        assert_eq!(graph.edges().to_vec(), edges_before, "the edges moved");
+        assert!(graph.get_node("person:c").is_none());
+        assert!(graph.get_field("person:b", "name").is_none());
+
+        // And a commit throws the record away rather than leaving it to be
+        // replayed over somebody else's changes.
+        graph.end_journal();
+        assert_eq!(graph.journal_mark(), 0);
+        graph
+            .set_field("person:a", "name", FieldValue::Str("Grace".to_owned()))
+            .expect("rename outside a transaction");
+        assert_eq!(graph.journal_mark(), 0, "a closed journal is still writing");
+    }
+
     #[test]
     fn clear_field_removes_the_key_and_restores_it_on_refusal() {
         let mut graph = EntityGraph::new();
