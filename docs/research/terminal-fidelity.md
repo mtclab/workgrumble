@@ -1,0 +1,61 @@
+# Terminal fidelity: one row per command
+
+Standing bar, added in `docs/SPEC_020.md`. Every command this terminal admits to having
+declares a TIER, and no new command ships without a row here.
+
+- **FAITHFUL** - real syntax, real flags, real output shape, real error wording. A player who
+  knows the tool recognises it and learns nothing false.
+- **SHAPED** - the right concept and the right shape over smaller data, or over data this
+  world has and the real one does not. Nothing in it is false; some of it is missing, and
+  what is missing is written in the omissions column.
+- **REFUSED HONESTLY** - answers the way a real shell answers something it cannot do, or says
+  plainly that it is not simulated. A refusal teaches nothing; a fake teaches something wrong.
+
+The house rules that apply to every row:
+
+- **Families are not one shell in hats.** This estate is a Windows-family parody, so the
+  spelling is `cmd`/`sc`/`net`, not `systemctl`. The unix skins arrive with the machines that
+  would run them, and they will differ in output shape rather than in spelling.
+- **No invented state.** Where a column would need a fact the world does not hold - a
+  binary path, a service account, a dependency list - the column is left out rather than
+  filled in. An omission is a gap; an invention is a lie the player learns.
+- **The world is the only source.** Everything printed is read from the graph or derived by a
+  pure function of it (`cmd-net.ts` derives every address). Nothing is a string in a switch.
+
+| Command | Real syntax | Real output (cited) | Tier | Deliberate omissions |
+| --- | --- | --- | --- | --- |
+| `help` | none - `help` in cmd lists built-ins | `For more information on a specific command, type HELP command-name` | SHAPED | Ours lists this terminal's own verbs with usage and summary. There is no `help <command>` form; the usage line is printed by any command called wrong. |
+| `ver` | `ver` | `Microsoft Windows [Version 10.0.19045.3803]` | FAITHFUL | Shape and bracket form kept; the name and the number are the parody OS's own. |
+| `cls` | `cls` | clears the screen | FAITHFUL | none |
+| `ping` | `ping <host>` | `Reply from 10.42.0.9: bytes=32 time=3ms TTL=57` / `Request timed out.` / `Packets: Sent = 4, Received = 4, Lost = 0` | SHAPED | Three packets rather than four, no `-t`/`-n`/`-l` switches, and the route it walks is the estate's `connected_to` graph. The closing line says out loud that a reply proves the network layer and nothing about the services on the box. |
+| `tracert` | `tracert <host>` | `Tracing route to x [10.42.0.9] over a maximum of 30 hops:` then `  1    3 ms    4 ms    3 ms  gw.local [10.42.0.1]`, `Trace complete.` | FAITHFUL | Hop timings are a pure function of the hop and the host rather than measured; `*  *  *  Request timed out.` for an unreachable target, exactly as the real one gives up. No `-d`/`-h`. |
+| `nslookup` | `nslookup <name>` | `Server:  gw.local` / `Address:  10.42.0.1` / `Name:` / `Address:` / `*** gw can't find x: Non-existent domain` | FAITHFUL | Non-interactive mode only; no record types, no `set type=`. Only machines have names - people, printers and grievances resolve nowhere, and it says so. |
+| `ipconfig` | `ipconfig [/all] [/flushdns]` | `Windows IP Configuration`, `Ethernet adapter Local Area Connection:`, `   IPv4 Address. . . . . . . . . . . : 10.42.0.9`, `Successfully flushed the DNS Resolver Cache.` | FAITHFUL | `/all` and `/flushdns` only; `/renew`, `/release`, `/registerdns` are refused in the real shape (`"x" is not a switch this ipconfig has`). `/flushdns` changes nothing in the world, which is the joke and the truth. |
+| `whoami` | `whoami [/groups]` | `workgrumble\ppending`, then `GROUP INFORMATION` / `-----------------` | FAITHFUL | `/groups` prints group names only - no SIDs, no attributes columns, because the estate has neither. No `/user`, `/priv`, `/all`. |
+| `systeminfo` | `systeminfo [/S machine]` | `Host Name:`, `OS Name:`, `OS Version:`, `System Boot Time:`, `Processor(s):`, `Total Physical Memory:` | SHAPED | Label-and-value shape and the real field names, over the fields this world holds. The machine is named as a bare argument rather than `/S`. Hotfixes, network cards, BIOS, page file and domain role are omitted. `Registered Services:` is a COUNT with the name of the list beside it - the real one does not print services at all, and twenty-three names on one line is not a readout. |
+| `services` | `services.msc` (a window, not a command) | Columns: Name, Description, Status (`Running` / blank), Startup Type (`Automatic` / `Automatic (Delayed Start)` / `Manual` / `Disabled`), Log On As | SHAPED | A terminal listing of the services.msc columns. Display name, status and startup type are kept; **Description** and **Log On As** are omitted - this estate has no service accounts and inventing them would imply a fault class we do not simulate. Status words are this world's (`RUNNING`, `STOPPED`, `WEDGED`); `WEDGED` is the world's third state and has no code in a real manager. Things that report a status and are not services - a chassis fan, a licence pool - are listed BELOW the table with the reason, never in it. |
+| `sc` | `sc [\\machine] query <service>` | `SERVICE_NAME: Spooler` / `        TYPE               : 10  WIN32_OWN_PROCESS` / `        STATE              : 4  RUNNING` / `                                (STOPPABLE, PAUSABLE, ACCEPTS_SHUTDOWN)` / `        WIN32_EXIT_CODE    : 0  (0x0)` | FAITHFUL | `query` only, with the block printed verbatim in shape. The machine is named as `PRINT-01\Spooler` rather than `sc \\PRINT-01`, which is the one deviation and the form every service-taking command here uses. `qc`, `config`, `start`, `stop`, `queryex` are refused honestly - starting and stopping are one verb in this world (`restart`), and a startup type is a change with a form attached. `PAUSABLE` is reported as `NOT_PAUSABLE`, because nothing here pauses. |
+| `tasklist` | `tasklist [/s machine]` | `Image Name                     PID Session Name        Session#    Mem Usage` / `========================= ======== ================ =========== ============` / `System Idle Process              0 Console                    0         16 K` | FAITHFUL | Column widths and the `=` rule are the real ones. The list is the machine's own four processes plus one per OPEN WINDOW, which is what a process list is. No `/svc`, `/m`, `/fi`, `/v`. `/s` is refused with the estate's own reason: Remote Registry is Disabled on every box, which the player can see in any services list. |
+| `users` | `net user <account>` (there is no `users`) | `User name`, `Account active`, `Account expires`, `Password last set`, `Local Group Memberships` | SHAPED | A plain-language read of the account, in label-and-value shape, over the fields this directory holds. Kept as its own verb because the game teaches the read before it teaches the spelling; `net user` is the same read under the real name. |
+| `net` | `net user <account>`, `net use`, `net share`, `net start` | `The command completed successfully.` | SHAPED (one sub-command) | `net user <account>` only. Every other sub-command is refused by name, because `net use` and `net share` are a different job with different consequences and a stub of either would teach the wrong thing. |
+| `restart` | `net stop <s>` + `net start <s>`, or `sc stop` / `sc start` | `The <name> service is stopping.` / `The <name> service was started successfully.` | SHAPED | One verb for the pair, because a service left stopped is a change with a form attached. Prints `Stopping ... / Starting ... service reports RUNNING`, which is the real pair's shape. Refuses with a reason true of the thing: a fan is hardware, a licence pool is somebody else's box, the manager will not take a stop control for `RpcSs`-class services, a `Disabled` service cannot be started by anything, a healthy service should not be bounced in front of a user, and a queue still full will jam the same service again. |
+| `queue` | `wmic printjob list` / the printer's own queue window | job list with counts | SHAPED | A count and the spooler that feeds it. No job ids, owners or document names - the world holds a queue length, and a list of invented documents would be the fake this bar exists to forbid. |
+| `clearqueue` | `net stop spooler` + `del %systemroot%\System32\spool\PRINTERS\*` + `net start spooler` | the canonical L1 runbook (Microsoft Q&A, PaperCut) | SHAPED | One verb for the first two steps, and it SAYS it stopped the spooler and left it stopped, because the spool files belong to that service. Step three is `restart`. The files it drops are a number, not a directory - the directory arrives with the filesystem slice. |
+| `rotate` | display settings, or `Ctrl+Alt+arrow` on the driver | no console equivalent | SHAPED | A verb for the fix rather than a fiction of a console command that does not exist. Refuses any angle that is not 0/90/180/270, which is what a monitor stand actually offers. |
+| `unlock` | `net user <account> /active:yes` unlocks nothing; the real unlock is ADUC or `Unlock-ADAccount` | `Unlock-ADAccount -Identity x` | SHAPED | A verb for the desk's most common job. Deliberately distinct from `resetpw` and from enabling a disabled account, because those are three different faults that wear the same face at the login box. |
+| `resetpw` | `net user <account> *` / `Set-ADAccountPassword` | prompts for the password twice | SHAPED | Issues a temporary password without prompting, and says out loud that it also clears the lockout and sets "must change at next logon" - three things a real reset dialog asks about separately. |
+| `verify` | no command exists anywhere | - | SHAPED | The identity check is a process, not a tool, and this is the game's one verb for a thing that happens on the phone. It records WHICH approved channel was used, because "verified" has never been an answer to "how". |
+| `mfa` | Entra: "Require re-register multifactor authentication" | portal action, no console form | SHAPED | One verb for the blade's button. Invalidates the previous binding and notifies the account owner, both of which the real one does and neither of which is optional. |
+| `revoke` | `Revoke-AzureADUserAllRefreshToken` / "Revoke sessions" | portal action | SHAPED | Sessions only. It is the right fix for a session somebody else is holding and the wrong fix for a dead authenticator, which is why it is a verb of its own. |
+| `licence` | vendor licence console; M365 Billing > Licenses | portal | SHAPED | `take` and `give` over a pool with a seat count. No SKUs, no service plans, no usage location. |
+| `grant` | `Add-MailboxPermission -AccessRights FullAccess` | PowerShell | SHAPED | Full Access only, and it says in the outcome that Send As is a different permission with a different name - which is the entire lesson of the week's two-ticket chain. |
+| `forget` | `cmdkey /delete` / the device's own credential store | `CMDKEY: Credential deleted successfully.` | SHAPED | One verb aimed at a device, because the device is where the stored password lives on this estate. |
+| `renewcert` | `certreq` / the vendor appliance's own console | varies | SHAPED | A verb for the fix. It exists separately from `restart` because restarting a service puts the same expired certificate back in front of the same forty people. |
+| `rule` | `Set-TransportRule -Enabled $true` | PowerShell | SHAPED (one direction) | `rule on` only. Switching a rule OFF is refused, because that is a change with a form attached - the same reason the world's transport rule was written in March and never enabled. |
+
+## Rows to write before the next slice
+
+The filesystem slice (`SPEC_020` 0.2.3) adds `dir`, `cd`, `type`, `tree` on Windows skins and
+`ls`, `cd`, `pwd`, `cat`, `less` on unix ones. Each needs a row here before it ships, and the
+two families have to differ in OUTPUT SHAPE rather than in spelling: `dir` prints a volume
+header, a date-and-size column and a free-space footer; `ls` prints columns and nothing else.

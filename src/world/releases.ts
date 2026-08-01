@@ -31,6 +31,41 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.2.2',
+    date: '2026-08-01',
+    summary: 'This update improves the accuracy of workstation reporting.',
+    lines: Object.freeze([
+      'Addresses an issue in which a workstation reported one service. Every '
+        + 'machine on the estate now lists the services it has been running '
+        + 'since it was built, with the status and the startup type of each. '
+        + 'Finding the one that is wrong is your job and always was.',
+      'Adds startup types. A service set to Manual and stopped is a machine '
+        + 'behaving itself; a service set to Automatic and stopped is the '
+        + 'reason somebody has rung. The list now tells you which you are '
+        + 'looking at.',
+      'Adds "sc query" and "tasklist" to the Support Terminal. The first '
+        + 'reports what the service manager holds on one service; the second '
+        + 'reports what is open on this desk, browsers and morale exercises '
+        + 'included. A minimised window remains a running program.',
+      'Resolves a condition in which restarting a licence pool was refused in '
+        + 'the words written for a chassis fan. Refusals now name what the '
+        + 'thing actually is.',
+      'Service names now require the machine they are on where more than one '
+        + 'machine answers to the name, in the form PRINT-01\\Spooler. Every '
+        + 'box in this building runs a print spooler, which was always true '
+        + 'and is now visible.',
+      'Adds a domain controller. The accounts, the group memberships and the '
+        + 'lockouts have always been somewhere; they are now somewhere you '
+        + 'can ping.',
+      'About This Workstation is now an About dialog. It reports this '
+        + 'machine - the processor, the memory, the display, the uptime and '
+        + 'the licence - and no longer reports how many tickets are waiting '
+        + 'for you. The queue was already doing that.',
+      'Known issue: 48 MB of the memory in this workstation remains usable. '
+        + 'Nobody knows why.',
+    ]),
+  },
+  {
     version: '0.2.1',
     date: '2026-08-01',
     summary: 'This update improves the handling of workstation accounts.',

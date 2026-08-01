@@ -191,6 +191,23 @@ export const COMMANDS: readonly CommandSpec[] = [
     joined: true,
   },
   {
+    name: 'sc',
+    usage: 'sc query <service>',
+    summary: 'Ask the service manager what it holds on one service.',
+    minArgs: 2,
+    maxArgs: 5,
+    joined: true,
+    subcommand: true,
+  },
+  {
+    name: 'tasklist',
+    usage: 'tasklist',
+    summary: 'List what is actually running on this desk, windows and all.',
+    minArgs: 0,
+    maxArgs: 2,
+    joined: false,
+  },
+  {
     name: 'restart',
     usage: 'restart <service>',
     summary: 'Restart a stopped or wedged service.',

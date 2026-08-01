@@ -157,19 +157,33 @@ function fixtureSetup(): readonly SetupOp[] {
   addNode(ops, {
     id: 'service:spooler',
     kind: 'service',
-    fields: { name: 'Print Spooler', status: 'wedged', restartable: true },
+    fields: {
+      name: 'Print Spooler',
+      service_name: 'Spooler',
+      status: 'wedged',
+      startup_type: 'automatic',
+    },
   });
   addNode(ops, {
     id: 'service:vpn',
     kind: 'service',
-    fields: { name: 'VPN Concentrator', status: 'running', restartable: true },
+    fields: {
+      name: 'VPN Concentrator',
+      service_name: 'RemoteAccess',
+      status: 'running',
+      startup_type: 'automatic',
+    },
   });
   // Hardware that reports a status. It looks exactly like a service in the
   // graph, which is the whole reason the truth has to be written down.
   addNode(ops, {
     id: 'service:fan',
     kind: 'service',
-    fields: { name: 'Chassis fan', status: 'wedged', restartable: false },
+    fields: {
+      name: 'Chassis fan',
+      status: 'wedged',
+      service_class: 'hardware',
+    },
   });
   addNode(ops, {
     id: 'share:common',
@@ -650,6 +664,121 @@ describe('service.restart', () => {
       before,
     );
     expect(fixture.graph.getField('service:fan', FIELDS.status)).toBe('wedged');
+  });
+
+  /**
+   * The baseline is not scenery.
+   *
+   * Every box in this building runs twenty-odd services that no ticket is
+   * about, and the rule for all of them is the same as for the ones the world
+   * moves: asked to restart, a stopped one comes back, and a refusal names a
+   * reason that is TRUE of the thing being refused. A list of things that
+   * silently do nothing would be a list that teaches the player to stop
+   * believing the screen.
+   */
+  describe('the services no ticket is about', () => {
+    beforeEach(() => {
+      fixture.applySetup([
+        {
+          op: 'addNode',
+          node: {
+            id: 'service:bits',
+            kind: 'service',
+            fields: {
+              name: 'Background Intelligent Transfer Service',
+              service_name: 'BITS',
+              status: 'stopped',
+              startup_type: 'manual',
+            },
+          },
+        },
+        {
+          op: 'addNode',
+          node: {
+            id: 'service:remoteregistry',
+            kind: 'service',
+            fields: {
+              name: 'Remote Registry',
+              service_name: 'RemoteRegistry',
+              status: 'stopped',
+              startup_type: 'disabled',
+            },
+          },
+        },
+        {
+          op: 'addNode',
+          node: {
+            id: 'service:rpcss',
+            kind: 'service',
+            fields: {
+              name: 'Remote Procedure Call (RPC)',
+              service_name: 'RpcSs',
+              status: 'running',
+              startup_type: 'automatic',
+              service_class: 'system',
+            },
+          },
+        },
+        {
+          op: 'addNode',
+          node: {
+            id: 'service:licences',
+            kind: 'service',
+            fields: {
+              name: 'Accounts Suite licence pool',
+              status: 'running',
+              service_class: 'appliance',
+              seats_free: 0,
+            },
+          },
+        },
+      ]);
+    });
+
+    /** A Manual service that is legitimately stopped starts when asked. */
+    it('starts a stopped one, for real', () => {
+      expect(
+        dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:bits'),
+      ).toEqual({ ok: true });
+      expect(fixture.graph.getField('service:bits', FIELDS.status))
+        .toBe('running');
+    });
+
+    it('refuses a disabled one because it is disabled', () => {
+      const before = fixture.snapshotHash();
+      expectRefusal(
+        dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:remoteregistry'),
+        'set to Disabled',
+        before,
+      );
+      expect(fixture.graph.getField('service:remoteregistry', FIELDS.status))
+        .toBe('stopped');
+    });
+
+    it('refuses one the manager will not take a stop control for', () => {
+      const before = fixture.snapshotHash();
+      expectRefusal(
+        dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:rpcss'),
+        'will not take a stop control',
+        before,
+      );
+    });
+
+    /**
+     * And a licence pool is refused as a licence pool. It used to be refused
+     * in the words written for a fan, because the only thing the world could
+     * say about either of them was a boolean that meant "no".
+     */
+    it('refuses an appliance without calling it a fan', () => {
+      const before = fixture.snapshotHash();
+      const result = dispatch(HELPDESK_ACTIONS.serviceRestart, 'service:licences');
+
+      expectRefusal(result, 'somebody else\'s box', before);
+
+      if (!result.ok) {
+        expect(result.reason).not.toContain('fan');
+      }
+    });
   });
 });
 

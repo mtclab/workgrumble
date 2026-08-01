@@ -3,10 +3,15 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { loadEngineForTests } from '../../engine-api/load-node';
 import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../../world/actions';
 import { COMPANY_IDS } from '../../world/company';
+import { AppStateStore } from '../app-state';
 import { createWorldSession } from '../../world/session';
 import { spawnWorldTicket } from '../../world/tickets';
 import { directoryDetail, type DirectoryView } from './directory';
-import { remoteSession, type RemoteSessionView } from './remote';
+import {
+  remoteSession,
+  type RemoteService,
+  type RemoteSessionView,
+} from './remote';
 import type { GameApi } from './types';
 
 beforeAll(() => {
@@ -29,11 +34,23 @@ beforeAll(() => {
  */
 
 function session(): {
-  readonly api: Pick<GameApi, 'graph'>;
+  readonly api: Pick<GameApi, 'graph' | 'appState' | 'actor'>;
   readonly engine: ReturnType<typeof createWorldSession>['engine'];
 } {
   const world = createWorldSession();
-  return { api: { graph: world.engine.graph }, engine: world.engine };
+
+  // The remote pane reads the open windows as well as the graph now: the
+  // player's own box shows what is running on it, which is the boss's-eye view
+  // of the slack mechanic. It is the shipped store rather than a stub, so a
+  // pane that started reading something else out of it fails here too.
+  return {
+    api: {
+      graph: world.engine.graph,
+      appState: new AppStateStore(),
+      actor: COMPANY_IDS.player,
+    },
+    engine: world.engine,
+  };
 }
 
 /** What the driver dispatches every few minutes, all shift, all week. */
@@ -276,5 +293,57 @@ describe('the remote session pane', () => {
     expect(pane({ picked: 90 })).not.toBe(pane({}));
     expect(pane({ outcome: 'Rebooted.' })).not.toBe(pane({}));
     expect(pane({ refusal: 'Already upright.' })).not.toBe(pane({}));
+  });
+
+  /**
+   * Every row in the services panel says what it is and what it is doing, and
+   * every restart button that is not a button carries the reason it is not.
+   *
+   * This is the pane's half of the no-scenery rule: the engine refuses these
+   * five for five different true reasons, and a panel that greyed a control
+   * out without saying which would be the dead end the house rules forbid.
+   */
+  it('says of every service what it is, and why it will not be bounced', () => {
+    const world = session();
+    const machine = world.api.graph.getNode(COMPANY_IDS.playerMachine);
+
+    if (machine === undefined) {
+      throw new Error('The machine is not in this world.');
+    }
+
+    const model = remoteSession(world.api, machine, view);
+    const find = (id: string): RemoteService | undefined => model.services
+      .find((service) => service.id === id);
+
+    expect(model.services.length).toBeGreaterThan(20);
+
+    for (const service of model.services) {
+      expect(service.name.length, service.id).toBeGreaterThan(0);
+
+      if (service.listed) {
+        // Everything in the table has both columns the table is headed with.
+        expect(service.service, service.id).not.toBe('-');
+        expect(service.startupLabel, service.id).not.toBe('-');
+      }
+
+      // Live, or refused in a sentence. Never quietly dead.
+      if (service.blocked !== null) {
+        expect(service.blocked.length, service.id).toBeGreaterThan(20);
+      }
+    }
+
+    // A Manual service that is stopped is not a fault and IS restartable.
+    expect(find('service:beige-box/bits')?.blocked).toBeNull();
+    expect(find('service:beige-box/remoteregistry')?.blocked)
+      .toContain('set to Disabled');
+    expect(find('service:beige-box/rpcss')?.blocked)
+      .toContain('will not take a stop control');
+    expect(find('service:beige-box/dnscache')?.blocked).toContain('running');
+
+    // And the fan, which is not in the table at all.
+    const fan = find(COMPANY_IDS.fan);
+
+    expect(fan?.listed).toBe(false);
+    expect(fan?.blocked).toContain('not software');
   });
 });

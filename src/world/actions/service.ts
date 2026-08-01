@@ -1,5 +1,11 @@
 import type { ActionData } from '../../engine-api';
-import { DEVICE_TYPES, FIELDS, SERVICE_STATUS } from '../fields';
+import {
+  DEVICE_TYPES,
+  FIELDS,
+  SERVICE_CLASSES,
+  SERVICE_STATUS,
+  STARTUP_TYPES,
+} from '../fields';
 import {
   fieldIs,
   HELPDESK_TIER,
@@ -17,13 +23,40 @@ export const SERVICE_ACTIONS: readonly ActionData[] = [
     tier: HELPDESK_TIER,
     validate: [
       ...targetGuards('service'),
-      // Hardware first: a fan is not "already running", it is not a service
-      // at all, and telling the player the wrong true thing helps nobody.
+      // What it IS comes before how it is doing: a fan is not "already
+      // running", it is not a service at all, and telling the player the wrong
+      // true thing helps nobody. Three classes, three different trues, because
+      // one boolean could only ever say no.
       {
-        when: not(fieldIs(TARGET, FIELDS.restartable, true)),
+        when: fieldIs(TARGET, FIELDS.serviceClass, SERVICE_CLASSES.hardware),
         reason: '"{target.label}" is a piece of hardware that reports a '
           + 'status, not software you can stop and start. You cannot turn a '
           + 'fan off and on again. Well. You can. It will not help.',
+      },
+      {
+        when: fieldIs(TARGET, FIELDS.serviceClass, SERVICE_CLASSES.appliance),
+        reason: '"{target.label}" is not running on anything you have a '
+          + 'console for - it is somebody else\'s box answering over the wire. '
+          + 'There is nothing here to stop and nothing to start. The only '
+          + 'number on it that matters is how many seats are free.',
+      },
+      {
+        when: fieldIs(TARGET, FIELDS.serviceClass, SERVICE_CLASSES.system),
+        reason: 'The service manager will not take a stop control for '
+          + '"{target.label}": half of what is running on that box is holding '
+          + 'it open, and it does not accept one. Whatever is actually wrong, '
+          + 'the answer is a reboot or the thing that depends on it, not this.',
+      },
+      // Disabled is a fact about the NEXT boot that decides this one: nothing
+      // starts a disabled service, and the fix is its startup type rather than
+      // a restart. The terminal cannot change one yet and says so instead of
+      // pretending the click did something.
+      {
+        when: fieldIs(TARGET, FIELDS.startupType, STARTUP_TYPES.disabled),
+        reason: '"{target.label}" is set to Disabled. Nothing can start it '
+          + 'while it is - not this, not a reboot, not asking it nicely - and '
+          + 'the fix is its startup type, which is a change with a form '
+          + 'attached and no verb on this terminal.',
       },
       {
         when: not({

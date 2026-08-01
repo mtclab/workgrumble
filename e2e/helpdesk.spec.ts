@@ -126,7 +126,7 @@ test('needs all three steps of the spooler fix, in the honest order', async ({
 
   // The wrong way round is refused outright: queued jobs outlive a restart,
   // so a spooler started in front of them is handed the same bad job back.
-  await runCommand(page, 'restart spooler');
+  await runCommand(page, 'restart PRINT-01\\spooler');
   await expect(page.getByTestId('cmd-output')).toContainText(
     'It will just choke on the same job again.',
   );
@@ -153,7 +153,7 @@ test('needs all three steps of the spooler fix, in the honest order', async ({
 
   // Step three closes it.
   await focusWindow(page, 'cmd');
-  await runCommand(page, 'restart spooler');
+  await runCommand(page, 'restart PRINT-01\\spooler');
   await expect(page.getByTestId('cmd-output')).toContainText('RUNNING');
   await expect(
     page.getByTestId('toast').filter({ hasText: 'Ticket resolved' }),
@@ -186,9 +186,12 @@ test('explains every refusal in words a person can act on', async ({
   await runCommand(page, 'rotate SALES-02 45');
   await expect(page.getByTestId('cmd-output')).toContainText('not an angle');
 
-  // The fan is hardware. It is listed with the services because it reports a
+  // The fan is hardware. It is listed UNDER the services because it reports a
   // status, and the terminal refuses to pretend that makes it restartable.
   await runCommand(page, 'services BEIGE-BOX');
+  await expect(page.getByTestId('cmd-output')).toContainText(
+    'Also on this box, reporting a status and not services:',
+  );
   await expect(page.getByTestId('cmd-output')).toContainText(
     '[hardware, not restartable]',
   );
@@ -403,7 +406,12 @@ test('walks the ipconfig family without changing a thing', async ({ page }) => {
   await runCommand(page, 'whoami /groups');
   await expect(output).toContainText('WORKGRUMBLE\\Print Users');
 
+  // systeminfo prints what is in the case and how many services are
+  // registered; the services themselves are a list of their own, which is
+  // where the one nobody remembers is on that box turns up.
   await runCommand(page, 'systeminfo PRINT-01');
+  await expect(output).toContainText('Total Physical Memory:     128 MB');
+  await runCommand(page, 'services PRINT-01');
   await expect(output).toContainText('VPN Concentrator');
 
   // The route out of this desk goes through the box that also carries the VPN

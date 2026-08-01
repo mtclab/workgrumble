@@ -2767,23 +2767,93 @@ input {
   font-weight: 700;
 }
 
-.remote-service {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
+/* One window somebody has open, on the taskbar it is open on. */
+.remote-program {
   padding: var(--space-1) var(--space-2);
-  background: var(--color-surface-field);
-  box-shadow: var(--bevel-sunken);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-raised);
+  max-width: var(--size-taskbar-button);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.remote-service-status {
+.remote-program[data-minimized="true"] {
+  box-shadow: var(--bevel-sunken);
   color: var(--color-ink-soft);
 }
 
-.remote-service[data-status="wedged"] .remote-service-status,
-.remote-service[data-status="stopped"] .remote-service-status {
+/* The services list, which is a table because it is a table. */
+.remote-services {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  text-align: left;
+}
+
+.remote-services th {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--border-hair) solid var(--color-ink-soft);
+  color: var(--color-ink-soft);
+  font-weight: 700;
+}
+
+.remote-services td {
+  padding: var(--space-1) var(--space-2);
+  vertical-align: middle;
+}
+
+.remote-services tbody tr:nth-child(2n) {
+  background: var(--color-surface);
+}
+
+.remote-service-name {
+  display: flex;
+  flex-direction: column;
+}
+
+.remote-service-key {
+  color: var(--color-ink-soft);
+  font-family: var(--font-mono);
+}
+
+.remote-service-status,
+.remote-service-startup {
+  color: var(--color-ink-soft);
+}
+
+.remote-services tr[data-status="wedged"] .remote-service-status,
+.remote-services tr[data-status="stopped"] .remote-service-status {
   color: var(--color-alarm);
   font-weight: 700;
+}
+
+.remote-service-controls {
+  text-align: right;
+}
+
+.remote-panel-note {
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+}
+
+.remote-not-service-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.remote-not-service-list .remote-service {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  box-shadow: var(--bevel-raised);
+  font-size: var(--text-xs);
 }
 
 .remote-tray {

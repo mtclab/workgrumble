@@ -234,6 +234,26 @@ export const FIELDS = {
   /** machine */
   hostname: 'hostname',
   /**
+   * What this box is FOR, which is what decides the services on it.
+   *
+   * A workstation, a print server, a file server and a domain controller do
+   * not run the same list, and a first-line tech who has learned one list has
+   * learned the shape of the other three. It is seeded per machine rather than
+   * guessed from the hostname, because `FILES-01` being a file server is a
+   * fact about the estate and not about a naming convention somebody could
+   * break with the next box they bought.
+   */
+  machineRole: 'role',
+  /**
+   * What is inside the case, as two lines a support call reads out.
+   *
+   * They are fields rather than strings in the About dialog because two
+   * surfaces print them - the dialog and `systeminfo` - and a workstation whose
+   * memory depends on which window you opened is not a workstation.
+   */
+  processor: 'processor',
+  memory: 'memory',
+  /**
    * What this machine has written down about itself: services that stopped,
    * reboots, lockouts, print queues that gave up, service levels the agent
    * noticed nobody else was watching.
@@ -288,6 +308,43 @@ export const FIELDS = {
   /** service */
   status: 'status',
   /**
+   * The short name the machine knows a service by, beside the long one a human
+   * reads: `Spooler` for Print Spooler, `Dnscache` for DNS Client.
+   *
+   * Both, because both are real and they are used for different things - the
+   * long one is what a services list is sorted by and what a user quotes, the
+   * short one is what a command takes and what a log entry names. A world with
+   * only the long name makes `sc query` a fiction.
+   */
+  serviceName: 'service_name',
+  /**
+   * Automatic, Automatic (Delayed Start), Manual or Disabled - what the machine
+   * intends to do about this service at the NEXT boot, which is a different
+   * question from what it is doing now.
+   *
+   * It is the field behind a whole class of real ticket: the service somebody
+   * set to Manual in 2003, which works perfectly until the box is rebooted and
+   * then never comes back. A list with only a status cannot express that, and a
+   * status of "stopped" beside a startup type of "Manual" is not a fault at all
+   * - which is the other half of the same skill.
+   */
+  startupType: 'startup_type',
+  /**
+   * WHAT this thing is, which is what decides whether "restart it" is even a
+   * sentence about it. Four answers, four different true refusals:
+   *
+   * - `service`: software the service manager will stop and start on request.
+   * - `system`: software it will NOT, because other running services depend on
+   *   it and the stop control is not one it accepts.
+   * - `hardware`: a lump of spinning plastic that reports a status. A fan.
+   * - `appliance`: somebody else's box answering over the wire - a licence
+   *   pool - which has a status and nothing this estate can bounce.
+   *
+   * It replaced a boolean `restartable`, which could only say no and never why,
+   * so a licence pool was refused in the words written for a fan.
+   */
+  serviceClass: 'service_class',
+  /**
    * Whether the certificate this service presents has run out.
    *
    * Its own field rather than a stopped status because it is its own fault
@@ -305,12 +362,6 @@ export const FIELDS = {
    * honest reason as well as the practical one.
    */
   seatsFree: 'seats_free',
-  /**
-   * Whether this is software that can be stopped and started again. Hardware
-   * reports a status too - a chassis fan has one - and saying so in the data
-   * is what stops "restart it" from being a lie about the physical world.
-   */
-  restartable: 'restartable',
   /** share + group + mail_rule */
   path: 'path',
   target: 'target',
@@ -499,6 +550,109 @@ export const SERVICE_STATUS = {
   stopped: 'stopped',
   wedged: 'wedged',
 } as const;
+
+export type ServiceStatus = (typeof SERVICE_STATUS)[keyof typeof SERVICE_STATUS];
+
+/**
+ * What a services list is allowed to say about starting a thing at boot, in
+ * the four words the real one uses.
+ *
+ * `Automatic (Delayed Start)` is its own answer rather than a flag on
+ * Automatic, because it is what an update service is set to and it is the
+ * honest explanation of why something that is meant to be running is not, two
+ * minutes after a reboot.
+ */
+export const STARTUP_TYPES = {
+  automatic: 'automatic',
+  delayed: 'automatic_delayed',
+  manual: 'manual',
+  disabled: 'disabled',
+} as const;
+
+export type StartupType = (typeof STARTUP_TYPES)[keyof typeof STARTUP_TYPES];
+
+export const STARTUP_TYPE_LABELS: Readonly<Record<StartupType, string>> = {
+  [STARTUP_TYPES.automatic]: 'Automatic',
+  [STARTUP_TYPES.delayed]: 'Automatic (Delayed Start)',
+  [STARTUP_TYPES.manual]: 'Manual',
+  [STARTUP_TYPES.disabled]: 'Disabled',
+};
+
+export const SERVICE_CLASSES = {
+  service: 'service',
+  system: 'system',
+  hardware: 'hardware',
+  appliance: 'appliance',
+} as const;
+
+export type ServiceClass = (typeof SERVICE_CLASSES)[keyof typeof SERVICE_CLASSES];
+
+/**
+ * The class of a node that reports a status, with the ordinary answer as the
+ * default: everything on this estate is a service the manager will stop and
+ * start unless its seed says otherwise.
+ */
+export function serviceClassOf(value: unknown): ServiceClass {
+  return value === SERVICE_CLASSES.system
+    || value === SERVICE_CLASSES.hardware
+    || value === SERVICE_CLASSES.appliance
+    ? value
+    : SERVICE_CLASSES.service;
+}
+
+export function startupTypeOf(value: unknown): StartupType | null {
+  return value === STARTUP_TYPES.automatic
+    || value === STARTUP_TYPES.delayed
+    || value === STARTUP_TYPES.manual
+    || value === STARTUP_TYPES.disabled
+    ? value
+    : null;
+}
+
+/**
+ * Whether this thing is a SERVICE - something the service control manager
+ * knows about, whether or not it will take a stop control for it. A fan and a
+ * licence pool report a status and are not, which is why neither of them
+ * belongs in a services list.
+ */
+export function isService(value: unknown): boolean {
+  const kind = serviceClassOf(value);
+  return kind === SERVICE_CLASSES.service || kind === SERVICE_CLASSES.system;
+}
+
+/**
+ * Whether the service manager on that box will take a stop and a start for
+ * this thing at all. It is a question about WHAT it is, not about how it is
+ * doing: a service that is running is still restartable, and the refusal for
+ * asking is a different sentence with a different reason.
+ */
+export function isRestartable(value: unknown): boolean {
+  return serviceClassOf(value) === SERVICE_CLASSES.service;
+}
+
+export const MACHINE_ROLES = {
+  workstation: 'workstation',
+  printServer: 'print_server',
+  fileServer: 'file_server',
+  domainController: 'domain_controller',
+} as const;
+
+export type MachineRole = (typeof MACHINE_ROLES)[keyof typeof MACHINE_ROLES];
+
+export const MACHINE_ROLE_LABELS: Readonly<Record<MachineRole, string>> = {
+  [MACHINE_ROLES.workstation]: 'Workstation',
+  [MACHINE_ROLES.printServer]: 'Print server',
+  [MACHINE_ROLES.fileServer]: 'File server',
+  [MACHINE_ROLES.domainController]: 'Domain controller',
+};
+
+export function machineRoleOf(value: unknown): MachineRole {
+  return value === MACHINE_ROLES.printServer
+    || value === MACHINE_ROLES.fileServer
+    || value === MACHINE_ROLES.domainController
+    ? value
+    : MACHINE_ROLES.workstation;
+}
 
 export const ROTATIONS = [0, 90, 180, 270] as const;
 

@@ -122,7 +122,7 @@ test('leaves the cursor in a half-typed line when the lead walks in', async ({
 
   await openFromStartMenu(page, 'cmd');
   const terminal = page.getByTestId('cmd-input');
-  await terminal.fill('restart spool');
+  await terminal.fill('restart PRINT-01\\spool');
   await expect(terminal).toBeFocused();
 
   await runToTelegraph(page);
@@ -136,7 +136,7 @@ test('leaves the cursor in a half-typed line when the lead walks in', async ({
   await expect(caught).toBeVisible();
   // The rest of the sentence must not be typed into a button.
   await expect(terminal).toBeFocused();
-  await expect(terminal).toHaveValue('restart spool');
+  await expect(terminal).toHaveValue('restart PRINT-01\\spool');
 });
 
 test('returns focus to the start button when the menu closes', async ({

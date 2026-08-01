@@ -6,7 +6,18 @@ import {
   WasmEngine,
 } from '../engine-api';
 import { companySetup, COMPANY_IDS } from './company';
-import { FIELDS } from './fields';
+import {
+  FIELDS,
+  isService,
+  MACHINE_ROLES,
+  machineRoleOf,
+  SERVICE_CLASSES,
+  serviceClassOf,
+  SERVICE_STATUS,
+  STARTUP_TYPES,
+  startupTypeOf,
+} from './fields';
+import { BASELINE_SERVICES } from './services';
 
 /** The seed applied by the engine that will run it, and read back through it. */
 function seededEngine(): WasmEngine {
@@ -34,17 +45,137 @@ describe('company world', () => {
     // Seventeen people, because a week of twenty-odd tickets is a week in a
     // building with people in it: sixteen who report something and one leaver
     // who reports nothing and is the cause of a Wednesday.
+    //
+    // And three hundred-odd services, because fourteen boxes each run the
+    // twenty-odd their role says they run. That number is the point rather
+    // than the cost of it: a services list with one thing on it had already
+    // done the player's diagnosis for them.
     expect(counts).toEqual({
       person: 17,
       account: 17,
-      machine: 13,
+      machine: 14,
       device: 5,
-      service: 7,
+      service: 324,
       share: 2,
       group: 3,
       mail_rule: 2,
       ticket: 0,
     });
+  });
+
+  /**
+   * The baseline, per role, and the two rules that keep it honest.
+   *
+   * Every service on every box carries the four facts a real services list
+   * shows, and no box runs two of anything: the print server's spooler and the
+   * file server's Server service are named services that the baseline must not
+   * seed a second copy of.
+   */
+  it('runs a real service list on every box, with no duplicates on any', () => {
+    const graph = seeded();
+
+    for (const machine of graph.nodesOfKind('machine')) {
+      const services = graph.neighbors(machine.id, {
+        direction: 'in',
+        edgeKind: 'runs_on',
+      });
+      const role = machineRoleOf(machine.fields[FIELDS.machineRole]);
+      const shorts = services
+        .map((service) => service.fields[FIELDS.serviceName])
+        .filter((short): short is string => typeof short === 'string');
+
+      // A machine role every box declares, and a list long enough to have to
+      // be read rather than glanced at.
+      expect(Object.values(MACHINE_ROLES)).toContain(role);
+      expect(services.length, machine.id)
+        .toBeGreaterThanOrEqual(BASELINE_SERVICES[role].length);
+      expect(new Set(shorts).size, machine.id).toBe(shorts.length);
+
+      for (const service of services) {
+        const kind = serviceClassOf(service.fields[FIELDS.serviceClass]);
+
+        expect(typeof service.fields[FIELDS.name], service.id).toBe('string');
+        expect(
+          Object.values(SERVICE_STATUS),
+          service.id,
+        ).toContain(service.fields[FIELDS.status]);
+
+        // Anything the service manager knows about has both of the facts a
+        // services list prints; the fan and the licence pool have neither,
+        // which is exactly why they are not in the table.
+        if (isService(service.fields[FIELDS.serviceClass])) {
+          expect(typeof service.fields[FIELDS.serviceName], service.id)
+            .toBe('string');
+          expect(
+            startupTypeOf(service.fields[FIELDS.startupType]),
+            service.id,
+          ).not.toBeNull();
+        } else {
+          expect([
+            SERVICE_CLASSES.hardware,
+            SERVICE_CLASSES.appliance,
+          ], service.id).toContain(kind);
+        }
+      }
+    }
+  });
+
+  /**
+   * The list is noise with one signal in it, and both halves have to be there:
+   * services that are stopped ON PURPOSE - Manual, Disabled - so that a
+   * stopped service is not automatically a fault, and Automatic ones that are
+   * running so that one which is not stands out.
+   */
+  it('seeds a baseline that is stable, and stopped in the honest places', () => {
+    const graph = seeded();
+    const desk = graph.neighbors(COMPANY_IDS.playerMachine, {
+      direction: 'in',
+      edgeKind: 'runs_on',
+    });
+    const startups = new Set(
+      desk.map((service) => service.fields[FIELDS.startupType]),
+    );
+
+    expect(startups).toContain(STARTUP_TYPES.automatic);
+    expect(startups).toContain(STARTUP_TYPES.delayed);
+    expect(startups).toContain(STARTUP_TYPES.manual);
+    expect(startups).toContain(STARTUP_TYPES.disabled);
+
+    // Nothing Automatic is stopped on a box with no ticket about it: an
+    // Automatic service that is down is the line a player is meant to find,
+    // and a seed that scattered them would be a seed that cries wolf.
+    for (const service of desk) {
+      if (service.fields[FIELDS.startupType] === STARTUP_TYPES.automatic) {
+        expect(service.fields[FIELDS.status], service.id)
+          .toBe(SERVICE_STATUS.running);
+      }
+
+      if (service.fields[FIELDS.startupType] === STARTUP_TYPES.disabled) {
+        expect(service.fields[FIELDS.status], service.id)
+          .toBe(SERVICE_STATUS.stopped);
+      }
+    }
+  });
+
+  /** A domain with no domain controller is a building where nobody logs on. */
+  it('puts the directory on a domain controller that is really there', () => {
+    const graph = seeded();
+    const dc = graph.getNode(COMPANY_IDS.domainController);
+
+    expect(dc?.fields[FIELDS.hostname]).toBe('DC-01');
+    expect(machineRoleOf(dc?.fields[FIELDS.machineRole]))
+      .toBe(MACHINE_ROLES.domainController);
+
+    const shorts = graph
+      .neighbors(COMPANY_IDS.domainController, {
+        direction: 'in',
+        edgeKind: 'runs_on',
+      })
+      .map((service) => service.fields[FIELDS.serviceName]);
+
+    for (const service of ['NTDS', 'kdc', 'DNS', 'Netlogon']) {
+      expect(shorts, service).toContain(service);
+    }
   });
 
   /**

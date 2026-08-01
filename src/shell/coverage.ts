@@ -1111,6 +1111,23 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'remote.services',
+    surface: 'remote',
+    control: 'remote-services, remote-services-count',
+    does: 'The services on somebody else\'s box, in the columns a services '
+      + 'list has: name, status and the startup type that says whether a '
+      + 'stopped one is a fault or a Tuesday.',
+    run: 'week',
+  },
+  {
+    id: 'remote.programs',
+    surface: 'remote',
+    control: 'remote-program-<app>',
+    does: 'What is open on the player\'s own box, in its taskbar, which is '
+      + 'the boss\'s-eye view of the slack mechanic.',
+    run: 'week',
+  },
+  {
     id: 'remote.restart-service',
     surface: 'remote',
     control: 'remote-restart-<service>',
@@ -1121,9 +1138,10 @@ const ENTRIES = [
   {
     id: 'remote.restart-refused',
     surface: 'remote',
-    control: 'remote-restart-<service> (running, jammed, or hardware)',
-    does: 'Three different reasons a restart is the wrong move, said before '
-      + 'the click.',
+    control: 'remote-restart-<service> (running, jammed, disabled, hardware '
+      + 'or the manager\'s own)',
+    does: 'Five different reasons a restart is the wrong move, said before '
+      + 'the click and in the words the world would refuse it in.',
     run: 'week',
   },
   {
@@ -1660,9 +1678,28 @@ const ENTRIES = [
     id: 'cmd.services',
     surface: 'cmd',
     control: 'services <machine>',
-    does: 'Lists what is meant to be running on a box, and which of it is '
-      + 'hardware with a status light.',
+    does: 'Lists the twenty-odd services a box actually runs, with the status '
+      + 'and the startup type of each - and, underneath, what reports a status '
+      + 'and is not a service.',
     command: 'services',
+    run: 'week',
+  },
+  {
+    id: 'cmd.sc',
+    surface: 'cmd',
+    control: 'sc query <service>',
+    does: 'Prints the service manager\'s own record of one service, and '
+      + 'refuses the sub-commands this terminal does not have.',
+    command: 'sc',
+    run: 'week',
+  },
+  {
+    id: 'cmd.tasklist',
+    surface: 'cmd',
+    control: 'tasklist',
+    does: 'Lists what is running on this desk - the browser and the toy among '
+      + 'them, while their windows are open - and refuses to ask another box.',
+    command: 'tasklist',
     run: 'week',
   },
   {
@@ -1742,8 +1779,9 @@ const ENTRIES = [
     id: 'about.window',
     surface: 'about',
     control: 'window-about',
-    does: 'The system-information page, every line of it read live off the '
-      + 'world.',
+    does: 'The About dialog: what this workstation is, what is in the case '
+      + 'and who is logged on to it, every line read live off the world and '
+      + 'not a ticket count anywhere on it.',
     window: { routes: ['start-menu', 'desktop-icon'] },
     run: 'week',
   },

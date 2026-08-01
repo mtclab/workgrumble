@@ -4,8 +4,17 @@ import {
   VERIFICATION_METHODS,
   verificationChannels,
 } from './fallout';
-import { DEVICE_TYPES, FIELDS, SERVICE_STATUS } from './fields';
+import {
+  DEVICE_TYPES,
+  FIELDS,
+  type MachineRole,
+  MACHINE_ROLES,
+  SERVICE_CLASSES,
+  SERVICE_STATUS,
+  STARTUP_TYPES,
+} from './fields';
 import { STARTING_REPUTATION } from './meters';
+import { BASELINE_SERVICES, baselineServiceId } from './services';
 
 /**
  * What everybody on this estate has on file, from the June rollout: a number
@@ -141,6 +150,17 @@ export const COMPANY_IDS = {
   fileServer: 'machine:files',
   fileShare: 'service:fileshare',
   reportJob: 'service:report-job',
+
+  /**
+   * The domain controller. It holds every account in the directory app, every
+   * group membership the terminal reads back, and the clock the whole building
+   * disagrees with by four minutes.
+   *
+   * Nobody owns it, nobody has logged on to it since it was built, and it is in
+   * the game because a domain with no domain controller is a company where the
+   * accounts, the logons and the lockouts happen nowhere.
+   */
+  domainController: 'machine:dc',
 
   /** What the accounts package counts before it lets anybody in. */
   suiteLicences: 'service:suite-licences',
@@ -356,6 +376,171 @@ const STAFF: readonly StaffSeed[] = [
   },
 ];
 
+interface MachineSeed {
+  readonly id: string;
+  readonly hostname: string;
+  /** What the box is for, which is what decides the services on it. */
+  readonly role: MachineRole;
+  readonly owner?: string;
+  /** The box this one's cable ends up in. Everything ends up in PRINT-01. */
+  readonly wiredTo?: string;
+  readonly resolution?: string;
+  readonly pendingUpdates?: boolean;
+  /**
+   * What is in the case. The comedy in this game lives in the hardware rather
+   * than in invented telemetry, and both the About dialog and `systeminfo`
+   * read these two fields - so a machine cannot have two different amounts of
+   * memory depending on which window is open.
+   */
+  readonly processor: string;
+  readonly memory: string;
+}
+
+const DESK_PROCESSOR = 'Pentagon 133 MHz (one of them, and it is trying)';
+const DESK_MEMORY = '64 MB (48 MB usable, and nobody knows why)';
+
+const MACHINES: readonly MachineSeed[] = [
+  {
+    id: COMPANY_IDS.playerMachine,
+    hostname: 'BEIGE-BOX',
+    role: MACHINE_ROLES.workstation,
+    owner: COMPANY_IDS.player,
+    wiredTo: COMPANY_IDS.printServer,
+    processor: DESK_PROCESSOR,
+    memory: DESK_MEMORY,
+  },
+  {
+    id: COMPANY_IDS.adaMachine,
+    hostname: 'SALES-02',
+    role: MACHINE_ROLES.workstation,
+    owner: COMPANY_IDS.ada,
+    wiredTo: COMPANY_IDS.printServer,
+    pendingUpdates: true,
+    processor: 'Pentagon 166 MHz (the good one, because Sales asked twice)',
+    memory: '96 MB',
+  },
+  {
+    id: COMPANY_IDS.garyMachine,
+    hostname: 'PAYROLL-04',
+    role: MACHINE_ROLES.workstation,
+    owner: COMPANY_IDS.gary,
+    wiredTo: COMPANY_IDS.printServer,
+    resolution: '800x600',
+    pendingUpdates: true,
+    processor: 'Pentagon 90 MHz',
+    memory: '32 MB',
+  },
+  {
+    id: COMPANY_IDS.printServer,
+    hostname: 'PRINT-01',
+    role: MACHINE_ROLES.printServer,
+    // Signed for by the lead years ago, and never once looked at since:
+    // ownership on paper and ownership in practice are not the same graph.
+    owner: COMPANY_IDS.boss,
+    resolution: '640x480',
+    pendingUpdates: true,
+    processor: 'Pentagon 200 MHz',
+    memory: '128 MB',
+  },
+  {
+    id: COMPANY_IDS.priyaMachine,
+    hostname: 'ACCTS-01',
+    role: MACHINE_ROLES.workstation,
+    owner: COMPANY_IDS.priya,
+    wiredTo: COMPANY_IDS.printServer,
+    processor: DESK_PROCESSOR,
+    memory: DESK_MEMORY,
+  },
+  {
+    id: COMPANY_IDS.kwameMachine,
+    hostname: 'SALES-05',
+    role: MACHINE_ROLES.workstation,
+    owner: COMPANY_IDS.kwame,
+    wiredTo: COMPANY_IDS.printServer,
+    processor: DESK_PROCESSOR,
+    memory: DESK_MEMORY,
+  },
+  {
+    id: COMPANY_IDS.robMachine,
+    hostname: 'FIN-02',
+    role: MACHINE_ROLES.workstation,
+    owner: COMPANY_IDS.rob,
+    wiredTo: COMPANY_IDS.printServer,
+    processor: DESK_PROCESSOR,
+    memory: DESK_MEMORY,
+  },
+  {
+    id: COMPANY_IDS.warehouseMachine,
+    hostname: 'WHOUSE-01',
+    role: MACHINE_ROLES.workstation,
+    owner: COMPANY_IDS.hilda,
+    wiredTo: COMPANY_IDS.warehousePrintServer,
+    processor: 'Pentagon 90 MHz (and a layer of warehouse on the fan)',
+    memory: '32 MB',
+  },
+  {
+    id: COMPANY_IDS.terryMachine,
+    hostname: 'EST-03',
+    role: MACHINE_ROLES.workstation,
+    owner: COMPANY_IDS.terry,
+    wiredTo: COMPANY_IDS.printServer,
+    processor: DESK_PROCESSOR,
+    memory: DESK_MEMORY,
+  },
+  {
+    id: COMPANY_IDS.dennisMachine,
+    hostname: 'MKTG-02',
+    role: MACHINE_ROLES.workstation,
+    owner: COMPANY_IDS.dennis,
+    wiredTo: COMPANY_IDS.printServer,
+    processor: DESK_PROCESSOR,
+    memory: DESK_MEMORY,
+  },
+  {
+    id: COMPANY_IDS.marcusMachine,
+    hostname: 'ACCTS-03',
+    role: MACHINE_ROLES.workstation,
+    owner: COMPANY_IDS.marcus,
+    wiredTo: COMPANY_IDS.printServer,
+    processor: DESK_PROCESSOR,
+    memory: DESK_MEMORY,
+  },
+  // The three boxes nobody sits at. None of them is owned by anybody, which is
+  // most of the reason all three are in this game.
+  {
+    id: COMPANY_IDS.fileServer,
+    hostname: 'FILES-01',
+    role: MACHINE_ROLES.fileServer,
+    // On the same switch as everything else, because everybody opens the share
+    // every Wednesday: a file server nothing could reach would be a file
+    // server nothing could use, and `ping` would have been saying so.
+    wiredTo: COMPANY_IDS.printServer,
+    resolution: '640x480',
+    processor: 'Pentagon 200 MHz (a desktop, under a desk, doing a server job)',
+    memory: '256 MB',
+  },
+  {
+    id: COMPANY_IDS.warehousePrintServer,
+    hostname: 'PRINT-02',
+    role: MACHINE_ROLES.printServer,
+    // The uplink down the corridor, which is the whole warehouse's connection
+    // to the building and shares a socket with whatever the cleaner plugs in.
+    wiredTo: COMPANY_IDS.printServer,
+    resolution: '640x480',
+    processor: 'Pentagon 90 MHz',
+    memory: '32 MB',
+  },
+  {
+    id: COMPANY_IDS.domainController,
+    hostname: 'DC-01',
+    role: MACHINE_ROLES.domainController,
+    wiredTo: COMPANY_IDS.printServer,
+    resolution: '640x480',
+    processor: 'Pentagon 200 MHz (holding every logon in the building)',
+    memory: '256 MB',
+  },
+];
+
 const GROUP_MEMBERSHIPS: readonly { account: string; group: string }[] = [
   { account: COMPANY_IDS.playerAccount, group: COMPANY_IDS.printUsers },
   { account: COMPANY_IDS.playerAccount, group: COMPANY_IDS.vpnUsers },
@@ -392,6 +577,20 @@ const GROUP_MEMBERSHIPS: readonly { account: string; group: string }[] = [
   { account: COMPANY_IDS.adaAccount, group: COMPANY_IDS.salesSendAs },
   { account: COMPANY_IDS.kwameAccount, group: COMPANY_IDS.salesSendAs },
 ];
+
+/**
+ * Where a named service above IS the box's copy of a baseline one.
+ *
+ * The print server's spooler and the file server's Server service are both
+ * real baseline services that this week's tickets are about, so they are
+ * written by hand with the rest of the named ones - and the baseline must not
+ * seed a second copy beside them, or the estate would hold two spoolers on one
+ * box and only one of them would ever be the one that jams.
+ */
+const NAMED_SERVICE_TWINS: Readonly<Record<string, readonly string[]>> = {
+  [COMPANY_IDS.printServer]: ['Spooler'],
+  [COMPANY_IDS.fileServer]: ['LanmanServer'],
+};
 
 /** Gary is deliberately left off the share: it gives grant_access a job. */
 const SHARE_ACCESS: readonly { account: string; share: string }[] = [
@@ -510,132 +709,43 @@ export function companySetup(): readonly SetupOp[] {
     });
   }
 
-  addNode(ops, {
-    id: COMPANY_IDS.playerMachine,
-    kind: 'machine',
-    fields: {
-      [FIELDS.hostname]: 'BEIGE-BOX',
-      [FIELDS.displayRotation]: 0,
-      [FIELDS.resolution]: '1024x768',
-      [FIELDS.pendingUpdates]: false,
-    },
-  });
-  addNode(ops, {
-    id: COMPANY_IDS.adaMachine,
-    kind: 'machine',
-    fields: {
-      [FIELDS.hostname]: 'SALES-02',
-      [FIELDS.displayRotation]: 0,
-      [FIELDS.resolution]: '1024x768',
-      [FIELDS.pendingUpdates]: true,
-    },
-  });
-  addNode(ops, {
-    id: COMPANY_IDS.garyMachine,
-    kind: 'machine',
-    fields: {
-      [FIELDS.hostname]: 'PAYROLL-04',
-      [FIELDS.displayRotation]: 0,
-      [FIELDS.resolution]: '800x600',
-      [FIELDS.pendingUpdates]: true,
-    },
-  });
-  addNode(ops, {
-    id: COMPANY_IDS.printServer,
-    kind: 'machine',
-    fields: {
-      [FIELDS.hostname]: 'PRINT-01',
-      [FIELDS.displayRotation]: 0,
-      [FIELDS.resolution]: '640x480',
-      [FIELDS.pendingUpdates]: true,
-    },
-  });
-
-  // The rest of the floor, and the two boxes nobody visits. Written as a table
-  // because a desk machine is a hostname, a screen size and nothing else -
-  // everything interesting about any of them arrives with a ticket.
-  const DESKS: readonly {
-    id: string;
-    hostname: string;
-    owner?: string;
-    /** The print box this desk sends to. The warehouse has its own. */
-    prints?: string;
-  }[] = [
-    {
-      id: COMPANY_IDS.priyaMachine,
-      hostname: 'ACCTS-01',
-      owner: COMPANY_IDS.priya,
-      prints: COMPANY_IDS.printServer,
-    },
-    {
-      id: COMPANY_IDS.kwameMachine,
-      hostname: 'SALES-05',
-      owner: COMPANY_IDS.kwame,
-      prints: COMPANY_IDS.printServer,
-    },
-    {
-      id: COMPANY_IDS.robMachine,
-      hostname: 'FIN-02',
-      owner: COMPANY_IDS.rob,
-      prints: COMPANY_IDS.printServer,
-    },
-    {
-      id: COMPANY_IDS.warehouseMachine,
-      hostname: 'WHOUSE-01',
-      owner: COMPANY_IDS.hilda,
-      prints: COMPANY_IDS.warehousePrintServer,
-    },
-    {
-      id: COMPANY_IDS.terryMachine,
-      hostname: 'EST-03',
-      owner: COMPANY_IDS.terry,
-      prints: COMPANY_IDS.printServer,
-    },
-    {
-      id: COMPANY_IDS.dennisMachine,
-      hostname: 'MKTG-02',
-      owner: COMPANY_IDS.dennis,
-      prints: COMPANY_IDS.printServer,
-    },
-    {
-      id: COMPANY_IDS.marcusMachine,
-      hostname: 'ACCTS-03',
-      owner: COMPANY_IDS.marcus,
-      prints: COMPANY_IDS.printServer,
-    },
-    // The file server, and the warehouse print box on the corridor socket.
-    // Neither is owned by anybody, which is the reason both of them are in
-    // this game at all.
-    { id: COMPANY_IDS.fileServer, hostname: 'FILES-01' },
-    { id: COMPANY_IDS.warehousePrintServer, hostname: 'PRINT-02' },
-  ];
+  // Every box in the building, as a table. A machine is a hostname, a role, a
+  // screen and what is inside the case - everything else interesting about any
+  // of them arrives with a ticket.
+  //
+  // The ROLE is the load-bearing column: it is what decides the twenty-odd
+  // baseline services the box runs, because a print server and a domain
+  // controller do not run the same list and a tech who has learned one has
+  // learned the shape of the others.
+  for (const machine of MACHINES) {
+    addNode(ops, {
+      id: machine.id,
+      kind: 'machine',
+      fields: {
+        [FIELDS.hostname]: machine.hostname,
+        [FIELDS.machineRole]: machine.role,
+        [FIELDS.displayRotation]: 0,
+        [FIELDS.resolution]: machine.resolution ?? '1024x768',
+        [FIELDS.pendingUpdates]: machine.pendingUpdates === true,
+        [FIELDS.processor]: machine.processor,
+        [FIELDS.memory]: machine.memory,
+      },
+    });
+  }
 
   // Nodes first, edges after: a desk that prints to the warehouse box is
   // wired to a machine further down this same list, and an edge whose other
   // end has not been built yet is refused by the engine rather than quietly
   // dropped.
-  for (const desk of DESKS) {
-    addNode(ops, {
-      id: desk.id,
-      kind: 'machine',
-      fields: {
-        [FIELDS.hostname]: desk.hostname,
-        [FIELDS.displayRotation]: 0,
-        [FIELDS.resolution]: '1024x768',
-        [FIELDS.pendingUpdates]: false,
-      },
-    });
-  }
-
-  for (const desk of DESKS) {
-    if (desk.owner !== undefined) {
-      addEdge(ops, { from: desk.owner, to: desk.id, kind: 'owns' });
+  for (const machine of MACHINES) {
+    if (machine.owner !== undefined) {
+      addEdge(ops, { from: machine.owner, to: machine.id, kind: 'owns' });
     }
 
-    if (desk.prints !== undefined) {
+    if (machine.wiredTo !== undefined) {
       addEdge(ops, {
-        from: desk.id,
-        to: desk.prints,
+        from: machine.id,
+        to: machine.wiredTo,
         kind: 'connected_to',
       });
     }
@@ -705,16 +815,24 @@ export function companySetup(): readonly SetupOp[] {
     },
   });
 
-  // The fan reports a status like everything else on this box, and that is
-  // the whole trap: it is a lump of spinning plastic, not a service. Saying
-  // so here is what keeps "restart it" honest everywhere downstream.
+  // The named services: the ones the WORLD moves. Every one of them is
+  // something a ticket is about this week, which is what separates them from
+  // the twenty-odd baseline services seeded below them - and each carries the
+  // same four facts a real services list holds, so that the two classes are
+  // indistinguishable to read and different only in what happens to them.
+  //
+  // The fan is first and it is the trap: it reports a status like everything
+  // else on this box, and it is a lump of spinning plastic rather than
+  // software. Saying so in the data is what keeps "restart it" honest
+  // everywhere downstream - and it has no short name, because the service
+  // manager has never heard of it.
   addNode(ops, {
     id: COMPANY_IDS.fan,
     kind: 'service',
     fields: {
       [FIELDS.name]: 'Chassis fan',
       [FIELDS.status]: SERVICE_STATUS.running,
-      [FIELDS.restartable]: false,
+      [FIELDS.serviceClass]: SERVICE_CLASSES.hardware,
     },
   });
   addNode(ops, {
@@ -722,8 +840,9 @@ export function companySetup(): readonly SetupOp[] {
     kind: 'service',
     fields: {
       [FIELDS.name]: 'Print Spooler',
+      [FIELDS.serviceName]: 'Spooler',
       [FIELDS.status]: SERVICE_STATUS.running,
-      [FIELDS.restartable]: true,
+      [FIELDS.startupType]: STARTUP_TYPES.automatic,
     },
   });
   addNode(ops, {
@@ -731,30 +850,38 @@ export function companySetup(): readonly SetupOp[] {
     kind: 'service',
     fields: {
       [FIELDS.name]: 'VPN Concentrator',
+      [FIELDS.serviceName]: 'RemoteAccess',
       [FIELDS.status]: SERVICE_STATUS.running,
-      [FIELDS.restartable]: true,
+      [FIELDS.startupType]: STARTUP_TYPES.automatic,
     },
   });
 
-  // The backup agent on Marcus's box. It reports a status, it is restartable,
-  // and it has never once been stopped by anything but a person.
+  // The backup agent on Marcus's box. It reports a status, it can be stopped
+  // and started, and it has never once been stopped by anything but a person.
   addNode(ops, {
     id: COMPANY_IDS.backupAgent,
     kind: 'service',
     fields: {
       [FIELDS.name]: 'Backup Agent',
+      [FIELDS.serviceName]: 'BackupAgent',
       [FIELDS.status]: SERVICE_STATUS.running,
-      [FIELDS.restartable]: true,
+      [FIELDS.startupType]: STARTUP_TYPES.automatic,
     },
   });
 
+  // The file server's Server service, under the name this building calls it.
+  // It IS the baseline `LanmanServer` every other box runs - which is why the
+  // baseline below leaves it out here rather than seeding a second one - and
+  // it is a named service because it is the one everybody's Wednesday hangs
+  // off, and therefore the one a ticket is about.
   addNode(ops, {
     id: COMPANY_IDS.fileShare,
     kind: 'service',
     fields: {
       [FIELDS.name]: 'File Sharing',
+      [FIELDS.serviceName]: 'LanmanServer',
       [FIELDS.status]: SERVICE_STATUS.running,
-      [FIELDS.restartable]: true,
+      [FIELDS.startupType]: STARTUP_TYPES.automatic,
     },
   });
 
@@ -765,21 +892,23 @@ export function companySetup(): readonly SetupOp[] {
     kind: 'service',
     fields: {
       [FIELDS.name]: 'Scheduled Reports',
+      [FIELDS.serviceName]: 'ReportSvc',
       [FIELDS.status]: SERVICE_STATUS.running,
-      [FIELDS.restartable]: true,
+      [FIELDS.startupType]: STARTUP_TYPES.automatic,
     },
   });
 
-  // Not a service anybody can restart: it is a licence server, and the only
-  // number on it that matters is how many seats are not being used. Three of
-  // the six are, one of them by a man who left in April.
+  // Not a service anybody here can restart: it is somebody else's licence box
+  // answering over the wire, and the only number on it that matters is how
+  // many seats are not being used. Three of the six are, one of them by a man
+  // who left in April.
   addNode(ops, {
     id: COMPANY_IDS.suiteLicences,
     kind: 'service',
     fields: {
       [FIELDS.name]: 'Accounts Suite licence pool',
       [FIELDS.status]: SERVICE_STATUS.running,
-      [FIELDS.restartable]: false,
+      [FIELDS.serviceClass]: SERVICE_CLASSES.appliance,
       [FIELDS.seatsFree]: 0,
     },
   });
@@ -842,28 +971,6 @@ export function companySetup(): readonly SetupOp[] {
   });
 
   addEdge(ops, {
-    from: COMPANY_IDS.player,
-    to: COMPANY_IDS.playerMachine,
-    kind: 'owns',
-  });
-  addEdge(ops, {
-    from: COMPANY_IDS.ada,
-    to: COMPANY_IDS.adaMachine,
-    kind: 'owns',
-  });
-  addEdge(ops, {
-    from: COMPANY_IDS.gary,
-    to: COMPANY_IDS.garyMachine,
-    kind: 'owns',
-  });
-  // The lead signed for the print server years ago and has never once looked
-  // at it. Ownership on paper, ownership in practice: not the same graph.
-  addEdge(ops, {
-    from: COMPANY_IDS.boss,
-    to: COMPANY_IDS.printServer,
-    kind: 'owns',
-  });
-  addEdge(ops, {
     from: COMPANY_IDS.gary,
     to: COMPANY_IDS.garyMailRule,
     kind: 'owns',
@@ -882,21 +989,6 @@ export function companySetup(): readonly SetupOp[] {
   addEdge(ops, {
     from: COMPANY_IDS.adaMouse,
     to: COMPANY_IDS.adaMachine,
-    kind: 'connected_to',
-  });
-  addEdge(ops, {
-    from: COMPANY_IDS.playerMachine,
-    to: COMPANY_IDS.printServer,
-    kind: 'connected_to',
-  });
-  addEdge(ops, {
-    from: COMPANY_IDS.adaMachine,
-    to: COMPANY_IDS.printServer,
-    kind: 'connected_to',
-  });
-  addEdge(ops, {
-    from: COMPANY_IDS.garyMachine,
-    to: COMPANY_IDS.printServer,
     kind: 'connected_to',
   });
 
@@ -971,6 +1063,42 @@ export function companySetup(): readonly SetupOp[] {
       to: grant.share,
       kind: 'has_access',
     });
+  }
+
+  // And the twenty-odd services every one of those boxes has been running
+  // since it was built, from the table for its role.
+  //
+  // Last, so that everything a ticket names is already in the world by the
+  // time the noise arrives - and because this is what it is: the noise. The
+  // skill this game is about is reading twenty lines and finding the one that
+  // is wrong, and a list with only the wrong line in it has done that for you.
+  for (const machine of MACHINES) {
+    const named = NAMED_SERVICE_TWINS[machine.id] ?? [];
+
+    for (const service of BASELINE_SERVICES[machine.role]) {
+      // A named service above IS this box's copy of that service, so the
+      // baseline does not seed a second one beside it.
+      if (named.includes(service.service)) {
+        continue;
+      }
+
+      const id = baselineServiceId(machine.id, service.service);
+
+      addNode(ops, {
+        id,
+        kind: 'service',
+        fields: {
+          [FIELDS.name]: service.name,
+          [FIELDS.serviceName]: service.service,
+          [FIELDS.status]: service.status,
+          [FIELDS.startupType]: service.startup,
+          ...(service.serviceClass === undefined
+            ? {}
+            : { [FIELDS.serviceClass]: service.serviceClass }),
+        },
+      });
+      addEdge(ops, { from: id, to: machine.id, kind: 'runs_on' });
+    }
   }
 
   return ops;

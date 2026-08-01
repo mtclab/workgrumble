@@ -86,6 +86,146 @@ describe('support terminal commands', () => {
     }
   });
 
+  /**
+   * The finding this slice exists for: `services BEIGE-BOX` listed a chassis
+   * fan and nothing else. A real workstation runs dozens, and finding the
+   * broken one among them is the job - so the gate is on the LIST being a
+   * list, in the columns a services window has.
+   */
+  describe('the services list', () => {
+    it('lists a real workstation, in the columns a services window has', () => {
+      const api = apiFor(createWorldSession());
+      const output = run(api, 'services BEIGE-BOX');
+      const rows = output.split('\n');
+
+      expect(rows[0]).toContain('Services on BEIGE-BOX (workstation)');
+      expect(output).toContain('DISPLAY NAME');
+      expect(output).toContain('STARTUP TYPE');
+      // Twenty-odd of them, not one.
+      expect(rows.length).toBeGreaterThan(20);
+      expect(output).toContain('Print Spooler');
+      expect(output).toContain('DNS Client');
+      expect(output).toContain('Automatic (Delayed Start)');
+      expect(output).toContain('Disabled');
+
+      // And the fan is under the table with the reason, not in it: a services
+      // list with a lump of spinning plastic in it is teaching the player
+      // something false about every other line.
+      const [table, hardware] = output.split(
+        'Also on this box, reporting a status and not services:',
+      );
+
+      expect(table).not.toContain('Chassis fan');
+      expect(hardware).toContain('Chassis fan');
+      expect(hardware).toContain('[hardware, not restartable]');
+    });
+
+    it('gives each kind of box the services that kind of box runs', () => {
+      const api = apiFor(createWorldSession());
+      const desk = run(api, 'services BEIGE-BOX');
+      const print = run(api, 'services PRINT-01');
+      const files = run(api, 'services FILES-01');
+      const dc = run(api, 'services DC-01');
+
+      expect(print).toContain('(print server)');
+      expect(files).toContain('(file server)');
+      expect(dc).toContain('(domain controller)');
+
+      expect(print).toContain('TCP/IP Print Server');
+      expect(desk).not.toContain('TCP/IP Print Server');
+      expect(files).toContain('Distributed File System');
+      expect(desk).not.toContain('Distributed File System');
+      expect(dc).toContain('Directory Service');
+      expect(dc).toContain('Kerberos Key Distribution Center');
+      expect(desk).not.toContain('Kerberos Key Distribution Center');
+
+      // The licence pool is on the file server and is not a service on it.
+      expect(files).toContain('Accounts Suite licence pool');
+      expect(files.split('Also on this box')[0])
+        .not.toContain('Accounts Suite licence pool');
+    });
+
+    it('says how to name one of them, because the name is not enough', () => {
+      const api = apiFor(createWorldSession());
+
+      expect(run(api, 'services BEIGE-BOX'))
+        .toContain('"restart BEIGE-BOX\\<name>"');
+    });
+  });
+
+  describe('sc query', () => {
+    it('prints the service manager\'s own block', () => {
+      const api = apiFor(createWorldSession());
+      const output = run(api, 'sc query PRINT-01\\spooler');
+
+      expect(output).toContain('SERVICE_NAME: Spooler');
+      expect(output).toContain('TYPE               : 10  WIN32_OWN_PROCESS');
+      expect(output).toContain('STATE              : 4  RUNNING');
+      expect(output).toContain('(STOPPABLE, NOT_PAUSABLE, ACCEPTS_SHUTDOWN)');
+      expect(output).toContain('WIN32_EXIT_CODE    : 0  (0x0)');
+    });
+
+    it('reads a stopped one as stopped, with the controls it will take', () => {
+      const api = apiFor(createWorldSession());
+      const output = run(api, 'sc query BEIGE-BOX\\RemoteRegistry');
+
+      expect(output).toContain('STATE              : 1  STOPPED');
+      expect(output).toContain('IGNORES_SHUTDOWN');
+    });
+
+    /** A fan has no service record, because it is not software. */
+    it('refuses the thing the manager has never heard of', () => {
+      const api = apiFor(createWorldSession());
+      const output = run(api, 'sc query chassis fan');
+
+      expect(output).toContain('has never heard of');
+      expect(output).not.toContain('SERVICE_NAME');
+    });
+
+    it('refuses the sub-commands this terminal does not have', () => {
+      const api = apiFor(createWorldSession());
+      const output = run(api, 'sc stop spooler');
+
+      expect(output).toContain('"sc stop" is not something this terminal does');
+      expect(output).toContain('restart <service>');
+    });
+  });
+
+  describe('tasklist', () => {
+    it('lists the windows that are open, and drops them when they close', () => {
+      const api = apiFor(createWorldSession());
+
+      expect(run(api, 'tasklist')).toContain('System Idle Process');
+      expect(run(api, 'tasklist')).not.toContain('NAVIGATE.EXE');
+
+      api.appState.patch('windows', {
+        open: [
+          { appId: 'browser', minimized: false },
+          { appId: 'bubbles', minimized: true },
+        ],
+        focusedId: 'browser',
+      });
+
+      const open = run(api, 'tasklist');
+
+      expect(open).toContain('Image Name');
+      expect(open).toContain('NAVIGATE.EXE');
+      // Minimised is still running, which is the whole truth about the panic
+      // key and the reason this list is worth reading before somebody else
+      // reads it back to you.
+      expect(open).toContain('BUBBLES.EXE');
+      expect(open).toContain('A minimised window is a running program.');
+    });
+
+    it('refuses to ask another box, for the estate\'s own reason', () => {
+      const api = apiFor(createWorldSession());
+      const output = run(api, 'tasklist /s PRINT-01');
+
+      expect(output).toContain('Remote Registry is Disabled');
+      expect(run(api, 'tasklist /v')).toContain('is not a switch this tasklist has');
+    });
+  });
+
   it('answers an unknown command with a suggestion, not a shrug', () => {
     const api = apiFor(createWorldSession());
 
@@ -190,7 +330,7 @@ describe('support terminal commands', () => {
     expect(run(api, 'queue hercules')).toContain('47 job(s) queued');
 
     // The wrong order is refused, not quietly accepted and half-useful.
-    expect(run(api, 'restart spooler'))
+    expect(run(api, 'restart PRINT-01\\spooler'))
       .toContain('It will just choke on the same job again.');
     expect(session.engine.graph.getField(COMPANY_IDS.spooler, 'status'))
       .toBe('wedged');
@@ -199,8 +339,30 @@ describe('support terminal commands', () => {
     expect(run(api, 'clearqueue hercules')).toContain('47 job(s) dropped');
     expect(session.engine.ticketState('ticket:wedged-spooler')).toBe('open');
 
-    expect(run(api, 'restart spooler')).toContain('RUNNING');
+    expect(run(api, 'restart PRINT-01\\spooler')).toContain('RUNNING');
     expect(session.engine.ticketState('ticket:wedged-spooler')).toBe('resolved');
+  });
+
+  /**
+   * Every box in this building runs a spooler, because every box does. So the
+   * bare name is not an answer to WHICH, and the refusal has to hand back
+   * something the player can type rather than telling them to be specific and
+   * leaving them to guess how.
+   */
+  it('refuses a service name a dozen machines answer to, and says how to ask', () => {
+    const session = sessionWith('ticket:wedged-spooler');
+    const api = apiFor(session);
+    const refusal = run(api, 'restart spooler');
+
+    expect(refusal).toContain('matches 14 of them');
+    expect(refusal).toContain('ACCTS-01, ACCTS-03, BEIGE-BOX');
+    expect(refusal).toContain('the way sc makes you');
+    // And the qualified form works, on the box that was named.
+    expect(run(api, 'sc query PRINT-01\\spooler')).toContain('SERVICE_NAME: Spooler');
+    // A name that box has never run is refused by the box rather than by the
+    // estate, which is the difference between "where" and "what".
+    expect(run(api, 'restart PRINT-01\\backup agent'))
+      .toContain('Nothing called "backup agent" is registered on PRINT-01');
   });
 
   /**
@@ -304,9 +466,12 @@ describe('support terminal commands', () => {
 
     const server = run(api, 'systeminfo PRINT-01');
     expect(server).toContain('PRINT-01');
-    // Everything on the box, including the one nobody remembers is on it.
-    expect(server).toContain('Print Spooler');
-    expect(server).toContain('VPN Concentrator');
+    // What is in the case, which is what the real one prints - and a COUNT of
+    // the services with the list's name beside it, because twenty-three
+    // service names on one line is not a readout of anything.
+    expect(server).toContain('Processor(s):              Pentagon 200 MHz');
+    expect(server).toContain('Total Physical Memory:     128 MB');
+    expect(server).toMatch(/Registered Services: {7}\d+ \("services PRINT-01"/u);
     expect(server).toContain('Pending Updates:           Yes');
     expect(run(api, 'systeminfo SALES-99')).toContain('Unknown host');
   });

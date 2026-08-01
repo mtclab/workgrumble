@@ -142,7 +142,7 @@ test('turns the remote screen in the direction the rotation names', async ({
   await expect(resolvedToast(page)).toHaveCount(1);
 });
 
-test('closes the spooler ticket from the remote services taskbar', async ({
+test('closes the spooler ticket from the remote services panel', async ({
   page,
 }) => {
   // Tuesday: the office-wide fault is inherited on the second morning of the
@@ -162,8 +162,19 @@ test('closes the spooler ticket from the remote services taskbar', async ({
   await page.getByTestId('remote-machine-print').click();
   await expect(page.getByTestId('remote-hostname')).toHaveText('PRINT-01');
 
+  // The services panel is a services panel: twenty-odd rows with a startup
+  // type on each, and the one line that is wrong among them.
+  const panel = page.getByTestId('remote-services');
+  await expect(page.getByTestId('remote-services-count'))
+    .toContainText('registered');
+  await expect(panel.locator('tbody tr')).toHaveCount(24);
   const spooler = page.getByTestId('remote-service-spooler');
   await expect(spooler).toContainText('Not responding');
+  await expect(spooler).toContainText('Automatic');
+  // A stopped service that is MEANT to be stopped, on the same box, so that
+  // "stopped" is a word the player has to read rather than a red flag.
+  await expect(page.getByTestId('remote-service-print-bits'))
+    .toContainText('Manual');
 
   // A healthy service on the same box refuses a restart, and says why.
   const vpnRestart = page.getByTestId('remote-restart-vpn');

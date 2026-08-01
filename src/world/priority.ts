@@ -3,7 +3,7 @@
  *
  * Priority is not a thing anybody picks. The reporter supplies an urgency (and
  * every reporter on earth supplies "high"); the impact is a fact about the
- * estate - how many people and services sit downstream of the broken thing -
+ * estate - how many people sit downstream of the broken thing -
  * and the player is the one who has to look. The pair goes into a 3x3 lookup
  * and the priority falls out, which is what makes triage a decision with a
  * wrong answer rather than a mood.
@@ -140,8 +140,7 @@ export function priorityLabel(priority: Priority | null): string {
 /* -- impact, read off the estate ------------------------------------------ */
 
 /**
- * The blast radius of a broken thing: how many people and services sit
- * downstream of it.
+ * The blast radius of a broken thing: how many PEOPLE sit downstream of it.
  *
  * Downstream means, in one sentence: everything attached to it, everything
  * running on it, whoever owns it - and, when the broken thing is a service or
@@ -158,9 +157,14 @@ function dependentsOf(
   graph: ReadOnlyGraphView,
   node: Readonly<ReadOnlyGraphNode>,
 ): readonly ReadOnlyGraphNode[] {
+  // What hangs off a box is what is plugged into it and whoever it belongs to.
+  // The services ON it are deliberately not walked: they are a machine's own
+  // plumbing, twenty-odd per box, and following them measured the operating
+  // system rather than the outage - a sideways monitor came out office-wide.
+  // The walk still goes the other way, from a broken service to the box it is
+  // on, which is what makes a wedged spooler everybody's problem.
   const hangingOff = (id: string): readonly ReadOnlyGraphNode[] => [
     ...graph.neighbors(id, { direction: 'in', edgeKind: 'connected_to' }),
-    ...graph.neighbors(id, { direction: 'in', edgeKind: 'runs_on' }),
     ...graph.neighbors(id, { direction: 'in', edgeKind: 'owns' }),
   ];
 
@@ -180,7 +184,18 @@ function dependentsOf(
   return found;
 }
 
-/** How many people and services a fault at these nodes reaches. */
+/**
+ * How many people a fault at these nodes reaches.
+ *
+ * It used to count services as well as people, which worked while a machine
+ * had two of them on it. Now that every box in the building runs its real
+ * twenty-odd - which is the point of a services list a player has to read -
+ * that count measures the OS rather than the outage: a sideways monitor on one
+ * desk reached twenty-three "affected services" and was read as an office-wide
+ * incident. Impact is the number of users affected, which is what it is on
+ * every real incident form, and services are how the walk gets from a fault to
+ * the people who will ring about it.
+ */
 export function affectedCount(
   graph: ReadOnlyGraphView,
   nodes: readonly string[],
@@ -203,7 +218,7 @@ export function affectedCount(
       continue;
     }
 
-    if (!seeds.has(id) && (node.kind === 'person' || node.kind === 'service')) {
+    if (!seeds.has(id) && node.kind === 'person') {
       affected += 1;
     }
 

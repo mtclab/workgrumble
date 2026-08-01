@@ -1,15 +1,24 @@
-import type { ReadOnlyGraphNode } from '../../engine-api';
+import type { FieldValue, ReadOnlyGraphNode } from '../../engine-api';
 import { FULL_BATTERY, HELPDESK_ACTIONS } from '../../world/actions';
 import {
   DEVICE_TYPES,
   FIELDS,
+  isRestartable,
   isRotation,
+  isService,
   type Rotation,
   ROTATIONS,
+  SERVICE_CLASSES,
+  serviceClassOf,
   SERVICE_STATUS,
+  STARTUP_TYPE_LABELS,
+  type StartupType,
+  STARTUP_TYPES,
+  startupTypeOf,
 } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { createIcon } from '../icons';
+import { programImage } from './processes';
 import type { AppDef, AppInstance, GameApi } from './types';
 import {
   definitionRow,
@@ -57,6 +66,64 @@ const STATUS_LABELS: Readonly<Record<string, string>> = {
   [SERVICE_STATUS.wedged]: 'Not responding',
 };
 
+/** What a column says when the machine has no answer for it. */
+const NOTHING = '-';
+
+/**
+ * Why this service will not be restarted, said before the click, in the same
+ * terms `helpdesk.service.restart` would refuse it in afterwards.
+ *
+ * Five reasons and all five are true of the thing they are about: three about
+ * WHAT it is, one about what the next boot intends, one about what it is doing
+ * now. The order matches the engine's guards, because a button that gives a
+ * different reason from the world is a button that is guessing.
+ */
+function restartRefusal(
+  fields: Readonly<Record<string, FieldValue>>,
+  status: string,
+  startup: StartupType | null,
+  backlog: number | null,
+): string | null {
+  switch (serviceClassOf(fields[FIELDS.serviceClass])) {
+    case SERVICE_CLASSES.hardware:
+      return 'This is hardware with a status light, not software. You cannot '
+        + 'turn a fan off and on again. Well. You can. It will not help.';
+    case SERVICE_CLASSES.appliance:
+      return 'This is somebody else\'s box answering over the wire, not a '
+        + 'service on that machine. There is nothing here to stop and nothing '
+        + 'to start.';
+    case SERVICE_CLASSES.system:
+      return 'The service manager will not take a stop control for this one: '
+        + 'half of what is running on that box is holding it open.';
+    default:
+      break;
+  }
+
+  if (startup === STARTUP_TYPES.disabled) {
+    return 'This one is set to Disabled. Nothing starts it while it is - not '
+      + 'this button, not a reboot - and the fix is its startup type.';
+  }
+
+  if (status === SERVICE_STATUS.running) {
+    return 'This one is running. Restarting a healthy service in front of the '
+      + 'user is how a small ticket becomes a big one.';
+  }
+
+  return backlog === null
+    ? null
+    : `${String(backlog)} job(s) are still queued behind it. It will just `
+      + 'choke on the same job again. Clearing that queue stops this service '
+      + 'and drops the files; this button is the step after.';
+}
+
+/** The workstation signed out to the person this session dispatches as. */
+function ownMachineId(api: Pick<GameApi, 'graph' | 'actor'>): string | null {
+  return api.graph
+    .neighbors(api.actor, { direction: 'out', edgeKind: 'owns' })
+    .find((node) => node.kind === 'machine')
+    ?.id ?? null;
+}
+
 function ownerOf(
   api: Pick<GameApi, 'graph'>,
   machine: Readonly<ReadOnlyGraphNode>,
@@ -66,13 +133,16 @@ function ownerOf(
     .find((node) => node.kind === 'person');
 }
 
+/** What runs on a box, in the order a services window lists it: by name. */
 function servicesOn(
   api: Pick<GameApi, 'graph'>,
   machine: Readonly<ReadOnlyGraphNode>,
 ): readonly ReadOnlyGraphNode[] {
   return api.graph
     .neighbors(machine.id, { direction: 'in', edgeKind: 'runs_on' })
-    .filter((node) => node.kind === 'service');
+    .filter((node) => node.kind === 'service')
+    .sort((left, right) => textValue(left.fields[FIELDS.name], left.id)
+      .localeCompare(textValue(right.fields[FIELDS.name], right.id)));
 }
 
 function devicesOn(
@@ -104,11 +174,39 @@ function spoolerFeeding(
 export interface RemoteService {
   readonly id: string;
   readonly name: string;
+  /** What the machine calls it, or a dash for the things it has never heard of. */
+  readonly service: string;
   readonly status: string;
   readonly statusLabel: string;
+  /** Automatic, Automatic (Delayed Start), Manual, Disabled - or a dash. */
+  readonly startupLabel: string;
+  /**
+   * Whether this belongs in a SERVICES list at all. A fan and a licence pool
+   * report a status and are not services, so they sit under the table rather
+   * than in it - which is the difference between a list a player can trust and
+   * a list with a lump of spinning plastic in the middle of it.
+   */
+  readonly listed: boolean;
   readonly restartable: boolean;
   /** Jobs still queued on whatever it feeds, or nothing waiting. */
   readonly backlog: number | null;
+  /**
+   * Why the restart button is not a button, in the same terms the engine would
+   * refuse it in - or null when it is one.
+   *
+   * It is computed here, in the model, rather than in the row that draws it:
+   * a control disabled for a reason nobody can read is the dead end the house
+   * rules forbid, and this is the sentence the tooltip carries.
+   */
+  readonly blocked: string | null;
+}
+
+/** One window somebody has open, seen from outside their machine. */
+export interface RemoteProgram {
+  readonly key: string;
+  readonly image: string;
+  readonly title: string;
+  readonly minimized: boolean;
 }
 
 export interface RemoteDevice {
@@ -145,7 +243,19 @@ export interface RemoteSession {
   readonly resolution: string;
   readonly booted: string;
   readonly updates: boolean;
+  /** Whether this is the machine signed out to the player. */
+  readonly own: boolean;
   readonly services: readonly RemoteService[];
+  /**
+   * What is OPEN on that box, when it is a box this session can see the
+   * windows of - which is the player's own, and only the player's own.
+   *
+   * Everybody else's taskbar is empty here rather than furnished with invented
+   * windows: this game does not simulate what Ada has open, and a parody
+   * desktop that made something up would be teaching the player to read a
+   * screen that cannot be read.
+   */
+  readonly programs: readonly RemoteProgram[];
   readonly devices: readonly RemoteDevice[];
   readonly outcome: string | null;
   readonly refusal: string | null;
@@ -164,7 +274,7 @@ export interface RemoteSession {
  * which is the bug this model exists to fix.
  */
 export function remoteSession(
-  api: Pick<GameApi, 'graph'>,
+  api: Pick<GameApi, 'graph' | 'appState' | 'actor'>,
   machine: Readonly<ReadOnlyGraphNode>,
   view: Readonly<RemoteSessionView>,
 ): RemoteSession {
@@ -172,6 +282,7 @@ export function remoteSession(
   // fractional tick, and the render this feeds has run inside the clock
   // listener, where one throw would stop every other tick listener with it.
   const uptime = machine.fields[FIELDS.uptimeSince];
+  const ownDesk = ownMachineId(api) === machine.id;
 
   return {
     id: machine.id,
@@ -189,6 +300,7 @@ export function remoteSession(
       ? formatSimTime(uptime).time
       : 'Some time before the merger',
     updates: machine.fields[FIELDS.pendingUpdates] === true,
+    own: ownDesk,
     services: servicesOn(api, machine).map((service) => {
       const status = textValue(service.fields[FIELDS.status], 'unknown');
       // Whatever this service feeds, and whether it is still backed up:
@@ -198,15 +310,36 @@ export function remoteSession(
         .map((device) => device.fields[FIELDS.queueLen])
         .find((queued) => typeof queued === 'number' && queued > 0);
 
+      const startup = startupTypeOf(service.fields[FIELDS.startupType]);
+      const queued = typeof backlog === 'number' ? backlog : null;
+
       return {
         id: service.id,
         name: textValue(service.fields[FIELDS.name], service.id),
+        service: textValue(service.fields[FIELDS.serviceName], NOTHING),
         status,
         statusLabel: STATUS_LABELS[status] ?? status,
-        restartable: service.fields[FIELDS.restartable] === true,
-        backlog: typeof backlog === 'number' ? backlog : null,
+        startupLabel: startup === null
+          ? NOTHING
+          : STARTUP_TYPE_LABELS[startup],
+        listed: isService(service.fields[FIELDS.serviceClass]),
+        restartable: isRestartable(service.fields[FIELDS.serviceClass]),
+        backlog: queued,
+        blocked: restartRefusal(service.fields, status, startup, queued),
       };
     }),
+    programs: ownDesk
+      ? api.appState.get().windows.open.map((window) => {
+        const program = programImage(window.appId);
+
+        return {
+          key: window.appId,
+          image: program.image,
+          title: program.title,
+          minimized: window.minimized,
+        };
+      })
+      : [],
     devices: devicesOn(api, machine).map((device) => {
       const queue = device.fields[FIELDS.queueLen];
       const battery = device.fields[FIELDS.batteryPct];
@@ -369,62 +502,36 @@ export const REMOTE_APP: AppDef = {
 
       wallpaper.append(icons, dialog);
 
+      // The taskbar is a taskbar: what is OPEN on that machine, which is a
+      // question this session can only honestly answer about the player's own
+      // box. The services used to sit here as chips, which read as "the print
+      // spooler is a window Ada has open" - and there is now a services panel
+      // below with the columns a services list actually has.
       const taskbar = element('div', 'remote-taskbar', 'remote-taskbar');
       const start = element('span', 'remote-start');
       start.textContent = 'Start';
       taskbar.append(start);
 
-      const services = model.services;
-
-      for (const service of services) {
-        const chip = element(
-          'div',
-          'remote-service',
-          `remote-service-${nodeKey(service.id)}`,
+      for (const program of model.programs) {
+        const button = element(
+          'span',
+          'remote-program',
+          `remote-program-${program.key}`,
         );
-        chip.dataset.status = service.status;
-        const label = element('span', 'remote-service-name');
-        label.textContent = service.name;
-        const state = element('span', 'remote-service-status');
-        state.textContent = service.statusLabel;
-
-        const restart = osButton(
-          'Restart',
-          `remote-restart-${nodeKey(service.id)}`,
-          { compact: true },
-        );
-        setAvailability(
-          restart,
-          !service.restartable
-            ? 'This is hardware with a status light, not software. You cannot '
-              + 'turn a fan off and on again. Well. You can. It will not help.'
-            : service.status === SERVICE_STATUS.running
-              ? 'This one is running. Restarting a healthy service in front '
-                + 'of the user is how a small ticket becomes a big one.'
-              : service.backlog !== null
-                ? `${String(service.backlog)} job(s) are `
-                  + 'still queued behind it. It will just choke on the same '
-                  + 'job again. Clearing that queue stops this service and '
-                  + 'drops the files; this button is the step after.'
-                : null,
-        );
-        restart.addEventListener('click', () => {
-          run(
-            HELPDESK_ACTIONS.serviceRestart,
-            service.id,
-            {},
-            `${service.name} started `
-              + 'again, with nothing left waiting to jam it.',
-          );
-        });
-
-        chip.append(label, state, restart);
-        taskbar.append(chip);
+        button.dataset.minimized = String(program.minimized);
+        button.textContent = program.title;
+        button.title = `${program.image}${
+          program.minimized ? ', minimised - which is still running' : ''
+        }`;
+        taskbar.append(button);
       }
 
-      if (services.length === 0) {
+      if (model.programs.length === 0) {
         const none = element('span', 'remote-taskbar-empty');
-        none.textContent = 'No services registered on this box.';
+        none.textContent = model.own
+          ? 'Nothing open. Suspicious in itself.'
+          : 'This session cannot see what they have open. Only the boss can '
+            + 'do that, and he does it by walking.';
         taskbar.append(none);
       }
 
@@ -513,6 +620,133 @@ export const REMOTE_APP: AppDef = {
 
       controls.append(picker, apply, reboot);
       panel.append(controls);
+      return panel;
+    };
+
+    /**
+     * The services on that box, with the columns a services list actually has.
+     *
+     * Name, status and STARTUP TYPE, which is the column that turns a list
+     * into a diagnosis: a stopped service set to Manual is a box behaving
+     * itself, a stopped service set to Automatic is the line the ticket is
+     * about, and until this column existed the two looked identical.
+     *
+     * Hardware and licence pools are below the table rather than in it,
+     * because a fan is not a service and a services list that carries one is
+     * teaching the player something false about every other line in it.
+     */
+    const renderServicesPanel = (
+      model: Readonly<RemoteSession>,
+    ): HTMLElement => {
+      const panel = element('div', 'remote-panel', 'remote-services-panel');
+      const heading = element('h3');
+      const services = model.services.filter((service) => service.listed);
+      const others = model.services.filter((service) => !service.listed);
+      const running = services.filter(
+        (service) => service.status === SERVICE_STATUS.running,
+      ).length;
+      heading.textContent = 'Services';
+      const summary = element('p', 'remote-panel-note', 'remote-services-count');
+      summary.textContent = `${String(services.length)} registered, ${
+        String(running)
+      } running`;
+      panel.append(heading, summary);
+
+      if (model.services.length === 0) {
+        const empty = element('p', 'remote-placeholder', 'remote-no-services');
+        empty.textContent = 'Nothing is registered as running on this one, '
+          + 'which is either very clean or very wrong.';
+        panel.append(empty);
+        return panel;
+      }
+
+      const table = element('table', 'remote-services', 'remote-services');
+      const head = element('thead');
+      const headRow = element('tr');
+
+      for (const column of ['Name', 'Status', 'Startup type', '']) {
+        const cell = element('th');
+        cell.scope = 'col';
+        cell.textContent = column;
+        headRow.append(cell);
+      }
+
+      head.append(headRow);
+      const body = element('tbody');
+
+      for (const service of services) {
+        const key = nodeKey(service.id);
+        const row = element('tr', 'remote-service', `remote-service-${key}`);
+        row.dataset.status = service.status;
+        row.dataset.startup = service.startupLabel;
+
+        const name = element('td', 'remote-service-name');
+        const display = element('strong');
+        display.textContent = service.name;
+        const short = element('span', 'remote-service-key');
+        short.textContent = service.service;
+        name.append(display, short);
+
+        const state = element('td', 'remote-service-status');
+        state.textContent = service.statusLabel;
+        const startup = element('td', 'remote-service-startup');
+        startup.textContent = service.startupLabel;
+
+        const controls = element('td', 'remote-service-controls');
+        const restart = osButton(
+          'Restart',
+          `remote-restart-${key}`,
+          { compact: true },
+        );
+        setAvailability(restart, service.blocked);
+        restart.addEventListener('click', () => {
+          run(
+            HELPDESK_ACTIONS.serviceRestart,
+            service.id,
+            {},
+            `${service.name} started `
+              + 'again, with nothing left waiting to jam it.',
+          );
+        });
+        controls.append(restart);
+
+        row.append(name, state, startup, controls);
+        body.append(row);
+      }
+
+      table.append(head, body);
+      panel.append(table);
+
+      if (others.length > 0) {
+        const note = element('p', 'remote-panel-note', 'remote-not-services');
+        note.textContent = 'Also reporting a status on this box, and not '
+          + 'services:';
+        panel.append(note);
+
+        const list = element('ul', 'remote-not-service-list');
+
+        for (const other of others) {
+          const key = nodeKey(other.id);
+          const item = element('li', 'remote-service', `remote-service-${key}`);
+          item.dataset.status = other.status;
+          const label = element('span', 'remote-service-name');
+          label.textContent = `${other.name} - ${other.statusLabel}`;
+          const restart = osButton(
+            'Restart',
+            `remote-restart-${key}`,
+            { compact: true },
+          );
+          setAvailability(restart, other.blocked);
+          restart.addEventListener('click', () => {
+            run(HELPDESK_ACTIONS.serviceRestart, other.id, {}, 'Done.');
+          });
+          item.append(label, restart);
+          list.append(item);
+        }
+
+        panel.append(list);
+      }
+
       return panel;
     };
 
@@ -678,6 +912,7 @@ export const REMOTE_APP: AppDef = {
       const panels = element('div', 'remote-panels');
       panels.append(
         renderDisplayPanel(model),
+        renderServicesPanel(model),
         renderHardwarePanel(model),
       );
       session.append(panels);
@@ -710,7 +945,10 @@ export const REMOTE_APP: AppDef = {
       const sideways = nodes.filter(
         (machine) => rotationOf(machine) !== 0,
       ).length;
-      summary.textContent = `${String(nodes.length)} workstations · `
+      // "Machines" rather than "workstations": three of the boxes on that list
+      // are servers and one of them is the domain controller, and a tool that
+      // calls them all workstations is a tool that has not looked.
+      summary.textContent = `${String(nodes.length)} machines · `
         + `${String(sideways)} sideways`;
 
       // A repaint must not take the keyboard off the control the player is

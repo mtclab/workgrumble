@@ -24,7 +24,13 @@ test('reads the crash the print server logged, and filters it', async ({
 
   // The refusal first, because that is the order a player meets it in.
   await openFromStartMenu(page, 'cmd');
+  // Named with the box it is on, because every workstation in the building
+  // runs a spooler too - which the ambiguity refusal says out loud.
   await runCommand(page, 'restart spooler');
+  await expect(page.getByTestId('cmd-output')).toContainText(
+    'Name the box as well',
+  );
+  await runCommand(page, 'restart PRINT-01\\spooler');
   await expect(page.getByTestId('cmd-output')).toContainText(
     'It will just choke on the same job again.',
   );
@@ -64,7 +70,7 @@ test('reads the crash the print server logged, and filters it', async ({
   await page.getByTestId('events-filter').selectOption('all');
   await focusWindow(page, 'cmd');
   await runCommand(page, 'clearqueue hercules');
-  await runCommand(page, 'restart spooler');
+  await runCommand(page, 'restart PRINT-01\\spooler');
 
   await focusWindow(page, 'events');
   await expect(

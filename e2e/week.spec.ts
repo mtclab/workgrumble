@@ -134,7 +134,7 @@ test('passes the review, opens the beer and reads the week back', async ({
 
   await openFromStartMenu(page, 'cmd');
   await runCommand(page, 'clearqueue hercules');
-  await runCommand(page, 'restart spooler');
+  await runCommand(page, 'restart PRINT-01\\spooler');
   await expect(page.getByTestId('cmd-output')).toContainText('RUNNING');
 
   // Reception's printing is a mid-morning arrival and the fault comes WITH it -

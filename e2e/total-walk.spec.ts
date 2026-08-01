@@ -384,6 +384,20 @@ test('walks every function of a probation week that goes well', async ({
 
   await step('about.window', async () => {
     await expect(page.getByTestId('about-status')).toContainText('System is');
+    // An About dialog: what the machine is, and what is in the case. The
+    // ticket count and the entity count that used to be on here were debug
+    // readouts wearing a system-information window - the queue owns the one
+    // and nothing in this building has ever counted the other.
+    await expect(page.getByTestId('about-value-processor'))
+      .toContainText('Pentagon');
+    await expect(page.getByTestId('about-value-memory'))
+      .toContainText('nobody knows why');
+    await expect(page.getByTestId('about-value-logged-on-as'))
+      .toHaveText('workgrumble\\ppending');
+    await expect(page.getByTestId('about-value-uptime')).not.toBeEmpty();
+    await expect(page.getByTestId('about-app')).not.toContainText('entities');
+    await expect(page.getByTestId('about-app'))
+      .not.toContainText('Tickets awaiting you');
     await expect(page.getByTestId('about-value-workstation'))
       .toHaveText('BEIGE-BOX');
     await page.getByTestId('close-about').click();
@@ -849,7 +863,7 @@ test('walks every function of a probation week that goes well', async ({
   await step('remote.window', async () => {
     await openFromStartMenu(page, 'remote');
     await expect(page.getByTestId('remote-summary'))
-      .toContainText('workstations');
+      .toContainText('machines');
   });
 
   await step('remote.select', async () => {
@@ -920,7 +934,9 @@ test('walks every function of a probation week that goes well', async ({
   await step('about.refresh', async () => {
     await focusWindow(page, 'about');
     await page.getByTestId('about-refresh').click();
-    await expect(page.getByTestId('about-value-shift-clock'))
+    // Read off the world again: the diagnostic stamp the button above wrote
+    // is a minute on this clock, and the dialog is showing it.
+    await expect(page.getByTestId('about-value-last-diagnostic'))
       .toHaveText(/^\d{2}:\d{2}$/);
   });
 
@@ -1310,6 +1326,46 @@ test('walks every function of a probation week that goes well', async ({
     const vpn = page.getByTestId('remote-restart-vpn');
     await expect(vpn).toBeDisabled();
     await expect(vpn).toHaveAttribute('title', /running/);
+
+    // The other four true reasons, on the same box: a service the manager
+    // will not take a stop control for, one that is Disabled, the fan, and
+    // the licence pool - each refused in words about what it actually is.
+    const rpc = page.getByTestId('remote-restart-print/rpcss');
+    await expect(rpc).toBeDisabled();
+    await expect(rpc).toHaveAttribute('title', /will not take a stop control/);
+    const registry = page.getByTestId('remote-restart-print/remoteregistry');
+    await expect(registry).toBeDisabled();
+    await expect(registry).toHaveAttribute('title', /set to Disabled/);
+  });
+
+  await step('remote.services', async () => {
+    await expect(page.getByTestId('remote-services-count'))
+      .toContainText('registered');
+    // Twenty-odd rows with a startup type on each: the column that says
+    // whether a stopped service is a fault or a Tuesday.
+    await expect(page.getByTestId('remote-services').locator('tbody tr'))
+      .toHaveCount(24);
+    await expect(page.getByTestId('remote-service-print/bits'))
+      .toContainText('Manual');
+  });
+
+  await step('remote.programs', async () => {
+    // The player's own box, and the boss's-eye view of it: what is open is
+    // in that taskbar, whether or not it is minimised.
+    await page.getByTestId('remote-machine-beige-box').click();
+    await expect(page.getByTestId('remote-program-remote'))
+      .toContainText('Remote Assist');
+    // And on this box, the thing that reports a status and is not a service
+    // sits under the table with the reason rather than in it.
+    await expect(page.getByTestId('remote-not-services'))
+      .toContainText('Also reporting a status');
+    await expect(page.getByTestId('remote-service-chassis-fan'))
+      .toContainText('Chassis fan');
+    // Somebody else's screen does not invent windows it cannot see.
+    await page.getByTestId('remote-machine-print').click();
+    await expect(page.getByTestId('remote-program-remote')).toHaveCount(0);
+    await expect(page.getByTestId('remote-taskbar'))
+      .toContainText('cannot see what they have open');
   });
 
   await step('remote.clear-queue-refused', async () => {
@@ -1425,8 +1481,45 @@ test('walks every function of a probation week that goes well', async ({
 
   await step('cmd.services', async () => {
     await runCommand(page, 'services BEIGE-BOX');
+    const output = page.getByTestId('cmd-output');
+
+    // A real list, in the columns a services window has - and the fan under
+    // it, because a fan is not a service however loudly it reports a status.
+    await expect(output).toContainText('Services on BEIGE-BOX (workstation)');
+    await expect(output).toContainText('STARTUP TYPE');
+    await expect(output).toContainText('DNS Client');
+    await expect(output).toContainText('Automatic (Delayed Start)');
+    await expect(output).toContainText(
+      'Also on this box, reporting a status and not services:',
+    );
+    await expect(output).toContainText('[hardware, not restartable]');
+
+    // And a box of a different kind runs a different list.
+    await runCommand(page, 'services DC-01');
+    await expect(output).toContainText('Services on DC-01 (domain controller)');
+    await expect(output).toContainText('Kerberos Key Distribution Center');
+  });
+
+  await step('cmd.sc', async () => {
+    await runCommand(page, 'sc query PRINT-01\\spooler');
     await expect(page.getByTestId('cmd-output'))
-      .toContainText('[hardware, not restartable]');
+      .toContainText('SERVICE_NAME: Spooler');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('WIN32_EXIT_CODE    : 0  (0x0)');
+    await runCommand(page, 'sc config spooler start= auto');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('"sc config" is not something this terminal does');
+  });
+
+  await step('cmd.tasklist', async () => {
+    // The terminal is open, so the terminal is on the list: this window is a
+    // process like any other, and so is the browser when it is up.
+    await runCommand(page, 'tasklist');
+    await expect(page.getByTestId('cmd-output')).toContainText('Image Name');
+    await expect(page.getByTestId('cmd-output')).toContainText('CMD.EXE');
+    await runCommand(page, 'tasklist /s PRINT-01');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Remote Registry is Disabled');
   });
 
   await step('cmd.rotate', async () => {

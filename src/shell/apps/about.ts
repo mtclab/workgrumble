@@ -1,5 +1,6 @@
-import { NODE_KINDS } from '../../engine-api';
+import { COMPANY } from '../../world/company';
 import { DEMO_ACTIONS, WORLD_IDS } from '../../world/demo-world';
+import { FIELDS } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { createIcon } from '../icons';
 import type { AppDef, GameApi } from './types';
@@ -18,55 +19,92 @@ function fanStatus(api: GameApi): string {
   return text(status, 'unknown');
 }
 
-function worldRecordCount(api: GameApi): number {
-  return NODE_KINDS.reduce(
-    (total, kind) => total + api.graph.nodesOfKind(kind).length,
-    0,
-  );
+/** How long the box has been up, in the words a person answers that in. */
+function uptime(api: GameApi): string {
+  const booted = api.graph.getField(WORLD_IDS.machine, FIELDS.uptimeSince);
+
+  if (typeof booted !== 'number' || !Number.isSafeInteger(booted)
+    || booted < 0) {
+    // Absent is not "unknown": nothing has rebooted this machine since this
+    // log starts, and saying so is truer than a number nobody wrote down.
+    return 'Not rebooted since this log starts, and nobody is volunteering';
+  }
+
+  const minutes = Math.max(0, api.clock.now() - booted);
+  const hours = Math.floor(minutes / 60);
+
+  return `${
+    hours > 0 ? `${String(hours)} h ${String(minutes % 60)} min` : `${
+      String(minutes)
+    } min`
+  } (since ${formatSimTime(booted).time})`;
 }
 
-function openTicketCount(api: GameApi): number {
-  return api.graph.nodesOfKind('ticket').filter(
-    (ticket) => ticket.fields.state === 'open'
-      || ticket.fields.state === 'waiting_on_user',
-  ).length;
-}
-
+/**
+ * The About dialog, which is now an About dialog.
+ *
+ * It used to report "world records: 214 entities" and how many tickets were
+ * waiting - debug readouts from the M1 demo, wearing a system-information
+ * window. Neither is a thing a workstation knows about itself: the queue owns
+ * the ticket count and nothing in this building has ever counted an entity.
+ *
+ * So every line below is a fact about the MACHINE, read live off the same
+ * fields `systeminfo` prints, and the comedy lives in the hardware rather than
+ * in invented telemetry - which is where the comedy in this building has
+ * always actually been.
+ */
 const PROPERTY_ROWS: readonly PropertyRow[] = [
+  {
+    label: 'Version',
+    read: () => '4.10.1998 (Service Pack declined, twice)',
+  },
   {
     label: 'Registered to',
     read: (api) => `${text(
-      api.graph.getField(WORLD_IDS.player, 'name'),
+      api.graph.getField(WORLD_IDS.player, FIELDS.name),
       'Unregistered drone',
     )}, probationary technician`,
   },
   {
     label: 'Workstation',
     read: (api) => text(
-      api.graph.getField(WORLD_IDS.machine, 'hostname'),
+      api.graph.getField(WORLD_IDS.machine, FIELDS.hostname),
       'UNNAMED',
+    ),
+  },
+  {
+    label: 'Logged on as',
+    read: (api) => `${COMPANY.domain.toLowerCase()}\\${text(
+      api.graph.getField(WORLD_IDS.account, FIELDS.username),
+      'nobody',
+    )}`,
+  },
+  {
+    label: 'Processor',
+    read: (api) => text(
+      api.graph.getField(WORLD_IDS.machine, FIELDS.processor),
+      'one, presumably',
+    ),
+  },
+  {
+    label: 'Memory',
+    read: (api) => text(
+      api.graph.getField(WORLD_IDS.machine, FIELDS.memory),
+      'as much as it shipped with, which nobody wrote down',
     ),
   },
   {
     label: 'Display',
     read: (api) => text(
-      api.graph.getField(WORLD_IDS.machine, 'resolution'),
+      api.graph.getField(WORLD_IDS.machine, FIELDS.resolution),
       'unknown',
     ),
   },
+  { label: 'Uptime', read: uptime },
+  // The fan stays, because it is hardware and this dialog is about hardware -
+  // and because the button below it is the one thing in this game that is
+  // fixed by hitting it.
   { label: 'Chassis fan', read: (api) => fanStatus(api) },
-  {
-    label: 'World records',
-    read: (api) => `${String(worldRecordCount(api))} entities`,
-  },
-  {
-    label: 'Tickets awaiting you',
-    read: (api) => String(openTicketCount(api)),
-  },
-  {
-    label: 'Shift clock',
-    read: (api) => formatSimTime(api.clock.now()).time,
-  },
   {
     label: 'Last diagnostic',
     read: (api) => {
@@ -75,6 +113,10 @@ const PROPERTY_ROWS: readonly PropertyRow[] = [
         ? formatSimTime(stamp).time
         : 'never (bold)';
     },
+  },
+  {
+    label: 'Licence',
+    read: () => 'One desk, two apps and a bold amount of confidence',
   },
 ];
 
@@ -135,8 +177,9 @@ export const ABOUT_APP: AppDef = {
 
     const note = document.createElement('p');
     note.className = 'about-note';
-    note.textContent = 'Licensed for one desk, two apps and a bold amount of '
-      + 'confidence. Support contract expired before you were hired.';
+    note.textContent = 'Support contract expired before you were hired. '
+      + 'Everything above is read off this workstation; what the queue is '
+      + 'doing is the queue\'s business.';
 
     const actions = document.createElement('div');
     actions.className = 'app-action-row';

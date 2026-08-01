@@ -194,11 +194,19 @@ impl EntityGraph {
         nodes
     }
 
+    /// Every node of one kind, in the same id order `all_nodes` uses.
+    ///
+    /// Filtered before it is sorted, which is the whole difference: the day
+    /// loop asks for the tickets several times a minute, and this used to sort
+    /// every node in the estate to hand back the four of them.
     pub fn nodes_of_kind(&self, kind: &str) -> Vec<&Node> {
-        self.all_nodes()
-            .into_iter()
+        let mut nodes: Vec<&Node> = self
+            .nodes
+            .values()
             .filter(|node| node.kind == kind)
-            .collect()
+            .collect();
+        nodes.sort_by(|left, right| js_str_cmp(&left.id, &right.id));
+        nodes
     }
 
     pub fn neighbors(&self, id: &str, direction: Direction, edge_kind: Option<&str>) -> Vec<&Node> {
