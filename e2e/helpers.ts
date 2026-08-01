@@ -292,7 +292,14 @@ export async function runCommand(page: Page, line: string): Promise<void> {
  * through here so the screen holds one answer.
  */
 export async function runOnlyCommand(page: Page, line: string): Promise<void> {
-  await runCommand(page, 'cls');
+  // `cls` is typed rather than run through `runCommand`: that helper waits for
+  // the line to be echoed back, and clearing the screen removes its own echo
+  // along with everything else. Waiting for it is waiting forever.
+  const input = page.getByTestId('cmd-input');
+  await input.fill('cls');
+  await input.press('Enter');
+  await expect(page.getByTestId('cmd-output')).not.toContainText('C:\\SUPPORT>');
+
   await runCommand(page, line);
 }
 
