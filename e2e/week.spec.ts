@@ -244,6 +244,11 @@ test('passes the review, opens the beer and reads the week back', async ({
     .toContainText('probation');
   await expect(page.getByTestId('review-line')).toContainText('the week is fine');
   await expect(page.getByTestId('review-note')).toContainText('fridge');
+  // The verdict comes with the number that caused it. It is the snapshot the
+  // review wrote down, so it cannot drift away from the sentence above it
+  // while the queue carries on all afternoon.
+  await expect(page.getByTestId('review-note'))
+    .toContainText(/He read the week as \d+ out of 100, against the 45 he wanted/);
   // Always dismissible, like every scene in this game.
   await page.getByTestId('review-dismiss').click();
   await expect(review).toHaveCount(0);
@@ -289,6 +294,15 @@ test('passes the review, opens the beer and reads the week back', async ({
   // person can reach it: the queue moved, and it moved because of the windows
   // above rather than because a test wrote a number into a field.
   await expect(page.getByTestId('weekend-closed')).not.toHaveText('0');
+  // The mark, and the two rows it is made of. Said as fractions AND as
+  // percentages, because "13 of 24" is a fact somebody can act on and "54%"
+  // is the half of the mark it turns into.
+  await expect(page.getByTestId('weekend-resolution'))
+    .toContainText(/^\d+ of \d+ · \d+%$/);
+  await expect(page.getByTestId('weekend-attainment'))
+    .toContainText(/^\d+ of \d+ · \d+%$/);
+  await expect(page.getByTestId('weekend-performance'))
+    .toContainText(/^\d+ out of 100, against the 45 he needs\./);
   await expect(page.getByTestId('weekend-bonus')).toContainText('£');
   await expect(page.getByTestId('weekend-earned')).toContainText('£');
   await expect(page.getByTestId('weekend-farm-total')).toContainText('banked');
@@ -325,6 +339,8 @@ test('fires a week nobody worked and starts the next one', async ({ page }) => {
   await expect(page.getByTestId('review-line')).toContainText('not working out');
   // The shift does not end early. There are two hours left on it.
   await expect(page.getByTestId('review-note')).toContainText('two hours');
+  await expect(page.getByTestId('review-note'))
+    .toContainText(/He read the week as \d+ out of 100, against the 45 he wanted/);
   await page.getByTestId('review-dismiss').click();
 
   // The fridge stays shut: the beer was never about the beer.
@@ -342,6 +358,14 @@ test('fires a week nobody worked and starts the next one', async ({ page }) => {
     .toContainText('not continued');
   await expect(page.getByTestId('weekend-closed')).toHaveText('0');
   await expect(page.getByTestId('weekend-breached')).not.toHaveText('0');
+  // Nothing closed is nought percent of the resolution half, and a week in
+  // which every deadline ran out is nought percent of the other - so the mark
+  // is what is left of Monday morning after four folds, and it is nowhere
+  // near the line.
+  await expect(page.getByTestId('weekend-resolution')).toContainText('· 0%');
+  await expect(page.getByTestId('weekend-attainment')).toContainText('· 0%');
+  await expect(page.getByTestId('weekend-performance'))
+    .toContainText(/^\d+ out of 100, against the 45 he needs\./);
 
   // What the week was worth, before the week starts again.
   const banked = await page.getByTestId('weekend-farm-total').textContent();

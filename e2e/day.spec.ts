@@ -102,6 +102,13 @@ test('walks a day from the morning brief to the scorecard', async ({
   await expect(page.getByTestId('scorecard-reputation')).not.toContainText(
     'Not measured',
   );
+  // And the one number the probation actually turns on, on the screen from
+  // the first evening rather than for the first time at three o'clock on the
+  // Friday: a percentage of the work, with the bar it has to clear said next
+  // to it. A mark nobody sees until the verdict is a mark nobody can have
+  // played toward.
+  await expect(page.getByTestId('scorecard-week'))
+    .toContainText(/^\d+ of 100, and 45 is the pass · /);
 
   // The clock is stopped at the day end: the scorecard waits to be read.
   await page.clock.runFor(realMs(60, 4));

@@ -1704,6 +1704,9 @@ test('walks every function of a probation week that goes well', async ({
       .toContainText('£2.40');
     await expect(page.getByTestId('scorecard-reputation'))
       .not.toContainText('Not measured');
+    // The mark the review turns on, on the screen every evening.
+    await expect(page.getByTestId('scorecard-week'))
+      .toContainText(/^\d+ of 100, and 45 is the pass · /);
   });
 
   await step('scorecard.payslip', async () => {
@@ -2212,6 +2215,13 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('weekend-day-1')).toContainText('in,');
     await expect(page.getByTestId('weekend-day-5')).toBeVisible();
     await expect(page.getByTestId('weekend-closed')).not.toHaveText('0');
+    // The mark and the two rows it is made of.
+    await expect(page.getByTestId('weekend-resolution'))
+      .toContainText(/^\d+ of \d+ · \d+%$/);
+    await expect(page.getByTestId('weekend-attainment'))
+      .toContainText(/^\d+ of \d+ · \d+%$/);
+    await expect(page.getByTestId('weekend-performance'))
+      .toContainText(/^\d+ out of 100, against the 45 he needs\./);
     await expect(page.getByTestId('weekend-bonus')).toContainText('£');
     await expect(page.getByTestId('weekend-earned')).toContainText('£');
     await expect(page.getByTestId('weekend-farm-total')).toContainText('banked');
