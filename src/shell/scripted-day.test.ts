@@ -537,8 +537,25 @@ const GOLDEN_DAY = {
    * guard cannot walk to and the reason a move between two boxes can be
    * refused for the true reason rather than allowed. None of it moves in this
    * day: nothing in this scripted Monday touches a drive at all.
+   *
+   * TENTH MOVE (0.2.5, the review reads a percentage). The hash, and the hash
+   * alone, for the fifth slice running - and this time the cause is one number
+   * on the player node rather than a graph full of seed.
+   *
+   * `week_reputation` is still there, still written once at this day's
+   * clock-off, and it now holds something else. It used to be Monday's fifty
+   * folded into the reputation meter this day ends on, which came to 38. It is
+   * now Monday's fifty folded into the MARK - five tickets arrived, none were
+   * closed, four went red, so the resolution half is nought and the deadline
+   * half is one in five, which is a mark of 10 - and that comes to 30.
+   *
+   * Nothing else moved, and the reason is worth having in writing: how
+   * reputation MOVES was not touched by this slice, only what Friday at three
+   * makes of the week. Every meter, minute, breach, patrol, can, timeline
+   * entry and penny below is the number it was, including the reputation of 26
+   * this day ends on, which the review no longer reads.
    */
-  hash: '016c7fd7458cebe8',
+  hash: 'd3d5bd9cccfbc300',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */

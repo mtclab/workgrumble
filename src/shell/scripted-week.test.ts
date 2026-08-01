@@ -6,7 +6,7 @@
  * It is the M4 determinism gate, and it is the day gate's older brother. The
  * scripted DAY proves that a shift replays; a week has things in it that only
  * a week has - deadlines that survive a night, a queue that carries over, a
- * reputation that is the sum of five days' work, and a conversation at three
+ * mark made out of five days' work, and a conversation at three
  * o'clock on Friday that reads it. Every one of those is a place where a
  * change could be invisible on any single day and wrong by Friday.
  *
@@ -19,7 +19,8 @@
  * Three more are walked for BALANCE, at the bottom of the file: half the
  * roster, the whole roster with the forum open all week, and both at once. The
  * question there is different - not "does the week replay" but "can the review
- * tell these apart" - and the answer is a committed table rather than a hash.
+ * tell these apart, and what has it stopped being able to tell apart on
+ * purpose" - and the answer is a committed table rather than a hash.
  *
  * Nothing below touches the DOM, so the real driver runs exactly as it does in
  * the browser, minus the browser.
@@ -37,7 +38,7 @@ import { createWorldSession } from '../world/session';
 import { findWorldTicket } from '../world/tickets';
 import {
   REVIEW_DAY,
-  REVIEW_PASS_REPUTATION,
+  REVIEW_PASS_PERFORMANCE,
   type ReviewOutcome,
   type WeekScorecard,
 } from '../world/week';
@@ -169,11 +170,12 @@ const METERS: readonly string[] = [
   FIELDS.stress,
   FIELDS.suspicion,
   FIELDS.reputation,
-  // The number the conversation on Friday actually reads: the week, weighted
-  // toward how it ended. It is in the golden because it is what decides the
-  // ending - a rate change that moved the meter without moving this would be
-  // a change to the game that the review never hears about, and the other way
-  // round is worse.
+  // The number the conversation on Friday actually reads: the week as a
+  // percentage of its own work, weighted toward how it ended. It is in the
+  // golden because it is what decides the ending - and it sits beside the
+  // meter on purpose, because the two now answer different questions and a
+  // slice that quietly reconnected them would show up here as both moving
+  // together.
   FIELDS.weekReputation,
   FIELDS.caughtEvents,
   FIELDS.farmFund,
@@ -373,7 +375,7 @@ interface GoldenWeek {
  * Nothing else moved, and that is the claim: `reputation` is still 100 and 0,
  * every count, every penny, both timelines and both endings came through
  * untouched. How reputation MOVES was not touched - only what Friday at three
- * makes of where it got to. The reason is in `weightedWeekReputation`: the
+ * makes of where it got to. The reason is in `weightedWeekPerformance`: the
  * meter has a ceiling at 100 and a properly worked week reaches it by about
  * the Wednesday, after which nothing done on the Thursday or the Friday could
  * reach the review at all.
@@ -444,6 +446,37 @@ interface GoldenWeek {
  * ticket in it is closed on the day it arrived, so an arrival-scoped ledger
  * and an event-scoped one agree line for line.
  *
+ * TENTH MOVE (0.2.5, the review reads a percentage). One hash, one number in
+ * the worked week, and nothing at all in the idle one - which is the shortest
+ * true summary of this slice and is worth being exact about.
+ *
+ * The conversation on Friday stopped reading the reputation meter folded day
+ * over day, and started reading `weekPerformance`: how much of the week's own
+ * work was closed, and how much of it never went red, as a percentage, folded
+ * the same way. `week_reputation` still holds it - the field id is save state
+ * and did not move - and every meter in the game still moves exactly as it did.
+ *
+ *  - The WORKED week's hash moved, because the numbers written into
+ *    `week_reputation` at each clock-off are different numbers: 75, 88, 94, 97
+ *    where they used to be a fold of the meter. Its review reads 99 rather
+ *    than 97, and its Friday-evening standing is 100 rather than 99, because a
+ *    week that closed all twenty-five of its tickets with nothing red is a
+ *    hundred percent of the work every day - the fold is the only thing
+ *    keeping it off a flat hundred, and Monday's opening fifty is what it is
+ *    keeping it off by.
+ *  - The IDLE week did not move AT ALL - not the hash, not the review, not the
+ *    Friday-evening standing - and that is a coincidence rather than a claim.
+ *    The intermediate readings are completely different (26, 14, 10 against
+ *    44, 25, 13), but the hash is of the world at the END of the week and the
+ *    field is overwritten every evening. The two models happen to arrive at
+ *    the same last two numbers: 4 at three o'clock, when twenty-three of the
+ *    week's twenty-four deadlines have gone and the twenty-fourth has not,
+ *    and 2 by five, when it has.
+ *
+ * Nothing else in either week moved: same arrivals, same closes, same
+ * breaches, same pence, same stress, same suspicion, same reputation, same
+ * caught counts, same timelines, same endings.
+ *
  * The idle week is where they disagree, which is the whole finding.
  * `ticket:flat-mouse` arrives at 13:34 on the Monday and its deadline runs out
  * at 09:34 on the Tuesday; `ticket:must-change-password` is filed on the
@@ -458,7 +491,7 @@ interface GoldenWeek {
  * happened.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: 'e17dcabde4cb5e92',
+  hash: 'e77f3f360ad9d855',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -483,19 +516,22 @@ const GOLDEN_WORKED: GoldenWeek = {
   /** Five days at the rate, twenty-five resolution bonuses, the deductions
    * nobody agreed to, and the probation bonus for surviving Friday. */
   earnedPence: 77_025,
-  reviewRead: 97,
+  reviewRead: 99,
   meters: {
-    // Twenty-three closed tickets carry the reputation from fifty to its
+    // Twenty-five closed tickets carry the reputation from fifty to its
     // ceiling well before Friday, which is what a week worked properly looks
-    // like - the review is survived rather than won, and this one is survived
-    // with room. One round of the corridor found the browser on the
-    // Wednesday, and the six points it cost were earned back inside the hour.
+    // like - and which the review no longer reads. One round of the corridor
+    // found the browser on the Wednesday, and the six points it cost were
+    // earned back inside the hour; the conversation on Friday never hears
+    // about either.
     stress: 11,
     suspicion: 0,
     reputation: 100,
-    // The week as the review read it, folded once more by Friday's own
-    // clock-off: 97 at three o'clock, 99 by five.
-    week_reputation: 99,
+    // The week as the review read it: a hundred percent of the work, every
+    // day, held just off a flat hundred by Monday morning's opening fifty.
+    // 99 at three o'clock, 100 by five, when the last fold has pushed the
+    // opening figure down to a thirty-second of the answer.
+    week_reputation: 100,
     // Counted per day and cleared at every clock-off: Friday was clean.
     caught_events: 0,
     farm_fund: 77_025,
@@ -529,6 +565,9 @@ const GOLDEN_WORKED: GoldenWeek = {
  * and the world does not pretend otherwise.
  */
 const GOLDEN_IDLE: GoldenWeek = {
+  // Unchanged by 0.2.5, to the byte. See the TENTH MOVE above: the readings
+  // this week takes on the way through are completely different and every one
+  // of them is overwritten by the next.
   hash: '516a7fbc9cad51e3',
   tick: 6_300,
   outcome: 'fired',
@@ -573,8 +612,11 @@ const GOLDEN_IDLE: GoldenWeek = {
     stress: 98,
     suspicion: 96,
     reputation: 0,
-    // Four at three o'clock - Monday's fifty is down to a sixteenth of the
-    // answer by Friday, and everything since has been zero - and two by five.
+    // Four at three o'clock: twenty-three of the week's twenty-four deadlines
+    // have run out, the twenty-fourth runs out at a quarter past, and nothing
+    // has been closed at all - so the mark is one twenty-fourth of half the
+    // scale, and what is left of it is Monday morning's fifty at a sixteenth.
+    // Two by five, when the last deadline has gone as well.
     week_reputation: 2,
     caught_events: 3,
     farm_fund: 36_175,
@@ -617,7 +659,7 @@ function expectGolden(walked: WalkedWeek, golden: GoldenWeek): void {
   // The card shows what the CONVERSATION read, which is the week weighted
   // toward how it ended - not the live meter, which carries on moving all
   // Friday afternoon and is on this screen too, one line up.
-  expect(walked.card.reputation).toBe(golden.reviewRead);
+  expect(walked.card.performance).toBe(golden.reviewRead);
   expect(walked.meters).toEqual(golden.meters);
   expect(walked.timeline).toEqual(golden.timeline);
 }
@@ -681,44 +723,51 @@ describe('the probation week, twice', () => {
  * everybody clears is a review nobody sits, and one that nobody clears is a
  * game with one ending.
  *
- * The answer is a two-by-two and a floor. There are two ways to lose this job -
- * miss the work, or be seen not doing it - and the week forgives EITHER of
- * them on its own and neither of them together:
+ * The answer, from 0.2.5, is three levels and a collapse:
  *
- *   worked properly ............ 25 of 25, no breaches ...... 97, passed
- *   half the roster ............ 13 of 24, twelve breaches .. 63, passed
- *   worked, browser up all week . 25 of 25, caught 15 times .. 56, passed
- *   half the roster, browser up . 13 of 24, caught 15 times ... 5, FIRED
- *   nothing at all .............. 0 of 24, everything late .... 4, FIRED
+ *   worked properly ............ 25 of 25, no breaches ....... 99, passed
+ *   worked, browser up all week  25 of 25, caught 15 times ... 99, passed
+ *   half the roster ............ 13 of 24, twelve breaches ... 56, passed
+ *   half the roster, browser up  13 of 24, caught 15 times ... 56, passed
+ *   nothing at all ............. 0 of 24, everything late ..... 4, FIRED
  *
- * with the line at 40. Nothing was tuned to produce that: these are the rates
- * as M3 and M4 left them, and the table is committed here so that a change to
- * any of them shows up as a diff in a shape rather than as a number in a file.
+ * with the line at 45.
  *
- * The figures are what the REVIEW read - the week weighted toward how it ended
- * - rather than the live meter, because that is the number the conversation is
- * had about. They are 100 / 63 / 57 / 0 / 0 on the meter before the weighting
- * lands, so the shape is unchanged and the top of it is no longer flat: a
- * week worked properly used to sit on the ceiling from about the Wednesday,
- * which meant the Thursday and the Friday could not reach the review at all.
+ * THE TWO PAIRS ARE IDENTICAL, TO THE POINT, AND THAT IS THE SLICE. The review
+ * reads `weekPerformance` now - how much of the week's work was closed, how
+ * much of it never went red - and conduct is not in it anywhere. Being caught
+ * fifteen times costs the same as being caught once, because it costs nothing
+ * the review can see. It still costs everything else it ever cost: the meter
+ * (100 against 57), the suspicion, the minutes the lead spends standing at the
+ * desk. The two-by-two the old table had - two ways to lose the job, either
+ * forgiven alone, neither forgiven together - is gone from the CONVERSATION
+ * and is asserted below to be still in the world, because slice D is the one
+ * that brings it back as a latent record rather than as arithmetic.
  *
- * The table moved with 0.2.4, which added two tickets to the week and nothing
- * else to this file. Both weeks that CLOSE everything gained the two closes;
- * both weeks that do half the job gained two more breaches; the two endings,
- * the order and the line at 40 came through untouched. The middle two are
- * seven points apart where they used to be sixteen, and the reason is written
- * on the assertion at the bottom of this file: credit scales with the roster
- * and the price of being caught does not.
+ * The old table read 97 / 63 / 56 / 5 / 4 on a summed reputation meter, and
+ * the reason for the change is written at length in `docs/research/
+ * review-scoring.md` and in `weekPerformance`: resolution credit scaled with
+ * the roster and the price of being caught did not, so the gap between "did
+ * half the job" and "did the lot with the forum open" fell from sixteen points
+ * to seven over ONE content slice, and the crossover - the roster size at
+ * which openly slacking becomes the better week - was about twenty-six
+ * tickets. The shipped roster is twenty-five. Nobody would have decided that;
+ * the content would have decided it.
+ *
+ * The figures are what the REVIEW read, which is the week to date as it stood
+ * at the end of each day, folded so that Friday is half the answer and Monday
+ * is a sixteenth. `week.test.ts` holds the scaling gate that keeps them from
+ * ever again being a function of how much content the game has.
  */
-describe('the week at four skill levels', () => {
+describe('the week at five skill levels', () => {
   interface Profile {
     readonly name: string;
     readonly play: (world: Week, day: number) => void;
     readonly closed: number;
     readonly breached: number;
-    /** Where the live meter ended up. */
+    /** Where the live meter ended up, which the review no longer reads. */
     readonly reputation: number;
-    /** And what the conversation on Friday actually read out of it. */
+    /** And what the conversation on Friday actually read out. */
     readonly reviewRead: number;
     readonly outcome: ReviewOutcome;
     readonly caught: number;
@@ -731,7 +780,7 @@ describe('the week at four skill levels', () => {
       closed: 25,
       breached: 0,
       reputation: 100,
-      reviewRead: 97,
+      reviewRead: 99,
       outcome: 'passed',
       // One browser, on the Wednesday, hidden before the second round - and
       // found once, which is the week's own texture rather than a profile.
@@ -743,7 +792,12 @@ describe('the week at four skill levels', () => {
       closed: 13,
       breached: 12,
       reputation: 63,
-      reviewRead: 63,
+      // Fifty-four percent of the queue closed and fifty percent of it kept
+      // inside its deadline is a week worth 52 whole; the fold reads it four
+      // points higher because the early days were still salvageable when they
+      // ended, and a lead who read them then thought better of the week than
+      // the week turned out to deserve.
+      reviewRead: 56,
       outcome: 'passed',
       caught: 0,
     },
@@ -752,8 +806,10 @@ describe('the week at four skill levels', () => {
       play: slackWeek,
       closed: 25,
       breached: 0,
+      // The meter is forty-three points down on the week that hid the browser,
+      // and the conversation on Friday does not hear about any of it.
       reputation: 57,
-      reviewRead: 56,
+      reviewRead: 99,
       outcome: 'passed',
       caught: 15,
     },
@@ -763,8 +819,13 @@ describe('the week at four skill levels', () => {
       closed: 13,
       breached: 12,
       reputation: 0,
-      reviewRead: 5,
-      outcome: 'fired',
+      reviewRead: 56,
+      // It keeps the job, where the summed model sent it home. That is the
+      // honest consequence of taking conduct off the score and it is meant to
+      // be uncomfortable: doing half the job with a forum open is a week that
+      // passes on the numbers, and slice D is where somebody has a reason to
+      // go and look at the rest of it.
+      outcome: 'passed',
       caught: 15,
     },
     {
@@ -793,7 +854,14 @@ describe('the week at four skill levels', () => {
   const readingOf = (name: string): number => {
     const week = walked.get(name);
     expect(week).toBeDefined();
-    return week?.card.reputation ?? Number.NaN;
+    return week?.card.performance ?? Number.NaN;
+  };
+
+  /** And where the meter ended up, which is a different question now. */
+  const meterOf = (name: string): number => {
+    const week = walked.get(name);
+    expect(week).toBeDefined();
+    return week?.meters[FIELDS.reputation] ?? Number.NaN;
   };
 
   it.each(PROFILES)('plays $name the way it says', (profile) => {
@@ -802,13 +870,13 @@ describe('the week at four skill levels', () => {
     expect(week?.card.closed).toBe(profile.closed);
     expect(week?.card.breached).toBe(profile.breached);
     expect(week?.meters[FIELDS.reputation]).toBe(profile.reputation);
-    expect(week?.card.reputation).toBe(profile.reviewRead);
+    expect(week?.card.performance).toBe(profile.reviewRead);
     expect(
       week?.timeline.filter((line) => line.startsWith('caught:')),
     ).toHaveLength(profile.caught);
   });
 
-  it('sends the two who did neither home, and keeps the other three', () => {
+  it('sends the one who did nothing home, and keeps the other four', () => {
     for (const profile of PROFILES) {
       expect(walked.get(profile.name)?.outcome, profile.name)
         .toBe(profile.outcome);
@@ -817,69 +885,91 @@ describe('the week at four skill levels', () => {
     // The threshold is what decided all five, and it decided them by the
     // number rather than by anything the profiles were told.
     for (const profile of PROFILES) {
-      const reputation = readingOf(profile.name);
+      const reading = readingOf(profile.name);
 
       if (profile.outcome === 'passed') {
-        expect(reputation, profile.name)
-          .toBeGreaterThanOrEqual(REVIEW_PASS_REPUTATION);
+        expect(reading, profile.name)
+          .toBeGreaterThanOrEqual(REVIEW_PASS_PERFORMANCE);
       } else {
-        expect(reputation, profile.name).toBeLessThan(REVIEW_PASS_REPUTATION);
+        expect(reading, profile.name).toBeLessThan(REVIEW_PASS_PERFORMANCE);
       }
     }
   });
 
   /**
-   * And they are separated in the right ORDER, with room between them. Two
-   * profiles landing on the same number would pass every assertion above while
-   * telling the player nothing: the week has to be able to tell "did the work"
-   * from "did half of it" from "did it with the forum open".
+   * Conduct is not in the mark, and the equality is exact ON PURPOSE.
    *
-   * The middle gap is a finding rather than a number, and it is written here
-   * because it is the kind of thing that only shows up when content is added.
-   * At twenty-three tickets these four read 96 / 67 / 51 / 5, and the gap
-   * between "did half of it" and "did the lot with the forum open" was sixteen
-   * points. At twenty-five they read 97 / 63 / 56 / 5, and that gap is seven.
+   * Two weeks that dealt with the queue identically read identically, however
+   * many times the lead came round the corner and found a forum. It is written
+   * as an equality rather than as "close enough" because that is the assertion
+   * with teeth: any conduct term smuggled back into the review's number -
+   * however small, however well meant - separates these pairs and turns this
+   * red, which is the conversation that has to happen before it ships.
    *
-   * Nothing was rebalanced to make that happen and neither new ticket is
-   * unusual: they are worth 3 and 4, which is what one-desk hidden-cause
-   * tickets are worth across this roster. The cause is structural. Resolution
-   * credit SCALES with the roster - every ticket added is more credit on the
-   * table for anybody who closes it - and the price of being caught does not:
-   * the lead walks the corridor on a seeded schedule, so a slacker is found
-   * fifteen times a week whether the week holds twenty tickets or forty. Add
-   * enough content and the week that closed everything with the forum open
-   * will overtake the week that quietly let half the queue go red.
-   *
-   * That may well be the right answer - a service desk where everything got
-   * closed IS a better week than one where twelve deadlines were missed - but
-   * it is a decision about what this game values, and it is the owner's. So
-   * the gate keeps the ORDER, keeps a separation that is a separation rather
-   * than a tie-break, and adds the claim the model does still support with
-   * room: four profiles spread across most of the scale.
+   * Slice D is where the distinction comes back, and it comes back as a file
+   * somebody has a reason to read rather than as points in a race with
+   * closures. See `docs/research/review-scoring.md` section 4, option D.
    */
-  it('marks the week down for each thing that went wrong', () => {
+  it('reads a week the same whether or not it was seen slacking', () => {
+    expect(readingOf('worked, with the browser up all week'))
+      .toBe(readingOf('worked properly'));
+    expect(readingOf('half the roster, with the browser up all week'))
+      .toBe(readingOf('half the roster'));
+  });
+
+  /**
+   * And the world has NOT forgotten - which is the half of the same finding
+   * that slice D is built on.
+   *
+   * The reputation meter still tells all four apart, the caught events are
+   * still counted, and the suspicion is still where the week left it. Nothing
+   * about being caught was deleted; it was taken off the scoreboard. If a
+   * later slice quietly stops recording it, the latent record has nothing to
+   * be made of, so the separation is held here even though nothing reads it
+   * this week.
+   */
+  it('still records what the review has stopped reading', () => {
+    expect(meterOf('worked properly'))
+      .toBeGreaterThan(meterOf('worked, with the browser up all week'));
+    expect(meterOf('half the roster'))
+      .toBeGreaterThan(meterOf('half the roster, with the browser up all week'));
+
+    const caught = (name: string): number => walked.get(name)?.timeline
+      .filter((line) => line.startsWith('caught:')).length ?? Number.NaN;
+    expect(caught('worked, with the browser up all week'))
+      .toBeGreaterThan(caught('worked properly'));
+  });
+
+  /**
+   * And the three levels the mark DOES have are in the right order with room
+   * between them. Two of them landing on the same number would pass every
+   * assertion above while telling the player nothing: the week has to be able
+   * to tell "did the work" from "did half of it" from "did none of it".
+   *
+   * The margins are large because a percentage of the work is a blunt
+   * instrument by design - it answers "did you do the job" and it cannot
+   * answer "how", which is the documented cost of normalising and the reason
+   * the second axis is a whole slice of its own. What it can no longer do is
+   * drift: the gate that holds the ordering at any roster size is in
+   * `week.test.ts`, and this one holds it on the artifact that actually ships.
+   */
+  it('marks the week down for the work that did not get done', () => {
     const worked = readingOf('worked properly');
     const half = readingOf('half the roster');
-    const slacked = readingOf('worked, with the browser up all week');
-    const both = readingOf('half the roster, with the browser up all week');
-    const ordered = [worked, half, slacked, both];
+    const nothing = readingOf('nothing at all');
 
     expect(worked).toBeGreaterThan(half);
-    expect(half).toBeGreaterThan(slacked);
-    expect(slacked).toBeGreaterThan(both);
+    expect(half).toBeGreaterThan(nothing);
 
-    // A margin rather than a tie-break, on every adjacent pair.
-    for (const [index, reading] of ordered.entries()) {
-      const next = ordered[index + 1];
+    // Room rather than a tie-break, on both gaps.
+    expect(worked - half).toBeGreaterThanOrEqual(20);
+    expect(half - nothing).toBeGreaterThanOrEqual(20);
 
-      if (next !== undefined) {
-        expect(reading - next, `${String(reading)} then ${String(next)}`)
-          .toBeGreaterThanOrEqual(5);
-      }
-    }
-
-    // And the whole scale is used: a review that told five weeks apart inside
-    // ten points would be a review nobody could read.
-    expect(worked - both).toBeGreaterThanOrEqual(40);
+    // And the whole scale is used: a review that told these apart inside ten
+    // points would be a review nobody could read. It is also a percentage, so
+    // it cannot leave the hundred it is out of however the roster grows.
+    expect(worked - nothing).toBeGreaterThanOrEqual(40);
+    expect(worked).toBeLessThanOrEqual(100);
+    expect(nothing).toBeGreaterThanOrEqual(0);
   });
 });
