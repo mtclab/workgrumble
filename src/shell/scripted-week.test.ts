@@ -31,6 +31,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { EngineApi } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { COMPANY_IDS } from '../world/company';
+import { type ConductEntry, conductEntries } from '../world/conduct';
 import { shiftEndTick, shiftStartTick } from '../world/day';
 import { FIELDS } from '../world/fields';
 import { isUnresolved } from '../world/sla';
@@ -40,6 +41,7 @@ import {
   REVIEW_DAY,
   REVIEW_PASS_PERFORMANCE,
   type ReviewOutcome,
+  reviewTick,
   type WeekScorecard,
 } from '../world/week';
 import { AppStateStore } from './app-state';
@@ -164,6 +166,20 @@ interface WalkedWeek {
   readonly card: WeekScorecard;
   readonly meters: Record<string, number>;
   readonly timeline: readonly string[];
+  /** The conduct file the week wrote, as the world holds it. */
+  readonly filed: readonly ConductEntry[];
+  /**
+   * What the player could have read an hour BEFORE the conversation: the file,
+   * who had a reason to open it, and the bar that would produce. It is
+   * captured at two o'clock on the Friday and is the whole of the legibility
+   * gate - nothing at three may come out of a state that was not in here.
+   */
+  readonly atTwo: {
+    readonly filed: readonly ConductEntry[];
+    readonly triggers: readonly string[];
+    readonly bar: number;
+    readonly mark: number;
+  };
 }
 
 const METERS: readonly string[] = [
@@ -182,16 +198,39 @@ const METERS: readonly string[] = [
   FIELDS.weekAttempt,
 ];
 
+/** An hour before the conversation, which is when the player still has one. */
+const ONE_HOUR = 60;
+
 function walk(play: (world: Week, day: number) => void): WalkedWeek {
   const world = startWeek();
+  let atTwo: WalkedWeek['atTwo'] | null = null;
 
   for (let day = 1; day <= REVIEW_DAY; day += 1) {
     expect(world.driver.day()).toBe(day);
     world.driver.startShift();
     play(world, day);
+
+    if (day === REVIEW_DAY) {
+      // Two o'clock on the Friday, with the file still a private document and
+      // the conversation an hour away. Everything the review will do is
+      // readable here, on the screens the player has had open all week.
+      runTo(world, reviewTick(day) - ONE_HOUR);
+      const reading = world.driver.conductReading();
+      atTwo = {
+        filed: conductEntries(world.driver.conductFile()),
+        triggers: reading.triggers.map((trigger) => trigger.id),
+        bar: reading.bar,
+        mark: world.driver.weekReading(),
+      };
+    }
+
     runTo(world, shiftEndTick(day));
     expect(world.driver.state()).toBe('day_end');
     world.driver.clockOff();
+  }
+
+  if (atTwo === null) {
+    throw new Error('The week never reached the Friday it is scored on.');
   }
 
   return {
@@ -204,6 +243,8 @@ function walk(play: (world: Week, day: number) => void): WalkedWeek {
       return [field, typeof value === 'number' ? value : Number.NaN];
     })),
     timeline: world.timeline,
+    filed: conductEntries(world.driver.conductFile()),
+    atTwo,
   };
 }
 
@@ -309,6 +350,12 @@ interface GoldenWeek {
   readonly earnedPence: number;
   /** What the lead read out at three o'clock, and decided on. */
   readonly reviewRead: number;
+  /** And the mark it had to reach, which the conduct file can raise. */
+  readonly reviewBar: number;
+  /** How many lines the week put on the file. */
+  readonly filed: number;
+  /** Who already had a reason to open it, an hour before anybody did. */
+  readonly triggersAtTwo: readonly string[];
   readonly meters: Record<string, number>;
   readonly timeline: readonly string[];
 }
@@ -477,6 +524,37 @@ interface GoldenWeek {
  * breaches, same pence, same stress, same suspicion, same reputation, same
  * caught counts, same timelines, same endings.
  *
+ * ELEVENTH MOVE (0.2.6, the conduct file). Both hashes, both timelines, and
+ * NOTHING ELSE in either week - not an arrival, not a close, not a breach, not
+ * a penny, and not one of the seven meters on either card. That is a stronger
+ * claim than it sounds and it is the point of the slice, so it is worth being
+ * exact about all three parts of it.
+ *
+ *  - THE TIMELINES gain one `notice:That is 10 minutes` per conversation, in
+ *    the same minute as the conversation: once in the worked week, twelve
+ *    times in the idle one. That notice IS the new price. Being caught used to
+ *    cost six points of reputation, in a currency 0.2.5 stopped the review
+ *    spending; it now costs ten minutes of the shift, and the shift still ends
+ *    at five. The minutes are measured properly in `scripted-day.test.ts`, by
+ *    playing one day twice and counting how many of them the player got.
+ *  - THE HASHES move for the file and for the bar. Every conversation appends
+ *    a dated line to `conduct_file` on the player - one in the worked week,
+ *    twelve in the idle one - and `review_bar` is seeded at 45 on the Monday
+ *    and written again at three o'clock beside `review_reputation`, with
+ *    `review_conduct` carrying the sentence that explains it.
+ *  - NOT ONE METER MOVED, in either week, and that is a coincidence worth
+ *    naming rather than a claim. Reputation stopped losing six points a
+ *    conversation, which should have moved both - except that the worked week
+ *    was pinned at the ceiling of 100 by Wednesday and the idle week was
+ *    pinned at the floor of 0 by Wednesday, so in both of them the six points
+ *    were being clamped away as fast as they were charged. The two profiles
+ *    where it shows are in the table at the bottom of this file, and it shows
+ *    there by twenty-five points at a time.
+ *
+ * The endings did not move either: worked passes against a bar of 45 with
+ * nothing on the file anybody has a reason to read, and idle is fired on the
+ * numbers alone, at 4 against a bar of 70 it would have missed at 45.
+ *
  * The idle week is where they disagree, which is the whole finding.
  * `ticket:flat-mouse` arrives at 13:34 on the Monday and its deadline runs out
  * at 09:34 on the Tuesday; `ticket:must-change-password` is filed on the
@@ -491,7 +569,7 @@ interface GoldenWeek {
  * happened.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: 'e77f3f360ad9d855',
+  hash: 'd701afdfc4598e4f',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -517,6 +595,15 @@ const GOLDEN_WORKED: GoldenWeek = {
    * nobody agreed to, and the probation bonus for surviving Friday. */
   earnedPence: 77_025,
   reviewRead: 99,
+  // The published bar, untouched: the queue was dealt with, nobody was left
+  // in silence, and a file with one line on it is a private document until
+  // somebody has a reason to ask for it. Nobody did.
+  reviewBar: 45,
+  triggersAtTwo: [],
+  // And the line itself, which is the whole of what the Wednesday browser
+  // cost the world. It reads "Wednesday 11:16 - Screen observed to be
+  // non-work-related on passing (a discussion forum)." and it decides nothing.
+  filed: 1,
   meters: {
     // Twenty-five closed tickets carry the reputation from fifty to its
     // ceiling well before Friday, which is what a week worked properly looks
@@ -547,6 +634,7 @@ const GOLDEN_WORKED: GoldenWeek = {
     'dm:person:terry@1810',
     'notice:Maintenance window@2940',
     'caught:browser@3076',
+    'notice:That is 10 minutes@3076',
     'review:passed@6180',
     'beer@6300',
     'week:passed@6300',
@@ -568,7 +656,7 @@ const GOLDEN_IDLE: GoldenWeek = {
   // Unchanged by 0.2.5, to the byte. See the TENTH MOVE above: the readings
   // this week takes on the way through are completely different and every one
   // of them is overwritten by the next.
-  hash: '516a7fbc9cad51e3',
+  hash: '8de884e5c493b90c',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.
@@ -608,6 +696,14 @@ const GOLDEN_IDLE: GoldenWeek = {
    */
   earnedPence: 36_175,
   reviewRead: 4,
+  // Seventy rather than forty-five, and it made no difference: a week that
+  // reads 4 was going home either way. All three reasons to look are live by
+  // the Friday - twenty-four people who were never told anything, the
+  // colleague sent to the form on the Tuesday, and the lead's own phone - and
+  // the twelve lines on the file saturate the shift at five points a line.
+  reviewBar: 70,
+  triggersAtTwo: ['customer', 'colleague', 'lead'],
+  filed: 12,
   meters: {
     stress: 98,
     suspicion: 96,
@@ -624,19 +720,31 @@ const GOLDEN_IDLE: GoldenWeek = {
   },
   timeline: [
     'caught:bubbles@1632',
+    'notice:That is 10 minutes@1632',
     'caught:bubbles@1723',
+    'notice:That is 10 minutes@1723',
     'dm:person:terry@1810',
     'caught:bubbles@1839',
+    'notice:That is 10 minutes@1839',
     'notice:Maintenance window@2940',
     'caught:bubbles@3076',
+    'notice:That is 10 minutes@3076',
     'caught:bubbles@3179',
+    'notice:That is 10 minutes@3179',
     'caught:bubbles@3283',
+    'notice:That is 10 minutes@3283',
     'caught:bubbles@4512',
+    'notice:That is 10 minutes@4512',
     'caught:bubbles@4615',
+    'notice:That is 10 minutes@4615',
     'caught:bubbles@4719',
+    'notice:That is 10 minutes@4719',
     'caught:bubbles@5950',
+    'notice:That is 10 minutes@5950',
     'caught:bubbles@6078',
+    'notice:That is 10 minutes@6078',
     'caught:bubbles@6170',
+    'notice:That is 10 minutes@6170',
     'review:fired@6180',
     'week:fired@6300',
   ],
@@ -660,8 +768,42 @@ function expectGolden(walked: WalkedWeek, golden: GoldenWeek): void {
   // toward how it ended - not the live meter, which carries on moving all
   // Friday afternoon and is on this screen too, one line up.
   expect(walked.card.performance).toBe(golden.reviewRead);
+  // And the line it had to clear, which is the published 45 unless somebody
+  // had a reason to open the file and found something in it.
+  expect(walked.card.bar).toBe(golden.reviewBar);
+  expect(walked.filed).toHaveLength(golden.filed);
   expect(walked.meters).toEqual(golden.meters);
   expect(walked.timeline).toEqual(golden.timeline);
+
+  /*
+   * THE LEGIBILITY GATE, run on every golden week rather than as a case of
+   * its own, because it is not a property of one week: NOTHING at three
+   * o'clock may come out of a state the player could not have read at two.
+   *
+   * The file is dated, so the first half is checkable arithmetic - every line
+   * on it was written before the conversation. The second half is the stronger
+   * claim and is why the walk stops at two: the bar the world applied and the
+   * people who caused it are asserted to be the ones the shipped screens were
+   * already showing an hour earlier, off the same pure function the review
+   * dispatches with. A trigger that fired from nothing, a bar that appeared at
+   * the verdict, or a reason invented in the room all turn this red.
+   */
+  const due = reviewTick(REVIEW_DAY);
+  expect(walked.filed.every((line) => line.tick < due), 'filed before three')
+    .toBe(true);
+  // The file at two is the file at three with the last hour missing - never a
+  // line that was back-dated, reordered or invented in the room.
+  expect(walked.filed.slice(0, walked.atTwo.filed.length))
+    .toEqual(walked.atTwo.filed);
+  // Who was going to look, and what line that produced, an hour before it
+  // produced anything. Both pinned below, so a trigger that starts firing for
+  // a different reason is a diff somebody has to justify.
+  expect(walked.atTwo.triggers).toEqual(golden.triggersAtTwo);
+  expect(walked.atTwo.bar).toBe(golden.reviewBar);
+  // And the verdict is those two numbers and nothing else. There is no third
+  // input: not the reputation meter, not the caught count, not a die.
+  expect(walked.outcome)
+    .toBe(walked.card.performance >= walked.card.bar ? 'passed' : 'fired');
 }
 
 /**
@@ -718,46 +860,58 @@ describe('the probation week, twice', () => {
  *
  * Five weeks, played five ways, put through the shipped driver and read at the
  * one moment that decides anything: three o'clock on Friday, when the lead
- * looks at one number. What is being asked is not "is the number right" - it
- * is whether the number can tell these five apart, because a threshold that
- * everybody clears is a review nobody sits, and one that nobody clears is a
- * game with one ending.
+ * looks at one number and, sometimes, at one folder. What is being asked is
+ * not "is the number right" - it is whether the week can tell these five
+ * apart, because a threshold everybody clears is a review nobody sits, and one
+ * nobody clears is a game with one ending.
  *
- * The answer, from 0.2.5, is three levels and a collapse:
+ * The answer, from 0.2.6, is the two-by-two back, on purpose this time:
  *
- *   worked properly ............ 25 of 25, no breaches ....... 99, passed
- *   worked, browser up all week  25 of 25, caught 15 times ... 99, passed
- *   half the roster ............ 13 of 24, twelve breaches ... 56, passed
- *   half the roster, browser up  13 of 24, caught 15 times ... 56, passed
- *   nothing at all ............. 0 of 24, everything late ..... 4, FIRED
+ *   worked properly ............ 25 of 25, no breaches ... 99 vs 45, passed
+ *   worked, browser up all week  25 of 25, caught 15x .... 99 vs 45, passed
+ *   half the roster ............ 13 of 24, twelve red .... 56 vs 45, passed
+ *   half the roster, browser up  13 of 24, caught 15x .... 56 vs 70, FIRED
+ *   nothing at all ............. 0 of 24, everything red .. 4 vs 70, FIRED
  *
- * with the line at 45.
+ * The mark is unchanged from 0.2.5 in all five - 99, 99, 56, 56, 4 - and it
+ * has to be: conduct is not in it and this file asserts the equality one test
+ * down. What moved is the BAR, from a constant to a thing the week can raise,
+ * and the mechanism is the whole slice:
  *
- * THE TWO PAIRS ARE IDENTICAL, TO THE POINT, AND THAT IS THE SLICE. The review
- * reads `weekPerformance` now - how much of the week's work was closed, how
- * much of it never went red - and conduct is not in it anywhere. Being caught
- * fifteen times costs the same as being caught once, because it costs nothing
- * the review can see. It still costs everything else it ever cost: the meter
- * (100 against 57), the suspicion, the minutes the lead spends standing at the
- * desk. The two-by-two the old table had - two ways to lose the job, either
- * forgiven alone, neither forgiven together - is gone from the CONVERSATION
- * and is asserted below to be still in the world, because slice D is the one
- * that brings it back as a latent record rather than as arithmetic.
+ *  - THE FILE accumulates and does nothing. Every conversation in the corridor
+ *    appends one dated line and costs no points at all. The slacking weeks
+ *    carry fifteen of them; the worked week carries one, from the browser it
+ *    left up on the Wednesday.
+ *  - SOMEBODY HAS TO HAVE A REASON TO OPEN IT. Three of them, all pure
+ *    functions of the ticket nodes: a customer who went red and was never told
+ *    anything, a colleague sent to the form and left on it, and the lead's own
+ *    ticket left to go red. The two weeks that did the job have none of those,
+ *    which is why fifteen conversations cost them nothing.
+ *  - THE MARK IS THE SHIELD. Each line raises the bar five points to a ceiling
+ *    of twenty-five, so a full file asks for 70 - MetricNet's top quartile.
+ *    That is Hollander's idiosyncrasy credit as arithmetic: contribution buys
+ *    latitude, the latitude is finite, and it is spent by deviating.
  *
- * The old table read 97 / 63 / 56 / 5 / 4 on a summed reputation meter, and
- * the reason for the change is written at length in `docs/research/
- * review-scoring.md` and in `weekPerformance`: resolution credit scaled with
- * the roster and the price of being caught did not, so the gap between "did
- * half the job" and "did the lot with the forum open" fell from sixteen points
- * to seven over ONE content slice, and the crossover - the roster size at
- * which openly slacking becomes the better week - was about twenty-six
- * tickets. The shipped roster is twenty-five. Nobody would have decided that;
- * the content would have decided it.
+ * So the pair that separates is the pair where both halves are true, and it
+ * separates without conduct ever entering a race with closures. "Half the
+ * roster" keeps the job on a mark of 56 against a bar of 45, and is SEEN to
+ * keep it: somebody did have a reason to look, and the sentence on the review
+ * screen says they looked and found nothing on file. "Half the roster with the
+ * browser up" reads the identical 56 and goes home, because the same reason
+ * found fifteen lines.
+ *
+ * WHAT THE METER STOPPED DOING, and it is the honest cost of the slice: the
+ * reputation column no longer tells the pairs apart either. It used to read
+ * 100 / 63 / 57 / 0 across the four working profiles, and it now reads
+ * 100 / 63 / 100 / 63, because being caught stopped taking six points off it.
+ * The world has not forgotten - the file remembers, in dated sentences, which
+ * is a better record than a number - and the assertion below was repointed
+ * from the meter to the file rather than deleted.
  *
  * The figures are what the REVIEW read, which is the week to date as it stood
  * at the end of each day, folded so that Friday is half the answer and Monday
- * is a sixteenth. `week.test.ts` holds the scaling gate that keeps them from
- * ever again being a function of how much content the game has.
+ * is a sixteenth. `week.test.ts` holds the scaling gate that keeps the mark
+ * from ever again being a function of how much content the game has.
  */
 describe('the week at five skill levels', () => {
   interface Profile {
@@ -769,6 +923,10 @@ describe('the week at five skill levels', () => {
     readonly reputation: number;
     /** And what the conversation on Friday actually read out. */
     readonly reviewRead: number;
+    /** Against what, which is 45 unless somebody opened the file. */
+    readonly reviewBar: number;
+    /** How many dated lines the week put on it. */
+    readonly filed: number;
     readonly outcome: ReviewOutcome;
     readonly caught: number;
   }
@@ -781,9 +939,15 @@ describe('the week at five skill levels', () => {
       breached: 0,
       reputation: 100,
       reviewRead: 99,
-      outcome: 'passed',
+      // Nothing went red, the colleague who was sent to the form got his
+      // ticket closed, and the lead's own phone was dealt with. Nobody has a
+      // reason to ask for the folder, so the line stays where it is published.
+      reviewBar: 45,
       // One browser, on the Wednesday, hidden before the second round - and
       // found once, which is the week's own texture rather than a profile.
+      // It is on the file forever and it decides nothing.
+      filed: 1,
+      outcome: 'passed',
       caught: 1,
     },
     {
@@ -798,6 +962,11 @@ describe('the week at five skill levels', () => {
       // ended, and a lead who read them then thought better of the week than
       // the week turned out to deserve.
       reviewRead: 56,
+      // Twelve people went red and none of them were told anything, so
+      // somebody DOES come looking - and finds an empty folder. The bar does
+      // not move for a blank page, which is the fizzle the player is shown.
+      reviewBar: 45,
+      filed: 0,
       outcome: 'passed',
       caught: 0,
     },
@@ -806,10 +975,18 @@ describe('the week at five skill levels', () => {
       play: slackWeek,
       closed: 25,
       breached: 0,
-      // The meter is forty-three points down on the week that hid the browser,
-      // and the conversation on Friday does not hear about any of it.
-      reputation: 57,
+      // The meter used to be forty-three points down on the week that hid the
+      // browser. It is level with it now: being caught costs minutes and a
+      // line, and no points at all.
+      reputation: 100,
       reviewRead: 99,
+      reviewBar: 45,
+      // Fifteen conversations, fifteen lines, and not one person with a reason
+      // to read them. This is the documented case and the one the whole design
+      // exists to keep: monitoring is near-universal, enforcement is rare, and
+      // getting away with it this time is a better feeling than losing six
+      // points for it.
+      filed: 15,
       outcome: 'passed',
       caught: 15,
     },
@@ -818,14 +995,17 @@ describe('the week at five skill levels', () => {
       play: slackHalfWeek,
       closed: 13,
       breached: 12,
-      reputation: 0,
+      reputation: 63,
+      // The identical mark to the week above it, and a different ending. The
+      // twelve people left in silence give somebody a reason to open the
+      // folder, the fifteen lines in it saturate the shift at five points a
+      // line, and 56 does not reach 70. Two ways to lose the job, either
+      // forgiven alone, neither forgiven together - and this time it is the
+      // design rather than an accident of two constants.
       reviewRead: 56,
-      // It keeps the job, where the summed model sent it home. That is the
-      // honest consequence of taking conduct off the score and it is meant to
-      // be uncomfortable: doing half the job with a forum open is a week that
-      // passes on the numbers, and slice D is where somebody has a reason to
-      // go and look at the rest of it.
-      outcome: 'passed',
+      reviewBar: 70,
+      filed: 15,
+      outcome: 'fired',
       caught: 15,
     },
     {
@@ -835,6 +1015,10 @@ describe('the week at five skill levels', () => {
       breached: 24,
       reputation: 0,
       reviewRead: 4,
+      // All three reasons are live by the Friday and the raised bar changes
+      // nothing: 4 was going home against 45 as well.
+      reviewBar: 70,
+      filed: 12,
       outcome: 'fired',
       // A game of Bubble Break left up from the Tuesday morning, found on
       // every round of the corridor for the rest of the week.
@@ -871,29 +1055,58 @@ describe('the week at five skill levels', () => {
     expect(week?.card.breached).toBe(profile.breached);
     expect(week?.meters[FIELDS.reputation]).toBe(profile.reputation);
     expect(week?.card.performance).toBe(profile.reviewRead);
+    expect(week?.card.bar).toBe(profile.reviewBar);
+    expect(week?.filed).toHaveLength(profile.filed);
     expect(
       week?.timeline.filter((line) => line.startsWith('caught:')),
     ).toHaveLength(profile.caught);
   });
 
-  it('sends the one who did nothing home, and keeps the other four', () => {
+  it('sends two of them home, and keeps three', () => {
     for (const profile of PROFILES) {
       expect(walked.get(profile.name)?.outcome, profile.name)
         .toBe(profile.outcome);
     }
 
-    // The threshold is what decided all five, and it decided them by the
-    // number rather than by anything the profiles were told.
+    // And each of the five was decided by its own two numbers rather than by
+    // anything the profile was told - the mark it earned, against the bar its
+    // own week produced.
     for (const profile of PROFILES) {
+      const week = walked.get(profile.name);
       const reading = readingOf(profile.name);
+      const bar = week?.card.bar ?? Number.NaN;
+
+      // The bar never goes below the published figure, whatever a file says.
+      expect(bar, profile.name)
+        .toBeGreaterThanOrEqual(REVIEW_PASS_PERFORMANCE);
 
       if (profile.outcome === 'passed') {
-        expect(reading, profile.name)
-          .toBeGreaterThanOrEqual(REVIEW_PASS_PERFORMANCE);
+        expect(reading, profile.name).toBeGreaterThanOrEqual(bar);
       } else {
-        expect(reading, profile.name).toBeLessThan(REVIEW_PASS_PERFORMANCE);
+        expect(reading, profile.name).toBeLessThan(bar);
       }
     }
+  });
+
+  /**
+   * THE TWO-BY-TWO, restored on purpose.
+   *
+   * It was an emergent property of two constants nobody chose until 0.2.5
+   * collapsed it, and it is now the design: two ways to lose the job, either
+   * forgiven alone, neither forgiven together. The four cells are asserted as
+   * a table rather than one at a time, because the shape is the claim - three
+   * of these passing and one failing is a different game from four passing.
+   */
+  it('forgives either half on its own and neither of them together', () => {
+    const outcome = (name: string): ReviewOutcome | undefined => walked
+      .get(name)?.outcome;
+
+    expect([
+      outcome('worked properly'),
+      outcome('worked, with the browser up all week'),
+      outcome('half the roster'),
+      outcome('half the roster, with the browser up all week'),
+    ]).toEqual(['passed', 'passed', 'passed', 'fired']);
   });
 
   /**
@@ -918,26 +1131,43 @@ describe('the week at five skill levels', () => {
   });
 
   /**
-   * And the world has NOT forgotten - which is the half of the same finding
-   * that slice D is built on.
+   * And the world has NOT forgotten, which is the half of the finding this
+   * whole slice is built on.
    *
-   * The reputation meter still tells all four apart, the caught events are
-   * still counted, and the suspicion is still where the week left it. Nothing
-   * about being caught was deleted; it was taken off the scoreboard. If a
-   * later slice quietly stops recording it, the latent record has nothing to
-   * be made of, so the separation is held here even though nothing reads it
-   * this week.
+   * The assertion used to be on the reputation meter, because in 0.2.5 that
+   * was the only place a conversation in the corridor left a mark. It is
+   * repointed rather than deleted: being caught costs no points now, so the
+   * meter reads the same for a week that hid the browser and a week that did
+   * not - and the record moved to a file, in dated sentences, which is a
+   * better record than a number was.
+   *
+   * If a later slice quietly stops writing it, the latent half of the design
+   * has nothing to be made of. This is the assertion that goes red first.
    */
-  it('still records what the review has stopped reading', () => {
-    expect(meterOf('worked properly'))
-      .toBeGreaterThan(meterOf('worked, with the browser up all week'));
-    expect(meterOf('half the roster'))
-      .toBeGreaterThan(meterOf('half the roster, with the browser up all week'));
+  it('still records what the review does not read', () => {
+    const filed = (name: string): number => walked.get(name)?.filed.length
+      ?? Number.NaN;
 
-    const caught = (name: string): number => walked.get(name)?.timeline
-      .filter((line) => line.startsWith('caught:')).length ?? Number.NaN;
-    expect(caught('worked, with the browser up all week'))
-      .toBeGreaterThan(caught('worked properly'));
+    expect(filed('worked, with the browser up all week'))
+      .toBeGreaterThan(filed('worked properly'));
+    expect(filed('half the roster, with the browser up all week'))
+      .toBeGreaterThan(filed('half the roster'));
+
+    // And it records WHAT was noticed and WHEN, rather than a tally: every
+    // line names the minute, the day and the thing on the screen.
+    const [first] = walked.get('worked, with the browser up all week')?.filed
+      ?? [];
+    expect(first?.kind).toBe('screen');
+    expect(first?.text).toContain('discussion forum');
+    expect(first?.text).toContain('Monday');
+
+    // The meter, meanwhile, has stopped telling the pairs apart - which is the
+    // stated cost of taking the fine off it, written down so nobody reads the
+    // equality below as a bug.
+    expect(meterOf('worked, with the browser up all week'))
+      .toBe(meterOf('worked properly'));
+    expect(meterOf('half the roster, with the browser up all week'))
+      .toBe(meterOf('half the roster'));
   });
 
   /**
@@ -971,5 +1201,59 @@ describe('the week at five skill levels', () => {
     expect(worked - nothing).toBeGreaterThanOrEqual(40);
     expect(worked).toBeLessThanOrEqual(100);
     expect(nothing).toBeGreaterThanOrEqual(0);
+  });
+});
+
+/**
+ * The sixth week, and the one the whole layer exists to produce.
+ *
+ * The five profiles above cover three of the four cells the design has: no
+ * reason to look, a reason that finds nothing, and a reason that finds
+ * everything against a week with nothing to defend itself with. The fourth is
+ * the interesting one and no shipped profile reaches it - a thick file, read
+ * by somebody with a genuine grievance, against a week that DID the job.
+ *
+ * So it is driven here: the whole roster with the browser up all week, minus
+ * one ticket left to go red on the Monday morning. The file is fifteen lines
+ * deep, the person whose screen went dark and who nobody rang back is a real
+ * person with a real reason, the bar goes to 70 - and the week survives it,
+ * because twenty-four of twenty-five closed is what latitude is bought with.
+ *
+ * That is the moment the research says this system is for: the player learns
+ * that the thing which never mattered has been written down all along, and
+ * that this time it was close. It is also the assertion that stops the shield
+ * from quietly becoming decoration - a build where a thick file is fatal
+ * regardless of the numbers passes every test above and fails this one.
+ */
+describe('the file, read by somebody, against a week that can take it', () => {
+  /** Monday's first ticket, left alone all week while everything else closes. */
+  const ABANDONED = 'ticket:rotated-screen';
+
+  it('is read out, and survived, by the work that was done', () => {
+    const week = walk((world, day) => {
+      show(world, ['browser']);
+      sweeps(world, day, (id) => id === ABANDONED);
+    });
+
+    // A thick file, and a real reason to open it: somebody has been sitting in
+    // front of an upside-down monitor since Monday and has never been told a
+    // thing.
+    expect(week.filed.length).toBe(15);
+    expect(week.atTwo.triggers).toEqual(['customer']);
+    expect(week.card.bar).toBe(70);
+    expect(week.card.conduct).toContain('15 lines');
+    expect(week.card.conduct).toContain('70');
+
+    // And the week clears it. Not comfortably - the whole point is that it is
+    // close - but on the work, which is the only thing that ever shields
+    // anybody.
+    expect(week.card.performance).toBeGreaterThanOrEqual(week.card.bar);
+    expect(week.outcome).toBe('passed');
+    expect(week.card.closed).toBe(24);
+    expect(week.card.breached).toBe(1);
+
+    // The same file against the week that did half the job sends it home. Two
+    // weeks, one folder, two endings, and the difference is the queue.
+    expect(week.card.performance).toBeGreaterThan(56);
   });
 });

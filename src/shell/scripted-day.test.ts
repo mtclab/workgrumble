@@ -22,7 +22,7 @@ import { loadEngineForTests } from '../engine-api/load-node';
 import {
   BOSS_TRAP_TICKET,
   buildPatrolSchedule,
-  CAUGHT_REPUTATION_COST,
+  CAUGHT_MINUTES,
   CAUGHT_SUSPICION_FLOOR,
   EMPTIES_SUSPICION_BUMP,
   EMPTIES_TOLERATED,
@@ -231,8 +231,11 @@ describe('the lead on the clock', () => {
       { appId: 'bubbles', tick: FIRST_VISIT.arrivalTick },
     ]);
     expect(meter(caughtDay, FIELDS.caughtEvents)).toBe(1);
-    expect(meter(caughtDay, FIELDS.reputation))
-      .toBe(STARTING_REPUTATION - CAUGHT_REPUTATION_COST);
+    // And it cost no points. It used to cost six off reputation, in a currency
+    // the review stopped spending in 0.2.5; what it costs now is one dated
+    // line and ten minutes of the shift, both asserted below.
+    expect(meter(caughtDay, FIELDS.reputation)).toBe(STARTING_REPUTATION);
+    expect(caughtDay.driver.conductReading().lines).toBe(1);
 
     // Suspicion was reset to the floor as he arrived - being spoken to does
     // not launder the morning, it puts you where somebody who has just been
@@ -247,11 +250,16 @@ describe('the lead on the clock', () => {
       .toBeGreaterThan(CAUGHT_SUSPICION_FLOOR * 2);
     expect(meter(caughtDay, FIELDS.suspicion))
       .toBeLessThan(meter(before, FIELDS.suspicion));
-    // The interval the arrival fell in still charges for a window that is
-    // still up while he stands there, so the floor is a floor plus one
-    // interval of exactly the app he caught you at - and no more.
-    expect(meter(caughtDay, FIELDS.suspicion))
-      .toBeLessThanOrEqual(CAUGHT_SUSPICION_FLOOR + slackRate('bubbles').suspicion);
+    // The window is STILL up while he is standing there, so the intervals the
+    // conversation takes charge for it: the floor, plus the interval the
+    // arrival fell in, plus the ones the ten minutes cost - all of them at
+    // exactly the rate of the app he caught you at, and no more. That the
+    // conversation shows up here at all is the point of it costing minutes.
+    expect(meter(caughtDay, FIELDS.suspicion)).toBeLessThanOrEqual(
+      CAUGHT_SUSPICION_FLOOR
+        + (1 + CAUGHT_MINUTES / METER_INTERVAL_TICKS)
+          * slackRate('bubbles').suspicion,
+    );
     expect(meter(caughtDay, FIELDS.suspicion))
       .toBeGreaterThanOrEqual(CAUGHT_SUSPICION_FLOOR);
 
@@ -272,6 +280,65 @@ describe('the lead on the clock', () => {
     // Surviving is not free: the suspicion charged while it was on screen is
     // still on the meter, which is what makes the next round worse.
     expect(meter(survived, FIELDS.suspicionEvents)).toBeGreaterThan(0);
+  });
+
+  /**
+   * WHAT BEING CAUGHT ACTUALLY COSTS, measured in the only currency that is
+   * scarce: minutes of a shift that ends at 17:00 whatever happens in it.
+   *
+   * The counting is deliberately blunt. Both days are played the same way and
+   * the same number of times, one minute per call, and the day that got caught
+   * runs out of shift sooner - by exactly `CAUGHT_MINUTES` per conversation.
+   * Those minutes come off the queue and no deadline moves with them, which is
+   * how the corridor reaches the mark the review is decided on without conduct
+   * ever appearing in it.
+   *
+   * A slice that made a catch free on the clock as well as on the scoreboard
+   * would leave the boss key with nothing behind it, and this is the assertion
+   * that would go red first.
+   */
+  it('charges a conversation in minutes, off a shift that still ends at five', () => {
+    const callsToClockOff = (day: Day, moves: readonly Move[]): number => {
+      day.driver.startShift();
+      const pending = [...moves].sort((left, right) => left.atTick - right.atTick);
+      let calls = 0;
+
+      while (day.driver.state() === 'shift') {
+        while (
+          pending.length > 0 && (pending[0]?.atTick ?? 0) <= day.engine.now()
+        ) {
+          pending.shift()?.play(day);
+        }
+
+        day.driver.step(TICK_INTERVAL_MS);
+        calls += 1;
+      }
+
+      return calls;
+    };
+
+    const allMorning = slackFrom(shiftStartTick(1) + 2, ['bubbles']);
+    const oblivious = startDay();
+    const obliviousCalls = callsToClockOff(oblivious, [allMorning]);
+
+    // The same day, with the same window open, put away every time the floor
+    // creaks. Nothing else about the two differs.
+    const careful = startDay();
+    const carefulCalls = callsToClockOff(careful, [
+      allMorning,
+      ...PATROL.visits.flatMap((visit) => [
+        bossKeyAt(visit.telegraphTick),
+        slackFrom(visit.departureTick, ['bubbles']),
+      ]),
+    ]);
+
+    expect(careful.caught).toEqual([]);
+    expect(oblivious.caught.length).toBe(PATROL.visits.length);
+    // Both days end at 17:00 - that is the point of the whole mechanic - so
+    // the difference is entirely in how many of those minutes the player got.
+    expect(oblivious.engine.now()).toBe(careful.engine.now());
+    expect(carefulCalls - obliviousCalls)
+      .toBe(PATROL.visits.length * CAUGHT_MINUTES);
   });
 
   it('tells the player the footsteps started, before he arrives', () => {
@@ -343,10 +410,14 @@ describe('the lead on the clock', () => {
       day.notices.filter((notice) => notice === 'He counted them'),
     ).toHaveLength(1);
 
-    // Both prices, exactly once each: the floor being caught puts suspicion
-    // on, and the bump for a desk he did the arithmetic on.
-    expect(meter(day, FIELDS.reputation))
-      .toBe(STARTING_REPUTATION - CAUGHT_REPUTATION_COST);
+    // Both observations, exactly once each, and both on the file: the screen
+    // he found something on and the desk he did the arithmetic on. Neither
+    // costs a point of anything.
+    expect(meter(day, FIELDS.reputation)).toBe(STARTING_REPUTATION);
+    expect(
+      day.driver.conductReading().lines,
+      'the screen and the desk are two lines, not one',
+    ).toBe(2);
     expect(meter(day, FIELDS.suspicion))
       .toBeGreaterThanOrEqual(CAUGHT_SUSPICION_FLOOR + EMPTIES_SUSPICION_BUMP);
     expect(meter(day, FIELDS.deskCans)).toBe(cans);
@@ -554,8 +625,33 @@ const GOLDEN_DAY = {
    * makes of the week. Every meter, minute, breach, patrol, can, timeline
    * entry and penny below is the number it was, including the reputation of 26
    * this day ends on, which the review no longer reads.
+   *
+   * ELEVENTH MOVE (0.2.6, the conduct file). The hash, ONE meter and TWO
+   * timeline entries, and each of the three is the slice stated exactly.
+   *
+   *  - `reputation` at five o'clock goes from 26 to 38, and the twelve points
+   *    are the two conversations at 311 and 390 which used to cost six each.
+   *    They cost nothing now. 0.2.5 stopped the review reading this meter, so
+   *    the six points were a fine levied in a currency nobody spends; what a
+   *    conversation costs is on the two new timeline lines. The four breaches
+   *    still cost their three each, which is why it is 38 rather than 50 - the
+   *    QUEUE still moves this meter, and only the corridor stopped.
+   *  - `That is 10 minutes` twice, in the same minute as each arrival. Ten
+   *    minutes of the shift, gone, with no deadline moving to meet them. It is
+   *    the whole price now and it is measured properly one test up, by playing
+   *    the same day twice and counting how many minutes the player got.
+   *  - The hash, for those twelve points and for the two dated lines the day
+   *    wrote onto `conduct_file`, plus `review_bar` on the player node at the
+   *    published 45, seeded on the Monday because a bar the world was not
+   *    carrying is a bar the review verbs cannot compare anything against.
+   *
+   * Everything else came through untouched: the same stress, the same
+   * suspicion, the same fifty-eight suspicious minutes, the same two
+   * conversations, the same four breaches charged once each, the same two
+   * cans, the same crash, the same 7,315 pence, and the same `week_reputation`
+   * of 30 - because nothing in this slice touches what the review reads.
    */
-  hash: 'd3d5bd9cccfbc300',
+  hash: '673109081cdf3cfa',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */
@@ -606,7 +702,7 @@ const GOLDEN_DAY = {
     // the queue rate doing exactly what it says it does.
     stress: 91,
     suspicion: 100,
-    reputation: 26,
+    reputation: 38,
     suspicion_events: 58,
     caught_events: 2,
     // Four deadlines missed and charged once each: the two tickets inherited
@@ -636,9 +732,11 @@ const GOLDEN_DAY = {
     'That is the can, then@270',
     'Footsteps@307',
     'caught:browser@311',
+    'That is 10 minutes@311',
     'ping:1@381',
     'Footsteps@386',
     'caught:browser@390',
+    'That is 10 minutes@390',
   ] as readonly string[],
 };
 
@@ -838,8 +936,10 @@ describe('the same day, twice', () => {
     ]);
     expect(meter(reloaded, FIELDS.caughtEvents))
       .toBe(meter(day, FIELDS.caughtEvents));
-    expect(meter(reloaded, FIELDS.reputation))
-      .toBe(STARTING_REPUTATION - CAUGHT_REPUTATION_COST);
+    expect(meter(reloaded, FIELDS.reputation)).toBe(STARTING_REPUTATION);
+    // The file is world state, so it comes back out of a save with the rest
+    // of the world rather than being rebuilt from a log nobody kept.
+    expect(reloaded.driver.conductFile()).toBe(day.driver.conductFile());
     expect(meter(reloaded, FIELDS.suspicion)).toBe(meter(day, FIELDS.suspicion));
     expect(meter(reloaded, FIELDS.stress)).toBe(meter(day, FIELDS.stress));
     expect(reloaded.engine.snapshotHash()).toBe(day.engine.snapshotHash());
