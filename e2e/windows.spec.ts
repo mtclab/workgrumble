@@ -278,6 +278,36 @@ test('mounts each app exactly once however it is launched', async ({
   await expect(page.getByTestId('about-app')).toHaveCount(1);
 });
 
+test('keeps the whole start menu on the screen at any app count', async ({
+  page,
+}) => {
+  await logIn(page);
+
+  // The menu is bottom-anchored and grows upward, so the failure mode of a
+  // long list is silent: the top items walk off the TOP edge, visible in the
+  // DOM, unclickable on the screen. Every app added to the manifest pushes
+  // the oldest tool closer to that edge - this held 59 tests hostage the day
+  // two interruption surfaces joined the list.
+  await page.getByTestId('start-button').click();
+  const menu = page.getByTestId('start-menu');
+  await expect(menu).toBeVisible();
+
+  const box = await menu.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
+
+  // And the cap is a scroll rail, not a guillotine: the first and the last
+  // item are both still reachable with a click.
+  const items = page.locator('[data-testid^="start-menu-item-"]');
+  await items.first().scrollIntoViewIfNeeded();
+  await expect(items.first()).toBeInViewport();
+  await items.last().scrollIntoViewIfNeeded();
+  await expect(items.last()).toBeInViewport();
+});
+
 test('closes the start menu with Escape and with an outside click', async ({
   page,
 }) => {

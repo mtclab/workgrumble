@@ -1026,6 +1026,11 @@ input {
   display: grid;
   grid-template-columns: auto 1fr;
   width: var(--size-start-menu);
+  /* The menu is bottom-anchored and grows upward, so a list longer than the
+     screen walks off the TOP edge, where a button can be visible yet
+     unclickable. The cap keeps the whole menu on screen whatever the app
+     count; the list scrolls instead. */
+  max-height: calc(100vh - var(--size-taskbar) - var(--space-3));
   padding: var(--space-2);
 }
 
@@ -1051,7 +1056,9 @@ input {
   display: grid;
   align-content: start;
   gap: var(--space-1);
+  min-height: 0;
   padding: var(--space-2);
+  overflow-y: auto;
 }
 
 .menu-item {
