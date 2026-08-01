@@ -337,6 +337,11 @@ describe('the lead on the clock', () => {
     // Both days end at 17:00 - that is the point of the whole mechanic - so
     // the difference is entirely in how many of those minutes the player got.
     expect(oblivious.engine.now()).toBe(careful.engine.now());
+    // Strictly fewer, and then exactly how many fewer. The inequality is the
+    // half with the teeth: an equality alone is trivially true of a build in
+    // which a conversation has been made free, which is the revert this gate
+    // exists to catch.
+    expect(obliviousCalls).toBeLessThan(carefulCalls);
     expect(carefulCalls - obliviousCalls)
       .toBe(PATROL.visits.length * CAUGHT_MINUTES);
   });
