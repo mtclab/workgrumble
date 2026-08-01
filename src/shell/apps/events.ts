@@ -1,5 +1,6 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import {
+  EVENT_LEVEL_LABELS,
   EVENT_LEVELS,
   type EventLevel,
   isEventLevel,
@@ -20,12 +21,11 @@ import {
   withFocusRestored,
 } from './ui';
 
-/** How each level reads on a row, and how a filter offers it. */
-const LEVEL_LABELS: Readonly<Record<EventLevel, string>> = {
-  information: 'Information',
-  warning: 'Warning',
-  error: 'Error',
-};
+/**
+ * How each level reads on a row, and how a filter offers it. The words are the
+ * world's, because the machine's own `SYSTEM.LOG` prints the same rows.
+ */
+const LEVEL_LABELS = EVENT_LEVEL_LABELS;
 
 const ALL_LEVELS = 'all';
 

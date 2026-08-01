@@ -25,6 +25,8 @@ export const KIND_LABELS: Readonly<Record<NodeKind, string>> = {
   group: 'a group',
   mail_rule: 'a mail rule',
   ticket: 'a ticket',
+  directory: 'a directory',
+  file: 'a file',
 };
 
 export function param(name: string): NodeRefData {

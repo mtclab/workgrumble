@@ -64,6 +64,9 @@ test.afterEach(async ({ page }) => {
 /** Everything this file has actually driven, by coverage id. */
 const walked = new Set<string>();
 
+/** The spool directory on the print server, which is where a queue lives. */
+const WALK_SPOOL = '\\\\PRINT-01\\C$\\WINDOWS\\SYSTEM32\\SPOOL\\PRINTERS';
+
 /**
  * Every control this walk has SEEN, by test id, across all four sessions.
  *
@@ -1530,6 +1533,68 @@ test('walks every function of a probation week that goes well', async ({
     await runCommand(page, 'tasklist /s PRINT-01');
     await expect(page.getByTestId('cmd-output'))
       .toContainText('Remote Registry is Disabled');
+  });
+
+  /* -- the drive, which is the other half of a terminal ------------------- */
+
+  await step('cmd.dir', async () => {
+    await runCommand(page, 'dir');
+    const output = page.getByTestId('cmd-output');
+
+    await expect(output).toContainText('Volume in drive C has no label.');
+    await expect(output).toContainText('Directory of C:\\SUPPORT');
+    await expect(output).toContainText('RUNBOOK.TXT');
+    await expect(output).toContainText('bytes free');
+
+    // The stuck queue, as the files it is actually made of, on the box it is
+    // actually on. Monday has not been handed the spooler yet, so this is the
+    // directory rather than the pile - and an empty spool directory is what a
+    // print path that is working looks like.
+    await runCommand(page, `dir ${WALK_SPOOL}`);
+    await expect(output).toContainText('Volume in drive \\\\PRINT-01\\C$');
+    await expect(output).toContainText('0 File(s)');
+    await runCommand(page, 'dir C:\\NOTHING');
+    await expect(output)
+      .toContainText('The system cannot find the path specified.');
+  });
+
+  await step('cmd.cd', async () => {
+    const prompt = page.locator('.cmd-prompt');
+
+    await runCommand(page, 'cd ..');
+    await expect(prompt).toHaveText('C:\\>');
+    await runCommand(page, 'cd');
+    await expect(page.getByTestId('cmd-output')).toContainText('C:\\');
+    await runCommand(page, `cd ${WALK_SPOOL}`);
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('CMD does not support UNC paths as current directories.');
+    // Back where the terminal opened, because everything after this is typed
+    // at that prompt.
+    await runCommand(page, 'cd C:\\SUPPORT');
+    await expect(prompt).toHaveText('C:\\SUPPORT>');
+  });
+
+  await step('cmd.type', async () => {
+    const output = page.getByTestId('cmd-output');
+
+    await runCommand(page, 'type RUNBOOK.TXT');
+    await expect(output).toContainText('PRINT SPOOLER - the order matters');
+    await runCommand(page, 'type C:\\WINDOWS');
+    await expect(output).toContainText('Access is denied.');
+    await runCommand(page, 'type C:\\NOTHING.TXT');
+    await expect(output)
+      .toContainText('The system cannot find the file specified.');
+  });
+
+  await step('cmd.tree', async () => {
+    const output = page.getByTestId('cmd-output');
+
+    await runCommand(page, 'tree C:\\WINDOWS');
+    await expect(output).toContainText('Folder PATH listing');
+    await expect(output).toContainText('└───SYSTEM32');
+    await runCommand(page, 'tree \\\\FILES-01\\C$ /f');
+    await expect(output).toContainText('REPORTSVC.INI');
+    await expect(output).toContainText('Access is denied.');
   });
 
   await step('cmd.rotate', async () => {

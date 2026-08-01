@@ -30,6 +30,20 @@ export function isEventLevel(value: unknown): value is EventLevel {
     && EVENT_LEVELS.some((level) => level === value);
 }
 
+/**
+ * How each level reads on a row.
+ *
+ * Here rather than in the Event Viewer because there are two windows onto this
+ * field now - the viewer and the machine's own `SYSTEM.LOG` - and a log file
+ * that spelled a level differently from the list beside it would be two
+ * sources for one fact.
+ */
+export const EVENT_LEVEL_LABELS: Readonly<Record<EventLevel, string>> = {
+  information: 'Information',
+  warning: 'Warning',
+  error: 'Error',
+};
+
 /** The subsystems that write to it, named the way the real ones are. */
 export const EVENT_SOURCES = {
   scm: 'Service Control Manager',

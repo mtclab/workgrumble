@@ -2,6 +2,7 @@ export {
   countEvents,
   encodeEvent,
   EVENT_IDS,
+  EVENT_LEVEL_LABELS,
   EVENT_LEVELS,
   EVENT_LOG_LIMIT,
   EVENT_SOURCES,

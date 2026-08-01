@@ -4,6 +4,7 @@ import {
   VERIFICATION_METHODS,
   verificationChannels,
 } from './fallout';
+import { driveSetup } from './filesystem';
 import {
   DEVICE_TYPES,
   FIELDS,
@@ -394,6 +395,15 @@ interface MachineSeed {
    */
   readonly processor: string;
   readonly memory: string;
+  /**
+   * How much of the drive is not being used, in bytes.
+   *
+   * Seeded rather than counted off the files on it: a listing shows the
+   * handful of things worth naming and a real drive is mostly things nobody
+   * names. It is the number the footer of a directory listing quotes, and the
+   * warehouse box is nearly full because a box in a warehouse always is.
+   */
+  readonly diskFree: number;
 }
 
 const DESK_PROCESSOR = 'Pentagon 133 MHz (one of them, and it is trying)';
@@ -408,6 +418,7 @@ const MACHINES: readonly MachineSeed[] = [
     wiredTo: COMPANY_IDS.printServer,
     processor: DESK_PROCESSOR,
     memory: DESK_MEMORY,
+    diskFree: 341_458_944,
   },
   {
     id: COMPANY_IDS.adaMachine,
@@ -418,6 +429,7 @@ const MACHINES: readonly MachineSeed[] = [
     pendingUpdates: true,
     processor: 'Pentagon 166 MHz (the good one, because Sales asked twice)',
     memory: '96 MB',
+    diskFree: 512_204_800,
   },
   {
     id: COMPANY_IDS.garyMachine,
@@ -429,6 +441,7 @@ const MACHINES: readonly MachineSeed[] = [
     pendingUpdates: true,
     processor: 'Pentagon 90 MHz',
     memory: '32 MB',
+    diskFree: 88_145_920,
   },
   {
     id: COMPANY_IDS.printServer,
@@ -441,6 +454,7 @@ const MACHINES: readonly MachineSeed[] = [
     pendingUpdates: true,
     processor: 'Pentagon 200 MHz',
     memory: '128 MB',
+    diskFree: 47_185_920,
   },
   {
     id: COMPANY_IDS.priyaMachine,
@@ -450,6 +464,7 @@ const MACHINES: readonly MachineSeed[] = [
     wiredTo: COMPANY_IDS.printServer,
     processor: DESK_PROCESSOR,
     memory: DESK_MEMORY,
+    diskFree: 402_653_184,
   },
   {
     id: COMPANY_IDS.kwameMachine,
@@ -459,6 +474,7 @@ const MACHINES: readonly MachineSeed[] = [
     wiredTo: COMPANY_IDS.printServer,
     processor: DESK_PROCESSOR,
     memory: DESK_MEMORY,
+    diskFree: 615_514_112,
   },
   {
     id: COMPANY_IDS.robMachine,
@@ -468,6 +484,7 @@ const MACHINES: readonly MachineSeed[] = [
     wiredTo: COMPANY_IDS.printServer,
     processor: DESK_PROCESSOR,
     memory: DESK_MEMORY,
+    diskFree: 1_073_741_824,
   },
   {
     id: COMPANY_IDS.warehouseMachine,
@@ -477,6 +494,7 @@ const MACHINES: readonly MachineSeed[] = [
     wiredTo: COMPANY_IDS.warehousePrintServer,
     processor: 'Pentagon 90 MHz (and a layer of warehouse on the fan)',
     memory: '32 MB',
+    diskFree: 3_145_728,
   },
   {
     id: COMPANY_IDS.terryMachine,
@@ -486,6 +504,7 @@ const MACHINES: readonly MachineSeed[] = [
     wiredTo: COMPANY_IDS.printServer,
     processor: DESK_PROCESSOR,
     memory: DESK_MEMORY,
+    diskFree: 268_435_456,
   },
   {
     id: COMPANY_IDS.dennisMachine,
@@ -495,6 +514,7 @@ const MACHINES: readonly MachineSeed[] = [
     wiredTo: COMPANY_IDS.printServer,
     processor: DESK_PROCESSOR,
     memory: DESK_MEMORY,
+    diskFree: 62_914_560,
   },
   {
     id: COMPANY_IDS.marcusMachine,
@@ -504,6 +524,7 @@ const MACHINES: readonly MachineSeed[] = [
     wiredTo: COMPANY_IDS.printServer,
     processor: DESK_PROCESSOR,
     memory: DESK_MEMORY,
+    diskFree: 314_572_800,
   },
   // The three boxes nobody sits at. None of them is owned by anybody, which is
   // most of the reason all three are in this game.
@@ -518,6 +539,7 @@ const MACHINES: readonly MachineSeed[] = [
     resolution: '640x480',
     processor: 'Pentagon 200 MHz (a desktop, under a desk, doing a server job)',
     memory: '256 MB',
+    diskFree: 826_277_888,
   },
   {
     id: COMPANY_IDS.warehousePrintServer,
@@ -529,6 +551,7 @@ const MACHINES: readonly MachineSeed[] = [
     resolution: '640x480',
     processor: 'Pentagon 90 MHz',
     memory: '32 MB',
+    diskFree: 128_974_848,
   },
   {
     id: COMPANY_IDS.domainController,
@@ -538,6 +561,7 @@ const MACHINES: readonly MachineSeed[] = [
     resolution: '640x480',
     processor: 'Pentagon 200 MHz (holding every logon in the building)',
     memory: '256 MB',
+    diskFree: 1_610_612_736,
   },
 ];
 
@@ -729,8 +753,25 @@ export function companySetup(): readonly SetupOp[] {
         [FIELDS.pendingUpdates]: machine.pendingUpdates === true,
         [FIELDS.processor]: machine.processor,
         [FIELDS.memory]: machine.memory,
+        [FIELDS.diskFree]: machine.diskFree,
       },
     });
+  }
+
+  // And what is on each of those drives: the image every box was built from,
+  // whatever its role adds, and a profile for whoever logs on there. It goes
+  // in immediately after the machines and before anything else, because a
+  // `contains` edge from a machine to its own root is an edge like any other
+  // and the engine refuses one whose ends are not both built yet.
+  for (const machine of MACHINES) {
+    const owner = STAFF.find((member) => member.person === machine.owner);
+
+    ops.push(...driveSetup({
+      machineId: machine.id,
+      role: machine.role,
+      ...(owner === undefined ? {} : { ownerUsername: owner.username }),
+      supportDesk: machine.id === COMPANY_IDS.playerMachine,
+    }));
   }
 
   // Nodes first, edges after: a desk that prints to the warehouse box is
@@ -769,6 +810,10 @@ export function companySetup(): readonly SetupOp[] {
       [FIELDS.powered]: true,
       [FIELDS.wedged]: false,
       [FIELDS.queueLen]: 0,
+      // The queue is a number AND the files behind it, and both start empty.
+      // Seeded rather than left absent for the reason the meters are: the op
+      // language moves a field it can read.
+      [FIELDS.spoolJobs]: '',
     },
   });
   addNode(ops, {
@@ -794,6 +839,7 @@ export function companySetup(): readonly SetupOp[] {
       [FIELDS.powered]: true,
       [FIELDS.wedged]: false,
       [FIELDS.queueLen]: 0,
+      [FIELDS.spoolJobs]: '',
     },
   });
 

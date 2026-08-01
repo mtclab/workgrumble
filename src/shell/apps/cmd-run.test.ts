@@ -567,4 +567,43 @@ describe('support terminal commands', () => {
 
     expect(run(api, 'ver')).toContain('4.10.1998');
   });
+
+  /**
+   * The drive, through the terminal rather than through the shapes.
+   *
+   * What each of the four commands PRINTS is held to its fidelity row in
+   * `cmd-files.test.ts`. What is asserted here is the wiring: the terminal
+   * starts in the support directory, the commands read the drive of the box
+   * this session is actually on, and `cd` is the one command in the whole
+   * grammar that hands something back to the window that ran it.
+   */
+  it('reads the drive of the box this terminal is on, and moves around it', () => {
+    const session = sessionWith('ticket:wedged-spooler');
+    const api = apiFor(session);
+    const before = session.engine.snapshotHash();
+
+    expect(run(api, 'dir')).toContain('Directory of C:\\SUPPORT');
+    expect(run(api, 'cd')).toBe('C:\\SUPPORT');
+    expect(run(api, 'type RUNBOOK.TXT')).toContain('PRINT SPOOLER');
+
+    const moved = executeCommand(parseCommand('cd ..'), api, ['SUPPORT']);
+
+    expect(moved).toEqual({ lines: [], clear: false, cwd: [] });
+
+    // And the command that followed it is answered from where it left the
+    // terminal, which is the whole of what a working directory is.
+    expect(executeCommand(parseCommand('cd'), api, moved.cwd ?? []).lines)
+      .toEqual(['C:\\']);
+    expect(executeCommand(parseCommand('dir'), api, moved.cwd ?? []).lines)
+      .toContain(' Directory of C:\\');
+
+    // The queue on somebody else's box, as the directory it actually is.
+    expect(run(
+      api,
+      'dir \\\\PRINT-01\\C$\\WINDOWS\\SYSTEM32\\SPOOL\\PRINTERS',
+    )).toContain('00047.SPL');
+
+    // Not one of them writes anything: this family reads the world.
+    expect(session.engine.snapshotHash()).toBe(before);
+  });
 });

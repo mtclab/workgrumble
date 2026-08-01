@@ -73,6 +73,72 @@ export function shiftStartTick(day: number): number {
   return tickAtMinute(day, SHIFT_START_MINUTE);
 }
 
+/* -- the wall calendar ---------------------------------------------------- */
+
+/**
+ * Which Monday day one is.
+ *
+ * The clock in this game counts minutes and the fiction has always counted
+ * months: a transport rule written in March, a leaver who went in April, a
+ * second-factor rollout that finished in June. Nothing anchored those to
+ * anything until a directory listing needed a date column - and a listing with
+ * a date column is not optional, so the anchor is written down here once
+ * rather than guessed at by whichever surface prints it.
+ *
+ * Monday 7 September 1998 is a real Monday, it is after everything the world
+ * already says happened, and it is the same year the version string has been
+ * claiming since the first build.
+ */
+export const WEEK_STARTS_ON = Object.freeze({
+  year: 1998,
+  /** 1-12, the way a human says it rather than the way a Date does. */
+  month: 9,
+  dayOfMonth: 7,
+});
+
+function twoDigits(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+/** The date a simulated day falls on, as this estate writes dates. */
+export function calendarDate(day: number): string {
+  requireDay(day);
+  // UTC throughout: the same save opened in two time zones is the same week,
+  // and a date that moved with the reader would be a determinism hole.
+  const date = new Date(Date.UTC(
+    WEEK_STARTS_ON.year,
+    WEEK_STARTS_ON.month - 1,
+    WEEK_STARTS_ON.dayOfMonth + (day - 1),
+  ));
+
+  return `${twoDigits(date.getUTCDate())}/${
+    twoDigits(date.getUTCMonth() + 1)
+  }/${String(date.getUTCFullYear())}`;
+}
+
+/**
+ * A day and a minute of it, in the shape a directory listing prints: the date,
+ * two spaces, the twenty-four-hour clock.
+ *
+ * It takes a minute of the day rather than a tick because the things this
+ * world dates are not all inside the clock: the pile of print jobs behind a
+ * wedged spooler built up before eight, and tick zero is eight.
+ */
+export function stampAt(day: number, minute: number): string {
+  return `${calendarDate(day)}  ${
+    twoDigits(Math.floor(minute / 60))
+  }:${twoDigits(minute % 60)}`;
+}
+
+/**
+ * A minute of the simulation, in the same shape. Everything a file surface
+ * dates goes through one of these two, so a file the world wrote and a file it
+ * was seeded with are stamped in one format.
+ */
+export function fileStamp(tick: number): string {
+  return stampAt(dayForTick(tick), minuteOfDay(tick));
+}
+
 export function shiftEndTick(day: number): number {
   return tickAtMinute(day, SHIFT_END_MINUTE);
 }

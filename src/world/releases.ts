@@ -31,6 +31,43 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.2.3',
+    date: '2026-08-01',
+    summary: 'This update improves access to local and networked storage.',
+    lines: Object.freeze([
+      'Addresses an issue in which this workstation had no drive on it. Every '
+        + 'machine on the estate now has a C: drive with the directories it '
+        + 'was imaged with, the ones its job added, and a profile for whoever '
+        + 'logs on to it.',
+      'Adds "dir", "cd", "type" and "tree" to the Support Terminal. Listings '
+        + 'include the volume header, the date and size of every entry, and '
+        + 'what is left on the drive. Typing "cd" on its own reports where '
+        + 'you are standing, which is the behaviour of this operating system '
+        + 'and not an oversight.',
+      'The Support Terminal now opens in C:\\SUPPORT and the prompt follows '
+        + 'the directory you are in. A second terminal opens where a second '
+        + 'terminal opens.',
+      'Adds access to other machines through their administrative share, in '
+        + 'the form \\\\PRINT-01\\C$. This works because the Server service '
+        + 'is running on every box in this building, which you can see for '
+        + 'yourself in any services list.',
+      'The print queue is now a directory. Jobs stacked up behind a wedged '
+        + 'spooler are files in the spool folder on the print server, with a '
+        + 'size and a time on each, and emptying the queue empties the '
+        + 'folder. Four files of the same size are four copies of the same '
+        + 'delivery note.',
+      'Each machine now keeps its event log as a file in '
+        + 'C:\\WINDOWS\\SYSTEM32\\LOGFILES. It contains what the Event Viewer '
+        + 'shows, because it is what the Event Viewer shows.',
+      'Directories you have no rights to now report that they are directories '
+        + 'you have no rights to. Payroll would like this noted as working as '
+        + 'intended.',
+      'Known issue: there is no "ls" on this workstation. There is no "ls" on '
+        + 'any workstation in this building. This is not the sort of building '
+        + 'that has one.',
+    ]),
+  },
+  {
     version: '0.2.2',
     date: '2026-08-01',
     summary: 'This update improves the accuracy of workstation reporting.',

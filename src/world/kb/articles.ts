@@ -149,6 +149,11 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     resolution: [
       'Look at the queue: "queue <printer>" says how many jobs are stacked up '
         + 'behind whatever jammed, and what the spooler reports.',
+      'Those jobs are files, and files are in a directory. "dir '
+        + '\\\\PRINT-01\\C$\\WINDOWS\\SYSTEM32\\SPOOL\\PRINTERS" is the same '
+        + 'backlog with a date and a size on every line of it - and four '
+        + 'files of exactly the same size are four copies of the same '
+        + 'delivery note, which is the thing the reporter has not told you.',
       'STOP THE SPOOLER, then empty the queue. The queued jobs are files on '
         + 'disk and the running service has them open, which is exactly when '
         + 'deleting them fails. On this estate those are one control - '

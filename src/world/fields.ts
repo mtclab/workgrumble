@@ -296,6 +296,22 @@ export const FIELDS = {
   batteryPct: 'battery_pct',
   queueLen: 'queue_len',
   /**
+   * The jobs behind that number, one per line: `bytes|stamp`.
+   *
+   * A count on its own cannot fill a spool directory, and a directory that
+   * invented forty-seven sizes and forty-seven times would be exactly the fake
+   * the fidelity bar exists to forbid. So the world holds the jobs, the count
+   * and the list are written in the same breath by everything that touches
+   * either, and a test asserts they agree - which is the only reason a count
+   * and a list may live beside each other at all.
+   *
+   * Nothing here is a document name or an owner: a spool file is named after
+   * its job number and the estate holds no job table, so what it holds is what
+   * a listing prints. The four identical sizes ARE the four re-sent copies of
+   * the same delivery note, which is the diagnosis rather than a decoration.
+   */
+  spoolJobs: 'spool_jobs',
+  /**
    * Whether this device is holding somebody's password and trying it.
    *
    * The classic relock: an account is unlocked, and four minutes later it is
@@ -362,6 +378,47 @@ export const FIELDS = {
    * honest reason as well as the practical one.
    */
   seatsFree: 'seats_free',
+  /**
+   * How much of this drive is not being used, in bytes.
+   *
+   * On the machine, because that is what a disk belongs to, and seeded rather
+   * than counted off the files on it: the listing shows the handful of things
+   * worth naming and a real drive is mostly things nobody names. It is what
+   * the footer of a directory listing quotes, and it is the number the
+   * disk-full ticket will be about.
+   */
+  diskFree: 'disk_free',
+  /** directory + file */
+  /**
+   * The stamp a listing prints beside the entry, as the estate writes dates:
+   * `07/09/1998  08:41`.
+   *
+   * A string rather than a tick, because every file seeded here was written
+   * before the Monday this world starts counting on and a negative tick is not
+   * a date. What the world CAN date - the log a machine is still writing - is
+   * stamped from the clock by `fileStamp`, in the same shape.
+   */
+  modified: 'modified',
+  /**
+   * What is in the file, as lines. Absent means an empty file.
+   *
+   * There is no size beside it on purpose: a listing counts the bytes it would
+   * print, so what `dir` says a file is and what `type` puts on the screen
+   * cannot come apart. The two entries the world holds no text for - a spool
+   * job, a machine's own log - are sized by the thing they are read from.
+   */
+  content: 'content',
+  /**
+   * Whether the account at this terminal is allowed to read it.
+   *
+   * The estate has exactly one kind of "no" on the filesystem and it is an
+   * ACL: the payroll directory on the file server is readable by payroll and
+   * by nobody at first line, which is a true fact about a support desk rather
+   * than a locked door for its own sake. It is on the entry rather than a
+   * group edge because the world holds no file-level directory service and
+   * inventing one would imply a fault class this game does not simulate.
+   */
+  accessDenied: 'access_denied',
   /** share + group + mail_rule */
   path: 'path',
   target: 'target',

@@ -1,11 +1,26 @@
 import { FIELDS } from '../../world/fields';
+import { DEFAULT_CWD } from '../../world/filesystem';
+import { promptPath } from '../../world/fs';
 import { isFumbling } from '../../world/meters';
 import { fumbleTypo, parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
 import type { AppDef } from './types';
 import { element } from './ui';
 
-export const PROMPT = 'C:\\SUPPORT>';
+/**
+ * Where a new terminal opens, and what it says while it is there.
+ *
+ * The prompt follows the working directory, because that is what `$P$G` in the
+ * estate's own AUTOEXEC.BAT means and because a prompt that lied about where
+ * you were standing would make `cd` unreadable. A terminal closed and opened
+ * again comes back here: the working directory belongs to the window, exactly
+ * as its scrollback does, and a new window is a new shell.
+ */
+export function promptFor(cwd: readonly string[]): string {
+  return `${promptPath(cwd)}>`;
+}
+
+export const PROMPT = promptFor(DEFAULT_CWD);
 
 /**
  * The line the terminal prints after it has finished laughing at you. It says
@@ -39,17 +54,21 @@ export const CMD_APP: AppDef = {
 
     const form = element('form', 'cmd-line');
     const prompt = element('span', 'cmd-prompt');
-    prompt.textContent = PROMPT;
     const input = element('input', 'cmd-input', 'cmd-input');
     input.type = 'text';
     input.autocomplete = 'off';
     input.spellcheck = false;
-    input.setAttribute('aria-label', `${PROMPT} command`);
     form.append(prompt, input);
     root.append(output, form);
 
     const history: string[] = [];
     let historyIndex = 0;
+    let cwd: readonly string[] = DEFAULT_CWD;
+
+    const showPrompt = (): void => {
+      prompt.textContent = promptFor(cwd);
+      input.setAttribute('aria-label', `${promptFor(cwd)} command`);
+    };
 
     const print = (text: string, kind = 'output'): void => {
       const line = element('p', 'cmd-line-out');
@@ -75,6 +94,7 @@ export const CMD_APP: AppDef = {
     const submit = (): void => {
       const raw = input.value;
       input.value = '';
+      const typed = promptFor(cwd);
 
       // The gag, in full: what your hands did, then the correction, then the
       // command that actually ran - which is the one you typed.
@@ -82,12 +102,12 @@ export const CMD_APP: AppDef = {
         const typo = fumbleTypo(raw, api.clock.now());
 
         if (typo !== raw) {
-          print(`${PROMPT} ${typo}`, 'echo');
+          print(`${typed} ${typo}`, 'echo');
           print(FUMBLE_NOTE, 'note');
         }
       }
 
-      print(`${PROMPT} ${raw}`, 'echo');
+      print(`${typed} ${raw}`, 'echo');
 
       if (raw.trim().length > 0) {
         history.push(raw);
@@ -95,7 +115,12 @@ export const CMD_APP: AppDef = {
 
       historyIndex = history.length;
 
-      const result = executeCommand(parseCommand(raw), api);
+      const result = executeCommand(parseCommand(raw), api, cwd);
+
+      if (result.cwd !== undefined) {
+        cwd = result.cwd;
+        showPrompt();
+      }
 
       if (result.clear) {
         output.replaceChildren();
@@ -146,6 +171,7 @@ export const CMD_APP: AppDef = {
     // then have to click again is a terminal that is lying about being ready.
     root.addEventListener('click', onRootPointerDown as EventListener);
 
+    showPrompt();
     host.replaceChildren(root);
 
     for (const line of BANNER) {

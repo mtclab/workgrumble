@@ -21,6 +21,18 @@ import {
   startupTypeOf,
 } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
+import { DEFAULT_CWD } from '../../world/filesystem';
+import type { TerminalSession } from '../../world/fs';
+import {
+  cdLines,
+  dirLines,
+  type FileCommandResult,
+  // The same grouping a listing uses, because a process list and a directory
+  // listing have always written a thousand the same way.
+  thousands,
+  treeLines,
+  typeLines,
+} from './cmd-files';
 import {
   addressOf,
   DNS_SUFFIX,
@@ -38,6 +50,16 @@ import { textValue } from './ui';
 export interface CommandResult {
   readonly lines: readonly string[];
   readonly clear: boolean;
+  /**
+   * Where the terminal is standing afterwards, when `cd` moved it.
+   *
+   * The working directory belongs to the WINDOW rather than to the world: it
+   * is not a fact about the estate, no save carries it, and a second terminal
+   * would open where a second terminal opens. Nothing else in this file has an
+   * opinion about it, which is why it travels back out as a result rather than
+   * being written anywhere.
+   */
+  readonly cwd?: readonly string[];
 }
 
 type Lookup =
@@ -60,11 +82,6 @@ const PID_COLUMN = 8;
 const SESSION_COLUMN = 17;
 const SESSION_NUMBER_COLUMN = 11;
 const MEMORY_COLUMN = 12;
-
-/** `3204` -> `3,204`, which is how a process list has always written it. */
-function thousands(value: number): string {
-  return String(value).replace(/\B(?=(\d{3})+(?!\d))/gu, ',');
-}
 
 function lines(...values: readonly string[]): CommandResult {
   return { lines: values, clear: false };
@@ -1254,13 +1271,66 @@ function nslookupLines(api: GameApi, query: string): CommandResult {
 }
 
 /**
+ * The four commands that read the drive.
+ *
+ * They are the one family that needs to know WHERE the terminal is standing,
+ * so they take a session and hand back the one it leaves behind. Everything
+ * about paths, listings and file contents is decided in `world/fs.ts` and
+ * shaped in `cmd-files.ts`; what happens here is the same thing that happens
+ * for every other command - the workstation this terminal is on is found, or
+ * the estate admits it does not have one.
+ */
+function fileCommandLines(
+  parsed: Extract<ParsedCommand, { kind: 'command' }>,
+  api: GameApi,
+  cwd: readonly string[],
+): CommandResult {
+  const machine = playerMachine(api);
+
+  if (machine === undefined) {
+    return noWorkstation();
+  }
+
+  const account = accountOfActor(api);
+  const session: TerminalSession = {
+    machineId: machine.id,
+    cwd,
+    username: account === undefined ? null : labelOf(account),
+  };
+
+  const result = ((): FileCommandResult => {
+    switch (parsed.spec.name) {
+      case 'dir':
+        return dirLines(api.graph, session, parsed.query);
+      case 'cd':
+        return cdLines(api.graph, session, parsed.query);
+      case 'tree':
+        return treeLines(api.graph, session, parsed.args);
+      default:
+        return typeLines(api.graph, session, parsed.query);
+    }
+  })();
+
+  return {
+    lines: result.lines,
+    clear: false,
+    ...(result.cwd === undefined ? {} : { cwd: result.cwd }),
+  };
+}
+
+/**
  * Runs one parsed command against the world. Kept DOM-free on purpose: the
  * terminal is the second skin over the same verb set, and both skins are worth
  * testing without a browser.
+ *
+ * The working directory comes in and, for the one command that moves it, goes
+ * back out: the terminal owns where it is standing, and this function stays a
+ * function of what it was handed.
  */
 export function executeCommand(
   parsed: ParsedCommand,
   api: GameApi,
+  cwd: readonly string[] = DEFAULT_CWD,
 ): CommandResult {
   switch (parsed.kind) {
     case 'empty':
@@ -1327,6 +1397,11 @@ export function executeCommand(
       return queueLines(api, parsed.query);
     case 'rotate':
       return rotateLines(api, parsed.args);
+    case 'dir':
+    case 'cd':
+    case 'type':
+    case 'tree':
+      return fileCommandLines(parsed, api, cwd);
     default:
       break;
   }

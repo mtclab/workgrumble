@@ -18,6 +18,13 @@ export const NODE_KINDS = [
   'group',
   'mail_rule',
   'ticket',
+  /**
+   * The drive. A directory holds things and a file holds bytes, and both are
+   * nodes for the same reason everything else is: the terminal reads the
+   * world, and a tree kept anywhere else would be a second world to keep true.
+   */
+  'directory',
+  'file',
 ] as const;
 
 export const EDGE_KINDS = [
@@ -26,6 +33,8 @@ export const EDGE_KINDS = [
   'connected_to',
   'runs_on',
   'has_access',
+  /** What a drive holds: machine -> its root, directory -> its children. */
+  'contains',
 ] as const;
 
 export const TICKET_STATES = [

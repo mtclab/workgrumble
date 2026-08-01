@@ -258,6 +258,15 @@ export const DEVICE_ACTIONS: readonly ActionData[] = [
         field: FIELDS.queueLen,
         value: { const: 0 },
       },
+      // And the files themselves, in the same breath: the spool directory IS
+      // this list, so a count that went to zero while the directory still held
+      // forty-seven files would be a world arguing with itself in two windows.
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.spoolJobs,
+        value: { const: '' },
+      },
     ],
   },
 ];

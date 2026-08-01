@@ -271,13 +271,28 @@ export async function focusWindow(page: Page, appId: string): Promise<void> {
   await expect(window).toHaveAttribute('data-focused', 'true');
 }
 
+/**
+ * What the terminal is prompting with right now.
+ *
+ * Read rather than assumed, because the prompt follows the working directory:
+ * a session that has typed `cd` is echoing a different line back, and a helper
+ * that waited for `C:\SUPPORT>` would wait for ever.
+ */
+export async function promptText(page: Page): Promise<string> {
+  // `textContent` rather than `innerText`: a terminal that has been minimised
+  // behind the panic key is still the terminal, and what it is prompting with
+  // is not a question about whether it is on screen.
+  return (await page.locator('.cmd-prompt').first().textContent() ?? '').trim();
+}
+
 /** Runs one line in the Support Terminal and waits for it to echo back. */
 export async function runCommand(page: Page, line: string): Promise<void> {
+  const prompt = await promptText(page);
   const input = page.getByTestId('cmd-input');
   await input.fill(line);
   await input.press('Enter');
   await expect(page.getByTestId('cmd-output')).toContainText(
-    `C:\\SUPPORT> ${line}`,
+    `${prompt} ${line}`,
   );
 }
 
@@ -295,10 +310,11 @@ export async function runOnlyCommand(page: Page, line: string): Promise<void> {
   // `cls` is typed rather than run through `runCommand`: that helper waits for
   // the line to be echoed back, and clearing the screen removes its own echo
   // along with everything else. Waiting for it is waiting forever.
+  const prompt = await promptText(page);
   const input = page.getByTestId('cmd-input');
   await input.fill('cls');
   await input.press('Enter');
-  await expect(page.getByTestId('cmd-output')).not.toContainText('C:\\SUPPORT>');
+  await expect(page.getByTestId('cmd-output')).not.toContainText(prompt);
 
   await runCommand(page, line);
 }

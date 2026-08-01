@@ -50,6 +50,10 @@ describe('company world', () => {
     // twenty-odd their role says they run. That number is the point rather
     // than the cost of it: a services list with one thing on it had already
     // done the player's diagnosis for them.
+    //
+    // The two hundred directories and files are the drives, from the same
+    // table and for the same reason: fourteen boxes built from one image, plus
+    // what each role adds and a profile for whoever logs on there.
     expect(counts).toEqual({
       person: 17,
       account: 17,
@@ -60,6 +64,8 @@ describe('company world', () => {
       group: 3,
       mail_rule: 2,
       ticket: 0,
+      directory: 136,
+      file: 64,
     });
   });
 

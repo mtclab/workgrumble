@@ -1703,6 +1703,45 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'cmd.dir',
+    surface: 'cmd',
+    control: 'dir [path]',
+    does: 'Lists a directory with the volume header, the dates, the sizes and '
+      + 'the totals a real one prints - including the spool directory on the '
+      + 'print server, which is the stuck queue as the files it is made of.',
+    command: 'dir',
+    run: 'week',
+  },
+  {
+    id: 'cmd.cd',
+    surface: 'cmd',
+    control: 'cd [path]',
+    does: 'Moves the terminal around the drive, prints where it is standing '
+      + 'when it is asked nothing, and refuses a UNC path in the words the '
+      + 'real one refuses it with.',
+    command: 'cd',
+    run: 'week',
+  },
+  {
+    id: 'cmd.type',
+    surface: 'cmd',
+    control: 'type <file>',
+    does: 'Prints a file: the runbook on this desk, the ini that explains a '
+      + 'service nobody restored, and a machine log that is the same rows the '
+      + 'Event Viewer shows.',
+    command: 'type',
+    run: 'week',
+  },
+  {
+    id: 'cmd.tree',
+    surface: 'cmd',
+    control: 'tree [path] [/f]',
+    does: 'Draws the directories under a path, the files as well with /f, and '
+      + 'stops where somebody else\'s rights start.',
+    command: 'tree',
+    run: 'week',
+  },
+  {
     id: 'cmd.restart',
     surface: 'cmd',
     control: 'restart <service>',

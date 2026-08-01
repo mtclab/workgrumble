@@ -39,8 +39,12 @@ The house rules that apply to every row:
 | `users` | `net user <account>` (there is no `users`) | `User name`, `Account active`, `Account expires`, `Password last set`, `Local Group Memberships` | SHAPED | A plain-language read of the account, in label-and-value shape, over the fields this directory holds. Kept as its own verb because the game teaches the read before it teaches the spelling; `net user` is the same read under the real name. |
 | `net` | `net user <account>`, `net use`, `net share`, `net start` | `The command completed successfully.` | SHAPED (one sub-command) | `net user <account>` only. Every other sub-command is refused by name, because `net use` and `net share` are a different job with different consequences and a stub of either would teach the wrong thing. |
 | `restart` | `net stop <s>` + `net start <s>`, or `sc stop` / `sc start` | `The <name> service is stopping.` / `The <name> service was started successfully.` | SHAPED | One verb for the pair, because a service left stopped is a change with a form attached. Prints `Stopping ... / Starting ... service reports RUNNING`, which is the real pair's shape. Refuses with a reason true of the thing: a fan is hardware, a licence pool is somebody else's box, the manager will not take a stop control for `RpcSs`-class services, a `Disabled` service cannot be started by anything, a healthy service should not be bounced in front of a user, and a queue still full will jam the same service again. |
-| `queue` | `wmic printjob list` / the printer's own queue window | job list with counts | SHAPED | A count and the spooler that feeds it. No job ids, owners or document names - the world holds a queue length, and a list of invented documents would be the fake this bar exists to forbid. |
-| `clearqueue` | `net stop spooler` + `del %systemroot%\System32\spool\PRINTERS\*` + `net start spooler` | the canonical L1 runbook (Microsoft Q&A, PaperCut) | SHAPED | One verb for the first two steps, and it SAYS it stopped the spooler and left it stopped, because the spool files belong to that service. Step three is `restart`. The files it drops are a number, not a directory - the directory arrives with the filesystem slice. |
+| `queue` | `wmic printjob list` / the printer's own queue window | job list with counts | SHAPED | A count and the spooler that feeds it. Still no owners or document names on this command: the world holds a size and a minute per job because a directory listing prints those, and it holds nothing else, so there is nothing here to print that `dir` on the spool directory does not print better. |
+| `clearqueue` | `net stop spooler` + `del %systemroot%\System32\spool\PRINTERS\*` + `net start spooler` | the canonical L1 runbook (Microsoft Q&A, PaperCut) | SHAPED | One verb for the first two steps, and it SAYS it stopped the spooler and left it stopped, because the spool files belong to that service. Step three is `restart`. The files it drops are now a real directory - `\\PRINT-01\C$\WINDOWS\SYSTEM32\SPOOL\PRINTERS` - and emptying the queue empties it, which is asserted after every mutation that touches a queue rather than left to be noticed. |
+| `dir` | `dir [path]` | ` Volume in drive C has no label.` / ` Volume Serial Number is 1A2B-3C4D` / ` Directory of C:\WINDOWS` / `07/09/1998  08:41    <DIR>          .` / `14/03/1997  11:02             1,024 WIN.INI` / `               1 File(s)          1,024 bytes` / `               2 Dir(s)     341,458,944 bytes free` | FAITHFUL | The header, the `.` and `..` rows, the date-and-time column, the `<DIR>` marker, the right-aligned thousand-separated size and both footer lines are the real shape, in the real columns. A path names a file lists that one file under its own directory's header, as the real one does. Deliberately absent: every switch (`/s`, `/b`, `/a`, `/o`, `/w`) and wildcards, both refused by name rather than stubbed - a `/s` that walked one level would teach a recursion that is not there. The date column is the estate's own calendar (day one is Monday 7 September 1998, in `hours.ts`), because the clock this game counts on has no year in it and a listing has to have one. A file's SIZE is the bytes `type` would print, so the two commands cannot disagree; `bytes free` is a seeded number on the machine, because a drive is mostly things nobody lists. Case is folded to find a name and echoed to print the path, which is this family's behaviour; the drive letter comes back as `C:` however it was typed. |
+| `cd` | `cd [path]` | bare `cd` prints the working directory; `cd \\server\share` answers `CMD does not support UNC paths as current directories.` | FAITHFUL | Bare `cd` printing the path is the real Windows quirk and is the one place this family and a unix shell disagree outright - `cd` on its own goes home there and says the name of the room here. `..` at the root is silently nothing, exactly as the real one. Refusals are the real wording: `The system cannot find the path specified.` for a missing path, `The directory name is invalid.` for a file, `Access is denied.` for rights somebody else holds, and the UNC sentence above - which is why a remote path can be listed and read and never stood in. No `/d` and no second drive: this estate has one, and a letter that is not `C:` is refused rather than invented. `~` is not expanded; it is refused with the real not-found sentence and a line naming `%USERPROFILE%`, which is the spelling this family has. |
+| `type` | `type <file>` | the file, and `Access is denied.` when the path is a directory | FAITHFUL | Prints the content and nothing around it. The directory refusal is the real one's, word for word, and is not a mistake in the shell: a directory is opened rather than read. `The system cannot find the file specified.` says "file" where `dir` says "path", because the real pair does. Deliberately absent: multiple files and wildcards, and the binary case - a spool file says out loud that it is the print job itself rather than putting a screenful of a printer's opinions on the screen and calling it a file. |
+| `tree` | `tree [path] [/f]` | `Folder PATH listing` / `Volume serial number is 1A2B-3C4D` / `C:\WINDOWS` / `└───SYSTEM32` / `    ├───LOGFILES` | FAITHFUL | The header pair, the box-drawing branches and `/f` for files are the real ones; an unlabelled volume prints `Folder PATH listing` with no "for volume X" after it, which is what `dir` has already said about this drive. `No subfolders exist` is the real empty answer. Deliberately absent: `/a` (the ASCII form) and every other switch. A directory this account may not read is drawn as a branch that says `Access is denied.` rather than as an empty one, because an empty branch would be a lie about what is in there. |
 | `rotate` | display settings, or `Ctrl+Alt+arrow` on the driver | no console equivalent | SHAPED | A verb for the fix rather than a fiction of a console command that does not exist. Refuses any angle that is not 0/90/180/270, which is what a monitor stand actually offers. |
 | `unlock` | `net user <account> /active:yes` unlocks nothing; the real unlock is ADUC or `Unlock-ADAccount` | `Unlock-ADAccount -Identity x` | SHAPED | A verb for the desk's most common job. Deliberately distinct from `resetpw` and from enabling a disabled account, because those are three different faults that wear the same face at the login box. |
 | `resetpw` | `net user <account> *` / `Set-ADAccountPassword` | prompts for the password twice | SHAPED | Issues a temporary password without prompting, and says out loud that it also clears the lockout and sets "must change at next logon" - three things a real reset dialog asks about separately. |
@@ -53,9 +57,40 @@ The house rules that apply to every row:
 | `renewcert` | `certreq` / the vendor appliance's own console | varies | SHAPED | A verb for the fix. It exists separately from `restart` because restarting a service puts the same expired certificate back in front of the same forty people. |
 | `rule` | `Set-TransportRule -Enabled $true` | PowerShell | SHAPED (one direction) | `rule on` only. Switching a rule OFF is refused, because that is a change with a form attached - the same reason the world's transport rule was written in March and never enabled. |
 
-## Rows to write before the next slice
+## The unix half of the filesystem slice, and why it is not here
 
-The filesystem slice (`SPEC_020` 0.2.3) adds `dir`, `cd`, `type`, `tree` on Windows skins and
-`ls`, `cd`, `pwd`, `cat`, `less` on unix ones. Each needs a row here before it ships, and the
-two families have to differ in OUTPUT SHAPE rather than in spelling: `dir` prints a volume
-header, a date-and-size column and a free-space footer; `ls` prints columns and nothing else.
+`SPEC_020` 0.2.3 lists `ls`, `cd`, `pwd`, `cat` and `less` beside the four above. They are
+NOT shipped, and the reason is the first house rule on this page: families are not one shell
+in hats. There is no Linux skin in this estate - every box in the building is a Windows-family
+box, from `services.msc` down to the `Netlogon` on every workstation - so a `ls` would be a
+unix spelling over a cmd-shaped world, printing this world's columns under another family's
+name. That is the exact failure the bar exists to forbid, and it is worse than the absence:
+the absence teaches nothing, and half a dialect teaches something wrong.
+
+They arrive with the machines that would run them, and when they do they have to differ in
+OUTPUT SHAPE rather than in spelling: `dir` prints a volume header, a date-and-size column
+and a free-space footer; `ls` prints columns and nothing else, and `cd` on its own takes a
+unix shell home rather than printing where it is.
+
+## What the drive is, underneath these four
+
+One paragraph, because every row above leans on it. Directories and files are nodes in the
+same graph as everything else, joined by `contains` edges, and a listing is READ from it -
+there is no second tree anywhere to keep true. Two entries are read from somewhere else in
+the world rather than from a `content` field, and both are derived by a pure function of a
+field another surface already paints:
+
+- the spool directory on a print server IS the queue on the printer plugged into it, so what
+  `dir` shows and what `queue` reports cannot come apart. The world holds one line per job -
+  a size and a minute, nothing more, because that is what a listing prints - and the
+  agreement between that list and the queue length is asserted after every mutation that
+  touches either, including after every step of every advertised path in the solvability
+  harness;
+- `C:\WINDOWS\SYSTEM32\LOGFILES\SYSTEM.LOG` IS the machine's own event log, off the field the
+  Event Viewer paints, so the file and the window are two views of one truth.
+
+Reaching another box is `\\HOST\C$`, the administrative share, which works here for the
+reason it works in the trade: the Server service is running on every box in this building and
+the player can see that it is in any services list. It is a different mechanism from the
+Remote Registry that `tasklist /s` is refused for, which is Disabled everywhere - and that
+difference is the point.

@@ -12,7 +12,7 @@ use crate::error::{EngineError, EngineResult};
 use crate::refuse;
 use crate::value::FieldValue;
 
-pub const NODE_KINDS: [&str; 9] = [
+pub const NODE_KINDS: [&str; 11] = [
     "person",
     "account",
     "machine",
@@ -22,9 +22,20 @@ pub const NODE_KINDS: [&str; 9] = [
     "group",
     "mail_rule",
     "ticket",
+    "directory",
+    "file",
 ];
 
-pub const EDGE_KINDS: [&str; 5] = ["owns", "member_of", "connected_to", "runs_on", "has_access"];
+pub const EDGE_KINDS: [&str; 6] = [
+    "owns",
+    "member_of",
+    "connected_to",
+    "runs_on",
+    "has_access",
+    // What a drive holds. A machine contains its root, a directory contains
+    // its children, and nothing else in the estate is spelled this way.
+    "contains",
+];
 
 pub const TICKET_STATES: [&str; 4] = ["open", "resolved", "breached", "waiting_on_user"];
 
@@ -100,6 +111,15 @@ fn is_number(value: &FieldValue) -> bool {
     matches!(value, FieldValue::Num(_))
 }
 
+/// A name somebody could type. Empty is refused rather than tolerated: a
+/// directory entry with no name is an entry no path can ever reach, which is
+/// the same class of fault as a ticket with no deadline.
+fn is_named(fields: &Fields) -> bool {
+    optional(fields, "name")
+        .and_then(FieldValue::as_str)
+        .is_some_and(|name| !name.trim().is_empty())
+}
+
 /// The per-kind field check on its own, for mutations that change a field
 /// without rebuilding the node around it.
 pub fn validate_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
@@ -152,6 +172,27 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
             assert_optional(fields, "path", is_string, "a string")
         }
         "group" => assert_optional(fields, "name", is_string, "a string"),
+        "directory" | "file" => {
+            assert_optional(fields, "name", is_string, "a string")?;
+            // The stamp a listing prints. A string rather than a tick: every
+            // file on this estate was written before the clock this world
+            // counts on started, and a negative tick is not a date.
+            assert_optional(fields, "modified", is_string, "a string")?;
+            assert_optional(fields, "access_denied", is_boolean, "a boolean")?;
+
+            // What is in it, and therefore how big it is: a listing counts the
+            // bytes it would print rather than carrying a second number that
+            // could disagree with them.
+            if kind == "file" {
+                assert_optional(fields, "content", is_string, "a string")?;
+            }
+
+            if !is_named(fields) {
+                return refuse!("{kind} nodes require a non-empty \"name\" field.");
+            }
+
+            Ok(())
+        }
         "mail_rule" => {
             assert_optional(fields, "name", is_string, "a string")?;
             assert_optional(fields, "enabled", is_boolean, "a boolean")?;
@@ -304,6 +345,49 @@ mod tests {
         .expect_err("ticket needs spawned_at");
 
         assert!(error.message().contains("spawned_at"));
+    }
+
+    #[test]
+    fn refuses_a_directory_entry_nothing_could_name() {
+        let error = validate_node(&json!({
+            "id": "dir:beige-box/c",
+            "kind": "directory",
+            "fields": { "name": "   " },
+        }))
+        .expect_err("a directory needs a name");
+
+        assert!(error.message().contains("name"));
+
+        let error = validate_node(&json!({
+            "id": "file:beige-box/c/win.ini",
+            "kind": "file",
+            "fields": { "name": "WIN.INI", "content": 4 },
+        }))
+        .expect_err("a file holds text or nothing");
+
+        assert!(error.message().contains("content"));
+    }
+
+    #[test]
+    fn accepts_a_file_and_the_drive_that_holds_it() {
+        let file = validate_node(&json!({
+            "id": "file:beige-box/c/autoexec.bat",
+            "kind": "file",
+            "fields": {
+                "name": "AUTOEXEC.BAT",
+                "content": "@ECHO OFF",
+                "modified": "14/03/1997  11:02",
+            },
+        }))
+        .expect("valid file");
+
+        assert_eq!(file.kind, "file");
+        assert!(validate_edge(&json!({
+            "from": "dir:beige-box/c",
+            "to": "file:beige-box/c/autoexec.bat",
+            "kind": "contains",
+        }))
+        .is_ok());
     }
 
     #[test]

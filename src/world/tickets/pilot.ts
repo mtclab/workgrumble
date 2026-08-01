@@ -1,10 +1,58 @@
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { FIELDS, LOCKOUT_THRESHOLD, SERVICE_STATUS } from '../fields';
+import { encodeSpoolJob } from '../fs';
+import { stampAt } from '../hours';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import type { WorldTicket } from './types';
 
 const PRINTER_QUEUE_DEPTH = 47;
+
+/**
+ * The pile itself, which is a directory as well as a number.
+ *
+ * A queue length can be a count; a spool directory cannot - it holds files,
+ * and files have sizes and times. So the world holds the jobs, one line per
+ * job, and everything that moves the count moves the list in the same breath.
+ * The two are asserted to agree, which is the only reason a count and a list
+ * are allowed to live beside each other at all.
+ *
+ * Nothing in a line is a document name or an owner: a spool file is named
+ * after its job number, so what the world holds is exactly what a listing
+ * prints and no more. The four identical sizes are the four copies of the same
+ * delivery note, re-sent by increasingly short-tempered people - which is the
+ * diagnosis the ticket's own flavour text promises, sitting in the directory
+ * where a tech would find it.
+ */
+const DELIVERY_NOTE_BYTES = 40_960;
+
+const JOB_BYTES: readonly number[] = [
+  12_288, 8_192, 4_096, 233_472, 6_144, 16_384, 2_048,
+  DELIVERY_NOTE_BYTES, 30_720, 5_120, 61_440, 10_240, 3_072, 24_576,
+  DELIVERY_NOTE_BYTES, 7_168, 143_360, 9_216, 20_480, 4_096, 51_200,
+  DELIVERY_NOTE_BYTES, 13_312, 2_048, 86_016, 15_360, 6_144, 45_056,
+  DELIVERY_NOTE_BYTES, 11_264, 5_120, 71_680, 18_432, 3_072, 27_648,
+  8_192, 4_096, 96_256, 12_288, 6_144, 33_792, 2_048,
+  57_344, 14_336, 5_120, 22_528, 9_216,
+];
+
+/** The minute the first of them was sent, which was before anybody arrived. */
+const FIRST_JOB_MINUTE = 7 * 60 + 58;
+
+/**
+ * The queue as the world holds it: one job a minute from just before eight,
+ * which is what a morning looks like when nothing is coming out of the other
+ * end. Written as a function of the table above so the count and the list
+ * cannot be edited apart.
+ */
+function spoolJobsField(): string {
+  return JOB_BYTES.map(
+    (bytes, index) => encodeSpoolJob({
+      bytes,
+      modified: stampAt(1, FIRST_JOB_MINUTE + index),
+    }),
+  ).join('\n');
+}
 
 /**
  * Pilot ticket 1 - hidden_cause. The reported symptom ("hacked") and the
@@ -218,6 +266,16 @@ export const WEDGED_SPOOLER: WorldTicket = {
         id: COMPANY_IDS.printer,
         field: FIELDS.queueLen,
         value: PRINTER_QUEUE_DEPTH,
+      },
+      // The same pile, as the files it is made of. Written here rather than
+      // derived at the other end because a directory holding forty-seven
+      // invented sizes and times would be exactly the fake the fidelity bar
+      // exists to forbid.
+      {
+        op: 'setField',
+        id: COMPANY_IDS.printer,
+        field: FIELDS.spoolJobs,
+        value: spoolJobsField(),
       },
     ],
     resolved_when: {
