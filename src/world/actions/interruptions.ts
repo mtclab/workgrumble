@@ -228,6 +228,15 @@ export const INTERRUPTION_ACTION_DATA: readonly ActionData[] = [
         when: listed(FIELDS.interruptionDeferred),
         reason: ALREADY_DEFERRED_REASON,
       },
+      // And the same flag decline reads, for the same reason it reads it.
+      // An interruption you cannot wave off is not one you can push twenty
+      // minutes out either: "I will catch up on the sync afterwards" is the
+      // same sentence as "I will skip the sync" said more politely, and the
+      // world answers both with the reason a junior does not.
+      {
+        when: not({ pred: 'param_int_in', param: DECLINABLE_PARAM, values: [1] }),
+        reason: NOT_DECLINABLE_REASON,
+      },
     ],
     // Nothing but the record. Deferring costs no focus - you did not have the
     // conversation - and WHEN it comes back is the schedule's business

@@ -604,6 +604,64 @@ export function placeDeferred(
 }
 
 /**
+ * The worst the day can do to the screen: every entry taken at the LATEST
+ * minute it can be taken at.
+ *
+ * Deferring does not save any minutes - it moves them - so the worst case for
+ * a ticket with a deadline is the version where every conversation happens as
+ * late as it possibly can. That is what the solvability gate walks the
+ * advertised paths against, and it is a pure function of the schedule and the
+ * day's other bookings so the gate can ask it without building a world.
+ *
+ * An entry with no room left for a callback keeps its first window: the day
+ * cannot lose minutes it has already run out of.
+ */
+export function worstCaseWindows(
+  schedule: Readonly<InterruptionSchedule>,
+  blocked: readonly TickWindow[],
+): readonly TickWindow[] {
+  return schedule.entries.map((entry) => entryWindow(
+    // Only the ones anybody may push. A block nobody can wave off is a block
+    // nobody can move either - the world refuses both with the same flag and
+    // for the same reason - so its worst case is the half hour it was booked
+    // for, and a model that slid it would be modelling a day that cannot
+    // happen.
+    entry.declinable
+      ? placeDeferred(entry, schedule, blocked) ?? entry
+      : entry,
+  ));
+}
+
+/**
+ * Minutes between `from` and `to` that nobody has already spoken for.
+ *
+ * Half-open at both ends, like every other window in this world, and counted
+ * a minute at a time rather than by subtracting lengths - bookings overlap
+ * each other and a subtraction would double-count the overlap, which is
+ * exactly the arithmetic error that would make a solvability gate report air
+ * that is not there.
+ */
+export function clearMinutes(
+  from: number,
+  to: number,
+  booked: readonly TickWindow[],
+): number {
+  let clear = 0;
+
+  for (let tick = from; tick < to; tick += 1) {
+    if (isLunchtime(tick)) {
+      continue;
+    }
+
+    if (!booked.some((window) => tick >= window.from && tick < window.to)) {
+      clear += 1;
+    }
+  }
+
+  return clear;
+}
+
+/**
  * Whether an interruption is about the work in hand.
  *
  * Benign is the reporter of the ticket you are actually touching, ringing

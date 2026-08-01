@@ -360,11 +360,18 @@ describe('the mandatory sync', () => {
     expect(block?.entry.declinable).toBe(false);
 
     // The refusal is the teaching, so it has to be the WORLD's sentence
-    // rather than a missing button.
+    // rather than a missing button - and BOTH of them, because catching up on
+    // it afterwards is skipping it said more politely.
     expect(world.driver.declineInterruption()).toEqual({
       ok: false,
       reason: NOT_DECLINABLE_REASON,
     });
+    expect(world.driver.deferInterruption()).toEqual({
+      ok: false,
+      reason: NOT_DECLINABLE_REASON,
+    });
+    // And it is still there afterwards, which is the point of a refusal.
+    expect(world.driver.interruption()?.entry.id).toBe('meeting:hygiene-sync');
   });
 
   /**

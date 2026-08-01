@@ -143,7 +143,7 @@ describe('answering an interruption', () => {
     // Nothing in the registry takes it back off: it is a cost, not a state the
     // player manages. Deferring or declining something else leaves it exactly
     // where it was.
-    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:accounts' });
+    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:accounts', declinable: 1 });
     expect(player(FIELDS.refocusUntil)).toBe(until);
   });
 
@@ -205,7 +205,7 @@ describe('answering an interruption', () => {
 describe('the record of what was done', () => {
   it('puts each decision in exactly one of the three lists', () => {
     dispatch(DAY_ACTIONS.interruptionAccept, null, { id: 'call:printer' });
-    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:accounts' });
+    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:accounts', declinable: 1 });
     dispatch(DAY_ACTIONS.interruptionDecline, null, {
       id: 'call:sales',
       declinable: 1,
@@ -222,7 +222,7 @@ describe('the record of what was done', () => {
    * exactly that event, and afterwards the world still knows.
    */
   it('survives the checkpoint that empties the dispatch log', () => {
-    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:accounts' });
+    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:accounts', declinable: 1 });
     fixture.checkpoint();
 
     expect(fixture.dispatchLog()).toEqual([]);
@@ -230,7 +230,7 @@ describe('the record of what was done', () => {
     // And the world still refuses the second push, which is the point of
     // remembering: the guard reads the graph, not the log.
     expectRefusal(
-      dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:accounts' }),
+      dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:accounts', declinable: 1 }),
       ALREADY_DEFERRED_REASON,
     );
   });
@@ -250,7 +250,7 @@ describe('the record of what was done', () => {
       ALREADY_SETTLED_REASON,
     );
     expectRefusal(
-      dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:printer' }),
+      dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:printer', declinable: 1 }),
       ALREADY_SETTLED_REASON,
     );
     expect(lines(FIELDS.interruptionAnswered)).toEqual(['call:printer']);
@@ -258,11 +258,28 @@ describe('the record of what was done', () => {
 });
 
 describe('deferring', () => {
+  /**
+   * The block nobody may skip is a block nobody may push either, and the two
+   * refusals are the same sentence on purpose: "I will catch up on the sync
+   * afterwards" is "I will skip the sync" said more politely, and a world that
+   * answered one and not the other would have left the polite version open.
+   */
+  it('refuses to push something the world says cannot be waved off', () => {
+    expectRefusal(
+      dispatch(DAY_ACTIONS.interruptionDefer, null, {
+        id: 'meeting:hygiene',
+        declinable: 0,
+      }),
+      NOT_DECLINABLE_REASON,
+    );
+    expect(lines(FIELDS.interruptionDeferred)).toEqual([]);
+  });
+
   it('re-queues once, and the second push is refused in words', () => {
-    expect(dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:x' }).ok)
+    expect(dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:x', declinable: 1 }).ok)
       .toBe(true);
     expectRefusal(
-      dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:x' }),
+      dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:x', declinable: 1 }),
       ALREADY_DEFERRED_REASON,
     );
     expect(lines(FIELDS.interruptionDeferred)).toEqual(['call:x']);
@@ -274,7 +291,7 @@ describe('deferring', () => {
    * conversation, and the world says so rather than the window hiding a button.
    */
   it('makes the second arrival undeclinable, whatever the entry said', () => {
-    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:x' });
+    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:x', declinable: 1 });
 
     expectRefusal(
       dispatch(DAY_ACTIONS.interruptionDecline, null, {
@@ -294,7 +311,7 @@ describe('deferring', () => {
   });
 
   it('costs no focus on its own - you did not have the conversation', () => {
-    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:x' });
+    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:x', declinable: 1 });
     expect(player(FIELDS.refocusUntil)).toBeUndefined();
   });
 });
@@ -332,7 +349,7 @@ describe('the whole grammar, replayed', () => {
    * checkpointed and read back.
    */
   it('leaves one readable record of a morning nobody enjoyed', () => {
-    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:accounts' });
+    dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:accounts', declinable: 1 });
     dispatch(DAY_ACTIONS.interruptionDecline, null, {
       id: 'call:sales',
       declinable: 1,

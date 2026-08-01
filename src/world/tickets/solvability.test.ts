@@ -49,11 +49,22 @@ import { loadEngineForTests } from '../../engine-api/load-node';
 import type { TicketDef } from '../../engine-api';
 import { DayDriver } from '../../shell/day-driver';
 import { HELPDESK_ACTIONS } from '../actions';
+import { CAUGHT_MINUTES } from '../boss';
 import { COMPANY_IDS } from '../company';
+import { buildDaySchedule, shiftEndTick, shiftStartTick } from '../day';
 import { FIELDS } from '../fields';
 import { spoolDisagreements, storedDisagreements } from '../fs';
+import { lunchWindow, minuteOfDay, serviceDeadline, type TickWindow } from '../hours';
+import {
+  buildInterruptionSchedule,
+  clearMinutes,
+  type InterruptionSlot,
+  worstCaseWindows,
+} from '../interruptions';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
-import { createWorldSession, type WorldSession } from '../session';
+import { TICKET_HYGIENE_SYNC } from '../scenes/meeting';
+import { createWorldSession, seedForAttempt, type WorldSession } from '../session';
+import { dayPlan, interruptionPlanFor } from '../week';
 import {
   findWorldTicket,
   ticketsNeededFor,
@@ -399,6 +410,199 @@ describe('every shipped ticket is solvable', () => {
       expect(session.engine.ticketState(entry.def.id), entry.def.id)
         .toBe('open');
     }
+  });
+});
+
+/* -- solvable under the worst schedule the week can deal ------------------- */
+
+/**
+ * The other half of solvable, and the half a timeless audit cannot see.
+ *
+ * Everything above proves a path CLOSES its ticket. It says nothing about
+ * whether the player was ever at the desk to drive it, and 0.3.0 puts things
+ * on the calendar that take the screen away: a call, a callback twenty minutes
+ * later, and half an hour in a room nobody can leave. A ticket whose entire
+ * service window is spoken for is not a hard ticket - it is a row with a clock
+ * on it that the player was never given a minute to touch, which is precisely
+ * the failure the whole solvability gate exists for, arriving by a door the
+ * gate did not have.
+ *
+ * So: for every ticket the week deals, against the WORST schedule the day can
+ * produce - every interruption taken at the latest minute it can be taken at,
+ * on top of the lead's rounds and lunch - there has to be clear air inside the
+ * ticket's own service window.
+ *
+ * It is arithmetic against the shipped content rather than a walked world on
+ * purpose. The question is about the CALENDAR, and a world would answer it
+ * with one week of one seed while the calendar answers it for the week as
+ * authored.
+ */
+
+/**
+ * The clear minutes a ticket needs inside its own deadline before this gate
+ * calls it reachable.
+ *
+ * `CAUGHT_MINUTES` - ten - and it is borrowed rather than invented, because
+ * this world already has a unit for "a chunk of the shift somebody lost": it
+ * is what a conversation in the corridor costs. A ticket with less clear air
+ * than one telling-off is a ticket the day did not really deal.
+ */
+const CLEAR_MINUTES_NEEDED = CAUGHT_MINUTES;
+
+/** When a ticket the week deals turns up, when anybody could start it, and
+ * when the clock on it runs out. */
+interface Dealt {
+  readonly id: string;
+  /** The first minute of the shift it could be worked in. */
+  readonly workableFrom: number;
+  readonly due: number;
+}
+
+function dealtOn(day: number, seed: number): readonly Dealt[] {
+  return buildDaySchedule(day, seed, dayPlan(day)).arrivals.map((arrival) => {
+    const entry = findWorldTicket(arrival.ticketId);
+
+    if (entry === undefined) {
+      throw new Error(
+        `Day ${String(day)} deals "${arrival.ticketId}", which nobody wrote.`,
+      );
+    }
+
+    return {
+      id: arrival.ticketId,
+      // A ticket inherited at eight o'clock is a ticket nobody is paid to
+      // look at until nine, so the window it can be WORKED in starts at the
+      // shift even though the clock on it started earlier.
+      workableFrom: Math.max(arrival.tick, shiftStartTick(day)),
+      due: serviceDeadline(arrival.tick, entry.def.sla_ticks),
+    };
+  });
+}
+
+/**
+ * The complaint a day earns, or nothing. A list rather than an assertion for
+ * the same reason `auditPath` is: it is the only way to point the gate at a
+ * day that is MEANT to fail and watch it say so.
+ */
+export function auditDayTiming(
+  day: number,
+  seed: number,
+  extra: readonly InterruptionSlot[] = [],
+  // The lead's rounds, overridable ONLY so the meta-test below can construct
+  // a day whose bookings it chose. Every real caller takes the day's own.
+  rounds?: readonly TickWindow[],
+): readonly string[] {
+  const plan = interruptionPlanFor(day, seed);
+  const blocked = rounds ?? plan.blocked;
+  const schedule = buildInterruptionSchedule(seed, day, {
+    slots: [...plan.slots, ...extra],
+    blocked,
+  });
+  const booked = [...blocked, ...worstCaseWindows(schedule, blocked)];
+
+  return dealtOn(day, seed).flatMap((ticket) => {
+    // The window a player could work it in: from the minute it lands to the
+    // minute the deadline runs out, and never past the end of the shift -
+    // tomorrow's minutes are a different day's problem and this day's ticket
+    // has to have been reachable today.
+    const clear = clearMinutes(
+      ticket.workableFrom,
+      Math.min(ticket.due, shiftEndTick(day)),
+      booked,
+    );
+
+    return clear >= CLEAR_MINUTES_NEEDED
+      ? []
+      : [
+        `${ticket.id} has ${String(clear)} clear minute(s) between arriving `
+        + `and going red, against the ${String(CLEAR_MINUTES_NEEDED)} it `
+        + 'needs. The day is spoken for and the ticket is not reachable.',
+      ];
+  });
+}
+
+describe('every advertised path is reachable under the worst schedule', () => {
+  const seed = seedForAttempt(1);
+
+  it.each([1, 2, 3, 4, 5])('day %i leaves clear air on everything it deals', (day) => {
+    expect(auditDayTiming(day, seed)).toEqual([]);
+  });
+
+  /**
+   * And the week deals something on every one of its days, so the block above
+   * is not five assertions about empty lists. `describe.each` over nothing
+   * passes in silence, and so does a day whose queue went missing.
+   */
+  it('is asking about a week that has tickets in it', () => {
+    for (const day of [1, 2, 3, 4, 5]) {
+      expect(dealtOn(day, seed).length, `day ${String(day)}`)
+        .toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * The teeth, and the no-op discipline applied: the same function, pointed
+   * at a day with an interruption on it that is meant to swallow a ticket.
+   *
+   * A four-hour block starting the minute the shift does takes every minute
+   * a morning ticket could have been worked in. If this gate ever stops
+   * saying so, it has stopped being a gate - and the two assertions are both
+   * needed, because "returns a complaint" and "names the ticket that caused
+   * it" are different claims and only the second is useful at four in the
+   * afternoon.
+   */
+  /**
+   * The teeth, and the no-op discipline applied: the same function, pointed at
+   * a day whose blocks are built to swallow one ticket whole.
+   *
+   * The two fixture blocks are computed FROM the ticket rather than typed, so
+   * the meta-test cannot quietly stop covering anything when the seed moves
+   * the drip by a minute - and the lead's rounds are handed in empty, because
+   * this is a claim about the arithmetic rather than about Monday.
+   */
+  it('says so when a ticket has nowhere left in the day to be worked', () => {
+    const swallowed = dealtOn(1, seed).find(
+      (ticket) => ticket.workableFrom > shiftStartTick(1),
+    );
+
+    expect(swallowed).toBeDefined();
+
+    const at = (tick: number): number => minuteOfDay(tick);
+    const block = (id: string, from: number, to: number): InterruptionSlot => ({
+      id,
+      source: 'meeting',
+      minute: at(from),
+      minutes: to - from,
+      relatedTicket: null,
+      declinable: false,
+      synchronous: true,
+      severity: 3,
+      flavor: {
+        scene: TICKET_HYGIENE_SYNC.id,
+        subject: 'A fixture, and not a meeting anybody sits in',
+      },
+    });
+
+    const from = swallowed?.workableFrom ?? 0;
+    const to = swallowed?.due ?? 0;
+    const lunch = lunchWindow(1);
+    const complaints = auditDayTiming(
+      1,
+      seed,
+      [
+        block('meeting:gate-fixture-before-lunch', from, lunch.from),
+        block('meeting:gate-fixture-after-lunch', lunch.to, to),
+      ],
+      [],
+    );
+
+    expect(complaints.length).toBeGreaterThan(0);
+    expect(complaints.join('\n')).toContain('not reachable');
+    // And it names the ticket, because "something is unreachable" is not a
+    // sentence anybody can act on at four in the afternoon.
+    expect(complaints.some(
+      (line) => line.startsWith(swallowed?.id ?? ''),
+    )).toBe(true);
   });
 });
 

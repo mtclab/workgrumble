@@ -1952,6 +1952,10 @@ export class DayDriver implements DayApi {
       ? { ok: false, reason: NOTHING_RINGING }
       : this.engine.dispatch(DAY_ACTIONS.interruptionDefer, this.actor, null, {
         id: view.entry.id,
+        // The same flag decline is given, because it answers the same
+        // question: an interruption nobody may wave off is not one anybody
+        // may push twenty minutes out either.
+        declinable: view.entry.declinable ? 1 : 0,
       });
   }
 
