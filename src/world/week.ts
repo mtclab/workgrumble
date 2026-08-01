@@ -432,7 +432,7 @@ export const WEEK: readonly DayScript[] = validateWeek([
     // minutes, and the row cannot know which it will be.
     interruptions: [
       {
-        id: 'interruption:spooler-call',
+        id: 'call:spooler',
         source: 'call',
         minute: 10 * 60 + 5,
         minutes: 6,
@@ -499,7 +499,7 @@ export const WEEK: readonly DayScript[] = validateWeek([
     // the two refusals exist to say WHY, which is the point of them.
     interruptions: [
       {
-        id: 'interruption:hygiene-sync',
+        id: 'meeting:hygiene-sync',
         source: 'meeting',
         minute: HYGIENE_SYNC_MINUTE,
         minutes: HYGIENE_SYNC_MINUTES,
@@ -531,7 +531,7 @@ export const WEEK: readonly DayScript[] = validateWeek([
     // half of the cost model, and the reason it costs what it costs.
     interruptions: [
       {
-        id: 'interruption:annexe-printer',
+        id: 'call:annexe-printer',
         source: 'call',
         minute: 11 * 60 + 20,
         minutes: 5,

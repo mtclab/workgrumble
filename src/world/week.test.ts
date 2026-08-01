@@ -327,9 +327,9 @@ describe('the day\'s interruptions', () => {
       (slot) => [slot.id, slot.source, slot.relatedTicket],
     ))).toEqual([
       [],
-      [['interruption:spooler-call', 'call', 'ticket:wedged-spooler']],
-      [['interruption:hygiene-sync', 'meeting', null]],
-      [['interruption:annexe-printer', 'call', null]],
+      [['call:spooler', 'call', 'ticket:wedged-spooler']],
+      [['meeting:hygiene-sync', 'meeting', null]],
+      [['call:annexe-printer', 'call', null]],
       [],
     ]);
 
