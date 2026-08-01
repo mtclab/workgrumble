@@ -31,6 +31,44 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.3.0',
+    date: '2026-08-02',
+    summary: 'This update adds interruptions.',
+    lines: Object.freeze([
+      'The telephone now works. Colleagues can call you while you are working '
+        + 'on something else, which Personnel are advised is the normal use of '
+        + 'a telephone. A call can be answered, asked to ring back, or '
+        + 'declined, where the caller is somebody who can be declined. Asking '
+        + 'somebody to ring back works once. The second call does not offer '
+        + 'the button, for the reason you would expect.',
+      'A call about the fault you are actually working is part of the work, '
+        + 'and is treated as such: what is said in it lands on the ticket. A '
+        + 'call about anything else costs you the place you were holding in '
+        + 'what you were doing. IT are aware that finding your place again '
+        + 'takes on average twenty-three minutes and have decided to describe '
+        + 'this rather than fix it, as it is not a fault in any system they '
+        + 'administer.',
+      'A call that is allowed to ring until it stops is recorded as a call '
+        + 'that was allowed to ring until it stopped. The record does not say '
+        + 'anything else. It does not need to. You will also find you lost '
+        + 'some of your place anyway, as the ringing was not nothing.',
+      'Meetings have been introduced. Where a meeting concerns you it will be '
+        + 'announced in the morning briefing and confirmed by mail, naming the '
+        + 'hour. Attendance is expected. The meeting occupies the whole of '
+        + 'your screen for the whole of its duration; your queue, and every '
+        + 'clock on it, continues in your absence. This is not a fault. A '
+        + 'summary mail is circulated afterwards containing the meeting, in '
+        + 'full, for the benefit of those who were there.',
+      'The Start menu now stays on the screen regardless of how much has been '
+        + 'installed on this workstation. Items which were previously above '
+        + 'the top of the screen can now be clicked. Colleagues who reported '
+        + 'that the menu was "fine on my machine" are thanked for their '
+        + 'contribution to the investigation.',
+      'Known issue: the pace of the working day is under ongoing review '
+        + 'following the addition of people to it.',
+    ]),
+  },
+  {
     version: '0.2.7',
     date: '2026-08-01',
     summary: 'This update adds the consultation and selection screens '
