@@ -159,6 +159,35 @@ async function collectControls(page: Page): Promise<void> {
   }
 }
 
+
+/**
+ * Runs the clock a minute at a time until something is actually taking the
+ * screen off the player, or says what never turned up.
+ *
+ * It watches the window's own attribute rather than whether the window exists,
+ * because both of these windows can be up with nothing in them: a call that
+ * was waved off leaves its window open with the outcome on it, and either can
+ * be opened cold from the start menu.
+ */
+async function huntForTakeover(
+  page: Page,
+  appId: 'call' | 'meeting',
+  limit = 90,
+): Promise<void> {
+  const app = page.getByTestId(`${appId}-app`);
+  const attribute = appId === 'call' ? 'data-call' : 'data-meeting';
+
+  for (let minute = 0; minute < limit; minute += 1) {
+    if (await app.count() > 0 && await app.getAttribute(attribute) !== 'none') {
+      return;
+    }
+
+    await runSimMinutes(page, 1, 1);
+  }
+
+  throw new Error(`Nothing took the screen with a ${appId} inside the hour.`);
+}
+
 /**
  * Drives one entry, named after it.
  *
@@ -1808,6 +1837,47 @@ test('walks every function of a probation week that goes well', async ({
   await beginShift(page);
   await workUntilMinute(page, 90);
 
+  /*
+   * Ten o'clock, and the phone. It is walked FIRST rather than around,
+   * because a takeover that is dealt with is a Tuesday and one that is
+   * ignored is a window sitting on top of every step after it.
+   */
+
+  await step('call.window', async () => {
+    await huntForTakeover(page, 'call');
+    await expect(page.getByTestId('call-caller')).not.toBeEmpty();
+    await expect(page.getByTestId('call-subject')).toContainText('printer');
+  });
+
+  await step('call.defer', async () => {
+    await page.getByTestId('call-defer').click();
+    await expect(page.getByTestId('call-outcome')).toContainText('ring back');
+    // The minutes it would have taken are the player's again.
+    await expect(page.getByTestId('call-app'))
+      .toHaveAttribute('data-call', 'none');
+  });
+
+  await step('call.callback', async () => {
+    await huntForTakeover(page, 'call', 40);
+    await expect(page.getByTestId('call-app'))
+      .toHaveAttribute('data-callback', 'true');
+    // And the one button that is not on offer the second time says so rather
+    // than being missing.
+    await page.getByTestId('call-decline').click();
+    await expect(page.getByTestId('call-refusal')).toContainText('coming back');
+  });
+
+  await step('call.answer', async () => {
+    await page.getByTestId('call-answer').click();
+    await expect(page.getByTestId('call-app'))
+      .toHaveAttribute('data-answered', 'true');
+  });
+
+  await step('call.conversation', async () => {
+    await page.getByTestId('call-option-0').click();
+    await expect(page.getByTestId('call-transcript')).toContainText('twice');
+  });
+
   await step('remote.power-cycle', async () => {
     await openFromStartMenu(page, 'remote');
     await page.getByTestId('remote-machine-print-warehouse').click();
@@ -1914,6 +1984,31 @@ test('walks every function of a probation week that goes well', async ({
 
   await beginShift(page);
   await workUntilMinute(page, 70);
+
+  /* Half past ten, and the half hour that was in Monday's inbox. */
+
+  await step('meeting.window', async () => {
+    await workUntilMinute(page, 145);
+    await huntForTakeover(page, 'meeting', 20);
+    await expect(page.getByTestId('desktop'))
+      .toHaveAttribute('data-takeover', 'meeting');
+    await expect(page.getByTestId('meeting-desk')).toContainText('still open');
+  });
+
+  await step('meeting.decline', async () => {
+    await page.getByTestId('meeting-decline').click();
+    await expect(page.getByTestId('meeting-refusal')).toBeVisible();
+    await expect(page.getByTestId('meeting-app')).toBeVisible();
+  });
+
+  await step('meeting.defer', async () => {
+    await page.getByTestId('meeting-defer').click();
+    await expect(page.getByTestId('meeting-refusal')).toBeVisible();
+    // Out the far side of it, and the desk is the player's again.
+    await runSimMinutes(page, 32);
+    await expect(page.getByTestId('desktop'))
+      .toHaveAttribute('data-takeover', 'none');
+  });
 
   await step('cmd.licence', async () => {
     await openFromStartMenu(page, 'cmd');
@@ -2030,6 +2125,17 @@ test('walks every function of a probation week that goes well', async ({
 
   await beginShift(page);
   await workUntilMinute(page, 70);
+
+  await step('call.decline', async () => {
+    // Twenty past eleven, and a printer in a building this desk does not hold
+    // the contract for. This one the world says you may wave off.
+    await workUntilMinute(page, 195);
+    await huntForTakeover(page, 'call', 30);
+    await page.getByTestId('call-decline').click();
+    await expect(page.getByTestId('call-outcome')).toContainText('stops ringing');
+    await expect(page.getByTestId('call-app'))
+      .toHaveAttribute('data-call', 'none');
+  });
 
   await step('cmd.forget', async () => {
     await openFromStartMenu(page, 'cmd');
