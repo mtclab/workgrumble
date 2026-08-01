@@ -8,6 +8,7 @@ import {
   dismissBrief,
   dragBy,
   focusWindow,
+  installedVersion,
   issueBadge,
   logInOnDay,
   logOnWithBadge,
@@ -20,6 +21,7 @@ import {
   runToTelegraph,
   workUntil,
   workUntilMinute,
+  workUntilTicket,
   worldHash,
 } from './helpers';
 import { REFUSED_TOKENS, SHARED_TOKEN } from './tokens';
@@ -1017,8 +1019,17 @@ test('walks every function of a probation week that goes well', async ({
     await openFromStartMenu(page, 'updates');
     await expect(page.getByTestId('updates-installed'))
       .toContainText('has been installed');
-    await expect(page.getByTestId('updates-line').first())
-      .toContainText('Addresses an issue');
+    // The window shows THIS build's note, at the top, flagged as the one that
+    // was installed, with lines under it. It used to assert the first four
+    // words of the newest release note, which meant every release either
+    // opened with the same sentence or broke this walk - and 0.2.4 broke it.
+    const version = await installedVersion(page);
+
+    await expect(page.getByTestId(`updates-entry-${version}`))
+      .toHaveAttribute('data-installed', 'true');
+    await expect(page.getByTestId(`updates-version-${version}`))
+      .toHaveText(`Update ${version}`);
+    await expect(page.getByTestId('updates-line').first()).not.toBeEmpty();
   });
 
   await step('updates.report', async () => {
@@ -1591,7 +1602,10 @@ test('walks every function of a probation week that goes well', async ({
 
     await runCommand(page, 'tree C:\\WINDOWS');
     await expect(output).toContainText('Folder PATH listing');
-    await expect(output).toContainText('└───SYSTEM32');
+    // SYSTEM32 stopped being the last branch of this directory when every box
+    // gained the temp directory its image has always made.
+    await expect(output).toContainText('├───SYSTEM32');
+    await expect(output).toContainText('└───TEMP');
     await runCommand(page, 'tree \\\\FILES-01\\C$ /f');
     await expect(output).toContainText('REPORTSVC.INI');
     await expect(output).toContainText('Access is denied.');
@@ -1940,8 +1954,10 @@ test('walks every function of a probation week that goes well', async ({
       .toContainText('Closed with the parent incident');
   });
 
-  // Twenty to three, and the warehouse box has finally run out of drive.
-  await workUntilMinute(page, 405);
+  // The warehouse box, on the afternoon it finally runs out of drive. The
+  // table says 14:40 and the day's seed moves that by up to twelve minutes
+  // either way, so the walk waits for the arrival rather than for the minute.
+  await workUntilTicket(page, 'disk-full');
 
   await step('cmd.purge', async () => {
     await openFromStartMenu(page, 'cmd');
@@ -2077,9 +2093,9 @@ test('walks every function of a probation week that goes well', async ({
       .toContainText('You did exactly the right thing');
   });
 
-  // Twenty to ten, which is when somebody who saved something nine times
-  // finds out it is not where they saved it.
-  await workUntilMinute(page, 105);
+  // Somebody who saved something nine times, finding out it is not where they
+  // saved it. Nominally 09:40, jittered like every other drip.
+  await workUntilTicket(page, 'saved-into-temp');
 
   await step('cmd.move', async () => {
     await openFromStartMenu(page, 'cmd');

@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test';
 
-import { completeLogin, logIn, openFromStartMenu } from './helpers';
+import {
+  completeLogin,
+  installedVersion,
+  logIn,
+  openFromStartMenu,
+} from './helpers';
 
 /**
  * Releases arrive as an operating-system update, which means the window has to
@@ -44,8 +49,15 @@ test('announces itself once on the first boot of a newer build', async ({
   await expect(window_).toBeVisible();
   await expect(page.getByTestId('updates-installed'))
     .toContainText(/DeskPro WorkGroup Update \d+\.\d+\.\d+ has been installed/);
-  await expect(page.getByTestId('updates-line').first())
-    .toContainText('Addresses an issue');
+  // The newest note is the one this build installed, and it has a body. What
+  // that body SAYS is the release's business: an assertion on the first words
+  // of the top note is one every release has to come back and rewrite, which
+  // is how a changelog ends up being written to keep a test green.
+  const version = await installedVersion(page);
+
+  await expect(page.getByTestId(`updates-entry-${version}`))
+    .toHaveAttribute('data-installed', 'true');
+  await expect(page.getByTestId('updates-line').first()).not.toBeEmpty();
   await expect(
     page.getByTestId('toast').filter({ hasText: 'has been updated' }),
   ).toBeVisible();

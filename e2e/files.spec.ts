@@ -7,7 +7,7 @@ import {
   openFromStartMenu,
   runCommand,
   runOnlyCommand,
-  workUntilMinute,
+  workUntilTicket,
 } from './helpers';
 
 /**
@@ -79,10 +79,16 @@ test('draws the tree, and stops where somebody else\'s rights start', async ({
 
   await runOnlyCommand(page, 'tree C:\\WINDOWS');
   await expect(output).toContainText('Folder PATH listing');
-  await expect(output).toContainText('└───SYSTEM32');
+  // The branches, and which of them is the last one: SYSTEM32 stopped being
+  // the end of this directory when every box in the building gained the temp
+  // directory its image has always made, and the box-drawing says so.
+  await expect(output).toContainText('├───SYSTEM32');
   await expect(output).toContainText('PRINTERS');
-  // Directories only, without /f.
+  await expect(output).toContainText('└───TEMP');
+  // Directories only, without /f - so the file in TEMP is not on this listing
+  // and neither is WIN.INI.
   await expect(output).not.toContainText('WIN.INI');
+  await expect(output).not.toContainText('SETUP.LOG');
 
   await runOnlyCommand(page, 'tree C:\\WINDOWS /f');
   await expect(output).toContainText('WIN.INI');
@@ -176,9 +182,11 @@ test('holds the stuck jobs as files, and empties when the queue does', async ({
 test('finds the file in the temp directory and moves it back', async ({
   page,
 }) => {
-  // Friday, twenty to ten, which is when it arrives.
+  // Friday. The week's table drips this one at 09:40 and the day's own seed
+  // moves that by up to twelve minutes either way, so the journey waits for
+  // the ticket rather than for a minute somebody read off `week.ts`.
   await logInOnDay(page, 5);
-  await workUntilMinute(page, 105);
+  await workUntilTicket(page, 'saved-into-temp');
   await openFromStartMenu(page, 'cmd');
   const output = page.getByTestId('cmd-output');
 
@@ -236,9 +244,10 @@ test('finds the file in the temp directory and moves it back', async ({
 test('reads a full drive off two footers, and empties the right one', async ({
   page,
 }) => {
-  // Wednesday afternoon, which is when she finally cannot save anything.
+  // Wednesday afternoon, when she finally cannot save anything - and again
+  // the wait is for the arrival, not for the 14:40 the table nominally says.
   await logInOnDay(page, 3);
-  await workUntilMinute(page, 405);
+  await workUntilTicket(page, 'disk-full');
   await openFromStartMenu(page, 'cmd');
   const output = page.getByTestId('cmd-output');
 

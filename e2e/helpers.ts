@@ -235,6 +235,66 @@ export async function runToTelegraph(
   throw new Error('The lead never came down the corridor.');
 }
 
+/**
+ * Which build the update window says was installed, read off its own masthead.
+ *
+ * It exists so that a test can name the newest release without knowing which
+ * release is newest. Asserting a phrase out of the top note is an assertion
+ * that every release has to come back and rewrite, and a release note written
+ * to keep a test green is a changelog with a test in it.
+ */
+export async function installedVersion(page: Page): Promise<string> {
+  const banner = await page.getByTestId('updates-installed').innerText();
+  const version = /Update (\d+\.\d+\.\d+) has been installed/u.exec(banner);
+
+  if (version?.[1] === undefined) {
+    throw new Error(`The update window says: "${banner}"`);
+  }
+
+  return version[1];
+}
+
+/**
+ * Walks the clock forward until a ticket has actually arrived in the queue.
+ *
+ * Deliberately a search rather than the minute the week's table says, and the
+ * reason is the same one `runToTelegraph` has: a drip slot is a NOMINAL minute
+ * and `buildDaySchedule` moves it by up to `DRIP_JITTER` either way, so the
+ * ticket the table puts at 09:40 lands at 09:51 on this seed and somewhere
+ * else on the next one. A test that waits for the table's minute is a test
+ * that passes on one seed and is a coin toss on every other.
+ *
+ * Ten minutes a step, which is coarse on purpose and cannot miss anything: an
+ * arrival is PERMANENT - the row stays in the queue once it is there - where
+ * the lead in the corridor is a four-minute window that has to be caught.
+ *
+ * It leaves the queue open, because the queue is where a ticket arriving is
+ * visible and because every caller wants to look at it anyway.
+ */
+export async function workUntilTicket(
+  page: Page,
+  slug: string,
+  limitMinutes = 300,
+): Promise<void> {
+  await openFromStartMenu(page, 'tickets');
+  const row = page.getByTestId(`ticket-row-${slug}`);
+  // The speed control is clicked ONCE and the clock is run directly after
+  // that, the way `runToTelegraph` does it: a loop that reached for a taskbar
+  // button every ten minutes would be a loop that fails the day one of the
+  // day's own screens is over the taskbar when it looks.
+  await page.getByTestId('day-speed-4').click();
+
+  for (let minute = 0; minute < limitMinutes; minute += 10) {
+    if (await row.count() > 0) {
+      return;
+    }
+
+    await page.clock.runFor(realMs(10, 4));
+  }
+
+  throw new Error(`"${slug}" never arrived in the queue.`);
+}
+
 export async function openFromStartMenu(
   page: Page,
   appId: string,
@@ -285,7 +345,18 @@ export async function promptText(page: Page): Promise<string> {
   return (await page.locator('.cmd-prompt').first().textContent() ?? '').trim();
 }
 
-/** Runs one line in the Support Terminal and waits for it to echo back. */
+/**
+ * Runs one line in the Support Terminal and waits for it to echo back.
+ *
+ * It waits for the line AS TYPED, which is what makes it survive the fumble.
+ * Past eighty stress the terminal prints what your hands did, says out loud
+ * that the typo was cosmetic, and then echoes and runs the line you actually
+ * typed - so a journey that types a path on a Friday of a week nobody worked
+ * sees three lines where it expected one, and the third is this one. Any
+ * assertion that a string is ABSENT has to allow for the other two, which is
+ * why `runOnlyCommand` exists and why every absence check in the file specs is
+ * made on a screen holding one command's echoes and nothing else.
+ */
 export async function runCommand(page: Page, line: string): Promise<void> {
   const prompt = await promptText(page);
   const input = page.getByTestId('cmd-input');
