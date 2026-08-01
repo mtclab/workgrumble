@@ -2076,6 +2076,18 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'same matrix on the review window and the evening scorecard for three '
     + 'weeks. It cannot happen in the probation week, which is the only week '
     + 'the shipped game deals - the pacing rules forbid it.',
+  [DAY_ACTIONS.interruptionAccept]: 'Answering an interruption. The rails '
+    + 'shipped ahead of the content they carry: the choice grammar, the cost '
+    + 'model and the refocus debuff are the world\'s, and the shipped '
+    + 'probation week schedules no interruption at all, so there is no window '
+    + 'on the artifact for anybody to press yet. The verbs are driven against '
+    + 'the real engine in `world/actions/interruptions.test.ts`, and they move '
+    + 'to this list\'s sibling above - with a control apiece - in the release '
+    + 'that authors the calls and the meeting.',
+  [DAY_ACTIONS.interruptionDefer]: 'Asking them to come back, which they do, '
+    + 'once, and not declinably. Same rails, same reason, same release.',
+  [DAY_ACTIONS.interruptionDecline]: 'Saying no, where the world says no is '
+    + 'available. Same rails, same reason, same release.',
   [DAY_ACTIONS.reviewRedundant]: 'The third ending, dispatched by the day loop '
     + 'when the week cleared its bar and the ranking still put two other '
     + 'people above the line. Career-layer: it belongs to a week of the '

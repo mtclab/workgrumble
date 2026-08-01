@@ -247,6 +247,29 @@ export const DAY_ACTIONS = {
   /** A chat nag, which costs a few points of stress and raises no ticket. */
   bossPing: 'boss.ping',
   /**
+   * The three answers to being interrupted, which are the same three answers
+   * whether it is a call, a summons or somebody at your shoulder.
+   *
+   * They are verbs rather than a flag on a window because what the player did
+   * is world state: it has to survive a save, it has to replay, and the second
+   * arrival of a deferred call has to be able to ask the world whether it is
+   * the second arrival. The schedule itself stays stateless
+   * (`src/world/interruptions.ts`) - the world holds the DECISIONS, never the
+   * timetable.
+   *
+   * `accept` takes the related ticket as its target when the interruption is
+   * about the work in hand, and nothing at all when it is not: that is the
+   * whole cost model in one parameter. A benign one writes touch evidence onto
+   * the ticket, because a call can be how a ticket moves; a malignant one
+   * writes `refocus_until` onto the player, because the twenty-three minutes
+   * afterwards are the real price of being taken off the work.
+   */
+  interruptionAccept: 'interruption.accept',
+  /** "Can I call you back?" - once, and the world remembers that it was. */
+  interruptionDefer: 'interruption.defer',
+  /** "No." Legal only where the entry says it is, and never on a callback. */
+  interruptionDecline: 'interruption.decline',
+  /**
    * Somebody opening the conduct file, a minute before the conversation.
    *
    * It writes down what the bar became and why, so that both review verbs are

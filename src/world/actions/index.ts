@@ -9,6 +9,7 @@ import { DEVICE_ACTIONS } from './device';
 import { DRIVE_ACTIONS } from './drive';
 import { FACILITIES_ACTIONS } from './facilities';
 import { KIND_LABELS } from './helpers';
+import { INTERRUPTION_ACTION_DATA } from './interruptions';
 import { MACHINE_ACTIONS } from './machine';
 import { MAIL_RULE_ACTIONS } from './mail-rule';
 import { METER_ACTION_DATA } from './meters';
@@ -42,6 +43,11 @@ export {
   WRONG_VOLUME_REASON,
 } from './drive';
 export { STICKY_NOTE_ALREADY_REASON } from './facilities';
+export {
+  ALREADY_DEFERRED_REASON,
+  ALREADY_SETTLED_REASON,
+  NOT_DECLINABLE_REASON,
+} from './interruptions';
 export {
   PHISH_CLICK_STRESS,
   PHISH_CLICK_SUSPICION,
@@ -86,6 +92,7 @@ export function helpdeskActions(): readonly ActionData[] {
     ...DAY_ACTION_DATA,
     ...METER_ACTION_DATA,
     ...BOSS_ACTION_DATA,
+    ...INTERRUPTION_ACTION_DATA,
     ...CONSUMABLE_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
