@@ -169,7 +169,28 @@ test('passes the review, opens the beer and reads the week back', async ({
   await beginShift(page);
   await workUntilMinute(page, 150);
 
+  /*
+   * Half past ten, and the sync that has been in the inbox since Monday.
+   *
+   * The week MEETS it rather than working around it, which is truer and is
+   * also the only honest version: a day planned to be somewhere else at half
+   * ten would be a player who had read this file. So the licence work is
+   * typed at the minute it was always going to be typed at, the block refuses
+   * it - on the keyboard, which is the half a pointer rule could never cover -
+   * and the same work is done half an hour later, which is what the meeting
+   * actually costs.
+   */
+  await expect(page.getByTestId('desktop'))
+    .toHaveAttribute('data-takeover', 'meeting');
+
   await openFromStartMenu(page, 'cmd');
+  await runCommand(page, 'licence take cpeach');
+  await expect(page.getByTestId('cmd-output')).toContainText('in a meeting');
+
+  await workUntilMinute(page, 182);
+  await expect(page.getByTestId('desktop'))
+    .toHaveAttribute('data-takeover', 'none');
+
   await runCommand(page, 'licence take cpeach');
   await runCommand(page, 'licence give rtulliver');
   await expect(page.getByTestId('cmd-output')).toContainText('Seat assigned');

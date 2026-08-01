@@ -147,13 +147,23 @@ test('a call about nothing costs the focus and not the ticket', async ({
     await option.click();
   }
 
-  // The price, said out loud on the taskbar: the player is looking for their
-  // place again, and nothing on any screen can clear it.
+  // NOT YET. The twenty-three minutes are measured from the minute the desk
+  // comes back, so a player who is still holding the phone is not yet looking
+  // for their place - they have not been given it back to lose. Asserting the
+  // absence here is what stops the window quietly sliding back to the moment
+  // the call was answered, which is where it used to start and which spent a
+  // quarter of it recovering from a conversation still in progress.
+  await expect(page.getByTestId('refocus-chip')).toBeHidden();
+
+  // Out the far side of the call - six minutes of it, so eight is past the
+  // end - and NOW the price is said out loud on the taskbar.
+  await runSimMinutes(page, 8, 1);
   await expect(page.getByTestId('refocus-chip')).toBeVisible();
   await expect(page.getByTestId('desktop'))
     .toHaveAttribute('data-refocusing', 'true');
 
-  // Through the window and out the far side. It expires quietly.
+  // Through the window and out the far side of that. It expires quietly, and
+  // nothing on any screen clears it.
   await runSimMinutes(page, 25);
   await expect(page.getByTestId('refocus-chip')).toBeHidden();
   await expect(page.getByTestId('desktop'))
