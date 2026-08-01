@@ -7,6 +7,7 @@ import {
   openFromStartMenu,
   runCommand,
   runOnlyCommand,
+  workUntil,
   workUntilTicket,
 } from './helpers';
 
@@ -246,8 +247,11 @@ test('reads a full drive off two footers, and empties the right one', async ({
 }) => {
   // Wednesday afternoon, when she finally cannot save anything - and again
   // the wait is for the arrival, not for the 14:40 the table nominally says.
+  // The shift has to be started first: an afternoon arrival is most of a
+  // working day away from the morning brief this lands on.
   await logInOnDay(page, 3);
-  await workUntilTicket(page, 'disk-full');
+  await workUntil(page, 60);
+  await workUntilTicket(page, 'disk-full', 480);
   await openFromStartMenu(page, 'cmd');
   const output = page.getByTestId('cmd-output');
 
