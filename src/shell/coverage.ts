@@ -2033,8 +2033,8 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
   [DAY_ACTIONS.slaClockHold]: 'And stopped by it the moment nobody is.',
   [DAY_ACTIONS.metersTick]: 'One interval of pressure, every five minutes of '
     + 'a shift, from the driver.',
-  [DAY_ACTIONS.weekReading]: 'The week\'s standing, written down at each day '
-    + 'end and once more at three on the Friday.',
+  [DAY_ACTIONS.weekReading]: 'The week as a percentage of its own work, '
+    + 'written down at each day end and once more at three on the Friday.',
   [HELPDESK_ACTIONS.machineRecordEvent]: 'The event watcher writing a '
     + 'machine\'s own history as it happens; the player reads it in the Event '
     + 'Viewer.',

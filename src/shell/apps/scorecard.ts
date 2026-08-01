@@ -14,7 +14,7 @@ import {
 import { FIELDS } from '../../world/fields';
 import { STARTING_REPUTATION } from '../../world/meters';
 import { cellLabel } from '../../world/priority';
-import { isReviewDay } from '../../world/week';
+import { isReviewDay, REVIEW_PASS_PERFORMANCE } from '../../world/week';
 import { ticketClocks } from '../../world/sla';
 import { type Misclassified, misclassifiedTickets, ticketKey } from './tickets';
 import type { AppDef, AppInstance, GameApi } from './types';
@@ -74,6 +74,37 @@ function reputationLine(reputation: number | null): string {
   }
 
   return 'Friday is going to be a conversation, and it will be short.';
+}
+
+/**
+ * The week as the review would read it tonight, and what that means.
+ *
+ * This is the one number the Friday conversation is decided on, so it is on
+ * the screen every evening rather than for the first time at three o'clock on
+ * the last day: a mark nobody sees until the verdict is a mark nobody can have
+ * played toward. It is a percentage of the work - half of it the queue you
+ * closed, half of it the deadlines you kept - and the bands below are said
+ * against the bar rather than against a hundred, because the bar is the only
+ * part of the scale that decides anything.
+ */
+function weekLine(reading: number): string {
+  if (reading >= REVIEW_PASS_PERFORMANCE + 25) {
+    return 'Comfortably above the line, which at this stage of a probation is '
+      + 'as much as anybody gets.';
+  }
+
+  if (reading >= REVIEW_PASS_PERFORMANCE + 5) {
+    return 'Above the line, with enough in hand that one bad afternoon would '
+      + 'not decide it.';
+  }
+
+  if (reading >= REVIEW_PASS_PERFORMANCE) {
+    return 'Above the line by the width of the line. A day like today again '
+      + 'and Friday is a coin toss.';
+  }
+
+  return 'Below the line. As it stands, the conversation on Friday is the '
+    + 'short one.';
 }
 
 /**
@@ -250,6 +281,16 @@ export const SCORECARD_APP: AppDef = {
         .textContent = reputation === null
           ? 'Not measured'
           : `${String(reputation)} · ${reputationLine(reputation)}`;
+
+      // And the number the review actually turns on, which is a different
+      // thing from the meter above it: reputation is how the building feels
+      // about you, this is how much of the work got done and how much of it
+      // got done in time.
+      const reading = api.day.weekReading();
+      definitionRow(list, 'The week, so far', 'scorecard-week')
+        .textContent = `${String(reading)} of 100, and ${
+          String(REVIEW_PASS_PERFORMANCE)
+        } is the pass · ${weekLine(reading)}`;
 
       renderTriage(counts.misclassified);
     };

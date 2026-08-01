@@ -6,7 +6,7 @@ import {
 import { FIELDS } from '../../world/fields';
 import {
   PROBATION_BONUS_PENCE,
-  REVIEW_PASS_REPUTATION,
+  REVIEW_PASS_PERFORMANCE,
   type WeekScorecard,
 } from '../../world/week';
 import type { AppDef, AppInstance, GameApi } from './types';
@@ -20,6 +20,19 @@ import {
 function numberField(api: GameApi, field: string): number {
   const value = api.graph.getField(api.actor, field);
   return typeof value === 'number' && Number.isSafeInteger(value) ? value : 0;
+}
+
+/**
+ * One of the two halves of the mark: the fraction, and the percentage it comes
+ * to. A week with nothing in it has no share of anything, and says so rather
+ * than dividing by nought and printing a hundred percent for doing nothing.
+ */
+function shareLine(part: number, whole: number): string {
+  return whole <= 0
+    ? 'Nothing arrived, so there is nothing to have kept up with.'
+    : `${String(part)} of ${String(whole)} · ${
+      String(Math.round(100 * part / whole))
+    }%`;
 }
 
 /**
@@ -105,14 +118,28 @@ export const WEEKEND_APP: AppDef = {
         .textContent = String(card.breached);
       definitionRow(list, 'Still open', 'weekend-open')
         .textContent = String(card.stillOpen);
-      // Said as what it is. The lead does not read the meter at five past
-      // three, he reads the week - and a screen that printed the live number
-      // beside a verdict that number did not produce is a screen arguing with
-      // itself about the one thing the player is owed an honest account of.
-      definitionRow(list, 'The week, as he read it', 'weekend-reputation')
-        .textContent = `${String(card.reputation)} of ${
-          String(REVIEW_PASS_REPUTATION)
-        } needed, weighted toward how it ended`;
+      // The two ratios the mark is made of, printed as the fractions they are
+      // rather than as percentages, so that the row underneath is arithmetic
+      // the player can do rather than a number they have to believe.
+      definitionRow(list, 'Queue closed', 'weekend-resolution')
+        .textContent = shareLine(card.closed, card.arrived);
+      definitionRow(list, 'Deadlines kept', 'weekend-attainment')
+        .textContent = shareLine(card.arrived - card.breached, card.arrived);
+      // Said as what it is. The lead does not read a meter at five past three,
+      // he reads the week - and a screen that printed the live number beside a
+      // verdict that number did not produce is a screen arguing with itself
+      // about the one thing the player is owed an honest account of.
+      //
+      // It is not the average of the two rows above and it does not claim to
+      // be: those are the week whole, this is the week as it stood at the end
+      // of each day, folded so that Friday is half the answer and Monday is a
+      // sixteenth of it. Both facts are on the screen, and the sentence says
+      // which is which.
+      definitionRow(list, 'The week, as he read it', 'weekend-performance')
+        .textContent = `${String(card.performance)} out of 100, against the ${
+          String(REVIEW_PASS_PERFORMANCE)
+        } he needs. The two rows above, taken at the end of every day and `
+          + 'weighted toward how the week ended.';
 
       const earned = definitionRow(list, 'Earned this week', 'weekend-earned');
       earned.textContent = `£${formatPence(card.earnedPence)}`;

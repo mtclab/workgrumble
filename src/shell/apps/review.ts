@@ -1,5 +1,5 @@
 import { reviewScene, type Scene } from '../../world/scenes';
-import { REVIEW_PASS_REPUTATION } from '../../world/week';
+import { REVIEW_PASS_PERFORMANCE } from '../../world/week';
 import { createIcon } from '../icons';
 import type { AppDef, AppInstance, GameApi } from './types';
 import { element, osButton } from './ui';
@@ -60,10 +60,23 @@ export const REVIEW_APP: AppDef = {
         + 'catalogue and a mug he keeps meaning to wash.',
       narration: 'It is reviewed on the Friday, at three, in the room with '
         + 'the blind that does not go all the way down.',
-      reply: 'Until then the only thing that moves is the number nobody '
-        + 'shows you, and everything you do moves it.',
+      reply: 'What is in the folder is a percentage, it is on the day '
+        + 'scorecard every evening, and everything in the queue moves it.',
       dismissLabel: 'Back to work',
     };
+
+    /**
+     * The verdict with the number that caused it printed beside it.
+     *
+     * The mark is the whole decision, so a scene that only says how it went is
+     * a scene the player has to take on trust. It is the snapshot rather than
+     * a live read: the queue carries on after three o'clock, and a note that
+     * drifted away from the verdict above it would be this window arguing with
+     * itself.
+     */
+    const marked = (): string => `${
+      String(api.day.weekScorecard().performance)
+    } out of 100, against the ${String(REVIEW_PASS_PERFORMANCE)} he wanted`;
 
     const render = (): void => {
       const outcome = api.day.reviewOutcome();
@@ -79,16 +92,20 @@ export const REVIEW_APP: AppDef = {
       reply.textContent = scene.reply;
       dismiss.textContent = scene.dismissLabel;
       note.textContent = outcome === 'fired'
-        ? 'The shift does not end early because of this. There are two hours '
-          + 'left on it, and the queue has not been told.'
+        ? `He read the week as ${marked()}. The shift does not end early `
+          + 'because of this. There are two hours left on it, and the queue '
+          + 'has not been told.'
         : outcome === 'passed'
-          ? 'The probation is over. Whatever is in the fridge with your name '
-            + 'on it is now, technically, yours.'
-          : 'It is decided on one number: the week, weighted toward how it '
-            + 'ended - yesterday counts double the day before it, and Monday '
-            + `is a rounding error by Friday. It has to be at least ${
-              String(REVIEW_PASS_REPUTATION)
-            } when he opens the folder.`;
+          ? `He read the week as ${marked()}. The probation is over, and `
+            + 'whatever is in the fridge with your name on it is now, '
+            + 'technically, yours.'
+          : 'It is decided on one number, and the number is a percentage of '
+            + 'the work: half of it is how much of what came in you closed, '
+            + 'half is how much of it never went red. It has to reach '
+            + `${String(REVIEW_PASS_PERFORMANCE)} out of 100 when he opens `
+            + 'the folder, and it leans on how the week ended - yesterday '
+            + 'counts double the day before it, and Monday is a rounding '
+            + 'error by Friday.';
     };
 
     host.replaceChildren(root);
