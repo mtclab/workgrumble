@@ -495,8 +495,19 @@ const GOLDEN_DAY = {
    * day and nobody triages anything, so no `resolved_at` or `classified_at`
    * appears in it at all. Every meter, minute, timeline entry and penny below
    * is the number it was.
+   *
+   * SEVENTH MOVE (0.2.2, the estate is a real estate). The hash again, and the
+   * hash alone. Monday's graph now holds three hundred and twenty-four
+   * services instead of seven - every box in the building runs the twenty-odd
+   * its role says it runs, with a status and a startup type on each - plus a
+   * domain controller, the machine fields that say what is in each case, and
+   * three cables that were always implied and never written down. All of it
+   * is SEEDED and none of it moves: no baseline service changes state in this
+   * day, nothing new writes to an event log, and the day's own numbers are
+   * therefore untouched. Every meter, minute, timeline entry and penny below
+   * is again the number it was.
    */
-  hash: 'ad90e64a9f00c43e',
+  hash: '32d29a6b28c5b147',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */

@@ -378,6 +378,23 @@ interface GoldenWeek {
  * the Wednesday, after which nothing done on the Thursday or the Friday could
  * reach the review at all.
  *
+ * SEVENTH MOVE (0.2.2, the estate is a real estate). Both hashes, and nothing
+ * else in either week: same arrivals, same closes, same breaches, same pence,
+ * same meters, same timelines, same outcome on the Friday. Monday's graph now
+ * carries three hundred and twenty-four services instead of seven, a domain
+ * controller, the processor and memory fields on every machine, and three
+ * cables that were always implied - all seeded, none of it moved by anything
+ * in either week, and therefore visible only in the hash of the world.
+ *
+ * One thing that is NOT in these numbers is worth writing down beside them:
+ * impact is now the count of PEOPLE downstream of a fault rather than of
+ * people and services. It had to change - a machine with twenty-odd services
+ * on it read as an office-wide incident when one monitor was upside down -
+ * and it moves the true impact of exactly one shipped ticket, the exhausted
+ * licence pool, from medium to low. Neither scripted week triages that
+ * ticket, so neither week's numbers move with it; the ticket-app tests are
+ * where that one is pinned.
+ *
  * FIFTH MOVE (M5 close-out, event-time accounting). Both hashes, and - for the
  * first time in this file - two numbers inside the IDLE week's day rows.
  *
@@ -403,7 +420,7 @@ interface GoldenWeek {
  * happened.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: '8ad9ea1f830bcb32',
+  hash: '6c16e0e39e3cb04f',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -474,7 +491,7 @@ const GOLDEN_WORKED: GoldenWeek = {
  * and the world does not pretend otherwise.
  */
 const GOLDEN_IDLE: GoldenWeek = {
-  hash: 'c6254da2bc3dd9a4',
+  hash: 'd9f4d5b0a0b6259b',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.
@@ -567,6 +584,25 @@ function expectGolden(walked: WalkedWeek, golden: GoldenWeek): void {
   expect(walked.timeline).toEqual(golden.timeline);
 }
 
+/**
+ * How long one walked week is allowed to take.
+ *
+ * A week is five days of dispatches against the whole estate, and the estate
+ * got four times bigger when every box in the building started running its
+ * real service list. The engine takes a savepoint - a copy of the world -
+ * before every dispatch, so the cost of one action is a function of how big
+ * the world is: a dispatch went from about 0.12ms to about 0.43ms, and a
+ * walked week from about 2.4 to about 2.6 seconds. Nothing a player can feel
+ * (one click is one dispatch) and everything a test that walks two weeks in
+ * one case can: those cases now want more than vitest's five seconds.
+ *
+ * It is written down here rather than raised globally so that the number is a
+ * statement about THESE tests, and so the day it starts creeping again -
+ * which is what the filesystem slice will do to it - somebody has to come and
+ * change a line with this comment attached.
+ */
+const WALK_TIMEOUT_MS = 20_000;
+
 describe('the probation week, twice', () => {
   it('arrives at the same week, to the byte', () => {
     const first = walk(workedWeek);
@@ -577,11 +613,11 @@ describe('the probation week, twice', () => {
     expect(first.card.arrived).toBeGreaterThan(0);
     expect(first.card.closed).toBeGreaterThan(0);
     expect(first.meters[FIELDS.farmFund]).toBeGreaterThan(0);
-  });
+  }, WALK_TIMEOUT_MS);
 
   it('is a different week when it is played differently', () => {
     expect(walk(idleWeek).hash).not.toBe(walk(workedWeek).hash);
-  });
+  }, WALK_TIMEOUT_MS);
 
   /**
    * The golden weeks. Both endings are reached by PLAYING - the review reads
@@ -590,11 +626,11 @@ describe('the probation week, twice', () => {
    */
   it('lands on the golden week that was worked', () => {
     expectGolden(walk(workedWeek), GOLDEN_WORKED);
-  });
+  }, WALK_TIMEOUT_MS);
 
   it('lands on the golden week that was not', () => {
     expectGolden(walk(idleWeek), GOLDEN_IDLE);
-  });
+  }, WALK_TIMEOUT_MS);
 });
 
 /**
@@ -705,7 +741,7 @@ describe('the week at four skill levels', () => {
     for (const profile of PROFILES) {
       walked.set(profile.name, walk(profile.play));
     }
-  });
+  }, WALK_TIMEOUT_MS);
 
   /** What the review read for a profile, which is the number that decided it. */
   const readingOf = (name: string): number => {
