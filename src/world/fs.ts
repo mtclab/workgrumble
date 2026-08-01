@@ -23,7 +23,11 @@
  */
 
 import type { ReadOnlyGraphNode, ReadOnlyGraphView } from '../engine-api';
-import { EVENT_LEVEL_LABELS, readEventLog } from './events';
+import {
+  EVENT_LEVEL_LABELS,
+  type MachineEvent,
+  readEventLog,
+} from './events';
 import { DEVICE_TYPES, FIELDS } from './fields';
 import {
   driveRootId,
@@ -457,7 +461,12 @@ export function eventLogText(
   graph: ReadOnlyGraphView,
   machineId: string,
 ): string {
-  return readEventLog(graph.getField(machineId, FIELDS.eventLog))
+  return logText(readEventLog(graph.getField(machineId, FIELDS.eventLog)));
+}
+
+/** The rows themselves, from a log that has already been read. */
+function logText(log: readonly Readonly<MachineEvent>[]): string {
+  return log
     .map((event) => [
       fileStamp(event.tick),
       EVENT_LEVEL_LABELS[event.level].padEnd(11),
@@ -493,8 +502,9 @@ function entryOf(
   // the machine has written nothing yet the file is empty and keeps the stamp
   // it was imaged with, because that is the last time anything touched it.
   if (node.id === eventLogFileId(machineId)) {
-    const text = eventLogText(graph, machineId);
-    const last = readEventLog(graph.getField(machineId, FIELDS.eventLog)).at(-1);
+    const log = readEventLog(graph.getField(machineId, FIELDS.eventLog));
+    const text = logText(log);
+    const last = log.at(-1);
 
     return {
       kind: 'file',
