@@ -312,8 +312,15 @@ describe('helpdesk action registry', () => {
     // labelled on the handoff form and reachable from nothing at all - no
     // button, no command, no dialogue option, no resolution rule - so they were
     // deleted rather than exempted from the coverage gate a second time.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(36);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(36);
+    //
+    // Thirty-eight from 0.2.4, and the two are the first verbs in this
+    // registry that move FILES rather than fields: `file.move`, for the
+    // afternoon's work that was saved into a temp directory exactly as
+    // instructed, and `directory.purge`, for the directory a program has been
+    // filling since 1997. Both are terminal-only and both refuse far more
+    // often than they act, which is what a delete on a first-line tier is for.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(38);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(38);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});

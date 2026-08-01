@@ -1742,6 +1742,28 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'cmd.move',
+    surface: 'cmd',
+    control: 'move <file> <directory>',
+    does: 'Puts a file back where the person who saved it thought they had, '
+      + 'and refuses a move between two boxes, which is a copy over the '
+      + 'network and a different job.',
+    command: 'move',
+    actions: [HELPDESK_ACTIONS.fileMove],
+    run: 'week',
+  },
+  {
+    id: 'cmd.purge',
+    surface: 'cmd',
+    control: 'purge <directory>',
+    does: 'Empties a directory a program has been filling since 1997, and '
+      + 'refuses every directory whose contents are the only copy of '
+      + 'anything - which is the whole of the judgement in it.',
+    command: 'purge',
+    actions: [HELPDESK_ACTIONS.directoryPurge],
+    run: 'week',
+  },
+  {
     id: 'cmd.restart',
     surface: 'cmd',
     control: 'restart <service>',
@@ -1765,7 +1787,8 @@ const ENTRIES = [
     id: 'cmd.queue',
     surface: 'cmd',
     control: 'queue <printer>',
-    does: 'Shows how much work a printer is refusing to do.',
+    does: 'Lists the jobs a printer is refusing to do - number, size and the '
+      + 'minute each landed - and says what the spooler behind them reports.',
     command: 'queue',
     run: 'week',
   },

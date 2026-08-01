@@ -20,6 +20,15 @@
  *
  * Anything else would be a second copy of a fact this world already holds, and
  * a second copy is a thing that can disagree.
+ *
+ * There is one more directory shape here and it is not derived from another
+ * surface: a directory a PROGRAM fills, whose listing is a field on the
+ * directory itself. It exists because a file's size in this world is what
+ * `type` would print, so a directory of text files can never be a directory
+ * that has eaten a drive - and one directory eating a drive is a real fault
+ * with a real diagnosis. What the world holds for those is what a listing
+ * prints and nothing else, and `storedDisagreements` is the gate that keeps
+ * the listing and the byte total the drive believes in step.
  */
 
 import type { ReadOnlyGraphNode, ReadOnlyGraphView } from '../engine-api';
@@ -36,6 +45,21 @@ import {
   spoolDirId,
 } from './filesystem';
 import { fileStamp } from './hours';
+import { readSpoolJobs, readStoredFiles, storedBytes } from './listings';
+
+// The spelling of both lists is a leaf module, and this is the reader of them.
+// Re-exported here because every surface that reads a drive comes through this
+// file, and because a ticket that seeds a jammed queue has to reach the
+// encoding without reaching the reader - which is the cycle that spelling used
+// to sit inside.
+export {
+  encodeSpoolJob,
+  encodeStoredFile,
+  readSpoolJobs,
+  readStoredFiles,
+  type SpoolJob,
+  type StoredFile,
+} from './listings';
 
 /** The drive letter this estate has. There has never been another one. */
 export const DRIVE = 'C:';
@@ -289,46 +313,6 @@ function stampOf(node: Readonly<ReadOnlyGraphNode>): string {
 
 /* -- the two entries the world derives ------------------------------------ */
 
-/** One queued print job, as the world holds it: `bytes|stamp`. */
-export interface SpoolJob {
-  readonly bytes: number;
-  readonly modified: string;
-}
-
-const SPOOL_SEPARATOR = '|';
-
-export function encodeSpoolJob(job: Readonly<SpoolJob>): string {
-  return `${String(job.bytes)}${SPOOL_SEPARATOR}${job.modified}`;
-}
-
-/**
- * The queue behind a printer, oldest first. Anything this build cannot read is
- * dropped rather than shown, the same rule the event log follows and for the
- * same reason: a save is a file on the player's machine.
- */
-export function readSpoolJobs(value: unknown): readonly SpoolJob[] {
-  if (typeof value !== 'string' || value.length === 0) {
-    return [];
-  }
-
-  return Object.freeze(
-    value
-      .split('\n')
-      .map((line): SpoolJob | null => {
-        const [bytes = '', modified = ''] = line.split(SPOOL_SEPARATOR);
-        const size = Number(bytes);
-
-        return line.length === 0
-          || !Number.isSafeInteger(size)
-          || size < 0
-          || modified.length === 0
-          ? null
-          : { bytes: size, modified };
-      })
-      .filter((job): job is SpoolJob => job !== null),
-  );
-}
-
 /** The printers whose jobs land in this box's spool directory. */
 function printersOn(
   graph: ReadOnlyGraphView,
@@ -453,6 +437,81 @@ export function spoolDisagreements(
   return complaints;
 }
 
+/* -- the directory a program filled ---------------------------------------- */
+
+/** Those files as listing rows: sized, dated, and with no text in them. */
+function storedEntries(
+  node: Readonly<ReadOnlyGraphNode>,
+): readonly FsEntry[] {
+  return Object.freeze(
+    readStoredFiles(node.fields[FIELDS.storedFiles]).map((entry): FsEntry => ({
+      kind: 'file',
+      name: entry.name,
+      modified: entry.modified,
+      size: entry.bytes,
+      accessDenied: false,
+      // No node of its own and no text: the world holds what a listing prints
+      // of these and not a byte more, which is what `type` says when it is
+      // asked to put one on the screen.
+      nodeId: null,
+      text: null,
+    })),
+  );
+}
+
+/** Whether this directory's listing is read from a field rather than edges. */
+export function isStoredDirectory(
+  node: Readonly<ReadOnlyGraphNode>,
+): boolean {
+  return typeof node.fields[FIELDS.storedFiles] === 'string';
+}
+
+/**
+ * Where a directory's own listing and its own byte total disagree, as
+ * sentences - the same invariant the print queue keeps, for the same reason.
+ *
+ * The pile is held twice: as the lines a listing prints and as the number the
+ * verb that empties it gives back to the drive. A count cannot fill a
+ * directory and the op language cannot sum a list, so both have to exist, and
+ * two facts about one thing can come apart. This is the gate that says they
+ * have not, and it runs after every step of every advertised path.
+ */
+export function storedDisagreements(
+  graph: ReadOnlyGraphView,
+): readonly string[] {
+  const complaints: string[] = [];
+
+  for (const node of graph.nodesOfKind('directory')) {
+    const total = node.fields[FIELDS.storedBytes];
+
+    if (!isStoredDirectory(node)) {
+      if (total !== undefined) {
+        complaints.push(
+          `${node.id} carries a byte total and no listing to go with it.`,
+        );
+      }
+
+      continue;
+    }
+
+    const listed = storedBytes(readStoredFiles(node.fields[FIELDS.storedFiles]));
+
+    if (typeof total !== 'number') {
+      complaints.push(`${node.id} lists files and has no byte total on it.`);
+      continue;
+    }
+
+    if (total !== listed) {
+      complaints.push(
+        `${node.id} says it is holding ${String(total)} byte(s) and lists `
+        + `${String(listed)}. One of them is what the drive believes.`,
+      );
+    }
+  }
+
+  return complaints;
+}
+
 /**
  * The machine's own log, as a file: the same rows the Event Viewer paints,
  * from the same field, in the shape a log file has.
@@ -556,6 +615,14 @@ export function listEntries(
 ): readonly FsEntry[] {
   if (directoryId === spoolDirId(machineId)) {
     return spoolEntries(graph, machineId);
+  }
+
+  // And the other kind the world reads rather than walks: a directory a
+  // program has been filling, which holds a listing and no children.
+  const node = graph.getNode(directoryId);
+
+  if (node !== undefined && isStoredDirectory(node)) {
+    return storedEntries(node);
   }
 
   return Object.freeze(

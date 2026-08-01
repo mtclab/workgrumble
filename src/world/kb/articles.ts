@@ -785,6 +785,103 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     see_also: ['kb/reading-the-error', 'kb/second-factor'],
   },
   {
+    id: 'kb/saved-into-temp',
+    title: 'The file has not gone anywhere. It is in TEMP.',
+    summary: 'Save wrote back to where the file was opened from.',
+    state: 'published',
+    issue: 'I worked on it all afternoon, I definitely saved it, and this '
+      + 'morning it is not in My Documents and it is not in the mail either. '
+      + 'Has the machine thrown it away?',
+    environment: 'Any workstation. Classically an attachment somebody opened '
+      + 'out of a mail, worked on, and saved with the button rather than with '
+      + 'Save As.',
+    resolution: [
+      'Ask what they OPENED it from, not where they saved it. "Out of an '
+        + 'email" and "off the P: drive" are two different answers with two '
+        + 'different directories behind them.',
+      'Look in the temp directory on their box before you look anywhere '
+        + 'else: "dir \\\\<host>\\C$\\WINDOWS\\TEMP". The file will be there, '
+        + 'under whatever the sender called it, stamped the minute they last '
+        + 'pressed Save.',
+      'Prove it is the right one before you touch it - "type" the file and '
+        + 'read a line of it back to them. A temp directory has more than one '
+        + 'thing in it and none of them is labelled.',
+      'Move it where they thought it was: "move <file> <directory>". Move '
+        + 'rather than copy, because two copies of a spreadsheet is a '
+        + 'fortnight of somebody editing the wrong one.',
+      'Tell them what happened in one sentence, and tell them the temp '
+        + 'directory is cleared out. This is the ticket you get twice from '
+        + 'the same person if you only fix it.',
+    ],
+    cause: [
+      'A mail client cannot open an attachment where it lives, because an '
+      + 'attachment does not live anywhere: it is inside the message. So it '
+      + 'writes a copy into the temp directory and opens THAT, and the '
+      + 'program doing the opening has no idea it is looking at a temporary '
+      + 'anything.',
+      'Save writes back to where the file was opened from. Every time. That '
+      + 'is not a bug and it is not a mistake anybody made - it is the only '
+      + 'thing Save could possibly mean - and it is why the reporter is '
+      + 'completely right that they saved it, nine times, and completely '
+      + 'wrong about where it went.',
+      'The reason this is worth a ticket rather than a shrug is the second '
+      + 'half: the machine treats that directory as disposable and clears it '
+      + 'out without asking. Nothing had been lost when they rang. Something '
+      + 'would have been.',
+    ],
+    see_also: ['kb/one-directory-ate-the-drive', 'kb/reading-the-error'],
+  },
+  {
+    id: 'kb/one-directory-ate-the-drive',
+    title: 'One directory has eaten the drive',
+    summary: 'It is never the user\'s files. It is something automatic.',
+    state: 'published',
+    issue: 'It says there is not enough disk space. I have saved about four '
+      + 'things on this computer in my life, so it cannot be full of mine.',
+    environment: 'Any box, and most often one running software nobody in this '
+      + 'building has thought about since it was installed.',
+    resolution: [
+      'Get the free space first: the last line of any listing on that drive '
+        + 'says it. "dir \\\\<host>\\C$" - the footer is the fact, and the '
+        + 'reporter\'s description is not.',
+      'Walk the drive for the pile: "tree \\\\<host>\\C$" for the shape of '
+        + 'it, then "dir" on anything that looks like it belongs to a '
+        + 'program rather than to a person. The footer of each listing '
+        + 'reports what that directory holds; one of them will be an order of '
+        + 'magnitude larger than the space you are short of.',
+      'Read the software\'s own configuration before you delete a byte. It '
+        + 'says where it writes, how often, and what happens to the output '
+        + 'afterwards - and "uploaded the same night" is the sentence that '
+        + 'makes what is left a second copy.',
+      'Empty the one that is a second copy, and only that one: "purge '
+        + '<directory>". The data directory next door with the same software\'s '
+        + 'name on it is usually the only copy of something the business runs '
+        + 'on, and this desk does not delete those.',
+      'Then say out loud, on the ticket, that the software will do it again '
+        + 'next month. A drive emptied by hand is a ticket with a date on it, '
+        + 'not a fix.',
+    ],
+    cause: [
+      'People fill drives with documents at a few kilobytes an afternoon. '
+      + 'Programs fill drives with output at tens of megabytes a month, on a '
+      + 'schedule, at two minutes to midnight, and nothing anywhere ever '
+      + 'deletes any of it. That is why the reporter is right that it is not '
+      + 'their files, and why "what have you been saving" is the wrong first '
+      + 'question.',
+      'What a full drive does is worse than not saving. A machine with no '
+      + 'room cannot write a temporary file, cannot spool a print job and '
+      + 'cannot always write its own log - so the box goes quiet at exactly '
+      + 'the moment you most want to know what it thinks is wrong, and the '
+      + 'symptoms arrive as three unrelated tickets from three people.',
+      'The judgement, and it is the whole job: output that has already gone '
+      + 'somewhere else is a second copy and may go. Anything that is the '
+      + 'only copy of anything may not, whatever it is called and however old '
+      + 'it looks. If the software cannot tell you which of those you are '
+      + 'looking at, you have not finished reading yet.',
+    ],
+    see_also: ['kb/saved-into-temp', 'kb/event-log'],
+  },
+  {
     /**
      * The draft. Every knowledge base has one: started by somebody who was
      * about to leave, never validated, and still sitting in the same list as

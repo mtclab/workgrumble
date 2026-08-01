@@ -1940,6 +1940,32 @@ test('walks every function of a probation week that goes well', async ({
       .toContainText('Closed with the parent incident');
   });
 
+  // Twenty to three, and the warehouse box has finally run out of drive.
+  await workUntilMinute(page, 405);
+
+  await step('cmd.purge', async () => {
+    await openFromStartMenu(page, 'cmd');
+    const output = page.getByTestId('cmd-output');
+
+    // The diagnosis is two footers: eight kilobytes left on one listing, and
+    // three hundred megabytes in another on the same drive.
+    await runCommand(page, 'dir \\\\WHOUSE-01\\C$');
+    await expect(output).toContainText('8,192 bytes free');
+    await runCommand(page, 'dir \\\\WHOUSE-01\\C$\\SCANNER\\EXPORT');
+    await expect(output).toContainText('12 File(s)');
+    await expect(output).toContainText('310,902,784 bytes');
+
+    // The refusal that is the whole judgement: the pallet database next door
+    // is the only copy of where anything in that warehouse is.
+    await runCommand(page, 'purge \\\\WHOUSE-01\\C$\\SCANNER\\DATA');
+    await expect(output).toContainText('is not a second copy of anything');
+
+    await runCommand(page, 'purge \\\\WHOUSE-01\\C$\\SCANNER\\EXPORT');
+    await expect(output).toContainText('310,902,784 bytes deleted');
+    await expect(output).toContainText('310,910,976 bytes free');
+    await expectClosed(page, 'disk-full');
+  });
+
   await clockOffFor(page, 3);
 
   /* -- Thursday: the arc, a relock, and forty people with one fault -------- */
@@ -1973,8 +1999,13 @@ test('walks every function of a probation week that goes well', async ({
     await openFromStartMenu(page, 'events');
     await page.getByTestId('events-machine-print-warehouse').click();
     await expect(page.getByTestId('events-app')).toContainText('lost power');
+    // Dated the way the drive dates a file, which is the point of the column:
+    // the two outages this arc turns on are the same minute on the Monday and
+    // the Wednesday, and both dates are readable on one screen.
     await expect(page.getByTestId('events-table').locator('.events-day').first())
-      .toContainText('Day');
+      .toHaveText(/^\d{2}\/\d{2}\/\d{4}$/u);
+    await expect(page.getByTestId('events-table')).toContainText('07/09/1998');
+    await expect(page.getByTestId('events-table')).toContainText('09/09/1998');
   });
 
   await step('chat.option-sticky', async () => {
@@ -2044,6 +2075,39 @@ test('walks every function of a probation week that goes well', async ({
     await expectClosed(page, 'phishing-report');
     await expect(page.getByTestId('ticket-comments'))
       .toContainText('You did exactly the right thing');
+  });
+
+  // Twenty to ten, which is when somebody who saved something nine times
+  // finds out it is not where they saved it.
+  await workUntilMinute(page, 105);
+
+  await step('cmd.move', async () => {
+    await openFromStartMenu(page, 'cmd');
+    const output = page.getByTestId('cmd-output');
+
+    // Not where she saved it. Where the mail client opened it from - and the
+    // file itself proves it is the right one before anything moves.
+    await runCommand(page, 'dir \\\\ACCTS-01\\C$\\WINDOWS\\TEMP');
+    await expect(output).toContainText('STATEMENT.TXT');
+    await runCommand(
+      page,
+      'type \\\\ACCTS-01\\C$\\WINDOWS\\TEMP\\STATEMENT.TXT',
+    );
+    await expect(output).toContainText('HOLLOWAY & SONS');
+
+    await runCommand(
+      page,
+      'move \\\\ACCTS-01\\C$\\WINDOWS\\TEMP\\STATEMENT.TXT C:\\SUPPORT',
+    );
+    await expect(output).toContainText('two different drives');
+
+    await runCommand(
+      page,
+      'move \\\\ACCTS-01\\C$\\WINDOWS\\TEMP\\STATEMENT.TXT '
+      + '"\\\\ACCTS-01\\C$\\Documents and Settings\\praval\\My Documents"',
+    );
+    await expect(output).toContainText('1 file(s) moved.');
+    await expectClosed(page, 'saved-into-temp');
   });
 
   await workUntilMinute(page, 180);

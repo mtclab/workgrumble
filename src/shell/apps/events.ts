@@ -48,7 +48,16 @@ interface MachineRow {
 interface LogRow {
   readonly key: string;
   readonly time: string;
-  readonly day: string;
+  /**
+   * The date, in the format every file surface uses - not "Day 3".
+   *
+   * The log file this window is a second view of is `SYSTEM.LOG`, and `type`
+   * on it prints `09/09/1998  16:56`. A viewer that answered "Day 3" to the
+   * same question would make the player do arithmetic to find out that two
+   * windows were describing one evening, which is exactly the correlation the
+   * recurring fault in this week is diagnosed by.
+   */
+  readonly date: string;
   readonly level: EventLevel;
   readonly levelLabel: string;
   readonly source: string;
@@ -217,8 +226,8 @@ export const EVENTS_APP: AppDef = {
       const row = element('div', 'events-row', `events-row-${first.key}`);
       const time = element('span', 'events-time');
       const clock = element('span');
-      const day = element('span', 'events-day');
-      time.append(clock, day);
+      const date = element('span', 'events-day');
+      time.append(clock, date);
       const levelCell = element('span', 'events-level');
       const source = element('span', 'events-source');
       const id = element('span', 'events-id');
@@ -231,7 +240,7 @@ export const EVENTS_APP: AppDef = {
           setFlag(row, 'level', next.level);
           setFlag(row, 'event', next.id);
           setText(clock, next.time);
-          setText(day, next.day);
+          setText(date, next.date);
           setText(levelCell, next.levelLabel);
           setText(source, next.source);
           setText(id, next.id);
@@ -270,7 +279,7 @@ export const EVENTS_APP: AppDef = {
         rows.map((entry, index) => ({
           key: String(index),
           time: formatSimTime(entry.tick).time,
-          day: formatSimTime(entry.tick).day,
+          date: formatSimTime(entry.tick).date,
           level: entry.level,
           levelLabel: LEVEL_LABELS[entry.level],
           source: entry.source,

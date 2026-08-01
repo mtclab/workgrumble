@@ -1,7 +1,7 @@
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { FIELDS, LOCKOUT_THRESHOLD, SERVICE_STATUS } from '../fields';
-import { encodeSpoolJob } from '../fs';
+import { encodeSpoolJob } from '../listings';
 import { stampAt } from '../hours';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import type { WorldTicket } from './types';

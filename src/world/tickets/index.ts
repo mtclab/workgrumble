@@ -17,6 +17,7 @@ import { ACCESS_TICKETS } from './access';
 import { ARC_TICKETS } from './arc';
 import { BOSS_PHONE } from './boss-trash';
 import { DESK_TICKETS } from './desk';
+import { DRIVE_TICKETS } from './drive';
 import { TIDIED_LIST } from './drip';
 import { acceptsEscalation } from './escalation';
 import { FLOOD_TICKETS } from './flood';
@@ -319,6 +320,7 @@ export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekTickets(
     ...FLOOD_TICKETS,
     ...ARC_TICKETS,
     ...DESK_TICKETS,
+    ...DRIVE_TICKETS,
   ]),
 );
 

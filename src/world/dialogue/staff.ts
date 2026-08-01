@@ -25,9 +25,16 @@ import type { DialogueEffect, DialogueTree } from './types';
 const ACCOUNTS_PAYABLE: DialogueTree = {
   id: 'dialogue/accounts-payable',
   speaker: COMPANY_IDS.priya,
-  tickets: ['ticket:mfa-reregister'],
+  tickets: ['ticket:mfa-reregister', 'ticket:saved-into-temp'],
   root: 'phone',
-  resolved_root: 'after',
+  roots: {
+    'ticket:mfa-reregister': 'phone',
+    'ticket:saved-into-temp': 'statement',
+  },
+  resolved_roots: {
+    'ticket:mfa-reregister': 'after',
+    'ticket:saved-into-temp': 'statement-after',
+  },
   nodes: [
     {
       id: 'phone',
@@ -194,6 +201,104 @@ const ACCOUNTS_PAYABLE: DialogueTree = {
         + 'is. I have heard myself say that.',
       options: [
         { label: 'Suggest anywhere at all that is not the purse' },
+      ],
+    },
+    /* -- and the file that has not gone anywhere -------------------------- */
+    {
+      id: 'statement',
+      npc_line: 'I did that statement for two hours yesterday. Two hours, with '
+        + 'Sandra on the phone, and I saved it. I am not somebody who does not '
+        + 'save things. It is not in My Documents this morning and I would '
+        + 'like to know what your machine has done with my afternoon.',
+      options: [
+        {
+          // The question the whole ticket turns on, and it is not the one
+          // anybody asks first. Where she SAVED it is her answer; where she
+          // OPENED it is the machine's.
+          label: 'Ask where she opened it from, not where she saved it',
+          next: 'attachment',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'She opened the statement straight out of Sandra\'s '
+                + 'mail and worked in it from there, so every Save went back '
+                + 'to the copy the mail client had already written into the '
+                + 'temp directory on ACCTS-01.',
+            },
+          ],
+        },
+        {
+          label: 'Ask what the file was called',
+          next: 'called',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Ask how she saved it - the button, or Save As',
+          next: 'the-button',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her nothing has been lost yet, and go and look' },
+      ],
+    },
+    {
+      id: 'attachment',
+      npc_line: 'Out of Sandra\'s email. I opened it, I worked in it, I saved '
+        + 'it. That is opening it. Is there another kind of opening it?',
+      options: [
+        {
+          label: 'Ask what the file was called',
+          next: 'called',
+          effects: [{ asks: true }],
+        },
+        { label: 'Go back to the top', next: 'statement' },
+        { label: 'Say you know exactly where it is and it will take a minute' },
+      ],
+    },
+    {
+      id: 'called',
+      npc_line: 'Statement. It is called Statement. Sandra calls everything '
+        + 'Statement, which has never once been a problem until now, has it.',
+      options: [
+        {
+          label: 'Ask where she opened it from, not where she saved it',
+          next: 'attachment',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'She opened the statement straight out of Sandra\'s '
+                + 'mail and worked in it from there, so every Save went back '
+                + 'to the copy the mail client had already written into the '
+                + 'temp directory on ACCTS-01.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'statement' },
+      ],
+    },
+    {
+      id: 'the-button',
+      npc_line: 'The button. The little disk. Nine times, because the mail '
+        + 'kept going funny and I was not going to lose it, and now you are '
+        + 'telling me pressing save nine times is what did it.',
+      options: [
+        {
+          label: 'Say that pressing it nine times worked perfectly, nine times',
+          next: 'attachment',
+        },
+        { label: 'Go back to the top', next: 'statement' },
+      ],
+    },
+    {
+      id: 'statement-after',
+      npc_line: 'It is there. It is in My Documents with the queries still on '
+        + 'it. So it was never gone, it was somewhere nobody would ever look, '
+        + 'which as far as I am concerned is a distinction for you and not '
+        + 'for me.',
+      options: [
+        {
+          label: 'Explain, in one sentence, what opening an attachment does',
+        },
+        { label: 'Agree that this is entirely fair' },
       ],
     },
   ],
@@ -398,9 +503,16 @@ const ESTIMATING: DialogueTree = {
 const WAREHOUSE: DialogueTree = {
   id: 'dialogue/warehouse',
   speaker: COMPANY_IDS.hilda,
-  tickets: ['ticket:stale-device-relock'],
+  tickets: ['ticket:stale-device-relock', 'ticket:disk-full'],
   root: 'again',
-  resolved_root: 'after',
+  roots: {
+    'ticket:stale-device-relock': 'again',
+    'ticket:disk-full': 'full',
+  },
+  resolved_roots: {
+    'ticket:stale-device-relock': 'after',
+    'ticket:disk-full': 'space-after',
+  },
   nodes: [
     {
       id: 'again',
@@ -463,6 +575,90 @@ const WAREHOUSE: DialogueTree = {
         + 'to keep signing out and back in all afternoon to check.',
       options: [
         { label: 'Explain, gently, what that will do to the count' },
+      ],
+    },
+    /* -- and the drive that filled itself --------------------------------- */
+    {
+      id: 'full',
+      npc_line: 'It will not save the booking-in sheet. It will not print it '
+        + 'either. There is a box about disk space, and before you ask: I have '
+        + 'saved four things on that computer in my life and one of them was a '
+        + 'Christmas rota. It is not full of me.',
+      options: [
+        {
+          label: 'Ask what else runs on that machine besides her',
+          next: 'scanner',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The pallet scanner runs on WHOUSE-01 and writes a '
+                + 'monthly export into C:\\SCANNER\\EXPORT. It has done that '
+                + 'since 1997 and nothing has ever deleted one.',
+            },
+          ],
+        },
+        {
+          label: 'Ask whether anything has been slow or odd before today',
+          next: 'slow',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her you can see the drive from here, and look' },
+      ],
+    },
+    {
+      id: 'scanner',
+      npc_line: 'The scanner box. The pallets. That has been in the corner '
+        + 'doing its own thing since before the racking, and nobody has ever '
+        + 'touched it, because nobody has ever known how.',
+      options: [
+        {
+          label: 'Ask whether anybody ever looks at what it writes',
+          next: 'head-office',
+          effects: [{ asks: true }],
+        },
+        { label: 'Go back to the top', next: 'full' },
+        { label: 'Tell her that is the whole answer' },
+      ],
+    },
+    {
+      id: 'head-office',
+      npc_line: 'It sends it all to head office at midnight, and head office '
+        + 'has never once asked me about any of it. The pallet file is the one '
+        + 'that matters. If that goes, we are counting the warehouse by hand '
+        + 'for a fortnight, and I will know who to ring.',
+      options: [
+        { label: 'Promise to leave the pallet file exactly where it is' },
+        { label: 'Go back to the top', next: 'full' },
+      ],
+    },
+    {
+      id: 'slow',
+      npc_line: 'It has been slow for about a year. Everything in here is '
+        + 'slow for about a year. I did not think slow was a thing you were '
+        + 'allowed to ring about.',
+      options: [
+        {
+          label: 'Ask what else runs on that machine besides her',
+          next: 'scanner',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The pallet scanner runs on WHOUSE-01 and writes a '
+                + 'monthly export into C:\\SCANNER\\EXPORT. It has done that '
+                + 'since 1997 and nothing has ever deleted one.',
+            },
+          ],
+        },
+        { label: 'Say that slow is absolutely a thing to ring about' },
+      ],
+    },
+    {
+      id: 'space-after',
+      npc_line: 'It has saved it. And printed it. Three hundred megabytes of '
+        + 'barcodes, you say. From a machine nobody uses, in a corner, for a '
+        + 'year. And it will do it again next month, will it.',
+      options: [
+        { label: 'Say yes, and put that on the ticket where somebody will see' },
       ],
     },
   ],

@@ -99,6 +99,11 @@ describe('shipped tickets', () => {
       'ticket:coverup-backup',
       'ticket:hr-report-macro',
       'ticket:phishing-report',
+      // The two the drive brought: an afternoon's work saved exactly where the
+      // machine was told to save it, and a directory that has quietly eaten a
+      // box since 1997.
+      'ticket:saved-into-temp',
+      'ticket:disk-full',
     ]);
   });
 

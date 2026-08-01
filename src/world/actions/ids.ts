@@ -72,6 +72,27 @@ export const HELPDESK_ACTIONS = {
    */
   deviceForgetCredentials: 'device.forget_credentials',
   /**
+   * Putting a file back where the person who saved it thought they had.
+   *
+   * A move rather than a copy, because the file in the temp directory is the
+   * only one there is and a second copy of it in two places is how a person
+   * ends up editing the wrong one for a week. It names the directory it is
+   * moving OUT of as well as the one it is moving into: the op language writes
+   * to nodes it has been given, and "where was it" is a fact the surface
+   * dispatching this can see and the world can check.
+   */
+  fileMove: 'file.move',
+  /**
+   * Emptying a directory a program has been filling since 1997.
+   *
+   * It refuses everything whose contents are not a second copy of something,
+   * which is the only kind of "delete" a first-line tech should have. The
+   * space goes back to the drive it came off, which is why the machine is
+   * named: free space is a fact about a volume, and a directory cannot be
+   * walked back to its own box in a guard.
+   */
+  directoryPurge: 'directory.purge',
+  /**
    * Switching on a rule somebody wrote, tested once, and left off because
    * switching it on was a change and a change needed a form.
    */

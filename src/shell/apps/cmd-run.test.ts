@@ -327,7 +327,25 @@ describe('support terminal commands', () => {
     const api = apiFor(session);
 
     expect(run(api, 'services PRINT-01')).toContain('WEDGED');
-    expect(run(api, 'queue hercules')).toContain('47 job(s) queued');
+
+    // The queue is a LIST now, in the columns a queue has: a job number, a
+    // size and the minute it landed. The four identical sizes are the same
+    // delivery note sent four times, which is the diagnosis and is invisible
+    // in a count.
+    const queue = run(api, 'queue hercules');
+
+    expect(queue).toContain('Print queue on Hercules 400');
+    expect(queue).toContain('     1         12,288  07/09/1998  07:58');
+    expect(queue).toContain('47 job(s) queued, 1,393,664 bytes.');
+    expect(queue.split('\n').filter((line) => line.includes('40,960')))
+      .toHaveLength(4);
+    // The same pile the spool directory lists, numbered the same way, so the
+    // two windows cannot disagree about which job is which.
+    expect(queue.split('\n').filter(
+      (line) => /^ +\d+ +[\d,]+ {2}\d{2}\/\d{2}\/\d{4}/u.test(line),
+    )).toHaveLength(47);
+    expect(run(api, 'dir \\\\PRINT-01\\C$\\WINDOWS\\SYSTEM32\\SPOOL\\PRINTERS'))
+      .toContain('00047.SPL');
 
     // The wrong order is refused, not quietly accepted and half-useful.
     expect(run(api, 'restart PRINT-01\\spooler'))
@@ -605,5 +623,33 @@ describe('support terminal commands', () => {
 
     // Not one of them writes anything: this family reads the world.
     expect(session.engine.snapshotHash()).toBe(before);
+  });
+
+  /**
+   * The two file verbs that DO write, wired the same way and reaching the
+   * world the same way: three typed paths in, node ids out, and the world's
+   * own refusal back when it says no.
+   */
+  it('moves a file and empties a directory, from the same prompt', () => {
+    const session = sessionWith('ticket:saved-into-temp', 'ticket:disk-full');
+    const api = apiFor(session);
+
+    expect(run(api, 'dir \\\\ACCTS-01\\C$\\WINDOWS\\TEMP'))
+      .toContain('STATEMENT.TXT');
+    expect(run(
+      api,
+      'move \\\\ACCTS-01\\C$\\WINDOWS\\TEMP\\STATEMENT.TXT '
+      + '"\\\\ACCTS-01\\C$\\Documents and Settings\\praval\\My Documents"',
+    )).toContain('1 file(s) moved.');
+    expect(session.engine.ticketState('ticket:saved-into-temp'))
+      .toBe('resolved');
+
+    expect(run(api, 'purge \\\\WHOUSE-01\\C$\\SCANNER\\DATA'))
+      .toContain('is not a second copy of anything');
+    expect(session.engine.ticketState('ticket:disk-full')).toBe('open');
+
+    expect(run(api, 'purge \\\\WHOUSE-01\\C$\\SCANNER\\EXPORT'))
+      .toContain('310,902,784 bytes deleted');
+    expect(session.engine.ticketState('ticket:disk-full')).toBe('resolved');
   });
 });

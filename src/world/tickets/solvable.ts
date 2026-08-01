@@ -71,26 +71,37 @@ export function ticketsNeededFor(entry: Readonly<WorldTicket>): readonly string[
 
 /**
  * Load-time gate: every node an advertised path names is a node that exists -
- * in the estate, or as one of the tickets the roster ships.
+ * in the estate, as one of the tickets the roster ships, or as something a
+ * ticket's own setup builds.
+ *
+ * The third case is the file somebody saved into a temp directory: it is not
+ * in the seed, because it was written on the Thursday afternoon and a world
+ * that had it on the Monday morning would be a world with a file dated in the
+ * future in it. It arrives with the ticket, exactly as every other fault in
+ * this roster does, and the fact that a `setup` op builds it is what makes it
+ * a real node rather than a typo.
  */
 export function assertPathsAimAtRealNodes(
   entries: readonly WorldTicket[],
   seeded: ReadonlySet<string>,
 ): void {
   const tickets = new Set(entries.map(({ def }) => def.id));
+  const built = new Set(
+    entries.flatMap(({ def }) => [...seededNodeIds(def.setup)]),
+  );
 
   for (const entry of entries) {
     for (const path of entry.paths) {
       for (const step of path.steps) {
         for (const id of nodesNamedBy(step)) {
-          if (seeded.has(id) || tickets.has(id)) {
+          if (seeded.has(id) || tickets.has(id) || built.has(id)) {
             continue;
           }
 
           throw new Error(
             `Path "${path.id}" of "${entry.def.id}" aims "${step.action}" at `
-            + `"${id}", which is not in the estate and is not a ticket `
-            + 'anybody wrote.',
+            + `"${id}", which is not in the estate, is not a ticket anybody `
+            + 'wrote, and is not built by any ticket\'s setup.',
           );
         }
       }

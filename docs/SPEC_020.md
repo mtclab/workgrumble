@@ -33,6 +33,31 @@ Found by the owner: the instinct to look at the tree and move around, with nothi
 4. **Unlocks** (content, later slices): the "my files are gone" trope, disk-full-by-one-directory, case-sensitivity as a real ticket on unix skins.
 5. Gates: path resolution unit-tested hard (traversal, root, missing, permission); `ls` and `dir` asserted to differ correctly; the spool directory agrees with the spooler's queue length at all times.
 
+## Slice 0.2.4 - the drive has tickets on it
+
+The content the filesystem slice was built for, and the two surfaces it left half-said.
+
+1. **"My files are gone"** (Friday, 09:40, Priya): an attachment opened out of a mail, worked on
+   all afternoon and saved back into `C:\WINDOWS\TEMP` nine times, because that is where Save
+   writes. Diagnosed with `dir`/`tree` and closed with a new world verb, `file.move` - which
+   refuses a move between two boxes (that is a copy over the network), a destination whose
+   listing is a field rather than its children, and a directory whose rights are somebody else's.
+2. **Disk full by one directory** (Wednesday, 14:40, Hilda): the pallet scanner on WHOUSE-01 has
+   written a monthly export since 1997 and deleted none of them - three hundred megabytes on a
+   drive with three left. Diagnosed by reading a listing's byte total against `disk_free` in its
+   own footer, closed with `directory.purge`, which empties a directory whose contents are a
+   SECOND copy of something and refuses every other directory on the estate - including the
+   pallet database next door, which is the only copy of where anything in that warehouse is.
+3. **`queue <printer>` lists its jobs**: number, size and the minute each landed, under the same
+   job number the spool file carries. Owners, document names and page counts stay absent and the
+   output says so; `type` on a spool file stays refused.
+4. **The Event Viewer carries the calendar**: a log row is dated `09/09/1998`, the same way every
+   file surface dates one, so a log line and a directory listing agree about what evening they
+   are describing.
+5. Gates: per-path graph tests for both tickets; unit tests for both verbs, every refusal
+   asserted with the world proven not to have moved; the listing-versus-total invariant asserted
+   like the queue's; the solvability harness taught that a ticket's own setup builds nodes.
+
 ## Standing bar added in this version
 
 **Terminal fidelity.** Every command declares a tier: FAITHFUL (real syntax, flags, output shape, error wording), SHAPED (right concept and shape, smaller data, nothing false), or REFUSED HONESTLY (answers like a real shell would for an unsupported flag, or says plainly it is not simulated). A refusal teaches nothing; a fake teaches something wrong. Families are not one shell in hats. `docs/research/terminal-fidelity.md` carries one row per command - real syntax, cited real output, claimed tier, deliberate omissions - and no new command ships without its row.

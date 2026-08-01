@@ -19,6 +19,9 @@ import { spawnWorldTicket } from '../../world/tickets';
 import {
   cdLines,
   dirLines,
+  type FileDispatch,
+  moveLines,
+  purgeLines,
   treeLines,
   typeLines,
   volumeSerial,
@@ -257,11 +260,14 @@ describe('tree', () => {
     expect(lines[1])
       .toBe(`Volume serial number is ${volumeSerial(COMPANY_IDS.playerMachine)}`);
     expect(lines[2]).toBe('C:\\WINDOWS');
+    // TEMP is on the end because the image makes one on every box, and it is
+    // where the file nobody can find has always been.
     expect(lines.slice(3)).toEqual([
-      '└───SYSTEM32',
-      '    ├───LOGFILES',
-      '    └───SPOOL',
-      '        └───PRINTERS',
+      '├───SYSTEM32',
+      '│   ├───LOGFILES',
+      '│   └───SPOOL',
+      '│       └───PRINTERS',
+      '└───TEMP',
     ]);
     // WIN.INI is a file and this is a tree of folders, which is what the real
     // one prints without /f.
@@ -302,5 +308,162 @@ describe('tree', () => {
       .toEqual(['The directory name is invalid.']);
     expect(treeLines(graph, DESK, ['/a']).lines[0])
       .toBe('"/a" is not a switch this tree has.');
+  });
+});
+
+/**
+ * The two verbs that change a drive, printed.
+ *
+ * They dispatch, so these drive the real registry through the real session -
+ * a printing test that faked the dispatch would be a test of the sentences and
+ * not of the pair, and the pair is the point: the shell finds the nodes behind
+ * three typed paths and the world decides whether that is allowed.
+ */
+const ACCTS_TEMP = '\\\\ACCTS-01\\C$\\WINDOWS\\TEMP';
+const HER_DOCUMENTS = '\\\\ACCTS-01\\C$\\Documents and Settings\\praval\\My Documents';
+const EXPORTS = '\\\\WHOUSE-01\\C$\\SCANNER\\EXPORT';
+
+function dispatchFor(session: WorldSession): FileDispatch {
+  return (action, target, params) => session.engine.dispatch(
+    action,
+    COMPANY_IDS.player,
+    target,
+    { ...params },
+  );
+}
+
+describe('move', () => {
+  it('moves the file and says what a real move says', () => {
+    const session = world('ticket:saved-into-temp');
+    const result = moveLines(
+      session.engine.graph,
+      DESK,
+      [`${ACCTS_TEMP}\\STATEMENT.TXT`, `"${HER_DOCUMENTS}"`],
+      dispatchFor(session),
+    );
+
+    expect(result.lines[0]).toBe('        1 file(s) moved.');
+    expect(result.lines[1]).toContain('STATEMENT.TXT is now in');
+    // And the drive agrees: it has gone from one listing and arrived in the
+    // other, which is the only proof that matters.
+    expect(dir(session, ACCTS_TEMP).join('\n')).not.toContain('STATEMENT.TXT');
+    expect(dir(session, `"${HER_DOCUMENTS}"`).join('\n'))
+      .toContain('STATEMENT.TXT');
+    expect(session.engine.ticketState('ticket:saved-into-temp'))
+      .toBe('resolved');
+  });
+
+  it('hands the world\'s refusal back in the world\'s own words', () => {
+    const session = world('ticket:saved-into-temp');
+    const across = moveLines(
+      session.engine.graph,
+      DESK,
+      [`${ACCTS_TEMP}\\STATEMENT.TXT`, 'C:\\SUPPORT'],
+      dispatchFor(session),
+    );
+
+    expect(across.lines).toHaveLength(1);
+    expect(across.lines[0]).toContain('two different drives');
+    expect(dir(session, ACCTS_TEMP).join('\n')).toContain('STATEMENT.TXT');
+  });
+
+  it('refuses a spool file, a directory, a switch and a wildcard', () => {
+    const session = world('ticket:wedged-spooler');
+    const move = (...args: readonly string[]): readonly string[] => moveLines(
+      session.engine.graph,
+      DESK,
+      args,
+      dispatchFor(session),
+    ).lines;
+
+    // A queued job is a file the spooler has open, and the answer is the
+    // runbook rather than a move.
+    expect(move(`${SPOOL}\\00001.SPL`, 'C:\\SUPPORT')[0])
+      .toContain('is a spool file');
+    expect(move(`${EXPORTS}\\SCN9709.EXP`, 'C:\\SUPPORT')[0])
+      .toContain('written by the program that fills that directory');
+    expect(move('C:\\WINDOWS', 'C:\\SUPPORT')[0]).toContain('is a directory');
+    expect(move('C:\\SUPPORT\\RUNBOOK.TXT', 'C:\\AUTOEXEC.BAT')[0])
+      .toBe('The directory name is invalid.');
+    expect(move('/y', 'C:\\SUPPORT')[0])
+      .toBe('"/y" is not a switch this move has.');
+    expect(move('C:\\*.TXT', 'C:\\SUPPORT')[0])
+      .toBe('This move does not do wildcards.');
+    expect(move('C:\\NOTHING.TXT', 'C:\\SUPPORT')[0])
+      .toBe('The system cannot find the file specified.');
+  });
+});
+
+describe('purge', () => {
+  it('empties the directory and quotes the space it gave back', () => {
+    const session = world('ticket:disk-full');
+    const before = dir(session, EXPORTS);
+    const result = purgeLines(
+      session.engine.graph,
+      DESK,
+      EXPORTS,
+      dispatchFor(session),
+    );
+
+    // Twelve months of exports, and a footer that said so before it went.
+    expect(before.at(-2)).toBe(
+      `${'12'.padStart(16)} File(s) ${'310,902,784'.padStart(14)} bytes`,
+    );
+    expect(result.lines[0]).toBe(`Emptied ${EXPORTS}`);
+    expect(result.lines[1]).toBe(
+      `${'12'.padStart(16)} File(s) ${'310,902,784'.padStart(14)} bytes deleted`,
+    );
+    expect(result.lines[2]).toBe(`${'310,910,976'.padStart(39)} bytes free`);
+    expect(result.lines.at(-1)).toContain('not a fault fixed');
+
+    // The listing and the footer agree afterwards, which is the whole reason
+    // the number and the list are both in the world.
+    const after = dir(session, EXPORTS);
+
+    expect(after.join('\n')).not.toContain('.EXP');
+    expect(after.at(-2)).toBe(
+      `${'0'.padStart(16)} File(s) ${'0'.padStart(14)} bytes`,
+    );
+    expect(after.at(-1)).toBe(
+      `${'2'.padStart(16)} Dir(s) ${'310,910,976'.padStart(15)} bytes free`,
+    );
+    expect(session.engine.ticketState('ticket:disk-full')).toBe('resolved');
+  });
+
+  it('sends the spool directory to the runbook instead of emptying it', () => {
+    const session = world('ticket:wedged-spooler');
+    const result = purgeLines(
+      session.engine.graph,
+      DESK,
+      SPOOL,
+      dispatchFor(session),
+    );
+
+    expect(result.lines[0]).toBe('That is the spool directory, and what is in '
+      + 'it is a print queue.');
+    expect(result.lines.join(' ')).toContain('clearqueue <printer>');
+    // Nothing went: the queue is exactly as long as it was.
+    expect(dir(session, SPOOL).at(-2))
+      .toBe(`${'47'.padStart(16)} File(s) ${'1,393,664'.padStart(14)} bytes`);
+  });
+
+  it('refuses the rest of the drive in the world\'s words', () => {
+    const session = world('ticket:disk-full');
+    const purge = (path: string): readonly string[] => purgeLines(
+      session.engine.graph,
+      DESK,
+      path,
+      dispatchFor(session),
+    ).lines;
+
+    expect(purge('\\\\WHOUSE-01\\C$\\SCANNER\\DATA')[0])
+      .toContain('is not a second copy of anything');
+    expect(purge('C:\\AUTOEXEC.BAT')).toEqual(['The directory name is invalid.']);
+    expect(purge('C:\\NOTHING')).toEqual([
+      'The system cannot find the path specified.',
+    ]);
+    expect(purge('')[0]).toContain('will not empty the directory you happen');
+    expect(purge('/q')[0]).toBe('"/q" is not a switch this purge has.');
+    expect(purge('C:\\*')[0]).toBe('This purge does not do wildcards.');
   });
 });

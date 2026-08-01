@@ -202,6 +202,15 @@ export interface DayScript {
  * Wednesday and Friday carry no shipped ticket at all, and that is what the
  * `load` column is for. Five tickets across five days is a thin week; the
  * numbers say what each day is FOR, and lane C fills them.
+ *
+ * The two drive tickets went into the two afternoons the week had left. Both
+ * are read the same way - a directory listing, held against what the person on
+ * the phone believes - and both close on one verb, so neither changes what its
+ * day is FOR. Wednesday's morning is a flood, which is bookkeeping rather than
+ * diagnosis, and its afternoon had nothing in it at all; Friday was a whole
+ * ticket lighter than every other day and did not open until half past ten.
+ * Monday was left alone deliberately: it is four tickets at difficulty one
+ * already, and it is the day the two basic tools are taught.
  */
 export const WEEK: readonly DayScript[] = validateWeek([
   {
@@ -258,6 +267,11 @@ export const WEEK: readonly DayScript[] = validateWeek([
       { ticketId: 'ticket:mfa-reregister', minute: 9 * 60 + 50 },
       { ticketId: 'ticket:share-maintenance', minute: 10 * 60 + 20 },
       { ticketId: 'ticket:share-dup-terry', minute: 11 * 60 + 10 },
+      // Wednesday's whole morning was a flood, which is bookkeeping rather
+      // than diagnosis, and its afternoon was empty. This is the day's one
+      // piece of arithmetic: a listing's own byte total held against the free
+      // space in its footer, on a box that has been quietly full since 1997.
+      { ticketId: 'ticket:disk-full', minute: 14 * 60 + 40 },
     ],
     incidents: [
       { incidentId: INCIDENTS.maintenanceWindow, minute: 9 * 60 },
@@ -286,6 +300,12 @@ export const WEEK: readonly DayScript[] = validateWeek([
     label: 'Friday',
     inherited: ['ticket:phishing-report'],
     drip: [
+      // Twenty to ten, which is when somebody who needs a file for a run that
+      // goes today finds out it is not where they left it. Friday was the
+      // lightest day in the week by a whole ticket and its first arrival was
+      // not until half past ten; this one is a hunt with a one-line fix, and
+      // the day it belongs to is the day somebody has time to look.
+      { ticketId: 'ticket:saved-into-temp', minute: 9 * 60 + 40 },
       { ticketId: 'ticket:coverup-backup', minute: 10 * 60 + 30 },
       { ticketId: 'ticket:hr-report-macro', minute: 11 * 60 + 15 },
     ],

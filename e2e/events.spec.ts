@@ -96,7 +96,10 @@ test('still shows what happened on the days before', async ({ page }) => {
   await page.getByTestId('events-machine-ada').click();
   const missed = page.getByTestId('events-table').locator('[data-event="1101"]');
   await expect(missed.first()).toContainText('Service level objective missed');
-  await expect(missed.first()).toContainText('Day 1');
+  // Dated the way every file surface dates a line, so this row and a listing
+  // of the same drive agree about which day they are describing. Day one is
+  // Monday 7 September 1998.
+  await expect(missed.first()).toContainText('07/09/1998');
 });
 
 test('says so plainly when a machine has nothing to report', async ({

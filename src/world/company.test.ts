@@ -54,6 +54,16 @@ describe('company world', () => {
     // The two hundred directories and files are the drives, from the same
     // table and for the same reason: fourteen boxes built from one image, plus
     // what each role adds and a profile for whoever logs on there.
+    //
+    // Thirty-three of them arrived with 0.2.4 and all thirty-three are seeded
+    // rather than moved by anything: every one of the fourteen boxes gained
+    // the temp directory the image has always made and the build log the image
+    // left in it (fourteen directories, fourteen files), and the one
+    // workstation that runs the pallet scanner gained the three directories
+    // that software writes into and the two files it wrote (three, and two).
+    // The twelve monthly exports on that box are NOT files: they are a listing
+    // on the directory itself, because a file's size here is what `type` would
+    // print and thirty megabytes of barcodes is not something to print.
     expect(counts).toEqual({
       person: 17,
       account: 17,
@@ -64,8 +74,8 @@ describe('company world', () => {
       group: 3,
       mail_rule: 2,
       ticket: 0,
-      directory: 136,
-      file: 64,
+      directory: 153,
+      file: 80,
     });
   });
 

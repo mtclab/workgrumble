@@ -264,6 +264,22 @@ export const COMMANDS: readonly CommandSpec[] = [
     joined: true,
   },
   {
+    name: 'move',
+    usage: 'move <file> <directory>',
+    summary: 'Move a file to where somebody thought they had saved it.',
+    minArgs: 2,
+    maxArgs: 2,
+    joined: false,
+  },
+  {
+    name: 'purge',
+    usage: 'purge <directory>',
+    summary: 'Empty a directory a program filled, if what is in it is a copy.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+  },
+  {
     name: 'tree',
     usage: 'tree [path] [/f]',
     summary: 'Draw the directories under a path, and the files with /f.',
@@ -353,8 +369,54 @@ export function findCommand(name: string): CommandSpec | undefined {
   return COMMANDS.find((spec) => spec.name === name);
 }
 
+/**
+ * The line, split into arguments the way a shell splits one: on spaces, except
+ * inside double quotes.
+ *
+ * Quotes are how the real thing is told that a path with spaces in it is ONE
+ * path, and this estate has `Documents and Settings` and `My Documents` in
+ * every profile on it - so a command that takes two paths cannot be parsed by
+ * counting words. The quotes are kept on the token rather than stripped here,
+ * because the path resolver already takes them off and a command that joins
+ * its arguments back together has to get back exactly what was typed.
+ */
+export function splitArguments(input: string): readonly string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let quoted = false;
+  let started = false;
+
+  for (const character of input.trim()) {
+    if (character === '"') {
+      quoted = !quoted;
+      started = true;
+      current += character;
+      continue;
+    }
+
+    if (!quoted && /\s/u.test(character)) {
+      if (started) {
+        tokens.push(current);
+        current = '';
+        started = false;
+      }
+
+      continue;
+    }
+
+    current += character;
+    started = true;
+  }
+
+  if (started) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
 export function parseCommand(input: string): ParsedCommand {
-  const tokens = input.trim().split(/\s+/u).filter((token) => token.length > 0);
+  const tokens = splitArguments(input);
   const head = tokens[0];
 
   if (head === undefined) {

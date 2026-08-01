@@ -51,6 +51,8 @@ const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.machineReboot]: 'Rebooted it, obviously',
   [HELPDESK_ACTIONS.devicePowerCycle]: 'Turned it off and on again',
   [HELPDESK_ACTIONS.deviceReplaceBattery]: 'Replaced the battery',
+  [HELPDESK_ACTIONS.fileMove]: 'Moved the file back where they expected it',
+  [HELPDESK_ACTIONS.directoryPurge]: 'Emptied a directory of old output',
   [HELPDESK_ACTIONS.shareGrantAccess]: 'Granted access to the share',
   [HELPDESK_ACTIONS.printerClearQueue]: 'Cleared the print queue',
   [HELPDESK_ACTIONS.ticketAddWorknote]: 'Wrote a work note',

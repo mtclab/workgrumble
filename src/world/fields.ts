@@ -390,6 +390,18 @@ export const FIELDS = {
   diskFree: 'disk_free',
   /** directory + file */
   /**
+   * Which drive this entry is on, by the hostname of the box it belongs to.
+   *
+   * Every directory and every file carries it, because it is the one fact
+   * about a path that the op language cannot walk to: containment is a chain
+   * of `contains` edges of no fixed length, and a guard can only look a fixed
+   * number of hops. Two verbs need the answer and both need it to refuse
+   * rather than to act - a move from one box to another is a copy over the
+   * network and a different job, and a directory emptied "on" a machine it is
+   * not on would hand free space to the wrong drive.
+   */
+  volume: 'volume',
+  /**
    * The stamp a listing prints beside the entry, as the estate writes dates:
    * `07/09/1998  08:41`.
    *
@@ -408,6 +420,39 @@ export const FIELDS = {
    * job, a machine's own log - are sized by the thing they are read from.
    */
   content: 'content',
+  /**
+   * A directory whose contents are OUTPUT rather than text, one line per file:
+   * `name|bytes|stamp`.
+   *
+   * The second directory in this estate whose listing is read from a field
+   * rather than from `contains` edges, and it exists for the same reason the
+   * first one does. A file's size in this world IS what `type` would print, so
+   * a directory of small text files cannot be a directory that has eaten a
+   * drive - and a drive eaten by one directory is a real fault with a real
+   * diagnosis, which is a listing's own byte total held against the free space
+   * in its footer. So the world holds what a listing prints for these - a name,
+   * a size and a minute - and holds nothing else, because it knows nothing
+   * else: what is inside a scanner's monthly export is the scanner's business.
+   *
+   * `storedBytes` is the same pile as a number, beside the list, exactly as a
+   * printer holds `queue_len` beside `spool_jobs` and for the same two
+   * reasons: the op language adds numbers and cannot sum a list, and a gate
+   * asserts the two agree after every mutation that touches either.
+   */
+  storedFiles: 'stored_files',
+  storedBytes: 'stored_bytes',
+  /**
+   * Whether what is in this directory is a SECOND copy of something.
+   *
+   * A fact about the contents rather than about the directory: the warehouse
+   * scanner's monthly exports went to head office the night each of them was
+   * written and nobody has opened one since, and the pallet database in the
+   * directory next door is the only record of where anything in the building
+   * is. Emptying the first kind is a Tuesday afternoon; emptying the second is
+   * an incident with your name on it, so the verb that empties a directory
+   * reads this and refuses everything that does not say yes.
+   */
+  disposable: 'disposable',
   /**
    * Whether the account at this terminal is allowed to read it.
    *

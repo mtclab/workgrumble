@@ -20,7 +20,12 @@ import { HELPDESK_ACTIONS } from './actions';
 import { COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
 import { EVENT_LEVEL_LABELS, readEventLog } from './events';
-import { eventLogFileId, spoolDirId } from './filesystem';
+import {
+  eventLogFileId,
+  SCANNER_EXPORT_BYTES,
+  scannerExportDirId,
+  spoolDirId,
+} from './filesystem';
 import {
   displayPath,
   eventLogText,
@@ -28,9 +33,11 @@ import {
   listEntries,
   promptPath,
   readSpoolJobs,
+  readStoredFiles,
   resolvePath,
   spoolDepth,
   spoolDisagreements,
+  storedDisagreements,
   type TerminalSession,
 } from './fs';
 import { calendarDate, fileStamp, stampAt, WEEK_STARTS_ON } from './hours';
@@ -358,6 +365,74 @@ describe('the spool directory and the queue behind it', () => {
     ]);
     expect(readSpoolJobs('nonsense\n-1|x\n4096|\n4096|07/09/1998  08:01'))
       .toHaveLength(1);
+  });
+
+  it('lists a directory a program filled, and keeps its total honest', () => {
+    const session = world();
+    const graph = session.engine.graph;
+    const exports = scannerExportDirId(COMPANY_IDS.warehouseMachine);
+    const files = listEntries(graph, COMPANY_IDS.warehouseMachine, exports);
+
+    // Twelve months of barcode reads, each a size and a minute and nothing
+    // else - which is what a listing prints and all this world knows.
+    expect(files).toHaveLength(12);
+    expect(files[0]?.name).toBe('SCN9709.EXP');
+    expect(files[0]?.modified).toBe('30/09/1997  23:58');
+    expect(files.every((file) => file.size > 0)).toBe(true);
+    expect(files.every((file) => file.nodeId === null)).toBe(true);
+    expect(files.every((file) => file.text === null)).toBe(true);
+    expect(files.reduce((total, file) => total + file.size, 0))
+      .toBe(SCANNER_EXPORT_BYTES);
+
+    // And the whole pile is three hundred megabytes on a drive with three
+    // left, which is the entire diagnosis and is readable from one screen.
+    expect(SCANNER_EXPORT_BYTES).toBeGreaterThan(
+      Number(graph.getField(COMPANY_IDS.warehouseMachine, FIELDS.diskFree)),
+    );
+    expect(storedDisagreements(graph)).toEqual([]);
+  });
+
+  /**
+   * The same teeth the queue's gate has, on the other pile the world holds
+   * twice: the listing a directory prints and the number the drive gets back
+   * when it is emptied. Doctored by hand, because nothing the player can
+   * dispatch is allowed to take them apart.
+   */
+  it('says so when a directory listing and its byte total disagree', () => {
+    const session = world();
+    const exports = scannerExportDirId(COMPANY_IDS.warehouseMachine);
+
+    session.engine.applySetup([{
+      op: 'setField',
+      id: exports,
+      field: FIELDS.storedBytes,
+      value: 12,
+    }]);
+
+    const complaints = storedDisagreements(session.engine.graph);
+
+    expect(complaints).toHaveLength(1);
+    expect(complaints[0]).toContain(exports);
+    expect(complaints[0]).toContain('12 byte(s)');
+
+    // A total with no listing under it at all is the same fault the other way
+    // round, and it is caught for the same reason.
+    session.engine.applySetup([
+      { op: 'setField', id: exports, field: FIELDS.storedFiles, value: '' },
+      { op: 'setField', id: exports, field: FIELDS.storedBytes, value: 0 },
+    ]);
+    expect(storedDisagreements(session.engine.graph)).toEqual([]);
+  });
+
+  it('reads a stored listing back, and drops a line it cannot read', () => {
+    expect(readStoredFiles('')).toEqual([]);
+    expect(readStoredFiles(undefined)).toEqual([]);
+    expect(readStoredFiles('SCN9709.EXP|22020096|30/09/1997  23:58')).toEqual([
+      { name: 'SCN9709.EXP', bytes: 22_020_096, modified: '30/09/1997  23:58' },
+    ]);
+    expect(readStoredFiles(
+      'nonsense\n|4096|x\nA|-1|x\nA||x\nSCN.EXP|4096|30/09/1997  23:58',
+    )).toHaveLength(1);
   });
 
   it('names the printer and the box when the two come apart', () => {

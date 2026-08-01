@@ -13,8 +13,10 @@
  * fidelity bar in `docs/research/terminal-fidelity.md` forbids.
  */
 
-import type { ReadOnlyGraphView } from '../../engine-api';
+import type { DispatchResult, ReadOnlyGraphView } from '../../engine-api';
+import { HELPDESK_ACTIONS, MACHINE_PARAM } from '../../world/actions';
 import { FIELDS } from '../../world/fields';
+import { spoolDirId } from '../../world/filesystem';
 import {
   ADMIN_SHARE,
   displayPath,
@@ -22,10 +24,12 @@ import {
   findPath,
   type FsEntry,
   type FsFault,
+  isStoredDirectory,
   listEntries,
   type Location,
   locate,
   promptPath,
+  readStoredFiles,
   resolvePath,
   type TerminalSession,
 } from '../../world/fs';
@@ -364,6 +368,228 @@ export function typeLines(
 
   return {
     lines: found.entry.text.length === 0 ? [] : found.entry.text.split('\n'),
+  };
+}
+
+/* -- the two that change the drive ---------------------------------------- */
+
+/**
+ * How these two reach the world: the same dispatch every other verb in this
+ * terminal goes through, handed in rather than imported, so the printing half
+ * stays a function of what it was given.
+ */
+export type FileDispatch = (
+  action: string,
+  target: string,
+  params: Readonly<Record<string, string>>,
+) => DispatchResult;
+
+/** What a real `move` says when it has moved one. */
+const ONE_FILE_MOVED = '        1 file(s) moved.';
+
+function spoolFileRefusal(name: string): FileCommandResult {
+  return {
+    lines: [
+      `${name} is a spool file, and the spooler that wrote it has it open.`,
+      'Moving a queued job out from under a running service is exactly when '
+        + 'a file operation fails. Emptying that queue is "clearqueue", which '
+        + 'stops the service first because that is the order the job is in.',
+    ],
+  };
+}
+
+function storedFileRefusal(name: string): FileCommandResult {
+  return {
+    lines: [
+      `${name} was written by the program that fills that directory, and the `
+        + 'only things known about it are what this listing prints: how big '
+        + 'it is and when it was written.',
+      'There is no file here to pick up and put down somewhere else. What '
+        + 'that directory holds goes all at once or not at all.',
+    ],
+  };
+}
+
+/**
+ * `move <file> <directory>`.
+ *
+ * The verb for the commonest lost file on any estate: one that was opened out
+ * of a mail, worked on all afternoon and saved back to the temp directory it
+ * was opened from. It moves rather than copies, because the file in there is
+ * the only one and two copies of a spreadsheet is a fortnight of somebody
+ * editing the wrong one.
+ */
+export function moveLines(
+  graph: ReadOnlyGraphView,
+  session: Readonly<TerminalSession>,
+  args: readonly string[],
+  dispatch: FileDispatch,
+): FileCommandResult {
+  const [source = '', destination = ''] = args;
+  const flag = args.find((arg) => arg.startsWith('/'));
+
+  if (flag !== undefined) {
+    return switchRefusal('move', flag);
+  }
+
+  if ([source, destination].some((arg) => arg.includes('*') || arg.includes('?'))) {
+    return wildcardRefusal('move');
+  }
+
+  const found = findPath(graph, session, source);
+
+  if (!found.ok) {
+    return { lines: faultLines(found.fault, 'file') };
+  }
+
+  if (found.entry.kind !== 'file') {
+    return {
+      lines: [
+        `"${displayPath(found.location)}" is a directory.`,
+        'This move takes a file and the directory to put it in. Moving a '
+          + 'directory somewhere else is a change to the shape of a drive '
+          + 'and is not one of the things this desk does from a terminal.',
+      ],
+    };
+  }
+
+  const parent = locate(graph, parentOf(found.location));
+  const parentId = parent.ok ? parent.entry.nodeId : null;
+
+  if (found.entry.nodeId === null || parentId === null) {
+    // The two listings this world derives rather than holds. Neither of them
+    // is a file anything can pick up, and each says so for its own reason.
+    const holder = parentId === null ? undefined : graph.getNode(parentId);
+
+    return holder !== undefined && isStoredDirectory(holder)
+      ? storedFileRefusal(found.entry.name)
+      : spoolFileRefusal(found.entry.name);
+  }
+
+  if (found.entry.accessDenied) {
+    return { lines: faultLines('denied', 'file') };
+  }
+
+  const into = findPath(graph, session, destination);
+
+  if (!into.ok) {
+    return { lines: faultLines(into.fault, 'path') };
+  }
+
+  if (into.entry.kind !== 'directory' || into.entry.nodeId === null) {
+    return {
+      lines: [
+        INVALID_DIRECTORY,
+        'The second argument is the directory to move it INTO. Moving a file '
+          + 'onto another file is a rename with an overwrite in it, and this '
+          + 'terminal does not overwrite anything.',
+      ],
+    };
+  }
+
+  const result = dispatch(HELPDESK_ACTIONS.fileMove, found.entry.nodeId, {
+    from: parentId,
+    to: into.entry.nodeId,
+  });
+
+  return {
+    lines: result.ok
+      ? [
+        ONE_FILE_MOVED,
+        `${found.entry.name} is now in ${displayPath(into.location)}.`,
+      ]
+      : [result.reason],
+  };
+}
+
+/**
+ * `purge <directory>` - empty a directory a program has been filling.
+ *
+ * A verb rather than `del <path>\*.*`, and the difference is the whole point:
+ * this one refuses everything whose contents are not a second copy of
+ * something, and a wildcard delete refuses nothing at all.
+ */
+export function purgeLines(
+  graph: ReadOnlyGraphView,
+  session: Readonly<TerminalSession>,
+  argument: string,
+  dispatch: FileDispatch,
+): FileCommandResult {
+  const arg = argument.trim();
+
+  if (arg.startsWith('/')) {
+    return switchRefusal('purge', arg);
+  }
+
+  if (arg.includes('*') || arg.includes('?')) {
+    return wildcardRefusal('purge');
+  }
+
+  if (arg.length === 0) {
+    return {
+      lines: [
+        'This purge will not empty the directory you happen to be standing '
+          + 'in.',
+        'Name the directory. A verb that deletes has to be told, out loud, '
+          + 'what it is deleting.',
+      ],
+    };
+  }
+
+  const found = findPath(graph, session, arg);
+
+  if (!found.ok) {
+    return { lines: faultLines(found.fault, 'path') };
+  }
+
+  if (found.entry.kind !== 'directory' || found.entry.nodeId === null) {
+    return { lines: [INVALID_DIRECTORY] };
+  }
+
+  if (found.entry.accessDenied) {
+    return { lines: faultLines('denied', 'path') };
+  }
+
+  // The one directory in this estate whose contents are somebody else's
+  // procedure. The world would refuse this too, and it would refuse it in the
+  // words written for a drive full of exports rather than for a print queue.
+  if (found.entry.nodeId === spoolDirId(found.location.machineId)) {
+    return {
+      lines: [
+        'That is the spool directory, and what is in it is a print queue.',
+        'The files in there are open by the spooler that owns them, so they '
+          + 'go in the order the runbook has: stop the service, empty the '
+          + 'queue, start it again. "clearqueue <printer>" does the first two.',
+      ],
+    };
+  }
+
+  const before = graph.getNode(found.entry.nodeId);
+  const emptied = readStoredFiles(before?.fields[FIELDS.storedFiles]);
+  const bytes = emptied.reduce((total, entry) => total + entry.bytes, 0);
+
+  const result = dispatch(HELPDESK_ACTIONS.directoryPurge, found.entry.nodeId, {
+    [MACHINE_PARAM]: found.location.machineId,
+  });
+
+  if (!result.ok) {
+    return { lines: [result.reason] };
+  }
+
+  return {
+    lines: [
+      `Emptied ${displayPath(found.location)}`,
+      `${String(emptied.length).padStart(16)} File(s) ${
+        thousands(bytes).padStart(14)
+      } bytes deleted`,
+      // The same column a listing's footer prints free space in, because it is
+      // the same number and the player has just read it there.
+      `${
+        thousands(diskFreeOf(graph, found.location.machineId)).padStart(39)
+      } bytes free`,
+      'Whatever wrote them will write the next one on the same schedule. This '
+        + 'is a drive emptied, not a fault fixed, and the ticket should say so.',
+    ],
   };
 }
 

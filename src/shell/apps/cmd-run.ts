@@ -1,5 +1,8 @@
-import type { ReadOnlyGraphNode } from '../../engine-api';
-import type { NodeKind } from '../../engine-api';
+import type {
+  DispatchResult,
+  NodeKind,
+  ReadOnlyGraphNode,
+} from '../../engine-api';
 import { HELPDESK_ACTIONS } from '../../world/actions';
 import { COMPANY } from '../../world/company';
 import {
@@ -22,11 +25,13 @@ import {
 } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { DEFAULT_CWD } from '../../world/filesystem';
-import type { TerminalSession } from '../../world/fs';
+import { readSpoolJobs, type TerminalSession } from '../../world/fs';
 import {
   cdLines,
   dirLines,
   type FileCommandResult,
+  moveLines,
+  purgeLines,
   // The same grouping a listing uses, because a process list and a directory
   // listing have always written a thousand the same way.
   thousands,
@@ -688,6 +693,24 @@ function tasklistLines(api: GameApi, args: readonly string[]): CommandResult {
   );
 }
 
+/** The queue's own columns: a job number, a size, and the minute it landed. */
+const JOB_COLUMN = 6;
+const JOB_SIZE_COLUMN = 14;
+
+/**
+ * `queue <printer>` - the jobs on it, and the spooler behind them.
+ *
+ * The world holds one line per job, a size and a minute, because that is what
+ * a listing prints - and the spool directory on the print server IS that list,
+ * so these rows and a `dir` on that directory are the same pile counted twice.
+ * The job number is the spool file's own number for the same reason: a queue
+ * that called job 3 something else from the file called 00003.SPL would be two
+ * windows disagreeing about one thing.
+ *
+ * What is not here is what the world does not hold: nobody's name, no document
+ * titles, no page counts. A real queue window has all three and this estate has
+ * never known any of them.
+ */
 function queueLines(api: GameApi, query: string): CommandResult {
   const found = printerOf(api, query);
 
@@ -697,6 +720,7 @@ function queueLines(api: GameApi, query: string): CommandResult {
 
   const printer = found.node;
   const depth = printer.fields[FIELDS.queueLen];
+  const jobs = readSpoolJobs(printer.fields[FIELDS.spoolJobs]);
   const host = api.graph
     .neighbors(printer.id, { direction: 'out', edgeKind: 'connected_to' })
     .find((node) => node.kind === 'machine');
@@ -710,15 +734,42 @@ function queueLines(api: GameApi, query: string): CommandResult {
       .neighbors(host.id, { direction: 'in', edgeKind: 'runs_on' })
       .find((node) => node.fields[FIELDS.serviceName] === 'Spooler');
 
+  const total = jobs.reduce((sum, job) => sum + job.bytes, 0);
+  const spoolerLine = spooler === undefined
+    ? 'No spooler is registered for it, which explains a great deal.'
+    : `Spooler on ${labelOf(host ?? printer)} reports ${statusWord(spooler)}.`;
+
+  if (jobs.length === 0) {
+    return lines(
+      `${labelOf(printer)}: ${
+        typeof depth === 'number' ? String(depth) : 'an unknown number of'
+      } job(s) queued.`,
+      spoolerLine,
+    );
+  }
+
   return lines(
+    `Print queue on ${labelOf(printer)}`,
+    '',
+    `${'Job'.padStart(JOB_COLUMN)} ${
+      'Size'.padStart(JOB_SIZE_COLUMN)
+    }  Submitted`,
+    `${'-'.repeat(JOB_COLUMN)} ${'-'.repeat(JOB_SIZE_COLUMN)}  ${
+      '-'.repeat(17)
+    }`,
+    ...jobs.map((job, index) => `${
+      String(index + 1).padStart(JOB_COLUMN)
+    } ${thousands(job.bytes).padStart(JOB_SIZE_COLUMN)}  ${job.modified}`),
+    '',
     `${labelOf(printer)}: ${
       typeof depth === 'number' ? String(depth) : 'an unknown number of'
-    } job(s) queued.`,
-    spooler === undefined
-      ? 'No spooler is registered for it, which explains a great deal.'
-      : `Spooler on ${labelOf(host ?? printer)} reports ${
-        statusWord(spooler)
-      }.`,
+    } job(s) queued, ${thousands(total)} bytes.`,
+    spoolerLine,
+    // The half a count never said out loud, and the half that is the
+    // diagnosis: four jobs of exactly the same size are one delivery note
+    // somebody has now sent four times.
+    'Nobody\'s name is on any of these. A spool file is numbered and sized '
+      + 'and nothing else, which is why the sizes are worth reading.',
   );
 }
 
@@ -1298,6 +1349,12 @@ function fileCommandLines(
     username: account === undefined ? null : labelOf(account),
   };
 
+  const dispatch = (
+    action: string,
+    target: string,
+    params: Readonly<Record<string, string>>,
+  ): DispatchResult => api.dispatch(action, api.actor, target, { ...params });
+
   const result = ((): FileCommandResult => {
     switch (parsed.spec.name) {
       case 'dir':
@@ -1306,6 +1363,10 @@ function fileCommandLines(
         return cdLines(api.graph, session, parsed.query);
       case 'tree':
         return treeLines(api.graph, session, parsed.args);
+      case 'move':
+        return moveLines(api.graph, session, parsed.args, dispatch);
+      case 'purge':
+        return purgeLines(api.graph, session, parsed.query, dispatch);
       default:
         return typeLines(api.graph, session, parsed.query);
     }
@@ -1401,6 +1462,8 @@ export function executeCommand(
     case 'cd':
     case 'type':
     case 'tree':
+    case 'move':
+    case 'purge':
       return fileCommandLines(parsed, api, cwd);
     default:
       break;

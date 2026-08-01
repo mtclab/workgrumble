@@ -5,6 +5,7 @@ import {
   findCommand,
   fumbleTypo,
   parseCommand,
+  splitArguments,
   suggestCommand,
 } from './cmd-parse';
 
@@ -40,6 +41,43 @@ describe('command parser', () => {
 
     expect(parsed.args).toEqual(['Hercules', '400']);
     expect(parsed.query).toBe('Hercules 400');
+  });
+
+  /**
+   * Quotes are how a shell is told that a path with spaces in it is ONE path,
+   * and this estate has `Documents and Settings` and `My Documents` on every
+   * profile in it. A parser that counted words could not take two paths at
+   * once, which is exactly what the verb for a lost file has to take.
+   */
+  it('keeps a quoted path together, spaces and all', () => {
+    const parsed = parseCommand(
+      'move C:\\WINDOWS\\TEMP\\STATEMENT.TXT "C:\\Documents and Settings\\praval"',
+    );
+
+    expect(parsed.kind).toBe('command');
+
+    if (parsed.kind !== 'command') {
+      return;
+    }
+
+    expect(parsed.args).toEqual([
+      'C:\\WINDOWS\\TEMP\\STATEMENT.TXT',
+      '"C:\\Documents and Settings\\praval"',
+    ]);
+
+    // And a joined command is unchanged by any of it: quoted or not, `dir`
+    // gets back exactly the path that was typed.
+    const quoted = parseCommand('dir "C:\\Documents and Settings"');
+    const bare = parseCommand('dir C:\\Documents and Settings');
+
+    expect(quoted.kind === 'command' && quoted.query)
+      .toBe('"C:\\Documents and Settings"');
+    expect(bare.kind === 'command' && bare.query)
+      .toBe('C:\\Documents and Settings');
+    // An unclosed quote is the rest of the line, which is what every shell
+    // does with one rather than refusing to run at all.
+    expect(splitArguments('move "C:\\a b')).toEqual(['move', '"C:\\a b']);
+    expect(splitArguments('   ')).toEqual([]);
   });
 
   it('keeps positional commands positional', () => {

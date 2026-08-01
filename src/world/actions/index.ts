@@ -6,6 +6,7 @@ import { CONSUMABLE_ACTION_DATA } from './consumables';
 export { BEER_TOO_EARLY_REASON, LATE_CAN_REASON } from './consumables';
 import { DAY_ACTION_DATA } from './day';
 import { DEVICE_ACTIONS } from './device';
+import { DRIVE_ACTIONS } from './drive';
 import { FACILITIES_ACTIONS } from './facilities';
 import { KIND_LABELS } from './helpers';
 import { MACHINE_ACTIONS } from './machine';
@@ -27,6 +28,19 @@ export {
   REVOKE_WITHOUT_FACTOR_REASON,
   SEATS_PARAM,
 } from './account';
+export {
+  ACROSS_VOLUMES_REASON,
+  ALREADY_THERE_REASON,
+  DESTINATION_DENIED_REASON,
+  DESTINATION_IS_A_LISTING_REASON,
+  MACHINE_PARAM,
+  NOT_DISPOSABLE_REASON,
+  NOT_IN_THAT_DIRECTORY_REASON,
+  NOTHING_TO_EMPTY_REASON,
+  SOURCE_DENIED_REASON,
+  VOLUME_CEILING,
+  WRONG_VOLUME_REASON,
+} from './drive';
 export { STICKY_NOTE_ALREADY_REASON } from './facilities';
 export {
   PHISH_CLICK_STRESS,
@@ -63,6 +77,7 @@ export function helpdeskActions(): readonly ActionData[] {
     ...SERVICE_ACTIONS,
     ...MACHINE_ACTIONS,
     ...DEVICE_ACTIONS,
+    ...DRIVE_ACTIONS,
     ...MAIL_RULE_ACTIONS,
     ...SHARE_ACTIONS,
     ...FACILITIES_ACTIONS,

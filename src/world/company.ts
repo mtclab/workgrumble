@@ -4,7 +4,7 @@ import {
   VERIFICATION_METHODS,
   verificationChannels,
 } from './fallout';
-import { driveSetup } from './filesystem';
+import { driveSetup, SOFTWARE, type Software } from './filesystem';
 import {
   DEVICE_TYPES,
   FIELDS,
@@ -404,6 +404,13 @@ interface MachineSeed {
    * warehouse box is nearly full because a box in a warehouse always is.
    */
   readonly diskFree: number;
+  /**
+   * What is INSTALLED on this box, which its role does not imply and its
+   * hostname cannot be trusted about. One workstation in this building scans
+   * pallets; the drive it has been filling since 1997 is a fact about that
+   * one box, and the directories it wrote are seeded with it.
+   */
+  readonly software?: readonly Software[];
 }
 
 const DESK_PROCESSOR = 'Pentagon 133 MHz (one of them, and it is trying)';
@@ -494,7 +501,10 @@ const MACHINES: readonly MachineSeed[] = [
     wiredTo: COMPANY_IDS.warehousePrintServer,
     processor: 'Pentagon 90 MHz (and a layer of warehouse on the fan)',
     memory: '32 MB',
+    // Three megabytes, and the reason is on the same drive: twelve monthly
+    // scanner exports nobody has read since they were written.
     diskFree: 3_145_728,
+    software: [SOFTWARE.palletScanner],
   },
   {
     id: COMPANY_IDS.terryMachine,
@@ -564,6 +574,23 @@ const MACHINES: readonly MachineSeed[] = [
     diskFree: 1_610_612_736,
   },
 ];
+
+/**
+ * What the network calls a box, by its node id.
+ *
+ * Exported because a drive is stamped with it - every directory and file
+ * carries the volume it is on - and content that needs to write that down for
+ * a file of its own has to write down the same string the seed did.
+ */
+export function machineHostname(machineId: string): string {
+  const machine = MACHINES.find((candidate) => candidate.id === machineId);
+
+  if (machine === undefined) {
+    throw new Error(`No machine in this estate is called "${machineId}".`);
+  }
+
+  return machine.hostname;
+}
 
 const GROUP_MEMBERSHIPS: readonly { account: string; group: string }[] = [
   { account: COMPANY_IDS.playerAccount, group: COMPANY_IDS.printUsers },
@@ -768,9 +795,11 @@ export function companySetup(): readonly SetupOp[] {
 
     ops.push(...driveSetup({
       machineId: machine.id,
+      hostname: machine.hostname,
       role: machine.role,
       ...(owner === undefined ? {} : { ownerUsername: owner.username }),
       supportDesk: machine.id === COMPANY_IDS.playerMachine,
+      ...(machine.software === undefined ? {} : { software: machine.software }),
     }));
   }
 
