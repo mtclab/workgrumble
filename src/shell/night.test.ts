@@ -235,6 +235,10 @@ describe('the night, taken in one go', () => {
       FIELDS.interruptionAnswered,
       FIELDS.interruptionDeferred,
       FIELDS.interruptionDeclined,
+      // And the one 0.3.0 lane B added, for the same reason as the other
+      // four: nobody sits in a meeting at four in the morning, so a night
+      // that minuted one is a night reporting an event at the wrong minute.
+      FIELDS.meetingRecapAt,
     ]) {
       const refusal = offHoursRefusal([planted(field)]);
 
