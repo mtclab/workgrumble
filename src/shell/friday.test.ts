@@ -19,17 +19,17 @@ import { COMPANY_IDS } from '../world/company';
 import { BEER_STRESS_RELIEF, BEER_SUSPICION } from '../world/consumables';
 import { shiftEndTick, shiftStartTick } from '../world/day';
 import { FIELDS } from '../world/fields';
-import { REPUTATION_PER_BREACH } from '../world/meters';
 import { createWorldSession } from '../world/session';
 import { spawnWorldTicket } from '../world/tickets';
 import { PHISH_PRAISE } from '../world/tickets/desk';
 import {
   PROBATION_BONUS_PENCE,
   REVIEW_DAY,
-  REVIEW_PASS_REPUTATION,
+  REVIEW_PASS_PERFORMANCE,
   type ReviewOutcome,
   reviewTick,
-  weightedWeekReputation,
+  weekPerformance,
+  weekWorkThrough,
 } from '../world/week';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
 
@@ -131,22 +131,55 @@ function setReputation(world: Week, target: number): void {
 /**
  * Puts the number the REVIEW will read where a test needs it.
  *
- * The conversation stopped reading the live meter when the ceiling was found
- * to be hiding the last two days of a good week: it reads the week - today
- * folded into the days behind it, half and half - so a test that wants to
- * stand on one side of the line has to move that. Today is therefore set to
- * whatever makes the average come out where the test asked, and the result is
- * checked rather than assumed, because a helper that quietly missed the line
- * would turn every threshold test in this file into a test of nothing.
+ * The conversation does not read the reputation meter at all any more. It
+ * reads a mark out of a hundred - how much of the week's own work was closed,
+ * how much of it never went red - folded into the days behind it, half and
+ * half. Today's half is a fact about the tickets and cannot be dialled, so
+ * what this moves is the CARRIED half: the days before, set to whatever makes
+ * the fold come out where the test asked.
+ *
+ * It goes through the shipped verb rather than writing the field, and the
+ * result is checked rather than assumed, because a helper that quietly missed
+ * the line would turn every threshold test in this file into a test of
+ * nothing.
  */
 function setReviewReading(world: Week, target: number): void {
-  const carried = meter(world, FIELDS.weekReputation);
-  const today = Math.round(2 * target - carried);
+  const mark = weekPerformance(weekWorkThrough(
+    world.engine.graph.nodesOfKind('ticket'),
+    world.driver.day(),
+  ));
 
-  expect(today, 'the target is not reachable from this week').toBeGreaterThanOrEqual(0);
-  expect(today, 'the target is not reachable from this week').toBeLessThanOrEqual(100);
-  setReputation(world, today);
-  expect(weightedWeekReputation(carried, today)).toBe(target);
+  expect(mark, 'a Friday with no week behind it cannot be read')
+    .not.toBeNull();
+
+  const carried = 2 * target - (mark ?? 0);
+
+  expect(carried, 'the target is not reachable from this week')
+    .toBeGreaterThanOrEqual(0);
+  expect(carried, 'the target is not reachable from this week')
+    .toBeLessThanOrEqual(100);
+
+  setWeekStanding(world, carried);
+  expect(world.driver.weekReading()).toBe(target);
+}
+
+/**
+ * The week's standing as the WORLD holds it, through the verb that holds it.
+ *
+ * Not the same number as the one above: this is the days behind today, which
+ * is what the review guards actually read - the driver folds today into it in
+ * the minute the conversation happens, and then asks.
+ */
+function setWeekStanding(world: Week, standing: number): void {
+  const result = world.engine.dispatch(
+    DAY_ACTIONS.weekReading,
+    COMPANY_IDS.player,
+    null,
+    { reading: standing },
+  );
+
+  expect(result).toEqual({ ok: true });
+  expect(meter(world, FIELDS.weekReputation)).toBe(standing);
 }
 
 /** Plays whole days at a time, up to the morning of `untilDay`. */
@@ -187,7 +220,7 @@ function playToTheReview(reading: number): Week {
 
 describe('the review at three on Friday', () => {
   it('passes a week that stayed above the line, once', () => {
-    const world = playToTheReview(REVIEW_PASS_REPUTATION);
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE);
     const fundBefore = meter(world, FIELDS.farmFund);
 
     world.driver.step(TICK_INTERVAL_MS);
@@ -228,7 +261,7 @@ describe('the review at three on Friday', () => {
    * is the thing a reload restores.
    */
   it('keeps the bottle in the fridge until the week has actually ended', () => {
-    const world = playToTheReview(REVIEW_PASS_REPUTATION);
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE);
     world.driver.step(TICK_INTERVAL_MS);
     expect(world.driver.reviewOutcome()).toBe('passed');
 
@@ -255,7 +288,7 @@ describe('the review at three on Friday', () => {
 
   /** And a week that was fired never gets one, at any hour. */
   it('never unlocks the bottle for a week that was not continued', () => {
-    const world = playToTheReview(REVIEW_PASS_REPUTATION - 1);
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE - 1);
     world.driver.step(TICK_INTERVAL_MS);
     expect(world.driver.reviewOutcome()).toBe('fired');
 
@@ -272,15 +305,17 @@ describe('the review at three on Friday', () => {
    * The conversation reads the minute it happens IN, not the minute before it.
    *
    * The review used to be settled before the parent cascades and before the
-   * meters, so a ticket resolved at 14:59 - whose credit is paid at the 15:00
-   * meter tick - was work the lead had not been told about when he made his
-   * decision. One point below the line, one closed ticket, and fired for a job
-   * that was already done.
+   * meters, so a ticket resolved at 14:59 was work the lead had not been told
+   * about when he made his decision. One point below the line, one closed
+   * ticket, and fired for a job that was already done.
+   *
+   * The mark is a ledger rather than a meter now, so the close lands on it the
+   * moment it happens - but the conversation still has to be settled AFTER the
+   * minute has been played out, and that is what this holds.
    */
   it('counts a ticket closed at 14:59 in the conversation at 15:00', () => {
-    const world = playToTheReview(REVIEW_PASS_REPUTATION - 1);
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE - 1);
     expect(world.engine.now()).toBe(reviewTick(REVIEW_DAY) - 1);
-    const standing = meter(world, FIELDS.reputation);
 
     // Friday's own inherited ticket, closed one minute before the meeting.
     const closed = world.driver.dispatch(
@@ -299,28 +334,44 @@ describe('the review at three on Friday', () => {
     expect(replied).toEqual({ ok: true });
     expect(world.engine.ticketState(PHISHING_TICKET)).toBe('resolved');
 
-    // The credit has not been paid yet: it lands on the meter tick, which is
-    // the same minute as the review. So at 14:59 the week still reads one
-    // point short of the line, which is the whole setup.
-    expect(meter(world, FIELDS.reputation)).toBe(standing);
-    expect(weightedWeekReputation(
-      meter(world, FIELDS.weekReputation),
-      standing,
-    )).toBe(REVIEW_PASS_REPUTATION - 1);
+    // One ticket of a week's worth, half of it in the resolution term: it is
+    // worth exactly the point that was missing.
+    expect(world.driver.weekReading()).toBe(REVIEW_PASS_PERFORMANCE);
 
     world.driver.step(TICK_INTERVAL_MS);
 
     expect(world.engine.now()).toBe(reviewTick(REVIEW_DAY));
-    expect(meter(world, FIELDS.reputation)).toBeGreaterThan(standing);
-    // The credit reached the conversation, weighted like everything else.
+    // The close reached the conversation, weighted like everything else.
     expect(meter(world, FIELDS.reviewReputation))
-      .toBeGreaterThanOrEqual(REVIEW_PASS_REPUTATION);
+      .toBeGreaterThanOrEqual(REVIEW_PASS_PERFORMANCE);
+    expect(world.driver.reviewOutcome()).toBe('passed');
+  });
+
+  /**
+   * And the meter it used to read is not read at all, which is the whole of
+   * this slice in one assertion.
+   *
+   * Reputation still moves - closures pay it, breaches take from it, the lead
+   * finding a forum on your screen costs six - and it still drives the things
+   * it always drove. It does not decide the probation. A week put on the line
+   * and then stripped of every point of reputation it had is a week that still
+   * passes, because the queue was dealt with either way.
+   */
+  it('does not read the reputation meter, whatever is left of it', () => {
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE);
+    setReputation(world, 0);
+
+    expect(meter(world, FIELDS.reputation)).toBe(0);
+    expect(world.driver.weekReading()).toBe(REVIEW_PASS_PERFORMANCE);
+
+    world.driver.step(TICK_INTERVAL_MS);
+
     expect(world.driver.reviewOutcome()).toBe('passed');
   });
 
   /** And the same minute, taken through a save and a load at 14:59. */
   it('reaches the same conversation across a save at 14:59', () => {
-    const world = playToTheReview(REVIEW_PASS_REPUTATION - 1);
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE - 1);
 
     world.driver.dispatch(
       HELPDESK_ACTIONS.mailRuleEnable,
@@ -372,8 +423,7 @@ describe('the review at three on Friday', () => {
       * (reviewTick(REVIEW_DAY) - 1 - world.engine.now()));
     // Standing exactly ON the line at 14:59, so the only thing that can take
     // this week under it is the deadline that goes at 15:00.
-    setReviewReading(world, REVIEW_PASS_REPUTATION);
-    const standing = meter(world, FIELDS.reputation);
+    setReviewReading(world, REVIEW_PASS_PERFORMANCE);
     expect(world.engine.ticketState(LATE_TICKET)).toBe('open');
     expect(world.driver.reviewOutcome()).toBe('pending');
 
@@ -381,17 +431,15 @@ describe('the review at three on Friday', () => {
 
     expect(world.engine.now()).toBe(reviewTick(REVIEW_DAY));
     expect(world.engine.ticketState(LATE_TICKET)).toBe('breached');
-    expect(meter(world, FIELDS.reputation))
-      .toBe(standing - REPUTATION_PER_BREACH);
     expect(world.driver.reviewOutcome()).toBe('fired');
     // And it was the miss that did it: the week was on the line a minute ago,
     // and what the conversation read is below it.
     expect(meter(world, FIELDS.reviewReputation))
-      .toBeLessThan(REVIEW_PASS_REPUTATION);
+      .toBeLessThan(REVIEW_PASS_PERFORMANCE);
   });
 
   it('fires a week that did not, and one point is the difference', () => {
-    const world = playToTheReview(REVIEW_PASS_REPUTATION - 1);
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE - 1);
     const fundBefore = meter(world, FIELDS.farmFund);
 
     world.driver.step(TICK_INTERVAL_MS);
@@ -405,9 +453,17 @@ describe('the review at three on Friday', () => {
     expect(meter(world, FIELDS.farmFund)).toBe(fundBefore);
   });
 
-  /** The world is the thing that decides, so it refuses the other answer. */
-  it('refuses the verb the meters do not support', () => {
-    const world = playToTheReview(REVIEW_PASS_REPUTATION - 1);
+  /**
+   * The world is the thing that decides, so it refuses the other answer.
+   *
+   * Put to the guard the way the driver puts it: the guard reads the week's
+   * standing off the player node, and the driver's contract is to fold today
+   * into that field BEFORE it offers either verb. So the field is set to a
+   * week that has not reached the line, and the wrong verb is offered.
+   */
+  it('refuses the verb the week does not support', () => {
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE - 1);
+    setWeekStanding(world, REVIEW_PASS_PERFORMANCE - 1);
 
     const wrong = world.engine.dispatch(
       DAY_ACTIONS.reviewPassed,
@@ -439,7 +495,7 @@ describe('the review at three on Friday', () => {
 
 describe('the beer', () => {
   it('is locked until the review says otherwise', () => {
-    const world = playToTheReview(REVIEW_PASS_REPUTATION - 1);
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE - 1);
 
     const refused = world.driver.beer();
     expect(refused.ok).toBe(false);
@@ -452,7 +508,10 @@ describe('the beer', () => {
   });
 
   it('turns up at five on a Friday that went well, and pours once', () => {
-    const world = playToTheReview(REVIEW_PASS_REPUTATION + 10);
+    // On the line rather than above it: the mark is a fact about the tickets
+    // and only the carried half can be dialled, so a Friday nobody worked
+    // cannot be put far above the line however hard a test asks.
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE);
     world.driver.step(TICK_INTERVAL_MS
       * (shiftEndTick(REVIEW_DAY) - world.engine.now()));
 
@@ -479,7 +538,7 @@ describe('the beer', () => {
 
 describe('the end of the week', () => {
   it('stops on Friday evening instead of rolling into a Saturday', () => {
-    const world = playToTheReview(REVIEW_PASS_REPUTATION);
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE);
     world.driver.step(TICK_INTERVAL_MS
       * (shiftEndTick(REVIEW_DAY) - world.engine.now()));
     const at = world.engine.now();
@@ -502,7 +561,7 @@ describe('the end of the week', () => {
   });
 
   it('adds the five days up out of the tickets they arrived in', () => {
-    const world = playToTheReview(REVIEW_PASS_REPUTATION);
+    const world = playToTheReview(REVIEW_PASS_PERFORMANCE);
     world.driver.step(TICK_INTERVAL_MS
       * (shiftEndTick(REVIEW_DAY) - world.engine.now()));
     world.driver.clockOff();
@@ -514,10 +573,10 @@ describe('the end of the week', () => {
     expect(card.arrived).toBe(tickets.length);
     expect(card.outcome).toBe('passed');
     // The number the CONVERSATION was decided on, which stopped moving at
-    // three o'clock. Reading the live meter let this screen print "37 of 40
-    // needed" directly above "Probation: passed".
-    expect(card.reputation).toBe(meter(world, FIELDS.reviewReputation));
-    expect(card.reputation).toBe(REVIEW_PASS_REPUTATION);
+    // three o'clock. Reading it live let this screen print "37 of 45 needed"
+    // directly above "Probation: passed".
+    expect(card.performance).toBe(meter(world, FIELDS.reviewReputation));
+    expect(card.performance).toBe(REVIEW_PASS_PERFORMANCE);
     expect(card.bankedPence).toBe(meter(world, FIELDS.farmFund));
     // A first week starts at nothing, so everything in the fund is this
     // week's - bonus included, because the bonus is this week's too.

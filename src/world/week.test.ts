@@ -15,6 +15,7 @@ import type { ReadOnlyGraphNode } from '../engine-api';
 import { dripWindow, shiftStartTick } from './day';
 import { FIELDS } from './fields';
 import { minuteOfDay } from './hours';
+import { STARTING_REPUTATION } from './meters';
 import { WORLD_TICKETS } from './tickets';
 import {
   assertWeekTickets,
@@ -30,14 +31,18 @@ import {
   PROBATION_BONUS_PENCE,
   REVIEW_DAY,
   REVIEW_MINUTE,
-  REVIEW_PASS_REPUTATION,
+  REVIEW_PASS_PERFORMANCE,
   reviewOutcomeFor,
   reviewTick,
   scheduledTicketIds,
   validateWeek,
   WEEK,
   WEEK_DAYS,
+  weekPerformance,
   weekScorecard,
+  weekStanding,
+  type WeekWork,
+  weekWorkThrough,
 } from './week';
 
 function monday(over: Partial<DayScript> = {}): DayScript {
@@ -147,9 +152,9 @@ describe('the review', () => {
   });
 
   it('turns on the threshold, both sides of it', () => {
-    expect(reviewOutcomeFor(REVIEW_PASS_REPUTATION)).toBe('passed');
-    expect(reviewOutcomeFor(REVIEW_PASS_REPUTATION + 1)).toBe('passed');
-    expect(reviewOutcomeFor(REVIEW_PASS_REPUTATION - 1)).toBe('fired');
+    expect(reviewOutcomeFor(REVIEW_PASS_PERFORMANCE)).toBe('passed');
+    expect(reviewOutcomeFor(REVIEW_PASS_PERFORMANCE + 1)).toBe('passed');
+    expect(reviewOutcomeFor(REVIEW_PASS_PERFORMANCE - 1)).toBe('fired');
     expect(reviewOutcomeFor(0)).toBe('fired');
     expect(PROBATION_BONUS_PENCE).toBeGreaterThan(0);
   });
@@ -279,7 +284,7 @@ describe('the week, scored', () => {
     const card = weekScorecard(tickets, {
       banked: 40_000,
       opening: 5_000,
-      reputation: 44,
+      performance: 44,
       outcome: 'passed',
     });
 
@@ -291,7 +296,7 @@ describe('the week, scored', () => {
     expect(card.closed).toBe(2);
     // A ticket that closed late still closed late.
     expect(card.breached).toBe(2);
-    expect(card.reputation).toBe(44);
+    expect(card.performance).toBe(44);
     expect(card.outcome).toBe('passed');
   });
 
@@ -306,7 +311,7 @@ describe('the week, scored', () => {
     const card = weekScorecard(tickets, {
       banked: 40_000,
       opening: 5_000,
-      reputation: 44,
+      performance: 44,
       outcome: 'passed',
     });
 
@@ -322,8 +327,182 @@ describe('the week, scored', () => {
     expect(weekScorecard(tickets, {
       banked: 1_000,
       opening: 5_000,
-      reputation: 10,
+      performance: 10,
       outcome: 'fired',
     }).earnedPence).toBe(0);
+  });
+  /**
+   * And the same days, added up the way the REVIEW adds them: everything the
+   * week has handed over up to a given day, out of the same ledgers. Read
+   * through the Tuesday and the Thursday ticket is not in it yet, which is
+   * what "the week so far" has to mean.
+   */
+  it('reads the week to date out of the same ticket nodes', () => {
+    expect(weekWorkThrough(tickets, 2))
+      .toEqual({ arrived: 3, closed: 2, breached: 2 });
+    expect(weekWorkThrough(tickets, WEEK_DAYS))
+      .toEqual({ arrived: 4, closed: 2, breached: 2 });
+    expect(weekWorkThrough(tickets, 0))
+      .toEqual({ arrived: 0, closed: 0, breached: 0 });
+  });
+});
+
+/* -- the performance axis, and the gate that stops it scaling -------------- */
+
+describe('the mark the review reads', () => {
+  const work = (
+    arrived: number,
+    closed: number,
+    breached: number,
+  ): WeekWork => ({ arrived, closed, breached });
+
+  it('is a percentage of the work that arrived', () => {
+    // Everything closed, nothing late.
+    expect(weekPerformance(work(25, 25, 0))).toBe(100);
+    // Half closed, half of them left to go red: the two halves of the mark
+    // are 54 and 50, and the mark is what they average to.
+    expect(weekPerformance(work(24, 13, 12))).toBe(52);
+    // Nothing closed and everything red.
+    expect(weekPerformance(work(24, 0, 24))).toBe(0);
+    // The deadline half on its own: everything answered in time and nothing
+    // finished is exactly half a week's work.
+    expect(weekPerformance(work(10, 0, 0))).toBe(50);
+    // And a week closed entirely after the fact scores the resolution half
+    // and none of the other, which is the honest reading of "done, but late".
+    expect(weekPerformance(work(10, 10, 10))).toBe(50);
+  });
+
+  /**
+   * A day nobody was given anything is not a bad day, it is no evidence - so
+   * it answers null and the standing carries rather than being averaged with
+   * a nought or, worse, a free hundred for having nothing to do.
+   */
+  it('has nothing to say about a week with nothing in it', () => {
+    expect(weekPerformance(work(0, 0, 0))).toBeNull();
+    expect(weekStanding(61, work(0, 0, 0))).toBe(61);
+  });
+
+  it('never leaves the hundred it is out of', () => {
+    // Counts that cannot happen, in case one day they do: a ledger that
+    // double-counted would otherwise print a mark of 150 on the week screen.
+    expect(weekPerformance(work(4, 9, 0))).toBe(100);
+    expect(weekPerformance(work(4, 0, 9))).toBe(0);
+  });
+
+  it('folds today into the week behind it, half and half', () => {
+    expect(weekStanding(50, work(10, 10, 0))).toBe(75);
+    expect(weekStanding(75, work(20, 20, 0))).toBe(88);
+  });
+});
+
+/**
+ * THE SCALING GATE.
+ *
+ * This is the assertion the defect in `docs/research/review-scoring.md` walked
+ * straight through, and the reason the review stopped reading a meter.
+ *
+ * The meter was a SUM: resolution credit scaled with the roster, the price of
+ * being caught was fixed by the lead's rounds, and the pass bar therefore
+ * drifted every time content was added. Measured, over one content slice: the
+ * gap between "did half the job" and "did the lot with the browser up" fell
+ * from sixteen points to seven when the roster went from twenty-three tickets
+ * to twenty-five, and the modelled crossover was about twenty-six. The next
+ * ticket added would have made openly slacking the better week, and nobody
+ * would have decided that.
+ *
+ * So the five profiles are walked here against the shipped roster AND against
+ * a roster doubled and quadrupled, and the mark has to come out IDENTICAL. Any
+ * model with a term that grows with content fails this, which is the point:
+ * it is not a test of today's numbers, it is a test that today's numbers are
+ * not a function of how much content the game has.
+ *
+ * The day rows are the ledgers the five shipped weeks actually produced, taken
+ * from `scripted-week.test.ts`. The numbers below are NOT a second golden for
+ * that file - the review happens at three o'clock and this walks whole days -
+ * so they are asserted for their SHAPE (order, separation, which side of the
+ * bar) rather than pinned to the minute.
+ */
+describe('the week as a fraction of itself, at any roster size', () => {
+  /** Per day: arrived, closed, went red. */
+  type DayRow = readonly [number, number, number];
+
+  const PROFILES: readonly {
+    readonly name: string;
+    readonly days: readonly DayRow[];
+  }[] = [
+    {
+      name: 'worked properly',
+      days: [[5, 5, 0], [6, 6, 0], [5, 5, 0], [5, 5, 0], [4, 4, 0]],
+    },
+    {
+      name: 'half the roster',
+      days: [[5, 4, 0], [5, 2, 4], [5, 2, 2], [5, 4, 3], [4, 1, 3]],
+    },
+    {
+      name: 'nothing at all',
+      days: [[5, 0, 4], [5, 0, 5], [5, 0, 5], [5, 0, 6], [4, 0, 4]],
+    },
+  ];
+
+  /**
+   * The week walked the way the driver walks it: the mark for the week TO
+   * DATE, folded into the days behind it, once per clock-off.
+   */
+  function walk(days: readonly DayRow[], roster: number): number {
+    let standing = STARTING_REPUTATION;
+    let arrived = 0;
+    let closed = 0;
+    let breached = 0;
+
+    for (const [day, done, red] of days) {
+      arrived += day * roster;
+      closed += done * roster;
+      breached += red * roster;
+      standing = weekStanding(standing, { arrived, closed, breached });
+    }
+
+    return standing;
+  }
+
+  const SIZES: readonly number[] = [1, 2, 4];
+
+  it('reads the same week the same way however much content there is', () => {
+    for (const profile of PROFILES) {
+      const marks = SIZES.map((size) => walk(profile.days, size));
+      const [shipped] = marks;
+
+      for (const [index, mark] of marks.entries()) {
+        expect(
+          mark,
+          `${profile.name} at ${String(SIZES[index] ?? 0)}x the roster`,
+        ).toBe(shipped);
+      }
+    }
+  });
+
+  it('keeps the order and the room between them at every size', () => {
+    for (const size of SIZES) {
+      const [worked, half, idle] = PROFILES.map(
+        (profile) => walk(profile.days, size),
+      ) as [number, number, number];
+      const at = `at ${String(size)}x the roster`;
+
+      expect(worked, at).toBeGreaterThan(half);
+      expect(half, at).toBeGreaterThan(idle);
+      // Room rather than a tie-break, on both gaps, and most of the scale
+      // used across the three: a review that told these apart inside ten
+      // points would be a review nobody could read.
+      expect(worked - half, at).toBeGreaterThanOrEqual(20);
+      expect(half - idle, at).toBeGreaterThanOrEqual(20);
+      expect(worked - idle, at).toBeGreaterThanOrEqual(60);
+
+      // And the bar still falls between doing half the job and doing none of
+      // it, which is the thing the drifting sum quietly stopped doing.
+      expect(half, at).toBeGreaterThanOrEqual(REVIEW_PASS_PERFORMANCE);
+      expect(idle, at).toBeLessThan(REVIEW_PASS_PERFORMANCE);
+      // Always a percentage, whatever the roster.
+      expect(worked, at).toBeLessThanOrEqual(100);
+      expect(idle, at).toBeGreaterThanOrEqual(0);
+    }
   });
 });
