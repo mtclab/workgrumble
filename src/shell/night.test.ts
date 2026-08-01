@@ -23,7 +23,8 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { EngineApi } from '../engine-api';
+import type { EngineApi, EngineEvent } from '../engine-api';
+import { offHoursRefusal } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { COMPANY_IDS } from '../world/company';
 import {
@@ -202,6 +203,68 @@ describe('the night, taken in one go', () => {
       scene.engine.advanceOffHours(60);
     }).toThrow(/lived one at a time/u);
     expect(scene.engine.now()).toBe(shiftStartTick(1));
+  });
+
+  /**
+   * Nobody rings at four in the morning.
+   *
+   * The guard is an allowlist of the three fields a held clock moves, so an
+   * interruption firing in the dark was already refused - but it was refused
+   * as "1 event(s) happened", which is a sentence that names nothing. The
+   * forbidden list names the mechanic instead, and it is the line that has to
+   * be deleted before anybody can quietly add `refocus_until` to the three.
+   *
+   * It is asserted against the classifier rather than through a night, because
+   * the engine emits these events from its own tick handler: the only honest
+   * way to plant an interruption in the forbidden window is to hand the guard
+   * the event an interruption would have produced.
+   */
+  it('refuses a night an interruption happened in, and says which', () => {
+    const planted = (field: string): EngineEvent => ({
+      type: 'graph:mutated',
+      mutation: {
+        type: 'field:set',
+        id: COMPANY_IDS.player,
+        field,
+        value: 1,
+      },
+    });
+
+    for (const field of [
+      FIELDS.refocusUntil,
+      FIELDS.interruptionAnswered,
+      FIELDS.interruptionDeferred,
+      FIELDS.interruptionDeclined,
+    ]) {
+      const refusal = offHoursRefusal([planted(field)]);
+
+      expect(refusal, field).toContain('The night was interrupted');
+      expect(refusal, field).toContain(field);
+    }
+
+    // The three the night IS allowed to write still pass, which is the half
+    // that proves the guard was extended rather than tightened into uselessness.
+    expect(offHoursRefusal([
+      planted('sla_deadline'),
+      planted('off_hours_ticks'),
+      planted('held_ticks'),
+    ])).toBeNull();
+    expect(offHoursRefusal([])).toBeNull();
+    // And anything else is still refused, in the words it always was.
+    expect(offHoursRefusal([planted(FIELDS.stress)]))
+      .toContain('1 event(s) happened');
+  });
+
+  /** And the shipped night, walked, produces none of them. */
+  it('gets through a real night without one', () => {
+    const scene = night();
+    toClockingOff(scene);
+
+    expect(() => {
+      scene.driver.clockOff();
+    }).not.toThrow();
+    expect(scene.engine.graph.getField(COMPANY_IDS.player, FIELDS.refocusUntil))
+      .toBeUndefined();
   });
 });
 

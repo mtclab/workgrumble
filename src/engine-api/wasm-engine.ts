@@ -321,16 +321,10 @@ export class WasmEngine implements EngineApi {
       throw new Error(answer.reason ?? 'The engine refused without saying why.');
     }
 
-    const unexpected = (answer.events ?? []).filter(
-      (event) => !isOffHoursCounterEvent(event),
-    );
+    const refusal = offHoursRefusal(answer.events ?? []);
 
-    if (unexpected.length > 0) {
-      throw new Error(
-        `${String(unexpected.length)} event(s) happened during an off-hours `
-        + 'advance. Coalescing them would report every one of them as having '
-        + 'happened at the end of the night.',
-      );
+    if (refusal !== null) {
+      throw new Error(refusal);
     }
 
     if (this.core.now() !== before) {
@@ -493,10 +487,74 @@ const OFF_HOURS_FIELDS: ReadonlySet<string> = new Set([
   'held_ticks',
 ]);
 
+/**
+ * Fields the night is FORBIDDEN to touch, named one at a time.
+ *
+ * The allowlist above already refuses everything that is not one of its three,
+ * so this list changes no verdict - it changes the SENTENCE, and that is the
+ * whole of its job. "One event happened during an off-hours advance" is a
+ * sentence somebody debugs for an hour; "an interruption fired at 03:40" is a
+ * sentence that names the mechanic that broke the rule.
+ *
+ * It also makes the rule greppable in the direction it actually gets broken.
+ * The tempting fix for "my new field trips the off-hours guard" is to add that
+ * field to `OFF_HOURS_FIELDS`, which weakens the guard silently; a field named
+ * here cannot be added there without deleting a line that says, in words, why
+ * it must not be. Interruptions are the first entries because they are the
+ * first mechanic with a schedule of its own: nobody rings at four in the
+ * morning, and a world that let one through would be quietly telling the
+ * player it had happened at nine.
+ */
+const OFF_HOURS_FORBIDDEN: Readonly<Record<string, string>> = {
+  refocus_until: 'an interruption ended and started the player looking for '
+    + 'their place again',
+  interruption_answered: 'an interruption was answered',
+  interruption_deferred: 'an interruption was pushed back',
+  interruption_declined: 'an interruption was refused',
+};
+
 function isOffHoursCounterEvent(event: Readonly<EngineEvent>): boolean {
   return event.type === 'graph:mutated'
     && event.mutation.type === 'field:set'
     && OFF_HOURS_FIELDS.has(event.mutation.field);
+}
+
+/**
+ * Whether a batch of off-hours events is allowed to have happened, and what to
+ * say when it is not. Null is "the night was silent, as nights are".
+ *
+ * Exported because it is the guard's whole decision and a decision nothing can
+ * call is a decision nothing can test: the engine emits these events from its
+ * own tick handler, so the only honest way to plant an interruption in the
+ * forbidden window is to hand the classifier the event the interruption would
+ * have produced.
+ */
+export function offHoursRefusal(
+  events: readonly Readonly<EngineEvent>[],
+): string | null {
+  for (const event of events) {
+    if (event.type !== 'graph:mutated' || event.mutation.type !== 'field:set') {
+      continue;
+    }
+
+    const forbidden = OFF_HOURS_FORBIDDEN[event.mutation.field];
+
+    if (forbidden !== undefined) {
+      return `The night was interrupted: ${forbidden}, at a minute nobody was `
+        + 'at the desk for. Off-hours minutes are lived in one batch, so the '
+        + 'whole of it would be reported as having happened at the end of the '
+        + `night - and "${event.mutation.field}" is not a field a night may `
+        + 'write.';
+    }
+  }
+
+  const unexpected = events.filter((event) => !isOffHoursCounterEvent(event));
+
+  return unexpected.length > 0
+    ? `${String(unexpected.length)} event(s) happened during an off-hours `
+      + 'advance. Coalescing them would report every one of them as having '
+      + 'happened at the end of the night.'
+    : null;
 }
 
 function freezeNode(node: ReadOnlyGraphNode): ReadOnlyGraphNode {

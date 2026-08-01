@@ -5,6 +5,7 @@ export {
 export {
   loadEngine,
   loadEngineFromBytes,
+  offHoursRefusal,
   WasmEngine,
 } from './wasm-engine';
 export * from './types';
