@@ -473,6 +473,13 @@ describe('support terminal commands', () => {
     expect(server).toContain('Total Physical Memory:     128 MB');
     expect(server).toMatch(/Registered Services: {7}\d+ \("services PRINT-01"/u);
     expect(server).toContain('Pending Updates:           Yes');
+    // Attached hardware is hardware. The printer is plugged into that box;
+    // the thirteen machines that PRINT through it are clients on the other
+    // end of a wire, and a heading that called them hardware was a heading
+    // that lied about every line under it.
+    expect(server).toContain('Attached Hardware:         Hercules 400');
+    expect(server).not.toContain('SALES-02');
+    expect(server).not.toContain('BEIGE-BOX');
     expect(run(api, 'systeminfo SALES-99')).toContain('Unknown host');
   });
 

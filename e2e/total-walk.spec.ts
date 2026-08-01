@@ -1442,8 +1442,13 @@ test('walks every function of a probation week that goes well', async ({
     await runCommand(page, 'systeminfo');
     await expect(page.getByTestId('cmd-output')).toContainText('Host Name');
     await runCommand(page, 'systeminfo PRINT-01');
+    // What the box IS and what is in its case. Attached hardware is the
+    // printer plugged into it - not the thirteen machines that print through
+    // it, which are clients and are somebody else's line.
     await expect(page.getByTestId('cmd-output'))
-      .toContainText('VPN Concentrator');
+      .toContainText('OS Name:                   WORKGRUMBLE Print server');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Attached Hardware:         Hercules 400');
     await runCommand(page, 'systeminfo wibble');
     await expect(page.getByTestId('cmd-output')).toContainText('Unknown host');
   });
@@ -1498,6 +1503,11 @@ test('walks every function of a probation week that goes well', async ({
     await runCommand(page, 'services DC-01');
     await expect(output).toContainText('Services on DC-01 (domain controller)');
     await expect(output).toContainText('Kerberos Key Distribution Center');
+
+    // The one nobody remembers is on the print server is in ITS list, which
+    // is where a service lives - `systeminfo` counts them and names none.
+    await runCommand(page, 'services PRINT-01');
+    await expect(output).toContainText('VPN Concentrator');
   });
 
   await step('cmd.sc', async () => {

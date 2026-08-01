@@ -281,6 +281,21 @@ export async function runCommand(page: Page, line: string): Promise<void> {
   );
 }
 
+/**
+ * The same, with the screen cleared first.
+ *
+ * `cmd-output` is the whole SCROLLBACK, so an assertion that the terminal does
+ * not say something is an assertion about every line typed in that window this
+ * session - which passes and fails for reasons that have nothing to do with
+ * the command under test. Anything asserting an absence, or reading the state
+ * of a list that changes between two runs of the same command, types it
+ * through here so the screen holds one answer.
+ */
+export async function runOnlyCommand(page: Page, line: string): Promise<void> {
+  await runCommand(page, 'cls');
+  await runCommand(page, line);
+}
+
 /** The one toast that says a ticket closed itself. */
 export function resolvedToast(page: Page): Locator {
   return page.getByTestId('toast').filter({ hasText: 'Ticket resolved' });

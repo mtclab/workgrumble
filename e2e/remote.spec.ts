@@ -173,7 +173,7 @@ test('closes the spooler ticket from the remote services panel', async ({
   await expect(spooler).toContainText('Automatic');
   // A stopped service that is MEANT to be stopped, on the same box, so that
   // "stopped" is a word the player has to read rather than a red flag.
-  await expect(page.getByTestId('remote-service-print-bits'))
+  await expect(page.getByTestId('remote-service-print/bits'))
     .toContainText('Manual');
 
   // A healthy service on the same box refuses a restart, and says why.

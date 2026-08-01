@@ -4,6 +4,7 @@ import {
   logIn,
   openFromStartMenu,
   runCommand,
+  runOnlyCommand,
 } from './helpers';
 
 /**
@@ -202,7 +203,10 @@ test('reports the browser and the toy as the processes they are', async ({
   await logIn(page);
   await openFromStartMenu(page, 'cmd');
 
-  await runCommand(page, 'tasklist');
+  // Cleared first, every time: the terminal keeps its whole scrollback, so an
+  // assertion that this list does NOT hold something has to be about the list
+  // in front of the player rather than about everything typed this session.
+  await runOnlyCommand(page, 'tasklist');
   const output = page.getByTestId('cmd-output');
 
   await expect(output).toContainText('System Idle Process');
@@ -215,7 +219,7 @@ test('reports the browser and the toy as the processes they are', async ({
 
   // The panic key moved what is on the screen and nothing at all on the list.
   await openFromStartMenu(page, 'cmd');
-  await runCommand(page, 'tasklist');
+  await runOnlyCommand(page, 'tasklist');
   await expect(output).toContainText('NAVIGATE.EXE');
   await expect(output).toContainText('BUBBLES.EXE');
   await expect(output).toContainText('A minimised window is a running program');
@@ -229,8 +233,11 @@ test('reports the browser and the toy as the processes they are', async ({
   await page.getByTestId('taskbar-button-browser').click();
   await page.getByTestId('close-browser').click();
   await openFromStartMenu(page, 'cmd');
-  await runCommand(page, 'tasklist');
+  await runOnlyCommand(page, 'tasklist');
   await expect(output).not.toContainText('NAVIGATE.EXE');
+  // And the toy that was left minimised is still on it, which is the other
+  // half of the same sentence.
+  await expect(output).toContainText('BUBBLES.EXE');
 });
 
 test('is an About dialog about this workstation, and nothing else', async ({

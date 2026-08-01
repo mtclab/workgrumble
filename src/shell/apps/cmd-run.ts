@@ -1105,10 +1105,14 @@ function systeminfoLines(api: GameApi, query: string): CommandResult {
     direction: 'in',
     edgeKind: 'runs_on',
   });
-  const devices = api.graph.neighbors(machine.id, {
-    direction: 'in',
-    edgeKind: 'connected_to',
-  });
+  // Attached hardware is hardware that is attached: the printer plugged into
+  // the print server, the monitor on the desk. The thirteen boxes that PRINT
+  // through that server are on the other end of a wire and are clients, not
+  // hardware - listing them under this heading was the row saying something
+  // false about every machine on it.
+  const devices = api.graph
+    .neighbors(machine.id, { direction: 'in', edgeKind: 'connected_to' })
+    .filter((node) => node.kind === 'device');
   const role = machineRoleOf(machine.fields[FIELDS.machineRole]);
 
   return lines(

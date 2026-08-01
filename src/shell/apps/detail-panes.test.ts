@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadEngineForTests } from '../../engine-api/load-node';
@@ -13,10 +16,14 @@ import {
   type RemoteSessionView,
 } from './remote';
 import type { GameApi } from './types';
+import { nodeKey } from './ui';
 
 beforeAll(() => {
   loadEngineForTests();
 });
+
+/** The browser suite, read as text: it names nodes, and nodes can be typos. */
+const SPEC_DIR = 'e2e';
 
 /**
  * The two detail panes, as the models they are now built from.
@@ -345,5 +352,62 @@ describe('the remote session pane', () => {
 
     expect(fan?.listed).toBe(false);
     expect(fan?.blocked).toContain('not software');
+  });
+
+  /**
+   * Every service row a browser test reaches for is a row this world has.
+   *
+   * The staging run found `remote-service-print-bits`, which is not a test id
+   * this product has ever rendered: the ids are built from node ids, a service
+   * on a box is `service:print/bits`, and a hyphen for the slash is a locator
+   * that finds nothing in a browser and nothing in the offline gate either.
+   * That is a whole class of failure - a spec naming a world that does not
+   * exist - and it can only be caught here, because nothing else in the local
+   * half of the gate reads what the specs ask for.
+   */
+  it('has a node behind every Remote Assist test id the e2e specs use', () => {
+    const world = session();
+    const keysOf = (kind: 'service' | 'machine' | 'device'): Set<string> => new Set(
+      world.api.graph.nodesOfKind(kind).map((node) => nodeKey(node.id)),
+    );
+    // One pattern per family, because each family is built from a different
+    // half of the world and a locator can only be checked against its own.
+    const families: readonly {
+      readonly pattern: RegExp;
+      readonly keys: ReadonlySet<string>;
+    }[] = [
+      {
+        pattern: /getByTestId\('remote-(?:service|restart)-([^']+)'\)/gu,
+        keys: keysOf('service'),
+      },
+      { pattern: /getByTestId\('remote-machine-([^']+)'\)/gu, keys: keysOf('machine') },
+      {
+        pattern: /getByTestId\('remote-(?:clear|power|queue|battery|replace-battery)-([^']+)'\)/gu,
+        keys: keysOf('device'),
+      },
+    ];
+    const specs = readdirSync(SPEC_DIR).filter((file) => file.endsWith('.ts'));
+    let checked = 0;
+
+    for (const file of specs) {
+      const source = readFileSync(join(SPEC_DIR, file), 'utf8');
+
+      for (const { pattern, keys } of families) {
+        for (const match of source.matchAll(pattern)) {
+          const id = match[1] ?? '';
+
+          // Families and placeholders are prose, not locators.
+          if (id.includes('<') || id.includes('*')) {
+            continue;
+          }
+
+          checked += 1;
+          expect(keys.has(id), `${file}: nothing in this world is "${id}"`)
+            .toBe(true);
+        }
+      }
+    }
+
+    expect(checked).toBeGreaterThan(10);
   });
 });
