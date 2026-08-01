@@ -94,6 +94,15 @@ export function validateDialogueTrees(
       );
     }
 
+    for (const landing of tree.call_roots ?? []) {
+      if (!nodeIds.has(landing)) {
+        throw new Error(
+          `Tree "${tree.id}" answers a call on "${landing}", which it has no `
+          + 'node for.',
+        );
+      }
+    }
+
     if (tree.resolved_root !== undefined && tree.tickets.length === 0) {
       throw new Error(
         `Tree "${tree.id}" reacts to a resolution but names no ticket.`,
@@ -235,6 +244,10 @@ function assertEveryNodeReachable(tree: Readonly<DialogueTree>): void {
   if (tree.summoned_root !== undefined) {
     queue.push(tree.summoned_root);
   }
+
+  // And the same for the nodes a ringing phone opens on. The day's schedule
+  // reaches them; nothing in the tree does, which is the point.
+  queue.push(...tree.call_roots ?? []);
 
   while (queue.length > 0) {
     const id = queue.pop();

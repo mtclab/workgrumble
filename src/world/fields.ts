@@ -229,6 +229,17 @@ export const FIELDS = {
   interruptionDeferred: 'interruption_deferred',
   interruptionDeclined: 'interruption_declined',
   /**
+   * The minute the room emptied after the mandatory sync, or absent while
+   * nobody has sat through one.
+   *
+   * It is what the recap mail is gated on, so the thread exists exactly when
+   * the meeting has actually happened and every line in it is stamped from
+   * there. Absent is the whole answer for a week that has not reached the
+   * Wednesday: an inbox holding minutes of a meeting nobody has been to is an
+   * inbox telling the player their own future.
+   */
+  meetingRecapAt: 'meeting_recap_at',
+  /**
    * The desk itself. `deskCans` is the empties standing on it - evidence, and
    * the reason there is a tidy-desk action at all. `drinkStartedAt` is the
    * minute the current can was opened (-1 when there is no run), and

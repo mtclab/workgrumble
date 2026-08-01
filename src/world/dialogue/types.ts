@@ -121,5 +121,18 @@ export interface DialogueTree {
    * ticket nobody has raised yet cannot be asked early.
    */
   readonly summoned_root?: string;
+  /**
+   * Where a CALL opens, for each interruption this person is scheduled to
+   * make.
+   *
+   * A list rather than the single `summoned_root` above, and keyed by nothing:
+   * a person can be summoned one way - the boss pings, Terry asks a favour -
+   * and can also ring twice in a week about two different things, so the
+   * interruption's own flavor names which of these nodes it opens on rather
+   * than the tree deciding. Each one is an entry point nothing in the tree
+   * points at, which is what keeps a conversation about a call that has not
+   * happened unreachable from the chat window.
+   */
+  readonly call_roots?: readonly string[];
   readonly nodes: readonly DialogueNode[];
 }

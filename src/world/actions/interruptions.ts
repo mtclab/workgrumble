@@ -6,7 +6,7 @@ import type {
   PredData,
 } from '../../engine-api';
 import { FIELDS } from '../fields';
-import { METER_FLOOR, REFOCUS_TICKS } from '../meters';
+import { METER_CEILING, METER_FLOOR, REFOCUS_TICKS } from '../meters';
 import { HELPDESK_TIER, not, TARGET } from './helpers';
 import { DAY_ACTIONS } from './ids';
 
@@ -255,5 +255,80 @@ export const INTERRUPTION_ACTION_DATA: readonly ActionData[] = [
       },
     ],
     apply: [record(FIELDS.interruptionDeclined)],
+  },
+  /**
+   * The arrival itself, which is charged before anybody has decided anything.
+   *
+   * The stress is a parameter rather than a constant in here for the same
+   * reason every other meter move is: the shell reads what KIND of arrival it
+   * was - severity, and whether it is about the work in hand - and the world
+   * decides what a number ends up being and where it stops. A replay reads the
+   * figure out of the dispatch log instead of recomputing it against a
+   * schedule it would have to rebuild.
+   *
+   * It is deliberately not guarded on the id being unsettled. An arrival is
+   * not a decision: the same interruption can arrive twice - once, and then
+   * again twenty minutes later because you asked it to - and both arrivals are
+   * genuinely interruptions. What the caller must not do is dispatch it twice
+   * for one arrival, and the caller cannot, because it is dispatched from the
+   * minute the schedule says the entry starts on.
+   */
+  {
+    id: DAY_ACTIONS.interruptionArrived,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...NAMED,
+      {
+        when: not({ pred: 'param_is_whole_number', param: 'stress_up', value: 0 }),
+        reason: 'What being taken off the work costs has to be a whole number '
+          + 'of points at or above zero, and this is not one.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.stress,
+        value: {
+          add: {
+            node: ACTOR,
+            field: FIELDS.stress,
+            by: { param: 'stress_up' },
+            clamp: { min: METER_FLOOR, max: METER_CEILING },
+          },
+        },
+      },
+    ],
+  },
+  /**
+   * The room emptying, which is the minute the recap mail is stamped from.
+   *
+   * One field, written once, by the day loop, at the end of a block nobody
+   * chose to be in. It is separate from `accept` because they happen half an
+   * hour apart: the sync is answered at half past ten because a junior cannot
+   * skip it, and the mail about it exists at eleven.
+   */
+  {
+    id: DAY_ACTIONS.meetingRecap,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: not({
+          pred: 'field_missing',
+          node: ACTOR,
+          field: FIELDS.meetingRecapAt,
+        }),
+        reason: 'That meeting has already been minuted. A recap written twice '
+          + 'is a thread that arrives at two different times.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.meetingRecapAt,
+        value: { now: true },
+      },
+    ],
   },
 ];

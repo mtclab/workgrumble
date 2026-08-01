@@ -511,6 +511,7 @@ const OFF_HOURS_FORBIDDEN: Readonly<Record<string, string>> = {
   interruption_answered: 'an interruption was answered',
   interruption_deferred: 'an interruption was pushed back',
   interruption_declined: 'an interruption was refused',
+  meeting_recap_at: 'a meeting finished and somebody minuted it',
 };
 
 function isOffHoursCounterEvent(event: Readonly<EngineEvent>): boolean {

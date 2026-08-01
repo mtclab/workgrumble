@@ -43,10 +43,21 @@ function slot(
     declinable: true,
     synchronous: true,
     severity: 2,
-    flavor: { caller: 'Somebody in accounts', subject: 'The printer again' },
+    flavor: {
+      caller: 'Somebody in accounts',
+      subject: 'The printer again',
+      opens: 'ringing',
+    },
     ...extra,
   };
 }
+
+/** The one shape with words of its own: a block, and the room it is in. */
+const MEETING: Partial<InterruptionSlot> = {
+  source: 'meeting',
+  minutes: 30,
+  flavor: { scene: 'meeting/somewhere', subject: 'Half an hour of it' },
+};
 
 function plan(
   slots: readonly InterruptionSlot[],
@@ -81,7 +92,7 @@ describe('the interruption schedule', () => {
   it('is the same schedule every time it is asked, for the same seed', () => {
     const slots = [
       slot('call:accounts', 10 * 60 + 15, { jitter: 11 }),
-      slot('meeting:hygiene', 10 * 60 + 30, { source: 'meeting', minutes: 30 }),
+      slot('meeting:hygiene', 10 * 60 + 30, MEETING),
       slot('call:warehouse', 14 * 60 + 5, { jitter: 9 }),
     ];
 
@@ -107,8 +118,7 @@ describe('the interruption schedule', () => {
 
   it('leaves an announced hour exactly where the brief said it was', () => {
     const meeting = slot('meeting:hygiene', 10 * 60 + 30, {
-      source: 'meeting',
-      minutes: 30,
+      ...MEETING,
       declinable: false,
     });
     const schedule = buildInterruptionSchedule(SEED, DAY, plan([meeting]));
@@ -197,8 +207,7 @@ describe('precedence: one takeover at a time', () => {
       DAY,
       plan(
         [slot('meeting:hygiene', 10 * 60 + 30, {
-          source: 'meeting',
-          minutes: 30,
+          ...MEETING,
           declinable: false,
         })],
         [round],

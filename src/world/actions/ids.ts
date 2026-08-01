@@ -270,6 +270,26 @@ export const DAY_ACTIONS = {
   /** "No." Legal only where the entry says it is, and never on a callback. */
   interruptionDecline: 'interruption.decline',
   /**
+   * The moment a malignant one ARRIVES, which is charged whatever is done
+   * about it.
+   *
+   * Its own verb rather than a branch of `accept`, because the three answers
+   * are answers to something that has already happened: the phone has rung,
+   * the room has gone quiet, and declining it does not un-ring it. The refocus
+   * window is the price of HANDLING one; this is the price of being reachable.
+   */
+  interruptionArrived: 'interruption.arrived',
+  /**
+   * The mail that goes round after the sync, stamped by the world at the
+   * minute the room emptied.
+   *
+   * A verb rather than a content gate on the calendar because the recap is a
+   * CONSEQUENCE: it exists exactly when a meeting has actually finished, so a
+   * player looking at Monday's inbox is not reading Wednesday's minutes. The
+   * same shape every other consequence-gated thread in this world keeps.
+   */
+  meetingRecap: 'interruption.meeting_recap',
+  /**
    * Somebody opening the conduct file, a minute before the conversation.
    *
    * It writes down what the bar became and why, so that both review verbs are

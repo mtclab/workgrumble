@@ -2088,6 +2088,15 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'once, and not declinably. Same rails, same reason, same release.',
   [DAY_ACTIONS.interruptionDecline]: 'Saying no, where the world says no is '
     + 'available. Same rails, same reason, same release.',
+  [DAY_ACTIONS.interruptionArrived]: 'The phone ringing, which is charged '
+    + 'before anybody has decided anything about it. Nobody presses it and '
+    + 'nobody can: it is the day loop settling the minute the schedule says '
+    + 'an interruption starts on, and what the player does about it is the '
+    + 'three verbs above.',
+  [DAY_ACTIONS.meetingRecap]: 'The room emptying, which is what the recap '
+    + 'mail is stamped from. Dispatched by the day loop at the end of a block '
+    + 'nobody chose to be in; the player meets it as a thread in the inbox '
+    + 'with the whole meeting in it.',
   [DAY_ACTIONS.reviewRedundant]: 'The third ending, dispatched by the day loop '
     + 'when the week cleared its bar and the ranking still put two other '
     + 'people above the line. Career-layer: it belongs to a week of the '

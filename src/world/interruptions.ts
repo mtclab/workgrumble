@@ -84,6 +84,55 @@ export function isInterruptionSeverity(
  */
 export type InterruptionFlavor = Readonly<Record<string, string>>;
 
+/**
+ * The flavor keys the two shipped surfaces read, named once.
+ *
+ * A bag of strings is the right shape for content - a walk-up wants different
+ * words from a call, and neither should have to change this type - but the two
+ * windows that exist have to be able to ASK for what they draw, and a window
+ * asking for `'caler'` would render an empty caller rather than fail. So the
+ * keys are constants, the reader below is the only way in, and `requireSlot`
+ * refuses a slot whose source promises a surface it did not bring the words for.
+ *
+ * `opensFumbling` is the whole of the fumble condition, said as data: a second
+ * authored opening line for a player whose hands are already going when they
+ * pick the phone up. The meters decide WHICH; the content decides what is
+ * said, which is the split every other scene in this world keeps.
+ */
+export const FLAVOR = {
+  /** Person node doing the ringing. */
+  caller: 'caller',
+  /** One line of what it is about, on the ringing window and in the mail. */
+  subject: 'subject',
+  /** The dialogue node the conversation opens on when it is answered. */
+  opens: 'opens',
+  /** And the one it opens on instead, for somebody who is already shaking. */
+  opensFumbling: 'opens_fumbling',
+  /** The meeting scene this block is, from `world/scenes/meeting.ts`. */
+  scene: 'scene',
+} as const;
+
+/** One authored string off an interruption, or null when it carries none. */
+export function flavorText(
+  entry: { readonly flavor: InterruptionFlavor },
+  key: string,
+): string | null {
+  const value = entry.flavor[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+/**
+ * The words a source cannot be drawn without.
+ *
+ * A call with no caller is a ringing phone with nobody on it; a meeting with
+ * no scene is half an hour of blank window. Both are content bugs that look
+ * like a quiet day, which is the class this module's loader exists for.
+ */
+const REQUIRED_FLAVOR: Readonly<Partial<Record<InterruptionSource, readonly string[]>>> = {
+  call: [FLAVOR.caller, FLAVOR.subject, FLAVOR.opens],
+  meeting: [FLAVOR.scene, FLAVOR.subject],
+};
+
 /* -- the tunables --------------------------------------------------------- */
 
 /**
@@ -294,6 +343,16 @@ function requireSlot(slot: Readonly<InterruptionSlot>, day: number): void {
 
   if (!Number.isSafeInteger(jitter) || jitter < 0) {
     throw new Error(`${where} wanders by something that is not minutes.`);
+  }
+
+  for (const key of REQUIRED_FLAVOR[slot.source] ?? []) {
+    if (flavorText(slot, key) === null) {
+      throw new Error(
+        `${where} is a ${slot.source} and carries no "${key}". A surface `
+        + 'drawn from words nobody wrote is a blank window with a clock '
+        + 'running behind it.',
+      );
+    }
   }
 }
 

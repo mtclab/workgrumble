@@ -1,4 +1,4 @@
-import { COMPANY_IDS } from '../company';
+import { COMPANY_IDS, staffName } from '../company';
 import { WORLD_IDS } from '../demo-world';
 import { FIELDS } from '../fields';
 import {
@@ -7,8 +7,41 @@ import {
   PRESSURE_MAIL,
   REDUNDANCY_ROUND,
 } from '../pressure';
+import {
+  HYGIENE_SYNC_MINUTE,
+  HYGIENE_SYNC_MINUTES,
+  TICKET_HYGIENE_SYNC,
+} from '../scenes';
 import { HANDOFF_BOUNCE } from '../tickets/handoff';
 import type { MailThread } from './types';
+
+/** The hour the summons names, in the shape a person writes it. */
+function clockTime(minute: number): string {
+  const hours = Math.floor(minute / 60);
+  const minutes = minute % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+/** The two threads the mandatory sync is announced and remembered by. */
+export const MEETING_MAIL = Object.freeze({
+  summons: 'mail/hygiene-sync',
+  recap: 'mail/hygiene-sync-recap',
+});
+
+/**
+ * The minutes, as the recap prints them: whoever spoke, and what they said.
+ *
+ * Built from the meeting's own beats rather than typed out a second time,
+ * which is the whole joke made structural. The mail is not ABOUT the meeting
+ * and does not summarise it - it is the meeting, in full, arriving half an
+ * hour late, and a version of it that had been edited down would quietly be
+ * making the opposite point.
+ */
+function minutedInFull(): readonly string[] {
+  return TICKET_HYGIENE_SYNC.beats.map(
+    (beat) => `${staffName(beat.who)}: ${beat.line}`,
+  );
+}
 
 /** The inbox, as it stood when the shift started. */
 export const MAIL_THREADS: readonly MailThread[] = [
@@ -286,6 +319,67 @@ export const MAIL_THREADS: readonly MailThread[] = [
           + 'have been looking at every evening since you started.',
           'Door is open. I say that to everybody and I mean it about four '
           + 'times a year, and this is one of them.',
+        ],
+      },
+    ],
+  },
+  /**
+   * The summons, which is the whole of the mechanic.
+   *
+   * It is in the inbox from the Monday, it names the hour, and the hour it
+   * names is the one the schedule uses - so the dread is a thing the player
+   * can plan around rather than a thing that happens to them. Ungated for
+   * exactly that reason: an invitation that only appears once the meeting has
+   * started is not an invitation.
+   */
+  {
+    id: MEETING_MAIL.summons,
+    subject: `${TICKET_HYGIENE_SYNC.title} - Wednesday ${
+      clockTime(HYGIENE_SYNC_MINUTE)
+    }`,
+    messages: [
+      {
+        id: 'mail/hygiene-sync#1',
+        from: COMPANY_IDS.boss,
+        tick: 3,
+        body: [
+          `Booking a ${String(HYGIENE_SYNC_MINUTES)} minute sync on ticket `
+          + `hygiene for WEDNESDAY at ${clockTime(HYGIENE_SYNC_MINUTE)}. `
+          + 'Attendance is expected. I have said that in the way you have to '
+          + 'say it, and I am aware of how it reads.',
+          TICKET_HYGIENE_SYNC.subject,
+          'Pat - you are new, so to be clear, this is not optional and it is '
+          + 'not about you. Half ten, the room with the whiteboard nobody has '
+          + 'ever successfully cleaned.',
+        ],
+      },
+    ],
+  },
+  /**
+   * And the recap, which is the meeting, in full, half an hour late.
+   *
+   * Gated on the field the day loop writes when the room empties, so it exists
+   * exactly when the meeting has happened and every line is stamped from
+   * there. The body is built from the meeting's own beats rather than written
+   * a second time: the joke only lands if it is genuinely the same content,
+   * and a summary would be quietly making the opposite point.
+   */
+  {
+    id: MEETING_MAIL.recap,
+    subject: `RECAP: ${TICKET_HYGIENE_SYNC.title}`,
+    arrival: {
+      node: COMPANY_IDS.player,
+      field: FIELDS.meetingRecapAt,
+    },
+    messages: [
+      {
+        id: 'mail/hygiene-sync-recap#1',
+        from: COMPANY_IDS.boss,
+        tick: 0,
+        body: [
+          TICKET_HYGIENE_SYNC.recapOpener,
+          ...minutedInFull(),
+          'Actions: none. Next one in a fortnight.',
         ],
       },
     ],

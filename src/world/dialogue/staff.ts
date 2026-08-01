@@ -1315,6 +1315,11 @@ const FACILITIES: DialogueTree = {
   speaker: COMPANY_IDS.vic,
   tickets: [],
   root: 'vic',
+  // He rings on the Thursday about a printer in a building this desk does not
+  // hold the contract for, which is the malignant half of the cost model made
+  // of words: nothing lands on any ticket, because there is no ticket, and
+  // that is exactly what it costs you.
+  call_roots: ['ringing-annexe', 'ringing-annexe-shaky'],
   nodes: [
     {
       id: 'vic',
@@ -1361,6 +1366,54 @@ const FACILITIES: DialogueTree = {
         + 'capitals and I have been waiting for a reason.',
       options: [
         { label: 'Tell him that is the best fix anybody has shipped this week' },
+      ],
+    },
+    {
+      id: 'ringing-annexe',
+      npc_line: 'Vic, Facilities. The printer in the annexe is doing a noise. '
+        + 'Not the warehouse one. The annexe one, by the vending machine, that '
+        + 'nobody has asked me about once in four years.',
+      options: [
+        {
+          label: 'Ask him what sort of noise',
+          next: 'ringing-annexe-noise',
+        },
+        {
+          label: 'Explain that the annexe is on the other contract',
+          next: 'ringing-annexe-contract',
+        },
+      ],
+    },
+    {
+      id: 'ringing-annexe-noise',
+      npc_line: 'A sort of - it is hard to do down a phone. Ronk. Then '
+        + 'nothing. Then ronk. It has been ronking since about half nine.',
+      options: [
+        {
+          label: 'Explain that the annexe is on the other contract',
+          next: 'ringing-annexe-contract',
+        },
+      ],
+    },
+    {
+      id: 'ringing-annexe-contract',
+      npc_line: 'Right. And who is the other contract. No - do not look it '
+        + 'up, I will ask Bev, she has the folder. Sorry. You have been very '
+        + 'good about this.',
+      options: [
+        { label: 'Put the phone down and try to remember what you were doing' },
+      ],
+    },
+    {
+      id: 'ringing-annexe-shaky',
+      npc_line: 'Vic, Facilities. Sorry, is this a bad - it is. I can hear '
+        + 'that it is. It is about a printer that is not yours and I am going '
+        + 'to say it anyway, because I have got the phone in my hand now.',
+      options: [
+        {
+          label: 'Ask him what sort of noise',
+          next: 'ringing-annexe-noise',
+        },
       ],
     },
   ],

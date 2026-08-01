@@ -582,6 +582,25 @@ const MACHINES: readonly MachineSeed[] = [
  * carries the volume it is on - and content that needs to write that down for
  * a file of its own has to write down the same string the seed did.
  */
+/**
+ * Somebody's name, off the same table the seed builds them from.
+ *
+ * Exported for the one kind of caller that cannot read the graph: static
+ * content that has to name a person in a paragraph it wrote before there was a
+ * world - a mail body, a minuted recap. Every surface with a graph in front of
+ * it reads the field instead, and both answers come from this table, so they
+ * cannot drift.
+ */
+export function staffName(personId: string): string {
+  const member = STAFF.find((candidate) => candidate.person === personId);
+
+  if (member === undefined) {
+    throw new Error(`Nobody in this building is called "${personId}".`);
+  }
+
+  return member.name;
+}
+
 export function machineHostname(machineId: string): string {
   const machine = MACHINES.find((candidate) => candidate.id === machineId);
 

@@ -417,6 +417,11 @@ const WEDGED_SPOOLER: DialogueTree = {
     'ticket:wedged-spooler': 'after',
     'ticket:vpn-cert-expired': 'depot-after',
   },
+  // She rings on the Tuesday, about the printer, while you are already on the
+  // printer - which is the benign half of the cost model made of words: no
+  // focus lost, and the call is how the ticket moves. The second node is the
+  // same call taken by somebody whose hands are already going.
+  call_roots: ['ringing-spooler', 'ringing-spooler-shaky'],
   nodes: [
     {
       id: 'complaint',
@@ -589,6 +594,57 @@ const WEDGED_SPOOLER: DialogueTree = {
         + 'ghost was not my delivery note.',
       options: [
         { label: 'Tell her the old system is the real haunting' },
+      ],
+    },
+    {
+      id: 'ringing-spooler',
+      npc_line: 'Sorry. I know you are on it, I can see the ticket says you '
+        + 'are on it. I am ringing because there is a thing I did not put on '
+        + 'the ticket and I have been thinking about it since.',
+      options: [
+        {
+          label: 'Ask what she did not put on it',
+          next: 'ringing-spooler-agreed',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Nina sent the long delivery note out of the old '
+                + 'system just before the printer went quiet.',
+            },
+          ],
+        },
+        {
+          label: 'Tell her you are at the print server now',
+          next: 'ringing-spooler-agreed',
+          effects: [{ asks: true }],
+        },
+      ],
+    },
+    {
+      id: 'ringing-spooler-agreed',
+      npc_line: 'I sent it twice. Forty-one pages, twice, because the first '
+        + 'one did not come out. I will sit on my hands now. If Bev sends '
+        + 'anything I will tell you it was Bev.',
+      options: [
+        { label: 'Put the phone down and carry on where you were' },
+      ],
+    },
+    {
+      id: 'ringing-spooler-shaky',
+      npc_line: 'Hello? You have gone very quiet. Take a second, honestly. It '
+        + 'is a printer. Nobody upstairs has died about a printer yet.',
+      options: [
+        {
+          label: 'Ask her, slowly, what she sent to it',
+          next: 'ringing-spooler-agreed',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Nina sent the long delivery note out of the old '
+                + 'system just before the printer went quiet.',
+            },
+          ],
+        },
       ],
     },
   ],
