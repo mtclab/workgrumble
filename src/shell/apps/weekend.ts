@@ -118,9 +118,10 @@ export const WEEKEND_APP: AppDef = {
         .textContent = String(card.breached);
       definitionRow(list, 'Still open', 'weekend-open')
         .textContent = String(card.stillOpen);
-      // The two ratios the mark is made of, printed as the fractions they are
-      // rather than as percentages, so that the row underneath is arithmetic
-      // the player can do rather than a number they have to believe.
+      // The two ratios the mark is made of, each printed as the fraction it
+      // actually is and then as the percentage it turns into, so that the row
+      // underneath is arithmetic the player can follow rather than a number
+      // they have to believe.
       definitionRow(list, 'Queue closed', 'weekend-resolution')
         .textContent = shareLine(card.closed, card.arrived);
       definitionRow(list, 'Deadlines kept', 'weekend-attainment')

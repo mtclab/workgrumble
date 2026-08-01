@@ -124,6 +124,11 @@ test('completes a full session with no console errors and no runtime requests', 
     .toHaveAttribute('data-outcome', 'pending');
   await expect(page.getByTestId('review-heading'))
     .toHaveText('Nothing has been decided');
+  // And it says what the number IS before it has one, which is the whole
+  // reason this screen is reachable on a Monday.
+  await expect(page.getByTestId('review-note'))
+    .toContainText('a percentage of the work');
+  await expect(page.getByTestId('review-note')).toContainText('45 out of 100');
   await page.getByTestId('review-dismiss').click();
   await expect(page.getByTestId('window-review')).toHaveCount(0);
 
@@ -141,6 +146,10 @@ test('completes a full session with no console errors and no runtime requests', 
     .toHaveAttribute('data-ended', 'false');
   await expect(page.getByTestId('weekend-verdict-title'))
     .toHaveText('The week is not over');
+  // The mark is on it from the first morning, with nothing to divide by yet
+  // and no pretending otherwise.
+  await expect(page.getByTestId('weekend-performance'))
+    .toContainText(/^\d+ out of 100, against the 45 he needs\./);
   await expect(page.getByTestId('weekend-onward')).toBeDisabled();
   await page.getByTestId('close-weekend').click();
   await expect(page.getByTestId('window-weekend')).toHaveCount(0);
