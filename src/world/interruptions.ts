@@ -161,6 +161,36 @@ export const DEFER_MINUTES = 20;
  */
 export const MIN_INTERRUPTION_MINUTES = 1;
 
+/**
+ * What being taken off the work costs the moment it happens, per point of
+ * severity.
+ *
+ * Two, so the shipped week charges nothing for a call about the ticket in
+ * hand, four for a printer in a building that is not yours, and six for half
+ * an hour nobody chose to be in. It is deliberately small - OVERSEER TUNING
+ * KNOB - because this is the price of being REACHABLE, which is paid whatever
+ * the player then decides; the price of handling one is the refocus window,
+ * and that is where the mechanic actually lives.
+ */
+export const ARRIVAL_STRESS_PER_SEVERITY = 2;
+
+/**
+ * The stress an arrival costs, which is nothing at all when it is about the
+ * work already in hand.
+ *
+ * A call from the person whose ticket is on your screen is not an
+ * interruption in the sense that matters: it is the job, arriving by phone.
+ * Charging for it would be charging the player for having somebody ring them
+ * about the thing they were already doing, which is the one shape of this
+ * mechanic that would be a punishment rather than a cost.
+ */
+export function arrivalStress(
+  entry: Readonly<InterruptionEntry>,
+  benign: boolean,
+): number {
+  return benign ? 0 : entry.severity * ARRIVAL_STRESS_PER_SEVERITY;
+}
+
 /* -- what content writes -------------------------------------------------- */
 
 /**
@@ -527,6 +557,50 @@ export function deferredArrival(
     declinable: false,
     slidFrom: entry.tick,
   };
+}
+
+/**
+ * The same interruption, ringing again, placed in minutes that are actually
+ * free - or null when there are none left in the day.
+ *
+ * `deferredArrival` says WHEN it wants to come back; this is the half that
+ * has to get out of the way of everything the day already booked, and it is
+ * separate because they answer different questions. Twenty minutes later is a
+ * property of the deferral; landing on top of the lead's rounds is a property
+ * of the day, and the second arrival is not allowed to be the one place in
+ * this family where two takeovers share a screen.
+ *
+ * It is pure - a function of the entry, the schedule and the day's other
+ * bookings - which is what lets the driver ask it every minute, on both sides
+ * of a save, and get the same minute back. Null is the honest answer for a
+ * callback with nowhere to go: they rang, you asked them to try later, and
+ * there was no later. That is a thing that happens.
+ */
+export function placeDeferred(
+  entry: Readonly<InterruptionEntry>,
+  schedule: Readonly<InterruptionSchedule>,
+  blocked: readonly TickWindow[],
+): InterruptionEntry | null {
+  const wanted = deferredArrival(entry);
+  const minutes = wanted.endsTick - wanted.tick;
+  const bookings: TickWindow[] = [
+    { ...lunchWindow(schedule.day) },
+    ...blocked.map((booking) => ({ ...booking })),
+    // Every OTHER entry on the day, including the minutes this one already
+    // owned: a callback that landed back on top of its own first arrival
+    // would be a call that never went away.
+    ...schedule.entries.map(entryWindow),
+  ];
+  const tick = slideToClearTick(
+    wanted.tick,
+    minutes,
+    bookings,
+    schedule.shift.to - minutes,
+  );
+
+  return tick === null
+    ? null
+    : { ...wanted, tick, endsTick: tick + minutes };
 }
 
 /**

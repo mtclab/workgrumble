@@ -66,6 +66,7 @@ import {
   isDayState,
   isLunchtime,
   shiftStartTick,
+  type TickWindow,
 } from '../world/day';
 import {
   type ConductReading,
@@ -75,6 +76,15 @@ import {
 } from '../world/conduct';
 import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
 import { findIncident } from '../world/incidents';
+import {
+  arrivalStress,
+  buildInterruptionSchedule,
+  type InterruptionEntry,
+  type InterruptionPlan,
+  type InterruptionSchedule,
+  isBenign,
+  placeDeferred,
+} from '../world/interruptions';
 import { matrixSummary, poolStanding } from '../world/pool';
 import {
   beatAt,
@@ -90,6 +100,7 @@ import {
   dayPlan,
   directMessagesOn,
   incidentsOn,
+  interruptionPlanFor,
   isReviewDay,
   isReviewOutcome,
   isWeekDay,
@@ -123,6 +134,7 @@ import {
   spawnWorldTicket,
   ticketNodes,
   ticketTitle,
+  triedFromTouches,
   withTouch,
 } from '../world/tickets';
 
@@ -132,6 +144,17 @@ export const TICK_INTERVAL_MS = 1_000;
 /** How often the driver is asked to convert. Shorter than a tick so a faster
  * clock is a faster clock rather than a burst once a second. */
 export const DRIVER_INTERVAL_MS = 250;
+
+/**
+ * What the three verbs answer when nothing is on the screen to answer about.
+ *
+ * A refusal rather than a throw, because the buttons that reach them live in a
+ * window that can outlive the call it was opened for: a player still looking at
+ * a conversation that ended a minute ago is a normal thing to be, and it is not
+ * a reason to take the tab down.
+ */
+export const NOTHING_RINGING = 'Nothing is interrupting you. Whatever this '
+  + 'was about, it has stopped being about it.';
 
 export const SPEEDS = [1, 2, 4] as const;
 
@@ -186,6 +209,34 @@ export interface BossView {
 }
 
 /**
+ * What is currently taking the screen off the player, as the two windows need
+ * to know it.
+ *
+ * Every field is derived - from the day's seeded schedule and from the three
+ * lists the world keeps of what was decided - and nothing about it is
+ * remembered here. That is the whole reason a save taken mid-call restores
+ * mid-call and a save taken mid-meeting restores mid-meeting: occupancy is
+ * `f(schedule, world, tick)`, so there is nothing to save and nothing to get
+ * out of step.
+ */
+export interface InterruptionView {
+  readonly entry: InterruptionEntry;
+  /** Minutes since it started, which is what a meeting is read by. */
+  readonly minutesIn: number;
+  /** Whether this is the second arrival, which is nobody's to decline. */
+  readonly callback: boolean;
+  /** Whether the player has picked it up and the conversation is running. */
+  readonly answered: boolean;
+  /**
+   * Whether it is about the work in hand RIGHT NOW - which is the cost model,
+   * and which is a live question rather than a property of the row.
+   */
+  readonly benign: boolean;
+  /** The ticket the touch log says the player is on, or nothing. */
+  readonly ticketInHand: string | null;
+}
+
+/**
  * What the apps and the taskbar may ask of the day. Reading is free; the
  * things that MOVE it - starting the shift, clocking off, opening a can,
  * clearing the desk - all go through the engine's action registry like every
@@ -203,6 +254,26 @@ export interface DayApi {
   clockOff(): void;
   /** Where the lead is this minute. Reading it is free and changes nothing. */
   boss(): BossView;
+  /**
+   * What is taking the screen off you this minute, or nothing at all.
+   *
+   * Free to read and changes nothing, like `boss()` above and for the same
+   * reason: it is a function of the day's schedule and of what the world
+   * already holds, so every surface that asks gets the same answer and none of
+   * them can be showing a call the world has finished with.
+   */
+  interruption(): InterruptionView | null;
+  /**
+   * The choice grammar, aimed at whatever is on the screen right now.
+   *
+   * All three answer rather than throw: a refusal is a sentence the player
+   * reads - the junior who cannot skip the sync, the callback that is not
+   * declinable - and the refusals are the teaching, so they have to reach a
+   * surface rather than a console.
+   */
+  answerInterruption(): DispatchResult;
+  deferInterruption(): DispatchResult;
+  declineInterruption(): DispatchResult;
   /**
    * The desk. Both answer rather than throw: a refused can is a sentence the
    * player reads, not a crash, and the shell is the half that knows WHEN a can
@@ -319,6 +390,26 @@ export interface DayDriverHandlers {
    */
   onDirectMessage?(speaker: NodeId, tick: number): void;
   /**
+   * Something has taken the screen off the player: a phone ringing, or the
+   * half hour that was in the summons mail on Monday.
+   *
+   * The world has already been told whatever the ARRIVAL costs - the stress a
+   * malignant one charges for being reachable at all - and what is left is the
+   * surface, which is a window like every other scene here. The three answers
+   * are the player's and go back through `answerInterruption` and its two
+   * siblings, so nothing about the decision is decided in the shell.
+   */
+  onInterruption?(view: Readonly<InterruptionView>): void;
+  /**
+   * And the minute the screen is the player's again, however it ended: picked
+   * up, waved off, pushed twenty minutes out, or simply rung out.
+   *
+   * The driver has already settled everything the world owes for it by the
+   * time this fires - the meeting has been sat through and minuted - so all
+   * this is for is the window closing behind it.
+   */
+  onInterruptionEnded?(entry: Readonly<InterruptionEntry>): void;
+  /**
    * Friday, three o'clock, decided. The world already holds the outcome - the
    * reputation was read and the verb was dispatched - and what is left is the
    * conversation, which is a window like every other scene in this game.
@@ -364,6 +455,9 @@ export function parseDriverState(value: unknown): DriverState | null {
 export class DayDriver implements DayApi {
   private schedule_: DaySchedule;
   private patrol_: PatrolSchedule;
+  private interruptions_: InterruptionSchedule;
+  /** The minutes the day had already booked when the schedule was built. */
+  private interruptionsBlocked_: readonly TickWindow[];
   private seed_: number;
   private paused_ = false;
   private speed_: Speed = 1;
@@ -390,6 +484,9 @@ export class DayDriver implements DayApi {
     this.seed_ = seed;
     this.schedule_ = this.scheduleFor(this.day());
     this.patrol_ = this.patrolFor(this.day());
+    const plan = this.interruptionPlan(this.day());
+    this.interruptionsBlocked_ = plan.blocked;
+    this.interruptions_ = this.interruptionsFor(this.day(), plan);
     this.syncSlaClock();
   }
 
@@ -599,6 +696,12 @@ export class DayDriver implements DayApi {
     this.settleStaleAuth(now);
     this.settleFollowUps();
     this.walkTheFloor(before, now);
+    // After the corridor, in the same minute: the lead arriving is a takeover
+    // too, and the assert inside this one is entitled to see it. Before the
+    // meters, because being taken off the work is a thing that happened to
+    // this minute and the interval that charges for the queue has to read a
+    // world the interruption has already moved.
+    this.settleInterruptions(before, now);
     // Before the meters read the queue: a child closed by its parent is a
     // ticket off the pile this minute, and charging stress for it would be
     // charging for work that is finished.
@@ -718,6 +821,7 @@ export class DayDriver implements DayApi {
 
     this.schedule_ = this.scheduleFor(day + 1);
     this.patrol_ = this.patrolFor(day + 1);
+    this.rebuildInterruptions(day + 1);
     this.spawnArrivals(now, this.engine.now());
     this.carriedMs = 0;
     this.engine.checkpoint();
@@ -832,6 +936,7 @@ export class DayDriver implements DayApi {
     this.seed_ = this.seedFromWorld();
     this.schedule_ = this.scheduleFor(this.day());
     this.patrol_ = this.patrolFor(this.day());
+    this.rebuildInterruptions(this.day());
     // A save carries the service clock, so this is a check rather than a
     // correction - but it is the check that catches a world restored into a
     // day it does not agree with, which is the one place the two halves could
@@ -1185,6 +1290,32 @@ export class DayDriver implements DayApi {
   }
 
   /**
+   * What the day authored, and the minutes it had already spoken for.
+   *
+   * The blocked half is kept beside the schedule rather than thrown away,
+   * because a callback is placed at RUNTIME - twenty minutes after somebody
+   * asked for one - and it has to get out of the way of exactly the same
+   * bookings the authored entries did.
+   */
+  private interruptionPlan(day: number): InterruptionPlan {
+    return interruptionPlanFor(day, this.seed_);
+  }
+
+  private interruptionsFor(
+    day: number,
+    plan: Readonly<InterruptionPlan>,
+  ): InterruptionSchedule {
+    return buildInterruptionSchedule(this.seed_, day, plan);
+  }
+
+  /** Both halves of the day's interruptions, rebuilt for a new day or a load. */
+  private rebuildInterruptions(day: number): void {
+    const plan = this.interruptionPlan(day);
+    this.interruptionsBlocked_ = plan.blocked;
+    this.interruptions_ = this.interruptionsFor(day, plan);
+  }
+
+  /**
    * Which week this is, and therefore which minutes it deals.
    *
    * Read off the graph rather than remembered, because the graph is the half
@@ -1515,6 +1646,340 @@ export class DayDriver implements DayApi {
     }
 
     spawnWorldTicket(this.engine, ticketId);
+  }
+
+  /* -- being taken off the work ------------------------------------------ */
+
+  /**
+   * What is taking the screen off the player this minute.
+   *
+   * Derived on every call rather than remembered, from three things that all
+   * survive a save: the day's seeded schedule, the clock, and the three lists
+   * the world keeps of what was decided. That is what makes the mid-state
+   * promise cheap - a save taken while the phone is ringing restores with the
+   * phone ringing, because there was never anything to save.
+   *
+   * A declined entry stops owning the screen the minute it is declined, which
+   * is the point of declining; a deferred one stops owning it and comes back
+   * at the minute `placeDeferred` puts it, which is twenty minutes out and
+   * clear of everything else the day had booked.
+   */
+  public interruption(): InterruptionView | null {
+    if (this.state() !== 'shift') {
+      return null;
+    }
+
+    const now = this.engine.now();
+
+    for (const entry of this.liveInterruptions()) {
+      if (now < entry.tick || now >= entry.endsTick) {
+        continue;
+      }
+
+      const ticketInHand = this.ticketInHand();
+
+      return {
+        entry,
+        minutesIn: now - entry.tick,
+        callback: this.hasDecided(FIELDS.interruptionDeferred, entry.id),
+        answered: this.hasDecided(FIELDS.interruptionAnswered, entry.id),
+        benign: isBenign(entry, ticketInHand),
+        ticketInHand,
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Every entry of the day as it now stands: the ones nobody has settled at
+   * their authored minute, and the ones somebody pushed at the minute they
+   * come back on.
+   *
+   * Settled is answered or declined - both are decisions, and neither of them
+   * rings twice. Deferred is not settled, which is the whole of what deferring
+   * means, and a callback with nowhere left in the day to go is dropped rather
+   * than squeezed into the last minute of the shift.
+   */
+  private liveInterruptions(): readonly InterruptionEntry[] {
+    const live: InterruptionEntry[] = [];
+
+    for (const entry of this.interruptions_.entries) {
+      if (
+        this.hasDecided(FIELDS.interruptionAnswered, entry.id)
+        || this.hasDecided(FIELDS.interruptionDeclined, entry.id)
+      ) {
+        // An answered call still owns its minutes - the conversation is
+        // happening - so it stays live until the window runs out. A declined
+        // one does not, and the meeting is answered at the END of its block
+        // rather than at the start, so neither of them is cut short by this.
+        if (this.hasDecided(FIELDS.interruptionAnswered, entry.id)) {
+          live.push(entry);
+        }
+
+        continue;
+      }
+
+      if (!this.hasDecided(FIELDS.interruptionDeferred, entry.id)) {
+        live.push(entry);
+        continue;
+      }
+
+      const callback = placeDeferred(
+        entry,
+        this.interruptions_,
+        this.interruptionsBlocked_,
+      );
+
+      if (callback !== null) {
+        live.push(callback);
+      }
+    }
+
+    return live;
+  }
+
+  /** Whether an id is in one of the three lists the world keeps. */
+  private hasDecided(field: string, id: string): boolean {
+    return this.playerText(field).split('\n').includes(id);
+  }
+
+  /**
+   * The ticket the player is actually on, which is what the cost model reads.
+   *
+   * The touch log knows: it is the ticket somebody most recently did something
+   * about and has not finished. A resolved one is deliberately not in the
+   * running - a call about a ticket you closed ten minutes ago is a call about
+   * something else now - and a world where nothing has been touched answers
+   * nothing, which makes every interruption in it malignant. That is correct:
+   * somebody who is not on anything has still lost their place.
+   */
+  private ticketInHand(): string | null {
+    let held: string | null = null;
+    let latest = -1;
+
+    for (const ticket of this.tickets()) {
+      if (!isUnresolved(ticket)) {
+        continue;
+      }
+
+      const touches = triedFromTouches(ticket.fields[FIELDS.touchLog]);
+      const last = touches[touches.length - 1];
+
+      if (last !== undefined && last.tick > latest) {
+        latest = last.tick;
+        held = ticket.id;
+      }
+    }
+
+    return held;
+  }
+
+  /**
+   * Everything the schedule had to say about the minutes just gone.
+   *
+   * Arrivals are read off `liveInterruptions` rather than off the schedule, so
+   * a callback the player asked for lands as an arrival exactly like a first
+   * one - same window, same stress, same three buttons, minus the one that
+   * says no. Interruptions fire during the shift and nowhere else: the morning
+   * brief is not paid time and nobody rings a desk that has clocked off.
+   */
+  private settleInterruptions(after: number, now: number): void {
+    if (this.state() !== 'shift') {
+      return;
+    }
+
+    for (const entry of this.liveInterruptions()) {
+      if (entry.tick > after && entry.tick <= now) {
+        this.arrive(entry);
+      }
+
+      // The far side of it, whatever happened in between. The meeting settles
+      // what it owes the world here, which is why this runs on the END rather
+      // than on a button: nobody presses "the meeting is over".
+      if (entry.endsTick > after && entry.endsTick <= now) {
+        this.finish(entry);
+      }
+    }
+  }
+
+  /**
+   * One interruption, arriving.
+   *
+   * The precedence check is an ASSERT rather than a guard, and that is
+   * deliberate: the schedule already guarantees one takeover at a time by
+   * construction, so a second one here is not a case to handle - it is a bug
+   * in the thing that placed them, and handling it quietly would be how that
+   * bug ships. The only entry that is placed at runtime is a callback, and
+   * `placeDeferred` gets it out of the way of the same bookings.
+   */
+  private arrive(entry: Readonly<InterruptionEntry>): void {
+    this.assertOneTakeover(entry);
+
+    const benign = isBenign(entry, this.ticketInHand());
+    const stress = arrivalStress(entry, benign);
+
+    if (stress > 0) {
+      this.engine.dispatch(
+        DAY_ACTIONS.interruptionArrived,
+        this.actor,
+        null,
+        { id: entry.id, stress_up: stress },
+      );
+    }
+
+    // A meeting is not a choice, so the driver does not offer one: the block
+    // simply starts, and the two refusals exist to say why when the player
+    // presses them anyway.
+    const view = this.interruption();
+
+    if (view !== null) {
+      this.handlers.onInterruption?.(view);
+    }
+
+    this.announce();
+  }
+
+  /**
+   * The end of a block, and the only place the world learns a meeting
+   * happened.
+   *
+   * `accept` is dispatched HERE for a meeting and at the button for a call,
+   * and the difference is the refocus window rather than an inconsistency:
+   * the twenty-three minutes are measured from the moment the player is handed
+   * their desk back, and for a call that is the moment they pick the phone up
+   * while for half an hour in a room it is the moment the room empties.
+   */
+  private finish(entry: Readonly<InterruptionEntry>): void {
+    if (entry.source === 'meeting') {
+      this.engine.dispatch(DAY_ACTIONS.interruptionAccept, this.actor, null, {
+        id: entry.id,
+      });
+      this.engine.dispatch(DAY_ACTIONS.meetingRecap, this.actor, null, {});
+      this.handlers.onNotice?.(
+        'That could have been an email',
+        'The recap is in your inbox. It is the meeting, in full, with '
+        + 'nothing taken out of it, because nothing was said that could be.',
+      );
+    }
+
+    this.handlers.onInterruptionEnded?.(entry);
+    this.announce();
+  }
+
+  /**
+   * The runtime half of "one takeover at a time".
+   *
+   * Two things can own the screen and neither of them is this module's to
+   * place: the lead standing at the desk, and another interruption. Both are
+   * already avoided by construction, so this throws rather than skipping -
+   * a screen holding a manager and a ringing phone at once is a bug that
+   * would otherwise present as a player being unable to read either.
+   */
+  private assertOneTakeover(entry: Readonly<InterruptionEntry>): void {
+    const now = this.engine.now();
+    const clash = this.liveInterruptions().find(
+      (other) => other.id !== entry.id
+        && now >= other.tick
+        && now < other.endsTick,
+    );
+
+    if (clash !== undefined) {
+      throw new Error(
+        `"${entry.id}" arrived at ${String(now)} while "${clash.id}" still `
+        + 'owned the screen. The schedule places one takeover at a time and '
+        + 'something has put a second one on top of it.',
+      );
+    }
+
+    if (patrolPhase(this.patrol_, now) === 'present') {
+      throw new Error(
+        `"${entry.id}" arrived at ${String(now)} with the lead at the desk. `
+        + 'The rounds are handed to the schedule as minutes already spoken '
+        + 'for, so this is a booking that was not passed on.',
+      );
+    }
+  }
+
+  /**
+   * Picking it up.
+   *
+   * Benign is asked again HERE rather than remembered from the arrival, and
+   * the two answers are allowed to disagree. Somebody who was on the ticket
+   * when it rang and has wandered off by the time they answer has genuinely
+   * lost their place, and somebody who opened the ticket while it rang has
+   * genuinely turned a cold call into the job - both are the honest reading,
+   * and neither is a state anybody has to store.
+   */
+  public answerInterruption(): DispatchResult {
+    const view = this.interruption();
+
+    if (view === null) {
+      return { ok: false, reason: NOTHING_RINGING };
+    }
+
+    const target = view.benign ? view.entry.relatedTicket : null;
+    const ticket = target === null
+      ? undefined
+      : this.tickets().find((node) => node.id === target);
+
+    return this.engine.dispatch(
+      DAY_ACTIONS.interruptionAccept,
+      this.actor,
+      target,
+      {
+        id: view.entry.id,
+        // The whole bounded field, built where the shape of a ticket's
+        // evidence is known, exactly as `recordTouches` builds it - so a
+        // replay writes the identical string instead of rebuilding it against
+        // a clock nobody saved.
+        touches: ticket === undefined
+          ? ''
+          : withTouch(
+            ticket.fields[FIELDS.touchLog],
+            this.engine.now(),
+            DAY_ACTIONS.interruptionAccept,
+            true,
+          ),
+      },
+    );
+  }
+
+  public deferInterruption(): DispatchResult {
+    const view = this.interruption();
+
+    return view === null
+      ? { ok: false, reason: NOTHING_RINGING }
+      : this.engine.dispatch(DAY_ACTIONS.interruptionDefer, this.actor, null, {
+        id: view.entry.id,
+      });
+  }
+
+  /**
+   * Saying no, which the world decides the legality of.
+   *
+   * `declinable` is passed as the entry's own flag rather than checked here,
+   * because the refusal has to come out of the action registry like every
+   * other refusal in this game - the sentence a junior reads about not being
+   * able to skip the sync is the WORLD's sentence, and a shell that hid the
+   * button would have taught the same rule without ever saying it.
+   */
+  public declineInterruption(): DispatchResult {
+    const view = this.interruption();
+
+    if (view === null) {
+      return { ok: false, reason: NOTHING_RINGING };
+    }
+
+    return this.engine.dispatch(
+      DAY_ACTIONS.interruptionDecline,
+      this.actor,
+      null,
+      {
+        id: view.entry.id,
+        declinable: view.entry.declinable && !view.callback ? 1 : 0,
+      },
+    );
   }
 
   /* -- the pressure layer ------------------------------------------------ */
