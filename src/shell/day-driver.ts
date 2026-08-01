@@ -75,6 +75,16 @@ import {
 } from '../world/conduct';
 import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
 import { findIncident } from '../world/incidents';
+import { matrixSummary, poolStanding } from '../world/pool';
+import {
+  beatAt,
+  type PressureBeat,
+  type PressureReading,
+  PROBATION_WEEK,
+  pressureSummary,
+  seasonAt,
+  telegraph,
+} from '../world/pressure';
 import { caughtScene, GENERIC_CAUGHT_SCENE } from '../world/scenes';
 import {
   dayPlan,
@@ -222,6 +232,22 @@ export interface DayApi {
   conductReading(): ConductReading;
   /** The file itself, one line per thing that was noticed. */
   conductFile(): string;
+  /**
+   * Which week of the employer arc this is, which is also how long the player
+   * has been here - and therefore one line of the matrix.
+   */
+  arcWeek(): number;
+  /**
+   * The weather: which season is live, which of its four beats has landed, and
+   * where the player stands in the pool if there is one to stand in.
+   *
+   * Free to read and changes nothing, for the same reason the conduct reading
+   * is on this interface: the ranking, the line and the three scores that make
+   * them are on a screen for three weeks before any of it decides anything.
+   */
+  pressureReading(): PressureReading;
+  /** The same thing as the sentence the screens print. */
+  pressureSummary(): string;
   /** How Friday at three went, as the world recorded it. */
   reviewOutcome(): ReviewOutcome;
   /** Whether the week has been clocked off for the last time. */
@@ -754,6 +780,14 @@ export class DayDriver implements DayApi {
       conduct: outcome === 'pending'
         ? conductSummary(reading)
         : this.playerText(FIELDS.reviewConduct),
+      // The same rule again, for the same reason: live while there is still a
+      // week to play, and the snapshot the ranking was actually read as once
+      // somebody has read it. A closed ticket on a Friday afternoon moves the
+      // player's own performance line, and a card that re-derived the matrix
+      // would print a position that had moved since it decided anything.
+      criteria: outcome === 'pending'
+        ? this.pressureSummary()
+        : this.playerText(FIELDS.reviewCriteria),
       // The mark the conversation was decided on, which stopped moving when
       // the conversation happened. Reading it live let the week screen print
       // "37 of 45 needed" directly above "Probation: passed", because the week
@@ -881,14 +915,22 @@ export class DayDriver implements DayApi {
     // conversation, so the guards below compare against a number the world is
     // carrying and the window afterwards prints the world's own sentence.
     this.readTheFile();
+    // And somebody scoring the pool, in the same minute and by the same rule:
+    // written into the world BEFORE the conversation, so the guards compare
+    // fields rather than arithmetic. In a quiet week it writes nothing, which
+    // is what makes the two review verbs behave exactly as they did.
+    const inTheCut = this.readTheMatrix();
     const outcome = reviewOutcomeFor(
       this.playerNumber(FIELDS.weekReputation),
       this.playerNumber(FIELDS.reviewBar, REVIEW_PASS_PERFORMANCE),
+      inTheCut,
     );
     const result = this.engine.dispatch(
       outcome === 'passed'
         ? DAY_ACTIONS.reviewPassed
-        : DAY_ACTIONS.reviewFired,
+        : outcome === 'redundant'
+          ? DAY_ACTIONS.reviewRedundant
+          : DAY_ACTIONS.reviewFired,
       this.actor,
       null,
       {},
@@ -922,6 +964,131 @@ export class DayDriver implements DayApi {
   /** The file itself, as the world holds it. */
   public conductFile(): string {
     return this.playerText(FIELDS.conductFile);
+  }
+
+  /** Which week of the career this is. Week one is the probation week. */
+  public arcWeek(): number {
+    return this.playerNumber(FIELDS.arcWeek, PROBATION_WEEK);
+  }
+
+  /**
+   * The season, the beat and the ranking, worked out from the arc and the
+   * world and nothing else.
+   *
+   * The matrix is only built once the criteria beat has landed, which is the
+   * whole legibility rule in one condition: before the announcement there is
+   * no pool, because there is nothing anybody has been told they are in.
+   */
+  public pressureReading(): PressureReading {
+    const week = this.arcWeek();
+    const season = seasonAt(week);
+    const beat = season === null ? null : beatAt(season, week);
+    const scored = season !== null
+      && (beat === 'criteria' || beat === 'decision');
+
+    return {
+      week,
+      season,
+      beat,
+      standing: scored && season !== null
+        ? poolStanding(
+          {
+            performance: this.weekReading(),
+            file: this.engine.graph.getField(this.actor, FIELDS.conductFile),
+            arcWeek: week,
+          },
+          season.cut,
+        )
+        : null,
+    };
+  }
+
+  public pressureSummary(): string {
+    return pressureSummary(this.pressureReading(), (person) => this.nameOf(person));
+  }
+
+  /** Somebody's name, as the graph holds it, for a screen that names them. */
+  private nameOf(person: string): string {
+    const value = this.engine.graph.getField(person, FIELDS.name);
+    return typeof value === 'string' && value.length > 0 ? value : person;
+  }
+
+  /**
+   * Whether a beat of the season actually left something the player could
+   * look at, which is the half of the contract a calendar cannot answer.
+   *
+   * Two of the four are mail, and mail in this game is gated on a field: no
+   * field, no thread, and the inbox does not show anybody an announcement
+   * about a round nobody has announced. The third is the matrix, which is
+   * readable exactly when there is a pool to score. The fourth is the
+   * conversation itself, which is a scene on a Friday at three.
+   */
+  private readableBeat(beat: PressureBeat): boolean {
+    if (beat === 'weather') {
+      return typeof this.engine.graph
+        .getField(this.actor, FIELDS.pressureWeatherAt) === 'number';
+    }
+
+    if (beat === 'notice') {
+      return typeof this.engine.graph
+        .getField(this.actor, FIELDS.pressureNoticeAt) === 'number';
+    }
+
+    if (beat === 'criteria') {
+      return (this.pressureReading().standing?.rows.length ?? 0) > 1;
+    }
+
+    return isReviewDay(this.day());
+  }
+
+  /**
+   * Somebody scoring the pool, in the minute before the conversation, and only
+   * if the season has been telegraphed.
+   *
+   * `telegraph` is the gate and it is a TYPE gate: it answers null unless all
+   * four beats have fired in order and each of them left something readable,
+   * and nothing below can be reached without the season it returns. So a round
+   * that was never announced, or announced into an inbox that does not hold
+   * the mail, writes no ranking - and a review with no ranking in the world is
+   * the review this game has always had.
+   *
+   * Answers whether the player is in the cut, which is what the driver needs
+   * to know which verb to offer.
+   */
+  private readTheMatrix(): boolean {
+    const reading = this.pressureReading();
+    const { season, standing } = reading;
+
+    if (season === null || standing === null || reading.beat !== 'decision') {
+      return false;
+    }
+
+    const telegraphed = telegraph(
+      season,
+      reading.week,
+      (beat) => this.readableBeat(beat),
+    );
+
+    if (telegraphed === null) {
+      return false;
+    }
+
+    const result = this.engine.dispatch(
+      DAY_ACTIONS.reviewMatrixRead,
+      this.actor,
+      null,
+      {
+        position: standing.position,
+        cut_from: standing.cutFrom,
+        criteria: matrixSummary(standing, (person) => this.nameOf(person)),
+      },
+    );
+
+    if (!result.ok) {
+      throw new Error(`The pool could not be scored: ${result.reason}`);
+    }
+
+    return standing.inTheCut;
   }
 
   /**

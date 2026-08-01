@@ -37,6 +37,54 @@ export const FIELDS = {
   reviewOutcome: 'review_outcome',
   weekEnded: 'week_ended',
   /**
+   * Which week of the employer arc this one is, counting from 1.
+   *
+   * A career is a table of weeks the way a week is a table of days
+   * (`src/world/pressure.ts`), and this is where the player is in it. It is
+   * world state rather than a number the shell keeps because everything about
+   * it has to survive a save: which piece of weather is live, which beats have
+   * already been readable, and - the one that decides something - how long the
+   * player has been here, which is a line on the redundancy matrix and the one
+   * line nobody can move.
+   *
+   * `weekAttempt` is a different question and both are needed. The attempt is
+   * how many goes somebody has had at THIS week; the arc week is where the
+   * week sits in a career. A firing moves the attempt and leaves the arc where
+   * it was, because a retry is the same week again.
+   */
+  arcWeek: 'arc_week',
+  /**
+   * When the two announcement beats landed, as ticks, or absent for a week
+   * where they have not.
+   *
+   * They are mail arrival gates and nothing else: `mail/threads.ts` hangs the
+   * weather thread and the notice thread off them, so an inbox cannot show
+   * somebody an announcement about a round that has not been announced. Seeded
+   * by `session.ts` from the arc rather than written by a verb, because both
+   * are things that happened in a previous week and the week they happened in
+   * is not the week being played.
+   */
+  pressureWeatherAt: 'pressure_weather_at',
+  pressureNoticeAt: 'pressure_notice_at',
+  /**
+   * Where the player came in the pool, and the first position that goes.
+   *
+   * Two numbers rather than a flag, because the comparison between them IS the
+   * rule and the guards can make it: in the cut is `review_position` at or
+   * beyond `review_cut_from`, which is `field_at_least_field` and nothing
+   * else. A flag would have been the shell's opinion written into the world;
+   * this is the world holding the ranking and the line, and both of them are
+   * on the criteria screen for three weeks before either decides anything.
+   *
+   * Absent in a week with no round on, which is every week the shipped game
+   * currently reaches - and absent is the honest answer rather than a nought,
+   * because there is no ranking to be first in.
+   */
+  reviewPosition: 'review_position',
+  reviewCutFrom: 'review_cut_from',
+  /** The matrix, in the sentence it was read out as. Written with the rest. */
+  reviewCriteria: 'review_criteria',
+  /**
    * The mark the conversation at three o'clock was actually decided on.
    *
    * Snapshotted by the review itself, because the week carries on being worked

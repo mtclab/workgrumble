@@ -1,7 +1,11 @@
 import type { ActionData, NodeRefData, PredData } from '../../engine-api';
 import { NO_RUN } from '../consumables';
 import { FIELDS } from '../fields';
-import { PROBATION_BONUS_PENCE, REVIEW_PASS_PERFORMANCE } from '../week';
+import {
+  PROBATION_BONUS_PENCE,
+  REDUNDANCY_PAYMENT_PENCE,
+  REVIEW_PASS_PERFORMANCE,
+} from '../week';
 import { HELPDESK_TIER, not } from './helpers';
 import { DAY_ACTIONS } from './ids';
 
@@ -48,6 +52,25 @@ const MARK_CLEARS_THE_BAR: PredData = {
   node: ACTOR,
   field: FIELDS.weekReputation,
   than: { node: ACTOR, field: FIELDS.reviewBar },
+};
+
+/**
+ * And the other question a Friday can ask: not "was it good enough" but "was
+ * somebody easier to justify losing".
+ *
+ * Two fields compared, exactly as the bar is: where the player came in the
+ * pool, against the first position that goes. Both are written a minute before
+ * the conversation by `reviewMatrixRead`, both are on the criteria screen for
+ * three weeks before that, and in a week with no round on NEITHER EXISTS -
+ * which answers false, because a ranking nobody is holding is a ranking nobody
+ * is in. That is what keeps the whole systemic layer inert in a quiet week
+ * rather than merely switched off.
+ */
+const IN_THE_CUT: PredData = {
+  pred: 'field_at_least_field',
+  node: ACTOR,
+  field: FIELDS.reviewPosition,
+  than: { node: ACTOR, field: FIELDS.reviewCutFrom },
 };
 
 /**
@@ -209,7 +232,83 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
     ],
   },
   /**
-   * Friday at three, in the two sentences it can end with.
+   * Somebody reading the matrix, in the same minute as the file.
+   *
+   * The ranking is snapshotted for the same reason the mark and the bar are:
+   * every number it is computed from carries on moving after three o'clock. A
+   * ticket closed at half past would raise the player's own performance line
+   * and could move them across the cut, and the window afterwards would then
+   * be printing a position that no longer existed above a verdict it had
+   * caused.
+   *
+   * A position is at least 1, and so is the line - a round where the first
+   * position that goes is nought is a round where everybody goes, which is not
+   * a redundancy, it is a closure - and the sentence that explains the ranking
+   * is required, because a ranking without it is a number the player has to
+   * take on trust.
+   */
+  {
+    id: DAY_ACTIONS.reviewMatrixRead,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: not(stateIs('shift')),
+        reason: 'Nobody scores anybody\'s matrix outside working hours. It is '
+          + 'a consultation, and consultations happen on the clock.',
+      },
+      {
+        when: not(REVIEW_PENDING),
+        reason: 'That conversation has already happened, and the pool was '
+          + 'scored before it, which is the whole order of these things.',
+      },
+      {
+        when: not({
+          pred: 'param_is_whole_number',
+          param: 'position',
+          value: 1,
+        }),
+        reason: 'A place in a pool is a whole number and it starts at one. '
+          + 'There is no nought-th person on a matrix.',
+      },
+      {
+        when: not({
+          pred: 'param_is_whole_number',
+          param: 'cut_from',
+          value: 1,
+        }),
+        reason: 'The line is the first position that goes, and it is a whole '
+          + 'number at least one. A round that starts cutting at nought is not '
+          + 'a redundancy, it is a closure.',
+      },
+      {
+        when: { pred: 'param_blank', param: 'criteria' },
+        reason: 'A pool was scored and nobody wrote down what it said. The '
+          + 'matrix is a screen, not a secret.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reviewPosition,
+        value: { param: 'position' },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reviewCutFrom,
+        value: { param: 'cut_from' },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reviewCriteria,
+        value: { param_trim: 'criteria' },
+      },
+    ],
+  },
+  /**
+   * Friday at three, in the three sentences it can end with.
    *
    * The threshold lives in the GUARDS. A single verb taking an outcome would
    * put the decision in whatever code called it, and there are three screens
@@ -234,6 +333,16 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         when: not(MARK_CLEARS_THE_BAR),
         reason: 'Nothing in the file supports keeping you on, and the file is '
           + 'the only thing in the room he is reading from.',
+      },
+      // Clearing the bar is not the same as keeping the job in a week where
+      // two roles are going. The mark answers "was this good enough"; the
+      // matrix answers "was somebody easier to justify losing", and a pass
+      // dispatched over the top of a ranking would be the shell overruling the
+      // one decision this game holds in the world on purpose.
+      {
+        when: IN_THE_CUT,
+        reason: 'The mark is fine and the mark is not what is being decided. '
+          + 'You are in the two, and the two is a ranking rather than a line.',
       },
     ],
     apply: [
@@ -304,6 +413,79 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         node: ACTOR,
         field: FIELDS.reviewReputation,
         value: { field: { node: ACTOR, field: FIELDS.weekReputation } },
+      },
+    ],
+  },
+  /**
+   * The third ending, and the one that is not a loss.
+   *
+   * It is guarded on both halves of the sentence it stands for: the week
+   * CLEARED the line it was held to, and the pool put somebody else above you.
+   * A week that did not clear the bar cannot reach this verb at all - that is
+   * a firing, with the reasons the firing has - which is what stops a
+   * redundancy round from being used to launder a week somebody actually lost.
+   *
+   * What it does is the whole design of the outcome. The mark is snapshotted
+   * like every other ending, so the screen and the verdict cannot drift. The
+   * fund keeps everything it had and takes the payment on top, because the
+   * fund was never theirs and a week's notice is what nine weeks of service
+   * actually buys. And the conduct file is deliberately NOT cleared here: it
+   * belongs to the people who wrote it, it stays in this world with them, and
+   * what does not travel to the next employer is a matter of which world gets
+   * built rather than of a field being wiped on the way out.
+   */
+  {
+    id: DAY_ACTIONS.reviewRedundant,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: not(stateIs('shift')),
+        reason: 'Reviews happen during working hours. He is very clear about '
+          + 'that, in a way he is not clear about anything else.',
+      },
+      {
+        when: not(REVIEW_PENDING),
+        reason: 'That conversation has already happened. Whatever was decided '
+          + 'in it has been decided.',
+      },
+      {
+        when: not(IN_THE_CUT),
+        reason: 'Nobody is proposing to make you redundant. There is either no '
+          + 'round on or you are not in the part of it that goes, and neither '
+          + 'is a thing anybody can volunteer for.',
+      },
+      {
+        when: not(MARK_CLEARS_THE_BAR),
+        reason: 'The week did not reach the line it was held to, and a round '
+          + 'is not a way of dressing that up. This one has a different name '
+          + 'and no cheque attached.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reviewOutcome,
+        value: { const: 'redundant' },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reviewReputation,
+        value: { field: { node: ACTOR, field: FIELDS.weekReputation } },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.farmFund,
+        value: {
+          add: {
+            node: ACTOR,
+            field: FIELDS.farmFund,
+            by: { const: REDUNDANCY_PAYMENT_PENCE },
+            clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
+          },
+        },
       },
     ],
   },

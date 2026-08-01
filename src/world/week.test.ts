@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ReadOnlyGraphNode } from '../engine-api';
-import { dripWindow, shiftStartTick } from './day';
+import { DAY_RATE_PENCE, dripWindow, shiftStartTick } from './day';
 import { FIELDS } from './fields';
 import { minuteOfDay } from './hours';
 import { STARTING_REPUTATION } from './meters';
@@ -29,6 +29,7 @@ import {
   MAX_INHERITED,
   patrolSeedFor,
   PROBATION_BONUS_PENCE,
+  REDUNDANCY_PAYMENT_PENCE,
   REVIEW_DAY,
   REVIEW_MINUTE,
   REVIEW_PASS_PERFORMANCE,
@@ -159,12 +160,58 @@ describe('the review', () => {
     expect(PROBATION_BONUS_PENCE).toBeGreaterThan(0);
   });
 
-  it('knows the three things it can say about itself', () => {
+  it('knows the four things it can say about itself', () => {
     expect(isReviewOutcome('pending')).toBe(true);
     expect(isReviewOutcome('passed')).toBe(true);
     expect(isReviewOutcome('fired')).toBe(true);
+    expect(isReviewOutcome('redundant')).toBe(true);
     expect(isReviewOutcome('promoted')).toBe(false);
     expect(isReviewOutcome(null)).toBe(false);
+  });
+
+  /**
+   * THE MORAL SPINE, as an assertion.
+   *
+   * Being cut for the weather changes your employer; being cut for cause ends
+   * the run. Which means the order of the two questions is not a detail: the
+   * bar is asked FIRST, so a round can never be used to hand somebody a
+   * payment and a clean file for a week they actually lost, and a week that
+   * cleared its bar can never be quietly fired for a ranking.
+   *
+   * If a later slice reverses these two lines, every outcome above the bar
+   * still looks right and the one case that matters - a bad week in a
+   * redundancy week - starts paying out. This is the test that goes red.
+   */
+  it('asks the bar first and the ranking second', () => {
+    const bar = REVIEW_PASS_PERFORMANCE;
+
+    // No round on: exactly the game that shipped, both sides of the line.
+    expect(reviewOutcomeFor(bar, bar, false)).toBe('passed');
+    expect(reviewOutcomeFor(bar - 1, bar, false)).toBe('fired');
+
+    // A round on, and the week cleared the line it was held to. The only
+    // thing left to decide is whether somebody was easier to lose.
+    expect(reviewOutcomeFor(bar, bar, true)).toBe('redundant');
+    expect(reviewOutcomeFor(100, bar, true)).toBe('redundant');
+
+    // And the case the order exists for: in the cut, and under the bar. That
+    // is a firing, with no cheque and no clean sheet, because the round is not
+    // why they are going.
+    expect(reviewOutcomeFor(bar - 1, bar, true)).toBe('fired');
+    expect(reviewOutcomeFor(0, bar, true)).toBe('fired');
+
+    // A raised bar - a conduct file somebody had a reason to open - carries
+    // through both branches rather than being skipped in a pressure week.
+    expect(reviewOutcomeFor(56, 70, true)).toBe('fired');
+    expect(reviewOutcomeFor(70, 70, true)).toBe('redundant');
+  });
+
+  it('pays a week of notice, and a week is what it is worth', () => {
+    // Statutory redundancy pay needs two years of continuous service and
+    // nobody in this game has two years, so what is owed is pay in lieu of
+    // one week's notice. Five days at the shipped rate, and no more.
+    expect(REDUNDANCY_PAYMENT_PENCE).toBe(WEEK_DAYS * DAY_RATE_PENCE);
+    expect(REDUNDANCY_PAYMENT_PENCE).toBeLessThan(PROBATION_BONUS_PENCE * 3);
   });
 });
 
@@ -287,6 +334,7 @@ describe('the week, scored', () => {
       performance: 44,
       bar: REVIEW_PASS_PERFORMANCE,
       conduct: 'Nobody has a reason to open your file.',
+      criteria: '',
       outcome: 'passed',
     });
 
@@ -322,6 +370,7 @@ describe('the week, scored', () => {
       performance: 44,
       bar: REVIEW_PASS_PERFORMANCE,
       conduct: 'Nobody has a reason to open your file.',
+      criteria: '',
       outcome: 'passed',
     });
 
@@ -340,6 +389,7 @@ describe('the week, scored', () => {
       performance: 10,
       bar: REVIEW_PASS_PERFORMANCE,
       conduct: 'Somebody has a reason to open your file.',
+      criteria: '',
       outcome: 'fired',
     }).earnedPence).toBe(0);
   });

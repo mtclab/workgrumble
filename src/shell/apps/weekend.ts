@@ -6,6 +6,7 @@ import {
 import { FIELDS } from '../../world/fields';
 import {
   PROBATION_BONUS_PENCE,
+  REDUNDANCY_PAYMENT_PENCE,
   REVIEW_PASS_PERFORMANCE,
   type WeekScorecard,
 } from '../../world/week';
@@ -151,6 +152,13 @@ export const WEEKEND_APP: AppDef = {
             String(REVIEW_PASS_PERFORMANCE)
           }. Nobody opened anything.`
           : card.conduct;
+      // And, in a week where a round was on, the other thing that was read:
+      // the ranking, the three lines it was scored from and the person
+      // immediately either side. A quiet week says so rather than leaving the
+      // row off, because "there is no round on" is information the first time
+      // somebody plays a week where there is.
+      definitionRow(list, 'The pool', 'weekend-criteria')
+        .textContent = card.criteria;
 
       const earned = definitionRow(list, 'Earned this week', 'weekend-earned');
       earned.textContent = `£${formatPence(card.earnedPence)}`;
@@ -159,6 +167,17 @@ export const WEEKEND_APP: AppDef = {
       if (card.outcome === 'passed') {
         definitionRow(list, 'Probation bonus, included', 'weekend-bonus')
           .textContent = `£${formatPence(PROBATION_BONUS_PENCE)}`;
+      }
+
+      if (card.outcome === 'redundant') {
+        // A week's notice, and the row says why it is a week: statutory
+        // redundancy pay starts at two years of service and nobody here has
+        // two years. It is the correct amount and it is nearly nothing, which
+        // is the true version of the joke rather than a windfall.
+        definitionRow(list, 'Notice, paid in lieu', 'weekend-notice')
+          .textContent = `£${formatPence(REDUNDANCY_PAYMENT_PENCE)} · one `
+            + 'week. Statutory redundancy pay needs two years of service, and '
+            + 'this is not two years.';
       }
     };
 
@@ -180,6 +199,26 @@ export const WEEKEND_APP: AppDef = {
           + 'You keep the fund, because the fund was never theirs - and the '
           + 'week starts again on a Monday that is almost, but not exactly, '
           + 'this one.';
+      } else if (card.outcome === 'redundant') {
+        /**
+         * The third ending, and the one that is not a loss.
+         *
+         * It says the four true things and it does not dress any of them up:
+         * the role went rather than the person, the payment is a week because
+         * two years is what statutory redundancy pay needs and nobody here has
+         * two years, the file does not travel because it belongs to the people
+         * who wrote it, and what is on the other side is a different employer.
+         * The last of those is a seam rather than a screen, and the button
+         * below says so in the same words the passed ending uses for week two.
+         */
+        title.textContent = 'Role: made redundant';
+        body.textContent = 'Not for cause, and it says so on the letter: the '
+          + 'role goes, the notice is paid, and the reference will be the '
+          + 'dull factual one. You keep the fund, you keep the week\'s notice '
+          + `- £${formatPence(REDUNDANCY_PAYMENT_PENCE)}, which is what nine `
+          + 'weeks of service is worth and no more - and you keep what you '
+          + 'learned. What you do not keep is the file, because the file '
+          + 'belongs to the people who wrote it, and they are staying here.';
       } else {
         title.textContent = 'The week is not over';
         body.textContent = 'Nobody has had the conversation yet, so there is '
@@ -235,7 +274,9 @@ export const WEEKEND_APP: AppDef = {
 
       onward.textContent = card.outcome === 'fired'
         ? 'Start Monday again'
-        : 'Week two';
+        : card.outcome === 'redundant'
+          ? 'Somewhere else, then'
+          : 'Week two';
       setAvailability(
         onward,
         card.outcome === 'fired'
@@ -246,12 +287,26 @@ export const WEEKEND_APP: AppDef = {
           : card.outcome === 'passed'
             ? 'Week two is not built yet. It is Monday, it is the same '
               + 'corridor, and it is waiting on the next milestone.'
-            : 'Nobody has had the conversation yet.',
+            // A redundancy does NOT go back to the start of the same week -
+            // that loop is the retry, and the retry is for being fired. This
+            // one leads to a different employer, which is a declared seam and
+            // is not built, and the honest thing is to say which of those two
+            // it is rather than to quietly offer the wrong one.
+            : card.outcome === 'redundant'
+              ? 'The next employer is not built yet. This is not the retry - '
+                + 'that one is for being sacked, and it puts you back on this '
+                + 'Monday. Being made redundant leads somewhere else, and '
+                + 'somewhere else is waiting on the next milestone.'
+              : 'Nobody has had the conversation yet.',
       );
       note.textContent = card.outcome === 'fired'
         ? 'Starting again keeps the fund and what you had read. Everything '
           + 'else is Monday morning, slightly rearranged.'
-        : 'The fund carries. It always carries.';
+        : card.outcome === 'redundant'
+          ? 'The fund carries, the notice is in it, and the file is not. That '
+            + 'is what being cut for the weather is worth: a clean sheet and '
+            + 'a week\'s money.'
+          : 'The fund carries. It always carries.';
     };
 
     host.replaceChildren(root);

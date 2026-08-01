@@ -1,6 +1,12 @@
 import { COMPANY_IDS } from '../company';
 import { WORLD_IDS } from '../demo-world';
 import { FIELDS } from '../fields';
+import {
+  decisionDate,
+  noticeDays,
+  PRESSURE_MAIL,
+  REDUNDANCY_ROUND,
+} from '../pressure';
 import { HANDOFF_BOUNCE } from '../tickets/handoff';
 import type { MailThread } from './types';
 
@@ -164,6 +170,122 @@ export const MAIL_THREADS: readonly MailThread[] = [
           + 'sent it back to you, which I gather is the polite version.',
           'Not a telling off. Genuinely. It is only that they now know your '
           + 'name, and that is a thing that compounds.',
+        ],
+      },
+    ],
+  },
+  /**
+   * BEAT ONE: the weather.
+   *
+   * Ambient, no numbers, costs nothing and changes nothing. It is a mail that
+   * was forwarded to the wrong list, which is how most people at this level
+   * first learn anything, and the only thing in it that matters is a phrase
+   * somebody in Finance would not have written if it were not already being
+   * discussed. Nothing in the game reads it. It exists so that an attentive
+   * player gets to feel clever a fortnight later, which is the entire point of
+   * a beat that does nothing.
+   *
+   * It is gated on the arc rather than on the week: `session.ts` writes the
+   * field when the arc says the weather has already happened, so a week played
+   * before it does not have it in the inbox and every week after it does.
+   */
+  {
+    id: PRESSURE_MAIL.weather,
+    subject: 'FW: Q3 forecast - board pack (DRAFT - not for circulation)',
+    arrival: {
+      node: COMPANY_IDS.player,
+      field: FIELDS.pressureWeatherAt,
+    },
+    messages: [
+      {
+        id: 'mail/round-weather#1',
+        from: COMPANY_IDS.marcus,
+        tick: 0,
+        body: [
+          'Apologies all - please ignore and delete, this went to the wrong '
+          + 'distribution list. It is a working draft and the figures in it '
+          + 'are not final.',
+          'Marcus',
+        ],
+      },
+      {
+        id: 'mail/round-weather#2',
+        from: COMPANY_IDS.marcus,
+        tick: 3,
+        body: [
+          'Following up: the delete request applies to the attachment as '
+          + 'well. I am told the attachment is the part people opened.',
+          'For the avoidance of doubt the line about establishment costs on '
+          + 'the second page is an OPTION under discussion and not a plan. '
+          + 'Nothing has been decided and nobody should be reading anything '
+          + 'into the fact that it is on a page at all.',
+        ],
+      },
+    ],
+  },
+  /**
+   * BEAT TWO: the notice, and the one beat that is not optional.
+   *
+   * Named, dated, with a number in it, sent to everybody, exactly as the law
+   * makes an employer send one. It says how many roles are proposed, who is in
+   * the selection pool, what the criteria are, when consultation closes and
+   * when the decision is - because a round of two out of six has no statutory
+   * consultation period of its own, and this game holds itself to the
+   * collective one anyway rather than being harder to see coming than the law.
+   *
+   * The numbers and the dates in it are interpolated from the season rather
+   * than typed, so the mail and the machinery can never disagree about how
+   * many people are going or when.
+   */
+  {
+    id: PRESSURE_MAIL.notice,
+    subject: `ALL STAFF - proposed reduction of ${
+      String(REDUNDANCY_ROUND.cut)
+    } roles: consultation`,
+    arrival: {
+      node: COMPANY_IDS.player,
+      field: FIELDS.pressureNoticeAt,
+    },
+    messages: [
+      {
+        id: 'mail/round-notice#1',
+        from: COMPANY_IDS.yolanda,
+        tick: 0,
+        body: [
+          'This mail is going to everybody at this site and I would rather '
+          + 'you heard it from a mail than from the kitchen.',
+          `The company is proposing a reduction of ${
+            String(REDUNDANCY_ROUND.cut)
+          } roles from a selection pool of ${
+            String(REDUNDANCY_ROUND.pool)
+          } in support and administrative functions at this site. If you are `
+          + 'in the pool you are being told so individually today. Being in a '
+          + 'pool is not a decision about you and it is not a shortlist.',
+          `Consultation opens now and closes at 17:00 on ${
+            decisionDate(REDUNDANCY_ROUND)
+          }, which is ${
+            String(noticeDays(REDUNDANCY_ROUND))
+          } days from today. No dismissal takes effect before that date. `
+          + 'During consultation you may put alternatives to us in writing, '
+          + 'and we do have to consider them, and I would encourage it.',
+          'Selection will be made on a scoring matrix. The criteria are '
+          + 'performance, disciplinary record where it is current and '
+          + 'relevant, and length of service. The matrix is published: you '
+          + 'can see your own scores and the pool\'s from today.',
+        ],
+      },
+      {
+        id: 'mail/round-notice#2',
+        from: COMPANY_IDS.boss,
+        tick: 40,
+        body: [
+          'Pat - you will have had the one from HR. I am not going to add '
+          + 'anything clever to it.',
+          'The scoring is the scoring. The only line on it that moves between '
+          + 'now and then is the one about the week, and that is the one you '
+          + 'have been looking at every evening since you started.',
+          'Door is open. I say that to everybody and I mean it about four '
+          + 'times a year, and this is one of them.',
         ],
       },
     ],

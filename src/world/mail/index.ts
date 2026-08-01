@@ -1,4 +1,5 @@
 import type { ReadOnlyGraphView } from '../../engine-api';
+import { EMPLOYER_ARC } from '../pressure';
 import { MAIL_THREADS } from './threads';
 import type { MailThread } from './types';
 
@@ -72,9 +73,40 @@ export function validateMailThreads(
   return Object.freeze([...threads]);
 }
 
-export const WORLD_MAIL: readonly MailThread[] = validateMailThreads(
-  MAIL_THREADS,
+export const WORLD_MAIL: readonly MailThread[] = assertPressureSignals(
+  validateMailThreads(MAIL_THREADS),
 );
+
+/**
+ * The second half of the four-beat contract, checked where content refers to
+ * content: a season whose announcement nobody wrote.
+ *
+ * Two of the four beats ARE mail - the weather and the notice - and the
+ * contract says an event may not change an outcome unless each beat left
+ * something the player could read. A season naming a thread this inbox does
+ * not hold would satisfy the calendar and fail the player, silently, in the
+ * one week it mattered. So it is a boot failure instead, exactly like a day
+ * that schedules a ticket nobody wrote.
+ */
+export function assertPressureSignals(
+  threads: readonly MailThread[],
+): readonly MailThread[] {
+  const known = new Set(threads.map((thread) => thread.id));
+
+  for (const season of EMPLOYER_ARC.seasons) {
+    for (const id of [season.weatherThread, season.noticeThread]) {
+      if (!known.has(id)) {
+        throw new Error(
+          `"${season.id}" announces itself as "${id}", which nobody wrote. `
+          + 'Four beats or no effect, and a beat with nothing to read is a '
+          + 'beat that did not fire.',
+        );
+      }
+    }
+  }
+
+  return threads;
+}
 
 export function findMailThread(id: string): MailThread | undefined {
   return WORLD_MAIL.find((thread) => thread.id === id);

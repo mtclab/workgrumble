@@ -41,6 +41,19 @@ export const REVIEW_APP: AppDef = {
     const reply = element('p', 'caught-reply', 'review-reply');
 
     const conduct = element('p', 'caught-narration', 'review-conduct');
+    /**
+     * The weather, and the matrix if there is one.
+     *
+     * It is on this window rather than on a screen of its own because this is
+     * the window that is already about "what decides whether you are here next
+     * week", it opens from the start menu on any day of any week, and a
+     * ranking the player can only see on the Friday is a ranking they cannot
+     * have played toward. In a quiet week it says so - which is not padding:
+     * a player who has never seen a round has to know the shape of one before
+     * the first announcement, or the notice reads as a surprise mechanic
+     * rather than as the season turning.
+     */
+    const pressure = element('p', 'caught-narration', 'review-pressure');
 
     const footer = element('div', 'caught-footer');
     const dismiss = osButton('Take it on the chin', 'review-dismiss', {
@@ -49,7 +62,7 @@ export const REVIEW_APP: AppDef = {
     const note = element('p', 'caught-note', 'review-note');
     footer.append(dismiss, note);
 
-    root.append(head, line, narration, reply, conduct, footer);
+    root.append(head, line, narration, reply, conduct, pressure, footer);
 
     dismiss.addEventListener('click', () => {
       api.closeApp('review');
@@ -87,9 +100,12 @@ export const REVIEW_APP: AppDef = {
       const outcome = api.day.reviewOutcome();
       const scene = reviewScene(outcome) ?? PENDING;
       const card = api.day.weekScorecard();
+      const weather = api.day.pressureReading();
 
       root.dataset.outcome = outcome;
       root.dataset.bar = String(card.bar);
+      root.dataset.beat = weather.beat ?? 'none';
+      root.dataset.arcWeek = String(weather.week);
       // The reason the bar is that number, printed beside the verdict in the
       // world's own words rather than re-derived here. It is written into the
       // graph a minute before the conversation and never recomputed, so this
@@ -99,6 +115,15 @@ export const REVIEW_APP: AppDef = {
       conduct.textContent = outcome === 'pending'
         ? `As it stands: ${card.conduct}`
         : card.conduct;
+      // The same rule as the conduct line above it: live while there is still
+      // a week to play, and the world's own snapshot afterwards. A matrix
+      // re-derived after three o'clock would print a position that had moved
+      // since it decided anything, because the queue does not stop.
+      pressure.textContent = outcome === 'pending'
+        ? api.day.pressureSummary()
+        : card.criteria === ''
+          ? api.day.pressureSummary()
+          : card.criteria;
       heading.textContent = scene.title;
       stamp.textContent = outcome === 'pending'
         ? 'Friday, three o\'clock. It has not happened yet.'
@@ -115,7 +140,16 @@ export const REVIEW_APP: AppDef = {
           ? `He read the week as ${marked()}. The probation is over, and `
             + 'whatever is in the fridge with your name on it is now, '
             + 'technically, yours.'
-          : 'It is decided on one number, and the number is a percentage of '
+          : outcome === 'redundant'
+            // The one verdict where the mark was not the problem, and the
+            // window says so in the same breath as saying what happens next.
+            // The fund is the joke this whole game is built on and it has
+            // never once been theirs.
+            ? `He read the week as ${marked()}, and that was not what `
+              + 'decided it. The role goes, the notice is paid, the file '
+              + 'stays in this building with the people who wrote it, and the '
+              + 'fund is still yours.'
+            : 'It is decided on one number, and the number is a percentage of '
             + 'the work: half of it is how much of what came in you closed, '
             + 'half is how much of it never went red. It has to reach '
             + `${String(REVIEW_PASS_PERFORMANCE)} out of 100 when he opens `

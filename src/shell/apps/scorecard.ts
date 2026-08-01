@@ -300,6 +300,14 @@ export const SCORECARD_APP: AppDef = {
       definitionRow(list, 'On file', 'scorecard-file')
         .textContent = conductSummary(conduct);
 
+      // And the weather, every evening, for the third time and the same
+      // reason. In a quiet week it says nothing is proposed, which is the
+      // sentence that makes the first announcement land as a season turning
+      // rather than as a mechanic somebody sprang. In a week with a round on
+      // it is the ranking, moving as the queue moves.
+      definitionRow(list, 'The round', 'scorecard-round')
+        .textContent = api.day.pressureSummary();
+
       renderTriage(counts.misclassified);
     };
 

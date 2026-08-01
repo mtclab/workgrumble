@@ -2070,18 +2070,40 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'top of a service somebody was using.',
   [WORLD_ACTIONS.staleLogon]: 'A tablet in a cupboard offering a password '
     + 'that was changed in the spring, every five minutes.',
+  [DAY_ACTIONS.reviewMatrixRead]: 'Somebody scoring the selection pool in the '
+    + 'minute before the conversation, in a week where a round is being '
+    + 'decided. The day loop dispatches it; the player has been reading the '
+    + 'same matrix on the review window and the evening scorecard for three '
+    + 'weeks. It cannot happen in the probation week, which is the only week '
+    + 'the shipped game deals - the pacing rules forbid it.',
+  [DAY_ACTIONS.reviewRedundant]: 'The third ending, dispatched by the day loop '
+    + 'when the week cleared its bar and the ranking still put two other '
+    + 'people above the line. Career-layer: it belongs to a week of the '
+    + 'employer arc that the probation week is not, and the walk that drives '
+    + 'it is `scripted-arc.test.ts` rather than a browser.',
 };
 
 /**
  * Scenes the shipped content cannot put on the screen, and why they exist.
  *
- * One entry, and it is a guard rather than content: a save can name a slack app
- * this build no longer installs, and a blank window with a manager in it would
- * be worse than a general-purpose telling-off.
+ * Two entries. The first is a guard rather than content: a save can name a
+ * slack app this build no longer installs, and a blank window with a manager
+ * in it would be worse than a general-purpose telling-off.
+ *
+ * The second is a whole layer, and it is here rather than in the walk because
+ * of a rule rather than an omission - which is the distinction this table
+ * exists to record.
  */
 export const SCENES_WITHOUT_A_ROUTE: Readonly<Record<string, string>> = {
   'caught.unknown': 'The fallback telling-off for an app nobody wrote a scene '
     + 'for, which the loader makes unreachable for anything this build ships.',
+  'review.redundant': 'The redundancy conversation, which cannot happen in the '
+    + 'probation week: the pacing rules put the first systemic event no '
+    + 'earlier than the fourth week of an employer arc, and the shipped game '
+    + 'deals week one. It is driven end to end through the real driver and '
+    + 'the real engine in `scripted-arc.test.ts`, on the week of the arc it '
+    + 'belongs to, and it is unreachable on the artifact until there is a '
+    + 'week two to reach it from.',
 };
 
 /**

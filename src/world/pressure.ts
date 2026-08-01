@@ -48,6 +48,7 @@
  */
 
 import { calendarDate } from './hours';
+import { matrixSummary, type PoolStanding } from './pool';
 import { WEEK_DAYS } from './week';
 
 /* -- the catalogue --------------------------------------------------------- */
@@ -845,6 +846,69 @@ export function whyNotTelegraphed(
   }
 
   return null;
+}
+
+/* -- what the screens say about it ----------------------------------------- */
+
+/**
+ * Where the week stands in the season, as anything with a screen needs it.
+ *
+ * Free to build and changes nothing, exactly like the conduct reading it sits
+ * beside: the review window shows it all week, the week card shows it at the
+ * end, and neither of them is being shown a different rule from the one that
+ * applies. Nothing may fire from a state the player could not read first, and
+ * this is the state.
+ */
+export interface PressureReading {
+  readonly week: number;
+  readonly season: PressureSeason | null;
+  readonly beat: PressureBeat | null;
+  /** The matrix, once there is a round to be scored on. Null until then. */
+  readonly standing: PoolStanding | null;
+}
+
+/**
+ * The sentence the screens print, in the world's own words.
+ *
+ * Five things it can say, one per beat plus the quiet week, and the quiet week
+ * is not padding: a player who has never seen a round has to be told that this
+ * is a thing that can happen and that nothing is happening, or the first
+ * notice arrives as a surprise mechanic rather than as the season turning.
+ */
+export function pressureSummary(
+  reading: Readonly<PressureReading>,
+  nameOf: (person: string) => string,
+): string {
+  const { season, beat, standing } = reading;
+
+  if (season === null || beat === null) {
+    return 'Nothing is being proposed. There is no round on, nobody is being '
+      + 'scored against anybody, and the week is decided on the mark and the '
+      + 'file alone.';
+  }
+
+  const entry = findPressure(season.id);
+  const dates = `The announcement went out on ${noticeDate(season)} and `
+    + `consultation closes on ${decisionDate(season)}.`;
+
+  if (beat === 'weather') {
+    return `${entry?.signals.weather ?? ''} Nothing has been proposed and no `
+      + 'dates have been given. It is possible that this is nothing.';
+  }
+
+  if (beat === 'notice') {
+    return `A reduction of ${String(season.cut)} roles is proposed, from a `
+      + `pool of ${String(season.pool)}. ${dates} Nothing is decided until `
+      + 'then, and the scoring is published from today.';
+  }
+
+  const matrix = standing === null
+    ? 'The matrix has not been scored yet.'
+    : matrixSummary(standing, nameOf);
+
+  return beat === 'criteria'
+    ? `Consultation is open. ${matrix} ${dates}`
+    : `This is the week it is decided in. ${matrix}`;
 }
 
 /* -- the calendar the notice quotes ---------------------------------------- */

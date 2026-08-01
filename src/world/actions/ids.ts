@@ -257,16 +257,32 @@ export const DAY_ACTIONS = {
    */
   reviewFileRead: 'day.review_file_read',
   /**
-   * Friday, three o'clock, both ways it goes.
+   * Somebody reading the selection matrix, in the same minute as the file.
    *
-   * Two verbs rather than one with an outcome parameter, because the outcome
+   * The sibling of `reviewFileRead` and it exists for the same reason: the
+   * ranking, the line it is held against and the sentence explaining both are
+   * written into the world BEFORE the conversation, so the three review verbs
+   * are guarded against numbers the graph is carrying rather than against
+   * arithmetic whichever screen happened to do. It is only dispatched in a
+   * week where a round is actually being decided; in every other week the
+   * fields it writes are absent, and absent is "there is no ranking to be in".
+   */
+  reviewMatrixRead: 'day.review_matrix_read',
+  /**
+   * Friday, three o'clock, all three ways it goes.
+   *
+   * Three verbs rather than one with an outcome parameter, because the outcome
    * is not something a caller gets to pick: each one is guarded on the mark
-   * that earns it against the bar the world is holding, so the threshold is
+   * that earns it against the bar the world is holding - and, since 0.2.7, on
+   * the place in the pool the world is holding as well - so the decision is
    * enforced by the world rather than by whichever screen happened to do the
-   * arithmetic.
+   * arithmetic. The three sets of guards are mutually exclusive by
+   * construction: below the bar is a firing, at or above it and in the cut is
+   * a redundancy, and at or above it and out of the cut is a pass.
    */
   reviewPassed: 'day.review_passed',
   reviewFired: 'day.review_fired',
+  reviewRedundant: 'day.review_redundant',
   /** Friday's clock-off. There is no Saturday, so the week stops here. */
   endWeek: 'day.end_week',
   /** Opening a can: money out, empties up, and a clock the crash reads. */

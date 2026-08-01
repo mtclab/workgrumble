@@ -12,6 +12,7 @@ import { companySetup, COMPANY_IDS } from './company';
 import { DEMO_ACTION_DATA } from './demo-world';
 import { watchMachineEvents } from './events';
 import { FIELDS } from './fields';
+import { beatsFiredBy, PROBATION_WEEK, seasonAt } from './pressure';
 import { spawnWorldTicket } from './tickets';
 import { inheritedTicketIds, REVIEW_PASS_PERFORMANCE } from './week';
 
@@ -52,11 +53,22 @@ export function seedForAttempt(attempt: number): number {
 export interface WeekCarry {
   readonly farmFund: number;
   readonly attempt: number;
+  /**
+   * Which week of the employer arc this one is, counting from 1.
+   *
+   * Optional, and it defaults to the probation week, because that is the only
+   * week the shipped game deals: the arc exists so that the systemic layer has
+   * somewhere to live and so that the seam employer switching needs is a
+   * parameter rather than a rewrite. A week built without it is week one, and
+   * week one carries no weather by rule.
+   */
+  readonly arcWeek?: number;
 }
 
 export const FIRST_WEEK: WeekCarry = Object.freeze({
   farmFund: 0,
   attempt: 1,
+  arcWeek: PROBATION_WEEK,
 });
 
 export interface WorldSession {
@@ -67,7 +79,9 @@ export interface WorldSession {
   readonly carry: WeekCarry;
 }
 
-function requireCarry(carry: Readonly<WeekCarry>): WeekCarry {
+function requireCarry(carry: Readonly<WeekCarry>): Required<WeekCarry> {
+  const arcWeek = carry.arcWeek ?? PROBATION_WEEK;
+
   if (!Number.isSafeInteger(carry.farmFund) || carry.farmFund < 0) {
     throw new TypeError('A farm fund is a whole number of pence, at least 0.');
   }
@@ -76,7 +90,11 @@ function requireCarry(carry: Readonly<WeekCarry>): WeekCarry {
     throw new TypeError('An attempt at the week is numbered from 1.');
   }
 
-  return { farmFund: carry.farmFund, attempt: carry.attempt };
+  if (!Number.isSafeInteger(arcWeek) || arcWeek < 1) {
+    throw new TypeError('A week of the employer arc is numbered from 1.');
+  }
+
+  return { farmFund: carry.farmFund, attempt: carry.attempt, arcWeek };
 }
 
 /**
@@ -99,6 +117,7 @@ export function createWorldSession(
     ...companySetup(),
     ...weekOpeningSetup(),
     ...carrySetup(start),
+    ...pressureSetup(start.arcWeek),
   ]);
   engine.registerActions({
     kind_labels: KIND_LABELS,
@@ -154,6 +173,56 @@ function weekOpeningSetup(): readonly SetupOp[] {
 }
 
 /**
+ * The weather, as it stood on the Monday morning of this week.
+ *
+ * Two fields, both mail arrival gates, both written only when the arc says the
+ * beat has ALREADY happened - because both of them happened in a week that is
+ * not this one. Each week of a career is its own world and its own clock, so
+ * "the announcement went out four weeks ago" cannot be a tick in this week's
+ * clock; what it is, from in here, is a thing that is in the inbox on the
+ * Monday, which is exactly what the shipped mail already models.
+ *
+ * In the probation week - which is every week the shipped game currently
+ * reaches - this writes NOTHING. That is the strongest claim this slice makes
+ * and it is deliberately made here, in the one function that could break it: a
+ * quiet week's graph carries no announcement, no ranking and no line, so the
+ * layer is inert rather than merely switched off, and the golden weeks are the
+ * proof. The only thing 0.2.7 puts in a quiet Monday's world is the arc week
+ * itself, which is a fact about where the player is in a career rather than
+ * about anything happening to them.
+ */
+function pressureSetup(arcWeek: number): readonly SetupOp[] {
+  const season = seasonAt(arcWeek);
+
+  if (season === null) {
+    return [];
+  }
+
+  const fired = new Set(beatsFiredBy(season, arcWeek));
+  const ops: SetupOp[] = [];
+
+  if (fired.has('weather')) {
+    ops.push({
+      op: 'setField',
+      id: COMPANY_IDS.player,
+      field: FIELDS.pressureWeatherAt,
+      value: 0,
+    });
+  }
+
+  if (fired.has('notice')) {
+    ops.push({
+      op: 'setField',
+      id: COMPANY_IDS.player,
+      field: FIELDS.pressureNoticeAt,
+      value: 0,
+    });
+  }
+
+  return ops;
+}
+
+/**
  * What the last attempt left behind, written into the new world.
  *
  * The opening balance is recorded beside the fund rather than inferred: the
@@ -161,7 +230,7 @@ function weekOpeningSetup(): readonly SetupOp[] {
  * fund does not start at nought. A screen that subtracted an opening balance
  * it had to guess at would be a screen that flatters a retry.
  */
-function carrySetup(carry: Readonly<WeekCarry>): readonly SetupOp[] {
+function carrySetup(carry: Required<WeekCarry>): readonly SetupOp[] {
   return [
     {
       op: 'setField',
@@ -180,6 +249,15 @@ function carrySetup(carry: Readonly<WeekCarry>): readonly SetupOp[] {
       id: COMPANY_IDS.player,
       field: FIELDS.weekAttempt,
       value: carry.attempt,
+    },
+    // Where this week sits in a career, which is world state for the same
+    // reason the attempt is: it is saved, it is replayed, and one line of the
+    // matrix - the one nobody can move - is read straight off it.
+    {
+      op: 'setField',
+      id: COMPANY_IDS.player,
+      field: FIELDS.arcWeek,
+      value: carry.arcWeek,
     },
   ];
 }

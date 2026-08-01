@@ -40,8 +40,9 @@ function validateScene(scene: Readonly<Scene>, what: string): Scene {
   return Object.freeze({ ...scene });
 }
 
-export const REVIEW_SCENES: Readonly<Record<'passed' | 'fired', Scene>> =
-  Object.freeze({
+export const REVIEW_SCENES: Readonly<
+  Record<'passed' | 'fired' | 'redundant', Scene>
+> = Object.freeze({
     passed: validateScene({
       title: 'A quick word about your probation',
       line: 'Right. Pat. I have had a look at the week, and the week is '
@@ -67,6 +68,32 @@ export const REVIEW_SCENES: Readonly<Record<'passed' | 'fired', Scene>> =
         + 'thing, in the voice of a man for whom it was, in fact, one thing.',
       dismissLabel: 'Take it on the chin',
     }, 'fired review'),
+    /**
+     * The third one, and the only conversation in this game where the person
+     * across the desk is not deciding anything.
+     *
+     * It is written to be scrupulously polite and completely useless, which is
+     * what these are actually like: the matrix was published, the scores were
+     * on it, everything that could be said has been said in writing, and the
+     * meeting exists so that the process can be recorded as having had one. He
+     * is not enjoying it either. Nobody in the room chose this, which is the
+     * difference between it and the firing - and the reason it is not a loss.
+     */
+    redundant: validateScene({
+      title: 'A quick word about the outcome of the consultation',
+      line: 'Pat. Thanks for coming in. You will have seen the scoring, and '
+        + 'I am not going to pretend the numbers were close, because you can '
+        + 'read them as well as I can. It is the two lowest, and you are one '
+        + 'of them.',
+      narration: 'He has the matrix printed out and he keeps it turned '
+        + 'towards you the whole time, which is either decency or training. '
+        + 'Somewhere behind the partition a phone rings out twice.',
+      reply: 'You say you understand the criteria, and mean it, which is the '
+        + 'strangest part. He says for what it is worth you were not the '
+        + 'problem, and looks like a man who has said that four times today '
+        + 'and meant it four times.',
+      dismissLabel: 'Ask about the reference',
+    }, 'redundancy review'),
   });
 
 export function reviewScene(outcome: ReviewOutcome): Scene | null {

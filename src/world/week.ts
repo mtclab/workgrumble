@@ -83,7 +83,30 @@ export const REVIEW_PASS_PERFORMANCE = 45;
  */
 export const PROBATION_BONUS_PENCE = 25_000;
 
-export const REVIEW_OUTCOMES = ['pending', 'passed', 'fired'] as const;
+/**
+ * The four things the conversation can end as, and `redundant` is the one that
+ * is not a loss.
+ *
+ * Being made redundant is unfair by construction - it is decided by a ranking
+ * against people whose length of service you cannot do anything about - which
+ * is exactly why it must not end the run. The fund is kept, a payment goes
+ * into it, the file does not travel (it belongs to the people who wrote it),
+ * and what is on the other side is a different employer rather than the same
+ * Monday again. `fired` stays a loss state and stays reserved FOR CAUSE: the
+ * numbers, or a conduct file that landed because the numbers were not there to
+ * shield it.
+ *
+ * Being cut for the weather changes your employer. Being cut for cause ends
+ * the run. That distinction is the moral spine of the whole layer, and it is
+ * enforced where it is decided - in `reviewOutcomeFor` and in the guards of
+ * the three verbs it chooses between.
+ */
+export const REVIEW_OUTCOMES = [
+  'pending',
+  'passed',
+  'fired',
+  'redundant',
+] as const;
 
 export type ReviewOutcome = (typeof REVIEW_OUTCOMES)[number];
 
@@ -93,7 +116,22 @@ export function isReviewOutcome(value: unknown): value is ReviewOutcome {
 }
 
 /**
- * Which way the conversation goes: the mark, against the bar it was held to.
+ * What one week of somebody's notice is worth, in pence.
+ *
+ * A week's pay at the shipped day rate, and it is a week rather than a lump
+ * sum because that is what the law actually gives this person. Statutory
+ * redundancy pay needs two years of continuous service; under two years there
+ * is none at all, and what is left is pay in lieu of the one week's notice
+ * anybody past their first month is owed. So the payment is real, it is
+ * correct, and it is small - which is a better joke than a windfall and a
+ * truer thing to teach: the fund survives, and being made redundant nine weeks
+ * into a job is worth about a week.
+ */
+export const REDUNDANCY_PAYMENT_PENCE = 5 * 9_600;
+
+/**
+ * Which way the conversation goes: the mark against the bar it was held to,
+ * and then - only then - the ranking.
  *
  * The bar defaults to the published figure because that is what it is in a
  * week nobody had a reason to look into. It is a PARAMETER because it moves -
@@ -101,12 +139,25 @@ export function isReviewOutcome(value: unknown): value is ReviewOutcome {
  * because the same comparison is made twice, once here so the driver knows
  * which verb to offer and once in the guards of the verbs themselves, so the
  * two must be one function rather than two readings of one constant.
+ *
+ * The order of the two questions is the moral spine and it is worth being
+ * exact about. THE BAR IS ASKED FIRST: a week that did not clear the line it
+ * was held to is a firing whether or not there was a round on, so a round can
+ * never launder a week somebody actually lost - the lump sum and the clean
+ * file are for people cut by the weather. Only a week that CLEARED the bar can
+ * be made redundant, and then the ranking decides whether it was enough to be
+ * harder to justify losing than the person at the next desk.
  */
 export function reviewOutcomeFor(
   performance: number,
   bar: number = REVIEW_PASS_PERFORMANCE,
-): 'passed' | 'fired' {
-  return performance >= bar ? 'passed' : 'fired';
+  inTheCut = false,
+): 'passed' | 'fired' | 'redundant' {
+  if (performance < bar) {
+    return 'fired';
+  }
+
+  return inTheCut ? 'redundant' : 'passed';
 }
 
 /**
@@ -724,6 +775,12 @@ export interface WeekScorecard {
   readonly bar: number;
   /** Why the bar is that number, in the world's own words. Empty until read. */
   readonly conduct: string;
+  /**
+   * And what the round read, if there was one on: the ranking, the three lines
+   * it was scored from and the person immediately either side of the player.
+   * Empty in a quiet week, which is every week the probation has.
+   */
+  readonly criteria: string;
   readonly outcome: ReviewOutcome;
 }
 
@@ -735,6 +792,7 @@ export interface WeekTotals {
   readonly performance: number;
   readonly bar: number;
   readonly conduct: string;
+  readonly criteria: string;
   readonly outcome: ReviewOutcome;
 }
 
@@ -807,6 +865,7 @@ export function weekScorecard(
     performance: totals.performance,
     bar: totals.bar,
     conduct: totals.conduct,
+    criteria: totals.criteria,
     outcome: totals.outcome,
   };
 }

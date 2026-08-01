@@ -187,11 +187,21 @@ describe('coverage manifest', () => {
   });
 
   it('covers every scene this build can put on the screen', () => {
+    // A scene cannot be both walked and unreachable, which is the same rule
+    // the action table keeps one test up: the entry that DRIVES it is always
+    // the better answer, and a key in both lists would be a claim and its own
+    // excuse sitting side by side.
+    const explained = new Set(Object.keys(SCENES_WITHOUT_A_ROUTE));
+
+    expect(claimed('scene').filter((scene) => explained.has(scene))).toEqual([]);
+    // The scene keys are DERIVED - one per slack app, one per review outcome -
+    // so a scene that is both a derived key and an explained one appears
+    // twice in the list they are read off. The comparison is of the SETS.
     expect([
       ...claimed('scene'),
-      ...Object.keys(SCENES_WITHOUT_A_ROUTE),
+      ...explained,
     ].sort((left, right) => left.localeCompare(right)))
-      .toEqual(sorted(SCENE_KEYS));
+      .toEqual(sorted(new Set(SCENE_KEYS)));
 
     // The two the scene keys above are named after, so deleting one is a
     // failure here rather than a quietly shorter list.
