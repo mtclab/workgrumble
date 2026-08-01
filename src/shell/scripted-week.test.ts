@@ -406,6 +406,33 @@ interface GoldenWeek {
  * ticket, so neither week's numbers move with it; the ticket-app tests are
  * where that one is pinned.
  *
+ * NINTH MOVE (0.2.4, the drive has tickets on it). Both hashes, and this time
+ * a great deal else, because this is the first slice since M4 lane C to put
+ * TICKETS into the week rather than state into the world. Two of them, in the
+ * two afternoons the week had left:
+ *
+ *  - `ticket:disk-full` on the Wednesday at 14:40, which is why the worked
+ *    week's Wednesday row is 5 in and 5 closed rather than 4 and 4, and why
+ *    the idle week's Wednesday is 5 in - its deadline runs out on the THURSDAY
+ *    morning, so the breach lands in Thursday's row (6 rather than 5), which
+ *    is the event-time accounting of the fifth move doing exactly what it was
+ *    built to do;
+ *  - `ticket:saved-into-temp` on the Friday at 09:40, which makes Friday 4 in
+ *    and 4 closed in the worked week, and 4 in and 4 red in the idle one - it
+ *    arrives early enough that its own deadline runs out the same afternoon.
+ *
+ * Everything else follows arithmetic that is already in the game. The worked
+ * week banks 500 pence more, which is two closes at `CLOSED_TICKET_BONUS_PENCE`
+ * (250); the idle week banks 800 less, which is two breaches at
+ * `BREACH_DEDUCTION_PENCE` (400). Both timelines are unchanged - neither
+ * ticket has a notice, a message or a scene of its own - and so are the caught
+ * counts, the stress, the suspicion and the endings.
+ *
+ * The one number worth a sentence of its own is the worked week's review: 96
+ * to 97, and 98 to 99 by five o'clock. Reputation was already at its ceiling
+ * by the Wednesday, so the extra credit does not move the meter; what moves is
+ * WHEN it got there, and the weighted read is a fresh question every day.
+ *
  * FIFTH MOVE (M5 close-out, event-time accounting). Both hashes, and - for the
  * first time in this file - two numbers inside the IDLE week's day rows.
  *
@@ -431,7 +458,7 @@ interface GoldenWeek {
  * happened.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: 'c9f068a51484032a',
+  hash: 'e17dcabde4cb5e92',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -445,18 +472,18 @@ const GOLDEN_WORKED: GoldenWeek = {
   days: [
     [5, 5, 0],
     [6, 6, 0],
-    [4, 4, 0],
     [5, 5, 0],
-    [3, 3, 0],
+    [5, 5, 0],
+    [4, 4, 0],
   ],
-  arrived: 23,
-  closed: 23,
+  arrived: 25,
+  closed: 25,
   breached: 0,
   stillOpen: 0,
-  /** Five days at the rate, twenty-three resolution bonuses, the deductions
+  /** Five days at the rate, twenty-five resolution bonuses, the deductions
    * nobody agreed to, and the probation bonus for surviving Friday. */
-  earnedPence: 76_525,
-  reviewRead: 96,
+  earnedPence: 77_025,
+  reviewRead: 97,
   meters: {
     // Twenty-three closed tickets carry the reputation from fifty to its
     // ceiling well before Friday, which is what a week worked properly looks
@@ -467,11 +494,11 @@ const GOLDEN_WORKED: GoldenWeek = {
     suspicion: 0,
     reputation: 100,
     // The week as the review read it, folded once more by Friday's own
-    // clock-off: 96 at three o'clock, 98 by five.
-    week_reputation: 98,
+    // clock-off: 97 at three o'clock, 99 by five.
+    week_reputation: 99,
     // Counted per day and cleared at every clock-off: Friday was clean.
     caught_events: 0,
-    farm_fund: 76_525,
+    farm_fund: 77_025,
     week_attempt: 1,
   },
   // The week's own beats, in the minute they land. The lead's footsteps are
@@ -502,7 +529,7 @@ const GOLDEN_WORKED: GoldenWeek = {
  * and the world does not pretend otherwise.
  */
 const GOLDEN_IDLE: GoldenWeek = {
-  hash: 'c5e3af67e45e06a0',
+  hash: '516a7fbc9cad51e3',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.
@@ -518,14 +545,14 @@ const GOLDEN_IDLE: GoldenWeek = {
   days: [
     [5, 0, 4],
     [5, 0, 5],
-    [4, 0, 5],
     [5, 0, 5],
-    [3, 0, 3],
+    [5, 0, 6],
+    [4, 0, 4],
   ],
-  arrived: 22,
+  arrived: 24,
   closed: 0,
-  breached: 22,
-  stillOpen: 22,
+  breached: 24,
+  stillOpen: 24,
   /**
    * Still paid, right up until they stop paying you - and eight hundred pence
    * less than it used to be, which is the money half of the same finding.
@@ -540,7 +567,7 @@ const GOLDEN_IDLE: GoldenWeek = {
    * and the fund was never charged for. They are charged now, on the days the
    * deadlines ran out.
    */
-  earnedPence: 36_975,
+  earnedPence: 36_175,
   reviewRead: 4,
   meters: {
     stress: 98,
@@ -550,7 +577,7 @@ const GOLDEN_IDLE: GoldenWeek = {
     // answer by Friday, and everything since has been zero - and two by five.
     week_reputation: 2,
     caught_events: 3,
-    farm_fund: 36_975,
+    farm_fund: 36_175,
     week_attempt: 1,
   },
   timeline: [
@@ -658,11 +685,11 @@ describe('the probation week, twice', () => {
  * miss the work, or be seen not doing it - and the week forgives EITHER of
  * them on its own and neither of them together:
  *
- *   worked properly ............ 23 of 23, no breaches ...... 96, passed
- *   half the roster ............ 13 of 22, ten breaches ..... 67, passed
- *   worked, browser up all week . 23 of 23, caught 15 times .. 51, passed
- *   half the roster, browser up . 13 of 22, caught 15 times ... 5, FIRED
- *   nothing at all .............. 0 of 22, everything late .... 4, FIRED
+ *   worked properly ............ 25 of 25, no breaches ...... 97, passed
+ *   half the roster ............ 13 of 24, twelve breaches .. 63, passed
+ *   worked, browser up all week . 25 of 25, caught 15 times .. 56, passed
+ *   half the roster, browser up . 13 of 24, caught 15 times ... 5, FIRED
+ *   nothing at all .............. 0 of 24, everything late .... 4, FIRED
  *
  * with the line at 40. Nothing was tuned to produce that: these are the rates
  * as M3 and M4 left them, and the table is committed here so that a change to
@@ -670,10 +697,18 @@ describe('the probation week, twice', () => {
  *
  * The figures are what the REVIEW read - the week weighted toward how it ended
  * - rather than the live meter, because that is the number the conversation is
- * had about. They were 100 / 69 / 50 / 0 / 0 on the meter before the weighting
- * landed, so the shape is unchanged and the top of it is no longer flat: a
+ * had about. They are 100 / 63 / 57 / 0 / 0 on the meter before the weighting
+ * lands, so the shape is unchanged and the top of it is no longer flat: a
  * week worked properly used to sit on the ceiling from about the Wednesday,
  * which meant the Thursday and the Friday could not reach the review at all.
+ *
+ * The table moved with 0.2.4, which added two tickets to the week and nothing
+ * else to this file. Both weeks that CLOSE everything gained the two closes;
+ * both weeks that do half the job gained two more breaches; the two endings,
+ * the order and the line at 40 came through untouched. The middle two are
+ * seven points apart where they used to be sixteen, and the reason is written
+ * on the assertion at the bottom of this file: credit scales with the roster
+ * and the price of being caught does not.
  */
 describe('the week at four skill levels', () => {
   interface Profile {
@@ -693,10 +728,10 @@ describe('the week at four skill levels', () => {
     {
       name: 'worked properly',
       play: workedWeek,
-      closed: 23,
+      closed: 25,
       breached: 0,
       reputation: 100,
-      reviewRead: 96,
+      reviewRead: 97,
       outcome: 'passed',
       // One browser, on the Wednesday, hidden before the second round - and
       // found once, which is the week's own texture rather than a profile.
@@ -706,19 +741,19 @@ describe('the week at four skill levels', () => {
       name: 'half the roster',
       play: halfWeek,
       closed: 13,
-      breached: 10,
-      reputation: 69,
-      reviewRead: 67,
+      breached: 12,
+      reputation: 63,
+      reviewRead: 63,
       outcome: 'passed',
       caught: 0,
     },
     {
       name: 'worked, with the browser up all week',
       play: slackWeek,
-      closed: 23,
+      closed: 25,
       breached: 0,
-      reputation: 50,
-      reviewRead: 51,
+      reputation: 57,
+      reviewRead: 56,
       outcome: 'passed',
       caught: 15,
     },
@@ -726,7 +761,7 @@ describe('the week at four skill levels', () => {
       name: 'half the roster, with the browser up all week',
       play: slackHalfWeek,
       closed: 13,
-      breached: 10,
+      breached: 12,
       reputation: 0,
       reviewRead: 5,
       outcome: 'fired',
@@ -736,7 +771,7 @@ describe('the week at four skill levels', () => {
       name: 'nothing at all',
       play: idleWeek,
       closed: 0,
-      breached: 22,
+      breached: 24,
       reputation: 0,
       reviewRead: 4,
       outcome: 'fired',
@@ -798,20 +833,53 @@ describe('the week at four skill levels', () => {
    * profiles landing on the same number would pass every assertion above while
    * telling the player nothing: the week has to be able to tell "did the work"
    * from "did half of it" from "did it with the forum open".
+   *
+   * The middle gap is a finding rather than a number, and it is written here
+   * because it is the kind of thing that only shows up when content is added.
+   * At twenty-three tickets these four read 96 / 67 / 51 / 5, and the gap
+   * between "did half of it" and "did the lot with the forum open" was sixteen
+   * points. At twenty-five they read 97 / 63 / 56 / 5, and that gap is seven.
+   *
+   * Nothing was rebalanced to make that happen and neither new ticket is
+   * unusual: they are worth 3 and 4, which is what one-desk hidden-cause
+   * tickets are worth across this roster. The cause is structural. Resolution
+   * credit SCALES with the roster - every ticket added is more credit on the
+   * table for anybody who closes it - and the price of being caught does not:
+   * the lead walks the corridor on a seeded schedule, so a slacker is found
+   * fifteen times a week whether the week holds twenty tickets or forty. Add
+   * enough content and the week that closed everything with the forum open
+   * will overtake the week that quietly let half the queue go red.
+   *
+   * That may well be the right answer - a service desk where everything got
+   * closed IS a better week than one where twelve deadlines were missed - but
+   * it is a decision about what this game values, and it is the owner's. So
+   * the gate keeps the ORDER, keeps a separation that is a separation rather
+   * than a tie-break, and adds the claim the model does still support with
+   * room: four profiles spread across most of the scale.
    */
   it('marks the week down for each thing that went wrong', () => {
     const worked = readingOf('worked properly');
     const half = readingOf('half the roster');
     const slacked = readingOf('worked, with the browser up all week');
     const both = readingOf('half the roster, with the browser up all week');
+    const ordered = [worked, half, slacked, both];
 
     expect(worked).toBeGreaterThan(half);
     expect(half).toBeGreaterThan(slacked);
     expect(slacked).toBeGreaterThan(both);
-    // A margin rather than a tie-break: ten points is a bad day, and these are
-    // meant to be different weeks.
-    expect(worked - half).toBeGreaterThanOrEqual(10);
-    expect(half - slacked).toBeGreaterThanOrEqual(10);
-    expect(slacked - both).toBeGreaterThanOrEqual(10);
+
+    // A margin rather than a tie-break, on every adjacent pair.
+    for (const [index, reading] of ordered.entries()) {
+      const next = ordered[index + 1];
+
+      if (next !== undefined) {
+        expect(reading - next, `${String(reading)} then ${String(next)}`)
+          .toBeGreaterThanOrEqual(5);
+      }
+    }
+
+    // And the whole scale is used: a review that told five weeks apart inside
+    // ten points would be a review nobody could read.
+    expect(worked - both).toBeGreaterThanOrEqual(40);
   });
 });

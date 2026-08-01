@@ -518,8 +518,27 @@ const GOLDEN_DAY = {
    * Every directory in it is seeded, nothing in this day writes to one, and
    * every meter, minute, timeline entry and penny below is once again the
    * number it was.
+   *
+   * NINTH MOVE (0.2.4, the drive has tickets on it). The hash, and the hash
+   * alone, for the fourth slice running - and this time that claim is worth
+   * spelling out, because two tickets were added to the WEEK and neither of
+   * them is on a Monday. Monday's queue is the same five arrivals it has been
+   * since M4: the two the morning hands over, the one about your own desk, the
+   * mouse after lunch, and the concern the lead raises by mentioning it. Every
+   * meter, minute, breach, timeline entry and penny below is untouched.
+   *
+   * What moved the hash is all seed. Every one of the fourteen boxes now has
+   * the temp directory its image has always made, with the build log the image
+   * left in it; the warehouse workstation has the three directories its pallet
+   * scanner writes into, the two files it wrote, and - as a listing on the
+   * directory rather than as files - the twelve monthly exports that have been
+   * eating that drive since 1997; and every directory and file on every drive
+   * carries the volume it is on, which is the one fact about a path that a
+   * guard cannot walk to and the reason a move between two boxes can be
+   * refused for the true reason rather than allowed. None of it moves in this
+   * day: nothing in this scripted Monday touches a drive at all.
    */
-  hash: 'a514dc46baf448d4',
+  hash: '016c7fd7458cebe8',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */

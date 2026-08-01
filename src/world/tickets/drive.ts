@@ -112,7 +112,7 @@ export const SAVED_INTO_TEMP: WorldTicket = {
       kind: 'contains',
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 4 },
+    reward: { reputation: 3 },
     kb_ref: 'kb/saved-into-temp',
   },
   cause: 'The mail client wrote the attachment into C:\\WINDOWS\\TEMP to open '
@@ -194,7 +194,7 @@ export const DISK_FULL: WorldTicket = {
       value: WAREHOUSE_DISK_AFTER,
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 6 },
+    reward: { reputation: 4 },
     kb_ref: 'kb/one-directory-ate-the-drive',
   },
   cause: 'The pallet scanner has written a monthly export into '
