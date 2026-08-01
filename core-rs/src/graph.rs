@@ -71,7 +71,10 @@ enum GraphUndo {
     },
 }
 
-#[derive(Clone, Debug, Default)]
+/// Deliberately NOT `Clone`. Copying the whole graph is the thing the journal
+/// above replaced, and a type that cannot be copied cannot have that quietly
+/// put back - by a savepoint, or by anything else that wants a scratch world.
+#[derive(Debug, Default)]
 pub struct EntityGraph {
     nodes: BTreeMap<String, Node>,
     edges: Vec<Edge>,

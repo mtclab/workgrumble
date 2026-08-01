@@ -219,7 +219,9 @@ enum TicketUndo {
     Flags { id: String, flags: TicketFlags },
 }
 
-#[derive(Clone, Debug, Default)]
+/// Not `Clone`, for the reason `EntityGraph` is not: copying every record to
+/// guard one flag is what the journal exists instead of.
+#[derive(Debug, Default)]
 pub struct TicketEngine {
     /// Private, and every mutation below goes through a method that journals
     /// it first. That is what makes the undo record complete by construction
