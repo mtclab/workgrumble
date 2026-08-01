@@ -58,6 +58,43 @@ The content the filesystem slice was built for, and the two surfaces it left hal
    asserted with the world proven not to have moved; the listing-versus-total invariant asserted
    like the queue's; the solvability harness taught that a ticket's own setup builds nodes.
 
+## Slice 0.2.5 - the review reads a percentage
+
+Found by research rather than by play (`docs/research/review-scoring.md`): the Friday review was
+decided on a summed reputation meter whose credit scaled with the roster while the price of being
+caught did not, so the pass bar drifted downward with every ticket added and the crossover - the
+roster size at which openly slacking beats quietly doing half the job - was about twenty-six
+tickets against a shipped roster of twenty-five. **Option A only.** Option D (the latent conduct
+record, social and systemic triggers, comparative survival) is the next slice and is deliberately
+not in this one: shipped together, the goldens would be unreadable.
+
+1. **The review's input is a normalised composite**, in the MetricNet balanced-scorecard shape:
+   `100 * (0.5 * closed/arrived + 0.5 * (arrived - breached)/arrived)`, taken over the week TO
+   DATE and folded day over day at the unchanged `REVIEW_WEIGHT = 0.5`. Always 0-100. Taken over
+   the week to date rather than the day alone because a day's own counts do not divide - a ticket
+   that arrives at ten to five on the Monday goes red on the Tuesday.
+2. **The bar is 45**, from MetricNet's published distribution over hundreds of real service desks
+   (median 50, third quartile 39-50, bottom quartile below 39): a probation bar just under the
+   median. `week_reputation` keeps its field id - it is save state - and its doc comment says
+   what it now holds.
+3. **The meter is untouched.** Reputation still moves exactly as it did and still drives fumbling,
+   the day scorecard and the caught scene. It is simply not what Friday reads.
+4. **The number is legible before it decides anything**: on the day scorecard every evening with
+   the bar beside it, on the week screen as both halves plus the mark, and in the review window
+   beside the verdict.
+5. Gates: **the scaling invariant** - the shipped profiles re-walked over their real day ledgers
+   at 1x, 2x and 4x the roster, with the mark required to come out identical and the ordering,
+   margins and side-of-the-bar to hold at every size, proven red by reverting to the summed model;
+   an equality assertion that two weeks which dealt with the queue identically read identically
+   however often the lead came round (conduct is not in the mark); a second assertion that the
+   world still RECORDS what the review stopped reading, because that is what slice D is built
+   from; and a standing assertion that the review does not read the reputation meter at all.
+
+Known and accepted: the two-by-two collapses. "Worked" and "worked with the browser up all week"
+now read the same number, as do "half the roster" and "half with the browser up" - which is
+Option A's stated cost and the reason it forces the conduct decision to be made explicitly in the
+next slice instead of smuggled in as a coefficient.
+
 ## Standing bar added in this version
 
 **Terminal fidelity.** Every command declares a tier: FAITHFUL (real syntax, flags, output shape, error wording), SHAPED (right concept and shape, smaller data, nothing false), or REFUSED HONESTLY (answers like a real shell would for an unsupported flag, or says plainly it is not simulated). A refusal teaches nothing; a fake teaches something wrong. Families are not one shell in hats. `docs/research/terminal-fidelity.md` carries one row per command - real syntax, cited real output, claimed tier, deliberate omissions - and no new command ships without its row.

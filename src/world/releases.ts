@@ -31,6 +31,45 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.2.5',
+    date: '2026-08-01',
+    summary: 'This update improves the consistency of probation review '
+      + 'scoring.',
+    lines: Object.freeze([
+      'Addresses an issue in which the probation review was decided on a '
+        + 'running total. Reviews are now scored as a percentage of the work '
+        + 'the week actually received: half of it the proportion of the queue '
+        + 'that was closed, half of it the proportion that never passed its '
+        + 'resolution target. The pass mark is 45 out of 100.',
+      'The previous method added points for each fault closed and took a '
+        + 'fixed amount off for each conversation with a line manager about '
+        + 'what was open on your screen. The first of those grew every time '
+        + 'the fault catalogue grew and the second did not, so the standard '
+        + 'required to pass fell slightly each time this department was given '
+        + 'more to do. Personnel have asked that this be described as a '
+        + 'scaling correction.',
+      'The review percentage is now shown on the day scorecard, with the pass '
+        + 'mark next to it and a sentence saying which side of it you are on. '
+        + 'It was previously calculated and not displayed, which we accept is '
+        + 'not the same thing as being told.',
+      'The week summary now itemises both halves of the figure - closed '
+        + 'against received, and deadlines kept against deadlines set - as '
+        + 'fractions and as percentages, and states the number the reviewer '
+        + 'read. That number is the one written down at three o\'clock and '
+        + 'not the one the afternoon has moved since.',
+      'The review window now states the figure your review was decided on. It '
+        + 'is in the review window, at the review, in writing.',
+      'Conversations about what is open on your screen no longer affect the '
+        + 'review figure. They continue to be recorded, the corridor is '
+        + 'unchanged, policy 4.1 is unchanged, and the time those '
+        + 'conversations take out of your afternoon is unchanged.',
+      'Known issue: a week in which nothing arrives at all cannot be scored, '
+        + 'because there is nothing to take a percentage of. The reviewer '
+        + 'will read whatever the previous week left him. This has not come '
+        + 'up.',
+    ]),
+  },
+  {
     version: '0.2.4',
     date: '2026-08-01',
     summary: 'This update improves the handling of files that were never lost.',
