@@ -233,11 +233,6 @@ export interface DayApi {
   /** The file itself, one line per thing that was noticed. */
   conductFile(): string;
   /**
-   * Which week of the employer arc this is, which is also how long the player
-   * has been here - and therefore one line of the matrix.
-   */
-  arcWeek(): number;
-  /**
    * The weather: which season is live, which of its four beats has landed, and
    * where the player stands in the pool if there is one to stand in.
    *
@@ -966,8 +961,15 @@ export class DayDriver implements DayApi {
     return this.playerText(FIELDS.conductFile);
   }
 
-  /** Which week of the career this is. Week one is the probation week. */
-  public arcWeek(): number {
+  /**
+   * Which week of the career this is. Week one is the probation week.
+   *
+   * Private because nothing outside needs the number on its own: what a screen
+   * wants is the reading below, which carries the week INSIDE it beside the
+   * season and the ranking, and a second way to ask the same question is a
+   * second answer waiting to disagree.
+   */
+  private arcWeek(): number {
     return this.playerNumber(FIELDS.arcWeek, PROBATION_WEEK);
   }
 

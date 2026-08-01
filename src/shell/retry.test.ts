@@ -89,12 +89,16 @@ function screensAfterAWeek(): AppStateStore {
 
 describe('what a firing leaves behind', () => {
   it('carries the fund, the article and the attempt, and nothing else', () => {
-    const record = recordFrom(1, 12_345, screensAfterAWeek().snapshot());
+    const record = recordFrom(1, 12_345, screensAfterAWeek().snapshot(), 4);
 
     expect(record).toEqual({
       attempt: 2,
       farmFund: 12_345,
       kbSelected: 'kb/print-spooler',
+      // A retry is the same week over: the attempt moves and the week of the
+      // career does not, so a firing in the fourth week of an employer arc
+      // starts the fourth week again rather than the first.
+      arcWeek: 4,
     });
 
     const screens = screensFrom(record);
@@ -137,6 +141,12 @@ describe('what a firing leaves behind', () => {
     // somebody earned. The extra key is read past, not refused.
     expect(parseRetryRecord({ ...good, mailRead: ['mail/onboarding'] }))
       .toEqual(good);
+    // And one written by a build that had only ever had one week in it is a
+    // record about the probation week, which is what the missing key means
+    // rather than a record to refuse.
+    expect(parseRetryRecord({ ...good, arcWeek: undefined })?.arcWeek).toBe(1);
+    expect(parseRetryRecord({ ...good, arcWeek: 0 })?.arcWeek).toBe(1);
+    expect(parseRetryRecord({ ...good, arcWeek: 6 })?.arcWeek).toBe(6);
   });
 
   /**

@@ -534,6 +534,7 @@ export function createShellSession(
         number(FIELDS.weekAttempt),
         number(FIELDS.farmFund),
         appState.snapshot(),
+        number(FIELDS.arcWeek),
       ));
 
       parts.onWrite?.(written);

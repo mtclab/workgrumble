@@ -528,7 +528,12 @@ describe('the carry-over a firing leaves behind', () => {
   it('survives a refresh taken the instant the new week boots', () => {
     const storage = new MemoryStorage();
     const slot = new RetrySlot(storage);
-    expect(slot.write({ attempt: 2, farmFund: 41_000, kbSelected: null }))
+    expect(slot.write({
+      attempt: 2,
+      farmFund: 41_000,
+      kbSelected: null,
+      arcWeek: 1,
+    }))
       .toEqual({ ok: true, value: undefined });
 
     // Boot, as `main.ts` boots: peek, build, save, and only then let go.
@@ -538,6 +543,7 @@ describe('the carry-over a firing leaves behind', () => {
       attempt: 1,
       farmFund: 0,
       kbSelected: null,
+      arcWeek: 1,
     }));
     expect(acknowledgeCarry(slot, () => booted.session.save())).toBe(true);
 
@@ -558,7 +564,7 @@ describe('the carry-over a firing leaves behind', () => {
   it('holds on to the record when the new week could not be written', () => {
     const storage = new MemoryStorage();
     const slot = new RetrySlot(storage);
-    slot.write({ attempt: 3, farmFund: 900, kbSelected: null });
+    slot.write({ attempt: 3, farmFund: 900, kbSelected: null, arcWeek: 1 });
 
     const booted = session(storage, { farmFund: 900, attempt: 3 });
     storage.sealed = true;

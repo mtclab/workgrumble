@@ -34,6 +34,7 @@
 import type { AppState, AppStateStore } from './app-state';
 import { createAppState } from './app-state';
 import type { SaveOutcome } from './save';
+import { PROBATION_WEEK } from '../world/pressure';
 import type { WeekCarry } from '../world/session';
 
 export const RETRY_KEY = 'workgrumble/retry';
@@ -44,6 +45,16 @@ export interface RetryRecord {
   readonly farmFund: number;
   /** The article that was up in the knowledge base, if there was one. */
   readonly kbSelected: string | null;
+  /**
+   * And WHICH week of the employer arc is being attempted again.
+   *
+   * A retry is the same week over: the attempt moves, the arc does not. It is
+   * carried rather than assumed because assuming it is the probation week is
+   * only true while the probation week is the only week there is - and the
+   * day the second one exists, a firing in week five would silently restart a
+   * career rather than a Monday.
+   */
+  readonly arcWeek: number;
 }
 
 function refuse(reason: string): SaveOutcome<never> {
@@ -55,11 +66,13 @@ export function recordFrom(
   attempt: number,
   farmFund: number,
   screens: Readonly<AppState>,
+  arcWeek: number = PROBATION_WEEK,
 ): RetryRecord {
   return {
     attempt: attempt + 1,
     farmFund: Math.max(0, farmFund),
     kbSelected: screens.kb.selectedId,
+    arcWeek: Math.max(PROBATION_WEEK, arcWeek),
   };
 }
 
@@ -68,7 +81,12 @@ export function parseRetryRecord(value: unknown): RetryRecord | null {
     return null;
   }
 
-  const { attempt, farmFund, kbSelected } = value as Record<string, unknown>;
+  const {
+    attempt,
+    farmFund,
+    kbSelected,
+    arcWeek,
+  } = value as Record<string, unknown>;
   const whole = (candidate: unknown, least: number): number | null => (
     typeof candidate === 'number'
       && Number.isSafeInteger(candidate)
@@ -88,17 +106,24 @@ export function parseRetryRecord(value: unknown): RetryRecord | null {
 
   // Anything else in the record - a `mailRead` list written by a build that
   // still carried one - is read past rather than refused: a carry-over from
-  // yesterday's build is still a fund somebody earned.
+  // yesterday's build is still a fund somebody earned. A record with no arc
+  // week in it was written by a build that only had one, so it is the
+  // probation week, which is the same rule read the other way round.
   return {
     attempt: nextAttempt,
     farmFund: fund,
     kbSelected: selected,
+    arcWeek: whole(arcWeek, PROBATION_WEEK) ?? PROBATION_WEEK,
   };
 }
 
 /** What the new world is seeded with. */
 export function carryFrom(record: Readonly<RetryRecord>): WeekCarry {
-  return { farmFund: record.farmFund, attempt: record.attempt };
+  return {
+    farmFund: record.farmFund,
+    attempt: record.attempt,
+    arcWeek: record.arcWeek,
+  };
 }
 
 /**
