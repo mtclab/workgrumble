@@ -780,9 +780,13 @@ export class DayDriver implements DayApi {
       // somebody has read it. A closed ticket on a Friday afternoon moves the
       // player's own performance line, and a card that re-derived the matrix
       // would print a position that had moved since it decided anything.
+      //
+      // A finished week with nothing snapshotted is a week where no round was
+      // ever on, and there the live sentence IS the honest one - it is the
+      // same constant it was all week, because there was nothing to move.
       criteria: outcome === 'pending'
         ? this.pressureSummary()
-        : this.playerText(FIELDS.reviewCriteria),
+        : this.playerText(FIELDS.reviewCriteria) || this.pressureSummary(),
       // The mark the conversation was decided on, which stopped moving when
       // the conversation happened. Reading it live let the week screen print
       // "37 of 45 needed" directly above "Probation: passed", because the week

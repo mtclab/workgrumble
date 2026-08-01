@@ -115,15 +115,12 @@ export const REVIEW_APP: AppDef = {
       conduct.textContent = outcome === 'pending'
         ? `As it stands: ${card.conduct}`
         : card.conduct;
-      // The same rule as the conduct line above it: live while there is still
-      // a week to play, and the world's own snapshot afterwards. A matrix
-      // re-derived after three o'clock would print a position that had moved
-      // since it decided anything, because the queue does not stop.
-      pressure.textContent = outcome === 'pending'
-        ? api.day.pressureSummary()
-        : card.criteria === ''
-          ? api.day.pressureSummary()
-          : card.criteria;
+      // The same rule as the conduct line above it, and it is applied in the
+      // same place both screens read it from: live while there is still a week
+      // to play, and the world's own snapshot afterwards. A matrix re-derived
+      // after three o'clock would print a position that had moved since it
+      // decided anything, because the queue does not stop.
+      pressure.textContent = card.criteria;
       heading.textContent = scene.title;
       stamp.textContent = outcome === 'pending'
         ? 'Friday, three o\'clock. It has not happened yet.'
