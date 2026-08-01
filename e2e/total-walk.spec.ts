@@ -1162,7 +1162,10 @@ test('walks every function of a probation week that goes well', async ({
   await step('caught.scene-none', async () => {
     await expect(page.getByTestId('caught-heading'))
       .toHaveText('Nothing to report');
-    await expect(page.getByTestId('caught-note')).toContainText('17:00');
+    // Since the conduct slice the price is minutes and a line, not points -
+    // the scene opened cold says what a conversation would cost.
+    await expect(page.getByTestId('caught-note'))
+      .toContainText('costs a point');
   });
 
   await step('desktop.escape-scene', async () => {
@@ -1738,9 +1741,11 @@ test('walks every function of a probation week that goes well', async ({
       .toContainText('£2.40');
     await expect(page.getByTestId('scorecard-reputation'))
       .not.toContainText('Not measured');
-    // The mark the review turns on, on the screen every evening.
+    // The mark the review turns on, on the screen every evening - with the
+    // bar the file has produced, which is not the base one once somebody has
+    // been walked in on. This journey has been caught once by now.
     await expect(page.getByTestId('scorecard-week'))
-      .toContainText(/^\d+ of 100, and 45 is the pass · /);
+      .toContainText(/^\d+ of 100, and 50 is the pass · /);
   });
 
   await step('scorecard.payslip', async () => {
@@ -2269,7 +2274,9 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('weekend-attainment'))
       .toContainText(/^\d+ of \d+ · \d+%$/);
     await expect(page.getByTestId('weekend-performance'))
-      .toContainText(/^\d+ out of 100, against the 45 he needs\./);
+      // The bar is what the file produced, not the base 45: this week was
+      // walked in on.
+      .toContainText(/^\d+ out of 100, against the 50 he needs\./);
     await expect(page.getByTestId('weekend-bonus')).toContainText('£');
     await expect(page.getByTestId('weekend-earned')).toContainText('£');
     await expect(page.getByTestId('weekend-farm-total')).toContainText('banked');

@@ -21,10 +21,19 @@ import {
 
 /** Logs on, starts the shift, and leaves the desktop clear. */
 async function startShift(page: Page): Promise<void> {
+  // The corridor is walked on a fake clock, and a session has to be booted
+  // before anybody can log on to it: `completeLogin` picks up after the
+  // navigation rather than doing it.
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
   await completeLogin(page, { brief: 'keep' });
   await page.getByTestId('brief-start-shift').click();
   await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
   await page.getByTestId('close-brief').click();
+  // `runToTelegraph` buys its minutes at four times speed, so the shell has
+  // to be running at four times speed for its steps to be minutes.
+  await page.getByTestId('day-speed-4').click();
 }
 
 /** The minute on the wall, as the taskbar says it, in minutes past midnight. */
