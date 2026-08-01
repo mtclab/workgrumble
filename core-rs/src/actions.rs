@@ -6,6 +6,7 @@
 //! applying itself belongs to the world, because that is what owns the graph.
 
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 use serde_json::{json, Value as Json};
 
@@ -335,7 +336,12 @@ pub fn parse_params(value: Option<&Json>) -> EngineResult<Params> {
 
 #[derive(Clone, Debug)]
 pub struct ActionRegistry {
-    actions: BTreeMap<String, ActionDef>,
+    /// Shared rather than owned outright, so that dispatching a verb can hold
+    /// on to its definition while the world it aims at is being mutated
+    /// underneath. A definition carries its guards, its ops and the raw JSON
+    /// it was parsed from; copying all of that to read it was the largest
+    /// thing a dispatch did that had nothing to do with the dispatch.
+    actions: BTreeMap<String, Rc<ActionDef>>,
     /// How a refusal names each node kind. World content owns the words; the
     /// engine only knows which kind it is refusing.
     pub kind_labels: BTreeMap<String, String>,
@@ -390,12 +396,19 @@ impl ActionRegistry {
 
     pub fn register(&mut self, definition: ActionDef) -> EngineResult<()> {
         self.can_register(&definition.id)?;
-        self.actions.insert(definition.id.clone(), definition);
+        self.actions
+            .insert(definition.id.clone(), Rc::new(definition));
         Ok(())
     }
 
     pub fn get(&self, id: &str) -> Option<&ActionDef> {
-        self.actions.get(id)
+        self.actions.get(id).map(Rc::as_ref)
+    }
+
+    /// The definition, to keep for the length of a dispatch. A handle rather
+    /// than a copy: see the field it comes from.
+    pub fn shared(&self, id: &str) -> Option<Rc<ActionDef>> {
+        self.actions.get(id).cloned()
     }
 
     pub fn ids(&self) -> Vec<&str> {

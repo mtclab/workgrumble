@@ -8,7 +8,7 @@
 
 use serde_json::Value as Json;
 
-use crate::graph::{Direction, EntityGraph};
+use crate::graph::EntityGraph;
 use crate::schema::{is_edge_kind, is_node_kind, Node};
 use crate::value::FieldValue;
 
@@ -232,18 +232,7 @@ pub fn resolve_selector<'a>(graph: &'a EntityGraph, selector: &Selector) -> Opti
         Selector::Kind {
             kind,
             where_matches,
-        } => {
-            let mut matches = graph
-                .nodes_of_kind(kind)
-                .into_iter()
-                .filter(|node| matches_fields(node, where_matches));
-            let first = matches.next()?;
-
-            match matches.next() {
-                Some(_) => None,
-                None => Some(first),
-            }
-        }
+        } => graph.only_node_of_kind(kind, |node| matches_fields(node, where_matches)),
     }
 }
 
@@ -264,10 +253,7 @@ pub fn evaluate(graph: &EntityGraph, expr: &Expr) -> bool {
         Expr::Exists {
             kind,
             where_matches,
-        } => graph
-            .nodes_of_kind(kind)
-            .into_iter()
-            .any(|node| matches_fields(node, where_matches)),
+        } => graph.any_node_of_kind(kind, |node| matches_fields(node, where_matches)),
         Expr::Edge { from, to, kind } => {
             let Some(from) = resolve_selector(graph, from) else {
                 return false;
@@ -276,10 +262,10 @@ pub fn evaluate(graph: &EntityGraph, expr: &Expr) -> bool {
                 return false;
             };
 
-            graph
-                .neighbors(&from.id, Direction::Out, Some(kind))
-                .into_iter()
-                .any(|node| node.id == to.id)
+            // "Is this node among that node's neighbours" is "is there an edge
+            // between them", and asking it the second way skips collecting,
+            // de-duplicating and sorting a neighbour list to look at one name.
+            graph.has_edge(&from.id, &to.id, kind)
         }
     }
 }

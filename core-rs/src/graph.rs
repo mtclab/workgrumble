@@ -384,6 +384,51 @@ impl EntityGraph {
         nodes
     }
 
+    /// Whether any node of this kind matches - what `exists` asks.
+    ///
+    /// Unsorted, and that is the point: `nodes_of_kind` sorts the whole estate
+    /// to hand back a list, and this question throws the list away. The
+    /// assertion evaluator asks it against every open ticket after every
+    /// single graph mutation, so it was sorting several hundred service nodes
+    /// several times per minute to answer yes or no.
+    ///
+    /// Determinism is not at stake: a `BTreeMap` walk is exactly as repeatable
+    /// as a sort, it is only repeatable in a different order, and a bool is
+    /// the same bool however the nodes arrived. Nothing that hands nodes BACK
+    /// is allowed near this - those still go through `nodes_of_kind`.
+    pub fn any_node_of_kind(&self, kind: &str, matches: impl Fn(&Node) -> bool) -> bool {
+        self.nodes
+            .values()
+            .any(|node| node.kind == kind && matches(node))
+    }
+
+    /// The one node of this kind that matches, or nothing at all.
+    ///
+    /// Zero and many are the same answer - which is what stops an ambiguous
+    /// selector from silently picking a winner - so the order the estate is
+    /// walked in cannot reach the result, and it is not sorted either.
+    pub fn only_node_of_kind(
+        &self,
+        kind: &str,
+        matches: impl Fn(&Node) -> bool,
+    ) -> Option<&Node> {
+        let mut found: Option<&Node> = None;
+
+        for node in self.nodes.values() {
+            if node.kind != kind || !matches(node) {
+                continue;
+            }
+
+            if found.is_some() {
+                return None;
+            }
+
+            found = Some(node);
+        }
+
+        found
+    }
+
     pub fn neighbors(&self, id: &str, direction: Direction, edge_kind: Option<&str>) -> Vec<&Node> {
         if !self.nodes.contains_key(id) {
             return Vec::new();

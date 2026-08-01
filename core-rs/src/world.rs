@@ -398,7 +398,7 @@ impl World {
     ) -> DispatchResult {
         let tick = self.clock.now();
 
-        let Some(definition) = self.registry.get(id).cloned() else {
+        let Some(definition) = self.registry.shared(id) else {
             return self.reject(
                 tick,
                 id,
