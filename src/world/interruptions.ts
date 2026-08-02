@@ -47,6 +47,12 @@ export const INTERRUPTION_SOURCES = [
   'walk_up',
   'boss',
   'chat',
+  /**
+   * Nobody. The workstation has decided, and there is no person on the other
+   * end of it to be reasonable with - which is what makes it the one source
+   * whose refusal cannot be a social one.
+   */
+  'machine',
 ] as const;
 
 export type InterruptionSource = (typeof INTERRUPTION_SOURCES)[number];
@@ -131,6 +137,9 @@ export function flavorText(
 const REQUIRED_FLAVOR: Readonly<Partial<Record<InterruptionSource, readonly string[]>>> = {
   call: [FLAVOR.caller, FLAVOR.subject, FLAVOR.opens],
   meeting: [FLAVOR.scene, FLAVOR.subject],
+  // A machine has no caller and no room, and what it wants is the whole of
+  // what it says: one line naming the thing it is about to do to your morning.
+  machine: [FLAVOR.subject],
 };
 
 /* -- the tunables --------------------------------------------------------- */
@@ -160,6 +169,64 @@ export const DEFER_MINUTES = 20;
  * flicker, and a flicker is a bug wearing a mechanic's coat.
  */
 export const MIN_INTERRUPTION_MINUTES = 1;
+
+/**
+ * How many times this one may be pushed, and how far each push buys.
+ *
+ * A list rather than a number, because the mechanic is that the windows
+ * SHRINK: `[10, 5, 2]` is a machine that will let you finish what is in front
+ * of you, then let you finish a sentence, then let you save. Each spend
+ * re-queues the entry that many minutes past wherever it now stands, and the
+ * arrival after the last one offers nothing at all.
+ *
+ * The default is 0.3.0's rule said as data rather than as code: one push of
+ * twenty minutes for anything the player may wave off, and none for anything
+ * they may not. Content that says nothing gets exactly the behaviour it had
+ * before the budget existed, which is what makes the generalization invisible
+ * at budget one.
+ */
+export function postponeBudget(
+  slot: Readonly<Pick<InterruptionSlot, 'declinable' | 'postpones'>>,
+): readonly number[] {
+  if (slot.postpones !== undefined) {
+    return slot.postpones;
+  }
+
+  return slot.declinable ? [DEFER_MINUTES] : [];
+}
+
+/**
+ * The minutes the next push buys, counting from the arrival it is spent at.
+ *
+ * A spend past the end of the list is not this module's to refuse - the world
+ * refuses it, with a sentence, because refusing is a rule about what the
+ * player may do - so this answers the last window rather than throwing. It is
+ * only ever reached by a caller that has already been told no.
+ */
+export function postponeWindow(
+  entry: Readonly<InterruptionEntry>,
+  spend: number,
+): number {
+  return entry.postpones[spend]
+    ?? entry.postpones[entry.postpones.length - 1]
+    ?? DEFER_MINUTES;
+}
+
+/**
+ * Whether declining this one is a thing that was WITHDRAWN rather than a thing
+ * that was never offered.
+ *
+ * Both refuse, and the two refusals are different sentences because they teach
+ * different rules: a junior does not skip the sync (a hierarchy), and the
+ * updates have been declined for four months (an arithmetic that ran out). The
+ * source decides, here, once - so no surface has to know the register and no
+ * content row can get it wrong.
+ */
+export function declineWithdrawn(
+  entry: Readonly<Pick<InterruptionEntry, 'source'>>,
+): boolean {
+  return entry.source === 'machine';
+}
 
 /**
  * What being taken off the work costs the moment it happens, per point of
@@ -231,6 +298,12 @@ export interface InterruptionSlot {
   /** Minutes either side of `minute` the seed may move it. Announced things
    * take none. */
   readonly jitter?: number;
+  /**
+   * The shrinking windows a player may push this one out by, in order. Absent
+   * is 0.3.0's rule: one push of twenty minutes if it can be waved off, and
+   * nothing if it cannot. See `postponeBudget`.
+   */
+  readonly postpones?: readonly number[];
 }
 
 /** One interruption, placed. */
@@ -247,6 +320,12 @@ export interface InterruptionEntry {
   readonly flavor: InterruptionFlavor;
   /** How far it had to slide off its authored minute to find clear air. */
   readonly slidFrom: number | null;
+  /**
+   * The windows this one may still be pushed by, resolved from the slot at
+   * build time so no reader has to know the default. Empty is "this is
+   * happening now".
+   */
+  readonly postpones: readonly number[];
 }
 
 /**
@@ -368,7 +447,38 @@ export function slideToClearTick(
 
 /* -- the schedule --------------------------------------------------------- */
 
-function requireSlot(slot: Readonly<InterruptionSlot>, day: number): void {
+/**
+ * The latest minute an entry can still be running, if everything about it goes
+ * the slowest way the day allows.
+ *
+ * Jitter to the far side, every postpone spent, and then the minutes the thing
+ * itself takes. Slides are not in it and cannot be - what a day's other
+ * bookings do to this one is a property of the day rather than of the row -
+ * but a slide only ever moves it LATER, and an entry with nowhere later to go
+ * is dropped by the builder rather than squeezed. So this is the floor under
+ * "does it fit", and the loader holds the entries nobody may wave off to it.
+ */
+export function worstCaseEndTick(
+  slot: Readonly<InterruptionSlot>,
+  day: number,
+): number {
+  const from = Math.max(
+    interruptionWindow(day).from,
+    tickAtMinute(day, slot.minute) + (slot.jitter ?? 0),
+  );
+  const pushed = postponeBudget(slot).reduce(
+    (total, window) => total + window,
+    0,
+  );
+
+  return from + pushed + slot.minutes;
+}
+
+function requireSlot(
+  slot: Readonly<InterruptionSlot>,
+  day: number,
+  shift: Readonly<TickWindow>,
+): void {
   const where = `Day ${String(day)}'s interruption "${slot.id}"`;
 
   if (slot.id.trim().length === 0) {
@@ -401,6 +511,41 @@ function requireSlot(slot: Readonly<InterruptionSlot>, day: number): void {
 
   if (!Number.isSafeInteger(jitter) || jitter < 0) {
     throw new Error(`${where} wanders by something that is not minutes.`);
+  }
+
+  for (const window of slot.postpones ?? []) {
+    if (!Number.isSafeInteger(window) || window < MIN_INTERRUPTION_MINUTES) {
+      throw new Error(
+        `${where} may be pushed by ${String(window)} minutes, and a postpone `
+        + 'that buys no time is a button that lies about what it did.',
+      );
+    }
+  }
+
+  // A machine is not a person, and the whole of what makes it different is
+  // that there is nobody to say no to. Content that marked one declinable
+  // would be offering a button the world is going to refuse every time, which
+  // is the shape of a lie the player has to press twice to find.
+  if (slot.source === 'machine' && slot.declinable) {
+    throw new Error(
+      `${where} is a machine and is marked declinable. There is nobody on the `
+      + 'other end of it to be reasonable with.',
+    );
+  }
+
+  // The one nobody can wave off has to FIT, worst case and all - because the
+  // worst case is what the player is entitled to choose, and an entry that
+  // ran out of day would either be dropped without a word or hand the desk
+  // back after everybody had gone home. Quiet wrongness is the enemy; a day
+  // that cannot hold what it schedules says so at load.
+  if (!slot.declinable && worstCaseEndTick(slot, day) > shift.to) {
+    throw new Error(
+      `${where} cannot be waved off and, with every postpone spent, is still `
+      + `running at ${String(worstCaseEndTick(slot, day))} - which is past the `
+      + `end of the shift at ${String(shift.to)}. Author the windows so the `
+      + 'worst case lands inside the day, because the worst case is the '
+      + 'player\'s to choose.',
+    );
   }
 
   for (const key of REQUIRED_FLAVOR[slot.source] ?? []) {
@@ -453,7 +598,7 @@ export function buildInterruptionSchedule(
   const seen = new Set<string>();
 
   for (const slot of plan.slots) {
-    requireSlot(slot, day);
+    requireSlot(slot, day, shift);
 
     if (seen.has(slot.id)) {
       throw new Error(
@@ -510,6 +655,7 @@ export function buildInterruptionSchedule(
       severity: slot.severity,
       flavor: Object.freeze({ ...slot.flavor }),
       slidFrom: tick === at ? null : at,
+      postpones: Object.freeze([...postponeBudget(slot)]),
     };
 
     entries.push(entry);
@@ -564,18 +710,24 @@ export function interruptionsArrivingBetween(
 }
 
 /**
- * The same interruption, ringing again, `DEFER_MINUTES` later.
+ * The same interruption, ringing again, one spend of the budget later.
  *
  * It is a function of the entry rather than a second schedule, because it is a
  * consequence of something the player did and the schedule is not allowed to
- * know about that. The second arrival is NOT declinable, which is the true
- * version of what happens when you ask somebody to call back: they call back,
- * and this time you are having the conversation.
+ * know about that. The arrival is NOT declinable, which is the true version of
+ * what happens when you ask somebody to call back: they call back, and this
+ * time you are having the conversation.
+ *
+ * `spend` is which push of the budget this is - the zeroth is the first one -
+ * so the windows shrink in the order they were authored. At a budget of one
+ * twenty-minute window, which is what everything written before the budget
+ * existed has, this is 0.3.0's callback exactly.
  */
 export function deferredArrival(
   entry: Readonly<InterruptionEntry>,
+  spend = 0,
 ): InterruptionEntry {
-  const tick = entry.tick + DEFER_MINUTES;
+  const tick = entry.tick + postponeWindow(entry, spend);
 
   return {
     ...entry,
@@ -597,37 +749,61 @@ export function deferredArrival(
  * of the day, and the second arrival is not allowed to be the one place in
  * this family where two takeovers share a screen.
  *
- * It is pure - a function of the entry, the schedule and the day's other
- * bookings - which is what lets the driver ask it every minute, on both sides
- * of a save, and get the same minute back. Null is the honest answer for a
- * callback with nowhere to go: they rang, you asked them to try later, and
- * there was no later. That is a thing that happens.
+ * It is pure - a function of the entry, the schedule, the day's other bookings
+ * and how many pushes the world has recorded - which is what lets the driver
+ * ask it every minute, on both sides of a save, and get the same minute back.
+ * `spends` is counted out of the graph rather than remembered anywhere, so the
+ * budget round-trips through a save without being in one.
+ *
+ * The pushes are applied one at a time and each one slides before the next is
+ * measured, because a window buys minutes from where the entry ACTUALLY is: a
+ * second push measured from a minute the first one had already been moved off
+ * would quietly hand back time the day had not got.
+ *
+ * Null is the honest answer for a callback with nowhere to go: they rang, you
+ * asked them to try later, and there was no later. That is a thing that
+ * happens - to the ones anybody may wave off. The loader is what stops it
+ * happening to the ones nobody may.
  */
 export function placeDeferred(
   entry: Readonly<InterruptionEntry>,
   schedule: Readonly<InterruptionSchedule>,
   blocked: readonly TickWindow[],
+  spends = 1,
 ): InterruptionEntry | null {
-  const wanted = deferredArrival(entry);
-  const minutes = wanted.endsTick - wanted.tick;
+  const minutes = entry.endsTick - entry.tick;
   const bookings: TickWindow[] = [
     { ...lunchWindow(schedule.day) },
     ...blocked.map((booking) => ({ ...booking })),
-    // Every OTHER entry on the day, including the minutes this one already
-    // owned: a callback that landed back on top of its own first arrival
-    // would be a call that never went away.
-    ...schedule.entries.map(entryWindow),
+    // Every OTHER entry on the day - and only the others. The minutes this one
+    // was booked for are exactly the minutes it just vacated by being pushed,
+    // so holding it off them would be holding it off itself: with windows
+    // shorter than the thing they postpone (ten minutes of grace on a twelve
+    // minute update, which is the shape of a shrinking budget), it would
+    // silently hand back two minutes the player never bought.
+    ...schedule.entries
+      .filter((other) => other.id !== entry.id)
+      .map(entryWindow),
   ];
-  const tick = slideToClearTick(
-    wanted.tick,
-    minutes,
-    bookings,
-    schedule.shift.to - minutes,
-  );
+  let placed: InterruptionEntry = { ...entry };
 
-  return tick === null
-    ? null
-    : { ...wanted, tick, endsTick: tick + minutes };
+  for (let spend = 0; spend < spends; spend += 1) {
+    const wanted = deferredArrival(placed, spend);
+    const tick = slideToClearTick(
+      wanted.tick,
+      minutes,
+      bookings,
+      schedule.shift.to - minutes,
+    );
+
+    if (tick === null) {
+      return null;
+    }
+
+    placed = { ...wanted, tick, endsTick: tick + minutes };
+  }
+
+  return placed;
 }
 
 /**
@@ -648,13 +824,15 @@ export function worstCaseWindows(
   blocked: readonly TickWindow[],
 ): readonly TickWindow[] {
   return schedule.entries.map((entry) => entryWindow(
-    // Only the ones anybody may push. A block nobody can wave off is a block
-    // nobody can move either - the world refuses both with the same flag and
-    // for the same reason - so its worst case is the half hour it was booked
-    // for, and a model that slid it would be modelling a day that cannot
-    // happen.
-    entry.declinable
-      ? placeDeferred(entry, schedule, blocked) ?? entry
+    // Only the ones anybody may push, and only as far as their budget goes. A
+    // block with no postpones in it is a block nobody can move - its worst
+    // case is the half hour it was booked for, and a model that slid it would
+    // be modelling a day that cannot happen. A reboot with three of them is
+    // the opposite: the latest it can land is the only honest reading of what
+    // the day might have to hold, and it is the reading the loader guarantees
+    // fits.
+    entry.postpones.length > 0
+      ? placeDeferred(entry, schedule, blocked, entry.postpones.length) ?? entry
       : entry,
   ));
 }

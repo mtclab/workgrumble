@@ -26,6 +26,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { EngineApi, EngineEvent } from '../engine-api';
 import { offHoursRefusal } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
+import { DAY_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import {
   dayOpensTick,
@@ -246,6 +247,11 @@ describe('the night, taken in one go', () => {
       // four: nobody sits in a meeting at four in the morning, so a night
       // that minuted one is a night reporting an event at the wrong minute.
       FIELDS.meetingRecapAt,
+      // And 0.3.1's ledger. A postpone is a thing the player spends while
+      // something is on the screen in front of them, and nothing is on
+      // anybody's screen at four in the morning - so a night that spent one
+      // would be a night in which an update countdown was running.
+      FIELDS.interruptionPostpones,
     ]) {
       const refusal = offHoursRefusal([planted(field)]);
 
@@ -315,6 +321,39 @@ describe('the night, taken in one go', () => {
     }).not.toThrow();
     expect(scene.engine.graph.getField(COMPANY_IDS.player, FIELDS.refocusUntil))
       .toBeUndefined();
+  });
+
+  /**
+   * A night walked over a world that HAS spent a postpone, through the real
+   * `advanceOffHours` rather than through the classifier.
+   *
+   * The two halves are different claims and both matter. The guard's: nothing
+   * about the ledger happens in the dark, so the batch is one it can vouch for
+   * and the clock moves. The ledger's: what was spent during the day is still
+   * spent in the morning - a budget that came back full overnight would be an
+   * update that could be put off for ever, one night at a time.
+   */
+  it('carries a spent postpone through the dark without writing one', () => {
+    const scene = night();
+
+    scene.driver.startShift();
+    expect(scene.engine.dispatch(
+      DAY_ACTIONS.interruptionDefer,
+      COMPANY_IDS.player,
+      null,
+      { id: 'machine:reboot', declinable: 0, postpones: 3 },
+    ).ok).toBe(true);
+
+    toClockingOff(scene);
+
+    expect(() => {
+      scene.driver.clockOff();
+    }).not.toThrow();
+    expect(scene.engine.now()).toBe(dayOpensTick(2));
+    expect(scene.engine.graph.getField(
+      COMPANY_IDS.player,
+      FIELDS.interruptionPostpones,
+    )).toBe('machine:reboot');
   });
 });
 

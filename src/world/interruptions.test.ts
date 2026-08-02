@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildPatrolSchedule, patrolWindows } from './boss';
 import {
   lunchWindow,
+  SHIFT_END_MINUTE,
   shiftWindow,
   type TickWindow,
   tickAtMinute,
@@ -10,6 +11,7 @@ import {
 import {
   buildInterruptionSchedule,
   byCodepoint,
+  declineWithdrawn,
   DEFER_MINUTES,
   deferredArrival,
   EMPTY_INTERRUPTION_PLAN,
@@ -23,8 +25,13 @@ import {
   interruptionsClearOf,
   interruptionWindow,
   isBenign,
+  isInterruptionSource,
+  placeDeferred,
+  postponeBudget,
   slideToClearTick,
   windowsOverlap,
+  worstCaseEndTick,
+  worstCaseWindows,
 } from './interruptions';
 
 const SEED = 0x5eed_0303;
@@ -397,6 +404,225 @@ describe('the callback', () => {
     expect(again.slidFrom).toBe(first.tick);
     expect(again.id).toBe(first.id);
     expect(again.flavor).toEqual(first.flavor);
+  });
+});
+
+/* -- the postpone budget --------------------------------------------------- */
+
+/** The one thing nobody may wave off and everybody may push: the update. */
+const REBOOT: Partial<InterruptionSlot> = {
+  source: 'machine',
+  minutes: 12,
+  declinable: false,
+  severity: 3,
+  postpones: [10, 5, 2],
+  flavor: { subject: 'Security updates, deferred since March' },
+};
+
+describe('the postpone budget', () => {
+  /**
+   * 0.3.0's rule, said as data, and the reason its tests did not have to move:
+   * a call the player may wave off has always had exactly one push of twenty
+   * minutes, and a block they may not has always had none.
+   */
+  it('is one twenty-minute window for anything anybody may wave off', () => {
+    expect(postponeBudget({ declinable: true })).toEqual([DEFER_MINUTES]);
+    expect(postponeBudget({ declinable: false })).toEqual([]);
+    // And an authored budget is the authored budget, whichever way the flag
+    // reads - which is the whole of what the reboot needed.
+    expect(postponeBudget({ declinable: false, postpones: [10, 5, 2] }))
+      .toEqual([10, 5, 2]);
+    expect(postponeBudget({ declinable: true, postpones: [] })).toEqual([]);
+  });
+
+  it('lands on the entry, so no reader has to know the default', () => {
+    const schedule = buildInterruptionSchedule(SEED, DAY, plan([
+      slot('machine:reboot', 14 * 60 + 10, REBOOT),
+      slot('call:accounts', 10 * 60),
+    ]));
+
+    expect(schedule.entries.find((entry) => entry.id === 'machine:reboot')
+      ?.postpones).toEqual([10, 5, 2]);
+    expect(schedule.entries.find((entry) => entry.id === 'call:accounts')
+      ?.postpones).toEqual([DEFER_MINUTES]);
+  });
+
+  /**
+   * The mechanic, as the player meets it: each push buys less than the last,
+   * and the minutes are counted from where the thing NOW is rather than from
+   * where it first was.
+   */
+  it('shrinks, and each push is measured from where the last one left it', () => {
+    const schedule = buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('machine:reboot', 14 * 60 + 10, REBOOT)]),
+    );
+    const first = schedule.entries[0] as InterruptionEntry;
+    const after = (spends: number): number => (
+      placeDeferred(first, schedule, [], spends)?.tick ?? -1
+    );
+
+    expect(first.tick).toBe(at(DAY, 14, 10));
+    expect(after(1)).toBe(first.tick + 10);
+    expect(after(2)).toBe(first.tick + 15);
+    expect(after(3)).toBe(first.tick + 17);
+    // And a push past the end of the list does not conjure a fourth window:
+    // the last one is the last one, and refusing the spend is the world's job.
+    expect(after(4)).toBe(first.tick + 19);
+  });
+
+  /**
+   * The far end of the budget still has to obey the day. A landing that would
+   * sit on top of something else slides, exactly as a first arrival does -
+   * and, because the loader refused anything whose worst case leaks past the
+   * shift, the slide has somewhere to go.
+   */
+  it('slides its final landing off anything the day had already booked', () => {
+    const schedule = buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('machine:reboot', 14 * 60 + 10, REBOOT)]),
+    );
+    const first = schedule.entries[0] as InterruptionEntry;
+    // The lead, standing at the desk over the minutes the last push wanted.
+    const booked: TickWindow = { from: first.tick + 17, to: first.tick + 25 };
+    const clear = placeDeferred(first, schedule, [], 3) as InterruptionEntry;
+    const last = placeDeferred(first, schedule, [booked], 3) as InterruptionEntry;
+
+    // Later than it would have been, off the booking entirely, and still
+    // inside the day - which is the property, and which is what the loader's
+    // refusal is there to keep true however the day slides it.
+    expect(last.tick).toBeGreaterThan(clear.tick);
+    expect(windowsOverlap(entryWindow(last), booked)).toBe(false);
+    expect(last.endsTick).toBeLessThanOrEqual(schedule.shift.to);
+    expect(interruptionsClearOf(
+      { ...schedule, entries: [last] },
+      [booked],
+    )).toBeNull();
+  });
+
+  /**
+   * Solvability reads the worst case, and the worst case for a reboot is
+   * every window spent. Reading it as "one push, if it is declinable" - which
+   * is what 0.3.0 could say - would model a day that cannot happen.
+   */
+  it('is what the worst case spends, for anything that carries one', () => {
+    const schedule = buildInterruptionSchedule(SEED, DAY, plan([
+      slot('machine:reboot', 14 * 60 + 10, REBOOT),
+      slot('meeting:sync', 10 * 60 + 30, { ...MEETING, declinable: false }),
+    ]));
+    const reboot = schedule.entries.find(
+      (entry) => entry.id === 'machine:reboot',
+    ) as InterruptionEntry;
+    const meeting = schedule.entries.find(
+      (entry) => entry.id === 'meeting:sync',
+    ) as InterruptionEntry;
+    const worst = worstCaseWindows(schedule, []);
+
+    expect(worst).toContainEqual({
+      from: reboot.tick + 17,
+      to: reboot.tick + 17 + 12,
+    });
+    // The half hour nobody may push is still the half hour it was booked for.
+    expect(worst).toContainEqual(entryWindow(meeting));
+    expect(worst.every((window) => window.to <= schedule.shift.to)).toBe(true);
+  });
+});
+
+describe('the loader, holding a reboot to the day it is in', () => {
+  /**
+   * Both sides of one minute.
+   *
+   * The entry nobody can wave off has to fit with every postpone spent,
+   * because the worst case is the player's to CHOOSE - and an entry that ran
+   * out of day would either vanish without a word or hand the desk back after
+   * everybody had gone home. Quiet wrongness is the enemy, so it is a refusal
+   * at load rather than a surprise at ten to five.
+   */
+  it('refuses one whose worst case leaks past close, and takes the one that fits', () => {
+    const shift = shiftWindow(DAY);
+    // 17 minutes of pushes and 12 of updates: the last minute it may start on
+    // is close minus 29.
+    const latest = SHIFT_END_MINUTE - 29;
+
+    expect(() => buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('machine:reboot', latest, REBOOT)]),
+    )).not.toThrow();
+
+    expect(() => buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('machine:reboot', latest + 1, REBOOT)]),
+    )).toThrow(/past the end of the shift/u);
+
+    // The arithmetic it is refusing on, said out loud: every window, then the
+    // minutes the thing itself takes.
+    expect(worstCaseEndTick(slot('machine:reboot', latest, REBOOT), DAY))
+      .toBe(shift.to);
+    expect(worstCaseEndTick(slot('machine:reboot', latest + 1, REBOOT), DAY))
+      .toBe(shift.to + 1);
+  });
+
+  /**
+   * Jitter counts against the budget, because jitter is minutes the day may
+   * spend without asking. A row that fits only when the seed is kind is a row
+   * that is wrong one week in four.
+   */
+  it('spends the wander before it spends the postpones', () => {
+    const latest = SHIFT_END_MINUTE - 29;
+
+    expect(() => buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('machine:reboot', latest - 4, { ...REBOOT, jitter: 4 })]),
+    )).not.toThrow();
+    expect(() => buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('machine:reboot', latest - 4, { ...REBOOT, jitter: 5 })]),
+    )).toThrow(/past the end of the shift/u);
+  });
+
+  /** A call may ring out. That is the difference, and it is not a loophole. */
+  it('leaves the ones anybody may wave off alone', () => {
+    expect(() => buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('call:late', SHIFT_END_MINUTE - 46, { declinable: true })]),
+    )).not.toThrow();
+  });
+
+  it('refuses a postpone that buys nothing at all', () => {
+    expect(() => buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('machine:reboot', 14 * 60, { ...REBOOT, postpones: [10, 0] })]),
+    )).toThrow(/buys no time/u);
+  });
+});
+
+describe('the machine', () => {
+  it('is a source of its own, and one nobody may wave off', () => {
+    expect(isInterruptionSource('machine')).toBe(true);
+    expect(declineWithdrawn({ source: 'machine' })).toBe(true);
+    expect(declineWithdrawn({ source: 'meeting' })).toBe(false);
+
+    expect(() => buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('machine:reboot', 14 * 60, { ...REBOOT, declinable: true })]),
+    )).toThrow(/nobody on the other end/u);
+  });
+
+  it('cannot arrive without the line that says what it is doing', () => {
+    expect(() => buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('machine:reboot', 14 * 60, { ...REBOOT, flavor: {} })]),
+    )).toThrow(/carries no "subject"/u);
   });
 });
 

@@ -20,7 +20,9 @@ import { DAY_ACTIONS } from './ids';
 import {
   ALREADY_DEFERRED_REASON,
   ALREADY_SETTLED_REASON,
+  NO_POSTPONES_LEFT_REASON,
   NOT_DECLINABLE_REASON,
+  UPDATES_WITHDRAWN_REASON,
 } from './interruptions';
 
 const ACTOR = 'person:tech';
@@ -342,6 +344,161 @@ describe('deferring', () => {
   it('costs no focus on its own - you did not have the conversation', () => {
     dispatch(DAY_ACTIONS.interruptionDefer, null, { id: 'call:x', declinable: 1 });
     expect(player(FIELDS.refocusUntil)).toBeUndefined();
+  });
+});
+
+describe('the postpone budget', () => {
+  const REBOOT = 'machine:reboot';
+
+  /** One push, and the two records it leaves - a set and a ledger. */
+  function push(budget: number): DispatchResult {
+    return dispatch(DAY_ACTIONS.interruptionDefer, null, {
+      id: REBOOT,
+      declinable: 0,
+      postpones: budget,
+    });
+  }
+
+  /**
+   * The mechanic, spent all the way down, through the shipped verb set.
+   *
+   * The count is the graph's - one line per push - so the world can answer
+   * "how many are left" with nothing but the ledger and the number the entry
+   * was authored with. Nothing in the driver is consulted and nothing in the
+   * driver could disagree.
+   */
+  it('spends three, and refuses the fourth in words', () => {
+    expect(push(3).ok).toBe(true);
+    expect(push(3).ok).toBe(true);
+    expect(push(3).ok).toBe(true);
+
+    expectRefusal(push(3), NO_POSTPONES_LEFT_REASON);
+
+    // The ledger counted every one of them; the deferred SET holds the id
+    // once, because "has this been pushed at all" is a different question and
+    // is what makes the next arrival undeclinable.
+    expect(lines(FIELDS.interruptionPostpones))
+      .toEqual([REBOOT, REBOOT, REBOOT]);
+    expect(lines(FIELDS.interruptionDeferred)).toEqual([REBOOT]);
+  });
+
+  /**
+   * The gate the whole design hangs on: the remaining budget survives the
+   * event that drains the dispatch log, because it was never in the log.
+   */
+  it('survives the checkpoint, and is still spent afterwards', () => {
+    push(3);
+    push(3);
+    fixture.checkpoint();
+
+    expect(fixture.dispatchLog()).toEqual([]);
+    expect(lines(FIELDS.interruptionPostpones)).toEqual([REBOOT, REBOOT]);
+    // One left, and then none.
+    expect(push(3).ok).toBe(true);
+    expectRefusal(push(3), NO_POSTPONES_LEFT_REASON);
+  });
+
+  /** A budget of none is a button that was never there. */
+  it('refuses the first push of a budget of nothing', () => {
+    expectRefusal(
+      dispatch(DAY_ACTIONS.interruptionDefer, null, {
+        id: REBOOT,
+        declinable: 1,
+        postpones: 0,
+      }),
+      NO_POSTPONES_LEFT_REASON,
+    );
+    expect(lines(FIELDS.interruptionPostpones)).toEqual([]);
+  });
+
+  /**
+   * And one ledger is not another's. Two interruptions pushed in the same
+   * morning each spend their own budget, which is what makes the count a
+   * per-entry number rather than a tally of the day.
+   */
+  it('counts each interruption\'s pushes separately', () => {
+    push(3);
+    push(3);
+    expect(dispatch(DAY_ACTIONS.interruptionDefer, null, {
+      id: 'call:accounts',
+      declinable: 1,
+    }).ok).toBe(true);
+
+    expect(lines(FIELDS.interruptionPostpones))
+      .toEqual([REBOOT, REBOOT, 'call:accounts']);
+    // The call has had its one; the reboot still has its third.
+    expectRefusal(
+      dispatch(DAY_ACTIONS.interruptionDefer, null, {
+        id: 'call:accounts',
+        declinable: 1,
+      }),
+      ALREADY_DEFERRED_REASON,
+    );
+    expect(push(3).ok).toBe(true);
+  });
+
+  /**
+   * The dread is not new dread.
+   *
+   * An arrival the player asked for is the same thing coming round again, so
+   * the world charges for it once - at the first one - and says so. Without
+   * this, pushing a countdown three times would cost three arrivals' worth of
+   * stress, which would make the button a tax on knowing what is coming.
+   */
+  it('charges the arrival once, however many times it is pushed', () => {
+    // A meter to move: the world only ever adds to one that is already a
+    // number, which is the same contract every other meter verb keeps.
+    fixture.applySetup([
+      { op: 'setField', id: ACTOR, field: FIELDS.stress, value: 10 },
+    ]);
+
+    const before = player(FIELDS.stress);
+
+    expect(dispatch(DAY_ACTIONS.interruptionArrived, null, {
+      id: REBOOT,
+      stress_up: 6,
+    }).ok).toBe(true);
+
+    const charged = player(FIELDS.stress);
+
+    expect(charged).not.toBe(before);
+    push(3);
+    expectRefusal(
+      dispatch(DAY_ACTIONS.interruptionArrived, null, {
+        id: REBOOT,
+        stress_up: 6,
+      }),
+      'already paid for that one arriving',
+    );
+    expect(player(FIELDS.stress)).toBe(charged);
+  });
+
+  /**
+   * The refusal that teaches the true reason, which is the whole of why the
+   * machine is a source of its own: the meeting refuses by hierarchy, and this
+   * refuses by an arithmetic that ran out months before the player arrived.
+   */
+  it('answers a decline with the reason the option is not there', () => {
+    expectRefusal(
+      dispatch(DAY_ACTIONS.interruptionDecline, null, {
+        id: REBOOT,
+        declinable: 0,
+        withdrawn: 1,
+      }),
+      UPDATES_WITHDRAWN_REASON,
+    );
+    expect(lines(FIELDS.interruptionDeclined)).toEqual([]);
+
+    // And the block nobody may skip still refuses in ITS words, which is the
+    // half that proves the register is chosen rather than replaced.
+    expectRefusal(
+      dispatch(DAY_ACTIONS.interruptionDecline, null, {
+        id: 'meeting:hygiene',
+        declinable: 0,
+        withdrawn: 0,
+      }),
+      NOT_DECLINABLE_REASON,
+    );
   });
 });
 

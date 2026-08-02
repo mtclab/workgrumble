@@ -229,6 +229,24 @@ export const FIELDS = {
   interruptionDeferred: 'interruption_deferred',
   interruptionDeclined: 'interruption_declined',
   /**
+   * The ledger behind the deferred list: one line per push, so the same id
+   * appears as many times as it has been pushed.
+   *
+   * Two fields rather than one because they answer two different questions and
+   * the guards need both. "Has this been pushed at all" is a set - it is what
+   * makes a second arrival undeclinable - and a set cannot count. "How many of
+   * the budget are left" is arithmetic on a count, and the count has to live
+   * in the graph rather than in the driver: a budget the shell remembered
+   * would be a budget that came back full after a load, which is the quiet
+   * version of an interruption that can be pushed for ever.
+   *
+   * The count is the whole record. Nothing writes the REMAINDER, because a
+   * remainder is a number two places would have to agree about; what is left
+   * is the entry's authored budget minus the lines in here, computed wherever
+   * it is asked.
+   */
+  interruptionPostpones: 'interruption_postpones',
+  /**
    * And the fourth: the ones nobody answered.
    *
    * A phone that rings out is not a decision, which is exactly why it needs a

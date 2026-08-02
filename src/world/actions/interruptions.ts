@@ -40,6 +40,20 @@ const TOUCHES_PARAM = 'touches';
 const DECLINABLE_PARAM = 'declinable';
 /** Whether the thing that rang out was about the ticket in hand. */
 const BENIGN_PARAM = 'benign';
+/**
+ * How many pushes this entry was authored with - the LENGTH of its budget, not
+ * what is left of it.
+ *
+ * What is left is the world's arithmetic: the budget that arrived, minus the
+ * lines the ledger already holds. A caller that passed the remainder would be
+ * a caller telling the world how many of its own records to believe in.
+ */
+const POSTPONES_PARAM = 'postpones';
+/**
+ * Whether declining was WITHDRAWN rather than never offered, which is the only
+ * thing that decides which true sentence the refusal is.
+ */
+const WITHDRAWN_PARAM = 'withdrawn';
 
 /** Which interruption this is, named once, and never blank. */
 const NAMED: GuardData[] = [
@@ -96,6 +110,31 @@ export const ALREADY_SETTLED_REASON = 'That one is already dealt with. It '
 export const ALREADY_DEFERRED_REASON = 'You have already asked them to come '
   + 'back, and this IS them coming back. The second time is the conversation.';
 
+/**
+ * The budget, spent.
+ *
+ * It is a different sentence from the one above because it is a different
+ * truth: nobody is coming back and nothing is waiting on the other end. The
+ * count ran out, the player watched it run out one arrival at a time, and the
+ * last window said so.
+ */
+export const NO_POSTPONES_LEFT_REASON = 'There are no postpones left. You '
+  + 'have had every one of them, each one shorter than the last, and this is '
+  + 'what the end of that looks like: the option is not there any more, and '
+  + 'the thing it was holding back is happening now.';
+
+/**
+ * And the register the machine refuses in, which is the whole of why the
+ * reboot is a different interruption from the meeting.
+ *
+ * A meeting refuses by hierarchy: somebody would notice. This refuses by
+ * arithmetic that ran out months before the player arrived, and it is nobody's
+ * decision at all - which is the true reason, and the one the refusal teaches.
+ */
+export const UPDATES_WITHDRAWN_REASON = 'The updates have been declined for '
+  + 'four months. The option has been withdrawn. This is not IT\'s decision, '
+  + 'and IT would like that noted.';
+
 export const NOT_DECLINABLE_REASON = 'Attendance is expected. That is the '
   + 'phrase on the invitation and it is doing a lot of work: nobody would stop '
   + 'you, and everybody would notice. You are four days into a probation, you '
@@ -105,6 +144,30 @@ export const NOT_DECLINABLE_REASON = 'Attendance is expected. That is the '
   + 'the hierarchy is made of.';
 
 const SETTLED_GUARD: GuardData = { when: SETTLED, reason: ALREADY_SETTLED_REASON };
+
+/**
+ * Whether this dispatch stated a budget at all - which a budget of NONE is
+ * still a statement of.
+ *
+ * A dispatch that says nothing about postpones is one from before budgets
+ * existed, and it gets 0.3.0's rule: one push if it can be waved off, none if
+ * it cannot, enforced by the two guards below. A dispatch that says "nought"
+ * is saying something different and much more specific - this one may not be
+ * pushed at all - and the two must not collapse into each other, or a row
+ * authored with an empty budget would quietly be handed a free push.
+ */
+const STATES_BUDGET: PredData = {
+  pred: 'param_is_whole_number',
+  param: POSTPONES_PARAM,
+  value: 0,
+};
+
+/** And whether the budget it stated has anything in it to spend. */
+const HAS_BUDGET: PredData = {
+  pred: 'param_is_whole_number',
+  param: POSTPONES_PARAM,
+  value: 1,
+};
 
 /**
  * The debuff, written as two mutations rather than one.
@@ -238,25 +301,88 @@ export const INTERRUPTION_ACTION_DATA: readonly ActionData[] = [
     validate: [
       ...NAMED,
       SETTLED_GUARD,
+      // Budget one, spent - which is every call in the game and every row
+      // written before budgets existed. The sentence is 0.3.0's, unchanged,
+      // because at budget one the truth is unchanged: they are on the phone
+      // and this is them coming back.
+      //
+      // It stays FIRST, where 0.3.0 put it, and the order is load-bearing: a
+      // callback is not declinable, so the driver hands the second push a
+      // `declinable` of nought, and a guard about the sync reading that flag
+      // ahead of this one would answer a ringing phone with the reason a
+      // junior cannot skip a meeting.
       {
-        when: listed(FIELDS.interruptionDeferred),
+        when: {
+          pred: 'all',
+          of: [
+            listed(FIELDS.interruptionDeferred),
+            not({
+              pred: 'param_is_whole_number',
+              param: POSTPONES_PARAM,
+              value: 2,
+            }),
+          ],
+        },
         reason: ALREADY_DEFERRED_REASON,
       },
-      // And the same flag decline reads, for the same reason it reads it.
-      // An interruption you cannot wave off is not one you can push twenty
-      // minutes out either: "I will catch up on the sync afterwards" is the
-      // same sentence as "I will skip the sync" said more politely, and the
-      // world answers both with the reason a junior does not.
+      // The flag decline reads, for the reason it reads it: an interruption
+      // you cannot wave off is not one you can push twenty minutes out either
+      // - "I will catch up on the sync afterwards" is "I will skip the sync"
+      // said more politely, and the world answers both with the reason a
+      // junior does not.
+      //
+      // Scoped to entries that carry no budget, which is what makes the reboot
+      // possible without weakening this: the workstation cannot be waved off
+      // AND can be pushed three times, and those are two different rules that
+      // 0.3.0 could only say with one flag because everything it shipped had
+      // them tied together.
       {
-        when: not({ pred: 'param_int_in', param: DECLINABLE_PARAM, values: [1] }),
+        when: {
+          pred: 'all',
+          of: [
+            not({ pred: 'param_int_in', param: DECLINABLE_PARAM, values: [1] }),
+            not(HAS_BUDGET),
+          ],
+        },
         reason: NOT_DECLINABLE_REASON,
       },
+      // And the budget itself, counted off the ledger the world keeps. The
+      // count is the graph's, the length is the entry's, and neither of them
+      // is the driver's - so a save reloaded mid-countdown has exactly the
+      // pushes it had left when it was taken.
+      {
+        when: {
+          pred: 'all',
+          of: [
+            STATES_BUDGET,
+            {
+              pred: 'line_count_at_least',
+              node: ACTOR,
+              field: FIELDS.interruptionPostpones,
+              value: { param: ID_PARAM },
+              times: { param: POSTPONES_PARAM },
+            },
+          ],
+        },
+        reason: NO_POSTPONES_LEFT_REASON,
+      },
     ],
-    // Nothing but the record. Deferring costs no focus - you did not have the
-    // conversation - and WHEN it comes back is the schedule's business
-    // (`deferredArrival`), which is a function of the entry rather than a
-    // timer anybody has to save.
-    apply: [record(FIELDS.interruptionDeferred)],
+    // Two records, because there are two questions. The deferred list is a SET
+    // - has this been pushed at all, which is what makes the next arrival
+    // undeclinable - so it takes the id once however many pushes are spent.
+    // The ledger takes every one of them, and its length is the budget.
+    //
+    // Neither costs focus: you did not have the conversation. WHEN it comes
+    // back is the schedule's business (`placeDeferred`), which is a function
+    // of the entry and this count rather than a timer anybody has to save.
+    apply: [
+      {
+        op: 'when',
+        cond: not(listed(FIELDS.interruptionDeferred)),
+        ops: [record(FIELDS.interruptionDeferred)],
+      },
+      record(FIELDS.interruptionPostpones),
+    ],
   },
   {
     id: DAY_ACTIONS.interruptionDecline,
@@ -264,14 +390,24 @@ export const INTERRUPTION_ACTION_DATA: readonly ActionData[] = [
     validate: [
       ...NAMED,
       SETTLED_GUARD,
+      // Some of them were declinable once, and are not any more. A workstation
+      // that has been told no since March refuses by an arithmetic that ran
+      // out rather than by hierarchy or by anybody's patience, and it refuses
+      // that way at every arrival - so this is asked FIRST, ahead of the two
+      // reasons about people. "You already asked them to come back" is a
+      // sentence about somebody who could have said yes.
+      {
+        when: { pred: 'param_int_in', param: WITHDRAWN_PARAM, values: [1] },
+        reason: UPDATES_WITHDRAWN_REASON,
+      },
       // The second arrival is not declinable, and the world knows it is the
       // second arrival because the first one is in the list.
       {
         when: listed(FIELDS.interruptionDeferred),
         reason: ALREADY_DEFERRED_REASON,
       },
-      // And some of them were never declinable. A junior does not skip the
-      // sync, and the refusal saying so is the point rather than a hurdle.
+      // And some of them were never declinable at all. A junior does not skip
+      // the sync, and the refusal saying so is the point rather than a hurdle.
       {
         when: not({ pred: 'param_int_in', param: DECLINABLE_PARAM, values: [1] }),
         reason: NOT_DECLINABLE_REASON,
@@ -353,17 +489,27 @@ export const INTERRUPTION_ACTION_DATA: readonly ActionData[] = [
    * schedule it would have to rebuild.
    *
    * It is deliberately not guarded on the id being unsettled. An arrival is
-   * not a decision: the same interruption can arrive twice - once, and then
-   * again twenty minutes later because you asked it to - and both arrivals are
-   * genuinely interruptions. What the caller must not do is dispatch it twice
-   * for one arrival, and the caller cannot, because it is dispatched from the
-   * minute the schedule says the entry starts on.
+   * not a decision, and the same interruption can arrive twice - once, and
+   * then again because the player pushed it. What it IS guarded on is having
+   * been charged for already: a re-arrival the player asked for is the same
+   * dread coming back round, not new dread, and charging for it again would
+   * make the postpone button a stress tax on knowing what is coming.
+   *
+   * The rule is the ledger rather than the source, so it holds for anything
+   * anybody can push - a countdown with three windows and a call with one -
+   * and no content row can opt out of it or forget to.
    */
   {
     id: DAY_ACTIONS.interruptionArrived,
     tier: HELPDESK_TIER,
     validate: [
       ...NAMED,
+      {
+        when: listed(FIELDS.interruptionPostpones),
+        reason: 'You have already paid for that one arriving. Pushing it back '
+          + 'did not make it new - it is the same thing, coming round again, '
+          + 'and you have known about it since the first time.',
+      },
       {
         when: not({ pred: 'param_is_whole_number', param: 'stress_up', value: 0 }),
         reason: 'What being taken off the work costs has to be a whole number '
