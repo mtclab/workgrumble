@@ -41,6 +41,24 @@
   --color-alarm-ink: #fdf1ec;
 
   /*
+   * The status lamp, and it is only ever allowed to be the dot.
+   *
+   * Three semantic colours rather than one, because a status is READ rather
+   * than looked at: the whole mechanic is that somebody glances at a taskbar
+   * and decides whether to ring you, so the three have to be told apart at a
+   * glance and out of the corner of an eye.
+   *
+   * Two of them borrow a meaning this palette already carries - the refusal
+   * red, and the grey of a control nobody can use - because that is exactly
+   * what those two dots say. Only the green is new, and it is here rather than
+   * as a second accent because nothing in a beige-box palette meant "fine".
+   * Desaturated to sit on plastic; it is a little LED, not a brand.
+   */
+  --color-presence-available: #3f7a45;
+  --color-presence-dnd: var(--color-alarm);
+  --color-presence-away: var(--color-ink-disabled);
+
+  /*
    * The internal pad. Every ticketing system in the trade puts work notes on
    * a yellowed background so nobody sends one to the customer by mistake, and
    * that is the only thing this colour is allowed to mean.
@@ -142,6 +160,12 @@
   --size-desk-item: 64px;
   --size-desk-empties: 148px;
   --size-door-flash: 10px;
+  /* The status lamp on the taskbar. Square, like everything else in this
+     shell: 9x is square and the only round thing in the product is the bubble
+     toy, so the dot reads as an indicator on the front of a beige box rather
+     than as a chat client from ten years later. */
+  --size-presence-dot: 9px;
+  --size-presence-state: 84px;
   --size-cat: 132px;
   --measure-boot: 62ch;
   /* The update screen: a ring of dots the size of a beer mat, and a line
@@ -3113,6 +3137,96 @@ input {
   height: var(--size-icon);
 }
 
+/* ---- the dot, on the taskbar ---- */
+
+/*
+ * Three buttons and the word they add up to.
+ *
+ * The word is not a caption. The suspicion drip charges for a status that
+ * disagrees with the dispatch log, and a cost charged against a state the
+ * player cannot see is a trap rather than a trade - so the status is legible
+ * in WORDS on the taskbar at every minute of every day, and the buttons only
+ * say which of the three it is.
+ *
+ * Nothing here moves. A blinking status light would be a taskbar asking to be
+ * looked at once a second for eight hours, so there is no animation to turn
+ * off for somebody who has asked for less motion: the whole control is legible
+ * standing still, which is the reduced-motion answer given by construction
+ * rather than by a media query.
+ */
+.presence-control {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.presence-button {
+  min-width: var(--size-day-controls);
+}
+
+.presence-state {
+  min-width: var(--size-presence-state);
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.presence-state[data-presence="dnd"] {
+  color: var(--color-presence-dnd);
+  font-weight: 700;
+}
+
+/* The lamp itself: a square of colour with the same sunken edge every other
+   inset thing on this taskbar has. */
+.presence-dot {
+  width: var(--size-presence-dot);
+  height: var(--size-presence-dot);
+  background: var(--color-presence-away);
+  box-shadow: var(--bevel-sunken);
+}
+
+.presence-button[data-presence="available"] .presence-dot {
+  background: var(--color-presence-available);
+}
+
+.presence-button[data-presence="dnd"] .presence-dot {
+  background: var(--color-presence-dnd);
+}
+
+.presence-button[data-presence="away"] .presence-dot {
+  background: var(--color-presence-away);
+}
+
+/* The two nobody is showing are dimmed rather than hidden: all three are one
+   click away from each other, which is the point of the control. */
+.presence-button[data-active="false"] .presence-dot {
+  opacity: var(--opacity-dim);
+}
+
+/*
+ * And the sentence a refused status is answered with, over the tray.
+ *
+ * It sits above the taskbar against the control that was pressed, because it
+ * is the answer to that click: the meeting refuses in the meeting's own words,
+ * and reading them beside the button is what teaches the rule. Same clothes as
+ * the notification panel, which is the other thing that opens off this corner.
+ */
+.presence-refusal {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--size-taskbar);
+  z-index: var(--z-menu);
+  width: var(--size-panel);
+  padding: var(--space-4);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-window), var(--shadow-float);
+  border-left: var(--border-note) solid var(--color-alarm);
+  color: var(--color-ink);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
 /* ---- the day: morning brief ---- */
 
 .brief-app,
@@ -3757,6 +3871,44 @@ input {
 .meeting-note {
   color: var(--color-ink-soft);
   font-size: var(--text-sm);
+}
+
+/*
+ * The phones that did not ring, in the window that would have rung.
+ *
+ * Deliberately quiet furniture: no colour, no icon, no alarm. It is a list of
+ * things that did NOT happen, and the register is a message pad by a phone -
+ * a time, a name, and what they wanted - because that is exactly what it is.
+ */
+.call-missed {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-note);
+  border-left: var(--border-note) solid var(--color-note-edge);
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  list-style: none;
+}
+
+.call-missed-line {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.call-missed-when {
+  color: var(--color-ink-soft);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The evidence under the one telling-off that is about a record rather than a
+   screen. It reads as part of what he said, because it is. */
+.caught-evidence {
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 /* The meeting. Same furniture as the caught scene, because it is the same

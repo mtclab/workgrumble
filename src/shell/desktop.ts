@@ -27,11 +27,19 @@ import {
   type Viewport,
   type WindowManagerState,
 } from './wm';
+import { remarkInThread } from './boss-thread';
 import { buffTicks } from '../world/consumables';
 import { isLunchtime, shiftEndTick } from '../world/day';
 import { FIELDS } from '../world/fields';
 import { isFumblingWith } from '../world/consumables';
 import { isRefocusing } from '../world/meters';
+import { presenceChatter } from '../world/dialogue';
+import {
+  type Presence,
+  PRESENCE_LABELS,
+  PRESENCE_TOOLTIPS,
+  PRESENCE_VALUES,
+} from '../world/presence';
 import { Desk, deskState } from './desk';
 import { SPEEDS, type Speed } from './day-driver';
 
@@ -113,8 +121,12 @@ export class Desktop {
   private readonly saveChip: HTMLElement;
   private readonly bossChip: HTMLElement;
   private readonly doorFlash: HTMLElement;
+  private readonly presenceControl: HTMLElement;
+  private readonly presenceState: HTMLElement;
+  private readonly presenceRefusal: HTMLElement;
   private readonly desk: Desk;
   private readonly speedButtons = new Map<Speed, HTMLButtonElement>();
+  private readonly presenceButtons = new Map<Presence, HTMLButtonElement>();
 
   private readonly taskbarButtons = new Map<string, TaskbarButton>();
   private readonly toastElements = new Map<string, HTMLElement>();
@@ -290,6 +302,62 @@ export class Desktop {
       dayControls.append(button);
     }
 
+    /*
+     * The dot, on the taskbar, where the player can see what the office sees.
+     *
+     * Three buttons rather than one that cycles, and that is the mechanic
+     * rather than a preference: every status is ONE click from every other
+     * status, so a player who hears the phone start and wants to be reachable
+     * is not two clicks away from it. They are a group of pressed/unpressed
+     * buttons - the same shape and the same attributes the speed control uses,
+     * so the keyboard, the screen reader and the tests all already know what
+     * this is.
+     *
+     * The word beside them is not decoration. The suspicion drip is a TRADE,
+     * and a trade whose cost is charged against a state the player cannot see
+     * is a trap: the dot is legible at every minute of every day, in words,
+     * without opening anything.
+     */
+    const presence = document.createElement('div');
+    this.presenceControl = presence;
+    presence.className = 'presence-control';
+    presence.dataset.testid = 'presence-control';
+    presence.setAttribute('role', 'group');
+    presence.setAttribute('aria-label', 'Your status, as the office sees it');
+
+    for (const value of PRESENCE_VALUES) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'day-button presence-button';
+      button.dataset.testid = `presence-${value}`;
+      button.dataset.presence = value;
+      // What it costs, said BEFORE it is chosen - the same rule the can on the
+      // desk keeps. The dot's whole design is that both halves of the trade
+      // are known in advance.
+      button.title = `${PRESENCE_LABELS[value]}. ${PRESENCE_TOOLTIPS[value]}`;
+      button.setAttribute(
+        'aria-label',
+        `Set your status to ${PRESENCE_LABELS[value]}`,
+      );
+      const dot = document.createElement('span');
+      dot.className = 'presence-dot';
+      button.append(dot);
+      button.addEventListener(
+        'click',
+        () => {
+          this.setPresence(value);
+        },
+        { signal: this.abort.signal },
+      );
+      this.presenceButtons.set(value, button);
+      presence.append(button);
+    }
+
+    this.presenceState = document.createElement('span');
+    this.presenceState.className = 'presence-state';
+    this.presenceState.dataset.testid = 'presence-state';
+    presence.append(this.presenceState);
+
     // The fumble chip. It is on the taskbar rather than in a dialog because
     // the joke has to be legible while it is happening, and because a player
     // watching their own hands shake deserves to be told it is a joke.
@@ -349,6 +417,7 @@ export class Desktop {
       this.rebootChip,
       this.refocusChip,
       this.fumbleChip,
+      presence,
       dayControls,
       this.trayButton,
       clock,
@@ -367,11 +436,28 @@ export class Desktop {
     this.trayPanelList.className = 'tray-panel-list';
     this.trayPanel.append(trayHeading, this.trayPanelList);
 
+    /*
+     * And where a refused status says so: over the tray, against the control
+     * that was pressed.
+     *
+     * In place rather than as a toast, because it is an answer to a click
+     * somebody has just made and the answer is the teaching - the meeting
+     * refuses in the meeting's own sentence, and reading it beside the button
+     * is what connects the two. It goes when anything else does: Escape, an
+     * outside click, or a status that is actually accepted.
+     */
+    this.presenceRefusal = document.createElement('p');
+    this.presenceRefusal.className = 'presence-refusal';
+    this.presenceRefusal.dataset.testid = 'presence-refusal';
+    this.presenceRefusal.setAttribute('role', 'status');
+    this.presenceRefusal.hidden = true;
+
     this.element.append(
       this.surface,
       taskbar,
       this.startMenu,
       this.trayPanel,
+      this.presenceRefusal,
     );
 
     // The day screens are put on screen by the day itself and stay out of the
@@ -730,7 +816,17 @@ export class Desktop {
 
   private handleKeyDown(event: KeyboardEvent): void {
     if (event.key === DISMISS_KEY) {
-      if (isVisible(this.startMenu) || isVisible(this.trayPanel)) {
+      if (
+        isVisible(this.startMenu)
+        || isVisible(this.trayPanel)
+        // The refused status is the third thing on this desktop that is up
+        // because of one click and expects to be dismissed by one key. It has
+        // to be checked BEFORE the scene below: Escape over a refusal that
+        // arrived from inside a meeting would otherwise close the meeting -
+        // a window the player is not allowed to leave - which is the mechanic
+        // being undone by the thing that explained it.
+        || isVisible(this.presenceRefusal)
+      ) {
         this.closeTransientSurfaces();
         return;
       }
@@ -805,6 +901,17 @@ export class Desktop {
     ) {
       this.setTrayPanelOpen(false);
     }
+
+    // And the refusal, which goes on the next thing the player does anywhere
+    // except the control it is about - pressing another status is a second
+    // attempt, and it answers for itself.
+    if (
+      isVisible(this.presenceRefusal)
+      && !this.presenceControl.contains(target)
+      && !this.presenceRefusal.contains(target)
+    ) {
+      this.presenceRefusal.hidden = true;
+    }
   }
 
   private setStartMenuOpen(open: boolean): void {
@@ -856,6 +963,10 @@ export class Desktop {
   private closeTransientSurfaces(): void {
     this.setStartMenuOpen(false);
     this.setTrayPanelOpen(false);
+    // The refused status goes with them. It is an answer to one click, and an
+    // answer still sitting there two minutes later is a screen saying
+    // something that may well have stopped being true - the meeting ends.
+    this.presenceRefusal.hidden = true;
   }
 
   private commitWindows(next: WindowManagerState): void {
@@ -1369,6 +1480,10 @@ export class Desktop {
     // what is happening to the hands and one about why.
     this.refocusChip.hidden = !(onShift && refocusing);
     this.fumbleChip.hidden = !fumbling;
+    // The dot rides here rather than on its own subscription: it is a field on
+    // the player node, so every load, every restore and every set announces
+    // itself through exactly the same world change these meters do.
+    this.renderPresence();
     this.fumbleChip.textContent = desk.phase === 'crash'
       ? 'Coming down'
       : 'Hands going';
@@ -1427,6 +1542,82 @@ export class Desktop {
     if (!outcome.ok) {
       this.notify('Not starting again', outcome.reason);
     }
+  }
+
+  /**
+   * The dot, set from the tray.
+   *
+   * Nothing is decided here. The world takes the status or refuses it - there
+   * is no shift on, or the desk is currently half an hour in a room nobody can
+   * leave - and both answers reach the player in the sentence the world used,
+   * beside the button they pressed. The buttons are repainted either way, off
+   * what the graph actually holds: a control that showed the status it was
+   * asked for rather than the status the world kept would be a dot that lies
+   * to the one person it exists to inform.
+   */
+  private setPresence(to: Presence): void {
+    const outcome = this.context.day.setPresence(to);
+
+    this.presenceRefusal.hidden = outcome.ok;
+    this.presenceRefusal.textContent = outcome.ok ? '' : outcome.reason;
+
+    if (outcome.ok) {
+      this.sayWhatTheOfficeThinks(to);
+    }
+
+    this.renderPresence();
+  }
+
+  /**
+   * The office, noticing - once each, for the whole week.
+   *
+   * The lines are content and the "once" is the TRANSCRIPT rather than a
+   * counter: a remark already in somebody's thread is a remark already made,
+   * which survives a save because the thread does. So a player who flips the
+   * dot forty times hears four things, in the order they were written, and the
+   * fortieth flip is met with the silence it deserves.
+   *
+   * One per change at most: the whole table firing at once would be the chorus
+   * the spec forbids, and the office is not a Greek play.
+   */
+  private sayWhatTheOfficeThinks(to: Presence): void {
+    for (const remark of presenceChatter(to)) {
+      if (remarkInThread(this.context.appState, remark.speaker, remark.line, true)) {
+        const name = this.context.graph.getField(remark.speaker, FIELDS.name);
+
+        // Named, deliberately: the OTHER thing that says somebody noticed a
+        // status is the Away sting, whose notice is titled for a person it
+        // does not name - because that one is a reputation hit and the point
+        // of it is to send the player to the thread to find out who. This is
+        // a colleague remarking, and a remark with a name on it is the office
+        // being an office rather than a second consequence.
+        this.notify(
+          `${typeof name === 'string' ? name : 'Somebody'} noticed the dot`,
+          remark.line,
+        );
+        return;
+      }
+    }
+  }
+
+  /**
+   * What the taskbar says the office can see, painted off the graph.
+   *
+   * Read rather than remembered, like every other surface in this shell: a
+   * load lands on somebody else's status, and a dot the desktop was keeping
+   * its own copy of would go on showing the one this session set.
+   */
+  private renderPresence(): void {
+    const showing = this.context.day.presence();
+
+    for (const [value, button] of this.presenceButtons) {
+      const active = value === showing;
+      button.dataset.active = String(active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+
+    this.presenceState.textContent = PRESENCE_LABELS[showing];
+    this.presenceState.dataset.presence = showing;
   }
 
   /** The two things you can do to a desk, both through the registry. */

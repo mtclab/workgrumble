@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { COMPANY_IDS } from '../world/company';
 import { dialogueForSpeaker, dialogueNode } from '../world/dialogue';
 import { AppStateStore } from './app-state';
-import { pingBossThread } from './boss-thread';
+import { pingBossThread, remarkInThread } from './boss-thread';
 
 const BOSS = COMPANY_IDS.boss;
 
@@ -100,5 +100,85 @@ describe('pinging the boss thread', () => {
     pingBossThread(store, 'Quick one.');
 
     expect(store.get().chat.selectedId).toBe(COMPANY_IDS.ada);
+  });
+});
+
+/**
+ * A remark is not a question, and the difference is load-bearing: the office
+ * noticing your dot must not move a conversation the player is halfway
+ * through, and somebody who has been waiting all afternoon is making a point
+ * rather than opening a menu.
+ */
+describe('somebody remarking in a thread', () => {
+  it('says its piece and leaves the conversation where it stood', () => {
+    const store = new AppStateStore();
+    store.patch('chat', {
+      threads: {
+        [COMPANY_IDS.ada]: {
+          nodeId: 'friday',
+          rootUsed: 'complaint',
+          ended: false,
+          lines: [
+            { who: 'them', text: 'I have been hacked.' },
+            { who: 'you', text: 'Ask about Friday' },
+          ],
+        },
+      },
+    });
+
+    expect(remarkInThread(store, COMPANY_IDS.ada, 'Your dot says Away.'))
+      .toBe(true);
+
+    const thread = store.get().chat.threads[COMPANY_IDS.ada];
+
+    expect(thread?.lines).toHaveLength(3);
+    expect(thread?.lines.at(-1)).toEqual({
+      who: 'them',
+      text: 'Your dot says Away.',
+    });
+    // Untouched, which a ping deliberately does not do: the player is midway
+    // through asking her something and this is somebody talking over the top.
+    expect(thread?.nodeId).toBe('friday');
+    expect(thread?.rootUsed).toBe('complaint');
+  });
+
+  it('opens a thread that reads like one for somebody never spoken to', () => {
+    const store = new AppStateStore();
+
+    expect(remarkInThread(store, COMPANY_IDS.bev, 'You have gone red.'))
+      .toBe(true);
+
+    const thread = store.get().chat.threads[COMPANY_IDS.bev];
+
+    expect(thread?.lines).toHaveLength(2);
+    expect(thread?.lines.at(-1)?.text).toBe('You have gone red.');
+  });
+
+  /**
+   * The chatter's whole sparseness rule, and it is idempotence taken off the
+   * SAVE rather than out of a counter: a line already in the transcript is a
+   * line already said, on both sides of a reload.
+   */
+  it('says a once-only line once, however often it is offered', () => {
+    const store = new AppStateStore();
+
+    expect(remarkInThread(store, COMPANY_IDS.bev, 'You have gone red.', true))
+      .toBe(true);
+    expect(remarkInThread(store, COMPANY_IDS.bev, 'You have gone red.', true))
+      .toBe(false);
+    expect(store.get().chat.threads[COMPANY_IDS.bev]?.lines).toHaveLength(2);
+
+    // And without the flag it is somebody saying the same thing again, which
+    // is what a person waiting a second day does.
+    expect(remarkInThread(store, COMPANY_IDS.bev, 'You have gone red.'))
+      .toBe(true);
+    expect(store.get().chat.threads[COMPANY_IDS.bev]?.lines).toHaveLength(3);
+  });
+
+  it('says nothing at all for somebody with no conversation in the game', () => {
+    const store = new AppStateStore();
+
+    expect(remarkInThread(store, 'person:nobody', 'Hello?')).toBe(false);
+    expect(store.get().chat.threads['person:nobody']).toBeUndefined();
   });
 });

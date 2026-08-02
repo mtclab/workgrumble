@@ -53,6 +53,64 @@ export function openDirectMessage(
   return line;
 }
 
+/**
+ * Somebody saying one thing into a conversation, without opening a question.
+ *
+ * The difference from the two above is the whole of why it exists: a ping MOVES
+ * the thread to the node that asks the question, and this does not move it at
+ * all. What lands here is a remark - the receptionist noticing the dot has gone
+ * red, the man who has been waiting all afternoon saying so - and there is
+ * nothing to answer, so a conversation the player was halfway through is left
+ * exactly where they left it, with one more line above it.
+ *
+ * `once` is for the chatter, and it is idempotence taken off the SAVE rather
+ * than out of a counter nobody keeps: the transcript is the record, it rides
+ * every save and reload, so a line already in it is a line already said. That
+ * is what makes the office's four remarks land once each without a shred of
+ * new state - and why the answer somebody gives about being kept waiting does
+ * NOT pass it, because that one is once per person per DAY and the world is
+ * the half that counts it.
+ *
+ * Answers whether anything was actually said.
+ */
+export function remarkInThread(
+  store: AppStateStore,
+  speaker: string,
+  line: string,
+  once = false,
+): boolean {
+  const tree = dialogueForSpeaker(speaker);
+
+  if (tree === undefined || line.length === 0) {
+    return false;
+  }
+
+  const existing = store.get().chat.threads[speaker];
+
+  if (once && (existing?.lines ?? []).some((said) => said.text === line)) {
+    return false;
+  }
+
+  const opening = dialogueNode(tree, tree.root)?.npc_line ?? '';
+  const before = existing?.lines ?? [{ who: 'them' as const, text: opening }];
+
+  store.patchExternal('chat', {
+    threads: {
+      ...store.get().chat.threads,
+      [speaker]: {
+        // Untouched: where the conversation stands is the player's business,
+        // and a remark that reset it would be a colleague talking over them.
+        nodeId: existing?.nodeId ?? tree.root,
+        rootUsed: existing?.rootUsed ?? tree.root,
+        ended: existing?.ended ?? false,
+        lines: [...before, { who: 'them', text: line }],
+      },
+    },
+  });
+
+  return true;
+}
+
 function openThreadAt(
   store: AppStateStore,
   speaker: string,
