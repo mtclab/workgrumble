@@ -223,15 +223,21 @@ test('a save taken after closing it remembers how many times', async ({
     page.getByTestId('toast').filter({ hasText: 'Game loaded' }),
   ).toHaveCount(1);
 
-  // THE GOAL: the count came back with the file, so the NEXT note is the
-  // second one rather than the first - which is the only thing the count is
-  // for. It is on screen again after a load, because a workstation that has
-  // just come back up is exactly the kind of event it returns for.
+  // THE GOAL: the count came back with the file, so the note it returns with
+  // is the right tier - which is the only thing the count is for.
   expect(await page.evaluate(
     () => globalThis.careerSim?.screens().assistant.dismissals ?? -1,
   )).toBe(1);
 
+  // And THE MOUNT FIX: a reload rebuilds the character, but the "owes a note"
+  // fact rode the save - so the first paint after the load pays the note rather
+  // than a situation line, which is exactly what the box was getting wrong.
   await expect(assistant(page)).toBeVisible();
+  await expect(line(page)).toContainText(noteAt(1));
+
+  // Close it again and cross a day boundary: the note escalates, and it
+  // survives the boss beats and the checkpoint the boundary fires - none of
+  // which reset it any more, because the state is in the store, not the object.
   await page.getByTestId('assistant-dismiss').click();
   await clockOffFor(page, 1);
   await beginShift(page);

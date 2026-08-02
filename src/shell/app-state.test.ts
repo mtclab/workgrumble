@@ -42,7 +42,7 @@ describe('the shell-owned app state', () => {
     expect(fresh.day).toEqual({ briefShownFor: null, scorecardShownFor: null });
     expect(fresh.browser).toEqual({ siteId: null });
     expect(fresh.caught).toEqual({ appId: null, at: null, evidence: null });
-    expect(fresh.assistant).toEqual({ dismissals: 0 });
+    expect(fresh.assistant).toEqual({ dismissals: 0, closedOnDay: null });
   });
 
   /**
@@ -216,5 +216,38 @@ describe('the shell-owned app state', () => {
     expect(listener).toHaveBeenCalledTimes(3);
     // Unsubscribing twice is a no-op, not a second removal.
     unsubscribe();
+  });
+
+  /**
+   * The distinction the box bug turned on.
+   *
+   * `onReplaced` fires on an external patch too, so anything that must tell a
+   * LOAD apart from a boss beat writing to the store needs `onReloaded`, which
+   * fires ONLY on a wholesale replacement. The Assistant's note-owed memory was
+   * reset on `onReplaced` and every chat beat wiped it; this is the seam that
+   * fixed it, and this is the test that would have caught it.
+   */
+  it('tells a reload apart from an ordinary external patch', () => {
+    const store = new AppStateStore();
+    const reloaded = vi.fn();
+    const unsubscribe = store.onReloaded(reloaded);
+
+    // An external patch is NOT a reload, however loudly it announces.
+    store.patchExternal('chat', { selectedId: 'person:ada' });
+    expect(reloaded).not.toHaveBeenCalled();
+
+    // A load is, and so is a restart.
+    expect(store.hydrate(createAppState())).toBe(true);
+    expect(reloaded).toHaveBeenCalledTimes(1);
+    store.reset();
+    expect(reloaded).toHaveBeenCalledTimes(2);
+
+    // A refused load replaced nothing, so it is not a reload.
+    expect(store.hydrate('rubbish')).toBe(false);
+    expect(reloaded).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    store.reset();
+    expect(reloaded).toHaveBeenCalledTimes(2);
   });
 });

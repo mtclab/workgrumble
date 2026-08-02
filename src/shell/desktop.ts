@@ -143,6 +143,7 @@ export class Desktop {
   private unsubscribeDay: (() => void) | null = null;
   private unsubscribeWorld: (() => void) | null = null;
   private unsubscribeScreens: (() => void) | null = null;
+  private unsubscribeReloaded: (() => void) | null = null;
   private unsubscribeSaveHealth: (() => void) | null = null;
 
   private wm: WindowManagerState | null = null;
@@ -572,9 +573,15 @@ export class Desktop {
     this.unsubscribeScreens = this.context.appState.onReplaced(() => {
       this.restoreWindows();
       this.syncDayScreens();
-      // A loaded session is somebody else's screen: the character starts
-      // talking again, and the count it escalates by came back in the file.
-      this.voice.forget();
+    });
+    // The character's transient display resets ONLY on a real load or restart,
+    // never on an ordinary external patch: a boss beat writing to the store
+    // fires `onReplaced` too, and resetting the voice there was what wiped the
+    // note-owed state between closing it and its return on the box. Its durable
+    // memory (the count, the closed-day) rides the store and comes back on its
+    // own.
+    this.unsubscribeReloaded = this.context.appState.onReloaded(() => {
+      this.voice.remount();
     });
     this.unsubscribeSaveHealth = this.context.saveHealth.onChanged(() => {
       this.renderSaveHealth();
@@ -599,6 +606,8 @@ export class Desktop {
     this.unsubscribeWorld = null;
     this.unsubscribeScreens?.();
     this.unsubscribeScreens = null;
+    this.unsubscribeReloaded?.();
+    this.unsubscribeReloaded = null;
     this.unsubscribeSaveHealth?.();
     this.unsubscribeSaveHealth = null;
     this.abort.abort();
@@ -1544,21 +1553,29 @@ export class Desktop {
       day: this.context.day.day(),
     };
 
-    this.assistant.render(this.voice.speak(
-      world,
-      now,
-      this.context.appState.get().assistant.dismissals,
-    ));
+    const memory = this.context.appState.get().assistant;
+    const view = this.voice.speak(world, now, memory);
+
+    // Paying the note clears the durable "owes a note" flag, so the same
+    // minute's later paints - and every day after - read it as open. `patch`,
+    // not `patchExternal`: this repaints itself on the next line, and a listener
+    // firing back into this paint is the loop the store warns about.
+    if (view?.readmitted === true && memory.closedOnDay !== null) {
+      this.context.appState.patch('assistant', { closedOnDay: null });
+    }
+
+    this.assistant.render(view);
   }
 
   /**
    * Closing it, which is the one thing anybody can do to it.
    *
-   * The count goes into the screen store - one number, carried by the save,
-   * read by nothing but the joke - with `patch` rather than `patchExternal`,
-   * because the desktop owns this slice and repaints it on the next line. It
-   * comes back on the next day or the next thing that happens to the player,
-   * with a note about having been closed.
+   * Two durable facts go into the screen store, both carried by the save and
+   * read by nothing but the joke: the count, one higher, and the day it was
+   * closed on. They are DURABLE on purpose - the note it returns with has to
+   * survive a boss beat, a day boundary and a reload, none of which an object
+   * the desktop re-instantiates could. `patch`, not `patchExternal`, because
+   * the desktop owns this slice and repaints it on the next line.
    */
   private dismissAssistant(): void {
     // Clamped so the running total the save carries can never climb out of the
@@ -1568,8 +1585,10 @@ export class Desktop {
       ASSISTANT_DISMISSAL_CAP,
     );
 
-    this.context.appState.patch('assistant', { dismissals: closed });
-    this.voice.dismiss(this.context.day.day());
+    this.context.appState.patch('assistant', {
+      dismissals: closed,
+      closedOnDay: this.context.day.day(),
+    });
     this.assistant.render(null);
   }
 

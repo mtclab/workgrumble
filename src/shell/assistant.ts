@@ -51,6 +51,26 @@ export interface AssistantWorld {
 export interface AssistantView {
   readonly situation: AssistantSituation;
   readonly line: AssistantLine;
+  /**
+   * True on the ONE paint that pays the note about having been closed.
+   *
+   * The durable "owes a note" flag lives in the screen store, so the desktop
+   * clears it when it sees this - and then every later paint that minute reads
+   * the flag as gone and the note is held only by the dwell, not re-paid.
+   */
+  readonly readmitted: boolean;
+}
+
+/**
+ * The two durable facts the character reads each paint, both from the screen
+ * store the save carries: how many times it has been closed, and the day it
+ * was last closed on (null while it is open). Everything else it needs is on
+ * the desk (`AssistantWorld`); everything it remembers between paints is
+ * transient and may be dropped by a re-mount without losing the gag.
+ */
+export interface AssistantMemory {
+  readonly dismissals: number;
+  readonly closedOnDay: number | null;
 }
 
 /**
@@ -106,12 +126,13 @@ export function situationOf(
 /**
  * The part that decides what it says, with no DOM in it.
  *
- * All of its memory is about the SCREEN - which line is up, when it went up,
- * which situation it belongs to, whether somebody has just closed it - and
- * none of it is about the world, so a session that reloads gets a character
- * that starts talking again rather than one that has to be restored. The one
- * thing that survives a save is the dismissal count, and that is handed in
- * from the store on every call rather than kept here.
+ * Its durable memory - the count it escalates by, and whether it is currently
+ * closed - is NOT here: it lives in the screen store the save carries, and is
+ * handed in as `AssistantMemory` on every call. That is the lesson the box
+ * taught. Everything THIS object holds is transient display state - which line
+ * is up, when it went up, where the rotation is - and a re-mount that drops all
+ * of it loses nothing but the current sentence, because the gag is read from
+ * the store rather than remembered here.
  */
 export class AssistantVoice {
   private current: AssistantLine | null = null;
@@ -121,9 +142,8 @@ export class AssistantVoice {
   /** The minute a takeover last handed the desk back, for the "after" beat. */
   private handedBackAt: number | null = null;
   private held = false;
-  /** The day it was closed on, or null while nobody has closed it. */
-  private closedOn: number | null = null;
-  private owedGag = false;
+  /** Whether this instance has produced a real paint yet - a load lands here. */
+  private painted = false;
   /**
    * Whether a phone was ringing / a reboot was coming on the LAST paint.
    *
@@ -158,7 +178,7 @@ export class AssistantVoice {
   public speak(
     world: Readonly<AssistantWorld>,
     tick: number,
-    dismissals: number,
+    memory: Readonly<AssistantMemory>,
   ): AssistantView | null {
     this.followTakeovers(world, tick);
 
@@ -181,20 +201,30 @@ export class AssistantVoice {
       return null;
     }
 
-    if (!this.readmitted(world, bigEventArrived)) {
-      return null;
-    }
+    // From here on this is a real paint, which is what "a load lands here"
+    // reads: a fresh instance's first shift paint is a re-arrival.
+    const mounted = this.painted;
+    this.painted = true;
 
-    if (this.owedGag) {
-      // The note about having been closed, before anything about the desk:
-      // it is the reason it is standing here again. It is held from here (see
-      // `holdingGag`) so the same minute's later paints cannot replace it.
-      this.owedGag = false;
+    if (memory.closedOnDay !== null) {
+      // Three ways a closed character is owed its way back: a fresh mount (a
+      // reload re-arrives it), a new day, or a big event that just arrived.
+      const returned = !mounted
+        || world.day !== memory.closedOnDay
+        || bigEventArrived;
+
+      if (!returned) {
+        // The quiet the player bought by closing it.
+        return null;
+      }
+
+      // The note, held from here so the same minute's later paints - by which
+      // point the desktop has cleared the durable flag - cannot replace it.
       this.holdingGag = true;
-      this.current = returningLine(dismissals);
+      this.current = returningLine(memory.dismissals);
       this.situation = situation;
       this.saidAt = tick;
-      return { situation, line: this.current };
+      return { situation, line: this.current, readmitted: true };
     }
 
     const standing = this.current;
@@ -214,7 +244,7 @@ export class AssistantVoice {
       // The desk may have moved under a held note; the view follows it while
       // the line does not, so the bubble is about the right thing when the
       // note's dwell ends.
-      return { situation, line: standing };
+      return { situation, line: standing, readmitted: false };
     }
 
     this.holdingGag = false;
@@ -223,45 +253,29 @@ export class AssistantVoice {
     this.situation = situation;
     this.saidAt = tick;
 
-    return { situation, line };
+    return { situation, line, readmitted: false };
   }
 
   /**
-   * Somebody closed it.
+   * A load, a restart, a week that started again.
    *
-   * The COUNT is the caller's - it belongs in the screen store, because it
-   * survives a save - and what is remembered here is only the fact that it is
-   * currently shut and what it was shut during.
+   * Only the transient display is thrown away - the durable count and
+   * closed-day come back in the file - and `painted` is reset so the next paint
+   * is treated as the arrival it is. Wired to the store's reload hook, NOT to
+   * `onReplaced`, so an ordinary external patch (a boss beat) never triggers
+   * it: that wiring was the box bug.
    */
-  public dismiss(day: number): void {
-    this.closedOn = day;
-    this.current = null;
-    this.situation = null;
-    this.holdingGag = false;
-  }
-
-  /**
-   * A load, a restart, a week that started again: everything on the screen has
-   * been replaced, so the character starts from scratch and the count it
-   * escalates by comes back with the file.
-   */
-  public forget(): void {
+  public remount(): void {
     this.current = null;
     this.situation = null;
     this.saidAt = 0;
     this.rotation.clear();
     this.handedBackAt = null;
     this.held = false;
-    this.closedOn = null;
-    this.owedGag = false;
+    this.painted = false;
     this.holdingGag = false;
     this.wasRinging = false;
     this.wasReboot = false;
-  }
-
-  /** Whether it is currently closed, which the desktop paints. */
-  public closed(): boolean {
-    return this.closedOn !== null;
   }
 
   private followTakeovers(
@@ -277,34 +291,6 @@ export class AssistantVoice {
       this.held = false;
       this.handedBackAt = tick;
     }
-  }
-
-  /**
-   * Whether a dismissed character has earned its way back - and letting it in
-   * when it has, which is why this is not spelled as a predicate.
-   *
-   * Two doors, and both of them are the gag: a new day, or the next big event
-   * to ARRIVE. It is the arrival that counts, not the kind: a player who closed
-   * it during one call has not closed it against every call, so the next phone
-   * to ring brings it back with its note. Anything else - a ticket arriving,
-   * the meters moving, an hour of quiet - leaves it shut, because those are the
-   * minutes the player bought by closing it.
-   */
-  private readmitted(
-    world: Readonly<AssistantWorld>,
-    bigEventArrived: boolean,
-  ): boolean {
-    if (this.closedOn === null) {
-      return true;
-    }
-
-    if (world.day === this.closedOn && !bigEventArrived) {
-      return false;
-    }
-
-    this.closedOn = null;
-    this.owedGag = true;
-    return true;
   }
 
   /** The next line for this situation, in authored order, round and round. */
@@ -347,6 +333,9 @@ export class Assistant {
 
   private readonly bubble: HTMLElement;
   private readonly text: HTMLElement;
+  /** What is on screen right now, so an unchanged paint touches no DOM. */
+  private shownLine: string | null = null;
+  private shownHidden = true;
 
   public constructor(handlers: Readonly<AssistantHandlers>) {
     this.element = element('div', 'assistant-overlay', 'assistant');
@@ -379,9 +368,28 @@ export class Assistant {
     this.element.append(this.bubble, body);
   }
 
-  /** Draws a line, or takes the whole thing off the screen. */
+  /**
+   * Draws a line, or takes the whole thing off the screen - and does NOTHING
+   * when what it would draw is what is already drawn.
+   *
+   * The desk repaints every simulated minute, and for most of them the line is
+   * the same line: the character dwells on one thought for a quarter of an
+   * hour. So the DOM is touched only when the line or the visibility actually
+   * changes, which is what keeps a per-minute subscriber from being a
+   * per-minute write - and takes the overlay off the suspect list for the
+   * clock the fake-timer tests watch.
+   */
   public render(view: Readonly<AssistantView> | null): void {
-    this.element.hidden = view === null;
+    const hidden = view === null;
+    const lineId = view?.line.id ?? null;
+
+    if (hidden === this.shownHidden && lineId === this.shownLine) {
+      return;
+    }
+
+    this.shownHidden = hidden;
+    this.shownLine = lineId;
+    this.element.hidden = hidden;
 
     if (view === null) {
       return;

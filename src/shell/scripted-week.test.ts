@@ -216,15 +216,18 @@ interface WalkedWeek {
   /** The conduct file the week wrote, as the world holds it. */
   readonly filed: readonly ConductEntry[];
   /**
-   * How many times this week closed the thing on the desk with the face on it.
+   * The two facts 0.3.5 added to the screen store: how many times the thing on
+   * the desk with the face on it was closed, and the day it was last closed on.
    *
-   * It is here because it is the ONLY state 0.3.5 added anywhere, and the
+   * They are here because they are the ONLY state 0.3.5 added anywhere, and the
    * claim that the goldens did not move is exactly the claim that a scripted
-   * week never touches it: nothing below drives a shell, so a count that ever
-   * came back as anything but nought would mean the character had grown a way
-   * of writing to the world, which is the one thing it must not have.
+   * week never touches them: nothing below drives a shell, so a count that ever
+   * came back as anything but nought, or a closed-day that was ever set, would
+   * mean the character had grown a way of writing to the world - the one thing
+   * it must not have.
    */
   readonly assistantDismissals: number;
+  readonly assistantClosedOnDay: number | null;
   /**
    * What the player could have read an hour BEFORE the conversation: the file,
    * who had a reason to open it, and the bar that would produce. It is
@@ -302,6 +305,7 @@ function walk(play: (world: Week, day: number) => void): WalkedWeek {
     timeline: world.timeline,
     filed: conductEntries(world.driver.conductFile()),
     assistantDismissals: world.appState.get().assistant.dismissals,
+    assistantClosedOnDay: world.appState.get().assistant.closedOnDay,
     atTwo,
   };
 }
@@ -1095,11 +1099,12 @@ function expectGolden(walked: WalkedWeek, golden: GoldenWeek): void {
   expect(walked.filed).toHaveLength(golden.filed);
   expect(walked.meters).toEqual(golden.meters);
   expect(walked.timeline).toEqual(golden.timeline);
-  // 0.3.5 added one field to the whole product and this is where it is proven
-  // to be nowhere near a golden: the walks never close the Assistant, so the
-  // count is nought and the hash above is byte-identical to the one committed
-  // before the character existed.
+  // 0.3.5 added two fields to the whole product and this is where they are
+  // proven nowhere near a golden: the walks never close the Assistant, so the
+  // count is nought and the closed-day is unset, and the hash above is
+  // byte-identical to the one committed before the character existed.
   expect(walked.assistantDismissals).toBe(0);
+  expect(walked.assistantClosedOnDay).toBeNull();
 
   /*
    * THE LEGIBILITY GATE, run on every golden week rather than as a case of

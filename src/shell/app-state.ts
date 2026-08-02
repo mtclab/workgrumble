@@ -125,6 +125,19 @@ export interface WindowsState {
  */
 export interface AssistantState {
   readonly dismissals: number;
+  /**
+   * The day it was last closed on, or null while it is open.
+   *
+   * The DURABLE half of the dismissal gag, and it is here rather than in the
+   * character's own instance for one reason found on the box: the note it comes
+   * back with has to survive the same paths the player drives it through - a
+   * boss beat writing to the store, a day boundary, a save and a reload - and
+   * an object the desktop re-instantiates cannot. It says "closed, owes a note
+   * on return"; the character reads it, and clears it the minute it pays the
+   * note. The scripted walks never close it, so it stays null and the goldens
+   * do not move.
+   */
+  readonly closedOnDay: number | null;
 }
 
 /**
@@ -160,7 +173,7 @@ export function createAppState(): AppState {
     browser: { siteId: null },
     caught: { appId: null, at: null, evidence: null },
     windows: { open: [], focusedId: null },
-    assistant: { dismissals: 0 },
+    assistant: { dismissals: 0, closedOnDay: null },
   };
 }
 
@@ -246,24 +259,35 @@ function readWindows(value: unknown): WindowsState | undefined {
  */
 function readAssistant(value: unknown): AssistantState | undefined {
   if (value === undefined) {
-    return { dismissals: 0 };
+    return { dismissals: 0, closedOnDay: null };
   }
 
   if (!isObject(value)) {
     return undefined;
   }
 
-  const { dismissals } = value;
+  const { dismissals, closedOnDay } = value;
 
-  // A whole number is accepted and CLAMPED rather than refused above the cap:
-  // a huge count is not corruption, it is a joke somebody edited, and the game
-  // is worth keeping. Not-a-number or negative is a shape this shell never
-  // writes, so that is refused like every other broken field.
-  return typeof dismissals === 'number'
+  const count = typeof dismissals === 'number'
     && Number.isSafeInteger(dismissals)
     && dismissals >= 0
-    ? { dismissals: Math.min(dismissals, ASSISTANT_DISMISSAL_CAP) }
+    // A whole number is accepted and CLAMPED rather than refused above the cap:
+    // a huge count is not corruption, it is a joke somebody edited, and the
+    // game is worth keeping.
+    ? Math.min(dismissals, ASSISTANT_DISMISSAL_CAP)
     : undefined;
+
+  // Absent reads as open, the way it reads on a save written before the field
+  // existed; a null is open too; a day number is a whole day of this week.
+  const closed = closedOnDay === undefined
+    ? null
+    : optionalDay(closedOnDay);
+
+  // Not-a-number, negative, or a broken closed-day is a shape this shell never
+  // writes, so it is refused like every other edited field.
+  return count === undefined || closed === undefined
+    ? undefined
+    : { dismissals: count, closedOnDay: closed };
 }
 
 function isSpeaker(value: unknown): value is ChatSpeaker {
@@ -415,6 +439,7 @@ export function parseAppState(value: unknown): AppState | null {
 export class AppStateStore {
   private state: AppState = createAppState();
   private readonly listeners = new Set<() => void>();
+  private readonly reloadListeners = new Set<() => void>();
 
   public get(): Readonly<AppState> {
     return this.state;
@@ -469,6 +494,7 @@ export class AppStateStore {
 
     this.state = parsed;
     this.announce();
+    this.announceReload();
     return true;
   }
 
@@ -476,6 +502,7 @@ export class AppStateStore {
   public reset(): void {
     this.state = createAppState();
     this.announce();
+    this.announceReload();
   }
 
   /** Fires when the whole state was replaced under the apps' feet. */
@@ -493,10 +520,43 @@ export class AppStateStore {
     };
   }
 
+  /**
+   * Fires ONLY when the whole file was replaced - a load or a restart - and
+   * never on an external patch.
+   *
+   * `onReplaced` fires on `patchExternal` too, because the boss writing a chat
+   * line is a change the chat window has to hear. That makes it the wrong hook
+   * for anything that must tell a LOAD apart from an ordinary write - a
+   * subscriber wired to it would be told a dozen times a day that the session
+   * had been replaced when it had not. The Assistant learned this the hard way:
+   * its note-owed memory was reset on `onReplaced`, so every boss beat between
+   * closing it and its return wiped the note. This is the hook that means what
+   * that one was being asked to mean.
+   */
+  public onReloaded(listener: () => void): () => void {
+    this.reloadListeners.add(listener);
+    let subscribed = true;
+
+    return () => {
+      if (!subscribed) {
+        return;
+      }
+
+      subscribed = false;
+      this.reloadListeners.delete(listener);
+    };
+  }
+
   private announce(): void {
     // Copied before delivery: an app that unsubscribes while being told must
     // not make its neighbour miss the news.
     for (const listener of [...this.listeners]) {
+      listener();
+    }
+  }
+
+  private announceReload(): void {
+    for (const listener of [...this.reloadListeners]) {
       listener();
     }
   }
