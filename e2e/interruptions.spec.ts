@@ -684,7 +684,10 @@ test('the update is put off three times and then takes the afternoon', async ({
   ).toBeVisible();
   await expect(page.getByTestId('reboot-chip')).toBeHidden();
 
-  expect(await openWindows(page)).toEqual(desk);
+  // Same windows, same states - as a SET. Stacking order is not part of the
+  // promise: a loaded save reopens windows in manifest order by design (the
+  // start-menu comment owns that call), and the reboot rides the same store.
+  expect([...await openWindows(page)].sort()).toEqual([...desk].sort());
   await focusWindow(page, 'cmd');
   expect(await page.getByTestId('cmd-output').textContent()).toBe(scrollback);
 });
