@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import {
+  activeElement,
   beginShift,
   clockOffFor,
   completeLogin,
@@ -505,25 +506,22 @@ test('the update is put off three times and then takes the afternoon', async ({
   await expect(page.getByTestId('desktop'))
     .toHaveAttribute('data-takeover', 'machine');
 
-  // The desk is gone by KEYBOARD as well as by mouse - the terminal had the
-  // cursor when it started - and it refuses in the workstation's own sentence
-  // rather than the meeting's.
+  // THE KEYBOARD, taken. The terminal had the cursor when the takeover
+  // landed, and a window that left it there would go on collecting keystrokes
+  // into a command line that is going to be refused - the pointer rules cannot
+  // reach that, so the window takes the focus the way the meeting does.
+  const holding = await activeElement(page);
+
+  expect(holding.testid).toBe('reboot-app');
+
+  // And the desk is gone by keyboard as well as by mouse: it refuses in the
+  // workstation's own sentence rather than the meeting's.
   await openFromStartMenu(page, 'cmd');
   await runOnlyCommand(page, 'restart PRINT-01\\spooler');
   await expect(page.getByTestId('cmd-output')).toContainText('installing updates');
   await expect(page.getByTestId('cmd-output')).not.toContainText('RUNNING');
 
   /* Ten minutes bought, and they are minutes at the desk. */
-
-  // How far into the arrival this is, read off the paint that found it: a
-  // postpone buys its minutes from the ARRIVAL, so a player who spends a
-  // minute reading the dialog has a minute less grace. The countdown below is
-  // derived from it rather than typed, because the minute a click lands on is
-  // not a thing any test owns - `src/shell/reboot.test.ts` pins the derivation
-  // itself, at all three windows.
-  const spent = Number(first.minutesIn ?? '0');
-
-  expect(spent).toBeLessThan(9);
 
   await page.getByTestId('reboot-postpone').click();
   await expect(page.getByTestId('reboot-app'))
@@ -533,14 +531,18 @@ test('the update is put off three times and then takes the afternoon', async ({
   // The countdown, on the taskbar, where it can be read with the window shut.
   const chip = page.getByTestId('reboot-chip');
 
-  await expect(chip).toHaveText(/^Restarting in \d+m$/u);
+  // Ten, whole, whatever minute the button was pressed on: a postpone buys
+  // its minutes FROM THE PRESS, so a player who reads the dialog first gets
+  // the same grace as one who slaps the button. That is the fix rather than
+  // the assertion being lenient - it used to be measured from the arrival,
+  // and a push late in the window bought nothing at all.
+  await expect(chip).toHaveText('Restarting in 10m');
   await expect(chip).toHaveAttribute('data-left', '2');
-  await expect(chip).toHaveAttribute('data-away', String(10 - spent));
 
   // And it goes down with the clock, which is the half a static chip would
   // pass and be lying about a minute later.
   await runSimMinutes(page, 1, 1);
-  await expect(chip).toHaveAttribute('data-away', String(9 - spent));
+  await expect(chip).toHaveAttribute('data-away', '9');
   // And the desk answers again, which is the whole of what the push bought.
   await runOnlyCommand(page, 'ver');
   await expect(page.getByTestId('cmd-output'))
