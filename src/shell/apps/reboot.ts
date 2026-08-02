@@ -63,8 +63,22 @@ export const REBOOT_APP: AppDef = {
     const detail = element('p', 'reboot-detail', 'reboot-detail');
 
     const answers = element('div', 'call-answers');
-    const postpone = osButton('Postpone', 'reboot-postpone');
-    const now = osButton('Restart now', 'reboot-restart-now', { primary: true });
+    /**
+     * Postpone is the PRIMARY, and Restart now is not.
+     *
+     * The desktop puts the keyboard on the primary control of any screen the
+     * day opens - a manager in the doorway, a review at three - which is right
+     * and is why it exists. It means the auto-focused button here is whichever
+     * one carries that class, and one of these two is irreversible: Restart
+     * now spends every window left in the budget, and the budget IS the
+     * mechanic. A dialog that lands the cursor on the destructive answer and
+     * waits for a player to hit Enter is a trap with good manners.
+     *
+     * So the safe answer takes the focus, and the one that gives up the
+     * afternoon has to be aimed at.
+     */
+    const postpone = osButton('Postpone', 'reboot-postpone', { primary: true });
+    const now = osButton('Restart now', 'reboot-restart-now');
     answers.append(postpone, now);
 
     /**

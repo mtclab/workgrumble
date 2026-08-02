@@ -2271,7 +2271,7 @@ export class DayDriver implements DayApi {
       ? undefined
       : this.tickets().find((node) => node.id === target);
 
-    return this.engine.dispatch(
+    return this.announced(this.engine.dispatch(
       DAY_ACTIONS.interruptionAccept,
       this.actor,
       target,
@@ -2290,7 +2290,29 @@ export class DayDriver implements DayApi {
             true,
           ),
       },
-    );
+    ));
+  }
+
+  /**
+   * A choice, made, and every screen told about it in the same breath.
+   *
+   * The three verbs change what the day LOOKS like - a pushed interruption
+   * stops owning the desk that instant and starts being a countdown - and
+   * nothing else announces it, so the taskbar used to wait for the next minute
+   * to find out. That is a full second at normal speed and, with the clock
+   * paused, for ever: a player who postponed and immediately paused saw no
+   * countdown at all and a desk that still looked taken. The windows never had
+   * the problem because they repaint on world changes; the desktop reads the
+   * DAY, so the day has to say something.
+   *
+   * Only on success, because a refused verb changed nothing.
+   */
+  private announced(result: DispatchResult): DispatchResult {
+    if (result.ok) {
+      this.announce();
+    }
+
+    return result;
   }
 
   public deferInterruption(): DispatchResult {
@@ -2298,24 +2320,30 @@ export class DayDriver implements DayApi {
 
     return view === null
       ? { ok: false, reason: NOTHING_RINGING }
-      : this.engine.dispatch(DAY_ACTIONS.interruptionDefer, this.actor, null, {
-        id: view.entry.id,
-        // The minute the button was pressed, stamped here because this is the
-        // only place that knows it. A window buys its minutes from the press,
-        // so a push at 14:21 against an arrival at 14:10 must still buy the
-        // whole ten - and the world cannot work that out from a count.
-        spent_at: `${view.entry.id}@${String(this.engine.now())}`,
-        // The same flag decline is given, because it answers the same
-        // question for everything that carries no budget: an interruption
-        // nobody may wave off is not one anybody may push twenty minutes out
-        // either.
-        declinable: view.entry.declinable ? 1 : 0,
-        // And the budget it was AUTHORED with, never what is left of it. How
-        // many are left is the world's arithmetic - this length, minus the
-        // ledger - and a driver that sent the remainder would be a driver
-        // telling the world how much of its own record to believe.
-        postpones: view.entry.postpones.length,
-      });
+      : this.announced(this.engine.dispatch(
+        DAY_ACTIONS.interruptionDefer,
+        this.actor,
+        null,
+        {
+          id: view.entry.id,
+          // The minute the button was pressed, stamped here because this is
+          // the only place that knows it. A window buys its minutes from the
+          // press, so a push at 14:21 against an arrival at 14:10 must still
+          // buy the whole ten - and the world cannot work that out from a
+          // count.
+          spent_at: `${view.entry.id}@${String(this.engine.now())}`,
+          // The same flag decline is given, because it answers the same
+          // question for everything that carries no budget: an interruption
+          // nobody may wave off is not one anybody may push twenty minutes out
+          // either.
+          declinable: view.entry.declinable ? 1 : 0,
+          // And the budget it was AUTHORED with, never what is left of it. How
+          // many are left is the world's arithmetic - this length, minus the
+          // ledger - and a driver that sent the remainder would be a driver
+          // telling the world how much of its own record to believe.
+          postpones: view.entry.postpones.length,
+        },
+      ));
   }
 
   /**
@@ -2334,7 +2362,7 @@ export class DayDriver implements DayApi {
       return { ok: false, reason: NOTHING_RINGING };
     }
 
-    return this.engine.dispatch(
+    return this.announced(this.engine.dispatch(
       DAY_ACTIONS.interruptionDecline,
       this.actor,
       null,
@@ -2348,7 +2376,7 @@ export class DayDriver implements DayApi {
         // off the source rather than off a content row.
         withdrawn: declineWithdrawn(view.entry) ? 1 : 0,
       },
-    );
+    ));
   }
 
   /* -- the pressure layer ------------------------------------------------ */

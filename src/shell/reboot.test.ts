@@ -456,6 +456,43 @@ describe('the minutes a postpone buys', () => {
   }, 20_000);
 
   /**
+   * The press paints the countdown. It does not wait for the minute hand.
+   *
+   * The chip and the takeover attribute are drawn off the DAY, and the day
+   * only used to announce itself on the clock - so a postpone left the desk
+   * looking held and the countdown missing until the next tick. At normal
+   * speed that is a second of a screen saying something untrue; with the clock
+   * PAUSED it is for ever, and pausing the moment you have bought yourself ten
+   * minutes is exactly what a player does with them.
+   *
+   * The assertion is the announcement plus what is true in the same breath:
+   * the desk is handed back, the countdown is already answerable, and no tick
+   * has happened between the two.
+   */
+  it('tells the screens the moment the button is pressed', () => {
+    const world = thursday();
+    const entry = reboot(world.session);
+
+    runTo(world, entry.tick);
+
+    let painted = 0;
+    const stop = world.driver.onChanged(() => {
+      painted += 1;
+    });
+    const at = world.session.engine.now();
+
+    expect(world.driver.deferInterruption()).toEqual({ ok: true });
+    expect(painted).toBeGreaterThan(0);
+    // In the same minute, with nothing having moved the clock: the desk is the
+    // player's and the countdown already knows how long for.
+    expect(world.session.engine.now()).toBe(at);
+    expect(world.driver.interruption()).toBeNull();
+    expect(world.driver.pendingRestart()?.ticksAway).toBe(10);
+
+    stop();
+  }, 20_000);
+
+  /**
    * A push the world knows about with no minute on it still comes back.
    *
    * The minute is a second record beside the ids the refusals count, so a save
