@@ -79,6 +79,7 @@ import { findIncident } from '../world/incidents';
 import {
   arrivalStress,
   buildInterruptionSchedule,
+  declineWithdrawn,
   type InterruptionEntry,
   type InterruptionPlan,
   type InterruptionSchedule,
@@ -173,6 +174,18 @@ export const IN_A_MEETING_REASON = 'You are in a meeting. Not at the desk, '
   + 'until the room empties - which is the entire cost of the half hour and '
   + 'is why everybody dreads it.';
 
+/**
+ * And what it says while the workstation is having its own morning.
+ *
+ * The same seam and the same rule - one sentence for everything the desk can
+ * be asked to do while something else owns it - because the alternative is a
+ * mechanic that holds for the mouse and not for the keyboard. The desk is
+ * gone; the Start menu, the clock and the pause button are not, which is
+ * 0.3.0's rule about a meeting taking the desk rather than the machine.
+ */
+export const INSTALLING_UPDATES_REASON = 'The workstation is installing '
+  + 'updates. It said so. It is not sorry.';
+
 export const SPEEDS = [1, 2, 4] as const;
 
 export type Speed = (typeof SPEEDS)[number];
@@ -240,8 +253,17 @@ export interface InterruptionView {
   readonly entry: InterruptionEntry;
   /** Minutes since it started, which is what a meeting is read by. */
   readonly minutesIn: number;
-  /** Whether this is the second arrival, which is nobody's to decline. */
+  /** Whether this is a later arrival, which is nobody's to decline. */
   readonly callback: boolean;
+  /**
+   * How many pushes are left in it, which is what an arrival has to be able to
+   * say out loud: three, then two, then one, then nothing.
+   *
+   * Derived from the entry's authored budget and the ledger the world keeps,
+   * so it is the same number on both sides of a save and there is nothing here
+   * for a driver to get out of step with.
+   */
+  readonly postponesLeft: number;
   /** Whether the player has picked it up and the conversation is running. */
   readonly answered: boolean;
   /**
@@ -497,6 +519,20 @@ export class DayDriver implements DayApi {
     private readonly actor: NodeId,
     seed: number,
     private readonly handlers: Readonly<DayDriverHandlers>,
+    /**
+     * Where a day's interruptions come from.
+     *
+     * The shipped week, in the shipped game, and it is a parameter for the
+     * same reason the seed is one: a rule about what happens when two
+     * takeovers collide, or when a countdown runs out of postpones, is a rule
+     * about the MACHINERY, and pinning it to whichever row the week happens to
+     * carry this month would be testing the content instead. A harness hands
+     * in the day it needs; nothing else ever passes this.
+     */
+    private readonly plans: (
+      day: number,
+      seed: number,
+    ) => InterruptionPlan = interruptionPlanFor,
   ) {
     this.seed_ = seed;
     this.schedule_ = this.scheduleFor(this.day());
@@ -557,8 +593,10 @@ export class DayDriver implements DayApi {
    * does to the desk, the money and the minute the crash is measured from.
    */
   public drink(): DispatchResult {
-    if (this.blockedByTakeover()) {
-      return { ok: false, reason: IN_A_MEETING_REASON };
+    const held = this.takeoverRefusal();
+
+    if (held !== null) {
+      return { ok: false, reason: held };
     }
 
     const now = this.engine.now();
@@ -570,8 +608,10 @@ export class DayDriver implements DayApi {
   }
 
   public tidyDesk(): DispatchResult {
-    return this.blockedByTakeover()
-      ? { ok: false, reason: IN_A_MEETING_REASON }
+    const held = this.takeoverRefusal();
+
+    return held !== null
+      ? { ok: false, reason: held }
       : this.engine.dispatch(DAY_ACTIONS.deskTidy, this.actor, null, {});
   }
 
@@ -592,8 +632,10 @@ export class DayDriver implements DayApi {
     target: NodeId | null,
     params: Record<string, string | number | boolean | null>,
   ): DispatchResult {
-    if (this.blockedByTakeover()) {
-      return { ok: false, reason: IN_A_MEETING_REASON };
+    const held = this.takeoverRefusal();
+
+    if (held !== null) {
+      return { ok: false, reason: held };
     }
 
     // Read BEFORE: this dispatch may resolve the ticket it is about, and a
@@ -933,8 +975,10 @@ export class DayDriver implements DayApi {
 
   /** The bottle in the fridge with your name on it. */
   public beer(): DispatchResult {
-    return this.blockedByTakeover()
-      ? { ok: false, reason: IN_A_MEETING_REASON }
+    const held = this.takeoverRefusal();
+
+    return held !== null
+      ? { ok: false, reason: held }
       : this.engine.dispatch(DAY_ACTIONS.consumableBeer, this.actor, null, {});
   }
 
@@ -1322,7 +1366,7 @@ export class DayDriver implements DayApi {
    * bookings the authored entries did.
    */
   private interruptionPlan(day: number): InterruptionPlan {
-    return interruptionPlanFor(day, this.seed_);
+    return this.plans(day, this.seed_);
   }
 
   private interruptionsFor(
@@ -1706,6 +1750,10 @@ export class DayDriver implements DayApi {
         entry,
         minutesIn: now - entry.tick,
         callback: this.hasDecided(FIELDS.interruptionDeferred, entry.id),
+        postponesLeft: Math.max(
+          0,
+          entry.postpones.length - this.postponesSpent(entry.id),
+        ),
         answered: this.hasDecided(FIELDS.interruptionAnswered, entry.id),
         benign: isBenign(entry, ticketInHand),
         ticketInHand,
@@ -1747,8 +1795,19 @@ export class DayDriver implements DayApi {
       // minutes were long past, so `interruption()` went null the instant the
       // player picked the phone up and the conversation vanished out from
       // under them.
-      const placed = this.hasDecided(FIELDS.interruptionDeferred, entry.id)
-        ? placeDeferred(entry, this.interruptions_, this.interruptionsBlocked_)
+      //
+      // HOW FAR it has been pushed is counted out of the world's ledger rather
+      // than remembered here, which is what makes a mid-countdown save land
+      // back on the same minute with the same budget left: the driver holds no
+      // number a load could disagree with.
+      const spends = this.postponesSpent(entry.id);
+      const placed = spends > 0
+        ? placeDeferred(
+          entry,
+          this.interruptions_,
+          this.interruptionsBlocked_,
+          spends,
+        )
         : entry;
 
       // A callback with nowhere left in the day to go is a call that never
@@ -1762,26 +1821,54 @@ export class DayDriver implements DayApi {
   }
 
   /**
-   * Whether something is holding the screen in a way that makes work
-   * impossible rather than merely awkward.
+   * What the desk answers with while something is holding it in a way that
+   * makes work impossible rather than merely awkward - and null while the desk
+   * is the player's.
    *
-   * A MEETING does. A ringing phone deliberately does not: a call is a window,
-   * the normal rules keep applying underneath one, and being on the phone has
-   * never been a defence for anything. The line is drawn on the source rather
-   * than on "is a takeover on" so that the two stay different things.
+   * A MEETING holds it, and so does a workstation installing updates, and they
+   * refuse in different words because they are different rooms to be locked
+   * out of: one is a meeting you are not at your desk during, the other is a
+   * desk that is not there. A ringing phone deliberately holds nothing: a call
+   * is a window, the normal rules keep applying underneath one, and being on
+   * the phone has never been a defence for anything. The line is drawn on the
+   * source rather than on "is a takeover on" so that the two stay different
+   * things.
    *
    * It is checked in the driver rather than in each surface because the shell
    * has five ways to reach a verb and a rule enforced in four of them is a
    * rule with a hole in it - which is exactly what the pointer-events version
    * of this was: a terminal with the keyboard still submitted commands.
    */
-  private blockedByTakeover(): boolean {
-    return this.interruption()?.entry.source === 'meeting';
+  private takeoverRefusal(): string | null {
+    switch (this.interruption()?.entry.source) {
+      case 'meeting':
+        return IN_A_MEETING_REASON;
+      case 'machine':
+        return INSTALLING_UPDATES_REASON;
+      default:
+        return null;
+    }
   }
 
-  /** Whether an id is in one of the three lists the world keeps. */
+  /** Whether an id is in one of the lists the world keeps. */
   private hasDecided(field: string, id: string): boolean {
     return this.playerText(field).split('\n').includes(id);
+  }
+
+  /**
+   * How many postpones this interruption has had spent on it, counted off the
+   * world's ledger.
+   *
+   * One line per push, so the count is the number of lines that ARE this id.
+   * Nothing here caches it: it is asked every minute, on both sides of a save,
+   * and a driver that kept its own tally would be a driver handing a restored
+   * countdown its budget back.
+   */
+  private postponesSpent(id: string): number {
+    return this.playerText(FIELDS.interruptionPostpones)
+      .split('\n')
+      .filter((line) => line === id)
+      .length;
   }
 
   /**
@@ -1857,7 +1944,13 @@ export class DayDriver implements DayApi {
     this.assertOneTakeover(entry);
 
     const benign = isBenign(entry, this.ticketInHand());
-    const stress = arrivalStress(entry, benign);
+    // An arrival the player pushed here themselves is the same dread coming
+    // round again rather than new dread, so it is charged once - at the first
+    // one. The world enforces it too, off the same ledger; this is only the
+    // half that keeps a dispatch nobody could accept out of the log.
+    const stress = this.postponesSpent(entry.id) > 0
+      ? 0
+      : arrivalStress(entry, benign);
 
     if (stress > 0) {
       this.engine.dispatch(
@@ -1891,6 +1984,16 @@ export class DayDriver implements DayApi {
    * while for half an hour in a room it is the moment the room empties.
    */
   private finish(entry: Readonly<InterruptionEntry>): void {
+    // The two nobody presses a button on. A meeting is sat through and a
+    // workstation reboots itself, so the world learns they HAPPENED at the
+    // minute they stop happening - which is also the minute the desk comes
+    // back, and therefore the minute the refocus window is measured from.
+    if (entry.source === 'machine') {
+      this.engine.dispatch(DAY_ACTIONS.interruptionAccept, this.actor, null, {
+        id: entry.id,
+      });
+    }
+
     if (entry.source === 'meeting') {
       this.engine.dispatch(DAY_ACTIONS.interruptionAccept, this.actor, null, {
         id: entry.id,
@@ -2031,9 +2134,15 @@ export class DayDriver implements DayApi {
       : this.engine.dispatch(DAY_ACTIONS.interruptionDefer, this.actor, null, {
         id: view.entry.id,
         // The same flag decline is given, because it answers the same
-        // question: an interruption nobody may wave off is not one anybody
-        // may push twenty minutes out either.
+        // question for everything that carries no budget: an interruption
+        // nobody may wave off is not one anybody may push twenty minutes out
+        // either.
         declinable: view.entry.declinable ? 1 : 0,
+        // And the budget it was AUTHORED with, never what is left of it. How
+        // many are left is the world's arithmetic - this length, minus the
+        // ledger - and a driver that sent the remainder would be a driver
+        // telling the world how much of its own record to believe.
+        postpones: view.entry.postpones.length,
       });
   }
 
@@ -2060,6 +2169,12 @@ export class DayDriver implements DayApi {
       {
         id: view.entry.id,
         declinable: view.entry.declinable && !view.callback ? 1 : 0,
+        // Which of the two true reasons this one refuses with. A machine's
+        // decline was WITHDRAWN rather than never offered, and the sentence
+        // the player reads is the world's either way - the shell only says
+        // which register the entry is in, and `declineWithdrawn` decides that
+        // off the source rather than off a content row.
+        withdrawn: declineWithdrawn(view.entry) ? 1 : 0,
       },
     );
   }

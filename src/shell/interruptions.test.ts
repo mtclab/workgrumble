@@ -25,7 +25,9 @@ import { loadEngineForTests } from '../engine-api/load-node';
 import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import {
   ALREADY_DEFERRED_REASON,
+  NO_POSTPONES_LEFT_REASON,
   NOT_DECLINABLE_REASON,
+  UPDATES_WITHDRAWN_REASON,
 } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { LUNCH_START_MINUTE, shiftEndTick, shiftStartTick } from '../world/day';
@@ -39,6 +41,9 @@ import {
   buildInterruptionSchedule,
   DEFER_MINUTES,
   type InterruptionEntry,
+  type InterruptionPlan,
+  type InterruptionSlot,
+  placeDeferred,
 } from '../world/interruptions';
 import { TICKET_HYGIENE_SYNC } from '../world/scenes';
 import { createWorldSession, type WorldSession } from '../world/session';
@@ -49,6 +54,7 @@ import {
   DayDriver,
   DRIVER_INTERVAL_MS,
   IN_A_MEETING_REASON,
+  INSTALLING_UPDATES_REASON,
   type InterruptionView,
   TICK_INTERVAL_MS,
 } from './day-driver';
@@ -408,6 +414,386 @@ describe('"can I call you back"', () => {
       .toEqual(['call:annexe-printer', 'call:annexe-printer']);
     expect(world.arrivals[1]?.callback).toBe(true);
   });
+});
+
+/* -- the update that is going to happen ------------------------------------ */
+
+/**
+ * The reboot, driven as a FIXTURE rather than as content.
+ *
+ * The probation week has no update in it yet - that is the content half of
+ * this slice and it ships with the screen - and the machinery must not wait
+ * for it. So the day is handed in: a real Thursday, with its real call and its
+ * real rounds, plus one authored workstation. Everything asserted below is the
+ * ENGINE's behaviour, which is what has to be true of whichever minute the
+ * week eventually puts it on.
+ */
+/**
+ * The Tuesday, mid-morning, which is a working minute on a day the player has
+ * headroom on. The shipped week will put its own reboot wherever the content
+ * slice decides; what is asserted here is what has to hold on any of them.
+ */
+const REBOOT_DAY = 2;
+const REBOOT_MINUTE = 10 * 60 + 40;
+const REBOOT_ID = 'machine:reboot';
+const REBOOT_MINUTES = 12;
+/** Ten minutes to finish, five to save, two to swear. Then it happens. */
+const REBOOT_POSTPONES = [10, 5, 2];
+
+function rebootSlot(minute: number): InterruptionSlot {
+  return {
+    id: REBOOT_ID,
+    source: 'machine',
+    minute,
+    minutes: REBOOT_MINUTES,
+    relatedTicket: null,
+    declinable: false,
+    severity: 3,
+    postpones: REBOOT_POSTPONES,
+    flavor: { subject: 'Security updates, deferred since March' },
+  };
+}
+
+/** The shipped week, plus one workstation with an opinion. */
+function planWithReboot(
+  minute: number,
+): (day: number, seed: number) => InterruptionPlan {
+  return (day, seed) => {
+    const real = interruptionPlanFor(day, seed);
+
+    return day === REBOOT_DAY
+      ? { slots: [...real.slots, rebootSlot(minute)], blocked: real.blocked }
+      : real;
+  };
+}
+
+/**
+ * The Thursday of a WORKED week, which is the world a cost has to be measured
+ * in: a week nobody touches has every meter at its ceiling by the Wednesday,
+ * and a stress charge asserted against a full bar asserts nothing.
+ */
+function rebootWorld(minute = REBOOT_MINUTE): Harness {
+  const session = createWorldSession();
+  const arrivals: InterruptionView[] = [];
+  const ended: InterruptionEntry[] = [];
+  const driver = new DayDriver(
+    session.engine,
+    COMPANY_IDS.player,
+    session.seed,
+    {
+      onDayBoundary: () => {},
+      openSlackApps: () => [],
+      focusedSlackApp: () => null,
+      onInterruption: (view) => {
+        arrivals.push(view);
+      },
+      onInterruptionEnded: (entry) => {
+        ended.push(entry);
+      },
+    },
+    planWithReboot(minute),
+  );
+
+  for (let played = 1; played < REBOOT_DAY; played += 1) {
+    driver.startShift();
+    runTo(driver, session, shiftStartTick(played) + 90);
+    workTheQueue(driver, session);
+    runTo(driver, session, shiftStartTick(played) + 300);
+    workTheQueue(driver, session);
+    runTo(driver, session, shiftEndTick(played));
+    driver.clockOff();
+  }
+
+  driver.startShift();
+  arrivals.length = 0;
+  ended.length = 0;
+  return { driver, session, arrivals, ended };
+}
+
+interface RebootDay {
+  readonly entry: InterruptionEntry;
+  /** Where the Nth push actually lands, the day's other bookings and all. */
+  readonly landingAfter: (spends: number) => number;
+}
+
+function rebootDay(world: Harness, minute = REBOOT_MINUTE): RebootDay {
+  const plan = planWithReboot(minute)(REBOOT_DAY, world.session.seed);
+  const schedule = buildInterruptionSchedule(
+    world.session.seed,
+    REBOOT_DAY,
+    plan,
+  );
+  const entry = schedule.entries.find(
+    (candidate) => candidate.id === REBOOT_ID,
+  );
+
+  if (entry === undefined) {
+    throw new Error('The fixture day did not schedule the reboot.');
+  }
+
+  return {
+    entry,
+    landingAfter: (spends) => placeDeferred(
+      entry,
+      schedule,
+      plan.blocked,
+      spends,
+    )?.tick ?? -1,
+  };
+}
+
+describe('the update that has been put off since March', () => {
+  /**
+   * The journey, minus the screen: it arrives, it is refused a decline in the
+   * words that say why, it is pushed three times for exactly the minutes it
+   * promised - each arrival naming what is left - and then it simply happens,
+   * inside the day, and hands back a desk the player has to find their place
+   * at again.
+   *
+   * Every number here is read off the world rather than off the driver: the
+   * remaining budget is the entry's authored windows minus the ledger, so
+   * there is nothing in this journey a save could disagree with.
+   */
+  it('is pushed three times, each arrival saying what is left, and then happens', () => {
+    const world = rebootWorld();
+    const { entry, landingAfter } = rebootDay(world);
+
+    runTo(world.driver, world.session, entry.tick - 1);
+
+    const before = stress(world.session);
+
+    runTo(world.driver, world.session, entry.tick);
+
+    const first = world.driver.interruption();
+
+    expect(first?.entry.id).toBe(REBOOT_ID);
+    expect(first?.entry.source).toBe('machine');
+    expect(first?.postponesLeft).toBe(3);
+    expect(first?.callback).toBe(false);
+    // Malignant by construction: a workstation is about no ticket anybody is
+    // holding, so being taken off the work costs what being taken off the work
+    // costs - once, here, at the first arrival.
+    expect(first?.benign).toBe(false);
+
+    const arrivalCost = stress(world.session) - before;
+
+    expect(arrivalCost).toBe(3 * ARRIVAL_STRESS_PER_SEVERITY);
+
+    // There is nobody on the other end of it to say no to, and the refusal is
+    // the one that teaches why rather than the one about a meeting.
+    expect(world.driver.declineInterruption()).toEqual({
+      ok: false,
+      reason: UPDATES_WITHDRAWN_REASON,
+    });
+
+    // Three pushes, each one shorter than the last and each one measured from
+    // where the last left it.
+    const landings: number[] = [];
+    const left: number[] = [];
+
+    for (let spend = 0; spend < REBOOT_POSTPONES.length; spend += 1) {
+      expect(world.driver.deferInterruption()).toEqual({ ok: true });
+      expect(world.driver.interruption()).toBeNull();
+
+      runTo(world.driver, world.session, landingAfter(spend + 1));
+
+      const view = world.driver.interruption();
+
+      expect(view?.entry.id, `push ${String(spend + 1)}`).toBe(REBOOT_ID);
+      expect(view?.callback).toBe(true);
+      landings.push(view?.entry.tick ?? -1);
+      left.push(view?.postponesLeft ?? -1);
+    }
+
+    // Ten minutes, then five, then two - each measured from where the last one
+    // left it, and each one AT LEAST that far out: a landing whose minutes the
+    // day had already booked slides forward like any other arrival, which is
+    // what happens to the third of these on this seed. The exact arithmetic in
+    // clear air is asserted one floor down, where there is no day in the way.
+    const [ten, five, two] = REBOOT_POSTPONES as [number, number, number];
+    const [firstBack, secondBack, thirdBack] = landings as [
+      number,
+      number,
+      number,
+    ];
+
+    expect(firstBack).toBe(entry.tick + ten);
+    expect(secondBack).toBe(firstBack + five);
+    expect(thirdBack).toBeGreaterThanOrEqual(secondBack + two);
+    // Two, one, none - which is the number an arrival has to be able to say.
+    expect(left).toEqual([2, 1, 0]);
+    // And the same dread, not new dread. It is asserted as the CHARGE rather
+    // than as the meter, because the meter is not still between two arrivals:
+    // half an hour of shift moves stress on its own, and a comparison of two
+    // readings would be measuring the morning rather than the mechanic.
+    expect(world.session.engine.dispatchLog().filter(
+      (line) => line.id === DAY_ACTIONS.interruptionArrived
+        && line.params.id === REBOOT_ID,
+    )).toHaveLength(1);
+
+    // The last arrival offers nothing, in words.
+    expect(world.driver.deferInterruption()).toEqual({
+      ok: false,
+      reason: NO_POSTPONES_LEFT_REASON,
+    });
+    expect(world.driver.declineInterruption()).toEqual({
+      ok: false,
+      reason: UPDATES_WITHDRAWN_REASON,
+    });
+
+    // It happens, it holds the desk while it does, and every clock runs.
+    const runningAt = world.session.engine.now();
+
+    expect(world.session.engine.slaRunning()).toBe(true);
+    runTo(world.driver, world.session, runningAt + REBOOT_MINUTES);
+
+    const handedBack = world.session.engine.now();
+
+    expect(handedBack).toBe(landingAfter(3) + REBOOT_MINUTES);
+    // Inside the day, with every window spent - which is the promise the
+    // loader's refusal exists to keep, and the reason a reboot cannot be
+    // authored into a corner it has to be dropped from.
+    expect(handedBack).toBeLessThan(shiftEndTick(REBOOT_DAY));
+    expect(world.driver.interruption()).toBeNull();
+    // The world knows it happened, and the player is looking for their place
+    // again from the minute the desk came back.
+    expect(world.session.engine.graph.getField(
+      COMPANY_IDS.player,
+      FIELDS.interruptionAnswered,
+    )).toContain(REBOOT_ID);
+    expect(player(world.session, FIELDS.refocusUntil))
+      .toBe(handedBack + REFOCUS_TICKS);
+    expect(isRefocusing(player(world.session, FIELDS.refocusUntil), handedBack))
+      .toBe(true);
+    expect(world.ended.filter((done) => done.id === REBOOT_ID)).toHaveLength(1);
+  }, 20_000);
+
+  /** The desk is gone while it installs, whichever keyboard asks for it. */
+  it('refuses the work in its own sentence while it is installing', () => {
+    const world = rebootWorld();
+    const { entry, landingAfter } = rebootDay(world);
+    const open = world.session.engine.graph.nodesOfKind('ticket')
+      .find(isUnresolved);
+
+    expect(open).toBeDefined();
+    // Every window spent, so the thing itself is running.
+    runTo(world.driver, world.session, entry.tick);
+
+    for (let spend = 0; spend < REBOOT_POSTPONES.length; spend += 1) {
+      expect(world.driver.deferInterruption().ok).toBe(true);
+      runTo(world.driver, world.session, landingAfter(spend + 1));
+    }
+
+    const refused = world.driver.dispatch(
+      HELPDESK_ACTIONS.ticketClassify,
+      COMPANY_IDS.player,
+      open?.id ?? '',
+      { impact: 1, urgency: 1 },
+    );
+
+    expect(refused).toEqual({ ok: false, reason: INSTALLING_UPDATES_REASON });
+    expect(world.driver.drink()).toEqual({
+      ok: false,
+      reason: INSTALLING_UPDATES_REASON,
+    });
+    expect(world.driver.tidyDesk()).toEqual({
+      ok: false,
+      reason: INSTALLING_UPDATES_REASON,
+    });
+
+    // And the desk comes back: whatever the world then says about the request,
+    // it is no longer the workstation saying it.
+    runTo(world.driver, world.session, world.session.engine.now()
+      + REBOOT_MINUTES);
+
+    const after = world.driver.dispatch(
+      HELPDESK_ACTIONS.ticketClassify,
+      COMPANY_IDS.player,
+      open?.id ?? '',
+      { impact: 1, urgency: 1 },
+    );
+
+    expect(after.ok || after.reason !== INSTALLING_UPDATES_REASON).toBe(true);
+  }, 20_000);
+
+  /**
+   * The gate the budget's whole design is for: what is left of it is in the
+   * WORLD, so a tab closed mid-countdown opens on the same minute with the
+   * same number of pushes left.
+   *
+   * A driver that had been counting them would hand a restored countdown its
+   * budget back, which is the quiet version of an update that can be put off
+   * for ever.
+   */
+  it('comes out of a save file with the pushes it had left', () => {
+    const world = rebootWorld();
+    const { entry, landingAfter } = rebootDay(world);
+
+    runTo(world.driver, world.session, entry.tick);
+    world.driver.deferInterruption();
+    runTo(world.driver, world.session, landingAfter(1));
+    world.driver.deferInterruption();
+    // Between the second push and the third arrival: nothing is on the screen,
+    // and the only record of what has been spent is the ledger.
+    runTo(world.driver, world.session, landingAfter(1) + 2);
+
+    const savedAt = world.session.engine.now();
+    const file = world.session.engine.serialize();
+    const fresh = createWorldSession();
+    const loaded = new DayDriver(
+      fresh.engine,
+      COMPANY_IDS.player,
+      fresh.seed,
+      {
+        onDayBoundary: () => {},
+        openSlackApps: () => [],
+        focusedSlackApp: () => null,
+      },
+      planWithReboot(REBOOT_MINUTE),
+    );
+
+    fresh.engine.restore(file);
+    loaded.restoreDriverState(world.driver.driverState());
+
+    expect(fresh.engine.now()).toBe(savedAt);
+    expect(loaded.interruption()).toBeNull();
+
+    // The third arrival lands where the two spent pushes put it, and it says
+    // one is left rather than three.
+    while (fresh.engine.now() < landingAfter(2) && loaded.state() === 'shift') {
+      loaded.step(TICK_INTERVAL_MS);
+    }
+
+    const back = loaded.interruption();
+
+    expect(back?.entry.id).toBe(REBOOT_ID);
+    expect(back?.entry.tick).toBe(landingAfter(2));
+    expect(back?.postponesLeft).toBe(1);
+    expect(back?.callback).toBe(true);
+  }, 20_000);
+
+  /**
+   * Precedence, constructed: a workstation authored onto the same minute as a
+   * ringing phone. One takeover at a time is a property of the SCHEDULE, so
+   * the reboot slides at construction rather than the two sharing a screen -
+   * and the day plays through to five without the driver's runtime assert
+   * firing.
+   */
+  it('slides off a call that was already on that minute', () => {
+    const call = entryOn(createWorldSession(), REBOOT_DAY, 'call:spooler');
+    const world = rebootWorld(minuteOfDay(call.tick));
+    const { entry } = rebootDay(world, minuteOfDay(call.tick));
+
+    expect(entry.slidFrom).not.toBeNull();
+    expect(entry.tick).toBeGreaterThanOrEqual(call.endsTick);
+
+    runTo(world.driver, world.session, shiftEndTick(REBOOT_DAY));
+
+    expect(world.arrivals.map((view) => view.entry.id))
+      .toContain(REBOOT_ID);
+    expect(world.arrivals.map((view) => view.entry.id))
+      .toContain('call:spooler');
+  }, 20_000);
 });
 
 /* -- the half hour nobody chose -------------------------------------------- */
