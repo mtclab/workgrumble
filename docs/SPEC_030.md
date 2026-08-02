@@ -119,3 +119,70 @@ Forced reboot (0.3.1 headline candidate - it wants the same rails plus the updat
 presence status (its own slice; touches suspicion/reputation balance), walk-ups, no-hello beats,
 `arrives_minutes_before_close`, reply-all day, password-rotation day, camera-on stacking. The
 Assistant (E2, issue #3) may ride whichever 0.3.x release has room in its notes.
+
+---
+
+# Slice 0.3.1 - the forced reboot (issue #10)
+
+The flagship of the interruption family: the update that arrives mid-work, postponable a
+dwindling number of times, and then simply happens while every clock runs. Rides the 0.3.0
+rails end to end - a machine-source entry, the takeover class, refocus at desk-handback, the
+same precedence discipline. What is new is the postpone budget and the update screen.
+
+## The postpone budget (engine, lane A)
+
+1. 0.3.0's defer is once, twenty minutes, flat. The reboot needs `postpones: [10, 5, 2]` -
+   per-entry data, a SHRINKING list of windows, each spent postpone re-queuing the entry that
+   many minutes out. Generalize the defer machinery to a budget: the world records each spend
+   (spend count derivable from the graph - the driver must not keep it), the entry's arrival
+   says how many are left, and the last arrival offers nothing. A call keeps its budget of one
+   with a twenty-minute window - the 0.3.0 shape is the special case, and its tests must not
+   move.
+2. **Not declinable, and the refusal says why**: "The updates have been declined for four
+   months. The option has been withdrawn. This is not IT's decision, and IT would like that
+   noted." Content bar: the true reason, taught by the refusal.
+3. The reboot cannot slide out of the day: `postpones` is authored so the worst case still
+   lands inside the shift with room for the update minutes. The loader refuses a reboot whose
+   worst case leaks past close - quiet wrongness is the enemy.
+4. Off-hours: the new fields join the forbidden list. Extended, never weakened.
+
+## The update screen (shell, lane B)
+
+5. At zero, the takeover: rebooting workstation, then "Working on updates. 30%. Do not turn
+   off your workstation." Percentages move with the honesty of the real thing - which is to
+   say they are theatre pinned to real minutes: the DURATION is true (data, sim-minutes,
+   clocks running), the percentage is a performance of it. Pause/speed and the Start menu
+   stay reachable (0.3.0's desk-not-workstation rule); every desk surface refuses through the
+   same dispatch seam with its own sentence ("The workstation is installing updates. It said
+   so. It is not sorry.").
+6. **Never the player's data**: the app-state store restores every window, every draft, every
+   terminal scrollback exactly. The screen says "Restoring your work... (most of it)" - the
+   doubt is the joke, the restore is total, and the gap between what the screen implies and
+   what the world did is the whole comedy register of this game.
+7. Refocus applies at desk-handback, malignant by construction (no related ticket). Arrival
+   stress on the countdown's FIRST arrival only - the postponed re-arrivals are the same
+   dread, not new dread.
+8. **Real deploys ride it**: first boot on a changed build version plays the update screen
+   before the release-notes window. One animation, two masters - the fiction's updates and
+   ours - and the release note IS the changelog, as it already is.
+
+## Content
+
+9. The probation week gets ONE reboot: Thursday 14:10, first arrival mid-afternoon where the
+   queue is warmest, worst case landing ~15:00. Tuesday/Wednesday stay as shipped - three
+   interruption shapes across the week was the 0.3.0 argument, the fourth joins the day that
+   had none.
+
+## Gates
+
+10. Journey: countdown at 14:10 mid-ticket, three postpones spent truthfully (each arrival
+    names the remainder), reboot fires, update screen holds the desk while a deadline crosses
+    inside it, windows and drafts restored byte-true after, refocus chip up at desk-handback.
+11. Solvability walks the worst case (all postpones spent, latest landing); no advertised
+    path uncompletable. Loader-refusal test for a reboot authored to leak past close.
+12. Mid-countdown and mid-reboot saves reload to the same screen, same remaining budget, same
+    clocks. Budget spend must round-trip through the world graph, not driver state.
+13. Precedence: constructed collisions (reboot due during meeting, call due during reboot)
+    slide per the 0.3.0 discipline; runtime assert unchanged.
+14. The 0.3.0 defer tests do not move - the budget generalization is invisible at budget one.
+15. Goldens move once, argued. Both halves on box, count checked.
