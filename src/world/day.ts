@@ -123,9 +123,32 @@ export interface DayArrival {
  * by dividing the shift into equal parts was a scheduler content could not
  * write against.
  */
+/**
+ * One arrival the day's table asked for, resolved to a minute.
+ *
+ * `pinned` is the 4:55 class, and it is a flag rather than a second list
+ * because it changes exactly two things about placement and nothing else: a
+ * pinned arrival takes no jitter and is not pulled back inside the drip
+ * window. Both of those are the POINT of it - a ticket that arrives five
+ * minutes before close is a ticket the ordinary rule (`DRIP_CLOSES_BEFORE`)
+ * exists to forbid, because the ordinary rule is "a ticket you cannot start is
+ * a cheat", and this class is the honest exception: you cannot start it, it
+ * carries its truth into tomorrow, and the arithmetic that says so is the
+ * business-hours one that already exists.
+ *
+ * Nothing sets it but content that asked for it by name. The week's loader is
+ * where "five minutes before close" becomes a minute and where nonsense is
+ * refused, so by the time a plan reaches here the minute is already a minute.
+ */
+export interface DripArrival {
+  readonly ticketId: string;
+  readonly minute: number;
+  readonly pinned?: boolean;
+}
+
 export interface DayPlan {
   readonly inherited: readonly string[];
-  readonly drip: readonly { readonly ticketId: string; readonly minute: number }[];
+  readonly drip: readonly DripArrival[];
 }
 
 export interface DaySchedule {
@@ -214,12 +237,24 @@ export function buildDaySchedule(
   const arrivals: DayArrival[] = [
     ...plan.inherited.map((ticketId) => ({ tick: opensTick, ticketId })),
     ...plan.drip.map((slot) => ({
-      tick: clamp(
-        tickAtMinute(day, slot.minute)
-          + seededOffset(seed, day, slot.ticketId, DRIP_JITTER),
-        window.from,
-        window.to,
-      ),
+      // A pinned arrival lands on the minute it was authored for, full stop.
+      // No jitter, because "five to five" is the whole content of it and a
+      // wander of twelve minutes either way would make it a quarter to; and no
+      // clamp, because the drip window is the rule this class is the exception
+      // to. It is still held inside the shift, which is the one bound that is
+      // not negotiable - nobody is at the desk at half past five.
+      tick: slot.pinned === true
+        ? clamp(
+          tickAtMinute(day, slot.minute),
+          shiftStartTick(day),
+          shiftEndTick(day),
+        )
+        : clamp(
+          tickAtMinute(day, slot.minute)
+            + seededOffset(seed, day, slot.ticketId, DRIP_JITTER),
+          window.from,
+          window.to,
+        ),
       ticketId: slot.ticketId,
     })),
   ];

@@ -32,6 +32,7 @@ import {
   dayLedger,
   dripWindow,
   SHIFT_END_MINUTE,
+  SHIFT_MINUTES,
   SHIFT_START_MINUTE,
   shiftStartTick,
 } from './day';
@@ -40,7 +41,13 @@ import { buildPatrolSchedule, patrolWindows } from './boss';
 import { COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
 import { findIncident, INCIDENTS } from './incidents';
-import { FLAVOR, flavorText, type InterruptionPlan, type InterruptionSlot } from './interruptions';
+import {
+  FLAVOR,
+  flavorText,
+  INTERRUPTION_CLOSES_BEFORE,
+  type InterruptionPlan,
+  type InterruptionSlot,
+} from './interruptions';
 import {
   HYGIENE_SYNC_MINUTE,
   HYGIENE_SYNC_MINUTES,
@@ -289,11 +296,121 @@ export function weekStanding(
   return mark === null ? carried : weightedWeekPerformance(carried, mark);
 }
 
-/** A ticket that turns up during a shift, and the minute it nominally does. */
+/**
+ * A ticket that turns up during a shift, and when.
+ *
+ * Two ways to say when, and exactly one of them per row - the loader refuses
+ * both and refuses neither, because a slot with two answers is a slot whose
+ * arrival depends on which field a reader looked at first.
+ */
 export interface DripSlot {
   readonly ticketId: string;
   /** Minute of the day, in the same clock the player reads: 630 is 10:30. */
+  readonly minute?: number;
+  /**
+   * Or the same minute counted BACKWARDS from the end of the shift, which is
+   * the whole of the 4:55 class.
+   *
+   * It is data rather than a feature and it is written this way round on
+   * purpose: what makes the request land is its distance from home time, not
+   * the hour on the clock, and a row that typed 1015 would say nothing about
+   * why. Five means five to five; the loader turns it into a minute, refuses a
+   * negative one and refuses one longer than the shift, and the arrival is
+   * PINNED - no jitter, no pulling it back inside the ordinary drip window,
+   * because being outside that window is the point.
+   *
+   * What it costs the player is honest arithmetic rather than a scripted
+   * cruelty: the response clock runs in business minutes, so a ticket raised
+   * five minutes before close with an hour on it is not late until tomorrow
+   * morning - and it is somebody's tomorrow morning either way.
+   */
+  readonly arrivesMinutesBeforeClose?: number;
+}
+
+/**
+ * The minute a drip slot actually asks for, whichever way it asked.
+ *
+ * One reader, so the loader, the day plan and any test all get the same
+ * answer. It trusts the loader for sense: `validateWeek` has already refused
+ * a row with both fields, a row with neither, and a distance from close that
+ * is not a distance.
+ */
+export function dripMinute(slot: Readonly<DripSlot>): number {
+  return slot.minute
+    ?? SHIFT_END_MINUTE - (slot.arrivesMinutesBeforeClose ?? 0);
+}
+
+/** Whether this row is the 4:55 class, which places differently. */
+export function arrivesBeforeClose(slot: Readonly<DripSlot>): boolean {
+  return slot.arrivesMinutesBeforeClose !== undefined;
+}
+
+/**
+ * Somebody who did not message and did not ring: they walked over.
+ *
+ * The interruption row is the half that takes the screen - it is an ordinary
+ * `walk_up` entry and goes through the same schedule, the same precedence and
+ * the same three answers as everything else in the family. What is here as
+ * well is the half a call does not have: the ASK. A walk-up is somebody
+ * standing at the desk with something that should be a ticket, so it carries
+ * the same three fields the direct message carries, for the same reason and
+ * read by the same rule - the world fact that says the job got done, the
+ * ticket they raise when it did not, and how long they take to get round to
+ * raising it.
+ *
+ * Both answers are legitimate. Doing it off the books costs the minutes it
+ * costs and leaves nothing behind: no ticket, no clock, no line on Friday's
+ * card. Sending them to the form leaves a ticket with a deadline on it and
+ * credit at the end of the week. The difference turns up on the scorecard
+ * rather than in a telling-off, which is the whole of the lesson and is the
+ * same shape `DmSlot` already teaches from a chat window.
+ */
+export interface WalkUpSlot {
+  /** The interruption that puts them at your shoulder. */
+  readonly slot: InterruptionSlot;
+  /** The ticket they raise, properly, if the job does not get done. */
+  readonly raises: string;
+  /** How long after they walk away it takes them to get round to it. */
+  readonly filesAfter: number;
+  /**
+   * The world fact that says you did it for them instead.
+   *
+   * A tick on a node: if it holds a number at or after the minute they asked,
+   * the favour was done and there is nothing left to raise. Read off the graph
+   * rather than off which button was pressed, because the FAVOUR is a change
+   * to the world and reading the world is the only way to know it happened -
+   * whichever surface did it, and whether or not the conversation was the
+   * thing that prompted it.
+   */
+  readonly doneWhen: { readonly node: string; readonly field: string };
+}
+
+/**
+ * Somebody opening a chat with the word "Hi." and then nothing.
+ *
+ * Not an arrival, not a takeover, and not a cost the world charges: the whole
+ * mechanic is the GAP. The thread opens with a greeting and no question in it,
+ * a typing indicator cycles, and the minutes it cycles for are minutes of the
+ * shift like any other. Asking what they want gets the question immediately;
+ * waiting gets it when they have finished typing it, which is the same
+ * question and several minutes later.
+ *
+ * It is scheduled like everything else rather than being a special case in the
+ * chat window, because a beat nobody can put on a calendar is a beat nobody
+ * can balance.
+ */
+export interface NoHelloSlot {
+  /** The person node who says hello. Their tree carries what comes next. */
+  readonly speaker: string;
   readonly minute: number;
+  /**
+   * How long they take to type the actual question, in simulated minutes.
+   *
+   * The number is the cost, said out loud in data: waiting it out is these
+   * many minutes of a shift that does not stop, and the reply that skips it is
+   * one click. Both are legitimate; only one of them is free.
+   */
+  readonly typingMinutes: number;
 }
 
 /**
@@ -363,6 +480,19 @@ export interface DayScript {
    */
   readonly interruptions?: readonly InterruptionSlot[];
   /**
+   * And who comes to the desk in person, which is an interruption with an ask
+   * attached to it.
+   *
+   * A column of its own rather than a flag on the one above, because the
+   * interruption is only half of a walk-up: the other half is the favour, and
+   * a favour has a ticket, a delay and a world fact behind it. `interruptionsOn`
+   * folds the two columns together so the schedule never learns the
+   * difference - one takeover at a time still means one takeover at a time.
+   */
+  readonly walkUps?: readonly WalkUpSlot[];
+  /** And who opens a chat with "Hi." and then makes you wait for the rest. */
+  readonly noHello?: readonly NoHelloSlot[];
+  /**
    * A twist on the world seed for the lead's rounds, so two days do not walk
    * in lockstep even where their content is identical. Monday takes the seed
    * as it comes: it is the day every other schedule is read against.
@@ -410,6 +540,18 @@ export const WEEK: readonly DayScript[] = validateWeek([
       {
         incidentId: INCIDENTS.cleanerNeedsTheSocket,
         minute: 16 * 60 + 56,
+      },
+    ],
+    // Ten to eleven, and the man with eleven years' service opening with the
+    // word "Hi." and nothing else. Monday keeps its rule - nothing takes the
+    // desk on the day the two basic tools are taught - because this takes
+    // nothing: it is a line in a chat window, and what it costs is the five
+    // minutes somebody spends watching a typing indicator instead of asking.
+    noHello: [
+      {
+        speaker: COMPANY_IDS.owen,
+        minute: 10 * 60 + 50,
+        typingMinutes: 5,
       },
     ],
     patrolSeed: 0,
@@ -483,6 +625,28 @@ export const WEEK: readonly DayScript[] = validateWeek([
       // piece of arithmetic: a listing's own byte total held against the free
       // space in its footer, on a box that has been quietly full since 1997.
       { ticketId: 'ticket:disk-full', minute: 14 * 60 + 40 },
+      /**
+       * And five minutes before everybody goes home, which is the whole of
+       * what this row says.
+       *
+       * It is written as a distance from close rather than as 16:55 because
+       * the distance is the content: what makes it the request it is has
+       * nothing to do with the hour on the clock and everything to do with
+       * there being five minutes of shift left. The loader turns it into a
+       * minute, it takes no jitter, and it is deliberately outside the window
+       * every other arrival is pulled back inside - the rule that says "a
+       * ticket you cannot start is a cheat" is the rule this class exists to
+       * be the honest exception to.
+       *
+       * Wednesday rather than Friday, and that is the point of shipping it at
+       * all: the seed this generalizes was a Friday-at-17:55 cliffhanger, and
+       * a field that only ever appeared on a Friday would be a Friday wearing
+       * a field's clothes. Mid-week, its response window crosses the night by
+       * the business-hours arithmetic that was already there - an hour from
+       * 16:55 is five minutes of tonight and fifty-five of tomorrow, so it is
+       * not late until 09:55 on the Thursday, and nobody had to script that.
+       */
+      { ticketId: 'ticket:vpn-month-end', arrivesMinutesBeforeClose: 5 },
     ],
     incidents: [
       { incidentId: INCIDENTS.maintenanceWindow, minute: 9 * 60 },
@@ -585,6 +749,18 @@ export const WEEK: readonly DayScript[] = validateWeek([
         },
       },
     ],
+    // Twenty-five to ten, and the new starter doing it for the opposite
+    // reason to Owen: he has been told not to be abrupt with people. Thursday
+    // is the heavy day and this is the cheapest beat in the week - one line in
+    // a chat window, three minutes of typing indicator, and a question that
+    // was never worth a ticket in the first place.
+    noHello: [
+      {
+        speaker: COMPANY_IDS.kwame,
+        minute: 9 * 60 + 35,
+        typingMinutes: 3,
+      },
+    ],
     patrolSeed: 8_803,
     load: 4,
   },
@@ -601,6 +777,67 @@ export const WEEK: readonly DayScript[] = validateWeek([
       { ticketId: 'ticket:saved-into-temp', minute: 9 * 60 + 40 },
       { ticketId: 'ticket:coverup-backup', minute: 10 * 60 + 30 },
       { ticketId: 'ticket:hr-report-macro', minute: 11 * 60 + 15 },
+    ],
+    /**
+     * Twenty to twelve, and somebody at the desk rather than on the phone.
+     *
+     * Friday is the day that had nothing taking the screen at all - the call
+     * is Tuesday's, the room is Wednesday's, the workstation is Thursday's -
+     * so the fifth shape of the family joins the day that had none, exactly
+     * as the fourth did. It is also the right day for it in fiction: the
+     * queue is light, the review is at three, and a two-minute favour is at
+     * its most tempting on the morning where there is obviously time.
+     *
+     * It carries no ticket of its own (`relatedTicket: null`) because it is
+     * about no work anybody is holding, which makes it malignant by
+     * construction and costs the refocus window at the far end. It is
+     * declinable - you can say not now to a person, which is more than you
+     * can say to a workstation - and it takes no jitter, because he came down
+     * on his way past and payroll runs to a timetable.
+     *
+     * PAYROLL-04 is deliberately a machine no other ticket in the roster is
+     * about. A dispatch aimed at a ticket's estate stops that ticket's
+     * response clock, so a favour done on a machine that some OTHER ticket is
+     * also about would quietly mark that one as answered - which is a real
+     * mechanic being used by accident, and the sort of cross-talk that reads
+     * as a bug in the conduct file rather than as a choice here.
+     *
+     * What the dot does to it is nothing at all: `walk_up` is exempt in
+     * `READS_THE_DOT`, because a body at the desk can see you.
+     */
+    walkUps: [
+      {
+        slot: {
+          id: 'walk_up:gary-restart',
+          source: 'walk_up',
+          minute: 11 * 60 + 40,
+          minutes: 6,
+          relatedTicket: null,
+          declinable: true,
+          severity: 2,
+          flavor: {
+            [FLAVOR.caller]: COMPANY_IDS.gary,
+            [FLAVOR.subject]: 'At your desk, about a restart she keeps '
+              + 'putting off',
+            [FLAVOR.opens]: 'at-the-desk',
+            [FLAVOR.opensFumbling]: 'at-the-desk-shaky',
+          },
+        },
+        raises: 'ticket:gary-restart',
+        // Long enough to walk back to Sales and find the form, short enough
+        // that the ticket is a consequence of the conversation rather than an
+        // event later in the day nobody connects to it.
+        filesAfter: 8,
+        // The world fact, not the button: the machine's uptime is stamped by
+        // the reboot itself, so doing it from Remote Assist an hour later
+        // counts exactly as much as doing it while she stood there - and
+        // saying "I will get to it" and not getting to it counts as nothing,
+        // which is the honest reading of that answer.
+        doneWhen: {
+          node: COMPANY_IDS.garyMachine,
+          field: FIELDS.uptimeSince,
+        },
+      },
     ],
     patrolSeed: 2_141,
     load: 2,
@@ -663,20 +900,29 @@ export function validateWeek(
     const window = dripWindow(script.day);
 
     for (const slot of script.drip) {
-      const tick = shiftStartTick(script.day)
-        + (slot.minute - SHIFT_START_MINUTE);
+      requireDripSlot(script.day, slot);
+      const minute = dripMinute(slot);
+      const tick = shiftStartTick(script.day) + (minute - SHIFT_START_MINUTE);
+
+      // The 4:55 class is the exception to the drip window and to nothing
+      // else. It still has to land inside a shift, because a ticket that
+      // arrived at half past five arrived at a desk nobody is at - and that
+      // is quiet wrongness rather than a mechanic.
+      if (arrivesBeforeClose(slot)) {
+        requireWorkingMinute(script.day, minute, slot.ticketId);
+        continue;
+      }
 
       if (
-        slot.minute < SHIFT_START_MINUTE
-        || slot.minute > SHIFT_END_MINUTE
+        minute < SHIFT_START_MINUTE
+        || minute > SHIFT_END_MINUTE
         || tick < window.from
         || tick > window.to
       ) {
         throw new Error(
           `Day ${String(script.day)} drips "${slot.ticketId}" at `
-          + `${String(Math.floor(slot.minute / 60)).padStart(2, '0')}:`
-          + `${String(slot.minute % 60).padStart(2, '0')}, which is outside `
-          + 'the hours anybody could start it in.',
+          + `${clockAt(minute)}, which is outside the hours anybody could `
+          + 'start it in.',
         );
       }
     }
@@ -705,6 +951,69 @@ export function validateWeek(
         slot.minute + slot.filesAfter,
         slot.raises,
       );
+    }
+
+    // Somebody saying hello and nothing else. Both ends of the gap have to be
+    // inside the hours: a greeting at ten to five whose question arrives at
+    // five past is a question nobody is at the desk to read, which is a beat
+    // that silently does not happen.
+    for (const slot of script.noHello ?? []) {
+      requireWorkingMinute(script.day, slot.minute, slot.speaker);
+
+      if (
+        !Number.isSafeInteger(slot.typingMinutes)
+        || slot.typingMinutes < 1
+      ) {
+        throw new Error(
+          `Day ${String(script.day)} has "${slot.speaker}" typing for `
+          + `${String(slot.typingMinutes)} minutes. A gap that costs nothing `
+          + 'is a greeting with the question already in it, which is the one '
+          + 'thing this beat is not.',
+        );
+      }
+
+      requireWorkingMinute(
+        script.day,
+        slot.minute + slot.typingMinutes,
+        slot.speaker,
+      );
+    }
+
+    // And somebody at the desk. The interruption half is checked with all the
+    // others below (`interruptionsOn` folds the columns together); what is
+    // checked here is the ask - the same two minutes the direct message is
+    // held to, because a walk-up is the same beat standing up.
+    for (const walkUp of script.walkUps ?? []) {
+      // The LATEST it could possibly happen rather than the minute it was
+      // authored for: a walk-up slides out of the lead's way like everything
+      // else, and a push buys twenty minutes on top of that, so the ticket it
+      // raises has to still land inside the day at the far end of both. The
+      // authored minute is the easy case and is not the one that goes wrong.
+      const leaves = SHIFT_END_MINUTE
+        - INTERRUPTION_CLOSES_BEFORE
+        + walkUp.slot.minutes
+        + walkUp.filesAfter;
+
+      if (!Number.isSafeInteger(walkUp.filesAfter) || walkUp.filesAfter < 1) {
+        throw new Error(
+          `Day ${String(script.day)} has "${walkUp.slot.id}" raising `
+          + `"${walkUp.raises}" after ${String(walkUp.filesAfter)} minutes. `
+          + 'Nobody walks back to their desk and files a ticket in no time at '
+          + 'all, and a ticket that arrives in the same minute as the '
+          + 'conversation is a conversation that decided nothing.',
+        );
+      }
+
+      requireWorkingMinute(script.day, leaves, walkUp.raises);
+
+      if (walkUp.slot.source !== 'walk_up') {
+        throw new Error(
+          `Day ${String(script.day)} files "${walkUp.slot.id}" as a walk-up `
+          + `and it comes from "${walkUp.slot.source}". A person at the desk `
+          + 'is the one source a status cannot turn away, and the exemption '
+          + 'reads the source.',
+        );
+      }
     }
 
     // An interruption's id is what the world records the player's decision
@@ -742,6 +1051,12 @@ export function validateWeek(
   return Object.freeze(scripts.map((script) => Object.freeze({ ...script })));
 }
 
+/** A minute of the day as the clock on the taskbar writes it. */
+function clockAt(minute: number): string {
+  return `${String(Math.floor(minute / 60)).padStart(2, '0')}:`
+    + `${String(minute % 60).padStart(2, '0')}`;
+}
+
 function requireWorkingMinute(
   day: number,
   minute: number,
@@ -749,10 +1064,54 @@ function requireWorkingMinute(
 ): void {
   if (minute < SHIFT_START_MINUTE || minute > SHIFT_END_MINUTE) {
     throw new Error(
-      `Day ${String(day)} puts "${what}" at `
-      + `${String(Math.floor(minute / 60)).padStart(2, '0')}:`
-      + `${String(minute % 60).padStart(2, '0')}, which is outside the hours `
-      + 'anybody is at the desk.',
+      `Day ${String(day)} puts "${what}" at ${clockAt(minute)}, which is `
+      + 'outside the hours anybody is at the desk.',
+    );
+  }
+}
+
+/**
+ * A drip row has to say when it arrives, once.
+ *
+ * Both fields is a row with two answers and no rule about which wins; neither
+ * is a row that arrives at nine o'clock because `?? 0` had to mean something.
+ * Both look like a working file and neither looks like a bug in play - the
+ * first is a ticket that turns up at the wrong time on some seeds, the second
+ * is a ticket that turns up before the shift and is quietly pulled forward.
+ */
+function requireDripSlot(day: number, slot: Readonly<DripSlot>): void {
+  const where = `Day ${String(day)}'s "${slot.ticketId}"`;
+
+  if (slot.minute !== undefined && slot.arrivesMinutesBeforeClose !== undefined) {
+    throw new Error(
+      `${where} says both which minute it arrives on and how long before `
+      + 'close. Those are two answers to one question.',
+    );
+  }
+
+  if (slot.minute === undefined && slot.arrivesMinutesBeforeClose === undefined) {
+    throw new Error(`${where} never says when it arrives.`);
+  }
+
+  const before = slot.arrivesMinutesBeforeClose;
+
+  if (before === undefined) {
+    return;
+  }
+
+  if (!Number.isSafeInteger(before) || before < 0) {
+    throw new Error(
+      `${where} arrives ${String(before)} minutes before close, and a `
+      + 'distance from home time is a whole number of minutes at or above '
+      + 'nought - a negative one is a ticket raised after everybody has gone.',
+    );
+  }
+
+  if (before > SHIFT_MINUTES) {
+    throw new Error(
+      `${where} arrives ${String(before)} minutes before close, which is `
+      + `before the shift started: there are ${String(SHIFT_MINUTES)} minutes `
+      + 'in a day here, and this class of ticket is about the end of one.',
     );
   }
 }
@@ -845,23 +1204,35 @@ export function assertWeekTickets<Entry extends RosterEntry>(
 
   // A message that raises a ticket nobody wrote is a Tuesday afternoon that
   // throws at twenty past two, in front of a player, on a beat that only fires
-  // when they were polite about it.
+  // when they were polite about it. A walk-up is the same claim standing up,
+  // so both columns are held to it in one loop rather than two.
   for (const script of WEEK) {
-    for (const slot of script.dms ?? []) {
-      const entry = known.get(slot.raises);
+    const asks: readonly { readonly by: string; readonly raises: string }[] = [
+      ...(script.dms ?? []).map((slot) => ({
+        by: slot.speaker,
+        raises: slot.raises,
+      })),
+      ...(script.walkUps ?? []).map((walkUp) => ({
+        by: walkUp.slot.id,
+        raises: walkUp.raises,
+      })),
+    ];
+
+    for (const ask of asks) {
+      const entry = known.get(ask.raises);
 
       if (entry === undefined) {
         throw new Error(
-          `Day ${String(script.day)} lets "${slot.speaker}" raise `
-          + `"${slot.raises}", which nobody wrote.`,
+          `Day ${String(script.day)} lets "${ask.by}" raise `
+          + `"${ask.raises}", which nobody wrote.`,
         );
       }
 
       if (entry.arrival !== 'summoned') {
         throw new Error(
-          `"${slot.raises}" is raised by a message and arrives `
-          + `"${entry.arrival}". A ticket somebody files because you said no `
-          + 'cannot also be dealt by the morning.',
+          `"${ask.raises}" is raised by somebody who asked you first and `
+          + `arrives "${entry.arrival}". A ticket somebody files because you `
+          + 'sent them to the form cannot also be dealt by the morning.',
         );
       }
     }
@@ -908,10 +1279,25 @@ export function reviewTick(day: number): number {
   return shiftStartTick(day) + (REVIEW_MINUTE - SHIFT_START_MINUTE);
 }
 
-/** What the day scheduler needs from a day: a pile and a drip. */
+/**
+ * What the day scheduler needs from a day: a pile and a drip.
+ *
+ * The two ways a row can say when it arrives are resolved HERE, once, so
+ * `buildDaySchedule` never learns that `arrives_minutes_before_close` exists -
+ * it is handed minutes and a flag saying which of them are pinned, which is
+ * the whole of what placement has to know.
+ */
 export function dayPlan(day: number): DayPlan {
   const script = dayScript(day);
-  return { inherited: script.inherited, drip: script.drip };
+
+  return {
+    inherited: script.inherited,
+    drip: script.drip.map((slot) => ({
+      ticketId: slot.ticketId,
+      minute: dripMinute(slot),
+      pinned: arrivesBeforeClose(slot),
+    })),
+  };
 }
 
 /** What the world does today, and who messages you, earliest first. */
@@ -923,9 +1309,36 @@ export function directMessagesOn(day: number): readonly DmSlot[] {
   return isWeekDay(day) ? dayScript(day).dms ?? [] : [];
 }
 
-/** What takes the screen off you today, as the week's table declares it. */
+/**
+ * What takes the screen off you today, as the week's table declares it.
+ *
+ * Both columns, folded into one list. A walk-up IS an interruption - it takes
+ * the screen, it slides out of the lead's way, it is charged an arrival like
+ * everything else - and the ask hanging off it is the day loop's business
+ * rather than the schedule's. Two lists reaching the scheduler separately
+ * would be two takeovers nobody had booked against each other.
+ */
 export function interruptionsOn(day: number): readonly InterruptionSlot[] {
-  return isWeekDay(day) ? dayScript(day).interruptions ?? [] : [];
+  if (!isWeekDay(day)) {
+    return [];
+  }
+
+  const script = dayScript(day);
+
+  return [
+    ...script.interruptions ?? [],
+    ...(script.walkUps ?? []).map((walkUp) => walkUp.slot),
+  ];
+}
+
+/** Who comes to the desk today, with the ask they bring with them. */
+export function walkUpsOn(day: number): readonly WalkUpSlot[] {
+  return isWeekDay(day) ? dayScript(day).walkUps ?? [] : [];
+}
+
+/** And who opens a chat today without saying what they want. */
+export function noHelloOn(day: number): readonly NoHelloSlot[] {
+  return isWeekDay(day) ? dayScript(day).noHello ?? [] : [];
 }
 
 /**

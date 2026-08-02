@@ -13,7 +13,12 @@ import { describe, expect, it } from 'vitest';
 
 import type { ReadOnlyGraphNode } from '../engine-api';
 import { buildPatrolSchedule, patrolWindows } from './boss';
-import { DAY_RATE_PENCE, dripWindow, shiftStartTick } from './day';
+import {
+  DAY_RATE_PENCE,
+  dripWindow,
+  shiftEndTick,
+  shiftStartTick,
+} from './day';
 import { FIELDS } from './fields';
 import { minuteOfDay, tickAtMinute } from './hours';
 import {
@@ -26,10 +31,12 @@ import { HYGIENE_SYNC_MINUTE, HYGIENE_SYNC_MINUTES } from './scenes/meeting';
 import { seedForAttempt } from './session';
 import { WORLD_TICKETS } from './tickets';
 import {
+  arrivesBeforeClose,
   assertWeekTickets,
   type DayScript,
   dayPlan,
   dayScript,
+  dripMinute,
   inheritedTicketIds,
   isReviewDay,
   interruptionPlanFor,
@@ -144,7 +151,17 @@ describe('the shipped week', () => {
       const window = dripWindow(script.day);
 
       for (const slot of script.drip) {
-        const tick = shiftStartTick(script.day) + (slot.minute - 9 * 60);
+        // The 4:55 class is deliberately outside this window - being outside
+        // it is the whole of what it is - so it is held to the shift instead,
+        // which is the bound that is not negotiable.
+        const tick = shiftStartTick(script.day) + (dripMinute(slot) - 9 * 60);
+
+        if (arrivesBeforeClose(slot)) {
+          expect(tick).toBeGreaterThan(window.to);
+          expect(tick).toBeLessThanOrEqual(shiftEndTick(script.day));
+          continue;
+        }
+
         expect(tick).toBeGreaterThanOrEqual(window.from);
         expect(tick).toBeLessThanOrEqual(window.to);
       }
@@ -154,7 +171,11 @@ describe('the shipped week', () => {
   it('gives the day scheduler the day it asks for', () => {
     expect(dayPlan(1)).toEqual({
       inherited: dayScript(1).inherited,
-      drip: dayScript(1).drip,
+      drip: dayScript(1).drip.map((slot) => ({
+        ticketId: slot.ticketId,
+        minute: dripMinute(slot),
+        pinned: arrivesBeforeClose(slot),
+      })),
     });
     expect(inheritedTicketIds(1)).toEqual(dayScript(1).inherited);
     expect(() => dayScript(6)).toThrow(/does not include a Saturday/);
@@ -317,14 +338,20 @@ describe('the day\'s interruptions', () => {
    * which is the line lane A left as the marker for "the goldens may now
    * move". It is written as an exact per-day list rather than as a count
    * because the SHAPE is the claim the slice makes: one call that carries a
-   * ticket, one block nobody can refuse, one call that carries nothing, and -
-   * from 0.3.1 - one machine that carries nobody at all. A week that quietly
-   * grew a fifth, or lost the malignant one, would still have "some
-   * interruptions in it" and would no longer be teaching the cost model.
+   * ticket, one block nobody can refuse, one call that carries nothing, one
+   * machine that carries nobody at all, and - from 0.3.4 - one person who
+   * came to the desk. A week that quietly grew a sixth, or lost the malignant
+   * one, would still have "some interruptions in it" and would no longer be
+   * teaching the cost model.
    *
    * The Thursday holds two, which is the only day that does, and they are two
    * different lessons an hour and a half apart: a person you may wave off at
    * twenty past eleven, and a machine you may not at ten past two.
+   *
+   * The Friday's entry is in this list at all because `interruptionsOn` folds
+   * the walk-up column in: the schedule must see one takeover family rather
+   * than two, or two lists would book minutes against each other and neither
+   * would know.
    */
   it('authors one of each shape into the shipped probation week', () => {
     expect(WEEK.map((script) => interruptionsOn(script.day).map(
@@ -337,7 +364,7 @@ describe('the day\'s interruptions', () => {
         ['call:annexe-printer', 'call', null],
         ['machine:reboot', 'machine', null],
       ],
-      [],
+      [['walk_up:gary-restart', 'walk_up', null]],
     ]);
 
     expect(interruptionsOn(0)).toEqual([]);

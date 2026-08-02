@@ -142,6 +142,10 @@ export function flavorText(
 const REQUIRED_FLAVOR: Readonly<Partial<Record<InterruptionSource, readonly string[]>>> = {
   call: [FLAVOR.caller, FLAVOR.subject, FLAVOR.opens],
   meeting: [FLAVOR.scene, FLAVOR.subject],
+  // A walk-up is a person, drawn in the same window a call is, so it wants the
+  // same three words: who is standing there, what they want, and the line the
+  // conversation opens on. The only thing it does not want is a phone.
+  walk_up: [FLAVOR.caller, FLAVOR.subject, FLAVOR.opens],
   // A machine has no caller and no room, and what it wants is the whole of
   // what it says: one line naming the thing it is about to do to your morning.
   machine: [FLAVOR.subject],
@@ -234,20 +238,51 @@ export function declineWithdrawn(
 }
 
 /**
+ * Which sources READ the dot, as a table rather than as a chain of `!==`.
+ *
+ * A table because the question is per-source content rather than a rule with
+ * exceptions, and because a `Record` over the source union is a thing the
+ * compiler makes somebody answer: a fourth source cannot be authored without
+ * a line here saying whether a status is any use against it. The chain of
+ * inequalities this replaced was silently permissive - anything new dodged by
+ * default, and the default was the wrong answer for two of the three sources
+ * that existed.
+ *
+ * Three of them are exempt and every one of them is exempt BY CONSTRUCTION
+ * rather than by policy:
+ *
+ * - a MEETING is a room with a time on it and people already in it;
+ * - a MACHINE has decided, and there is nobody on the other end of it to read
+ *   anything;
+ * - a WALK-UP is a body at the desk. A person standing in front of you does
+ *   not check your status first - they can see you, which is precisely what
+ *   makes the walk-up the interruption the dot cannot buy quiet from, and
+ *   which is the whole reason it is in this table rather than in a comment.
+ */
+export const READS_THE_DOT: Readonly<Record<InterruptionSource, boolean>> =
+  Object.freeze({
+    call: true,
+    chat: true,
+    boss: true,
+    meeting: false,
+    machine: false,
+    walk_up: false,
+  });
+
+/** Whether a status is any use at all against this source. */
+export function readsTheDot(source: InterruptionSource): boolean {
+  return READS_THE_DOT[source];
+}
+
+/**
  * Whether a red dot is allowed to make this one go away for a while.
  *
- * Two exemptions, and both are by construction rather than by policy. A
- * MEETING is a room with a time on it and people already in it; a MACHINE has
- * decided and there is nobody on the other end of it to read anything. Neither
- * is somebody a status can be shown to, so the Wednesday sync and the Thursday
- * reboot stay undodgeable however the tray is set.
- *
- * The third condition is the declinable flag, and it is not a shortcut for the
- * two above it: it is the same question decline asks. Anything a person could
+ * Two conditions, and the second is not a shortcut for the first: the
+ * declinable flag is the same question decline asks. Anything a person could
  * have been told no to is a thing that same person can decide not to ring, and
- * the loader already refuses a machine that claims to be declinable - so the
- * two sets are the same set, and saying all three out loud is what keeps that
- * true when a fourth source is authored.
+ * the loader already refuses a machine that claims to be declinable - so
+ * saying both out loud is what keeps the two sets the same set when a fourth
+ * source is authored.
  *
  * A CALLBACK is deliberately not dodgeable: `deferredArrival` marks it
  * undeclinable, which is 0.3.0's rule said in one place - you asked them to
@@ -258,10 +293,7 @@ export function dodgesUnderDnd(
   entry: Readonly<Pick<InterruptionEntry, 'source' | 'declinable'>>,
   presence: Presence,
 ): boolean {
-  return presence === 'dnd'
-    && entry.declinable
-    && entry.source !== 'meeting'
-    && entry.source !== 'machine';
+  return presence === 'dnd' && entry.declinable && readsTheDot(entry.source);
 }
 
 /**
