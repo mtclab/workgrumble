@@ -2304,6 +2304,24 @@ input {
   min-height: 0;
 }
 
+/*
+ * Somebody composing, and the price of watching them do it.
+ *
+ * It keeps its height when the cadence blanks - a row that appeared and
+ * disappeared once a minute would move the one option the player is reaching
+ * for - and it sits under the columns rather than inside the panel, because
+ * the panel is rebuilt only when what it says changes and this changes every
+ * minute on purpose.
+ */
+.chat-typing {
+  min-height: 1.4em;
+  padding: var(--space-1) var(--space-3);
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+  font-size: var(--text-xs);
+  font-style: italic;
+}
+
 .chat-people,
 .mail-list,
 .kb-list,

@@ -186,9 +186,119 @@ const CATS: BrowserSite = {
   },
 };
 
+/**
+ * The page Owen's daughter sent him, which he read and agreed with and then
+ * ignored the next morning.
+ *
+ * It is a forum thread rather than a manifesto, and that is the joke doing its
+ * own work: the real page is one polite paragraph, and what the internet in
+ * this building does with one polite paragraph is have an argument about it
+ * for two days and then say hello to each other in it. Nobody in the thread is
+ * stupid and nobody is a villain - the strongest position in it is also the
+ * one that is wrong, and the last post is the whole point.
+ *
+ * It is in the browser's list because the veteran LINKS it, in his own
+ * conversation, at the end of the beat it is about. A page nobody is sent to
+ * is a page nobody reads, which is the same rule the KB keeps.
+ */
+const NO_HELLO: BrowserSite = {
+  id: 'nohello',
+  title: 'no hello',
+  url: 'http://nohello.invalid/',
+  page: {
+    kind: 'forum',
+    heading: 'PLEASE DO NOT SAY JUST HELLO IN CHAT',
+    board: 'Etiquette > Instant Messaging > Workplace',
+    posts: [
+      {
+        author: 'nohello (site owner)',
+        when: 'Thu 08:12',
+        body: [
+          'When you open with "hi" and then wait, you have started a '
+          + 'conversation and given the other person nothing to do with it. '
+          + 'They cannot answer, they cannot decide whether it is urgent, and '
+          + 'they cannot get back to what they were doing, because you are '
+          + 'still typing.',
+          'Say hello AND the question, in the same message. That is the whole '
+          + 'of it. There is no course.',
+        ],
+        signature: 'This page has one idea on it and that is deliberate',
+      },
+      {
+        author: 'RegionalBrian',
+        when: 'Thu 08:40',
+        body: [
+          'Strongly disagree. Launching straight into a request is rude. I '
+          + 'was raised to greet people.',
+        ],
+        signature: 'Sent from a device I do not understand',
+      },
+      {
+        author: 'nohello (site owner)',
+        when: 'Thu 08:44',
+        body: [
+          'Greet them. In the same message. As the first four words of the '
+          + 'message that also contains the question.',
+        ],
+      },
+      {
+        author: 'RegionalBrian',
+        when: 'Thu 09:02',
+        body: [
+          'That is not how a conversation works.',
+        ],
+      },
+      {
+        author: 'HelpdeskOfNineYears',
+        when: 'Thu 09:15',
+        body: [
+          'It is exactly how a conversation works when one of the people in '
+          + 'it has forty of them open and a clock on every single one.',
+          'I have counted. Eleven minutes a day, every day, waiting for the '
+          + 'second message. That is a working week a year of watching three '
+          + 'dots.',
+        ],
+      },
+      {
+        author: 'Pauline_H',
+        when: 'Thu 10:31',
+        body: [
+          'I have printed this out and put it by the kettle. Two people have '
+          + 'already come over to tell me they agree with it.',
+        ],
+      },
+      {
+        author: 'HelpdeskOfNineYears',
+        when: 'Thu 10:33',
+        body: [
+          'Came over. To tell you. In person.',
+        ],
+      },
+      {
+        author: 'RegionalBrian',
+        when: 'Fri 07:58',
+        body: [
+          'Hi.',
+        ],
+      },
+      {
+        author: 'ModeratorGraham',
+        when: 'Fri 08:06',
+        body: [
+          'Locking this before anybody replies to that.',
+        ],
+        signature: 'I do this for free, which is the problem',
+      },
+    ],
+    footer: 'Page 1 of 1 · 8 replies · 91,455 views · Bookmarked on this '
+      + 'workstation by somebody who has since done it four times.',
+  },
+};
+
 export const BROWSER_SITES: readonly BrowserSite[] = Object.freeze([
   LAWNMOWER,
   CATS,
+  NO_HELLO,
 ]);
 
 export function browserSite(id: string | null): BrowserSite | undefined {

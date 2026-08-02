@@ -44,7 +44,11 @@ export const PROGRAM_IMAGES: Readonly<Record<string, ProgramImage>> = {
   scorecard: { image: 'DAYEND.EXE', title: 'Day scorecard' },
   weekend: { image: 'WEEKEND.EXE', title: 'Week summary' },
   caught: { image: 'MANAGER.EXE', title: 'A word' },
-  call: { image: 'PHONE.EXE', title: 'Incoming call' },
+  // One program for both kinds of conversation, and the image stays PHONE.EXE
+  // for the reason a 1998 desktop would: the phone applet is the only thing
+  // this workstation has ever had for talking to a person, so the day opens it
+  // whether the person is on the other end of a line or standing behind you.
+  call: { image: 'PHONE.EXE', title: 'Somebody wants you' },
   meeting: { image: 'CALENDAR.EXE', title: 'In a meeting' },
   reboot: { image: 'WUPDATE.EXE', title: 'Workstation update' },
   review: { image: 'REVIEW.EXE', title: 'Probation review' },

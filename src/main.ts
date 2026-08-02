@@ -3,7 +3,9 @@ import { type Account, createCloudApi } from './shell/api';
 import { type AppState, AppStateStore } from './shell/app-state';
 import { APP_MANIFEST } from './shell/apps';
 import {
+  askedAtLast,
   openDirectMessage,
+  openNoHello,
   pingBossThread,
   remarkInThread,
 } from './shell/boss-thread';
@@ -225,6 +227,31 @@ async function boot(): Promise<void> {
         shell.notify('Somebody has messaged you directly', line);
       }
     },
+    // And somebody who has said hello and nothing else.
+    //
+    // The notice deliberately carries the greeting and no question, because
+    // there is no question yet - that is the entire beat, and a toast that
+    // helpfully summarised what they were about to ask would be the shell
+    // solving the problem the mechanic is about. What it does say is the one
+    // thing the player can act on: the conversation is open, and asking is
+    // faster than waiting.
+    onNoHello: (speaker) => {
+      const line = openNoHello(appState, engine.graph, speaker);
+
+      if (line !== null) {
+        shell.notify(
+          'Somebody has said hello',
+          `"${line}" That is the whole message. They are typing; asking them `
+          + 'what they want is one click and gets there sooner.',
+        );
+      }
+    },
+    // The question, finally, for a player who waited it out. It is silent on
+    // purpose: somebody who asked has had this line for minutes already, and
+    // `askedAtLast` is what knows the difference.
+    onNoHelloQuestion: (speaker) => {
+      askedAtLast(appState, speaker);
+    },
     // The phone, and the half hour that was in the summons mail on Monday.
     // Two windows because they are two different things: a call is a window
     // like any other and the normal rules keep applying underneath it - the
@@ -252,17 +279,41 @@ async function boot(): Promise<void> {
         return;
       }
 
-      const meeting = view.entry.source === 'meeting';
+      if (view.entry.source === 'meeting') {
+        shell.notify(
+          'You are in a meeting',
+          'The one from the summons mail. It is half an hour, it is not '
+          + 'optional, and the queue has not been told about it.',
+        );
+        return;
+      }
+
+      // Somebody at the desk, which is its own sentence rather than the
+      // phone's with a word changed. The dot is named on purpose: it is the
+      // one thing about this interruption a player who has been buying quiet
+      // all morning will have a wrong expectation about, and being told once,
+      // in the moment, is cheaper than being surprised.
+      if (view.entry.source === 'walk_up') {
+        shell.notify(
+          view.callback
+            ? 'They are back, at the minute you asked for'
+            : 'Somebody is at your desk',
+          view.callback
+            ? 'You asked for twenty minutes and they took it. This time it is '
+              + 'the conversation.'
+            : 'Not the phone - a person, standing there. Your status does not '
+              + 'come into it, because they can see you, and the queue carries '
+              + 'on regardless.',
+        );
+        return;
+      }
 
       shell.notify(
-        meeting ? 'You are in a meeting' : 'The phone is ringing',
-        meeting
-          ? 'The one from the summons mail. It is half an hour, it is not '
-            + 'optional, and the queue has not been told about it.'
-          : view.callback
-            ? 'They are ringing back, which is the one you said you would '
-              + 'take. This time it is the conversation.'
-            : 'Somebody wants you. The queue carries on either way.',
+        'The phone is ringing',
+        view.callback
+          ? 'They are ringing back, which is the one you said you would '
+            + 'take. This time it is the conversation.'
+          : 'Somebody wants you. The queue carries on either way.',
       );
     },
     // And the minute the screen is yours again, however it ended. The world

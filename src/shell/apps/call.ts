@@ -8,7 +8,11 @@ import {
   isRevealEffect,
 } from '../../world/dialogue';
 import { FIELDS } from '../../world/fields';
-import { FLAVOR, flavorText } from '../../world/interruptions';
+import {
+  FLAVOR,
+  flavorText,
+  type InterruptionSource,
+} from '../../world/interruptions';
 import { isFumbling, isRefocusing } from '../../world/meters';
 import { ticketTitle } from '../../world/tickets';
 import { formatSimTime } from '../clock-format';
@@ -25,7 +29,62 @@ import {
 } from './ui';
 
 /**
- * The phone, ringing.
+ * The words this window uses, per source, because two different things are
+ * drawn in it.
+ *
+ * A ringing phone and a person at your desk are the same MECHANIC - a
+ * synchronous conversation that owns the screen while every clock in the
+ * building runs - and they are not remotely the same experience, so the verbs
+ * are shared and the words are not. The three buttons keep their ids, because
+ * they are the same three verbs going through the same three dispatches; what
+ * changes is what they say, which is the only honest way to offer "Message
+ * first" to somebody who is standing in front of you.
+ *
+ * A table rather than conditionals at six call sites, and the same reason as
+ * every other table in this family: six conditionals are six places a seventh
+ * source can be forgotten.
+ */
+interface CallRegister {
+  /** What the window says while nobody has picked it up. */
+  readonly waiting: string;
+  /** And while the conversation is running, before the minutes. */
+  readonly during: string;
+  /** The three buttons, in the order the window shows them. */
+  readonly answer: string;
+  readonly defer: string;
+  readonly decline: string;
+  /** What the callback state says, for the sources that can have one. */
+  readonly again: string;
+}
+
+const RINGING: CallRegister = {
+  waiting: 'Ringing. The queue does not stop for it and neither does the '
+    + 'clock on your screen.',
+  during: 'On the phone.',
+  answer: 'Answer',
+  defer: 'Message first',
+  decline: 'Decline',
+  again: 'Ringing again. This is them ringing back, which is the one you '
+    + 'said you would take.',
+};
+
+const AT_THE_DESK: CallRegister = {
+  waiting: 'Standing at your desk, waiting for you to look up. Your status '
+    + 'has nothing to say about this: they can see you.',
+  during: 'Talking, at the desk.',
+  answer: 'Look up',
+  defer: 'Ask for twenty minutes',
+  decline: 'Say not now',
+  again: 'Back at your desk, at the minute you asked for. This is the '
+    + 'conversation.',
+};
+
+function registerFor(source: InterruptionSource): CallRegister {
+  return source === 'walk_up' ? AT_THE_DESK : RINGING;
+}
+
+/**
+ * The phone ringing, and the person at your desk.
  *
  * It is built on the chat machinery on purpose and reuses it literally: the
  * conversation a player has on the phone is a `ChatThread` in the same store
@@ -46,11 +105,13 @@ import {
  * omission: a ringing phone is not a caught scene, so the boss key still
  * works, the lead still comes round, and the browser on the second monitor is
  * still a thing somebody can be found looking at. The MEETING is the takeover
- * (`meeting.ts`); a call is an interruption you are allowed to be bad at.
+ * (`meeting.ts`); a call is an interruption you are allowed to be bad at, and
+ * so is somebody standing at your shoulder - which is why they share a window
+ * and differ only in what it says (`CallRegister`, above).
  */
 export const CALL_APP: AppDef = {
   id: 'call',
-  title: 'Incoming call',
+  title: 'Somebody wants you',
   icon: 'icon-chat',
   tier_required: 1,
   slack: false,
@@ -375,6 +436,11 @@ export const CALL_APP: AppDef = {
       // benign and is not a callback; it is silent.
       root.dataset.benign = 'false';
       root.dataset.callback = 'false';
+      // And which of the two things this window draws was last in it. A
+      // silent phone is not a walk-up, and a `data-source` left over from the
+      // conversation before it is the screen saying something true about
+      // something that has finished happening.
+      root.dataset.source = 'none';
       heading.textContent = 'The phone is not ringing';
       subject.textContent = 'It does that most of the day, which is the part '
         + 'nobody thanks you for.';
@@ -447,6 +513,16 @@ export const CALL_APP: AppDef = {
         const name = callerName(view);
         const tree = treeFor(view);
         const thread = threads()[threadKey(view.entry.id)];
+        const words = registerFor(view.entry.source);
+
+        // The three verbs are the same three verbs; what they SAY is not, and
+        // it is repainted rather than set once because one window draws two
+        // different things and a label left over from the last one would be
+        // the screen lying about which of them is happening.
+        answer.textContent = words.answer;
+        later.textContent = words.defer;
+        decline.textContent = words.decline;
+        root.dataset.source = view.entry.source;
 
         // The record is about a quiet phone. With one actually ringing it is
         // the wrong half of the window to be reading, and a list of calls that
@@ -462,15 +538,13 @@ export const CALL_APP: AppDef = {
         subject.textContent = flavorText(view.entry, FLAVOR.subject)
           ?? 'They did not say what it was about.';
         state.textContent = view.answered
-          ? `On the phone. ${String(
+          ? `${words.during} ${String(
             view.entry.endsTick - api.clock.now(),
           )} minutes of the shift are going into this, and every deadline in `
             + 'the queue is running through all of them.'
           : view.callback
-            ? 'Ringing again. This is them ringing back, which is the one you '
-              + 'said you would take.'
-            : 'Ringing. The queue does not stop for it and neither does the '
-              + 'clock on your screen.';
+            ? words.again
+            : words.waiting;
 
         renderTranscript(thread ?? { nodeId: '', rootUsed: '', lines: [], ended: false }, name);
         renderOptions(view, tree, thread);

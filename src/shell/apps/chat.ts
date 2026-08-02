@@ -117,7 +117,24 @@ export const CHAT_APP: AppDef = {
     const panel = element('section', 'chat-panel', 'chat-panel');
     const columns = element('div', 'chat-columns');
     columns.append(people, panel);
-    root.append(toolbar, columns);
+    /**
+     * The dots, and the price of watching them.
+     *
+     * It lives OUTSIDE the panel deliberately. The panel is rebuilt only when
+     * what it says has changed, and an indicator that cycles once a minute
+     * changes what it says once a minute - so putting it in there would rebuild
+     * the option buttons under the player's cursor for the whole of a beat
+     * whose entire content is a button they are about to press. Out here it
+     * repaints on the tick and touches nothing else.
+     *
+     * Both halves are on screen at once on purpose. The indicator is the joke -
+     * somebody has said hello and is now, apparently, composing - and the
+     * minutes beside it are the legibility rule this game keeps everywhere
+     * else: waiting is four more minutes of a shift that does not stop, asking
+     * is one click, and the player can read both before choosing either.
+     */
+    const typing = element('p', 'chat-typing', 'chat-typing');
+    root.append(toolbar, columns, typing);
 
     const persons = (): readonly ReadOnlyGraphNode[] => api.graph
       .nodesOfKind('person');
@@ -536,12 +553,63 @@ export const CHAT_APP: AppDef = {
         const showing = chat().selectedId;
         renderPanel(nodes.find((person) => person.id === showing));
       });
+
+      renderTyping(nodes.find((person) => person.id === chat().selectedId));
+    };
+
+    /**
+     * Whether the person on screen is still getting round to it.
+     *
+     * The row is never removed, only emptied. A row that appears and
+     * disappears once a minute moves everything under it - which, for the
+     * whole of this beat, is the one option the player is reaching for - and
+     * the blank frames of the cadence are frames the indicator is deliberately
+     * out on.
+     */
+    const renderTyping = (person: ReadOnlyGraphNode | undefined): void => {
+      const tree = person === undefined
+        ? undefined
+        : dialogueForSpeaker(person.id);
+      // Still typing means still typing AT YOU. Somebody who has already been
+      // asked what they want has said it, minutes early, and a window that
+      // carried on showing dots over the answer would be charging for a wait
+      // the player refused to have - which is the opposite of what asking is
+      // supposed to buy.
+      const asked = tree?.hello_root !== undefined
+        && person !== undefined
+        && chat().threads[person.id]?.nodeId !== tree.hello_root;
+      const waiting = person === undefined || asked
+        ? null
+        : api.day.typing(person.id);
+
+      typing.dataset.typing = waiting === null ? 'false' : 'true';
+      typing.dataset.left = String(waiting?.minutesLeft ?? 0);
+      typing.hidden = waiting === null;
+
+      if (waiting === null || person === undefined) {
+        typing.textContent = '';
+        return;
+      }
+
+      const name = textValue(person.fields[FIELDS.name], person.id);
+      typing.textContent = `${name} ${waiting.line}`.trimEnd()
+        + (waiting.minutesLeft > 0
+          ? ` · waiting it out is ${String(waiting.minutesLeft)} more `
+            + 'minute(s) of the shift; asking is one click'
+          : '');
     };
 
     host.replaceChildren(root);
     render();
 
     const unsubscribeWorld = api.onWorldChange(() => {
+      render();
+    });
+    // The minute hand, which is what makes a typing indicator an indicator
+    // rather than a label: nothing in the world moves while somebody composes,
+    // so a window that only repainted on world changes would show one frozen
+    // frame for the whole of the beat and would never notice it ending.
+    const unsubscribeTick = api.clock.onTick(() => {
       render();
     });
     // A load replaces every transcript at once, and nothing else says so.
@@ -568,6 +636,7 @@ export const CHAT_APP: AppDef = {
       },
       unmount: (): void => {
         unsubscribeWorld();
+        unsubscribeTick();
         unsubscribeState();
         root.remove();
       },

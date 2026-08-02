@@ -12,8 +12,13 @@
  * from under them; the toast says who wants them, and the thread is waiting.
  */
 
+import type { ReadOnlyGraphView } from '../engine-api';
 import { COMPANY_IDS } from '../world/company';
-import { dialogueForSpeaker, dialogueNode } from '../world/dialogue';
+import {
+  conversationFor,
+  dialogueForSpeaker,
+  dialogueNode,
+} from '../world/dialogue';
 import type { AppStateStore, ChatThread } from './app-state';
 
 /**
@@ -51,6 +56,110 @@ export function openDirectMessage(
   const line = dialogueNode(tree, landing)?.npc_line ?? '';
   openThreadAt(store, speaker, line);
   return line;
+}
+
+/**
+ * Somebody opening a conversation with the word "Hi." and nothing else.
+ *
+ * It lands on the tree's `hello_root`, which is a node whose whole content is
+ * a greeting and whose one option is the player asking what they want. That is
+ * the difference from the two above and it is the entire beat: a ping and a
+ * favour both arrive with the question already in them, and this arrives with
+ * none of it.
+ *
+ * `rootUsed` is computed rather than assumed, and that is a fix rather than a
+ * detail. The chat window MOVES a thread whose `rootUsed` no longer matches
+ * the root it would compute for that person, so a greeting stamped with the
+ * tree's own root would be dragged onto a live ticket's opening line the
+ * instant it was painted - which for the new starter on a Thursday means the
+ * greeting is replaced by a mailbox complaint and the beat silently does not
+ * happen.
+ *
+ * Answers the line, or null for somebody whose tree does not do this.
+ */
+export function openNoHello(
+  store: AppStateStore,
+  graph: ReadOnlyGraphView,
+  speaker: string,
+): string | null {
+  const tree = dialogueForSpeaker(speaker);
+  const landing = tree?.hello_root;
+
+  if (tree === undefined || landing === undefined) {
+    return null;
+  }
+
+  const line = dialogueNode(tree, landing)?.npc_line ?? '';
+  const existing = store.get().chat.threads[speaker];
+  const opening = dialogueNode(tree, tree.root)?.npc_line ?? '';
+
+  store.patchExternal('chat', {
+    threads: {
+      ...store.get().chat.threads,
+      [speaker]: {
+        nodeId: landing,
+        rootUsed: conversationFor(tree, graph).root,
+        ended: false,
+        lines: [
+          ...existing?.lines ?? [{ who: 'them' as const, text: opening }],
+          { who: 'them', text: line },
+        ],
+      },
+    },
+  });
+
+  return line;
+}
+
+/**
+ * And the question, finally, for somebody who waited it out.
+ *
+ * It moves the thread only if it is STILL standing on the greeting, because a
+ * player who asked already had this line minutes ago and being handed it twice
+ * would read as the same person saying the same thing to themselves. The
+ * driver fires the beat either way - it has no opinion about a transcript -
+ * and this is the half that knows where the conversation is.
+ *
+ * Answers whether anything was actually said.
+ */
+export function askedAtLast(store: AppStateStore, speaker: string): boolean {
+  const tree = dialogueForSpeaker(speaker);
+  const landing = tree?.hello_root;
+  const thread = store.get().chat.threads[speaker];
+
+  if (tree === undefined || landing === undefined || thread === undefined) {
+    return false;
+  }
+
+  if (thread.nodeId !== landing) {
+    return false;
+  }
+
+  // The node the greeting leads to, which is the question they were getting
+  // round to. Read off the tree rather than named here, so the content owns
+  // both halves of the beat and this owns neither.
+  const asked = dialogueNode(tree, landing)?.options
+    .find((option) => option.next !== undefined)?.next;
+
+  if (asked === undefined) {
+    return false;
+  }
+
+  store.patchExternal('chat', {
+    threads: {
+      ...store.get().chat.threads,
+      [speaker]: {
+        ...thread,
+        nodeId: asked,
+        lines: [
+          ...thread.lines,
+          { who: 'them', text: dialogueNode(tree, asked)?.npc_line ?? '' },
+        ],
+      },
+    },
+  });
+
+  return true;
 }
 
 /**

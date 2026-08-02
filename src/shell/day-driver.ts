@@ -124,6 +124,7 @@ import {
   isReviewDay,
   isReviewOutcome,
   isWeekDay,
+  noHelloOn,
   patrolSeedFor,
   type ReviewOutcome,
   REVIEW_PASS_PERFORMANCE,
@@ -131,9 +132,15 @@ import {
   reviewTick,
   type WeekScorecard,
   weekScorecard,
+  walkUpsOn,
   weekStanding,
   weekWorkThrough,
 } from '../world/week';
+import {
+  stillTyping,
+  typingLine,
+  typingMinutesLeft,
+} from '../world/no-hello';
 import { FIELDS } from '../world/fields';
 import { seedForAttempt } from '../world/session';
 import {
@@ -399,6 +406,28 @@ export interface InterruptionView {
 }
 
 /**
+ * Somebody mid-greeting: they have said hello, they have not said what they
+ * want, and the dots are going.
+ *
+ * Every field is derived from the week's table and the clock, so there is
+ * nothing here to save and nothing to get out of step across a load. It is
+ * about ONE person, because a window shows one conversation and a view of
+ * "everybody currently typing" would be a list the chat panel had to search.
+ */
+export interface TypingView {
+  readonly speaker: NodeId;
+  /** The minute the greeting landed. */
+  readonly landedAt: number;
+  /** How long they take altogether, which is the week's number. */
+  readonly typingMinutes: number;
+  readonly minutesWaited: number;
+  /** And how many are left, which is what the window says out loud. */
+  readonly minutesLeft: number;
+  /** What the indicator reads this minute, blank frames included. */
+  readonly line: string;
+}
+
+/**
  * A workstation that has been pushed back, before it comes round again.
  *
  * It exists for exactly one surface and is deliberately narrow: the minutes
@@ -522,6 +551,16 @@ export interface DayApi {
    * exactly as the missed list is.
    */
   dodgedInterruptions(): readonly DodgedInterruption[];
+  /**
+   * Whether this person is mid-greeting: they have said hello, they have not
+   * said what they want, and the dots are going.
+   *
+   * Free to read and changes nothing. It is arithmetic on the week's table and
+   * the clock rather than a flag anybody sets, so the chat window painting it
+   * and a save reloading into the middle of it are the same question with the
+   * same answer.
+   */
+  typing(speaker: string): TypingView | null;
   /**
    * The choice grammar, aimed at whatever is on the screen right now.
    *
@@ -648,6 +687,26 @@ export interface DayDriverHandlers {
    * conversation on the node their tree keeps for being summoned.
    */
   onDirectMessage?(speaker: NodeId, tick: number): void;
+  /**
+   * Somebody has opened a chat with the word "Hi." and nothing else.
+   *
+   * The same shape as the message above and for the same reason - the
+   * transcript is screen state - with one difference that is the whole beat:
+   * there is no question in it yet. The shell opens the conversation on the
+   * node their tree keeps for a bare greeting, and the option on that node is
+   * the player asking what they want.
+   */
+  onNoHello?(speaker: NodeId, tick: number): void;
+  /**
+   * And the minute they finish typing it, for a player who waited.
+   *
+   * It fires whether or not anybody waited, because the driver has no opinion
+   * about a chat transcript: the shell is the half that knows where the
+   * conversation is standing, and moves it only if it is still standing on the
+   * greeting. A player who asked already had the question minutes ago and must
+   * not be handed it twice.
+   */
+  onNoHelloQuestion?(speaker: NodeId, tick: number): void;
   /**
    * Something has taken the screen off the player: a phone ringing, or the
    * half hour that was in the summons mail on Monday.
@@ -1120,6 +1179,7 @@ export class DayDriver implements DayApi {
     // the world as it now is.
     this.applyIncidents(before, now);
     this.settleDirectMessages(before, now);
+    this.settleNoHello(before, now);
     this.settleStaleAuth(now);
     this.settleFollowUps();
     this.walkTheFloor(before, now);
@@ -1129,6 +1189,10 @@ export class DayDriver implements DayApi {
     // this minute and the interval that charges for the queue has to read a
     // world the interruption has already moved.
     this.settleInterruptions(before, now);
+    // After it, because a walk-up's ask is measured from the minute she walked
+    // away - which is a fact about where the interruption ended up, and the
+    // pass above is what settles that.
+    this.settleWalkUps(before, now);
     // Before the meters read the queue: a child closed by its parent is a
     // ticket off the pile this minute, and charging stress for it would be
     // charging for work that is finished.
@@ -1861,6 +1925,124 @@ export class DayDriver implements DayApi {
         spawnWorldTicket(this.engine, slot.raises);
       }
     }
+  }
+
+  /**
+   * Somebody who came to the desk instead of raising one, and the ticket they
+   * raise when the job does not get done.
+   *
+   * The same beat as the message above, standing up, and settled by the same
+   * rule for the same reason: the question is whether the WORLD shows the
+   * favour was done, not which button was pressed. Restarting her machine from
+   * Remote Assist an hour later counts; saying you will get to it and not
+   * getting to it does not; and ignoring somebody standing at your desk is not
+   * a way of making the job go away, which is exactly what makes both answers
+   * legitimate and only one of them credited.
+   *
+   * The minutes are read off the PLACED entry rather than off the authored
+   * row, and that is not tidiness: a walk-up slides out of the lead's way and
+   * can be pushed twenty minutes, so the minute she walks away is a fact about
+   * the day rather than about the table. A ticket that arrived while she was
+   * still standing there would be a conversation that decided nothing.
+   */
+  private settleWalkUps(after: number, now: number): void {
+    const day = this.day();
+    const live = this.liveInterruptions();
+
+    for (const walkUp of walkUpsOn(day)) {
+      const entry = live.find((candidate) => candidate.id === walkUp.slot.id);
+
+      if (entry === undefined) {
+        continue;
+      }
+
+      const files = entry.endsTick + walkUp.filesAfter;
+
+      if (files <= after || files > now) {
+        continue;
+      }
+
+      const done = this.engine.graph.getField(
+        walkUp.doneWhen.node,
+        walkUp.doneWhen.field,
+      );
+
+      // Done for her, off the books, since she asked: there is nothing left to
+      // raise and nothing on the scorecard either, which IS the trade rather
+      // than an oversight.
+      if (typeof done === 'number' && done >= entry.tick) {
+        continue;
+      }
+
+      if (this.engine.graph.getNode(walkUp.raises) === undefined) {
+        spawnWorldTicket(this.engine, walkUp.raises);
+      }
+    }
+  }
+
+  /**
+   * "Hi." - and then, several minutes later, the question.
+   *
+   * Both halves are here because they are one beat with a gap in it, exactly
+   * as the favour is. Neither half costs the world anything: what a no-hello
+   * charges is the minutes somebody spends watching a typing indicator, and
+   * minutes are charged by the clock rather than by a meter. So this is two
+   * announcements and no dispatch at all, which is why nothing about it moves
+   * a hash.
+   */
+  private settleNoHello(after: number, now: number): void {
+    const day = this.day();
+
+    for (const slot of noHelloOn(day)) {
+      const said = tickAtMinute(day, slot.minute);
+      const asked = said + slot.typingMinutes;
+
+      if (said > after && said <= now) {
+        this.handlers.onNoHello?.(slot.speaker, said);
+      }
+
+      if (asked > after && asked <= now) {
+        this.handlers.onNoHelloQuestion?.(slot.speaker, asked);
+      }
+    }
+  }
+
+  /**
+   * Whether this person is currently typing at you, and how far into it.
+   *
+   * Free to read and changes nothing, like every other view on this
+   * interface: it is arithmetic on the week's own table and the clock, so the
+   * chat window, a test and a save all get the same answer and none of them
+   * has to remember anything. Null for everybody who is not mid-greeting,
+   * which is everybody, almost always.
+   */
+  public typing(speaker: NodeId): TypingView | null {
+    const day = this.day();
+    const now = this.engine.now();
+
+    for (const slot of noHelloOn(day)) {
+      if (slot.speaker !== speaker) {
+        continue;
+      }
+
+      const said = tickAtMinute(day, slot.minute);
+      const waited = now - said;
+
+      if (!stillTyping(waited, slot.typingMinutes)) {
+        continue;
+      }
+
+      return {
+        speaker,
+        landedAt: said,
+        typingMinutes: slot.typingMinutes,
+        minutesWaited: waited,
+        minutesLeft: typingMinutesLeft(waited, slot.typingMinutes),
+        line: typingLine(waited, slot.typingMinutes),
+      };
+    }
+
+    return null;
   }
 
   /**

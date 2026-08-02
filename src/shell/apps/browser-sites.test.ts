@@ -1,5 +1,5 @@
 /**
- * The two sites, as content.
+ * The three sites, as content.
  *
  * The gate that matters here is the one a runtime would only find when a
  * player opened the page: every picture is drawn out of this repo's own icon
@@ -13,9 +13,9 @@ import { ICON_IDS } from '../icons';
 import { BROWSER_SITES, browserSite } from './browser-sites';
 
 describe('the browser sites', () => {
-  it('ships two of them, each addressable and each unreachable', () => {
-    expect(BROWSER_SITES).toHaveLength(2);
-    expect(new Set(BROWSER_SITES.map((site) => site.id)).size).toBe(2);
+  it('ships three of them, each addressable and each unreachable', () => {
+    expect(BROWSER_SITES).toHaveLength(3);
+    expect(new Set(BROWSER_SITES.map((site) => site.id)).size).toBe(3);
 
     for (const site of BROWSER_SITES) {
       expect(site.title.length).toBeGreaterThan(0);
