@@ -338,6 +338,13 @@ test('a save taken in the meeting comes back in the meeting', async ({
   await huntFor(page, 'meeting', 20);
   await runSimMinutes(page, 8, 1);
 
+  // Frozen first, chosen second: the pin below is about what a SAVE carries,
+  // and an x4 left actually running would spend sim-minutes on every real
+  // second of clicking that follows - the exact read would race its own
+  // setup. Pause is orthogonal to speed, so the choice registers all the
+  // same, and the pause rides the save just like the speed does.
+  await page.getByTestId('day-pause').click();
+
   const before = await page.getByTestId('sim-clock-time').textContent();
   const beats = await page.getByTestId('meeting-room').getAttribute('data-beats');
 
@@ -367,6 +374,13 @@ test('a save taken in the meeting comes back in the meeting', async ({
   await expect(page.getByTestId('sim-clock-time')).toHaveText(before ?? '');
   // The re-up survived the reload: saved speed, no replayed arrival edge.
   expect(await speedOnScreen(page)).toBe('x4');
+  // And the freeze survived with it - unpause deliberately before the rest of
+  // the test asks the clock to move again.
+  await expect(page.getByTestId('day-pause')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByTestId('day-pause').click();
   // Still in the room, at the same point in it, with the desk still
   // unreachable - which is the half a save file could most easily lose.
   await expect(page.getByTestId('desktop'))
