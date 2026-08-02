@@ -668,6 +668,36 @@ describe('the update that has been put off since March', () => {
     expect(world.ended.filter((done) => done.id === REBOOT_ID)).toHaveLength(1);
   }, 20_000);
 
+  /**
+   * "Restart now", which is the other button on the countdown and the one the
+   * shipped week's player will press when they have nothing open.
+   *
+   * Accepting early settles it early, and the far side of the window still
+   * happens exactly once: the world learns it was answered, the second accept
+   * the day loop tries is refused as already settled rather than written
+   * twice, and the recovery window is still measured from the minute the desk
+   * came back.
+   */
+  it('can be taken now, and the far side of it happens once either way', () => {
+    const world = rebootWorld();
+    const { entry } = rebootDay(world);
+
+    runTo(world.driver, world.session, entry.tick);
+    expect(world.driver.answerInterruption()).toEqual({ ok: true });
+    expect(world.driver.interruption()?.answered).toBe(true);
+
+    runTo(world.driver, world.session, entry.endsTick);
+
+    expect(world.driver.interruption()).toBeNull();
+    expect(world.session.engine.graph.getField(
+      COMPANY_IDS.player,
+      FIELDS.interruptionAnswered,
+    )).toBe(REBOOT_ID);
+    expect(player(world.session, FIELDS.refocusUntil))
+      .toBe(entry.endsTick + REFOCUS_TICKS);
+    expect(world.ended.filter((done) => done.id === REBOOT_ID)).toHaveLength(1);
+  }, 20_000);
+
   /** The desk is gone while it installs, whichever keyboard asks for it. */
   it('refuses the work in its own sentence while it is installing', () => {
     const world = rebootWorld();
