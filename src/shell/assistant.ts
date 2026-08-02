@@ -67,17 +67,6 @@ export const ASSISTANT_DWELL = 15;
 export const ASSISTANT_HANDBACK = 10;
 
 /**
- * The situations that count as something happening, for the purpose of coming
- * back after being dismissed. Closing it buys quiet, not deafness: the next
- * time the day does something TO the player, it is there for it.
- */
-const BIG_EVENTS: ReadonlySet<AssistantSituation> = new Set([
-  'call',
-  'reboot',
-  'after',
-]);
-
-/**
  * What it is standing over, in precedence order.
  *
  * Null means say nothing at all: off shift there is nobody at the desk, and
@@ -134,8 +123,30 @@ export class AssistantVoice {
   private held = false;
   /** The day it was closed on, or null while nobody has closed it. */
   private closedOn: number | null = null;
-  private closedIn: AssistantSituation | null = null;
   private owedGag = false;
+  /**
+   * Whether a phone was ringing / a reboot was coming on the LAST paint.
+   *
+   * The gag comes back on the next big event, and "next" means the next fresh
+   * ARRIVAL - a new call is a new event even if it is the same kind as the one
+   * the player closed it during. So the arrival is an edge, false-to-true, and
+   * these are the previous side of it.
+   */
+  private wasRinging = false;
+  private wasReboot = false;
+  /**
+   * Whether the line currently up is the note about having been closed.
+   *
+   * The note is the whole point of the dismissal-memory gag, so it must not be
+   * stepped on the instant something else becomes true on the desk. The desk
+   * repaints on the tick AND on every world change, so one minute is several
+   * paints - and the minute it comes back on is exactly the minute a new day's
+   * stress or queue is also becoming true. Without this, the second paint of
+   * that minute saw the situation change and replaced the note with a line
+   * about the stress. So the note is held, ignoring situation changes, until
+   * its dwell is up - and then the desk's own lines resume.
+   */
+  private holdingGag = false;
 
   /**
    * What to draw this minute, or nothing at all.
@@ -151,6 +162,16 @@ export class AssistantVoice {
   ): AssistantView | null {
     this.followTakeovers(world, tick);
 
+    // The big-event arrival edges, computed before any early return so the
+    // previous-state flags never go stale: a call that arrives during a
+    // takeover is still a fresh call the minute the desk comes back.
+    const bigEventArrived = (world.ringing && !this.wasRinging)
+      || (world.rebootComing && !this.wasReboot)
+      // The desk being handed back this very tick is the third arrival.
+      || this.handedBackAt === tick;
+    this.wasRinging = world.ringing;
+    this.wasReboot = world.rebootComing;
+
     const freshlyBack = this.handedBackAt !== null
       && tick >= this.handedBackAt
       && tick - this.handedBackAt < ASSISTANT_HANDBACK;
@@ -160,14 +181,16 @@ export class AssistantVoice {
       return null;
     }
 
-    if (!this.readmitted(world, situation)) {
+    if (!this.readmitted(world, bigEventArrived)) {
       return null;
     }
 
     if (this.owedGag) {
       // The note about having been closed, before anything about the desk:
-      // it is the reason it is standing here again.
+      // it is the reason it is standing here again. It is held from here (see
+      // `holdingGag`) so the same minute's later paints cannot replace it.
       this.owedGag = false;
+      this.holdingGag = true;
       this.current = returningLine(dismissals);
       this.situation = situation;
       this.saidAt = tick;
@@ -175,20 +198,26 @@ export class AssistantVoice {
     }
 
     const standing = this.current;
-    const moved = situation !== this.situation
-      || standing === null
-      // A clock that went backwards is a load or a new week, and the line it
-      // was holding belongs to a session that is over.
-      || tick < this.saidAt
-      || tick - this.saidAt >= ASSISTANT_DWELL;
+    // A clock that went backwards is a load or a new week, and the line it was
+    // holding belongs to a session that is over - which also ends a held note.
+    const reset = standing === null || tick < this.saidAt;
+    const dwelled = tick - this.saidAt >= ASSISTANT_DWELL;
+    // The note ignores a situation change for as long as its dwell runs; every
+    // other line moves the moment the desk does.
+    const moved = reset
+      || dwelled
+      || (situation !== this.situation && !this.holdingGag);
 
-    // The same minute asked twice keeps the same line - including the note
-    // about having been closed, which is set below and has to survive the
-    // second paint of the minute it arrived in.
-    if (!moved) {
+    // The same minute asked twice keeps the same line, and a held note keeps
+    // its place through a situation change until the dwell is up.
+    if (!moved && standing !== null) {
+      // The desk may have moved under a held note; the view follows it while
+      // the line does not, so the bubble is about the right thing when the
+      // note's dwell ends.
       return { situation, line: standing };
     }
 
+    this.holdingGag = false;
     const line = this.nextLine(situation);
     this.current = line;
     this.situation = situation;
@@ -206,9 +235,9 @@ export class AssistantVoice {
    */
   public dismiss(day: number): void {
     this.closedOn = day;
-    this.closedIn = this.situation;
     this.current = null;
     this.situation = null;
+    this.holdingGag = false;
   }
 
   /**
@@ -224,8 +253,10 @@ export class AssistantVoice {
     this.handedBackAt = null;
     this.held = false;
     this.closedOn = null;
-    this.closedIn = null;
     this.owedGag = false;
+    this.holdingGag = false;
+    this.wasRinging = false;
+    this.wasReboot = false;
   }
 
   /** Whether it is currently closed, which the desktop paints. */
@@ -252,29 +283,26 @@ export class AssistantVoice {
    * Whether a dismissed character has earned its way back - and letting it in
    * when it has, which is why this is not spelled as a predicate.
    *
-   * Two doors, and both of them are the gag: a new day, or the next thing that
-   * happens TO the player. Anything else - a ticket arriving, the meters
-   * moving, an hour of quiet - leaves it shut, because those are the minutes
-   * the player bought by closing it.
+   * Two doors, and both of them are the gag: a new day, or the next big event
+   * to ARRIVE. It is the arrival that counts, not the kind: a player who closed
+   * it during one call has not closed it against every call, so the next phone
+   * to ring brings it back with its note. Anything else - a ticket arriving,
+   * the meters moving, an hour of quiet - leaves it shut, because those are the
+   * minutes the player bought by closing it.
    */
   private readmitted(
     world: Readonly<AssistantWorld>,
-    situation: AssistantSituation,
+    bigEventArrived: boolean,
   ): boolean {
     if (this.closedOn === null) {
       return true;
     }
 
-    const dayTurned = world.day !== this.closedOn;
-    const somethingHappened = BIG_EVENTS.has(situation)
-      && situation !== this.closedIn;
-
-    if (!dayTurned && !somethingHappened) {
+    if (world.day === this.closedOn && !bigEventArrived) {
       return false;
     }
 
     this.closedOn = null;
-    this.closedIn = null;
     this.owedGag = true;
     return true;
   }

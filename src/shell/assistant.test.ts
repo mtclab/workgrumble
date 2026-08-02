@@ -198,6 +198,46 @@ describe('being closed', () => {
     expect(back?.line.id).toBe(returningLine(1).id);
   });
 
+  it('holds the note when the desk changes under it, until its dwell is up', () => {
+    // THE BUG THIS PINS: the note comes back on the exact minute a new day's
+    // stress or queue is also becoming true, and the desk paints again the
+    // instant it does. The note was attached to the situation it appeared in,
+    // so the second paint saw 'stress' arrive, called it a move, and replaced
+    // the note about having been closed with a joke about tense hands. The gag
+    // is the whole point of the tiers, and a situation line stepping on it
+    // defeats it.
+    const voice = new AssistantVoice();
+
+    voice.speak(desk({ openTickets: 1 }), 60, 0);
+    voice.dismiss(1);
+
+    const note = returningLine(1).id;
+
+    // Back on day two, and on that same minute the desk turns tense.
+    expect(voice.speak(desk({ openTickets: 1, day: 2 }), 60, 1)?.line.id)
+      .toBe(note);
+    expect(
+      voice.speak(desk({ openTickets: 1, day: 2, fumbling: true }), 60, 1)
+        ?.line.id,
+      'a situation line stepped on the return note',
+    ).toBe(note);
+    // And a minute later, still tense, still the note - the whole dwell.
+    expect(
+      voice.speak(desk({ openTickets: 1, day: 2, fumbling: true }), 61, 1)
+        ?.line.id,
+    ).toBe(note);
+
+    // Only once the dwell is up does the desk's own line take over.
+    const after = voice.speak(
+      desk({ openTickets: 1, day: 2, fumbling: true }),
+      60 + ASSISTANT_DWELL,
+      1,
+    );
+
+    expect(after?.situation).toBe('stress');
+    expect(after?.line.id).not.toBe(note);
+  });
+
   it('comes back for the next thing that happens to the player', () => {
     const voice = new AssistantVoice();
 
@@ -209,6 +249,30 @@ describe('being closed', () => {
     const rings = voice.speak(desk({ openTickets: 1, ringing: true }), 80, 1);
 
     expect(rings?.line.id).toBe(returningLine(1).id);
+  });
+
+  it('comes back for a SECOND call after being closed during the first', () => {
+    // P2-1: "next big event" is the next OCCURRENCE, not the next different
+    // kind. Closed during a call, it stayed shut for every later call that day
+    // because the kind had not changed - so a whole afternoon of phones went
+    // unremarked. A fresh ring is a fresh arrival and brings it back.
+    const voice = new AssistantVoice();
+
+    // Closed while the first call is ringing.
+    voice.speak(desk({ ringing: true }), 60, 0);
+    voice.dismiss(1);
+
+    // The same call, still ringing, does not readmit it - that is the call it
+    // was closed during.
+    expect(voice.speak(desk({ ringing: true }), 61, 1)).toBeNull();
+
+    // The call ends...
+    expect(voice.speak(desk({ openTickets: 1 }), 65, 1)).toBeNull();
+
+    // ...and a second call, same day, is a fresh arrival that brings it back.
+    const second = voice.speak(desk({ ringing: true }), 90, 1);
+
+    expect(second?.line.id).toBe(returningLine(1).id);
   });
 
   it('escalates the note by the number of times it has been closed', () => {

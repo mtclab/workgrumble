@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   type AppState,
+  ASSISTANT_DISMISSAL_CAP,
   AppStateStore,
   createAppState,
   parseAppState,
@@ -67,6 +68,29 @@ describe('the shell-owned app state', () => {
       expect(parseAppState({ ...(wire as object), assistant: { dismissals } }))
         .toBeNull();
     }
+  });
+
+  /**
+   * The count is the one field the save carries as a running total, and a
+   * total with no ceiling is a save a hand-edit can push to the top of the
+   * safe-integer range - whereupon the next dismissal overflows it and the
+   * next save will not parse. So an absurd count is clamped rather than
+   * refused: the game is worth keeping, the gag stopped escalating tiers ago.
+   */
+  it('clamps an absurd assistant count instead of letting it overflow', () => {
+    const at = (dismissals: number): number | undefined => parseAppState({
+      ...createAppState(),
+      assistant: { dismissals },
+    })?.assistant.dismissals;
+
+    expect(at(5)).toBe(5);
+    expect(at(ASSISTANT_DISMISSAL_CAP)).toBe(ASSISTANT_DISMISSAL_CAP);
+    expect(at(ASSISTANT_DISMISSAL_CAP + 1)).toBe(ASSISTANT_DISMISSAL_CAP);
+    // The pathological one: the largest safe integer clamps to the cap, so the
+    // count that comes back can be incremented and re-saved for ever.
+    expect(at(Number.MAX_SAFE_INTEGER)).toBe(ASSISTANT_DISMISSAL_CAP);
+    expect(Number.isSafeInteger((at(Number.MAX_SAFE_INTEGER) ?? 0) + 1))
+      .toBe(true);
   });
 
   it('patches one slice without disturbing the others', () => {

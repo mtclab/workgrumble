@@ -1,6 +1,7 @@
 import type { AppDef, AppIntent, GameApi } from './apps/types';
 import { appsForTier } from './apps/manifest';
 import { formatSimTime } from './clock-format';
+import { ASSISTANT_DISMISSAL_CAP } from './app-state';
 import type { ShellContext } from './context';
 import { createIcon } from './icons';
 import { BOSS_KEY_CODE, DISMISS_KEY } from './keys';
@@ -1560,7 +1561,12 @@ export class Desktop {
    * with a note about having been closed.
    */
   private dismissAssistant(): void {
-    const closed = this.context.appState.get().assistant.dismissals + 1;
+    // Clamped so the running total the save carries can never climb out of the
+    // safe-integer range, however many times somebody closes it.
+    const closed = Math.min(
+      this.context.appState.get().assistant.dismissals + 1,
+      ASSISTANT_DISMISSAL_CAP,
+    );
 
     this.context.appState.patch('assistant', { dismissals: closed });
     this.voice.dismiss(this.context.day.day());

@@ -127,6 +127,19 @@ export interface AssistantState {
   readonly dismissals: number;
 }
 
+/**
+ * The most times the count will ever hold.
+ *
+ * The gag stops escalating after a handful of tiers, so the exact number past
+ * that decides nothing on screen - but it is the one field the save carries as
+ * a running total, and a total with no ceiling is a total that a hand-edited
+ * save can set to the top of the safe-integer range, whereupon the very next
+ * dismissal overflows it into an unsafe integer and the next save will not
+ * parse. So it is clamped, on the way in and on the way up, to a number nobody
+ * reaches by playing and a save cannot climb past.
+ */
+export const ASSISTANT_DISMISSAL_CAP = 10_000;
+
 export interface AppState {
   readonly chat: ChatState;
   readonly mail: MailState;
@@ -242,10 +255,14 @@ function readAssistant(value: unknown): AssistantState | undefined {
 
   const { dismissals } = value;
 
+  // A whole number is accepted and CLAMPED rather than refused above the cap:
+  // a huge count is not corruption, it is a joke somebody edited, and the game
+  // is worth keeping. Not-a-number or negative is a shape this shell never
+  // writes, so that is refused like every other broken field.
   return typeof dismissals === 'number'
     && Number.isSafeInteger(dismissals)
     && dismissals >= 0
-    ? { dismissals }
+    ? { dismissals: Math.min(dismissals, ASSISTANT_DISMISSAL_CAP) }
     : undefined;
 }
 
