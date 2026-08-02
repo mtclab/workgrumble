@@ -186,3 +186,32 @@ same precedence discipline. What is new is the postpone budget and the update sc
     slide per the 0.3.0 discipline; runtime assert unchanged.
 14. The 0.3.0 defer tests do not move - the budget generalization is invisible at budget one.
 15. Goldens move once, argued. Both halves on box, count checked.
+
+---
+
+# Slice 0.3.2 - time slows down near events (issue #11)
+
+The debt 0.3.0 and 0.3.1 both flagged: at x4 a six-minute ring window is 1.5 real seconds. A
+choice is not a choice at that frame rate, and the interruption family is made of choices.
+
+1. **One rule**: when something synchronous lands - a call starts ringing, a meeting or a
+   reboot takes the desk, a caught scene opens - the clock drops to x1. The table of what
+   counts is the takeover/ring family the shell already names (`holdsTheDesk` and the ringing
+   call); the postponed GRACE is not in it - those minutes are the player's desk time, bought
+   deliberately, and they keep whatever speed the player chose.
+2. **It stays at x1.** No automatic restore at handback: "the day slowed down because
+   something happened" is legible, a clock that re-accelerates behind the player's back is
+   not. Re-upping is one click and a deliberate act.
+3. **Pause is orthogonal** and unchanged in every direction.
+4. **Shell-only.** Speed was never world state: no engine change, no fields, no save-schema
+   change. The scripted week drives the driver in turns, so the goldens must come out
+   BYTE-IDENTICAL - a golden that moves under this slice is a bug in the slice, not a golden
+   move to argue.
+5. **The slice's real cost is the e2e helpers**: everything that runs sim-minutes at a fixed
+   speed now crosses events that reset it. Decide the helper contract once - re-assert speed
+   per step, or read the actual speed - and apply it everywhere; the full suite green on the
+   box is the proof the sweep was complete.
+6. Gates: unit per table row (drops), the grace (does not), handback (does not restore),
+   pause (orthogonal); e2e at x4 asserting the speed CONTROL's state when a call lands and
+   when a meeting takes the desk; goldens asserted identical; both halves on box, count
+   checked.
