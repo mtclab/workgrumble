@@ -279,6 +279,50 @@ export const FIELDS = {
    */
   interruptionMissed: 'interruption_missed',
   /**
+   * The dot: available, dnd or away, and ABSENT for anybody who has never
+   * touched the tray.
+   *
+   * Absent is `available` (`presence.readPresence`) rather than a value seeded
+   * onto the player node, and that is the determinism argument of the whole
+   * slice rather than a saving: a field nothing writes is a field no scripted
+   * walk carries, so the golden weeks are byte-identical to the ones from
+   * before the dot existed. The moment a player sets one it is world state
+   * like every other - it rides the save, it replays, and the boss reads it.
+   */
+  presence: 'presence',
+  /**
+   * The fifth interruption list: the ones the dot slid past, one line per
+   * slide, `id@tick`.
+   *
+   * The same shape as `interruptionSpentAt` and for the same reason - the
+   * SCHEDULE reads it, so it has to carry the minute - but a different record,
+   * because it is a different thing that happened. A postpone is the player
+   * asking for one; this is somebody seeing a red dot and deciding not to
+   * ring, which costs no budget and offers no choice. Keeping them apart is
+   * what stops a morning on do-not-disturb from quietly eating a workstation's
+   * postpones.
+   */
+  interruptionDodged: 'interruption_dodged',
+  /**
+   * Minutes the dot said busy while the dispatch log said working.
+   *
+   * The evidence the lead's status beat is armed off. It is a COUNTER written
+   * by the meter tick rather than a flag, because the beat has to be able to
+   * say how long - "on Do Not Disturb all morning" is a claim about a quantity,
+   * and a scold that cannot name one is a random scold.
+   */
+  dndWorkingTicks: 'dnd_working_ticks',
+  /**
+   * Who has already escalated about the Away dot today: one `person@day` line
+   * per reporter.
+   *
+   * The day is in the line because the rule is once per reporter per DAY, and
+   * `line_in_field` matches a whole line - so the world can refuse a second
+   * one with nothing but the mark. Not a drumbeat: the same person watching
+   * the same desk work through the same afternoon says it once.
+   */
+  presenceNoticed: 'presence_noticed',
+  /**
    * The minute the room emptied after the mandatory sync, or absent while
    * nobody has sat through one.
    *

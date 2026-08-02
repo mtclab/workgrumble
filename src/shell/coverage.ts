@@ -2256,6 +2256,19 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'to be: the day loop settles it at the minute the ringing stops, and '
     + 'what the player sees is a notice and a shorter version of the same '
     + 'debuff.',
+  [DAY_ACTIONS.presenceSet]: 'The dot, set from the tray. The world half of '
+    + 'it ships in this slice and the three-state control that reaches it is '
+    + 'the tray\'s, which lands with the other half: until it does, the only '
+    + 'thing that dispatches this is `DayApi.setPresence`, which the tray is '
+    + 'the one caller of. It moves into the table above with the control.',
+  [DAY_ACTIONS.interruptionDodged]: 'A declinable call sliding past a red dot '
+    + 'instead of ringing. Nobody presses it and nobody can - that is the '
+    + 'whole mechanic: the day loop settles it in the minute the phone would '
+    + 'have rung, and what the player sees is a phone that did not.',
+  [WORLD_ACTIONS.presenceNoticed]: 'Somebody who has been waiting for a first '
+    + 'word noticing that the desk they are waiting on says Away and has just '
+    + 'done demonstrable work on somebody else\'s ticket. Once per person per '
+    + 'day, dispatched by the driver off the dispatch that gave it away.',
   [DAY_ACTIONS.meetingRecap]: 'The room emptying, which is what the recap '
     + 'mail is stamped from. Dispatched by the day loop at the end of a block '
     + 'nobody chose to be in; the player meets it as a thread in the inbox '

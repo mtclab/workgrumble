@@ -13,6 +13,7 @@ import { INTERRUPTION_ACTION_DATA } from './interruptions';
 import { MACHINE_ACTIONS } from './machine';
 import { MAIL_RULE_ACTIONS } from './mail-rule';
 import { METER_ACTION_DATA } from './meters';
+import { PRESENCE_ACTION_DATA } from './presence';
 import { SECURITY_ACTIONS } from './security';
 import { SERVICE_ACTIONS } from './service';
 import { SHARE_ACTIONS } from './share';
@@ -50,6 +51,14 @@ export {
   NOT_DECLINABLE_REASON,
   UPDATES_WITHDRAWN_REASON,
 } from './interruptions';
+export {
+  AWAY_ALREADY_NOTICED_REASON,
+  DOT_IGNORED_REASON,
+  DOT_NOT_ON_REASON,
+  NOT_AWAY_REASON,
+  PRESENCE_OFF_SHIFT_REASON,
+  PRESENCE_UNKNOWN_REASON,
+} from './presence';
 export {
   PHISH_CLICK_STRESS,
   PHISH_CLICK_SUSPICION,
@@ -95,6 +104,7 @@ export function helpdeskActions(): readonly ActionData[] {
     ...METER_ACTION_DATA,
     ...BOSS_ACTION_DATA,
     ...INTERRUPTION_ACTION_DATA,
+    ...PRESENCE_ACTION_DATA,
     ...CONSUMABLE_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.

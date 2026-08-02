@@ -33,6 +33,11 @@ import {
   tickAtMinute,
   type TickWindow,
 } from './hours';
+import {
+  DEFAULT_PRESENCE,
+  DND_SLIDE_MINUTES,
+  type Presence,
+} from './presence';
 
 /* -- the vocabulary ------------------------------------------------------- */
 
@@ -226,6 +231,37 @@ export function declineWithdrawn(
   entry: Readonly<Pick<InterruptionEntry, 'source'>>,
 ): boolean {
   return entry.source === 'machine';
+}
+
+/**
+ * Whether a red dot is allowed to make this one go away for a while.
+ *
+ * Two exemptions, and both are by construction rather than by policy. A
+ * MEETING is a room with a time on it and people already in it; a MACHINE has
+ * decided and there is nobody on the other end of it to read anything. Neither
+ * is somebody a status can be shown to, so the Wednesday sync and the Thursday
+ * reboot stay undodgeable however the tray is set.
+ *
+ * The third condition is the declinable flag, and it is not a shortcut for the
+ * two above it: it is the same question decline asks. Anything a person could
+ * have been told no to is a thing that same person can decide not to ring, and
+ * the loader already refuses a machine that claims to be declinable - so the
+ * two sets are the same set, and saying all three out loud is what keeps that
+ * true when a fourth source is authored.
+ *
+ * A CALLBACK is deliberately not dodgeable: `deferredArrival` marks it
+ * undeclinable, which is 0.3.0's rule said in one place - you asked them to
+ * call back, this is them calling back, and the second time is the
+ * conversation whatever your dot says.
+ */
+export function dodgesUnderDnd(
+  entry: Readonly<Pick<InterruptionEntry, 'source' | 'declinable'>>,
+  presence: Presence,
+): boolean {
+  return presence === 'dnd'
+    && entry.declinable
+    && entry.source !== 'meeting'
+    && entry.source !== 'machine';
 }
 
 /**
@@ -802,23 +838,53 @@ export interface InterruptionLedger {
   readonly spentAt: Readonly<Record<string, readonly number[]>>;
   /** Ids that were waved off. They own no minutes from that moment on. */
   readonly declined: readonly string[];
+  /**
+   * And the minutes a red dot slid each one past, oldest first, by id.
+   *
+   * Optional because a ledger from before the dot existed carries none, and
+   * because that absence is the honest answer rather than a hole: nobody
+   * dodged anything, which is what every save written before this slice says
+   * and what every player who has never touched the tray produces.
+   */
+  readonly dodgedAt?: Readonly<Record<string, readonly number[]>>;
 }
 
 export const EMPTY_INTERRUPTION_LEDGER: InterruptionLedger = Object.freeze({
   spentAt: Object.freeze({}),
   declined: Object.freeze([]),
+  dodgedAt: Object.freeze({}),
 });
 
-/** Where an entry WANTS to be, given what the player has done about it. */
+/**
+ * Where an entry WANTS to be, given everything that has moved it.
+ *
+ * Two things can, and they are not the same thing: a postpone the player
+ * pressed (its window comes out of the authored budget) and a slide the dot
+ * caused (a fixed window nobody chose). Both buy their minutes from the moment
+ * they happened rather than from the arrival, for the same reason - a window
+ * measured from an arrival somebody spent eleven minutes reading is a window
+ * that bought nothing.
+ *
+ * The answer is the LATEST of the two rather than the last one written, and
+ * that is a guard rather than a subtlety: they interleave, they are counted
+ * off two different fields, and an entry that went backwards because one list
+ * was read after the other would be a call arriving in a minute that had
+ * already gone.
+ */
 function wantedTick(
   entry: Readonly<InterruptionEntry>,
   spends: readonly number[],
+  dodges: readonly number[],
 ): number {
-  const last = spends[spends.length - 1];
+  const spent = spends[spends.length - 1];
+  const dodged = dodges[dodges.length - 1];
 
-  return last === undefined
-    ? entry.tick
-    : deferredArrival(entry, spends.length - 1, last).tick;
+  return Math.max(
+    spent === undefined
+      ? entry.tick
+      : deferredArrival(entry, spends.length - 1, spent).tick,
+    dodged === undefined ? entry.tick : dodged + DND_SLIDE_MINUTES,
+  );
 }
 
 /**
@@ -860,7 +926,8 @@ export function placeInterruptions(
   // authored one still owned, and the only thing that would have noticed is
   // the runtime assert reporting a crashed clock.
   const fixed = live.filter(
-    (entry) => (ledger.spentAt[entry.id] ?? []).length === 0,
+    (entry) => (ledger.spentAt[entry.id] ?? []).length === 0
+      && (ledger.dodgedAt?.[entry.id] ?? []).length === 0,
   );
   const bookings: TickWindow[] = [
     { ...lunchWindow(schedule.day) },
@@ -875,7 +942,11 @@ export function placeInterruptions(
     .filter((entry) => !fixed.includes(entry))
     .map((entry) => ({
       entry,
-      at: wantedTick(entry, ledger.spentAt[entry.id] ?? []),
+      at: wantedTick(
+        entry,
+        ledger.spentAt[entry.id] ?? [],
+        ledger.dodgedAt?.[entry.id] ?? [],
+      ),
     }))
     .sort((left, right) => (
       left.at === right.at
@@ -909,12 +980,21 @@ export function placeInterruptions(
       continue;
     }
 
-    const settled: InterruptionEntry = {
-      ...deferredArrival(
+    // A pushed entry is a CALLBACK - undeclinable, because this is them
+    // ringing back - and one the dot merely slid past is not. Nobody asked
+    // anybody for anything: the phone did not ring, so the three answers are
+    // all still on the table whenever it does. Running a slide through
+    // `deferredArrival` would have quietly taken decline away from a call the
+    // player has never even been offered.
+    const pushed = spends.length === 0
+      ? { ...entry, slidFrom: entry.tick }
+      : deferredArrival(
         entry,
         spends.length - 1,
         spends[spends.length - 1] ?? entry.tick,
-      ),
+      );
+    const settled: InterruptionEntry = {
+      ...pushed,
       tick,
       endsTick: tick + minutes,
     };
@@ -939,10 +1019,12 @@ export function placeDeferred(
   schedule: Readonly<InterruptionSchedule>,
   blocked: readonly TickWindow[],
   spentAt: readonly number[],
+  dodgedAt: readonly number[] = [],
 ): InterruptionEntry | null {
   return placeInterruptions(schedule, blocked, {
     spentAt: { [entry.id]: spentAt },
     declined: [],
+    dodgedAt: { [entry.id]: dodgedAt },
   }).find((candidate) => candidate.id === entry.id) ?? null;
 }
 
@@ -960,10 +1042,23 @@ export function latestSpends(
   entry: Readonly<InterruptionEntry>,
   schedule: Readonly<InterruptionSchedule>,
   blocked: readonly TickWindow[],
+  /**
+   * The slides that already happened before the first push, if the day being
+   * modelled is one where a dot moved it first. Empty is the ordinary case.
+   */
+  dodgedAt: readonly number[] = [],
 ): readonly number[] {
   const minutes = entry.endsTick - entry.tick;
   const spends: number[] = [];
-  let arrival = entry.tick;
+  const dodged = dodgedAt.length === 0
+    ? entry
+    : placeDeferred(entry, schedule, blocked, [], dodgedAt);
+
+  if (dodged === null) {
+    return spends;
+  }
+
+  let arrival = dodged.tick;
 
   for (let spend = 0; spend < entry.postpones.length; spend += 1) {
     // The last minute it is still on the screen: `endsTick` is exclusive, so
@@ -971,7 +1066,7 @@ export function latestSpends(
     const pressed = arrival + minutes - 1;
     spends.push(pressed);
 
-    const placed = placeDeferred(entry, schedule, blocked, spends);
+    const placed = placeDeferred(entry, schedule, blocked, spends, dodgedAt);
 
     if (placed === null) {
       spends.pop();
@@ -982,6 +1077,81 @@ export function latestSpends(
   }
 
   return spends;
+}
+
+/**
+ * Every minute of the day a dodgeable interruption could END UP owning, if the
+ * dot is red at every arrival it makes.
+ *
+ * It is a UNION rather than a single worst case, and that is the whole
+ * argument for it. A postpone is a choice made once at an arrival, so the
+ * worst version of it can be walked; a slide is a thing that happens whenever
+ * the status happens to be red, so the player can produce a day in which it
+ * lands on any link of the chain by simply setting the dot back before that
+ * one. Nothing can enumerate which link the boss chose, so the gate is handed
+ * ALL of them, booked at once - a day with more in it than any real day can
+ * hold, which is what makes clear air found under it clear air that is
+ * genuinely there.
+ *
+ * The chain terminates: every slide moves the entry at least
+ * `DND_SLIDE_MINUTES` later, and an entry with nowhere left in the shift is
+ * dropped rather than placed. The postpone branch off each landing is in it
+ * too, because a player who goes back to Available at the third ring is a
+ * player who can then push it.
+ */
+export function dodgeLandings(
+  entry: Readonly<InterruptionEntry>,
+  schedule: Readonly<InterruptionSchedule>,
+  blocked: readonly TickWindow[],
+): readonly TickWindow[] {
+  const minutes = entry.endsTick - entry.tick;
+  const windows: TickWindow[] = [];
+  const dodges: number[] = [];
+  let at = entry.tick;
+
+  // One pass per slide the shift could possibly hold, which is the bound the
+  // slide window gives: a loop whose only bound is "until it drops" is a loop
+  // bounded by an invariant somewhere else.
+  const most = Math.ceil(
+    (schedule.shift.to - schedule.shift.from) / DND_SLIDE_MINUTES,
+  ) + 1;
+
+  for (let slide = 0; slide <= most; slide += 1) {
+    windows.push({ from: at, to: at + minutes });
+
+    // And everywhere a push from THIS arrival could take it, which is the day
+    // where the player answers the dot's third attempt by asking them to ring
+    // back.
+    const spends = latestSpends(entry, schedule, blocked, dodges);
+
+    for (let spend = 1; spend <= spends.length; spend += 1) {
+      const pushed = placeDeferred(
+        entry,
+        schedule,
+        blocked,
+        spends.slice(0, spend),
+        dodges,
+      );
+
+      if (pushed !== null) {
+        windows.push(entryWindow(pushed));
+      }
+    }
+
+    dodges.push(at);
+
+    const next = placeDeferred(entry, schedule, blocked, [], dodges);
+
+    if (next === null) {
+      // It ran out of day. That is the drop, and a dropped interruption owns
+      // no minutes at all - which is what the gate should be told.
+      break;
+    }
+
+    at = next.tick;
+  }
+
+  return windows;
 }
 
 /**
@@ -1004,8 +1174,19 @@ export function latestSpends(
 export function worstCaseWindows(
   schedule: Readonly<InterruptionSchedule>,
   blocked: readonly TickWindow[],
+  /**
+   * The dot the day is being modelled under. Available is what every day
+   * before this slice was, and what every day a player never touches the tray
+   * on still is; do not disturb is the one that moves anything, and it moves
+   * it by `dodgeLandings`.
+   */
+  presence: Presence = DEFAULT_PRESENCE,
 ): readonly TickWindow[] {
   return schedule.entries.flatMap((entry) => {
+    if (dodgesUnderDnd(entry, presence)) {
+      return dodgeLandings(entry, schedule, blocked);
+    }
+
     // A block with no postpones in it is a block nobody can move - its worst
     // case is the half hour it was booked for, and a model that slid it would
     // be modelling a day that cannot happen.

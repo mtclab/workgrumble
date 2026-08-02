@@ -15,6 +15,8 @@
  * arithmetic exact all the way through - see `METER_INTERVAL_TICKS`.
  */
 
+import { DND_WORKING_SUSPICION, type Presence } from './presence';
+
 /** Simulated minutes between meter ticks. */
 export const METER_INTERVAL_TICKS = 5;
 
@@ -148,6 +150,19 @@ export function slackRate(appId: string): SlackRate {
 /** Suspicion bleeds away while the screen has nothing to hide on it. */
 export const SUSPICION_CLEAN_DRAIN = 1;
 
+/**
+ * And the drip the dot costs, which is the same arithmetic wearing a different
+ * hat.
+ *
+ * A slack window charges because a man walking past would SEE it. This charges
+ * because two records disagree: the status says do not disturb and the touch
+ * log says the queue is being worked, and the lead can read both without
+ * leaving his office. The rate and the window are `world/presence.ts`'s - one
+ * balance table for the whole triangle - and what this module owns is the
+ * consequence, which is that a dripping interval is a dirty one and the clean
+ * drain does not run in it.
+ */
+
 /** What a missed deadline costs, and what closing something is worth. */
 export const REPUTATION_PER_BREACH = 3;
 
@@ -184,6 +199,22 @@ export interface MeterInputs {
   readonly focusedSlackApp: string | null;
   /** Whether the half hour nobody is watching is on. */
   readonly lunch: boolean;
+  /**
+   * The dot the office can see this interval.
+   *
+   * Stated rather than defaulted, because every caller can read it off the
+   * graph in one call and a default would be a claim about somebody's status
+   * made by whichever surface forgot to ask.
+   */
+  readonly presence: Presence;
+  /**
+   * Whether the queue has been touched inside `DND_WORKING_TICKS`.
+   *
+   * The touch log is the evidence, which is the same evidence the cost model
+   * and the handoff form read - so "working" means one thing in this world and
+   * the driver is not trusted to invent it.
+   */
+  readonly working: boolean;
 }
 
 /**
@@ -207,6 +238,17 @@ export interface MeterDeltas {
   readonly resolveCreditPaid: number;
   /** Whether this interval is one the scorecard counts as suspicious. */
   readonly suspicionEvent: boolean;
+  /**
+   * Minutes of do-not-disturb-while-working this interval added to the record:
+   * the whole interval, or none of it.
+   *
+   * It is the EVIDENCE half of the drip and it is separate from the meter on
+   * purpose. Suspicion drains, and a beat armed off a meter alone could be
+   * armed by a morning on the forum; the minutes do not drain, and they are
+   * what makes "on Do Not Disturb all morning" a sentence somebody can point
+   * at a number for.
+   */
+  readonly dndWorkingTicks: number;
 }
 
 function nonNegative(value: number, what: string): number {
@@ -246,9 +288,18 @@ export function meterDeltas(inputs: Readonly<MeterInputs>): MeterDeltas {
   // to notice what is on the screen. That is the tutorial, and it is why the
   // suspicion below is charged outside lunch only.
   const slackRelief = inputs.lunch ? relief * 2 : relief;
-  const suspicionUp = inputs.lunch
+  // The dot's drip, on the same side of the same rule as the windows: lunch is
+  // the half hour nobody is walking past, and a status nobody is reading costs
+  // nothing to be wrong about. Somebody who is not touching the queue is not
+  // lying about anything either - a dot that said busy while its owner sat
+  // still is a dot that was telling the truth.
+  const dripping = !inputs.lunch
+    && inputs.presence === 'dnd'
+    && inputs.working;
+  const suspicionUp = (inputs.lunch
     ? 0
-    : rates.reduce((total, rate) => total + rate.suspicion, 0);
+    : rates.reduce((total, rate) => total + rate.suspicion, 0))
+    + (dripping ? DND_WORKING_SUSPICION : 0);
 
   return {
     stressUp: excess * STRESS_PER_EXCESS_TICKET + newBreaches * STRESS_PER_BREACH,
@@ -260,6 +311,7 @@ export function meterDeltas(inputs: Readonly<MeterInputs>): MeterDeltas {
     breachesCharged: breached,
     resolveCreditPaid: credit,
     suspicionEvent: suspicionUp > 0,
+    dndWorkingTicks: dripping ? METER_INTERVAL_TICKS : 0,
   };
 }
 
@@ -273,6 +325,8 @@ export interface MeterState {
   readonly suspicionEvents: number;
   readonly breachesCharged: number;
   readonly resolveCreditPaid: number;
+  /** Minutes the dot said busy while the log said working, all day. */
+  readonly dndWorkingTicks: number;
 }
 
 export function clampMeter(value: number): number {
@@ -304,6 +358,7 @@ export function applyDeltas(
     suspicionEvents: state.suspicionEvents + (deltas.suspicionEvent ? 1 : 0),
     breachesCharged: deltas.breachesCharged,
     resolveCreditPaid: deltas.resolveCreditPaid,
+    dndWorkingTicks: state.dndWorkingTicks + deltas.dndWorkingTicks,
   };
 }
 
@@ -326,7 +381,12 @@ export function movesAnything(
     || next.reputation !== state.reputation
     || next.suspicionEvents !== state.suspicionEvents
     || next.breachesCharged !== state.breachesCharged
-    || next.resolveCreditPaid !== state.resolveCreditPaid;
+    || next.resolveCreditPaid !== state.resolveCreditPaid
+    // The evidence has to be in here as well as the meters. Suspicion pinned
+    // at the ceiling moves no number at all, and an interval skipped for that
+    // reason would be half an hour of the dot that the record never heard
+    // about - which is exactly the half hour the beat is armed off.
+    || next.dndWorkingTicks !== state.dndWorkingTicks;
 }
 
 /** The ticks in a day a meter tick falls on. */

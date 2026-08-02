@@ -298,6 +298,28 @@ export const DAY_ACTIONS = {
    */
   interruptionMissed: 'interruption.missed',
   /**
+   * The dot, set by the player, refused by the world outside a shift.
+   *
+   * One verb rather than three because the three are one decision made three
+   * ways, and it takes the dot as a NUMBER: the op language enumerates numbers
+   * and cannot compare strings, so the caller picks an index out of
+   * `PRESENCE_VALUES` and the world writes the canonical word. A caller cannot
+   * invent a fourth status, and no surface has to be trusted to spell the
+   * three.
+   */
+  presenceSet: 'presence.set',
+  /**
+   * A declinable interruption sliding past a red dot instead of ringing.
+   *
+   * A verb rather than a filter in the driver because it is a thing that
+   * HAPPENED and the schedule has to know: the minute it slid at is what the
+   * next arrival is measured from, so it rides the world graph exactly as a
+   * spent postpone does, and a save taken mid-morning comes back with the same
+   * call on the same minute. Nobody presses it - the day loop settles it in
+   * the minute the phone would have rung.
+   */
+  interruptionDodged: 'interruption.dodged',
+  /**
    * The mail that goes round after the sync, stamped by the world at the
    * minute the room emptied.
    *
@@ -382,6 +404,18 @@ export const WORLD_ACTIONS = {
    * else's incident report - which is exactly how long it takes in real life.
    */
   securityFallout: 'world.security_fallout',
+  /**
+   * Somebody who has been waiting for a first word noticing that the desk they
+   * are waiting on is marked Away and is demonstrably working on something
+   * else.
+   *
+   * It is a WORLD verb rather than a day one because nobody in this building
+   * does it: it is what happens to you, on somebody else's timetable, because
+   * of a dot you set and a dispatch you made. Once per reporter per day, which
+   * the world enforces off its own record rather than trusting the caller to
+   * count.
+   */
+  presenceNoticed: 'world.presence_noticed',
 } as const;
 
 export type WorldActionId = (typeof WORLD_ACTIONS)[keyof typeof WORLD_ACTIONS];

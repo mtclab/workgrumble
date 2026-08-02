@@ -1,8 +1,14 @@
 import type { ActionData, GuardData, NodeRefData, OpData } from '../../engine-api';
 import { FIELDS } from '../fields';
 import { METER_CEILING, METER_FLOOR } from '../meters';
-import { HELPDESK_TIER, not } from './helpers';
+import { fieldIs, HELPDESK_TIER, not } from './helpers';
 import { DAY_ACTIONS } from './ids';
+
+/**
+ * Minutes of do-not-disturb-while-working this interval is banking, or absent
+ * on a dispatch from a world with no dot in it.
+ */
+const DND_TICKS_PARAM = 'dnd_ticks_up';
 
 /**
  * The pressure meters move on the person carrying them, so the verb is aimed
@@ -95,6 +101,45 @@ export const METER_ACTION_DATA: readonly ActionData[] = [
         reason: 'An interval is either one the boss would have had something '
           + 'to say about or it is not. There is no half of one.',
       },
+      // The dot's minutes are optional and validated when they are there: a
+      // dispatch from before the status existed says nothing and writes
+      // nothing, which is what keeps a scripted week byte-identical to the one
+      // that was walked before this slice.
+      {
+        when: {
+          pred: 'all',
+          of: [
+            not({ pred: 'param_absent', param: DND_TICKS_PARAM }),
+            not({
+              pred: 'param_is_whole_number',
+              param: DND_TICKS_PARAM,
+              value: 0,
+            }),
+          ],
+        },
+        reason: 'Minutes of a status held while the queue was being worked '
+          + 'have to be a whole number of them at or above zero, and this is '
+          + 'not one.',
+      },
+      // And they are the WORLD's to believe rather than the caller's: the dot
+      // is on the graph, so a driver cannot bank half an hour of do not
+      // disturb against a player who is showing Available.
+      {
+        when: {
+          pred: 'all',
+          of: [
+            {
+              pred: 'param_is_whole_number',
+              param: DND_TICKS_PARAM,
+              value: 1,
+            },
+            not(fieldIs(ACTOR, FIELDS.presence, 'dnd')),
+          ],
+        },
+        reason: 'Those are minutes of a dot nobody is showing. The status is '
+          + 'not on do not disturb, so there is nothing for the record to be '
+          + 'a record of.',
+      },
     ],
     apply: [
       ...meterOps(FIELDS.stress, 'stress_up', 'stress_down'),
@@ -115,6 +160,61 @@ export const METER_ACTION_DATA: readonly ActionData[] = [
             clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
           },
         },
+      },
+      // The dot's minutes, when there are any, and NOTHING at all when there
+      // are none: an add of nought is still a write, and a field that appeared
+      // on every player node the first time the meters ticked would move every
+      // golden in the suite while saying, of somebody who has never touched
+      // the tray, that they have nought minutes of a status rather than no
+      // status at all.
+      //
+      // Two ops because the first interval that banks any has to OPEN the
+      // account: the op language adds to a number it can read, so an add
+      // against an absent field is a refusal rather than a start.
+      {
+        op: 'when',
+        cond: {
+          pred: 'all',
+          of: [
+            {
+              pred: 'param_is_whole_number',
+              param: DND_TICKS_PARAM,
+              value: 1,
+            },
+            { pred: 'field_missing', node: ACTOR, field: FIELDS.dndWorkingTicks },
+          ],
+        },
+        ops: [
+          {
+            op: 'set_field',
+            node: ACTOR,
+            field: FIELDS.dndWorkingTicks,
+            value: { const: 0 },
+          },
+        ],
+      },
+      {
+        op: 'when',
+        cond: {
+          pred: 'param_is_whole_number',
+          param: DND_TICKS_PARAM,
+          value: 1,
+        },
+        ops: [
+          {
+            op: 'set_field',
+            node: ACTOR,
+            field: FIELDS.dndWorkingTicks,
+            value: {
+              add: {
+                node: ACTOR,
+                field: FIELDS.dndWorkingTicks,
+                by: { param: DND_TICKS_PARAM },
+                clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
+              },
+            },
+          },
+        ],
       },
       // The watermarks last, and only once the meters they paid for have
       // moved: an action is all of itself or none of it, so a refusal above

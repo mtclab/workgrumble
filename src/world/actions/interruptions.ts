@@ -12,7 +12,8 @@ import {
   REFOCUS_TICKS,
   RING_OUT_REFOCUS_TICKS,
 } from '../meters';
-import { HELPDESK_TIER, not, TARGET } from './helpers';
+import { DOT_IGNORED_REASON, DOT_NOT_ON_REASON } from './presence';
+import { fieldIs, HELPDESK_TIER, not, TARGET } from './helpers';
 import { DAY_ACTIONS } from './ids';
 
 /**
@@ -63,10 +64,31 @@ const POSTPONES_PARAM = 'postpones';
  */
 const SPENT_AT_PARAM = 'spent_at';
 /**
- * Whether declining was WITHDRAWN rather than never offered, which is the only
- * thing that decides which true sentence the refusal is.
+ * And the same line again for the dot's own ledger: `id@tick`, the minute a
+ * declinable interruption slid past a red status instead of ringing.
+ *
+ * A separate list from the postpones for the same reason it is a separate
+ * mechanic: a push is the player asking for one and spending a budget on it,
+ * and this is somebody deciding not to ring a desk that says busy. Sharing the
+ * field would let a morning on do-not-disturb quietly eat a workstation's
+ * postpones.
+ */
+const DODGED_AT_PARAM = 'dodged_at';
+/**
+ * Whether it was WITHDRAWN rather than never offered, which is the only thing
+ * that decides which true sentence the refusal is.
  */
 const WITHDRAWN_PARAM = 'withdrawn';
+/**
+ * Whether the phone actually rang at the desk.
+ *
+ * Absent is 0.3.0's world, where the only way to miss one was to be there
+ * while it rang - so absent means it rang, and every dispatch written before
+ * the dot existed keeps exactly the behaviour it had. Nought is the new case:
+ * the status filter slid it past, nobody heard anything, and the record is the
+ * whole of what it cost.
+ */
+const RANG_PARAM = 'rang';
 
 /** Which interruption this is, named once, and never blank. */
 const NAMED: GuardData[] = [
@@ -487,15 +509,99 @@ export const INTERRUPTION_ACTION_DATA: readonly ActionData[] = [
         reason: 'Whether it was about the work in hand is a yes or a no, and '
           + 'this is neither.',
       },
+      // Whether it rang is optional and, when it is there, is the same yes or
+      // no. A dispatch that says nothing is one from before the dot existed
+      // and gets 0.3.0's truth - it rang - which is what keeps the budget
+      // generalization's rule here too: saying nothing is saying what was
+      // always the case, and saying "no" is saying something new.
+      {
+        when: {
+          pred: 'all',
+          of: [
+            not({ pred: 'param_absent', param: RANG_PARAM }),
+            not({ pred: 'param_int_in', param: RANG_PARAM, values: [0, 1] }),
+          ],
+        },
+        reason: 'Whether the phone actually rang at the desk is a yes or a '
+          + 'no, and this is neither.',
+      },
     ],
     apply: [
       record(FIELDS.interruptionMissed),
+      // The window is the RINGING rather than the conversation - attention
+      // residue is about being pulled at, and a phone nobody picked up still
+      // pulled. Which is exactly why a call the dot slid past leaves none of
+      // it: it never rang. The record still goes on, because the record is
+      // what the boss can read later and what stops the dot from being free.
       {
         op: 'when',
-        cond: not({ pred: 'param_int_in', param: BENIGN_PARAM, values: [1] }),
+        cond: {
+          pred: 'all',
+          of: [
+            not({ pred: 'param_int_in', param: BENIGN_PARAM, values: [1] }),
+            not({ pred: 'param_int_in', param: RANG_PARAM, values: [0] }),
+          ],
+        },
         ops: startRefocus(RING_OUT_REFOCUS_TICKS),
       },
     ],
+  },
+  /**
+   * The dot, doing the one thing it does to the day: a declinable
+   * interruption sliding past instead of arriving.
+   *
+   * It writes a minute rather than a decision, because nobody decided
+   * anything - the player was not offered the three answers and was not
+   * charged the arrival. What the world records is WHEN it slid, because that
+   * is what the next arrival is measured from (`DND_SLIDE_MINUTES` from the
+   * slide, exactly as a postpone buys its window from the press), and because
+   * the schedule has to be able to rebuild the same day on the far side of a
+   * save.
+   *
+   * Every guard here is about a claim somebody could otherwise make quietly:
+   * that the dot was on when it was not, that a meeting can be dodged, that
+   * the same minute slid twice.
+   */
+  {
+    id: DAY_ACTIONS.interruptionDodged,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...NAMED,
+      SETTLED_GUARD,
+      {
+        when: { pred: 'param_blank', param: DODGED_AT_PARAM },
+        reason: 'A call that slid past has to say which minute it slid at. '
+          + 'The schedule measures the next one from it, and a slide with no '
+          + 'minute on it is a call that comes back at a time nobody can '
+          + 'work out.',
+      },
+      // The dot itself, off the graph rather than off the dispatch. This is
+      // the whole of what makes the filter world-enforced: a driver cannot
+      // dodge a call for a player who is showing Available.
+      {
+        when: not(fieldIs(ACTOR, FIELDS.presence, 'dnd')),
+        reason: DOT_NOT_ON_REASON,
+      },
+      // And the exemption. The flag is the one decline reads, which is not a
+      // shortcut: the loader refuses a machine that is marked declinable and
+      // a meeting is not one, so "anybody could have waved it off" and "there
+      // is a person on the other end reading your dot" are the same set.
+      {
+        when: not({ pred: 'param_int_in', param: DECLINABLE_PARAM, values: [1] }),
+        reason: DOT_IGNORED_REASON,
+      },
+      {
+        when: {
+          pred: 'line_in_field',
+          node: ACTOR,
+          field: FIELDS.interruptionDodged,
+          value: { param: DODGED_AT_PARAM },
+        },
+        reason: 'That one has already slid past this minute. A phone cannot '
+          + 'decline to ring twice in the minute it did not ring in.',
+      },
+    ],
+    apply: [record(FIELDS.interruptionDodged, DODGED_AT_PARAM)],
   },
   /**
    * The arrival itself, which is charged before anybody has decided anything.

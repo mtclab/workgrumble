@@ -80,6 +80,7 @@ import {
   arrivalStress,
   buildInterruptionSchedule,
   declineWithdrawn,
+  dodgesUnderDnd,
   INTERRUPTION_SOURCES,
   type InterruptionSource,
   type InterruptionEntry,
@@ -90,6 +91,15 @@ import {
   placeInterruptions,
 } from '../world/interruptions';
 import { matrixSummary, poolStanding } from '../world/pool';
+import {
+  AWAY_NOTICED_REPUTATION,
+  DND_WORKING_TICKS,
+  type DndBeatReading,
+  dndBeat,
+  type Presence,
+  presenceCode,
+  readPresence,
+} from '../world/presence';
 import {
   beatAt,
   type PressureBeat,
@@ -132,6 +142,7 @@ import {
   cascadeComment,
   cascadesDue,
   countsAsWork,
+  findWorldTicket,
   followUpTo,
   HANDOFF_BOUNCE,
   resolveCredit,
@@ -444,6 +455,36 @@ export interface DayApi {
    */
   pendingRestart(): UpcomingInterruption | null;
   /**
+   * The dot the office can see, which is `available` until somebody says
+   * otherwise.
+   *
+   * Free to read and changes nothing, like everything else on this half of the
+   * interface: it is a field on the player node, so the tray, the taskbar and
+   * the lead all read the same one and none of them can be showing a status
+   * the world has stopped holding.
+   */
+  presence(): Presence;
+  /**
+   * And setting it, which the world may refuse - outside a shift there is
+   * nobody at a desk to show a dot to, and a desk that is currently a meeting
+   * room refuses in the sentence the meeting already owns.
+   *
+   * A refusal rather than a throw, for the same reason the three interruption
+   * answers are: it is a sentence the player reads.
+   */
+  setPresence(to: Presence): DispatchResult;
+  /**
+   * What the lead would have to go on if he asked about the status this
+   * minute: the dot, the meter, and the minutes of do-not-disturb-while-working
+   * the world has actually written down.
+   *
+   * Free to read and changes nothing. The scene it arms is the caught-scene
+   * class's; what is here is the PREDICATE and the evidence under it, because
+   * a telling-off nobody can trace to a number is a random scold and this game
+   * does not have those.
+   */
+  dndBeat(): DndBeatReading;
+  /**
    * The choice grammar, aimed at whatever is on the screen right now.
    *
    * All three answer rather than throw: a refusal is a sentence the player
@@ -589,6 +630,25 @@ export interface DayDriverHandlers {
    * this is for is the window closing behind it.
    */
   onInterruptionEnded?(entry: Readonly<InterruptionEntry>): void;
+  /**
+   * A phone that did not ring, because the dot said not to.
+   *
+   * The world has already recorded the slide - and, if there was nowhere left
+   * in the day for it to slide to, that it went unanswered - so there is
+   * nothing here to decide. It exists because the player has to be able to
+   * find out that the dot is doing something: a filter with no surface is a
+   * mechanic the player pays suspicion for and never sees work.
+   */
+  onInterruptionDodged?(entry: Readonly<InterruptionEntry>, tick: number): void;
+  /**
+   * Somebody who has been waiting for a first word noticing that the desk they
+   * are waiting on says Away and is demonstrably working.
+   *
+   * The world has already taken the reputation and written down that this
+   * person has had their one thought about it today. What is left is what they
+   * SAY, which is a chat line and therefore content.
+   */
+  onPresenceNoticed?(reporter: NodeId, ticketId: string, tick: number): void;
   /**
    * Friday, three o'clock, decided. The world already holds the outcome - the
    * reputation was read and the verb was dispatched - and what is left is the
@@ -757,6 +817,50 @@ export class DayDriver implements DayApi {
   }
 
   /**
+   * The dot, read off the player node every time rather than mirrored here.
+   *
+   * Absent is `available`, which is what everybody who has never touched the
+   * tray is showing - and the reason no scripted walk in this suite writes the
+   * field at all.
+   */
+  public presence(): Presence {
+    return readPresence(this.engine.graph.getField(this.actor, FIELDS.presence));
+  }
+
+  /**
+   * Setting it, through the same seam every other verb goes through.
+   *
+   * The takeover check is here rather than in the world for the same reason
+   * `drink` and `tidyDesk` have it: the world knows there is a shift on, and
+   * the DRIVER is the half that knows the desk is currently half an hour in a
+   * room nobody can leave. A status changed from inside the sync would be a
+   * dot set by somebody who is not at the desk it is about.
+   */
+  public setPresence(to: Presence): DispatchResult {
+    const held = this.takeoverRefusal();
+
+    if (held !== null) {
+      return { ok: false, reason: held };
+    }
+
+    return this.announced(this.engine.dispatch(
+      DAY_ACTIONS.presenceSet,
+      this.actor,
+      null,
+      { dot: presenceCode(to) },
+    ));
+  }
+
+  /** What the lead has to go on about the status, this minute. */
+  public dndBeat(): DndBeatReading {
+    return dndBeat(
+      this.presence(),
+      this.playerNumber(FIELDS.suspicion),
+      this.playerNumber(FIELDS.dndWorkingTicks),
+    );
+  }
+
+  /**
    * Everything the player does to the world, and what it meant to the queue.
    *
    * The shell dispatches through here rather than at the engine directly so
@@ -784,6 +888,9 @@ export class DayDriver implements DayApi {
     const witnesses = target === null ? [] : this.ticketsAbout(target);
     const result = this.engine.dispatch(id, actor, target, params);
     this.recordTouches(id, witnesses, result.ok);
+    // And, if the dot says Away while that was going on, the one person who
+    // can see both halves of it.
+    this.settleAwayNoticed(id, result.ok);
     // A fix that closed a parent has closed forty other people's tickets as
     // well, and they should hear about it in the minute it happened rather
     // than at the top of the next one.
@@ -2042,24 +2149,7 @@ export class DayDriver implements DayApi {
    * of this lives in the driver.
    */
   private interruptionLedger(): InterruptionLedger {
-    const spentAt: Record<string, number[]> = {};
-
-    for (const line of this.playerText(FIELDS.interruptionSpentAt).split('\n')) {
-      const mark = line.lastIndexOf('@');
-
-      if (mark <= 0) {
-        continue;
-      }
-
-      const id = line.slice(0, mark);
-      const at = Number(line.slice(mark + 1));
-
-      if (!Number.isSafeInteger(at)) {
-        continue;
-      }
-
-      (spentAt[id] ??= []).push(at);
-    }
+    const spentAt = this.stampedLines(FIELDS.interruptionSpentAt);
 
     // A push the ids-only ledger knows about and this one has no minute for
     // is a record from a save written before the minute was kept - or from a
@@ -2088,7 +2178,43 @@ export class DayDriver implements DayApi {
       declined: this.playerText(FIELDS.interruptionDeclined)
         .split('\n')
         .filter((id) => id.length > 0),
+      // The dot's own ledger, read the same way and kept apart for the same
+      // reason it is written apart: a slide is not a push, it spends no
+      // budget, and a morning on do not disturb must not quietly eat a
+      // workstation's postpones.
+      dodgedAt: this.stampedLines(FIELDS.interruptionDodged),
     };
+  }
+
+  /**
+   * An `id@tick` list off the player node, as minutes by id.
+   *
+   * One reader for both ledgers rather than two, because they are the same
+   * shape written by two verbs, and a second copy of this parsing is a second
+   * answer to "which minute did that happen on" waiting to disagree with the
+   * first.
+   */
+  private stampedLines(field: string): Record<string, number[]> {
+    const stamped: Record<string, number[]> = {};
+
+    for (const line of this.playerText(field).split('\n')) {
+      const mark = line.lastIndexOf('@');
+
+      if (mark <= 0) {
+        continue;
+      }
+
+      const id = line.slice(0, mark);
+      const at = Number(line.slice(mark + 1));
+
+      if (!Number.isSafeInteger(at)) {
+        continue;
+      }
+
+      (stamped[id] ??= []).push(at);
+    }
+
+    return stamped;
   }
 
   /**
@@ -2180,18 +2306,109 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    for (const entry of this.liveInterruptions()) {
-      if (entry.tick > after && entry.tick <= now) {
-        this.arrive(entry);
+    const settled = new Set<string>();
+    const ended = new Set<string>();
+
+    // The pass is a LOOP because a slide changes where everything else in the
+    // day stands: the entry the dot pushed out stops being a booking, and
+    // something that had been slid out of its way can come back to a minute
+    // that is now clear - including this one. Walking a placement taken before
+    // the slide would miss that arrival entirely.
+    //
+    // It terminates: a slide moves its own entry at least `DND_SLIDE_MINUTES`
+    // later, so nothing can be slid twice in one minute, and the sets below
+    // make each entry's arrival and end the driver's business exactly once.
+    for (let pass = 0; pass <= this.interruptions_.entries.length; pass += 1) {
+      let slid = false;
+
+      for (const entry of this.liveInterruptions()) {
+        if (
+          entry.tick > after
+          && entry.tick <= now
+          && !settled.has(entry.id)
+        ) {
+          settled.add(entry.id);
+
+          if (this.dodge(entry)) {
+            slid = true;
+            break;
+          }
+
+          this.arrive(entry);
+        }
+
+        // The far side of it, whatever happened in between. The meeting
+        // settles what it owes the world here, which is why this runs on the
+        // END rather than on a button: nobody presses "the meeting is over".
+        if (
+          entry.endsTick > after
+          && entry.endsTick <= now
+          && !ended.has(entry.id)
+        ) {
+          ended.add(entry.id);
+          this.finish(entry);
+        }
       }
 
-      // The far side of it, whatever happened in between. The meeting settles
-      // what it owes the world here, which is why this runs on the END rather
-      // than on a button: nobody presses "the meeting is over".
-      if (entry.endsTick > after && entry.endsTick <= now) {
-        this.finish(entry);
+      if (!slid) {
+        return;
       }
     }
+  }
+
+  /**
+   * The dot, doing the one thing it does: a phone that does not ring.
+   *
+   * Answers whether the day moved, because the caller has to re-read a
+   * placement this changed. Nothing about the ARRIVAL happens - no stress, no
+   * window, no three answers - which is exactly the trade: the quiet is real,
+   * and what it costs is the drip the meters charge for showing a status that
+   * disagrees with the log.
+   *
+   * A slide that runs out of day is a call that is simply not going to happen,
+   * and it goes into the missed list like a phone that rang out - minus the
+   * window, because nothing rang. The record is the honest trace of it: the
+   * dot dodged it, and somebody can read later that this desk did not take it.
+   */
+  private dodge(entry: Readonly<InterruptionEntry>): boolean {
+    if (!dodgesUnderDnd(entry, this.presence())) {
+      return false;
+    }
+
+    const now = this.engine.now();
+    const slid = this.engine.dispatch(
+      DAY_ACTIONS.interruptionDodged,
+      this.actor,
+      null,
+      {
+        id: entry.id,
+        // The whole line, stamped here because this is the only place that
+        // knows the minute - the same contract the postpone ledger keeps, and
+        // for the same reason: the schedule measures the next arrival from the
+        // slide rather than from the minute it was originally due.
+        dodged_at: `${entry.id}@${String(now)}`,
+        declinable: entry.declinable ? 1 : 0,
+      },
+    );
+
+    if (!slid.ok) {
+      return false;
+    }
+
+    if (!this.liveInterruptions().some((live) => live.id === entry.id)) {
+      this.engine.dispatch(DAY_ACTIONS.interruptionMissed, this.actor, null, {
+        id: entry.id,
+        benign: isBenign(entry, this.ticketInHand()) ? 1 : 0,
+        // It never rang. The window a ring-out costs is the ringing itself,
+        // and there was none of it - so the record is the whole of what this
+        // one leaves behind.
+        rang: 0,
+      });
+    }
+
+    this.handlers.onInterruptionDodged?.(entry, now);
+    this.announce();
+    return true;
   }
 
   /**
@@ -2708,6 +2925,7 @@ export class DayDriver implements DayApi {
       suspicionEvents: read(FIELDS.suspicionEvents),
       breachesCharged: read(FIELDS.breachesCharged),
       resolveCreditPaid: read(FIELDS.resolveCreditPaid),
+      dndWorkingTicks: read(FIELDS.dndWorkingTicks),
     };
   }
 
@@ -2729,6 +2947,11 @@ export class DayDriver implements DayApi {
       openSlackApps: this.handlers.openSlackApps(),
       focusedSlackApp: this.handlers.focusedSlackApp(),
       lunch: isLunchtime(now),
+      // Both off the graph, neither invented here: the dot is a field, and
+      // "working" is the touch log - the same evidence the cost model and the
+      // handoff form read. The meters decide what the pair is worth.
+      presence: this.presence(),
+      working: this.workingRecently(now),
     });
 
     if (!movesAnything(state, deltas)) {
@@ -2745,7 +2968,108 @@ export class DayDriver implements DayApi {
       suspicion_events_up: deltas.suspicionEvent ? 1 : 0,
       breaches_charged: deltas.breachesCharged,
       resolve_credit_paid: deltas.resolveCreditPaid,
+      // The evidence half of the drip. Nought on every interval of every day
+      // nobody sets a dot on, and the world writes nothing for a nought -
+      // which is what keeps this off the player node of a scripted week.
+      dnd_ticks_up: deltas.dndWorkingTicks,
     });
+  }
+
+  /**
+   * Whether the queue has been touched inside `DND_WORKING_TICKS`.
+   *
+   * The touch log, which is the same evidence `ticketInHand` reads and the
+   * same evidence a handoff form is judged on - so "working" means one thing
+   * in this world. Resolved tickets count: closing one is the most working
+   * anybody does, and a definition that dropped it would let a player go
+   * quiet, close three tickets and pay nothing for the dot.
+   */
+  private workingRecently(now: number): boolean {
+    for (const ticket of this.tickets()) {
+      const touches = triedFromTouches(ticket.fields[FIELDS.touchLog]);
+      const last = touches[touches.length - 1];
+
+      if (last !== undefined && now - last.tick <= DND_WORKING_TICKS) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Somebody noticing the Away dot, which is what the Away dot costs.
+   *
+   * The trigger is a dispatch that COUNTS AS WORK - the same filter the touch
+   * log uses - because the lie is not the status, it is the status held while
+   * demonstrably doing the job on somebody else's ticket. Reading a knowledge
+   * base article while away is being away.
+   *
+   * One person per dispatch and one per person per day, and the person is the
+   * one who has been waiting longest for a first word. Stinging every waiting
+   * reporter at once would be four reputation hits in one minute for one
+   * click, which is the drumbeat the spec forbids; the queue has all afternoon
+   * to work through them one at a time, which is also how it happens.
+   */
+  private settleAwayNoticed(id: string, ok: boolean): void {
+    if (!ok || !countsAsWork(id) || this.presence() !== 'away') {
+      return;
+    }
+
+    const day = this.day();
+    const already = this.playerText(FIELDS.presenceNoticed).split('\n');
+    let waiting: { ticket: string; reporter: NodeId; since: number } | null = null;
+
+    for (const ticket of this.tickets()) {
+      if (!isUnresolved(ticket) || !needsResponse(ticket)) {
+        continue;
+      }
+
+      const reporter = findWorldTicket(ticket.id)?.def.reporter;
+
+      if (reporter === undefined || already.includes(`${reporter}@${String(day)}`)) {
+        continue;
+      }
+
+      const since = ticket.fields[FIELDS.spawnedAt];
+      const at = typeof since === 'number' ? since : 0;
+
+      if (waiting === null || at < waiting.since) {
+        waiting = { ticket: ticket.id, reporter, since: at };
+      }
+    }
+
+    if (waiting === null) {
+      return;
+    }
+
+    const noticed = this.engine.dispatch(
+      WORLD_ACTIONS.presenceNoticed,
+      this.actor,
+      null,
+      {
+        reporter: waiting.reporter,
+        mark: `${waiting.reporter}@${String(day)}`,
+        reputation_down: AWAY_NOTICED_REPUTATION,
+      },
+    );
+
+    if (!noticed.ok) {
+      return;
+    }
+
+    this.handlers.onPresenceNoticed?.(
+      waiting.reporter,
+      waiting.ticket,
+      this.engine.now(),
+    );
+    this.handlers.onNotice?.(
+      'Somebody has noticed',
+      `${ticketTitle(waiting.ticket)} - they can see the dot, they can see `
+      + 'the ticket you just worked, and they have drawn the obvious '
+      + 'conclusion about which of those two things you were doing instead of '
+      + 'answering them.',
+    );
   }
 
   /** Returns true when the transition it made ended the day. */

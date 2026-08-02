@@ -517,6 +517,13 @@ const OFF_HOURS_FORBIDDEN: Readonly<Record<string, string>> = {
   interruption_declined: 'an interruption was refused',
   interruption_missed: 'a phone rang out with nobody at the desk',
   meeting_recap_at: 'a meeting finished and somebody minuted it',
+  presence: 'somebody changed the status they were showing an empty building',
+  interruption_dodged: 'a status filter slid a call past a minute nobody was '
+    + 'at the desk for, which is every minute of the night',
+  dnd_working_ticks: 'the record banked minutes of a dot held while the queue '
+    + 'was being worked, in a stretch of hours nobody worked any of it in',
+  presence_noticed: 'somebody waiting on a ticket had a thought about your '
+    + 'status at four in the morning',
 };
 
 function isOffHoursCounterEvent(event: Readonly<EngineEvent>): boolean {
