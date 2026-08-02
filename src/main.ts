@@ -19,6 +19,7 @@ import { CloudSaves } from './shell/sync';
 import { updateOnBoot, VersionSlot } from './shell/updates';
 import { BUILD_VERSION } from './shared/build';
 import { COMPANY, COMPANY_IDS } from './world/company';
+import type { InterruptionSource } from './world/interruptions';
 import { createWorldSession, FIRST_WEEK } from './world/session';
 import { ticketTitle } from './world/tickets';
 
@@ -42,6 +43,26 @@ export interface SimDebug {
 
 declare global {
   var careerSim: SimDebug | undefined;
+}
+
+/**
+ * Which window an interruption is drawn in.
+ *
+ * Three sources, three surfaces, and they are genuinely different things: a
+ * person on a phone, a room with people in it, and a machine that has decided.
+ * It is a function rather than a conditional at each call site because the two
+ * call sites are "open it" and "close it", and a window opened by one rule and
+ * closed by another is a window left standing on the desk.
+ */
+function windowFor(source: InterruptionSource): string {
+  switch (source) {
+    case 'meeting':
+      return 'meeting';
+    case 'machine':
+      return 'reboot';
+    default:
+      return 'call';
+  }
 }
 
 function mountPoint(): HTMLElement {
@@ -219,8 +240,29 @@ async function boot(): Promise<void> {
     // boss key works, the lead still comes round - while the meeting is a
     // takeover and the desk is genuinely unreachable for the whole of it.
     onInterruption: (view) => {
+      shell.openApp(windowFor(view.entry.source));
+
+      if (view.entry.source === 'machine') {
+        // Nobody is on the other end of this one, so the notice is the
+        // machine's own register rather than a person's: a statement about
+        // what is going to happen, with no question in it anywhere.
+        shell.notify(
+          view.callback
+            ? 'The workstation is back about the updates'
+            : 'The workstation is restarting',
+          view.postponesLeft > 0
+            ? `It can be put off ${String(view.postponesLeft)} more time(s), `
+              + 'and the windows get shorter each time. The desk is gone '
+              + 'while it goes, and every deadline in the queue is not.'
+            : 'There is nothing left to put it off with. It takes the desk '
+              + 'now, the queue carries on without you, and it will be a '
+              + 'few minutes.',
+        );
+        return;
+      }
+
       const meeting = view.entry.source === 'meeting';
-      shell.openApp(meeting ? 'meeting' : 'call');
+
       shell.notify(
         meeting ? 'You are in a meeting' : 'The phone is ringing',
         meeting
@@ -235,7 +277,21 @@ async function boot(): Promise<void> {
     // And the minute the screen is yours again, however it ended. The world
     // has already been told everything it is owed by the time this fires.
     onInterruptionEnded: (entry) => {
-      shell.closeApp(entry.source === 'meeting' ? 'meeting' : 'call');
+      shell.closeApp(windowFor(entry.source));
+
+      // The reboot's last beat, and the whole comedy register of this game in
+      // one line: the screen doubts, and the world has not lost a byte. Every
+      // window is where it was, every draft is still in it, the terminal
+      // remembers what was typed - because none of it was ever thrown away.
+      // The parenthesis is the machine's manners, not a disclaimer.
+      if (entry.source === 'machine') {
+        shell.notify(
+          'Restoring your work... (most of it)',
+          'Everything is exactly where you left it, which the workstation '
+          + 'could have said with more confidence and chose not to. What is '
+          + 'gone is the minutes.',
+        );
+      }
     },
     // Friday at three. The world has already decided - the verb is guarded on
     // the one number that decides it - so what is left is the conversation.
@@ -403,7 +459,23 @@ async function boot(): Promise<void> {
     }),
   };
 
-  const shell = new Shell(mountPoint(), context);
+  // What the workstation installed overnight.
+  //
+  // Read BEFORE the shell is built, because the answer decides which SCREEN
+  // the boot goes to: a build that changed under this browser plays the update
+  // animation between the POST and the log-on box, and the notes it is the
+  // changelog of open on the desktop the moment there is one. One animation,
+  // two masters - the fiction's updates and ours.
+  //
+  // The version is recorded here rather than when the window is closed. A
+  // player who shuts the tab during the boot gag has still had this build
+  // installed, and a record that only lands if somebody reads the notes is a
+  // record that shows the same notes every morning until they do.
+  const versions = new VersionSlot(store.storage);
+  const installed = updateOnBoot(versions.read(), BUILD_VERSION);
+  versions.write(BUILD_VERSION);
+
+  const shell = new Shell(mountPoint(), context, installed.length > 0);
 
   engine.onEvent((event) => {
     if (event.type === 'ticket:resolved') {
@@ -483,16 +555,6 @@ async function boot(): Promise<void> {
       );
     }
   }
-
-  // What the workstation installed overnight.
-  //
-  // The version is recorded BEFORE the window is opened rather than when it is
-  // closed. A player who shuts the tab during the boot gag has still had this
-  // build installed, and a record that only lands if somebody reads the notes
-  // is a record that shows the same notes every morning until they do.
-  const versions = new VersionSlot(store.storage);
-  const installed = updateOnBoot(versions.read(), BUILD_VERSION);
-  versions.write(BUILD_VERSION);
 
   if (installed.length > 0) {
     shell.openApp('updates');

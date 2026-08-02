@@ -165,6 +165,18 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'boot.installing',
+    surface: 'boot',
+    control: 'install-screen',
+    does: 'Plays the update animation between the POST and the log-on box on '
+      + 'the first boot of a changed build - our release arriving as the '
+      + 'fiction\'s update, on the fiction\'s own screen, before the notes '
+      + 'that say what was in it.',
+    run: 'deploy',
+    why: 'It only plays on a workstation that remembers an older build, which '
+      + 'is a browser seeded with an older version and a reload.',
+  },
+  {
     id: 'login.submit',
     surface: 'login',
     control: 'login-password, login-submit',
@@ -796,6 +808,70 @@ const ENTRIES = [
     does: 'Tries to catch up on it afterwards instead, and gets the same '
       + 'answer for the same reason.',
     run: 'week',
+  },
+
+  /* -- the workstation, having its own morning ------------------------------
+   *
+   * Two surfaces and they are two different rules. The COUNTDOWN runs while a
+   * reboot the player pushed back is on its way, and the desk is theirs for
+   * every minute of it - that is what the postpone bought. The UPDATE SCREEN
+   * runs while it owns the desk, and nothing on the desk answers for the whole
+   * of it.
+   */
+  {
+    id: 'reboot.window',
+    surface: 'reboot',
+    control: 'window-reboot',
+    does: 'The workstation restarting itself: a percentage that is theatre '
+      + 'pinned to real minutes, one imperative sentence, and a queue whose '
+      + 'deadlines are all still running behind it.',
+    window: { routes: ['start-menu', 'day'] },
+    run: 'week',
+  },
+  {
+    id: 'reboot.postpone',
+    surface: 'reboot',
+    control: 'reboot-postpone',
+    does: 'Pushes it back by the next window in the budget, which is shorter '
+      + 'than the last one, and says how many are left after this.',
+    actions: [DAY_ACTIONS.interruptionDefer],
+    run: 'week',
+  },
+  {
+    id: 'reboot.countdown',
+    surface: 'reboot',
+    control: 'reboot-countdown, reboot-chip',
+    does: 'Counts the minutes a postpone bought, in the window and on the '
+      + 'taskbar, while the desk stays entirely workable underneath it.',
+    run: 'week',
+  },
+  {
+    id: 'reboot.withdrawn',
+    surface: 'reboot',
+    control: 'reboot-withdrawn',
+    does: 'Says on the dialog that declining was an option until it was '
+      + 'withdrawn, rather than offering a button that would refuse every '
+      + 'single time.',
+    run: 'week',
+  },
+  {
+    id: 'reboot.spent',
+    surface: 'reboot',
+    control: 'reboot-dialog (no postpones left)',
+    does: 'The arrival that offers nothing: the buttons are gone because the '
+      + 'budget is, and the desk refuses every verb in the workstation\'s own '
+      + 'sentence until it hands itself back.',
+    run: 'week',
+  },
+  {
+    id: 'reboot.restart-now',
+    surface: 'reboot',
+    control: 'reboot-restart-now',
+    does: 'Takes it now instead of dreading it, which is legal, lands the '
+      + 'same recovery window, and is the only way anybody chooses the minute.',
+    run: 'fired',
+    why: 'A week can spend the budget or skip it, not both: the one reboot in '
+      + 'the probation week is the only place either button exists.',
   },
 
   /* -- the review --------------------------------------------------------- */
@@ -2334,6 +2410,8 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'call-option-*',
   'meeting-defer',
   'meeting-decline',
+  'reboot-postpone',
+  'reboot-restart-now',
   'review-dismiss',
   'beer-open',
   'weekend-onward',

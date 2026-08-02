@@ -15,6 +15,7 @@ import { KB_APP } from './kb';
 import { MAIL_APP } from './mail';
 import { MEETING_APP } from './meeting';
 import { loadManifest } from './manifest';
+import { REBOOT_APP } from './reboot';
 import { REMOTE_APP } from './remote';
 import { REVIEW_APP } from './review';
 import { SCORECARD_APP } from './scorecard';
@@ -41,6 +42,7 @@ export const APP_MANIFEST = assertCaughtScenes(loadManifest([
   CAUGHT_APP,
   CALL_APP,
   MEETING_APP,
+  REBOOT_APP,
   REVIEW_APP,
   BEER_APP,
   TICKETS_APP,

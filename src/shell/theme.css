@@ -144,6 +144,11 @@
   --size-door-flash: 10px;
   --size-cat: 132px;
   --measure-boot: 62ch;
+  /* The update screen: a ring of dots the size of a beer mat, and a line
+     length that keeps the machine's one imperative sentence on one line. */
+  --size-update-ring: 54px;
+  --size-update-dot: 8px;
+  --measure-update: 44ch;
   --measure-field: 140px;
   --stroke-icon: 1.75;
 
@@ -173,6 +178,16 @@
   --angle-sweep: 90deg;
   --angle-weave: 45deg;
   --angle-flip: 180deg;
+  /* One turn of the update ring. Slow: the dots are meant to read as a
+     machine passing time rather than a machine working. */
+  --duration-update-ring: 2.4s;
+  /* Six dots, so a sixth of a turn each, each one dimmer than the last. */
+  --angle-update-dot: 60deg;
+  --fade-update-dot: 0.14;
+  /* What is left of the desk while the workstation has it. Darker than
+     `--opacity-dim`, because a meeting is a room you are not in and this is a
+     screen that is not yours. */
+  --opacity-eclipsed: 0.14;
   /* Upright: the fallback a remote screen falls back to before it reports. */
   --angle-flat: 0deg;
 }
@@ -426,6 +441,100 @@ input {
       var(--color-wallpaper) 0 var(--space-3),
       var(--color-wallpaper-weave) var(--space-3) var(--space-4)
     );
+}
+
+/* ------------------------------------------------------- the update screen */
+
+/*
+ * The set-piece, and it is one screen serving two masters.
+ *
+ * The fiction's updates arrive on a Thursday afternoon and take twelve
+ * simulated minutes off a shift; ours arrive when somebody deploys and take
+ * four real seconds at boot. Same art both times, deliberately, because the
+ * gag only works if the player cannot tell whose update it is - and because a
+ * game whose real changelog arrives as an in-fiction OS update should look
+ * exactly like an in-fiction OS update.
+ *
+ * The look is the ONE accent, at its deepest, filling the frame: not the BIOS
+ * green (that screen is the machine listing what it found) and not the beige
+ * plastic (that is the desk). A machine that has taken the screen off you gets
+ * a colour nothing else in this product is allowed to have.
+ */
+.screen-installing {
+  place-content: center;
+  place-items: center;
+  background: var(--color-accent-deep);
+}
+
+.update-screen {
+  display: grid;
+  gap: var(--space-4);
+  justify-items: center;
+  padding: var(--space-8);
+  color: var(--color-accent-ink);
+  text-align: center;
+}
+
+/* Six dots going round, which is the whole of what a machine that is doing
+   nothing visible has to show for itself. */
+.update-ring {
+  position: relative;
+  width: var(--size-update-ring);
+  height: var(--size-update-ring);
+  margin-bottom: var(--space-4);
+  animation: update-turn var(--duration-update-ring) linear infinite;
+}
+
+.update-dot {
+  position: absolute;
+  top: var(--space-0);
+  left: calc(50% - var(--size-update-dot) / 2);
+  width: var(--size-update-dot);
+  height: var(--size-update-dot);
+  border-radius: var(--radius-round);
+  background: var(--color-accent-bright);
+  /* Each dot parked on its own sixth of the circle, then dimmed by how far
+     round it is - the trail every one of these screens has. */
+  transform:
+    rotate(calc(var(--dot) * var(--angle-update-dot)))
+    translateY(calc(var(--size-update-ring) / 2 - var(--size-update-dot) / 2))
+    rotate(calc(var(--dot) * -1 * var(--angle-update-dot)));
+  transform-origin: center calc(var(--size-update-ring) / 2);
+  opacity: calc(1 - var(--dot) * var(--fade-update-dot));
+}
+
+@keyframes update-turn {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.update-headline {
+  max-width: var(--measure-update);
+  font-size: var(--text-xl);
+}
+
+/* The number, which is theatre, in the type size theatre deserves. */
+.update-percent {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  letter-spacing: var(--border-bevel);
+}
+
+.update-note {
+  max-width: var(--measure-update);
+  color: var(--color-accent-bright);
+}
+
+.update-subject {
+  max-width: var(--measure-update);
+  color: var(--color-accent-bright);
+  font-size: var(--text-sm);
+  opacity: var(--opacity-dim);
 }
 
 .screen-login {
@@ -3737,6 +3846,116 @@ input {
   opacity: 0.55;
 }
 
+/*
+ * And the workstation's version of the same rule.
+ *
+ * The desk goes the way it goes in a meeting and for the same reason - it is
+ * done to the POINTER and to the KEYBOARD, and the keyboard half is the driver
+ * refusing every verb - but it is dimmer, because the two are different rooms
+ * to be locked out of: a meeting is somewhere you are not, and this is a screen
+ * that is not yours. The wallpaper goes over to the machine's colour behind
+ * it, which is the whole of why this reads as a takeover rather than as a
+ * window with bad news in it.
+ *
+ * The start menu, the tray, the clock and the pause button are exempt exactly
+ * as they are during a meeting: 0.3.0's rule is that a block takes the DESK
+ * and not the workstation, and twelve minutes with no way to save, load or log
+ * off would be the dead end the house rules forbid.
+ */
+.screen-desktop[data-takeover="machine"] .desktop-surface {
+  background-color: var(--color-accent-deep);
+  background-image: none;
+}
+
+.screen-desktop[data-takeover="machine"] .desktop-icons,
+.screen-desktop[data-takeover="machine"] .desk-overlay,
+.screen-desktop[data-takeover="machine"] .taskbar-windows {
+  pointer-events: none;
+  opacity: var(--opacity-eclipsed);
+}
+
+.screen-desktop[data-takeover="machine"] .window-layer > *:not([data-app-id="reboot"]) {
+  pointer-events: none;
+  opacity: var(--opacity-eclipsed);
+}
+
+/* The window itself is the screen: no beige, no padding, no seams. */
+.reboot-app {
+  gap: var(--space-5);
+  align-content: center;
+  justify-items: center;
+  padding: var(--space-6);
+  background: var(--color-accent-deep);
+  color: var(--color-accent-ink);
+}
+
+/*
+ * The dialog the machine puts over its own screen while it is still asking.
+ *
+ * It is beige - the only beige thing on this screen - because that is what a
+ * system dialog IS: the one piece of the desktop that survived the takeover,
+ * sitting on top of the thing that took it, asking a question it has already
+ * decided the answer to.
+ */
+.reboot-dialog {
+  display: grid;
+  gap: var(--space-3);
+  justify-self: center;
+  width: var(--size-dialog);
+  padding: var(--space-5);
+  background: var(--color-surface);
+  box-shadow: var(--bevel-window), var(--shadow-float);
+  color: var(--color-ink);
+}
+
+.reboot-dialog-head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.reboot-subject {
+  font-weight: bold;
+}
+
+.reboot-countdown {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+}
+
+.reboot-detail,
+.reboot-note {
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+}
+
+.reboot-note {
+  justify-self: center;
+  max-width: var(--measure-update);
+  color: var(--color-accent-bright);
+  text-align: center;
+}
+
+/* The refusal nobody pressed a button for. It is on the dialog in the world's
+   own words, because a Decline button that refused every single time would
+   teach the same rule by wasting a click. */
+.reboot-withdrawn {
+  padding-left: var(--space-3);
+  border-left: var(--border-note) solid var(--color-alarm);
+  color: var(--color-ink-soft);
+  font-size: var(--text-sm);
+}
+
+/* The chip that counts the minutes a postpone bought. It sits with the other
+   two because it is the same kind of fact: something is happening to you, on
+   a clock, and here is how much of it is left. */
+.reboot-chip {
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+}
+
 /* The debuff, on the taskbar beside the chip that says the hands are going.
    Two sentences rather than one: what is happening, and why. */
 .refocus-chip {
@@ -3752,6 +3971,14 @@ input {
   /* The gag is a wobble. Somebody who has asked for no motion still gets the
      chip that explains it, which is the half that carries the joke. */
   .screen-desktop[data-fumbling="true"] .window-layer {
+    animation: none;
+  }
+
+  /* The update ring stops turning and the screen stays exactly as legible:
+     the percentage, the headline and the sentence about not turning the
+     workstation off are the parts that carry the beat, and the dots were
+     never doing anything but passing time. */
+  .update-ring {
     animation: none;
   }
 

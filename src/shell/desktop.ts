@@ -108,6 +108,7 @@ export class Desktop {
   private readonly pauseButton: HTMLButtonElement;
   private readonly fumbleChip: HTMLElement;
   private readonly refocusChip: HTMLElement;
+  private readonly rebootChip: HTMLElement;
   private readonly saveChip: HTMLElement;
   private readonly bossChip: HTMLElement;
   private readonly doorFlash: HTMLElement;
@@ -317,6 +318,13 @@ export class Desktop {
       + 'off on its own and there is nothing to do about it.';
     this.refocusChip.hidden = true;
 
+    // And the one the workstation puts there itself: how long is left of the
+    // minutes a postpone bought. See `renderReboot` for why it is a chip.
+    this.rebootChip = document.createElement('span');
+    this.rebootChip.className = 'fumble-chip reboot-chip';
+    this.rebootChip.dataset.testid = 'reboot-chip';
+    this.rebootChip.hidden = true;
+
     // The other chip: the one that says what the shaking taskbar means, for
     // anybody who has not learned the language of the floorboards yet.
     this.bossChip = document.createElement('span');
@@ -337,6 +345,7 @@ export class Desktop {
     tray.append(
       this.bossChip,
       this.saveChip,
+      this.rebootChip,
       this.refocusChip,
       this.fumbleChip,
       dayControls,
@@ -1228,12 +1237,20 @@ export class Desktop {
     // the half hour is over the attribute goes and everything is live again. A
     // ringing phone deliberately does NOT do this - a call is a window, and
     // the normal rules keep applying underneath one.
+    // The machine takes it the same way and for the same reason, and the
+    // attribute says WHICH: they are two different rooms to be locked out of -
+    // one is a meeting you are not at your desk during, the other is a desk
+    // that is not there - and the sentence each of them refuses in is
+    // different. A ringing phone deliberately does NOT do this - a call is a
+    // window, and the normal rules keep applying underneath one.
     const takeover = day.interruption();
+    const holding = takeover?.entry.source;
 
-    this.element.dataset.takeover = takeover !== null
-      && takeover.entry.source === 'meeting'
-      ? 'meeting'
+    this.element.dataset.takeover = holding === 'meeting' || holding === 'machine'
+      ? holding
       : 'none';
+
+    this.renderReboot();
 
     this.dayState.textContent = paused ? `${label} · paused` : label;
     this.dayState.dataset.state = state;
@@ -1261,6 +1278,47 @@ export class Desktop {
       button.dataset.active = String(active);
       button.setAttribute('aria-pressed', String(active));
     }
+  }
+
+  /**
+   * The countdown, on the taskbar, while a reboot the player pushed back is on
+   * its way.
+   *
+   * It is a chip beside the other two rather than a window, and that is the
+   * whole design of the postpone: those minutes are the player's, so the thing
+   * that counts them must not be a thing that owns the screen. Work continues
+   * under it, the boss key works under it, the lead comes round under it - and
+   * the number goes down whether or not anybody has the window open.
+   *
+   * Only a machine, and only one that has actually been pushed. A chip
+   * counting down to a phone call would be the seeded schedule reading itself
+   * out loud, which is a different game.
+   */
+  private renderReboot(): void {
+    const soon = this.context.day.upcoming();
+    const coming = soon !== null
+      && soon.entry.source === 'machine'
+      && soon.postponed
+      ? soon
+      : null;
+
+    this.rebootChip.hidden = coming === null;
+
+    if (coming === null) {
+      return;
+    }
+
+    const away = coming.ticksAway;
+
+    this.rebootChip.textContent = `Restarting in ${String(away)}m`;
+    this.rebootChip.dataset.left = String(coming.postponesLeft);
+    this.rebootChip.dataset.away = String(away);
+    this.rebootChip.title = coming.postponesLeft > 0
+      ? `The workstation comes back in ${String(away)} minute(s), with `
+        + `${String(coming.postponesLeft)} postpone(s) left in it. These are `
+        + 'the minutes you bought; the desk is yours for all of them.'
+      : `The workstation comes back in ${String(away)} minute(s), and there `
+        + 'is nothing left to push it with. Finish what you can.';
   }
 
   /**

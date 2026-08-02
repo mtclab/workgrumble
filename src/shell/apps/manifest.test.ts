@@ -75,6 +75,7 @@ describe('shipped manifest', () => {
       'caught',
       'call',
       'meeting',
+      'reboot',
       'review',
       'beer',
       'tickets',
@@ -124,6 +125,7 @@ describe('shipped manifest', () => {
       'caught',
       'call',
       'meeting',
+      'reboot',
       'review',
       'beer',
       'tickets',
@@ -156,10 +158,12 @@ describe('shipped manifest', () => {
         'scorecard',
         'weekend',
         'caught',
-        // The two the DAY opens and the player never asks for: a phone that
-        // is ringing, and half an hour that was booked on the Monday.
+        // The three the DAY opens and the player never asks for: a phone that
+        // is ringing, half an hour that was booked on the Monday, and a
+        // workstation that has decided to install something.
         'call',
         'meeting',
+        'reboot',
         'review',
         'beer',
       ]);
@@ -181,6 +185,7 @@ describe('shipped manifest', () => {
       'caught',
       'call',
       'meeting',
+      'reboot',
       'review',
       'beer',
       'tickets',
