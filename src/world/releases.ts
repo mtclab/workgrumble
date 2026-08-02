@@ -31,6 +31,31 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.3.3',
+    date: '2026-08-02',
+    summary: 'This update adds presence.',
+    lines: Object.freeze([
+      'You now have a status. It is in the tray, it is one of Available, Do '
+        + 'Not Disturb and Away, and it is visible to everybody, which is the '
+        + 'part of this feature nobody asked for and everybody uses.',
+      'Do Not Disturb holds your calls. It does not hold your meetings, and '
+        + 'it does not hold the workstation, because neither of those has '
+        + 'ever cared how busy you are. Colleagues whose calls did not ring '
+        + 'are listed on the phone, with the time they tried. They know the '
+        + 'dot was on. You know they know. This is called working culture.',
+      'Please note that time spent on Do Not Disturb while visibly doing '
+        + 'things is time your line manager can count. He rounds in neither '
+        + 'direction. He has asked us to say that he is not angry, he is '
+        + 'just interested in what the status was for.',
+      'Setting yourself Away while demonstrably at your desk doing work is '
+        + 'supported. The people waiting on that work can see it too. One of '
+        + 'them will usually say something. This is not a bug in the status '
+        + 'system; it is the status system working as originally intended, '
+        + 'by someone who no longer works here.',
+      'Available remains free of charge.',
+    ]),
+  },
+  {
     version: '0.3.2',
     date: '2026-08-02',
     summary: 'This update adjusts the passage of time near events.',
