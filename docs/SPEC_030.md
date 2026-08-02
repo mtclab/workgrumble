@@ -215,3 +215,42 @@ choice is not a choice at that frame rate, and the interruption family is made o
    pause (orthogonal); e2e at x4 asserting the speed CONTROL's state when a call lands and
    when a meeting takes the desk; goldens asserted identical; both halves on box, count
    checked.
+
+---
+
+# Slice 0.3.3 - presence, the green-dot triangle (issue #12)
+
+Research section 3, whole cloth: the player gets a dot, and the dot is read by everybody.
+One enum, no new meter - presence modulates the three meters that exist, which is what the
+literature says the real anxiety is made of.
+
+1. **World state, one verb.** `presence` on the player node (available / dnd / away),
+   set by `presence.set` with guards (shift only; the world refuses a dot nobody is at a
+   desk to show). Saves round-trip it; the boss reads it; default is available and the
+   scripted walks never touch it - the goldens are asserted byte-identical on that fact.
+2. **The filter is deterministic.** While DND holds at an entry's arrival tick, a
+   declinable non-machine entry slides (the precedence discipline, reused) rather than
+   fires. Meetings and the workstation are exempt - they do not care about your dot, and
+   the Thursday reboot and Wednesday sync remain undodgeable by construction. The filter
+   reads the graph at the tick, so schedule + filter = f(seed, day, graph) and the
+   determinism gate holds.
+3. **The triangle's costs, all world-enforced**:
+   - DND while actively working drips suspicion (the dot says busy-with-something-else;
+     the dispatch log says working; the boss reads both). Past a suspicion threshold the
+     boss's "on Do Not Disturb all morning?" beat arms - caught-scene class, never a
+     random scold.
+   - Away while dispatching is a visible lie: a reporter waiting on a ticket the player
+     touches while Away answers with the escalation the real world gives it (response
+     pressure or a rep sting, once per reporter per day, not a drumbeat).
+   - Available is the baseline: normal rates, no cost, no bonus. The default is honest.
+4. **Chatter is data**: NPC lines reacting to the dot are dialogue rows, cheap, and the
+   OS-war register the skins epic wants can wait - this slice's voice is the office
+   noticing your status, nothing more.
+5. **Tray surface**: the three-state control lives in the tray, one click, keyboardable,
+   the current state visible at all times (the player must always know what the boss
+   sees - a hidden dot would make the suspicion drip a trap rather than a tradeoff).
+6. Gates: determinism (same seed+choices = same week); the DND journey (dodge a call,
+   collect the drip, meet the meeting anyway); the Away journey (work while Away, get
+   answered for it); solvability under all three presence values; goldens byte-identical;
+   off-hours silence extended; mid-DND save round-trip; both halves on box, count
+   checked.
