@@ -406,6 +406,18 @@ describe('the week the round is decided in', () => {
    * than as redundancies, because both missed the bar their own week set.
    * A round is not a way of dressing up a week somebody lost.
    */
+  /**
+   * The marks moved by a point in three of the five for 0.3.4, and not one of
+   * them moved for a reason this file is about: the week gained two tickets -
+   * a request raised five minutes before close on the Wednesday and a restart
+   * somebody was asked to raise on the Friday - so every ratio the review
+   * reads is now over a slightly larger denominator, and the half-roster
+   * profiles skip a different half of it because the set is chosen by the
+   * ticket's own id. The arithmetic and the
+   * argument are in `scripted-week.test.ts`, where the goldens are; what is
+   * asserted HERE is unchanged, which is the point of the file: the same five
+   * weeks, the same bars, the same positions, and the same three endings.
+   */
   const PROFILES: readonly Profile[] = [
     {
       name: 'worked properly',
@@ -419,7 +431,7 @@ describe('the week the round is decided in', () => {
     {
       name: 'half the roster',
       play: PLAYS.half!,
-      mark: 56,
+      mark: 54,
       bar: 45,
       filed: 0,
       position: 5,
@@ -437,7 +449,7 @@ describe('the week the round is decided in', () => {
     {
       name: 'half the roster, with the browser up all week',
       play: PLAYS.slackHalf!,
-      mark: 56,
+      mark: 54,
       bar: 70,
       filed: 15,
       position: 6,
@@ -446,7 +458,7 @@ describe('the week the round is decided in', () => {
     {
       name: 'nothing at all',
       play: PLAYS.idle!,
-      mark: 4,
+      mark: 5,
       bar: 70,
       filed: 12,
       position: 6,
@@ -601,7 +613,7 @@ describe('a round that was never legibly announced', () => {
 
     // The same week, the same mark, the same bar - and the ending the week
     // would have had if nobody had ever proposed cutting anything.
-    expect(week.mark).toBe(56);
+    expect(week.mark).toBe(54);
     expect(week.bar).toBe(REVIEW_PASS_PERFORMANCE);
     expect(week.outcome).toBe('passed');
     // Nothing was written into the world about a pool, which is what "no

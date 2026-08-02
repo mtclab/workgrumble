@@ -96,6 +96,13 @@ function startWeek(): Week {
     onDirectMessage: (speaker, tick) => {
       timeline.push(`dm:${speaker}@${String(tick)}`);
     },
+    // Somebody saying hello and nothing else. Only the GREETING is in the
+    // timeline: the question that follows it is arithmetic - the greeting plus
+    // the minutes the week says they take - and a timeline with both in it
+    // would be pinning the same number twice.
+    onNoHello: (speaker, tick) => {
+      timeline.push(`hello:${speaker}@${String(tick)}`);
+    },
     // The minute the screen stopped being the player's. The END is left out
     // for the same reason the footsteps are: a call that arrived has an end
     // six minutes later by arithmetic, and the meeting's end says so itself,
@@ -731,9 +738,82 @@ interface GoldenWeek {
  *  - NOTHING IN THE FIVE-PROFILE TABLE MOVED, for the reason the 0.3.0 move
  *    gives: the review reads how much of the week's own work was closed and
  *    how much of it kept its deadline, and being interrupted is neither.
+ *
+ * SIXTEENTH MOVE (0.3.4, the colleagues). Both hashes, two lines per timeline,
+ * TWO TICKETS in each week, and one meter in one of them. It is the largest
+ * move since 0.2.4 and for the same reason: this is the first slice since then
+ * to put tickets into the week rather than state into the world. Every number
+ * below follows from those two tickets by arithmetic that was already in the
+ * game.
+ *
+ *  - THE CONTENT is three rows. `ticket:vpn-month-end` on the Wednesday,
+ *    written as `arrivesMinutesBeforeClose: 5` rather than as a minute, which
+ *    the loader turns into 16:55 and PINS: no jitter, and deliberately outside
+ *    the drip window every other arrival is pulled back inside. A walk-up on
+ *    the Friday, `walk_up:gary-restart` at 11:40 for six minutes, which raises
+ *    `ticket:gary-restart` eight minutes after he walks away unless the job
+ *    was done while he stood there. And two chat greetings that cost the world
+ *    nothing at all - Monday 10:50 and Thursday 09:35 - which is why they move
+ *    a timeline and not a hash.
+ *  - THE TIMELINES gain `hello:person:owen@170` and `hello:person:kwame@4415`
+ *    in both weeks, and `interrupted:walk_up:gary-restart@5980` with a
+ *    `notice:You did not get to that one@5986` beside it. Neither profile
+ *    looks up from the screen, so the walk-up rings out exactly as the two
+ *    calls do - which is the correct outcome and a slightly worse one than
+ *    ignoring a phone, because he is standing there.
+ *  - THE WORKED WEEK'S ROWS. Wednesday goes 5 in / 5 closed to 6 in / 5
+ *    closed, and Thursday 5 / 5 to 5 / 6, and those two rows are the whole
+ *    point of the field: the request arrives with five minutes of Wednesday
+ *    left, is not closable in them, and is closed on the Thursday morning
+ *    sweep - inside a resolution deadline of 12:55 that the business-hours
+ *    arithmetic put there without anybody scripting it. Friday goes 4 / 4 to
+ *    5 / 5: the walk-up is ignored, Gary files, and the sweep at one o'clock
+ *    closes it. Totals 25/25 to 27/27, nothing red.
+ *  - THE MONEY. 77,025 to 77,525 pence, which is 500: two closes at
+ *    `CLOSED_TICKET_BONUS_PENCE` (250) and nothing else. The idle week goes
+ *    36,175 to 35,375, which is 800 the other way: two breaches at
+ *    `BREACH_DEDUCTION_PENCE` (400).
+ *  - THE IDLE WEEK'S ROWS move the same way and end differently, because
+ *    nothing is worked: Wednesday 5 in to 6 in, Thursday 6 red to 7 (the
+ *    Wednesday request goes red on the Thursday lunchtime, which is
+ *    event-time accounting doing its job again), Friday 4 / 4 red to 5 / 5.
+ *    Totals 24 to 26 arrived and breached, and 26 still open.
+ *  - THE MARK MOVED BY A POINT IN THE IDLE WEEK, 4 to 5, and it is a
+ *    denominator rather than an improvement: at three o'clock on the Friday
+ *    two more deadlines are outstanding than there used to be, so the
+ *    percentage of the week that has not yet gone red is fractionally higher
+ *    in the reading the fold happens to take. By five o'clock both have gone
+ *    and the standing is 3 rather than 2. The worked week reads 99 and 100 as
+ *    it did: a hundred percent of the work is a hundred percent of the work
+ *    however much of it there is, which is the scaling property
+ *    `week.test.ts` exists to keep.
+ *  - ONE METER MOVED, in the worked week only: stress 21 -> 57. It is the
+ *    biggest single number in this diff and it is not an interruption cost.
+ *    Four of it is the walk-up arriving (severity two at the arrival rate);
+ *    the other thirty-two are the QUEUE, at a point per five minutes per
+ *    ticket over a comfortable two (`STRESS_PER_EXCESS_TICKET`). The
+ *    Wednesday request sits open across the night and most of a Thursday
+ *    morning that already had a certificate flood in it, and Gary's restart
+ *    sits open through a Friday lunchtime. A ticket you are carrying is a
+ *    ticket you are carrying, and this is the model saying so. It is still
+ *    twenty-three points below the fumble threshold, and the review has never
+ *    read stress. In the IDLE week it lands on a meter pinned at 98 since the
+ *    Wednesday and is clamped away as fast as it is charged, which is the same
+ *    shape every move since 0.2.6 has found.
+ *  - THE FIVE-PROFILE TABLE moved in three of its five marks (56 -> 54 twice,
+ *    4 -> 5 once) and in the half-roster pair's closes (13/12 to 13/14 and
+ *    reputation 63 -> 57). Two things did that and both are denominators
+ *    rather than difficulty: there are two more tickets in the week, and the
+ *    half-roster profiles pick their half by hashing the ticket's own ID - so
+ *    a roster with two new ids in it splits along a slightly different line.
+ *    The two-by-two the table exists to prove is untouched: 99 and 99 pass,
+ *    the two half-roster weeks read an identical 54 and are separated by the
+ *    bar alone, and the idle week goes home. A slice that had quietly put
+ *    being interrupted into the mark would have separated the pairs, and that
+ *    is the assertion which would have gone red.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: '4fccca66cd55a03b',
+  hash: 'aba01368c9efe074',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -747,17 +827,23 @@ const GOLDEN_WORKED: GoldenWeek = {
   days: [
     [5, 5, 0],
     [6, 6, 0],
+    // Six in and five closed: the sixth arrives at 16:55 and there are five
+    // minutes of Wednesday left, which is the whole of what the field says.
+    [6, 5, 0],
+    // And six closed out of five arrived, which is not a typo: the Wednesday
+    // request is closed here, on the morning sweep, inside a deadline the
+    // business-hours arithmetic put at 12:55 today.
+    [5, 6, 0],
+    // Gary was ignored, Gary filed, and the one o'clock sweep closed it.
     [5, 5, 0],
-    [5, 5, 0],
-    [4, 4, 0],
   ],
-  arrived: 25,
-  closed: 25,
+  arrived: 27,
+  closed: 27,
   breached: 0,
   stillOpen: 0,
   /** Five days at the rate, twenty-five resolution bonuses, the deductions
    * nobody agreed to, and the probation bonus for surviving Friday. */
-  earnedPence: 77_025,
+  earnedPence: 77_525,
   reviewRead: 99,
   // The published bar, untouched: the queue was dealt with, nobody was left
   // in silence, and a file with one line on it is a private document until
@@ -775,11 +861,15 @@ const GOLDEN_WORKED: GoldenWeek = {
     // found the browser on the Wednesday, and the six points it cost were
     // earned back inside the hour; the conversation on Friday never hears
     // about either.
-    // Eleven of it is the queue, and ten of it is having been reachable:
-    // four arrivals at 2, 6, 4 and 6 points - the last of them a workstation
-    // on the Thursday afternoon - mostly worked off again by the five-minute
-    // interval before the week ends.
-    stress: 21,
+    // Twenty-five of it is having been reachable - five arrivals at 2, 6, 4,
+    // 6 and 4 points, the last of them somebody standing at the desk on the
+    // Friday - and the other thirty-two are the queue, at a point per five
+    // minutes per ticket over a comfortable two. Two of the week's tickets
+    // are new and both of them are CARRIED: the Wednesday request across a
+    // night and a flooded Thursday morning, and Gary's restart through a
+    // Friday lunchtime. Twenty-three points below the fumble threshold, and
+    // the review has never read it.
+    stress: 57,
     suspicion: 0,
     reputation: 100,
     // The week as the review read it: a hundred percent of the work, every
@@ -789,7 +879,7 @@ const GOLDEN_WORKED: GoldenWeek = {
     week_reputation: 100,
     // Counted per day and cleared at every clock-off: Friday was clean.
     caught_events: 0,
-    farm_fund: 77_025,
+    farm_fund: 77_525,
     week_attempt: 1,
   },
   // The week's own beats, in the minute they land. The lead's footsteps are
@@ -798,6 +888,10 @@ const GOLDEN_WORKED: GoldenWeek = {
   // asking for a favour instead of filing, a maintenance window opening at
   // nine on the Wednesday, and one browser found on a screen.
   timeline: [
+    // Ten to eleven on the Monday, and one word. It costs the world nothing -
+    // no meter, no dispatch, no hash - which is why it is here and nowhere
+    // else in this file.
+    'hello:person:owen@170',
     'interrupted:call:spooler@1566',
     'notice:You did not get to that one@1572',
     'notice:They are back@1740',
@@ -807,12 +901,19 @@ const GOLDEN_WORKED: GoldenWeek = {
     'notice:That could have been an email@3060',
     'caught:browser@3076',
     'notice:That is 10 minutes@3076',
+    'hello:person:kwame@4415',
     'interrupted:call:annexe-printer@4522',
     'notice:You did not get to that one@4527',
     // Ten past two, and no notice beside it: a phone can ring out and a
     // workstation cannot, so this one is answered by the world at the far end
     // of its twelve minutes rather than missed.
     'interrupted:machine:reboot@4690',
+    // Twenty to twelve on the Friday, on the minute, because a person walking
+    // to your desk between two calls takes no jitter. Neither profile looks
+    // up, so it rings out like the phones - and unlike them, somebody was
+    // standing there.
+    'interrupted:walk_up:gary-restart@5980',
+    'notice:You did not get to that one@5986',
     'review:passed@6180',
     'beer@6300',
     'week:passed@6300',
@@ -835,7 +936,7 @@ const GOLDEN_IDLE: GoldenWeek = {
   // this week takes on the way through are completely different and every one
   // of them is overwritten by the next. Moved by 0.2.7 for the same single
   // integer the worked week moved for, and for nothing else.
-  hash: '1b4e40cf7dd579c6',
+  hash: '0ada94233cf77d0d',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.
@@ -851,14 +952,19 @@ const GOLDEN_IDLE: GoldenWeek = {
   days: [
     [5, 0, 4],
     [5, 0, 5],
+    // Six in: the five-to-five request arrives here and goes red tomorrow.
+    [6, 0, 5],
+    // Which is why the Thursday is seven rather than six. Same event-time
+    // accounting, same reason, one more deadline running out on the day it
+    // actually ran out on.
+    [5, 0, 7],
+    // And Gary files, because nobody at this desk did anything about anything.
     [5, 0, 5],
-    [5, 0, 6],
-    [4, 0, 4],
   ],
-  arrived: 24,
+  arrived: 26,
   closed: 0,
-  breached: 24,
-  stillOpen: 24,
+  breached: 26,
+  stillOpen: 26,
   /**
    * Still paid, right up until they stop paying you - and eight hundred pence
    * less than it used to be, which is the money half of the same finding.
@@ -873,8 +979,8 @@ const GOLDEN_IDLE: GoldenWeek = {
    * and the fund was never charged for. They are charged now, on the days the
    * deadlines ran out.
    */
-  earnedPence: 36_175,
-  reviewRead: 4,
+  earnedPence: 35_375,
+  reviewRead: 5,
   // Seventy rather than forty-five, and it made no difference: a week that
   // reads 4 was going home either way. All three reasons to look are live by
   // the Friday - twenty-four people who were never told anything, the
@@ -887,17 +993,19 @@ const GOLDEN_IDLE: GoldenWeek = {
     stress: 98,
     suspicion: 96,
     reputation: 0,
-    // Four at three o'clock: twenty-three of the week's twenty-four deadlines
-    // have run out, the twenty-fourth runs out at a quarter past, and nothing
-    // has been closed at all - so the mark is one twenty-fourth of half the
-    // scale, and what is left of it is Monday morning's fifty at a sixteenth.
-    // Two by five, when the last deadline has gone as well.
-    week_reputation: 2,
+    // Five at three o'clock, where it used to be four, and the point of
+    // difference is a denominator rather than a better week: there are
+    // twenty-six deadlines now instead of twenty-four, two of them are still
+    // outstanding at three, and the percentage that has not yet gone red is
+    // fractionally higher in the reading the fold happens to take. Three by
+    // five, when the last of them has gone as well.
+    week_reputation: 3,
     caught_events: 3,
-    farm_fund: 36_175,
+    farm_fund: 35_375,
     week_attempt: 1,
   },
   timeline: [
+    'hello:person:owen@170',
     'interrupted:call:spooler@1566',
     'notice:You did not get to that one@1572',
     'caught:bubbles@1632',
@@ -916,6 +1024,7 @@ const GOLDEN_IDLE: GoldenWeek = {
     'notice:That is 10 minutes@3179',
     'caught:bubbles@3283',
     'notice:That is 10 minutes@3283',
+    'hello:person:kwame@4415',
     'caught:bubbles@4512',
     'notice:That is 10 minutes@4512',
     'interrupted:call:annexe-printer@4522',
@@ -929,6 +1038,11 @@ const GOLDEN_IDLE: GoldenWeek = {
     'notice:That is 10 minutes@4719',
     'caught:bubbles@5950',
     'notice:That is 10 minutes@5950',
+    // The same six minutes, on a week nobody worked, and the same outcome: a
+    // person at the desk is not somebody a game of Bubble Break looks up from
+    // either, and he files the ticket on his way back to Payroll.
+    'interrupted:walk_up:gary-restart@5980',
+    'notice:You did not get to that one@5986',
     'caught:bubbles@6078',
     'notice:That is 10 minutes@6078',
     'caught:bubbles@6170',
@@ -1123,7 +1237,7 @@ describe('the week at five skill levels', () => {
     {
       name: 'worked properly',
       play: workedWeek,
-      closed: 25,
+      closed: 27,
       breached: 0,
       reputation: 100,
       reviewRead: 99,
@@ -1142,14 +1256,14 @@ describe('the week at five skill levels', () => {
       name: 'half the roster',
       play: halfWeek,
       closed: 13,
-      breached: 12,
-      reputation: 63,
+      breached: 14,
+      reputation: 57,
       // Fifty-four percent of the queue closed and fifty percent of it kept
       // inside its deadline is a week worth 52 whole; the fold reads it four
       // points higher because the early days were still salvageable when they
       // ended, and a lead who read them then thought better of the week than
       // the week turned out to deserve.
-      reviewRead: 56,
+      reviewRead: 54,
       // Twelve people went red and none of them were told anything, so
       // somebody DOES come looking - and finds an empty folder. The bar does
       // not move for a blank page, which is the fizzle the player is shown.
@@ -1161,7 +1275,7 @@ describe('the week at five skill levels', () => {
     {
       name: 'worked, with the browser up all week',
       play: slackWeek,
-      closed: 25,
+      closed: 27,
       breached: 0,
       // The meter used to be forty-three points down on the week that hid the
       // browser. It is level with it now: being caught costs minutes and a
@@ -1182,15 +1296,15 @@ describe('the week at five skill levels', () => {
       name: 'half the roster, with the browser up all week',
       play: slackHalfWeek,
       closed: 13,
-      breached: 12,
-      reputation: 63,
+      breached: 14,
+      reputation: 57,
       // The identical mark to the week above it, and a different ending. The
       // twelve people left in silence give somebody a reason to open the
       // folder, the fifteen lines in it saturate the shift at five points a
-      // line, and 56 does not reach 70. Two ways to lose the job, either
+      // line, and 54 does not reach 70. Two ways to lose the job, either
       // forgiven alone, neither forgiven together - and this time it is the
       // design rather than an accident of two constants.
-      reviewRead: 56,
+      reviewRead: 54,
       reviewBar: 70,
       filed: 15,
       outcome: 'fired',
@@ -1200,11 +1314,11 @@ describe('the week at five skill levels', () => {
       name: 'nothing at all',
       play: idleWeek,
       closed: 0,
-      breached: 24,
+      breached: 26,
       reputation: 0,
-      reviewRead: 4,
+      reviewRead: 5,
       // All three reasons are live by the Friday and the raised bar changes
-      // nothing: 4 was going home against 45 as well.
+      // nothing: 5 was going home against 45 as well.
       reviewBar: 70,
       filed: 12,
       outcome: 'fired',
@@ -1405,7 +1519,7 @@ describe('the week at five skill levels', () => {
  * one ticket left to go red on the Monday morning. The file is fifteen lines
  * deep, the person whose screen went dark and who nobody rang back is a real
  * person with a real reason, the bar goes to 70 - and the week survives it,
- * because twenty-four of twenty-five closed is what latitude is bought with.
+ * because twenty-six of twenty-seven closed is what latitude is bought with.
  *
  * That is the moment the research says this system is for: the player learns
  * that the thing which never mattered has been written down all along, and
@@ -1426,6 +1540,7 @@ describe('the file, read by somebody, against a week that can take it', () => {
     // A thick file, and a real reason to open it: somebody has been sitting in
     // front of an upside-down monitor since Monday and has never been told a
     // thing.
+    console.log('FILE_DUMP', JSON.stringify({filed: week.filed.length, triggers: week.atTwo.triggers, bar: week.card.bar, closed: week.card.closed, breached: week.card.breached, perf: week.card.performance, outcome: week.outcome, arrived: week.card.arrived}));
     expect(week.filed.length).toBe(15);
     expect(week.atTwo.triggers).toEqual(['customer']);
     expect(week.card.bar).toBe(70);
@@ -1437,11 +1552,11 @@ describe('the file, read by somebody, against a week that can take it', () => {
     // anybody.
     expect(week.card.performance).toBeGreaterThanOrEqual(week.card.bar);
     expect(week.outcome).toBe('passed');
-    expect(week.card.closed).toBe(24);
+    expect(week.card.closed).toBe(26);
     expect(week.card.breached).toBe(1);
 
     // The same file against the week that did half the job sends it home. Two
     // weeks, one folder, two endings, and the difference is the queue.
-    expect(week.card.performance).toBeGreaterThan(56);
+    expect(week.card.performance).toBeGreaterThan(54);
   });
 });
