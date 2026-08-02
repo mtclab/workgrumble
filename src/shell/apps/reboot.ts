@@ -243,6 +243,12 @@ export const REBOOT_APP: AppDef = {
         live?.entry.id ?? coming?.entry.id ?? 'none',
       );
       setFlag(root, 'holding', String(live !== null));
+      // How far into the arrival this paint is, which is the meeting window's
+      // habit and is worth more here: a postpone buys its minutes from the
+      // ARRIVAL, so pressing the button five minutes in spends five of them.
+      // A screen that did not say which minute it was would make that
+      // indistinguishable from a countdown that had lost track.
+      setFlag(root, 'minutesIn', String(live?.minutesIn ?? 0));
       setFlag(
         root,
         'postponesLeft',

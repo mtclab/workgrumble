@@ -45,6 +45,7 @@ import {
   INSTALLING_UPDATES_REASON,
   TICK_INTERVAL_MS,
 } from './day-driver';
+import { countdownChip } from './update-screen';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -279,6 +280,70 @@ describe('the minutes a postpone buys', () => {
       (answer) => !answer.ok && answer.reason === INSTALLING_UPDATES_REASON,
     )).toEqual([]);
     expect(after.length).toBeLessThan(before.length);
+  }, 20_000);
+
+  /**
+   * The chip's derivation, pinned for every window in the budget.
+   *
+   * This is the assertion a box run went looking for and could not find, and
+   * the reason it could not is that the number belongs to the CLOCK rather
+   * than to the budget. What the chip says is the placed arrival minus this
+   * minute, and that is not the authored window in either direction:
+   *
+   *  - a postpone buys its minutes from the ARRIVAL it was spent at, so a
+   *    player who presses the button five minutes into the dialog has five
+   *    minutes of grace rather than ten (an e2e that pinned "10m" was pinning
+   *    the minute it happened to click on, which is nobody's to promise);
+   *  - and a callback that lands in minutes the day had already booked slides
+   *    past them, which hands the player MORE. The second window on the
+   *    shipped Thursday does exactly that.
+   *
+   * So the pin is the derivation itself, at all three windows, in a test that
+   * controls the minute: the chip equals the placed landing minus now, it is
+   * never less than the window that was bought, and it goes down with the
+   * clock. A chip that rendered the next window out of the budget - the
+   * arithmetic the dialog does - would read 5, 2, 2 here and fail all three.
+   */
+  it('counts down the minutes until the desk goes, window by window', () => {
+    const world = thursday();
+    const entry = reboot(world.session);
+    const authored = [...entry.postpones];
+
+    expect(authored).toEqual([10, 5, 2]);
+    runTo(world, entry.tick);
+
+    for (const [spend, bought] of authored.entries()) {
+      // Spent AT the arrival, which is the only minute at which the window
+      // bought and the window waited are the same number.
+      expect(world.driver.interruption()?.entry.id, `spend ${String(spend)}`)
+        .toBe(REBOOT_ID);
+      expect(world.driver.deferInterruption()).toEqual({ ok: true });
+
+      const landing = landingAfter(world.session, spend + 1);
+      const at = world.session.engine.now();
+      const waited = landing - at;
+
+      expect(world.driver.upcoming()?.ticksAway, `spend ${String(spend)}`)
+        .toBe(waited);
+      expect(countdownChip(waited)).toBe(`Restarting in ${String(waited)}m`);
+      // Never less than what was bought. More is the day's other bookings
+      // pushing the callback out, which costs the player nothing.
+      expect(waited, `spend ${String(spend)}`).toBeGreaterThanOrEqual(bought);
+
+      // And it TICKS. A chip that showed the window as a constant would look
+      // identical at the moment it was pressed and be a lie a minute later.
+      runTo(world, at + 1);
+      expect(world.driver.upcoming()?.ticksAway).toBe(waited - 1);
+      expect(countdownChip(waited - 1))
+        .toBe(`Restarting in ${String(waited - 1)}m`);
+
+      runTo(world, landing);
+    }
+
+    // The far end of the budget: it is here, it is holding the desk, and
+    // there is nothing counting down to anything any more.
+    expect(world.driver.interruption()?.postponesLeft).toBe(0);
+    expect(world.driver.upcoming()).toBeNull();
   }, 20_000);
 
   /**

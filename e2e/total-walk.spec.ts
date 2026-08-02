@@ -2256,8 +2256,10 @@ test('walks every function of a probation week that goes well', async ({
 
   await workUntilMinute(page, 365);
 
+  let reboot: Takeover = {};
+
   await step('reboot.window', async () => {
-    await huntForReboot(page);
+    reboot = await huntForReboot(page);
     await expect(page.getByTestId('reboot-app'))
       .toHaveAttribute('data-postpones-left', '3');
     await expect(page.getByTestId('reboot-subject')).toContainText('September');
@@ -2288,10 +2290,34 @@ test('walks every function of a probation week that goes well', async ({
   await step('reboot.countdown', async () => {
     // The minutes the push bought, counted on the taskbar - and they are
     // minutes at the desk, which is the whole of what a postpone is for.
-    await expect(page.getByTestId('reboot-chip'))
-      .toHaveText('Restarting in 10m');
+    //
+    // The NUMBER is derived rather than typed, because a postpone buys its
+    // minutes from the ARRIVAL it was spent at: a walk that reaches this step
+    // five minutes into the dialog has five minutes of grace, not ten, and an
+    // assertion that said "10m" would be pinning the minute this walk happened
+    // to click on. So it is read off the paint that found the arrival. The
+    // derivation itself is pinned minute by minute, at all three windows, in
+    // `src/shell/reboot.test.ts`.
+    const spent = Number(reboot.minutesIn ?? '0');
+
+    // And a walk that got here nine minutes in would have spent the grace it
+    // is about to measure. That is a bug in the WALK, and it says so rather
+    // than passing with nothing left to count.
+    expect(spent).toBeLessThan(9);
+
+    const chip = page.getByTestId('reboot-chip');
+
+    await expect(chip).toHaveText(/^Restarting in \d+m$/u);
+    await expect(chip).toHaveAttribute('data-left', '2');
+    await expect(chip).toHaveAttribute('data-away', String(10 - spent));
     await expect(page.getByTestId('desktop'))
       .toHaveAttribute('data-takeover', 'none');
+
+    // It COUNTS DOWN. A chip that showed the window as a constant would look
+    // right at the moment it was pressed and be a lie a minute later.
+    await runSimMinutes(page, 1, 1);
+    await expect(chip).toHaveAttribute('data-away', String(9 - spent));
+
     await runOnlyCommand(page, 'ver');
     await expect(page.getByTestId('cmd-output'))
       .not.toContainText('installing updates');

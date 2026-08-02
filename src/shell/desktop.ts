@@ -14,6 +14,7 @@ import {
   pushNotification,
   type ShellNotification,
 } from './notifications';
+import { countdownChip } from './update-screen';
 import { WindowRenderer } from './window-renderer';
 import {
   closeWindow,
@@ -1310,7 +1311,7 @@ export class Desktop {
 
     const away = coming.ticksAway;
 
-    this.rebootChip.textContent = `Restarting in ${String(away)}m`;
+    this.rebootChip.textContent = countdownChip(away);
     this.rebootChip.dataset.left = String(coming.postponesLeft);
     this.rebootChip.dataset.away = String(away);
     this.rebootChip.title = coming.postponesLeft > 0

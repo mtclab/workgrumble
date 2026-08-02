@@ -92,6 +92,31 @@ export function updatePercent(minutesIn: number, minutes: number): number {
   return 100;
 }
 
+/**
+ * The countdown, as the taskbar says it.
+ *
+ * One derivation, exported, because two surfaces read it and a test has to be
+ * able to pin it without a browser. What it counts is the MINUTES UNTIL THE
+ * WORKSTATION TAKES THE DESK - the placed arrival minus this minute - and that
+ * is deliberately not the window that was bought.
+ *
+ * The two differ in both directions and both are honest. A postpone buys its
+ * minutes from the arrival it was spent at, so pressing the button five
+ * minutes into a dialog spends five of them; and a callback that lands in
+ * minutes the day had already booked slides past them, which hands the player
+ * more. The dialog says what the NEXT push buys, which is the budget; this
+ * says when the thing is actually coming, which is the clock. A chip showing
+ * the budget while the clock said otherwise would be the one number on the
+ * taskbar the player could catch out with a watch.
+ */
+export function countdownChip(minutesAway: number): string {
+  const whole = Number.isFinite(minutesAway)
+    ? Math.max(0, Math.trunc(minutesAway))
+    : 0;
+
+  return `Restarting in ${String(whole)}m`;
+}
+
 /** The three things this screen is ever doing, in the order it does them. */
 export type UpdatePhase = 'restarting' | 'installing' | 'restoring';
 

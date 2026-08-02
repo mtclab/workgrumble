@@ -459,6 +459,11 @@ async function openWindows(
 test('the update is put off three times and then takes the afternoon', async ({
   page,
 }) => {
+  // Three played days to get to the Thursday, three postpones spent a minute
+  // at a time, a deadline waited out inside the outage and twelve minutes of
+  // update on the far side of it. It is the longest journey in this file by
+  // some way, and it takes the same budget the other cross-day walks take.
+  test.setTimeout(240_000);
   await logInOnDay(page, 4, { brief: 'keep' });
   await beginShift(page);
 
@@ -510,15 +515,32 @@ test('the update is put off three times and then takes the afternoon', async ({
 
   /* Ten minutes bought, and they are minutes at the desk. */
 
+  // How far into the arrival this is, read off the paint that found it: a
+  // postpone buys its minutes from the ARRIVAL, so a player who spends a
+  // minute reading the dialog has a minute less grace. The countdown below is
+  // derived from it rather than typed, because the minute a click lands on is
+  // not a thing any test owns - `src/shell/reboot.test.ts` pins the derivation
+  // itself, at all three windows.
+  const spent = Number(first.minutesIn ?? '0');
+
+  expect(spent).toBeLessThan(9);
+
   await page.getByTestId('reboot-postpone').click();
   await expect(page.getByTestId('reboot-app'))
     .toHaveAttribute('data-holding', 'false');
   await expect(page.getByTestId('desktop'))
     .toHaveAttribute('data-takeover', 'none');
   // The countdown, on the taskbar, where it can be read with the window shut.
-  await expect(page.getByTestId('reboot-chip')).toHaveText('Restarting in 10m');
-  await expect(page.getByTestId('reboot-chip'))
-    .toHaveAttribute('data-left', '2');
+  const chip = page.getByTestId('reboot-chip');
+
+  await expect(chip).toHaveText(/^Restarting in \d+m$/u);
+  await expect(chip).toHaveAttribute('data-left', '2');
+  await expect(chip).toHaveAttribute('data-away', String(10 - spent));
+
+  // And it goes down with the clock, which is the half a static chip would
+  // pass and be lying about a minute later.
+  await runSimMinutes(page, 1, 1);
+  await expect(chip).toHaveAttribute('data-away', String(9 - spent));
   // And the desk answers again, which is the whole of what the push bought.
   await runOnlyCommand(page, 'ver');
   await expect(page.getByTestId('cmd-output'))
