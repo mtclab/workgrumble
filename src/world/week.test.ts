@@ -21,8 +21,10 @@ import {
 } from './day';
 import { FIELDS } from './fields';
 import { minuteOfDay, tickAtMinute } from './hours';
+import { COMPANY_IDS } from './company';
 import {
   buildInterruptionSchedule,
+  FLAVOR,
   type InterruptionSlot,
   interruptionsClearOf,
 } from './interruptions';
@@ -32,9 +34,11 @@ import { seedForAttempt } from './session';
 import { WORLD_TICKETS } from './tickets';
 import {
   arrivesBeforeClose,
+  assertWeekGreetings,
   assertWeekTickets,
   type DayScript,
   dayPlan,
+  type WalkUpSlot,
   dayScript,
   dripMinute,
   inheritedTicketIds,
@@ -77,6 +81,29 @@ function monday(over: Partial<DayScript> = {}): DayScript {
 
 function week(...days: readonly DayScript[]): readonly DayScript[] {
   return validateWeek(days);
+}
+
+/** A walk-up fixture: the ask is fine, so the refusals are about the entry. */
+function walkUp(id: string, minute: number): WalkUpSlot {
+  return {
+    slot: {
+      id,
+      source: 'walk_up',
+      minute,
+      minutes: 6,
+      relatedTicket: null,
+      declinable: true,
+      severity: 2,
+      flavor: {
+        [FLAVOR.caller]: COMPANY_IDS.gary,
+        [FLAVOR.subject]: 'A fixture, and not somebody anybody meets',
+        [FLAVOR.opens]: 'at-the-desk',
+      },
+    },
+    raises: 'ticket:gary-restart',
+    filesAfter: 8,
+    doneWhen: { node: COMPANY_IDS.garyMachine, field: FIELDS.uptimeSince },
+  };
 }
 
 function interruption(
@@ -327,6 +354,101 @@ describe('the loader', () => {
       }),
       ...FILLER.slice(1),
     )).toThrow(/interrupts twice in one week/);
+  });
+
+  /**
+   * And the walk-up column is held to every one of those rules, because
+   * `interruptionsOn` folds it into the same list the schedule reads.
+   *
+   * It is worth being exact about what would otherwise have shipped: a walk-up
+   * was checked for its ASK - the ticket it raises and when - and for nothing
+   * else at all. Its id, its minute and its shape went straight past the
+   * loader, so a second entry sharing an id would have booted clean and then
+   * shared the record of what was decided about it, and one authored at half
+   * past six would have been a beat nobody was ever at the desk for.
+   */
+  it('holds a walk-up to every rule an interruption is held to', () => {
+    expect(() => week(
+      monday({ walkUps: [walkUp('walk_up:dawn', 6 * 60)] }),
+      ...FILLER,
+    )).toThrow(/outside the hours anybody is at the desk/);
+
+    expect(() => week(
+      monday({ walkUps: [walkUp('walk_up:twice', 10 * 60)] }),
+      monday({
+        day: 2,
+        label: 'Tuesday',
+        walkUps: [walkUp('walk_up:twice', 14 * 60)],
+      }),
+      ...FILLER.slice(1),
+    )).toThrow(/interrupts twice in one week/);
+
+    // And across the two columns, which is the case a per-column check could
+    // never see: one id, one record, two entries claiming it.
+    expect(() => week(
+      monday({ interruptions: [interruption('both:twice', 10 * 60)] }),
+      monday({
+        day: 2,
+        label: 'Tuesday',
+        walkUps: [walkUp('both:twice', 14 * 60)],
+      }),
+      ...FILLER.slice(1),
+    )).toThrow(/interrupts twice in one week/);
+  });
+
+  /**
+   * The 4:55 field, at both ends of the one boundary that is easy to get
+   * wrong.
+   *
+   * Nought is not "the hardest version of this ticket": the field says how
+   * long BEFORE close, so nought is a ticket raised in the minute the shift
+   * ends, with no workable minutes in the day at all. One is the shipped
+   * class - five minutes is what the week actually authors - and it has to
+   * stay legal, or the refusal has swallowed the feature.
+   */
+  it('refuses a ticket that arrives AT close, and allows one before it', () => {
+    expect(() => week(
+      monday({ drip: [{ ticketId: 'a', arrivesMinutesBeforeClose: 0 }] }),
+      ...FILLER,
+    )).toThrow(/nought is the minute the shift ends/);
+
+    expect(() => week(
+      monday({ drip: [{ ticketId: 'a', arrivesMinutesBeforeClose: -1 }] }),
+      ...FILLER,
+    )).toThrow(/at least one of them/);
+
+    expect(() => week(
+      monday({ drip: [{ ticketId: 'a', arrivesMinutesBeforeClose: 1 }] }),
+      ...FILLER,
+    )).not.toThrow();
+    expect(() => week(
+      monday({ drip: [{ ticketId: 'a', arrivesMinutesBeforeClose: 5 }] }),
+      ...FILLER,
+    )).not.toThrow();
+  });
+
+  /**
+   * A greeting nobody can say.
+   *
+   * Both halves are silent in play and identical from the outside - the thread
+   * never opens and the indicator never appears - so the minute the week
+   * booked for the beat is a minute in which nothing whatever happens. That is
+   * a typo reading as a quiet Monday, which is the whole class this loader is
+   * for.
+   */
+  it('refuses a bare hello from somebody who cannot say one', () => {
+    const trees = [
+      { id: 'dialogue/a', speaker: 'person:owen', hello_root: 'hello' },
+      { id: 'dialogue/b', speaker: 'person:kwame', hello_root: 'hello' },
+    ];
+
+    expect(() => assertWeekGreetings(trees)).not.toThrow();
+    expect(() => assertWeekGreetings(
+      trees.filter((tree) => tree.speaker !== 'person:owen'),
+    )).toThrow(/nobody of that name talks to anybody/);
+    expect(() => assertWeekGreetings(
+      trees.map((tree) => ({ id: tree.id, speaker: tree.speaker })),
+    )).toThrow(/no greeting written for them/);
   });
 });
 

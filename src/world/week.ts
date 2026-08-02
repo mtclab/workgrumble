@@ -1021,7 +1021,16 @@ export function validateWeek(
     // second would arrive already answered. The check is week-wide rather than
     // per day for the same reason a ticket's is: the field it is written into
     // is not cleared overnight.
-    for (const slot of script.interruptions ?? []) {
+    // BOTH columns, because `interruptionsOn` folds them together and the
+    // schedule therefore sees one family. A walk-up validated only for its ASK
+    // is a walk-up whose id, minute and shape were never checked at all - so a
+    // second one sharing an id, or one authored at half past six, would boot
+    // clean and then quietly share the record of what was decided about it
+    // with whatever else holds that id.
+    for (const slot of [
+      ...script.interruptions ?? [],
+      ...(script.walkUps ?? []).map((walkUp) => walkUp.slot),
+    ]) {
       requireWorkingMinute(script.day, slot.minute, slot.id);
       requireMeetingContent(script.day, slot);
 
@@ -1099,11 +1108,19 @@ function requireDripSlot(day: number, slot: Readonly<DripSlot>): void {
     return;
   }
 
-  if (!Number.isSafeInteger(before) || before < 0) {
+  // Nought is refused as firmly as a negative one, and the reason is easy to
+  // miss in the file: the field says how long BEFORE close, so nought means AT
+  // close - a ticket raised in the minute the shift ends, with no workable
+  // minutes in the day at all. That is not the hard version of the 4:55
+  // request, it is a row nobody can do anything with, and in play it reads as
+  // a ticket that appeared on the scorecard out of nowhere.
+  if (!Number.isSafeInteger(before) || before < 1) {
     throw new Error(
-      `${where} arrives ${String(before)} minutes before close, and a `
-      + 'distance from home time is a whole number of minutes at or above '
-      + 'nought - a negative one is a ticket raised after everybody has gone.',
+      `${where} arrives ${String(before)} minutes before close. A distance `
+      + 'from home time is a whole number of minutes and at least one of '
+      + 'them: nought is the minute the shift ends, which is a ticket with no '
+      + 'day left to be raised into, and a negative one is a ticket raised '
+      + 'after everybody has gone.',
     );
   }
 
@@ -1250,6 +1267,48 @@ export function assertWeekTickets<Entry extends RosterEntry>(
   }
 
   return roster;
+}
+
+/**
+ * The week's greetings against the conversations that have to carry them.
+ *
+ * The same shape - and the same reason - as `assertWeekTickets`: content that
+ * refers to content is a boot failure rather than a quiet Monday. It lives
+ * here and is CALLED from the module that builds the trees, because week.ts
+ * knowing about dialogue and dialogue knowing about week.ts cannot both be
+ * true, and the roster gate already settled which way round it goes.
+ *
+ * Both failures are silent in play and identical from the outside: the thread
+ * never opens, the indicator never appears, and a minute the week booked for
+ * a beat is a minute in which nothing whatever happens.
+ */
+export function assertWeekGreetings<Tree extends {
+  readonly id: string;
+  readonly speaker: string;
+  readonly hello_root?: string;
+}>(trees: readonly Tree[]): readonly Tree[] {
+  for (const script of WEEK) {
+    for (const slot of script.noHello ?? []) {
+      const tree = trees.find((candidate) => candidate.speaker === slot.speaker);
+
+      if (tree === undefined) {
+        throw new Error(
+          `Day ${String(script.day)} has "${slot.speaker}" opening a chat `
+          + 'with a bare hello, and nobody of that name talks to anybody.',
+        );
+      }
+
+      if (tree.hello_root === undefined) {
+        throw new Error(
+          `Day ${String(script.day)} has "${slot.speaker}" opening a chat `
+          + `with a bare hello, and "${tree.id}" has no greeting written for `
+          + 'them to open it with.',
+        );
+      }
+    }
+  }
+
+  return trees;
 }
 
 export function dayScript(day: number): DayScript {

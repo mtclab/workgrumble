@@ -87,6 +87,32 @@ describe('the shipped no-hello beats', () => {
     }
   });
 
+  /**
+   * Somebody to say it, and a line for them to say.
+   *
+   * The loader refuses both at boot (`assertWeekGreetings`, proven in
+   * `week.test.ts`); this is the same claim asked of the SHIPPED week, so a
+   * typo in a speaker id fails here as well as at the boot - and fails saying
+   * which day and which name, which a boot failure in a browser does not.
+   */
+  it('gives every greeting somebody to say it and a line to say', () => {
+    for (const script of WEEK) {
+      for (const slot of noHelloOn(script.day)) {
+        const tree = dialogueForSpeaker(slot.speaker);
+
+        expect(tree, `day ${String(script.day)}: ${slot.speaker}`)
+          .toBeDefined();
+        expect(tree?.hello_root, `day ${String(script.day)}: ${slot.speaker}`)
+          .toBeDefined();
+        expect(
+          dialogueNode(tree ?? { nodes: [] } as never, tree?.hello_root ?? '')
+            ?.npc_line,
+          `day ${String(script.day)}: ${slot.speaker}`,
+        ).toBeTruthy();
+      }
+    }
+  });
+
   it('answers nothing at all for a day outside the week', () => {
     expect(noHelloOn(0)).toEqual([]);
     expect(noHelloOn(WEEK_DAYS + 1)).toEqual([]);
