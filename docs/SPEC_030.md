@@ -284,3 +284,38 @@ report.
    what it claims; the 4:55 ticket's clocks true across the day boundary); solvability +
    determinism; goldens move ONCE for the week's new content, every number argued;
    off-hours silence; both halves on box, count checked.
+
+---
+
+# Slice 0.3.5 - the Assistant (issue #14)
+
+Descoped from event days (deferred - they need a post-probation home, owner-flagged on #14).
+This slice is E2 (#3): the useless-tips desk character. Flavor only, dismissible, and the
+hints-never-answer house rule is the whole design constraint - it must never help.
+
+1. **Its own character, NOT the paperclip.** A beige desk object with a face - the art pass
+   picks between the candidates (stapler / CRT-with-eyebrows / desk-fan-with-eyes); the
+   shell ships the frame and one placeholder that reads as "the office gave you a helper and
+   it was the cheapest one". Tokens only, square 9x aesthetic, reduced-motion answered.
+2. **Strictly useless.** Its lines are data, fired on the event cadence the desk already
+   emits (onTick / onWorldChange / day.onChanged). It comments on what is happening and is
+   never right about what to do - "Looks like you're closing a ticket! Have you tried
+   turning it off and on again?" during a password reset. The KB owns all real help; the
+   Assistant is FORBIDDEN from carrying a true actionable hint (gate: every line checked
+   against a banned-substance list of the real fixes, the way hints-never-answer is gated
+   elsewhere - a line that names the actual verb for the situation on screen fails the
+   build).
+3. **Dismissible, with memory.** Close it and it goes; it comes back on the next day (or the
+   next big event) with a line about having been dismissed ("You closed me. That's okay.
+   I've made a note. The note says you closed me."). Dismissal count is world/shell state
+   that round-trips a save - one field, gag escalates by count.
+4. **Never load-bearing.** Nothing in any journey may require reading it; it is pure overlay.
+   The completeness walk drives its show/dismiss controls but asserts no gameplay depends on
+   it. Speed-drop / takeover interplay: the Assistant is desk furniture, so a takeover hides
+   it like the rest of the desk (it does not talk over the meeting - even it is not that
+   useless).
+5. Gates: a unit asserting the banned-hint gate has teeth (a planted true-hint line fails);
+   dismissal round-trips a save; the cadence fires lines without ever blocking input;
+   goldens byte-identical (it is not world state beyond the dismissal count, which the walks
+   never touch); the completeness manifest gains its controls; both halves on box, count
+   checked.
