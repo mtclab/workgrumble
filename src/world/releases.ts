@@ -31,6 +31,26 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.3.5',
+    date: '2026-08-02',
+    summary: 'This update adds an assistant.',
+    lines: Object.freeze([
+      'A helpful assistant now lives on your desktop. It is a screen on a '
+        + 'plinth with a face, it has opinions about what you are doing, and '
+        + 'those opinions are wrong. This is not a limitation of the current '
+        + 'version. It is the whole of the feature. The assistant has been '
+        + 'carefully checked to make sure it never accidentally tells you how '
+        + 'to fix anything, and it passed.',
+      'The assistant can be dismissed. It remembers being dismissed. It will '
+        + 'come back, and it will mention it. There is no number of times you '
+        + 'can close it that it will not come back from, though after a while '
+        + 'it stops counting out loud, which everyone agreed was for the best.',
+      'The assistant does not speak during a meeting or while the workstation '
+        + 'is installing updates. It knows when it is not wanted. It just does '
+        + 'not act on that knowledge the rest of the time.',
+    ]),
+  },
+  {
     version: '0.3.4',
     date: '2026-08-02',
     summary: 'This update adds colleagues.',
