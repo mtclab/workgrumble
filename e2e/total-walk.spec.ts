@@ -26,6 +26,7 @@ import {
   worldHash,
 } from './helpers';
 import { REFUSED_TOKENS, SHARED_TOKEN } from './tokens';
+import { AWAY_NOTICED_LINES } from '../src/world/dialogue';
 import {
   COVERAGE,
   type CoverageId,
@@ -362,6 +363,36 @@ async function runUntilCaught(page: Page): Promise<void> {
   await expect(caught).toBeVisible();
 }
 
+/**
+ * Work the world accepts and that resolves nothing: a screen rotated between
+ * two wrong angles.
+ *
+ * The suspicion drip and the Away sting both read the same evidence - the
+ * dispatch log says this desk is working - so the two journeys about a
+ * dishonest dot need work that can be repeated without the queue emptying
+ * underneath them.
+ */
+async function doSomeWork(page: Page): Promise<void> {
+  if (await page.getByTestId('window-remote').count() === 0) {
+    await openFromStartMenu(page, 'remote');
+  } else {
+    await focusWindow(page, 'remote');
+  }
+
+  await page.getByTestId('remote-machine-ada').click();
+
+  const viewport = page.getByTestId('remote-viewport');
+  // The other wrong angle, whichever this is: applying the angle a screen is
+  // already at is refused before the click, by a button that greys itself out.
+  const angle = await viewport.getAttribute('data-rotation') === '180'
+    ? '90'
+    : '180';
+
+  await page.getByTestId('remote-rotation-picker').selectOption(angle);
+  await page.getByTestId('remote-apply-rotation').click();
+  await expect(viewport).toHaveAttribute('data-rotation', angle);
+}
+
 /** Runs the clock until the desk is on the far side of its can. */
 async function runUntilCrash(page: Page): Promise<void> {
   const desktop = page.getByTestId('desktop');
@@ -491,6 +522,51 @@ test('walks every function of a probation week that goes well', async ({
     await expect(clock).toHaveText(stopped);
     await pause.click();
     await expect(pause).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  /*
+   * The dot, at nine o'clock, before anybody has touched a ticket.
+   *
+   * All three states and back to Available, deliberately in a minute where the
+   * touch log is empty: the drip only charges a status that disagrees with a
+   * desk that is demonstrably working, so a week that tries the control and
+   * puts it back has paid nothing for it - which is the honest baseline this
+   * whole slice rests on, and asserting it here is what makes the meters of
+   * the rest of this walk mean what they meant before the dot existed.
+   *
+   * The two costs of a dishonest dot - a call turned away, somebody answering
+   * the Away lie - are the fired walk's, because a week cannot both answer the
+   * Tuesday phone and dodge it.
+   */
+  await step('desktop.presence', async () => {
+    const state = page.getByTestId('presence-state');
+
+    await expect(state).toHaveText('Available');
+    await expect(page.getByTestId('presence-available'))
+      .toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByTestId('presence-away').click();
+    await expect(state).toHaveText('Away');
+    await expect(page.getByTestId('presence-away'))
+      .toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByTestId('presence-dnd').click();
+    await expect(state).toHaveText('Do not disturb');
+    await expect(page.getByTestId('presence-away'))
+      .toHaveAttribute('aria-pressed', 'false');
+
+    // The office says something about it, once, in somebody's own thread.
+    await expect(
+      page.getByTestId('toast').filter({ hasText: 'noticed the dot' }).first(),
+    ).toBeVisible();
+
+    // And back to the honest one, which is where this walk leaves it: a week
+    // that ended on a red dot would be a week whose meters mean something
+    // else, and every assertion after this one assumes it did not.
+    await page.getByTestId('presence-available').click();
+    await expect(state).toHaveText('Available');
+    await expect(page.getByTestId('presence-dnd'))
+      .toHaveAttribute('aria-pressed', 'false');
   });
 
   await step('desktop.icon', async () => {
@@ -2085,6 +2161,25 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('meeting-app')).toBeVisible();
   });
 
+  await step('desktop.presence-refused', async () => {
+    // The tray is reachable during a block on purpose - a half hour with no
+    // way to save or log off is the dead end the house rules forbid - so the
+    // status control is genuinely pressable here, and genuinely refused, in
+    // the sentence the meeting already owns.
+    await page.getByTestId('presence-dnd').click();
+
+    const refusal = page.getByTestId('presence-refusal');
+
+    await expect(refusal).toBeVisible();
+    await expect(refusal).toContainText('You are in a meeting');
+    // The world did not take it, so the dot did not move.
+    await expect(page.getByTestId('presence-state')).toHaveText('Available');
+    // Escape puts the note away and leaves the meeting exactly where it is.
+    await page.keyboard.press('Escape');
+    await expect(refusal).toBeHidden();
+    await expect(page.getByTestId('meeting-app')).toBeVisible();
+  });
+
   await step('meeting.defer', async () => {
     await page.getByTestId('meeting-defer').click();
     await expect(page.getByTestId('meeting-refusal')).toBeVisible();
@@ -2698,6 +2793,47 @@ test('walks the week nobody worked, the firing, and the retry', async ({
     await pause.click();
   });
 
+  /*
+   * The other thing he can find, on a screen with nothing on it.
+   *
+   * The game is minimised behind the panic key, so there is nothing to be
+   * caught AT - which is the precedence rule this beat lives under: a man who
+   * has just found a forum open is having that conversation instead. What is
+   * left is the dot, held over a morning the dispatch log says was worked, and
+   * the meter climbing until he has something he can point at.
+   */
+  await step('caught.scene-presence', async () => {
+    await page.getByTestId('presence-dnd').click();
+    await expect(page.getByTestId('presence-state'))
+      .toHaveText('Do not disturb');
+
+    const caught = page.getByTestId('window-caught');
+
+    for (let round = 0; round < 40 && await caught.count() === 0; round += 1) {
+      await doSomeWork(page);
+      await runSimMinutes(page, 5, 4);
+    }
+
+    await expect(caught).toBeVisible();
+    await expect(page.getByTestId('caught-app'))
+      .toHaveAttribute('data-app', 'presence:dnd');
+    await expect(page.getByTestId('caught-heading'))
+      .toContainText('availability');
+    // How much of the morning it was, in his words rather than as a number.
+    const evidence = page.getByTestId('caught-evidence');
+    await expect(evidence).toBeVisible();
+    await expect(evidence).toContainText(/morning|hour/);
+    await expect(evidence).not.toContainText(/\d+ minutes/);
+    // And the same reading on the file, in the voice a file is written in.
+    await expect(page.getByTestId('caught-file'))
+      .toContainText('Availability status recorded as Do Not Disturb');
+
+    await page.getByTestId('caught-dismiss').click();
+    await expect(caught).toHaveCount(0);
+    await page.getByTestId('presence-available').click();
+    await expect(page.getByTestId('presence-state')).toHaveText('Available');
+  });
+
   // Four hours in, with the game put away and nothing closed: the queue has
   // breached everything it had and the meter is pinned. Late enough to be well
   // clear of the line rather than balanced on it - the slack window that was
@@ -2729,7 +2865,90 @@ test('walks the week nobody worked, the firing, and the retry', async ({
   await clockOffFor(page, 1);
   await beginShift(page);
 
-  /* -- Tuesday: the favour, done off the books ----------------------------- */
+  /* -- Tuesday: the phone nobody put through, and the lie somebody saw ----- */
+
+  /*
+   * The Tuesday morning the week that goes well spends answering a phone.
+   *
+   * Here it is spent behind a red dot instead, which is the other half of the
+   * same row: the call is never offered, the record of it is in the window
+   * that would have rung, and the whole of what the player gave up for the
+   * quiet is on the suspicion meter.
+   */
+  await step('call.missed-record', async () => {
+    await page.getByTestId('presence-dnd').click();
+    await expect(page.getByTestId('presence-state'))
+      .toHaveText('Do not disturb');
+
+    // Across the hour the phone would have gone, working the whole time, so
+    // the dot is genuinely disagreeing with the log.
+    await workUntilMinute(page, 100);
+
+    for (let round = 0; round < 6; round += 1) {
+      await doSomeWork(page);
+      await runSimMinutes(page, 10, 4);
+    }
+
+    await openFromStartMenu(page, 'call');
+    // Nothing ever took the screen: the window is open with nothing in it.
+    await expect(page.getByTestId('call-app'))
+      .toHaveAttribute('data-call', 'none');
+
+    const missed = page.getByTestId('call-missed');
+
+    await expect(missed).toBeVisible();
+    await expect(missed).toContainText('printer');
+    await expect(missed.getByText(/^\d\d:\d\d$/).first()).toBeVisible();
+    await page.getByTestId('close-call').click();
+  });
+
+  /*
+   * And the dot that stops nothing at all and lies about it.
+   *
+   * The world takes the reputation whether or not anybody reads a screen; what
+   * this drives is the half that makes it fair - the person who has been
+   * waiting longest for a first word says what they think of it, in the
+   * conversation they would have said it in.
+   */
+  await step('chat.away-noticed', async () => {
+    await page.getByTestId('presence-away').click();
+    await expect(page.getByTestId('presence-state')).toHaveText('Away');
+
+    await doSomeWork(page);
+    // The sting's own notice, which is titled for a person nobody has named
+    // yet - the chatter's toasts say who they are, and this one deliberately
+    // does not, because the point of it is to send the player to the thread.
+    await expect(
+      page.getByTestId('toast').filter({ hasText: 'Somebody has noticed' }),
+    ).toHaveCount(1);
+
+    // WHO is discovered rather than assumed: the world picks whoever has been
+    // waiting longest, and a step that hard-coded a name would be a step about
+    // the seeded order of a queue.
+    const said = await page.evaluate(() => Object.entries(
+      globalThis.careerSim?.screens().chat.threads ?? {},
+    ).map(([speaker, thread]) => ({
+      speaker,
+      text: thread.lines.at(-1)?.text ?? '',
+    })));
+    const answered = said.find(
+      (thread) => Object.values(AWAY_NOTICED_LINES).includes(thread.text),
+    );
+
+    expect(answered, 'nobody said anything about the dot').toBeDefined();
+
+    await openFromStartMenu(page, 'chat');
+    await page
+      .getByTestId(`chat-person-${(answered?.speaker ?? '').split(':')[1] ?? ''}`)
+      .click();
+    await expect(page.getByTestId('chat-transcript'))
+      .toContainText(answered?.text ?? '');
+
+    // Back to the honest one for the rest of the week: what this walk is about
+    // from here is a queue nobody worked, not a status nobody moved.
+    await page.getByTestId('presence-available').click();
+    await expect(page.getByTestId('presence-state')).toHaveText('Available');
+  });
 
   await workUntilMinute(page, 372);
 

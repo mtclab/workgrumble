@@ -285,6 +285,27 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'desktop.presence',
+    surface: 'desktop',
+    control: 'presence-available, presence-dnd, presence-away, presence-state',
+    does: 'Sets the dot the whole office reads - available, do not disturb, '
+      + 'away - one click per status, with the current one spelled out in '
+      + 'words beside them so the suspicion drip is a trade rather than a '
+      + 'trap. A status somebody in the building has an opinion about gets '
+      + 'that opinion, once, in their own chat thread.',
+    actions: [DAY_ACTIONS.presenceSet],
+    run: 'week',
+  },
+  {
+    id: 'desktop.presence-refused',
+    surface: 'desktop',
+    control: 'presence-refusal',
+    does: 'Answers a status the world will not take - the desk is in a '
+      + 'meeting, or there is no shift on - in the sentence that refusal owns, '
+      + 'against the button that was pressed rather than as a toast.',
+    run: 'week',
+  },
+  {
     id: 'desktop.telegraph',
     surface: 'desktop',
     control: 'boss-chip, door-flash',
@@ -711,6 +732,23 @@ const ENTRIES = [
   },
 
   {
+    id: 'caught.scene-presence',
+    surface: 'caught',
+    control: 'caught-evidence',
+    does: 'The one telling-off that is not about a screen: the lead reads the '
+      + 'dot against a morning of dispatches, says how much of the morning it '
+      + 'was without saying a number, and the line that goes on the file says '
+      + 'the same thing in the passive voice.',
+    actions: [DAY_ACTIONS.bossCaught],
+    scene: 'caught.presence',
+    run: 'fired',
+    why: 'Arming it is a morning spent working with the dot on red until the '
+      + 'suspicion meter has actually climbed - which is the week that is not '
+      + 'being played honestly, and being spoken to costs the shift twenty '
+      + 'minutes and the file a line either way.',
+  },
+
+  {
     id: 'caught.file',
     surface: 'caught',
     control: 'caught-file',
@@ -784,6 +822,20 @@ const ENTRIES = [
       + 'of the minutes straight back.',
     actions: [DAY_ACTIONS.interruptionDecline],
     run: 'week',
+  },
+
+  {
+    id: 'call.missed-record',
+    surface: 'call',
+    control: 'call-missed',
+    does: 'The phones that did not ring, in the window that would have rung: '
+      + 'the minute the dot turned each one away, who it was and what they '
+      + 'wanted, and whether they ever tried again.',
+    actions: [DAY_ACTIONS.interruptionDodged],
+    run: 'fired',
+    why: 'A dodged call is a call the week never gets: the walk that goes '
+      + 'well answers the Tuesday phone, and one week cannot both take that '
+      + 'call and turn it away.',
   },
 
   /* -- the half hour nobody chose ----------------------------------------- */
@@ -1539,6 +1591,20 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'chat.away-noticed',
+    surface: 'chat',
+    control: 'chat-person-<reporter> (marked Away)',
+    does: 'Somebody who has been waiting for a first word says what they '
+      + 'think of a desk marked Away closing other people\'s tickets - once, '
+      + 'in their own voice, in the conversation they would have said it in - '
+      + 'which is how the player finds out why the reputation moved.',
+    actions: [WORLD_ACTIONS.presenceNoticed],
+    run: 'fired',
+    why: 'It costs reputation for a lie the world can see, and the week that '
+      + 'goes well is the week the dot is honest in; the walk that ignores '
+      + 'the queue is where a desk sits marked Away while it moves.',
+  },
+  {
     id: 'chat.option-favour',
     surface: 'chat',
     control: 'chat-option-<n> (do it quietly)',
@@ -2256,19 +2322,6 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'to be: the day loop settles it at the minute the ringing stops, and '
     + 'what the player sees is a notice and a shorter version of the same '
     + 'debuff.',
-  [DAY_ACTIONS.presenceSet]: 'The dot, set from the tray. The world half of '
-    + 'it ships in this slice and the three-state control that reaches it is '
-    + 'the tray\'s, which lands with the other half: until it does, the only '
-    + 'thing that dispatches this is `DayApi.setPresence`, which the tray is '
-    + 'the one caller of. It moves into the table above with the control.',
-  [DAY_ACTIONS.interruptionDodged]: 'A declinable call sliding past a red dot '
-    + 'instead of ringing. Nobody presses it and nobody can - that is the '
-    + 'whole mechanic: the day loop settles it in the minute the phone would '
-    + 'have rung, and what the player sees is a phone that did not.',
-  [WORLD_ACTIONS.presenceNoticed]: 'Somebody who has been waiting for a first '
-    + 'word noticing that the desk they are waiting on says Away and has just '
-    + 'done demonstrable work on somebody else\'s ticket. Once per person per '
-    + 'day, dispatched by the driver off the dispatch that gave it away.',
   [DAY_ACTIONS.meetingRecap]: 'The room emptying, which is what the recap '
     + 'mail is stamped from. Dispatched by the day loop at the end of a block '
     + 'nobody chose to be in; the player meets it as a thread in the inbox '
@@ -2341,6 +2394,9 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'day-state',
   'day-pause',
   'day-speed-*',
+  'presence-available',
+  'presence-dnd',
+  'presence-away',
   'notification-tray',
   'toast-dismiss',
 

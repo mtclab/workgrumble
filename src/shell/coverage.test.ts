@@ -56,6 +56,11 @@ const SCENE_KEYS: readonly string[] = [
   ...CAUGHT_SCENES.map((scene) => `caught.${scene.appId}`),
   // The absence of a telling-off, which is its own screen.
   'caught.none',
+  // And the one telling-off that is not about an app at all: the status,
+  // read against a morning of dispatches. It is named here rather than
+  // derived because it is not one-per-slack-app - nobody can install a dot,
+  // and the loader has nothing to refuse to boot without it.
+  'caught.presence',
   ...REVIEW_OUTCOMES.map((outcome) => `review.${outcome}`),
   'beer.sealed',
   'beer.opened',
