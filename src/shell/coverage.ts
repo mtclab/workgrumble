@@ -278,7 +278,10 @@ const ENTRIES = [
     id: 'desktop.speed',
     surface: 'desktop',
     control: 'day-speed-1, day-speed-2, day-speed-4',
-    does: 'Runs the day at one, two or four times normal speed.',
+    does: 'Runs the day at one, two or four times normal speed. The day puts '
+      + 'it back to x1 itself whenever something lands on the player - a '
+      + 'phone, a meeting, a workstation, a manager - and leaves it there '
+      + 'afterwards, because putting it back up is the player\'s to decide.',
     run: 'week',
   },
   {

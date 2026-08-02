@@ -261,6 +261,45 @@ export function isSpeed(value: unknown): value is Speed {
   return SPEEDS.some((speed) => speed === value);
 }
 
+/**
+ * The speed the day drops to when something synchronous lands on it.
+ *
+ * x1 rather than a pause, because the thing that landed is a thing that is
+ * HAPPENING: a phone rings for the minutes its row says whether or not
+ * anybody is watching, a meeting is half an hour of the shift, and every
+ * clock in this game runs through both. Stopping the world would be a
+ * different mechanic and a kinder one than the game is about.
+ */
+export const EVENT_SPEED: Speed = 1;
+
+/**
+ * Whether an interruption of this source drops the clock when it ARRIVES.
+ *
+ * At x4 a six-minute ring window is a second and a half of real time, which is
+ * not long enough for three buttons to be a choice - so the family of things
+ * that are a CHOICE, or that simply take the screen, hand the player back
+ * seconds they can use.
+ *
+ * Derived from the two families the shell already names rather than from a
+ * second list of sources, because a second list is a list that can disagree:
+ * `holdsTheDesk` is the meeting and the workstation, and `windowFor` is which
+ * screen everything else is drawn on. Every source in this world is one or the
+ * other, which is the correct answer rather than a coincidence - a source
+ * nobody has to decide about is a source that does not interrupt anybody.
+ *
+ * What is NOT in it is the grace between a spent postpone and the arrival it
+ * bought: those minutes are the player's desk time, paid for deliberately, and
+ * they keep whatever speed the player chose. Nothing arrives during them, so
+ * the exemption is a property of firing on the arrival EDGE rather than a case
+ * this function has to carry - and the test that pins it is the proof.
+ */
+export function slowsTheClock(
+  source: InterruptionSource | undefined,
+): boolean {
+  return source !== undefined
+    && (holdsTheDesk(source) || windowFor(source) === 'call');
+}
+
 export interface ElapsedTicks {
   readonly ticks: number;
   /** Real time that did not add up to a whole tick yet. */
@@ -783,6 +822,25 @@ export class DayDriver implements DayApi {
 
     this.speed_ = speed;
     this.announce();
+  }
+
+  /**
+   * Something is happening, so the day is handed back at a speed a person can
+   * read it at.
+   *
+   * ON THE ARRIVAL EDGE, once, and never continuously. The player who puts the
+   * clock back up to x4 with a phone still ringing has decided something about
+   * their own afternoon, and a rule that dropped it again on the next minute
+   * would be a control that fights the hand on it. The same reason there is no
+   * automatic restore at the far end: the day slowed down because something
+   * happened, which is legible, and a clock that re-accelerates behind the
+   * player is not.
+   *
+   * Pause is untouched in both directions. A day that was stopped when the
+   * phone rang is still stopped, and it is still stopped at x1.
+   */
+  private slowDown(): void {
+    this.setSpeed(EVENT_SPEED);
   }
 
   /** True while the clock is actually converting real time into ticks. */
@@ -1745,6 +1803,12 @@ export class DayDriver implements DayApi {
       );
 
       if (result.ok) {
+        // A scene has just opened on somebody who was looking at something
+        // else, and it is the third member of the family the ring rule names.
+        // It is not an interruption ENTRY - the corridor is its own schedule -
+        // so it says so here rather than through `slowsTheClock`, which is a
+        // question about sources.
+        this.slowDown();
         // And the price, which is the clock rather than the scoreboard: he is
         // here now, and getting back to what you were doing is the rest of it.
         this.owedMinutes_ += CAUGHT_MINUTES;
@@ -2142,6 +2206,10 @@ export class DayDriver implements DayApi {
    */
   private arrive(entry: Readonly<InterruptionEntry>): void {
     this.assertOneTakeover(entry);
+
+    if (slowsTheClock(entry.source)) {
+      this.slowDown();
+    }
 
     const benign = isBenign(entry, this.ticketInHand());
     // An arrival the player pushed here themselves is the same dread coming
