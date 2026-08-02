@@ -59,6 +59,19 @@ function fileLine(): OpData {
 
 const FILE_LINE_PARAM = 'file_line';
 
+/**
+ * Whether this conversation was the one about the STATUS, in which case the
+ * morning it was about is closed by having been had.
+ *
+ * A parameter on the shared verb rather than a second verb, because it is the
+ * same event with the same consequences - a line on the file, a meter on the
+ * floor, twenty minutes off the shift - and the only difference is which of
+ * the two records the lead was reading. What it stops is the beat re-arming
+ * off a morning that has already been the subject of a conversation: the dot
+ * has to earn a fresh half hour before he has anything new to say.
+ */
+const STATUS_SPENT_PARAM = 'status_evidence_spent';
+
 const WRITTEN_DOWN: GuardData[] = [
   {
     when: { pred: 'param_blank', param: FILE_LINE_PARAM },
@@ -91,7 +104,25 @@ export const BOSS_ACTION_DATA: readonly ActionData[] = [
   {
     id: DAY_ACTIONS.bossCaught,
     tier: HELPDESK_TIER,
-    validate: WRITTEN_DOWN,
+    validate: [
+      ...WRITTEN_DOWN,
+      {
+        when: {
+          pred: 'all',
+          of: [
+            not({ pred: 'param_absent', param: STATUS_SPENT_PARAM }),
+            not({
+              pred: 'param_int_in',
+              param: STATUS_SPENT_PARAM,
+              values: [0, 1],
+            }),
+          ],
+        },
+        reason: 'A conversation is either the one about your status or it is '
+          + 'not. There is no half of one, and the morning it closes is a '
+          + 'whole morning.',
+      },
+    ],
     apply: [
       // The meter goes to the floor a spoken-to person sits at. Set rather
       // than subtracted: after this conversation nobody is wondering about
@@ -101,6 +132,42 @@ export const BOSS_ACTION_DATA: readonly ActionData[] = [
         node: ACTOR,
         field: FIELDS.suspicion,
         value: { const: CAUGHT_SUSPICION_FLOOR },
+      },
+      // The morning the conversation was about, closed by having had it. Only
+      // where it was the status conversation, and only where there is a
+      // record to close - a telling-off about a forum leaves the dot's own
+      // record exactly where it was, and a player who has never touched the
+      // tray has no record for this to create.
+      {
+        op: 'when',
+        cond: {
+          pred: 'all',
+          of: [
+            { pred: 'param_int_in', param: STATUS_SPENT_PARAM, values: [1] },
+            not({
+              pred: 'field_missing',
+              node: ACTOR,
+              field: FIELDS.dndWorkingTicks,
+            }),
+          ],
+        },
+        ops: [
+          {
+            op: 'set_field',
+            node: ACTOR,
+            field: FIELDS.dndWorkingTicks,
+            value: { const: 0 },
+          },
+          // The carry goes with it: what is billed is billed, and a bank
+          // emptied while its bill stood would make the next minutes of the
+          // dot free until the arithmetic caught up with itself.
+          {
+            op: 'set_field',
+            node: ACTOR,
+            field: FIELDS.dndSuspicionCharged,
+            value: { const: 0 },
+          },
+        ],
       },
       // And the line, which is the only thing that survives the day. There is
       // no reputation op here on purpose: see `CAUGHT_MINUTES`.

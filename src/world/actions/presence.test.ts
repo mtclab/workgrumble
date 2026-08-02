@@ -191,16 +191,29 @@ describe('a call sliding past the dot', () => {
     expect(player(FIELDS.interruptionDodged)).toBeUndefined();
   });
 
+  /**
+   * Both exempt sources, through the real verb, because they are two different
+   * arguments wearing one refusal: a room with a time on it is not somebody
+   * you can be unavailable to, and neither is a machine that decided in
+   * September. A test that only drove the meeting was a test that would have
+   * passed with the workstation dodgeable.
+   */
   it('refuses to slide the sync or the workstation past it', () => {
     expect(setDot('dnd').ok).toBe(true);
-    expectRefusal(
-      dispatch(DAY_ACTIONS.interruptionDodged, {
-        id: 'meeting:hygiene-sync',
-        dodged_at: 'meeting:hygiene-sync@630',
-        declinable: 0,
-      }),
-      DOT_IGNORED_REASON,
-    );
+
+    for (const undodgeable of [
+      { id: 'meeting:hygiene-sync', dodged_at: 'meeting:hygiene-sync@630' },
+      { id: 'machine:reboot', dodged_at: 'machine:reboot@370' },
+    ]) {
+      expectRefusal(
+        dispatch(DAY_ACTIONS.interruptionDodged, {
+          ...undodgeable,
+          declinable: 0,
+        }),
+        DOT_IGNORED_REASON,
+      );
+    }
+
     expect(player(FIELDS.interruptionDodged)).toBeUndefined();
   });
 
@@ -329,25 +342,33 @@ describe('the minutes the record banks', () => {
 /* -- somebody noticing the away dot ---------------------------------------- */
 
 describe('somebody waiting on a ticket, noticing', () => {
+  /**
+   * ONE trusted parameter, and it is the person.
+   *
+   * The uniqueness key used to arrive as a second one - a `person@day` line
+   * assembled by whoever dispatched this - which meant the rule the world
+   * enforces was spelled by the caller: a driver that wrote the wrong day, or
+   * simply a different string for the same afternoon, bought itself as many
+   * reputation hits off one person as it liked. The record is keyed on the
+   * reporter now, and "per day" is the world clearing it every morning.
+   */
   it('costs reputation once and writes down who has had the thought', () => {
     expect(setDot('away').ok).toBe(true);
     expect(dispatch(WORLD_ACTIONS.presenceNoticed, {
       reporter: REPORTER,
-      mark: `${REPORTER}@2`,
       reputation_down: AWAY_NOTICED_REPUTATION,
     }).ok).toBe(true);
 
     expect(player(FIELDS.reputation))
       .toBe(STARTING_REPUTATION - AWAY_NOTICED_REPUTATION);
-    expect(player(FIELDS.presenceNoticed)).toBe(`${REPORTER}@2`);
+    expect(player(FIELDS.presenceNoticed)).toBe(REPORTER);
   });
 
-  it('is one thought per person per day, and the world counts it', () => {
+  it('is one thought per person, and the world counts it itself', () => {
     expect(setDot('away').ok).toBe(true);
 
     const noticed = {
       reporter: REPORTER,
-      mark: `${REPORTER}@2`,
       reputation_down: AWAY_NOTICED_REPUTATION,
     };
 
@@ -359,11 +380,58 @@ describe('somebody waiting on a ticket, noticing', () => {
     expect(player(FIELDS.reputation))
       .toBe(STARTING_REPUTATION - AWAY_NOTICED_REPUTATION);
 
-    // Tomorrow is a different day and the same person can have it again.
+    // And there is no second key to reach for: the same person, dispatched
+    // with anything else anybody can put in the payload, is still the same
+    // person and is still refused.
+    expectRefusal(
+      dispatch(WORLD_ACTIONS.presenceNoticed, {
+        ...noticed,
+        mark: `${REPORTER}@3`,
+      }),
+      AWAY_ALREADY_NOTICED_REASON,
+    );
+    expect(player(FIELDS.reputation))
+      .toBe(STARTING_REPUTATION - AWAY_NOTICED_REPUTATION);
+
+    // Somebody else can still have theirs, which is what makes the rule about
+    // people rather than about the afternoon.
     expect(dispatch(WORLD_ACTIONS.presenceNoticed, {
-      ...noticed,
-      mark: `${REPORTER}@3`,
+      reporter: 'person:gary',
+      reputation_down: AWAY_NOTICED_REPUTATION,
     }).ok).toBe(true);
+    expect(player(FIELDS.reputation))
+      .toBe(STARTING_REPUTATION - AWAY_NOTICED_REPUTATION * 2);
+  });
+
+  /**
+   * And tomorrow, which is the world's own doing: the morning clears the
+   * record, so the same person can have the same thought about the same desk
+   * on a day that has actually happened - and cannot have it twice by being
+   * handed a different key.
+   */
+  it('lets the same person have it again once the morning clears it', () => {
+    expect(setDot('away').ok).toBe(true);
+
+    const noticed = {
+      reporter: REPORTER,
+      reputation_down: AWAY_NOTICED_REPUTATION,
+    };
+
+    expect(dispatch(WORLD_ACTIONS.presenceNoticed, noticed).ok).toBe(true);
+    expectRefusal(
+      dispatch(WORLD_ACTIONS.presenceNoticed, noticed),
+      AWAY_ALREADY_NOTICED_REASON,
+    );
+
+    // The morning after it, through the real verb: the record is the shift
+    // starting's to clear, which is what makes "per day" the world's rule
+    // rather than a date somebody wrote into a key.
+    expect(dispatch(DAY_ACTIONS.endShift, {}).ok).toBe(true);
+    expect(dispatch(DAY_ACTIONS.clockOff, { banked: 0 }).ok).toBe(true);
+    expect(dispatch(DAY_ACTIONS.startShift, {}).ok).toBe(true);
+    expect(player(FIELDS.presenceNoticed)).toBe('');
+
+    expect(dispatch(WORLD_ACTIONS.presenceNoticed, noticed).ok).toBe(true);
     expect(player(FIELDS.reputation))
       .toBe(STARTING_REPUTATION - AWAY_NOTICED_REPUTATION * 2);
   });
@@ -372,7 +440,6 @@ describe('somebody waiting on a ticket, noticing', () => {
     expectRefusal(
       dispatch(WORLD_ACTIONS.presenceNoticed, {
         reporter: REPORTER,
-        mark: `${REPORTER}@2`,
         reputation_down: AWAY_NOTICED_REPUTATION,
       }),
       NOT_AWAY_REASON,
@@ -382,7 +449,6 @@ describe('somebody waiting on a ticket, noticing', () => {
     expectRefusal(
       dispatch(WORLD_ACTIONS.presenceNoticed, {
         reporter: REPORTER,
-        mark: `${REPORTER}@2`,
         reputation_down: AWAY_NOTICED_REPUTATION,
       }),
       NOT_AWAY_REASON,
@@ -395,7 +461,6 @@ describe('somebody waiting on a ticket, noticing', () => {
     expectRefusal(
       dispatch(WORLD_ACTIONS.presenceNoticed, {
         reporter: '',
-        mark: `${REPORTER}@2`,
         reputation_down: AWAY_NOTICED_REPUTATION,
       }),
       'nobody wrote down who',

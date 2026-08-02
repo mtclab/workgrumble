@@ -634,7 +634,7 @@ export interface DayDriverHandlers {
    * already been told - suspicion, reputation and the count are moved before
    * this is called - and what is left is the scene, which is the shell's.
    */
-  onCaught?(appId: string, tick: number): void;
+  onCaught?(appId: string, tick: number, evidence: number | null): void;
   /**
    * He has sent one of his messages. The chat thread is the shell's memory of
    * what was said, so the driver hands over the line and the node the
@@ -875,6 +875,13 @@ export class DayDriver implements DayApi {
    * dot set by somebody who is not at the desk it is about.
    */
   public setPresence(to: Presence): DispatchResult {
+    // The books first, whatever happens next. The minutes the dot has been
+    // showing are banked at the minute somebody reaches for the control, so a
+    // status changed between two meter ticks costs exactly the minutes it was
+    // up - and a refusal below leaves the record just as true, because what
+    // was banked is what actually happened.
+    this.settleDrip(this.engine.now());
+
     const held = this.takeoverRefusal();
 
     if (held !== null) {
@@ -929,8 +936,15 @@ export class DayDriver implements DayApi {
         continue;
       }
 
+      // Giving up is a property of the LAST attempt rather than of the id. The
+      // missed list is one line per call that never got through, so reading it
+      // against every slide made a morning of a caller trying again and again
+      // render as five separate people who did not try again - contradicted by
+      // the very next line of the same list.
+      const last = Math.max(...ticks);
+
       for (const tick of ticks) {
-        dodged.push({ entry, tick, gaveUp: missed.has(id) });
+        dodged.push({ entry, tick, gaveUp: missed.has(id) && tick === last });
       }
     }
 
@@ -1983,6 +1997,10 @@ export class DayDriver implements DayApi {
             'screen',
             caughtScene(caught)?.fileSubject ?? GENERIC_CAUGHT_SCENE.fileSubject,
           ),
+          // A conversation about a screen leaves the dot's own record exactly
+          // where it was. He has not mentioned the status and has no reason
+          // to: the morning it is evidence of is still going on.
+          status_evidence_spent: 0,
         },
       );
 
@@ -1996,7 +2014,7 @@ export class DayDriver implements DayApi {
         // And the price, which is the clock rather than the scoreboard: he is
         // here now, and getting back to what you were doing is the rest of it.
         this.owedMinutes_ += CAUGHT_MINUTES;
-        this.handlers.onCaught?.(caught, visit.arrivalTick);
+        this.handlers.onCaught?.(caught, visit.arrivalTick, null);
         this.handlers.onNotice?.(
           `That is ${String(CAUGHT_MINUTES)} minutes`,
           'He was at the desk for a while and the queue was not. The shift is '
@@ -2076,14 +2094,24 @@ export class DayDriver implements DayApi {
       return;
     }
 
+    // ONE reading, captured here, and both surfaces are handed it: the line
+    // that goes on the file and the scene the player reads are two sentences
+    // about the same morning, and a scene that recomputed the number live
+    // would drift from the file the moment another minute of the dot went by.
+    // The world is about to clear the record anyway - being spoken to closes
+    // the morning it was about - so a live read afterwards is a read of
+    // nothing at all.
+    const minutes = beat.minutes;
     const result = this.engine.dispatch(DAY_ACTIONS.bossCaught, this.actor, null, {
       // The quantity goes on the FILE, where a quantity belongs; the scene
       // says the same thing in the words a man standing there would use.
       file_line: conductLine(
         visit.arrivalTick,
         'status',
-        `${DND_CAUGHT_SCENE.fileSubject} for ${dndEvidence(beat.minutes)}`,
+        `${DND_CAUGHT_SCENE.fileSubject} for ${dndEvidence(minutes)}`,
       ),
+      // And the morning is spent by having been mentioned.
+      status_evidence_spent: 1,
     });
 
     if (!result.ok) {
@@ -2092,7 +2120,7 @@ export class DayDriver implements DayApi {
 
     this.slowDown();
     this.owedMinutes_ += CAUGHT_MINUTES;
-    this.handlers.onCaught?.(PRESENCE_CAUGHT_KEY, visit.arrivalTick);
+    this.handlers.onCaught?.(PRESENCE_CAUGHT_KEY, visit.arrivalTick, minutes);
     this.handlers.onNotice?.(
       `That is ${String(CAUGHT_MINUTES)} minutes`,
       'He did not find anything on your screen. He read your status instead, '
@@ -3065,6 +3093,7 @@ export class DayDriver implements DayApi {
       breachesCharged: read(FIELDS.breachesCharged),
       resolveCreditPaid: read(FIELDS.resolveCreditPaid),
       dndWorkingTicks: read(FIELDS.dndWorkingTicks),
+      dndSuspicionCharged: read(FIELDS.dndSuspicionCharged),
     };
   }
 
@@ -3086,11 +3115,14 @@ export class DayDriver implements DayApi {
       openSlackApps: this.handlers.openSlackApps(),
       focusedSlackApp: this.handlers.focusedSlackApp(),
       lunch: isLunchtime(now),
-      // Both off the graph, neither invented here: the dot is a field, and
-      // "working" is the touch log - the same evidence the cost model and the
-      // handoff form read. The meters decide what the pair is worth.
-      presence: this.presence(),
-      working: this.workingRecently(now),
+      // The dot's minutes, COUNTED rather than sampled here: everything the
+      // meters are told about the status is a number of minutes that actually
+      // were do-not-disturb-while-working, read off the graph a minute at a
+      // time between watermarks. The pair of instant readings this used to be
+      // made a rule about two moments a day.
+      dndWorkingMinutes: this.dndAccrued(now),
+      dndWorkingTicks: state.dndWorkingTicks,
+      dndSuspicionCharged: state.dndSuspicionCharged,
     });
 
     if (!movesAnything(state, deltas)) {
@@ -3111,29 +3143,99 @@ export class DayDriver implements DayApi {
       // nobody sets a dot on, and the world writes nothing for a nought -
       // which is what keeps this off the player node of a scripted week.
       dnd_ticks_up: deltas.dndWorkingTicks,
+      dnd_charged: deltas.dndSuspicionCharged,
+      dnd_billed_to: now,
     });
   }
 
   /**
-   * Whether the queue has been touched inside `DND_WORKING_TICKS`.
+   * How many of the minutes since the last watermark were the dot lying.
    *
-   * The touch log, which is the same evidence `ticketInHand` reads and the
-   * same evidence a handoff form is judged on - so "working" means one thing
-   * in this world. Resolved tickets count: closing one is the most working
-   * anybody does, and a definition that dropped it would let a player go
-   * quiet, close three tickets and pay nothing for the dot.
+   * The heart of the fix this slice needed after review: a minute counts when
+   * the status was do not disturb, the touch log says the queue was being
+   * worked, and it was not lunch - and it is counted ONE MINUTE AT A TIME
+   * between two watermarks rather than read once at a meter boundary.
+   *
+   * The old shape sampled the pair at the boundary and charged for the whole
+   * interval or none of it, which made the drip a rule about two instants a
+   * day: a player who raised the dot just after each tick and dropped it just
+   * before the next one dodged every call in the morning and paid nothing at
+   * all for it, and one who dropped it a minute early erased five minutes they
+   * had genuinely spent behind it. Every one of the inputs below is historical
+   * - the touch log carries minutes, lunch is arithmetic, and the STATUS is
+   * pinned to its own segment by `presence.set` moving the watermark - so the
+   * question "how much of that window was a lie" has one answer, and it is the
+   * same answer on both sides of a save.
    */
-  private workingRecently(now: number): boolean {
-    for (const ticket of this.tickets()) {
-      const touches = triedFromTouches(ticket.fields[FIELDS.touchLog]);
-      const last = touches[touches.length - 1];
+  private dndAccrued(now: number): number {
+    if (this.presence() !== 'dnd') {
+      return 0;
+    }
 
-      if (last !== undefined && now - last.tick <= DND_WORKING_TICKS) {
-        return true;
+    // Never earlier than this morning: a dot left on overnight is not a claim
+    // about minutes nobody was at the desk for, and the record it is evidence
+    // for is cleared every morning anyway.
+    const from = Math.max(
+      this.playerNumber(FIELDS.dndBilledTo),
+      shiftStartTick(this.day()),
+    );
+    const touches = this.touchTicks();
+    let minutes = 0;
+
+    for (let tick = from + 1; tick <= now; tick += 1) {
+      if (
+        !isLunchtime(tick)
+        && touches.some(
+          (touch) => touch <= tick && tick - touch <= DND_WORKING_TICKS,
+        )
+      ) {
+        minutes += 1;
       }
     }
 
-    return false;
+    return minutes;
+  }
+
+  /** Every minute the queue was touched in, which is what "working" means. */
+  private touchTicks(): readonly number[] {
+    return this.tickets().flatMap(
+      (ticket) => triedFromTouches(ticket.fields[FIELDS.touchLog])
+        .map((touch) => touch.tick),
+    );
+  }
+
+  /**
+   * Closes the books on the status that is about to be replaced.
+   *
+   * Called before the dot changes, and that is what makes the integral above
+   * exact: the minutes of the segment ending now are banked at the minute it
+   * ends, so nothing about the next status can erase them and nothing about
+   * the last one can be charged to it. It banks the MINUTES only - what they
+   * are worth in suspicion is settled at the meter boundary off the total,
+   * because the rate is two points per five minutes and a fraction of a point
+   * is not a thing this world charges.
+   */
+  private settleDrip(now: number): void {
+    const minutes = this.dndAccrued(now);
+    const state = this.meterState();
+
+    this.engine.dispatch(DAY_ACTIONS.metersTick, this.actor, null, {
+      stress_up: 0,
+      stress_down: 0,
+      suspicion_up: 0,
+      suspicion_down: 0,
+      reputation_up: 0,
+      reputation_down: 0,
+      suspicion_events_up: 0,
+      // Untouched: this is not the interval's settlement, it is the closing of
+      // one status's books inside it, and handing back the watermarks it found
+      // is what keeps it from billing anything twice.
+      breaches_charged: state.breachesCharged,
+      resolve_credit_paid: state.resolveCreditPaid,
+      dnd_ticks_up: minutes,
+      dnd_charged: state.dndSuspicionCharged,
+      dnd_billed_to: now,
+    });
   }
 
   /**
@@ -3155,7 +3257,6 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    const day = this.day();
     const already = this.playerText(FIELDS.presenceNoticed).split('\n');
     let waiting: { ticket: string; reporter: NodeId; since: number } | null = null;
 
@@ -3174,7 +3275,11 @@ export class DayDriver implements DayApi {
         // YOURSELF waiting is a fine with nobody on the other end of it, plus
         // a chat line from the player to the player.
         || reporter === this.actor
-        || already.includes(`${reporter}@${String(day)}`)
+        // The world keeps the same list and refuses the second one itself.
+        // This is the driver picking somebody who has not already had their
+        // thought rather than dispatching into a refusal, which is the only
+        // reason it reads the record at all.
+        || already.includes(reporter)
       ) {
         continue;
       }
@@ -3196,8 +3301,12 @@ export class DayDriver implements DayApi {
       this.actor,
       null,
       {
+        // One parameter, and it is the person. The uniqueness key used to be a
+        // `person@day` line assembled here, which put the world's own
+        // once-per-day rule in the hands of whoever dispatched it; the record
+        // is now cleared every morning by the shift starting, so the reporter
+        // IS the key and there is nothing left to spell.
         reporter: waiting.reporter,
-        mark: `${waiting.reporter}@${String(day)}`,
         reputation_down: AWAY_NOTICED_REPUTATION,
       },
     );

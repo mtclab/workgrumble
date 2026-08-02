@@ -21,6 +21,14 @@
  * on nights whose own status has said Away since 1997, the new starter who
  * apologises for being kept waiting.
  *
+ * And one rule that is about the MECHANIC rather than the voice: no line may
+ * claim more than the trigger can promise. What buys somebody their thought is
+ * one successful piece of work-class dispatch - which can be a screen rotated
+ * to the wrong angle and nothing closed at all - so a line saying "you have
+ * closed three tickets" would be the office describing an afternoon that did
+ * not necessarily happen. They say what is always true: that desk is
+ * demonstrably doing something, and it is not this.
+ *
  * Nothing here dispatches, reads a clock or knows what a window is.
  */
 
@@ -39,43 +47,44 @@ import { type Presence, PRESENCE_VALUES } from '../presence';
  * enforces is one per person per day for exactly that reason.
  */
 export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freeze({
-  [COMPANY_IDS.ada]: 'Your status says Away. Tickets are being closed. I am '
-    + 'not saying the two things are connected, I am saying I have noticed '
-    + 'them, and I would like that noticed as well.',
+  [COMPANY_IDS.ada]: 'Your status says Away and something is quite clearly '
+    + 'being done over there. I am not saying the two things are connected. I '
+    + 'am saying I have noticed them, and I would like that noticed as well.',
   [COMPANY_IDS.gary]: 'Your little icon says Away. I have been sat here since '
-    + 'I raised it, and I have watched two other things get sorted out. I am '
-    + 'not going to make a thing of it. I am mentioning it.',
-  [COMPANY_IDS.nina]: 'You are marked Away. The queue is not. I have been here '
-    + 'eleven years and Away has never once meant away.',
+    + 'I raised it, watching somebody at that desk get on with something else. '
+    + 'I am not going to make a thing of it. I am mentioning it.',
+  [COMPANY_IDS.nina]: 'You are marked Away. You are also plainly doing '
+    + 'something. I have been here eleven years and Away has never once meant '
+    + 'away.',
   [COMPANY_IDS.bev]: 'Away, is it? Love, I sit by the door. I can see the side '
     + 'of your monitor from here and I can see it changing.',
   [COMPANY_IDS.priya]: 'Your status is Away and there is a payment run at '
     + 'eleven. I do not need you all morning. I needed you for four minutes, '
-    + 'about an hour ago.',
+    + 'about an hour ago, and you are evidently at the desk.',
   [COMPANY_IDS.terry]: 'I did read the bit where it says you are Away. I also '
-    + 'read the ticket list, which has moved twice since I read the first '
-    + 'thing. I read everything, that is rather the problem.',
-  [COMPANY_IDS.hilda]: 'Says Away. It said Away the last time as well, while '
-    + 'the numbers on the board went down one at a time. We can see the board '
-    + 'from the warehouse, you know.',
+    + 'read the activity down the side of the ticket, which says otherwise. I '
+    + 'read everything, that is rather the problem.',
   [COMPANY_IDS.kwame]: 'Sorry - you are showing as Away so please ignore this. '
-    + 'It is only that things do seem to be getting done, and mine is not one '
-    + 'of them, and nobody has told me yet whether Away means away.',
+    + 'It is only that something does seem to be getting done, and mine is not '
+    + 'it, and nobody has told me yet whether Away means away.',
+  [COMPANY_IDS.hilda]: 'Says Away. It said Away the last time as well, while '
+    + 'somebody was very obviously getting on with something in there. We can '
+    + 'see the board from the warehouse, you know.',
   [COMPANY_IDS.rob]: 'You are set to Away. That is completely fine. It is my '
     + 'second week, so I do not know whether that means you are away or '
     + 'whether it means the other thing everybody keeps hinting at.',
-  [COMPANY_IDS.owen]: 'Your dot has gone grey. Mine has said Away since the '
-    + 'day they gave me the login and nobody has ever asked. I am only saying '
-    + 'I know what it means, and I am still waiting.',
+  [COMPANY_IDS.owen]: 'Your dot has gone grey and the desk is clearly not. '
+    + 'Mine has said Away since the day they gave me the login and nobody has '
+    + 'ever asked. I am only saying I know what it means, and I am waiting.',
   [COMPANY_IDS.dennis]: 'You are Away, so this will keep, honestly. I only '
-    + 'mention it because the list at the side keeps ticking over, and I did '
-    + 'wonder whether Away was the setting or the situation.',
+    + 'mention it because something is evidently happening over there, and I '
+    + 'did wonder whether Away was the setting or the situation.',
   [COMPANY_IDS.marcus]: 'Your status says Away. The backup light is still red. '
-    + 'One of those two things has moved this morning and it is not the one on '
-    + 'my desk.',
+    + 'One of those two things is being worked on this morning and it is not '
+    + 'the one on my desk.',
   [COMPANY_IDS.yolanda]: 'I see you are marked unavailable. I also see that '
-    + 'six tickets have been updated since mine was raised. I will leave that '
-    + 'with you rather than with anybody else, for now.',
+    + 'the desk marked unavailable is busy with something that is not my '
+    + 'report. I will leave that with you rather than with anybody else.',
   [COMPANY_IDS.boss]: 'Pat. Your status says Away. You are demonstrably not '
     + 'away. I do not mind which of those two you fix, but I would like it to '
     + 'be one of them.',

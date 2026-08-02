@@ -216,26 +216,40 @@ export function dndBeat(
  *
  * The world counts a quantity and the lead does not say quantities: nobody has
  * ever been asked "were you on Do Not Disturb for fifty-five minutes". What he
- * has is a rough sense of how much of the morning it was, and the scene prints
- * that - which is the honest translation, because the number underneath it is
- * on the file and on this screen either way.
+ * has is a rough sense of how long it was, and the scene prints that - which
+ * is the honest translation, because the number underneath it is on the file
+ * and in the window either way.
+ *
+ * EVERY BAND HAS TO BE TRUE AT ITS OWN FLOOR, which is the rule this was got
+ * wrong by once: the beat arms at half an hour and the shift's morning is four
+ * of them, so the smallest reading rendered as "half the morning" - a sentence
+ * about a hundred and twenty minutes said about thirty, in a scene whose whole
+ * job is to be traceable to a number. A telling-off that overstates its own
+ * evidence is the random scold this family exists to not be.
  *
  * Written as thresholds rather than as arithmetic on purpose: the phrase has
  * to be a thing somebody would say out loud, and "one hour and forty-five
- * minutes" said out loud is a spreadsheet talking.
+ * minutes" said out loud is a spreadsheet talking. Each one reads after the
+ * words "it has been like that for".
  */
 export function dndEvidence(minutes: number): string {
-  if (minutes >= 180) {
+  // Four hours of shift before lunch, so "the morning" is 240 minutes and
+  // nothing under three of them may claim the whole of it.
+  if (minutes >= 210) {
     return 'the whole morning';
   }
 
-  if (minutes >= 120) {
+  if (minutes >= 135) {
     return 'most of the morning';
   }
 
-  if (minutes >= 60) {
+  if (minutes >= 75) {
+    return 'over an hour';
+  }
+
+  if (minutes >= 45) {
     return 'the best part of an hour';
   }
 
-  return 'half the morning';
+  return 'about half an hour';
 }

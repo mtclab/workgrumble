@@ -11,6 +11,19 @@ import { DAY_ACTIONS } from './ids';
 const DND_TICKS_PARAM = 'dnd_ticks_up';
 
 /**
+ * The minute those minutes have been counted up to, and the suspicion already
+ * billed against the bank they went into.
+ *
+ * Both are watermarks and both are here rather than worked out by whoever
+ * dispatched this, for the reason every watermark in this world is: they are
+ * what makes the arithmetic exact when the same rule runs again on the same
+ * minute, and what makes a status changed between two meter ticks cost its
+ * true minutes rather than a whole interval or none of one.
+ */
+const DND_BILLED_TO_PARAM = 'dnd_billed_to';
+const DND_CHARGED_PARAM = 'dnd_charged';
+
+/**
  * The pressure meters move on the person carrying them, so the verb is aimed
  * at whoever dispatched it. Nobody else in the building has a stress level the
  * player can see.
@@ -121,6 +134,39 @@ export const METER_ACTION_DATA: readonly ActionData[] = [
           + 'have to be a whole number of them at or above zero, and this is '
           + 'not one.',
       },
+      // The two watermarks, checked the same way and for the same reason: a
+      // minute counted up to that is not a minute, or a bill already paid that
+      // is not a number, is a record nobody could read back.
+      {
+        when: {
+          pred: 'all',
+          of: [
+            not({ pred: 'param_absent', param: DND_BILLED_TO_PARAM }),
+            not({
+              pred: 'param_is_whole_number',
+              param: DND_BILLED_TO_PARAM,
+              value: 0,
+            }),
+          ],
+        },
+        reason: 'The minute the dot has been counted up to has to be a whole '
+          + 'number of them at or above zero, and this is not one.',
+      },
+      {
+        when: {
+          pred: 'all',
+          of: [
+            not({ pred: 'param_absent', param: DND_CHARGED_PARAM }),
+            not({
+              pred: 'param_is_whole_number',
+              param: DND_CHARGED_PARAM,
+              value: 0,
+            }),
+          ],
+        },
+        reason: 'What the dot has already been billed has to be a whole '
+          + 'number of points at or above zero, and this is not one.',
+      },
       // And they are the WORLD's to believe rather than the caller's: the dot
       // is on the graph, so a driver cannot bank half an hour of do not
       // disturb against a player who is showing Available.
@@ -213,6 +259,59 @@ export const METER_ACTION_DATA: readonly ActionData[] = [
                 clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
               },
             },
+          },
+        ],
+      },
+      // What the bank has now been billed, written with the minutes that
+      // changed it: the rate is two points per five minutes, so most single
+      // minutes move this by nothing at all and the whole point of keeping it
+      // is that the fractions are not thrown away.
+      {
+        op: 'when',
+        cond: {
+          pred: 'all',
+          of: [
+            {
+              pred: 'param_is_whole_number',
+              param: DND_TICKS_PARAM,
+              value: 1,
+            },
+            not({ pred: 'param_absent', param: DND_CHARGED_PARAM }),
+          ],
+        },
+        ops: [
+          {
+            op: 'set_field',
+            node: ACTOR,
+            field: FIELDS.dndSuspicionCharged,
+            value: { param: DND_CHARGED_PARAM },
+          },
+        ],
+      },
+      // And the minute the counting has reached, which moves whether or not
+      // there were any minutes in it - a window that counted nothing is still
+      // a window that has been counted, and a watermark left behind would let
+      // the same minutes be counted again under a dot set later.
+      //
+      // Only for somebody who has a dot at all: a player who has never touched
+      // the tray has no status, so there is nothing to have counted, and a
+      // field written on every meter tick of every day would put a number on
+      // the player node of every scripted week in the suite.
+      {
+        op: 'when',
+        cond: {
+          pred: 'all',
+          of: [
+            not({ pred: 'param_absent', param: DND_BILLED_TO_PARAM }),
+            not({ pred: 'field_missing', node: ACTOR, field: FIELDS.presence }),
+          ],
+        },
+        ops: [
+          {
+            op: 'set_field',
+            node: ACTOR,
+            field: FIELDS.dndBilledTo,
+            value: { param: DND_BILLED_TO_PARAM },
           },
         ],
       },

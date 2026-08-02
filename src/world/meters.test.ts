@@ -48,10 +48,11 @@ const QUIET: MeterInputs = {
   openSlackApps: [],
   focusedSlackApp: null,
   lunch: false,
-  // The dot everybody who has never touched the tray is showing, and a desk
-  // nobody has been at: the quiet day is quiet in every direction.
-  presence: 'available',
-  working: false,
+  // No minutes of a dot anybody was lying behind, and nothing banked or billed
+  // for one: the quiet day is quiet in every direction.
+  dndWorkingMinutes: 0,
+  dndWorkingTicks: 0,
+  dndSuspicionCharged: 0,
 };
 
 /** On screen AND in front of the player: the shape of one window, open. */
@@ -71,6 +72,7 @@ const FRESH: MeterState = {
   breachesCharged: 0,
   resolveCreditPaid: 0,
   dndWorkingTicks: 0,
+  dndSuspicionCharged: 0,
 };
 
 describe('stress', () => {

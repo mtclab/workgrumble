@@ -189,8 +189,13 @@ async function boot(): Promise<void> {
     // The world has already been told what being caught costs. What is left is
     // the scene, which is a window like any other - closeable, on top of a
     // queue that is still there underneath it.
-    onCaught: (appId, tick) => {
-      appState.patchExternal('caught', { appId, at: tick });
+    onCaught: (appId, tick, evidence) => {
+      // The reading he was going on, captured in the minute he was standing
+      // there. It is null for every conversation about a screen, and for the
+      // one about the status it is the number the file's own line was written
+      // from - so the scene and the file cannot end up telling two different
+      // stories about the same morning.
+      appState.patchExternal('caught', { appId, at: tick, evidence });
       shell.openApp('caught');
       shell.notify(
         'A quick word',

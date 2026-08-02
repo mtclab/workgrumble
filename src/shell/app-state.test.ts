@@ -40,7 +40,7 @@ describe('the shell-owned app state', () => {
     expect(fresh.chat).toEqual({ selectedId: null, threads: {} });
     expect(fresh.day).toEqual({ briefShownFor: null, scorecardShownFor: null });
     expect(fresh.browser).toEqual({ siteId: null });
-    expect(fresh.caught).toEqual({ appId: null, at: null });
+    expect(fresh.caught).toEqual({ appId: null, at: null, evidence: null });
   });
 
   it('patches one slice without disturbing the others', () => {
@@ -97,6 +97,9 @@ describe('the shell-owned app state', () => {
       { ...(good as object), browser: { siteId: 7 } },
       { ...(good as object), caught: { appId: 'bubbles', at: -1 } },
       { ...(good as object), caught: { appId: 4, at: null } },
+      // The captured reading, when it is there at all, is a number of minutes.
+      { ...(good as object), caught: { appId: 'browser', at: 1, evidence: -2 } },
+      { ...(good as object), caught: { appId: 'browser', at: 1, evidence: 'a' } },
       {
         ...(good as object),
         chat: { selectedId: null, threads: { 'person:ada': { lines: [] } } },
@@ -143,9 +146,10 @@ describe('the shell-owned app state', () => {
 
     // A write from OUTSIDE the app layer does announce: the app whose slice
     // changed is not the one that changed it, so nothing else repaints it.
-    store.patchExternal('caught', { appId: 'browser', at: 12 });
+    store.patchExternal('caught', { appId: 'browser', at: 12, evidence: null });
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(store.get().caught).toEqual({ appId: 'browser', at: 12 });
+    expect(store.get().caught)
+      .toEqual({ appId: 'browser', at: 12, evidence: null });
 
     expect(store.hydrate(createAppState())).toBe(true);
     expect(listener).toHaveBeenCalledTimes(2);

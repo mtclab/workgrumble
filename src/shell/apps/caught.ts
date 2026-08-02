@@ -180,7 +180,7 @@ export const CAUGHT_APP: AppDef = {
     };
 
     const render = (): void => {
-      const { appId, at } = api.appState.get().caught;
+      const { appId, at, evidence: minutes } = api.appState.get().caught;
       const scene: CaughtScene = appId === null
         ? UNCAUGHT_SCENE
         : caughtScene(appId) ?? GENERIC_CAUGHT_SCENE;
@@ -195,15 +195,20 @@ export const CAUGHT_APP: AppDef = {
       narration.textContent = scene.narration;
       reply.textContent = scene.reply;
 
-      const status = appId === PRESENCE_CAUGHT_KEY;
-      const beat = api.day.dndBeat();
+      // The reading he arrived with, as it was captured in that minute, rather
+      // than a fresh one taken now. The world clears the record as part of
+      // having the conversation - a morning that has been mentioned is spent -
+      // so asking again would be asking about nothing, and while the record
+      // still stood a second reading would drift from the line already on the
+      // file. One number, two sentences about it.
+      const status = appId === PRESENCE_CAUGHT_KEY && minutes !== null;
 
       evidence.hidden = !status;
-      evidence.dataset.minutes = String(beat.minutes);
+      evidence.dataset.minutes = status ? String(minutes) : '';
       evidence.textContent = status
         ? 'He does not say a number, and he has one. What he says is that it '
-          + `has been like that for ${dndEvidence(beat.minutes)}, and the `
-          + 'dispatch log behind you agrees with him to the minute.'
+          + `has been like that for ${dndEvidence(minutes)}, and the dispatch `
+          + 'log behind you agrees with him to the minute.'
         : '';
       dismiss.textContent = scene.dismissLabel;
       note.textContent = appId === null

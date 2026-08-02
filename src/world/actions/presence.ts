@@ -23,9 +23,17 @@ const ACTOR: NodeRefData = { ref: 'actor' };
 /** Which of the three, as an index into `PRESENCE_VALUES`. */
 const DOT_PARAM = 'dot';
 
-/** Who has noticed, and the whole `person@day` line that says they have. */
+/**
+ * Who has noticed - and that is the whole of what the caller says.
+ *
+ * The uniqueness key used to arrive as a second parameter, a `person@day` line
+ * the driver assembled, which meant the rule the world enforces - one thought
+ * per person per day - was spelled by whoever dispatched it. The record is now
+ * keyed on the reporter alone and the DAY is the world clearing the record
+ * every morning (`start_shift`), so there is one trusted parameter and nothing
+ * for a caller to get wrong.
+ */
 const REPORTER_PARAM = 'reporter';
-const MARK_PARAM = 'mark';
 
 export const PRESENCE_OFF_SHIFT_REASON = 'There is no shift on. A status is a '
   + 'thing the office reads off a desk somebody is sitting at, and nobody is '
@@ -115,7 +123,24 @@ export const PRESENCE_ACTION_DATA: readonly ActionData[] = [
         reason: PRESENCE_OFF_SHIFT_REASON,
       },
     ],
-    apply: SET_THE_DOT,
+    apply: [
+      ...SET_THE_DOT,
+      // And the minute the counting starts from, written by the WORLD off its
+      // own clock rather than stamped by a caller.
+      //
+      // It is what makes the drip an integral rather than a sample: the
+      // minutes of the status being replaced were banked by the settle that
+      // ran a moment before this, and everything the new one is worth is
+      // counted from here. Without it a dot raised between two meter ticks
+      // would be charged for minutes it was not up, and one dropped between
+      // them would be charged for none of the ones it was.
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.dndBilledTo,
+        value: { now: true },
+      },
+    ],
   },
   {
     id: WORLD_ACTIONS.presenceNoticed,
@@ -126,12 +151,6 @@ export const PRESENCE_ACTION_DATA: readonly ActionData[] = [
         reason: 'Somebody escalated and nobody wrote down who. An escalation '
           + 'with no name on it is a reputation hit the player cannot trace '
           + 'to a person, which is the shape of a number that just went down.',
-      },
-      {
-        when: { pred: 'param_blank', param: MARK_PARAM },
-        reason: 'The record of who has already noticed today arrived empty, '
-          + 'and a once-a-day rule with nothing to count is a rule that fires '
-          + 'every time.',
       },
       // The dot, read off the graph rather than off the dispatch: what makes
       // this a consequence rather than an arbitrary fine is that the status
@@ -146,7 +165,7 @@ export const PRESENCE_ACTION_DATA: readonly ActionData[] = [
           pred: 'line_in_field',
           node: ACTOR,
           field: FIELDS.presenceNoticed,
-          value: { param: MARK_PARAM },
+          value: { param: REPORTER_PARAM },
         },
         reason: AWAY_ALREADY_NOTICED_REASON,
       },
@@ -185,7 +204,7 @@ export const PRESENCE_ACTION_DATA: readonly ActionData[] = [
           append_line: {
             node: ACTOR,
             field: FIELDS.presenceNoticed,
-            value: { param: MARK_PARAM },
+            value: { param: REPORTER_PARAM },
           },
         },
       },

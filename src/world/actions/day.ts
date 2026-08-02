@@ -100,6 +100,41 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
         field: FIELDS.dayState,
         value: { const: 'shift' },
       },
+      // And the three records that are about TODAY rather than about the week,
+      // wiped where they exist.
+      //
+      // Two of them are the dot's: how many minutes of do-not-disturb-while-
+      // working are on the record, and what has been billed for them. The
+      // lead's beat is a claim about THIS MORNING - "you have been on Do Not
+      // Disturb", said at a desk, about a morning he watched - and evidence
+      // that carried over from Monday would arm a Thursday beat with no
+      // Thursday behind it. The third is who has already had their one thought
+      // about an Away desk, which is once per person per DAY: keeping the
+      // record for a day rather than writing the date into every line is what
+      // lets the world enforce that rule off one parameter instead of trusting
+      // a caller to spell a key.
+      //
+      // Each one is guarded on already existing, and that guard is the whole
+      // determinism argument of the slice standing up: a player who has never
+      // touched the tray has none of these fields, a clear of an absent field
+      // would CREATE it at nought, and every scripted week in the suite would
+      // move by three fields on the player node.
+      ...[
+        FIELDS.dndWorkingTicks,
+        FIELDS.dndSuspicionCharged,
+        FIELDS.presenceNoticed,
+      ].map((field) => ({
+        op: 'when' as const,
+        cond: not({ pred: 'field_missing' as const, node: ACTOR, field }),
+        ops: [
+          {
+            op: 'set_field' as const,
+            node: ACTOR,
+            field,
+            value: { const: field === FIELDS.presenceNoticed ? '' : 0 },
+          },
+        ],
+      })),
     ],
   },
   {

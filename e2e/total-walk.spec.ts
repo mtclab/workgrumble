@@ -27,6 +27,7 @@ import {
 } from './helpers';
 import { REFUSED_TOKENS, SHARED_TOKEN } from './tokens';
 import { AWAY_NOTICED_LINES } from '../src/world/dialogue';
+import { DND_BEAT_MINUTES, dndEvidence } from '../src/world/presence';
 import {
   COVERAGE,
   type CoverageId,
@@ -2819,14 +2820,36 @@ test('walks the week nobody worked, the firing, and the retry', async ({
       .toHaveAttribute('data-app', 'presence:dnd');
     await expect(page.getByTestId('caught-heading'))
       .toContainText('availability');
-    // How much of the morning it was, in his words rather than as a number.
+
+    /*
+     * ONE reading, on both surfaces.
+     *
+     * The number he arrived with is captured in the minute he arrives, and the
+     * assertion is not that the scene says something about a morning - it is
+     * that the scene, the file and the captured minutes are three views of the
+     * same value. A scene that recomputed a running total live would drift
+     * from the line already written on the file, and a phrase match against
+     * "morning|hour" would have passed all the way through that drift without
+     * noticing.
+     */
+    const captured = await page.evaluate(
+      () => globalThis.careerSim?.screens().caught.evidence ?? null,
+    );
+
+    expect(captured).not.toBeNull();
+    expect(captured ?? 0).toBeGreaterThanOrEqual(DND_BEAT_MINUTES);
+
+    const said = dndEvidence(captured ?? 0);
     const evidence = page.getByTestId('caught-evidence');
+
     await expect(evidence).toBeVisible();
-    await expect(evidence).toContainText(/morning|hour/);
+    await expect(evidence).toHaveAttribute('data-minutes', String(captured));
+    await expect(evidence).toContainText(said);
+    // In his words rather than as a number, which is the other half of it.
     await expect(evidence).not.toContainText(/\d+ minutes/);
     // And the same reading on the file, in the voice a file is written in.
     await expect(page.getByTestId('caught-file'))
-      .toContainText('Availability status recorded as Do Not Disturb');
+      .toContainText(`Availability status recorded as Do Not Disturb for ${said}`);
 
     await page.getByTestId('caught-dismiss').click();
     await expect(caught).toHaveCount(0);

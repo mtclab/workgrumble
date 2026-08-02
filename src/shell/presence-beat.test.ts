@@ -24,8 +24,13 @@ import { shiftEndTick, shiftStartTick } from '../world/day';
 import { FIELDS } from '../world/fields';
 import { buildInterruptionSchedule } from '../world/interruptions';
 import { METER_INTERVAL_TICKS } from '../world/meters';
-import { DND_BEAT_MINUTES, DND_BEAT_SUSPICION } from '../world/presence';
+import {
+  DND_BEAT_MINUTES,
+  DND_BEAT_SUSPICION,
+  DND_WORKING_SUSPICION,
+} from '../world/presence';
 import { PRESENCE_CAUGHT_KEY } from '../world/scenes';
+import { dndEvidence } from '../world/presence';
 import { createWorldSession, type WorldSession } from '../world/session';
 import { isUnresolved, needsResponse } from '../world/sla';
 import { findWorldTicket, ticketNodes } from '../world/tickets';
@@ -41,20 +46,27 @@ interface Harness {
   readonly session: WorldSession;
   /** Every scene the day put in front of the player, by what it was about. */
   readonly scenes: string[];
+  /** The reading each of those scenes was handed, where there was one. */
+  readonly evidence: (number | null)[];
   /** Everybody who had a thought about the Away dot. */
   readonly noticed: string[];
+  /** What is on the screen, which the meters read for themselves. */
+  readonly slack: string[];
 }
 
 function harnessOn(day: number): Harness {
   const session = createWorldSession();
   const scenes: string[] = [];
+  const evidence: (number | null)[] = [];
   const noticed: string[] = [];
+  const slack: string[] = [];
   const driver = new DayDriver(session.engine, COMPANY_IDS.player, session.seed, {
     onDayBoundary: () => {},
-    openSlackApps: () => [],
+    openSlackApps: () => [...slack],
     focusedSlackApp: () => null,
-    onCaught: (appId) => {
+    onCaught: (appId, _tick, minutes) => {
       scenes.push(appId);
+      evidence.push(minutes);
     },
     onPresenceNoticed: (reporter) => {
       noticed.push(reporter);
@@ -69,8 +81,9 @@ function harnessOn(day: number): Harness {
 
   driver.startShift();
   scenes.length = 0;
+  evidence.length = 0;
   noticed.length = 0;
-  return { driver, session, scenes, noticed };
+  return { driver, session, scenes, evidence, noticed, slack };
 }
 
 function runTo(driver: DayDriver, session: WorldSession, tick: number): void {
@@ -260,14 +273,94 @@ describe('the beat the dot arms', () => {
     // screen, and the file must not say there was.
     expect(file.some((entry) => entry.kind === 'screen')).toBe(false);
 
-    // And the evidence is still on the world and has only grown, which is what
-    // the scene reads to say how long it was. It does not drain: a morning
-    // that happened is a morning that happened, and the number the window
-    // shows an hour later is still true.
+    // THE READING THE SCENE WAS HANDED, and it is the one the file was written
+    // from rather than a fresh one: the surfaces are given a captured number
+    // because the record itself is closed by the conversation, and two
+    // surfaces recomputing a running total would print two accounts of one
+    // morning.
+    expect(world.evidence).toHaveLength(1);
+    expect(world.evidence[0]).toBeGreaterThanOrEqual(DND_BEAT_MINUTES);
+    expect(status[0]?.text).toContain(dndEvidence(world.evidence[0] ?? 0));
+
+    // And the morning is SPENT. What it was evidence of has been said out
+    // loud, so the record starts again - anything still on it is minutes that
+    // have gone by since he walked away.
     expect(number(world.session, FIELDS.dndWorkingTicks))
-      .toBeGreaterThanOrEqual(armedAt.minutes);
-    expect(number(world.session, FIELDS.dndWorkingTicks))
-      .toBeGreaterThanOrEqual(DND_BEAT_MINUTES);
+      .toBeLessThan(armedAt.minutes);
+    expect(world.driver.dndBeat().minutes)
+      .toBeLessThan(DND_BEAT_MINUTES);
+  });
+
+  /**
+   * The staleness this closes, said as a journey: a morning that has already
+   * been the subject of a conversation cannot buy a second one, and neither
+   * can a morning that happened yesterday.
+   *
+   * Before the fix the evidence was a WEEK-cumulative counter and the meter
+   * beside it was generic suspicion, so a Monday spent behind the dot sat on
+   * the record all week and any later afternoon that happened to push the
+   * meter back over the mark re-armed the beat with no fresh dot behind it at
+   * all - a telling-off about this morning, delivered on the strength of a
+   * different one.
+   */
+  it('needs a fresh half hour rather than a morning already spoken about', () => {
+    const world = harnessOn(1);
+
+    expect(world.driver.setPresence('dnd')).toEqual({ ok: true });
+    expect(workUntilArmed(world)).toBe(true);
+    workUntilSpokenTo(world);
+
+    expect(world.scenes).toHaveLength(1);
+
+    // The meter put back over the mark by something that is not the dot: a
+    // browser open on the second screen all afternoon.
+    world.slack.push('browser');
+
+    for (let round = 0; round < 40; round += 1) {
+      runTo(
+        world.driver,
+        world.session,
+        world.session.engine.now() + METER_INTERVAL_TICKS,
+      );
+    }
+
+    expect(number(world.session, FIELDS.suspicion))
+      .toBeGreaterThanOrEqual(DND_BEAT_SUSPICION);
+    expect(world.driver.presence()).toBe('dnd');
+    // A meter over the mark, the dot still up, and nothing new to say: the
+    // half hour it would be about has already been had.
+    expect(world.driver.dndBeat().armed).toBe(false);
+  });
+
+  /**
+   * And the same claim across a night: evidence is about a morning, so the
+   * morning ends it.
+   */
+  it('does not carry yesterday\'s minutes into today', () => {
+    const world = harnessOn(1);
+
+    expect(world.driver.setPresence('dnd')).toEqual({ ok: true });
+
+    for (let round = 0; round < 12; round += 1) {
+      pretendToWork(world.driver, world.session);
+      runTo(
+        world.driver,
+        world.session,
+        world.session.engine.now() + METER_INTERVAL_TICKS,
+      );
+    }
+
+    const banked = number(world.session, FIELDS.dndWorkingTicks);
+
+    expect(banked).toBeGreaterThan(0);
+
+    runTo(world.driver, world.session, shiftEndTick(1));
+    world.driver.clockOff();
+    world.driver.startShift();
+
+    expect(world.driver.presence()).toBe('dnd');
+    expect(number(world.session, FIELDS.dndWorkingTicks)).toBe(0);
+    expect(world.driver.dndBeat().minutes).toBe(0);
   });
 
   /**
@@ -333,6 +426,112 @@ describe('the beat the dot arms', () => {
   });
 });
 
+/* -- what a minute of the dot costs ---------------------------------------- */
+
+/**
+ * The drip, integrated, and the two exploits an endpoint sample had in it.
+ *
+ * The old shape read the dot and the touch log ONCE per five-minute meter
+ * boundary and charged for the whole interval or none of it. That made the
+ * cost a rule about two instants a day while the BENEFIT - a call that slides
+ * instead of ringing - was read at every arrival tick, and the asymmetry was
+ * worth a whole morning of free quiet to anybody who noticed it.
+ */
+describe('the price of the dot, minute by minute', () => {
+  /**
+   * The dance: up for a minute, down for a minute, all morning. Under the
+   * sample it was never once observed and cost nothing at all; under the
+   * integral it costs the minutes it was actually up.
+   */
+  it('charges the minutes it was up, however they are chopped', () => {
+    const world = harnessOn(1);
+
+    for (let round = 0; round < 12; round += 1) {
+      pretendToWork(world.driver, world.session);
+      // Up for one minute, at a minute nobody would call a boundary...
+      expect(world.driver.setPresence('dnd')).toEqual({ ok: true });
+      runTo(world.driver, world.session, world.session.engine.now() + 1);
+      // ...and down again before the meters look.
+      expect(world.driver.setPresence('available')).toEqual({ ok: true });
+      runTo(
+        world.driver,
+        world.session,
+        world.session.engine.now() + METER_INTERVAL_TICKS - 1,
+      );
+    }
+
+    // Twelve minutes of it, on the record, banked at the minute each one
+    // ended rather than at whatever the boundary happened to see.
+    expect(number(world.session, FIELDS.dndWorkingTicks)).toBe(12);
+    // And paid for: twelve minutes at two points per five is four whole
+    // points, with the remainder kept rather than dropped.
+    expect(number(world.session, FIELDS.suspicion))
+      .toBeGreaterThanOrEqual(
+        Math.floor((12 * DND_WORKING_SUSPICION) / METER_INTERVAL_TICKS),
+      );
+  });
+
+  /**
+   * The other half of the same asymmetry: dropping the dot a moment before a
+   * boundary used to erase the minutes it had genuinely been up for, and
+   * raising it a moment before one used to bank five minutes of Available.
+   */
+  it('bills a status by its own minutes rather than by the boundary', () => {
+    const dropped = harnessOn(1);
+
+    pretendToWork(dropped.driver, dropped.session);
+    expect(dropped.driver.setPresence('dnd')).toEqual({ ok: true });
+    runTo(
+      dropped.driver,
+      dropped.session,
+      dropped.session.engine.now() + METER_INTERVAL_TICKS - 1,
+    );
+    expect(dropped.driver.setPresence('available')).toEqual({ ok: true });
+    runTo(
+      dropped.driver,
+      dropped.session,
+      dropped.session.engine.now() + METER_INTERVAL_TICKS,
+    );
+
+    // Four minutes were behind the dot and four minutes are on the record.
+    expect(number(dropped.session, FIELDS.dndWorkingTicks))
+      .toBe(METER_INTERVAL_TICKS - 1);
+
+    const raised = harnessOn(1);
+
+    pretendToWork(raised.driver, raised.session);
+    runTo(
+      raised.driver,
+      raised.session,
+      raised.session.engine.now() + METER_INTERVAL_TICKS - 1,
+    );
+    expect(raised.driver.setPresence('dnd')).toEqual({ ok: true });
+    runTo(
+      raised.driver,
+      raised.session,
+      raised.session.engine.now() + 1,
+    );
+
+    // One minute of it, not the five the boundary would have banked.
+    expect(number(raised.session, FIELDS.dndWorkingTicks)).toBe(1);
+  });
+
+  /** And none of the minutes that were not a lie at all. */
+  it('counts no minute the desk was quiet for', () => {
+    const world = harnessOn(1);
+
+    expect(world.driver.setPresence('dnd')).toEqual({ ok: true });
+    runTo(
+      world.driver,
+      world.session,
+      world.session.engine.now() + METER_INTERVAL_TICKS * 4,
+    );
+
+    expect(player(world.session, FIELDS.dndWorkingTicks)).toBeUndefined();
+    expect(number(world.session, FIELDS.suspicion)).toBe(0);
+  });
+});
+
 /* -- the phone that did not ring ------------------------------------------- */
 
 describe('the record of a call the dot turned away', () => {
@@ -375,7 +574,13 @@ describe('the record of a call the dot turned away', () => {
     const dodged = world.driver.dodgedInterruptions();
 
     expect(dodged.length).toBeGreaterThan(3);
-    expect(dodged.every((record) => record.gaveUp)).toBe(true);
+    // ONE of them gave up, and it is the last: every earlier slide was
+    // followed by the same caller trying again, which the ledger itself
+    // proves. Reading the missed list against every slide made a morning of
+    // somebody ringing back render as five people who never tried again.
+    expect(dodged.filter((record) => record.gaveUp)).toHaveLength(1);
+    expect(dodged[dodged.length - 1]?.gaveUp).toBe(true);
+    expect(dodged.slice(0, -1).some((record) => record.gaveUp)).toBe(false);
     // In order, oldest first, which is how a message pad by a phone reads.
     expect([...dodged].sort((left, right) => left.tick - right.tick))
       .toEqual(dodged);

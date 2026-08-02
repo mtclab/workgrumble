@@ -294,17 +294,29 @@ const QUIET: MeterInputs = {
   openSlackApps: [],
   focusedSlackApp: null,
   lunch: false,
-  presence: 'available',
-  working: false,
+  dndWorkingMinutes: 0,
+  dndWorkingTicks: 0,
+  dndSuspicionCharged: 0,
 };
 
 function deltas(overrides: Partial<MeterInputs>): ReturnType<typeof meterDeltas> {
   return meterDeltas({ ...QUIET, ...overrides });
 }
 
+/**
+ * The drip, as an INTEGRAL over minutes rather than a sample at a boundary.
+ *
+ * What arrives here is a count of minutes that genuinely were
+ * do-not-disturb-while-working: the dot, the touch log and lunch are all read
+ * a minute at a time by the driver, which is the half that has the clock. What
+ * this module decides is what a bank of those minutes is worth and how much of
+ * it has already been paid - and the answer has to be exact however the
+ * minutes are chopped up, because the whole point of the rewrite is that the
+ * phase of somebody's clicking is worth nothing.
+ */
 describe('do not disturb while the log says working', () => {
-  it('drips, and stops the drain that would have run', () => {
-    const dripping = deltas({ presence: 'dnd', working: true });
+  it('charges a full interval of it exactly what an interval is worth', () => {
+    const dripping = deltas({ dndWorkingMinutes: METER_INTERVAL_TICKS });
 
     expect(dripping.suspicionUp).toBe(DND_WORKING_SUSPICION);
     // The same rule the slack windows keep: an interval that charged is not an
@@ -312,37 +324,82 @@ describe('do not disturb while the log says working', () => {
     expect(dripping.suspicionDown).toBe(0);
     expect(dripping.suspicionEvent).toBe(true);
     expect(dripping.dndWorkingTicks).toBe(METER_INTERVAL_TICKS);
+    expect(dripping.dndSuspicionCharged).toBe(DND_WORKING_SUSPICION);
   });
 
-  it('costs nothing while the queue is untouched', () => {
-    const still = deltas({ presence: 'dnd', working: false });
+  /**
+   * The exploit this shape exists to close, stated as arithmetic: the same
+   * minutes cost the same points however they are cut up, so there is no
+   * pattern of clicking that is cheaper than any other.
+   */
+  it('charges the same for the minutes however they arrive', () => {
+    let banked = 0;
+    let charged = 0;
+
+    for (let minute = 0; minute < 4 * METER_INTERVAL_TICKS; minute += 1) {
+      const step = deltas({
+        dndWorkingMinutes: 1,
+        dndWorkingTicks: banked,
+        dndSuspicionCharged: charged,
+      });
+
+      banked += step.dndWorkingTicks;
+      charged = step.dndSuspicionCharged;
+    }
+
+    const wholesale = deltas({ dndWorkingMinutes: 4 * METER_INTERVAL_TICKS });
+
+    expect(banked).toBe(4 * METER_INTERVAL_TICKS);
+    expect(charged).toBe(wholesale.suspicionUp);
+    expect(charged).toBe(4 * DND_WORKING_SUSPICION);
+  });
+
+  /**
+   * And the fractions are kept rather than dropped. A minute is worth two
+   * fifths of a point, which is not a point - the bank is what is charged, so
+   * nothing is free and nothing is rounded up into a punishment.
+   */
+  it('keeps the fraction of a point a single minute is worth', () => {
+    const oneMinute = deltas({ dndWorkingMinutes: 1 });
+
+    expect(oneMinute.suspicionUp).toBe(0);
+    expect(oneMinute.dndWorkingTicks).toBe(1);
+    // Not a drain either: the minute was a lie, and a lie that earned back a
+    // point would be worth having.
+    expect(oneMinute.suspicionDown).toBe(0);
+
+    const fifth = deltas({
+      dndWorkingMinutes: 1,
+      dndWorkingTicks: METER_INTERVAL_TICKS - 1,
+      dndSuspicionCharged: 0,
+    });
+
+    expect(fifth.suspicionUp).toBe(DND_WORKING_SUSPICION);
+  });
+
+  it('costs nothing when none of the minutes were the dot', () => {
+    const still = deltas({ dndWorkingMinutes: 0 });
 
     expect(still.suspicionUp).toBe(0);
     expect(still.suspicionDown).toBe(SUSPICION_CLEAN_DRAIN);
     expect(still.dndWorkingTicks).toBe(0);
+    expect(still.dndSuspicionCharged).toBe(0);
   });
 
-  it('costs nothing at lunch, where nobody is reading anything', () => {
-    const lunch = deltas({ presence: 'dnd', working: true, lunch: true });
+  it('never bills the same minutes twice', () => {
+    const settled = deltas({
+      dndWorkingMinutes: 0,
+      dndWorkingTicks: 4 * METER_INTERVAL_TICKS,
+      dndSuspicionCharged: 4 * DND_WORKING_SUSPICION,
+    });
 
-    expect(lunch.suspicionUp).toBe(0);
-    expect(lunch.dndWorkingTicks).toBe(0);
-  });
-
-  it('costs nothing at all on the other two dots', () => {
-    for (const presence of ['available', 'away'] as const) {
-      const clean = deltas({ presence, working: true });
-
-      expect(clean.suspicionUp, presence).toBe(0);
-      expect(clean.dndWorkingTicks, presence).toBe(0);
-      expect(clean.suspicionDown, presence).toBe(SUSPICION_CLEAN_DRAIN);
-    }
+    expect(settled.suspicionUp).toBe(0);
+    expect(settled.dndSuspicionCharged).toBe(4 * DND_WORKING_SUSPICION);
   });
 
   it('stacks with what is on the screen rather than replacing it', () => {
     const both = deltas({
-      presence: 'dnd',
-      working: true,
+      dndWorkingMinutes: METER_INTERVAL_TICKS,
       openSlackApps: ['browser'],
       focusedSlackApp: 'browser',
     });
@@ -414,6 +471,42 @@ describe('the numbers', () => {
    * morning than the record holds, because a phrase that shrank as the morning
    * grew would be the one line of this scene that was not true.
    */
+  /**
+   * The band that was a lie: the beat arms at half an hour and the shift's
+   * morning is four of them, so the SMALLEST reading this can ever be handed
+   * used to render as "half the morning" - a scene whose entire job is to be
+   * traceable to a number, overstating its own evidence fourfold.
+   */
+  it('never claims more of the morning than the minutes bought', () => {
+    const morning = 4 * 60;
+
+    for (const minutes of [DND_BEAT_MINUTES, 44, 45, 74, 75, 134, 209, 240]) {
+      const said = dndEvidence(minutes);
+
+      if (said.includes('whole morning')) {
+        expect(minutes, said).toBeGreaterThanOrEqual(morning * 0.85);
+      }
+
+      if (said.includes('most of the morning')) {
+        expect(minutes, said).toBeGreaterThanOrEqual(morning / 2);
+      }
+
+      if (said.includes('best part of an hour')) {
+        expect(minutes, said).toBeGreaterThanOrEqual(45);
+        expect(minutes, said).toBeLessThan(90);
+      }
+
+      if (said.includes('over an hour')) {
+        expect(minutes, said).toBeGreaterThan(60);
+      }
+    }
+
+    // And the floor of the whole thing - the smallest reading the beat can
+    // ever be armed with - claims a half hour and nothing more.
+    expect(dndEvidence(DND_BEAT_MINUTES)).toBe('about half an hour');
+    expect(dndEvidence(DND_BEAT_MINUTES)).not.toContain('morning');
+  });
+
   it('says how much of the morning it was without saying a number', () => {
     const phrases = [30, 59, 60, 119, 120, 179, 180, 400]
       .map((minutes) => dndEvidence(minutes));

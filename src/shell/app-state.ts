@@ -68,6 +68,19 @@ export interface BrowserAppState {
 export interface CaughtState {
   readonly appId: string | null;
   readonly at: number | null;
+  /**
+   * How much of the morning the lead was reading off, for the one scene that
+   * is about a record rather than about a screen - and null for every scene
+   * that is about a screen.
+   *
+   * It is CAPTURED at the arrival rather than read live by the window, and
+   * that is not an optimisation: the same reading goes onto the conduct file
+   * in the same minute, and two surfaces recomputing a running number would
+   * eventually print two different accounts of one conversation. The world
+   * also clears the record as part of having the conversation, so a window
+   * that asked afterwards would be asking about nothing.
+   */
+  readonly evidence: number | null;
 }
 
 /**
@@ -116,7 +129,7 @@ export function createAppState(): AppState {
     kb: { selectedId: null },
     day: { briefShownFor: null, scorecardShownFor: null },
     browser: { siteId: null },
-    caught: { appId: null, at: null },
+    caught: { appId: null, at: null, evidence: null },
     windows: { open: [], focusedId: null },
   };
 }
@@ -289,6 +302,11 @@ export function parseAppState(value: unknown): AppState | null {
   const siteId = optionalId(browser.siteId);
   const caughtAppId = optionalId(caught.appId);
   const caughtAt = optionalTick(caught.at);
+  // Absent reads as null rather than as a refusal: a save written before the
+  // status beat existed is a save about a screen, and a screen has no minutes.
+  const caughtEvidence = caught.evidence === undefined
+    ? null
+    : optionalTick(caught.evidence);
   const screen = readWindows(windows);
 
   if (
@@ -302,6 +320,7 @@ export function parseAppState(value: unknown): AppState | null {
     || siteId === undefined
     || caughtAppId === undefined
     || caughtAt === undefined
+    || caughtEvidence === undefined
     || screen === undefined
   ) {
     return null;
@@ -313,7 +332,7 @@ export function parseAppState(value: unknown): AppState | null {
     kb: { selectedId: kbSelected },
     day: { briefShownFor, scorecardShownFor },
     browser: { siteId },
-    caught: { appId: caughtAppId, at: caughtAt },
+    caught: { appId: caughtAppId, at: caughtAt, evidence: caughtEvidence },
     windows: screen,
   };
 }

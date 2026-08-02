@@ -304,22 +304,53 @@ export const FIELDS = {
    */
   interruptionDodged: 'interruption_dodged',
   /**
-   * Minutes the dot said busy while the dispatch log said working.
+   * Minutes the dot said busy while the dispatch log said working, TODAY, and
+   * since the last time somebody was spoken to about it.
    *
-   * The evidence the lead's status beat is armed off. It is a COUNTER written
-   * by the meter tick rather than a flag, because the beat has to be able to
-   * say how long - "on Do Not Disturb all morning" is a claim about a quantity,
-   * and a scold that cannot name one is a random scold.
+   * The evidence the lead's status beat is armed off, and it is INTEGRATED
+   * rather than sampled: every minute that was do-not-disturb-while-working
+   * goes in, counted between watermarks, so a dot flipped for one minute costs
+   * one minute. It was an interval-endpoint sample once, and an endpoint sample
+   * is a rule about two instants a day rather than about a morning - a player
+   * who put the dot up just after each meter tick and took it down just before
+   * the next one paid nothing at all for a morning of it.
+   *
+   * Day-scoped and CONSUMED: `start_shift` clears it and being spoken to
+   * clears it, because the sentence it exists to justify is a claim about this
+   * morning. Evidence from Monday cannot re-arm a beat on Thursday.
    */
   dndWorkingTicks: 'dnd_working_ticks',
   /**
-   * Who has already escalated about the Away dot today: one `person@day` line
-   * per reporter.
+   * The minute those minutes have been counted UP TO.
    *
-   * The day is in the line because the rule is once per reporter per DAY, and
-   * `line_in_field` matches a whole line - so the world can refuse a second
-   * one with nothing but the mark. Not a drumbeat: the same person watching
-   * the same desk work through the same afternoon says it once.
+   * The other half of integrating rather than sampling: the accrual window is
+   * everything since this watermark, so no minute is counted twice and none is
+   * skipped by a status change that happened to land between two meter ticks.
+   * It is moved by the meter tick and by the status verb itself, which is what
+   * closes the books on the dot being replaced at the minute it is replaced.
+   */
+  dndBilledTo: 'dnd_billed_to',
+  /**
+   * And the suspicion already billed against those minutes.
+   *
+   * A watermark rather than a rate applied per interval, the same shape the
+   * breach counter uses: the drip is two points per five minutes, which is not
+   * a whole number of points per minute, so the world charges the difference
+   * between what the accumulated minutes are worth and what has already been
+   * paid. Exact over any number of minutes, and impossible to erase by
+   * changing the dot a moment before a boundary.
+   */
+  dndSuspicionCharged: 'dnd_suspicion_charged',
+  /**
+   * Who has already escalated about the Away dot today: one line per reporter,
+   * and the line is the PERSON.
+   *
+   * "Per day" is the world clearing the record every morning rather than a
+   * date written into each line by whoever dispatched it: the uniqueness key
+   * is then the reporter alone, which the action already has as a parameter,
+   * and there is nothing for a caller to get wrong or to spell differently.
+   * Not a drumbeat: the same person watching the same desk work through the
+   * same afternoon says it once.
    */
   presenceNoticed: 'presence_noticed',
   /**
