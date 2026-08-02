@@ -61,6 +61,11 @@ import {
   type InterruptionSlot,
   worstCaseWindows,
 } from '../interruptions';
+import {
+  DEFAULT_PRESENCE,
+  type Presence,
+  PRESENCE_VALUES,
+} from '../presence';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import { TICKET_HYGIENE_SYNC } from '../scenes/meeting';
 import { createWorldSession, seedForAttempt, type WorldSession } from '../session';
@@ -491,6 +496,17 @@ export function auditDayTiming(
   // The lead's rounds, overridable ONLY so the meta-test below can construct
   // a day whose bookings it chose. Every real caller takes the day's own.
   rounds?: readonly TickWindow[],
+  /**
+   * And the dot the day is walked under.
+   *
+   * A status is a thing the player holds all day if they like, so "the worst
+   * schedule" is three different questions and the gate has to ask all three.
+   * Do not disturb is the only one that moves anything, and it moves it by
+   * sliding declinable calls - which frees the minutes they were going to
+   * take and books later ones instead, and either of those can be the thing
+   * that makes a ticket unreachable.
+   */
+  presence: Presence = DEFAULT_PRESENCE,
 ): readonly string[] {
   const plan = interruptionPlanFor(day, seed);
   const blocked = rounds ?? plan.blocked;
@@ -498,7 +514,10 @@ export function auditDayTiming(
     slots: [...plan.slots, ...extra],
     blocked,
   });
-  const booked = [...blocked, ...worstCaseWindows(schedule, blocked)];
+  const booked = [
+    ...blocked,
+    ...worstCaseWindows(schedule, blocked, presence),
+  ];
 
   return dealtOn(day, seed).flatMap((ticket) => {
     // The window a player could work it in: from the minute it lands to the
@@ -526,6 +545,60 @@ describe('every advertised path is reachable under the worst schedule', () => {
 
   it.each([1, 2, 3, 4, 5])('day %i leaves clear air on everything it deals', (day) => {
     expect(auditDayTiming(day, seed)).toEqual([]);
+  });
+
+  /**
+   * And the same five days under each of the three dots.
+   *
+   * The status is a thing the player can hold all week, so "solvable under the
+   * worst schedule" is three questions rather than one. Two of them are the
+   * same question - Away changes nothing about what arrives, which is the
+   * whole of what makes it a lie rather than a filter - and do not disturb is
+   * the one that moves the calendar: a declinable call slides instead of
+   * ringing, which frees the minutes it would have taken and books later ones
+   * instead, and either half of that can be what makes a ticket unreachable.
+   *
+   * The dnd model is deliberately WORSE than any day a player can produce.
+   * Every minute a slid call could ever land on is booked at once, because
+   * nothing can enumerate which of them the player's dot happened to allow -
+   * so clear air found under it is clear air that is genuinely there, on every
+   * day the presence machinery can create.
+   */
+  it.each(
+    [1, 2, 3, 4, 5].flatMap(
+      (day) => PRESENCE_VALUES.map((presence) => [day, presence] as const),
+    ),
+  )('day %i is still solvable on %s', (day, presence) => {
+    expect(auditDayTiming(day, seed, [], undefined, presence)).toEqual([]);
+  });
+
+  /**
+   * And the dnd walk is genuinely walking something: the two shipped calls are
+   * the only entries in the week a dot can touch, so a model that quietly
+   * stopped booking their slides would pass the block above in silence.
+   */
+  it('books more of the week under a dot than without one', () => {
+    const days = [1, 2, 3, 4, 5];
+    const booked = (day: number, presence: Presence): number => {
+      const plan = interruptionPlanFor(day, seed);
+      const schedule = buildInterruptionSchedule(seed, day, plan);
+
+      return worstCaseWindows(schedule, plan.blocked, presence)
+        .reduce((total, window) => total + (window.to - window.from), 0);
+    };
+
+    const dnd = days.reduce((total, day) => total + booked(day, 'dnd'), 0);
+    const available = days.reduce(
+      (total, day) => total + booked(day, 'available'),
+      0,
+    );
+
+    // Away is not a filter. It reads the same calendar Available does, and a
+    // model that treated it as one would be modelling a mechanic this slice
+    // deliberately does not have.
+    expect(days.reduce((total, day) => total + booked(day, 'away'), 0))
+      .toBe(available);
+    expect(dnd).toBeGreaterThan(available);
   });
 
   /**

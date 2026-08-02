@@ -256,6 +256,16 @@ describe('the night, taken in one go', () => {
       // clock attached: there is no minute at four in the morning that a
       // player could have pressed anything on.
       FIELDS.interruptionSpentAt,
+      // And 0.3.3's four. The dot cannot be set into an empty building, and
+      // the three things that are consequences OF it cannot happen there
+      // either: nobody rings a desk at four in the morning for a status to
+      // slide past, no minute of the night is a minute anybody worked the
+      // queue in, and nobody waiting on a ticket has a thought about your
+      // availability before the building is unlocked.
+      FIELDS.presence,
+      FIELDS.interruptionDodged,
+      FIELDS.dndWorkingTicks,
+      FIELDS.presenceNoticed,
     ]) {
       const refusal = offHoursRefusal([planted(field)]);
 
