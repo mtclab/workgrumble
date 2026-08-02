@@ -276,6 +276,37 @@ export interface InterruptionView {
 }
 
 /**
+ * The next thing that is going to take the screen, before it takes it.
+ *
+ * It exists for exactly one surface and is deliberately narrow: a workstation
+ * that has been pushed back is a workstation that is COMING BACK, and the
+ * minutes between the push and the return are the minutes the player bought.
+ * Something has to say how many are left, and it cannot be `interruption()` -
+ * that answers what owns the screen NOW, and the whole point of a spent
+ * postpone is that nothing does.
+ *
+ * Every field is derived from the day's schedule and the world's own ledger,
+ * so it is the same answer on both sides of a save and there is nothing here
+ * for a driver to get out of step with.
+ */
+export interface UpcomingInterruption {
+  readonly entry: InterruptionEntry;
+  /** Minutes until it takes the screen. Always one or more. */
+  readonly ticksAway: number;
+  /** How many pushes are left in it, which is what the countdown says. */
+  readonly postponesLeft: number;
+  /**
+   * Whether the player has already pushed this one.
+   *
+   * The difference between a countdown and a spoiler: an entry nobody has met
+   * yet is a surprise the week is entitled to - a phone that rings at ten past
+   * is not announced at ten - and one that has been pushed is a thing the
+   * player asked for and is owed a clock on.
+   */
+  readonly postponed: boolean;
+}
+
+/**
  * What the apps and the taskbar may ask of the day. Reading is free; the
  * things that MOVE it - starting the shift, clocking off, opening a can,
  * clearing the desk - all go through the engine's action registry like every
@@ -302,6 +333,15 @@ export interface DayApi {
    * them can be showing a call the world has finished with.
    */
   interruption(): InterruptionView | null;
+  /**
+   * And what is going to take it next, if anything is on its way.
+   *
+   * Free to read and changes nothing, like everything else on this half of the
+   * interface. The countdown that runs while a reboot is pushed back is the
+   * only caller: the desk is the player's for those minutes and something has
+   * to be counting them.
+   */
+  upcoming(): UpcomingInterruption | null;
   /**
    * The choice grammar, aimed at whatever is on the screen right now.
    *
@@ -1761,6 +1801,46 @@ export class DayDriver implements DayApi {
     }
 
     return null;
+  }
+
+  /**
+   * The next one, from where the clock now stands.
+   *
+   * Same three sources as `interruption()` and the same absence of memory: the
+   * seeded schedule, the clock, and the ledger of what has been spent. A
+   * countdown drawn off this comes back from a save on the same minute with
+   * the same number on it, because the number was never written down.
+   */
+  public upcoming(): UpcomingInterruption | null {
+    if (this.state() !== 'shift') {
+      return null;
+    }
+
+    const now = this.engine.now();
+    let soonest: InterruptionEntry | null = null;
+
+    for (const entry of this.liveInterruptions()) {
+      if (entry.tick <= now) {
+        continue;
+      }
+
+      if (soonest === null || entry.tick < soonest.tick) {
+        soonest = entry;
+      }
+    }
+
+    if (soonest === null) {
+      return null;
+    }
+
+    const spends = this.postponesSpent(soonest.id);
+
+    return {
+      entry: soonest,
+      ticksAway: soonest.tick - now,
+      postponesLeft: Math.max(0, soonest.postpones.length - spends),
+      postponed: spends > 0,
+    };
   }
 
   /**
