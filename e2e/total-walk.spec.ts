@@ -16,6 +16,7 @@ import {
   openFromStartMenu,
   realMs,
   runCommand,
+  runOnlyCommand,
   runSimMinutes,
   runToDayEnd,
   runToTelegraph,
@@ -196,6 +197,35 @@ async function huntForTakeover(
   }
 
   throw new Error(`Nothing took the screen with a ${appId} inside the hour.`);
+}
+
+/**
+ * The same, for the workstation - which needs its own because its window
+ * stays OPEN between arrivals.
+ *
+ * That is the countdown, and the countdown is the half of the mechanic that
+ * does not own the desk: the window is up saying how many minutes a postpone
+ * bought while the queue carries on being workable underneath it. So "is it
+ * happening" is `data-holding`, not "is there a window".
+ */
+async function huntForReboot(page: Page, limit = 30): Promise<Takeover> {
+  const app = page.getByTestId('reboot-app');
+
+  for (let minute = 0; minute < limit; minute += 1) {
+    if (await app.count() > 0) {
+      const snapshot: Takeover = await app.evaluate(
+        (node) => ({ ...(node as HTMLElement).dataset }),
+      );
+
+      if (snapshot.holding === 'true') {
+        return snapshot;
+      }
+    }
+
+    await runSimMinutes(page, 1, 1);
+  }
+
+  throw new Error('The workstation never took the desk.');
 }
 
 /**
@@ -2222,6 +2252,75 @@ test('walks every function of a probation week that goes well', async ({
     }
   });
 
+  /* Ten past two, and the update that has been waiting since September. */
+
+  await workUntilMinute(page, 365);
+
+  await step('reboot.window', async () => {
+    await huntForReboot(page);
+    await expect(page.getByTestId('reboot-app'))
+      .toHaveAttribute('data-postpones-left', '3');
+    await expect(page.getByTestId('reboot-subject')).toContainText('September');
+    // The desk is gone, and it says so in the workstation's own sentence
+    // rather than the meeting's.
+    await expect(page.getByTestId('desktop'))
+      .toHaveAttribute('data-takeover', 'machine');
+    await openFromStartMenu(page, 'cmd');
+    await runOnlyCommand(page, 'restart backup');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('installing updates');
+  });
+
+  await step('reboot.withdrawn', async () => {
+    // No Decline button anywhere, and a sentence saying why there is not.
+    await expect(page.getByTestId('reboot-withdrawn'))
+      .toContainText('option has been withdrawn');
+  });
+
+  await step('reboot.postpone', async () => {
+    await expect(page.getByTestId('reboot-postpone'))
+      .toHaveText('Postpone 10 minutes');
+    await page.getByTestId('reboot-postpone').click();
+    await expect(page.getByTestId('reboot-app'))
+      .toHaveAttribute('data-holding', 'false');
+  });
+
+  await step('reboot.countdown', async () => {
+    // The minutes the push bought, counted on the taskbar - and they are
+    // minutes at the desk, which is the whole of what a postpone is for.
+    await expect(page.getByTestId('reboot-chip'))
+      .toHaveText('Restarting in 10m');
+    await expect(page.getByTestId('desktop'))
+      .toHaveAttribute('data-takeover', 'none');
+    await runOnlyCommand(page, 'ver');
+    await expect(page.getByTestId('cmd-output'))
+      .not.toContainText('installing updates');
+  });
+
+  await step('reboot.spent', async () => {
+    // The two shorter windows, and then the arrival that offers nothing.
+    for (const window of ['Postpone 5 minutes', 'Postpone 2 minutes']) {
+      await huntForReboot(page, 45);
+      await expect(page.getByTestId('reboot-postpone')).toHaveText(window);
+      await page.getByTestId('reboot-postpone').click();
+    }
+
+    const last = await huntForReboot(page, 15);
+
+    expect(last.postponesLeft).toBe('0');
+    await expect(page.getByTestId('reboot-postpone')).toBeHidden();
+    await expect(page.getByTestId('reboot-detail'))
+      .toContainText('nothing left to press');
+
+    // And out the far side of it: the desk back, the price on the taskbar,
+    // and the line about most of it.
+    await runSimMinutes(page, 13, 1);
+    await expect(page.getByTestId('desktop'))
+      .toHaveAttribute('data-takeover', 'none');
+    await expect(page.getByTestId('refocus-chip')).toBeVisible();
+    await expectNoticed(page, 'Restoring your work... (most of it)');
+  });
+
   await clockOffFor(page, 4);
 
   /* -- Friday, and the conversation at three ------------------------------- */
@@ -2585,6 +2684,23 @@ test('walks the week nobody worked, the firing, and the retry', async ({
   await beginShift(page);
   await clockOffFor(page, 3);
   await beginShift(page);
+
+  await step('reboot.restart-now', async () => {
+    // The other button on the countdown, and the one somebody with nothing
+    // open presses: skipping the dread is legal and lands in exactly the same
+    // place, twelve minutes later.
+    await workUntilMinute(page, 365);
+    await huntForReboot(page);
+    await page.getByTestId('reboot-restart-now').click();
+    await expect(page.getByTestId('reboot-detail'))
+      .toContainText('You pressed it yourself');
+    await expect(page.getByTestId('reboot-postpone')).toBeHidden();
+    await runSimMinutes(page, 13, 1);
+    await expect(page.getByTestId('desktop'))
+      .toHaveAttribute('data-takeover', 'none');
+    await expect(page.getByTestId('refocus-chip')).toBeVisible();
+  });
+
   await clockOffFor(page, 4);
   await beginShift(page);
 
@@ -2894,6 +3010,22 @@ test('walks the door, the badge and the report the tester build adds', async ({
     });
     await upgraded.goto(`/t/${SHARED_TOKEN}`);
     await upgraded.keyboard.press('Space');
+
+    await step('boot.installing', async () => {
+      // Our release arriving as the fiction's update, on the fiction's own
+      // screen, BEFORE the notes that say what was in it - and the log-on box
+      // waits for it, because an update is not a thing anybody skips.
+      const screen = upgraded.getByTestId('install-screen');
+
+      await expect(screen).toBeVisible();
+      await expect(upgraded.getByTestId('install-headline'))
+        .toContainText(/Restarting your workstation|Working on updates/);
+      await expect(upgraded.getByTestId('install-subject'))
+        .toContainText('DeskPro WorkGroup');
+      await expect(upgraded.getByTestId('login-screen')).toBeVisible();
+      await expect(screen).toBeHidden();
+    });
+
     await upgraded.getByTestId('login-password').fill('hunter2');
     await upgraded.getByTestId('login-submit').click();
 
