@@ -556,7 +556,10 @@ test('the update is put off three times and then takes the afternoon', async ({
   // else can be covering for it.
   const holding = await activeElement(page);
 
-  expect(holding.testid).toBe('reboot-app');
+  // The takeover steals to its root, and the desktop's primary-control rule
+  // then places the cursor on the SAFE answer - Postpone - which is the
+  // deliberate end state: one stray Enter postpones, it never restarts.
+  expect(holding.testid).toBe('reboot-postpone');
   expect(holding.testid).not.toBe('cmd-input');
 
   // And the desk is gone by keyboard as well as by mouse: it refuses in the
