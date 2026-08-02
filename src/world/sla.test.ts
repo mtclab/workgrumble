@@ -15,11 +15,17 @@ import { loadEngineForTests } from '../engine-api/load-node';
 import { HELPDESK_ACTIONS } from './actions';
 import { COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
-import { SLA_TARGETS, UNTRIAGED_PRIORITY } from './priority';
+import {
+  SLA_TARGETS,
+  UNTRIAGED_PRIORITY,
+  UNTRIAGED_SLA_TICKS,
+} from './priority';
 import { DAY_ACTIONS } from './actions';
 import {
   countsAgainstSla,
+  dayForTick,
   MINUTES_PER_DAY,
+  minuteOfDay,
   serviceDeadline,
   serviceMinutesAt,
   serviceMinutesBetween,
@@ -358,6 +364,89 @@ describe('business hours', () => {
     expect(serviceDeadline(60, 480)).toBe(540);
     expect(serviceDeadline(60, 481)).toBe(1_501);
     expect(serviceDeadline(0, 0)).toBe(0);
+  });
+
+  /**
+   * THE RESPONSE CLOCK on a ticket raised five minutes before close, which is
+   * the half of the 4:55 class that lives at this layer and nowhere else.
+   *
+   * It is worth saying what it is NOT, because the cargo suite has a test that
+   * looks like this one and is not: the engine keeps a MUTABLE resolution
+   * deadline and pushes it out a minute at a time for every minute nobody
+   * could have worked in, and that is what `lifecycle.rs` walks across a
+   * night. The response clock is not that field and is never written down. It
+   * is `serviceDeadline(spawn, target)`, recomputed from scratch every time
+   * anybody asks, so the only place it can be proved is here - against the
+   * arithmetic itself and against `ticketClocks`, which is what every surface
+   * in the game actually reads.
+   *
+   * The claim: an hour of response target, spent from 16:55, is five minutes
+   * of tonight and fifty-five of tomorrow. It is therefore NOT breached when
+   * the shift ends, it IS breached at five to ten in the morning, and the
+   * minute it lands on is a minute on the next day rather than this one. A
+   * response clock that counted wall time would go red at 17:55, in the dark,
+   * on a day nobody was answerable for.
+   */
+  it('spends a response hour from five to five over two days', () => {
+    // 16:55 on the second day of the world: tick 0 is 08:00 on day one.
+    const raised = MINUTES_PER_DAY + (16 * 60 + 55 - 8 * 60);
+    const target = SLA_TARGETS[UNTRIAGED_PRIORITY].response;
+
+    expect(target).toBe(60);
+
+    const due = serviceDeadline(raised, target);
+
+    // Five minutes of tonight and fifty-five of tomorrow, and the arithmetic
+    // says so from both ends: the minutes between the two ticks are the
+    // target exactly, and the split across the night is 5 + 55.
+    expect(serviceMinutesBetween(raised, due)).toBe(target);
+    expect(serviceMinutesBetween(raised, raised + 5)).toBe(5);
+    expect(serviceMinutesBetween(raised + 5, due)).toBe(target - 5);
+
+    // It lands on the NEXT day, in the morning, at five to ten.
+    expect(dayForTick(due)).toBe(dayForTick(raised) + 1);
+    expect(minuteOfDay(due)).toBe(9 * 60 + 55);
+
+    // And nothing about it goes red tonight: at the last minute of the shift
+    // it is still fifty-five service minutes from running out.
+    const closes = raised + 5;
+    expect(due).toBeGreaterThan(closes);
+    expect(serviceMinutesBetween(closes, due)).toBe(target - 5);
+  });
+
+  /**
+   * The same claim, off the reader every surface uses.
+   *
+   * `serviceDeadline` agreeing with itself is arithmetic; what the queue,
+   * the detail pane and the conduct trigger read is `ticketClocks`, and a
+   * derivation that was right in the function and wrong in the reader is a
+   * screen showing a deadline nobody can find in the table.
+   */
+  it('shows the same morning deadline on the ticket the queue holds', () => {
+    const raised = MINUTES_PER_DAY + (16 * 60 + 55 - 8 * 60);
+    const target = SLA_TARGETS[UNTRIAGED_PRIORITY].response;
+    const node: ReadOnlyGraphNode = {
+      id: 'ticket:five-to-five',
+      kind: 'ticket',
+      fields: {
+        [FIELDS.state]: 'open',
+        [FIELDS.spawnedAt]: raised,
+        [FIELDS.slaDeadline]: serviceDeadline(raised, UNTRIAGED_SLA_TICKS),
+      },
+    };
+
+    // At the last minute of the day it arrived on: still running, still
+    // tomorrow's problem, and not late.
+    const tonight = ticketClocks(node, raised + 5);
+    expect(tonight.response.dueAt).toBe(serviceDeadline(raised, target));
+    expect(tonight.response.breached).toBe(false);
+    expect(tonight.response.running).toBe(true);
+    expect(dayForTick(tonight.response.dueAt)).toBe(dayForTick(raised) + 1);
+
+    // And in the morning, on the minute: not late at 09:54, late at 09:55.
+    const due = serviceDeadline(raised, target);
+    expect(ticketClocks(node, due - 1).response.breached).toBe(false);
+    expect(ticketClocks(node, due).response.breached).toBe(true);
   });
 
   /**

@@ -544,29 +544,33 @@ fn holds_every_deadline_while_the_service_clock_is_stopped() {
     assert_eq!(state(&world, "ticket:overnight"), "breached");
 }
 
-/// The five-to-five request, from the engine's side of the fence.
+/// The MUTABLE deadline, walked across a night a minute at a time.
 ///
-/// This is the cargo half of `arrives_minutes_before_close`, and the claim is
-/// exactly the four-term identity holding across a NIGHT rather than across a
-/// meeting. A ticket raised five minutes before the desk empties has five
-/// minutes of its target tonight and the rest of it tomorrow, and the only
-/// reason that is true is that the deadline moves out by one for every minute
-/// nobody could have worked in - booked to `off_hours_ticks`, never to
-/// `held_ticks`, because nobody parked anything.
+/// It is worth being exact about which clock this is, because the name it used
+/// to have claimed the other one. `sla_deadline` is the RESOLUTION deadline:
+/// the engine owns it, writes it, and pushes it out by one for every minute
+/// nobody could have worked in. The RESPONSE clock is not this field and is
+/// not in this crate at all - it is `serviceDeadline(spawn, target)`,
+/// recomputed from scratch by the shell whenever anybody asks, and the only
+/// place it can honestly be proved is where it lives
+/// (`src/world/sla.test.ts`, "spends a response hour from five to five over
+/// two days"). A cargo test cannot prove a derivation TypeScript owns.
+///
+/// What IS proved here, and what the 4:55 class needs from the engine: a
+/// ticket carried overnight keeps the four-term identity on every single
+/// minute of the night, the minutes are booked to `off_hours_ticks` and never
+/// to `held_ticks` because nobody parked anything, and what is left of the
+/// target in the morning is exactly what was left of it at five to five.
 ///
 /// The engine has no idea what five o'clock is, which is the point: it is told
 /// the service clock has stopped and it does the arithmetic. So the numbers
-/// here are the shape of the shipped Wednesday rather than its literal ticks -
-/// five minutes of shift left, an hour of target, a night, and a morning - and
-/// the shell-side proof that the shipped ticket really lands at 09:55 on the
-/// Thursday is `src/world/sla.test.ts` and the journey in
-/// `e2e/colleagues.spec.ts`.
+/// are the shape of the shipped Wednesday rather than its literal ticks.
 ///
 /// The identity is checked before, during and after the night, because a night
 /// that quietly handed back its minutes would still satisfy it at the end -
 /// every term would have moved together.
 #[test]
-fn carries_a_five_to_five_request_into_the_next_morning() {
+fn carries_a_deadline_across_a_night_a_minute_at_a_time() {
     /// An hour, which is what a response target of one hour is.
     const TARGET: i64 = 60;
     /// What is left of the shift when it lands. Five minutes, hence the name.
