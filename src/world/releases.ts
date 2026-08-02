@@ -31,6 +31,34 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.3.4',
+    date: '2026-08-02',
+    summary: 'This update adds colleagues.',
+    lines: Object.freeze([
+      'Colleagues may now approach your desk in person. There is no way to '
+        + 'decline a person who is already standing at your desk; there is a '
+        + 'button for saying "not now", and colleagues are advised that a '
+        + 'colleague told "not now" will raise the request themselves, in '
+        + 'writing, with a subject line that mentions you.',
+      'Work done at your desk as a favour, off the record, is exactly as '
+        + 'appreciated as it has always been, and exactly as invisible on '
+        + 'Friday as it has always been. The person you helped will remember '
+        + 'it warmly. The review will not remember it at all. Both of these '
+        + 'are features.',
+      'Some colleagues open a chat with "Hi." and then type for several '
+        + 'minutes. The typing indicator now shows how long you are expected '
+        + 'to wait, which is more than the message will turn out to justify. '
+        + 'Replying "what is up?" skips the wait. There is a page on the '
+        + 'intranet about this. A colleague will send it to you. It will not '
+        + 'help.',
+      'Some faults are reported five minutes before the end of the shift. '
+        + 'The clock on such a fault runs for five minutes tonight and the '
+        + 'rest tomorrow morning, which is the correct arithmetic and '
+        + 'nobody\'s favourite fact. The fault was there all afternoon. The '
+        + 'report was not. Personnel have declined to comment on the gap.',
+    ]),
+  },
+  {
     version: '0.3.3',
     date: '2026-08-02',
     summary: 'This update adds presence.',
