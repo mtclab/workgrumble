@@ -98,6 +98,28 @@ describe('the file', () => {
     expect(desk[0]?.text).toContain('Not raised with the employee');
   });
 
+  /**
+   * The third kind, and the reason it is a kind rather than a subject: the
+   * status beat is not a screen. Filing it as one would put "screen observed
+   * to be non-work-related" against a morning of closed tickets, which is a
+   * line the file could be checked against and found to be simply untrue.
+   */
+  it('writes a status the way somebody who read two records writes it', () => {
+    const [entry] = conductEntries(conductLine(
+      tickAtMinute(2, 10 * 60 + 40),
+      'status',
+      'Do Not Disturb for most of the morning',
+    ));
+
+    expect(entry?.kind).toBe('status');
+    expect(entry?.text).toContain('Tuesday 10:40');
+    expect(entry?.text).toContain('Do Not Disturb for most of the morning');
+    // BOTH records, which is the only line in this file that cites two.
+    expect(entry?.text).toContain('logged activity on the queue');
+    expect(entry?.text).toContain('No further action at this time');
+    expect(entry?.text).not.toContain('Screen observed');
+  });
+
   it('keeps the order it was written in, oldest first', () => {
     const morning = conductLine(100, 'screen', 'a puzzle game');
     const afternoon = conductLine(400, 'desk', '4 empty cans');

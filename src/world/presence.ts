@@ -51,6 +51,42 @@ export function isPresence(value: unknown): value is Presence {
 }
 
 /**
+ * What each of the three is CALLED, which is the wording the office reads.
+ *
+ * Content rather than a label the tray invents, and it lives beside the enum
+ * for the reason every other word in this file does: the dot is a thing three
+ * different surfaces show - the taskbar, the lead's beat, and whatever a
+ * colleague says about it - and three surfaces spelling a status three ways
+ * would be three statuses.
+ */
+export const PRESENCE_LABELS: Readonly<Record<Presence, string>> = Object.freeze({
+  available: 'Available',
+  dnd: 'Do not disturb',
+  away: 'Away',
+});
+
+/**
+ * And what each of them actually costs, said before it is chosen.
+ *
+ * The legibility rule this game keeps everywhere else: a mechanic first met in
+ * the sentence that charges for it is a mechanic nobody could have played
+ * toward. Both trades are stated on the control itself, which is why the
+ * suspicion drip is a tradeoff rather than a trap.
+ */
+export const PRESENCE_TOOLTIPS: Readonly<Record<Presence, string>> = Object.freeze({
+  available: 'The honest one. Every phone that wants you gets you, nothing is '
+    + 'charged for saying so, and nobody has anything to put together about '
+    + 'you.',
+  dnd: 'The phone stops. A call that could have been waved off is not offered '
+    + 'at all - it comes back later, or it does not come back. What it costs '
+    + 'is that the dot says busy while the dispatch log says working, and the '
+    + 'lead can read both.',
+  away: 'Says you are not at the desk. It stops nothing at all, and somebody '
+    + 'who has been waiting for a first word can see the queue moving while '
+    + 'it is up.',
+});
+
+/**
  * The dot the world is showing, read off whatever the field holds.
  *
  * Absent is available, and so is anything this build cannot read - a save from
@@ -173,4 +209,33 @@ export function dndBeat(
       && suspicion >= DND_BEAT_SUSPICION
       && minutes >= DND_BEAT_MINUTES,
   };
+}
+
+/**
+ * The same minutes, in the words a man standing at your desk would use.
+ *
+ * The world counts a quantity and the lead does not say quantities: nobody has
+ * ever been asked "were you on Do Not Disturb for fifty-five minutes". What he
+ * has is a rough sense of how much of the morning it was, and the scene prints
+ * that - which is the honest translation, because the number underneath it is
+ * on the file and on this screen either way.
+ *
+ * Written as thresholds rather than as arithmetic on purpose: the phrase has
+ * to be a thing somebody would say out loud, and "one hour and forty-five
+ * minutes" said out loud is a spreadsheet talking.
+ */
+export function dndEvidence(minutes: number): string {
+  if (minutes >= 180) {
+    return 'the whole morning';
+  }
+
+  if (minutes >= 120) {
+    return 'most of the morning';
+  }
+
+  if (minutes >= 60) {
+    return 'the best part of an hour';
+  }
+
+  return 'half the morning';
 }

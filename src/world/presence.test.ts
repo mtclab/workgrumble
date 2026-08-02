@@ -37,6 +37,7 @@ import {
   DND_WORKING_SUSPICION,
   DND_WORKING_TICKS,
   dndBeat,
+  dndEvidence,
   isPresence,
   PRESENCE_VALUES,
   type Presence,
@@ -402,6 +403,31 @@ describe('the numbers', () => {
     expect(DND_WORKING_SUSPICION).toBeGreaterThan(0);
     expect(AWAY_NOTICED_REPUTATION).toBeGreaterThan(0);
     expect(AWAY_NOTICED_REPUTATION).toBeLessThan(3);
+  });
+
+  /**
+   * The words the lead uses for the number the world keeps.
+   *
+   * Two properties and they are both content rules rather than arithmetic: it
+   * never says a number out loud, because nobody has ever been asked "were you
+   * on Do Not Disturb for fifty-five minutes"; and it never says less of the
+   * morning than the record holds, because a phrase that shrank as the morning
+   * grew would be the one line of this scene that was not true.
+   */
+  it('says how much of the morning it was without saying a number', () => {
+    const phrases = [30, 59, 60, 119, 120, 179, 180, 400]
+      .map((minutes) => dndEvidence(minutes));
+
+    for (const phrase of phrases) {
+      expect(phrase).not.toMatch(/\d/u);
+      expect(phrase.length).toBeGreaterThan(8);
+    }
+
+    // It never goes backwards: each threshold says at least as much as the
+    // one below it, which is what makes it a reading of the same record.
+    expect(new Set(phrases).size).toBeGreaterThan(2);
+    expect(dndEvidence(DND_BEAT_MINUTES)).toBe(dndEvidence(DND_BEAT_MINUTES + 1));
+    expect(dndEvidence(400)).toContain('whole');
   });
 
   it('keeps the working window inside the beat it earns', () => {

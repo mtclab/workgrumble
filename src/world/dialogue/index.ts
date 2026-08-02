@@ -19,6 +19,16 @@ export {
   isDispatchableAction,
 } from './dispatch';
 export {
+  assertAwayLines,
+  assertPresenceChatter,
+  AWAY_LINE_ROSTER,
+  AWAY_NOTICED_LINES,
+  awayNoticedLine,
+  PRESENCE_CHATTER,
+  presenceChatter,
+  type PresenceRemark,
+} from './presence';
+export {
   type DialogueAskEffect,
   type DialogueEffect,
   type DialogueNode,

@@ -3,9 +3,12 @@ export {
   CAUGHT_SCENES,
   type CaughtScene,
   caughtScene,
+  DND_CAUGHT_SCENE,
   GENERIC_CAUGHT_SCENE,
+  PRESENCE_CAUGHT_KEY,
   type SlackAppEntry,
   UNCAUGHT_SCENE,
+  validateCaughtScene,
   validateCaughtScenes,
 } from './caught';
 export {

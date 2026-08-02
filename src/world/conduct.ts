@@ -42,11 +42,17 @@ import { dayScript, isWeekDay, REVIEW_PASS_PERFORMANCE, WEEK } from './week';
 /* -- the file -------------------------------------------------------------- */
 
 /**
- * What was noticed. Two things can be, and they are different observations:
- * the lead can find something on the screen, and he can find nothing on the
- * screen and count the cans instead.
+ * What was noticed. Three things can be, and they are different observations:
+ * the lead can find something on the screen, he can find nothing on the screen
+ * and count the cans instead, and he can find nothing anywhere and read the
+ * STATUS - a dot saying one thing over a dispatch log saying another.
+ *
+ * The third one is not a screen and must not be filed as one: "screen observed
+ * to be non-work-related" about a morning of closed tickets is a line that is
+ * simply untrue, and the whole point of this file is that every line in it can
+ * be traced to the minute it is about.
  */
-export const CONDUCT_KINDS = ['screen', 'desk'] as const;
+export const CONDUCT_KINDS = ['screen', 'desk', 'status'] as const;
 
 export type ConductKind = (typeof CONDUCT_KINDS)[number];
 
@@ -97,8 +103,14 @@ export function conductLine(
     ? `${conductStamp(tick)} - Screen observed to be non-work-related on `
       + `passing (${said}). Employee spoken to informally. No further action `
       + 'at this time.'
-    : `${conductStamp(tick)} - Desk observed with ${said} standing on it. `
-      + 'Not raised with the employee.';
+    : kind === 'desk'
+      ? `${conductStamp(tick)} - Desk observed with ${said} standing on it. `
+        + 'Not raised with the employee.'
+      // The one written by somebody who has put two records side by side,
+      // which is why it is the only line in the file that cites both.
+      : `${conductStamp(tick)} - Availability status recorded as ${said} `
+        + 'during a period of logged activity on the queue. Employee spoken '
+        + 'to informally. No further action at this time.';
 
   return `${String(tick)}|${kind}|${text}`;
 }

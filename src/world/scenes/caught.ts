@@ -42,30 +42,36 @@ export interface CaughtScene {
  * every part of it actually written. A scene with a blank dismiss label is a
  * window a player cannot leave, which is the one thing these must never be.
  */
+export function validateCaughtScene(scene: Readonly<CaughtScene>): CaughtScene {
+  if (scene.appId.trim().length === 0) {
+    throw new Error('A caught scene must say which app it is about.');
+  }
+
+  for (const [part, text] of Object.entries<string>({ ...scene })) {
+    if (text.trim().length === 0) {
+      throw new Error(
+        `Caught scene "${scene.appId}" has no ${part}, and every part of it `
+        + 'ends up on the screen.',
+      );
+    }
+  }
+
+  return Object.freeze({ ...scene });
+}
+
 export function validateCaughtScenes(
   scenes: readonly CaughtScene[],
 ): readonly CaughtScene[] {
   const seen = new Set<string>();
 
   for (const scene of scenes) {
-    if (scene.appId.trim().length === 0) {
-      throw new Error('A caught scene must say which app it is about.');
-    }
+    validateCaughtScene(scene);
 
     if (seen.has(scene.appId)) {
       throw new Error(`Duplicate caught scene for "${scene.appId}".`);
     }
 
     seen.add(scene.appId);
-
-    for (const [part, text] of Object.entries<string>({ ...scene })) {
-      if (text.trim().length === 0) {
-        throw new Error(
-          `Caught scene "${scene.appId}" has no ${part}, and every part of it `
-          + 'ends up on the screen.',
-        );
-      }
-    }
   }
 
   return Object.freeze([...scenes]);
@@ -100,8 +106,55 @@ export const CAUGHT_SCENES: readonly CaughtScene[] = validateCaughtScenes([
   },
 ]);
 
+/**
+ * The one conversation in this family that is not about a screen.
+ *
+ * The key is not an app and deliberately reads as one thing that cannot be
+ * installed: what the lead found was the DOT, held all morning over a desk
+ * whose dispatch log says the queue was being worked the whole time. It is the
+ * caught-scene class rather than a new one because it is the same event -
+ * somebody comes down the corridor, there is a short conversation, a line goes
+ * on the file, and the minutes are gone - and a second machinery for the same
+ * beat would be two ways of being spoken to that could disagree.
+ *
+ * The quantity is NOT in these words. The scene is the same sentences every
+ * time; the evidence under it is read off the world by the window that shows
+ * it (`dndEvidence`), because how much of the morning it was is a fact about
+ * the day rather than about the writing.
+ */
+export const PRESENCE_CAUGHT_KEY = 'presence:dnd';
+
+export const DND_CAUGHT_SCENE: CaughtScene = validateCaughtScene({
+  appId: PRESENCE_CAUGHT_KEY,
+  title: 'A quick word about your availability',
+  bossLine: 'Pat. You have been on Do Not Disturb. And I can see tickets '
+    + 'moving, so you are clearly here - which means it was not the work you '
+    + 'did not want disturbing, it was the people.',
+  narration: 'He says it kindly, in the way of a man who has already had the '
+    + 'thought twice and is only now saying it out loud. He does not ask you to '
+    + 'change it. He looks at the little red dot, and then at you, for slightly '
+    + 'too long.',
+  reply: 'You say you were concentrating. He says that is exactly what he '
+    + 'assumed, in a voice that files the sentence away for later.',
+  dismissLabel: 'Put it back to Available',
+  // What the FILE calls it, which is the wording of somebody who has put two
+  // records side by side rather than the wording of a man at your shoulder.
+  // The quantity is added by the line that writes it, off the world.
+  fileSubject: 'Do Not Disturb',
+});
+
+/**
+ * Which scene goes with what he found: an app that was on the screen, or the
+ * status that was on the desk.
+ *
+ * One lookup for both because the WINDOW is one window: it is handed whatever
+ * the day recorded and draws it, and a second table for the second kind would
+ * be a second place for a missing scene to become a blank telling-off.
+ */
 export function caughtScene(appId: string): CaughtScene | undefined {
-  return CAUGHT_SCENES.find((scene) => scene.appId === appId);
+  return appId === PRESENCE_CAUGHT_KEY
+    ? DND_CAUGHT_SCENE
+    : CAUGHT_SCENES.find((scene) => scene.appId === appId);
 }
 
 /**
