@@ -339,6 +339,24 @@ export type PredData =
     bind?: string;
   }
   | { pred: 'line_in_field'; node: NodeRefData; field: string; value: ValueData }
+  /**
+   * The same line, counted: a newline-separated field carries it at least
+   * `times` times.
+   *
+   * `line_in_field` answers "has this happened", which is every question a
+   * one-shot record has. A BUDGET is a different one - one line per spend, and
+   * a rule that runs out - and counting it in a caller would put "how many are
+   * left" outside the thing that replays the day. `times` is an expression
+   * because the budget is per-entry data; a `times` that is not a whole number
+   * at or above zero makes this TRUE, which is the refusing direction.
+   */
+  | {
+    pred: 'line_count_at_least';
+    node: NodeRefData;
+    field: string;
+    value: ValueData;
+    times: ValueData;
+  }
   | { pred: 'ticket_untracked'; node: NodeRefData }
   | {
     pred: 'resolution_refuses_field';

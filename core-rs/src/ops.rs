@@ -680,6 +680,28 @@ pub enum Pred {
         field: String,
         value: ValueExpr,
     },
+    /// A newline-separated field carries this line at least `times` times.
+    ///
+    /// `line_in_field` answers "has this happened", which is the only question
+    /// a world with one-shot records ever has. A BUDGET is a different one:
+    /// the same line written once per spend, and a rule that runs out. Counting
+    /// in the caller would put "how many are left" outside the thing that
+    /// replays the day, and the caller would then be the one deciding whether
+    /// it may spend another - which is a caller marking its own homework.
+    ///
+    /// `times` is an expression rather than a constant because the budget is
+    /// per-entry data: what the world holds is the ledger, and how long the
+    /// ledger is allowed to get arrives with the dispatch. A `times` that is
+    /// not a whole number at or above zero makes this TRUE, which is the
+    /// refusing direction: a count held against nothing is a count nobody
+    /// bounded, and an engine that permitted it would hand out an unlimited
+    /// budget the first time somebody forgot a parameter.
+    LineCountAtLeast {
+        node: NodeRef,
+        field: String,
+        value: ValueExpr,
+        times: ValueExpr,
+    },
     /// The ticket engine has no record behind this node.
     TicketUntracked {
         node: NodeRef,
@@ -962,6 +984,19 @@ impl Pred {
                 node: node()?,
                 field: field()?,
                 value: value_expr()?,
+            }),
+            "line_count_at_least" => Ok(Self::LineCountAtLeast {
+                node: node()?,
+                field: field()?,
+                value: value_expr()?,
+                times: ValueExpr::parse_in(
+                    object
+                        .get("times")
+                        .ok_or_else(|| {
+                            EngineError::new("line_count_at_least needs a \"times\".")
+                        })?,
+                    scope,
+                )?,
             }),
             "ticket_untracked" => Ok(Self::TicketUntracked { node: node()? }),
             "resolution_refuses_field" => {
@@ -1445,6 +1480,28 @@ pub fn evaluate_pred(context: &mut EvalContext<'_>, predicate: &Pred) -> bool {
                 .iter()
                 .any(|line| line == expected)
         }
+        Pred::LineCountAtLeast {
+            node,
+            field,
+            value,
+            times,
+        } => {
+            let bound = eval_value(context, times).as_f64();
+            let Some(bound) = bound.filter(|bound| is_safe_int(*bound) && *bound >= 0.0) else {
+                // A budget nobody stated is a budget nobody may spend against.
+                return true;
+            };
+            let expected = eval_value(context, value);
+            let Some(expected) = expected.as_str() else {
+                return true;
+            };
+            let count = field_lines(context.field(node, field))
+                .iter()
+                .filter(|line| *line == expected)
+                .count();
+
+            count as f64 >= bound
+        }
         Pred::TicketUntracked { node } => match context.resolve_id(node) {
             Some(id) => !context.tickets.is_registered(&id),
             None => true,
@@ -1838,6 +1895,75 @@ mod tests {
 
         assert!(Pred::parse(&json!({ "pred": "param_is_whole_number", "param": "x" })).is_err());
         assert!(Pred::parse(&json!({ "pred": "param_is_whole_number", "value": 0 })).is_err());
+    }
+
+    /// A budget, which is the one shape `line_in_field` could not express.
+    ///
+    /// The world writes one line per spend and asks whether the ledger has
+    /// reached the number that arrived with the dispatch. Everything the rule
+    /// needs is in the graph, so it survives the checkpoint that drains the
+    /// dispatch log and comes back the same after a load.
+    #[test]
+    fn a_guard_can_count_how_many_times_a_line_was_written() {
+        let mut graph = fixture();
+        let predicate = Pred::parse(&json!({
+            "pred": "line_count_at_least",
+            "node": { "id": "device:printer" },
+            "field": "spends",
+            "value": { "param": "id" },
+            "times": { "param": "budget" },
+        }))
+        .expect("valid predicate");
+        let holds = |graph: &EntityGraph, budget: Option<f64>| -> bool {
+            let mut params = Params::new();
+            params.insert("id".to_owned(), FieldValue::Str("reboot".to_owned()));
+
+            if let Some(budget) = budget {
+                params.insert("budget".to_owned(), FieldValue::Num(budget));
+            }
+
+            let mut evaluation = context(graph, &params, None);
+            evaluate_pred(&mut evaluation, &predicate)
+        };
+
+        // Nothing spent, three to spend.
+        assert!(!holds(&graph, Some(3.0)));
+
+        graph
+            .set_field(
+                "device:printer",
+                "spends",
+                FieldValue::Str("reboot\nreboot".to_owned()),
+            )
+            .expect("two spends");
+        assert!(!holds(&graph, Some(3.0)), "two of three is not three");
+        assert!(holds(&graph, Some(2.0)), "two of two is spent");
+        assert!(holds(&graph, Some(0.0)), "a budget of none is spent at none");
+
+        // Other lines are somebody else's ledger and are not this one's count.
+        graph
+            .set_field(
+                "device:printer",
+                "spends",
+                FieldValue::Str("reboot\ncall:annexe\nreboot\ncall:annexe".to_owned()),
+            )
+            .expect("two ledgers, one field");
+        assert!(!holds(&graph, Some(3.0)));
+        assert!(holds(&graph, Some(2.0)));
+
+        // And a budget that is not a whole number at or above nothing refuses
+        // rather than permits: the safe direction for a rule about running out.
+        assert!(holds(&graph, None), "no budget stated");
+        assert!(holds(&graph, Some(-1.0)));
+        assert!(holds(&graph, Some(2.5)));
+
+        assert!(Pred::parse(&json!({
+            "pred": "line_count_at_least",
+            "node": { "ref": "actor" },
+            "field": "spends",
+            "value": { "param": "id" },
+        }))
+        .is_err());
     }
 
     #[test]
