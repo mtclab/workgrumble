@@ -1203,8 +1203,11 @@ test('walks every function of a probation week that goes well', async ({
     // who has read it and still opens with "Hi." - which is the joke and is
     // also, this week, a thing the player is about to be on the end of.
     await page.getByTestId('browser-site-nohello').click();
+    // The site owner's whole argument, in the post rather than in the
+    // shouted heading: `browser-thread` is the POSTS, and a test that read
+    // the banner would be reading a different element.
     await expect(page.getByTestId('browser-thread'))
-      .toContainText(/do not say just hello/i);
+      .toContainText(/hello AND the question, in the same message/i);
   });
 
   await step('browser.bookmarks', async () => {

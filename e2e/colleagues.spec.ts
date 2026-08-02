@@ -7,6 +7,7 @@ import {
   openFromStartMenu,
   runRealMinutes,
   runSimMinutes,
+  setSpeed,
   workUntilMinute,
 } from './helpers';
 
@@ -50,7 +51,21 @@ type Takeover = Readonly<Record<string, string | undefined>>;
  * interruption suite's hunt keeps, and for the same reason: the conversation
  * lasts the minutes its row says and a second round-trip is a later minute.
  */
-async function huntForTheDesk(page: Page, limit = 60): Promise<Takeover> {
+async function huntForTheDesk(
+  page: Page,
+  /**
+   * The speed to step at WITHOUT touching the control.
+   *
+   * Absent is the ordinary search: a minute a step through the house helper,
+   * which is exact because x1 is what everything drops TO. Given a speed, the
+   * steps are stretches of real time at that speed and the control is left
+   * exactly where the game leaves it - which is the only way to watch the day
+   * put it down, and is therefore how a test ABOUT the drop has to walk. See
+   * the helper contract in `helpers.ts`.
+   */
+  keepSpeed?: 2 | 4,
+  limit = 60,
+): Promise<Takeover> {
   const app = page.getByTestId('call-app');
 
   for (let minute = 0; minute < limit; minute += 1) {
@@ -64,10 +79,44 @@ async function huntForTheDesk(page: Page, limit = 60): Promise<Takeover> {
       }
     }
 
-    await runSimMinutes(page, 1, 1);
+    if (keepSpeed === undefined) {
+      await runSimMinutes(page, 1, 1);
+    } else {
+      await runRealMinutes(page, 1, keepSpeed);
+    }
   }
 
   throw new Error('Nobody came to the desk inside the hour.');
+}
+
+/**
+ * Holds the day still for a read that has to be exact.
+ *
+ * The house pattern, and this file needs it for the same reason every other
+ * one does: an assertion retries in REAL time while the clock runs in SIM
+ * time, so anything pinning an exact minute reads it with the day stopped -
+ * which is a control the player has and one nothing in this slice takes away.
+ *
+ * Idempotent, because a read taken inside another pause must not start the
+ * clock again on its way out.
+ */
+async function underPause<T>(page: Page, read: () => Promise<T>): Promise<T> {
+  const pause = page.getByTestId('day-pause');
+  const already = await pause.getAttribute('aria-pressed') === 'true';
+
+  if (!already) {
+    await pause.click();
+    await expect(pause).toHaveAttribute('aria-pressed', 'true');
+  }
+
+  try {
+    return await read();
+  } finally {
+    if (!already) {
+      await pause.click();
+      await expect(pause).toHaveAttribute('aria-pressed', 'false');
+    }
+  }
 }
 
 /* -- gate 1: the walk-up, both answers walked ------------------------------ */
@@ -98,12 +147,15 @@ test('somebody at the desk, done off the books, and nothing to show for it', asy
 
   // The clock is put UP deliberately, so the drop is a claim about the game
   // rather than about the helper: a person arriving is in `slowsTheClock`,
-  // and the minutes she takes are minutes a player has to be able to read.
+  // and the minutes he takes are minutes a player has to be able to read.
   await page.getByTestId('day-speed-4').click();
   await expect(page.getByTestId('day-speed-4'))
     .toHaveAttribute('data-active', 'true');
 
-  const desk = await huntForTheDesk(page);
+  // And the search leaves the control alone the whole way down the corridor.
+  // Stepped through the house helper it would put the speed back to x1 itself,
+  // and the assertion below would be a test agreeing with its own harness.
+  const desk = await huntForTheDesk(page, 4);
 
   // Not the phone. The window says so, in the words it uses rather than in an
   // attribute only a test can see.
@@ -224,15 +276,15 @@ test('a bare hello costs the minutes it says, and asking skips them', async ({
   // about and which he is, at this moment, doing.
   await expect(page.getByTestId('chat-transcript')).toContainText('Hi.');
 
-  // The cost, stated before it is paid.
-  await page.getByTestId('day-pause').click();
-  await expect(page.getByTestId('day-pause'))
-    .toHaveAttribute('aria-pressed', 'true');
-  const owed = Number(await typing.getAttribute('data-left') ?? '0');
+  // The cost, stated before it is paid, and read with the day stopped so it
+  // is a minute rather than a minute-ish.
+  const owed = await underPause(page, async () => {
+    await expect(typing).toContainText('one click');
+    return Number(await typing.getAttribute('data-left') ?? '0');
+  });
+
   expect(owed).toBeGreaterThan(0);
   expect(owed).toBeLessThanOrEqual(HELLO_TYPING);
-  await expect(typing).toContainText('one click');
-  await page.getByTestId('day-pause').click();
 
   // Asking. One click, and the question is there - the same question, minutes
   // earlier than it was going to be.
@@ -249,17 +301,33 @@ test('a bare hello costs the minutes it says, and asking skips them', async ({
 
   await openFromStartMenu(page, 'browser');
   await page.getByTestId('browser-site-nohello').click();
+  // The argument itself, out of the post, rather than the banner above it:
+  // `browser-thread` is the list of replies and the heading is its own
+  // element. It is also the better sentence to pin - one idea, no course.
   await expect(page.getByTestId('browser-thread'))
-    .toContainText(/do not say just hello/i);
+    .toContainText(/hello AND the question, in the same message/i);
 });
 
 /**
  * And the other half: nobody asks, and the minutes go anyway.
  *
- * It drives its own real time rather than the house helper, because the point
- * is a stretch of clock in which the player does NOTHING - and a helper that
- * re-asserted a speed would be pressing a button in a test about not pressing
- * one.
+ * The claim is the honesty one - the number the window says out loud before
+ * anybody pays it is the number of minutes it then charges - so the walk
+ * spends exactly as many minutes as the indicator advertised, one at a time,
+ * and watches it come down by one for each of them.
+ *
+ * THE SPEED IS SET EXPLICITLY, and it is the whole reason this test exists in
+ * this shape. `runRealMinutes` spends a stretch of REAL time and never touches
+ * the control: its `speed` argument says what the control is ALREADY on, it
+ * does not put it there. The step before this one leaves the shipped control
+ * on x4 (`workUntilMinute` buys its minutes at x4), so a "one minute" step
+ * taken without setting it first spends four - which is exactly what it did,
+ * and the wait was over before the first assertion. One deliberate click, the
+ * way a player slows a day down, and a minute is a minute.
+ *
+ * Every read is taken with the day stopped, for the other half of the same
+ * discipline: an assertion retries in real time while the clock runs in sim
+ * time, so a countdown read on the retry is a countdown read a minute later.
  */
 test('waiting it out spends the minutes the indicator counted', async ({
   page,
@@ -276,18 +344,33 @@ test('waiting it out spends the minutes the indicator counted', async ({
   await expect(typing).toHaveAttribute('data-typing', 'true');
   await expect(page.getByTestId('chat-transcript')).not.toContainText('despatch');
 
-  // One minute at a time, at x1, with nothing pressed: the number on the
-  // screen has to come down by one for each of them, or the cost it advertises
-  // is not the cost it charges.
-  for (let minute = 1; minute < HELLO_TYPING; minute += 1) {
-    const before = Number(await typing.getAttribute('data-left') ?? '0');
+  // x1, on the shipped control, before a single minute is spent.
+  await setSpeed(page, 1);
+
+  const owed = await underPause(page, async () => Number(
+    await typing.getAttribute('data-left') ?? '0',
+  ));
+
+  expect(owed).toBeGreaterThan(0);
+  expect(owed).toBeLessThanOrEqual(HELLO_TYPING);
+
+  // Exactly what it asked for, a minute at a time, with nothing pressed in
+  // between. A cadence that counted down faster than the data claims, or a
+  // window that showed a number nobody was charged, fails on the minute it
+  // first disagrees rather than at the end.
+  for (let spent = 1; spent <= owed; spent += 1) {
     await runRealMinutes(page, 1, 1);
-    await expect(typing).toHaveAttribute('data-left', String(before - 1));
+
+    const left = await underPause(page, async () => Number(
+      await typing.getAttribute('data-left') ?? '0',
+    ));
+
+    expect(left, `after ${String(spent)} minute(s) of waiting`)
+      .toBe(owed - spent);
   }
 
-  // And then he gets there by himself, in the same words the click would have
-  // bought several minutes ago.
-  await runRealMinutes(page, 2, 1);
+  // And that was the whole of it: the dots are gone, and he has got there by
+  // himself in the same words one click would have bought `owed` minutes ago.
   await expect(typing).toHaveAttribute('data-typing', 'false');
   await expect(page.getByTestId('chat-transcript')).toContainText('despatch');
 });
