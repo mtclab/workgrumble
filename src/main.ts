@@ -241,8 +241,9 @@ async function boot(): Promise<void> {
       if (line !== null) {
         shell.notify(
           'Somebody has said hello',
-          `"${line}" That is the whole message. They are typing; asking them `
-          + 'what they want is one click and gets there sooner.',
+          `"${line}" That is the whole message. They are typing, and asking `
+          + 'them what they want in Chat gets there sooner than waiting for '
+          + 'them to finish does.',
         );
       }
     },

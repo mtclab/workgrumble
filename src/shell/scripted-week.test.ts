@@ -861,14 +861,22 @@ const GOLDEN_WORKED: GoldenWeek = {
     // found the browser on the Wednesday, and the six points it cost were
     // earned back inside the hour; the conversation on Friday never hears
     // about either.
-    // Twenty-five of it is having been reachable - five arrivals at 2, 6, 4,
-    // 6 and 4 points, the last of them somebody standing at the desk on the
-    // Friday - and the other thirty-two are the queue, at a point per five
-    // minutes per ticket over a comfortable two. Two of the week's tickets
-    // are new and both of them are CARRIED: the Wednesday request across a
-    // night and a flooded Thursday morning, and Gary's restart through a
-    // Friday lunchtime. Twenty-three points below the fumble threshold, and
-    // the review has never read it.
+    // Fifty-seven where it was twenty-one, and the THIRTY-SIX between them is
+    // the number worth breaking down rather than the total - the total is a
+    // running balance with lunch relief in it and does not decompose.
+    //
+    // Four of the thirty-six is the walk-up arriving: severity two at the
+    // arrival rate, charged once, like every other interruption in this
+    // family. (The week's five arrivals are 2, 6, 4, 6 and 4 - twenty-two
+    // points charged across the whole week - and the four new ones are the
+    // Friday's.) The other thirty-two are the QUEUE, at a point per five
+    // minutes per ticket over a comfortable two, and both of the week's new
+    // tickets are CARRIED rather than closed on the spot: the Wednesday
+    // request across a night and a flooded Thursday morning, and Gary's
+    // restart through a Friday lunchtime.
+    //
+    // Twenty-three points below the fumble threshold, and the review has
+    // never read stress.
     stress: 57,
     suspicion: 0,
     reputation: 100,
@@ -1540,7 +1548,6 @@ describe('the file, read by somebody, against a week that can take it', () => {
     // A thick file, and a real reason to open it: somebody has been sitting in
     // front of an upside-down monitor since Monday and has never been told a
     // thing.
-    console.log('FILE_DUMP', JSON.stringify({filed: week.filed.length, triggers: week.atTwo.triggers, bar: week.card.bar, closed: week.card.closed, breached: week.card.breached, perf: week.card.performance, outcome: week.outcome, arrived: week.card.arrived}));
     expect(week.filed.length).toBe(15);
     expect(week.atTwo.triggers).toEqual(['customer']);
     expect(week.card.bar).toBe(70);

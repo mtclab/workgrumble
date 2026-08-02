@@ -1037,15 +1037,60 @@ test('walks every function of a probation week that goes well', async ({
     // It did not stick: the ticket is still open and still yours.
     await expect(page.getByTestId('ticket-row-fan-noise'))
       .toHaveAttribute('data-state', 'open');
-
-    // Second line get round to it, and it lands back on the desk with a note,
-    // a mail and a bill.
-    await runSimMinutes(page, 25);
-    await expectNoticed(page, 'Returned by second line');
-    await openTicket(page, 'fan-noise');
-    await expect(page.getByTestId('ticket-worknotes'))
-      .toContainText('Returned by second line');
   });
+
+  /*
+   * Ten to eleven, INSIDE the twenty-five minutes second line take to hand
+   * that form back.
+   *
+   * The ordering is forced and it is worth saying why rather than leaving it
+   * to look arbitrary. The bounce is a fixed wait FROM THE SEND, so those
+   * twenty-five minutes are going to be spent here whatever else happens; the
+   * greeting is a five-minute window on a fixed minute of the morning, and it
+   * falls inside them. Spending the twenty-five first and visiting the chat
+   * afterwards - which is what this walk used to do - arrives at eleven, ten
+   * minutes after he finished typing, and asks a window that is honestly
+   * showing nothing. The clock spends the same twenty-five minutes either way;
+   * only the minute the walk looks up differs.
+   *
+   * The beat is WAITED OUT here rather than answered, which is the expensive
+   * half of it: the question arrives when he has finished typing it, five
+   * minutes of a shift later. The journey that asks instead is in
+   * `colleagues.spec.ts`.
+   */
+  await workUntilMinute(page, 171);
+
+  await step('chat.typing', async () => {
+    await openFromStartMenu(page, 'chat');
+    await page.getByTestId('chat-person-owen').click();
+
+    const typing = page.getByTestId('chat-typing');
+    await expect(typing).toHaveAttribute('data-typing', 'true');
+    // Nothing but a greeting so far, which is the whole complaint.
+    await expect(page.getByTestId('chat-transcript')).toContainText('Hi.');
+
+    // And the cost, said before anybody pays it.
+    const left = await underPause(
+      page,
+      async () => typing.getAttribute('data-left'),
+    );
+    expect(Number(left ?? '0')).toBeGreaterThan(0);
+  });
+
+  await workUntilMinute(page, 180);
+
+  // He got there. The indicator is gone, because a typing indicator over a
+  // question that has arrived is a screen arguing with itself.
+  await expect(page.getByTestId('chat-typing'))
+    .toHaveAttribute('data-typing', 'false');
+  await expect(page.getByTestId('chat-transcript')).toContainText('despatch');
+
+  // And second line get round to the form, in the same twenty-five minutes:
+  // it lands back on the desk with a note, a mail and a bill.
+  await expectNoticed(page, 'Returned by second line');
+  await openTicket(page, 'fan-noise');
+  await expect(page.getByTestId('ticket-worknotes'))
+    .toContainText('Returned by second line');
 
   await step('mail.bounce', async () => {
     await openFromStartMenu(page, 'mail');
@@ -1214,38 +1259,6 @@ test('walks every function of a probation week that goes well', async ({
     await page.getByTestId('browser-home-button').click();
     await expect(page.getByTestId('browser-home')).toBeVisible();
   });
-
-  /*
-   * Ten to eleven, and one word from a man with eleven years in the building.
-   *
-   * The beat is WAITED OUT here rather than answered, which is the expensive
-   * half of it: the question arrives when he has finished typing it, five
-   * minutes of a shift later, and the window says so the whole way through.
-   * The journey that asks instead is in `colleagues.spec.ts`.
-   */
-  await workUntilMinute(page, 171);
-
-  await step('chat.typing', async () => {
-    await openFromStartMenu(page, 'chat');
-    await page.getByTestId('chat-person-owen').click();
-
-    const typing = page.getByTestId('chat-typing');
-    await expect(typing).toHaveAttribute('data-typing', 'true');
-    // Nothing but a greeting so far, which is the whole complaint.
-    await expect(page.getByTestId('chat-transcript')).toContainText('Hi.');
-
-    // And the cost, said before anybody pays it.
-    const left = await underPause(page, async () => typing.getAttribute('data-left'));
-    expect(Number(left ?? '0')).toBeGreaterThan(0);
-  });
-
-  await workUntilMinute(page, 177);
-
-  // He got there. The indicator is gone, because a typing indicator over a
-  // question that has arrived is a screen arguing with itself.
-  await expect(page.getByTestId('chat-typing'))
-    .toHaveAttribute('data-typing', 'false');
-  await expect(page.getByTestId('chat-transcript')).toContainText('despatch');
 
   await step('updates.window', async () => {
     await openFromStartMenu(page, 'updates');
