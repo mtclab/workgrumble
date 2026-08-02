@@ -317,9 +317,14 @@ describe('the day\'s interruptions', () => {
    * which is the line lane A left as the marker for "the goldens may now
    * move". It is written as an exact per-day list rather than as a count
    * because the SHAPE is the claim the slice makes: one call that carries a
-   * ticket, one block nobody can refuse, one call that carries nothing. A week
-   * that quietly grew a fourth, or lost the malignant one, would still have
-   * "some interruptions in it" and would no longer be teaching the cost model.
+   * ticket, one block nobody can refuse, one call that carries nothing, and -
+   * from 0.3.1 - one machine that carries nobody at all. A week that quietly
+   * grew a fifth, or lost the malignant one, would still have "some
+   * interruptions in it" and would no longer be teaching the cost model.
+   *
+   * The Thursday holds two, which is the only day that does, and they are two
+   * different lessons an hour and a half apart: a person you may wave off at
+   * twenty past eleven, and a machine you may not at ten past two.
    */
   it('authors one of each shape into the shipped probation week', () => {
     expect(WEEK.map((script) => interruptionsOn(script.day).map(
@@ -328,7 +333,10 @@ describe('the day\'s interruptions', () => {
       [],
       [['call:spooler', 'call', 'ticket:wedged-spooler']],
       [['meeting:hygiene-sync', 'meeting', null]],
-      [['call:annexe-printer', 'call', null]],
+      [
+        ['call:annexe-printer', 'call', null],
+        ['machine:reboot', 'machine', null],
+      ],
       [],
     ]);
 

@@ -167,22 +167,38 @@ function workTheQueue(
 }
 
 /**
+ * The two sources that take the DESK rather than merely the attention.
+ *
+ * A meeting is a room you are not at your desk during; a workstation
+ * installing updates is a desk that is not there. Both refuse every verb, in
+ * their own sentence, through the driver's own seam - and a phone is
+ * deliberately in neither list, because being on the phone has never been a
+ * defence for anything.
+ */
+const HOLDS_THE_DESK: ReadonlySet<string> = new Set(['meeting', 'machine']);
+
+/**
  * The queue, worked at the first minute the player is actually at the desk.
  *
  * A sweep booked for half past ten on the Wednesday is a sweep that runs
  * straight into the sync, and the sync means it: nothing dispatched from a
  * meeting reaches the world. So competent play waits the block out, which is
  * what a person does and is why the meeting costs what it costs. It is
- * expressed as "wait for the room to empty" rather than as a different minute
- * because a minute typed around a meeting would stop being right the day the
- * meeting moves.
+ * expressed as "wait for the desk to come back" rather than as a different
+ * minute because a minute typed around a block would stop being right the day
+ * the block moves - and because from 0.3.1 there are two kinds of block: the
+ * Thursday reboot holds the desk exactly as the Wednesday sync does, and a
+ * harness that only knew about meetings would report the reboot as a sweep
+ * that quietly closed nothing.
  */
 function workWhenAble(
   world: Week,
   skip?: (id: string) => boolean,
 ): void {
   for (let waited = 0; waited < 60; waited += 1) {
-    if (world.driver.interruption()?.entry.source !== 'meeting') {
+    const holding = world.driver.interruption()?.entry.source;
+
+    if (holding === undefined || !HOLDS_THE_DESK.has(holding)) {
       break;
     }
 
@@ -684,9 +700,49 @@ interface GoldenWeek {
  *    same as before. That the row did not move is the interesting part: half
  *    an hour is expensive and this week had it to spare, which is what a
  *    meeting is supposed to feel like rather than what it is supposed to cost.
+ *
+ * FIFTEENTH MOVE (0.3.1, the forced reboot). Both hashes, ONE line per
+ * timeline, and one meter in one of the two weeks. Nothing else in either
+ * week: same arrivals (25 and 24), same closes, same breaches, same pence,
+ * same review reading, same bar, same file, same caught counts, same endings,
+ * same five-profile table.
+ *
+ *  - THE CONTENT is one authored row on the Thursday - `machine:reboot`, ten
+ *    past two, twelve minutes, postpones [10, 5, 2] - which is the day that
+ *    had a call and no machine. It takes no jitter (an update is not somebody
+ *    deciding to pick the phone up; it happens at the minute somebody who has
+ *    never met you scheduled it), so it lands on 4690 exactly: day four, 14:10
+ *    on the clock the player reads.
+ *  - THE TIMELINES gain `interrupted:machine:reboot@4690` and NOTHING ELSE.
+ *    There is no `You did not get to that one` beside it, and that absence is
+ *    the mechanic rather than an omission: a phone can ring out, and a
+ *    workstation cannot. The driver settles a machine block by dispatching the
+ *    accept at the far end of it, so it is always answered, always by the
+ *    world rather than by a button, and the twelve minutes are always spent.
+ *  - THE THURSDAY'S ROW DID NOT MOVE - five in, five closed - and that is the
+ *    interesting number rather than a quiet one. The reboot lands between the
+ *    walk's one o'clock sweep and its twenty-to-four one, so competent play
+ *    loses no work to it on this seed. It is not luck that it CANNOT quietly
+ *    swallow a sweep: `workWhenAble` now waits out a machine exactly as it
+ *    waits out the sync, so a reboot that moved on top of a sweep would show
+ *    up here as a longer Thursday rather than as a ticket nobody closed.
+ *  - ONE METER MOVED, in the worked week only: stress 15 -> 21. Six points,
+ *    which is severity three at the arrival rate, charged once at the first
+ *    arrival like every other interruption in this family. In the IDLE week it
+ *    lands on a meter that has been pinned at 98 since the Wednesday and is
+ *    clamped away as fast as it is charged - the same shape the 0.3.0 move
+ *    found, and for the same reason.
+ *  - THE HASHES move for three things and all three are records rather than
+ *    balance: `machine:reboot` joining `interruption_answered`, one more spend
+ *    on `refocus_until` (a workstation is about no ticket anybody is holding,
+ *    so it is malignant by construction and the recovery window is measured
+ *    from the minute the desk comes back), and the stress above.
+ *  - NOTHING IN THE FIVE-PROFILE TABLE MOVED, for the reason the 0.3.0 move
+ *    gives: the review reads how much of the week's own work was closed and
+ *    how much of it kept its deadline, and being interrupted is neither.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: '53291124ae96c862',
+  hash: '4fccca66cd55a03b',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -728,10 +784,11 @@ const GOLDEN_WORKED: GoldenWeek = {
     // found the browser on the Wednesday, and the six points it cost were
     // earned back inside the hour; the conversation on Friday never hears
     // about either.
-    // Eleven of it is the queue, and four of it is having been reachable:
-    // three arrivals at 2, 6 and 4 points, mostly worked off again by the
-    // five-minute interval before the week ends.
-    stress: 15,
+    // Eleven of it is the queue, and ten of it is having been reachable:
+    // four arrivals at 2, 6, 4 and 6 points - the last of them a workstation
+    // on the Thursday afternoon - mostly worked off again by the five-minute
+    // interval before the week ends.
+    stress: 21,
     suspicion: 0,
     reputation: 100,
     // The week as the review read it: a hundred percent of the work, every
@@ -761,6 +818,10 @@ const GOLDEN_WORKED: GoldenWeek = {
     'notice:That is 10 minutes@3076',
     'interrupted:call:annexe-printer@4522',
     'notice:You did not get to that one@4527',
+    // Ten past two, and no notice beside it: a phone can ring out and a
+    // workstation cannot, so this one is answered by the world at the far end
+    // of its twelve minutes rather than missed.
+    'interrupted:machine:reboot@4690',
     'review:passed@6180',
     'beer@6300',
     'week:passed@6300',
@@ -783,7 +844,7 @@ const GOLDEN_IDLE: GoldenWeek = {
   // this week takes on the way through are completely different and every one
   // of them is overwritten by the next. Moved by 0.2.7 for the same single
   // integer the worked week moved for, and for nothing else.
-  hash: '3fd276447876719c',
+  hash: '1b4e40cf7dd579c6',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.
@@ -870,6 +931,9 @@ const GOLDEN_IDLE: GoldenWeek = {
     'notice:You did not get to that one@4527',
     'caught:bubbles@4615',
     'notice:That is 10 minutes@4615',
+    // The same twelve minutes, on a week nobody worked, costing the same
+    // nothing: the meter it charges has been full since the Wednesday.
+    'interrupted:machine:reboot@4690',
     'caught:bubbles@4719',
     'notice:That is 10 minutes@4719',
     'caught:bubbles@5950',

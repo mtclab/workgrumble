@@ -410,8 +410,17 @@ describe('"can I call you back"', () => {
     // claim, and the callback is proven to have happened by the arrival list.
     runTo(world.driver, world.session, shiftEndTick(4));
 
+    // The Thursday holds two authored interruptions from 0.3.1 onward - the
+    // call and, at ten past two, the workstation - so the day's whole arrival
+    // list is asserted rather than the call's half of it. A run that lost the
+    // reboot would be a day that stopped scheduling the thing this slice is
+    // about, and it would be lost in silence.
     expect(world.arrivals.map((view) => view.entry.id))
-      .toEqual(['call:annexe-printer', 'call:annexe-printer']);
+      .toEqual([
+        'call:annexe-printer',
+        'call:annexe-printer',
+        'machine:reboot',
+      ]);
     expect(world.arrivals[1]?.callback).toBe(true);
   });
 });
@@ -419,14 +428,18 @@ describe('"can I call you back"', () => {
 /* -- the update that is going to happen ------------------------------------ */
 
 /**
- * The reboot, driven as a FIXTURE rather than as content.
+ * The reboot, driven as a FIXTURE rather than as content - and it stays a
+ * fixture now that the content exists.
  *
- * The probation week has no update in it yet - that is the content half of
- * this slice and it ships with the screen - and the machinery must not wait
- * for it. So the day is handed in: a real Thursday, with its real call and its
- * real rounds, plus one authored workstation. Everything asserted below is the
- * ENGINE's behaviour, which is what has to be true of whichever minute the
- * week eventually puts it on.
+ * Lane A wrote this because the probation week had no update in it yet. Lane B
+ * put one on the Thursday at ten past two, and the fixture is deliberately NOT
+ * repointed at it: what is asserted below is the MACHINERY - three shrinking
+ * windows, a budget counted out of the world, a refusal with the true reason
+ * in it - and pinning that to whichever minute the week happens to carry this
+ * month would be testing the content instead. The Tuesday used here is a real
+ * day with its real call and its real rounds; the shipped Thursday is walked
+ * as a journey in `e2e/interruptions.spec.ts` and pinned as a week in
+ * `scripted-week.test.ts`.
  */
 /**
  * The Tuesday, mid-morning, which is a working minute on a day the player has

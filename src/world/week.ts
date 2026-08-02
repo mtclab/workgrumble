@@ -544,6 +544,46 @@ export const WEEK: readonly DayScript[] = validateWeek([
           [FLAVOR.opensFumbling]: 'ringing-annexe-shaky',
         },
       },
+      /**
+       * And ten past two, on the one day of the week that had no machine in
+       * it, which is the whole reason it is on this day: Tuesday rings,
+       * Wednesday books half an hour, Thursday is where the workstation gets
+       * its turn, and the fourth shape of the family joins the day that had
+       * none.
+       *
+       * It takes no jitter. An announced hour cannot wander, and this one has
+       * been announced since September in a dialog nobody read - but the real
+       * reason is meaner than that: an update is not a person deciding to
+       * pick the phone up. It happens at the minute it was scheduled for by
+       * somebody who has never met you.
+       *
+       * Twelve minutes, and three windows of ten, five and two. The worst
+       * case is 14:10 + 17 + 12 = 14:39, which is the loader's arithmetic and
+       * lands with two hours of shift still to run - so every one of the
+       * three windows is genuinely the player's to spend, and spending all of
+       * them cannot push the outage out of the day. The afternoon is warm by
+       * then (a certificate flood with two duplicates hanging off it), so the
+       * budget is a real decision rather than a formality: ten minutes is
+       * long enough to finish a ticket, five to write a work note, two to
+       * save.
+       */
+      {
+        id: 'machine:reboot',
+        source: 'machine',
+        minute: 14 * 60 + 10,
+        minutes: 12,
+        // Nobody's ticket, by construction rather than by omission: a
+        // workstation restarting is about no work anybody is holding, which
+        // is what makes it malignant every time and costs the refocus window
+        // at the far end of it.
+        relatedTicket: null,
+        declinable: false,
+        severity: 3,
+        postpones: [10, 5, 2],
+        flavor: {
+          [FLAVOR.subject]: 'Security updates outstanding since September',
+        },
+      },
     ],
     patrolSeed: 8_803,
     load: 4,
