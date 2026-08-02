@@ -31,6 +31,27 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.3.2',
+    date: '2026-08-02',
+    summary: 'This update adjusts the passage of time near events.',
+    lines: Object.freeze([
+      'Colleagues running their day at four times its natural speed have '
+        + 'reported that telephone calls were over before they could be '
+        + 'regretted, and meetings arrived, occurred and were summarised in '
+        + 'the space of a breath. This has been addressed: when something '
+        + 'lands on you - a call, a meeting, the workstation, the lead - the '
+        + 'day now slows to its natural pace, so that whatever is about to '
+        + 'happen to you happens at a speed at which you can be said to have '
+        + 'been present for it.',
+      'The day does not speed itself back up afterwards. It was slowed '
+        + 'because something happened; deciding the rest of it should go '
+        + 'faster is, as ever, yours to do and yours to answer for.',
+      'The pause button is unaffected. It has always been unaffected. It is '
+        + 'the one control in this building that does exactly what it says, '
+        + 'and Personnel are monitoring it closely as a result.',
+    ]),
+  },
+  {
     version: '0.3.1',
     date: '2026-08-02',
     summary: 'This update improves the delivery of updates.',
