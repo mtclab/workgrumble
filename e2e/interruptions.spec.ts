@@ -10,6 +10,7 @@ import {
   openFromStartMenu,
   runCommand,
   runOnlyCommand,
+  runRealMinutes,
   runSimMinutes,
   workUntil,
   workUntilMinute,
@@ -64,6 +65,17 @@ async function huntFor(
   page: import('@playwright/test').Page,
   appId: 'call' | 'meeting',
   limit = HUNT_MINUTES,
+  /**
+   * The speed the search steps at when it must not touch the speed control.
+   *
+   * Absent is the normal search: a minute a step at x1, bought through the
+   * house helper, which is exact because x1 is what everything drops TO. Given
+   * a speed, the steps are stretches of REAL time at that speed and the
+   * control is left exactly as the game leaves it - which is the only way to
+   * watch the day put it down, and is therefore how the tests about the drop
+   * have to walk. See the helper contract in `helpers.ts`.
+   */
+  keepSpeed?: 2 | 4,
 ): Promise<Takeover> {
   const app = page.getByTestId(`${appId}-app`);
 
@@ -78,7 +90,11 @@ async function huntFor(
       }
     }
 
-    await runSimMinutes(page, 1, 1);
+    if (keepSpeed === undefined) {
+      await runSimMinutes(page, 1, 1);
+    } else {
+      await runRealMinutes(page, 1, keepSpeed);
+    }
   }
 
   throw new Error(`Nothing took the screen with a ${appId} inside the hour.`);
@@ -932,4 +948,159 @@ test('a save taken mid-reboot comes back mid-reboot', async ({ page }) => {
     .toHaveAttribute('data-takeover', 'none');
   await expect(page.getByTestId('window-reboot')).toHaveCount(0);
   expect(await openWindows(page)).not.toContain('reboot:false');
+});
+
+/* -- slice 0.3.2: the clock slows down near events ------------------------- */
+
+/**
+ * What the speed control says, read as one fact rather than as three buttons.
+ *
+ * The whole control is asked, because "x1 is lit" and "x4 is not" are two
+ * halves of the same claim and a test that only checked the first would pass
+ * against a taskbar with two speeds lit at once.
+ */
+async function speedOnScreen(
+  page: import('@playwright/test').Page,
+): Promise<string> {
+  return page.evaluate(() => {
+    const lit = ['1', '2', '4'].filter((speed) => document
+      .querySelector(`[data-testid="day-speed-${speed}"]`)
+      ?.getAttribute('data-active') === 'true');
+
+    return lit.length === 1 ? `x${lit[0] ?? ''}` : `lit: ${lit.join(', ')}`;
+  });
+}
+
+/**
+ * What is ringing this minute, as the window itself says, or nothing.
+ *
+ * Absent and empty are the same answer to a player and have to be the same
+ * answer here: the call window can be standing open with the outcome of a
+ * finished call on it, so a check that only counted windows would call that
+ * a ringing phone.
+ */
+async function ringingNow(
+  page: import('@playwright/test').Page,
+): Promise<string> {
+  const app = page.getByTestId('call-app');
+
+  return await app.count() === 0
+    ? 'none'
+    : await app.getAttribute('data-call') ?? 'none';
+}
+
+/**
+ * The phone goes at x4, and the day hands itself back at a speed a person can
+ * answer at.
+ *
+ * The claim is the CONTROL and then the consequence. A data attribute moving
+ * would be a transition; what the player is owed is the six-minute window in
+ * real seconds they can spend reading it, so the second half of this runs the
+ * real time that WOULD have been the whole window at x4 and finds the phone
+ * still ringing with the three answers still on it.
+ *
+ * And then the other direction, which is as much of the rule: a player who
+ * puts the clock back up mid-ring keeps it up. The drop is the ARRIVAL, not a
+ * state the day re-asserts every minute, because a control that fights the
+ * hand on it is worse than one that never moved.
+ */
+test('a call landing at speed drops the clock to x1, and a re-up sticks', async ({
+  page,
+}) => {
+  await logInOnDay(page, 2, { brief: 'keep' });
+  await beginShift(page);
+
+  // Ten to ten: the Tuesday call is authored for five past with four minutes
+  // of wander either way, so this stops well clear of the earliest minute it
+  // could ring on. What the drop is about is the arrival, and an arrival that
+  // had already happened before the clock was set would prove nothing.
+  await workUntilMinute(page, 9 * 60 + 50 - 8 * 60);
+  await page.getByTestId('day-speed-4').click();
+
+  await underPause(page, async () => {
+    expect(await speedOnScreen(page)).toBe('x4');
+    // Nothing is ringing yet, so the drop below cannot be anything that
+    // already happened this morning.
+    expect(await ringingNow(page)).toBe('none');
+  });
+
+  // Found at x4, with the control left exactly as the game leaves it.
+  const ringing = await huntFor(page, 'call', HUNT_MINUTES, 4);
+
+  expect(ringing.call).not.toBe('none');
+
+  await underPause(page, async () => {
+    expect(await speedOnScreen(page)).toBe('x1');
+  });
+
+  // THE GOAL: the window, in seconds. Six minutes of real time at x4 is the
+  // whole of what this call was ever going to be - and it is still ringing at
+  // the end of it, with all three answers on the screen.
+  await runRealMinutes(page, 6, 4);
+
+  await underPause(page, async () => {
+    await expect(page.getByTestId('call-app'))
+      .toHaveAttribute('data-call', ringing.call ?? '');
+    await expect(page.getByTestId('call-answer')).toBeVisible();
+    await expect(page.getByTestId('call-decline')).toBeVisible();
+  });
+
+  // And the player disagrees, which is one click and their business.
+  await page.getByTestId('day-speed-4').click();
+  await runRealMinutes(page, 1, 4);
+
+  await underPause(page, async () => {
+    // Still ringing - so this is the SAME event, still happening - and the
+    // clock is still where the player put it.
+    await expect(page.getByTestId('call-app'))
+      .toHaveAttribute('data-call', ringing.call ?? '');
+    expect(await speedOnScreen(page)).toBe('x4');
+  });
+});
+
+/**
+ * And the half hour that takes the desk, which is the same rule and a much
+ * bigger window: at x4 the whole meeting is seven seconds.
+ *
+ * The consequence is the point again - the block is STILL happening after the
+ * real time that would have covered all of it - because a meeting the player
+ * cannot read is a meeting whose joke has not been told.
+ */
+test('the meeting taking the desk drops the clock to x1', async ({ page }) => {
+  await logInOnDay(page, 3, { brief: 'keep' });
+  await beginShift(page);
+
+  // Twenty past ten. The sync is announced for half past and takes no wander,
+  // because a meeting that moved would make the summons mail a lie.
+  await workUntilMinute(page, 10 * 60 + 20 - 8 * 60);
+  await page.getByTestId('day-speed-4').click();
+
+  await underPause(page, async () => {
+    expect(await speedOnScreen(page)).toBe('x4');
+    // The desk is the player's, so the drop below is the block arriving
+    // rather than something the morning had already done.
+    await expect(page.getByTestId('desktop'))
+      .toHaveAttribute('data-takeover', 'none');
+  });
+
+  await huntFor(page, 'meeting', 20, 4);
+
+  await underPause(page, async () => {
+    expect(await speedOnScreen(page)).toBe('x1');
+    await expect(page.getByTestId('desktop'))
+      .toHaveAttribute('data-takeover', 'meeting');
+  });
+
+  // Half an hour of real time at x4, which is what the block would have cost
+  // the player before this slice: seven and a half seconds.
+  await runRealMinutes(page, 30, 4);
+
+  await underPause(page, async () => {
+    await expect(page.getByTestId('desktop'))
+      .toHaveAttribute('data-takeover', 'meeting');
+    await expect(page.getByTestId('meeting-room')).toBeVisible();
+    // And the day did not stop for it either. Pause is a different question
+    // and the answer to it is still the player's.
+    expect(await speedOnScreen(page)).toBe('x1');
+  });
 });
