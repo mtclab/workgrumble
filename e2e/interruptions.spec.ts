@@ -341,6 +341,13 @@ test('a save taken in the meeting comes back in the meeting', async ({
   const before = await page.getByTestId('sim-clock-time').textContent();
   const beats = await page.getByTestId('meeting-room').getAttribute('data-beats');
 
+  // The meeting's arrival dropped the clock; putting it back up is the
+  // player's deliberate act, and the save is about to carry it. A load must
+  // restore the SAVED speed, not replay the arrival edge - re-firing the drop
+  // on load would quietly overrule a choice the player already made once.
+  await page.getByTestId('day-speed-4').click();
+  expect(await speedOnScreen(page)).toBe('x4');
+
   // Reachable FROM INSIDE the meeting, which is the point of the exemption:
   // the block takes the desk, not the workstation. A start menu nobody could
   // open for half an hour would be a dead end with a clock on it, and this
@@ -358,6 +365,8 @@ test('a save taken in the meeting comes back in the meeting', async ({
     .toHaveCount(1);
 
   await expect(page.getByTestId('sim-clock-time')).toHaveText(before ?? '');
+  // The re-up survived the reload: saved speed, no replayed arrival edge.
+  expect(await speedOnScreen(page)).toBe('x4');
   // Still in the room, at the same point in it, with the desk still
   // unreachable - which is the half a save file could most easily lose.
   await expect(page.getByTestId('desktop'))
