@@ -257,16 +257,26 @@ const ROTATED_SCREEN: DialogueTree = {
 const LOCKED_ACCOUNT: DialogueTree = {
   id: 'dialogue/payroll',
   speaker: COMPANY_IDS.gary,
-  tickets: ['ticket:locked-account', 'ticket:vpn-cert-dup-gary'],
+  tickets: [
+    'ticket:locked-account',
+    'ticket:vpn-cert-dup-gary',
+    'ticket:gary-restart',
+  ],
   root: 'complaint',
   roots: {
     'ticket:locked-account': 'complaint',
     'ticket:vpn-cert-dup-gary': 'remote',
+    'ticket:gary-restart': 'restart-chased',
   },
   resolved_roots: {
     'ticket:locked-account': 'after',
     'ticket:vpn-cert-dup-gary': 'remote-after',
+    'ticket:gary-restart': 'restart-done',
   },
+  // The walk-up. Nothing in this tree points at either of them: the day puts
+  // him at the desk and the window opens on whichever one the meters choose,
+  // exactly as a ringing phone does.
+  call_roots: ['at-the-desk', 'at-the-desk-shaky'],
   nodes: [
     {
       id: 'complaint',
@@ -399,6 +409,155 @@ const LOCKED_ACCOUNT: DialogueTree = {
         + 'stopped at nine.',
       options: [
         { label: 'Tell him nine is the correct number of tries' },
+      ],
+    },
+    /**
+     * The whole payload of the walk-up, in one node with three answers.
+     *
+     * He is not being unreasonable and he is not trying it on: this is a
+     * two-minute job, he is standing here, and raising a ticket for it feels
+     * to him like paperwork about paperwork. The player's three answers are
+     * all legitimate and they cost different things, which is the teaching:
+     *
+     * - doing it now is fastest, costs nothing today, and leaves no record
+     *   anywhere that it happened, so Friday's card cannot see it;
+     * - sending him to the form costs a small social beat and a ticket that
+     *   turns up with a clock on it, and it is the only version of this that
+     *   is worth anything at the review;
+     * - saying you will get to it is the third thing people actually do, and
+     *   the world treats it as the second, because he raises it anyway.
+     */
+    {
+      id: 'at-the-desk',
+      npc_line: 'Sorry - while you are here. That box about restarting has '
+        + 'been on my screen since I got back from my fortnight, and I keep '
+        + 'pressing the other one because payroll is open. Can you just do it '
+        + 'from your end? It is two minutes and I am at lunch at twelve.',
+      options: [
+        {
+          label: 'Restart it now, from here, and say nothing about it',
+          next: 'restart-grateful',
+          effects: [
+            {
+              action: HELPDESK_ACTIONS.machineReboot,
+              target: COMPANY_IDS.garyMachine,
+            },
+          ],
+        },
+        {
+          label: 'Ask him to raise it, and say what the ticket buys him',
+          next: 'restart-files',
+        },
+        { label: 'Say you will get to it, and mean it at the time' },
+      ],
+    },
+    {
+      // The same conversation, had by somebody whose hands are going. He is
+      // not slower and he is not kinder; the difference is that the shape of
+      // the ask is harder to hold on to, which is what the meters actually do.
+      id: 'at-the-desk-shaky',
+      npc_line: 'Sorry - while you are here - are you all right? You look '
+        + 'like I have caught you at something. It is only the restart box. '
+        + 'It has been up since I got back from my fortnight.',
+      options: [
+        {
+          label: 'Restart it now, from here, before you lose the thread',
+          next: 'restart-grateful',
+          effects: [
+            {
+              action: HELPDESK_ACTIONS.machineReboot,
+              target: COMPANY_IDS.garyMachine,
+            },
+          ],
+        },
+        {
+          label: 'Ask him to raise it, because you will forget otherwise',
+          next: 'restart-files',
+        },
+        { label: 'Say you will get to it, and mean it at the time' },
+      ],
+    },
+    {
+      id: 'restart-grateful',
+      npc_line: 'Oh, that is it? Marvellous. You are much better than the '
+        + 'last one. I shall not tell anybody you did it off the books, and by '
+        + 'that I mean I shall tell Payroll.',
+      options: [
+        { label: 'Get back to the queue, which has not moved' },
+      ],
+    },
+    {
+      id: 'restart-files',
+      npc_line: 'Raise a ticket. For a restart. Right - no, fine, I take the '
+        + 'point about there being a record. It is only that the form asks me '
+        + 'what the impact is, and the impact is that I am mildly annoyed.',
+      options: [
+        {
+          label: 'Tell her low impact is a real answer and the form means it',
+          next: 'restart-form',
+        },
+        { label: 'Agree that the form is like that, and leave it there' },
+      ],
+    },
+    {
+      id: 'restart-form',
+      npc_line: 'Low, then. I shall put low and I shall be brave about it. '
+        + 'Give me a minute, the form is in a folder somewhere.',
+      options: [
+        { label: 'Say that is exactly what the queue is for' },
+      ],
+    },
+    {
+      // She raised it, so this is her chasing it - which is the price of
+      // having done it properly, and it is a small price said out loud.
+      id: 'restart-chased',
+      npc_line: 'I raised it, as instructed. It is in your queue being a '
+        + 'ticket. I am told that is better, and I am prepared to believe it.',
+      options: [
+        {
+          label: 'Ask what the box on his screen actually says',
+          next: 'restart-the-box',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The prompt has been up since some point before my fortnight and '
+                + 'says the updates are already downloaded and waiting for a '
+                + 'restart. Nothing is failing; PAYROLL-04 is simply a '
+                + 'fortnight behind because the only thing that ever asks has '
+                + 'a Later button on it.',
+            },
+          ],
+        },
+        { label: 'Confirm it is in the queue and it is not forgotten' },
+        {
+          label: 'Restart it now while he is standing here',
+          next: 'restart-grateful',
+          effects: [
+            {
+              action: HELPDESK_ACTIONS.machineReboot,
+              target: COMPANY_IDS.garyMachine,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'restart-the-box',
+      npc_line: 'It says the updates have downloaded and it needs to restart '
+        + 'to finish. It has said that since last week. I have read it every '
+        + 'morning and pressed the other button every morning.',
+      options: [
+        { label: 'Go back to the top', next: 'restart-chased' },
+        { label: 'Say the other button is the one everybody presses' },
+      ],
+    },
+    {
+      id: 'restart-done',
+      npc_line: 'It went round and came back and everything is where I left '
+        + 'it. And there is a record of it, which I am told is the point, and '
+        + 'which I now slightly see.',
+      options: [
+        { label: 'Do not push the point any further than that' },
       ],
     },
   ],

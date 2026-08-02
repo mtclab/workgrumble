@@ -677,7 +677,51 @@ const SALES_NEW_STARTER: DialogueTree = {
     'ticket:mailbox-access': 'in',
     'ticket:sendas-missing': 'sent',
   },
+  // Two weeks in and doing it for the opposite reason to Owen: he has been
+  // told to be polite to the IT desk and this is what being polite looks like
+  // to somebody who has not yet learned what it costs the IT desk.
+  hello_root: 'hello',
   nodes: [
+    {
+      id: 'hello',
+      npc_line: 'Hi.',
+      options: [
+        { label: 'Ask what he needs', next: 'hello-question' },
+      ],
+    },
+    {
+      id: 'hello-question',
+      npc_line: 'Sorry - I did not want to just launch into it. Do we have a '
+        + 'way of sending something that is too big for mail? There is a '
+        + 'forty-meg presentation and it has bounced twice.',
+      options: [
+        {
+          label: 'Point him at the common share and tell him how big it holds',
+          next: 'hello-share',
+        },
+        {
+          label: 'Tell him the desk would rather be launched into',
+          next: 'hello-launched',
+        },
+      ],
+    },
+    {
+      id: 'hello-share',
+      npc_line: 'The share. Of course. I did not want to put it on the share '
+        + 'in case that was the wrong thing to do with the share.',
+      options: [
+        { label: 'Confirm that the share is for exactly this' },
+      ],
+    },
+    {
+      id: 'hello-launched',
+      npc_line: 'Really? Everybody keeps telling me not to be abrupt with '
+        + 'people. Right. Noted. Next time it is just the question.',
+      options: [
+        { label: 'Promise him nobody here will think he was abrupt' },
+        { label: 'Point him at the share as well', next: 'hello-share' },
+      ],
+    },
     {
       id: 'access',
       npc_line: 'Sorry to bother you. I am on the Sales mailbox rota from '
@@ -905,7 +949,54 @@ const LATE_SHIFT: DialogueTree = {
     'ticket:vacuum-tuesday': 'back-up',
     'ticket:vacuum-thursday': 'the-note',
   },
+  // Eleven years in the building and he still opens with a bare hello. That
+  // is the joke and it is the true one: knowing about the habit is not the
+  // same as not having it, which is why the man who sends you the page is the
+  // man doing the thing the page is about.
+  hello_root: 'hello',
   nodes: [
+    {
+      id: 'hello',
+      npc_line: 'Hi.',
+      options: [
+        { label: 'Ask what he needs', next: 'hello-question' },
+      ],
+    },
+    {
+      id: 'hello-question',
+      npc_line: 'Right - the despatch printer. Is that ticket still open or '
+        + 'has somebody done it? I only ask because the lorries go at six and '
+        + 'I would rather find out now than at six.',
+      options: [
+        {
+          label: 'Answer him, and ask why he did not just say that',
+          next: 'hello-why',
+        },
+        { label: 'Answer him and get back to the queue' },
+      ],
+    },
+    {
+      id: 'hello-why',
+      npc_line: 'Habit. You say hello, they say hello, then you ask. My '
+        + 'daughter sent me a website about it - nohello.invalid - and I read '
+        + 'the whole thing and agreed with every word and then did it again '
+        + 'the next morning.',
+      options: [
+        {
+          label: 'Say the site is bookmarked on the second monitor already',
+          next: 'hello-bookmarked',
+        },
+        { label: 'Let him off, because you do it as well' },
+      ],
+    },
+    {
+      id: 'hello-bookmarked',
+      npc_line: 'Then we are both aware of it. That is the useful stage, is '
+        + 'it not. Being aware of it.',
+      options: [
+        { label: 'Agree that awareness has changed nothing whatsoever' },
+      ],
+    },
     {
       id: 'tuesday',
       npc_line: 'The Ajax was dead when I opened up. Not jammed, not out of '
@@ -1146,10 +1237,83 @@ const MARKETING: DialogueTree = {
 const ACCOUNTS: DialogueTree = {
   id: 'dialogue/accounts',
   speaker: COMPANY_IDS.marcus,
-  tickets: ['ticket:coverup-backup'],
+  // The month-end request first, because it is the one he raises earlier in
+  // the week: `conversationFor` opens on the first of these that is live, and
+  // a man with a request in and a backup light on is a man who wants to talk
+  // about the request.
+  tickets: ['ticket:vpn-month-end', 'ticket:coverup-backup'],
   root: 'itself',
-  resolved_root: 'after',
+  roots: {
+    'ticket:vpn-month-end': 'month-end',
+    'ticket:coverup-backup': 'itself',
+  },
+  resolved_roots: {
+    'ticket:vpn-month-end': 'month-end-after',
+    'ticket:coverup-backup': 'after',
+  },
   nodes: [
+    {
+      /**
+       * Five to five, and he is still at his desk because he has just found
+       * out.
+       *
+       * The register is the whole point of the class: nobody is being
+       * unreasonable, the timing is not anybody's fault, and the thing that
+       * hurts is a clock that stops at five and starts again at nine.
+       */
+      id: 'month-end',
+      npc_line: 'I know what time it is. Month-end moved to tomorrow and I '
+        + 'am doing it from home, and I have just this minute found out that '
+        + 'the remote thing does not let me in.',
+      options: [
+        {
+          label: 'Ask whether he has ever worked from home before',
+          next: 'month-end-never',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'He has never worked from home, so his account has '
+                + 'never been in VPN Users. Nothing broke; nobody ever put '
+                + 'him in it, because until this week nobody needed to.',
+            },
+          ],
+        },
+        {
+          label: 'Ask what time he starts tomorrow',
+          next: 'month-end-half-eight',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell him it is in the queue with a clock on it' },
+      ],
+    },
+    {
+      id: 'month-end-never',
+      npc_line: 'Never. Twenty-six years and I have never once worked from '
+        + 'home. I am told this is now a thing people do and I am told it is '
+        + 'my turn.',
+      options: [
+        { label: 'Go back to the top', next: 'month-end' },
+        { label: 'Tell him that is the answer, and it is not a fault' },
+      ],
+    },
+    {
+      id: 'month-end-half-eight',
+      npc_line: 'Half eight. Which I appreciate is before you, and that is '
+        + 'exactly why I am standing here at five to five rather than ringing '
+        + 'you at half eight.',
+      options: [
+        { label: 'Go back to the top', next: 'month-end' },
+        { label: 'Concede that this is the considerate version of it' },
+      ],
+    },
+    {
+      id: 'month-end-after',
+      npc_line: 'I am in. From home. On a Thursday. I have told my wife and '
+        + 'she was not as impressed as I had hoped.',
+      options: [
+        { label: 'Congratulate him on entering the current decade' },
+      ],
+    },
     {
       id: 'itself',
       npc_line: 'The backup light has gone red. I have not touched anything. '

@@ -104,6 +104,11 @@ describe('shipped tickets', () => {
       // box since 1997.
       'ticket:saved-into-temp',
       'ticket:disk-full',
+      // And the two that come from people rather than from faults: a request
+      // raised five minutes before everybody goes home, and the restart that
+      // only exists because somebody was asked to raise it.
+      'ticket:vpn-month-end',
+      'ticket:gary-restart',
     ]);
   });
 

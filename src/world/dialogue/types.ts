@@ -134,5 +134,20 @@ export interface DialogueTree {
    * happened unreachable from the chat window.
    */
   readonly call_roots?: readonly string[];
+  /**
+   * Where a conversation opens when they have said "Hi." and nothing else.
+   *
+   * An entry point of its own rather than a reuse of `summoned_root`, because
+   * the two are different beats and a tree can carry both: being asked a
+   * favour is a message with the whole question in it, and this is a message
+   * with none of it. The node here says the greeting; its only option is the
+   * player asking what they want, and its `next` is the question they were
+   * going to get round to. Waiting gets the same node by the same road, several
+   * minutes later, which is the joke and the cost.
+   *
+   * Nothing in the tree points at it, so it stays unreachable from the chat
+   * window until the day drops the conversation on it.
+   */
+  readonly hello_root?: string;
   readonly nodes: readonly DialogueNode[];
 }

@@ -919,4 +919,91 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/power-cycle', 'kb/print-spooler'],
   },
+  {
+    id: 'kb/the-one-that-lands-at-five',
+    title: 'The request that arrives five minutes before you go home',
+    summary: 'It is not late tonight. It is late tomorrow morning, and the '
+      + 'clock says so in business minutes.',
+    state: 'published',
+    issue: 'A request lands at five to five with an hour on the response '
+      + 'clock. Nobody is here to do it and the queue looks like it is '
+      + 'already failing.',
+    environment: 'Any ticket raised inside the last hour of the shift, and '
+      + 'every clock this helpdesk keeps.',
+    resolution: [
+      'Read the deadline rather than the arrival. Both clocks on a ticket are '
+        + 'counted in working minutes, so five minutes of tonight plus '
+        + 'fifty-five of tomorrow is an hour, and the hour runs out at 09:55 '
+        + 'rather than at 17:55.',
+      'Decide whether it is genuinely tonight. Almost none of them are: the '
+        + 'test is whether somebody cannot work tomorrow morning, not whether '
+        + 'they said it was urgent at five to five.',
+      'If it is not, leave it, and leave it deliberately - untriaged, in the '
+        + 'queue, with the deadline the world gave it. A ticket carried '
+        + 'overnight is not a ticket ignored.',
+      'If it is, say so on the ticket before you go. A first line written '
+        + 'tonight stops the response clock tonight, and it is the only thing '
+        + 'you can do at five to five that is worth anything tomorrow.',
+      'Do it first thing. The whole of the risk in this class is that a '
+        + 'deadline sitting in the middle of tomorrow morning is a deadline '
+        + 'nobody looks at until tomorrow afternoon.',
+    ],
+    cause: [
+      'Service clocks count the hours somebody is at the desk, which is the '
+      + 'only honest way to count them: a target of one hour would otherwise '
+      + 'be missed by every ticket raised after four o\'clock, every day, '
+      + 'for reasons no helpdesk in the world has any control over. So the '
+      + 'minutes stop at seventeen hundred and start again at nine.',
+      'What that means in practice is that a request landing five minutes '
+      + 'before close carries almost all of its window into the next morning, '
+      + 'and the queue on a Thursday morning is quietly holding a Wednesday '
+      + 'deadline that runs out before most people have read their mail. It '
+      + 'is not a trick and it is not a punishment; it is the arithmetic '
+      + 'working exactly as it is written down.',
+      'The reason it feels like a trap is the person, not the clock. Somebody '
+      + 'raising a ticket at five to five has usually just found out about it '
+      + 'themselves, is about to leave, and will be back before you are - so '
+      + 'the ticket is read by them first thing and by you second thing, '
+      + 'which is the wrong way round and the whole of the problem.',
+    ],
+    see_also: ['kb/print-permissions'],
+  },
+  {
+    id: 'kb/the-restart-nobody-does',
+    title: 'It has been asking to restart since last week',
+    summary: 'Updates are staged until the machine goes round once. Nothing '
+      + 'else is wrong with it.',
+    state: 'published',
+    issue: 'A machine has been showing a restart prompt for days. The person '
+      + 'using it has been clicking Later since the prompt appeared.',
+    environment: 'Any workstation on the estate with staged updates, which is '
+      + 'most of them by the end of a month.',
+    resolution: [
+      'Check the machine actually has updates staged before you restart '
+        + 'anything. A prompt somebody half-remembers is not evidence, and a '
+        + 'restart that fixes nothing has still cost them their afternoon.',
+      'Ask when they are not in a call. This is the entire job on a sales '
+        + 'floor and it is not a courtesy: a machine restarted mid-call is a '
+        + 'ticket about you rather than about updates.',
+      'Restart it from Remote Assist. The staged updates finish on the way '
+        + 'back up and the prompt is gone.',
+      'Ask for a ticket if there was not one. It takes them a minute, it '
+        + 'takes you none, and it is the only record that the work happened '
+        + 'at all.',
+    ],
+    cause: [
+      'Updates on this estate are staged rather than applied: they download, '
+      + 'they sit, and they wait for the machine to go round once, because '
+      + 'applying them live to a machine somebody is working on is how you '
+      + 'take a floor out at half past two. The prompt is the only thing that '
+      + 'ever asks, and it asks in a dialog with a Later button on it.',
+      'Later is a perfectly rational answer for a person whose day is made of '
+      + 'calls, and it is the right answer several days running, which is how '
+      + 'a machine ends up a week behind with a prompt it has stopped being '
+      + 'able to see. Nothing is broken and nothing will break; the machine '
+      + 'is simply carrying a set of updates that will apply the moment '
+      + 'anybody lets it.',
+    ],
+    see_also: ['kb/power-cycle'],
+  },
 ];

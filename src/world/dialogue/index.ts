@@ -104,6 +104,31 @@ export function validateDialogueTrees(
       );
     }
 
+    if (tree.hello_root !== undefined && !nodeIds.has(tree.hello_root)) {
+      throw new Error(
+        `Tree "${tree.id}" opens a bare hello on "${tree.hello_root}", which `
+        + 'it has no node for.',
+      );
+    }
+
+    // A greeting with the question already in it is not the beat. The node the
+    // day drops somebody on has to lead SOMEWHERE, and the option on it is the
+    // player asking what they want - so a hello root whose only option ends
+    // the conversation is a person who said hi and left, which reads in play
+    // as a chat window that did nothing.
+    if (
+      tree.hello_root !== undefined
+      && !(dialogueNode(tree, tree.hello_root)?.options ?? []).some(
+        (option) => option.next !== undefined,
+      )
+    ) {
+      throw new Error(
+        `Tree "${tree.id}" opens a bare hello on "${tree.hello_root}" and it `
+        + 'leads nowhere. The greeting is the half without the question in '
+        + 'it; something has to be on the other side of asking.',
+      );
+    }
+
     for (const landing of tree.call_roots ?? []) {
       if (!nodeIds.has(landing)) {
         throw new Error(
@@ -258,6 +283,10 @@ function assertEveryNodeReachable(tree: Readonly<DialogueTree>): void {
   // And the same for the nodes a ringing phone opens on. The day's schedule
   // reaches them; nothing in the tree does, which is the point.
   queue.push(...tree.call_roots ?? []);
+
+  if (tree.hello_root !== undefined) {
+    queue.push(tree.hello_root);
+  }
 
   while (queue.length > 0) {
     const id = queue.pop();
