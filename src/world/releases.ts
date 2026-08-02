@@ -31,6 +31,36 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.3.1',
+    date: '2026-08-02',
+    summary: 'This update improves the delivery of updates.',
+    lines: Object.freeze([
+      'Your workstation now receives updates. Updates are important. When '
+        + 'updates are ready, your workstation will tell you it is restarting '
+        + 'in ten minutes, and those ten minutes are yours: the button '
+        + 'postpones it, three times, for less time each time, which IT '
+        + 'consider generous and the update considers negotiable. There is no '
+        + 'button for not restarting. That option was withdrawn, and the '
+        + 'dialog will explain whose fault that is (yours).',
+      'While updates are installing, your workstation is not available. Your '
+        + 'queue is. Every clock on it continues, which colleagues have '
+        + 'described as unfair, and which Personnel have confirmed is '
+        + 'accurate.',
+      'Your work is restored after the restart. All of it, exactly as it '
+        + 'was, every time. The screen will nevertheless say "Restoring your '
+        + 'work... (most of it)", because the engineers who wrote that screen '
+        + 'had lived a life before they came here, and nobody in this '
+        + 'building has ever trusted a progress bar that told the whole '
+        + 'truth.',
+      'The percentage shown while installing is not connected to anything. '
+        + 'The MINUTES are real - the percentage is a performance of them. It '
+        + 'will hang at thirty for a while. This was specified.',
+      'This update was itself delivered by the mechanism it describes. If '
+        + 'you are reading this, the restart went fine, and your work came '
+        + 'back. All of it. Whatever the screen said.',
+    ]),
+  },
+  {
     version: '0.3.0',
     date: '2026-08-02',
     summary: 'This update adds interruptions.',
