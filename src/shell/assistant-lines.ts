@@ -36,6 +36,7 @@
  * watching the load go red.
  */
 
+import { CALL_CONTROL_LABELS } from './apps/call';
 import { COMMANDS } from './apps/cmd-parse';
 import { COVERAGE, type CoverageEntry } from './coverage';
 import { WORLD_KB } from '../world/kb';
@@ -136,20 +137,101 @@ const STOPWORDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * A string as the words that matter in it.
+ * Every root a word could be, by trimming one common inflection off it.
+ *
+ * Deliberately light and deliberately PLURAL: it offers the word itself plus a
+ * candidate for each ending this game's fix vocabulary inflects with, because
+ * "frees" is "free" under -s and "fre" under -es and only the table below
+ * knows which one is a verb. Nothing here decides anything - the candidates are
+ * only ever LOOKED UP - so an extra wrong candidate costs nothing and a missing
+ * right one is the only failure, which is why it errs towards offering more.
+ * It never folds a bare "e" or a doubled consonant, so "note" and "closes" are
+ * left as themselves and the returning lines keep the words the gag is made of.
+ */
+function stemCandidates(word: string): readonly string[] {
+  const candidates = [word];
+
+  for (const suffix of ['ing', 'ed', 'es', 's']) {
+    if (word.length > suffix.length + 2 && word.endsWith(suffix)) {
+      candidates.push(word.slice(0, -suffix.length));
+    }
+  }
+
+  return candidates;
+}
+
+/**
+ * The mechanical verbs, folded to one form each - inflections AND synonyms.
+ *
+ * The one curated table in the matcher, and the reason it is curated rather
+ * than derived: no registry says "reboot" and "restart" are the same repair,
+ * or that "delay" is what a player means by "postpone". Every KEY is a verb or
+ * a light stem of one; every VALUE is the token the gate reasons in. A word
+ * that is NOT in here passes through untouched, which is what keeps the folding
+ * off ordinary nouns - "machine", "note", "password" are their own canonical
+ * form and collide with nothing.
+ *
+ * It is pinned by a test that enumerates the pairs (postpone/postponing/
+ * delayed all reach "postpon"), so a missing inflection is a red rather than a
+ * silent gap.
+ */
+const VERB_CANON: Readonly<Record<string, string>> = {
+  // reboot === restart
+  reboot: 'restart', restart: 'restart',
+  // empty === clear
+  clear: 'clear', empty: 'clear', empti: 'clear', clearqueue: 'clear',
+  // postpone === delay === defer === snooze
+  postpone: 'postpon', postpon: 'postpon',
+  delay: 'postpon', defer: 'postpon', deferr: 'postpon',
+  snooze: 'postpon', snooz: 'postpon',
+  // free === unjam
+  free: 'free', unjam: 'free', unjamm: 'free',
+  // and the verbs with no synonym, listed so their inflections still fold
+  unlock: 'unlock', reseat: 'reseat', drink: 'drink',
+  reset: 'reset', resett: 'reset',
+  answer: 'answer', decline: 'decline', tidy: 'tidy',
+  rotate: 'rotate', rotat: 'rotate',
+};
+
+/**
+ * A token folded to the one form the gate reasons about.
+ *
+ * Every candidate stem is offered to the verb table and the first the table
+ * knows wins; anything it does not know is returned exactly as it came in.
+ */
+export function canonical(token: string): string {
+  for (const candidate of stemCandidates(token)) {
+    const known = VERB_CANON[candidate];
+
+    if (known !== undefined) {
+      return known;
+    }
+  }
+
+  return token;
+}
+
+/**
+ * A string as the words that matter in it, each folded to its canonical form.
  *
  * Folded to lower case and split on everything that is not a letter or a
  * digit, so `PRINT-01` is `print` and `01`, and `"rotate <host> 0"` is
- * `rotate` and `host`. Anything under three characters goes with the
- * stopwords: two-letter tokens are noise in prose and the fixes that need
- * them (`sc`, `cd`) always carry a longer word beside them.
+ * `rotate` and `host`. Stopwords go on the raw token, then the survivors are
+ * canonicalised (stem + synonym) so "rebooting" and "restart" arrive as one
+ * word. Anything whose canonical form is under three characters is dropped:
+ * two-letter tokens are noise in prose and the fixes that need them (`sc`,
+ * `cd`) always carry a longer word beside them.
  */
 export function significantWords(text: string): ReadonlySet<string> {
   const words = new Set<string>();
 
-  for (const token of text.toLowerCase().split(/[^a-z0-9]+/u)) {
-    if (token.length >= 3 && !STOPWORDS.has(token)) {
-      words.add(token);
+  for (const raw of text.toLowerCase().split(/[^a-z0-9]+/u)) {
+    if (raw.length >= 3 && !STOPWORDS.has(raw)) {
+      const token = canonical(raw);
+
+      if (token.length >= 3) {
+        words.add(token);
+      }
     }
   }
 
@@ -261,19 +343,48 @@ const SITUATION_CONTROLS: Readonly<
   reboot: ['reboot.'],
   dnd: ['desktop.presence'],
   stress: ['desk.'],
-  // The tools a ticket is actually fixed with, on top of the ticket fixes
-  // every situation carries.
-  ticket: ['tickets.', 'directory.', 'remote.', 'cmd.', 'kb.'],
+  // Every control that RESOLVES a ticket, on top of the ticket fixes every
+  // situation carries: the five tools, and the one fix that hides in the
+  // About box - the fan reseat, whose control the tool prefixes miss and whose
+  // omission let "Reseat it" through. It is named exactly rather than by an
+  // `about.` prefix, which would also drag in Refresh and the bubble toy and
+  // ban a line for saying "run" or "fan".
+  ticket: [
+    'tickets.', 'directory.', 'remote.', 'cmd.', 'kb.', 'about.reseat-fan',
+  ],
 };
+
+/**
+ * Which situations a line's situation can stand IN FRONT OF, and must
+ * therefore not name the fixes of.
+ *
+ * `after` takes the desk back and is chosen ahead of the dot, the shakes and
+ * the queue (`situationOf`), so an `after` line could be on screen while any of
+ * those is the real state - and a line saying "Drink" over trembling hands
+ * would be a fix. `returning` can arrive over ANY situation, because it fires
+ * the moment the character is readmitted whatever is happening. Both therefore
+ * inherit the union of the corpora they can mask, rather than having none of
+ * their own.
+ */
+const SITUATION_MASKS: Readonly<
+  Partial<Record<AssistantSituation, readonly AssistantSituation[]>>
+> = {
+  after: ['dnd', 'stress', 'ticket'],
+  returning: ['call', 'reboot', 'dnd', 'stress', 'ticket'],
+};
+
+function situationPrefixes(situation: AssistantSituation): readonly string[] {
+  const masked = SITUATION_MASKS[situation];
+
+  return masked === undefined
+    ? SITUATION_CONTROLS[situation] ?? []
+    : masked.flatMap((base) => SITUATION_CONTROLS[base] ?? []);
+}
 
 function situationEntries(
   situation: AssistantSituation,
 ): readonly CoverageEntry[] {
-  const prefixes = situation === 'returning'
-    // The strictest bucket: a line that can arrive over anything is checked
-    // against everything.
-    ? Object.values(SITUATION_CONTROLS).flat()
-    : SITUATION_CONTROLS[situation] ?? [];
+  const prefixes = situationPrefixes(situation);
 
   return COVERAGE.filter(
     (entry) => prefixes.some((prefix) => entry.id.startsWith(prefix)),
@@ -314,7 +425,13 @@ export function situationVerbs(
     for (const token of entry.control.match(/[a-z][a-z0-9]*(?:-[a-z0-9]+)+/gu) ?? []) {
       for (const segment of token.split('-').slice(1)) {
         if (segment.length >= 3 && !STOPWORDS.has(segment)) {
-          verbs.add(segment);
+          // Canonical, like everything the line is compared against, so
+          // "reboot-restart" and a line saying "reboot" arrive as one verb.
+          const verb = canonical(segment);
+
+          if (verb.length >= 3) {
+            verbs.add(verb);
+          }
         }
       }
     }
@@ -360,6 +477,18 @@ export const LEAK_WORDS = 2;
 /** And how long a run of them may be quoted verbatim before it is a copy. */
 export const LEAK_RUN = 3;
 
+/**
+ * How many RAW words a quoted control label must carry to count.
+ *
+ * The word and quote rules above drop stopwords, so a label made entirely of
+ * them - "Do it now", "Say not now" - slips through: nothing significant is
+ * left to share. This rule reads the label as it is WRITTEN, stopwords and
+ * all, and three words of one is a quote of a button. Three because that is
+ * the length of the shortest all-stopword fix labels the game actually ships;
+ * two would start catching ordinary English ("look up", "on the phone").
+ */
+export const LEAK_LABEL_WORDS = 3;
+
 export interface AssistantLeak {
   readonly fix: RealFix;
   /** The words the line and the fix have in common, sorted. */
@@ -374,10 +503,117 @@ function sorted(words: Iterable<string>): readonly string[] {
 
 /** The significant words of a string IN ORDER, which is what a run needs. */
 function wordRun(text: string): readonly string[] {
-  return text
-    .toLowerCase()
-    .split(/[^a-z0-9]+/u)
-    .filter((token) => token.length >= 3 && !STOPWORDS.has(token));
+  const run: string[] = [];
+
+  for (const raw of text.toLowerCase().split(/[^a-z0-9]+/u)) {
+    if (raw.length >= 3 && !STOPWORDS.has(raw)) {
+      const token = canonical(raw);
+
+      if (token.length >= 3) {
+        run.push(token);
+      }
+    }
+  }
+
+  return run;
+}
+
+/**
+ * A string as its raw words, in order, KEEPING the stopwords.
+ *
+ * The one place stopwords are not thrown away, because the labels this feeds
+ * are made of them. "Do it now" is three raw words; drop the stopwords and it
+ * is nothing.
+ */
+function rawWords(text: string): readonly string[] {
+  return text.toLowerCase().split(/[^a-z0-9]+/u).filter(
+    (token) => token.length > 0,
+  );
+}
+
+/**
+ * The imperative a control or path advertises: the first clause of its label.
+ *
+ * A path label is a sentence - "Do it now, while she is on the line, and get
+ * on with the queue" - and what a player quotes off it is the instruction at
+ * the front. So the corpus is the label up to its first break, which is where
+ * the instruction ends and the justification starts.
+ */
+function leadingClause(label: string): readonly string[] {
+  const [head] = label.split(/[,:;.\-–—]/u);
+  return rawWords(head ?? '');
+}
+
+/**
+ * Every control the player could QUOTE to name a fix for this situation, as
+ * the raw words of its imperative.
+ *
+ * Path labels and knowledge-base steps are fixes in every situation, so they
+ * are global; the choice-grammar buttons ("Answer", "Say not now") are fixes
+ * only where a call or a person at the desk is the thing on screen, and a
+ * returning line can arrive over one. The clauses are cached with the fixes.
+ */
+const LABEL_CLAUSES = new Map<AssistantSituation, readonly (readonly string[])[]>();
+
+function labelClausesFor(
+  situation: AssistantSituation,
+): readonly (readonly string[])[] {
+  const known = LABEL_CLAUSES.get(situation);
+
+  if (known !== undefined) {
+    return known;
+  }
+
+  const clauses: (readonly string[])[] = [];
+
+  for (const ticket of WORLD_TICKETS) {
+    for (const path of ticket.paths) {
+      clauses.push(leadingClause(path.label));
+    }
+  }
+
+  for (const article of WORLD_KB) {
+    for (const step of article.resolution) {
+      clauses.push(leadingClause(step));
+    }
+  }
+
+  // A phone or a body at the desk: the situation itself, and the note that can
+  // come back over one.
+  if (situation === 'call' || situation === 'returning') {
+    for (const label of CALL_CONTROL_LABELS) {
+      clauses.push(leadingClause(label));
+    }
+  }
+
+  const kept = Object.freeze(
+    clauses.filter((clause) => clause.length >= LEAK_LABEL_WORDS),
+  );
+  LABEL_CLAUSES.set(situation, kept);
+  return kept;
+}
+
+/**
+ * A control label quoted contiguously inside a line, stopwords and all.
+ *
+ * The line's raw words are scanned for the label's leading clause as a
+ * contiguous run. It is the rule that catches the all-stopword fixes the other
+ * three miss - and it is why the label corpus is the shell's real button text
+ * rather than a copy of it.
+ */
+function quotedLabel(
+  lineWords: readonly string[],
+  situation: AssistantSituation,
+): readonly string[] | null {
+  for (const clause of labelClausesFor(situation)) {
+    for (let at = 0; at + clause.length <= lineWords.length; at += 1) {
+      if (clause.every((word, offset) => lineWords[at + offset] === word)) {
+        return clause;
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -423,7 +659,13 @@ function quotedRun(
  *    "a phone, a mapped drive, a machine in a cupboard" does not make every
  *    joke about a ringing telephone a hint.
  * 3. THE QUOTE. The line repeats three of a fix's words in a row, whatever
- *    they are. Nothing gets to paraphrase the manual.
+ *    they are (`quotedRun`) - nothing gets to paraphrase the manual - and,
+ *    keeping the stopwords this time, three raw words of a control's own
+ *    label in a row (`quotedLabel`), which is what catches an all-stopword
+ *    instruction like "Do it now" that has nothing significant to share.
+ *
+ * Everything is folded to its canonical form first (`canonical`), so an
+ * inflection or a synonym of a banned verb is the banned verb.
  */
 export function assistantLeak(
   text: string,
@@ -438,6 +680,18 @@ export function assistantLeak(
     return {
       fix: fix(`a control for the "${situation}" situation`, verbs.join(', ')),
       shared: sorted(verbs),
+    };
+  }
+
+  const quotedControl = quotedLabel(rawWords(text), situation);
+
+  if (quotedControl !== null) {
+    return {
+      fix: fix(
+        `a control label for the "${situation}" situation`,
+        quotedControl.join(' '),
+      ),
+      shared: sorted(quotedControl),
     };
   }
 
@@ -559,7 +813,7 @@ export const ASSISTANT_LINES: readonly AssistantLine[] = validateAssistantLines(
     id: 'after.missed',
     situation: 'after',
     text: 'You have missed absolutely nothing, apart from everything that '
-      + 'happened while you were away.',
+      + 'happened while your back was turned.',
   },
   {
     id: 'after.thread',

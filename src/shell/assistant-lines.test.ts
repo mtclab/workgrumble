@@ -5,6 +5,7 @@ import {
   ASSISTANT_SITUATIONS,
   type AssistantLine,
   assistantLeak,
+  canonical,
   LEAK_RUN,
   LEAK_WORDS,
   linesFor,
@@ -100,6 +101,58 @@ describe('the banned-hint gate', () => {
     }
   });
 
+  it('catches an inflected or synonymous verb, not just the exact token', () => {
+    // P1-1: the verb rule read exact tokens, so "Delay it" dodged the ban on
+    // "postpone" and "reboot the machine" dodged the ban on "restart". Both
+    // now fold to the canonical verb and both are caught.
+    for (const [situation, text] of [
+      ['reboot', 'Delay it a bit longer, go on.'],
+      ['reboot', 'Try postponing it. That always helps.'],
+      ['ticket', 'Just reboot the whole machine, that fixes everything.'],
+    ] as const) {
+      expect(
+        assistantLeak(text, situation),
+        `"${text}" dodged the verb ban`,
+      ).not.toBeNull();
+    }
+  });
+
+  it('catches an all-stopword control label quoted verbatim', () => {
+    // P1-2: "Do it now" is a real path label and "Say not now" is the walk-up
+    // control, both made entirely of stopwords - so nothing significant was
+    // left to share and both passed clean. The raw-label rule catches them.
+    for (const [situation, text] of [
+      ['ticket', 'Do it now, I would!'],
+      ['returning', 'Say not now, that is what I would say.'],
+    ] as const) {
+      expect(
+        assistantLeak(text, situation),
+        `"${text}" quoted a control and passed`,
+      ).not.toBeNull();
+    }
+  });
+
+  it('catches a short knowledge-base directive quoted verbatim', () => {
+    // P1-3: "Free the blade" is a two-verb KB directive, neither word
+    // mechanical, so it beat both the vocabulary and the three-word quote
+    // rules. As a quoted control-grammar label it is a leak.
+    expect(assistantLeak('Free the blade, whatever that means!', 'ticket'))
+      .not.toBeNull();
+  });
+
+  it('bans the fixes of every situation an "after" line can stand in front of', () => {
+    // P1-4: `after` takes the desk back ahead of the dot, the shakes and the
+    // queue, so a line shown then could be over any of them - and it must not
+    // name their fixes. "Reseat it" (the About-box fan fix, which the ticket
+    // corpus used to omit) and "Drink" (the can, a fix for the shakes it now
+    // masks) are both caught.
+    expect(assistantLeak('Reseat it, that usually does it.', 'ticket'))
+      .not.toBeNull();
+    expect(assistantLeak('Reseat it, honestly.', 'after')).not.toBeNull();
+    expect(assistantLeak('Have a drink, you have earned it.', 'after'))
+      .not.toBeNull();
+  });
+
   it('refuses a line that quotes a published fix, whatever the words are', () => {
     // The copy rule. "money", "steady" and "hands" are not mechanical verbs -
     // no command, path or action uses them - so nothing about the vocabulary
@@ -122,11 +175,57 @@ describe('the banned-hint gate', () => {
     )).toBeNull();
   });
 
-  it('matches whole words, so a longer word is not the fix', () => {
-    // "reset" is a fix. "resetting" is somebody describing their morning.
-    expect(significantWords('Resetting, unlocking, restarting'))
-      .not.toContain('reset');
+  it('folds every inflection and synonym of a mechanical verb to one token', () => {
+    // The stemmer/synonym table, pinned by the pairs rather than by a claim
+    // about English. Each row is a set of words that must arrive as one.
+    const classes: readonly (readonly string[])[] = [
+      ['postpone', 'postpones', 'postponing', 'postponed', 'delay', 'delayed',
+        'defer', 'deferring', 'snooze', 'snoozing'],
+      ['restart', 'restarting', 'restarted', 'reboot', 'rebooting', 'reboots'],
+      ['clear', 'clearing', 'clears', 'empty', 'emptying', 'empties',
+        'clearqueue'],
+      ['reset', 'resetting', 'resets'],
+      ['free', 'freeing', 'frees', 'unjam', 'unjamming'],
+      ['unlock', 'unlocking', 'unlocked'],
+      ['reseat', 'reseating', 'reseated'],
+      ['drink', 'drinking', 'drinks'],
+    ];
+
+    for (const variants of classes) {
+      const folded = new Set(variants.map((word) => canonical(word)));
+
+      expect(folded.size, `[${variants.join(', ')}] did not fold to one`)
+        .toBe(1);
+    }
+
+    // And a word the table does not know is its own canonical form.
+    expect(canonical('machine')).toBe('machine');
+    expect(canonical('note')).toBe('note');
+    expect(canonical('password')).toBe('password');
+  });
+
+  it('folds a verb to its stem so a conjugation cannot dodge the ban', () => {
+    // The inflections of a mechanical verb all read as the one verb: you do
+    // not get to say "postponing" over a reboot and call it comment.
+    const stems = significantWords('Resetting, unlocking, restarting');
+
+    expect(stems).toContain('reset');
+    expect(stems).toContain('unlock');
+    expect(stems).toContain('restart');
     expect(significantWords('reset the password')).toContain('reset');
+    // Synonyms of a mechanical verb reach the same token.
+    expect(significantWords('reboot it')).toContain('restart');
+    expect(significantWords('delay it')).toContain('postpon');
+  });
+
+  it('leaves an ordinary word alone, so the folding is not a blunt instrument', () => {
+    // The verb table is the ONLY thing that folds. A noun is its own canonical
+    // form and collides with nothing - which is what keeps the returning lines,
+    // made of "note" and "closed", from reading as fixes.
+    expect(significantWords('note')).toContain('note');
+    expect(significantWords('note')).not.toContain('not');
+    expect(significantWords('machines')).not.toContain('machine');
+    expect(significantWords('closed the door')).toContain('closed');
   });
 
   it('derives its fixes from the registries rather than a hand-written list', () => {

@@ -84,6 +84,25 @@ function registerFor(source: InterruptionSource): CallRegister {
 }
 
 /**
+ * The words on the three choice-grammar buttons, both registers of them.
+ *
+ * Exported for one reader and it is not this window: the Assistant's banned-hint
+ * gate bans a line that quotes a control that would resolve what is on screen,
+ * and "Say not now" is that control for a walk-up as surely as `decline` is.
+ * The verb sits in the test id; the human words are only here, so the gate
+ * reads them from the one place they are authored rather than keeping a copy
+ * that would drift the first time a button is renamed.
+ */
+export const CALL_CONTROL_LABELS: readonly string[] = Object.freeze([
+  RINGING.answer,
+  RINGING.defer,
+  RINGING.decline,
+  AT_THE_DESK.answer,
+  AT_THE_DESK.defer,
+  AT_THE_DESK.decline,
+]);
+
+/**
  * The phone ringing, and the person at your desk.
  *
  * It is built on the chat machinery on purpose and reuses it literally: the
