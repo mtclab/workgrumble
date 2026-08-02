@@ -15,9 +15,11 @@ import {
   type WeekCarry,
 } from '../world/session';
 import { spawnWorldTicket } from '../world/tickets';
+import { noHelloOn } from '../world/week';
+import { shiftStartTick } from '../world/day';
 import { acknowledgeCarry, carryFrom, RetrySlot } from './retry';
 import { AppStateStore } from './app-state';
-import { DayDriver } from './day-driver';
+import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
 import {
   createShellSession,
   OLDEST_READABLE_SCHEMA,
@@ -122,6 +124,21 @@ function session(
   };
 }
 
+/**
+ * Runs a session's clock to a tick, a minute at a time.
+ *
+ * A minute at a time rather than in hours, because everything this is used for
+ * is a beat with a window on it: a step of sixty minutes lands past every one
+ * of them and reports a world in which nothing ever happened.
+ */
+function runTo(live: Session, tick: number): void {
+  live.driver.setSpeed(1);
+
+  while (live.engine.now() < tick && live.driver.state() !== 'day_end') {
+    live.driver.step(TICK_INTERVAL_MS);
+  }
+}
+
 /** Half a day's work: a shift started, a ticket closed, some reading done. */
 function workUntilMidday(live: Session): void {
   live.driver.startShift();
@@ -198,6 +215,59 @@ describe('the save file', () => {
     loaded.driver.setPaused(false);
     loaded.driver.step(60_000);
     expect(loaded.engine.now()).toBe(tick + 120);
+  });
+
+  /**
+   * A save taken while somebody is still typing, and a load that comes back
+   * into the middle of it.
+   *
+   * The typing indicator is the one surface in this game with NO stored state
+   * behind it: `day.typing()` is arithmetic on the week's own table and the
+   * clock, which is the whole safety claim for deriving it rather than
+   * remembering it. That claim is cheap to make and easy to be wrong about -
+   * the obvious implementation is a countdown somebody starts, and a countdown
+   * somebody starts is a countdown a reload restarts, resets or loses.
+   *
+   * So it is walked: stop mid-greeting with minutes still owed, save, load
+   * into a session that has never had a Monday, and ask again. Same minutes
+   * left, same line, on a driver that was built five seconds ago and has been
+   * told nothing about anybody's chat window.
+   */
+  it('comes back into the middle of somebody still typing', () => {
+    const live = session();
+    live.driver.startShift();
+
+    // Monday's greeting, and one minute into the wait: `noHelloOn` is the
+    // week's own table rather than a number typed here, so a row that moves
+    // moves this with it.
+    const slot = noHelloOn(1)[0];
+    expect(slot).toBeDefined();
+
+    const said = shiftStartTick(1) + ((slot?.minute ?? 0) - 9 * 60);
+    runTo(live, said + 1);
+
+    const waiting = live.driver.typing(slot?.speaker ?? '');
+    expect(waiting).not.toBeNull();
+    expect(waiting?.minutesLeft).toBe((slot?.typingMinutes ?? 0) - 1);
+
+    live.driver.setPaused(true);
+    expect(live.session.save()).toEqual({ ok: true, value: undefined });
+
+    const loaded = session(live.storage);
+    // Nobody is typing at a session that has not started a shift, which is
+    // what makes the assertion after the load a claim about the load.
+    expect(loaded.driver.typing(slot?.speaker ?? '')).toBeNull();
+    expect(loaded.session.load()).toEqual({ ok: true, value: undefined });
+
+    expect(loaded.engine.now()).toBe(live.engine.now());
+    expect(loaded.driver.typing(slot?.speaker ?? '')).toEqual(waiting);
+
+    // And it carries on counting from there rather than starting again: one
+    // more minute is one fewer owed, on the restored session.
+    loaded.driver.setPaused(false);
+    runTo(loaded, said + 2);
+    expect(loaded.driver.typing(slot?.speaker ?? '')?.minutesLeft)
+      .toBe((slot?.typingMinutes ?? 0) - 2);
   });
 
   /**
