@@ -1928,31 +1928,61 @@ export class DayDriver implements DayApi {
   }
 
   /**
+   * Where a walk-up STOOD, whatever was then decided about it.
+   *
+   * It is deliberately not `liveInterruptions`, and that is a fix rather than
+   * a preference: the live list drops everything in the declined ledger, so a
+   * player who said "not now" made the entry vanish, the settlement below
+   * never found an end tick, and the ticket was never raised at all. Declining
+   * was therefore strictly cheaper than every other answer - cheaper than
+   * doing the job, cheaper than sending them to the form, and cheaper even
+   * than ignoring them, which files correctly - which is an exploit rather
+   * than a choice, in the one beat of this slice that is entirely about the
+   * choice being real.
+   *
+   * So the placement is asked with this entry's decline taken back out of the
+   * ledger: where would it be if nobody had waved it off. Everything else the
+   * ledger holds - the pushes, the slides, the OTHER entries' decisions -
+   * stays exactly as it is, because those genuinely move the day.
+   */
+  private walkUpStood(id: string): InterruptionEntry | null {
+    const ledger = this.interruptionLedger();
+
+    return placeInterruptions(
+      this.interruptions_,
+      this.interruptionsBlocked_,
+      {
+        ...ledger,
+        declined: ledger.declined.filter((declined) => declined !== id),
+      },
+    ).find((entry) => entry.id === id) ?? null;
+  }
+
+  /**
    * Somebody who came to the desk instead of raising one, and the ticket they
    * raise when the job does not get done.
    *
    * The same beat as the message above, standing up, and settled by the same
    * rule for the same reason: the question is whether the WORLD shows the
-   * favour was done, not which button was pressed. Restarting her machine from
+   * favour was done, not which button was pressed. Restarting his machine from
    * Remote Assist an hour later counts; saying you will get to it and not
-   * getting to it does not; and ignoring somebody standing at your desk is not
-   * a way of making the job go away, which is exactly what makes both answers
-   * legitimate and only one of them credited.
+   * getting to it does not; being told not now does not; and ignoring somebody
+   * standing at your desk is not a way of making the job go away either. That
+   * is what makes every answer legitimate and exactly one of them credited.
    *
    * The minutes are read off the PLACED entry rather than off the authored
    * row, and that is not tidiness: a walk-up slides out of the lead's way and
-   * can be pushed twenty minutes, so the minute she walks away is a fact about
-   * the day rather than about the table. A ticket that arrived while she was
+   * can be pushed twenty minutes, so the minute he walks away is a fact about
+   * the day rather than about the table. A ticket that arrived while he was
    * still standing there would be a conversation that decided nothing.
    */
   private settleWalkUps(after: number, now: number): void {
     const day = this.day();
-    const live = this.liveInterruptions();
 
     for (const walkUp of walkUpsOn(day)) {
-      const entry = live.find((candidate) => candidate.id === walkUp.slot.id);
+      const entry = this.walkUpStood(walkUp.slot.id);
 
-      if (entry === undefined) {
+      if (entry === null) {
         continue;
       }
 
@@ -1967,15 +1997,30 @@ export class DayDriver implements DayApi {
         walkUp.doneWhen.field,
       );
 
-      // Done for her, off the books, since she asked: there is nothing left to
+      // Done for him, off the books, since he asked: there is nothing left to
       // raise and nothing on the scorecard either, which IS the trade rather
       // than an oversight.
       if (typeof done === 'number' && done >= entry.tick) {
         continue;
       }
 
-      if (this.engine.graph.getNode(walkUp.raises) === undefined) {
-        spawnWorldTicket(this.engine, walkUp.raises);
+      if (this.engine.graph.getNode(walkUp.raises) !== undefined) {
+        continue;
+      }
+
+      spawnWorldTicket(this.engine, walkUp.raises);
+
+      // The one authored variant this beat gets, and it is spent on the answer
+      // that used to be free. Being told not now is not being told no: he goes
+      // back to his desk and raises it himself, and the sentence says who did
+      // the raising rather than pretending the queue produced it.
+      if (this.hasDecided(FIELDS.interruptionDeclined, walkUp.slot.id)) {
+        this.handlers.onNotice?.(
+          'They raised it themselves',
+          'You said not now, and "not now" is not "no". It is in the queue '
+          + 'with their name on it, a clock on it, and a subject line that '
+          + 'mentions what time they came over.',
+        );
       }
     }
   }

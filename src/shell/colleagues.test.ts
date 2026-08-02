@@ -275,6 +275,59 @@ describe('somebody at the desk', () => {
   });
 
   /**
+   * TOLD NOT NOW: he goes away and files it himself.
+   *
+   * This is the answer that used to be free, and it was free in the worst
+   * possible way: declining put the entry in the declined ledger, the ledger
+   * is what `liveInterruptions` filters on, and a settlement reading the live
+   * list therefore never found a walk-up to settle. No conversation, no
+   * favour, no ticket, no cost - strictly cheaper than doing the job, than
+   * sending him to the form, and even than ignoring him, which files
+   * correctly. In the one beat of this slice that is entirely about a choice
+   * being real, "not now" was the dominant strategy.
+   *
+   * "Not now" is not "no". He is a colleague with a machine that has been
+   * asking since before his fortnight, and the queue is exactly where the
+   * world tells people to put things like that.
+   */
+  it('files it himself when he is told not now', () => {
+    const { driver, session } = harnessOn(WALK_UP_DAY);
+    const at = walkUpEntry(session);
+    const walkUp = walkUpsOn(WALK_UP_DAY)[0];
+
+    runTo(driver, session, at.tick);
+    const before = weekWorkThrough(
+      session.engine.graph.nodesOfKind('ticket'),
+      WALK_UP_DAY,
+    );
+
+    // The world takes it: a person at the desk is somebody you may say no to,
+    // which is more than can be said for the Wednesday sync.
+    expect(driver.declineInterruption().ok).toBe(true);
+    // And he is gone from the day, which is the state the hole lived in.
+    expect(driver.interruption()).toBeNull();
+
+    runTo(driver, session, at.endsTick + (walkUp?.filesAfter ?? 0));
+
+    const ticket = session.engine.graph.getNode('ticket:gary-restart');
+    expect(ticket).toBeDefined();
+    expect(session.engine.ticketState('ticket:gary-restart')).toBe('open');
+    expect(findWorldTicket('ticket:gary-restart')?.def.reporter)
+      .toBe(COMPANY_IDS.gary);
+    expect(weekWorkThrough(
+      session.engine.graph.nodesOfKind('ticket'),
+      WALK_UP_DAY,
+    ).arrived).toBe(before.arrived + 1);
+
+    // And the machine is untouched, so this is genuinely the expensive answer
+    // rather than the favour done under another name.
+    expect(session.engine.graph.getField(
+      COMPANY_IDS.garyMachine,
+      FIELDS.pendingUpdates,
+    )).toBe(true);
+  });
+
+  /**
    * THE TRADEOFF, asserted rather than described.
    *
    * Neither answer may dominate, and the two halves of that are different
