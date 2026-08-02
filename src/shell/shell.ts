@@ -2,6 +2,7 @@ import { createBootScreen } from './boot-screen';
 import type { ShellContext } from './context';
 import { Desktop } from './desktop';
 import { createIconSprite } from './icons';
+import { createInstallScreen } from './install-screen';
 import { createLoginScreen, type LoginScreen } from './login-screen';
 import { NOTIFICATION_HISTORY_LIMIT } from './notifications';
 import {
@@ -13,6 +14,16 @@ import {
 
 /** Real milliseconds between fake POST lines. Chrome only, not simulation. */
 const BOOT_STEP_MS = 380;
+
+/**
+ * And between the beats of an update installing itself at boot.
+ *
+ * Slower than a POST line on purpose: the POST is a machine listing what it
+ * found and reads as a machine hurrying, while this is a machine that has
+ * decided you are waiting. Eight beats at half a second is four seconds, which
+ * is long enough to be a joke about waiting and short enough not to be one.
+ */
+const INSTALL_STEP_MS = 500;
 
 interface QueuedNotification {
   readonly title: string;
@@ -26,11 +37,13 @@ interface QueuedNotification {
  */
 export class Shell {
   private readonly boot = createBootScreen();
+  private readonly installing = createInstallScreen();
   private readonly login: LoginScreen;
   private readonly abort = new AbortController();
-  private state: ShellState = createShellState();
+  private state: ShellState;
   private desktop: Desktop | null = null;
   private bootTimer: number | null = null;
+  private installTimer: number | null = null;
   /**
    * Engine notifications raised while no desktop exists. The simulation runs
    * through boot, the login screen and a logged-off session, so anything it
@@ -51,7 +64,18 @@ export class Shell {
   public constructor(
     private readonly root: HTMLElement,
     private readonly context: Readonly<ShellContext>,
+    /**
+     * Whether this boot has a build to install: a browser that has seen an
+     * older version of this game and has just been handed a newer one.
+     *
+     * The answer comes from a storage slot that `main.ts` has already read
+     * (see `updateOnBoot`), which is why it arrives as a flag rather than as a
+     * question - the shell has no business knowing what a version is, and a
+     * pure reducer cannot go and look.
+     */
+    installing = false,
   ) {
+    this.state = createShellState(installing);
     this.login = createLoginScreen(
       context.user,
       {
@@ -72,6 +96,7 @@ export class Shell {
     this.root.append(
       createIconSprite(),
       this.boot.element,
+      this.installing.element,
       this.login.element,
     );
 
@@ -202,6 +227,7 @@ export class Shell {
 
   public dispose(): void {
     this.stopBootTimer();
+    this.stopInstallTimer();
     this.desktop?.dispose();
     this.desktop = null;
     this.abort.abort();
@@ -213,6 +239,10 @@ export class Shell {
     if (
       next.screen === this.state.screen
       && next.bootStep === this.state.bootStep
+      // The third one, and it is load-bearing: an update beat changes neither
+      // the screen nor the boot step, so without it the percentage would sit
+      // at nought for four seconds and then the log-on box would appear.
+      && next.installStep === this.state.installStep
     ) {
       return;
     }
@@ -224,13 +254,21 @@ export class Shell {
   private render(): void {
     const screen = this.state.screen;
     this.boot.element.dataset.active = String(screen === 'boot');
+    this.installing.element.dataset.active = String(screen === 'installing');
     this.login.element.dataset.active = String(screen === 'login');
     this.boot.render(this.state.bootStep);
+    this.installing.render(this.state.installStep);
 
     if (screen === 'boot') {
       this.startBootTimer();
     } else {
       this.stopBootTimer();
+    }
+
+    if (screen === 'installing') {
+      this.startInstallTimer();
+    } else {
+      this.stopInstallTimer();
     }
 
     if (screen === 'login') {
@@ -298,5 +336,24 @@ export class Shell {
 
     window.clearInterval(this.bootTimer);
     this.bootTimer = null;
+  }
+
+  private startInstallTimer(): void {
+    if (this.installTimer !== null) {
+      return;
+    }
+
+    this.installTimer = window.setInterval(() => {
+      this.dispatch({ type: 'install:advance' });
+    }, INSTALL_STEP_MS);
+  }
+
+  private stopInstallTimer(): void {
+    if (this.installTimer === null) {
+      return;
+    }
+
+    window.clearInterval(this.installTimer);
+    this.installTimer = null;
   }
 }
