@@ -219,4 +219,35 @@ describe('fumbling', () => {
     expect(fumbleTypo('a', 3)).toBe('a');
     expect(fumbleTypo('4 2', 3)).toBe('4 2');
   });
+
+  /**
+   * The half a restore depends on: the scramble is DATA, decided by the line
+   * and the minute it was typed in, and it is decided once.
+   *
+   * The terminal prints a fumbled line into its scrollback and never draws it
+   * again - but the promise the reboot makes is that every window comes back
+   * exactly as it was, and the fumble is the one thing on that screen that
+   * COULD come back different. A scramble drawn from chance would survive
+   * every test in this file, look correct on screen, and quietly re-roll
+   * itself the moment anything asked for the line a second time: same
+   * command, same minute, different letters, and the restore that was
+   * supposed to be total would have rewritten a line the player typed.
+   *
+   * So it is asked a hundred times, with other lines and other minutes asked
+   * in between, and it answers the same thing every time.
+   */
+  it('is the same fumble however many times it is asked for', () => {
+    const typed = 'restart spooler';
+    const minute = 4_690;
+    const first = fumbleTypo(typed, minute);
+
+    for (let again = 0; again < 100; again += 1) {
+      // Noise in between, which is what a second render in a live session
+      // would look like: other lines, other minutes, same question after.
+      fumbleTypo('renewcert VPN Concentrator', minute + again);
+      fumbleTypo(typed, minute + again + 1);
+
+      expect(fumbleTypo(typed, minute), `ask ${String(again)}`).toBe(first);
+    }
+  });
 });

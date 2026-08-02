@@ -483,6 +483,35 @@ async function underPause<T>(
   }
 }
 
+/** Everything the terminal has printed, as one string. */
+async function scrollbackOf(
+  page: import('@playwright/test').Page,
+): Promise<string> {
+  return await page.getByTestId('cmd-output').textContent() ?? '';
+}
+
+/**
+ * What the terminal printed BECAUSE of this command, and nothing it printed
+ * before.
+ *
+ * The scrollback is the whole session, so `not.toContainText` asked of it is a
+ * question about every line typed this afternoon - which is exactly why the
+ * house helper types `cls` first. Here it must not: the scrollback IS the
+ * thing under test, and a test that wiped it before the restore would be
+ * asserting that an empty screen came back empty. So nothing is cleared and
+ * the reading is a slice.
+ */
+async function tailAfter(
+  page: import('@playwright/test').Page,
+  command: string,
+): Promise<string> {
+  const before = await scrollbackOf(page);
+
+  await runCommand(page, command);
+
+  return (await scrollbackOf(page)).slice(before.length);
+}
+
 /** What the save would carry about which windows were up, and in what order. */
 async function openWindows(
   page: import('@playwright/test').Page,
@@ -510,7 +539,7 @@ test('the update is put off three times and then takes the afternoon', async ({
   await openFromStartMenu(page, 'cmd');
   await runCommand(page, 'ver');
 
-  const scrollback = await page.getByTestId('cmd-output').textContent();
+  const scrollback = await scrollbackOf(page);
   const desk = await openWindows(page);
 
   // Mid-ticket, which is the only interesting time for this to happen: the
@@ -565,9 +594,11 @@ test('the update is put off three times and then takes the afternoon', async ({
   // And the desk is gone by keyboard as well as by mouse: it refuses in the
   // workstation's own sentence rather than the meeting's.
   await openFromStartMenu(page, 'cmd');
-  await runOnlyCommand(page, 'restart PRINT-01\\spooler');
-  await expect(page.getByTestId('cmd-output')).toContainText('installing updates');
-  await expect(page.getByTestId('cmd-output')).not.toContainText('RUNNING');
+
+  const refused = await tailAfter(page, 'restart PRINT-01\\spooler');
+
+  expect(refused).toContain('installing updates');
+  expect(refused).not.toContain('RUNNING');
 
   /* Ten minutes bought, and they are minutes at the desk. */
 
@@ -598,9 +629,10 @@ test('the update is put off three times and then takes the afternoon', async ({
     await expect(chip).toHaveAttribute('data-away', '9');
   });
   // And the desk answers again, which is the whole of what the push bought.
-  await runOnlyCommand(page, 'ver');
-  await expect(page.getByTestId('cmd-output'))
-    .not.toContainText('installing updates');
+  const answered = await tailAfter(page, 'ver');
+
+  expect(answered).toContain('Support Terminal');
+  expect(answered).not.toContain('installing updates');
 
   /* The second arrival, and the deadline that runs out inside it. */
 
@@ -657,6 +689,15 @@ test('the update is put off three times and then takes the afternoon', async ({
   await expect(page.getByTestId('reboot-detail'))
     .toContainText('nothing left to press');
 
+  // Everything the desk is holding at the minute the machine takes it.
+  //
+  // This is the snapshot the restore promise is ABOUT, and it is taken HERE
+  // rather than at the top of the journey: the terminal has been typed into
+  // since then - proving the desk refuses is half the point - and a promise
+  // about a screen has to be a promise about the screen as it stands.
+  const held = await scrollbackOf(page);
+  const heldWindows = await openWindows(page);
+
   // The percentage is theatre pinned to real minutes, and it moves.
   await runSimMinutes(page, 4, 1);
   await expect(page.getByTestId('reboot-screen'))
@@ -688,8 +729,42 @@ test('the update is put off three times and then takes the afternoon', async ({
   // promise: a loaded save reopens windows in manifest order by design (the
   // start-menu comment owns that call), and the reboot rides the same store.
   expect([...await openWindows(page)].sort()).toEqual([...desk].sort());
+  expect([...heldWindows].sort()).toEqual([...desk].sort());
   await focusWindow(page, 'cmd');
-  expect(await page.getByTestId('cmd-output').textContent()).toBe(scrollback);
+
+  const restored = await scrollbackOf(page);
+
+  // BYTE FOR BYTE across the outage: the same lines, in the same order, with
+  // the same letters - including the ones a shaking hand got wrong. The
+  // fumble is the sharpest tooth in this assertion. It is a swap chosen by
+  // the LINE and the MINUTE, so any screen that re-derived its own scrollback
+  // would scramble it a different way and this comparison would say so.
+  expect(restored).toBe(held);
+  // And nothing from before the reboot was rewritten either - the afternoon
+  // only ever grew. `startsWith` rather than equality because the journey
+  // types during the takeover on purpose, so the scrollback is longer than it
+  // was and every earlier byte is still exactly where it was.
+  expect(restored.startsWith(scrollback)).toBe(true);
+  expect(restored.length).toBeGreaterThan(scrollback.length);
+
+  // THE OTHER RESTORE PATH, in the same session and the same window: a save
+  // and a load with NO page reload, which puts a different world and a
+  // different set of screens under windows that never closed. The terminal is
+  // not in the save file at all - the scrollback is the living window's own
+  // memory - so a load that quietly rebuilt the window would empty it, and
+  // this is the only place that would show.
+  await page.getByTestId('start-button').click();
+  await page.getByTestId('start-menu-save').click();
+  await expect(page.getByTestId('toast').filter({ hasText: 'Game saved' }))
+    .toHaveCount(1);
+  await page.getByTestId('start-button').click();
+  await page.getByTestId('start-menu-load').click();
+  await expect(page.getByTestId('toast').filter({ hasText: 'Game loaded' }))
+    .toHaveCount(1);
+
+  await focusWindow(page, 'cmd');
+  expect(await scrollbackOf(page)).toBe(restored);
+  expect([...await openWindows(page)].sort()).toEqual([...desk].sort());
 });
 
 /** Skipping the dread is legal, and it lands in exactly the same place. */
