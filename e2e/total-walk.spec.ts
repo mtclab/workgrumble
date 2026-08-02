@@ -14,9 +14,9 @@ import {
   logOnWithBadge,
   openFromDesktopIcon,
   openFromStartMenu,
-  realMs,
   runCommand,
   runOnlyCommand,
+  runRealMinutes,
   runSimMinutes,
   runToDayEnd,
   runToTelegraph,
@@ -343,12 +343,20 @@ async function addToGroup(
   await page.getByTestId('directory-add-group').click();
 }
 
-/** Runs the clock a minute at a time until the lead is actually in the room. */
+/**
+ * Runs the clock a minute at a time until the lead is actually in the room.
+ *
+ * Real minutes rather than bought ones (the 0.3.2 helper contract): the scene
+ * this is waiting for is one of the things that drops the clock to x1, and a
+ * step that put the speed back up would be arguing with the game in the same
+ * minute it made its point. The loop stops on the scene, so nothing after it
+ * depends on the speed the scene left behind.
+ */
 async function runUntilCaught(page: Page): Promise<void> {
   const caught = page.getByTestId('window-caught');
 
   for (let minute = 0; minute < 20 && await caught.count() === 0; minute += 1) {
-    await page.clock.runFor(realMs(1, 4));
+    await runRealMinutes(page, 1, 4);
   }
 
   await expect(caught).toBeVisible();
@@ -363,7 +371,10 @@ async function runUntilCrash(page: Page): Promise<void> {
       return;
     }
 
-    await page.clock.runFor(realMs(5, 4));
+    // Bought minutes, because the crash is eighty minutes away and this is a
+    // search that has to cover them: an afternoon that rang once would
+    // otherwise cover twenty and report a can that never wore off.
+    await runSimMinutes(page, 5, 4);
   }
 
   await expect(desktop).toHaveAttribute('data-drink', 'crash');
@@ -474,7 +485,9 @@ test('walks every function of a probation week that goes well', async ({
     // What pause promises is that the clock does not move - not that it is
     // any particular minute. Getting here costs a few of them.
     const stopped = (await clock.textContent())?.trim() ?? '';
-    await page.clock.runFor(realMs(10, 4));
+    // Real time, deliberately: the claim is that a paused day converts none
+    // of it, so nothing here may go near a helper that buys minutes.
+    await runRealMinutes(page, 10, 4);
     await expect(clock).toHaveText(stopped);
     await pause.click();
     await expect(pause).toHaveAttribute('aria-pressed', 'false');

@@ -6,7 +6,7 @@ import {
   logIn,
   openFromDesktopIcon,
   openFromStartMenu,
-  realMs,
+  runRealMinutes,
   runSimMinutes,
   runToTelegraph,
 } from './helpers';
@@ -129,8 +129,13 @@ test('leaves the cursor in a half-typed line when the lead walks in', async ({
   const caught = page.getByTestId('window-caught');
 
   // The reaction window is deliberately not used: this is the walk-in.
+  //
+  // The minutes are spent without touching the speed control, and here that
+  // is load-bearing rather than tidy: the claim two lines down is that the
+  // terminal still has the cursor, and a helper that re-asserted a speed
+  // would have taken the keyboard onto a taskbar button itself.
   for (let minute = 0; minute < 20 && await caught.count() === 0; minute += 1) {
-    await page.clock.runFor(realMs(1, 4));
+    await runRealMinutes(page, 1, 4);
   }
 
   await expect(caught).toBeVisible();

@@ -3,7 +3,7 @@ import { expect, type Page, test } from '@playwright/test';
 import {
   completeLogin,
   openFromStartMenu,
-  realMs,
+  runRealMinutes,
   runToDayEnd,
   runToTelegraph,
 } from './helpers';
@@ -45,12 +45,20 @@ async function clockMinute(page: Page): Promise<number> {
   return (hours ?? 0) * 60 + (minutes ?? 0);
 }
 
-/** Runs the clock a minute at a time until the lead is actually in the room. */
+/**
+ * Runs the clock a minute at a time until the lead is actually in the room.
+ *
+ * The minutes are spent WITHOUT touching the speed control, which is the
+ * 0.3.2 helper contract's other half: a scene opening is one of the things
+ * that drops the clock to x1, so a step that put the speed back up would be
+ * arguing with the game in the same minute it made its point. The loop stops
+ * on the scene, so there is nothing left to buy afterwards.
+ */
 async function runUntilCaught(page: Page): Promise<void> {
   const caught = page.getByTestId('window-caught');
 
   for (let minute = 0; minute < 20 && await caught.count() === 0; minute += 1) {
-    await page.clock.runFor(realMs(1, 4));
+    await runRealMinutes(page, 1, 4);
   }
 
   await expect(caught).toBeVisible();

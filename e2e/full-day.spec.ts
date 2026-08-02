@@ -1,6 +1,11 @@
 import { expect, type Page, test } from '@playwright/test';
 
-import { completeLogin, focusWindow, openFromStartMenu } from './helpers';
+import {
+  completeLogin,
+  focusWindow,
+  openFromStartMenu,
+  runSimMinutes,
+} from './helpers';
 
 /**
  * The M3 exit gate: one player, one day, on the built artifact.
@@ -18,9 +23,6 @@ import { completeLogin, focusWindow, openFromStartMenu } from './helpers';
  * and play them.
  */
 
-/** Real milliseconds one simulated minute costs at x1 (`day-driver.ts`). */
-const TICK_MS = 1_000;
-
 /** Day one, from the shipped seed. Minutes since 08:00. */
 const FIRST_TELEGRAPH = 216;
 const FIRST_ARRIVAL = 220;
@@ -35,7 +37,17 @@ const LUNCH_END = 270;
  * puts it at eight minutes past ten, and the week's table names the hour. */
 const DRIP_ARRIVAL = 128;
 
-/** Runs the day forward to a given minute-of-day, at four times normal speed. */
+/**
+ * Runs the day forward to a given minute-of-day, at four times normal speed.
+ *
+ * Through the house helper rather than through the clock directly, and the
+ * reason is halfway down this test: the lead is walked into ON PURPOSE at
+ * SECOND_ARRIVAL, and being caught drops the speed control to x1. Everything
+ * after it - the fifty minutes of recovery, the run out to 17:00 - would have
+ * bought a quarter of the minutes it asked for, and the scorecard this test
+ * exists to read would have been asserted against an afternoon that had not
+ * happened yet.
+ */
 async function runTo(page: Page, tick: number): Promise<void> {
   const now = await page.evaluate(() => globalThis.careerSim?.tick() ?? 0);
 
@@ -43,7 +55,7 @@ async function runTo(page: Page, tick: number): Promise<void> {
     return;
   }
 
-  await page.clock.runFor(((tick - now) * TICK_MS) / 4);
+  await runSimMinutes(page, tick - now, 4);
 }
 
 /**

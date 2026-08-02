@@ -141,8 +141,13 @@ test('carries a misclassified ticket through to the scorecard', async ({
   await expect(page.getByTestId('ticket-detail-priority')).toHaveText('P4');
 
   // Run the shift out. Nobody prints all day and nobody is told why.
-  await hurry(page);
-  await page.clock.runFor(realMs(8 * 60, 4));
+  //
+  // Through the house helper, which is the 0.3.2 contract: this is the
+  // TUESDAY, the Tuesday rings at about ten past ten, and a phone ringing
+  // puts the clock back to x1. Eight hours of real time at a speed that was
+  // set once would have stopped somewhere before lunch and read the day's
+  // scorecard off a day that was still happening.
+  await runSimMinutes(page, 8 * 60, 4);
   await expect(page.getByTestId('sim-clock-time')).toHaveText('17:00');
 
   const scorecard = page.getByTestId('window-scorecard');
@@ -334,12 +339,11 @@ test('starts fumbling once the day has gone badly enough', async ({ page }) => {
 
   // Five hours of doing nothing about anything, at four times the speed.
   //
-  // Read to the hour rather than to the minute: `hurry` sets the speed with a
+  // Read to the hour rather than to the minute: setting the speed costs a
   // click, and a click at four times the clock costs a few simulated minutes
   // of its own. This test is about what the afternoon does to a pair of hands,
   // not about landing on a particular minute of it.
-  await hurry(page);
-  await page.clock.runFor(realMs(5 * 60, 4));
+  await runSimMinutes(page, 5 * 60, 4);
   await expect(page.getByTestId('sim-clock-time')).toHaveText(/^14:/);
 
   await expect(desktop).toHaveAttribute('data-fumbling', 'true');
@@ -383,8 +387,9 @@ test('shows the right corridor the moment a paused save is loaded', async ({
   await hurry(page);
 
   // Day one, out and clocked off: day two starts with the same shape and a
-  // patrol of its own.
-  await page.clock.runFor(realMs(8 * 60, 4));
+  // patrol of its own. The minutes are bought through the helper, so a day
+  // that drops the clock on the player still ends at five.
+  await runSimMinutes(page, 8 * 60, 4);
   await expect(page.getByTestId('sim-clock-time')).toHaveText('17:00');
   await page.getByTestId('scorecard-clock-off').click();
   await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 2');

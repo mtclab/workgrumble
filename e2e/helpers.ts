@@ -73,17 +73,133 @@ export async function dismissBrief(page: Page): Promise<void> {
   }
 }
 
+/** The speeds the shipped control offers. */
+export type Speed = 1 | 2 | 4;
+
 /**
- * Runs the simulated clock forward, in minutes, on a page whose clock has been
+ * How many times a run may re-assert its speed before it gives up.
+ *
+ * A shift holds a handful of events and each of them costs one pass, so this
+ * is a bound on a bug rather than on a day: a run that has been dropped twelve
+ * times has not met twelve events, it has met something that is putting the
+ * clock back down every minute, and a helper that quietly kept trying would
+ * turn that into a slow test instead of a red one.
+ */
+const SPEED_PASSES = 12;
+
+/** The tick the running session is on, or null before there is a session. */
+async function simTick(page: Page): Promise<number | null> {
+  return page.evaluate(() => globalThis.careerSim?.tick() ?? null);
+}
+
+/**
+ * Puts the shipped speed control on `speed`, and does nothing when it is
+ * already there.
+ *
+ * The read comes first for two reasons that both cost a test if they are got
+ * wrong. A click TAKES THE KEYBOARD, so a helper that clicked unconditionally
+ * would blur whatever the test had put the cursor in, on every step of every
+ * walk; and the taskbar can have one of the day's own screens over it, so a
+ * click nobody needed is a click that can hang on a covered button. Reading
+ * `data-active` needs neither the pointer nor the focus.
+ */
+export async function setSpeed(page: Page, speed: Speed): Promise<void> {
+  const button = page.getByTestId(`day-speed-${String(speed)}`);
+
+  if (await button.getAttribute('data-active') === 'true') {
+    return;
+  }
+
+  await button.click();
+}
+
+/**
+ * Runs the simulated clock forward BY MINUTES, on a page whose clock has been
  * installed. The speed control is the shipped one, so this is the same thing a
  * player does when they get bored - only without the waiting.
+ *
+ * THE CONTRACT, decided once in 0.3.2 and applied everywhere: this helper
+ * delivers the minutes it was asked for, whatever the day does to the speed
+ * control while it is delivering them. The shell drops the clock to x1 every
+ * time something synchronous lands - a phone starts ringing, a meeting or a
+ * workstation takes the desk, the lead arrives at a screen with a game on it -
+ * so a fixed stretch of real time stopped being a fixed number of minutes.
+ * Anything that walked a shift by multiplying minutes by a speed it had set
+ * once would now stop somewhere in the early afternoon and assert against a
+ * day that had not happened.
+ *
+ * So the run watches the clock: it re-asserts the speed it was asked for and
+ * buys the minutes that are still owed, until the day has actually reached the
+ * minute the caller wanted or has stopped moving at all (paused, clocked off,
+ * or a screen that has no clock on it - all of which are somebody else's
+ * assertion to make).
+ *
+ * TWO THINGS FOLLOW FROM IT, and both are the caller's business:
+ *
+ * - Re-asserting is a real click on a real button, so it takes the keyboard.
+ *   A test asserting where the cursor is across a stretch of clock drives its
+ *   own minutes with `runRealMinutes` instead.
+ * - A test that is ABOUT the drop cannot use a helper that undoes it. Those
+ *   drive their minutes with `runRealMinutes` too, which never touches the
+ *   control.
+ *
+ * At x1 there is nothing to re-assert - x1 is what everything drops TO - so
+ * the walk is the single run it always was.
  */
 export async function runSimMinutes(
   page: Page,
   minutes: number,
-  speed = 4,
+  speed: Speed = 4,
 ): Promise<void> {
-  await page.getByTestId(`day-speed-${String(speed)}`).click();
+  await setSpeed(page, speed);
+
+  const start = speed === 1 ? null : await simTick(page);
+
+  if (start === null) {
+    await page.clock.runFor(realMs(minutes, speed));
+    return;
+  }
+
+  const target = start + minutes;
+
+  for (let pass = 0, at = start; pass < SPEED_PASSES; pass += 1) {
+    await page.clock.runFor(realMs(target - at, speed));
+
+    const now = await simTick(page);
+
+    // Arrived, or the clock is not moving at all - which is a fact about the
+    // day (paused, clocked off, nobody at the desk) rather than about the
+    // speed, and not this helper's to argue with.
+    if (now === null || now >= target || now <= at) {
+      return;
+    }
+
+    at = now;
+    await setSpeed(page, speed);
+  }
+
+  throw new Error(
+    `The clock would not reach minute ${String(target)}: the speed was put `
+    + `back down ${String(SPEED_PASSES)} times.`,
+  );
+}
+
+/**
+ * Real time, spent WITHOUT touching the speed control.
+ *
+ * The counterpart to `runSimMinutes` and the other half of its contract: the
+ * argument is the minutes that stretch of real time would buy at `speed` if
+ * nothing interrupted, which is exactly what the caller wants when the point
+ * is that something might. Two kinds of test use it - the ones that are about
+ * the clock changing under the player, and the ones that step towards an event
+ * and stop when they find it, where re-asserting a speed would be putting the
+ * control back up in the same moment the game deliberately put it down.
+ */
+export async function runRealMinutes(
+  page: Page,
+  minutes: number,
+  speed: Speed = 4,
+): Promise<void> {
   await page.clock.runFor(realMs(minutes, speed));
 }
 
@@ -229,7 +345,11 @@ export async function runToTelegraph(
       return;
     }
 
-    await page.clock.runFor(realMs(2, 4));
+    // Two minutes that ARE two minutes: an interruption earlier in the
+    // morning puts the clock back to x1, and a search whose step quietly
+    // became thirty seconds would run out of patience a quarter of the way
+    // down the corridor and report a lead who never came.
+    await runSimMinutes(page, 2, 4);
   }
 
   throw new Error('The lead never came down the corridor.');
@@ -278,18 +398,21 @@ export async function workUntilTicket(
 ): Promise<void> {
   await openFromStartMenu(page, 'tickets');
   const row = page.getByTestId(`ticket-row-${slug}`);
-  // The speed control is clicked ONCE and the clock is run directly after
-  // that, the way `runToTelegraph` does it: a loop that reached for a taskbar
-  // button every ten minutes would be a loop that fails the day one of the
-  // day's own screens is over the taskbar when it looks.
-  await page.getByTestId('day-speed-4').click();
 
   for (let minute = 0; minute < limitMinutes; minute += 10) {
     if (await row.count() > 0) {
       return;
     }
 
-    await page.clock.runFor(realMs(10, 4));
+    // Ten minutes that ARE ten minutes. The control used to be clicked once
+    // outside this loop, because a loop that reached for a taskbar button
+    // every step is a loop that fails the day one of the day's own screens is
+    // over the taskbar - but a speed set once is a speed the first ringing
+    // phone takes away, and a search that then covers a quarter of the hours
+    // it says it does reports a ticket that never arrived. The helper reads
+    // the control before it touches it, so the button is only reached for on
+    // the steps where the day actually moved it.
+    await runSimMinutes(page, 10, 4);
   }
 
   throw new Error(`"${slug}" never arrived in the queue.`);

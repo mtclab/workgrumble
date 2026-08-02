@@ -19,6 +19,14 @@ function realMs(minutes: number, speed: number): number {
  * The day loop, end to end on the built artifact: the brief that is waiting
  * when you log on, the shift the player starts, the clock they can stop and
  * hurry, and the scorecard that is written at 17:00.
+ *
+ * This is the one walk in the suite that buys its minutes straight off the
+ * clock rather than through the house helper, and it is deliberate: it is the
+ * SPEED CONTROL'S own spec, so a helper that re-asserted a speed would be
+ * standing between the assertion and the thing it is about. It is safe to do
+ * that on exactly this day - the Monday authors no interruptions, nothing is
+ * left on the screen to be caught at, and the scorecard at the bottom says
+ * `0` catches out loud, which is the proof rather than the assumption.
  */
 test('walks a day from the morning brief to the scorecard', async ({
   page,

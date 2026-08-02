@@ -1,6 +1,11 @@
 import { test } from '@playwright/test';
 
-import { logIn, openFromStartMenu } from './helpers';
+import {
+  logIn,
+  openFromStartMenu,
+  runRealMinutes,
+  runSimMinutes,
+} from './helpers';
 
 // Overseer visual-review captures - not assertions. Screenshots land in
 // test-results/visual/ and are eyeballed by a human/model reviewer.
@@ -82,14 +87,19 @@ test('captures the pressure surfaces', async ({ page }) => {
   // Two cans on the desk, and the corridor about to happen: 216 is the first
   // telegraph of day one on the shipped seed.
   await page.getByTestId('desk-drink').click();
-  await page.clock.runFor((150 * 1_000) / 4);
+  // Bought minutes rather than a stretch of real time: the capture is of a
+  // particular minute of the morning, and a clock the day put back down to x1
+  // on the way would land this somewhere else entirely.
+  await runSimMinutes(page, 150, 4);
   await page.getByTestId('desk-drink').click();
   await page.screenshot({ path: 'test-results/visual/19-desk.png' });
 
-  await page.clock.runFor((6 * 1_000) / 4);
+  // And the last two steps walk INTO the corridor, which is a thing that
+  // drops the clock: they take their minutes without touching the control.
+  await runRealMinutes(page, 6, 4);
   await page.screenshot({ path: 'test-results/visual/20-telegraph.png' });
 
-  await page.clock.runFor((6 * 1_000) / 4);
+  await runRealMinutes(page, 6, 4);
   await page.screenshot({ path: 'test-results/visual/21-caught.png' });
 });
 
