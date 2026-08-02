@@ -254,3 +254,33 @@ literature says the real anxiety is made of.
    answered for it); solvability under all three presence values; goldens byte-identical;
    off-hours silence extended; mid-DND save round-trip; both halves on box, count
    checked.
+
+---
+
+# Slice 0.3.4 - colleagues (issue #13)
+
+The tail of the wave-3 list: three payloads that are nearly pure content on rails already
+built. If a payload needs a new engine concept, that is a finding, not a task - stop and
+report.
+
+1. **The walk-up.** A colleague arrives at the desk - corridor telegraph machinery, a
+   different name in it - with something that should be a ticket ("while you're here...").
+   Source `walk_up` (rails since 0.3.0: drops the clock, slides under DND - EXCEPT it does
+   not: a body at the desk does not check your status, so walk-ups are exempt like
+   meetings, in data, tested). The choice is the DM-bypass truth: do it off-book (they are
+   grateful; the work is invisible; no credit) or ask them to file it (a beat of social
+   cost; the ticket exists and counts). Both paths honest, neither punished into
+   non-existence - the tradeoff IS the teaching.
+2. **No-hello.** Chat NPCs open "Hi." and then a typing indicator that cycles. Waiting is
+   sim time; "what's up?" starts the real question. One new chat-window state (typing
+   indicator), the rest dialogue data. The veteran links the in-fiction no-hello page in
+   the Browser - a parody page, Browser machinery exists.
+3. **The 4:55 ticket.** `arrives_minutes_before_close` as ticket DATA generalizing the
+   friday-17:55 seed; one mid-week ticket ships on it to prove the field is not
+   Friday-shaped. Its response window is honest - a ticket that arrives 5 minutes before
+   close with a 60-minute target carries its truth into tomorrow by the business-hours
+   arithmetic that already exists.
+4. Gates: a journey per payload (walk-up mid-ticket, both choices walked; no-hello burns
+   what it claims; the 4:55 ticket's clocks true across the day boundary); solvability +
+   determinism; goldens move ONCE for the week's new content, every number argued;
+   off-hours silence; both halves on box, count checked.
