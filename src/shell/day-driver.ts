@@ -80,11 +80,13 @@ import {
   arrivalStress,
   buildInterruptionSchedule,
   declineWithdrawn,
+  type InterruptionSource,
   type InterruptionEntry,
+  type InterruptionLedger,
   type InterruptionPlan,
   type InterruptionSchedule,
   isBenign,
-  placeDeferred,
+  placeInterruptions,
 } from '../world/interruptions';
 import { matrixSummary, poolStanding } from '../world/pool';
 import {
@@ -186,6 +188,38 @@ export const IN_A_MEETING_REASON = 'You are in a meeting. Not at the desk, '
 export const INSTALLING_UPDATES_REASON = 'The workstation is installing '
   + 'updates. It said so. It is not sorry.';
 
+/**
+ * The sources that take the DESK rather than merely the attention, and the
+ * sentence each of them refuses in.
+ *
+ * One table rather than a switch, because three different places have to agree
+ * about it: the driver, which refuses every verb aimed at the desk; the shell,
+ * which must not put a queued window up in front of a takeover; and the
+ * harnesses, which wait a block out the way a person does. A meeting is a room
+ * you are not at your desk during and a workstation is a desk that is not
+ * there, so they refuse in different words - and a ringing phone is
+ * deliberately in neither, because being on the phone has never been a defence
+ * for anything.
+ */
+export const DESK_HELD_REASONS: Readonly<
+  Partial<Record<InterruptionSource, string>>
+> = {
+  meeting: IN_A_MEETING_REASON,
+  machine: INSTALLING_UPDATES_REASON,
+};
+
+/** What the desk answers with while this source holds it, or null. */
+export function deskHeldReason(
+  source: InterruptionSource | undefined,
+): string | null {
+  return source === undefined ? null : DESK_HELD_REASONS[source] ?? null;
+}
+
+/** Whether this source takes the desk at all. */
+export function holdsTheDesk(source: InterruptionSource | undefined): boolean {
+  return deskHeldReason(source) !== null;
+}
+
 export const SPEEDS = [1, 2, 4] as const;
 
 export type Speed = (typeof SPEEDS)[number];
@@ -276,14 +310,18 @@ export interface InterruptionView {
 }
 
 /**
- * The next thing that is going to take the screen, before it takes it.
+ * A workstation that has been pushed back, before it comes round again.
  *
- * It exists for exactly one surface and is deliberately narrow: a workstation
- * that has been pushed back is a workstation that is COMING BACK, and the
- * minutes between the push and the return are the minutes the player bought.
- * Something has to say how many are left, and it cannot be `interruption()` -
- * that answers what owns the screen NOW, and the whole point of a spent
- * postpone is that nothing does.
+ * It exists for exactly one surface and is deliberately narrow: the minutes
+ * between the push and the return are the minutes the player BOUGHT, something
+ * has to say how many are left, and it cannot be `interruption()` - that
+ * answers what owns the screen NOW, and the whole point of a spent postpone is
+ * that nothing does.
+ *
+ * There is no flag here for "has this been pushed", because an entry nobody
+ * has pushed is not one of these at all: `pendingRestart` filters before it
+ * selects, so an unmet call standing between now and the reboot cannot become
+ * the answer and then be thrown away by a caller.
  *
  * Every field is derived from the day's schedule and the world's own ledger,
  * so it is the same answer on both sides of a save and there is nothing here
@@ -295,15 +333,6 @@ export interface UpcomingInterruption {
   readonly ticksAway: number;
   /** How many pushes are left in it, which is what the countdown says. */
   readonly postponesLeft: number;
-  /**
-   * Whether the player has already pushed this one.
-   *
-   * The difference between a countdown and a spoiler: an entry nobody has met
-   * yet is a surprise the week is entitled to - a phone that rings at ten past
-   * is not announced at ten - and one that has been pushed is a thing the
-   * player asked for and is owed a clock on.
-   */
-  readonly postponed: boolean;
 }
 
 /**
@@ -334,14 +363,14 @@ export interface DayApi {
    */
   interruption(): InterruptionView | null;
   /**
-   * And what is going to take it next, if anything is on its way.
+   * And the workstation that is coming back, if one has been pushed.
    *
    * Free to read and changes nothing, like everything else on this half of the
    * interface. The countdown that runs while a reboot is pushed back is the
    * only caller: the desk is the player's for those minutes and something has
    * to be counting them.
    */
-  upcoming(): UpcomingInterruption | null;
+  pendingRestart(): UpcomingInterruption | null;
   /**
    * The choice grammar, aimed at whatever is on the screen right now.
    *
@@ -1804,23 +1833,44 @@ export class DayDriver implements DayApi {
   }
 
   /**
-   * The next one, from where the clock now stands.
+   * The workstation that has been pushed back and is on its way, if there is
+   * one.
    *
-   * Same three sources as `interruption()` and the same absence of memory: the
+   * FILTERED FIRST, selected after, and the order is the whole of the
+   * contract. Asked for "the next interruption" and then filtered by the
+   * caller, an unmet call sitting between now and a postponed reboot is the
+   * nearest entry - so the answer would be the call, the caller would discard
+   * it, and the countdown the player was promised would blink out until the
+   * phone rang. What the surfaces want is not "what is next" but "when does
+   * the workstation take the desk", which is a question about one entry.
+   *
+   * A machine nobody has pushed yet is deliberately not one of them: an entry
+   * the player has not met is a surprise the week is entitled to keep, and a
+   * chip counting down to it would be the seeded schedule reading itself out
+   * loud.
+   *
+   * Same sources as `interruption()` and the same absence of memory: the
    * seeded schedule, the clock, and the ledger of what has been spent. A
    * countdown drawn off this comes back from a save on the same minute with
    * the same number on it, because the number was never written down.
    */
-  public upcoming(): UpcomingInterruption | null {
+  public pendingRestart(): UpcomingInterruption | null {
     if (this.state() !== 'shift') {
       return null;
     }
 
     const now = this.engine.now();
+    const ledger = this.interruptionLedger();
     let soonest: InterruptionEntry | null = null;
 
     for (const entry of this.liveInterruptions()) {
-      if (entry.tick <= now) {
+      const spends = ledger.spentAt[entry.id] ?? [];
+
+      if (
+        entry.tick <= now
+        || entry.source !== 'machine'
+        || spends.length === 0
+      ) {
         continue;
       }
 
@@ -1833,13 +1883,13 @@ export class DayDriver implements DayApi {
       return null;
     }
 
-    const spends = this.postponesSpent(soonest.id);
-
     return {
       entry: soonest,
       ticksAway: soonest.tick - now,
-      postponesLeft: Math.max(0, soonest.postpones.length - spends),
-      postponed: spends > 0,
+      postponesLeft: Math.max(
+        0,
+        soonest.postpones.length - this.postponesSpent(soonest.id),
+      ),
     };
   }
 
@@ -1854,50 +1904,94 @@ export class DayDriver implements DayApi {
    * than squeezed into the last minute of the shift.
    */
   private liveInterruptions(): readonly InterruptionEntry[] {
-    const live: InterruptionEntry[] = [];
+    // WHERE everything is comes first, and it is asked of the world rather
+    // than of what has been decided since. An entry somebody pushed back lives
+    // at the minute the callback was placed on, and it goes on living there
+    // once it has been answered - the conversation is happening, and it is
+    // happening in the callback's window rather than in the one twenty minutes
+    // earlier that nobody was in.
+    //
+    // Reading those two questions in the wrong order is a real bug and was
+    // one: an answered callback fell back to the ORIGINAL entry, whose minutes
+    // were long past, so `interruption()` went null the instant the player
+    // picked the phone up and the conversation vanished out from under them.
+    //
+    // The whole day is placed in ONE call rather than one entry at a time, and
+    // that is the other real bug: two callbacks pushed from different minutes
+    // can want the same minute, and two placements that each looked at the
+    // other's ORIGINAL window would both take it - which the runtime assert
+    // then reports as a crashed clock. `placeInterruptions` books each
+    // placement against the last, so the collision is impossible rather than
+    // caught.
+    //
+    // Every input is the world's: the minutes the pushes were pressed at and
+    // the ids that were waved off. Nothing here is remembered, which is what
+    // makes a mid-countdown save land back on the same minute with the same
+    // budget left.
+    return placeInterruptions(
+      this.interruptions_,
+      this.interruptionsBlocked_,
+      this.interruptionLedger(),
+    );
+  }
 
-    for (const entry of this.interruptions_.entries) {
-      // Declining is the one answer that hands the screen straight back, so a
-      // declined entry owns no minutes at all from the minute it was refused.
-      if (this.hasDecided(FIELDS.interruptionDeclined, entry.id)) {
+  /**
+   * What the world has recorded about today's interruptions.
+   *
+   * Two lists, both off the player node, both written by the verbs: the minute
+   * every push was pressed, and the ids nobody is going to hear from again. It
+   * is rebuilt on every call rather than cached, because a cache is a number a
+   * load can leave disagreeing with the world - which is the whole reason none
+   * of this lives in the driver.
+   */
+  private interruptionLedger(): InterruptionLedger {
+    const spentAt: Record<string, number[]> = {};
+
+    for (const line of this.playerText(FIELDS.interruptionSpentAt).split('\n')) {
+      const mark = line.lastIndexOf('@');
+
+      if (mark <= 0) {
         continue;
       }
 
-      // WHERE it is comes first, and it is asked of the world rather than of
-      // what has been decided since. An entry somebody pushed back lives at
-      // the minute the callback was placed on, and it goes on living there
-      // once it has been answered - the conversation is happening, and it is
-      // happening in the callback's window rather than in the one twenty
-      // minutes earlier that nobody was in.
-      //
-      // Reading those two questions in the wrong order is a real bug and was
-      // one: an answered callback fell back to the ORIGINAL entry, whose
-      // minutes were long past, so `interruption()` went null the instant the
-      // player picked the phone up and the conversation vanished out from
-      // under them.
-      //
-      // HOW FAR it has been pushed is counted out of the world's ledger rather
-      // than remembered here, which is what makes a mid-countdown save land
-      // back on the same minute with the same budget left: the driver holds no
-      // number a load could disagree with.
-      const spends = this.postponesSpent(entry.id);
-      const placed = spends > 0
-        ? placeDeferred(
-          entry,
-          this.interruptions_,
-          this.interruptionsBlocked_,
-          spends,
-        )
-        : entry;
+      const id = line.slice(0, mark);
+      const at = Number(line.slice(mark + 1));
 
-      // A callback with nowhere left in the day to go is a call that never
-      // came back, which is a thing that happens.
-      if (placed !== null) {
-        live.push(placed);
+      if (!Number.isSafeInteger(at)) {
+        continue;
+      }
+
+      (spentAt[id] ??= []).push(at);
+    }
+
+    // A push the ids-only ledger knows about and this one has no minute for
+    // is a record from a save written before the minute was kept - or from a
+    // caller that dispatched the verb without stamping one. It is NOT lost:
+    // it falls back to the arrival, which is 0.3.0's arithmetic exactly, and
+    // which is exactly right for every save that can carry one (a call has a
+    // budget of one window, so one unstamped push is one window from the
+    // arrival). Losing it would be worse than any of that: an entry the world
+    // says was pushed and the schedule cannot place is an entry that quietly
+    // stops existing.
+    for (const entry of this.interruptions_.entries) {
+      const known = spentAt[entry.id] ?? [];
+      const spent = this.postponesSpent(entry.id);
+
+      for (let missing = known.length; missing < spent; missing += 1) {
+        known.unshift(entry.tick);
+      }
+
+      if (known.length > 0) {
+        spentAt[entry.id] = known;
       }
     }
 
-    return live;
+    return {
+      spentAt,
+      declined: this.playerText(FIELDS.interruptionDeclined)
+        .split('\n')
+        .filter((id) => id.length > 0),
+    };
   }
 
   /**
@@ -1920,14 +2014,7 @@ export class DayDriver implements DayApi {
    * of this was: a terminal with the keyboard still submitted commands.
    */
   private takeoverRefusal(): string | null {
-    switch (this.interruption()?.entry.source) {
-      case 'meeting':
-        return IN_A_MEETING_REASON;
-      case 'machine':
-        return INSTALLING_UPDATES_REASON;
-      default:
-        return null;
-    }
+    return deskHeldReason(this.interruption()?.entry.source);
   }
 
   /** Whether an id is in one of the lists the world keeps. */
@@ -2213,6 +2300,11 @@ export class DayDriver implements DayApi {
       ? { ok: false, reason: NOTHING_RINGING }
       : this.engine.dispatch(DAY_ACTIONS.interruptionDefer, this.actor, null, {
         id: view.entry.id,
+        // The minute the button was pressed, stamped here because this is the
+        // only place that knows it. A window buys its minutes from the press,
+        // so a push at 14:21 against an arrival at 14:10 must still buy the
+        // whole ten - and the world cannot work that out from a count.
+        spent_at: `${view.entry.id}@${String(this.engine.now())}`,
         // The same flag decline is given, because it answers the same
         // question for everything that carries no budget: an interruption
         // nobody may wave off is not one anybody may push twenty minutes out

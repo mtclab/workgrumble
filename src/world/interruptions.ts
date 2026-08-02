@@ -461,23 +461,55 @@ export function slideToClearTick(
 export function worstCaseEndTick(
   slot: Readonly<InterruptionSlot>,
   day: number,
+  blocked: readonly TickWindow[] = [],
 ): number {
   const from = Math.max(
     interruptionWindow(day).from,
     tickAtMinute(day, slot.minute) + (slot.jitter ?? 0),
   );
-  const pushed = postponeBudget(slot).reduce(
-    (total, window) => total + window,
+  const budget = postponeBudget(slot);
+  // Every window spent, and spent as LATE as the dialog allows. A push buys
+  // its minutes from the press, so a player who lets each arrival run to its
+  // last readable minute before pushing adds that arrival's whole length to
+  // the day - and that is a day the player can actually produce, which makes
+  // it the day the loader has to hold.
+  const pushed = budget.reduce(
+    (total, window) => total + window + slot.minutes - 1,
     0,
   );
+  // And the slide, which is the day's other bookings getting in the way of
+  // every landing. A callback that lands on the lead's rounds is pushed to the
+  // far side of them, and an entry nobody may wave off is never dropped for it
+  // - so those minutes are part of what the day has to be able to hold.
+  //
+  // Every booking that could be in the way, counted whole: that is the most a
+  // slide can cost. It is grown to a fixpoint because a booking pushed into by
+  // an earlier slide brings the ones after it into range - three passes on any
+  // day this game has, bounded by the number of bookings either way.
+  const bookings = [{ ...lunchWindow(day) }, ...blocked];
+  let end = from + pushed + slot.minutes;
 
-  return from + pushed + slot.minutes;
+  for (let pass = 0; pass <= bookings.length; pass += 1) {
+    const shoved = bookings
+      .filter((booking) => booking.to > from && booking.from < end)
+      .reduce((total, booking) => total + (booking.to - booking.from), 0);
+    const grown = from + pushed + shoved + slot.minutes;
+
+    if (grown === end) {
+      break;
+    }
+
+    end = grown;
+  }
+
+  return end;
 }
 
 function requireSlot(
   slot: Readonly<InterruptionSlot>,
   day: number,
   shift: Readonly<TickWindow>,
+  blocked: readonly TickWindow[],
 ): void {
   const where = `Day ${String(day)}'s interruption "${slot.id}"`;
 
@@ -538,12 +570,19 @@ function requireSlot(
   // ran out of day would either be dropped without a word or hand the desk
   // back after everybody had gone home. Quiet wrongness is the enemy; a day
   // that cannot hold what it schedules says so at load.
-  if (!slot.declinable && worstCaseEndTick(slot, day) > shift.to) {
+  //
+  // The bookings are handed in because they are part of the worst case: a
+  // callback that lands on the lead's rounds slides past them, and an entry
+  // nobody may wave off is never dropped for it - it takes the minutes on the
+  // far side. Those minutes have to be inside the shift, and this is where
+  // that is guaranteed rather than hoped for.
+  if (!slot.declinable && worstCaseEndTick(slot, day, blocked) > shift.to) {
     throw new Error(
-      `${where} cannot be waved off and, with every postpone spent, is still `
-      + `running at ${String(worstCaseEndTick(slot, day))} - which is past the `
-      + `end of the shift at ${String(shift.to)}. Author the windows so the `
-      + 'worst case lands inside the day, because the worst case is the '
+      `${where} cannot be waved off and, with every postpone spent as late as `
+      + 'it can be and every booking of the day in the way, is still running '
+      + `at ${String(worstCaseEndTick(slot, day, blocked))} - which is past `
+      + `the end of the shift at ${String(shift.to)}. Author the windows so `
+      + 'the worst case lands inside the day, because the worst case is the '
       + 'player\'s to choose.',
     );
   }
@@ -598,7 +637,7 @@ export function buildInterruptionSchedule(
   const seen = new Set<string>();
 
   for (const slot of plan.slots) {
-    requireSlot(slot, day, shift);
+    requireSlot(slot, day, shift, plan.blocked);
 
     if (seen.has(slot.id)) {
       throw new Error(
@@ -719,15 +758,26 @@ export function interruptionsArrivingBetween(
  * time you are having the conversation.
  *
  * `spend` is which push of the budget this is - the zeroth is the first one -
- * so the windows shrink in the order they were authored. At a budget of one
- * twenty-minute window, which is what everything written before the budget
- * existed has, this is 0.3.0's callback exactly.
+ * so the windows shrink in the order they were authored.
+ *
+ * `spentAt` is the minute the button was actually pressed, and the window is
+ * measured FROM IT rather than from the arrival. That is a fix rather than a
+ * detail: measured from the arrival, a player who read the dialog for eleven
+ * minutes and then pushed a ten-minute window bought nothing at all - the
+ * budget went down, the desk did not come back, and the callback landed in a
+ * minute that had already gone. A postpone buys its stated minutes from the
+ * press, every time, or it is not a postpone.
+ *
+ * At a budget of one twenty-minute window pressed the moment the phone rings -
+ * which is 0.3.0's call, and what every walk and every e2e does - the answer
+ * is the arrival plus twenty, exactly as it was.
  */
 export function deferredArrival(
   entry: Readonly<InterruptionEntry>,
-  spend = 0,
+  spend: number,
+  spentAt: number,
 ): InterruptionEntry {
-  const tick = entry.tick + postponeWindow(entry, spend);
+  const tick = spentAt + postponeWindow(entry, spend);
 
   return {
     ...entry,
@@ -739,71 +789,199 @@ export function deferredArrival(
 }
 
 /**
- * The same interruption, ringing again, placed in minutes that are actually
- * free - or null when there are none left in the day.
+ * What the world has recorded about the day's interruptions: the minute each
+ * postpone was pressed, and the ids nobody is going to hear from again.
  *
- * `deferredArrival` says WHEN it wants to come back; this is the half that
- * has to get out of the way of everything the day already booked, and it is
- * separate because they answer different questions. Twenty minutes later is a
- * property of the deferral; landing on top of the lead's rounds is a property
- * of the day, and the second arrival is not allowed to be the one place in
- * this family where two takeovers share a screen.
- *
- * It is pure - a function of the entry, the schedule, the day's other bookings
- * and how many pushes the world has recorded - which is what lets the driver
- * ask it every minute, on both sides of a save, and get the same minute back.
- * `spends` is counted out of the graph rather than remembered anywhere, so the
- * budget round-trips through a save without being in one.
- *
- * The pushes are applied one at a time and each one slides before the next is
- * measured, because a window buys minutes from where the entry ACTUALLY is: a
- * second push measured from a minute the first one had already been moved off
- * would quietly hand back time the day had not got.
- *
- * Null is the honest answer for a callback with nowhere to go: they rang, you
- * asked them to try later, and there was no later. That is a thing that
- * happens - to the ones anybody may wave off. The loader is what stops it
- * happening to the ones nobody may.
+ * It is the whole input to placement besides the schedule itself, and every
+ * bit of it is read back off the player node - so placement is a pure function
+ * of things a save carries, and a countdown reloads on the minute it was
+ * taken on with the budget it had.
  */
-export function placeDeferred(
+export interface InterruptionLedger {
+  /** The minutes each entry's pushes were spent at, oldest first, by id. */
+  readonly spentAt: Readonly<Record<string, readonly number[]>>;
+  /** Ids that were waved off. They own no minutes from that moment on. */
+  readonly declined: readonly string[];
+}
+
+export const EMPTY_INTERRUPTION_LEDGER: InterruptionLedger = Object.freeze({
+  spentAt: Object.freeze({}),
+  declined: Object.freeze([]),
+});
+
+/** Where an entry WANTS to be, given what the player has done about it. */
+function wantedTick(
   entry: Readonly<InterruptionEntry>,
+  spends: readonly number[],
+): number {
+  const last = spends[spends.length - 1];
+
+  return last === undefined
+    ? entry.tick
+    : deferredArrival(entry, spends.length - 1, last).tick;
+}
+
+/**
+ * The day's interruptions as they now stand: every entry nobody has settled,
+ * at the minute it is actually going to happen.
+ *
+ * This is the runtime half of "one takeover at a time", and it has to be one
+ * function over the whole day rather than a question asked per entry. Asked
+ * per entry it gets the answer wrong in a way nothing would notice until it
+ * crashed a clock: a call deferred at 10:00 by twenty minutes and another
+ * deferred at 10:10 by ten both want 10:20, and two placements that each
+ * looked at the OTHER'S ORIGINAL window would both take it. So the pushed
+ * entries are placed in the order they want to arrive, and each one becomes a
+ * booking the next has to get out of the way of - exactly the discipline
+ * `buildInterruptionSchedule` uses for the authored ones.
+ *
+ * A declinable entry with nowhere left to go is DROPPED, which is the honest
+ * outcome: they rang, you asked them to try later, and there was no later.
+ * One nobody may wave off is never dropped - it slides forward past whatever
+ * is in the way and takes the first clear minutes it can, because an update
+ * that vanished because the lead was at your desk is the quiet wrongness the
+ * loader's refusal exists to prevent. The loader bounds its worst case
+ * (`worstCaseEndTick`) so those minutes are always there; if they somehow are
+ * not, this throws rather than losing it, because a mandatory interruption
+ * that disappeared would look exactly like a quiet afternoon.
+ */
+export function placeInterruptions(
   schedule: Readonly<InterruptionSchedule>,
   blocked: readonly TickWindow[],
-  spends = 1,
-): InterruptionEntry | null {
-  const minutes = entry.endsTick - entry.tick;
+  ledger: Readonly<InterruptionLedger> = EMPTY_INTERRUPTION_LEDGER,
+): readonly InterruptionEntry[] {
+  const live = schedule.entries.filter(
+    (entry) => !ledger.declined.includes(entry.id),
+  );
+  // An entry nobody has pushed is where the schedule put it and cannot move,
+  // so it is a BOOKING before anything is placed rather than a thing waiting
+  // its turn in the queue below. Booking them as they came up in wanted order
+  // was a real hole: a pushed entry placed first could take minutes an
+  // authored one still owned, and the only thing that would have noticed is
+  // the runtime assert reporting a crashed clock.
+  const fixed = live.filter(
+    (entry) => (ledger.spentAt[entry.id] ?? []).length === 0,
+  );
   const bookings: TickWindow[] = [
     { ...lunchWindow(schedule.day) },
     ...blocked.map((booking) => ({ ...booking })),
-    // Every OTHER entry on the day - and only the others. The minutes this one
-    // was booked for are exactly the minutes it just vacated by being pushed,
-    // so holding it off them would be holding it off itself: with windows
-    // shorter than the thing they postpone (ten minutes of grace on a twelve
-    // minute update, which is the shape of a shrinking budget), it would
-    // silently hand back two minutes the player never bought.
-    ...schedule.entries
-      .filter((other) => other.id !== entry.id)
-      .map(entryWindow),
+    ...fixed.map(entryWindow),
   ];
-  let placed: InterruptionEntry = { ...entry };
+  const placed: InterruptionEntry[] = [...fixed];
+  // Wanted order, not authored order: a pushed entry is where its last press
+  // put it, and ties break by id so two entries wanting one minute always land
+  // the same way round.
+  const wanted = live
+    .filter((entry) => !fixed.includes(entry))
+    .map((entry) => ({
+      entry,
+      at: wantedTick(entry, ledger.spentAt[entry.id] ?? []),
+    }))
+    .sort((left, right) => (
+      left.at === right.at
+        ? byCodepoint(left.entry.id, right.entry.id)
+        : left.at - right.at
+    ));
 
-  for (let spend = 0; spend < spends; spend += 1) {
-    const wanted = deferredArrival(placed, spend);
+  for (const { entry, at } of wanted) {
+    const minutes = entry.endsTick - entry.tick;
+    const spends = ledger.spentAt[entry.id] ?? [];
     const tick = slideToClearTick(
-      wanted.tick,
+      at,
       minutes,
       bookings,
       schedule.shift.to - minutes,
     );
 
     if (tick === null) {
-      return null;
+      // The authored flag rather than the callback's: `deferredArrival` marks
+      // every callback undeclinable, and what decides whether an entry may be
+      // LOST is whether anybody could ever have waved it off.
+      if (!entry.declinable) {
+        throw new Error(
+          `"${entry.id}" cannot be waved off and has nowhere left in day `
+          + `${String(schedule.day)} to happen. The loader bounds the worst `
+          + 'case of everything mandatory, so this is a day that was built '
+          + 'wrong rather than a day that ran out.',
+        );
+      }
+
+      continue;
     }
 
-    placed = { ...wanted, tick, endsTick: tick + minutes };
+    const settled: InterruptionEntry = {
+      ...deferredArrival(
+        entry,
+        spends.length - 1,
+        spends[spends.length - 1] ?? entry.tick,
+      ),
+      tick,
+      endsTick: tick + minutes,
+    };
+
+    placed.push(settled);
+    bookings.push(entryWindow(settled));
   }
 
-  return placed;
+  return placed.sort((left, right) => left.tick - right.tick);
+}
+
+/**
+ * One entry, placed, for a caller that only cares about that one.
+ *
+ * It goes through `placeInterruptions` rather than doing its own arithmetic,
+ * because two placement functions are two answers waiting to disagree about
+ * which minute a callback lands on - and the disagreement would be invisible
+ * until two of them shared a screen.
+ */
+export function placeDeferred(
+  entry: Readonly<InterruptionEntry>,
+  schedule: Readonly<InterruptionSchedule>,
+  blocked: readonly TickWindow[],
+  spentAt: readonly number[],
+): InterruptionEntry | null {
+  return placeInterruptions(schedule, blocked, {
+    spentAt: { [entry.id]: spentAt },
+    declined: [],
+  }).find((candidate) => candidate.id === entry.id) ?? null;
+}
+
+/**
+ * The latest minute each push of a budget could possibly be pressed, and where
+ * that leaves the entry.
+ *
+ * The last minute an arrival is on the screen is the last minute the button on
+ * it can be pressed, and a window bought there buys its whole length from
+ * there - so the worst case is not "every window spent" but "every window
+ * spent as late as the dialog allows". It is what the solvability gate has to
+ * walk against, because it is a day the player can actually produce.
+ */
+export function latestSpends(
+  entry: Readonly<InterruptionEntry>,
+  schedule: Readonly<InterruptionSchedule>,
+  blocked: readonly TickWindow[],
+): readonly number[] {
+  const minutes = entry.endsTick - entry.tick;
+  const spends: number[] = [];
+  let arrival = entry.tick;
+
+  for (let spend = 0; spend < entry.postpones.length; spend += 1) {
+    // The last minute it is still on the screen: `endsTick` is exclusive, so
+    // an arrival at 14:10 lasting twelve minutes can be pushed at 14:21.
+    const pressed = arrival + minutes - 1;
+    spends.push(pressed);
+
+    const placed = placeDeferred(entry, schedule, blocked, spends);
+
+    if (placed === null) {
+      spends.pop();
+      break;
+    }
+
+    arrival = placed.tick;
+  }
+
+  return spends;
 }
 
 /**
@@ -816,25 +994,34 @@ export function placeDeferred(
  * advertised paths against, and it is a pure function of the schedule and the
  * day's other bookings so the gate can ask it without building a world.
  *
- * An entry with no room left for a callback keeps its first window: the day
- * cannot lose minutes it has already run out of.
+ * A dropped callback is left OUT rather than replaced by the window it was
+ * booked for. The mask that used to sit here (`?? entry`) hid the one thing
+ * this function exists to surface: an entry that vanishes rather than moves.
+ * The mandatory ones cannot vanish - `placeInterruptions` throws sooner - and
+ * a declinable one that genuinely ran out of day owns no minutes at all, which
+ * is what the gate should be told.
  */
 export function worstCaseWindows(
   schedule: Readonly<InterruptionSchedule>,
   blocked: readonly TickWindow[],
 ): readonly TickWindow[] {
-  return schedule.entries.map((entry) => entryWindow(
-    // Only the ones anybody may push, and only as far as their budget goes. A
-    // block with no postpones in it is a block nobody can move - its worst
+  return schedule.entries.flatMap((entry) => {
+    // A block with no postpones in it is a block nobody can move - its worst
     // case is the half hour it was booked for, and a model that slid it would
-    // be modelling a day that cannot happen. A reboot with three of them is
-    // the opposite: the latest it can land is the only honest reading of what
-    // the day might have to hold, and it is the reading the loader guarantees
-    // fits.
-    entry.postpones.length > 0
-      ? placeDeferred(entry, schedule, blocked, entry.postpones.length) ?? entry
-      : entry,
-  ));
+    // be modelling a day that cannot happen.
+    if (entry.postpones.length === 0) {
+      return [entryWindow(entry)];
+    }
+
+    const placed = placeDeferred(
+      entry,
+      schedule,
+      blocked,
+      latestSpends(entry, schedule, blocked),
+    );
+
+    return placed === null ? [] : [entryWindow(placed)];
+  });
 }
 
 /**

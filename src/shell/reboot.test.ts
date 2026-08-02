@@ -28,12 +28,14 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { DispatchResult } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
+import { DAY_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { shiftEndTick, shiftStartTick } from '../world/day';
 import { minuteOfDay } from '../world/hours';
 import {
   buildInterruptionSchedule,
   type InterruptionEntry,
+  type InterruptionPlan,
   placeDeferred,
 } from '../world/interruptions';
 import { createWorldSession, type WorldSession } from '../world/session';
@@ -113,7 +115,9 @@ function stillOpen(world: Harness): readonly string[] {
  * over, and a week nobody touched would have every meter at its ceiling by the
  * Wednesday - which is a world nothing about a cost can be measured in.
  */
-function thursday(): Harness {
+function thursday(
+  plans: (day: number, seed: number) => InterruptionPlan = interruptionPlanFor,
+): Harness {
   const session = createWorldSession();
   const driver = new DayDriver(
     session.engine,
@@ -124,6 +128,7 @@ function thursday(): Harness {
       openSlackApps: () => [],
       focusedSlackApp: () => null,
     },
+    plans,
   );
   const world: Harness = { driver, session };
 
@@ -159,17 +164,31 @@ function reboot(session: WorldSession): InterruptionEntry {
   return entry;
 }
 
-/** Where the Nth push lands, the day's other bookings and all. */
+/**
+ * Where the Nth push lands, the day's other bookings and all, when each one is
+ * pressed the minute its arrival appears.
+ *
+ * A walk rather than a sum, because a window buys its minutes FROM THE PRESS:
+ * where the second push puts it depends on where the first one landed, and
+ * where the first one landed depends on what the day already had booked.
+ */
 function landingAfter(session: WorldSession, spends: number): number {
   const plan = interruptionPlanFor(THURSDAY, session.seed);
   const schedule = buildInterruptionSchedule(session.seed, THURSDAY, plan);
+  const entry = reboot(session);
+  const pressed: number[] = [];
+  let arrival = entry.tick;
 
-  return placeDeferred(
-    reboot(session),
-    schedule,
-    plan.blocked,
-    spends,
-  )?.tick ?? -1;
+  for (let spend = 0; spend < spends; spend += 1) {
+    pressed.push(arrival);
+    arrival = placeDeferred(entry, schedule, plan.blocked, pressed)?.tick ?? -1;
+
+    if (arrival < 0) {
+      return -1;
+    }
+  }
+
+  return arrival;
 }
 
 /* -- the content ----------------------------------------------------------- */
@@ -255,17 +274,16 @@ describe('the minutes a postpone buys', () => {
     // Nothing owns the screen, and the thing that is coming says when.
     expect(world.driver.interruption()).toBeNull();
 
-    const coming = world.driver.upcoming();
+    const coming = world.driver.pendingRestart();
 
     expect(coming?.entry.id).toBe(REBOOT_ID);
-    expect(coming?.postponed).toBe(true);
     expect(coming?.postponesLeft).toBe(2);
     expect(coming?.ticksAway).toBe(10);
     expect(coming?.entry.tick).toBe(landingAfter(world.session, 1));
 
     // And it is a COUNTDOWN: four minutes later it says four fewer.
     runTo(world, world.session.engine.now() + 4);
-    expect(world.driver.upcoming()?.ticksAway).toBe(6);
+    expect(world.driver.pendingRestart()?.ticksAway).toBe(6);
 
     // The desk, meanwhile, is entirely the player's - which is what the ten
     // minutes were for and the only thing they were for. The claim is the
@@ -323,7 +341,7 @@ describe('the minutes a postpone buys', () => {
       const at = world.session.engine.now();
       const waited = landing - at;
 
-      expect(world.driver.upcoming()?.ticksAway, `spend ${String(spend)}`)
+      expect(world.driver.pendingRestart()?.ticksAway, `spend ${String(spend)}`)
         .toBe(waited);
       expect(countdownChip(waited)).toBe(`Restarting in ${String(waited)}m`);
       // Never less than what was bought. More is the day's other bookings
@@ -333,7 +351,7 @@ describe('the minutes a postpone buys', () => {
       // And it TICKS. A chip that showed the window as a constant would look
       // identical at the moment it was pressed and be a lie a minute later.
       runTo(world, at + 1);
-      expect(world.driver.upcoming()?.ticksAway).toBe(waited - 1);
+      expect(world.driver.pendingRestart()?.ticksAway).toBe(waited - 1);
       expect(countdownChip(waited - 1))
         .toBe(`Restarting in ${String(waited - 1)}m`);
 
@@ -343,13 +361,13 @@ describe('the minutes a postpone buys', () => {
     // The far end of the budget: it is here, it is holding the desk, and
     // there is nothing counting down to anything any more.
     expect(world.driver.interruption()?.postponesLeft).toBe(0);
-    expect(world.driver.upcoming()).toBeNull();
+    expect(world.driver.pendingRestart()).toBeNull();
   }, 20_000);
 
   /**
    * And nothing counts down to something nobody has met.
    *
-   * The chip and the window are drawn off this, so an `upcoming` that reported
+   * The chip and the window are drawn off this seam, so a seam that reported
    * every scheduled entry would read the week out loud in advance: a phone
    * that rings at twenty past would be announced at ten past, and the surprise
    * the whole family is built on would be gone. Only a thing the player has
@@ -362,21 +380,124 @@ describe('the minutes a postpone buys', () => {
 
     runTo(world, entry.tick - 30);
 
-    const coming = world.driver.upcoming();
+    // Nothing at all: the reboot is right there on the schedule and the seam
+    // will not name it, because nobody has been told.
+    expect(world.driver.pendingRestart()).toBeNull();
+    expect(world.driver.interruption()).toBeNull();
+  }, 20_000);
 
-    // It is genuinely the next thing on the day - the seam sees it - and it
-    // is NOT a countdown, because nobody has been told about it.
+  /**
+   * And a phone standing between now and the pushed reboot does not take the
+   * countdown's place.
+   *
+   * The seam FILTERS before it selects. Asked for "the next interruption" and
+   * filtered by the caller, an unmet call NEARER than the postponed reboot is
+   * the answer - so the caller throws it away and the chip the player was
+   * promised blinks out until the phone rings, which is the countdown
+   * disappearing because something else was coming. The day is constructed
+   * rather than found: the shipped Thursday has nothing after ten past two,
+   * and a rule about what the seam answers is a rule about the machinery.
+   */
+  it('is not displaced by a call standing in front of it', () => {
+    const world = thursday((day, seed) => {
+      const real = interruptionPlanFor(day, seed);
+
+      return day === THURSDAY
+        ? {
+          slots: [...real.slots, {
+            // Just past the reboot's own window, so the schedule leaves it
+            // where it is - and squarely in the minutes the first push wants,
+            // so the pushed reboot slides to the far side of it and the call
+            // ends up NEARER than the thing being counted down to.
+            id: 'call:afternoon',
+            source: 'call',
+            minute: 14 * 60 + 24,
+            minutes: 6,
+            relatedTicket: null,
+            declinable: true,
+            severity: 1,
+            flavor: {
+              caller: COMPANY_IDS.vic,
+              subject: 'Something else entirely',
+              opens: 'ringing-annexe',
+            },
+          }],
+          blocked: real.blocked,
+        }
+        : real;
+    });
+    const entry = reboot(world.session);
+
+    runTo(world, entry.tick);
+    expect(world.driver.deferInterruption()).toEqual({ ok: true });
+
+    const coming = world.driver.pendingRestart();
+
     expect(coming?.entry.id).toBe(REBOOT_ID);
-    expect(coming?.postponed).toBe(false);
-    expect(coming?.postponesLeft).toBe(3);
+    expect(coming?.entry.source).toBe('machine');
+    expect(coming?.ticksAway).toBeGreaterThan(0);
+
+    // And the call genuinely IS nearer, which is what makes the assertion
+    // above a claim rather than a coincidence: the very next thing to take the
+    // screen is the phone, and the countdown went on naming the workstation
+    // through every minute of the wait.
+    for (let minute = 0; minute < 20; minute += 1) {
+      if (world.driver.interruption() !== null) {
+        break;
+      }
+
+      expect(world.driver.pendingRestart()?.entry.id).toBe(REBOOT_ID);
+      runTo(world, world.session.engine.now() + 1);
+    }
+
+    expect(world.driver.interruption()?.entry.id).toBe('call:afternoon');
+    expect(world.driver.interruption()?.entry.tick)
+      .toBeLessThan(coming?.entry.tick ?? 0);
+  }, 20_000);
+
+  /**
+   * A push the world knows about with no minute on it still comes back.
+   *
+   * The minute is a second record beside the ids the refusals count, so a save
+   * written before it existed - or any caller that dispatched the verb without
+   * stamping one - has the push and not the press. The entry must not vanish
+   * for that: it falls back to the arrival, which is 0.3.0's arithmetic and is
+   * exactly right for the only saves that can carry one, because a call has a
+   * budget of a single twenty-minute window.
+   */
+  it('still places a push that was recorded without its minute', () => {
+    const world = thursday();
+    const entry = reboot(world.session);
+
+    runTo(world, entry.tick);
+
+    // The verb, dispatched the way a driver that had never heard of the minute
+    // would dispatch it: the id, the flags, and no stamp. This is what a save
+    // written by the build before this one carries.
+    expect(world.session.engine.dispatch(
+      DAY_ACTIONS.interruptionDefer,
+      COMPANY_IDS.player,
+      null,
+      { id: REBOOT_ID, declinable: 0, postpones: entry.postpones.length },
+    ).ok).toBe(true);
+
+    // The world has the push. The schedule has no minute for it. The entry is
+    // still coming back, one window from the arrival, with the budget the
+    // ledger says is left.
+    const coming = world.driver.pendingRestart();
+
+    expect(coming?.entry.id).toBe(REBOOT_ID);
+    expect(coming?.entry.tick).toBe(entry.tick + 10);
+    expect(coming?.postponesLeft).toBe(2);
   }, 20_000);
 
   /**
    * The countdown comes out of a save file with the same number on it.
    *
    * It is the same claim lane A makes about the budget and it is made again
-   * here because it is a DIFFERENT reader: the chip is drawn from `upcoming`,
-   * which places the entry from the ledger every time it is asked, so a driver
+   * here because it is a DIFFERENT reader: the chip is drawn from
+   * `pendingRestart`, which places the entry from the ledger every time it is
+   * asked, so a driver
    * that had started remembering where the callback went would be caught here
    * and nowhere else.
    */
@@ -388,7 +509,7 @@ describe('the minutes a postpone buys', () => {
     world.driver.deferInterruption();
     runTo(world, world.session.engine.now() + 3);
 
-    const before = world.driver.upcoming();
+    const before = world.driver.pendingRestart();
     const savedAt = world.session.engine.now();
     const file = world.session.engine.serialize();
     const fresh = createWorldSession();
@@ -408,12 +529,12 @@ describe('the minutes a postpone buys', () => {
 
     expect(fresh.engine.now()).toBe(savedAt);
 
-    const after = loaded.upcoming();
+    const after = loaded.pendingRestart();
 
     expect(after?.entry.id).toBe(before?.entry.id);
     expect(after?.entry.tick).toBe(before?.entry.tick);
     expect(after?.ticksAway).toBe(before?.ticksAway);
     expect(after?.postponesLeft).toBe(before?.postponesLeft);
-    expect(after?.postponed).toBe(true);
+    expect(after?.entry.source).toBe('machine');
   }, 20_000);
 });

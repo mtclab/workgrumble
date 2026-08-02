@@ -247,6 +247,26 @@ export const FIELDS = {
    */
   interruptionPostpones: 'interruption_postpones',
   /**
+   * And the same pushes again, with the minute each one was pressed on:
+   * `id@tick`, one line per push, oldest first.
+   *
+   * A second record rather than a richer version of the one above, and the
+   * reason is the guards. `line_in_field` and `line_count_at_least` match
+   * WHOLE lines, so the list the world refuses from has to be ids and nothing
+   * else - a ledger carrying minutes could only be counted by a caller that
+   * already knew the minutes, which is a caller marking its own homework. So
+   * the refusals read the ids, and the SCHEDULE reads this.
+   *
+   * It exists because a postpone buys its minutes from the PRESS. Measured
+   * from the arrival instead, a player who read the dialog for eleven minutes
+   * and then pushed a ten-minute window bought nothing at all: the budget went
+   * down, the desk did not come back, and the callback landed in a minute that
+   * had already gone. The minute is the driver's to report, exactly as a touch
+   * log is, and the dispatch log carries it so a replay writes the same string
+   * rather than rebuilding it against a clock nobody saved.
+   */
+  interruptionSpentAt: 'interruption_spent_at',
+  /**
    * And the fourth: the ones nobody answered.
    *
    * A phone that rings out is not a decision, which is exactly why it needs a

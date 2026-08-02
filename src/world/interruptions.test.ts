@@ -19,6 +19,7 @@ import {
   INTERRUPTION_OPENS_AFTER,
   type InterruptionEntry,
   type InterruptionPlan,
+  type InterruptionSchedule,
   type InterruptionSlot,
   interruptionAt,
   interruptionsArrivingBetween,
@@ -27,6 +28,7 @@ import {
   isBenign,
   isInterruptionSource,
   placeDeferred,
+  placeInterruptions,
   postponeBudget,
   slideToClearTick,
   windowsOverlap,
@@ -396,7 +398,10 @@ describe('the callback', () => {
       plan([slot('call:accounts', 10 * 60, { declinable: true })]),
     ).entries[0] as InterruptionEntry;
 
-    const again = deferredArrival(first);
+    // Pressed the minute it rings, which is what every walk and every e2e in
+    // this product does - and there the answer is 0.3.0's exactly: twenty
+    // minutes past the arrival.
+    const again = deferredArrival(first, 0, first.tick);
 
     expect(again.tick).toBe(first.tick + DEFER_MINUTES);
     expect(again.endsTick - again.tick).toBe(first.endsTick - first.tick);
@@ -404,6 +409,30 @@ describe('the callback', () => {
     expect(again.slidFrom).toBe(first.tick);
     expect(again.id).toBe(first.id);
     expect(again.flavor).toEqual(first.flavor);
+  });
+
+  /**
+   * And pressed LATE, which is the fix rather than a detail.
+   *
+   * Measured from the arrival, a player who reads a ringing window for most of
+   * its life and then pushes it buys the difference - and past the end of the
+   * window buys a callback in a minute that has already gone: the budget spent
+   * and the desk not handed back. A postpone buys its stated minutes from the
+   * PRESS, every time, or it is not a postpone.
+   */
+  it('buys its whole window from the minute the button was pressed', () => {
+    const first = buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('call:accounts', 10 * 60, { declinable: true })]),
+    ).entries[0] as InterruptionEntry;
+    const late = first.endsTick - 1;
+
+    expect(deferredArrival(first, 0, late).tick).toBe(late + DEFER_MINUTES);
+    // Which is later than the arrival-anchored answer by exactly the minutes
+    // spent deciding, and never earlier than the press.
+    expect(deferredArrival(first, 0, late).tick)
+      .toBeGreaterThan(first.tick + DEFER_MINUTES);
   });
 });
 
@@ -459,9 +488,24 @@ describe('the postpone budget', () => {
       plan([slot('machine:reboot', 14 * 60 + 10, REBOOT)]),
     );
     const first = schedule.entries[0] as InterruptionEntry;
-    const after = (spends: number): number => (
-      placeDeferred(first, schedule, [], spends)?.tick ?? -1
-    );
+    // Pushed the minute each arrival lands, which is the press the whole
+    // budget is designed around: the windows then shrink from where the thing
+    // now IS, and the arithmetic is 0.3.0's generalised rather than changed.
+    const after = (spends: number): number => {
+      const pressed: number[] = [];
+      let arrival = first.tick;
+
+      for (let spend = 0; spend < spends; spend += 1) {
+        pressed.push(arrival);
+        arrival = placeDeferred(first, schedule, [], pressed)?.tick ?? -1;
+
+        if (arrival < 0) {
+          return -1;
+        }
+      }
+
+      return arrival;
+    };
 
     expect(first.tick).toBe(at(DAY, 14, 10));
     expect(after(1)).toBe(first.tick + 10);
@@ -487,8 +531,15 @@ describe('the postpone budget', () => {
     const first = schedule.entries[0] as InterruptionEntry;
     // The lead, standing at the desk over the minutes the last push wanted.
     const booked: TickWindow = { from: first.tick + 17, to: first.tick + 25 };
-    const clear = placeDeferred(first, schedule, [], 3) as InterruptionEntry;
-    const last = placeDeferred(first, schedule, [booked], 3) as InterruptionEntry;
+    // Three pushes, each pressed the minute its arrival landed.
+    const pressed = [first.tick, first.tick + 10, first.tick + 15];
+    const clear = placeDeferred(first, schedule, [], pressed) as InterruptionEntry;
+    const last = placeDeferred(
+      first,
+      schedule,
+      [booked],
+      pressed,
+    ) as InterruptionEntry;
 
     // Later than it would have been, off the booking entirely, and still
     // inside the day - which is the property, and which is what the loader's
@@ -519,14 +570,205 @@ describe('the postpone budget', () => {
       (entry) => entry.id === 'meeting:sync',
     ) as InterruptionEntry;
     const worst = worstCaseWindows(schedule, []);
+    // Every window spent, and spent as LATE as the dialog allows: each arrival
+    // is readable for its whole twelve minutes, the button on it can be
+    // pressed on the last of them, and a window bought there buys its length
+    // from there. Eleven minutes of dithering plus ten, then eleven plus five,
+    // then eleven plus two - which is a day the player can actually produce,
+    // and therefore the day the gate has to walk.
+    const dithered = 12 - 1;
 
     expect(worst).toContainEqual({
-      from: reboot.tick + 17,
-      to: reboot.tick + 17 + 12,
+      from: reboot.tick + 3 * dithered + 17,
+      to: reboot.tick + 3 * dithered + 17 + 12,
     });
     // The half hour nobody may push is still the half hour it was booked for.
     expect(worst).toContainEqual(entryWindow(meeting));
     expect(worst.every((window) => window.to <= schedule.shift.to)).toBe(true);
+  });
+});
+
+/* -- placing what the player pushed --------------------------------------- */
+
+describe('two callbacks pushed from different minutes', () => {
+  /**
+   * The collision nothing was looking for, and it crashes a clock.
+   *
+   * A call pushed at ten by twenty minutes and another pushed at ten past by
+   * ten both want twenty past. Asked one entry at a time - which is how this
+   * used to work - each placement sees the OTHER'S ORIGINAL window, which both
+   * of them have long since left, so both take the same minute and the
+   * driver's runtime assert reports two takeovers on one screen. It is a
+   * player pressing two ordinary buttons in an ordinary order.
+   *
+   * Placed as a DAY, each one becomes a booking the next has to get out of the
+   * way of, and the second slides exactly as a first arrival would.
+   */
+  it('never take the same minute', () => {
+    const schedule = buildInterruptionSchedule(SEED, DAY, plan([
+      slot('call:a', 10 * 60),
+      slot('call:b', 10 * 60 + 10, { postpones: [10] }),
+    ]));
+    const [first, second] = schedule.entries as [
+      InterruptionEntry,
+      InterruptionEntry,
+    ];
+
+    expect([first.id, second.id]).toEqual(['call:a', 'call:b']);
+
+    const placed = placeInterruptions(schedule, [], {
+      spentAt: {
+        'call:a': [first.tick],
+        'call:b': [second.tick],
+      },
+      declined: [],
+    });
+    const back = (id: string): InterruptionEntry => placed.find(
+      (entry) => entry.id === id,
+    ) as InterruptionEntry;
+
+    // Both of them wanted the same minute, which is the whole point of the
+    // fixture: twenty past ten, from two different presses.
+    expect(first.tick + DEFER_MINUTES).toBe(second.tick + 10);
+    // And they do not share it. One of them is where it asked to be and the
+    // other is on the far side of it, and the invariant the schedule owes the
+    // day holds over both.
+    expect(windowsOverlap(
+      entryWindow(back('call:a')),
+      entryWindow(back('call:b')),
+    )).toBe(false);
+    expect(interruptionsClearOf({ ...schedule, entries: placed }, []))
+      .toBeNull();
+  });
+
+  /**
+   * And a pushed one does not land on an entry nobody has touched.
+   *
+   * The authored ones were placed clear of each other at build time and cannot
+   * move, so they are bookings before anything else is placed. A callback
+   * allowed to take their minutes would be the same crash arriving from the
+   * other direction.
+   */
+  it('do not land on an arrival that has not happened yet', () => {
+    const schedule = buildInterruptionSchedule(SEED, DAY, plan([
+      slot('call:pushed', 10 * 60),
+      slot('call:waiting', 10 * 60 + 22),
+    ]));
+    const pushed = schedule.entries.find(
+      (entry) => entry.id === 'call:pushed',
+    ) as InterruptionEntry;
+    const waiting = schedule.entries.find(
+      (entry) => entry.id === 'call:waiting',
+    ) as InterruptionEntry;
+    const placed = placeInterruptions(schedule, [], {
+      spentAt: { 'call:pushed': [pushed.tick] },
+      declined: [],
+    });
+    const back = placed.find(
+      (entry) => entry.id === 'call:pushed',
+    ) as InterruptionEntry;
+
+    expect(windowsOverlap(entryWindow(back), entryWindow(waiting))).toBe(false);
+    expect(interruptionsClearOf({ ...schedule, entries: placed }, []))
+      .toBeNull();
+  });
+});
+
+describe('the one nobody may wave off, at the far end of its budget', () => {
+  /**
+   * It slides. It does not vanish.
+   *
+   * A mandatory entry whose last window lands inside minutes the day had
+   * already booked used to be DROPPED - the placement answered nothing, the
+   * driver quietly left it out, and the afternoon simply never had an update
+   * in it. That is the exact quiet wrongness the loader's refusal exists to
+   * prevent, arriving after the loader had already said yes: a machine that
+   * cannot be waved off, waved off by the lead walking past.
+   */
+  it('slides past a blocker rather than being dropped', () => {
+    const minute = 14 * 60;
+    const reboot: Partial<InterruptionSlot> = {
+      source: 'machine',
+      minutes: 10,
+      declinable: false,
+      severity: 3,
+      postpones: [20, 20],
+      flavor: { subject: 'Updates' },
+    };
+    // The lead, standing at the desk over the minutes the first push wants.
+    const rounds: TickWindow[] = [
+      { from: at(DAY, 14, 20), to: at(DAY, 14, 35) },
+    ];
+    const schedule = buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('machine:reboot', minute, reboot)], rounds),
+    );
+    const entry = schedule.entries[0] as InterruptionEntry;
+    const placed = placeInterruptions(schedule, rounds, {
+      spentAt: { 'machine:reboot': [entry.tick] },
+      declined: [],
+    });
+    const back = placed.find(
+      (candidate) => candidate.id === 'machine:reboot',
+    ) as InterruptionEntry;
+
+    expect(back).toBeDefined();
+    // Past the rounds rather than inside them, and still inside the day - the
+    // two halves of the promise the loader made when it took this row.
+    expect(back.tick).toBeGreaterThanOrEqual(rounds[0]?.to ?? 0);
+    expect(back.endsTick).toBeLessThanOrEqual(schedule.shift.to);
+    expect(interruptionsClearOf({ ...schedule, entries: placed }, rounds))
+      .toBeNull();
+  });
+
+  /**
+   * And if it somehow cannot land at all, it SAYS SO.
+   *
+   * The loader prices the worst case - every window pressed as late as it can
+   * be, every booking of the day in the way - so this is unreachable from
+   * authored content, which is exactly why it is worth a test: the failure it
+   * replaces was silent. An update that quietly stopped existing looks
+   * identical to an afternoon that never had one, and nobody reports a quiet
+   * afternoon.
+   *
+   * The schedule is built by hand rather than loaded, because the loader's
+   * whole job is to make this impossible to reach the other way.
+   */
+  it('refuses to lose a mandatory entry rather than dropping it', () => {
+    const shift = shiftWindow(DAY);
+    const entry: InterruptionEntry = {
+      id: 'machine:reboot',
+      source: 'machine',
+      tick: shift.to - 30,
+      endsTick: shift.to - 18,
+      relatedTicket: null,
+      declinable: false,
+      severity: 3,
+      flavor: { subject: 'Updates' },
+      slidFrom: null,
+      postpones: [60],
+    };
+    const schedule: InterruptionSchedule = {
+      day: DAY,
+      shift,
+      entries: [entry],
+      dropped: [],
+    };
+
+    expect(() => placeInterruptions(schedule, [], {
+      spentAt: { 'machine:reboot': [entry.tick] },
+      declined: [],
+    })).toThrow(/nowhere left in day/u);
+
+    // And the one anybody could have waved off is dropped in silence, which is
+    // the honest outcome for it: they rang, you asked them to try later, and
+    // there was no later.
+    expect(placeInterruptions(
+      { ...schedule, entries: [{ ...entry, declinable: true }] },
+      [],
+      { spentAt: { 'machine:reboot': [entry.tick] }, declined: [] },
+    )).toEqual([]);
   });
 });
 
@@ -542,9 +784,14 @@ describe('the loader, holding a reboot to the day it is in', () => {
    */
   it('refuses one whose worst case leaks past close, and takes the one that fits', () => {
     const shift = shiftWindow(DAY);
-    // 17 minutes of pushes and 12 of updates: the last minute it may start on
-    // is close minus 29.
-    const latest = SHIFT_END_MINUTE - 29;
+    // Seventeen minutes of windows, twelve of updates, and the eleven minutes
+    // of dithering each arrival allows before its button is pressed: 17 + 12 +
+    // 33 is 62, so the last minute it may start on is close minus 62. The
+    // dithering is in the bound because a push buys its minutes from the
+    // press, so a player who reads every dialog to its last line really does
+    // move the outage that far - and a loader that priced the tidy player's
+    // day would be refusing nothing on the day the mechanic is for.
+    const latest = SHIFT_END_MINUTE - 62;
 
     expect(() => buildInterruptionSchedule(
       SEED,
@@ -558,12 +805,40 @@ describe('the loader, holding a reboot to the day it is in', () => {
       plan([slot('machine:reboot', latest + 1, REBOOT)]),
     )).toThrow(/past the end of the shift/u);
 
-    // The arithmetic it is refusing on, said out loud: every window, then the
-    // minutes the thing itself takes.
+    // The arithmetic it is refusing on, said out loud: every window pressed as
+    // late as it can be, then the minutes the thing itself takes.
     expect(worstCaseEndTick(slot('machine:reboot', latest, REBOOT), DAY))
       .toBe(shift.to);
     expect(worstCaseEndTick(slot('machine:reboot', latest + 1, REBOOT), DAY))
       .toBe(shift.to + 1);
+  });
+
+  /**
+   * And the day's own bookings are in the bound, because a callback that lands
+   * on the lead's rounds does not vanish - it slides to the far side of them,
+   * and an entry nobody may wave off is never dropped for one.
+   *
+   * A reboot that fits an empty afternoon and not one with the corridor in it
+   * is a reboot that would be running at ten past five one week in four, and
+   * the loader is the only thing that ever gets to notice.
+   */
+  it('counts the minutes the day had already booked against it', () => {
+    const latest = SHIFT_END_MINUTE - 62;
+    const rounds: TickWindow[] = [
+      { from: at(DAY, 16, 0), to: at(DAY, 16, 12) },
+    ];
+
+    expect(() => buildInterruptionSchedule(
+      SEED,
+      DAY,
+      plan([slot('machine:reboot', latest, REBOOT)]),
+    )).not.toThrow();
+    // The same row, on a day with twelve minutes of the lead in the middle of
+    // where it would land, is twelve minutes too long.
+    expect(() => buildInterruptionSchedule(SEED, DAY, {
+      slots: [slot('machine:reboot', latest, REBOOT)],
+      blocked: rounds,
+    })).toThrow(/past the end of the shift/u);
   });
 
   /**
@@ -572,7 +847,7 @@ describe('the loader, holding a reboot to the day it is in', () => {
    * that is wrong one week in four.
    */
   it('spends the wander before it spends the postpones', () => {
-    const latest = SHIFT_END_MINUTE - 29;
+    const latest = SHIFT_END_MINUTE - 62;
 
     expect(() => buildInterruptionSchedule(
       SEED,

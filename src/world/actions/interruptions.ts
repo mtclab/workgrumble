@@ -50,6 +50,19 @@ const BENIGN_PARAM = 'benign';
  */
 const POSTPONES_PARAM = 'postpones';
 /**
+ * The line the ledger of MINUTES takes: `id@tick`, built by the driver in the
+ * minute the button was pressed.
+ *
+ * It is a whole line handed in rather than a number the world stitches
+ * together, for the same reason a touch log is: the dispatch log carries what
+ * was actually written, so a replay writes the identical string instead of
+ * rebuilding it against a clock nobody saved. What the world enforces off it
+ * is nothing at all - every refusal reads the ids-only ledger beside it - so a
+ * driver that lied about the minute would be lying to the schedule, which is
+ * the same trust the touch log and the meters already run on.
+ */
+const SPENT_AT_PARAM = 'spent_at';
+/**
  * Whether declining was WITHDRAWN rather than never offered, which is the only
  * thing that decides which true sentence the refusal is.
  */
@@ -75,7 +88,7 @@ function listed(field: string): PredData {
 }
 
 /** Appending the id to one of the three lists, which IS the record. */
-function record(field: string): OpData {
+function record(field: string, param: string = ID_PARAM): OpData {
   return {
     op: 'set_field',
     node: ACTOR,
@@ -84,7 +97,7 @@ function record(field: string): OpData {
       append_line: {
         node: ACTOR,
         field,
-        value: { param: ID_PARAM },
+        value: { param },
       },
     },
   };
@@ -382,6 +395,12 @@ export const INTERRUPTION_ACTION_DATA: readonly ActionData[] = [
         ops: [record(FIELDS.interruptionDeferred)],
       },
       record(FIELDS.interruptionPostpones),
+      // And the same push again, with the minute it was pressed on. The
+      // refusals count the line above; the SCHEDULE reads this one, because a
+      // postpone buys its minutes from the press rather than from the arrival
+      // - a player who reads the dialog for eleven minutes and then pushes a
+      // ten-minute window must get ten minutes, not a budget spent on nothing.
+      record(FIELDS.interruptionSpentAt, SPENT_AT_PARAM),
     ],
   },
   {

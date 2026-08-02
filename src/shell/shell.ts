@@ -1,5 +1,6 @@
 import { createBootScreen } from './boot-screen';
 import type { ShellContext } from './context';
+import { holdsTheDesk } from './day-driver';
 import { Desktop } from './desktop';
 import { createIconSprite } from './icons';
 import { createInstallScreen } from './install-screen';
@@ -28,6 +29,24 @@ const INSTALL_STEP_MS = 500;
 interface QueuedNotification {
   readonly title: string;
   readonly body: string;
+}
+
+/**
+ * What the window queue may open right now.
+ *
+ * Nothing at all while something is holding the desk, and it is a named rule
+ * rather than an `if` inside a paint because it is a rule somebody could
+ * delete without noticing. The window this queue exists for is the release
+ * notes, decided during BOOT on a build that changed under this browser; a
+ * session restored into the middle of a reboot arrives at the desktop with a
+ * takeover already on screen, and a queue that flushed regardless would put a
+ * disabled dialog in front of the update screen that disabled it.
+ */
+export function flushableWindows(
+  pending: readonly string[],
+  deskHeld: boolean,
+): readonly string[] {
+  return deskHeld ? [] : pending;
 }
 
 /**
@@ -60,6 +79,8 @@ export class Shell {
    * so. One entry per app, in order, opened the moment there is a desktop.
    */
   private readonly pendingApps: string[] = [];
+  /** Stops listening for the desk coming back. */
+  private readonly unsubscribeDay: () => void;
 
   public constructor(
     private readonly root: HTMLElement,
@@ -99,6 +120,18 @@ export class Shell {
       this.installing.element,
       this.login.element,
     );
+
+    // The desk coming back is what empties the held queue. It is a
+    // subscription rather than a poll because the day already announces every
+    // change it makes, and a window that waited for the next keystroke would
+    // be a window the player had to go and find.
+    this.unsubscribeDay = context.day.onChanged(() => {
+      const desktop = this.desktop;
+
+      if (desktop !== null && this.pendingApps.length > 0) {
+        this.flushPendingApps(desktop);
+      }
+    });
 
     document.addEventListener(
       'keydown',
@@ -226,6 +259,7 @@ export class Shell {
   }
 
   public dispose(): void {
+    this.unsubscribeDay();
     this.stopBootTimer();
     this.stopInstallTimer();
     this.desktop?.dispose();
@@ -304,8 +338,28 @@ export class Shell {
    * first. The stamp is delivery time, not raise time: a toast that is handed
    * over late still deserves its full time on screen.
    */
-  /** Opens what was asked for while there was no desktop, once, in order. */
+  /**
+   * Opens what was asked for while there was no desktop, once, in order - and
+   * not while something is holding the desk.
+   *
+   * The window this queue exists for is the release notes, decided during BOOT
+   * on a build that changed under this browser. A session restored into the
+   * middle of a reboot arrives at the desktop with a takeover already on the
+   * screen, and a queue that flushed regardless put the notes - a window every
+   * pointer rule has just disabled - on top of the update screen, which is the
+   * one thing the takeover is supposed to be. So the queue waits, and
+   * `deskFreed` below empties it the minute the desk comes back.
+   */
   private flushPendingApps(desktop: Desktop): void {
+    const open = flushableWindows(
+      this.pendingApps,
+      holdsTheDesk(this.context.day.interruption()?.entry.source),
+    );
+
+    if (open.length === 0) {
+      return;
+    }
+
     for (const id of this.pendingApps.splice(0, this.pendingApps.length)) {
       desktop.openApp(id);
     }

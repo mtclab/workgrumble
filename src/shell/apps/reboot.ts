@@ -227,15 +227,10 @@ export const REBOOT_APP: AppDef = {
       const live = view !== null && view.entry.source === 'machine'
         ? view
         : null;
-      const soon = api.day.upcoming();
-      // A machine that has been pushed back, and nothing else. An entry
-      // nobody has met yet is a surprise the week is entitled to keep - a
-      // countdown to a phone call would be the schedule reading itself out.
-      const coming = soon !== null
-        && soon.entry.source === 'machine'
-        && soon.postponed
-        ? soon
-        : null;
+      // A workstation that has been pushed back, and nothing else: the seam
+      // filters before it selects, so an unmet call standing between now and
+      // the reboot cannot suppress the countdown by being nearer.
+      const coming = api.day.pendingRestart();
 
       setFlag(
         root,
@@ -301,6 +296,27 @@ export const REBOOT_APP: AppDef = {
 
     host.replaceChildren(root);
     render();
+
+    /**
+     * And the keyboard, which the pointer rules cannot take.
+     *
+     * The meeting learned this the hard way and the workstation inherits the
+     * lesson unchanged: a terminal or a draft that had the cursor when the
+     * takeover landed KEEPS it. World dispatches refuse, so nothing reaches
+     * the queue - but the keystrokes still land in app-local state, so the
+     * player types a command into a terminal that is going to refuse it, or a
+     * paragraph into a draft, while a screen in front of them says the desk is
+     * gone. The rule has to hold for the keyboard or the product does not have
+     * it.
+     *
+     * Only when a machine is actually holding the desk, so opening this cold
+     * from the start menu - or reading the countdown during the minutes a
+     * postpone bought - steals nothing.
+     */
+    if (api.day.interruption()?.entry.source === 'machine') {
+      root.tabIndex = -1;
+      root.focus();
+    }
 
     const unsubscribeDay = api.day.onChanged(() => {
       render();

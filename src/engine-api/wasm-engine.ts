@@ -512,6 +512,8 @@ const OFF_HOURS_FORBIDDEN: Readonly<Record<string, string>> = {
   interruption_deferred: 'an interruption was pushed back',
   interruption_postpones: 'somebody spent a postpone on an interruption that '
     + 'was not happening, because nothing is happening',
+  interruption_spent_at: 'a postpone was stamped with the minute it was '
+    + 'pressed on, in a stretch of minutes nobody was at the desk for',
   interruption_declined: 'an interruption was refused',
   interruption_missed: 'a phone rang out with nobody at the desk',
   meeting_recap_at: 'a meeting finished and somebody minuted it',

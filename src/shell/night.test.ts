@@ -252,6 +252,10 @@ describe('the night, taken in one go', () => {
       // anybody's screen at four in the morning - so a night that spent one
       // would be a night in which an update countdown was running.
       FIELDS.interruptionPostpones,
+      // And the minute it was pressed on, which is the same claim with a
+      // clock attached: there is no minute at four in the morning that a
+      // player could have pressed anything on.
+      FIELDS.interruptionSpentAt,
     ]) {
       const refusal = offHoursRefusal([planted(field)]);
 

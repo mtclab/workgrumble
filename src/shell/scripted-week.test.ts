@@ -46,7 +46,7 @@ import {
 } from '../world/week';
 import { AppStateStore } from './app-state';
 import { APP_MANIFEST } from './apps';
-import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
+import { DayDriver, holdsTheDesk, TICK_INTERVAL_MS } from './day-driver';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -167,17 +167,6 @@ function workTheQueue(
 }
 
 /**
- * The two sources that take the DESK rather than merely the attention.
- *
- * A meeting is a room you are not at your desk during; a workstation
- * installing updates is a desk that is not there. Both refuse every verb, in
- * their own sentence, through the driver's own seam - and a phone is
- * deliberately in neither list, because being on the phone has never been a
- * defence for anything.
- */
-const HOLDS_THE_DESK: ReadonlySet<string> = new Set(['meeting', 'machine']);
-
-/**
  * The queue, worked at the first minute the player is actually at the desk.
  *
  * A sweep booked for half past ten on the Wednesday is a sweep that runs
@@ -196,9 +185,11 @@ function workWhenAble(
   skip?: (id: string) => boolean,
 ): void {
   for (let waited = 0; waited < 60; waited += 1) {
-    const holding = world.driver.interruption()?.entry.source;
-
-    if (holding === undefined || !HOLDS_THE_DESK.has(holding)) {
+    // The driver's own list rather than a copy of it: a meeting is a room you
+    // are not at your desk during and a workstation is a desk that is not
+    // there, and a harness with its own opinion about which is which would be
+    // a harness that stops waiting the day somebody adds a third.
+    if (!holdsTheDesk(world.driver.interruption()?.entry.source)) {
       break;
     }
 

@@ -546,12 +546,26 @@ function rebootDay(world: Harness, minute = REBOOT_MINUTE): RebootDay {
 
   return {
     entry,
-    landingAfter: (spends) => placeDeferred(
-      entry,
-      schedule,
-      plan.blocked,
-      spends,
-    )?.tick ?? -1,
+    // Pressed the minute each arrival lands, which is what the journey below
+    // does and what a window is designed around: a postpone buys its minutes
+    // from the press, so where the Nth one puts it is a walk rather than a
+    // multiplication.
+    landingAfter: (spends) => {
+      const pressed: number[] = [];
+      let arrival = entry.tick;
+
+      for (let spend = 0; spend < spends; spend += 1) {
+        pressed.push(arrival);
+        arrival = placeDeferred(entry, schedule, plan.blocked, pressed)?.tick
+          ?? -1;
+
+        if (arrival < 0) {
+          return -1;
+        }
+      }
+
+      return arrival;
+    },
   };
 }
 

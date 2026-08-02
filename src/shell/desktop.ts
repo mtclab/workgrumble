@@ -1296,12 +1296,11 @@ export class Desktop {
    * out loud, which is a different game.
    */
   private renderReboot(): void {
-    const soon = this.context.day.upcoming();
-    const coming = soon !== null
-      && soon.entry.source === 'machine'
-      && soon.postponed
-      ? soon
-      : null;
+    // The seam filters before it selects, so there is nothing to check here:
+    // what comes back is the pushed workstation or nothing at all. A chip that
+    // did its own filtering would go blank whenever an unmet call happened to
+    // be nearer, which is the mechanic disappearing because the phone rang.
+    const coming = this.context.day.pendingRestart();
 
     this.rebootChip.hidden = coming === null;
 
