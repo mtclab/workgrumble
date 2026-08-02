@@ -51,10 +51,16 @@ import { DayDriver } from '../../shell/day-driver';
 import { HELPDESK_ACTIONS } from '../actions';
 import { CAUGHT_MINUTES } from '../boss';
 import { COMPANY_IDS } from '../company';
-import { buildDaySchedule, shiftEndTick, shiftStartTick } from '../day';
+import { buildDaySchedule, shiftStartTick } from '../day';
 import { FIELDS } from '../fields';
 import { spoolDisagreements, storedDisagreements } from '../fs';
-import { lunchWindow, minuteOfDay, serviceDeadline, type TickWindow } from '../hours';
+import {
+  lunchWindow,
+  minuteOfDay,
+  serviceDeadline,
+  shiftWindow,
+  type TickWindow,
+} from '../hours';
 import {
   buildInterruptionSchedule,
   clearMinutes,
@@ -507,28 +513,74 @@ export function auditDayTiming(
    * that makes a ticket unreachable.
    */
   presence: Presence = DEFAULT_PRESENCE,
+  /**
+   * How many nights the audit is allowed to look past the arriving day.
+   *
+   * Two by default, which is one more than the longest target in the ladder
+   * can span. It is a parameter ONLY so the meta-test below can ask the older,
+   * narrower question - "is this reachable today" - and watch the 4:55 class
+   * fail it, which is the proof that the class genuinely needs tomorrow and
+   * that the gate has not simply been widened until everything passes.
+   */
+  daysAhead = 2,
 ): readonly string[] {
-  const plan = interruptionPlanFor(day, seed);
-  const blocked = rounds ?? plan.blocked;
-  const schedule = buildInterruptionSchedule(seed, day, {
-    slots: [...plan.slots, ...extra],
-    blocked,
-  });
-  const booked = [
-    ...blocked,
-    ...worstCaseWindows(schedule, blocked, presence),
-  ];
+  /**
+   * The minutes somebody else has already spoken for on a given day.
+   *
+   * The day UNDER TEST takes the fixtures - the extra blocks a meta-test hands
+   * in, the rounds it chose - and every day after it takes its own, because
+   * they are real days of the same week and a ticket carried into one of them
+   * is competing with whatever that day actually holds.
+   */
+  const bookedOn = (on: number): readonly TickWindow[] => {
+    const dayPlanned = interruptionPlanFor(on, seed);
+    const dayBlocked = on === day ? rounds ?? dayPlanned.blocked : dayPlanned.blocked;
+    const schedule = buildInterruptionSchedule(seed, on, {
+      slots: on === day ? [...dayPlanned.slots, ...extra] : dayPlanned.slots,
+      blocked: dayBlocked,
+    });
+
+    return [
+      ...dayBlocked,
+      ...worstCaseWindows(schedule, dayBlocked, presence),
+    ];
+  };
 
   return dealtOn(day, seed).flatMap((ticket) => {
     // The window a player could work it in: from the minute it lands to the
-    // minute the deadline runs out, and never past the end of the shift -
-    // tomorrow's minutes are a different day's problem and this day's ticket
-    // has to have been reachable today.
-    const clear = clearMinutes(
-      ticket.workableFrom,
-      Math.min(ticket.due, shiftEndTick(day)),
-      booked,
-    );
+    // minute the deadline runs out - counted a SHIFT AT A TIME, because both
+    // clocks on a ticket are counted in working minutes and a night is not a
+    // minute anybody could have used.
+    //
+    // It used to stop at the end of the arriving day, with the reasoning that
+    // tomorrow's minutes are a different day's problem. That reasoning is
+    // exactly what `arrives_minutes_before_close` breaks, on purpose and
+    // honestly: a request raised at five to five carries fifty-five of its
+    // sixty minutes into tomorrow morning, so "reachable" for it means
+    // reachable tomorrow, and a gate that refused to look at tomorrow would be
+    // refusing to look at the only place the answer is. Nothing about the
+    // same-day case moves - a deadline inside the shift never reaches the
+    // second pass - so every other ticket in the roster is measured exactly as
+    // it was.
+    let clear = 0;
+
+    // Bounded rather than "until the deadline": the longest target in the
+    // ladder is eight working hours, so nothing in this world can span more
+    // than two nights, and a loop whose only bound is a deadline is a loop
+    // bounded by a number somebody else can change.
+    for (let on = day; on <= day + daysAhead; on += 1) {
+      const shift = shiftWindow(on);
+      const from = Math.max(ticket.workableFrom, shift.from);
+      const to = Math.min(ticket.due, shift.to);
+
+      if (from < to) {
+        clear += clearMinutes(from, to, bookedOn(on));
+      }
+
+      if (ticket.due <= shift.to) {
+        break;
+      }
+    }
 
     return clear >= CLEAR_MINUTES_NEEDED
       ? []
@@ -633,6 +685,32 @@ describe('every advertised path is reachable under the worst schedule', () => {
    * the drip by a minute - and the lead's rounds are handed in empty, because
    * this is a claim about the arithmetic rather than about Monday.
    */
+  /**
+   * The 4:55 class, held to the older and narrower question.
+   *
+   * The audit above now counts clear air across the days a deadline actually
+   * spans, and the honest worry about that is that it was widened until
+   * everything passed. This is the answer: asked the question it used to ask -
+   * "is this reachable TODAY" - the Wednesday request fails, by name, because
+   * five minutes is five minutes. It passes the real gate because fifty-five
+   * of its sixty minutes are tomorrow morning's and tomorrow morning is
+   * genuinely clear, which is the whole claim the field makes.
+   *
+   * It is therefore two assertions in one: the generalization has teeth, and
+   * the ticket it was made for is genuinely the shape it says it is.
+   */
+  it('would call the five-to-five request unreachable inside its own day', () => {
+    const today = auditDayTiming(3, seed, [], undefined, DEFAULT_PRESENCE, 0);
+
+    expect(today.some(
+      (line) => line.startsWith('ticket:vpn-month-end'),
+    )).toBe(true);
+    // And the day it arrives on is otherwise fine, so the complaint is about
+    // this ticket rather than about a Wednesday that has fallen over.
+    expect(today).toHaveLength(1);
+    expect(auditDayTiming(3, seed)).toEqual([]);
+  });
+
   it('says so when a ticket has nowhere left in the day to be worked', () => {
     const swallowed = dealtOn(1, seed).find(
       (ticket) => ticket.workableFrom > shiftStartTick(1),

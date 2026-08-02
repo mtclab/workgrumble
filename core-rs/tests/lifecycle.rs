@@ -544,6 +544,112 @@ fn holds_every_deadline_while_the_service_clock_is_stopped() {
     assert_eq!(state(&world, "ticket:overnight"), "breached");
 }
 
+/// The five-to-five request, from the engine's side of the fence.
+///
+/// This is the cargo half of `arrives_minutes_before_close`, and the claim is
+/// exactly the four-term identity holding across a NIGHT rather than across a
+/// meeting. A ticket raised five minutes before the desk empties has five
+/// minutes of its target tonight and the rest of it tomorrow, and the only
+/// reason that is true is that the deadline moves out by one for every minute
+/// nobody could have worked in - booked to `off_hours_ticks`, never to
+/// `held_ticks`, because nobody parked anything.
+///
+/// The engine has no idea what five o'clock is, which is the point: it is told
+/// the service clock has stopped and it does the arithmetic. So the numbers
+/// here are the shape of the shipped Wednesday rather than its literal ticks -
+/// five minutes of shift left, an hour of target, a night, and a morning - and
+/// the shell-side proof that the shipped ticket really lands at 09:55 on the
+/// Thursday is `src/world/sla.test.ts` and the journey in
+/// `e2e/colleagues.spec.ts`.
+///
+/// The identity is checked before, during and after the night, because a night
+/// that quietly handed back its minutes would still satisfy it at the end -
+/// every term would have moved together.
+#[test]
+fn carries_a_five_to_five_request_into_the_next_morning() {
+    /// An hour, which is what a response target of one hour is.
+    const TARGET: i64 = 60;
+    /// What is left of the shift when it lands. Five minutes, hence the name.
+    const BEFORE_CLOSE: i64 = 5;
+    /// And the hours nobody is at the desk, compressed: the engine counts
+    /// minutes rather than reading a calendar, so a night is however many
+    /// minutes it is told nobody was working.
+    const NIGHT: i64 = 960;
+
+    let mut world = harness();
+    world
+        .spawn_ticket(&service_ticket("ticket:five-to-five", TARGET, "wedged"))
+        .expect("spawn");
+    world.drain_events();
+
+    let number = |world: &World, field: &str| -> i64 {
+        world
+            .graph
+            .get_field("ticket:five-to-five", field)
+            .and_then(FieldValue::as_safe_int)
+            .unwrap_or(0)
+    };
+    let invariant = |world: &World| {
+        assert_eq!(
+            number(world, "sla_deadline"),
+            number(world, "spawned_at")
+                + TARGET
+                + number(world, "held_ticks")
+                + number(world, "off_hours_ticks"),
+            "deadline == spawn + target + held + off_hours",
+        );
+    };
+
+    invariant(&world);
+    let spawned = number(&world, "spawned_at");
+
+    // The five minutes of shift it actually gets. They are ordinary working
+    // minutes and they are spent: nothing moves.
+    world.advance(BEFORE_CLOSE).expect("the end of the day");
+    invariant(&world);
+    assert_eq!(number(&world, "sla_deadline"), spawned + TARGET);
+    assert_eq!(number(&world, "off_hours_ticks"), 0);
+    assert_eq!(state(&world, "ticket:five-to-five"), "open");
+
+    // And the night, a minute at a time, because the interesting claim is that
+    // the identity holds at every one of them rather than at the far end.
+    world.clock.set_sla_running(false);
+
+    for minute in 1..=NIGHT {
+        world.advance(1).expect("a minute of the night");
+        invariant(&world);
+        assert_eq!(
+            number(&world, "off_hours_ticks"),
+            minute,
+            "minute {minute} of the night was not booked to off hours",
+        );
+        // Nobody parked it. A night is not a hold, and an engine that booked
+        // it to the other counter would be excusing the ticket twice for the
+        // same minute.
+        assert_eq!(number(&world, "held_ticks"), 0);
+        assert_eq!(state(&world, "ticket:five-to-five"), "open");
+    }
+
+    // The morning. What is left of the hour is what was left of it at five to
+    // five, to the minute, and it runs out inside the shift rather than at
+    // some point in the small hours - which is the whole of what "the response
+    // window crosses into tomorrow" means.
+    world.clock.set_sla_running(true);
+    let left = number(&world, "sla_deadline") - (spawned + BEFORE_CLOSE + NIGHT);
+    assert_eq!(left, TARGET - BEFORE_CLOSE);
+
+    world.advance(left - 1).expect("the morning");
+    invariant(&world);
+    assert_eq!(state(&world, "ticket:five-to-five"), "open");
+
+    // And it goes red on the minute the arithmetic said it would, in the
+    // morning, on somebody else's day.
+    world.advance(1).expect("the minute it runs out");
+    assert_eq!(state(&world, "ticket:five-to-five"), "breached");
+    assert_eq!(number(&world, "off_hours_ticks"), NIGHT);
+    assert_eq!(number(&world, "held_ticks"), 0);
+}
+
 /// Half an hour in which nobody touches the queue holds nothing and pauses
 /// nothing.
 ///
