@@ -41,7 +41,9 @@ import {
   PRESENCE_VALUES,
 } from '../world/presence';
 import { Desk, deskState } from './desk';
-import { SPEEDS, type Speed } from './day-driver';
+import { Assistant, type AssistantWorld, AssistantVoice } from './assistant';
+import { holdsTheDesk, SPEEDS, type Speed } from './day-driver';
+import { isActiveWork } from '../world/sla';
 
 export interface DesktopHandlers {
   logOut(): void;
@@ -125,6 +127,8 @@ export class Desktop {
   private readonly presenceState: HTMLElement;
   private readonly presenceRefusal: HTMLElement;
   private readonly desk: Desk;
+  private readonly assistant: Assistant;
+  private readonly voice = new AssistantVoice();
   private readonly speedButtons = new Map<Speed, HTMLButtonElement>();
   private readonly presenceButtons = new Map<Presence, HTMLButtonElement>();
 
@@ -195,10 +199,19 @@ export class Desktop {
       },
     });
 
+    // The helper the office bought. It goes beside the desk rather than in it:
+    // the desk is the things the player OWNS, and nobody chose this.
+    this.assistant = new Assistant({
+      dismiss: () => {
+        this.dismissAssistant();
+      },
+    });
+
     this.surface.append(
       icons,
       this.windowLayer,
       this.desk.element,
+      this.assistant.element,
       this.doorFlash,
       this.toastStack,
     );
@@ -558,6 +571,9 @@ export class Desktop {
     this.unsubscribeScreens = this.context.appState.onReplaced(() => {
       this.restoreWindows();
       this.syncDayScreens();
+      // A loaded session is somebody else's screen: the character starts
+      // talking again, and the count it escalates by came back in the file.
+      this.voice.forget();
     });
     this.unsubscribeSaveHealth = this.context.saveHealth.onChanged(() => {
       this.renderSaveHealth();
@@ -1489,6 +1505,66 @@ export class Desktop {
       : 'Hands going';
     this.desk.render(desk);
     this.renderBoss();
+    // The character reads the same minute the chips do, and reads nothing the
+    // chips do not: it is a comment on the desk, so it is painted from the
+    // desk's own facts rather than from anything of its own.
+    this.renderAssistant(onShift, fumbling, now);
+  }
+
+  /**
+   * The Assistant, told what is happening and left to say something wrong
+   * about it.
+   *
+   * Everything handed over is already on the screen somewhere else - the
+   * takeover attribute, the ringing window, the reboot chip, the dot, the
+   * fumble chip, the queue the meeting window counts - and nothing here
+   * dispatches, reads back or waits for it. It is pure overlay, which is the
+   * one property of it a journey depends on.
+   */
+  private renderAssistant(
+    onShift: boolean,
+    fumbling: boolean,
+    now: number,
+  ): void {
+    const takeover = this.context.day.interruption();
+    const world: AssistantWorld = {
+      onShift,
+      heldByTakeover: holdsTheDesk(takeover?.entry.source),
+      // A phone or a body at the desk: the interruptions that are a window
+      // rather than a room, which are the ones it can talk over.
+      ringing: takeover !== null && !holdsTheDesk(takeover.entry.source),
+      rebootComing: this.context.day.pendingRestart() !== null,
+      dnd: this.context.day.presence() === 'dnd',
+      fumbling,
+      openTickets: this.context.graph
+        .nodesOfKind('ticket')
+        .filter(isActiveWork)
+        .length,
+      day: this.context.day.day(),
+    };
+
+    this.assistant.render(this.voice.speak(
+      world,
+      now,
+      this.context.appState.get().assistant.dismissals,
+    ));
+  }
+
+  /**
+   * Closing it, which is the one thing anybody can do to it.
+   *
+   * The count goes into the screen store - one number, carried by the save,
+   * read by nothing but the joke - with `patch` rather than `patchExternal`,
+   * because the desktop owns this slice and repaints it on the next line. It
+   * comes back on the next day or the next thing that happens to the player,
+   * with a note about having been closed.
+   */
+  private dismissAssistant(): void {
+    const closed = this.context.appState.get().assistant.dismissals + 1;
+
+    this.context.appState.patch('assistant', { dismissals: closed });
+    this.voice.dismiss(this.context.day.day());
+    this.assistant.render(null);
   }
 
   /**

@@ -505,6 +505,50 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { cx: '12', cy: '18', r: '1' },
     },
   ],
+  /*
+   * The Assistant, and it is a PLACEHOLDER: a small beige workstation with a
+   * face, drawn in the same 24-unit line language as everything else here. The
+   * eyebrows are the whole character - they are what turns a monitor into a
+   * colleague who is about to say something - and the art pass may replace the
+   * lot of it (a stapler and a desk fan with eyes are the other candidates)
+   * without changing anything but these shapes.
+   */
+  'icon-assistant': [
+    {
+      element: 'rect',
+      attributes: { x: '2', y: '4', width: '20', height: '14', rx: '1' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '9', y1: '21', x2: '15', y2: '21' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '12', y1: '18', x2: '12', y2: '21' },
+    },
+    // The eyebrows, up and hopeful, one slightly higher than the other.
+    {
+      element: 'polyline',
+      attributes: { points: '6 8 8 7 10 8' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '14 8 16 6.6 18 8' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '8', cy: '11', r: '1' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '16', cy: '11', r: '1' },
+    },
+    // A small, extremely pleased mouth.
+    {
+      element: 'path',
+      attributes: { d: 'M9.5 14c1.6 1.4 3.4 1.4 5 0' },
+    },
+  ],
 };
 
 /** Every icon id drawn in this repo. Manifest icons must come from this set. */

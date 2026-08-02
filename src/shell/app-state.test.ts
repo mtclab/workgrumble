@@ -41,6 +41,32 @@ describe('the shell-owned app state', () => {
     expect(fresh.day).toEqual({ briefShownFor: null, scorecardShownFor: null });
     expect(fresh.browser).toEqual({ siteId: null });
     expect(fresh.caught).toEqual({ appId: null, at: null, evidence: null });
+    expect(fresh.assistant).toEqual({ dismissals: 0 });
+  });
+
+  /**
+   * The one number 0.3.5 added, and both halves of how it is read.
+   *
+   * It has to SURVIVE, because the gag is that the thing on the desk remembers
+   * being closed; and a file written before it existed has to LOAD, because
+   * throwing a week away over a joke's counter would be the cure being worse.
+   */
+  it('carries the assistant count, and reads a file from before it existed', () => {
+    const store = new AppStateStore();
+    store.patch('assistant', { dismissals: 3 });
+
+    const wire: unknown = JSON.parse(JSON.stringify(store.snapshot()));
+    expect(parseAppState(wire)?.assistant.dismissals).toBe(3);
+
+    const older = { ...(wire as Record<string, unknown>) };
+    delete older.assistant;
+    expect(parseAppState(older)?.assistant.dismissals).toBe(0);
+
+    // Present but nonsense is still a refusal: this arrives from storage.
+    for (const dismissals of [-1, 1.5, 'lots', null]) {
+      expect(parseAppState({ ...(wire as object), assistant: { dismissals } }))
+        .toBeNull();
+    }
   });
 
   it('patches one slice without disturbing the others', () => {

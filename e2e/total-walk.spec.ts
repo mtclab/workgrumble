@@ -526,6 +526,31 @@ test('walks every function of a probation week that goes well', async ({
   });
 
   /*
+   * The helper the office bought, at the start of the week it will spend
+   * being wrong about.
+   *
+   * Both of its functions are here because both are one click apart and
+   * neither is load-bearing: nothing in the rest of this walk reads it, which
+   * is the property the second step below asserts by taking the world's own
+   * hash on both sides of the only thing anybody can do to it.
+   */
+  await step('assistant.speaks', async () => {
+    await expect(page.getByTestId('assistant')).toBeVisible();
+    await expect(page.getByTestId('assistant-character')).toBeVisible();
+    await expect(page.getByTestId('assistant-bubble')).toBeVisible();
+    await expect(page.getByTestId('assistant-line')).not.toBeEmpty();
+  });
+
+  await step('assistant.dismiss', async () => {
+    const before = await worldHash(page);
+    await page.getByTestId('assistant-dismiss').click();
+    await expect(page.getByTestId('assistant')).toBeHidden();
+    // Pure overlay: closing it moved nothing in the world, and it is back
+    // tomorrow with a note about it whether or not anybody asks.
+    expect(await worldHash(page)).toBe(before);
+  });
+
+  /*
    * The dot, at nine o'clock, before anybody has touched a ticket.
    *
    * All three states and back to Available, deliberately in a minute where the

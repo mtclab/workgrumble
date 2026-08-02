@@ -112,6 +112,21 @@ export interface WindowsState {
   readonly focusedId: string | null;
 }
 
+/**
+ * How many times the player has closed the thing on the desk with the face on
+ * it.
+ *
+ * One number, and it is here rather than in the graph because it changes what
+ * is ON SCREEN and nothing else: no ticket, no meter and no clock reads it,
+ * the scripted walks never touch it, and the goldens are asserted byte-
+ * identical on that fact. What it decides is which of the escalating notes the
+ * character comes back with, which is a joke that only works if it survives a
+ * save - so it rides in the store the save carries verbatim.
+ */
+export interface AssistantState {
+  readonly dismissals: number;
+}
+
 export interface AppState {
   readonly chat: ChatState;
   readonly mail: MailState;
@@ -120,6 +135,7 @@ export interface AppState {
   readonly browser: BrowserAppState;
   readonly caught: CaughtState;
   readonly windows: WindowsState;
+  readonly assistant: AssistantState;
 }
 
 export function createAppState(): AppState {
@@ -131,6 +147,7 @@ export function createAppState(): AppState {
     browser: { siteId: null },
     caught: { appId: null, at: null, evidence: null },
     windows: { open: [], focusedId: null },
+    assistant: { dismissals: 0 },
   };
 }
 
@@ -202,6 +219,34 @@ function readWindows(value: unknown): WindowsState | undefined {
   }
 
   return Object.freeze({ open: Object.freeze(parsed), focusedId: focused });
+}
+
+/**
+ * The character's count, read out of a file that may predate it.
+ *
+ * An absent slice reads as "nobody has closed it yet" rather than as a
+ * refusal, exactly as the caught scene's evidence does: a save written before
+ * there was anything on the desk to close is a save about a screen that had no
+ * assistant on it, and a session is not worth throwing away over a joke's
+ * counter. Anything PRESENT is still read strictly - a count that is not a
+ * whole number is a file somebody has edited, and this shell refuses those.
+ */
+function readAssistant(value: unknown): AssistantState | undefined {
+  if (value === undefined) {
+    return { dismissals: 0 };
+  }
+
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const { dismissals } = value;
+
+  return typeof dismissals === 'number'
+    && Number.isSafeInteger(dismissals)
+    && dismissals >= 0
+    ? { dismissals }
+    : undefined;
 }
 
 function isSpeaker(value: unknown): value is ChatSpeaker {
@@ -278,7 +323,7 @@ export function parseAppState(value: unknown): AppState | null {
     return null;
   }
 
-  const { chat, mail, kb, day, browser, caught, windows } = value;
+  const { chat, mail, kb, day, browser, caught, windows, assistant } = value;
 
   if (
     !isObject(chat)
@@ -308,9 +353,11 @@ export function parseAppState(value: unknown): AppState | null {
     ? null
     : optionalTick(caught.evidence);
   const screen = readWindows(windows);
+  const helper = readAssistant(assistant);
 
   if (
-    chatSelected === undefined
+    helper === undefined
+    || chatSelected === undefined
     || threads === undefined
     || mailSelected === undefined
     || read === undefined
@@ -334,6 +381,7 @@ export function parseAppState(value: unknown): AppState | null {
     browser: { siteId },
     caught: { appId: caughtAppId, at: caughtAt, evidence: caughtEvidence },
     windows: screen,
+    assistant: helper,
   };
 }
 

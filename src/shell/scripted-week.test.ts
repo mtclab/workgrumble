@@ -216,6 +216,16 @@ interface WalkedWeek {
   /** The conduct file the week wrote, as the world holds it. */
   readonly filed: readonly ConductEntry[];
   /**
+   * How many times this week closed the thing on the desk with the face on it.
+   *
+   * It is here because it is the ONLY state 0.3.5 added anywhere, and the
+   * claim that the goldens did not move is exactly the claim that a scripted
+   * week never touches it: nothing below drives a shell, so a count that ever
+   * came back as anything but nought would mean the character had grown a way
+   * of writing to the world, which is the one thing it must not have.
+   */
+  readonly assistantDismissals: number;
+  /**
    * What the player could have read an hour BEFORE the conversation: the file,
    * who had a reason to open it, and the bar that would produce. It is
    * captured at two o'clock on the Friday and is the whole of the legibility
@@ -291,6 +301,7 @@ function walk(play: (world: Week, day: number) => void): WalkedWeek {
     })),
     timeline: world.timeline,
     filed: conductEntries(world.driver.conductFile()),
+    assistantDismissals: world.appState.get().assistant.dismissals,
     atTwo,
   };
 }
@@ -1084,6 +1095,11 @@ function expectGolden(walked: WalkedWeek, golden: GoldenWeek): void {
   expect(walked.filed).toHaveLength(golden.filed);
   expect(walked.meters).toEqual(golden.meters);
   expect(walked.timeline).toEqual(golden.timeline);
+  // 0.3.5 added one field to the whole product and this is where it is proven
+  // to be nowhere near a golden: the walks never close the Assistant, so the
+  // count is nought and the hash above is byte-identical to the one committed
+  // before the character existed.
+  expect(walked.assistantDismissals).toBe(0);
 
   /*
    * THE LEGIBILITY GATE, run on every golden week rather than as a case of

@@ -159,6 +159,13 @@
   --size-progress-bar: 14px;
   --size-desk-item: 64px;
   --size-desk-empties: 148px;
+  /* The helper on the desk: a small beige box with a face on it, the bubble
+     it talks in, and the stepped corner that points the one at the other.
+     Square, like everything else here - a rounded speech bubble would be a
+     chat client from twenty years later. */
+  --size-assistant: 52px;
+  --size-assistant-tail: 8px;
+  --measure-assistant: 32ch;
   --size-door-flash: 10px;
   /* The status lamp on the taskbar. Square, like everything else in this
      shell: 9x is square and the only round thing in the product is the bubble
@@ -190,6 +197,11 @@
   /* Slow enough to read as a room swimming rather than a broken animation. */
   --duration-sway: 3.4s;
   --offset-sway: 3px;
+  /* The helper, breathing. Slow and tiny: it is a plastic box that thinks it
+     is a colleague, and anything faster would read as a thing demanding to be
+     clicked. */
+  --duration-assistant: 4.6s;
+  --offset-assistant: 2px;
   /* The corridor: a reflection crossing the monitor, and a floor with
      somebody on it. Fast enough to notice out of the corner of an eye. */
   --duration-door: 2.2s;
@@ -3506,6 +3518,111 @@ input {
   color: var(--color-alarm);
 }
 
+/* -------------------------------------------------------- the assistant */
+
+/*
+ * The thing the office bought to help, in the corner nearest the door.
+ *
+ * It sits at the same layer as the desk and the icons, so a window covers it
+ * exactly as a window covers everything else on the wallpaper - it is
+ * furniture, not a dialog. The overlay is transparent to the pointer and only
+ * the one button on it takes a click: a character that could eat a click meant
+ * for the window underneath would be a joke that costs somebody a ticket.
+ */
+.assistant-overlay {
+  position: absolute;
+  bottom: var(--space-5);
+  left: var(--space-5);
+  z-index: var(--z-desktop-icons);
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  max-width: var(--measure-assistant);
+  pointer-events: none;
+}
+
+.assistant-bubble {
+  position: relative;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-raised);
+  color: var(--color-ink);
+}
+
+/* The tail: one square step out of the corner, pointing down at the face. */
+.assistant-bubble::after {
+  position: absolute;
+  bottom: calc(-1 * var(--size-assistant-tail));
+  left: var(--space-5);
+  width: var(--size-assistant-tail);
+  height: var(--size-assistant-tail);
+  background: var(--color-surface-raised);
+  box-shadow:
+    inset calc(-1 * var(--border-bevel)) 0 0 0 var(--color-bevel-dark);
+  content: "";
+}
+
+.assistant-line {
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.assistant-body {
+  display: flex;
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.assistant-character {
+  display: grid;
+  place-items: center;
+  width: var(--size-assistant);
+  height: var(--size-assistant);
+  background: var(--color-surface);
+  box-shadow: var(--bevel-raised);
+  color: var(--color-ink-soft);
+  animation: assistant-bob var(--duration-assistant) ease-in-out infinite;
+}
+
+.assistant-character .svg-icon {
+  width: var(--size-icon-lg);
+  height: var(--size-icon-lg);
+}
+
+/* The one part of it that answers to a pointer. */
+.assistant-dismiss {
+  display: grid;
+  place-items: center;
+  width: var(--size-control);
+  height: var(--size-control);
+  border: none;
+  background: var(--color-surface);
+  box-shadow: var(--bevel-raised);
+  color: var(--color-ink);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.assistant-dismiss:hover {
+  background: var(--color-surface-raised);
+}
+
+.assistant-dismiss:active {
+  box-shadow: var(--bevel-sunken);
+}
+
+@keyframes assistant-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(calc(-1 * var(--offset-assistant)));
+  }
+}
+
 /* --------------------------------------------------------- the corridor */
 
 /*
@@ -4159,12 +4276,19 @@ input {
   .screen-desktop[data-boss="telegraph"] .taskbar {
     animation: none;
   }
+
+  /* The helper stops breathing and carries on talking, which loses nothing:
+     the whole character is in what it says. */
+  .assistant-character {
+    animation: none;
+  }
 }
 
 /* A paused day is a frozen scene: every ambient animation holds its frame.
    Lives below the base rules for the same cascade reason as reduced-motion. */
 .screen-desktop[data-paused="true"] .window-layer,
 .screen-desktop[data-paused="true"] .taskbar,
+.screen-desktop[data-paused="true"] .assistant-character,
 .screen-desktop[data-paused="true"] .door-flash {
   animation-play-state: paused;
 }

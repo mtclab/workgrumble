@@ -95,6 +95,13 @@ export const SHELL_SURFACES = [
   'windows',
   'notifications',
   'desk',
+  /**
+   * The beige thing with the face on it. Its own surface rather than part of
+   * the desk, because the desk is what the player owns and nobody chose this -
+   * and because keeping it separate is what stops its controls being read as
+   * fixes by the gate that keeps its lines useless.
+   */
+  'assistant',
 ] as const;
 
 export interface CoverageEntry {
@@ -561,6 +568,26 @@ const ENTRIES = [
     surface: 'desk',
     control: 'desk-beer',
     does: 'The same bottle on Friday evening, which is a button now.',
+    run: 'week',
+  },
+
+  /* -- the helper the office bought --------------------------------------- */
+  {
+    id: 'assistant.speaks',
+    surface: 'assistant',
+    control: 'assistant-character, assistant-bubble',
+    does: 'Says something about what is happening at the desk, on the event '
+      + 'cadence, and is never once right about what to do - the lines are '
+      + 'gated against every real fix in the game.',
+    run: 'week',
+  },
+  {
+    id: 'assistant.dismiss',
+    surface: 'assistant',
+    control: 'assistant-dismiss',
+    does: 'Closes it, which it takes extremely well: it comes back on the '
+      + 'next day or the next thing that happens to you, with an escalating '
+      + 'note about having been closed.',
     run: 'week',
   },
 
@@ -2463,6 +2490,9 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'desk-drink',
   'desk-tidy',
   'desk-beer',
+
+  /* -- and the helper beside it, which has exactly one button ------------- */
+  'assistant-dismiss',
 
   /* -- the queue ---------------------------------------------------------- */
   'ticket-row-*',
