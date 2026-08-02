@@ -208,6 +208,34 @@ async function huntForTakeover(
  * bought while the queue carries on being workable underneath it. So "is it
  * happening" is `data-holding`, not "is there a window".
  */
+/**
+ * Holds the day still for a read that has to be exact.
+ *
+ * The house lesson, learned again: an assertion retries in REAL time and the
+ * clock is running in SIM time, so at x4 every half-second of retrying spends
+ * two minutes of somebody's afternoon. Anything pinning an exact minute - a
+ * countdown, a taskbar clock - reads it with the day stopped, which is a
+ * control the player has and the one control every takeover leaves reachable.
+ */
+async function underPause<T>(page: Page, read: () => Promise<T>): Promise<T> {
+  const pause = page.getByTestId('day-pause');
+  const already = await pause.getAttribute('aria-pressed') === 'true';
+
+  if (!already) {
+    await pause.click();
+    await expect(pause).toHaveAttribute('aria-pressed', 'true');
+  }
+
+  try {
+    return await read();
+  } finally {
+    if (!already) {
+      await pause.click();
+      await expect(pause).toHaveAttribute('aria-pressed', 'false');
+    }
+  }
+}
+
 async function huntForReboot(page: Page, limit = 30): Promise<Takeover> {
   const app = page.getByTestId('reboot-app');
 
@@ -2275,38 +2303,50 @@ test('walks every function of a probation week that goes well', async ({
     // No Decline button anywhere, and a sentence saying why there is not.
     await expect(page.getByTestId('reboot-withdrawn'))
       .toContainText('option has been withdrawn');
+    // And the button the keyboard lands on is the one that costs nothing. The
+    // desktop puts the cursor on the primary control of any screen the day
+    // opens, so the primary control here must not be the answer that spends
+    // the whole budget on one Enter.
+    await expect(page.getByTestId('reboot-postpone'))
+      .toHaveClass(/os-button-primary/u);
   });
 
   await step('reboot.postpone', async () => {
-    await expect(page.getByTestId('reboot-postpone'))
-      .toHaveText('Postpone 10 minutes');
-    await page.getByTestId('reboot-postpone').click();
-    await expect(page.getByTestId('reboot-app'))
-      .toHaveAttribute('data-holding', 'false');
+    // Pressed with the day STOPPED, and the countdown read in the same held
+    // minute. Two box runs died here reading five minutes where ten were
+    // bought, and the second one was this: the assertion retries in real time
+    // while the clock runs in sim time, so at speed the grace was half spent
+    // before the chip was even looked at.
+    await underPause(page, async () => {
+      await expect(page.getByTestId('reboot-postpone'))
+        .toHaveText('Postpone 10 minutes');
+      await page.getByTestId('reboot-postpone').click();
+      await expect(page.getByTestId('reboot-app'))
+        .toHaveAttribute('data-holding', 'false');
+
+      // Painted by the PRESS rather than by the next minute: with the clock
+      // held there is no next minute, and a player who buys ten minutes and
+      // pauses to think is entitled to see what they bought.
+      const chip = page.getByTestId('reboot-chip');
+
+      await expect(chip).toHaveText('Restarting in 10m');
+      await expect(chip).toHaveAttribute('data-left', '2');
+      await expect(page.getByTestId('desktop'))
+        .toHaveAttribute('data-takeover', 'none');
+    });
   });
 
   await step('reboot.countdown', async () => {
-    // The minutes the push bought, counted on the taskbar - and they are
-    // minutes at the desk, which is the whole of what a postpone is for.
-    //
-    // Ten of them, whole, whatever minute this walk happened to click on: a
-    // postpone buys its window FROM THE PRESS. A box run once caught this
-    // reading five, because the walk reached the button five minutes into the
-    // dialog and the window was being measured from the arrival - the budget
-    // went down and the grace did not arrive, which is a postpone that bought
-    // nothing.
-    const chip = page.getByTestId('reboot-chip');
-
-    await expect(chip).toHaveText('Restarting in 10m');
-    await expect(chip).toHaveAttribute('data-left', '2');
-    await expect(page.getByTestId('desktop'))
-      .toHaveAttribute('data-takeover', 'none');
-
     // It COUNTS DOWN. A chip that showed the window as a constant would look
-    // right at the moment it was pressed and be a lie a minute later.
+    // right at the moment it was pressed and be a lie a minute later - so one
+    // minute is spent, and the reading is taken with the day held again.
     await runSimMinutes(page, 1, 1);
-    await expect(chip).toHaveAttribute('data-away', '9');
+    await underPause(page, async () => {
+      await expect(page.getByTestId('reboot-chip'))
+        .toHaveAttribute('data-away', '9');
+    });
 
+    // And the desk answers, which is the whole of what the push bought.
     await runOnlyCommand(page, 'ver');
     await expect(page.getByTestId('cmd-output'))
       .not.toContainText('installing updates');

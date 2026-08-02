@@ -449,6 +449,40 @@ async function huntForReboot(
   throw new Error('The workstation never took the desk.');
 }
 
+/**
+ * Holds the day still for a read that has to be exact.
+ *
+ * An assertion retries in REAL time while the clock runs in SIM time, so at
+ * speed a retry loop spends the very minutes it is trying to count. Anything
+ * pinning an exact minute reads it with the day stopped - which is a control
+ * the player has, and one every takeover deliberately leaves reachable.
+ *
+ * Idempotent, because a session restored from a save taken while paused comes
+ * back paused: a helper that clicked blindly would start the clock in the
+ * middle of the read it was called to protect.
+ */
+async function underPause<T>(
+  page: import('@playwright/test').Page,
+  read: () => Promise<T>,
+): Promise<T> {
+  const pause = page.getByTestId('day-pause');
+  const already = await pause.getAttribute('aria-pressed') === 'true';
+
+  if (!already) {
+    await pause.click();
+    await expect(pause).toHaveAttribute('aria-pressed', 'true');
+  }
+
+  try {
+    return await read();
+  } finally {
+    if (!already) {
+      await pause.click();
+      await expect(pause).toHaveAttribute('aria-pressed', 'false');
+    }
+  }
+}
+
 /** What the save would carry about which windows were up, and in what order. */
 async function openWindows(
   page: import('@playwright/test').Page,
@@ -488,6 +522,14 @@ test('the update is put off three times and then takes the afternoon', async ({
 
   await workUntilMinute(page, REBOOT_AT - 5);
 
+  // The cursor, left in the terminal, which is where a first-line tech's
+  // cursor is. It is what makes the focus claim below a claim about the
+  // TAKEOVER: the desktop deliberately does not steal the keyboard out of
+  // something somebody is typing in.
+  await focusWindow(page, 'cmd');
+  await page.getByTestId('cmd-input').click();
+  expect((await activeElement(page)).testid).toBe('cmd-input');
+
   /* The first arrival: three windows, and the option that was withdrawn. */
 
   const first = await huntForReboot(page);
@@ -506,13 +548,16 @@ test('the update is put off three times and then takes the afternoon', async ({
   await expect(page.getByTestId('desktop'))
     .toHaveAttribute('data-takeover', 'machine');
 
-  // THE KEYBOARD, taken. The terminal had the cursor when the takeover
-  // landed, and a window that left it there would go on collecting keystrokes
-  // into a command line that is going to be refused - the pointer rules cannot
-  // reach that, so the window takes the focus the way the meeting does.
+  // THE KEYBOARD, taken. The terminal had the cursor when the takeover landed
+  // - the journey put it there deliberately, above - and a window that left it
+  // there would go on collecting keystrokes into a command line that is going
+  // to be refused. The desktop does not steal focus out of something somebody
+  // is typing in, on purpose, so this is the takeover's own doing and nothing
+  // else can be covering for it.
   const holding = await activeElement(page);
 
   expect(holding.testid).toBe('reboot-app');
+  expect(holding.testid).not.toBe('cmd-input');
 
   // And the desk is gone by keyboard as well as by mouse: it refuses in the
   // workstation's own sentence rather than the meeting's.
@@ -523,26 +568,32 @@ test('the update is put off three times and then takes the afternoon', async ({
 
   /* Ten minutes bought, and they are minutes at the desk. */
 
-  await page.getByTestId('reboot-postpone').click();
-  await expect(page.getByTestId('reboot-app'))
-    .toHaveAttribute('data-holding', 'false');
-  await expect(page.getByTestId('desktop'))
-    .toHaveAttribute('data-takeover', 'none');
-  // The countdown, on the taskbar, where it can be read with the window shut.
   const chip = page.getByTestId('reboot-chip');
 
-  // Ten, whole, whatever minute the button was pressed on: a postpone buys
-  // its minutes FROM THE PRESS, so a player who reads the dialog first gets
-  // the same grace as one who slaps the button. That is the fix rather than
-  // the assertion being lenient - it used to be measured from the arrival,
-  // and a push late in the window bought nothing at all.
-  await expect(chip).toHaveText('Restarting in 10m');
-  await expect(chip).toHaveAttribute('data-left', '2');
+  // Pressed and read with the day HELD, which is the only way an exact minute
+  // can be asserted: a retry loop runs in real time and the clock runs in sim
+  // time. Ten, whole, whatever minute the button was pressed on - a postpone
+  // buys its minutes FROM THE PRESS, so a player who reads the dialog first
+  // gets the same grace as one who slaps the button.
+  await underPause(page, async () => {
+    await page.getByTestId('reboot-postpone').click();
+    await expect(page.getByTestId('reboot-app'))
+      .toHaveAttribute('data-holding', 'false');
+    await expect(page.getByTestId('desktop'))
+      .toHaveAttribute('data-takeover', 'none');
+    // Painted by the PRESS: with the clock stopped there is no next minute to
+    // wait for, and a player who buys ten minutes and pauses to think about
+    // them is entitled to see what they bought.
+    await expect(chip).toHaveText('Restarting in 10m');
+    await expect(chip).toHaveAttribute('data-left', '2');
+  });
 
   // And it goes down with the clock, which is the half a static chip would
   // pass and be lying about a minute later.
   await runSimMinutes(page, 1, 1);
-  await expect(chip).toHaveAttribute('data-away', '9');
+  await underPause(page, async () => {
+    await expect(chip).toHaveAttribute('data-away', '9');
+  });
   // And the desk answers again, which is the whole of what the push bought.
   await runOnlyCommand(page, 'ver');
   await expect(page.getByTestId('cmd-output'))
@@ -555,7 +606,11 @@ test('the update is put off three times and then takes the afternoon', async ({
   expect(second.postponesLeft).toBe('2');
   await expect(page.getByTestId('reboot-postpone'))
     .toHaveText('Postpone 5 minutes');
-  await expect(duplicate).toHaveAttribute('data-breached', 'false');
+  // Read with the day held: "it has not gone red yet" is a claim about a
+  // minute, and a retry loop would spend the minutes it is claiming about.
+  await underPause(page, async () => {
+    await expect(duplicate).toHaveAttribute('data-breached', 'false');
+  });
 
   // THE ARITHMETIC, which is the point of the whole mechanic: the queue does
   // not stop for the workstation. A deadline runs out while the desk is gone,
@@ -680,6 +735,14 @@ test('a save taken mid-countdown comes back with the same budget', async ({
   await page.getByTestId('reboot-postpone').click();
   await runSimMinutes(page, 3, 1);
 
+  // Held for the reading and left held for the save: an exact minute compared
+  // across a reload has to be a minute nothing is spending in between, and the
+  // pause itself rides the save, which is its own small proof.
+  const pause = page.getByTestId('day-pause');
+
+  await pause.click();
+  await expect(pause).toHaveAttribute('aria-pressed', 'true');
+
   const clock = await page.getByTestId('sim-clock-time').textContent();
   const chip = await page.getByTestId('reboot-chip').textContent();
 
@@ -720,6 +783,13 @@ test('a save taken mid-reboot comes back mid-reboot', async ({ page }) => {
   // Read off the paint that found it: the percentage is a function of the
   // minute, so a second round-trip is a different number by definition.
   const screen = page.getByTestId('reboot-screen');
+  // Held first: a percentage is a function of the minute, so reading one while
+  // the clock runs is reading a number that has already moved on.
+  const pause = page.getByTestId('day-pause');
+
+  await pause.click();
+  await expect(pause).toHaveAttribute('aria-pressed', 'true');
+
   const before = await screen.evaluate(
     (node) => ({ ...(node as HTMLElement).dataset }),
   );
