@@ -96,6 +96,7 @@ import {
   DND_WORKING_TICKS,
   type DndBeatReading,
   dndBeat,
+  dndEvidence,
   type Presence,
   presenceCode,
   readPresence,
@@ -109,7 +110,12 @@ import {
   seasonAt,
   telegraph,
 } from '../world/pressure';
-import { caughtScene, GENERIC_CAUGHT_SCENE } from '../world/scenes';
+import {
+  caughtScene,
+  DND_CAUGHT_SCENE,
+  GENERIC_CAUGHT_SCENE,
+  PRESENCE_CAUGHT_KEY,
+} from '../world/scenes';
 import {
   dayPlan,
   directMessagesOn,
@@ -419,6 +425,24 @@ export interface UpcomingInterruption {
 }
 
 /**
+ * One phone that did not ring, as the world recorded it.
+ *
+ * The entry is the AUTHORED row - the caller, the subject, the ticket it was
+ * about - and the tick is the minute the dot sent it away, which is the only
+ * thing that was not already content. `gaveUp` is the far end of the same
+ * record: an entry that ran out of day and went into the missed list without
+ * ever ringing, which is the one case where a slide is the last thing that
+ * happened to somebody's problem.
+ */
+export interface DodgedInterruption {
+  readonly entry: InterruptionEntry;
+  /** The minute the dot turned it away. */
+  readonly tick: number;
+  /** Whether it never came back at all. */
+  readonly gaveUp: boolean;
+}
+
+/**
  * What the apps and the taskbar may ask of the day. Reading is free; the
  * things that MOVE it - starting the shift, clocking off, opening a can,
  * clearing the desk - all go through the engine's action registry like every
@@ -484,6 +508,20 @@ export interface DayApi {
    * does not have those.
    */
   dndBeat(): DndBeatReading;
+  /**
+   * Every phone that did not ring today, oldest first.
+   *
+   * Free to read and changes nothing: it is the world's own ledger
+   * (`interruption_dodged`, one `id@tick` line per slide) joined back to the
+   * schedule those ids came out of, so a surface can name the caller and the
+   * subject without learning anything the world has not already written down.
+   *
+   * It exists because a filter with no surface is a mechanic the player pays
+   * suspicion for and never sees work - and because the honest record of a
+   * call nobody took is a thing that ought to be readable at five o'clock,
+   * exactly as the missed list is.
+   */
+  dodgedInterruptions(): readonly DodgedInterruption[];
   /**
    * The choice grammar, aimed at whatever is on the screen right now.
    *
@@ -858,6 +896,45 @@ export class DayDriver implements DayApi {
       this.playerNumber(FIELDS.suspicion),
       this.playerNumber(FIELDS.dndWorkingTicks),
     );
+  }
+
+  /**
+   * The phones that did not ring, read back off the world.
+   *
+   * Two lists joined, both of them the world's: the `id@tick` slides and the
+   * ids nobody is going to hear from again. The AUTHORED half - who was
+   * ringing and what about - comes off today's schedule by id, which is the
+   * same place the ringing window would have got it, so this surface knows
+   * precisely what a phone call knows and nothing else.
+   *
+   * Ids the schedule no longer holds are dropped rather than guessed at: a
+   * save carried across a content change can name a call this build does not
+   * author, and a line about a caller nobody can name is worse than a shorter
+   * list.
+   */
+  public dodgedInterruptions(): readonly DodgedInterruption[] {
+    const missed = new Set(
+      this.playerText(FIELDS.interruptionMissed)
+        .split('\n')
+        .filter((id) => id.length > 0),
+    );
+    const dodged: DodgedInterruption[] = [];
+
+    for (const [id, ticks] of Object.entries(this.stampedLines(FIELDS.interruptionDodged))) {
+      const entry = this.interruptions_.entries.find(
+        (candidate) => candidate.id === id,
+      );
+
+      if (entry === undefined) {
+        continue;
+      }
+
+      for (const tick of ticks) {
+        dodged.push({ entry, tick, gaveUp: missed.has(id) });
+      }
+    }
+
+    return dodged.sort((left, right) => left.tick - right.tick);
   }
 
   /**
@@ -1930,6 +2007,13 @@ export class DayDriver implements DayApi {
       }
     }
 
+    // One conversation at a time, which is the precedence discipline the
+    // takeover family already keeps: a man who has just found a forum open is
+    // having THAT conversation, and the dot will still be there tomorrow.
+    if (caught === null) {
+      this.settleStatusBeat(visit);
+    }
+
     const cans = this.playerNumber(FIELDS.deskCans);
 
     if (!emptiesNoticed(cans)) {
@@ -1961,6 +2045,61 @@ export class DayDriver implements DayApi {
             + 'cans as well. He did not mention those either.',
       );
     }
+  }
+
+  /**
+   * The other thing he can find, which is not on the screen at all.
+   *
+   * The status beat, and it is the CAUGHT-SCENE CLASS rather than a new one:
+   * the same verb, the same line on the file, the same minutes off the shift,
+   * the same closeable window with the same button on it. What differs is what
+   * he found - a dot saying busy over a dispatch log saying working - and that
+   * is a sentence, not a mechanic.
+   *
+   * Three things keep it from being a random scold, and all three are the
+   * world's rather than this driver's:
+   *
+   * - It fires on ARRIVAL, in the corridor's own schedule, so it is telegraphed
+   *   exactly as every other conversation at this desk is.
+   * - `armed` is a predicate over evidence the world wrote down: the dot is on
+   *   NOW, the meter has actually climbed, and there is half an hour of
+   *   do-not-disturb-while-working on the record.
+   * - It cannot drum. `boss.caught` puts suspicion on the floor a spoken-to
+   *   person sits at, which is below the threshold that armed it - so the next
+   *   one costs another morning of the same behaviour rather than the next
+   *   time he walks past.
+   */
+  private settleStatusBeat(visit: Readonly<BossVisit>): void {
+    const beat = this.dndBeat();
+
+    if (!beat.armed) {
+      return;
+    }
+
+    const result = this.engine.dispatch(DAY_ACTIONS.bossCaught, this.actor, null, {
+      // The quantity goes on the FILE, where a quantity belongs; the scene
+      // says the same thing in the words a man standing there would use.
+      file_line: conductLine(
+        visit.arrivalTick,
+        'status',
+        `${DND_CAUGHT_SCENE.fileSubject} for ${dndEvidence(beat.minutes)}`,
+      ),
+    });
+
+    if (!result.ok) {
+      return;
+    }
+
+    this.slowDown();
+    this.owedMinutes_ += CAUGHT_MINUTES;
+    this.handlers.onCaught?.(PRESENCE_CAUGHT_KEY, visit.arrivalTick);
+    this.handlers.onNotice?.(
+      `That is ${String(CAUGHT_MINUTES)} minutes`,
+      'He did not find anything on your screen. He read your status instead, '
+      + 'held it against a morning of dispatches, and came down to ask about '
+      + `it. The shift is ${String(CAUGHT_MINUTES)} minutes shorter and a line `
+      + 'has gone on your file, which you can read.',
+    );
   }
 
   private settlePing(ping: Readonly<BossPing>): void {
@@ -3027,7 +3166,16 @@ export class DayDriver implements DayApi {
 
       const reporter = findWorldTicket(ticket.id)?.def.reporter;
 
-      if (reporter === undefined || already.includes(`${reporter}@${String(day)}`)) {
+      if (
+        reporter === undefined
+        // Nobody notices their own dot. The desk's own faults are raised by
+        // the person sitting at it - the fan that has been grinding since
+        // Monday is Pat's own ticket - and a reputation hit for keeping
+        // YOURSELF waiting is a fine with nobody on the other end of it, plus
+        // a chat line from the player to the player.
+        || reporter === this.actor
+        || already.includes(`${reporter}@${String(day)}`)
+      ) {
         continue;
       }
 

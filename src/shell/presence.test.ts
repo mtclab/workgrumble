@@ -402,7 +402,15 @@ describe('a morning on do not disturb', () => {
 
     // Worked all morning with the dot on, which is the claim the beat's own
     // sentence makes and therefore the day it has to be armed by.
-    for (let round = 0; round < 48; round += 1) {
+    //
+    // It STOPS at the arming rather than running a fixed number of rounds, and
+    // that is a fact about the world rather than a convenience: since lane B
+    // the armed beat is a conversation the lead actually has, and being spoken
+    // to puts the suspicion meter on the floor a spoken-to person sits at - so
+    // a loop that carried on past the corridor would be measuring the morning
+    // AFTER the telling-off. The predicate this test is about is the one that
+    // holds the first time both halves are on the record.
+    for (let round = 0; round < 48 && !world.driver.dndBeat().armed; round += 1) {
       expect(pretendToWork(world.driver, world.session), 'nothing to work on')
         .toBe(true);
       runTo(

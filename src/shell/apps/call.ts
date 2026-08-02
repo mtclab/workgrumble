@@ -11,6 +11,7 @@ import { FIELDS } from '../../world/fields';
 import { FLAVOR, flavorText } from '../../world/interruptions';
 import { isFumbling, isRefocusing } from '../../world/meters';
 import { ticketTitle } from '../../world/tickets';
+import { formatSimTime } from '../clock-format';
 import type { ChatThread } from '../app-state';
 import type { InterruptionView } from '../day-driver';
 import { createIcon } from '../icons';
@@ -67,6 +68,20 @@ export const CALL_APP: AppDef = {
     head.append(portrait, copy);
 
     const state = element('p', 'call-state', 'call-state');
+    /**
+     * The phones that did not ring, which is the only trace the dot leaves on
+     * a screen.
+     *
+     * It lives in the SILENCE state on purpose and it is a list rather than a
+     * notice: a filter that announced every call it turned away would undo the
+     * quiet the player bought, and one that said nothing at all would be a
+     * mechanic paid for in suspicion and never once seen working. So the
+     * record sits here, in the window it is about, and says exactly what the
+     * world wrote down - who tried, at what minute, and whether they ever came
+     * back. Nothing more: this window must not know a single thing about a
+     * conversation that did not happen.
+     */
+    const missed = element('ul', 'call-missed', 'call-missed');
     const transcript = element('ol', 'chat-transcript', 'call-transcript');
     const options = element('div', 'chat-options', 'call-options');
 
@@ -78,7 +93,7 @@ export const CALL_APP: AppDef = {
 
     const note = element('p', 'call-note', 'call-note');
 
-    root.append(head, state, transcript, options, answers, note);
+    root.append(head, state, missed, transcript, options, answers, note);
 
     /** The last thing a button did, which is about the click that just happened. */
     let refusal: string | null = null;
@@ -317,6 +332,38 @@ export const CALL_APP: AppDef = {
       sayNo();
     });
 
+    /**
+     * Everybody the dot turned away today, oldest first.
+     *
+     * Read off the day rather than remembered here, so it is the same list on
+     * both sides of a save - and empty for the whole of a week nobody sets a
+     * status in, which is what keeps this from being a panel about nothing.
+     */
+    const renderMissed = (): void => {
+      const dodged = api.day.dodgedInterruptions();
+
+      missed.replaceChildren();
+      missed.dataset.dodged = String(dodged.length);
+      missed.hidden = dodged.length === 0;
+
+      for (const record of dodged) {
+        const item = element('li', 'call-missed-line');
+        item.dataset.call = record.entry.id;
+        const when = element('span', 'call-missed-when');
+        when.textContent = formatSimTime(record.tick).time;
+        const who = element('span', 'call-missed-who');
+        const caller = flavorText(record.entry, FLAVOR.caller);
+        const name = caller === null
+          ? null
+          : api.graph.getField(caller, FIELDS.name);
+        who.textContent = `${typeof name === 'string' ? name : 'Somebody'} - ${
+          flavorText(record.entry, FLAVOR.subject) ?? 'no subject given'
+        }${record.gaveUp ? '. They did not try again.' : ''}`;
+        item.append(when, who);
+        missed.append(item);
+      }
+    };
+
     /** The window with nothing ringing in it, which is most of the week. */
     const renderSilence = (): void => {
       root.dataset.call = 'none';
@@ -337,6 +384,7 @@ export const CALL_APP: AppDef = {
       answers.hidden = true;
       note.textContent = 'When it does ring you get three answers, and one of '
         + 'them is not always available.';
+      renderMissed();
     };
 
     const renderTranscript = (thread: Readonly<ChatThread>, name: string): void => {
@@ -399,6 +447,12 @@ export const CALL_APP: AppDef = {
         const name = callerName(view);
         const tree = treeFor(view);
         const thread = threads()[threadKey(view.entry.id)];
+
+        // The record is about a quiet phone. With one actually ringing it is
+        // the wrong half of the window to be reading, and a list of calls that
+        // did not happen underneath a call that is happening is a screen
+        // arguing with itself.
+        missed.hidden = true;
 
         root.dataset.call = view.entry.id;
         root.dataset.answered = String(view.answered);

@@ -4,10 +4,12 @@ import {
   conductEntries,
   conductSummary,
 } from '../../world/conduct';
+import { dndEvidence } from '../../world/presence';
 import {
   type CaughtScene,
   caughtScene,
   GENERIC_CAUGHT_SCENE,
+  PRESENCE_CAUGHT_KEY,
   UNCAUGHT_SCENE,
 } from '../../world/scenes';
 import { formatSimTime } from '../clock-format';
@@ -57,6 +59,19 @@ export const CAUGHT_APP: AppDef = {
 
     const line = element('blockquote', 'caught-line', 'caught-line');
     const narration = element('p', 'caught-narration', 'caught-narration');
+    /**
+     * What he is holding it against, for the one scene that is about a record
+     * rather than about a screen.
+     *
+     * The world counts minutes and the lead does not say minutes, so the
+     * quantity is translated into the phrase a man at your desk would use -
+     * and it is read live rather than baked into the scene, because how much
+     * of the morning it was is a fact about the day the player had. The FILE
+     * carries the same reading in the passive voice, which is the joke this
+     * whole window is built on: two true sentences about the same morning,
+     * neither of them a paraphrase of the other.
+     */
+    const evidence = element('p', 'caught-evidence', 'caught-evidence');
     const reply = element('p', 'caught-reply', 'caught-reply');
 
     const file = element('section', 'caught-file', 'caught-file');
@@ -69,7 +84,7 @@ export const CAUGHT_APP: AppDef = {
     const note = element('p', 'caught-note', 'caught-note');
     footer.append(dismiss, note);
 
-    root.append(head, line, narration, reply, file, criteria, footer);
+    root.append(head, line, narration, evidence, reply, file, criteria, footer);
 
     dismiss.addEventListener('click', () => {
       api.closeApp('caught');
@@ -179,6 +194,17 @@ export const CAUGHT_APP: AppDef = {
       line.textContent = scene.bossLine;
       narration.textContent = scene.narration;
       reply.textContent = scene.reply;
+
+      const status = appId === PRESENCE_CAUGHT_KEY;
+      const beat = api.day.dndBeat();
+
+      evidence.hidden = !status;
+      evidence.dataset.minutes = String(beat.minutes);
+      evidence.textContent = status
+        ? 'He does not say a number, and he has one. What he says is that it '
+          + `has been like that for ${dndEvidence(beat.minutes)}, and the `
+          + 'dispatch log behind you agrees with him to the minute.'
+        : '';
       dismiss.textContent = scene.dismissLabel;
       note.textContent = appId === null
         ? 'Nothing on this screen costs a point. What a conversation costs is '

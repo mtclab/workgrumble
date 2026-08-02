@@ -2,7 +2,11 @@ import { loadEngine, WasmEngine } from './engine-api';
 import { type Account, createCloudApi } from './shell/api';
 import { type AppState, AppStateStore } from './shell/app-state';
 import { APP_MANIFEST } from './shell/apps';
-import { openDirectMessage, pingBossThread } from './shell/boss-thread';
+import {
+  openDirectMessage,
+  pingBossThread,
+  remarkInThread,
+} from './shell/boss-thread';
 import type { ShellContext } from './shell/context';
 import { DayDriver, DRIVER_INTERVAL_MS, windowFor } from './shell/day-driver';
 import {
@@ -19,6 +23,9 @@ import { CloudSaves } from './shell/sync';
 import { updateOnBoot, VersionSlot } from './shell/updates';
 import { BUILD_VERSION } from './shared/build';
 import { COMPANY, COMPANY_IDS } from './world/company';
+import { awayNoticedLine } from './world/dialogue';
+import { dayForTick } from './world/hours';
+import { FLAVOR, flavorText } from './world/interruptions';
 import { createWorldSession, FIRST_WEEK } from './world/session';
 import { ticketTitle } from './world/tickets';
 
@@ -270,6 +277,50 @@ async function boot(): Promise<void> {
           + 'could have said with more confidence and chose not to. What is '
           + 'gone is the minutes.',
         );
+      }
+    },
+    // A phone that did not ring, because the dot said not to.
+    //
+    // Said ONCE a day and quietly, which is the whole register of this one: the
+    // durable record is in the call window's own silence, where the player can
+    // read at five o'clock exactly who tried and when. A notice per slide would
+    // be a filter announcing every call it turned away, which is the opposite
+    // of what buying quiet is supposed to feel like - but a filter that never
+    // said anything at all would be a mechanic paid for in suspicion and never
+    // once seen working.
+    //
+    // "First today" is asked of the WORLD rather than remembered here: the
+    // ledger has just been written, so the answer survives a reload exactly as
+    // the record does.
+    onInterruptionDodged: (entry, tick) => {
+      const today = day.dodgedInterruptions().filter(
+        (dodged) => dayForTick(dodged.tick) === dayForTick(tick),
+      );
+
+      if (today.length > 1) {
+        return;
+      }
+
+      shell.notify(
+        'The phone did not ring',
+        `${flavorText(entry, FLAVOR.subject) ?? 'Somebody wanted you'}. They `
+        + 'saw the dot and did not put it through. It is in the call window '
+        + 'with the time on it, and they may well try again.',
+      );
+    },
+    // And somebody noticing that the dot says Away while the queue moves.
+    //
+    // The world has already taken the reputation and written down that this
+    // person has had their one thought about it today; the notice that says a
+    // number moved is the driver's. What is left is what they SAY, which is
+    // content and lands in the conversation they would have said it in - so
+    // the player can go and read who it was, in their own voice, rather than
+    // being told a meter went down.
+    onPresenceNoticed: (reporter) => {
+      const line = awayNoticedLine(reporter);
+
+      if (line !== null) {
+        remarkInThread(appState, reporter, line);
       }
     },
     // Friday at three. The world has already decided - the verb is guarded on
