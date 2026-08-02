@@ -824,6 +824,43 @@ const ENTRIES = [
     run: 'week',
   },
 
+  /* -- somebody at the desk ------------------------------------------------
+   *
+   * The same window and the same three verbs, because it is the same
+   * mechanic - a synchronous conversation that owns the screen while every
+   * clock runs. What is different is everything the player reads: the words on
+   * the buttons, the sentence about the dot, and the fact that this one has an
+   * ASK in it rather than a subject.
+   */
+  {
+    id: 'call.walk-up',
+    surface: 'call',
+    control: 'call-answer (a walk-up)',
+    does: 'Looks up at somebody standing at the desk, which the status dot '
+      + 'has no say in and which opens the ask they came over with.',
+    actions: [DAY_ACTIONS.interruptionAccept],
+    run: 'week',
+  },
+  {
+    id: 'call.walk-up-off-book',
+    surface: 'call',
+    control: 'call-option-<n> (do it now)',
+    does: 'Does the two-minute job there and then: the world moves, they are '
+      + 'grateful, no ticket is ever raised and Friday cannot see it.',
+    actions: [HELPDESK_ACTIONS.machineReboot],
+    run: 'week',
+  },
+  {
+    id: 'call.walk-up-filed',
+    surface: 'call',
+    control: 'call-option-<n> (ask them to file it)',
+    does: 'Sends them to the form, which costs a beat of grumbling and puts a '
+      + 'real ticket in the queue that counts like any other.',
+    run: 'fired',
+    why: 'One week cannot both do the favour off the books and be sent the '
+      + 'ticket for it: the two answers are the same beat, and the walk that '
+      + 'goes well takes the quiet one.',
+  },
   {
     id: 'call.missed-record',
     surface: 'call',
@@ -2237,6 +2274,16 @@ const ENTRIES = [
 
   /* -- the Browser -------------------------------------------------------- */
   {
+    id: 'chat.typing',
+    surface: 'chat',
+    control: 'chat-typing',
+    does: 'Somebody who has said "Hi." and nothing else, the dots cycling '
+      + 'while they compose, and how many more minutes of the shift waiting '
+      + 'it out costs against one click for asking.',
+    run: 'week',
+  },
+
+  {
     id: 'browser.window',
     surface: 'browser',
     control: 'window-browser',
@@ -2256,6 +2303,14 @@ const ENTRIES = [
     surface: 'browser',
     control: 'browser-site-cats',
     does: 'The other site, and a visitor counter.',
+    run: 'week',
+  },
+  {
+    id: 'browser.nohello',
+    surface: 'browser',
+    control: 'browser-site-nohello',
+    does: 'The page the veteran links in his own conversation, having read it, '
+      + 'agreed with it and opened with "Hi." the next morning anyway.',
     run: 'week',
   },
   {
@@ -2453,6 +2508,7 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'mail-row-*',
   'chat-person-*',
   'chat-option-*',
+  'chat-typing',
   'chat-restart',
   'chat-open-tickets',
   'browser-site-*',

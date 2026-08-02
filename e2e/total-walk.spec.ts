@@ -1198,10 +1198,51 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('browser-hits')).toContainText('visitor');
   });
 
+  await step('browser.nohello', async () => {
+    // The page the veteran links, bookmarked on this workstation by somebody
+    // who has read it and still opens with "Hi." - which is the joke and is
+    // also, this week, a thing the player is about to be on the end of.
+    await page.getByTestId('browser-site-nohello').click();
+    await expect(page.getByTestId('browser-thread'))
+      .toContainText(/do not say just hello/i);
+  });
+
   await step('browser.bookmarks', async () => {
     await page.getByTestId('browser-home-button').click();
     await expect(page.getByTestId('browser-home')).toBeVisible();
   });
+
+  /*
+   * Ten to eleven, and one word from a man with eleven years in the building.
+   *
+   * The beat is WAITED OUT here rather than answered, which is the expensive
+   * half of it: the question arrives when he has finished typing it, five
+   * minutes of a shift later, and the window says so the whole way through.
+   * The journey that asks instead is in `colleagues.spec.ts`.
+   */
+  await workUntilMinute(page, 171);
+
+  await step('chat.typing', async () => {
+    await openFromStartMenu(page, 'chat');
+    await page.getByTestId('chat-person-owen').click();
+
+    const typing = page.getByTestId('chat-typing');
+    await expect(typing).toHaveAttribute('data-typing', 'true');
+    // Nothing but a greeting so far, which is the whole complaint.
+    await expect(page.getByTestId('chat-transcript')).toContainText('Hi.');
+
+    // And the cost, said before anybody pays it.
+    const left = await underPause(page, async () => typing.getAttribute('data-left'));
+    expect(Number(left ?? '0')).toBeGreaterThan(0);
+  });
+
+  await workUntilMinute(page, 177);
+
+  // He got there. The indicator is gone, because a typing indicator over a
+  // question that has arrived is a screen arguing with itself.
+  await expect(page.getByTestId('chat-typing'))
+    .toHaveAttribute('data-typing', 'false');
+  await expect(page.getByTestId('chat-transcript')).toContainText('despatch');
 
   await step('updates.window', async () => {
     await openFromStartMenu(page, 'updates');
@@ -2565,7 +2606,49 @@ test('walks every function of a probation week that goes well', async ({
     await expectClosed(page, 'coverup-backup');
   });
 
-  await workUntilMinute(page, 230);
+  /*
+   * Twenty to twelve, and somebody at the desk rather than on the phone.
+   *
+   * Same window, same three verbs, different everything else - and the choice
+   * is the one this slice is about: two minutes now and no record of it, or a
+   * ticket and a line on Friday's card. The walk that goes well takes the
+   * quiet one, so the OTHER answer is driven in the week that goes badly.
+   */
+  await step('call.walk-up', async () => {
+    const desk = await huntForTakeover(page, 'call', 60);
+
+    expect(desk.source).toBe('walk_up');
+    await expect(page.getByTestId('call-caller')).toContainText('Gary');
+    // The dot has nothing to say about a person who can see you, and the
+    // window says so where the player is looking.
+    await expect(page.getByTestId('call-state')).toContainText('can see you');
+
+    await page.getByTestId('call-answer').click();
+    await expect(page.getByTestId('call-app'))
+      .toHaveAttribute('data-answered', 'true');
+  });
+
+  await step('call.walk-up-off-book', async () => {
+    await page.getByTestId('call-option-0').click();
+    await expect(page.getByTestId('call-transcript'))
+      .toContainText('off the books');
+  });
+
+  await workUntilMinute(page, 240);
+
+  /*
+   * THE HONESTY, and the reason the quiet answer is a real answer rather than
+   * a free one: the job is done, the machine went round, and there is no row
+   * anywhere with his name on it. Friday's card cannot count what the queue
+   * never held.
+   */
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-gary').click();
+  // The box that had been asking since before his fortnight is not asking any
+  // more, which is the whole of what he came over about.
+  await expect(page.getByTestId('remote-dialog')).toContainText('System Notice');
+  await openFromStartMenu(page, 'tickets');
+  await expect(page.getByTestId('ticket-row-gary-restart')).toHaveCount(0);
 
   // The report nobody raised in March: try the obvious thing, then hand it on
   // with the date on it. Both controls are already walked; the ticket is not.
@@ -3025,6 +3108,27 @@ test('walks the week nobody worked, the firing, and the retry', async ({
     await expect(page.getByTestId('chat-outcome')).toContainText('Done, from here');
     await expect(page.getByTestId('chat-transcript')).not.toBeEmpty();
   });
+
+  /*
+   * The other half of the walk-up, in the week that has room for it: he is
+   * sent to the form, he grumbles, and eight minutes later there is a ticket
+   * with a clock on it. Same repair, same colleague, and the only version of
+   * it anybody is ever paid for.
+   */
+  await step('call.walk-up-filed', async () => {
+    const desk = await huntForTakeover(page, 'call', 180);
+
+    expect(desk.source).toBe('walk_up');
+    await page.getByTestId('call-answer').click();
+    await page.getByTestId('call-option-1').click();
+    await expect(page.getByTestId('call-transcript'))
+      .toContainText('take the point about there being a record');
+  });
+
+  await workUntilMinute(page, 245);
+
+  await openFromStartMenu(page, 'tickets');
+  await expect(page.getByTestId('ticket-row-gary-restart')).toHaveCount(1);
 
   await workUntilMinute(page, 425);
 
