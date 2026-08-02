@@ -80,6 +80,7 @@ import {
   arrivalStress,
   buildInterruptionSchedule,
   declineWithdrawn,
+  INTERRUPTION_SOURCES,
   type InterruptionSource,
   type InterruptionEntry,
   type InterruptionLedger,
@@ -219,6 +220,38 @@ export function deskHeldReason(
 export function holdsTheDesk(source: InterruptionSource | undefined): boolean {
   return deskHeldReason(source) !== null;
 }
+
+/**
+ * Which window an interruption is drawn in.
+ *
+ * Three sources, three surfaces, and they are genuinely different things: a
+ * person on a phone, a room with people in it, and a machine that has decided.
+ * It is a function rather than a conditional at each call site because the two
+ * call sites are "open it" and "close it", and a window opened by one rule and
+ * closed by another is a window left standing on the desk after the thing it
+ * was about has finished - which is precisely the failure this exists to make
+ * impossible.
+ *
+ * Every one of them is a screen the DAY opens and the DAY closes. None of them
+ * is desk furniture: they have no desktop icon, they are not in the window
+ * list a minute after the thing they were about ended, and the player never
+ * asks for one.
+ */
+export function windowFor(source: InterruptionSource): string {
+  switch (source) {
+    case 'meeting':
+      return 'meeting';
+    case 'machine':
+      return 'reboot';
+    default:
+      return 'call';
+  }
+}
+
+/** The windows the day puts up for an interruption, and takes away again. */
+export const TAKEOVER_WINDOWS: readonly string[] = Object.freeze([
+  ...new Set(INTERRUPTION_SOURCES.map((source) => windowFor(source))),
+]);
 
 export const SPEEDS = [1, 2, 4] as const;
 

@@ -350,6 +350,17 @@ test('a save taken in the meeting comes back in the meeting', async ({
   await page.getByTestId('start-menu-item-meeting').click();
   await expect(page.getByTestId('meeting-room'))
     .toHaveAttribute('data-beats', beats ?? '0');
+
+  // The same rule the workstation keeps: a takeover is in the window list
+  // while it is happening and out of it the minute the desk comes back. A
+  // stray half-hour left standing on a desk that is the player's again is a
+  // window they would have to close to prove the meeting was over.
+  expect(await openWindows(page)).toContain('meeting:false');
+  await runSimMinutes(page, 32);
+  await expect(page.getByTestId('desktop'))
+    .toHaveAttribute('data-takeover', 'none');
+  await expect(page.getByTestId('window-meeting')).toHaveCount(0);
+  expect(await openWindows(page)).not.toContain('meeting:false');
 });
 
 /* -- gate 5: precedence, as a thing the player can see --------------------- */
@@ -729,7 +740,15 @@ test('the update is put off three times and then takes the afternoon', async ({
   // promise: a loaded save reopens windows in manifest order by design (the
   // start-menu comment owns that call), and the reboot rides the same store.
   expect([...await openWindows(page)].sort()).toEqual([...desk].sort());
-  expect([...heldWindows].sort()).toEqual([...desk].sort());
+  // And the takeover's own window is not desk furniture. While it held the
+  // desk the LIST carried it - the same list the save writes and a load reads
+  // back - and the minute the desk came back it left, so the list and the
+  // screen agree in both directions. Asserting the held set against the
+  // pre-reboot desk directly would be asserting that a takeover has no window,
+  // which is the opposite of the thing being tested.
+  expect(heldWindows).toContain('reboot:false');
+  expect([...heldWindows].filter((entry) => entry !== 'reboot:false').sort())
+    .toEqual([...desk].sort());
   await focusWindow(page, 'cmd');
 
   const restored = await scrollbackOf(page);
@@ -898,4 +917,19 @@ test('a save taken mid-reboot comes back mid-reboot', async ({ page }) => {
   await page.getByTestId('start-menu-item-reboot').click();
   await expect(screen).toHaveAttribute('data-phase', before.phase ?? '');
   await expect(screen).toHaveAttribute('data-percent', before.percent ?? '');
+
+  // A save written mid-takeover comes back as the TAKEOVER rather than as a
+  // stray window: the list carries it because it is genuinely happening, and
+  // the screen says so.
+  expect(await openWindows(page)).toContain('reboot:false');
+
+  // And out the far side, on the restored session, it leaves the list as well
+  // as the screen. A window that survived a handback would be a dead update
+  // screen the player has to close by hand, on top of a desk that is theirs.
+  await page.getByTestId('day-pause').click();
+  await runSimMinutes(page, 14, 1);
+  await expect(page.getByTestId('desktop'))
+    .toHaveAttribute('data-takeover', 'none');
+  await expect(page.getByTestId('window-reboot')).toHaveCount(0);
+  expect(await openWindows(page)).not.toContain('reboot:false');
 });

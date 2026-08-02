@@ -4,7 +4,7 @@ import { type AppState, AppStateStore } from './shell/app-state';
 import { APP_MANIFEST } from './shell/apps';
 import { openDirectMessage, pingBossThread } from './shell/boss-thread';
 import type { ShellContext } from './shell/context';
-import { DayDriver, DRIVER_INTERVAL_MS } from './shell/day-driver';
+import { DayDriver, DRIVER_INTERVAL_MS, windowFor } from './shell/day-driver';
 import {
   acknowledgeCarry,
   carryFrom,
@@ -19,7 +19,6 @@ import { CloudSaves } from './shell/sync';
 import { updateOnBoot, VersionSlot } from './shell/updates';
 import { BUILD_VERSION } from './shared/build';
 import { COMPANY, COMPANY_IDS } from './world/company';
-import type { InterruptionSource } from './world/interruptions';
 import { createWorldSession, FIRST_WEEK } from './world/session';
 import { ticketTitle } from './world/tickets';
 
@@ -43,26 +42,6 @@ export interface SimDebug {
 
 declare global {
   var careerSim: SimDebug | undefined;
-}
-
-/**
- * Which window an interruption is drawn in.
- *
- * Three sources, three surfaces, and they are genuinely different things: a
- * person on a phone, a room with people in it, and a machine that has decided.
- * It is a function rather than a conditional at each call site because the two
- * call sites are "open it" and "close it", and a window opened by one rule and
- * closed by another is a window left standing on the desk.
- */
-function windowFor(source: InterruptionSource): string {
-  switch (source) {
-    case 'meeting':
-      return 'meeting';
-    case 'machine':
-      return 'reboot';
-    default:
-      return 'call';
-  }
 }
 
 function mountPoint(): HTMLElement {
