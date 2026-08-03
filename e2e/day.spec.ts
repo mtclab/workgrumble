@@ -1,6 +1,41 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 import { completeLogin, openFromStartMenu } from './helpers';
+
+/**
+ * The house pattern (#15). An `expect` retries in REAL time while a raw speed
+ * run advances the fake clock in SIM time, so an assertion that pins an EXACT
+ * minute can be retried against a clock that has moved on under full-suite
+ * parallel load - the +20/+40 fingerprint. Held under a pause, the read is
+ * taken with the day stopped, which is a control the player has and one this
+ * test does not otherwise touch.
+ *
+ * It holds ONLY the read. The runFor before it has already produced the
+ * transition the raw run exists to prove, so a tick that overspends still lands
+ * the clock on the wrong minute and this still reds on it - the pause stops the
+ * clock from moving further, not the assertion from seeing where it got to.
+ *
+ * Idempotent: a read taken inside another pause must not start the clock again
+ * on its way out.
+ */
+async function underPause<T>(page: Page, read: () => Promise<T>): Promise<T> {
+  const pause = page.getByTestId('day-pause');
+  const already = await pause.getAttribute('aria-pressed') === 'true';
+
+  if (!already) {
+    await pause.click();
+    await expect(pause).toHaveAttribute('aria-pressed', 'true');
+  }
+
+  try {
+    return await read();
+  } finally {
+    if (!already) {
+      await pause.click();
+      await expect(pause).toHaveAttribute('aria-pressed', 'false');
+    }
+  }
+}
 
 /**
  * Real milliseconds one simulated minute costs at x1 (`day-driver.ts`). The
@@ -68,7 +103,9 @@ test('walks a day from the morning brief to the scorecard', async ({
   await pause.click();
   await expect(pause).toHaveAttribute('aria-pressed', 'false');
   await page.clock.runFor(realMs(10, 1));
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:10');
+  await underPause(page, async () => {
+    await expect(page.getByTestId('sim-clock-time')).toHaveText('09:10');
+  });
 
   // Speed scales real time into ticks and nothing else.
   await page.getByTestId('day-speed-4').click();
@@ -77,12 +114,20 @@ test('walks a day from the morning brief to the scorecard', async ({
     'true',
   );
   await page.clock.runFor(realMs(20, 4));
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:30');
+  // The exact minute is read with the clock held: at x4 it advances a minute a
+  // quarter-second, and a bare retry can catch it a tick or two past the
+  // transition under parallel load. The runFor above is the transition; this is
+  // only the read.
+  await underPause(page, async () => {
+    await expect(page.getByTestId('sim-clock-time')).toHaveText('09:30');
+  });
 
   // Lunch is flagged on the clock strip - lane B hangs the boss's habits on
   // the same window.
   await page.clock.runFor(realMs(150, 4));
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('12:00');
+  await underPause(page, async () => {
+    await expect(page.getByTestId('sim-clock-time')).toHaveText('12:00');
+  });
   await expect(page.getByTestId('day-state')).toHaveText('Lunch');
 
   await page.clock.runFor(realMs(30, 4));
