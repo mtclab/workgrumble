@@ -538,3 +538,41 @@ for rep/suspicion if a walk picks a toned option, argued - else walks pick neutr
 are byte-identical (assert which). Off-hours; save round-trip; both halves box; codex wave.
 Owner calibration: genuinely blunt per the directive, never endorsed (real cost); dial back at
 review if too far.
+
+---
+
+# Slice 0.4.3 - make the quiet dot cost something (issue #20, closes F4/F5)
+
+The tracked debt from the 0.3.6 QoL review: the 0.3.3 presence triangle is under-taught. DND
+dodges call/chat/boss sources, but the probation week authors zero chat/boss dodgeable beats
+and only two calls, so a player can finish probation never learning Do Not Disturb has a cost -
+the tray reads as free, the exact trap the design set out to avoid. And F5's constants are
+placeholders the week never presses.
+
+## F4 - one chat beat that makes DND bite
+
+Add ONE chat-source dodgeable interruption mid-week (a colleague DM / quick-question DND would
+slide). CHAT beat, NOT a takeover - the week is not overloaded (F0) and stays that way. It
+presses the triangle: sit on DND to dodge it and collect the working-DND suspicion drip, and
+past threshold with the boss reading the dot, the "on Do Not Disturb all morning" beat; stay
+Available and take the interruption's cost instead. The tradeoff becomes real and discoverable
+inside probation. Pure content on the 0.3.3 rails (READS_THE_DOT already includes chat; the
+dodge ledger and the drip exist) - no new mechanism.
+
+## F5 - tune the constants now they are pressable
+
+With F4's beat existing, judge the DND constants against a real dodge. The review flagged
+`DND_WORKING_SUSPICION = 2` as cheaper than the Browser slack window - once there is something
+worth dodging, DND-while-working may be too cheap. Tune ONLY with justification against the
+now-pressable week; raise it toward "sitting on DND to dodge the chat beat costs about what the
+dodge saves" if the read holds. Each move argued, goldens move with the meters, constants stay
+flagged.
+
+## Gates
+
+Journey: a DND morning dodges the new chat beat, collects the drip, meets the boss beat past
+threshold; an Available morning takes the beat's cost - both playable, neither dominates.
+Determinism. Solvability under all three presence values (a dodgeable chat beat never blocks a
+path). Goldens move once, argued (the arrival, plus any tuned constant) - prefer the golden
+walks pick Available and HANDLE the beat, with the DND-dodge path exercised by a focused test.
+Off-hours; save round-trip; both halves box; codex wave.
