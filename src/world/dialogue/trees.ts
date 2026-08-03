@@ -62,6 +62,36 @@ const ROTATED_SCREEN: DialogueTree = {
           ],
         },
         {
+          // The milder register on a diagnostic beat, and the same question:
+          // the `asks` and the reveal are the neutral option's, so the truth
+          // lands identically and the beat goes the same place ('colleague').
+          // All the tone adds is the flat contempt of somebody who has heard
+          // "I have been hacked" once too often - and it still costs.
+          label: 'Ask her, flatly, whether anybody was at her desk, because it '
+            + 'is that and not hackers, it is always that',
+          tone: 'aggressive',
+          next: 'colleague',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Ada mentions a colleague was "showing her something" '
+                + 'at her keyboard on Friday afternoon.',
+            },
+            {
+              action: HELPDESK_ACTIONS.reporterRebuff,
+              target: 'ticket:rotated-screen',
+              params: {
+                reaction_first: 'Ada bristles. "There is no need to take that '
+                  + 'tone. I am reporting a crime." She answers the question '
+                  + 'anyway, because underneath it she wants the screen fixed.',
+                reaction_again: 'Ada, colder now: "That is twice you have '
+                  + 'spoken to me like that. I shall be putting it in an email, '
+                  + 'with the times on it."',
+              },
+            },
+          ],
+        },
+        {
           label: 'Ask her to read the screen out, tilt and all',
           next: 'tilt',
           effects: [{ asks: true }],

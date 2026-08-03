@@ -5,6 +5,7 @@ import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
 import {
+  METER_FLOOR,
   RUDE_REPUTATION_COST,
   RUDE_REPUTATION_ESCALATION,
   STARTING_REPUTATION,
@@ -200,7 +201,13 @@ describe('the tone gate has teeth', () => {
   it('reds when an aggressive reply CHANGES a ticket effect', () => {
     const trees = cloneTrees();
     const option = firstAggressive(trees) as unknown as { effects: DialogueEffect[] };
-    const work = option.effects.find((effect) => !isSocialEffect(effect));
+    // The first effect that actually carries a payload to change - an `asks` is
+    // a bare marker with nothing to mutate, so skip it and take the reveal or
+    // the action underneath.
+    const work = option.effects.find(
+      (effect) => !isSocialEffect(effect)
+        && ('action' in effect || 'reveal' in effect),
+    );
 
     if (work !== undefined && 'action' in work) {
       (work as { target: string }).target = 'machine:not-the-same-one';
@@ -265,6 +272,101 @@ describe('the tone gate has teeth', () => {
         ],
       },
     ])).toThrow('not a register this build knows');
+  });
+
+  /** The aggressive option that fixes the screen, in a cloned tree, mutable. */
+  function rotateAggressive(
+    trees: readonly DialogueTree[],
+  ): {
+    effects: DialogueEffect[];
+    next?: string;
+  } {
+    for (const tree of trees) {
+      for (const node of tree.nodes) {
+        for (const option of node.options) {
+          if (option.tone === 'aggressive'
+            && (option.effects ?? []).some((e) => 'action' in e
+              && e.action === HELPDESK_ACTIONS.machineSetDisplayRotation)) {
+            return option as unknown as {
+              effects: DialogueEffect[];
+              next?: string;
+            };
+          }
+        }
+      }
+    }
+
+    throw new Error('No screen-rotate aggressive option to mutate.');
+  }
+
+  /** The rebuff effect inside a mutable aggressive option. */
+  function rebuffOf(
+    option: { effects: DialogueEffect[] },
+  ): { action: string; target: string; params: Record<string, unknown> } {
+    const rebuff = option.effects.find((e) => 'action' in e
+      && e.action === HELPDESK_ACTIONS.reporterRebuff);
+
+    if (rebuff === undefined) {
+      throw new Error('No rebuff in the option.');
+    }
+
+    return rebuff as unknown as {
+      action: string;
+      target: string;
+      params: Record<string, unknown>;
+    };
+  }
+
+  // P1-1: same immediate effects but a DIFFERENT continuation is still a
+  // different resolution path - the tone changed where the conversation goes.
+  it('reds when an aggressive reply BRANCHES where its twin does not', () => {
+    const trees = cloneTrees();
+    const option = rotateAggressive(trees);
+    // Point it somewhere its neutral twin does not go, keeping the same fix.
+    option.next = 'complaint';
+
+    expect(() => validateDialogueTrees(trees)).toThrow('continuation');
+  });
+
+  // P1-2: the rebuff must be PAYABLE at load, or it fails at runtime after the
+  // rude line already committed - free rudeness.
+  it('reds when the rebuff is missing a reaction, not at runtime', () => {
+    const trees = cloneTrees();
+    const rebuff = rebuffOf(rotateAggressive(trees));
+    delete rebuff.params.reaction_again;
+
+    expect(() => validateDialogueTrees(trees)).toThrow('reaction_again');
+  });
+
+  it('reds when the rebuff is aimed at the wrong ticket for the beat', () => {
+    const trees = cloneTrees();
+    const rebuff = rebuffOf(rotateAggressive(trees));
+    // A ticket this reporter DOES file, but not the one this beat is about.
+    rebuff.target = 'ticket:flat-mouse';
+
+    expect(() => validateDialogueTrees(trees)).toThrow('wrong ticket');
+  });
+
+  it('reds when the rebuff is aimed at a ticket the reporter never files', () => {
+    const trees = cloneTrees();
+    const rebuff = rebuffOf(rotateAggressive(trees));
+    rebuff.target = 'ticket:invented';
+
+    expect(() => validateDialogueTrees(trees))
+      .toThrow('not a ticket this reporter files');
+  });
+
+  it('reds when an aggressive reply carries two social effects', () => {
+    const trees = cloneTrees();
+    const option = rotateAggressive(trees);
+    option.effects.push({
+      action: HELPDESK_ACTIONS.reporterRebuff,
+      target: 'ticket:rotated-screen',
+      params: { reaction_first: 'a', reaction_again: 'b' },
+    });
+
+    expect(() => validateDialogueTrees(trees))
+      .toThrow('more than one social effect');
   });
 });
 
@@ -382,7 +484,7 @@ describe('the reporter reacts, and repeating escalates', () => {
 
     rebuff(session);
 
-    expect(session.engine.graph.getField(TICKET, FIELDS.customerVisible))
+    expect(session.engine.graph.getField(TICKET, FIELDS.reporterReaction))
       .toContain('First: they go quiet.');
     expect(session.engine.graph.getField(TICKET, FIELDS.rudeReplies)).toBe(1);
     expect(reputationOf(session))
@@ -396,7 +498,7 @@ describe('the reporter reacts, and repeating escalates', () => {
     rebuff(session);
     rebuff(session);
 
-    const stream = session.engine.graph.getField(TICKET, FIELDS.customerVisible);
+    const stream = session.engine.graph.getField(TICKET, FIELDS.reporterReaction);
     expect(stream).toContain('First: they go quiet.');
     expect(stream).toContain('Again: they escalate.');
     expect(session.engine.graph.getField(TICKET, FIELDS.rudeReplies)).toBe(2);
@@ -406,5 +508,78 @@ describe('the reporter reacts, and repeating escalates', () => {
       - RUDE_REPUTATION_COST
       - (RUDE_REPUTATION_COST + RUDE_REPUTATION_ESCALATION),
     );
+  });
+
+  // P1-3: the reaction lands somewhere that does NOT satisfy the CYA rule, so a
+  // rude reply can never unlock "waiting on user" that its neutral twin cannot.
+  it('does not write the customer-visible stream, so it cannot park the SLA',
+    () => {
+      const session = createWorldSession();
+      ensureTicket(session, TICKET);
+
+      rebuff(session);
+
+      // The reaction went to reporter_reaction, not customer_visible.
+      expect(session.engine.graph.getField(TICKET, FIELDS.customerVisible))
+        .toBeUndefined();
+
+      // And so the affordance is unchanged: with nothing PUT to the reporter,
+      // parking the clock on them is refused exactly as it would be with no
+      // rude reply at all.
+      const parked = session.engine.dispatch(
+        HELPDESK_ACTIONS.ticketSetWaiting,
+        COMPANY_IDS.player,
+        TICKET,
+        {},
+      );
+      expect(parked.ok).toBe(false);
+    });
+
+  // P2: the counter is world state, so a save carries it - a reload mid-week
+  // must not forget that a reporter has already been snapped at.
+  it('carries the counter and the reaction across a save round-trip', () => {
+    const before = createWorldSession();
+    ensureTicket(before, TICKET);
+    rebuff(before);
+    const saved = before.engine.serialize();
+
+    const after = createWorldSession();
+    after.engine.restore(saved);
+
+    expect(after.engine.graph.getField(TICKET, FIELDS.rudeReplies)).toBe(1);
+    expect(after.engine.graph.getField(TICKET, FIELDS.reporterReaction))
+      .toContain('First: they go quiet.');
+
+    // And a restored counter still escalates: the next snap is the second one.
+    after.engine.dispatch(
+      HELPDESK_ACTIONS.reporterRebuff,
+      COMPANY_IDS.player,
+      TICKET,
+      { reaction_first: 'x', reaction_again: 'Again: they escalate.' },
+    );
+    expect(after.engine.graph.getField(TICKET, FIELDS.rudeReplies)).toBe(2);
+    expect(after.engine.graph.getField(TICKET, FIELDS.reporterReaction))
+      .toContain('Again: they escalate.');
+  });
+
+  // P2: the boundary/saturation. Reputation is clamped at the floor, and enough
+  // rudeness drives it there; it must SATURATE at zero rather than run negative,
+  // however many more times the reporter is snapped at. (The counter carries the
+  // same shape of clamp at the top - `Number.MAX_SAFE_INTEGER` in the action -
+  // which the save round-trip above proves survives a reload.)
+  it('saturates reputation at the floor under repeated rudeness', () => {
+    const session = createWorldSession();
+    ensureTicket(session, TICKET);
+
+    // Far more snaps than it takes to spend fifty points at four-then-seven a
+    // time: the meter must land on the floor and stay there.
+    for (let snap = 0; snap < 40; snap += 1) {
+      rebuff(session);
+    }
+
+    expect(reputationOf(session)).toBe(METER_FLOOR);
+    // And the counter kept counting the whole time - saturation is the meter's,
+    // not the record's.
+    expect(session.engine.graph.getField(TICKET, FIELDS.rudeReplies)).toBe(40);
   });
 });

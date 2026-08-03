@@ -983,6 +983,23 @@ export const TICKETS_APP: AppDef = {
         ),
       );
 
+      // The reporter's own reaction to how they were spoken to, when there is
+      // one. Its own panel because it is its own field: it is the reporter
+      // talking back, not a question the player asked, and it deliberately does
+      // NOT count toward the CYA rule above - being rude never buys the right to
+      // park the clock on somebody. Absent, and this panel simply is not there.
+      const reactions = fieldLines(node.fields[FIELDS.reporterReaction]);
+
+      if (reactions.length > 0) {
+        detail.append(renderStream(
+          'ticket-reactions',
+          'How they took it',
+          reactions,
+          false,
+          '',
+        ));
+      }
+
       if (handoffOpen) {
         detail.append(renderHandoff(node));
       }

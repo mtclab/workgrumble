@@ -874,6 +874,21 @@ export const FIELDS = {
   replied: 'replied',
   replyToReporter: 'reply_to_reporter',
   /**
+   * The reporter's reaction to being snapped at, one line per snap, sharper the
+   * second time.
+   *
+   * It is its OWN field and emphatically not `customer_visible`, because the
+   * whole promise of the tone framework is that being rude changes nothing
+   * mechanical - and `customer_visible` is not just a display stream, it is the
+   * evidence the CYA rule reads to decide whether a question was put to the
+   * reporter (`ticket.set_waiting`). A reporter reacting to being told off is
+   * not the player asking them a diagnostic question, so it must not unlock
+   * "waiting on user" that the neutral reply on the same beat cannot. Absent on
+   * every ticket nobody has been rude on, so it never gates anything and never
+   * appears on a golden.
+   */
+  reporterReaction: 'reporter_reaction',
+  /**
    * How many times the player has snapped at this ticket's reporter - the
    * per-reporter counter behind the aggressive register.
    *

@@ -64,9 +64,11 @@ test('the crude reply still fixes the ticket, and costs reputation', async ({
   await expect(page.getByTestId('ticket-row-rotated-screen'))
     .toHaveAttribute('data-state', 'resolved');
 
-  // The reporter's reaction is on their own stream, on the record.
+  // The reporter's reaction is on its own stream ("How they took it"), NOT the
+  // customer-visible one - being rude never counts as putting a question to the
+  // reporter, so it can never park the SLA on them.
   await page.getByTestId('ticket-row-rotated-screen').click();
-  await expect(page.getByTestId('ticket-comments'))
+  await expect(page.getByTestId('ticket-reactions'))
     .toContainText('mentioning your manner');
 
   // (b) Reputation dropped: 50 was "Steady", and it is not steady any more.
@@ -112,7 +114,7 @@ test('the lead hears it when he is at your shoulder', async ({ page }) => {
   await expect(page.getByTestId('caught-heading'))
     .toHaveText('A quick word about tone');
   await expect(page.getByTestId('caught-line'))
-    .toContainText('we do not talk to them like that');
+    .toContainText('talk to them like that');
 
   // And the fix still happened, even caught: take it on the chin, then look.
   await page.getByTestId('caught-dismiss').click();
@@ -124,28 +126,33 @@ test('the lead hears it when he is at your shoulder', async ({ page }) => {
 test('snapping at the same reporter twice escalates their reaction', async ({
   page,
 }) => {
-  // Day 4: Hilda's lockout is the inherited ticket, and its beat is a
-  // diagnostic one - it does not resolve, so it can be picked twice.
-  await logInOnDay(page, 4);
+  // A 240s ceiling: this journey is a handful of clicks, and if it ever hangs
+  // it must fail in four minutes, not the thirty a default timeout would spend.
+  test.setTimeout(240_000);
+
+  // Ada's opening beat on day one is a DIAGNOSTIC aggressive beat - it does not
+  // resolve the ticket, so the rude option can be picked, backed out of, and
+  // picked again, all on a ticket that is deterministically live on Monday.
+  await logIn(page);
   await openFromStartMenu(page, 'chat');
-  await page.getByTestId('chat-person-hilda').click();
+  await page.getByTestId('chat-person-ada').click();
   await expect(page.getByTestId('chat-transcript'))
-    .toContainText('locked me out again');
+    .toContainText('I have been hacked');
 
   const options = page.getByTestId('chat-options');
-  const rude = /without the patience/;
+  const rude = /flatly, whether anybody was at her desk/;
 
   // First snap: the flat reaction lands.
   await options.getByRole('button', { name: rude }).click();
   await options.getByRole('button', { name: /Go back to the top/ }).click();
 
-  // Second snap at the same reporter: the sharper one.
+  // Second snap at the same reporter, driven straight to it - the sharper one.
   await options.getByRole('button', { name: rude }).click();
 
-  await focusWindow(page, 'tickets');
-  await page.getByTestId('ticket-row-stale-device-relock').click();
-  const stream = page.getByTestId('ticket-comments');
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('ticket-row-rotated-screen').click();
+  const stream = page.getByTestId('ticket-reactions');
   // (d) Both reactions are on the record, the second sharper than the first.
-  await expect(stream).toContainText('Charming');
-  await expect(stream).toContainText('enough of that');
+  await expect(stream).toContainText('There is no need to take that tone');
+  await expect(stream).toContainText('twice you have spoken to me like that');
 });

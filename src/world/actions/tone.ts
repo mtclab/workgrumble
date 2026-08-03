@@ -24,9 +24,12 @@ import { HELPDESK_TIER, not, TARGET, targetGuards } from './helpers';
  * - it takes reputation off the person who said it (the dispatcher), a flat cost
  *   the first time and a steeper one every time after, because a reporter who
  *   comes back to more of the same is one who starts telling people;
- * - it lands the reporter's reaction on their own stream - the customer-visible
- *   one, the same stream a question lands on - and lands the SHARPER of the two
- *   the second time, which is the whole of "repeating it escalates";
+ * - it lands the reporter's reaction on its OWN stream (`reporter_reaction`, not
+ *   `customer_visible`) - sharper the second time, which is the whole of
+ *   "repeating it escalates". It is a separate field on purpose: `customer_visible`
+ *   is the evidence the CYA rule reads to allow "waiting on user", and a reporter
+ *   reacting to being told off is not the player asking a diagnostic question, so
+ *   the reaction must never unlock an affordance the neutral reply cannot;
  * - it counts the snap, on the ticket, so the second reply can read the first.
  *
  * What it deliberately does NOT do is anything to the fix. The reply that
@@ -69,16 +72,23 @@ function reputationDown(by: number): OpData {
   };
 }
 
-/** Land one of the reactions on the reporter's own stream. */
+/**
+ * Land one of the reactions on the reporter's own reaction stream.
+ *
+ * `reporter_reaction`, never `customer_visible`: the reaction is the reporter
+ * talking back, not a question the player put to them, and only the latter is
+ * allowed to stop an SLA. Writing it here is what keeps the social effect from
+ * changing a single ticket affordance.
+ */
 function reaction(param: string): OpData {
   return {
     op: 'set_field',
     node: TARGET,
-    field: FIELDS.customerVisible,
+    field: FIELDS.reporterReaction,
     value: {
       append_line: {
         node: TARGET,
-        field: FIELDS.customerVisible,
+        field: FIELDS.reporterReaction,
         value: { param_trim: param },
       },
     },

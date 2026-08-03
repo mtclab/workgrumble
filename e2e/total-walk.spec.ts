@@ -3789,24 +3789,27 @@ test('the aggressive register - said, and still fixed, with the lead there',
 
 test('the aggressive register - repeating it escalates', async ({ page }) => {
   test.setTimeout(240_000);
-  // Day 4: Hilda's lockout is the inherited ticket, and its beat is diagnostic
-  // - it does not resolve, so the rude option can be picked twice.
-  await logInOnDay(page, 4);
+  // Ada's opening beat on day one is a DIAGNOSTIC aggressive beat - it does not
+  // resolve, so the rude option can be picked twice, on a ticket that is
+  // deterministically live on Monday.
+  await logInOnDay(page, 1, { brief: 'keep' });
+  await beginShift(page);
 
   await step('chat.aggressive-escalates', async () => {
     await openFromStartMenu(page, 'chat');
-    await page.getByTestId('chat-person-hilda').click();
+    await page.getByTestId('chat-person-ada').click();
     await expect(page.getByTestId('chat-transcript'))
-      .toContainText('locked me out again');
+      .toContainText('I have been hacked');
 
-    await chatOption(page, /without the patience/);
+    await chatOption(page, /flatly, whether anybody was at her desk/);
     await chatOption(page, /Go back to the top/);
-    await chatOption(page, /without the patience/);
+    await chatOption(page, /flatly, whether anybody was at her desk/);
 
-    await openTicket(page, 'stale-device-relock');
-    const stream = page.getByTestId('ticket-comments');
-    await expect(stream).toContainText('Charming');
-    await expect(stream).toContainText('enough of that');
+    await openTicket(page, 'rotated-screen');
+    // Their reaction, on its own stream - sharper the second time.
+    const stream = page.getByTestId('ticket-reactions');
+    await expect(stream).toContainText('There is no need to take that tone');
+    await expect(stream).toContainText('twice you have spoken to me like that');
   });
 });
 

@@ -15,6 +15,7 @@ import { FIELDS } from '../../world/fields';
 import { ticketTitle } from '../../world/tickets';
 import type { ChatState, ChatThread } from '../app-state';
 import { createIcon } from '../icons';
+import { settleAggressiveTone } from './tone';
 import type { AppDef, AppInstance } from './types';
 import {
   element,
@@ -295,21 +296,12 @@ export const CHAT_APP: AppDef = {
         reported.push('Done, from here, while they were still talking.');
       }
 
-      // The aggressive register, and its cost said out loud. The fix has already
-      // happened above - the effect list is the neutral one plus the rebuff - so
-      // this is only the social half: reputation is gone, the reporter has
-      // reacted on their stream, and if the lead was in the room he heard it.
-      // The rebuff itself is a `reporter.rebuff` effect, so `played.done`
-      // carrying it is the proof the cost actually landed.
-      if (option.tone === 'aggressive' && played.done.some(isSocialEffect)) {
-        const witnessed = api.day.witnessedRudeReply();
-        reported.push(
-          witnessed
-            ? 'Said, and the ticket still fixed. The lead was standing right '
-              + 'there, and it has gone on your file.'
-            : 'Said, and the ticket still fixed. It cost you reputation, and '
-              + 'they will remember the tone.',
-        );
+      // The aggressive register's social half, through the shared path every
+      // surface uses - so a call cannot skip the boss consequence a chat pays.
+      const toneNote = settleAggressiveTone(api.day, option, played);
+
+      if (toneNote !== null) {
+        reported.push(toneNote);
       }
 
       outcome = reported.length > 0 ? reported.join(' ') : null;

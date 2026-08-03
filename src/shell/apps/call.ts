@@ -19,6 +19,7 @@ import { formatSimTime } from '../clock-format';
 import type { ChatThread } from '../app-state';
 import type { InterruptionView } from '../day-driver';
 import { createIcon } from '../icons';
+import { settleAggressiveTone } from './tone';
 import type { AppDef, AppInstance, GameApi } from './types';
 import {
   element,
@@ -333,6 +334,17 @@ export const CALL_APP: AppDef = {
         reported.push(`Filed as a work note on ${
           ticketTitle(view.entry.relatedTicket ?? '')
         }.`);
+      }
+
+      // The aggressive register's social half, through the SAME shared path the
+      // chat surface uses. A call cannot overlap a patrol by construction, so
+      // the witness will answer false here - but routing it through the shared
+      // settle is what stops a call being silently exempt from the register the
+      // way it was before, and what a third surface will inherit for free.
+      const toneNote = settleAggressiveTone(api.day, option, played);
+
+      if (toneNote !== null) {
+        reported.push(toneNote);
       }
 
       outcome = reported.length > 0 ? reported.join(' ') : null;

@@ -1,4 +1,9 @@
 import type { ReadOnlyGraphView } from '../../engine-api';
+import {
+  HELPDESK_ACTIONS,
+  REBUFF_AGAIN_PARAM,
+  REBUFF_FIRST_PARAM,
+} from '../actions';
 import { FIELDS } from '../fields';
 import { isDispatchableAction } from './dispatch';
 import { DIALOGUE_TREES } from './trees';
@@ -310,24 +315,168 @@ function sameTicketWork(
     && left.every((line, index) => line === right[index]);
 }
 
+/** The set of nodes reachable by following `next` from a starting node. */
+function reachableFrom(
+  tree: Readonly<DialogueTree>,
+  start: string,
+): ReadonlySet<string> {
+  const seen = new Set<string>();
+  const queue: string[] = [start];
+
+  while (queue.length > 0) {
+    const id = queue.pop();
+
+    if (id === undefined || seen.has(id)) {
+      continue;
+    }
+
+    seen.add(id);
+
+    for (const option of dialogueNode(tree, id)?.options ?? []) {
+      if (option.next !== undefined) {
+        queue.push(option.next);
+      }
+    }
+  }
+
+  return seen;
+}
+
 /**
- * THE load-bearing gate: a toned reply is the same fix, said differently.
+ * Which of this reporter's tickets opens a conversation that can reach this
+ * beat, following the opening root each ticket uses.
  *
- * The whole promise of the aggressive register - that you can be as rude as the
- * option allows and the ticket still resolves - rests on one structural fact:
- * an aggressive option's TICKET WORK is identical to a neutral option's on the
- * same beat, and the only thing it adds is a social effect. This proves it at
- * load, so a content file that quietly dropped the rotate from the rude reply, or
- * changed which machine it rebooted, is a boot failure at the desk rather than a
- * ticket the player loses for sarcasm three days into a walk.
+ * A rebuff's target has to be the ticket the beat is actually about, because it
+ * writes the reporter's reaction and the count onto THAT ticket. This is how the
+ * gate knows which one that is: the beat is reachable from a ticket's opening
+ * root exactly when a live conversation about that ticket would land the player
+ * on it.
+ */
+function ticketsReaching(
+  tree: Readonly<DialogueTree>,
+  nodeId: string,
+): ReadonlySet<string> {
+  const reaching = new Set<string>();
+
+  for (const ticket of tree.tickets) {
+    const opening = tree.roots?.[ticket] ?? tree.root;
+
+    if (reachableFrom(tree, opening).has(nodeId)) {
+      reaching.add(ticket);
+    }
+  }
+
+  return reaching;
+}
+
+/**
+ * The rebuff on an aggressive option, proven PAYABLE at load so it can never
+ * fail at runtime.
  *
- * It has teeth in both directions:
- * - an aggressive option with no social effect is a register that costs nothing,
- *   which is not a register;
- * - an aggressive option whose ticket work matches no neutral sibling is a fix
- *   that changed with the tone, which is the exact thing forbidden;
- * - a neutral option carrying a social effect is a cost with no register asking
- *   for it, which is a snap the framework never authored.
+ * This is the hole P1-2 named: the runtime action throws if a reaction param is
+ * missing, but by then the rude line and its branch have already committed, so
+ * the fix lands and the cost is silently skipped - free rudeness. The only way
+ * to make that unreachable is to prove the whole shape here, at boot: exactly
+ * one `reporter.rebuff`, aimed at the ticket this beat is about, with both
+ * reactions actually written. A shape this checks cannot then refuse in play.
+ */
+function assertRebuffPayable(
+  tree: Readonly<DialogueTree>,
+  node: Readonly<DialogueNode>,
+  option: Readonly<DialogueOption>,
+): void {
+  const social = (option.effects ?? []).filter(isSocialEffect);
+
+  if (social.length === 0) {
+    throw new Error(
+      `Aggressive option "${option.label}" of "${tree.id}" carries no social `
+      + 'effect. A register that costs nothing is not a register - the whole of '
+      + 'the tone is the cost it adds.',
+    );
+  }
+
+  if (social.length > 1) {
+    throw new Error(
+      `Aggressive option "${option.label}" of "${tree.id}" carries more than `
+      + 'one social effect. The register adds exactly one cost; two would double-'
+      + 'charge a single snap.',
+    );
+  }
+
+  const rebuff = social[0];
+
+  // `isSocialEffect` already proved this is an action effect, but narrow it so
+  // the target and params are readable.
+  if (rebuff === undefined || !('action' in rebuff)) {
+    throw new Error(
+      `Aggressive option "${option.label}" of "${tree.id}" has a social effect `
+      + 'that is not a dispatched action.',
+    );
+  }
+
+  if (rebuff.action !== HELPDESK_ACTIONS.reporterRebuff) {
+    throw new Error(
+      `Aggressive option "${option.label}" of "${tree.id}" pays its cost with `
+      + `"${rebuff.action}", which is not the reporter rebuff the register uses.`,
+    );
+  }
+
+  // The target has to be the ticket this beat is actually about, or the reaction
+  // and the count land on the wrong ticket.
+  const reaching = ticketsReaching(tree, node.id);
+
+  if (!tree.tickets.includes(rebuff.target)) {
+    throw new Error(
+      `Aggressive option "${option.label}" of "${tree.id}" aims its rebuff at `
+      + `"${rebuff.target}", which is not a ticket this reporter files.`,
+    );
+  }
+
+  if (reaching.size > 0 && !reaching.has(rebuff.target)) {
+    throw new Error(
+      `Aggressive option "${option.label}" of "${tree.id}" aims its rebuff at `
+      + `"${rebuff.target}", but this beat is reached from ${
+        [...reaching].map((id) => `"${id}"`).join(', ')
+      }. The reaction and the count would land on the wrong ticket.`,
+    );
+  }
+
+  const params = rebuff.params ?? {};
+
+  for (const name of [REBUFF_FIRST_PARAM, REBUFF_AGAIN_PARAM]) {
+    const value = params[name];
+
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new Error(
+        `Aggressive option "${option.label}" of "${tree.id}" is missing its `
+        + `"${name}" reaction. A rebuff with no reaction passes load and then `
+        + 'THROWS at runtime - after the rude line and its branch have already '
+        + 'committed - so the fix lands and the cost is silently skipped. That '
+        + 'is the free rudeness the register must never allow.',
+      );
+    }
+  }
+}
+
+/**
+ * THE load-bearing gate: a toned reply is the same fix, going the same place,
+ * said differently - and its cost is guaranteed to be paid.
+ *
+ * The whole promise of the aggressive register - be as rude as the option
+ * allows and the ticket still resolves, and the rudeness always costs - rests on
+ * three structural facts this proves at load:
+ *
+ * - the aggressive option's TICKET WORK is identical to a neutral one's on the
+ *   beat (it never changes or drops the fix);
+ * - its CONTINUATION is identical too (`next`), so the conversation goes the
+ *   same place and reaches the same resolution - a tone that branched away could
+ *   change WHETHER the ticket resolves even with identical immediate effects;
+ * - its cost is a well-formed, payable rebuff aimed at this beat's ticket, so
+ *   it can never fail at runtime after the rude line has committed.
+ *
+ * Teeth in every direction: a dropped or changed effect, a divergent `next`, a
+ * missing social cost, a malformed rebuff, or a neutral option carrying a cost
+ * all RED the boot rather than reaching a player.
  */
 function assertToneInvariant(
   tree: Readonly<DialogueTree>,
@@ -345,13 +494,9 @@ function assertToneInvariant(
     const social = (option.effects ?? []).some(isSocialEffect);
 
     if (option.tone === 'aggressive') {
-      if (!social) {
-        throw new Error(
-          `Aggressive option "${option.label}" of "${tree.id}" carries no `
-          + 'social effect. A register that costs nothing is not a register - '
-          + 'the whole of the tone is the cost it adds.',
-        );
-      }
+      // The cost, proven payable before anything else: exactly one rebuff, aimed
+      // at this beat's ticket, both reactions written.
+      assertRebuffPayable(tree, node, option);
 
       const work = ticketWork(option);
 
@@ -370,19 +515,28 @@ function assertToneInvariant(
         );
       }
 
+      // Same fix AND same continuation. The `next` check is the P1-1 fix: two
+      // options can carry byte-identical immediate effects and still diverge -
+      // one ending the conversation, one branching toward resolution - so
+      // comparing effects alone would let a tone change where the conversation
+      // GOES, and a conversation that goes somewhere else can resolve somewhere
+      // else. Requiring the same `next` makes the whole downstream subtree, and
+      // therefore the resolution path, identical.
       const twin = node.options.find(
         (other) => other !== option
           && other.tone !== 'aggressive'
+          && other.next === option.next
           && sameTicketWork(ticketWork(other), work),
       );
 
       if (twin === undefined) {
         throw new Error(
           `Aggressive option "${option.label}" of "${tree.id}" has no neutral `
-          + 'twin on this beat with the same ticket work. A toned reply must run '
-          + 'the SAME fix as the plain one and only add the social cost; this '
-          + 'one either changed the fix or dropped it, which is the one thing '
-          + 'the tone framework forbids.',
+          + 'twin on this beat with the same ticket work AND the same '
+          + 'continuation. A toned reply must run the SAME fix as the plain one, '
+          + 'go the SAME place afterwards, and only add the social cost; this '
+          + 'one either changed the fix, dropped it, or branches somewhere the '
+          + 'plain reply does not - which can change whether the ticket resolves.',
         );
       }
 
