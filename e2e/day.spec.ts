@@ -80,6 +80,18 @@ async function settleAtClock(
     await page.clock.runFor(realMs(1, speed));
   }
 
+  // Once the day has ended the world itself has stopped the clock, so the read
+  // is already stable and there is no live clock to hold - and pausing a day-end
+  // scorecard is a click this does not need. Otherwise the read is held under a
+  // pause so a retry cannot race a running clock forward off the minute.
+  const ended = await page.getByTestId('day-state')
+    .getAttribute('data-state') === 'day_end';
+
+  if (ended) {
+    await expect(clock).toHaveText(target);
+    return;
+  }
+
   await underPause(page, async () => {
     await expect(clock).toHaveText(target);
   });
@@ -91,7 +103,6 @@ async function settleAtClock(
  * at x4 a quarter-second is exactly one minute.
  */
 const TICK_MS = 1_000;
-const SHIFT_MINUTES = 8 * 60;
 
 /** Fake real time that buys `minutes` simulated minutes at `speed`. */
 function realMs(minutes: number, speed: number): number {
@@ -150,10 +161,9 @@ test('walks a day from the morning brief to the scorecard', async ({
 
   await pause.click();
   await expect(pause).toHaveAttribute('aria-pressed', 'false');
-  await page.clock.runFor(realMs(10, 1));
-  await underPause(page, async () => {
-    await expect(page.getByTestId('sim-clock-time')).toHaveText('09:10');
-  });
+  // The clock runs again, and the exact minute is landed and read held rather
+  // than read off a bare runFor that can drift a tick either way.
+  await settleAtClock(page, '09:10', 1);
 
   // Speed scales real time into ticks and nothing else.
   await page.getByTestId('day-speed-4').click();
@@ -174,9 +184,10 @@ test('walks a day from the morning brief to the scorecard', async ({
   await page.clock.runFor(realMs(30, 4));
   await expect(page.getByTestId('day-state')).toHaveText('Shift');
 
-  // And on to 17:00, where the day ends whether or not the queue is empty.
-  await page.clock.runFor(realMs(SHIFT_MINUTES - 210, 4));
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('17:00');
+  // And on to 17:00, where the day ends whether or not the queue is empty. The
+  // day-end cap would hold an overshoot, but a runFor that lands a tick SHORT
+  // reads 16:59, so this is settled onto the exact minute like the rest.
+  await settleAtClock(page, '17:00', 4);
   await expect(page.getByTestId('day-state')).toHaveText('Day end');
 
   const scorecard = page.getByTestId('window-scorecard');
@@ -244,8 +255,7 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
   await page.getByTestId('brief-start-shift').click();
   await page.getByTestId('close-brief').click();
 
-  await page.clock.runFor(realMs(35, 1));
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:35');
+  await settleAtClock(page, '09:35', 1);
 
   // Do something the world will remember, and something only the shell will.
   await openFromStartMenu(page, 'tickets');
@@ -292,9 +302,9 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
     'false',
   );
 
-  // The clock is a live clock afterwards, not a photograph.
-  await page.clock.runFor(realMs(5, 1));
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:40');
+  // The clock is a live clock afterwards, not a photograph: it advances, and
+  // the exact minute is landed and held rather than read off a bare runFor.
+  await settleAtClock(page, '09:40', 1);
 });
 
 /** A refused load leaves the running session exactly where it was. */
