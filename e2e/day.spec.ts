@@ -83,13 +83,19 @@ async function settleAtClock(
     await clock.textContent() ?? '00:00',
   );
 
-  // Coarse: within three minutes, short of the target. A big runFor can drift a
-  // tick, but stopping short of the target keeps that drift below it, where the
-  // single-interval loop below carries it up.
+  // Coarse: a GENEROUS margin short of the target. A big runFor fires the faked
+  // interval a whole number of times and can overshoot its own aim by several
+  // minutes - that overshoot, not the fine loop, was the flake (a coarse run
+  // aimed 3 short landed 6 PAST target, so the fine loop stopped on the first
+  // read, already over). Leaving a wide margin keeps even a bad coarse overshoot
+  // below the target, where the deterministic single-interval loop carries it up
+  // exactly. When the gap is inside the margin, the coarse run is skipped and the
+  // fine loop does the whole approach - it is bounded well above what that needs.
+  const COARSE_MARGIN_MIN = 10;
   const start = await now();
 
-  if (targetMin - start > 3) {
-    await page.clock.runFor(realMs(targetMin - start - 3, speed));
+  if (targetMin - start > COARSE_MARGIN_MIN) {
+    await page.clock.runFor(realMs(targetMin - start - COARSE_MARGIN_MIN, speed));
   }
 
   // Fine: one driver interval at a time, watching the actual clock, until it

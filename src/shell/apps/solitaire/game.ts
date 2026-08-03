@@ -136,12 +136,21 @@ export function shuffle(deck: readonly Card[], rng: () => number): Card[] {
   return out;
 }
 
+/**
+ * Freeze a fresh output state - copying every array first, so the freeze can
+ * never reach an array the caller still holds. A move that shares a pile with
+ * its input (the stock it did not touch, say) must not freeze that pile out from
+ * under the input value; the purity contract is that the input is returned
+ * exactly as it went in. The copies here are what make that true.
+ */
 function freezeState(state: GameState): GameState {
   return Object.freeze({
-    stock: Object.freeze(state.stock),
-    waste: Object.freeze(state.waste),
-    foundations: Object.freeze(state.foundations.map((pile) => Object.freeze(pile))),
-    tableau: Object.freeze(state.tableau.map((pile) => Object.freeze(pile))),
+    stock: Object.freeze([...state.stock]),
+    waste: Object.freeze([...state.waste]),
+    foundations: Object.freeze(
+      state.foundations.map((pile) => Object.freeze([...pile])),
+    ),
+    tableau: Object.freeze(state.tableau.map((pile) => Object.freeze([...pile]))),
   });
 }
 
@@ -246,7 +255,13 @@ export function runAt(state: GameState, from: MoveSource): readonly Card[] | nul
   if (from.zone === 'waste') {
     const card = top(state.waste);
 
-    return card !== undefined && from.index === state.waste.length - 1
+    // The waste is one pile, canonically pile 0: a source naming any other index
+    // is not a place a card sits, so it is not a card that can be lifted. Pinning
+    // it here keeps `canApply` and `legalMoves` (which only ever emits pile 0) in
+    // agreement - accept exactly the moves the enumerator lists.
+    return card !== undefined
+      && from.pile === 0
+      && from.index === state.waste.length - 1
       ? [card]
       : null;
   }
@@ -281,6 +296,14 @@ export function canApply(state: GameState, move: Move): boolean {
   }
 
   if (move.to.zone === 'foundation') {
+    // Foundation to foundation is never a Klondike move. A card comes DOWN off a
+    // foundation to a tableau (a rollback), but it never slides sideways to
+    // another foundation - that only ever shuffles an Ace between empty homes,
+    // which is a non-move that would pollute the "any legal move left" test.
+    if (move.from.zone === 'foundation') {
+      return false;
+    }
+
     if (run.length !== 1) {
       return false;
     }

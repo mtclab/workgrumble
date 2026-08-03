@@ -383,3 +383,88 @@ describe('the end states', () => {
     expect(state.tableau).toHaveLength(TABLEAU_PILES);
   });
 });
+
+describe('the edge rules the box hold named', () => {
+  it('never moves a card between foundations', () => {
+    // Teeth: with an Ace home on foundation 0 and foundation 1 empty, a lax rule
+    // slides the Ace sideways - not a Klondike move, and a non-move that would
+    // pollute isStuck. canApply must refuse it, legalMoves must omit it, and
+    // applyMove must return null.
+    const state = emptyState();
+    state.foundations[0] = [up('hearts', 1)];
+
+    const sideways = {
+      from: { zone: 'foundation' as const, pile: 0, index: 0 },
+      to: { zone: 'foundation' as const, pile: 1 },
+    };
+
+    expect(canApply(state, sideways)).toBe(false);
+    expect(applyMove(state, sideways)).toBeNull();
+    expect(
+      legalMoves(state).some(
+        (m) => m.from.zone === 'foundation' && m.to.zone === 'foundation',
+      ),
+    ).toBe(false);
+
+    // Foundation to tableau is still legal - the rollback move - so the ban is
+    // exactly foundation-to-foundation and nothing wider.
+    state.tableau[0] = [up('spades', 2)];
+    expect(canApply(state, {
+      from: { zone: 'foundation', pile: 0, index: 0 },
+      to: { zone: 'tableau', pile: 0 },
+    })).toBe(true);
+  });
+
+  it('accepts a waste move only from the canonical pile index', () => {
+    // Teeth: runAt ignored from.pile for the waste, so a move from a nonexistent
+    // waste "pile 99" was accepted while legalMoves only ever emits pile 0 -
+    // accept and enumerate disagreeing. The canonical index is the only one that
+    // names a card.
+    const state = emptyState();
+    state.waste = [up('hearts', 1)];
+
+    expect(canApply(state, {
+      from: { zone: 'waste', pile: 0, index: 0 },
+      to: { zone: 'foundation', pile: 0 },
+    })).toBe(true);
+    expect(canApply(state, {
+      from: { zone: 'waste', pile: 99, index: 0 },
+      to: { zone: 'foundation', pile: 0 },
+    })).toBe(false);
+  });
+
+  it('never freezes or mutates the state handed to a move', () => {
+    // Teeth: applyMove reused the input's stock array and drawStock shared its
+    // foundation/tableau arrays, so freezing the output froze the INPUT. A move
+    // must return a NEW state and leave the one passed in exactly as it was -
+    // unfrozen and unchanged.
+    const beforeApply = emptyState();
+    beforeApply.stock = [down('diamonds', 9)];
+    beforeApply.tableau[0] = [up('clubs', 8)];
+    beforeApply.tableau[1] = [up('diamonds', 9)];
+    const applySnapshot = structuredClone(beforeApply);
+
+    const moved = applyMove(beforeApply, {
+      from: { zone: 'tableau', pile: 0, index: 0 },
+      to: { zone: 'tableau', pile: 1 },
+    });
+    expect(moved).not.toBeNull();
+    // The input is untouched: not frozen, and deep-equal to its snapshot.
+    expect(Object.isFrozen(beforeApply.stock)).toBe(false);
+    expect(Object.isFrozen(beforeApply.tableau[0])).toBe(false);
+    expect(beforeApply).toEqual(applySnapshot);
+
+    const beforeDraw = emptyState();
+    beforeDraw.stock = [down('spades', 3)];
+    beforeDraw.foundations[0] = [up('hearts', 1)];
+    beforeDraw.tableau[0] = [up('clubs', 8)];
+    const drawSnapshot = structuredClone(beforeDraw);
+
+    drawStock(beforeDraw);
+    expect(Object.isFrozen(beforeDraw.stock)).toBe(false);
+    expect(Object.isFrozen(beforeDraw.foundations)).toBe(false);
+    expect(Object.isFrozen(beforeDraw.foundations[0])).toBe(false);
+    expect(Object.isFrozen(beforeDraw.tableau[0])).toBe(false);
+    expect(beforeDraw).toEqual(drawSnapshot);
+  });
+});
