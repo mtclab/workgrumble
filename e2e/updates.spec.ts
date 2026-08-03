@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+import { ROADMAP, ROADMAP_PREAMBLE } from '../src/world/roadmap';
 import {
   completeLogin,
   installedVersion,
@@ -91,4 +92,36 @@ test('keeps the notes readable after the window has been closed', async ({
   // A changelog you can only read once is a changelog nobody has read.
   await openFromStartMenu(page, 'updates');
   await expect(page.getByTestId('updates-installed')).toBeVisible();
+});
+
+test('shows the planned list under the installed one, marked not installed', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openFromStartMenu(page, 'updates');
+
+  // The disclaimer that says none of this is installed and none of it has a
+  // date is shown verbatim - the same string the app reads out of roadmap.ts,
+  // so a softened line reds the e2e as well as the unit voice-lock.
+  await expect(page.getByTestId('updates-roadmap-preamble'))
+    .toHaveText(ROADMAP_PREAMBLE);
+
+  // Every planned item is on screen under its authored title, and every one of
+  // them is marked as what it is: planned, and NOT installed - which is the
+  // whole point of the section and the one thing a passing test has to hold.
+  for (const [index, item] of ROADMAP.entries()) {
+    await expect(page.getByTestId(`updates-roadmap-title-${String(index)}`))
+      .toHaveText(item.title);
+
+    const entry = page.getByTestId(`updates-roadmap-entry-${String(index)}`);
+    await expect(entry).toHaveAttribute('data-planned', 'true');
+    await expect(entry).toHaveAttribute('data-installed', 'false');
+  }
+
+  // Distinct from the installed history: the top note this build installed is
+  // still marked installed, so the two lists are not the same list.
+  const version = await installedVersion(page);
+
+  await expect(page.getByTestId(`updates-entry-${version}`))
+    .toHaveAttribute('data-installed', 'true');
 });

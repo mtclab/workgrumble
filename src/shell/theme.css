@@ -1548,6 +1548,53 @@ input {
   list-style: square;
 }
 
+/*
+ * The planned half of the window. It shares the update-entry shell so the two
+ * lists read as one kind of thing, and is then held back from it deliberately:
+ * greyed, unbevelled, and captioned so nobody reads the plan as the changelog.
+ */
+.updates-planned {
+  display: grid;
+  gap: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: var(--border-bevel) solid var(--color-surface-sunken);
+}
+
+.updates-planned-head h2 {
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+
+.updates-planned-disclaimer {
+  margin-top: var(--space-3);
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+/* Not installed: no bevel, muted surface, and the ink softened a step. */
+.update-entry-planned {
+  box-shadow: none;
+  border: var(--border-hair) dashed var(--color-surface-sunken);
+  background: transparent;
+  color: var(--color-ink-soft);
+}
+
+.update-entry-planned .update-summary {
+  color: var(--color-ink-soft);
+}
+
+/* The word that says which list this is, against the greyed row. */
+.update-entry-planned-tag {
+  align-self: center;
+  padding: 0 var(--space-2);
+  background: var(--color-surface-sunken);
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .feedback-form {
   display: grid;
   gap: var(--space-4);
