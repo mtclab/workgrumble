@@ -42,22 +42,32 @@ function minutesOf(time: string): number {
   return (hours ?? 0) * 60 + (mins ?? 0);
 }
 
+/** One driver interval: `main.ts` runs `setInterval(step, 250)`. */
+const DRIVER_STEP_MS = 250;
+
 /**
  * Runs the clock to land EXACTLY on a minute, then reads it held.
  *
- * The driver is `setInterval(step, 250)`, and a big `page.clock.runFor` can
- * cross one interval boundary more or fewer than the arithmetic expects when the
- * faked clock's phase has drifted under a click or a retry - the read then sits
- * one tick past the transition it was meant to pin (12:01 for 12:00). So the
- * approach is split: a coarse run to five minutes short, then one simulated
- * minute at a time. Each fine step is a single interval, so the phase stays
- * aligned and the clock arrives ON the target minute rather than a tick beyond
- * it, whatever the coarse run drifted to. The read is then taken under a pause,
- * so a retry cannot race it forward off the minute it landed on.
+ * The driver is `setInterval(step, 250)`, and a fixed-arithmetic `runFor` cannot
+ * be phase-robust: a coarse run leaves the faked timer part-way through an
+ * interval, and any further fixed-count `runFor` inherits that phase, so its
+ * last step can complete one extra tick and land a minute past the target (the
+ * 12:01-for-12:00, then 09:41-for-09:40). Fixed arithmetic that trusts `runFor`
+ * to land will always be able to drift.
  *
- * Teeth are untouched: a tick that overspends drives the coarse run clean past
- * the target, the fine loop takes no steps, and the held read reds on a clock
- * that is nowhere near the minute it was told to be.
+ * So convergence is READ-DRIVEN instead. A coarse run gets within a few minutes
+ * (kept short of the target so its own drift stays below it), and then the clock
+ * is advanced ONE DRIVER INTERVAL at a time - a 250ms `runFor` fires `step`
+ * exactly once, which is at most one tick - re-reading the real clock after each
+ * and stopping the instant it reaches the target. Watching the actual clock
+ * rather than trusting `runFor` to land is what makes it phase-independent:
+ * whatever phase the coarse run left, single-interval steps cannot slip an extra
+ * tick in, and the loop halts on the exact minute. The read is then held under a
+ * pause so a retry cannot race a live clock forward off it.
+ *
+ * Teeth: an overspending tick makes ONE interval advance more than a minute, so
+ * the loop lands PAST the target - which throws here, and would red the held
+ * read even if it did not.
  */
 async function settleAtClock(
   page: Page,
@@ -70,14 +80,31 @@ async function settleAtClock(
     await clock.textContent() ?? '00:00',
   );
 
+  // Coarse: within three minutes, short of the target. A big runFor can drift a
+  // tick, but stopping short of the target keeps that drift below it, where the
+  // single-interval loop below corrects it.
   const start = await now();
 
-  if (targetMin - start > 5) {
-    await page.clock.runFor(realMs(targetMin - start - 5, speed));
+  if (targetMin - start > 3) {
+    await page.clock.runFor(realMs(targetMin - start - 3, speed));
   }
 
-  for (let guard = 0; guard < 12 && (await now()) < targetMin; guard += 1) {
-    await page.clock.runFor(realMs(1, speed));
+  // Fine: one driver interval at a time, watching the actual clock. Bounded by
+  // the three coarse minutes plus the sub-interval steps a slow speed needs
+  // (four 250ms fires per simulated minute at x1), with headroom.
+  let current = await now();
+
+  for (let guard = 0; guard < 60 && current < targetMin; guard += 1) {
+    await page.clock.runFor(DRIVER_STEP_MS);
+    current = await now();
+  }
+
+  if (current > targetMin) {
+    throw new Error(
+      `settleAtClock overshot ${target}: the clock reached `
+      + `${await clock.textContent() ?? '??'}, which means one interval spent `
+      + 'more than a minute.',
+    );
   }
 
   // Once the day has ended the world itself has stopped the clock, so the read
