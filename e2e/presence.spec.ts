@@ -53,6 +53,22 @@ async function meter(page: Page, testId: string): Promise<number> {
 }
 
 /**
+ * The minute on the taskbar clock, as minutes past midnight.
+ *
+ * Read rather than assumed, which is the whole point of using it: the faked
+ * clock does not advance a tick-precise number of minutes per `runFor`, so the
+ * only honest source of "how many minutes actually passed" is the clock itself,
+ * captured at the two ends of the window and subtracted.
+ */
+async function simClockMinute(page: Page): Promise<number> {
+  const face = await page.getByTestId('sim-clock-time').textContent() ?? '09:00';
+  const [hours, minutes] = face.split(':').map(Number);
+
+  expect(hours, `clock reads "${face}"`).not.toBeNaN();
+  return (hours ?? 0) * 60 + (minutes ?? 0);
+}
+
+/**
  * Work that the world accepts and that resolves nothing: a screen rotated
  * between two wrong angles.
  *
@@ -318,24 +334,47 @@ test('behind the dot, the message is waved off and the morning is paid for', asy
   await expect(presenceState(page)).toHaveText('Do not disturb');
 
   /*
-   * THE PRICE, AT ITS EXACT CADENCE. The drip is floor(minutes * 2 / 5) - two
-   * points per five-minute interval of working behind the dot - so five clean
-   * intervals from the top of the shift buy exactly ten points and not a
-   * fraction more. "Working" is a dispatched rotation the world accepts, read
-   * off the touch log; the interval is one meter boundary. The exact delta is
-   * the assertion with the teeth: a drip that charged the wrong rate, or
-   * sampled instead of integrating, would miss this by a point.
+   * THE PRICE, AT ITS CADENCE, DERIVED FROM THE CLOCK. The drip is
+   * floor(workingMinutes * 2 / 5) - two points per five simulated minutes of
+   * working behind the dot. Two facts make the assertion:
+   *
+   *  - The elapsed minutes are READ, not assumed: the faked clock does not
+   *    advance a tick-precise number of intervals per `runFor` (day.spec's
+   *    granularity), so the only honest denominator is the clock itself,
+   *    captured at both ends of a window that is ALL working - the dot is red
+   *    throughout, the desk is re-touched (a dispatched rotation) inside the
+   *    recency window each round, and nothing else moves suspicion here (no
+   *    slack app open, the message has not slid, the beat is nowhere near its
+   *    mark). So the whole delta is the drip.
+   *  - Suspicion is billed at five-minute meter boundaries in two-point steps,
+   *    so at the instant of the read it reflects the working minutes up to the
+   *    LAST boundary - at most one interval (five minutes, two points) short of
+   *    the elapsed clock, and where that boundary falls depends on the phase.
+   *    Asserting an exact floor(elapsed*2/5) is therefore phase-dependent and
+   *    racy (measured headless: 33 elapsed minutes bill 12 on one boundary
+   *    phase, 13 on another). The exact-CADENCE assertion that holds every run
+   *    is that the drip is the elapsed working minutes at the 2/5 rate, give or
+   *    take that one un-billed interval - a three-point bracket. Teeth intact:
+   *    a wrong rate, or a sampled-not-integrated drip, lands outside it.
    */
   const dripFloor = await meter(page, 'scorecard-suspicion');
-  const DRIP_INTERVALS = 5;
+  const clockBefore = await simClockMinute(page);
 
-  for (let round = 0; round < DRIP_INTERVALS; round += 1) {
+  for (let round = 0; round < 5; round += 1) {
     await workBehindTheDot(page);
     await runSimMinutes(page, 5, 4);
   }
 
-  expect(await meter(page, 'scorecard-suspicion'))
-    .toBe(dripFloor + DRIP_INTERVALS * 2);
+  const elapsed = await simClockMinute(page) - clockBefore;
+  const drip = await meter(page, 'scorecard-suspicion') - dripFloor;
+  const rate = Math.floor(elapsed * 2 / 5);
+
+  expect(drip).toBeLessThanOrEqual(rate);
+  expect(drip).toBeGreaterThanOrEqual(rate - 2);
+  // And it genuinely accrued - a floor that let a zero through would be no gate
+  // at all, and the window is long enough that the bracket's own floor is well
+  // clear of nought.
+  expect(drip).toBeGreaterThan(0);
 
   /*
    * THE MESSAGE THAT DID NOT LAND. Idle behind the dot to just past ten to
