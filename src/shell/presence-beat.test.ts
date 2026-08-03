@@ -472,6 +472,56 @@ describe('the price of the dot, minute by minute', () => {
   });
 
   /**
+   * The EXACT rate, owned here rather than in any browser.
+   *
+   * The e2e (`presence.spec.ts`) proves only that working behind the dot drips
+   * SOMETHING - it cannot pin an exact value, because a faked browser clock does
+   * not advance a tick-precise number of intervals and the five-minute billing
+   * boundary lands where it lands relative to a DOM read. Here a tick is a tick,
+   * so the arithmetic is deterministic and this is where its teeth live: the
+   * drip is exactly TWO points per FIVE working minutes.
+   *
+   * The rate is written as literals rather than off the constants on purpose -
+   * that is what gives it teeth. `2 * interval` is the shipped rate pinned: a
+   * wrong multiplier in the meter, a sampled-not-integrated drip, a dead one, or
+   * a TUNE of `DND_WORKING_SUSPICION` all diverge from it and red this (a tune is
+   * a deliberate golden-style move that updates the literal here, the same way
+   * the goldens move for a rate change). Computing the expectation off the
+   * constant instead would be a tautology that a broken rate sails through.
+   *
+   * Read AT a meter boundary, where the interval's billing is complete: the
+   * shift starts on one, so `start + k * METER_INTERVAL_TICKS` is one too, and
+   * the desk is re-touched every interval so every minute of it is a working
+   * minute.
+   */
+  it('drips exactly two points per five working minutes', () => {
+    const world = harnessOn(1);
+
+    // The shipped rate this pins, stated once: two points per five-minute
+    // interval. If either moves, the literal below moves with it, by hand.
+    expect(DND_WORKING_SUSPICION).toBe(2);
+    expect(METER_INTERVAL_TICKS).toBe(5);
+    expect(world.driver.setPresence('dnd')).toEqual({ ok: true });
+
+    const start = world.session.engine.now();
+
+    for (let interval = 1; interval <= 6; interval += 1) {
+      // Re-touch and advance one whole meter interval, landing on the boundary
+      // where the billing for it is applied.
+      pretendToWork(world.driver, world.session);
+      runTo(
+        world.driver,
+        world.session,
+        start + interval * METER_INTERVAL_TICKS,
+      );
+
+      // Two points an interval, exactly - floor(interval * 5 * 2 / 5) = 2 *
+      // interval, written as the literal the rate actually is.
+      expect(number(world.session, FIELDS.suspicion)).toBe(2 * interval);
+    }
+  });
+
+  /**
    * The other half of the same asymmetry: dropping the dot a moment before a
    * boundary used to erase the minutes it had genuinely been up for, and
    * raising it a moment before one used to bank five minutes of Available.
