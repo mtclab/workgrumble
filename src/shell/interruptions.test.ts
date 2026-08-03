@@ -410,18 +410,23 @@ describe('"can I call you back"', () => {
     // claim, and the callback is proven to have happened by the arrival list.
     runTo(world.driver, world.session, shiftEndTick(4));
 
-    // The Thursday holds two authored interruptions from 0.3.1 onward - the
-    // call and, at ten past two, the workstation - so the day's whole arrival
-    // list is asserted rather than the call's half of it. A run that lost the
-    // reboot would be a day that stopped scheduling the thing this slice is
-    // about, and it would be lost in silence.
+    // The Thursday holds three authored interruptions now - the chat message at
+    // ten to eleven (0.4.3), the annexe call, and at ten past two the
+    // workstation - so the day's whole arrival list is asserted rather than the
+    // call's half of it. On an untouched (Available) dot the message is not
+    // dodged: it arrives first, rings out, and sits at the head of the list. A
+    // run that lost the reboot, or the message, would be a day that stopped
+    // scheduling the thing a slice is about, and it would be lost in silence.
     expect(world.arrivals.map((view) => view.entry.id))
       .toEqual([
+        'chat:dennis-calendar',
         'call:annexe-printer',
         'call:annexe-printer',
         'machine:reboot',
       ]);
-    expect(world.arrivals[1]?.callback).toBe(true);
+    // The deferred callback is the SECOND annexe arrival, now at index two
+    // because the chat message arrived ahead of it.
+    expect(world.arrivals[2]?.callback).toBe(true);
   });
 });
 

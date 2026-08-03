@@ -826,9 +826,45 @@ interface GoldenWeek {
  *    bar alone, and the idle week goes home. A slice that had quietly put
  *    being interrupted into the mark would have separated the pairs, and that
  *    is the assertion which would have gone red.
+ *
+ * SEVENTEENTH MOVE (0.4.3, the quiet dot costs something). Both hashes, two
+ * lines per timeline, and ONE meter in ONE of the two weeks - the smallest
+ * shape a content move has in this file, because the whole of it is one
+ * declinable chat message with no ticket behind it (F4).
+ *
+ *  - THE CONTENT is one row on the Thursday: `chat:dennis-calendar`, ten to
+ *    eleven, four minutes, severity one, declinable, no jitter. It is a `chat`
+ *    source, which READS_THE_DOT - so it is the beat the 0.3.3 triangle was
+ *    always missing, the one a red dot could have waved off. Both scripted
+ *    weeks are Available, so neither dodges it: it lands, exactly as authored,
+ *    at 4490 - Thursday 10:50, kwame's 9:35 greeting plus seventy-five minutes.
+ *  - THE TIMELINES gain `interrupted:chat:dennis-calendar@4490` and a
+ *    `notice:You did not get to that one@4494` beside it, in BOTH weeks. It is
+ *    a message rather than a phone, but it rings out the same way a phone does
+ *    when nobody looks up, and the ring-out record is the same. Nothing else on
+ *    either timeline moved: the annexe call at 4522 and the reboot at 4690 are
+ *    where they were, because a four-minute beat at 10:50 clears them both.
+ *  - ONE METER MOVED, in the worked week only: stress 57 -> 59. Two points,
+ *    severity one at the arrival rate, charged once at the arrival like every
+ *    interruption in this family - the price of being reachable, paid because
+ *    the dot was honest. In the IDLE week it lands on a meter pinned at 98
+ *    since the Wednesday and is clamped away as fast as it is charged, the same
+ *    shape every content move since 0.2.6 has found.
+ *  - THE HASHES move for that stress and for two records: `chat:dennis-calendar`
+ *    joining `interruption_missed`, and one more malignant `refocus_until` -
+ *    the message left the twenty-three-minute-shaped hole in the morning that a
+ *    printer in the annexe leaves, because it too was about no ticket in hand.
+ *  - NOTHING ELSE MOVED, and that is the claim the slice is about: same
+ *    arrivals (27 and 26), same closes, same breaches, same pence, same review
+ *    reading, same bar, same file, same caught counts, same endings, same
+ *    five-profile table. The chat beat carries no ticket, so it is not in any
+ *    denominator the review reads - it costs stress and focus, and the review
+ *    reads neither. The dodge path it exists to press is walked on Do Not
+ *    Disturb in `presence-beat.test.ts`, where the drip and the lead's beat
+ *    are, not here where the dot is green.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: 'aba01368c9efe074',
+  hash: '2488068b6e5b1fa0',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -890,9 +926,13 @@ const GOLDEN_WORKED: GoldenWeek = {
     // request across a night and a flooded Thursday morning, and Gary's
     // restart through a Friday lunchtime.
     //
-    // Twenty-three points below the fumble threshold, and the review has
-    // never read stress.
-    stress: 57,
+    // Fifty-nine where 0.3.4 left it at fifty-seven: the extra TWO are the chat
+    // beat arriving (0.4.3, F4), severity one at the arrival rate, charged once
+    // like every other interruption in this family. The dot was Available all
+    // week, so the message was not slid - it landed, rang out unanswered, and
+    // cost its two points of being reachable. Still well below the fumble
+    // threshold, and the review has never read stress.
+    stress: 59,
     suspicion: 0,
     reputation: 100,
     // The week as the review read it: a hundred percent of the work, every
@@ -925,6 +965,14 @@ const GOLDEN_WORKED: GoldenWeek = {
     'caught:browser@3076',
     'notice:That is 10 minutes@3076',
     'hello:person:kwame@4415',
+    // Ten to eleven, and the message from Marketing (0.4.3, F4). The dot was
+    // Available, so it landed rather than sliding; neither profile looks up, so
+    // it rings out the way the phones do, with the same notice beside it. What
+    // it left behind is two points of stress in the worked week and, in both
+    // weeks, a malignant refocus window - the hash carries those; the timeline
+    // carries the arrival and the ring-out.
+    'interrupted:chat:dennis-calendar@4490',
+    'notice:You did not get to that one@4494',
     'interrupted:call:annexe-printer@4522',
     'notice:You did not get to that one@4527',
     // Ten past two, and no notice beside it: a phone can ring out and a
@@ -958,8 +1006,11 @@ const GOLDEN_IDLE: GoldenWeek = {
   // Unchanged by 0.2.5, to the byte. See the TENTH MOVE above: the readings
   // this week takes on the way through are completely different and every one
   // of them is overwritten by the next. Moved by 0.2.7 for the same single
-  // integer the worked week moved for, and for nothing else.
-  hash: '0ada94233cf77d0d',
+  // integer the worked week moved for, and moved again by 0.4.3 for the chat
+  // beat's arrival record and its malignant refocus window - and for nothing
+  // that shows in a count or a meter, because this week's stress is pinned at
+  // 98 and clamps the two points away as fast as they are charged.
+  hash: 'b4db8d594a21a643',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.
@@ -1048,6 +1099,11 @@ const GOLDEN_IDLE: GoldenWeek = {
     'caught:bubbles@3283',
     'notice:That is 10 minutes@3283',
     'hello:person:kwame@4415',
+    // The same message, on a week nobody worked, costing the same nothing a
+    // meter can see: it rings out like everything else, and its two points of
+    // stress land on a meter full since the Wednesday.
+    'interrupted:chat:dennis-calendar@4490',
+    'notice:You did not get to that one@4494',
     'caught:bubbles@4512',
     'notice:That is 10 minutes@4512',
     'interrupted:call:annexe-printer@4522',

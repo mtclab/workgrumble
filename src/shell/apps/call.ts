@@ -80,8 +80,37 @@ const AT_THE_DESK: CallRegister = {
     + 'conversation.',
 };
 
+/**
+ * A message, not a phone and not a body at the desk.
+ *
+ * The third thing drawn in this window and the only one of the three a red dot
+ * can wave off: a chat that READS_THE_DOT slides under Do Not Disturb rather
+ * than landing here at all. When it does land - an honest dot, or a decision
+ * to take it - it is the same three verbs, said the way a chat window would say
+ * them: reply now, reply later, or leave it on read. The clock still drops and
+ * the queue still runs, because a message you stop to answer is a message you
+ * stopped to answer.
+ */
+const MESSAGE: CallRegister = {
+  waiting: 'A message, waiting on a reply. The queue does not stop for it and '
+    + 'neither does the clock on your screen.',
+  during: 'In the chat.',
+  answer: 'Reply',
+  defer: 'Reply later',
+  decline: 'Leave it on read',
+  again: 'Back in the chat, at the minute you said. This is the one you said '
+    + 'you would get to.',
+};
+
 function registerFor(source: InterruptionSource): CallRegister {
-  return source === 'walk_up' ? AT_THE_DESK : RINGING;
+  switch (source) {
+    case 'walk_up':
+      return AT_THE_DESK;
+    case 'chat':
+      return MESSAGE;
+    default:
+      return RINGING;
+  }
 }
 
 /**
@@ -101,6 +130,9 @@ export const CALL_CONTROL_LABELS: readonly string[] = Object.freeze([
   AT_THE_DESK.answer,
   AT_THE_DESK.defer,
   AT_THE_DESK.decline,
+  MESSAGE.answer,
+  MESSAGE.defer,
+  MESSAGE.decline,
 ]);
 
 /**

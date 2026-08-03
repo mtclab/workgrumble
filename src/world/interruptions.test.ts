@@ -143,7 +143,16 @@ describe('the interruption schedule', () => {
       relatedTicket: 'ticket:locked-account',
       declinable: false,
       severity: 3,
-      flavor: { caller: 'Ada Mchale', line: 'It is doing it again.' },
+      // A chat carries the three words its window is drawn from (caller,
+      // subject, opens) and may carry more - the extra `line` is here to prove
+      // the whole bag rides through untouched, not just the keys the loader
+      // knows to ask for.
+      flavor: {
+        caller: 'Ada Mchale',
+        subject: 'It is doing it again',
+        opens: 'chat-ada',
+        line: 'It is doing it again.',
+      },
     });
     const entry = buildInterruptionSchedule(
       SEED,
@@ -157,6 +166,8 @@ describe('the interruption schedule', () => {
     expect(entry?.severity).toBe(3);
     expect(entry?.flavor).toEqual({
       caller: 'Ada Mchale',
+      subject: 'It is doing it again',
+      opens: 'chat-ada',
       line: 'It is doing it again.',
     });
   });

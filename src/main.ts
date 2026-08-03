@@ -353,6 +353,25 @@ async function boot(): Promise<void> {
         return;
       }
 
+      // A message, which is the one shape of interruption a red dot could have
+      // turned away - so an honest dot is named here, once, in the moment: this
+      // landed because your status let it, and the same status would have slid
+      // it. Told once is cheaper than a player wondering why Do Not Disturb did
+      // not stop this the way it stopped the phone.
+      if (view.entry.source === 'chat') {
+        shell.notify(
+          view.callback
+            ? 'Back in the chat, at the minute you said'
+            : 'A message came in',
+          view.callback
+            ? 'You said you would get to it, and here it is. This time it is '
+              + 'the conversation.'
+            : 'Somebody messaged you, and your dot let it through - Do Not '
+              + 'Disturb would have slid it. The queue carries on either way.',
+        );
+        return;
+      }
+
       shell.notify(
         'The phone is ringing',
         view.callback

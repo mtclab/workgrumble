@@ -22,7 +22,7 @@ import { CAUGHT_SUSPICION_FLOOR } from '../world/boss';
 import { conductEntries } from '../world/conduct';
 import { shiftEndTick, shiftStartTick } from '../world/day';
 import { FIELDS } from '../world/fields';
-import { buildInterruptionSchedule } from '../world/interruptions';
+import { buildInterruptionSchedule, readsTheDot } from '../world/interruptions';
 import { METER_INTERVAL_TICKS } from '../world/meters';
 import {
   DND_BEAT_MINUTES,
@@ -592,6 +592,82 @@ describe('the record of a call the dot turned away', () => {
     runTo(world.driver, world.session, shiftEndTick(2));
 
     expect(world.driver.dodgedInterruptions()).toEqual([]);
+  });
+});
+
+/* -- the chat beat, the whole tradeoff walked ------------------------------ */
+
+/**
+ * The 0.4.3 journey (F4/F5), on the world half: a Thursday behind the dot that
+ * dodges the chat message, collects the drip, and meets the lead about the dot
+ * - all three, in one morning, off ONE authored beat.
+ *
+ * This is the run the 0.3.6 review said the constants had to be re-evaluated
+ * ON. Before this beat the shipped week authored nothing a dot could wave off
+ * on the days a player would think to try it, so Do Not Disturb could go a
+ * whole probation reading as free. The chat message is the thing that presses
+ * it: a red dot slides it (it READS_THE_DOT and it is declinable), and the
+ * price of that quiet is the drip and, past the mark, the man at the desk.
+ *
+ * The golden walks it on Available - the message lands and costs its two points
+ * - so the DODGE half lives here, where the dot is red, exactly as the slice
+ * asked: the goldens move for the arrival, the focused test walks the dodge.
+ */
+describe('the chat beat the dot can wave off', () => {
+  const CHAT_BEAT = 'chat:dennis-calendar';
+
+  it('dodges the message, collects the drip, and meets the lead about it', () => {
+    const world = harnessOn(4);
+    const entry = buildInterruptionSchedule(
+      world.session.seed,
+      4,
+      interruptionPlanFor(4, world.session.seed),
+    ).entries.find((candidate) => candidate.id === CHAT_BEAT);
+
+    // The beat exists, it reads the dot, and it can be waved off - the three
+    // facts that make it the thing 0.3.3 was missing. A beat that was not
+    // declinable, or came from a source the dot cannot see, would pass this
+    // file and teach nothing.
+    expect(entry, 'the Thursday chat beat is authored').toBeDefined();
+    expect(entry ? readsTheDot(entry.source) : false).toBe(true);
+    expect(entry?.declinable).toBe(true);
+
+    // Behind the dot from the top of the shift, and working the whole time -
+    // which is the morning the beat is about. `workUntilArmed` steps the clock
+    // in meter intervals, so the chat message's arrival tick is crossed with
+    // the dot red, and it slides rather than ringing.
+    expect(world.driver.setPresence('dnd')).toEqual({ ok: true });
+    expect(workUntilArmed(world), 'the beat never armed').toBe(true);
+
+    // THE DODGE. The message is in the record of phones that did not ring, at
+    // the minute the dot sent it away - which is the whole of what the dodge
+    // SAVED: the two points of arrival stress the golden's Available week pays
+    // for this exact beat were never charged, because it never arrived.
+    expect(
+      world.driver.dodgedInterruptions()
+        .some((record) => record.entry.id === CHAT_BEAT),
+      'the chat beat was waved off by the dot',
+    ).toBe(true);
+
+    // THE PRICE, which is the other half of the tradeoff: the drip put the
+    // meter over the mark the beat arms on, off nothing but a dot that
+    // disagreed with the log.
+    expect(number(world.session, FIELDS.suspicion))
+      .toBeGreaterThanOrEqual(DND_BEAT_SUSPICION);
+
+    // Nothing has been SAID yet - arming is evidence, not a conversation - and
+    // then the corridor decides when, exactly as it does for a game on a
+    // screen.
+    expect(world.scenes).toEqual([]);
+    workUntilSpokenTo(world);
+
+    // THE BEAT. The lead comes down about the dot, the caught-scene class, with
+    // the morning behind him as a captured number of at least the half hour the
+    // beat needs. That is the trade, whole: the message dodged for free at the
+    // desk, paid for in the suspicion that armed this, in a currency the player
+    // cannot be innocent of once the dot is red over a desk that is working.
+    expect(world.scenes).toEqual([PRESENCE_CAUGHT_KEY]);
+    expect(world.evidence[0] ?? 0).toBeGreaterThanOrEqual(DND_BEAT_MINUTES);
   });
 });
 

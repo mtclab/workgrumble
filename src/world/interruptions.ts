@@ -146,6 +146,12 @@ const REQUIRED_FLAVOR: Readonly<Partial<Record<InterruptionSource, readonly stri
   // same three words: who is standing there, what they want, and the line the
   // conversation opens on. The only thing it does not want is a phone.
   walk_up: [FLAVOR.caller, FLAVOR.subject, FLAVOR.opens],
+  // A chat message is a person too, drawn in the same window and read by the
+  // same three keys - who pinged, what about, and the node the thread opens on.
+  // It is the one source of the three that READS_THE_DOT can also be waved off,
+  // so a chat beat authored without the words a dodge leaves in the call
+  // window's record would be a phone that did not ring with nobody's name on it.
+  chat: [FLAVOR.caller, FLAVOR.subject, FLAVOR.opens],
   // A machine has no caller and no room, and what it wants is the whole of
   // what it says: one line naming the thing it is about to do to your morning.
   machine: [FLAVOR.subject],

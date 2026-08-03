@@ -483,6 +483,10 @@ describe('the day\'s interruptions', () => {
       [['call:spooler', 'call', 'ticket:wedged-spooler']],
       [['meeting:hygiene-sync', 'meeting', null]],
       [
+        // The chat beat that makes the dot cost something (0.4.3, F4): a
+        // declinable, dot-reading message with no ticket behind it, earliest of
+        // the day's three and so first in the folded list.
+        ['chat:dennis-calendar', 'chat', null],
         ['call:annexe-printer', 'call', null],
         ['machine:reboot', 'machine', null],
       ],

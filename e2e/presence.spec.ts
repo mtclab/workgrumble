@@ -220,6 +220,140 @@ test('the dot turns the phone away, collects the drip, and meets the sync anyway
   await expect(page.getByTestId('presence-dnd')).toBeEnabled();
 });
 
+/* -- the chat beat: the tradeoff both ways, on the artifact ---------------- */
+
+/**
+ * The two halves of one choice, walked on the built artifact (0.4.3, F4/F5).
+ *
+ * The 0.3.3 journey above dodges a CALL and meets the meeting the dot cannot
+ * touch. What was missing until this slice was a beat on a day a player would
+ * actually think to hide from - so Do Not Disturb could read as free for a
+ * whole probation. `chat:dennis-calendar`, ten to eleven on the Thursday, is
+ * that beat: a colleague's quick question, a chat source the dot can wave off.
+ *
+ * These two tests are the same Thursday morning played the two ways, and the
+ * pair is the assertion that NEITHER dominates:
+ *
+ *  - behind the dot, the message never lands - but the quiet is paid for in the
+ *    drip, and a morning of it walks the player into the lead's beat;
+ *  - on an honest dot, the message lands and is taken for what it costs - but
+ *    the dot stays clean and nobody has anything to put together.
+ *
+ * One path trades focus for a clean record; the other trades a clean record for
+ * focus. That is a tradeoff, which is the whole of what F4 set out to make real.
+ */
+test('behind the dot, the message is waved off and the morning is paid for', async ({
+  page,
+}) => {
+  // A morning of work behind the dot ends at the lead's shoulder, which is the
+  // longest single-day journey in this file - it has to run the drip all the
+  // way to the beat's mark - so it buys the cross-day budget.
+  test.setTimeout(300_000);
+  await logInOnDay(page, 4, { brief: 'keep' });
+  await beginShift(page);
+
+  await expect(presenceState(page)).toHaveText('Available');
+  await page.getByTestId('presence-dnd').click();
+  await expect(presenceState(page)).toHaveText('Do not disturb');
+
+  const suspicionBefore = await meter(page, 'scorecard-suspicion');
+
+  // Work behind the dot across the hour the message would have landed in. By
+  // eleven the chat beat at ten to has already been slid, so this is the state
+  // to read the record in.
+  await workUntilMinute(page, 11 * 60 - 8 * 60);
+
+  for (let round = 0; round < DRIP_ROUNDS; round += 1) {
+    await doSomeWork(page);
+    await runSimMinutes(page, 5, 4);
+  }
+
+  /*
+   * THE MESSAGE THAT DID NOT LAND. Nothing took the screen for it: the call
+   * window is open with nothing in it, and the record underneath is who tried
+   * and what about - Dennis, and the calendar - which is the honest trace the
+   * dot leaves.
+   */
+  await openFromStartMenu(page, 'call');
+  await expect(page.getByTestId('call-app'))
+    .toHaveAttribute('data-call', 'none');
+
+  const missed = page.getByTestId('call-missed');
+
+  await expect(missed).toBeVisible();
+  await expect(missed).toContainText('calendar');
+
+  /* THE PRICE. The dot said busy while the log said working, and the meter
+   * that reads both has moved. */
+
+  expect(await meter(page, 'scorecard-suspicion'))
+    .toBeGreaterThan(suspicionBefore);
+
+  /*
+   * THE BEAT. Keep working behind the dot and the drip crosses the mark; the
+   * corridor decides when, and the lead comes down about the status - the
+   * caught-scene class, keyed to the dot rather than to a screen.
+   */
+  const caught = page.getByTestId('window-caught');
+
+  for (let round = 0; round < 40 && await caught.count() === 0; round += 1) {
+    await doSomeWork(page);
+    await runSimMinutes(page, 5, 4);
+  }
+
+  await expect(caught).toBeVisible();
+  await expect(page.getByTestId('caught-app'))
+    .toHaveAttribute('data-app', 'presence:dnd');
+  // The line is about the morning, and it is the dot's own conversation - not a
+  // screen anybody was found on.
+  await expect(page.getByTestId('caught-line')).toContainText('Do Not Disturb');
+});
+
+/**
+ * And the same Thursday on an honest dot: the message lands, because that is
+ * what a clean dot costs - you are reachable - and it is taken for what it is.
+ */
+test('on an honest dot, the message lands and is taken for its cost', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await logInOnDay(page, 4, { brief: 'keep' });
+  await beginShift(page);
+
+  await expect(presenceState(page)).toHaveText('Available');
+
+  // To ten to eleven, a minute at a time once it is close, until the message
+  // takes the call window. It is a chat source, so the window wears the message
+  // register rather than the phone's.
+  await workUntilMinute(page, 10 * 60 + 48 - 8 * 60);
+
+  const call = page.getByTestId('call-app');
+
+  for (let minute = 0; minute < 15 && await call.count() === 0; minute += 1) {
+    await runSimMinutes(page, 1, 1);
+  }
+
+  await expect(call).toBeVisible();
+  // The message register, not the phone's: the source is on the window and the
+  // answer verb is "Reply" rather than "Answer".
+  await expect(call).toHaveAttribute('data-source', 'chat');
+  await expect(page.getByTestId('call-caller')).toContainText('Dennis');
+  await expect(page.getByTestId('call-subject')).toContainText('calendar');
+  await expect(page.getByTestId('call-answer')).toHaveText('Reply');
+
+  /* TAKEN. Replying opens the thread - the message is answered, the minutes are
+   * spent, and that is the cost of a dot that let it through. */
+
+  await page.getByTestId('call-answer').click();
+  await expect(page.getByTestId('call-transcript')).toContainText('calendar');
+
+  /* And the dot stayed clean the whole time: an honest status collects no drip,
+   * which is the other side of the trade the test above pays. */
+
+  await expect(presenceState(page)).toHaveText('Available');
+  expect(await meter(page, 'scorecard-suspicion')).toBe(0);
+});
+
 /* -- the away journey ------------------------------------------------------ */
 
 /**

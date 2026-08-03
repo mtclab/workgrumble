@@ -147,15 +147,44 @@ export const DND_WORKING_TICKS = 15;
  * OVERSEER TUNING KNOB, and the one most likely to move: it is the whole price
  * of the quiet the dot buys.
  *
- * NOT moved in slice 0.3.6 (finding F5), and the reason is evidence rather than
- * timidity: the shipped week authors only two dodgeable dot-reading beats (the
- * Tuesday and Thursday calls), so a player can cross a whole probation without
- * ever leaning on this number, and a knob nobody has pressed is a knob there is
- * nothing to move it on. F4 is the beat that would change that - one mid-week
- * chat-source interruption that reads the dot, so the drip finally has something
- * to drip against - and THIS number, `DND_BEAT_SUSPICION` and their friends are
- * to be re-evaluated on the run that walks it on Do Not Disturb, not ahead of
- * it. Until that beat exists the values stand.
+ * RE-EVALUATED AND HELD at 2 in slice 0.4.3 (finding F5), now that there is
+ * finally a beat pressing it. 0.3.6 deferred the call because the shipped week
+ * authored no dodgeable chat/boss beat, so the drip never had anything to drip
+ * against; 0.4.3 adds one - `chat:dennis-calendar`, ten to eleven on the
+ * Thursday, a declinable chat message that reads the dot and costs, if taken,
+ * severity-one arrival stress (2) plus the malignant refocus window. Judged
+ * against THAT beat, 2 is not too cheap - it is already at the mark the review
+ * asked it to reach:
+ *
+ *   - The drip is integrated, floor(minutes * 2 / 5) suspicion per minute the
+ *     dot lied while the log worked - 0.4 a minute.
+ *   - To be sure of dodging a beat you did not memorise the minute of, Do Not
+ *     Disturb has to be up across a window around it. A realistic ~5-minute
+ *     window costs floor(5 * 2 / 5) = 2 suspicion - which is exactly the 2
+ *     stress the dodge saves. "Costs about what the dodge saves" is satisfied
+ *     at 2; it is not below the mark, so there is nothing to raise it on.
+ *   - The lazy version - sitting on the dot all morning rather than watching
+ *     the clock - is where it is supposed to hurt, and it does: by ten to
+ *     eleven a morning behind the dot has dripped ~44 suspicion, one interval
+ *     short of the beat mark, so dodging this the lazy way walks the player
+ *     straight into the "on Do Not Disturb all morning" scene. That is the
+ *     trap the triangle is meant to have, and 2 already lands it.
+ *
+ * Raising it to 3 (level with the browser slack window, which the 0.3.6 review
+ * floated) would tip a realistic dodge from "costs about what it saves" to
+ * "costs more than it saves", turning a tradeoff into a straight trap - and it
+ * would contradict the design reason 2 sits below the slack rate in the first
+ * place: a dot that disagrees with the log is circumstantial, something the
+ * lead has to put together, not the flagrant thing an open forum is. What
+ * raising it WOULD buy is the lazy-DND scene biting sooner (the mark at ~75
+ * minutes rather than ~113); that is a lever left flagged for the owner, not
+ * a correction the arithmetic demands. The value stands at 2.
+ *
+ * (Note the one thing no value of this constant fixes: a player who toggles the
+ * dot for a single minute exactly on the beat pays floor(1 * 2 / 5) = 0. That
+ * near-free precise dodge is inherent to an integrated drip meeting a short
+ * dodge window, not a symptom of the rate - so it is not an argument for moving
+ * this number either way.)
  */
 export const DND_WORKING_SUSPICION = 2;
 

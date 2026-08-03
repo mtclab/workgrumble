@@ -1199,6 +1199,12 @@ const MARKETING: DialogueTree = {
   tickets: ['ticket:phishing-report'],
   root: 'sorry',
   resolved_root: 'after',
+  // He also messages you on the Thursday, mid-morning, with a quick question
+  // that is not a ticket and never was - the malignant half of the cost model
+  // in a chat window rather than down a phone. A red dot slides it (chat
+  // READS_THE_DOT); an honest one takes the message and the twenty-three
+  // minutes back onto the work. Same interruption family, one register over.
+  call_roots: ['chat-dennis', 'chat-dennis-shaky'],
   nodes: [
     {
       id: 'sorry',
@@ -1293,6 +1299,54 @@ const MARKETING: DialogueTree = {
         + 'which I appreciate is not what you meant by it.',
       options: [
         { label: 'Let him print it out' },
+      ],
+    },
+    {
+      id: 'chat-dennis',
+      npc_line: 'Sorry to ping. Quick one, not urgent - is the shared calendar '
+        + 'meant to be an hour out for everyone, or is it just showing wrong on '
+        + 'mine? I did not want to raise a whole ticket if it is just me.',
+      options: [
+        {
+          label: 'Tell him a calendar an hour out is everyone, and it is a '
+            + 'clocks thing, not an IT thing',
+          next: 'chat-dennis-clocks',
+        },
+        {
+          label: 'Ask him to raise it properly if it is still wrong tomorrow',
+          next: 'chat-dennis-tomorrow',
+        },
+      ],
+    },
+    {
+      id: 'chat-dennis-clocks',
+      npc_line: 'Oh. The clocks. Of course. I have been staring at it since '
+        + 'nine wondering if I had double-booked myself into last week. Thank '
+        + 'you. Sorry. Back to it.',
+      options: [
+        { label: 'Tell him it is fine and close the chat' },
+      ],
+    },
+    {
+      id: 'chat-dennis-tomorrow',
+      npc_line: 'Right, yes. If it is still an hour out tomorrow I will do a '
+        + 'ticket. It is probably nothing. It is almost certainly nothing. '
+        + 'Sorry to have pinged.',
+      options: [
+        { label: 'Tell him it is no trouble and close the chat' },
+      ],
+    },
+    {
+      id: 'chat-dennis-shaky',
+      npc_line: 'Sorry - is this a bad moment? It reads like a bad moment. It '
+        + 'is only a quick one about the shared calendar being an hour out, and '
+        + 'it can absolutely wait, I should not have pinged.',
+      options: [
+        {
+          label: 'Tell him a calendar an hour out is everyone, and it is a '
+            + 'clocks thing, not an IT thing',
+          next: 'chat-dennis-clocks',
+        },
       ],
     },
   ],

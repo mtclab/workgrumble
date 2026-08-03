@@ -470,13 +470,17 @@ export interface DayScript {
   /** Who messages you directly today, and when. */
   readonly dms?: readonly DmSlot[];
   /**
-   * What takes the screen off you today: the calls, the summons, the meeting.
+   * What takes the screen off you today: the calls, the summons, the meeting,
+   * the message.
    *
-   * Three of them in the shipped week, one per shape the cost model has: a
-   * call that CAN be benign because it carries the ticket it is about
-   * (Tuesday), a block nobody can refuse (Wednesday), and a call about
-   * nothing anybody here is responsible for (Thursday). Monday is left alone
-   * because Monday is the day the two basic tools are taught, and Friday
+   * One per shape the cost model has: a call that CAN be benign because it
+   * carries the ticket it is about (Tuesday), a block nobody can refuse
+   * (Wednesday), a call about nothing anybody here is responsible for
+   * (Thursday), and - on that same Thursday - a chat message that reads the
+   * dot, which is what makes Do Not Disturb finally cost something the player
+   * can discover inside probation. The chat beat does not hold the desk, so it
+   * is not a takeover and Thursday's takeover load is unchanged. Monday is left
+   * alone because Monday is the day the two basic tools are taught, and Friday
    * because Friday already has a conversation at three o'clock in it.
    */
   readonly interruptions?: readonly InterruptionSlot[];
@@ -725,11 +729,47 @@ export const WEEK: readonly DayScript[] = validateWeek([
       { ticketId: 'ticket:vpn-cert-dup-ada', minute: 10 * 60 + 15 },
       { ticketId: 'ticket:vpn-cert-dup-gary', minute: 10 * 60 + 35 },
     ],
-    // Twenty past eleven, in the middle of a certificate flood, about a
-    // printer in a building this desk does not hold the contract for. It
-    // carries no ticket at all, which is not an omission - it is the malignant
-    // half of the cost model, and the reason it costs what it costs.
+    // Ten to eleven, and the anxious one from Marketing messaging you a quick
+    // question that is not a ticket and never will be - the shared calendar is
+    // an hour out and it is the clocks, not IT. It is the presence triangle's
+    // whole point made playable: a red dot slides it (chat READS_THE_DOT and it
+    // is declinable), so a player who has been sitting on Do Not Disturb all
+    // morning to dodge it collects the working-dot drip and, past the mark with
+    // the lead reading the dot, the "on Do Not Disturb all morning" beat; an
+    // honest dot takes the message and the malignant refocus window it leaves.
+    // A chat beat, not a takeover - it does not hold the desk - so Thursday's
+    // takeover load (the printer and the workstation) is unchanged. Ten to
+    // eleven is deliberate: by then a morning spent behind the dot has dripped
+    // close to the beat's mark, so dodging this and meeting the lead are the
+    // same morning.
     interruptions: [
+      {
+        id: 'chat:dennis-calendar',
+        source: 'chat',
+        minute: 10 * 60 + 50,
+        // Four minutes: a quick question is a quick question. It takes the call
+        // window and the clock, like any interruption that reads the dot, and
+        // it hands them straight back - it is the lightest shape in the family,
+        // which is what keeps the week from being a wall of takeovers (F0).
+        minutes: 4,
+        // No ticket, by construction: it is about no work anybody is holding,
+        // which makes it malignant every time and costs the refocus window at
+        // the far end of it - the same half the annexe printer teaches, one
+        // register over.
+        relatedTicket: null,
+        declinable: true,
+        severity: 1,
+        // No jitter. A message is not an appointment, but it is also not
+        // somebody deciding to pick a phone up mid-thought - it is pinned so the
+        // beat lands where a morning of the dot has dripped it to, which is the
+        // whole reason it is on this minute.
+        flavor: {
+          [FLAVOR.caller]: COMPANY_IDS.dennis,
+          [FLAVOR.subject]: 'A quick question about the shared calendar',
+          [FLAVOR.opens]: 'chat-dennis',
+          [FLAVOR.opensFumbling]: 'chat-dennis-shaky',
+        },
+      },
       {
         id: 'call:annexe-printer',
         source: 'call',
