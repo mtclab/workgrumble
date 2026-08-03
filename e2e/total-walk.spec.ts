@@ -3344,13 +3344,16 @@ async function raiseOnly(page: Page, appId: string): Promise<void> {
 const MONDAY_PATROLS = buildPatrolSchedule(1, WORLD_SEED).visits;
 
 /**
- * Tuesday's corridors, for the fourth caught scene the store run needs.
+ * Tuesday's corridors, for the fourth and fifth caught scenes the store run
+ * needs.
  *
  * Monday has exactly three patrols (`PATROLS_PER_DAY`), and the store run spends
- * all three - the game, the install audit, the media player. Office Solitaire is
- * a fourth toy with a fourth scene, so its telling-off is driven at Tuesday's
- * first corridor: the same deterministic `f(seed, day)` schedule, one day on.
- * Ticks are absolute across the week, so `driveToArrival` reaches it the same way.
+ * all three - the game, the install audit, the media player. Two more toys carry
+ * two more scenes: Office Solitaire's telling-off is driven at Tuesday's FIRST
+ * corridor and Office Minesweeper's at Tuesday's SECOND - the same deterministic
+ * `f(seed, day)` schedule, one day on, with room to spare (Tuesday has three
+ * corridors too). Ticks are absolute across the week, so `driveToArrival`
+ * reaches each the same way.
  */
 const TUESDAY_PATROLS = buildPatrolSchedule(2, WORLD_SEED).visits;
 
@@ -3412,6 +3415,10 @@ test('walks the web store, the install, the audit and the uninstall', async ({
     await page.getByTestId('store-install-solitaire').click();
     await expect(page.getByTestId('desktop-icon-solitaire')).toBeVisible();
     await expect(page.getByTestId('store-uninstall-solitaire')).toBeVisible();
+
+    await page.getByTestId('store-install-minesweeper').click();
+    await expect(page.getByTestId('desktop-icon-minesweeper')).toBeVisible();
+    await expect(page.getByTestId('store-uninstall-minesweeper')).toBeVisible();
   });
 
   // Close the Browser window we installed FROM before reaching for the icons it
@@ -3478,6 +3485,39 @@ test('walks the web store, the install, the audit and the uninstall', async ({
       .not.toHaveAttribute('data-testid', first ?? '');
   });
 
+  await step('minesweeper.window', async () => {
+    // The start-menu route again, for the same reason the other toys took it:
+    // three toy windows are already up and would fight a desktop double-click.
+    await openFromStartMenu(page, 'minesweeper');
+    await expect(page.getByTestId('minesweeper-app')).toBeVisible();
+  });
+
+  await step('minesweeper.play', async () => {
+    // Flag a covered square, then clear one - both real moves the logic
+    // validates, not buttons that returned success. Flag mode marks a corner
+    // (which the first reveal may bury a mine under, and that is fine); left-
+    // click then clears a first-click-safe region that floods.
+    const grid = page.getByTestId('minesweeper-grid');
+    await expect(grid.locator('[data-state="revealed"]')).toHaveCount(0);
+
+    // Flag the corner: turn the mode on, click, and the square goes flagged.
+    await page.getByTestId('minesweeper-flag-toggle').click();
+    await page.getByTestId('minesweeper-cell-0-0').click();
+    await expect(page.getByTestId('minesweeper-cell-0-0'))
+      .toHaveAttribute('data-state', 'flagged');
+
+    // Mode off, then clear the centre: the first click is always safe and opens
+    // into a flood, so the board genuinely changed - more than one square is now
+    // revealed where none was before.
+    await page.getByTestId('minesweeper-flag-toggle').click();
+    await page.getByTestId('minesweeper-cell-4-4').click();
+    await expect(
+      grid.locator('[data-state="revealed"]').first(),
+    ).toBeVisible();
+    const revealed = await grid.locator('[data-state="revealed"]').count();
+    expect(revealed).toBeGreaterThan(1);
+  });
+
   /* -- caught at the game on the screen, at the first Monday corridor ------- */
 
   await step('caught.scene-arcade', async () => {
@@ -3538,6 +3578,24 @@ test('walks the web store, the install, the audit and the uninstall', async ({
     await page.keyboard.press('Backquote');
   });
 
+  /* -- and caught mid-square at Minesweeper, at Tuesday's second corridor --- */
+
+  await step('caught.scene-minesweeper', async () => {
+    // The fifth toy's scene, driven at Tuesday's SECOND corridor: Monday's three
+    // are spent (game, audit, media) and Tuesday's first caught the card game.
+    // The install set rode the day, so Minesweeper is still on the machine;
+    // re-open it and raise it alone so it is the thing on the screen when the
+    // lead arrives.
+    await openFromStartMenu(page, 'minesweeper');
+    await raiseOnly(page, 'minesweeper');
+    await driveToArrival(page, TUESDAY_PATROLS[1]?.arrivalTick ?? 0);
+    await expect(page.getByTestId('caught-app'))
+      .toHaveAttribute('data-app', 'minesweeper');
+    await page.getByTestId('caught-dismiss').click();
+    await expect(page.getByTestId('window-caught')).toHaveCount(0);
+    await page.keyboard.press('Backquote');
+  });
+
   /* -- save, reload, and the install set exactly where it was -------------- */
 
   await page.getByTestId('start-button').click();
@@ -3561,6 +3619,7 @@ test('walks the web store, the install, the audit and the uninstall', async ({
   await expect(page.getByTestId('desktop-icon-arcade')).toBeVisible();
   await expect(page.getByTestId('desktop-icon-mediaplayer')).toBeVisible();
   await expect(page.getByTestId('desktop-icon-solitaire')).toBeVisible();
+  await expect(page.getByTestId('desktop-icon-minesweeper')).toBeVisible();
 
   /* -- and taken back off, the record staying behind ----------------------- */
 
@@ -3578,6 +3637,9 @@ test('walks the web store, the install, the audit and the uninstall', async ({
 
     await page.getByTestId('store-uninstall-solitaire').click();
     await expect(page.getByTestId('desktop-icon-solitaire')).toHaveCount(0);
+
+    await page.getByTestId('store-uninstall-minesweeper').click();
+    await expect(page.getByTestId('desktop-icon-minesweeper')).toHaveCount(0);
   });
 
   // The conduct file still carries the software line: uninstalling took the toy

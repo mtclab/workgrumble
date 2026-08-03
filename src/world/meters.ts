@@ -150,6 +150,7 @@ export const SLACK_RATES: Readonly<Record<string, SlackRate>> = {
   arcade: INSTALLED_TOY_SLACK_RATE,
   mediaplayer: INSTALLED_TOY_SLACK_RATE,
   solitaire: INSTALLED_TOY_SLACK_RATE,
+  minesweeper: INSTALLED_TOY_SLACK_RATE,
 };
 
 export function slackRate(appId: string): SlackRate {

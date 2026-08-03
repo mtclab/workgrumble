@@ -135,6 +135,23 @@ export const CAUGHT_SCENES: readonly CaughtScene[] = validateCaughtScenes([
     fileSubject: 'an installed card game',
   },
   {
+    appId: 'minesweeper',
+    title: 'A quick word about what is installed',
+    bossLine: 'Minesweeper. On the machine. Pat, I used to be quite good at that '
+      + 'one, which is exactly how I know how long a game takes and how little of '
+      + 'it looks like a spreadsheet from behind.',
+    narration: 'He watches you clear a run of squares off a corner - the safe, '
+      + 'satisfying part, the bit where the numbers agree with each other - and '
+      + 'he waits until your cursor is hovering over the one square you are not '
+      + 'sure about before he mentions the list.',
+    reply: 'You say you were thinking through a problem. He agrees you were '
+      + 'thinking through a problem, and that the problem was where the mines '
+      + 'were, and that both the thinking and the game are now on the audit with '
+      + 'your name against them.',
+    dismissLabel: 'Close it, and let it be logged',
+    fileSubject: 'an installed game of Minesweeper',
+  },
+  {
     appId: 'mediaplayer',
     title: 'A quick word about what is installed',
     bossLine: 'Is that a media player? We do not put media players on these. '

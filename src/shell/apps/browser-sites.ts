@@ -384,11 +384,14 @@ const WEB_STORE: BrowserSite = {
           + 'somebody reads the board over your shoulder from the door.',
       },
       {
-        name: 'Weather Tray 98',
-        register: 'Trialware (trial expired 1999)',
-        blurb: 'Puts the weather in your system tray. There is no internet in '
-          + 'here, so it would only ever have shown one kind of weather. '
-          + 'Coming soon, in the sense that it is not coming.',
+        appId: 'minesweeper',
+        name: 'Office Minesweeper',
+        register: 'Freeware (came with the same operating system Solitaire did)',
+        blurb: 'The other one everybody had open. A grid of covered squares, a '
+          + 'handful of mines under them, and the arithmetic your subconscious '
+          + 'does faster than you could ever explain it. The first click is '
+          + 'always safe, which is the only mercy in it. Wins nothing back on the '
+          + 'queue and takes the edge off exactly until the click that does not.',
       },
       {
         name: 'MODEM BLASTER TOOLS',

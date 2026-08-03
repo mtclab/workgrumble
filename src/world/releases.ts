@@ -31,6 +31,29 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.4.5',
+    date: '2026-08-03',
+    summary: 'This update keeps the promise about Minesweeper.',
+    lines: Object.freeze([
+      'Office Minesweeper is now in the software catalogue, where Solitaire has '
+        + 'been sitting looking smug. It is real Minesweeper - a real field, a '
+        + 'real flood, and the real click that ends it. The first click is '
+        + 'always safe, which is the one kindness in the whole game and the '
+        + 'reason nobody loses on move one. Flagging is a button rather than a '
+        + 'right-click, because the person who wrote this has used a trackpad.',
+      'It installs the way everything installs here: fine, and noted. It is not '
+        + 'on the approved list, because nothing is, and clearing a corner of it '
+        + 'drains the same tension the Browser did, only better, right up until '
+        + 'the square you were not sure about. The lead knows what Minesweeper '
+        + 'looks like from behind. He was quite good at it, which is how he '
+        + 'knows how long a game takes.',
+      'The person who writes these notes would like it on the record that the '
+        + 'date they agreed to, in writing, for Minesweeper has been met. They '
+        + 'have asked for this to be the last sentence anybody remembers about '
+        + 'the whole affair. It will not be.',
+    ]),
+  },
+  {
     version: '0.4.4',
     date: '2026-08-03',
     summary: 'This update adds a game that is actually a game.',

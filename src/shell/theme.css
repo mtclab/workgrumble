@@ -4282,6 +4282,129 @@ input {
   text-align: center;
 }
 
+/* ----------------------------------------------------- office minesweeper */
+
+.minesweeper-app {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  padding: var(--space-4);
+  font-family: var(--font-ui);
+}
+
+.minesweeper-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
+}
+
+.minesweeper-title {
+  grid-column: 1;
+  margin: var(--space-0);
+  font-size: var(--text-lg);
+  font-family: var(--font-read);
+}
+
+.minesweeper-controls {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  gap: var(--space-2);
+  align-self: center;
+}
+
+.minesweeper-tip,
+.minesweeper-status {
+  grid-column: 1;
+  margin: var(--space-0);
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+}
+
+.minesweeper-tip {
+  font-style: italic;
+}
+
+.minesweeper-flag-toggle[data-active='true'] {
+  box-shadow: var(--bevel-sunken);
+}
+
+.minesweeper-grid {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+  justify-content: start;
+}
+
+.minesweeper-board {
+  display: grid;
+  grid-template-columns: repeat(var(--mine-cols, 9), 26px);
+  gap: 2px;
+}
+
+.minesweeper-cell {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: var(--space-0);
+  border: var(--border-hair) solid var(--color-ink);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-raised);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.minesweeper-cell[data-state='flagged'] {
+  color: #b3261e;
+}
+
+.minesweeper-cell[data-state='revealed'] {
+  background: var(--color-surface-field);
+  box-shadow: none;
+  border-color: var(--color-ink-soft);
+  cursor: default;
+}
+
+.minesweeper-cell[data-mine='true'] {
+  background: #b3261e;
+  color: #fff;
+}
+
+/* The canonical Minesweeper number colours, so a 1 and a 3 are told apart at a
+   glance the way the game has always told them apart. */
+.minesweeper-cell[data-count='1'] { color: #1d4ed8; }
+.minesweeper-cell[data-count='2'] { color: #15803d; }
+.minesweeper-cell[data-count='3'] { color: #b3261e; }
+.minesweeper-cell[data-count='4'] { color: #3730a3; }
+.minesweeper-cell[data-count='5'] { color: #7c2d12; }
+.minesweeper-cell[data-count='6'] { color: #0f766e; }
+.minesweeper-cell[data-count='7'] { color: var(--color-ink); }
+.minesweeper-cell[data-count='8'] { color: var(--color-ink-soft); }
+
+.minesweeper-banner {
+  padding: var(--space-3);
+  font-weight: 700;
+  text-align: center;
+}
+
+.minesweeper-win {
+  background: var(--color-accent-deep);
+  color: var(--color-accent-ink);
+}
+
+.minesweeper-lose {
+  background: #b3261e;
+  color: #fff;
+}
+
 /* ------------------------------------------------------ the caught scene */
 
 .caught-app {

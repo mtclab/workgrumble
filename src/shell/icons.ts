@@ -516,6 +516,34 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { d: 'M15 10 l2.5 3.5 -2.5 3.5 -2.5 -3.5 z' },
     },
   ],
+  // A covered grid with one square uncovered onto a mine - the whole game in a
+  // glyph: the field, and the one square you should not have clicked.
+  'icon-minesweeper': [
+    {
+      element: 'rect',
+      attributes: { x: '4', y: '4', width: '16', height: '16', rx: '1' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '12', y1: '4', x2: '12', y2: '20' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '4', y1: '12', x2: '20', y2: '12' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '16', cy: '16', r: '2' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '16', y1: '12.5', x2: '16', y2: '19.5' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '12.5', y1: '16', x2: '19.5', y2: '16' },
+    },
+  ],
   'icon-lock': [
     {
       element: 'rect',

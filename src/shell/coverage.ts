@@ -2408,7 +2408,7 @@ const ENTRIES = [
     id: 'store.install',
     surface: 'browser',
     control: 'store-install-arcade, store-install-mediaplayer, '
-      + 'store-install-solitaire',
+      + 'store-install-solitaire, store-install-minesweeper',
     does: 'Installs a program off the store: dispatches the install verb that '
       + 'writes the audit trail, adds it to the save-carried install set, and '
       + 're-mounts the desktop so its icon and start-menu entry appear at once '
@@ -2423,7 +2423,7 @@ const ENTRIES = [
     id: 'store.uninstall',
     surface: 'browser',
     control: 'store-uninstall-arcade, store-uninstall-mediaplayer, '
-      + 'store-uninstall-solitaire',
+      + 'store-uninstall-solitaire, store-uninstall-minesweeper',
     does: 'Takes an installed toy back off: dispatches the uninstall verb, '
       + 'removes it from the install set and the desktop live, and leaves the '
       + 'install line on the audit - the record that it was there outliving the '
@@ -2501,6 +2501,30 @@ const ENTRIES = [
       + 'installs the game it belongs to.',
   },
   {
+    id: 'minesweeper.window',
+    surface: 'minesweeper',
+    control: 'window-minesweeper',
+    does: 'Office Minesweeper, once installed: a real game of Minesweeper, and a '
+      + 'real slack app that drains stress at the installed-toy rate while it is '
+      + 'up and hides no better than the game it actually is.',
+    window: { routes: ['start-menu', 'desktop-icon'] },
+    run: 'store',
+    why: 'The fourth installable, present only in the run that installs it and '
+      + 'absent from the base roster the golden weeks mount.',
+  },
+  {
+    id: 'minesweeper.play',
+    surface: 'minesweeper',
+    control: 'minesweeper-flag-toggle, minesweeper-cell-*',
+    does: 'Flags a covered square and then clears one - the flag mode marks a '
+      + 'cell and a left-click reveals a first-click-safe region that floods, '
+      + 'which is the toy being genuinely played and drips relief at the '
+      + 'installed-toy rate for as long as it is on the screen.',
+    run: 'store',
+    why: 'Controls on a window only the store run mounts; no golden week ever '
+      + 'installs the game they belong to.',
+  },
+  {
     id: 'caught.scene-arcade',
     surface: 'caught',
     control: 'window-arcade at an arrival',
@@ -2535,6 +2559,19 @@ const ENTRIES = [
       + 'is the specific thing that was on the screen.',
     actions: [DAY_ACTIONS.bossCaught],
     scene: 'caught.solitaire',
+    run: 'store',
+    why: 'Needs the game installed and up at an arrival, which is the store run '
+      + 'and no golden week - the weeks install nothing.',
+  },
+  {
+    id: 'caught.scene-minesweeper',
+    surface: 'caught',
+    control: 'window-minesweeper at an arrival',
+    does: 'The installed Minesweeper, caught mid-square at an arrival: the lead '
+      + 'watches you clear a corner before he mentions the audit, because the '
+      + 'joke is the specific thing that was on the screen.',
+    actions: [DAY_ACTIONS.bossCaught],
+    scene: 'caught.minesweeper',
     run: 'store',
     why: 'Needs the game installed and up at an arrival, which is the store run '
       + 'and no golden week - the weeks install nothing.',
@@ -2778,6 +2815,13 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'solitaire-new-deal',
   'solitaire-card-*',
   'solitaire-drop-*',
+  // Office Minesweeper, a real game: the flag-mode toggle and the new-game
+  // button are fixed controls; each square in the grid is a control the player
+  // clicks to clear or flag, so they carry ids in a family rather than one by
+  // one.
+  'minesweeper-flag-toggle',
+  'minesweeper-new-game',
+  'minesweeper-cell-*',
   'about-run-diagnostics',
   'about-reseat-fan',
   'about-refresh',
