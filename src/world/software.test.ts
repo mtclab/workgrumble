@@ -9,6 +9,7 @@ import {
   installAuditCount,
   longestInstalledMinutes,
   parseInstallLedger,
+  unspokenInstalls,
 } from './software';
 
 describe('the install audit ledger', () => {
@@ -37,6 +38,43 @@ describe('the install audit ledger', () => {
     expect(longestInstalledMinutes('arcade@40\nmedia@90', 100)).toBe(60);
     // A record stamped in the future contributes nothing rather than a negative.
     expect(longestInstalledMinutes('arcade@200', 100)).toBe(0);
+  });
+});
+
+describe('the installs nobody has been spoken to about', () => {
+  it('is the audit lines the spoken-about copy does not hold', () => {
+    expect(
+      unspokenInstalls('arcade@40\nmedia@95', 'arcade@40').map((r) => r.id),
+    ).toEqual(['media']);
+    // Everything is unspoken when the copy is empty or absent.
+    expect(unspokenInstalls('arcade@40\nmedia@95', '').map((r) => r.id))
+      .toEqual(['arcade', 'media']);
+    expect(unspokenInstalls('arcade@40\nmedia@95', undefined).map((r) => r.id))
+      .toEqual(['arcade', 'media']);
+  });
+
+  /**
+   * P1-B teeth: the copy is recomputed against, not trusted. A hand-edited copy
+   * cannot hide a real install, however it is poisoned.
+   *
+   * - a copy naming a line that is not on the trail closes nothing, so both real
+   *   installs stay unspoken - the old count could have hidden them by being set
+   *   "past the trail" (`records.slice(999)` was empty);
+   * - a cleared copy re-surfaces the REAL installs rather than a phantom count.
+   *
+   * Revert `unspokenInstalls` to a count-and-slice and either line reds.
+   */
+  it('cannot be poisoned into hiding a real install', () => {
+    const audit = 'arcade@40\nmedia@95';
+
+    // A copy far "past" the trail, naming a ghost: it hides nothing.
+    expect(unspokenInstalls(audit, 'ghost@999999').map((r) => r.id))
+      .toEqual(['arcade', 'media']);
+    // A cleared copy re-surfaces exactly the real installs, no more, no less.
+    expect(unspokenInstalls(audit, '').map((r) => r.id))
+      .toEqual(['arcade', 'media']);
+    // And the copy that legitimately holds the trail closes all of it.
+    expect(unspokenInstalls(audit, audit)).toEqual([]);
   });
 });
 

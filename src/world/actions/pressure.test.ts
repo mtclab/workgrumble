@@ -24,7 +24,7 @@ import { DRINK_PRICE_PENCE, MAX_CANS, NO_RUN } from '../consumables';
 import { FIELDS } from '../fields';
 import { METER_CEILING, STARTING_REPUTATION } from '../meters';
 import { createWorldSession } from '../session';
-import { DAY_ACTIONS } from './ids';
+import { DAY_ACTIONS, SOFTWARE_ACTIONS } from './ids';
 
 let engine: EngineApi;
 
@@ -151,35 +151,41 @@ describe('boss.caught', () => {
   });
 
   /**
-   * The software conversation advances the install-audit watermark, and only
-   * that conversation does: a forum or a status leaves it alone. This is what
-   * stops the beat drumming - the tail past the watermark is what it reads.
+   * The software conversation COPIES the audit trail into the "spoken about"
+   * field, and only that conversation does: a forum or a status leaves it alone.
+   * The copy of an append-only trail is what stops the beat drumming - the
+   * reader treats every line the copy holds as covered.
    */
-  it('advances the install watermark only when told to', () => {
-    // A conversation about a screen leaves the watermark absent, the way it
-    // leaves the dot's own record alone.
+  it('copies the audit into the spoken-about field only when told to', () => {
+    // Two installs on the trail, so the copy has something to be.
+    dispatch(SOFTWARE_ACTIONS.install, { id: 'arcade', line: 'arcade@40' });
+    dispatch(SOFTWARE_ACTIONS.install, { id: 'media', line: 'media@95' });
+
+    // A conversation about a screen leaves the copy absent, the way it leaves
+    // the dot's own record alone.
     dispatch(DAY_ACTIONS.bossCaught, { file_line: CAUGHT_AT_A_FORUM });
     expect(field(FIELDS.installNoticed)).toBeUndefined();
 
-    // The software conversation SETS it to the length of the trail it was down
-    // about - not added to, so a fresh install lands past it and re-arms.
+    // The software conversation copies the whole trail as it stands - not a
+    // count, a copy - so it is byte-for-byte the audit, and a fresh install
+    // lands as a line the copy does not hold.
     dispatch(DAY_ACTIONS.bossCaught, {
       file_line: conductLine(240, 'software', 'a program installed against policy'),
-      install_noticed: 3,
+      software_spoken: 1,
     });
-    expect(field(FIELDS.installNoticed)).toBe(3);
+    expect(field(FIELDS.installNoticed)).toBe(field(FIELDS.installAudit));
     const filed = conductEntries(field(FIELDS.conductFile));
     expect(filed[filed.length - 1]?.kind).toBe('software');
     expect(filed[filed.length - 1]?.text).toContain('Unauthorised software');
   });
 
   /**
-   * Teeth on the watermark param: a hand-edited fractional count is refused, and
-   * the refusal leaves the world byte-identical. Drop the guard and this goes
-   * green with a non-integer sitting in a field the beat does whole-line
-   * arithmetic against.
+   * Teeth on the flag: it is a whole one or it is absent, there is no half of a
+   * conversation. A value that is not one is refused and the world is left
+   * byte-identical. Drop the guard and this goes green with a copy made off a
+   * flag the verb was never meant to act on.
    */
-  it('refuses a watermark that is not a whole number of lines', () => {
+  it('refuses a software flag that is not exactly one', () => {
     const before = engine.snapshotHash();
     expectRefusal(
       dispatch(DAY_ACTIONS.bossCaught, {
@@ -188,9 +194,9 @@ describe('boss.caught', () => {
           'software',
           'a program installed against policy',
         ),
-        install_noticed: 1.5,
+        software_spoken: 2,
       }),
-      'whole lines',
+      'one about the install audit',
     );
     expect(engine.snapshotHash()).toBe(before);
   });

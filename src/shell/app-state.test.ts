@@ -44,7 +44,8 @@ describe('the shell-owned app state', () => {
     expect(fresh.chat).toEqual({ selectedId: null, threads: {} });
     expect(fresh.day).toEqual({ briefShownFor: null, scorecardShownFor: null });
     expect(fresh.browser).toEqual({ siteId: null });
-    expect(fresh.caught).toEqual({ appId: null, at: null, evidence: null });
+    expect(fresh.caught)
+      .toEqual({ appId: null, at: null, evidence: null, software: null });
     expect(fresh.assistant).toEqual({ dismissals: 0, closedOnDay: null });
   });
 
@@ -202,7 +203,7 @@ describe('the shell-owned app state', () => {
     store.patchExternal('caught', { appId: 'browser', at: 12, evidence: null });
     expect(listener).toHaveBeenCalledTimes(1);
     expect(store.get().caught)
-      .toEqual({ appId: 'browser', at: 12, evidence: null });
+      .toEqual({ appId: 'browser', at: 12, evidence: null, software: null });
 
     expect(store.hydrate(createAppState())).toBe(true);
     expect(listener).toHaveBeenCalledTimes(2);

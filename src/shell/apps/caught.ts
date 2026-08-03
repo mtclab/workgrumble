@@ -9,13 +9,73 @@ import {
   type CaughtScene,
   caughtScene,
   GENERIC_CAUGHT_SCENE,
+  INSTALL_CAUGHT_KEY,
   PRESENCE_CAUGHT_KEY,
   UNCAUGHT_SCENE,
 } from '../../world/scenes';
 import { formatSimTime } from '../clock-format';
 import { createIcon } from '../icons';
+import { installableApp } from './installable';
 import type { AppDef, AppInstance, GameApi } from './types';
 import { element, osButton } from './ui';
+
+/**
+ * Joins a list of names the way somebody speaks it: "A", "A and B", "A, B and
+ * C". Used for the install-audit scene, which has to say what it actually names.
+ */
+function speakList(names: readonly string[]): string {
+  if (names.length <= 1) {
+    return names[0] ?? '';
+  }
+
+  if (names.length === 2) {
+    return `${names[0] ?? ''} and ${names[1] ?? ''}`;
+  }
+
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] ?? ''}`;
+}
+
+/**
+ * The install-audit scene, built from what was ACTUALLY installed rather than a
+ * hardcoded line.
+ *
+ * The content-honesty bar this exists for: the scene may print nothing false.
+ * The old static line called every install "that game" and claimed the player
+ * had taken it off and that the removal was logged - three sentences that were
+ * lies the moment the toy was a media player, or was still on the machine. This
+ * names the real programs (by their store titles) and states their real removal
+ * state, read off the machine's own install set, and it claims a removal only
+ * where one genuinely happened.
+ */
+export function installCaughtLines(
+  ids: readonly string[],
+  installed: ReadonlySet<string>,
+): { bossLine: string; reply: string } {
+  const names = ids.map((id) => installableApp(id)?.title ?? id);
+  const removed = ids.filter((id) => !installed.has(id));
+  const spoken = speakList(names);
+  const one = ids.length === 1;
+
+  const removalSentence = removed.length === 0
+    ? `${one ? 'It is' : 'They are'} still on the machine now, which the audit `
+      + 'can see the same as I can.'
+    : removed.length === ids.length
+      ? `You have taken ${one ? 'it' : 'them'} off again since - which I know `
+        + 'because that is on the list too, and it is not the better line.'
+      : 'One of those you have taken off again, which is on the list as well; '
+        + 'the rest are still on there.';
+
+  return {
+    bossLine: `${spoken}. We do not allow ${one ? 'that' : 'those'} on these `
+      + `machines, and ${one ? 'it is' : 'they are'} on the install audit with `
+      + `your name against ${one ? 'it' : 'them'}. ${removalSentence} We keep a `
+      + 'list, and the list does not forget the way a desktop does.',
+    reply: `You say it was nothing. He says the list does not think ${
+      one ? 'it' : 'any of it'
+    } was nothing, and that ${one ? 'it' : 'all of it'} stays on there whatever `
+      + 'you do to the machine.',
+  };
+}
 
 /**
  * The caught scene, and the file it goes into.
@@ -180,10 +240,23 @@ export const CAUGHT_APP: AppDef = {
     };
 
     const render = (): void => {
-      const { appId, at, evidence: minutes } = api.appState.get().caught;
+      const {
+        appId, at, evidence: minutes, software,
+      } = api.appState.get().caught;
       const scene: CaughtScene = appId === null
         ? UNCAUGHT_SCENE
         : caughtScene(appId) ?? GENERIC_CAUGHT_SCENE;
+
+      // The install-audit scene is the one that is built rather than fixed: its
+      // boss line and reply name the programs actually on the trail and state
+      // their real removal state, so nothing printed can be false in-fiction. It
+      // falls back to the static line only if a save carries the key with no
+      // records behind it, which is a scene with nothing to name.
+      const installed = new Set(api.appState.get().installed.apps);
+      const dynamic = appId === INSTALL_CAUGHT_KEY
+        && software !== null && software.length > 0
+        ? installCaughtLines(software, installed)
+        : null;
 
       root.dataset.app = appId ?? 'none';
       heading.textContent = scene.title;
@@ -191,9 +264,9 @@ export const CAUGHT_APP: AppDef = {
         ? 'Nobody is standing behind you.'
         : `${formatSimTime(at).day}, ${formatSimTime(at).time}. He was `
           + 'standing there for a while before you noticed.';
-      line.textContent = scene.bossLine;
+      line.textContent = dynamic?.bossLine ?? scene.bossLine;
       narration.textContent = scene.narration;
-      reply.textContent = scene.reply;
+      reply.textContent = dynamic?.reply ?? scene.reply;
 
       // The reading he arrived with, as it was captured in that minute, rather
       // than a fresh one taken now. The world clears the record as part of

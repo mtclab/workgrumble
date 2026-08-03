@@ -125,8 +125,9 @@ import {
 } from '../world/scenes';
 import {
   type InstallAuditReading,
+  type InstallRecord,
   installAuditBeat,
-  parseInstallLedger,
+  unspokenInstalls,
 } from '../world/software';
 import { type InstallPolicy } from '../world/company';
 import {
@@ -767,7 +768,17 @@ export interface DayDriverHandlers {
    * already been told - suspicion, reputation and the count are moved before
    * this is called - and what is left is the scene, which is the shell's.
    */
-  onCaught?(appId: string, tick: number, evidence: number | null): void;
+  onCaught?(
+    appId: string,
+    tick: number,
+    evidence: number | null,
+    /**
+     * The installs the software conversation is about, by app id, for the one
+     * scene that names what was actually on the audit. Absent for every scene
+     * that is about a screen or the dot - those have nothing to name.
+     */
+    software?: readonly string[],
+  ): void;
   /**
    * He has sent one of his messages. The chat thread is the shell's memory of
    * what was said, so the driver hands over the line and the node the
@@ -1087,20 +1098,15 @@ export class DayDriver implements DayApi {
   /**
    * What the lead has to go on about the software on this machine, this minute.
    *
-   * The sibling of `dndBeat`, and it reads only the tail of the audit trail past
-   * the "already spoken about" watermark: the trail is append-only, so the lines
-   * added since the last conversation are the ones from `install_noticed`
-   * onward. Records is how many of those there are; minutes is how long the
-   * longest of them has sat on the list. The employer's policy comes off the
-   * shell, defaulting to the strict one so a headless preflight reads the
-   * probation employer it stands in for.
+   * The sibling of `dndBeat`, and it reads the audit lines that are NOT in the
+   * "already spoken about" copy (`install_noticed`): those are the installs no
+   * conversation has covered yet. Records is how many of those there are; minutes
+   * is how long the longest of them has sat on the list. The employer's policy
+   * comes off the shell, defaulting to the strict one so a headless preflight
+   * reads the probation employer it stands in for.
    */
   public installAuditBeat(): InstallAuditReading {
-    const records = parseInstallLedger(
-      this.engine.graph.getField(this.actor, FIELDS.installAudit),
-    );
-    const spoken = this.playerNumber(FIELDS.installNoticed);
-    const unspoken = records.slice(spoken);
+    const unspoken = this.unspokenInstalls();
     const now = this.engine.now();
     const minutes = unspoken.reduce(
       (longest, record) => Math.max(longest, Math.max(0, now - record.at)),
@@ -1108,6 +1114,14 @@ export class DayDriver implements DayApi {
     );
 
     return installAuditBeat(this.installPolicy(), unspoken.length, minutes);
+  }
+
+  /** The installs on the audit no software conversation has covered yet. */
+  private unspokenInstalls(): readonly InstallRecord[] {
+    return unspokenInstalls(
+      this.engine.graph.getField(this.actor, FIELDS.installAudit),
+      this.engine.graph.getField(this.actor, FIELDS.installNoticed),
+    );
   }
 
   private installPolicy(): InstallPolicy {
@@ -2607,21 +2621,29 @@ export class DayDriver implements DayApi {
    * - It fires on ARRIVAL, telegraphed like every other conversation here.
    * - `armed` is a predicate over evidence the world wrote down: a program on
    *   the trail under a locked-down policy, read off `install_audit`.
-   * - It cannot drum. The watermark advances to the length of the trail, so the
-   *   same install is not brought up next patrol; a fresh install lands past it
-   *   and re-arms. Answers whether it spoke, so the caller can fall through to
-   *   the status beat when it did not.
+   * - It cannot drum. Being spoken to copies the audit trail into the "spoken
+   *   about" field, so every install on the list so far is closed; a fresh
+   *   install lands as a line the copy does not hold and re-arms it. Answers
+   *   whether it spoke, so the caller can fall through to the status beat.
+   *
+   * The surfaced records - the actual installs this conversation is about - are
+   * handed to the scene so it can NAME them and say nothing false about them: the
+   * generic "that game" the scene used to hardcode was a lie the moment the only
+   * install was a media player, and a claimed removal was a lie the moment
+   * nothing had been removed. The window reads the ids back to their titles and
+   * their real removal state; the driver only says which records were covered.
    */
   private settleSoftwareBeat(visit: Readonly<BossVisit>): boolean {
-    if (!this.installAuditBeat().armed) {
+    const beat = this.installAuditBeat();
+
+    if (!beat.armed) {
       return false;
     }
 
-    // The whole trail's length is the new watermark: being spoken to closes
-    // everything on the list so far, and a later install lands past it.
-    const total = parseInstallLedger(
-      this.engine.graph.getField(this.actor, FIELDS.installAudit),
-    ).length;
+    // The specific installs this conversation covers, deduped by app so a toy
+    // installed twice is named once. Captured at the arrival, because the copy
+    // below closes them and a window asking afterwards would ask about nothing.
+    const covered = [...new Set(this.unspokenInstalls().map((r) => r.id))];
 
     const result = this.engine.dispatch(DAY_ACTIONS.bossCaught, this.actor, null, {
       file_line: conductLine(
@@ -2629,9 +2651,10 @@ export class DayDriver implements DayApi {
         'software',
         INSTALL_CAUGHT_SCENE.fileSubject,
       ),
-      // The watermark, so the trail's already-mentioned lines are not brought
-      // up again. It is not the status conversation, so that param stays absent.
-      install_noticed: total,
+      // The flag that copies the audit into the "spoken about" field, closing
+      // exactly what was on the trail. It is not the status conversation, so
+      // that param stays absent.
+      software_spoken: 1,
     });
 
     if (!result.ok) {
@@ -2640,7 +2663,7 @@ export class DayDriver implements DayApi {
 
     this.slowDown('boss');
     this.owedMinutes_ += CAUGHT_MINUTES;
-    this.handlers.onCaught?.(INSTALL_CAUGHT_KEY, visit.arrivalTick, null);
+    this.handlers.onCaught?.(INSTALL_CAUGHT_KEY, visit.arrivalTick, null, covered);
     this.handlers.onNotice?.(
       `That is ${String(CAUGHT_MINUTES)} minutes`,
       'He did not find anything on your screen. He read the install log '

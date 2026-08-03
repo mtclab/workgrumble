@@ -47,17 +47,25 @@ describe('the browser sites', () => {
       (program) => program.appId === undefined,
     );
 
-    // A row with a button has to name a program the build can actually install:
-    // an Install button pointing at nothing is a window that would mount empty.
     for (const program of installable) {
-      expect(INSTALLABLE_APP_IDS, program.appId).toContain(program.appId);
       expect(program.blurb.length).toBeGreaterThan(0);
       expect(program.register.length).toBeGreaterThan(0);
     }
 
+    // EQUALITY with the catalogue, not subset: the store's install rows are
+    // exactly the installable apps this build ships - no phantom row pointing at
+    // a program that would mount empty, and no shipped installable the store
+    // does not offer. A new INSTALLABLE_MANIFEST entry with no store row reds
+    // here (and its missing walk route reds in coverage.test.ts).
+    const storeIds = installable
+      .map((program) => program.appId ?? '')
+      .sort((left, right) => left.localeCompare(right));
+    const catalogue = [...INSTALLABLE_APP_IDS]
+      .sort((left, right) => left.localeCompare(right));
+    expect(storeIds).toEqual(catalogue);
+
     // The catalogue lists more than ships - the greyed rows - which is the
     // cheap seam for later slices and half the joke.
-    expect(installable.length).toBeGreaterThanOrEqual(2);
     expect(soon.length).toBeGreaterThan(0);
   });
 

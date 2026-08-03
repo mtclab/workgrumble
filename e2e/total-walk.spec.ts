@@ -27,6 +27,8 @@ import {
 } from './helpers';
 import { REFUSED_TOKENS, SHARED_TOKEN } from './tokens';
 import { AWAY_NOTICED_LINES } from '../src/world/dialogue';
+import { buildPatrolSchedule } from '../src/world/boss';
+import { WORLD_SEED } from '../src/world/session';
 import { DND_BEAT_MINUTES, dndEvidence } from '../src/world/presence';
 import {
   COVERAGE,
@@ -3328,6 +3330,38 @@ async function raiseOnly(page: Page, appId: string): Promise<void> {
   await expect(page.getByTestId(`window-${appId}`)).toBeVisible();
 }
 
+/**
+ * The three corridors of Monday, by arithmetic rather than by waiting.
+ *
+ * `buildPatrolSchedule` is deterministic `f(seed, day)` - the same function the
+ * driver settles patrols with - and the store run plays attempt one, whose seed
+ * is `WORLD_SEED`. So the arrival ticks are known before the walk starts, and
+ * `driveToArrival` advances the clock straight to each one. This is P1-A's fix:
+ * the old walk polled for a telegraph and hung for thirty minutes when the third
+ * corridor did not come while it happened to be looking; this cannot, because it
+ * asks the schedule when the corridor is and goes there.
+ */
+const MONDAY_PATROLS = buildPatrolSchedule(1, WORLD_SEED).visits;
+
+async function nowTick(page: Page): Promise<number> {
+  return page.evaluate(() => globalThis.careerSim?.tick() ?? 0);
+}
+
+/**
+ * Advances the sim clock to just past a known patrol arrival and asserts the
+ * caught window opened. The screen state set BEFORE the call is what the lead
+ * finds when he gets there, so the caller decides which scene fires.
+ */
+async function driveToArrival(page: Page, arrivalTick: number): Promise<void> {
+  const toGo = arrivalTick + 1 - await nowTick(page);
+
+  if (toGo > 0) {
+    await runSimMinutes(page, toGo);
+  }
+
+  await expect(page.getByTestId('window-caught')).toBeVisible();
+}
+
 test('walks the web store, the install, the audit and the uninstall', async ({
   page,
 }) => {
@@ -3386,40 +3420,39 @@ test('walks the web store, the install, the audit and the uninstall', async ({
     await expect(app).toHaveAttribute('data-playing', 'true');
   });
 
-  /* -- caught at the game on the screen ------------------------------------ */
+  /* -- caught at the game on the screen, at the first Monday corridor ------- */
 
   await step('caught.scene-arcade', async () => {
     await raiseOnly(page, 'arcade');
-    await runToTelegraph(page);
-    await runUntilCaught(page);
+    await driveToArrival(page, MONDAY_PATROLS[0]?.arrivalTick ?? 0);
     await expect(page.getByTestId('caught-app'))
       .toHaveAttribute('data-app', 'arcade');
     await page.getByTestId('caught-dismiss').click();
     await expect(page.getByTestId('window-caught')).toHaveCount(0);
   });
 
-  /* -- caught by the install LOG, with nothing on the screen --------------- */
+  /* -- caught by the install LOG, nothing on the screen, second corridor --- */
 
   await step('caught.scene-software', async () => {
-    // Everything away, so the finding is the audit and not a window. A screen
-    // conversation does not touch the audit's watermark, so it is still armed.
+    // Everything away, so the finding is the audit and not a window. The arcade
+    // conversation was about a screen and did not touch the "spoken about" copy,
+    // so both installs are still unspoken and the beat is armed.
     await page.keyboard.press('Backquote');
-    await runToTelegraph(page);
-    await runUntilCaught(page);
+    await driveToArrival(page, MONDAY_PATROLS[1]?.arrivalTick ?? 0);
     await expect(page.getByTestId('caught-app'))
       .toHaveAttribute('data-app', 'software:install');
-    // The file line says it is a record IT holds, not a screen anybody saw.
+    // The line names the programs on the audit and says the one thing that is
+    // always true - the list - rather than a hardcoded "that game".
     await expect(page.getByTestId('caught-line')).toContainText('list');
     await page.getByTestId('caught-dismiss').click();
     await expect(page.getByTestId('window-caught')).toHaveCount(0);
   });
 
-  /* -- and caught at the other toy ----------------------------------------- */
+  /* -- and caught at the other toy, at the third corridor ------------------ */
 
   await step('caught.scene-mediaplayer', async () => {
     await raiseOnly(page, 'mediaplayer');
-    await runToTelegraph(page);
-    await runUntilCaught(page);
+    await driveToArrival(page, MONDAY_PATROLS[2]?.arrivalTick ?? 0);
     await expect(page.getByTestId('caught-app'))
       .toHaveAttribute('data-app', 'mediaplayer');
     await page.getByTestId('caught-dismiss').click();

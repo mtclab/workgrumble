@@ -154,18 +154,28 @@ export const CAUGHT_SCENES: readonly CaughtScene[] = validateCaughtScenes([
  */
 export const INSTALL_CAUGHT_KEY = 'software:install';
 
+/**
+ * The STATIC fallback for the install-audit conversation.
+ *
+ * The real scene is built in the shell from the actual records - which programs,
+ * and their real removal state - so that nothing printed can be false in-fiction
+ * (`src/shell/apps/caught.ts`). This is what the window shows only if it is
+ * handed the key with no records behind it, which is a save that names the
+ * conversation without saying what it was about. So it names nothing specific
+ * and claims nothing that might not be true: no "game", no removal it cannot
+ * know happened - only the one thing that is always true, which is the list.
+ */
 export const INSTALL_CAUGHT_SCENE: CaughtScene = validateCaughtScene({
   appId: INSTALL_CAUGHT_KEY,
   title: 'A quick word about the install log',
-  bossLine: 'That game you installed. We do not allow those - and before you '
-    + 'tell me it is gone, it does not matter that it is gone. We keep a list, '
+  bossLine: 'Something got installed on this machine that we do not allow, and '
+    + 'it is on the install audit with your name against it. We keep a list, '
     + 'and the list does not forget the way a desktop does.',
   narration: 'He is not holding anything and he is not looking at your screen. '
     + 'He is looking at you the way a man looks when the thing he is telling '
     + 'you off for is not in the room, because it never had to be.',
-  reply: 'You say you took it straight back off. He says he knows, that the '
-    + 'taking-off is on the list as well, and that it is not the better of the '
-    + 'two lines.',
+  reply: 'You say it was nothing. He says the list does not think it was '
+    + 'nothing, and that it stays on there whatever you do to the machine.',
   dismissLabel: 'Take it on the chin',
   // What the FILE calls it: a record IT holds, in the passive voice of somebody
   // who read the audit rather than the window.

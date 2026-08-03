@@ -305,18 +305,21 @@ export const FIELDS = {
    */
   installRemoved: 'install_removed',
   /**
-   * How many install lines the lead has already been down to talk about.
+   * The install lines the lead has already been down to talk about: a COPY of
+   * the audit trail as it stood at the last such conversation.
    *
    * The audit trail only grows and cannot be cleared - that is the whole point
    * of it - so the beat cannot close its evidence the way the do-not-disturb
-   * beat clears its accrued minutes. This is how it closes instead: a count of
-   * the install lines that have already been the subject of a conversation.
-   * Being spoken to advances it to the length of the trail; the beat then reads
-   * only the lines ADDED since (the trail is append-only, so those are the tail
-   * past this count), and re-arms on a fresh install rather than on the same one
-   * every time he walks past. ABSENT is nought, which is what keeps a scripted
-   * week - which installs nothing and so is never spoken to about software -
-   * byte-identical to before the store existed.
+   * beat clears its accrued minutes. This is how it closes instead: being spoken
+   * to copies the whole audit trail into here, and the beat reads only the audit
+   * lines this copy does NOT hold - the ones added since. It is a copy of an
+   * append-only field rather than a watermark integer on purpose: there is no
+   * number for a hand-edited save to set past the trail (hiding a real install)
+   * or below the mark (replaying spent evidence), because the reader recomputes
+   * the unspoken set off the audit itself and no value here can hide a line that
+   * is genuinely on it. ABSENT is "nothing spoken about yet", which is what keeps
+   * a scripted week - which installs nothing and so is never spoken to about
+   * software - byte-identical to before the store existed.
    */
   installNoticed: 'install_noticed',
   /**

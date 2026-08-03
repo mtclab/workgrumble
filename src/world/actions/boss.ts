@@ -73,17 +73,23 @@ const FILE_LINE_PARAM = 'file_line';
 const STATUS_SPENT_PARAM = 'status_evidence_spent';
 
 /**
- * How far down the install audit this conversation was: the length of the trail
- * at the minute the lead came down about it.
+ * Whether this conversation was the one about the install audit.
  *
  * The software beat cannot clear its evidence the way the status one clears its
- * accrued minutes - the audit only ever grows - so instead of erasing anything
- * this advances a watermark to the length of the trail. The beat reads the tail
- * past this count, so the same install is not brought up every patrol; a fresh
- * install lands past the watermark and re-arms it. Absent on every conversation
- * that is not about software, which leaves the watermark exactly where it was.
+ * accrued minutes - the audit only ever grows and covering a track is itself a
+ * tell - so instead of erasing anything, or trusting a number that a hand-edited
+ * save could set past the trail or below the mark, it COPIES the audit trail
+ * into `install_noticed`. The reader then treats every audit line already in
+ * that copy as spoken about, and a fresh install lands as a line the copy does
+ * not hold yet, which is what re-arms it. Monotone by construction: the source
+ * is append-only, so the copy only ever grows, and no value of this flag can
+ * hide a real install line the reader recomputes off the audit itself.
+ *
+ * A flag rather than a count for exactly that reason - there is no watermark
+ * integer to poison. Absent on every conversation that is not about software,
+ * which leaves the copy exactly where it was.
  */
-const INSTALL_NOTICED_PARAM = 'install_noticed';
+const SOFTWARE_SPOKEN_PARAM = 'software_spoken';
 
 const WRITTEN_DOWN: GuardData[] = [
   {
@@ -139,17 +145,17 @@ export const BOSS_ACTION_DATA: readonly ActionData[] = [
         when: {
           pred: 'all',
           of: [
-            not({ pred: 'param_absent', param: INSTALL_NOTICED_PARAM }),
+            not({ pred: 'param_absent', param: SOFTWARE_SPOKEN_PARAM }),
             not({
-              pred: 'param_is_whole_number',
-              param: INSTALL_NOTICED_PARAM,
-              value: 0,
+              pred: 'param_int_in',
+              param: SOFTWARE_SPOKEN_PARAM,
+              values: [1],
             }),
           ],
         },
-        reason: 'The install audit is counted in whole lines, and a watermark '
-          + 'that is not a whole number of them is a record the audit cannot '
-          + 'place against the trail.',
+        reason: 'A conversation is either the one about the install audit or it '
+          + 'is not. There is no half of one, and what it closes is the whole of '
+          + 'the trail as it stood.',
       },
     ],
     apply: [
@@ -198,21 +204,21 @@ export const BOSS_ACTION_DATA: readonly ActionData[] = [
           },
         ],
       },
-      // And the software watermark, where this was the conversation about the
-      // install audit. Only where the param is there - a telling-off about a
-      // forum or a status leaves the audit's own watermark exactly where it
-      // was - and it is SET to the length of the trail rather than added to,
-      // because what closes is "everything on the list so far", and a fresh
-      // install lands past it and re-arms.
+      // And the software copy, where this was the conversation about the
+      // install audit. Only where the flag is there - a telling-off about a
+      // forum or a status leaves the copy exactly where it was - and it COPIES
+      // the whole audit trail as it stands, rather than trusting a number: what
+      // closes is "everything on the list so far", the source is append-only,
+      // and a fresh install lands as a line the copy does not yet hold.
       {
         op: 'when',
-        cond: not({ pred: 'param_absent', param: INSTALL_NOTICED_PARAM }),
+        cond: not({ pred: 'param_absent', param: SOFTWARE_SPOKEN_PARAM }),
         ops: [
           {
             op: 'set_field',
             node: ACTOR,
             field: FIELDS.installNoticed,
-            value: { param: INSTALL_NOTICED_PARAM },
+            value: { field: { node: ACTOR, field: FIELDS.installAudit } },
           },
         ],
       },

@@ -2,12 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import { APP_MANIFEST } from './index';
 import {
+  canInstall,
+  canUninstall,
   INSTALLABLE_APP_IDS,
   INSTALLABLE_MANIFEST,
   installableApp,
   isInstallableId,
   resolveManifest,
 } from './installable';
+
+function reasonOf(result: { ok: boolean; reason?: string }): string {
+  return result.ok ? '' : (result.reason ?? '');
+}
 
 describe('the installable catalogue', () => {
   it('is disjoint from the base roster', () => {
@@ -65,5 +71,48 @@ describe('resolving the manifest the desktop mounts', () => {
     expect(
       resolveManifest(APP_MANIFEST, [toy?.id ?? '', toy?.id ?? '']).length,
     ).toBe(APP_MANIFEST.length + 1);
+  });
+});
+
+/**
+ * P1-C: the state-aware guard the store consults before it dispatches.
+ *
+ * Every refusal here is a bug the shipped store would otherwise have: a fresh
+ * audit line for a toy already installed, a false removal for one that is not,
+ * and - the serious one - an unknown id reaching the install set, which makes
+ * the next save one the strict parse refuses to load.
+ */
+describe('whether an install move is legal', () => {
+  const toy = INSTALLABLE_MANIFEST[0]?.id ?? '';
+
+  it('allows installing a known program that is not installed', () => {
+    expect(canInstall([], toy)).toEqual({ ok: true });
+  });
+
+  it('refuses an unknown id before it can reach the install set', () => {
+    // The load-bearing one: an unknown id in the save-carried set is dropped by
+    // resolveManifest, so a save carrying it is one the parse refuses - an
+    // unloadable file made by a click. The guard stops it entering at all.
+    const result = canInstall([], 'not-a-real-app');
+    expect(result.ok).toBe(false);
+    expect(reasonOf(result)).toContain('not a program');
+  });
+
+  it('refuses installing something already installed', () => {
+    // A second install would write a second audit line and re-arm the lead's
+    // beat for a toy already on the desktop, with nothing new to show.
+    const result = canInstall([toy], toy);
+    expect(result.ok).toBe(false);
+    expect(reasonOf(result)).toContain('already installed');
+  });
+
+  it('allows uninstalling something installed, refuses one that is not', () => {
+    expect(canUninstall([toy], toy)).toEqual({ ok: true });
+
+    // Taking off something absent would write a removal record for a program
+    // that was never on the machine.
+    const result = canUninstall([], toy);
+    expect(result.ok).toBe(false);
+    expect(reasonOf(result)).toContain('not installed');
   });
 });

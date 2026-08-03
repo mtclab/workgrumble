@@ -21,7 +21,7 @@ import { COMPANY_IDS } from '../world/company';
 import { conductEntries } from '../world/conduct';
 import { shiftEndTick } from '../world/day';
 import { FIELDS } from '../world/fields';
-import { parseInstallLedger } from '../world/software';
+import { parseInstallLedger, unspokenInstalls } from '../world/software';
 import { caughtScene, INSTALL_CAUGHT_KEY } from '../world/scenes';
 import { createWorldSession, type WorldSession } from '../world/session';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
@@ -30,18 +30,24 @@ beforeAll(() => {
   loadEngineForTests();
 });
 
+interface Caught {
+  readonly appId: string;
+  /** The installs the software conversation named, or undefined otherwise. */
+  readonly software: readonly string[] | undefined;
+}
+
 interface Harness {
   readonly driver: DayDriver;
   readonly session: WorldSession;
-  /** Every scene the day put in front of the player, by what it was about. */
-  readonly scenes: string[];
+  /** Every scene the day put up, with what the software one was about. */
+  readonly caught: Caught[];
   /** What is on the screen, which the pressure layer reads for itself. */
   readonly slack: string[];
 }
 
 function harnessOn(day: number, policy: InstallPolicy = 'locked_down'): Harness {
   const session = createWorldSession();
-  const scenes: string[] = [];
+  const caught: Caught[] = [];
   const slack: string[] = [];
   const driver = new DayDriver(session.engine, COMPANY_IDS.player, session.seed, {
     onDayBoundary: () => {},
@@ -50,8 +56,8 @@ function harnessOn(day: number, policy: InstallPolicy = 'locked_down'): Harness 
     // The beat reads the policy on its own, because the audit trail survives an
     // uninstall and a wild-west shop logs installs that cost nothing.
     installPolicy: () => policy,
-    onCaught: (appId) => {
-      scenes.push(appId);
+    onCaught: (appId, _tick, _evidence, software) => {
+      caught.push({ appId, software });
     },
   });
 
@@ -62,8 +68,8 @@ function harnessOn(day: number, policy: InstallPolicy = 'locked_down'): Harness 
   }
 
   driver.startShift();
-  scenes.length = 0;
-  return { driver, session, scenes, slack };
+  caught.length = 0;
+  return { driver, session, caught, slack };
 }
 
 function runTo(driver: DayDriver, session: WorldSession, tick: number): void {
@@ -74,18 +80,17 @@ function runTo(driver: DayDriver, session: WorldSession, tick: number): void {
 
 /** Runs the day until the lead puts a scene up, or the shift ends. */
 function runUntilScene(world: Harness): void {
-  while (world.scenes.length === 0 && world.driver.state() === 'shift') {
+  while (world.caught.length === 0 && world.driver.state() === 'shift') {
     world.driver.step(TICK_INTERVAL_MS);
   }
 }
 
-function player(session: WorldSession, field: string): unknown {
-  return session.engine.graph.getField(COMPANY_IDS.player, field);
+function scenes(world: Harness): readonly string[] {
+  return world.caught.map((entry) => entry.appId);
 }
 
-function number(session: WorldSession, field: string): number {
-  const value = player(session, field);
-  return typeof value === 'number' ? value : 0;
+function player(session: WorldSession, field: string): unknown {
+  return session.engine.graph.getField(COMPANY_IDS.player, field);
 }
 
 function softwareLines(session: WorldSession): readonly string[] {
@@ -94,42 +99,45 @@ function softwareLines(session: WorldSession): readonly string[] {
     .map((entry) => entry.text);
 }
 
+/** The unspoken installs the beat would read this minute, off the graph. */
+function unspoken(session: WorldSession): readonly string[] {
+  return unspokenInstalls(
+    player(session, FIELDS.installAudit),
+    player(session, FIELDS.installNoticed),
+  ).map((record) => record.id);
+}
+
 describe('the beat the install audit arms', () => {
   /**
    * The journey: a toy installed off the store ends with a man at the desk
-   * asking about the install LOG, and the line he leaves is traceable to it.
+   * asking about the install LOG, naming the program he actually found.
    */
-  it('brings the lead down about the install, with the audit behind him', () => {
+  it('brings the lead down about the install, naming what was on the audit', () => {
     const world = harnessOn(1);
 
     expect(world.driver.install('arcade')).toEqual({ ok: true });
-    // Installing wrote the trail, and the beat is armed off it - one line under
-    // a locked-down policy is the whole of the evidence.
     expect(parseInstallLedger(player(world.session, FIELDS.installAudit)))
       .toHaveLength(1);
     expect(world.driver.installAuditBeat().armed).toBe(true);
 
     // Nothing has been said yet: arming is evidence, not a conversation.
-    expect(world.scenes).toEqual([]);
+    expect(world.caught).toEqual([]);
 
-    // The corridor decides WHEN, exactly as it does for a screen with a forum
-    // on it - so this waits for him rather than summoning him.
     runUntilScene(world);
 
-    expect(world.scenes).toEqual([INSTALL_CAUGHT_KEY]);
-    // And the window has a scene to draw for it, rather than a blank telling-off.
+    expect(scenes(world)).toEqual([INSTALL_CAUGHT_KEY]);
+    // PER-ENTRY: the conversation names the actual install, not a generic one.
+    expect(world.caught[0]?.software).toEqual(['arcade']);
+    // The static fallback still says the one thing that is always true.
     expect(caughtScene(INSTALL_CAUGHT_KEY)?.bossLine ?? '')
       .toContain('We keep a list');
 
-    // THE RECORD: a software line, in the file's own passive voice, that says
-    // it is a record IT holds rather than a window anybody saw.
+    // THE RECORD: a software line, in the file's own passive voice.
     const lines = softwareLines(world.session);
 
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('Unauthorised software');
     expect(lines[0]).toContain('installation policy');
-    // It is NOT filed as a screen: nothing was on the screen, and the file must
-    // not say there was.
     expect(
       conductEntries(player(world.session, FIELDS.conductFile))
         .some((entry) => entry.kind === 'screen'),
@@ -137,8 +145,8 @@ describe('the beat the install audit arms', () => {
   });
 
   /**
-   * It cannot drum. Being spoken to advances the watermark to the length of the
-   * trail, so the same install is not brought up the next time he walks past -
+   * It cannot drum. Being spoken to copies the audit into the "spoken about"
+   * field, so the same install is not brought up the next time he walks past -
    * a fresh install is what re-arms it, not another lap of the corridor.
    */
   it('is one conversation per install, not one per corridor', () => {
@@ -147,58 +155,59 @@ describe('the beat the install audit arms', () => {
     expect(world.driver.install('arcade')).toEqual({ ok: true });
     runUntilScene(world);
 
-    expect(world.scenes).toEqual([INSTALL_CAUGHT_KEY]);
-    // The watermark has advanced to cover the whole trail, so the beat has
-    // nothing new to say however many more times he comes past.
-    expect(number(world.session, FIELDS.installNoticed)).toBe(1);
+    expect(scenes(world)).toEqual([INSTALL_CAUGHT_KEY]);
+    // The copy now holds the whole trail, so nothing is unspoken and the beat
+    // has nothing new to say however many more times he comes past.
+    expect(unspoken(world.session)).toEqual([]);
     expect(world.driver.installAuditBeat().armed).toBe(false);
+    // The copy is the audit trail itself: byte-for-byte, since it was copied.
+    expect(player(world.session, FIELDS.installNoticed))
+      .toBe(player(world.session, FIELDS.installAudit));
 
-    // The rest of the day, toy still installed, nobody touching the store: he
-    // walks past again and again and says nothing new.
     runTo(world.driver, world.session, shiftEndTick(1));
 
-    expect(world.scenes).toEqual([INSTALL_CAUGHT_KEY]);
+    expect(scenes(world)).toEqual([INSTALL_CAUGHT_KEY]);
     expect(softwareLines(world.session)).toHaveLength(1);
   });
 
   /**
-   * And a FRESH install re-arms it: the watermark closes the list so far, not
-   * the store. Install a second toy after being spoken to and there is a new
-   * line past the watermark, so the next patrol has something to say again.
+   * And a FRESH install re-arms it: the copy holds the list so far, not the
+   * store. Install a second toy after being spoken to and there is a line the
+   * copy does not hold, so the next patrol has something to say - about the new
+   * program, not the old one.
    */
-  it('re-arms on a fresh install past the watermark', () => {
+  it('re-arms on a fresh install and names only the new one', () => {
     const world = harnessOn(1);
 
     expect(world.driver.install('arcade')).toEqual({ ok: true });
     runUntilScene(world);
-    expect(world.scenes).toHaveLength(1);
+    expect(world.caught[0]?.software).toEqual(['arcade']);
     expect(world.driver.installAuditBeat().armed).toBe(false);
 
-    // A second program lands past the watermark.
     expect(world.driver.install('mediaplayer')).toEqual({ ok: true });
+    // Only the media player is unspoken now; the arcade line is in the copy.
+    expect(unspoken(world.session)).toEqual(['mediaplayer']);
     expect(world.driver.installAuditBeat().armed).toBe(true);
 
-    world.scenes.length = 0;
+    world.caught.length = 0;
     runUntilScene(world);
 
-    expect(world.scenes).toEqual([INSTALL_CAUGHT_KEY]);
-    // Two software lines now, one per conversation, each about a real install.
+    expect(scenes(world)).toEqual([INSTALL_CAUGHT_KEY]);
+    expect(world.caught[0]?.software).toEqual(['mediaplayer']);
     expect(softwareLines(world.session)).toHaveLength(2);
   });
 
   /**
    * The record outlives the app. Uninstalling takes the toy off the machine and
-   * leaves the install line on the audit - which is worse evidence, not better -
-   * so the beat is still armed and the conversation still happens.
+   * leaves the install line on the audit, so the beat is still armed and the
+   * conversation still happens.
    */
   it('still has something to say after the toy is uninstalled', () => {
     const world = harnessOn(1);
 
     expect(world.driver.install('arcade')).toEqual({ ok: true });
-    // Straight back off again - covering the tracks, which is itself a tell.
     expect(world.driver.uninstall('arcade')).toEqual({ ok: true });
 
-    // The install line is still on the trail; the removal is a separate record.
     expect(parseInstallLedger(player(world.session, FIELDS.installAudit)))
       .toHaveLength(1);
     expect(parseInstallLedger(player(world.session, FIELDS.installRemoved)))
@@ -207,9 +216,10 @@ describe('the beat the install audit arms', () => {
 
     runUntilScene(world);
 
-    expect(world.scenes).toEqual([INSTALL_CAUGHT_KEY]);
+    expect(scenes(world)).toEqual([INSTALL_CAUGHT_KEY]);
+    expect(world.caught[0]?.software).toEqual(['arcade']);
     // And the install line is STILL there after the conversation: being spoken
-    // to does not erase the trail, it only advances the watermark.
+    // to copies the trail, it does not erase it.
     expect(parseInstallLedger(player(world.session, FIELDS.installAudit)))
       .toHaveLength(1);
   });
@@ -223,16 +233,15 @@ describe('the beat the install audit arms', () => {
     const world = harnessOn(1);
 
     expect(world.driver.install('arcade')).toEqual({ ok: true });
-    // The toy is up and unminimised when he arrives.
     world.slack.push('arcade');
 
     runUntilScene(world);
 
-    expect(world.scenes).toEqual(['arcade']);
-    // The install audit was not the conversation, so its watermark is untouched
-    // and it is still there for a later, quieter patrol.
-    expect(number(world.session, FIELDS.installNoticed)).toBe(0);
-    // The line on the file is the SCREEN one, not the software one.
+    expect(scenes(world)).toEqual(['arcade']);
+    // The audit was not the conversation, so the copy is untouched and it is
+    // still unspoken for a later, quieter patrol.
+    expect(player(world.session, FIELDS.installNoticed)).toBeUndefined();
+    expect(unspoken(world.session)).toEqual(['arcade']);
     expect(softwareLines(world.session)).toHaveLength(0);
   });
 
@@ -245,16 +254,15 @@ describe('the beat the install audit arms', () => {
 
     runTo(world.driver, world.session, shiftEndTick(1));
 
-    expect(world.scenes).toEqual([]);
+    expect(world.caught).toEqual([]);
     expect(softwareLines(world.session)).toHaveLength(0);
     expect(player(world.session, FIELDS.installNoticed)).toBeUndefined();
   });
 
   /**
    * Teeth on the policy: a wild-west employer logs installs and they cost
-   * nothing. Same install, same corridor, and the audit is never mentioned -
-   * flip the policy back to locked-down and this goes red, which is the proof
-   * the gate is on the employer and not on the install.
+   * nothing. Flip the policy back to locked-down and this goes red, which is the
+   * proof the gate is on the employer and not on the install.
    */
   it('never arms under a wild-west policy however much is installed', () => {
     const world = harnessOn(1, 'wild_west');
@@ -265,7 +273,7 @@ describe('the beat the install audit arms', () => {
 
     runTo(world.driver, world.session, shiftEndTick(1));
 
-    expect(world.scenes).toEqual([]);
+    expect(world.caught).toEqual([]);
     expect(softwareLines(world.session)).toHaveLength(0);
   });
 });

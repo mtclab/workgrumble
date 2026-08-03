@@ -146,6 +146,34 @@ export function longestInstalledMinutes(value: unknown, now: number): number {
   );
 }
 
+/** The `id@tick` line a record is written as, which is how the copy holds it. */
+function installLine(record: InstallRecord): string {
+  return `${record.id}@${String(record.at)}`;
+}
+
+/**
+ * The installs on the audit the lead has NOT already been down to talk about.
+ *
+ * `noticed` is a COPY of the audit trail as it stood at the last software
+ * conversation (see `FIELDS.installNoticed`), so an audit line whose `id@tick`
+ * is in that copy has been spoken about and one that is not has not. This is the
+ * whole of the beat's anti-drum and its poison-resistance: the unspoken set is
+ * recomputed off the audit itself every time, so no value in the copy can hide a
+ * line that is genuinely on the trail - a copy set past the trail names nothing
+ * extra, and a cleared copy re-surfaces the REAL installs rather than replaying
+ * a phantom count.
+ */
+export function unspokenInstalls(
+  audit: unknown,
+  noticed: unknown,
+): readonly InstallRecord[] {
+  const spoken = new Set(parseInstallLedger(noticed).map(installLine));
+
+  return parseInstallLedger(audit).filter(
+    (record) => !spoken.has(installLine(record)),
+  );
+}
+
 /* -- what the boss reads --------------------------------------------------- */
 
 /**

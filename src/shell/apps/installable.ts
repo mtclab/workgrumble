@@ -1,3 +1,4 @@
+import type { DispatchResult } from '../../engine-api';
 import { assertCaughtScenes } from '../../world/scenes';
 import { ARCADE_APP } from './arcade';
 import { MEDIA_APP } from './mediaplayer';
@@ -50,6 +51,65 @@ export function isInstallableId(id: unknown): id is string {
  */
 export function installableApp(id: string): AppDef | undefined {
   return INSTALLABLE_MANIFEST.find((app) => app.id === id);
+}
+
+/**
+ * Whether an install of `id` into `installed` is a legal move, and why not.
+ *
+ * The state-aware guard the store consults BEFORE it dispatches the world verb,
+ * because the world holds the audit trail and not the current install set. It
+ * refuses the two moves that are wrong from the player's chair:
+ *
+ * - an id the catalogue does not hold, which must never reach the install set:
+ *   an unknown id there is one `resolveManifest` drops, so the next save would
+ *   be one the strict parse refuses - an unloadable file made by a click;
+ * - an id already installed, which a second install would only re-audit and
+ *   re-arm the lead's beat for, with nothing new on the desktop to show for it.
+ *
+ * Pure and total, so the desktop's guard is the same thing a test can drive.
+ */
+export function canInstall(
+  installed: readonly string[],
+  id: string,
+): DispatchResult {
+  if (!INSTALLABLE_APP_IDS.has(id)) {
+    return {
+      ok: false,
+      reason: `"${id}" is not a program this workstation knows how to install. `
+        + 'Nothing has been put on the machine.',
+    };
+  }
+
+  if (installed.includes(id)) {
+    return {
+      ok: false,
+      reason: 'That is already installed. It is on the desktop and on the '
+        + 'audit; installing it again would only write the audit a second time '
+        + 'for a program that is already here.',
+    };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * And whether an uninstall of `id` is legal: only if it is actually installed,
+ * because taking off something that is not there would write a removal record
+ * for a program that was never on the machine.
+ */
+export function canUninstall(
+  installed: readonly string[],
+  id: string,
+): DispatchResult {
+  if (!installed.includes(id)) {
+    return {
+      ok: false,
+      reason: 'That is not installed, so there is nothing to take off - and '
+        + 'nothing to record removing.',
+    };
+  }
+
+  return { ok: true };
 }
 
 /**

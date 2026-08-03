@@ -83,6 +83,17 @@ export interface CaughtState {
    * that asked afterwards would be asking about nothing.
    */
   readonly evidence: number | null;
+  /**
+   * The installs the software conversation was about, by app id, for the one
+   * scene that names what was actually on the audit - and null for every scene
+   * that is about a screen or the dot.
+   *
+   * Captured at the arrival like the evidence above and for the same reason: the
+   * conversation copies the audit into the "spoken about" field as part of
+   * having it, so a window recomputing the unspoken set afterwards would find
+   * nothing, and the scene has to name what he came down about, not what is left.
+   */
+  readonly software: readonly string[] | null;
 }
 
 /**
@@ -194,7 +205,7 @@ export function createAppState(): AppState {
     kb: { selectedId: null },
     day: { briefShownFor: null, scorecardShownFor: null },
     browser: { siteId: null },
-    caught: { appId: null, at: null, evidence: null },
+    caught: { appId: null, at: null, evidence: null, software: null },
     windows: { open: [], focusedId: null },
     assistant: { dismissals: 0, closedOnDay: null },
     installed: { apps: [] },
@@ -460,6 +471,12 @@ export function parseAppState(value: unknown): AppState | null {
   const caughtEvidence = caught.evidence === undefined
     ? null
     : optionalTick(caught.evidence);
+  // Absent reads as null, the way a save written before the software beat existed
+  // reads: a screen has nothing to name. A present value has to be a list of
+  // strings, or the whole load is refused like every other edited field.
+  const caughtSoftware = caught.software === undefined || caught.software === null
+    ? null
+    : stringList(caught.software);
   const screen = readWindows(windows);
   const helper = readAssistant(assistant);
   const installedApps = readInstalled(installed);
@@ -478,6 +495,7 @@ export function parseAppState(value: unknown): AppState | null {
     || caughtAppId === undefined
     || caughtAt === undefined
     || caughtEvidence === undefined
+    || caughtSoftware === undefined
     || screen === undefined
   ) {
     return null;
@@ -489,7 +507,12 @@ export function parseAppState(value: unknown): AppState | null {
     kb: { selectedId: kbSelected },
     day: { briefShownFor, scorecardShownFor },
     browser: { siteId },
-    caught: { appId: caughtAppId, at: caughtAt, evidence: caughtEvidence },
+    caught: {
+      appId: caughtAppId,
+      at: caughtAt,
+      evidence: caughtEvidence,
+      software: caughtSoftware,
+    },
     windows: screen,
     assistant: helper,
     installed: installedApps,

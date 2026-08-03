@@ -176,12 +176,13 @@ describe('coverage manifest', () => {
 
     expect(sorted(baseSurfaces)).toEqual(sorted(APP_IDS));
 
-    // An installable window entry that names something the catalogue does not
-    // hold is a fudge - a surface pretending to be installable to dodge the
-    // base rule - and this is what refuses it.
-    for (const id of installableSurfaces) {
-      expect(INSTALLABLE_IDS, id).toContain(id);
-    }
+    // EQUALITY, not subset: every installable has a window entry (so it is
+    // reachable by the store walk) and every installable window surface names a
+    // real installable. A new INSTALLABLE_MANIFEST entry with no coverage entry
+    // and no walk route reds here; a window entry pretending to be installable to
+    // dodge the base rule reds too. The subset check this replaced let an
+    // installable be absent from the walk entirely.
+    expect(sorted(installableSurfaces)).toEqual(sorted(INSTALLABLE_IDS));
 
     for (const entry of windows) {
       const app = [...APP_MANIFEST, ...INSTALLABLE_MANIFEST].find(

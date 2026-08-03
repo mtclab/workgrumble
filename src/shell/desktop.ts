@@ -1,7 +1,7 @@
 import type { DispatchResult } from '../engine-api';
 import type { AppDef, AppIntent, GameApi } from './apps/types';
 import { appsForTier } from './apps/manifest';
-import { resolveManifest } from './apps/installable';
+import { canInstall, canUninstall, resolveManifest } from './apps/installable';
 import { formatSimTime } from './clock-format';
 import { ASSISTANT_DISMISSAL_CAP } from './app-state';
 import type { ShellContext } from './context';
@@ -822,40 +822,65 @@ export class Desktop {
   }
 
   /**
-   * Installing a program off the web store, live.
+   * Installing a program off the web store, live - and STATE-AWARE, which is the
+   * half lane B was missing.
    *
-   * Three things happen at once and in this order: the world verb writes the
-   * audit trail, the save-carried install set gains the id, and the desktop
-   * re-mounts so the toy's icon, start-menu entry and window definition are all
-   * there before the next paint. An install under a locked-down shop succeeds -
-   * the only refusal is the same minute logging twice - so a failure is handed
-   * straight back for the store to say, and nothing on the desktop changes.
+   * The state is checked BEFORE the world verb is dispatched, in this order and
+   * for these reasons:
+   *
+   * - An id the catalogue does not hold is refused outright and never reaches
+   *   the install set. This is load-bearing: an unknown id in the save-carried
+   *   set is one `resolveManifest` drops on the way in, so the next save would
+   *   be one the strict parse refuses - an unloadable file made by a click.
+   * - An already-installed id is refused rather than re-dispatched: a second
+   *   install writes a second audit line and re-arms the lead's beat for a toy
+   *   that is already on the desktop, which is a telling-off nobody earned.
+   *
+   * Only once the move is legal does the audit get written, the set gain the id,
+   * and the desktop re-mount. A same-tick reinstall of a just-uninstalled toy is
+   * legal here (the set no longer holds it) and the world verb refuses it on its
+   * own duplicate-minute guard, handed straight back for the store to say - a
+   * refusal, not a crash, and the set is left as it was.
    */
   private installApp(id: string): DispatchResult {
+    const current = this.context.appState.get().installed.apps;
+    const legal = canInstall(current, id);
+
+    if (!legal.ok) {
+      return legal;
+    }
+
     const result = this.context.day.install(id);
 
     if (!result.ok) {
       return result;
     }
 
-    const current = this.context.appState.get().installed.apps;
-
-    if (!current.includes(id)) {
-      this.context.appState.patch('installed', { apps: [...current, id] });
-    }
-
+    this.context.appState.patch('installed', { apps: [...current, id] });
     this.rebuildAppSurfaces();
     return result;
   }
 
   /**
-   * And taking one back off, live - the mirror of the above, with one ordering
-   * that matters: the window is closed BEFORE the definition is forgotten, so
-   * the renderer unmounts a toy it still knows about rather than tripping over
-   * one it does not. The audit trail is deliberately left alone; the removal is
-   * its own line, and the record that it was ever there is the whole point.
+   * And taking one back off, live - the mirror of the above, and state-aware for
+   * the same reasons. Uninstalling something that is not installed is refused
+   * before the verb runs, so it cannot write a removal record for a program that
+   * was never on the machine.
+   *
+   * One ordering matters on the way out: the window is closed BEFORE the
+   * definition is forgotten, so the renderer unmounts a toy it still knows about
+   * rather than tripping over one it does not. The audit trail is deliberately
+   * left alone; the removal is its own line, and the record that it was ever
+   * there is the whole point of the trail surviving it.
    */
   private uninstallApp(id: string): DispatchResult {
+    const current = this.context.appState.get().installed.apps;
+    const legal = canUninstall(current, id);
+
+    if (!legal.ok) {
+      return legal;
+    }
+
     const result = this.context.day.uninstall(id);
 
     if (!result.ok) {
@@ -863,8 +888,6 @@ export class Desktop {
     }
 
     this.closeWindowIfOpen(id);
-
-    const current = this.context.appState.get().installed.apps;
     this.context.appState.patch('installed', {
       apps: current.filter((appId) => appId !== id),
     });
