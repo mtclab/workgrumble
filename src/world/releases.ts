@@ -31,6 +31,28 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.4.1',
+    date: '2026-08-03',
+    summary: 'This update adds a tone of voice.',
+    lines: Object.freeze([
+      'On some replies you will now find a second way to say the same thing, '
+        + 'which is to say it rudely. You may, where the option is offered, '
+        + 'tell a colleague exactly what you think of them and their fault. '
+        + 'The rudest of these options is quite rude. It was requested.',
+      'Being rude does not break anything. The fault still gets fixed - the '
+        + 'reply that tells somebody to get lost fixes their computer on the '
+        + 'way past, because you are a professional and they are not paying '
+        + 'for your manners. What it costs is standing: your reputation takes '
+        + 'the hit, the person remembers it and is worse the next time, and if '
+        + 'the lead happens to be reading over your shoulder when you send it, '
+        + 'he will have a word. None of that stops the ticket closing. All of '
+        + 'it stops the week going well.',
+      'This is the polite option\'s opposite, not its replacement. Nobody is '
+        + 'making you. The neutral reply costs nothing and is right there. It '
+        + 'is simply no longer the only thing you are allowed to feel.',
+    ]),
+  },
+  {
     version: '0.4.0',
     date: '2026-08-03',
     summary: 'This update lets you install software.',
