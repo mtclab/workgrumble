@@ -146,6 +146,16 @@ export const DND_WORKING_TICKS = 15;
  *
  * OVERSEER TUNING KNOB, and the one most likely to move: it is the whole price
  * of the quiet the dot buys.
+ *
+ * NOT moved in slice 0.3.6 (finding F5), and the reason is evidence rather than
+ * timidity: the shipped week authors only two dodgeable dot-reading beats (the
+ * Tuesday and Thursday calls), so a player can cross a whole probation without
+ * ever leaning on this number, and a knob nobody has pressed is a knob there is
+ * nothing to move it on. F4 is the beat that would change that - one mid-week
+ * chat-source interruption that reads the dot, so the drip finally has something
+ * to drip against - and THIS number, `DND_BEAT_SUSPICION` and their friends are
+ * to be re-evaluated on the run that walks it on Do Not Disturb, not ahead of
+ * it. Until that beat exists the values stand.
  */
 export const DND_WORKING_SUSPICION = 2;
 
