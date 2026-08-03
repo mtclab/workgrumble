@@ -319,3 +319,106 @@ hints-never-answer house rule is the whole design constraint - it must never hel
    goldens byte-identical (it is not world state beyond the dismissal count, which the walks
    never touch); the completeness manifest gains its controls; both halves on box, count
    checked.
+
+---
+
+# Slice 0.3.6 - tail + polish (issue #16)
+
+Owner-directed consolidation before E3: E1's last small payload, the owed flake fix, and the
+balance the five fast slices left. Three parts; part 3 is driven by a concrete QoL/balance
+findings pass, not abstract polish.
+
+## Part 1 - the after-hours ping tail
+
+E1's final payload (research P2, the boundary-erosion beat). A day does not end when the
+shift does.
+
+1. **A couple of pings land after `day_end`** - "overnight" - authored per day, world data.
+   They are NOT tickets and NOT interruptions during the shift; they arrive in the gap
+   between clocking off and the next login.
+2. **Shown at next-morning login** on the day screen: a small "while you were out" surface,
+   the messages that came after you left. Answerable there.
+3. **Answering carries its honest cost**: a tiny reputation gain (you were reachable) paid
+   against a tiny stress carryover into the new day (you were reachable). Leaving them is
+   free of both - the tradeoff is the teaching, neither path punished into non-existence.
+   World-enforced off the graph, once per ping, saves round-trip.
+4. **Presence interplay**: DND overnight reduces how many arrive (you told them); answering
+   from an "off" status the next morning is its own small tell, consistent with the 0.3.3
+   triangle - reuse it, do not invent a fourth cost.
+5. Placement: they are a property of the day boundary, not the probation content - the week
+   ships one or two so the surface is real, weighted per title later (titles-as-difficulty).
+
+## Part 2 - the day.spec fake-clock flake (#15)
+
+`day.spec` keeps deliberate raw speed runs (the 0.3.2 contract), so under full-suite parallel
+load a retrying assertion races a fake clock still advancing at x4 - the +20/+40 fingerprint.
+Make its exact clock reads deterministic (pause around them, the house `underPause` pattern
+used everywhere else) WITHOUT loosening what the raw-run speed test proves - the transition
+being tested stays asserted; only the read is held. Test-only, no product change. Teeth: a
+planted real speed bug (a tick that overspends) still reds it.
+
+## Part 3 - the balance + QoL sweep
+
+Driven by the overseer's QoL/balance review of the v0.3.0-v0.3.5 surfaces (findings appended
+below when the pass returns). Scope: tune the placeholder constants the slices flagged as
+tuning knobs to their reviewed values (each move argued, goldens move with the meters); fix
+taskbar chip crowding / overlay-attention conflicts when several 0.3.x systems fire at once;
+keep the probation WEEK breathing (five slices each added load to one Mon-Fri - if a day is a
+wall of takeovers, thin it, the week is a teaching arc); visual-coherence fixes so the new
+surfaces read as one system, not five bolt-ons. Concrete findings only - no vague polish.
+
+## Gates
+
+Journeys: an after-hours ping answered at next login carries its tiny cost honestly; the week
+still teachable (no day a wall of takeovers). Determinism. #15 proven gone under parallel load
+with the speed-bug teeth intact. Goldens: after-hours + balance changes MOVE meters - move
+once, argue every number; the week-load rebalance likewise. Both halves box, count checked;
+codex wave before release.
+
+### Part 3 findings (from the QoL/balance review of v0.3.0-v0.3.5)
+
+Reassurance first: **F0 - the probation week is NOT overloaded** (takeovers Mon 0 / Tue 1 /
+Wed 1 / Thu 2 ~3h apart / Fri 1 - each slice picked a different day). Leave placement alone;
+no week-rebalance, no golden churn from that.
+
+Fix, in order:
+
+- **F1 (P1, feel) - the tray can crowd the open-window buttons off the taskbar with no
+  recovery.** The fixed left-to-right cluster (chips + the always-on ~84px presence word +
+  the 5-button speed cluster) competes with `.taskbar-windows` (`flex:1`, `overflow:hidden`,
+  no scroll). Worst case (3 chips + presence + speed) clips window buttons unreachable. Fix:
+  an overflow affordance on `.taskbar-windows` (scroll or a "»" menu) AND collapse the
+  presence control to the three dots with the word on hover/title, so the fixed cluster stops
+  eating the window row.
+- **F2 (P2, speed-as-UX) - the x1 drop is silent.** Five takeovers a week drop the clock to
+  x1 with no signal but the pressed button; a player runs an afternoon slower than chosen
+  without noticing. Fix: a one-line self-dismissing telegraph on the drop ("Clock dropped to
+  x1 - a call came in"); keep the no-auto-restore rule (this closes the 0.3.2 flag).
+- **F3 (P2, legibility) - chip colour crosses severity.** `.save-chip` (the one serious chip)
+  is byte-identical to `.fumble-chip` (a cosmetic joke), and `.refocus-chip` (a real debuff)
+  is styled neutral like ambient telegraphs. Fix: give the save-health chip its own
+  unmistakable "not a joke" treatment distinct from the fumble chip.
+- **F4 (P2, balance/teaching) - the presence triangle is under-taught.** The week authors
+  zero `chat`/`boss`-source dodgeable interruptions and only two calls, so DND's cost can go
+  undiscovered across a whole probation - the tray reads as free, the exact trap the design
+  avoids. Fix: add ONE `chat`-source dodgeable interruption mid-week so DND's drip actually
+  bites and the constants get pressed (this also validates F5). One chat beat, not a takeover
+  - keeps F0 intact. Goldens move for it, argued.
+- **F5 (P2, constants) - the tuning knobs are conservative but not wrong; the week just does
+  not press them.** Recommendation: NO constant change this slice - F4's new chat beat is what
+  makes them pressable; re-evaluate `DND_WORKING_SUSPICION=2` and friends once it exists.
+  Documented, not moved.
+- **F6 (P3, coherence) - a meeting takeover leaves the tray fully live** (presence buttons
+  look clickable, refuse, pop a panel over the meeting). Fix: dim/mark the tray + speed
+  cluster inert under a takeover so it does not invite a refused click.
+- **F7 (P3, the gag's cost) - the Assistant returns on every big event; the only move is
+  re-close.** Fix: honour a dismissal for the rest of the DAY (not just until the next big
+  event) so closing it means something within a session; it still returns tomorrow with the
+  escalated note.
+- **F8 (P3, attention) - the boss telegraph renders over a machine takeover** (door-flash +
+  tremor behind the update screen, both un-actionable). Fix: suppress the door-flash/tremor
+  while `data-takeover` is set; the chip may stay.
+
+Coherence verdict: the three interruption windows already read as one grammar (call=chat
+chrome, meeting=caught-scene chrome, reboot=OS-dialog register); the only incoherence is the
+chips (F3). Not a rebuild - a chip-palette fix.
