@@ -31,6 +31,26 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.4.3',
+    date: '2026-08-03',
+    summary: 'This update makes Do Not Disturb cost something.',
+    lines: Object.freeze([
+      'Somebody will message you on a Thursday about the shared calendar. It '
+        + 'is not a ticket and it is not urgent, and if your status is Do Not '
+        + 'Disturb it will not reach you - which is the feature, and the trap. '
+        + 'A message held off does not go away; it comes back the moment you '
+        + 'are reachable again, so the only way to truly miss it is to stay on '
+        + 'Do Not Disturb until the day runs out.',
+      'Sitting on Do Not Disturb while you are visibly working costs '
+        + 'suspicion, a little at a time, and enough of it with the lead in '
+        + 'the room is the conversation you were trying to avoid. So the sums '
+        + 'are honest now: a quiet dot buys you focus and costs you standing, '
+        + 'an open one costs you the interruption and keeps you clean, and '
+        + 'neither is free. Personnel consider this a fair reflection of '
+        + 'working life and have gone back to Do Not Disturb.',
+    ]),
+  },
+  {
     version: '0.4.2',
     date: '2026-08-03',
     summary: 'This update tells you what is coming.',
