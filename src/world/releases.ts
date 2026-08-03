@@ -31,6 +31,32 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.4.0',
+    date: '2026-08-03',
+    summary: 'This update lets you install software.',
+    lines: Object.freeze([
+      'There is now a place to get software, reachable from the Browser. It '
+        + 'looks like a website from 1998 because the good ones did. You can '
+        + 'install what it offers, and some of what it offers is a way to not '
+        + 'do your job for a while, which is better at that than the Browser '
+        + 'was.',
+      'Your employer has a view on what you install. This employer\'s view is '
+        + 'that you should not. Installing something anyway works perfectly '
+        + 'well - the program runs, the game plays - and is written down. IT '
+        + 'audits IT. There is a list. Removing the program later takes it off '
+        + 'your machine and leaves it on the list, because the list is not '
+        + 'about what is on your machine, it is about what was.',
+      'A colleague may, at some point, mention the list to you in person. He '
+        + 'will know which program. He will know you took it off again. He is '
+        + 'not going to do anything about it today. He wanted you to know that '
+        + 'he could.',
+      'Nothing you install follows you into a scripted week or a scored '
+        + 'figure by surprise: an empty machine is exactly as capable as it '
+        + 'has always been. What you add to it is yours, and so is the '
+        + 'paperwork.',
+    ]),
+  },
+  {
     version: '0.3.6',
     date: '2026-08-03',
     summary: 'This update tidies up after itself.',
