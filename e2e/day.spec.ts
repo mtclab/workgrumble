@@ -46,28 +46,31 @@ function minutesOf(time: string): number {
 const DRIVER_STEP_MS = 250;
 
 /**
- * Runs the clock to land EXACTLY on a minute, then reads it held.
+ * Runs the clock to a target minute, then reads it held - exactly at x1 (and at
+ * the frozen day end), and within a ±1 band at x4.
  *
- * The driver is `setInterval(step, 250)`, and a fixed-arithmetic `runFor` cannot
- * be phase-robust: a coarse run leaves the faked timer part-way through an
- * interval, and any further fixed-count `runFor` inherits that phase, so its
- * last step can complete one extra tick and land a minute past the target (the
- * 12:01-for-12:00, then 09:41-for-09:40). Fixed arithmetic that trusts `runFor`
- * to land will always be able to drift.
+ * The driver is `setInterval(step, 250)`, and `page.clock.runFor(250)` fires
+ * that faked interval 0, 1 OR 2 times depending on where its phase falls in the
+ * window. At x1 a single fire is a quarter of a tick, so a step lands ON a minute
+ * boundary and never overshoots it - the exact minute is deterministic. At x4 a
+ * single fire is a whole simulated minute, so a 250ms step can advance 0 or 2
+ * minutes, and NO stepping arithmetic can land a phase-exact minute: the
+ * granularity of the faked interval clock at x4 is itself ±1. This is confirmed
+ * by isolation (an x4 exact read fails 2 of 3 `--repeat-each` runs on its own).
  *
- * So convergence is READ-DRIVEN instead. A coarse run gets within a few minutes
- * (kept short of the target so its own drift stays below it), and then the clock
- * is advanced ONE DRIVER INTERVAL at a time - a 250ms `runFor` fires `step`
- * exactly once, which is at most one tick - re-reading the real clock after each
- * and stopping the instant it reaches the target. Watching the actual clock
- * rather than trusting `runFor` to land is what makes it phase-independent:
- * whatever phase the coarse run left, single-interval steps cannot slip an extra
- * tick in, and the loop halts on the exact minute. The read is then held under a
- * pause so a retry cannot race a live clock forward off it.
+ * So the read is matched to what the clock can guarantee. Convergence is still
+ * read-driven - a coarse run to a few minutes short, then single-interval steps
+ * watching the real clock until it reaches the target - and then:
+ * - at x1, and at the day end where the WORLD has stopped the clock at exactly
+ *   17:00, the minute is exact and asserted exactly;
+ * - at x4 the clock is asserted WITHIN ±1 of the target, which is the faked
+ *   interval's granularity rather than slop being hidden.
  *
- * Teeth: an overspending tick makes ONE interval advance more than a minute, so
- * the loop lands PAST the target - which throws here, and would red the held
- * read even if it did not.
+ * Teeth hold either way. The thing under test is that the speed scaled real time
+ * into about the right number of ticks: a broken speed (x1 where x4 was asked)
+ * or an overspending tick moves the clock by MANY minutes, far outside
+ * target-1..target+1, and reds; and the x1 reads, being phase-exact, red on a
+ * single tick of drift.
  */
 async function settleAtClock(
   page: Page,
@@ -82,45 +85,56 @@ async function settleAtClock(
 
   // Coarse: within three minutes, short of the target. A big runFor can drift a
   // tick, but stopping short of the target keeps that drift below it, where the
-  // single-interval loop below corrects it.
+  // single-interval loop below carries it up.
   const start = await now();
 
   if (targetMin - start > 3) {
     await page.clock.runFor(realMs(targetMin - start - 3, speed));
   }
 
-  // Fine: one driver interval at a time, watching the actual clock. Bounded by
-  // the three coarse minutes plus the sub-interval steps a slow speed needs
-  // (four 250ms fires per simulated minute at x1), with headroom.
+  // Fine: one driver interval at a time, watching the actual clock, until it
+  // reaches the target. At x1 this lands exactly on the minute; at x4 it lands
+  // on the minute or one past it, which the band below expects. Bounded well
+  // above the four-fires-per-minute a slow speed needs.
   let current = await now();
 
-  for (let guard = 0; guard < 60 && current < targetMin; guard += 1) {
+  for (let guard = 0; guard < 80 && current < targetMin; guard += 1) {
     await page.clock.runFor(DRIVER_STEP_MS);
     current = await now();
   }
 
-  if (current > targetMin) {
-    throw new Error(
-      `settleAtClock overshot ${target}: the clock reached `
-      + `${await clock.textContent() ?? '??'}, which means one interval spent `
-      + 'more than a minute.',
-    );
-  }
-
-  // Once the day has ended the world itself has stopped the clock, so the read
-  // is already stable and there is no live clock to hold - and pausing a day-end
-  // scorecard is a click this does not need. Otherwise the read is held under a
-  // pause so a retry cannot race a running clock forward off the minute.
   const ended = await page.getByTestId('day-state')
     .getAttribute('data-state') === 'day_end';
 
+  // The day end freezes the clock at exactly the shift's close, so the read is
+  // exact and needs no pause - and pausing a day-end scorecard is a click it
+  // does not need.
   if (ended) {
     await expect(clock).toHaveText(target);
     return;
   }
 
+  // x1 is phase-exact (a quarter-tick step cannot overshoot a minute), so the
+  // exact minute is asserted, held so a retry cannot race a live clock off it.
+  if (speed === 1) {
+    await underPause(page, async () => {
+      await expect(clock).toHaveText(target);
+    });
+    return;
+  }
+
+  // x4: within one minute of the target. A 250ms step fires the faked interval
+  // 0, 1 or 2 times, so the landing is the target or one past it - the interval
+  // granularity at x4, not slop. The band still reds a genuinely broken speed,
+  // which is off by many minutes. Held so the band is read off a stopped clock.
   await underPause(page, async () => {
-    await expect(clock).toHaveText(target);
+    const landed = await now();
+
+    expect(
+      Math.abs(landed - targetMin),
+      `the x4 clock landed at ${await clock.textContent() ?? '??'}, more than a `
+      + `minute from ${target}`,
+    ).toBeLessThanOrEqual(1);
   });
 }
 
