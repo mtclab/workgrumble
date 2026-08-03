@@ -576,3 +576,47 @@ Determinism. Solvability under all three presence values (a dodgeable chat beat 
 path). Goldens move once, argued (the arrival, plus any tuned constant) - prefer the golden
 walks pick Available and HANDLE the beat, with the DND-dodge path exercised by a focused test.
 Off-hours; save round-trip; both halves box; codex wave.
+
+---
+
+# Slice 0.4.4 - real games in the arcade (issue #21, E3 content)
+
+Owner-requested: actual playable games. The web store's Office Arcade is a deliberate joke ("a
+block moves left, this is the game") and the media player plays SILENCE.WAV; the store lists
+greyed "coming soon" rows. This slice delivers the two programs that actually ran the 90s office
+- Klondike Solitaire and Minesweeper - as REAL, playable installable toys, on the E3 rails
+already built (installable manifest, slack:true, relief drain, caught scene, audit trail). Truer
+and funnier than a shooter: installing a card game is exactly what puts you on IT's list.
+
+## Lane A (this slice's headline) - Klondike Solitaire
+
+1. A genuinely playable Klondike toy: a seeded deal, tableau + foundations + stock/waste,
+   legal-move rules, draw, move-to-foundation, win/lose. Real game logic, separable from the
+   DOM and unit-tested (a deal is well-formed; a legal move is accepted, an illegal one refused;
+   win and lose states reachable).
+2. **Deterministic seeded RNG in the shell toy** - the engine bans `Math.random`; the toy
+   carries its own seeded PRNG seeded from a shell source (NOT wall clock), so the deal is
+   testable. Game internal state is TRANSIENT shell state (a reload reshuffles, like the current
+   arcade); the SLACK RELIEF is the only world effect, so goldens are byte-identical (scripted
+   walks never open it - assert).
+3. Wire it exactly like arcade/mediaplayer: an installable in the manifest, `slack:true`,
+   `INSTALLED_TOY_SLACK_RATE`, a caught scene (boss catches you mid-hand), and it fills one of
+   the web store's coming-soon rows. Installing it under the locked-down policy writes the audit
+   trail (0.4.0). Parody-safe name (like the cloud providers): "Office Solitaire" / a coined
+   name decided at build.
+
+## Lane B (fast-follow, same rails) - Minesweeper
+
+Same wiring, its own logic: a seeded board, reveal/flag, flood-reveal on a zero, lose on a mine,
+win on all-safe-revealed. Unit-tested logic; transient state; fills the second coming-soon row.
+Reuses Lane A's proven install/slack/audit pattern verbatim - build after Lane A lands so it
+copies a working wiring rather than re-deriving it.
+
+## Gates
+
+Playable: unit-level game-logic tests (well-formed deal/board; legal vs illegal move; win + lose
+reachable) - deterministic, DOM-independent. Slack: installed toy drips relief + is catchable +
+audits under policy (reuse 0.4.0 rails). Goldens byte-identical (transient game state; walks
+never play - assert). e2e: install from the web store, play a few real moves, get relief, get
+caught / audited. Coverage: the toys' controls catalogued as installable-until-installed (the
+0.4.0 three-category rule). Both halves box; codex wave.
