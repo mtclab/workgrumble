@@ -3308,6 +3308,172 @@ test('walks the thirty seconds of checking that stops the post', async ({
 });
 
 /* ========================================================================= *
+ * The store run: install a toy against the policy, be asked about it, and
+ * reload to find the install set where it was. Its own run because the golden
+ * weeks install nothing - that is what keeps them byte-identical - so the one
+ * walk that installs is kept out of them.
+ * ========================================================================= */
+
+/**
+ * Minimises everything and raises exactly one slack window, so the lead catches
+ * the app the walk means rather than whichever happens to be top of the pile.
+ *
+ * `caughtBy` reads the first open, unminimised slack window, so a desktop with
+ * three toys up is a coin toss about which scene fires. The boss key puts them
+ * all away; raising one by its taskbar button makes it the only thing on screen.
+ */
+async function raiseOnly(page: Page, appId: string): Promise<void> {
+  await page.keyboard.press('Backquote');
+  await page.getByTestId(`taskbar-button-${appId}`).click();
+  await expect(page.getByTestId(`window-${appId}`)).toBeVisible();
+}
+
+test('walks the web store, the install, the audit and the uninstall', async ({
+  page,
+}) => {
+  await recordControls(page);
+  // Three corridors and a reload cost most of ten minutes on the box; give it
+  // room rather than a cliff.
+  test.setTimeout(1_800_000);
+  await logInOnDay(page, 1, { brief: 'keep' });
+  await beginShift(page);
+
+  await step('browser.store', async () => {
+    await openFromStartMenu(page, 'browser');
+    await page.getByTestId('browser-site-store').click();
+    await expect(page.getByTestId('browser-store')).toBeVisible();
+    // The policy consequence, stated before the install rather than sprung
+    // after it - the trade the store is built on.
+    await expect(page.getByTestId('browser-store-notice'))
+      .toContainText('locked-down');
+  });
+
+  await step('store.install', async () => {
+    // No toy on the desktop yet.
+    await expect(page.getByTestId('desktop-icon-arcade')).toHaveCount(0);
+
+    await page.getByTestId('store-install-arcade').click();
+    // Live re-mount: the icon and the start-menu entry are there at once, with
+    // no reload. The button flips to Uninstall in the same breath.
+    await expect(page.getByTestId('desktop-icon-arcade')).toBeVisible();
+    await expect(page.getByTestId('store-uninstall-arcade')).toBeVisible();
+
+    await page.getByTestId('store-install-mediaplayer').click();
+    await expect(page.getByTestId('desktop-icon-mediaplayer')).toBeVisible();
+    await expect(page.getByTestId('store-uninstall-mediaplayer')).toBeVisible();
+  });
+
+  await step('arcade.window', async () => {
+    await openFromDesktopIcon(page, 'arcade');
+    await expect(page.getByTestId('arcade-app')).toBeVisible();
+  });
+
+  await step('arcade.play', async () => {
+    const body = page.getByTestId('arcade-body');
+    const before = await body.innerText();
+    await page.getByTestId('arcade-play').click();
+    await expect(body).not.toHaveText(before);
+  });
+
+  await step('mediaplayer.window', async () => {
+    await openFromDesktopIcon(page, 'mediaplayer');
+    await expect(page.getByTestId('media-app')).toBeVisible();
+  });
+
+  await step('mediaplayer.play', async () => {
+    const app = page.getByTestId('media-app');
+    await page.getByTestId('media-play').click();
+    await expect(app).toHaveAttribute('data-playing', 'true');
+  });
+
+  /* -- caught at the game on the screen ------------------------------------ */
+
+  await step('caught.scene-arcade', async () => {
+    await raiseOnly(page, 'arcade');
+    await runToTelegraph(page);
+    await runUntilCaught(page);
+    await expect(page.getByTestId('caught-app'))
+      .toHaveAttribute('data-app', 'arcade');
+    await page.getByTestId('caught-dismiss').click();
+    await expect(page.getByTestId('window-caught')).toHaveCount(0);
+  });
+
+  /* -- caught by the install LOG, with nothing on the screen --------------- */
+
+  await step('caught.scene-software', async () => {
+    // Everything away, so the finding is the audit and not a window. A screen
+    // conversation does not touch the audit's watermark, so it is still armed.
+    await page.keyboard.press('Backquote');
+    await runToTelegraph(page);
+    await runUntilCaught(page);
+    await expect(page.getByTestId('caught-app'))
+      .toHaveAttribute('data-app', 'software:install');
+    // The file line says it is a record IT holds, not a screen anybody saw.
+    await expect(page.getByTestId('caught-line')).toContainText('list');
+    await page.getByTestId('caught-dismiss').click();
+    await expect(page.getByTestId('window-caught')).toHaveCount(0);
+  });
+
+  /* -- and caught at the other toy ----------------------------------------- */
+
+  await step('caught.scene-mediaplayer', async () => {
+    await raiseOnly(page, 'mediaplayer');
+    await runToTelegraph(page);
+    await runUntilCaught(page);
+    await expect(page.getByTestId('caught-app'))
+      .toHaveAttribute('data-app', 'mediaplayer');
+    await page.getByTestId('caught-dismiss').click();
+    await expect(page.getByTestId('window-caught')).toHaveCount(0);
+    await page.keyboard.press('Backquote');
+  });
+
+  /* -- save, reload, and the install set exactly where it was -------------- */
+
+  await page.getByTestId('start-button').click();
+  await page.getByTestId('start-menu-save').click();
+  await expect(
+    page.getByTestId('toast').filter({ hasText: 'Game saved' }),
+  ).toHaveCount(1);
+
+  await page.reload();
+  await completeLogin(page, { brief: 'keep' });
+  // A fresh session has neither toy on the desktop.
+  await expect(page.getByTestId('desktop-icon-arcade')).toHaveCount(0);
+
+  await page.getByTestId('start-button').click();
+  await page.getByTestId('start-menu-load').click();
+  await expect(
+    page.getByTestId('toast').filter({ hasText: 'Game loaded' }),
+  ).toHaveCount(1);
+  // The install set rode the save: both toys are back on the desktop, live, off
+  // the loaded state and not this session's history.
+  await expect(page.getByTestId('desktop-icon-arcade')).toBeVisible();
+  await expect(page.getByTestId('desktop-icon-mediaplayer')).toBeVisible();
+
+  /* -- and taken back off, the record staying behind ----------------------- */
+
+  await step('store.uninstall', async () => {
+    await openFromStartMenu(page, 'browser');
+    await page.getByTestId('browser-site-store').click();
+
+    await page.getByTestId('store-uninstall-arcade').click();
+    // Gone from the desktop live; the button is Install again.
+    await expect(page.getByTestId('desktop-icon-arcade')).toHaveCount(0);
+    await expect(page.getByTestId('store-install-arcade')).toBeVisible();
+
+    await page.getByTestId('store-uninstall-mediaplayer').click();
+    await expect(page.getByTestId('desktop-icon-mediaplayer')).toHaveCount(0);
+  });
+
+  // The conduct file still carries the software line: uninstalling took the toy
+  // off the machine and left the record that it was there, which is the whole
+  // point of the trail surviving it.
+  await openFromStartMenu(page, 'caught');
+  await expect(page.getByTestId('caught-file'))
+    .toContainText('Unauthorised software');
+});
+
+/* ========================================================================= *
  * The deploy run: everything the tester build adds and a file server cannot.
  * ========================================================================= */
 

@@ -488,6 +488,20 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { cx: '15', cy: '18', r: '1' },
     },
   ],
+  'icon-media': [
+    {
+      element: 'circle',
+      attributes: { cx: '12', cy: '12', r: '9' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '12', cy: '12', r: '2' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M10 8 L16 12 L10 16 Z' },
+    },
+  ],
   'icon-lock': [
     {
       element: 'rect',

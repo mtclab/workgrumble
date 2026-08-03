@@ -120,6 +120,31 @@ describe('the file', () => {
     expect(entry?.text).not.toContain('Screen observed');
   });
 
+  /**
+   * The fourth kind, and the reason it is a kind rather than a subject: the
+   * install audit is not a window anybody saw, so filing it as a screen would
+   * put "screen observed to be non-work-related" against a machine whose game
+   * was minimised, closed, or even uninstalled. It says it is a record IT holds,
+   * and it says the program stayed on the audit.
+   */
+  it('writes the install audit as a record IT holds, not a screen', () => {
+    const [entry] = conductEntries(conductLine(
+      tickAtMinute(3, 11 * 60 + 15),
+      'software',
+      'a program installed against policy',
+    ));
+
+    expect(entry?.kind).toBe('software');
+    expect(entry?.text).toContain('Wednesday 11:15');
+    expect(entry?.text).toContain('Unauthorised software');
+    expect(entry?.text).toContain('installation policy');
+    expect(entry?.text).toContain('Retained on the audit');
+    expect(entry?.text).toContain('No further action at this time');
+    // It is NOT a screen line: nothing was on the screen, and the file must not
+    // say there was.
+    expect(entry?.text).not.toContain('Screen observed');
+  });
+
   it('keeps the order it was written in, oldest first', () => {
     const morning = conductLine(100, 'screen', 'a puzzle game');
     const afternoon = conductLine(400, 'desk', '4 empty cans');

@@ -42,17 +42,20 @@ import { dayScript, isWeekDay, REVIEW_PASS_PERFORMANCE, WEEK } from './week';
 /* -- the file -------------------------------------------------------------- */
 
 /**
- * What was noticed. Three things can be, and they are different observations:
+ * What was noticed. Four things can be, and they are different observations:
  * the lead can find something on the screen, he can find nothing on the screen
- * and count the cans instead, and he can find nothing anywhere and read the
- * STATUS - a dot saying one thing over a dispatch log saying another.
+ * and count the cans instead, he can find nothing anywhere and read the STATUS
+ * - a dot saying one thing over a dispatch log saying another - and he can read
+ * the SOFTWARE audit, which is not on the screen at all: a program on the list
+ * of installs this workstation has no business holding.
  *
- * The third one is not a screen and must not be filed as one: "screen observed
+ * The status one is not a screen and must not be filed as one: "screen observed
  * to be non-work-related" about a morning of closed tickets is a line that is
  * simply untrue, and the whole point of this file is that every line in it can
- * be traced to the minute it is about.
+ * be traced to the minute it is about. The software one is the same rule again:
+ * it is a record IT holds, not a window anybody saw, and it says so.
  */
-export const CONDUCT_KINDS = ['screen', 'desk', 'status'] as const;
+export const CONDUCT_KINDS = ['screen', 'desk', 'status', 'software'] as const;
 
 export type ConductKind = (typeof CONDUCT_KINDS)[number];
 
@@ -106,11 +109,18 @@ export function conductLine(
     : kind === 'desk'
       ? `${conductStamp(tick)} - Desk observed with ${said} standing on it. `
         + 'Not raised with the employee.'
-      // The one written by somebody who has put two records side by side,
-      // which is why it is the only line in the file that cites both.
-      : `${conductStamp(tick)} - Availability status recorded as ${said} `
-        + 'during a period of logged activity on the queue. Employee spoken '
-        + 'to informally. No further action at this time.';
+      : kind === 'status'
+        // The one written by somebody who has put two records side by side,
+        // which is why it is the only line in the file that cites both.
+        ? `${conductStamp(tick)} - Availability status recorded as ${said} `
+          + 'during a period of logged activity on the queue. Employee spoken '
+          + 'to informally. No further action at this time.'
+        // And the one written off the install audit: not a window anybody saw,
+        // a line on the list of software this workstation holds against policy.
+        : `${conductStamp(tick)} - Unauthorised software recorded on this `
+          + `workstation against installation policy (${said}). Retained on the `
+          + 'audit. Employee spoken to informally. No further action at this '
+          + 'time.';
 
   return `${String(tick)}|${kind}|${text}`;
 }

@@ -194,6 +194,11 @@ async function boot(): Promise<void> {
         ? appState.get().installed.apps.length
         : 0
     ),
+    // And the policy on its own, for the beat that reads the audit trail rather
+    // than the current install set - it survives an uninstall, so the count
+    // above cannot tell it "locked down with nothing installed" from
+    // "wild west". Read off the pack, the same place the drip is gated from.
+    installPolicy: () => companyInstallPolicy(),
     onNotice: (title, body) => {
       shell.notify(title, body);
     },

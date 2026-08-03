@@ -1,5 +1,6 @@
 import { assertCaughtScenes } from '../../world/scenes';
 import { ARCADE_APP } from './arcade';
+import { MEDIA_APP } from './mediaplayer';
 import { loadManifest } from './manifest';
 import type { AppDef } from './types';
 
@@ -17,12 +18,12 @@ import type { AppDef } from './types';
  * The installable catalogue is scene-checked the same as the base roster: an
  * installable `slack` app is one somebody can be caught at, so shipping it
  * without the content for what happens then would fail the boot here rather than
- * a player later. The fixture below is `slack: false`, so that check is a no-op
- * for it - the toys that become slack apps arrive with lane B, and drag their
- * scenes along.
+ * a player later. Both toys below are `slack: true` as of lane B - a game and a
+ * media player, each a real slack app once installed - so each drags a caught
+ * scene along, and this assertion is what proves it did.
  */
 export const INSTALLABLE_MANIFEST: readonly AppDef[] = assertCaughtScenes(
-  loadManifest([ARCADE_APP]),
+  loadManifest([ARCADE_APP, MEDIA_APP]),
 );
 
 /** The ids the store can install, as a set for the quick membership questions. */

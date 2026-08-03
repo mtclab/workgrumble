@@ -87,6 +87,19 @@ export interface GameApi {
   /** True when an app is installed at the current tier, for cross-app links. */
   hasApp(id: string): boolean;
   /**
+   * Installs a program off the web store, and takes one back off.
+   *
+   * The one call that changes what the desktop MOUNTS at runtime: it dispatches
+   * the world verb that writes the audit trail, patches the save-carried install
+   * set, and re-mounts the desktop so the toy's icon and start-menu entry appear
+   * (or go) at once, without a reload. It answers rather than throwing - an
+   * install under a locked-down shop succeeds, so `ok` is the normal case and
+   * the only refusal is the same minute logging twice - and the store reads that
+   * answer back to the player.
+   */
+  installApp(id: string): DispatchResult;
+  uninstallApp(id: string): DispatchResult;
+  /**
    * Plays the probation week again after a firing.
    *
    * It is a SESSION verb rather than a world one: the world it would change is

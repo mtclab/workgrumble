@@ -72,6 +72,19 @@ const FILE_LINE_PARAM = 'file_line';
  */
 const STATUS_SPENT_PARAM = 'status_evidence_spent';
 
+/**
+ * How far down the install audit this conversation was: the length of the trail
+ * at the minute the lead came down about it.
+ *
+ * The software beat cannot clear its evidence the way the status one clears its
+ * accrued minutes - the audit only ever grows - so instead of erasing anything
+ * this advances a watermark to the length of the trail. The beat reads the tail
+ * past this count, so the same install is not brought up every patrol; a fresh
+ * install lands past the watermark and re-arms it. Absent on every conversation
+ * that is not about software, which leaves the watermark exactly where it was.
+ */
+const INSTALL_NOTICED_PARAM = 'install_noticed';
+
 const WRITTEN_DOWN: GuardData[] = [
   {
     when: { pred: 'param_blank', param: FILE_LINE_PARAM },
@@ -122,6 +135,22 @@ export const BOSS_ACTION_DATA: readonly ActionData[] = [
           + 'not. There is no half of one, and the morning it closes is a '
           + 'whole morning.',
       },
+      {
+        when: {
+          pred: 'all',
+          of: [
+            not({ pred: 'param_absent', param: INSTALL_NOTICED_PARAM }),
+            not({
+              pred: 'param_is_whole_number',
+              param: INSTALL_NOTICED_PARAM,
+              value: 0,
+            }),
+          ],
+        },
+        reason: 'The install audit is counted in whole lines, and a watermark '
+          + 'that is not a whole number of them is a record the audit cannot '
+          + 'place against the trail.',
+      },
     ],
     apply: [
       // The meter goes to the floor a spoken-to person sits at. Set rather
@@ -166,6 +195,24 @@ export const BOSS_ACTION_DATA: readonly ActionData[] = [
             node: ACTOR,
             field: FIELDS.dndSuspicionCharged,
             value: { const: 0 },
+          },
+        ],
+      },
+      // And the software watermark, where this was the conversation about the
+      // install audit. Only where the param is there - a telling-off about a
+      // forum or a status leaves the audit's own watermark exactly where it
+      // was - and it is SET to the length of the trail rather than added to,
+      // because what closes is "everything on the list so far", and a fresh
+      // install lands past it and re-arms.
+      {
+        op: 'when',
+        cond: not({ pred: 'param_absent', param: INSTALL_NOTICED_PARAM }),
+        ops: [
+          {
+            op: 'set_field',
+            node: ACTOR,
+            field: FIELDS.installNoticed,
+            value: { param: INSTALL_NOTICED_PARAM },
           },
         ],
       },

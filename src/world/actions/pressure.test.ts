@@ -149,6 +149,51 @@ describe('boss.caught', () => {
     );
     expect(engine.snapshotHash()).toBe(before);
   });
+
+  /**
+   * The software conversation advances the install-audit watermark, and only
+   * that conversation does: a forum or a status leaves it alone. This is what
+   * stops the beat drumming - the tail past the watermark is what it reads.
+   */
+  it('advances the install watermark only when told to', () => {
+    // A conversation about a screen leaves the watermark absent, the way it
+    // leaves the dot's own record alone.
+    dispatch(DAY_ACTIONS.bossCaught, { file_line: CAUGHT_AT_A_FORUM });
+    expect(field(FIELDS.installNoticed)).toBeUndefined();
+
+    // The software conversation SETS it to the length of the trail it was down
+    // about - not added to, so a fresh install lands past it and re-arms.
+    dispatch(DAY_ACTIONS.bossCaught, {
+      file_line: conductLine(240, 'software', 'a program installed against policy'),
+      install_noticed: 3,
+    });
+    expect(field(FIELDS.installNoticed)).toBe(3);
+    const filed = conductEntries(field(FIELDS.conductFile));
+    expect(filed[filed.length - 1]?.kind).toBe('software');
+    expect(filed[filed.length - 1]?.text).toContain('Unauthorised software');
+  });
+
+  /**
+   * Teeth on the watermark param: a hand-edited fractional count is refused, and
+   * the refusal leaves the world byte-identical. Drop the guard and this goes
+   * green with a non-integer sitting in a field the beat does whole-line
+   * arithmetic against.
+   */
+  it('refuses a watermark that is not a whole number of lines', () => {
+    const before = engine.snapshotHash();
+    expectRefusal(
+      dispatch(DAY_ACTIONS.bossCaught, {
+        file_line: conductLine(
+          240,
+          'software',
+          'a program installed against policy',
+        ),
+        install_noticed: 1.5,
+      }),
+      'whole lines',
+    );
+    expect(engine.snapshotHash()).toBe(before);
+  });
 });
 
 describe('boss.noticed_empties and boss.ping', () => {

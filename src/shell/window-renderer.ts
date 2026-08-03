@@ -188,6 +188,23 @@ export class WindowRenderer {
   }
 
   /**
+   * Teaches the renderer an app definition installed at runtime, and forgets one
+   * uninstalled.
+   *
+   * The web store mounts and unmounts apps mid-session, so the definitions map -
+   * built once from the boot manifest - has to grow and shrink with it. Forget
+   * is only ever called for an app whose window has already been closed by the
+   * desktop, so there is no live window left pointing at a definition this drops.
+   */
+  public registerApp(definition: AppDef): void {
+    this.definitions.set(definition.id, definition);
+  }
+
+  public forgetApp(id: string): void {
+    this.definitions.delete(id);
+  }
+
+  /**
    * Hands an intent to the app in `windowId`. The window may not be mounted
    * yet - an app that opens another from its own `mount` runs inside a paint,
    * and the paint that creates the target window is deferred behind it - so an

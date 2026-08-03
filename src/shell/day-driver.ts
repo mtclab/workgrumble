@@ -21,6 +21,7 @@ import type {
 import {
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
+  SOFTWARE_ACTIONS,
   WORLD_ACTIONS,
 } from '../world/actions';
 import {
@@ -118,8 +119,16 @@ import {
   caughtScene,
   DND_CAUGHT_SCENE,
   GENERIC_CAUGHT_SCENE,
+  INSTALL_CAUGHT_KEY,
+  INSTALL_CAUGHT_SCENE,
   PRESENCE_CAUGHT_KEY,
 } from '../world/scenes';
+import {
+  type InstallAuditReading,
+  installAuditBeat,
+  parseInstallLedger,
+} from '../world/software';
+import { type InstallPolicy } from '../world/company';
 import {
   afterHoursOn,
   dayPlan,
@@ -543,6 +552,31 @@ export interface DayApi {
    */
   dndBeat(): DndBeatReading;
   /**
+   * Installing a program off the web store, and taking one back off.
+   *
+   * The verb, not the manifest: this writes the AUDIT TRAIL (`install_audit`,
+   * one `id@tick` line the driver stamps in the minute the button is pressed),
+   * and the shell patches which app the desktop mounts alongside it. An install
+   * under a locked-down shop SUCCEEDS - the consequence is the drip and the beat,
+   * not a wall - so both return the world's own answer, which the store reads
+   * back to the player. The only refusal either carries is the same minute
+   * logging twice.
+   */
+  install(id: string): DispatchResult;
+  uninstall(id: string): DispatchResult;
+  /**
+   * What the lead would have to go on if he read the install audit this minute:
+   * the policy, the installs on the trail he has not already been down about,
+   * and how long the longest of those has been on it.
+   *
+   * Free to read and changes nothing, the sibling of `dndBeat`. It arms the
+   * caught-scene class's software conversation on evidence the world wrote down -
+   * a program on the audit under a locked-down policy - and never at random. It
+   * reads only the tail past the "already spoken about" watermark, so the same
+   * install is not brought up every patrol.
+   */
+  installAuditBeat(): InstallAuditReading;
+  /**
    * Every phone that did not ring today, oldest first.
    *
    * Free to read and changes nothing: it is the world's own ledger
@@ -682,6 +716,18 @@ export interface DayDriverHandlers {
    * nought, which is what keeps a scripted week byte-identical.
    */
   installedAgainstPolicy?(): number;
+  /**
+   * The employer's install policy, for the beat that reads the audit trail.
+   *
+   * The DRIP reads a count the shell has already gated on the policy; the BEAT
+   * reads the trail itself and so needs the policy on its own, because the trail
+   * survives an uninstall and a wild-west employer's installs are logged and
+   * cost nothing. The shell reads it off the pack (`companyInstallPolicy`); the
+   * driver has no employer to read. Absent (a headless harness, a preflight) is
+   * the strict one, `locked_down`, which matches `DEFAULT_INSTALL_POLICY` and
+   * keeps a preflight honest about the probation employer it is standing in for.
+   */
+  installPolicy?(): InstallPolicy;
   /**
    * Whether there is a desktop session for any of this to be happening in.
    *
@@ -1010,6 +1056,62 @@ export class DayDriver implements DayApi {
       this.playerNumber(FIELDS.suspicion),
       this.playerNumber(FIELDS.dndWorkingTicks),
     );
+  }
+
+  /**
+   * Installing a program, and taking one back off.
+   *
+   * The driver stamps the `id@tick` line the world appends, in the minute the
+   * button was pressed - the same contract the interruption ledger keeps, so a
+   * replay writes the identical string. The line is `id@now`; the world trusts
+   * it and refuses only the same minute logging twice. Which app the desktop
+   * mounts is the shell's to patch alongside this; the world holds the record.
+   */
+  public install(id: string): DispatchResult {
+    return this.softwareVerb(SOFTWARE_ACTIONS.install, id);
+  }
+
+  public uninstall(id: string): DispatchResult {
+    return this.softwareVerb(SOFTWARE_ACTIONS.uninstall, id);
+  }
+
+  private softwareVerb(action: string, id: string): DispatchResult {
+    const line = `${id}@${String(this.engine.now())}`;
+
+    return this.announced(this.engine.dispatch(action, this.actor, null, {
+      id,
+      line,
+    }));
+  }
+
+  /**
+   * What the lead has to go on about the software on this machine, this minute.
+   *
+   * The sibling of `dndBeat`, and it reads only the tail of the audit trail past
+   * the "already spoken about" watermark: the trail is append-only, so the lines
+   * added since the last conversation are the ones from `install_noticed`
+   * onward. Records is how many of those there are; minutes is how long the
+   * longest of them has sat on the list. The employer's policy comes off the
+   * shell, defaulting to the strict one so a headless preflight reads the
+   * probation employer it stands in for.
+   */
+  public installAuditBeat(): InstallAuditReading {
+    const records = parseInstallLedger(
+      this.engine.graph.getField(this.actor, FIELDS.installAudit),
+    );
+    const spoken = this.playerNumber(FIELDS.installNoticed);
+    const unspoken = records.slice(spoken);
+    const now = this.engine.now();
+    const minutes = unspoken.reduce(
+      (longest, record) => Math.max(longest, Math.max(0, now - record.at)),
+      0,
+    );
+
+    return installAuditBeat(this.installPolicy(), unspoken.length, minutes);
+  }
+
+  private installPolicy(): InstallPolicy {
+    return this.handlers.installPolicy?.() ?? 'locked_down';
   }
 
   /**
@@ -2385,7 +2487,13 @@ export class DayDriver implements DayApi {
     // One conversation at a time, which is the precedence discipline the
     // takeover family already keeps: a man who has just found a forum open is
     // having THAT conversation, and the dot will still be there tomorrow.
-    if (caught === null) {
+    //
+    // The two that are NOT on the screen - the install audit and the status -
+    // are settled in that order when the screen turned nothing up, and only one
+    // of them fires: a conversation about a program installed against policy is
+    // a more concrete finding than one about a status inference, and the dot
+    // will still be there tomorrow just as it would after a forum.
+    if (caught === null && !this.settleSoftwareBeat(visit)) {
       this.settleStatusBeat(visit);
     }
 
@@ -2485,6 +2593,63 @@ export class DayDriver implements DayApi {
       + `it. The shift is ${String(CAUGHT_MINUTES)} minutes shorter and a line `
       + 'has gone on your file, which you can read.',
     );
+  }
+
+  /**
+   * The third thing he can find, and it is not on the screen either: the install
+   * audit, a program on the list of software this workstation holds against a
+   * locked-down policy.
+   *
+   * Same CAUGHT-SCENE CLASS as the status beat - the same verb, a line on the
+   * file, the same minutes off the shift, the same closeable window - and the
+   * same three things keep it from being a random scold:
+   *
+   * - It fires on ARRIVAL, telegraphed like every other conversation here.
+   * - `armed` is a predicate over evidence the world wrote down: a program on
+   *   the trail under a locked-down policy, read off `install_audit`.
+   * - It cannot drum. The watermark advances to the length of the trail, so the
+   *   same install is not brought up next patrol; a fresh install lands past it
+   *   and re-arms. Answers whether it spoke, so the caller can fall through to
+   *   the status beat when it did not.
+   */
+  private settleSoftwareBeat(visit: Readonly<BossVisit>): boolean {
+    if (!this.installAuditBeat().armed) {
+      return false;
+    }
+
+    // The whole trail's length is the new watermark: being spoken to closes
+    // everything on the list so far, and a later install lands past it.
+    const total = parseInstallLedger(
+      this.engine.graph.getField(this.actor, FIELDS.installAudit),
+    ).length;
+
+    const result = this.engine.dispatch(DAY_ACTIONS.bossCaught, this.actor, null, {
+      file_line: conductLine(
+        visit.arrivalTick,
+        'software',
+        INSTALL_CAUGHT_SCENE.fileSubject,
+      ),
+      // The watermark, so the trail's already-mentioned lines are not brought
+      // up again. It is not the status conversation, so that param stays absent.
+      install_noticed: total,
+    });
+
+    if (!result.ok) {
+      return false;
+    }
+
+    this.slowDown('boss');
+    this.owedMinutes_ += CAUGHT_MINUTES;
+    this.handlers.onCaught?.(INSTALL_CAUGHT_KEY, visit.arrivalTick, null);
+    this.handlers.onNotice?.(
+      `That is ${String(CAUGHT_MINUTES)} minutes`,
+      'He did not find anything on your screen. He read the install log '
+      + 'instead - a program on it this workstation is not allowed - and came '
+      + `down about it. The shift is ${String(CAUGHT_MINUTES)} minutes shorter `
+      + 'and a line has gone on your file, which you can read. Taking the '
+      + 'program off does not take the line off.',
+    );
+    return true;
   }
 
   private settlePing(ping: Readonly<BossPing>): void {

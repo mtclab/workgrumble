@@ -48,6 +48,8 @@ function apiFor(
     openApp: () => {},
     closeApp: () => {},
     hasApp: () => false,
+    installApp: () => ({ ok: true }),
+    uninstallApp: () => ({ ok: true }),
     restartWeek: () => {},
     actor,
   };

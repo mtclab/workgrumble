@@ -1,3 +1,4 @@
+import type { DispatchResult } from '../engine-api';
 import type { AppDef, AppIntent, GameApi } from './apps/types';
 import { appsForTier } from './apps/manifest';
 import { resolveManifest } from './apps/installable';
@@ -103,8 +104,12 @@ function menuItem(
 export class Desktop {
   public readonly element: HTMLElement;
 
-  private readonly apps: readonly AppDef[];
+  // Not readonly: the web store installs and uninstalls apps at runtime, and
+  // the resolved manifest the desktop mounts is recomputed when it does.
+  private apps: readonly AppDef[];
   private readonly surface: HTMLElement;
+  private readonly iconGrid: HTMLElement;
+  private startMenuList: HTMLElement | null = null;
   private readonly windowLayer: HTMLElement;
   private readonly toastStack: HTMLElement;
   private readonly taskbarWindows: HTMLElement;
@@ -177,6 +182,7 @@ export class Desktop {
     const icons = document.createElement('ul');
     icons.className = 'desktop-icons';
     icons.dataset.testid = 'desktop-icons';
+    this.iconGrid = icons;
 
     this.windowLayer = document.createElement('div');
     this.windowLayer.className = 'window-layer';
@@ -487,10 +493,10 @@ export class Desktop {
     );
 
     // The day screens are put on screen by the day itself and stay out of the
-    // icon grid; the start menu still lists them.
-    for (const app of this.apps.filter((entry) => entry.desktop !== false)) {
-      icons.append(this.createDesktopIcon(app));
-    }
+    // icon grid; the start menu still lists them. Built through the same method
+    // the web store's live re-mount calls, so a session that starts with a toy
+    // installed and one that installs it mid-shift build the exact same grid.
+    this.rebuildIcons();
 
     this.api = {
       graph: context.graph,
@@ -518,6 +524,8 @@ export class Desktop {
         this.closeWindowIfOpen(id);
       },
       hasApp: (id) => this.apps.some((app) => app.id === id),
+      installApp: (id) => this.installApp(id),
+      uninstallApp: (id) => this.uninstallApp(id),
       restartWeek: () => {
         this.restartWeek();
       },
@@ -582,6 +590,13 @@ export class Desktop {
     // that resumes with an empty desktop is a session that reloaded its way
     // out of a conversation.
     this.unsubscribeScreens = this.context.appState.onReplaced(() => {
+      // The install set rides the save, so a load can bring back a machine with
+      // a toy on it that this session never installed. The manifest is resolved
+      // off that set, so it has to be rebuilt BEFORE the windows are restored -
+      // otherwise a saved toy window has no definition to reopen into and is
+      // silently dropped. It is a no-op when nothing installed changed, which is
+      // every external patch that is not a load.
+      this.rebuildAppSurfaces();
       this.restoreWindows();
       this.syncDayScreens();
     });
@@ -687,16 +702,25 @@ export class Desktop {
 
     const list = document.createElement('div');
     list.className = 'start-menu-list';
+    this.startMenuList = list;
+    this.fillStartMenu(list);
+    menu.append(rail, list);
+    return menu;
+  }
 
-    // The tools first, the day's own screens after them.
-    //
-    // The manifest is in installation order, which puts the brief, the
-    // scorecard, the week, the telling-off, the review and the fridge above
-    // the ticket queue - six screens the day opens by itself, standing in
-    // front of the thing the player actually came to open. The menu is a
-    // question about what gets used, and it is answered here rather than by
-    // reordering the manifest, which is also the taskbar's order and the
-    // order a loaded save reopens its windows in.
+  /**
+   * Fills (or refills) the start-menu list: every app first, the day's own
+   * screens after, then the session verbs.
+   *
+   * It is a method rather than inline in `createStartMenu` because the web
+   * store's live re-mount calls it again: installing a toy adds its entry here
+   * the same moment its icon lands, and uninstalling takes it away. `apps` is in
+   * installation order, which is also the taskbar's order and the order a loaded
+   * save reopens its windows in.
+   */
+  private fillStartMenu(list: HTMLElement): void {
+    list.replaceChildren();
+
     const tools = this.apps.filter((app) => app.desktop !== false);
     const screens = this.apps.filter((app) => app.desktop === false);
 
@@ -780,8 +804,122 @@ export class Desktop {
     );
 
     list.append(separator, save, load, sessionSeparator, logOut, restart);
-    menu.append(rail, list);
-    return menu;
+  }
+
+  /**
+   * The desktop icon grid, (re)built off the resolved manifest.
+   *
+   * The day's own screens are put on screen by the day and stay out of the grid;
+   * everything else with an icon gets one. Called once at construction and again
+   * whenever the web store changes what is installed.
+   */
+  private rebuildIcons(): void {
+    this.iconGrid.replaceChildren();
+
+    for (const app of this.apps.filter((entry) => entry.desktop !== false)) {
+      this.iconGrid.append(this.createDesktopIcon(app));
+    }
+  }
+
+  /**
+   * Installing a program off the web store, live.
+   *
+   * Three things happen at once and in this order: the world verb writes the
+   * audit trail, the save-carried install set gains the id, and the desktop
+   * re-mounts so the toy's icon, start-menu entry and window definition are all
+   * there before the next paint. An install under a locked-down shop succeeds -
+   * the only refusal is the same minute logging twice - so a failure is handed
+   * straight back for the store to say, and nothing on the desktop changes.
+   */
+  private installApp(id: string): DispatchResult {
+    const result = this.context.day.install(id);
+
+    if (!result.ok) {
+      return result;
+    }
+
+    const current = this.context.appState.get().installed.apps;
+
+    if (!current.includes(id)) {
+      this.context.appState.patch('installed', { apps: [...current, id] });
+    }
+
+    this.rebuildAppSurfaces();
+    return result;
+  }
+
+  /**
+   * And taking one back off, live - the mirror of the above, with one ordering
+   * that matters: the window is closed BEFORE the definition is forgotten, so
+   * the renderer unmounts a toy it still knows about rather than tripping over
+   * one it does not. The audit trail is deliberately left alone; the removal is
+   * its own line, and the record that it was ever there is the whole point.
+   */
+  private uninstallApp(id: string): DispatchResult {
+    const result = this.context.day.uninstall(id);
+
+    if (!result.ok) {
+      return result;
+    }
+
+    this.closeWindowIfOpen(id);
+
+    const current = this.context.appState.get().installed.apps;
+    this.context.appState.patch('installed', {
+      apps: current.filter((appId) => appId !== id),
+    });
+
+    this.rebuildAppSurfaces();
+    return result;
+  }
+
+  /**
+   * Recomputes the resolved manifest and rebuilds every surface that mounts it:
+   * the renderer's definitions, the icon grid and the start menu.
+   *
+   * The install set has already been patched into the store by the caller, so
+   * this reads it back and resolves `base ∪ installed` exactly as the mount did
+   * at construction - one code path for "starts with a toy" and "installs one
+   * mid-shift", which is what keeps the two impossible to disagree.
+   */
+  private rebuildAppSurfaces(): void {
+    const previous = new Set(this.apps.map((app) => app.id));
+    const resolved = appsForTier(
+      resolveManifest(
+        this.context.manifest,
+        this.context.appState.get().installed.apps,
+      ),
+      this.context.tier,
+    );
+    const next = new Set(resolved.map((app) => app.id));
+
+    // Nothing to do when the set is unchanged - which is the common case for the
+    // load path, where this runs on every external patch (a boss beat, a chat
+    // line) and only a genuine change in what is installed should churn the DOM.
+    if (previous.size === next.size
+      && [...next].every((id) => previous.has(id))) {
+      return;
+    }
+
+    this.apps = resolved;
+
+    for (const app of this.apps) {
+      if (!previous.has(app.id)) {
+        this.renderer.registerApp(app);
+      }
+    }
+
+    for (const id of previous) {
+      if (!next.has(id)) {
+        this.renderer.forgetApp(id);
+      }
+    }
+
+    this.rebuildIcons();
+
+    if (this.startMenuList !== null) {
+      this.fillStartMenu(this.startMenuList);
+    }
   }
 
   private createDesktopIcon(app: AppDef): HTMLLIElement {

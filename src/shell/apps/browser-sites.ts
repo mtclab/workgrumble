@@ -42,12 +42,45 @@ export interface GallerySite {
   readonly footer: string;
 }
 
+/**
+ * One row of the web store's catalogue.
+ *
+ * A shipped installable carries the `appId` the Install button dispatches and
+ * the store reads the machine's install set against; a "coming soon" row has no
+ * `appId` and is greyed - the catalogue listing more than the build ships, which
+ * is cheap content that sets up later slices. Both are the same shape so the
+ * page renders one list and the joke reads down it.
+ */
+export interface StoreProgram {
+  /** The installable app id, or absent for a greyed "coming soon" row. */
+  readonly appId?: string;
+  readonly name: string;
+  /** The register line, in the voice of a late-90s shareware download page. */
+  readonly blurb: string;
+  /** The shareware register nobody ever paid: "Freeware", "Nagware", etc. */
+  readonly register: string;
+}
+
+export interface StoreSite {
+  readonly kind: 'store';
+  readonly heading: string;
+  readonly tagline: string;
+  /**
+   * The policy consequence, said honestly in-fiction: the install is not
+   * blocked, it works, and somebody keeps a list. It is the store's version of
+   * the rule every other slack surface states before it charges for itself.
+   */
+  readonly notice: string;
+  readonly programs: readonly StoreProgram[];
+  readonly footer: string;
+}
+
 export interface BrowserSite {
   readonly id: string;
   readonly title: string;
   /** What the address bar reads. It is not typeable and it goes nowhere. */
   readonly url: string;
-  readonly page: ForumSite | GallerySite;
+  readonly page: ForumSite | GallerySite | StoreSite;
 }
 
 const LAWNMOWER: BrowserSite = {
@@ -295,10 +328,84 @@ const NO_HELLO: BrowserSite = {
   },
 };
 
+/**
+ * The web store: a late-90s shareware download page, bookmarked on a
+ * locked-down workstation for reasons nobody will admit to.
+ *
+ * The two rows with an `appId` are the toys this build actually installs; the
+ * rest are the catalogue being bigger than the build, greyed and going nowhere,
+ * which is both a joke and the seam later slices hang more programs off. The
+ * whole page is content - text and a policy notice - and the buttons on it are
+ * wired by the Browser app, which is the one thing that can see the machine's
+ * install set and reach the shell that mounts an app.
+ */
+const WEB_STORE: BrowserSite = {
+  id: 'store',
+  title: 'Download Depot',
+  url: 'http://download-depot.invalid/programs.htm',
+  page: {
+    kind: 'store',
+    heading: 'DOWNLOAD DEPOT',
+    tagline: 'Over 4 programs! Updated when we feel like it. All software '
+      + 'tested on one machine that is not this one. Best experienced at '
+      + '1024x768 with the sound off.',
+    notice: 'A note about your workstation: this machine is on a locked-down '
+      + 'policy, which means it does not permit any of this. It will install '
+      + 'anyway - the button works, the program runs, the relief is real. But '
+      + 'it goes on the install audit the moment you click, and IT keeps that '
+      + 'list. Somebody will notice. That is the deal, and it is a better deal '
+      + 'than the forum.',
+    programs: [
+      {
+        appId: 'arcade',
+        name: 'Office Arcade',
+        register: 'Freeware (unregistered)',
+        blurb: 'Seventeen games in one! There is one game. It is very good at '
+          + 'being one game. Catches nobody up on their queue and takes the '
+          + 'edge off in a way a forum never quite manages.',
+      },
+      {
+        appId: 'mediaplayer',
+        name: 'Media Player',
+        register: 'Nagware (the nag is this whole page)',
+        blurb: 'Plays every format, including several that do not exist. Comes '
+          + 'with a visualiser that is more sure of itself than anyone in the '
+          + 'building. Plays no actual sound, which is the one considerate '
+          + 'thing about it.',
+      },
+      {
+        name: 'Screen Saver Deluxe',
+        register: 'Shareware ($15, cheque only, do not send a cheque)',
+        blurb: 'Flying toasters, allegedly. This row does nothing yet - the '
+          + 'download is "coming soon", which on this site has historically '
+          + 'meant "coming never".',
+      },
+      {
+        name: 'Weather Tray 98',
+        register: 'Trialware (trial expired 1999)',
+        blurb: 'Puts the weather in your system tray. There is no internet in '
+          + 'here, so it would only ever have shown one kind of weather. '
+          + 'Coming soon, in the sense that it is not coming.',
+      },
+      {
+        name: 'MODEM BLASTER TOOLS',
+        register: 'Careware (please be kind to your modem)',
+        blurb: 'A suite of tools for a modem this workstation does not have. '
+          + 'Listed for completeness, and because the webmaster is proud of '
+          + 'it. Coming soon.',
+      },
+    ],
+    footer: 'This page has been under construction since 1998. Downloads are '
+      + 'not scanned for anything, because scanning was not invented here yet. '
+      + 'You are visitor 6 today, and four of those were you.',
+  },
+};
+
 export const BROWSER_SITES: readonly BrowserSite[] = Object.freeze([
   LAWNMOWER,
   CATS,
   NO_HELLO,
+  WEB_STORE,
 ]);
 
 export function browserSite(id: string | null): BrowserSite | undefined {

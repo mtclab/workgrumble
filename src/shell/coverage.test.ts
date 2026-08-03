@@ -82,6 +82,10 @@ const SCENE_KEYS: readonly string[] = [
   // derived because it is not one-per-slack-app - nobody can install a dot,
   // and the loader has nothing to refuse to boot without it.
   'caught.presence',
+  // The other one that is not about a screen: the install audit, read at an
+  // arrival. Named here rather than derived for the same reason - it is not
+  // one-per-slack-app, it is one conversation about the whole list.
+  'caught.software',
   ...REVIEW_OUTCOMES.map((outcome) => `review.${outcome}`),
   'beer.sealed',
   'beer.opened',

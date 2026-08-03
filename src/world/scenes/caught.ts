@@ -104,7 +104,73 @@ export const CAUGHT_SCENES: readonly CaughtScene[] = validateCaughtScenes([
     dismissLabel: 'Close the tab, and the conversation',
     fileSubject: 'a discussion forum',
   },
+  {
+    appId: 'arcade',
+    title: 'A quick word about what is installed',
+    bossLine: 'That is a game. On the machine. Pat, that did not come with the '
+      + 'build, which means somebody put it there, and there is only one '
+      + 'somebody it could be.',
+    narration: 'He does not ask you to close it. He watches it run for a '
+      + 'moment, the way you watch a kettle you already know is broken, and '
+      + 'then he says the thing about the list.',
+    reply: 'You say it was a two-minute thing. He agrees it was a two-minute '
+      + 'thing, and that the two minutes are now on the audit with your name '
+      + 'against them.',
+    dismissLabel: 'Close it, and let it be logged',
+    fileSubject: 'an installed game',
+  },
+  {
+    appId: 'mediaplayer',
+    title: 'A quick word about what is installed',
+    bossLine: 'Is that a media player? We do not put media players on these. '
+      + 'It is not that anybody minds the music, Pat, it is that the music '
+      + 'arrived on a machine it was not supposed to be on.',
+    narration: 'He tilts his head at the little visualiser bouncing along in '
+      + 'the corner, entirely unbothered by any of this, and lets it bounce '
+      + 'for slightly too long before he goes on.',
+    reply: 'You offer to take it off. He says that would be sensible, and that '
+      + 'taking it off does not take it off the list, which is a different '
+      + 'list.',
+    dismissLabel: 'Close it, and let it be logged',
+    fileSubject: 'an installed media player',
+  },
 ]);
+
+/**
+ * The other software conversation, and the one that is not about a screen.
+ *
+ * The key is not an app and cannot be installed: what the lead found is the
+ * install AUDIT - the list of software this workstation is holding against a
+ * locked-down policy - rather than a window that happened to be open. It is the
+ * caught-scene class rather than a new one for the same reason the status one
+ * is: somebody comes down the corridor, there is a short conversation, a line
+ * goes on the file, the minutes are gone, and a second machinery for the same
+ * beat would be two ways of being spoken to that could disagree.
+ *
+ * It reads whether or not the toy is on screen right now, because the evidence
+ * is the list, not the window - "that game you installed" is a true sentence
+ * about a machine whose game is minimised, closed, or even uninstalled, since
+ * the record of the install outlives the app.
+ */
+export const INSTALL_CAUGHT_KEY = 'software:install';
+
+export const INSTALL_CAUGHT_SCENE: CaughtScene = validateCaughtScene({
+  appId: INSTALL_CAUGHT_KEY,
+  title: 'A quick word about the install log',
+  bossLine: 'That game you installed. We do not allow those - and before you '
+    + 'tell me it is gone, it does not matter that it is gone. We keep a list, '
+    + 'and the list does not forget the way a desktop does.',
+  narration: 'He is not holding anything and he is not looking at your screen. '
+    + 'He is looking at you the way a man looks when the thing he is telling '
+    + 'you off for is not in the room, because it never had to be.',
+  reply: 'You say you took it straight back off. He says he knows, that the '
+    + 'taking-off is on the list as well, and that it is not the better of the '
+    + 'two lines.',
+  dismissLabel: 'Take it on the chin',
+  // What the FILE calls it: a record IT holds, in the passive voice of somebody
+  // who read the audit rather than the window.
+  fileSubject: 'a program installed against policy',
+});
 
 /**
  * The one conversation in this family that is not about a screen.
@@ -152,9 +218,15 @@ export const DND_CAUGHT_SCENE: CaughtScene = validateCaughtScene({
  * be a second place for a missing scene to become a blank telling-off.
  */
 export function caughtScene(appId: string): CaughtScene | undefined {
-  return appId === PRESENCE_CAUGHT_KEY
-    ? DND_CAUGHT_SCENE
-    : CAUGHT_SCENES.find((scene) => scene.appId === appId);
+  if (appId === PRESENCE_CAUGHT_KEY) {
+    return DND_CAUGHT_SCENE;
+  }
+
+  if (appId === INSTALL_CAUGHT_KEY) {
+    return INSTALL_CAUGHT_SCENE;
+  }
+
+  return CAUGHT_SCENES.find((scene) => scene.appId === appId);
 }
 
 /**

@@ -16,7 +16,7 @@
  */
 
 import { DND_WORKING_SUSPICION } from './presence';
-import { INSTALL_PRESENT_SUSPICION } from './software';
+import { INSTALL_PRESENT_SUSPICION, INSTALLED_TOY_SLACK_RATE } from './software';
 
 /** Simulated minutes between meter ticks. */
 export const METER_INTERVAL_TICKS = 5;
@@ -142,6 +142,13 @@ export const SLACK_RATES: Readonly<Record<string, SlackRate>> = {
   // it is the worse hiding place: text fills the window, it is legible from
   // the doorway, and nobody has ever mistaken it for work.
   browser: { stressRelief: 3, suspicion: 5 },
+  // The two off the web store. They are the STRONGEST medicine on this list and
+  // the worst hiding place - a real toy, installed against policy, that the
+  // audit can see whether or not the window is even open. That is the whole
+  // trade of a locked-down shop, and both key their rate on the one number in
+  // the balance table so the tradeoff cannot drift app to app.
+  arcade: INSTALLED_TOY_SLACK_RATE,
+  mediaplayer: INSTALLED_TOY_SLACK_RATE,
 };
 
 export function slackRate(appId: string): SlackRate {

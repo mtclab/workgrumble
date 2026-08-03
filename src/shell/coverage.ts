@@ -49,6 +49,12 @@ export const WALK_RUNS = {
     + 'it becomes overnight. A week can hold this branch or the next one.',
   checked: 'Wednesday, thirty seconds of checking first, and the post that '
     + 'never comes.',
+  store: 'The web store, and the class of thing the other four runs never do: '
+    + 'install a program against a locked-down policy, play it for the relief, '
+    + 'be caught at it and be asked about the install log, take it back off, '
+    + 'and reload to find the install set exactly where it was. It is its own '
+    + 'run because the golden weeks install nothing - that is what keeps them '
+    + 'byte-identical - so the one walk that installs is kept out of them.',
   deploy: 'The tester build with its Worker behind it: the link that lets '
     + 'somebody in, the badge that is the whole of an account, a week that '
     + 'follows the badge to a browser that has never seen it, the form for '
@@ -2361,6 +2367,131 @@ const ENTRIES = [
     does: 'Back to the bookmarks, which is the whole of the navigation.',
     run: 'week',
   },
+
+  /* -- the web store, the install, and the toys it puts on the machine ----- */
+  {
+    id: 'browser.store',
+    surface: 'browser',
+    control: 'browser-site-store',
+    does: 'Opens the web store: a late-90s shareware download page listing the '
+      + 'programs this build installs, the ones it only pretends to, and the '
+      + 'policy notice that says installing works and gets logged anyway.',
+    run: 'store',
+    why: 'The store is a bookmark in every week, but the run that reads it is '
+      + 'the one that then installs off it - and installing is the class of '
+      + 'move the golden weeks are kept clear of.',
+  },
+  {
+    id: 'store.install',
+    surface: 'browser',
+    control: 'store-install-arcade, store-install-mediaplayer',
+    does: 'Installs a program off the store: dispatches the install verb that '
+      + 'writes the audit trail, adds it to the save-carried install set, and '
+      + 're-mounts the desktop so its icon and start-menu entry appear at once '
+      + 'without a reload.',
+    actions: [SOFTWARE_ACTIONS.install],
+    run: 'store',
+    why: 'An install against a locked-down policy is the one move the golden '
+      + 'weeks never make, so it is walked here rather than in a week whose '
+      + 'byte-for-byte sameness is the thing being protected.',
+  },
+  {
+    id: 'store.uninstall',
+    surface: 'browser',
+    control: 'store-uninstall-arcade, store-uninstall-mediaplayer',
+    does: 'Takes an installed toy back off: dispatches the uninstall verb, '
+      + 'removes it from the install set and the desktop live, and leaves the '
+      + 'install line on the audit - the record that it was there outliving the '
+      + 'app, which is the whole point of the trail.',
+    actions: [SOFTWARE_ACTIONS.uninstall],
+    run: 'store',
+    why: 'The mirror of the install, and reachable only in the run that '
+      + 'installed something first; the golden weeks have nothing to uninstall.',
+  },
+  {
+    id: 'arcade.window',
+    surface: 'arcade',
+    control: 'window-arcade',
+    does: 'Office Arcade, once installed: a real slack app that drains stress '
+      + 'faster than the Browser and hides worse, with a panic key printed on '
+      + 'it and a game that is one game.',
+    window: { routes: ['start-menu', 'desktop-icon'] },
+    run: 'store',
+    why: 'An installable app has no window until it is installed, and only the '
+      + 'store run installs it; the base roster never holds it.',
+  },
+  {
+    id: 'arcade.play',
+    surface: 'arcade',
+    control: 'arcade-play',
+    does: 'Plays the toy for the relief it exists to give - the strongest '
+      + 'stress drain in the game while the window is genuinely up, which is '
+      + 'the better half of the locked-down shop\'s trade.',
+    run: 'store',
+    why: 'The control only exists on a window that only exists once the toy is '
+      + 'installed, which is the store run and no other.',
+  },
+  {
+    id: 'mediaplayer.window',
+    surface: 'mediaplayer',
+    control: 'window-mediaplayer',
+    does: 'The Media Player, once installed: the second real slack app, playing '
+      + 'no sound at all through a visualiser that is very sure of itself.',
+    window: { routes: ['start-menu', 'desktop-icon'] },
+    run: 'store',
+    why: 'The second installable, present only in the run that installs it and '
+      + 'absent from the base roster the golden weeks mount.',
+  },
+  {
+    id: 'mediaplayer.play',
+    surface: 'mediaplayer',
+    control: 'media-play',
+    does: 'Starts and stops the player, which drains stress at the installed-'
+      + 'toy rate while it is up and is the second toy\'s share of the trade.',
+    run: 'store',
+    why: 'A control on a window that only the store run mounts; nothing in a '
+      + 'golden week ever installs the app it belongs to.',
+  },
+  {
+    id: 'caught.scene-arcade',
+    surface: 'caught',
+    control: 'window-arcade at an arrival',
+    does: 'The installed game, caught on the screen from the doorway - a scene '
+      + 'about the specific thing that was up, the same slack-caught class the '
+      + 'forum and the bubbles use.',
+    actions: [DAY_ACTIONS.bossCaught],
+    scene: 'caught.arcade',
+    run: 'store',
+    why: 'Being caught at an installed toy needs the toy installed and on the '
+      + 'screen at an arrival, which only happens in the run that installed it.',
+  },
+  {
+    id: 'caught.scene-mediaplayer',
+    surface: 'caught',
+    control: 'window-mediaplayer at an arrival',
+    does: 'The installed media player, caught mid-nothing at an arrival: the '
+      + 'second toy\'s own slack-caught scene, because the joke is the specific '
+      + 'thing that was on the screen.',
+    actions: [DAY_ACTIONS.bossCaught],
+    scene: 'caught.mediaplayer',
+    run: 'store',
+    why: 'Same as the game: it needs the second toy installed and up at an '
+      + 'arrival, which is the store run and no golden week.',
+  },
+  {
+    id: 'caught.scene-software',
+    surface: 'caught',
+    control: 'caught-file (the install audit read at an arrival)',
+    does: 'The telling-off that is not about a screen at all: the lead reads '
+      + 'the install audit, finds a program installed against policy, and says '
+      + 'so - and taking the program off does not take the line off.',
+    actions: [DAY_ACTIONS.bossCaught],
+    scene: 'caught.software',
+    run: 'store',
+    why: 'Arming it is a program on the audit trail under a locked-down policy '
+      + 'with the toy off the screen at an arrival, which is the install the '
+      + 'golden weeks never make.',
+  },
 ] as const satisfies readonly CoverageEntry[];
 
 export type CoverageId = (typeof ENTRIES)[number]['id'];
@@ -2422,16 +2553,6 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'mail is stamped from. Dispatched by the day loop at the end of a block '
     + 'nobody chose to be in; the player meets it as a thread in the inbox '
     + 'with the whole meeting in it.',
-  [SOFTWARE_ACTIONS.install]: 'Installing something off the web store, which '
-    + 'writes the audit trail. The control that dispatches it is the store\'s '
-    + 'Install button, and the store - the third Browser site and the '
-    + 'shareware catalogue on it - lands with lane B of this slice; lane A is '
-    + 'the verb, the trail, the policy and the drip it feeds.',
-  [SOFTWARE_ACTIONS.uninstall]: 'Taking an installed toy back off the machine. '
-    + 'Its control is the store\'s Uninstall button, which arrives with lane B; '
-    + 'the verb records the removal and deliberately leaves the install on the '
-    + 'audit, because the record that it was there is the whole point of the '
-    + 'trail surviving it.',
   [DAY_ACTIONS.reviewRedundant]: 'The third ending, dispatched by the day loop '
     + 'when the week cleared its bar and the ranking still put two other '
     + 'people above the line. Career-layer: it belongs to a week of the '
@@ -2567,6 +2688,12 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'chat-open-tickets',
   'browser-site-*',
   'browser-home-button',
+  // The web store's live buttons, one per shipped installable, per direction.
+  'store-install-*',
+  'store-uninstall-*',
+  // And the toys those buttons put on the machine, once installed.
+  'arcade-play',
+  'media-play',
   'about-run-diagnostics',
   'about-reseat-fan',
   'about-refresh',
