@@ -5,7 +5,13 @@ import {
   type ReadOnlyGraphView,
   WasmEngine,
 } from '../engine-api';
-import { companySetup, COMPANY_IDS } from './company';
+import {
+  companyInstallPolicy,
+  companySetup,
+  COMPANY_IDS,
+  DEFAULT_INSTALL_POLICY,
+  readInstallPolicy,
+} from './company';
 import {
   FIELDS,
   isService,
@@ -290,5 +296,21 @@ describe('company world', () => {
         })
         .map(({ id }) => id),
     ).toEqual([]);
+  });
+});
+
+describe('the employer install policy', () => {
+  it('is locked down for the probation employer', () => {
+    // The forbidden path is this slice's teaching, so the probation shop has to
+    // be the strict one. Flip this to wild_west and the audit stops costing
+    // anything, which is the trap the whole mechanic is built to avoid.
+    expect(companyInstallPolicy()).toBe('locked_down');
+  });
+
+  it('reads a missing or unknown policy as the strict default', () => {
+    expect(DEFAULT_INSTALL_POLICY).toBe('locked_down');
+    expect(readInstallPolicy(undefined)).toBe('locked_down');
+    expect(readInstallPolicy('anarchy')).toBe('locked_down');
+    expect(readInstallPolicy('wild_west')).toBe('wild_west');
   });
 });

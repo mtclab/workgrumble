@@ -7,6 +7,9 @@ import {
   createAppState,
   parseAppState,
 } from './app-state';
+import { INSTALLABLE_MANIFEST } from './apps/installable';
+
+const A_TOY = INSTALLABLE_MANIFEST[0]?.id ?? '';
 
 function worked(store: AppStateStore): AppState {
   store.patch('mail', { selectedId: 'mail/queue-nag', read: ['mail/queue-nag'] });
@@ -249,5 +252,53 @@ describe('the shell-owned app state', () => {
     unsubscribe();
     store.reset();
     expect(reloaded).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * The web store's install set: save-carried shell state, like the dismissal
+ * count, and read with the same strictness.
+ */
+describe('the installed-app set', () => {
+  it('starts empty, so a scripted week never carries one', () => {
+    // The determinism guarantee in one line: nothing is installed at the start
+    // of a session, and the scripted walks never install, so the goldens do not
+    // move.
+    expect(createAppState().installed).toEqual({ apps: [] });
+  });
+
+  it('carries an install through storage, and reads a file from before it', () => {
+    const store = new AppStateStore();
+    store.patch('installed', { apps: [A_TOY] });
+
+    const wire: unknown = JSON.parse(JSON.stringify(store.snapshot()));
+    expect(parseAppState(wire)?.installed.apps).toEqual([A_TOY]);
+
+    // A save written before the store existed loads as nothing installed rather
+    // than a refusal - the same grace the dismissal count gets.
+    const older = { ...(wire as Record<string, unknown>) };
+    delete older.installed;
+    expect(parseAppState(older)?.installed.apps).toEqual([]);
+  });
+
+  it('refuses an install set that names something it cannot mount', () => {
+    const store = new AppStateStore();
+    const good: unknown = JSON.parse(JSON.stringify(store.snapshot()));
+
+    // The load-bearing "refuse garbage": an id with no definition behind it
+    // would mount a window with nothing in it. Revert isInstallableId's check
+    // and the first two of these load a broken manifest.
+    for (const apps of [
+      ['not-a-real-app'],
+      [A_TOY, 'not-a-real-app'],
+      [A_TOY, A_TOY], // the same toy twice is not a shape this shell writes
+      [7],
+      'arcade', // not even a list
+    ]) {
+      expect(
+        parseAppState({ ...(good as object), installed: { apps } }),
+        JSON.stringify(apps),
+      ).toBeNull();
+    }
   });
 });

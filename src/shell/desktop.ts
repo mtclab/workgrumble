@@ -1,5 +1,6 @@
 import type { AppDef, AppIntent, GameApi } from './apps/types';
 import { appsForTier } from './apps/manifest';
+import { resolveManifest } from './apps/installable';
 import { formatSimTime } from './clock-format';
 import { ASSISTANT_DISMISSAL_CAP } from './app-state';
 import type { ShellContext } from './context';
@@ -153,7 +154,17 @@ export class Desktop {
     private readonly context: Readonly<ShellContext>,
     private readonly handlers: Readonly<DesktopHandlers>,
   ) {
-    this.apps = appsForTier(context.manifest, context.tier);
+    // The manifest the desktop mounts is base ∪ installed: the shipped roster
+    // plus whatever the save carries an install of. With an empty install set -
+    // which is every scripted walk and every shipped session until the web
+    // store lands in lane B - it is the base roster unchanged. Re-mounting the
+    // moment an install lands mid-session is lane B's seam; this resolves what a
+    // session STARTS with, so a loaded save that had a toy on it comes back with
+    // it on the desktop.
+    this.apps = appsForTier(
+      resolveManifest(context.manifest, context.appState.get().installed.apps),
+      context.tier,
+    );
 
     this.element = document.createElement('div');
     this.element.className = 'screen screen-desktop';

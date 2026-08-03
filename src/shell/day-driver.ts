@@ -670,6 +670,19 @@ export interface DayDriverHandlers {
    */
   focusedSlackApp(): string | null;
   /**
+   * How many apps are installed against a locked-down policy and still on the
+   * machine - the audit-risk drip of the web store.
+   *
+   * The driver cannot see the install set (shell state, like the open windows)
+   * and has no business reading the employer's policy (pack data); the shell
+   * knows both, and this is the one number the pressure layer needs off them.
+   * It is the shell's job to return NOUGHT for a wild-west employer however much
+   * is installed - the policy gates it here rather than in the meters, which
+   * have no employer to read. Absent (a headless harness, a preflight) is
+   * nought, which is what keeps a scripted week byte-identical.
+   */
+  installedAgainstPolicy?(): number;
+  /**
    * Whether there is a desktop session for any of this to be happening in.
    *
    * The clock does not convert real time while there is not, and that is not a
@@ -3467,6 +3480,10 @@ export class DayDriver implements DayApi {
       dndWorkingMinutes: this.dndAccrued(now),
       dndWorkingTicks: state.dndWorkingTicks,
       dndSuspicionCharged: state.dndSuspicionCharged,
+      // The web store's drip: unauthorised software the audit can see sitting
+      // on the machine. Nought on every scripted week, which is what keeps the
+      // suspicion arithmetic byte-identical to before the store existed.
+      installedAgainstPolicy: this.handlers.installedAgainstPolicy?.() ?? 0,
     });
 
     if (!movesAnything(state, deltas)) {

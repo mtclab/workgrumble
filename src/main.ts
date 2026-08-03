@@ -24,7 +24,7 @@ import { openStorage } from './shell/storage';
 import { CloudSaves } from './shell/sync';
 import { updateOnBoot, VersionSlot } from './shell/updates';
 import { BUILD_VERSION } from './shared/build';
-import { COMPANY, COMPANY_IDS } from './world/company';
+import { COMPANY, COMPANY_IDS, companyInstallPolicy } from './world/company';
 import { awayNoticedLine } from './world/dialogue';
 import { dayForTick } from './world/hours';
 import { FLAVOR, flavorText } from './world/interruptions';
@@ -185,6 +185,15 @@ async function boot(): Promise<void> {
     // And the one the player is in, which is the only one calming anybody
     // down. The lead sees the rest.
     focusedSlackApp: () => shell.focusedSlackApp(),
+    // The web store's audit-risk drip, gated on the employer's policy HERE
+    // because the meters have no employer to read: a locked-down shop counts
+    // every installed toy, a wild-west one counts none however many there are.
+    // Empty on every scripted walk, so the goldens do not move.
+    installedAgainstPolicy: () => (
+      companyInstallPolicy() === 'locked_down'
+        ? appState.get().installed.apps.length
+        : 0
+    ),
     onNotice: (title, body) => {
       shell.notify(title, body);
     },

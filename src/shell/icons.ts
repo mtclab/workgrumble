@@ -460,6 +460,34 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { x1: '3', y1: '16', x2: '21', y2: '16' },
     },
   ],
+  // A cabinet with a joystick: the toy the web store sells, drawn in the same
+  // line language as the tools it is emphatically not one of.
+  'icon-arcade': [
+    {
+      element: 'rect',
+      attributes: { x: '5', y: '3', width: '14', height: '18', rx: '1' },
+    },
+    {
+      element: 'rect',
+      attributes: { x: '8', y: '6', width: '8', height: '5' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '12', y1: '14', x2: '12', y2: '17' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '12', cy: '13', r: '1' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '9', cy: '18', r: '1' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '15', cy: '18', r: '1' },
+    },
+  ],
   'icon-lock': [
     {
       element: 'rect',

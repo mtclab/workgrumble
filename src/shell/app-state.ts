@@ -14,6 +14,8 @@
  * SCREEN it belongs here.
  */
 
+import { isInstallableId } from './apps/installable';
+
 export type ChatSpeaker = 'them' | 'you' | 'system';
 
 export interface ChatLine {
@@ -153,6 +155,26 @@ export interface AssistantState {
  */
 export const ASSISTANT_DISMISSAL_CAP = 10_000;
 
+/**
+ * What the player has installed off the web store.
+ *
+ * It is here, in the save-carried shell state, and NOT in the world graph, for
+ * the same reason the open windows are: it changes what is ON SCREEN - which
+ * apps the desktop mounts - rather than what is TRUE. What installing writes to
+ * the world is the AUDIT TRAIL (`install_audit`), which is a different fact with
+ * a different life: the trail outlives the app, because uninstalling takes the
+ * toy off this list and leaves the record that it was here on the graph.
+ *
+ * The resolved manifest the desktop mounts is `base ∪ apps`
+ * (`resolveManifest`). An install adds an id here and dispatches the world verb;
+ * an uninstall removes it and dispatches the other. Every scripted walk leaves
+ * it empty, and the goldens are asserted byte-identical on that fact.
+ */
+export interface InstalledState {
+  /** Installable-app ids, in the order they were installed. */
+  readonly apps: readonly string[];
+}
+
 export interface AppState {
   readonly chat: ChatState;
   readonly mail: MailState;
@@ -162,6 +184,7 @@ export interface AppState {
   readonly caught: CaughtState;
   readonly windows: WindowsState;
   readonly assistant: AssistantState;
+  readonly installed: InstalledState;
 }
 
 export function createAppState(): AppState {
@@ -174,6 +197,7 @@ export function createAppState(): AppState {
     caught: { appId: null, at: null, evidence: null },
     windows: { open: [], focusedId: null },
     assistant: { dismissals: 0, closedOnDay: null },
+    installed: { apps: [] },
   };
 }
 
@@ -290,6 +314,47 @@ function readAssistant(value: unknown): AssistantState | undefined {
     : { dismissals: count, closedOnDay: closed };
 }
 
+/**
+ * The install set, read out of a file that may predate it.
+ *
+ * An absent slice reads as "nothing installed" rather than a refusal, exactly
+ * as the dismissal count and the caught evidence do: a save written before the
+ * web store existed is a save about a machine nobody had installed anything on,
+ * and a session is not worth throwing away over that. Anything PRESENT is read
+ * strictly - an entry that is not a string, an id the catalogue does not hold,
+ * or the same id twice is a file somebody has edited, and this shell refuses
+ * those the way it refuses a non-integer dismissal count. Refusing an unknown id
+ * is the load-bearing half: an installed id with no definition behind it is a
+ * manifest that would mount a window with nothing in it.
+ */
+function readInstalled(value: unknown): InstalledState | undefined {
+  if (value === undefined) {
+    return { apps: [] };
+  }
+
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const { apps } = value;
+
+  if (!Array.isArray(apps)) {
+    return undefined;
+  }
+
+  const parsed: string[] = [];
+
+  for (const entry of apps) {
+    if (!isInstallableId(entry) || parsed.includes(entry)) {
+      return undefined;
+    }
+
+    parsed.push(entry);
+  }
+
+  return Object.freeze({ apps: Object.freeze(parsed) });
+}
+
 function isSpeaker(value: unknown): value is ChatSpeaker {
   return value === 'them' || value === 'you' || value === 'system';
 }
@@ -364,7 +429,9 @@ export function parseAppState(value: unknown): AppState | null {
     return null;
   }
 
-  const { chat, mail, kb, day, browser, caught, windows, assistant } = value;
+  const {
+    chat, mail, kb, day, browser, caught, windows, assistant, installed,
+  } = value;
 
   if (
     !isObject(chat)
@@ -395,9 +462,11 @@ export function parseAppState(value: unknown): AppState | null {
     : optionalTick(caught.evidence);
   const screen = readWindows(windows);
   const helper = readAssistant(assistant);
+  const installedApps = readInstalled(installed);
 
   if (
-    helper === undefined
+    installedApps === undefined
+    || helper === undefined
     || chatSelected === undefined
     || threads === undefined
     || mailSelected === undefined
@@ -423,6 +492,7 @@ export function parseAppState(value: unknown): AppState | null {
     caught: { appId: caughtAppId, at: caughtAt, evidence: caughtEvidence },
     windows: screen,
     assistant: helper,
+    installed: installedApps,
   };
 }
 

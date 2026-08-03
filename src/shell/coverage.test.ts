@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { COMMANDS } from './apps/cmd-parse';
 import { APP_MANIFEST } from './apps/index';
+import { INSTALLABLE_MANIFEST } from './apps/installable';
 import {
   ACTIONS_WITHOUT_A_CONTROL,
   COVERAGE,
@@ -47,7 +48,27 @@ const REGISTERED_ACTIONS: readonly string[] = [
 
 const APP_IDS: readonly string[] = APP_MANIFEST.map((app) => app.id);
 
-const SURFACES: readonly string[] = [...APP_IDS, ...SHELL_SURFACES];
+/**
+ * The third category: apps the web store can install but the build does not
+ * ship on the desktop.
+ *
+ * An installable app is a valid surface for a coverage entry - its controls are
+ * real and get walked once it is installed - but it is NOT a base app, so it is
+ * not held to the "every app has a window entry" rule the base roster is. That
+ * is the honest distinction the slice turns on: an installable-not-installed app
+ * is neither a missing control (nobody installed it) nor a forbidden extra (the
+ * catalogue knows it). Lane A ships the catalogue and no walked installable
+ * entries; lane B installs one and walks it, and its entries slot in here.
+ */
+const INSTALLABLE_IDS: readonly string[] = INSTALLABLE_MANIFEST.map(
+  (app) => app.id,
+);
+
+const SURFACES: readonly string[] = [
+  ...APP_IDS,
+  ...INSTALLABLE_IDS,
+  ...SHELL_SURFACES,
+];
 
 /** The scenes this build can put in front of a player, derived from content. */
 const SCENE_KEYS: readonly string[] = [
@@ -136,13 +157,32 @@ describe('coverage manifest', () => {
 
   it('covers every installed app, by the routes it actually opens by', () => {
     const windows = COVERAGE.filter((entry) => entry.window !== undefined);
+    const windowSurfaces = windows.map((entry) => entry.surface);
 
-    expect(sorted(windows.map((entry) => entry.surface))).toEqual(
-      sorted(APP_IDS),
+    // Three categories, and the walk keeps them apart. Every BASE app has a
+    // window entry - shipped-always-present, always walked - which is the
+    // equality below, read off the base roster and nothing else. An INSTALLABLE
+    // app's entry is optional: it is walked when installed and absent when it is
+    // not, so it may not appear in the base equality (that would demand the
+    // week install it) and it may not be a surface the catalogue does not know.
+    const baseSurfaces = windowSurfaces.filter((id) => APP_IDS.includes(id));
+    const installableSurfaces = windowSurfaces.filter(
+      (id) => !APP_IDS.includes(id),
     );
 
+    expect(sorted(baseSurfaces)).toEqual(sorted(APP_IDS));
+
+    // An installable window entry that names something the catalogue does not
+    // hold is a fudge - a surface pretending to be installable to dodge the
+    // base rule - and this is what refuses it.
+    for (const id of installableSurfaces) {
+      expect(INSTALLABLE_IDS, id).toContain(id);
+    }
+
     for (const entry of windows) {
-      const app = APP_MANIFEST.find((candidate) => candidate.id === entry.surface);
+      const app = [...APP_MANIFEST, ...INSTALLABLE_MANIFEST].find(
+        (candidate) => candidate.id === entry.surface,
+      );
       const routes = entry.window?.routes ?? [];
 
       expect(app, entry.id).toBeDefined();

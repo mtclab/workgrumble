@@ -279,6 +279,32 @@ export const FIELDS = {
    */
   interruptionMissed: 'interruption_missed',
   /**
+   * The web store's paper trail: every install, `id@tick`, one line per install,
+   * oldest first, and it is IT auditing IT.
+   *
+   * The same `id@tick` shape as `interruptionSpentAt` and read the same way -
+   * the DRIVER builds the line in the minute the button was pressed and the
+   * world appends it, so a replay writes the identical string rather than
+   * rebuilding it against a clock nobody saved. It is what the lead's beat arms
+   * off (`world/software.ts`), and it is deliberately WRITE-ONLY from the
+   * player's chair: uninstalling takes the app off the machine and leaves this
+   * untouched, because a record that vanished when you removed the evidence
+   * would make covering your tracks free.
+   */
+  installAudit: 'install_audit',
+  /**
+   * And the other half of the trail: every uninstall, `id@tick`, one line per
+   * removal.
+   *
+   * A separate field rather than a deletion from the one above, for the reason
+   * the whole slice turns on: the removal is itself a thing that happened, and
+   * a desk that quietly un-recorded its own installs would be a desk the audit
+   * could not read. So `install_audit` only ever grows, and this is where the
+   * "and then they took it off again" line lives - which is worse, not better,
+   * evidence.
+   */
+  installRemoved: 'install_removed',
+  /**
    * The dot: available, dnd or away, and ABSENT for anybody who has never
    * touched the tray.
    *

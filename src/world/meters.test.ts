@@ -38,6 +38,7 @@ import {
   STRESS_PER_EXCESS_TICKET,
   SUSPICION_CLEAN_DRAIN,
 } from './meters';
+import { INSTALL_PRESENT_SUSPICION } from './software';
 
 const QUIET: MeterInputs = {
   openTickets: 0,
@@ -352,5 +353,44 @@ describe('inputs the world could not have produced', () => {
     ['resolveCreditPaid', { resolveCreditPaid: -1 }],
   ])('refuses a %s that is not a count', (_name, override) => {
     expect(() => deltas(override)).toThrow(TypeError);
+  });
+});
+
+describe('the web store audit-risk drip', () => {
+  it('raises suspicion for an installed-against-policy app, per app', () => {
+    // Teeth: the drip IS this addend. Delete the installedAgainstPolicy term
+    // from suspicionUp and this goes to zero, and the store carries no cost.
+    expect(deltas({ installedAgainstPolicy: 1 }).suspicionUp)
+      .toBe(INSTALL_PRESENT_SUSPICION);
+    expect(deltas({ installedAgainstPolicy: 2 }).suspicionUp)
+      .toBe(INSTALL_PRESENT_SUSPICION * 2);
+  });
+
+  it('is an interval the scorecard counts as suspicious', () => {
+    expect(deltas({ installedAgainstPolicy: 1 }).suspicionEvent).toBe(true);
+  });
+
+  it('suppresses the clean drain while it drips', () => {
+    // The screen is not clean while unauthorised software sits on it, so the
+    // point suspicion would otherwise bleed back does not.
+    expect(deltas({ installedAgainstPolicy: 1 }).suspicionDown).toBe(0);
+    expect(deltas().suspicionDown).toBe(SUSPICION_CLEAN_DRAIN);
+  });
+
+  it('costs nothing at lunch, like every other visible-on-screen suspicion', () => {
+    expect(deltas({ installedAgainstPolicy: 1, lunch: true }).suspicionUp)
+      .toBe(0);
+  });
+
+  it('is nought by default, so a scripted week does not move under it', () => {
+    // The determinism guarantee in one line: absent installedAgainstPolicy is
+    // the quiet day, byte-identical to before the store existed.
+    expect(deltas().suspicionUp).toBe(0);
+    expect(deltas({ installedAgainstPolicy: 0 })).toEqual(deltas());
+  });
+
+  it('refuses a count that is not a whole number at or above zero', () => {
+    expect(() => deltas({ installedAgainstPolicy: -1 })).toThrow(TypeError);
+    expect(() => deltas({ installedAgainstPolicy: 1.5 })).toThrow(TypeError);
   });
 });

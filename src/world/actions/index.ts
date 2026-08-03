@@ -17,6 +17,7 @@ import { PRESENCE_ACTION_DATA } from './presence';
 import { SECURITY_ACTIONS } from './security';
 import { SERVICE_ACTIONS } from './service';
 import { SHARE_ACTIONS } from './share';
+import { SOFTWARE_ACTION_DATA } from './software';
 import { TICKET_ACTIONS } from './ticket';
 import { WORLD_ACTION_DATA } from './world';
 
@@ -73,10 +74,17 @@ export {
   HELPDESK_ACTION_IDS,
   HELPDESK_ACTIONS,
   type HelpdeskActionId,
+  SOFTWARE_ACTION_IDS,
+  SOFTWARE_ACTIONS,
+  type SoftwareActionId,
   WORLD_ACTION_IDS,
   WORLD_ACTIONS,
   type WorldActionId,
 } from './ids';
+export {
+  INSTALL_TWICE_REASON,
+  UNINSTALL_TWICE_REASON,
+} from './software';
 export {
   CLASSIFY_BREACHED_REASON,
   CLASSIFY_CLOSED_REASON,
@@ -106,6 +114,7 @@ export function helpdeskActions(): readonly ActionData[] {
     ...INTERRUPTION_ACTION_DATA,
     ...PRESENCE_ACTION_DATA,
     ...CONSUMABLE_ACTION_DATA,
+    ...SOFTWARE_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

@@ -266,6 +266,11 @@ describe('the night, taken in one go', () => {
       FIELDS.interruptionDodged,
       FIELDS.dndWorkingTicks,
       FIELDS.presenceNoticed,
+      // And 0.4.0's audit trail, both halves. Nobody installs or uninstalls
+      // software at four in the morning, so a night that wrote either line
+      // would be reporting an install at a minute nobody was at the desk.
+      FIELDS.installAudit,
+      FIELDS.installRemoved,
     ]) {
       const refusal = offHoursRefusal([planted(field)]);
 

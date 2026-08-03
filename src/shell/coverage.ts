@@ -27,6 +27,7 @@
 import {
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
+  SOFTWARE_ACTIONS,
   WORLD_ACTIONS,
 } from '../world/actions';
 import { DEMO_ACTIONS } from '../world/demo-world';
@@ -2421,6 +2422,16 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'mail is stamped from. Dispatched by the day loop at the end of a block '
     + 'nobody chose to be in; the player meets it as a thread in the inbox '
     + 'with the whole meeting in it.',
+  [SOFTWARE_ACTIONS.install]: 'Installing something off the web store, which '
+    + 'writes the audit trail. The control that dispatches it is the store\'s '
+    + 'Install button, and the store - the third Browser site and the '
+    + 'shareware catalogue on it - lands with lane B of this slice; lane A is '
+    + 'the verb, the trail, the policy and the drip it feeds.',
+  [SOFTWARE_ACTIONS.uninstall]: 'Taking an installed toy back off the machine. '
+    + 'Its control is the store\'s Uninstall button, which arrives with lane B; '
+    + 'the verb records the removal and deliberately leaves the install on the '
+    + 'audit, because the record that it was there is the whole point of the '
+    + 'trail surviving it.',
   [DAY_ACTIONS.reviewRedundant]: 'The third ending, dispatched by the day loop '
     + 'when the week cleared its bar and the ranking still put two other '
     + 'people above the line. Career-layer: it belongs to a week of the '

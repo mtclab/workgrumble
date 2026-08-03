@@ -428,6 +428,35 @@ export const WORLD_ACTIONS = {
   presenceNoticed: 'world.presence_noticed',
 } as const;
 
+/**
+ * The web store's two verbs: putting software on this machine, and taking it
+ * off again.
+ *
+ * Player-facing helpdesk verbs - installing something IS a thing a first-line
+ * tech does - and both are guarded and dispatched through the op language like
+ * every other change to the world. What they write is the AUDIT TRAIL, which is
+ * world state because it has to survive a save, replay, and outlive the app it
+ * is about: uninstalling takes the toy off the machine (which is shell state,
+ * the resolved manifest) but the record that it was ever there stays on the
+ * graph, because covering your tracks is itself a tell.
+ *
+ * The install SUCCEEDS under a locked-down policy - it is not a wall - so
+ * neither verb branches on the policy: they record what happened, and the
+ * CONSEQUENCE (the suspicion drip, the lead's beat) is priced by
+ * `world/software.ts` off the trail these verbs write.
+ */
+export const SOFTWARE_ACTIONS = {
+  install: 'software.install',
+  uninstall: 'software.uninstall',
+} as const;
+
+export type SoftwareActionId =
+  (typeof SOFTWARE_ACTIONS)[keyof typeof SOFTWARE_ACTIONS];
+
+export const SOFTWARE_ACTION_IDS: readonly SoftwareActionId[] = Object.freeze(
+  Object.values(SOFTWARE_ACTIONS),
+);
+
 export type WorldActionId = (typeof WORLD_ACTIONS)[keyof typeof WORLD_ACTIONS];
 
 export const WORLD_ACTION_IDS: readonly WorldActionId[] = Object.freeze(

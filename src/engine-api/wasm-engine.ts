@@ -524,6 +524,10 @@ const OFF_HOURS_FORBIDDEN: Readonly<Record<string, string>> = {
     + 'was being worked, in a stretch of hours nobody worked any of it in',
   presence_noticed: 'somebody waiting on a ticket had a thought about your '
     + 'status at four in the morning',
+  install_audit: 'software was installed and the audit wrote it down, in a '
+    + 'stretch of hours nobody was at the desk to install anything in',
+  install_removed: 'software was uninstalled and the audit wrote that down '
+    + 'too, at a minute nobody was at the desk',
 };
 
 function isOffHoursCounterEvent(event: Readonly<EngineEvent>): boolean {

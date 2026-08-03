@@ -16,6 +16,7 @@
  */
 
 import { DND_WORKING_SUSPICION } from './presence';
+import { INSTALL_PRESENT_SUSPICION } from './software';
 
 /** Simulated minutes between meter ticks. */
 export const METER_INTERVAL_TICKS = 5;
@@ -217,6 +218,18 @@ export interface MeterInputs {
   readonly dndWorkingTicks: number;
   /** Suspicion already billed against that bank. */
   readonly dndSuspicionCharged: number;
+  /**
+   * Apps installed against a locked-down policy and still present on the
+   * machine this interval - the audit-risk drip of the web store.
+   *
+   * Optional and zero by default, which is the whole determinism argument: the
+   * scripted weeks install nothing, so this is nought on every interval of
+   * every golden and the suspicion arithmetic is byte-identical to the one from
+   * before the store existed. The DRIVER is what gates it on the policy - a
+   * wild-west employer passes nought here however much is installed - because
+   * the policy is per-employer pack data the meters have no business reading.
+   */
+  readonly installedAgainstPolicy?: number;
 }
 
 /**
@@ -322,9 +335,18 @@ export function meterDeltas(inputs: Readonly<MeterInputs>): MeterDeltas {
       ((banked + dripping) * DND_WORKING_SUSPICION) / METER_INTERVAL_TICKS,
     ) - dndCharged,
   );
+  // Unauthorised software the audit can see the same as it can see a window: a
+  // drip per installed app while it sits there, charged outside lunch only like
+  // every other visible-on-your-screen suspicion. Nought on every scripted week
+  // by construction, so the goldens do not move.
+  const installed = nonNegative(
+    inputs.installedAgainstPolicy ?? 0,
+    'The installed-against-policy count',
+  );
   const suspicionUp = (inputs.lunch
     ? 0
-    : rates.reduce((total, rate) => total + rate.suspicion, 0))
+    : rates.reduce((total, rate) => total + rate.suspicion, 0)
+      + installed * INSTALL_PRESENT_SUSPICION)
     + owed;
 
   return {

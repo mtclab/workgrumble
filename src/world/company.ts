@@ -48,11 +48,57 @@ function addEdge(ops: SetupOp[], edge: Edge): void {
  * every boot. Nothing here consumes the simulation RNG, which keeps the world
  * replayable and leaves the RNG stream to the systems that vary outcomes.
  */
+/**
+ * What an employer thinks about you installing software.
+ *
+ * `locked_down` is the enterprise that has an opinion: an install SUCCEEDS - it
+ * is not a wall - but it is logged and it drips suspicion while it sits there,
+ * because IT audits IT. `wild_west` is the shop that does not care, where the
+ * same install carries no audit cost; those employers arrive with the E5
+ * employer switch, which loads a different pack (a different `COMPANY` literal),
+ * so the policy is per-employer BY CONSTRUCTION rather than a flag anybody flips
+ * at runtime. The probation employer is locked down, and the forbidden path is
+ * therefore this slice's teaching.
+ */
+export const INSTALL_POLICIES = ['locked_down', 'wild_west'] as const;
+
+export type InstallPolicy = (typeof INSTALL_POLICIES)[number];
+
+/** What an employer with nothing said about it is: the strict one. */
+export const DEFAULT_INSTALL_POLICY: InstallPolicy = 'locked_down';
+
+export function isInstallPolicy(value: unknown): value is InstallPolicy {
+  return typeof value === 'string'
+    && INSTALL_POLICIES.some((policy) => policy === value);
+}
+
+/**
+ * The policy off whatever a pack holds, defaulting to the strict one.
+ *
+ * Anything this build cannot read - a pack from a future version, a hand-edited
+ * value - reads as locked down, which is the safe failure: it is the one that
+ * charges the audit cost rather than the one that quietly makes an install
+ * free. E5's employer switch reads this against the pack it loaded.
+ */
+export function readInstallPolicy(value: unknown): InstallPolicy {
+  return isInstallPolicy(value) ? value : DEFAULT_INSTALL_POLICY;
+}
+
 export const COMPANY = {
   name: 'Workgrumble Ltd',
   domain: 'WORKGRUMBLE',
   motto: 'Established 1987. Refurbished 1994. Untouched since.',
+  /**
+   * Enterprise, and it has opinions. Written on the employer rather than
+   * derived so the E5 switch reads it off the pack it loaded.
+   */
+  installPolicy: 'locked_down',
 } as const;
+
+/** The employer's install policy, for the systems that price the audit. */
+export function companyInstallPolicy(): InstallPolicy {
+  return readInstallPolicy(COMPANY.installPolicy);
+}
 
 export const COMPANY_IDS = {
   /** The player. */
