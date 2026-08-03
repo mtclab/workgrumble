@@ -422,3 +422,67 @@ Fix, in order:
 Coherence verdict: the three interruption windows already read as one grammar (call=chat
 chrome, meeting=caught-scene chrome, reboot=OS-dialog register); the only incoherence is the
 chips (F3). Not a rebuild - a chip-palette fix.
+
+---
+
+# Slice 0.4.0 - the web store, the policy, and the audit (E3 #4, slice 1, issue #17)
+
+The first slice of a new epic, so it lays the whole spine minimally rather than building one
+corner deep. New capability: you can install software, and the building has an opinion about
+that. Tone: The Website Is Down. The version steps to 0.4.0 because "you can install things
+now" is a class of change, not a patch.
+
+## The architectural core (lane A) - why this is an epic, not a payload
+
+`APP_MANIFEST` is static, built at module load. Installing adds a manifest entry AT RUNTIME,
+and the installed set MUST round-trip a save. So:
+
+1. **The manifest becomes base + installed.** A fixed base roster (everything that ships) plus
+   an installed set that lives in save-carried state (shell store, like the dismissal count /
+   caught evidence). The desktop mounts base ∪ installed. Uninstalling removes from the set.
+2. **The coverage gate stays honest.** The completeness walk asserts every reachable control
+   is known; an installable-but-not-installed app is NOT a missing control (you have not
+   installed it) and an installed app's controls ARE walked. The manifest gate must
+   distinguish "shipped and always present", "installable" and "currently installed" - a new
+   category, not a fudge.
+3. **Determinism.** The installed set is save state and pure `f(graph/store)`; scripted walks
+   install nothing, so the golden weeks are byte-identical (asserted).
+
+## Company policy as world data
+
+4. **One policy field** on the employer/world: the install policy. The probation employer is
+   LOCKED-DOWN (enterprise). Written as per-employer data so the E5 employer-switch seam reads
+   it; wild-west employers (installs carry no audit cost) arrive with E5. Locked-down is the
+   default, so the FORBIDDEN path is this slice's teaching.
+
+## The web store + the install action
+
+5. **The Browser gains the software catalogue** - a third site, data like the parody forum/
+   gallery: a download page listing installable programs with the register of a late-90s
+   shareware site (each a joke, none of it true beyond what installs). An `install` action
+   (world verb, guarded) and an `uninstall`.
+6. **Forbidden install works, and is recorded.** Installing against a locked-down policy
+   SUCCEEDS - you get the app - but (a) drips suspicion like a slack app while it sits there,
+   and (b) writes an audit-trail record (install id + tick), IT-audits-IT, the timesheet-audit
+   pattern: an audit event surfaces the record per-entry, and the boss beat arms on that
+   evidence, never at random. Uninstalling removes the app but the audit record that it WAS
+   installed remains - covering your tracks is itself a tell.
+7. **Installed relief beats the Browser.** An installed toy is a stronger stress drain than
+   the ambient Browser slack - so the honest tradeoff under a locked-down shop is better relief
+   at higher audit risk. Numbers in the balance table, conservative, flagged.
+
+## Content
+
+8. One or two installables shipped (a media player + a game, in the TWID register), each a real
+   slack app once installed. Uninstall is real. The catalogue lists more than ships, greyed
+   "coming soon" in the shareware voice (cheap, sets up later slices).
+
+## Gates
+
+Journey: install a toy under the locked-down policy, get its relief, collect the suspicion +
+the audit record, an audit event surfaces it, uninstall and the record still shows it was
+there. Save round-trip of the installed set (install, save, reload, still installed and still
+audit-recorded). Solvability + determinism (install set = save state). Coverage manifest honest
+about the three app categories. Goldens byte-identical (empty install set in walks) unless a
+walk installs - argue every number. Off-hours silence extended to any new fields. Both halves
+box, count checked; codex wave before release.
