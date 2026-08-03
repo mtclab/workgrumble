@@ -31,6 +31,28 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.4.2',
+    date: '2026-08-03',
+    summary: 'This update tells you what is coming.',
+    lines: Object.freeze([
+      'Update History now has a second half. Below the updates that have '
+        + 'happened, there is a list of the ones that are planned - what is '
+        + 'being built, in roughly the order we expect to build it. It is '
+        + 'reachable the same way this note was: Update History, in the Start '
+        + 'menu, for ever.',
+      'The planned list has no dates on it, because IT does not give dates, '
+        + 'and no promises in it, because the last person who made one is in '
+        + 'the list under a different heading. Everything on it is subject to '
+        + 'change, including whether it happens. None of it is installed. Your '
+        + 'workstation is exactly as capable this morning as the top half of '
+        + 'the window says and no more.',
+      'It is there so that the people testing this - which is you - can see '
+        + 'where it is going. Thank you for being one of them. That part is '
+        + 'not a joke, and it is the only sentence in this building that '
+        + 'is not.',
+    ]),
+  },
+  {
     version: '0.4.1',
     date: '2026-08-03',
     summary: 'This update adds a tone of voice.',
