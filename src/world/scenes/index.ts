@@ -8,6 +8,8 @@ export {
   INSTALL_CAUGHT_KEY,
   INSTALL_CAUGHT_SCENE,
   PRESENCE_CAUGHT_KEY,
+  RUDE_CAUGHT_KEY,
+  RUDE_CAUGHT_SCENE,
   type SlackAppEntry,
   UNCAUGHT_SCENE,
   validateCaughtScene,

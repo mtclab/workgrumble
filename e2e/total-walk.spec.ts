@@ -3734,6 +3734,83 @@ test('walks the door, the badge and the report the tester build adds', async ({
 });
 
 /* ========================================================================= *
+ * The aggressive register (0.4.1, issue #18).
+ *
+ * Self-contained runs that drive the tone controls into the shared ledger: the
+ * crude reply that still fixes the ticket, the lead hearing it at your shoulder,
+ * and the reporter's reaction escalating on a repeat. They log in fresh rather
+ * than threading through a week so a rude reply cannot perturb another journey's
+ * assertions - the ledger is shared, the page is not.
+ * ========================================================================= */
+
+test('the aggressive register - said, and still fixed, with the lead there',
+  async ({ page }) => {
+    test.setTimeout(240_000);
+    await logInOnDay(page, 1, { brief: 'keep' });
+    await beginShift(page);
+
+    // Ada's beat, walked to the point where the screen can be rotated back.
+    await openFromStartMenu(page, 'chat');
+    await page.getByTestId('chat-person-ada').click();
+    await chatOption(page, /anybody else was at her desk/);
+    await chatOption(page, /which keys Gareth pressed/);
+
+    // To the corridor, then let him arrive - nothing on screen but the chat,
+    // so the only thing he can catch is the mouth.
+    await runToTelegraph(page);
+    const desktop = page.getByTestId('desktop');
+    for (let minute = 0; minute < 8; minute += 1) {
+      if (await desktop.getAttribute('data-boss') === 'present') {
+        break;
+      }
+
+      await runSimMinutes(page, 1, 1);
+    }
+    await expect(desktop).toHaveAttribute('data-boss', 'present');
+
+    await step('chat.aggressive', async () => {
+      await focusWindow(page, 'chat');
+      await chatOption(page, /fuck off with the crime report/);
+      // The lead was present, so the caught-scene class takes the screen; the
+      // fix underneath it is confirmed once the scene is dismissed.
+      await expect(page.getByTestId('window-caught')).toBeVisible();
+    });
+
+    await step('caught.scene-rude', async () => {
+      await expect(page.getByTestId('caught-app'))
+        .toHaveAttribute('data-app', 'conduct:rude');
+      await expect(page.getByTestId('caught-heading'))
+        .toHaveText('A quick word about tone');
+      await page.getByTestId('caught-dismiss').click();
+      // Even caught, the ticket resolved: the tone never changes the fix.
+      await expectClosed(page, 'rotated-screen');
+    });
+  });
+
+test('the aggressive register - repeating it escalates', async ({ page }) => {
+  test.setTimeout(240_000);
+  // Day 4: Hilda's lockout is the inherited ticket, and its beat is diagnostic
+  // - it does not resolve, so the rude option can be picked twice.
+  await logInOnDay(page, 4);
+
+  await step('chat.aggressive-escalates', async () => {
+    await openFromStartMenu(page, 'chat');
+    await page.getByTestId('chat-person-hilda').click();
+    await expect(page.getByTestId('chat-transcript'))
+      .toContainText('locked me out again');
+
+    await chatOption(page, /without the patience/);
+    await chatOption(page, /Go back to the top/);
+    await chatOption(page, /without the patience/);
+
+    await openTicket(page, 'stale-device-relock');
+    const stream = page.getByTestId('ticket-comments');
+    await expect(stream).toContainText('Charming');
+    await expect(stream).toContainText('enough of that');
+  });
+});
+
+/* ========================================================================= *
  * The gate.
  * ========================================================================= */
 

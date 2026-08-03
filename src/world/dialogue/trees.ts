@@ -124,6 +124,37 @@ const ROTATED_SCREEN: DialogueTree = {
             },
           ],
         },
+        {
+          // The aggressive register, on the beat that fixes it. The rotate is
+          // byte-identical to the neutral option above - the screen goes back
+          // the same way - and the tone is the ONLY difference: she is told,
+          // rudely, that she was never hacked, and the rebuff pays for it. This
+          // is the owner's catharsis, and it is deliberately out of proportion
+          // to a woman who is only confused, which is why it costs.
+          label: 'Rotate it back and tell her she was not hacked, it was '
+            + 'Gareth, and she can fuck off with the crime report',
+          tone: 'aggressive',
+          next: 'tilt',
+          effects: [
+            {
+              action: HELPDESK_ACTIONS.machineSetDisplayRotation,
+              target: COMPANY_IDS.adaMachine,
+              params: { rotation: 0 },
+            },
+            {
+              action: HELPDESK_ACTIONS.reporterRebuff,
+              target: 'ticket:rotated-screen',
+              params: {
+                reaction_first: 'Ada goes very still. "I beg your pardon. I '
+                  + 'shall be mentioning your manner to somebody, and I mean '
+                  + 'that." The screen is, however, the right way up.',
+                reaction_again: 'Ada does not miss a beat this time. "That is '
+                  + 'twice. I have now mentioned your manner to two somebodies, '
+                  + 'and one of them has a title."',
+              },
+            },
+          ],
+        },
         { label: 'Go back to the top', next: 'complaint' },
         { label: 'Say you will have it back by eleven' },
       ],
@@ -536,6 +567,34 @@ const LOCKED_ACCOUNT: DialogueTree = {
             {
               action: HELPDESK_ACTIONS.machineReboot,
               target: COMPANY_IDS.garyMachine,
+            },
+          ],
+        },
+        {
+          // The milder end of the register, on the same reboot. The machine
+          // still goes round - the effect is the neutral one, unchanged - and
+          // all the tone adds is a flat, short remark that he brought this on
+          // himself. Curt, not crude, so the register reads as a range.
+          label: 'Restart it, and tell him flatly the Later button was never a '
+            + 'fix and he knew that a fortnight ago',
+          tone: 'aggressive',
+          next: 'restart-grateful',
+          effects: [
+            {
+              action: HELPDESK_ACTIONS.machineReboot,
+              target: COMPANY_IDS.garyMachine,
+            },
+            {
+              action: HELPDESK_ACTIONS.reporterRebuff,
+              target: 'ticket:gary-restart',
+              params: {
+                reaction_first: 'Gary, wounded: "There was no need for that. I '
+                  + 'only asked. I will note that you were short with me." It '
+                  + 'has, though, gone round and come back.',
+                reaction_again: 'Gary is not enjoying his fortnight any more. '
+                  + '"Twice, now. I am putting that in writing, which I did not '
+                  + 'want to do."',
+              },
             },
           ],
         },

@@ -174,6 +174,22 @@ export const SUSPICION_CLEAN_DRAIN = 1;
 /** What a missed deadline costs, and what closing something is worth. */
 export const REPUTATION_PER_BREACH = 3;
 
+/**
+ * What being rude to a user costs your standing, and what saying it AGAIN adds.
+ *
+ * The aggressive register of the tone framework: neutral costs nothing,
+ * aggressive costs this. Both are deliberately conservative - OVERSEER TUNING
+ * KNOBS. Four is a shade more than a missed deadline (`REPUTATION_PER_BREACH`),
+ * because a deadline slips and rudeness is chosen; the escalation is a further
+ * three the second time and every time after, because a reporter who has been
+ * snapped at once and comes back to more of it is a reporter who starts telling
+ * people. It moves nothing in the shipped week until a player picks the option
+ * that carries it - the scripted walks pick neutral, so no golden sees a point
+ * of this.
+ */
+export const RUDE_REPUTATION_COST = 4;
+export const RUDE_REPUTATION_ESCALATION = 3;
+
 /* -- the decision --------------------------------------------------------- */
 
 /**

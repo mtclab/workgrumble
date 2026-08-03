@@ -86,6 +86,10 @@ const SCENE_KEYS: readonly string[] = [
   // arrival. Named here rather than derived for the same reason - it is not
   // one-per-slack-app, it is one conversation about the whole list.
   'caught.software',
+  // And the one that is about a person, not a screen or a status: the lead
+  // heard a user get told where to go. Named here rather than derived - nobody
+  // installs rudeness, and the loader has nothing to refuse to boot without it.
+  'caught.rude',
   ...REVIEW_OUTCOMES.map((outcome) => `review.${outcome}`),
   'beer.sealed',
   'beer.opened',

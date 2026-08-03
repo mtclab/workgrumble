@@ -319,8 +319,12 @@ describe('helpdesk action registry', () => {
     // instructed, and `directory.purge`, for the directory a program has been
     // filling since 1997. Both are terminal-only and both refuse far more
     // often than they act, which is what a delete on a first-line tier is for.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(38);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(38);
+    //
+    // Thirty-nine from 0.4.1: `reporter.rebuff`, the aggressive register's one
+    // social verb - a rude reply's cost, dispatched beside the same fix the
+    // plain reply runs.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(39);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(39);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});

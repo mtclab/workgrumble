@@ -55,7 +55,17 @@ import { dayScript, isWeekDay, REVIEW_PASS_PERFORMANCE, WEEK } from './week';
  * be traced to the minute it is about. The software one is the same rule again:
  * it is a record IT holds, not a window anybody saw, and it says so.
  */
-export const CONDUCT_KINDS = ['screen', 'desk', 'status', 'software'] as const;
+export const CONDUCT_KINDS = [
+  'screen',
+  'desk',
+  'status',
+  'software',
+  // The fifth, and the only one that is about a person rather than a machine or
+  // a status: the lead was standing there when a user got told where to go. It
+  // is not a screen and not a status inference - he heard it - and it must not
+  // be filed as either.
+  'conduct',
+] as const;
 
 export type ConductKind = (typeof CONDUCT_KINDS)[number];
 
@@ -115,12 +125,18 @@ export function conductLine(
         ? `${conductStamp(tick)} - Availability status recorded as ${said} `
           + 'during a period of logged activity on the queue. Employee spoken '
           + 'to informally. No further action at this time.'
-        // And the one written off the install audit: not a window anybody saw,
-        // a line on the list of software this workstation holds against policy.
-        : `${conductStamp(tick)} - Unauthorised software recorded on this `
-          + `workstation against installation policy (${said}). Retained on the `
-          + 'audit. Employee spoken to informally. No further action at this '
-          + 'time.';
+        : kind === 'software'
+          // The one written off the install audit: not a window anybody saw, a
+          // line on the list of software this workstation holds against policy.
+          ? `${conductStamp(tick)} - Unauthorised software recorded on this `
+            + `workstation against installation policy (${said}). Retained on `
+            + 'the audit. Employee spoken to informally. No further action at '
+            + 'this time.'
+          // And the one about a person: the lead heard it. Passive and dry, the
+          // way a file is, and specific about what it was without repeating it.
+          : `${conductStamp(tick)} - Employee overheard addressing a user in `
+            + `terms recorded as ${said}. Employee spoken to informally. No `
+            + 'further action at this time.';
 
   return `${String(tick)}|${kind}|${text}`;
 }

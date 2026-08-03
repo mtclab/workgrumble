@@ -228,6 +228,40 @@ const ACCOUNTS_PAYABLE: DialogueTree = {
           ],
         },
         {
+          // The crude register, on the diagnostic beat. The question still gets
+          // asked and the truth still lands - the effects are the neutral
+          // option's, `asks` plus the same reveal, so the ticket is worked out
+          // exactly the same - and because `asks` records what was PUT TO her,
+          // the sentence the player chose is the one that goes on her stream.
+          // Being rude to a user is, quite literally, put on the record.
+          label: 'Tell her the machine did nothing to her afternoon, she worked '
+            + 'out of a temp folder like everyone who never listens, and she '
+            + 'can get stuffed - now where did she OPEN it',
+          tone: 'aggressive',
+          next: 'attachment',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'She opened the statement straight out of Sandra\'s '
+                + 'mail and worked in it from there, so every Save went back '
+                + 'to the copy the mail client had already written into the '
+                + 'temp directory on ACCTS-01.',
+            },
+            {
+              action: HELPDESK_ACTIONS.reporterRebuff,
+              target: 'ticket:saved-into-temp',
+              params: {
+                reaction_first: 'Priya has gone quiet on the line. "Right. '
+                  + 'Well. I will remember that you said that." She is writing '
+                  + 'something down, and it is not about the file.',
+                reaction_again: 'Priya is not quiet this time. "That is the '
+                  + 'second time. I am forwarding this to your manager and to '
+                  + 'mine, and I have kept both."',
+              },
+            },
+          ],
+        },
+        {
           label: 'Ask what the file was called',
           next: 'called',
           effects: [{ asks: true }],
@@ -528,6 +562,36 @@ const WAREHOUSE: DialogueTree = {
               reveal: 'There is a scanning tablet in the warehouse cupboard '
                 + 'that has been signed in as her since 2019, and it still has '
                 + 'the password she had before the spring.',
+            },
+          ],
+        },
+        {
+          // The milder register on a diagnostic beat: the same question, the
+          // same reveal, asked with no patience left. It is short rather than
+          // crude, which is the far end of the range from the ones that swear -
+          // and it still costs, because short with a user is still a choice.
+          label: 'Ask her, without the patience, what else in that warehouse '
+            + 'signs in as her, since it is plainly not the computer at fault',
+          tone: 'aggressive',
+          next: 'tablet',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'There is a scanning tablet in the warehouse cupboard '
+                + 'that has been signed in as her since 2019, and it still has '
+                + 'the password she had before the spring.',
+            },
+            {
+              action: HELPDESK_ACTIONS.reporterRebuff,
+              target: 'ticket:stale-device-relock',
+              params: {
+                reaction_first: 'Hilda: "Charming. It throws me out four times '
+                  + 'a week and I get the tone. Noted." She answers the '
+                  + 'question anyway, because she wants it fixed.',
+                reaction_again: 'Hilda has stopped being amused. "That is '
+                  + 'enough of that. I have told the shift supervisor, and she '
+                  + 'has told me to tell you that she has told him."',
+              },
             },
           ],
         },

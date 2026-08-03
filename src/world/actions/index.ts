@@ -19,6 +19,7 @@ import { SERVICE_ACTIONS } from './service';
 import { SHARE_ACTIONS } from './share';
 import { SOFTWARE_ACTION_DATA } from './software';
 import { TICKET_ACTIONS } from './ticket';
+import { TONE_ACTION_DATA } from './tone';
 import { WORLD_ACTION_DATA } from './world';
 
 export {
@@ -108,6 +109,7 @@ export function helpdeskActions(): readonly ActionData[] {
     ...FACILITIES_ACTIONS,
     ...SECURITY_ACTIONS,
     ...TICKET_ACTIONS,
+    ...TONE_ACTION_DATA,
     ...DAY_ACTION_DATA,
     ...METER_ACTION_DATA,
     ...BOSS_ACTION_DATA,

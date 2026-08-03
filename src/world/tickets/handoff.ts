@@ -99,6 +99,12 @@ const NOT_WORK: ReadonlySet<string> = new Set<string>([
   // world, and a response clock stopped by a machine noticing its own spooler
   // had fallen over would be a clock stopped by nobody.
   HELPDESK_ACTIONS.machineRecordEvent,
+  // Being rude to the reporter is not work on their fault, and it must never be:
+  // the aggressive register's whole point is that the FIX is carried by other
+  // effects on the same reply, and a response clock stopped by a snap - or a
+  // handoff to second line that lists "was hostile toward the user" under what
+  // was tried - would be reading a social cost as a repair.
+  HELPDESK_ACTIONS.reporterRebuff,
 ]);
 
 export function countsAsWork(actionId: string): boolean {

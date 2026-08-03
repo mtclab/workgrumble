@@ -220,6 +220,43 @@ export const DND_CAUGHT_SCENE: CaughtScene = validateCaughtScene({
 });
 
 /**
+ * The one conversation in this family that is not about the machine at all.
+ *
+ * The key is not an app and cannot be installed: what the lead found was the
+ * player being rude to a user, out loud, while he happened to be at their
+ * shoulder. It is the caught-scene class rather than a new one for the same
+ * reason the status and install ones are - somebody comes down the corridor,
+ * there is a short conversation, a line goes on the file, the minutes are gone -
+ * and a second machinery for the same beat would be two ways of being spoken to
+ * that could disagree.
+ *
+ * It is never random. It arms on ONE thing and only that thing: an aggressive
+ * reply sent in the minutes he was standing there. The evidence is the sentence
+ * he heard, not a meter that drifted, which is why it reads the same as the
+ * other two - a fact about a minute somebody could point at.
+ */
+export const RUDE_CAUGHT_KEY = 'conduct:rude';
+
+export const RUDE_CAUGHT_SCENE: CaughtScene = validateCaughtScene({
+  appId: RUDE_CAUGHT_KEY,
+  title: 'A quick word about tone',
+  bossLine: 'Pat. I am going to assume the user could not hear you as clearly '
+    + 'as I could, because I was here and they were on the other end of it. We '
+    + 'do not talk to them like that. Even the ones who have earned it. '
+    + 'Especially the ones who have earned it.',
+  narration: 'He did not need to lean in for this one. He was already close '
+    + 'enough, which is the entire problem, and he lets the sentence sit for a '
+    + 'moment so that you can hear it back the way he just did.',
+  reply: 'You say the ticket still got fixed. He agrees that it did, and says '
+    + 'that is exactly why it is going on the file as tone and not as anything '
+    + 'that would have been easier to argue with.',
+  dismissLabel: 'Take it on the chin',
+  // What the FILE calls it: the passive voice of somebody who heard it and is
+  // writing it up later, not the words that were actually used.
+  fileSubject: 'hostile toward a user',
+});
+
+/**
  * Which scene goes with what he found: an app that was on the screen, or the
  * status that was on the desk.
  *
@@ -234,6 +271,10 @@ export function caughtScene(appId: string): CaughtScene | undefined {
 
   if (appId === INSTALL_CAUGHT_KEY) {
     return INSTALL_CAUGHT_SCENE;
+  }
+
+  if (appId === RUDE_CAUGHT_KEY) {
+    return RUDE_CAUGHT_SCENE;
   }
 
   return CAUGHT_SCENES.find((scene) => scene.appId === appId);

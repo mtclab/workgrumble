@@ -3,10 +3,13 @@ import { FIELDS } from '../fields';
 import { isDispatchableAction } from './dispatch';
 import { DIALOGUE_TREES } from './trees';
 import {
+  type DialogueEffect,
   type DialogueNode,
+  type DialogueOption,
   type DialogueTree,
   isAskEffect,
   isRevealEffect,
+  isSocialEffect,
 } from './types';
 
 export {
@@ -33,9 +36,12 @@ export {
   type DialogueEffect,
   type DialogueNode,
   type DialogueOption,
+  type DialogueTone,
   type DialogueTree,
   isAskEffect,
   isRevealEffect,
+  isSocialEffect,
+  SOCIAL_ACTIONS,
 } from './types';
 
 /**
@@ -251,10 +257,146 @@ export function validateDialogueTrees(
       }
     }
 
+    for (const node of tree.nodes) {
+      assertToneInvariant(tree, node);
+    }
+
     assertEveryNodeReachable(tree);
   }
 
   return Object.freeze([...trees]);
+}
+
+/**
+ * A ticket-work effect, serialised so two of them can be compared for being the
+ * same act on the same node with the same payload.
+ *
+ * A reveal is its note, an ask is an ask, and a dispatched action is its verb,
+ * its target and its parameters with the keys in a fixed order - because "same
+ * actions/targets" is the whole of what the tone gate has to prove, and two
+ * option literals authored months apart cannot be trusted to have written their
+ * `params` keys in the same order.
+ */
+function serialiseTicketWork(effect: Readonly<DialogueEffect>): string {
+  if (isRevealEffect(effect)) {
+    return `reveal|${effect.reveal}`;
+  }
+
+  if (isAskEffect(effect)) {
+    return 'ask';
+  }
+
+  const params = effect.params ?? {};
+  const keyed = Object.keys(params)
+    .sort()
+    .map((key) => `${key}=${JSON.stringify(params[key])}`)
+    .join(',');
+
+  return `action|${effect.action}|${effect.target}|${keyed}`;
+}
+
+/** The effects on an option that do the fix, in the order they run. */
+function ticketWork(option: Readonly<DialogueOption>): readonly string[] {
+  return (option.effects ?? [])
+    .filter((effect) => !isSocialEffect(effect))
+    .map(serialiseTicketWork);
+}
+
+function sameTicketWork(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return left.length === right.length
+    && left.every((line, index) => line === right[index]);
+}
+
+/**
+ * THE load-bearing gate: a toned reply is the same fix, said differently.
+ *
+ * The whole promise of the aggressive register - that you can be as rude as the
+ * option allows and the ticket still resolves - rests on one structural fact:
+ * an aggressive option's TICKET WORK is identical to a neutral option's on the
+ * same beat, and the only thing it adds is a social effect. This proves it at
+ * load, so a content file that quietly dropped the rotate from the rude reply, or
+ * changed which machine it rebooted, is a boot failure at the desk rather than a
+ * ticket the player loses for sarcasm three days into a walk.
+ *
+ * It has teeth in both directions:
+ * - an aggressive option with no social effect is a register that costs nothing,
+ *   which is not a register;
+ * - an aggressive option whose ticket work matches no neutral sibling is a fix
+ *   that changed with the tone, which is the exact thing forbidden;
+ * - a neutral option carrying a social effect is a cost with no register asking
+ *   for it, which is a snap the framework never authored.
+ */
+function assertToneInvariant(
+  tree: Readonly<DialogueTree>,
+  node: Readonly<DialogueNode>,
+): void {
+  for (const option of node.options) {
+    if (option.tone !== undefined && option.tone !== 'aggressive'
+      && option.tone !== 'neutral') {
+      throw new Error(
+        `Option "${option.label}" of "${tree.id}" is said in tone `
+        + `"${String(option.tone)}", which is not a register this build knows.`,
+      );
+    }
+
+    const social = (option.effects ?? []).some(isSocialEffect);
+
+    if (option.tone === 'aggressive') {
+      if (!social) {
+        throw new Error(
+          `Aggressive option "${option.label}" of "${tree.id}" carries no `
+          + 'social effect. A register that costs nothing is not a register - '
+          + 'the whole of the tone is the cost it adds.',
+        );
+      }
+
+      const work = ticketWork(option);
+
+      // The register is "the same FIX said rudely". An aggressive option with no
+      // ticket work at all has no fix to protect - and, worse, its empty work
+      // would match any do-nothing neutral sibling and slip the twin check
+      // below, which is the exact hole a dropped effect would fall through. So a
+      // toned reply has to carry a fix, and the twin check is what proves it is
+      // the SAME one.
+      if (work.length === 0) {
+        throw new Error(
+          `Aggressive option "${option.label}" of "${tree.id}" carries no `
+          + 'ticket work. The aggressive register is a fix said rudely; a rude '
+          + 'line with no fix on it has nothing for the tone to protect, and a '
+          + 'social cost with no fix beside it belongs somewhere else.',
+        );
+      }
+
+      const twin = node.options.find(
+        (other) => other !== option
+          && other.tone !== 'aggressive'
+          && sameTicketWork(ticketWork(other), work),
+      );
+
+      if (twin === undefined) {
+        throw new Error(
+          `Aggressive option "${option.label}" of "${tree.id}" has no neutral `
+          + 'twin on this beat with the same ticket work. A toned reply must run '
+          + 'the SAME fix as the plain one and only add the social cost; this '
+          + 'one either changed the fix or dropped it, which is the one thing '
+          + 'the tone framework forbids.',
+        );
+      }
+
+      continue;
+    }
+
+    if (social) {
+      throw new Error(
+        `Option "${option.label}" of "${tree.id}" is neutral but carries a `
+        + 'social effect. The cost belongs to the aggressive register; a plain '
+        + 'reply that pays it is a snap nobody chose.',
+      );
+    }
+  }
 }
 
 /**

@@ -136,6 +136,19 @@ export const HELPDESK_ACTIONS = {
    */
   ticketAddComment: 'ticket.add_comment',
   /**
+   * The one verb the aggressive register adds, and the only thing a toned reply
+   * does that its neutral twin does not.
+   *
+   * It is a SOCIAL cost and nothing else: it takes reputation off the player,
+   * lands the reporter's reaction on their stream (sharper the second time), and
+   * counts the snap. It never touches the ticket's estate - the fix is carried
+   * by the SAME effects the neutral reply runs, which is what makes "you never
+   * lose a ticket for being rude" a structural guarantee rather than a promise.
+   * `dialogue/types.ts` lists it in `SOCIAL_ACTIONS`, and the tone gate proves
+   * an aggressive option's ticket work is identical to a neutral one's.
+   */
+  reporterRebuff: 'reporter.rebuff',
+  /**
    * Writing BACK to the reporter: a statement rather than a question.
    *
    * Its own verb, and the difference is not decoration. Everything else that

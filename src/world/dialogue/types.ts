@@ -38,6 +38,39 @@ export type DialogueEffect =
   | DialogueRevealEffect
   | DialogueAskEffect;
 
+/**
+ * The register a reply is said in.
+ *
+ * `neutral` is how every line in the building has always been said, and an
+ * option with no tone at all is neutral by omission - which is what keeps every
+ * conversation written before this slice byte-for-byte the reply it was. The
+ * enum is open on purpose: the parked tones design (wry / cheerful / sarcastic /
+ * exhausted) slots more registers in later as CONTENT on this same framework,
+ * and each one that arrives is a value here and a social effect beside it, never
+ * a new power.
+ */
+export type DialogueTone = 'neutral' | 'aggressive';
+
+/**
+ * The registered actions that ARE a social consequence rather than ticket work.
+ *
+ * This is the load-bearing line of the whole tone framework. A toned option's
+ * effects are the SAME ticket-work effects the neutral reply on that beat would
+ * run, PLUS one of these - so the tone can only ever ADD a social cost and can
+ * never change or drop the fix. The gate in `index.ts` reads this set to prove
+ * it: the ticket-work effects of an aggressive option and its neutral twin on a
+ * beat have to be identical, and the only thing allowed to differ is which of
+ * these is on the end.
+ */
+export const SOCIAL_ACTIONS: ReadonlySet<string> = new Set<string>([
+  'reporter.rebuff',
+]);
+
+/** Whether an effect is a social consequence rather than ticket work. */
+export function isSocialEffect(effect: Readonly<DialogueEffect>): boolean {
+  return 'action' in effect && SOCIAL_ACTIONS.has(effect.action);
+}
+
 export function isRevealEffect(
   effect: Readonly<DialogueEffect>,
 ): effect is DialogueRevealEffect {
@@ -52,6 +85,13 @@ export function isAskEffect(
 
 export interface DialogueOption {
   readonly label: string;
+  /**
+   * The register the line is said in. Absent is `neutral`, and a neutral option
+   * behaves exactly as it did before tones existed - no social effect, no cost,
+   * no test that moves. An `aggressive` option is the same ticket work said
+   * rudely, with a `reporter.rebuff` on the end to pay for it.
+   */
+  readonly tone?: DialogueTone;
   /** Node to move to. Omitted means the conversation reaches an end. */
   readonly next?: string;
   /**

@@ -122,6 +122,8 @@ import {
   INSTALL_CAUGHT_KEY,
   INSTALL_CAUGHT_SCENE,
   PRESENCE_CAUGHT_KEY,
+  RUDE_CAUGHT_KEY,
+  RUDE_CAUGHT_SCENE,
 } from '../world/scenes';
 import {
   type InstallAuditReading,
@@ -630,6 +632,20 @@ export interface DayApi {
   answerInterruption(): DispatchResult;
   deferInterruption(): DispatchResult;
   declineInterruption(): DispatchResult;
+  /**
+   * A rude reply has just been sent, and the third of the tone's costs is the
+   * one only the corridor can levy: if the lead is at your shoulder in the
+   * minute you say it, he hears it, and it is the caught-scene class - a line on
+   * the file, the minutes off the shift, the closeable window.
+   *
+   * The shell calls it whenever an aggressive option is picked; it answers
+   * whether the beat fired, which is `true` only when he was actually present.
+   * It arms on that ONE thing and nothing else - not a meter, not a schedule -
+   * so it is telegraphed by the same footsteps every other conversation at this
+   * desk is, and a reply sent while he is in his office costs the reputation and
+   * the reporter's reaction and nothing here.
+   */
+  witnessedRudeReply(): boolean;
   /**
    * The desk. Both answer rather than throw: a refused can is a sentence the
    * player reads, not a crash, and the shell is the half that knows WHEN a can
@@ -2671,6 +2687,57 @@ export class DayDriver implements DayApi {
       + `down about it. The shift is ${String(CAUGHT_MINUTES)} minutes shorter `
       + 'and a line has gone on your file, which you can read. Taking the '
       + 'program off does not take the line off.',
+    );
+    return true;
+  }
+
+  /**
+   * The third of the aggressive register's costs, and the only one that is not
+   * world-enforced by the reply itself: the lead heard it.
+   *
+   * The reputation and the reporter's reaction ride the `reporter.rebuff` effect
+   * on the option, which pays whether or not anybody was listening. This is the
+   * part that depends on WHERE HE IS in the minute it was said, so it lives here
+   * with the rest of the corridor - and it is the caught-scene class, byte for
+   * byte the shape of the status and install beats: the same verb, a line on the
+   * file, the same minutes off the shift, the same closeable window.
+   *
+   * It arms on the one thing and never at random: `present` is he-is-at-your-
+   * shoulder RIGHT NOW, off the same seeded schedule the footsteps came from, so
+   * a reply sent while he is in his office fires nothing here. `bossCaught` puts
+   * suspicion on the floor a spoken-to person sits at, so it cannot drum - the
+   * next one costs another minute of him being in the room.
+   */
+  public witnessedRudeReply(): boolean {
+    if (this.state() !== 'shift') {
+      return false;
+    }
+
+    const now = this.engine.now();
+
+    if (patrolPhase(this.patrol_, now) !== 'present') {
+      return false;
+    }
+
+    const result = this.engine.dispatch(DAY_ACTIONS.bossCaught, this.actor, null, {
+      file_line: conductLine(now, 'conduct', RUDE_CAUGHT_SCENE.fileSubject),
+      // Not the status conversation and not the software one: those params stay
+      // absent, so nothing about the dot's record or the install audit moves.
+    });
+
+    if (!result.ok) {
+      return false;
+    }
+
+    this.slowDown('boss');
+    this.owedMinutes_ += CAUGHT_MINUTES;
+    this.handlers.onCaught?.(RUDE_CAUGHT_KEY, now, null);
+    this.handlers.onNotice?.(
+      `That is ${String(CAUGHT_MINUTES)} minutes`,
+      'The lead was at your shoulder when you said it, and he heard every word. '
+      + `The ticket still gets fixed; the shift is ${String(CAUGHT_MINUTES)} `
+      + 'minutes shorter and a line has gone on your file about your tone, which '
+      + 'you can read.',
     );
     return true;
   }

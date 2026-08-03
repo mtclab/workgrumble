@@ -1625,6 +1625,29 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'chat.aggressive',
+    surface: 'chat',
+    control: 'chat-option-<n> (aggressive register)',
+    does: 'Says the rude thing - up to telling a user where to go - and fixes '
+      + 'their ticket anyway: the same effect the plain reply runs, plus the '
+      + 'social cost, so the fix still happens and the standing pays for it.',
+    actions: [
+      HELPDESK_ACTIONS.machineSetDisplayRotation,
+      HELPDESK_ACTIONS.reporterRebuff,
+    ],
+    run: 'week',
+  },
+  {
+    id: 'chat.aggressive-escalates',
+    surface: 'chat',
+    control: 'chat-option-<n> (aggressive, repeated)',
+    does: 'Snaps at the same reporter twice: their reaction on the stream '
+      + 'sharpens and the standing pays a steeper toll the second time, which '
+      + 'is the register escalating rather than repeating.',
+    actions: [HELPDESK_ACTIONS.reporterRebuff],
+    run: 'week',
+  },
+  {
     id: 'chat.option-sticky',
     surface: 'chat',
     control: 'chat-option-<n> (Facilities)',
@@ -2491,6 +2514,22 @@ const ENTRIES = [
     why: 'Arming it is a program on the audit trail under a locked-down policy '
       + 'with the toy off the screen at an arrival, which is the install the '
       + 'golden weeks never make.',
+  },
+  {
+    id: 'caught.scene-rude',
+    surface: 'caught',
+    control: 'window-caught (a rude reply sent while he was at your shoulder)',
+    does: 'The one telling-off about a person rather than a screen: the lead '
+      + 'was present in the minute a user got told where to go, heard it, and '
+      + 'says so - and it is on the file as tone precisely because the ticket '
+      + 'still got fixed.',
+    actions: [DAY_ACTIONS.bossCaught],
+    scene: 'caught.rude',
+    run: 'fired',
+    why: 'Arming it needs the lead actually present in the minute an aggressive '
+      + 'reply is sent, which is a patrol arrival spent being rude rather than '
+      + 'caught at a screen - a week being worked properly can spare the arrival '
+      + 'for one such scene, not for this on top of the others.',
   },
 ] as const satisfies readonly CoverageEntry[];
 

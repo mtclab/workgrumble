@@ -874,6 +874,19 @@ export const FIELDS = {
   replied: 'replied',
   replyToReporter: 'reply_to_reporter',
   /**
+   * How many times the player has snapped at this ticket's reporter - the
+   * per-reporter counter behind the aggressive register.
+   *
+   * It lives on the ticket because a beat belongs to a ticket, and it is what
+   * makes "repeating it escalates" a fact the world holds rather than a promise:
+   * the first rude reply lands the reporter's reaction on their stream, and a
+   * second one reads this and lands the SHARPER one. Absent on every ticket
+   * nobody has been rude on, which is every ticket in every scripted week - so
+   * the field never appears on a golden and the arithmetic that reads it treats
+   * missing as nought.
+   */
+  rudeReplies: 'rude_replies',
+  /**
    * How long this ticket has been parked ALTOGETHER, in simulated minutes.
    *
    * The engine adds a minute to it every minute the ticket spends on hold, in

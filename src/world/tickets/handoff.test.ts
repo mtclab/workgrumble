@@ -173,6 +173,9 @@ describe('reading "what I tried" off the ticket', () => {
           // And a machine writing down what happened to it is the world
           // moving, not a tech trying something.
           HELPDESK_ACTIONS.machineRecordEvent,
+          // Being rude to the reporter is a social cost, not work on the fault:
+          // it never reaches a handoff, because the fix it rides beside does.
+          HELPDESK_ACTIONS.reporterRebuff,
         ]).toContain(id);
       }
     }
