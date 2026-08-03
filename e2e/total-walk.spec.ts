@@ -3366,9 +3366,11 @@ test('walks the web store, the install, the audit and the uninstall', async ({
   page,
 }) => {
   await recordControls(page);
-  // Three corridors and a reload cost most of ten minutes on the box; give it
-  // room rather than a cliff.
-  test.setTimeout(1_800_000);
+  // The 240s house class rather than the 30-minute default: a partial Monday
+  // and a reload are well under four minutes, and a walk that drives a
+  // newly-created surface must FAIL FAST if one of them hangs rather than eat
+  // half an hour and blow the whole suite's budget.
+  test.setTimeout(240_000);
   await logInOnDay(page, 1, { brief: 'keep' });
   await beginShift(page);
 
@@ -3397,7 +3399,18 @@ test('walks the web store, the install, the audit and the uninstall', async ({
     await expect(page.getByTestId('store-uninstall-mediaplayer')).toBeVisible();
   });
 
+  // Close the Browser window we installed FROM before reaching for the icons it
+  // was sitting over. A desktop double-click fights window stacking - the icon
+  // is "visible" behind the browser but every click lands on the browser - so
+  // the covering window comes down first, which also proves the freshly
+  // installed icon is genuinely reachable rather than blocked by a lasting
+  // overlay.
+  await page.getByTestId('close-browser').click();
+  await expect(page.getByTestId('window-browser')).toHaveCount(0);
+
   await step('arcade.window', async () => {
+    // The desktop is clear now, so the live-installed icon takes a real
+    // double-click: the desktop-icon route, on a surface nothing is covering.
     await openFromDesktopIcon(page, 'arcade');
     await expect(page.getByTestId('arcade-app')).toBeVisible();
   });
@@ -3410,7 +3423,10 @@ test('walks the web store, the install, the audit and the uninstall', async ({
   });
 
   await step('mediaplayer.window', async () => {
-    await openFromDesktopIcon(page, 'mediaplayer');
+    // The arcade window is open now and would sit over the media icon, so this
+    // one takes the start-menu route the other toys in these walks use - a menu
+    // overlay whose item click does not fight window geometry.
+    await openFromStartMenu(page, 'mediaplayer');
     await expect(page.getByTestId('media-app')).toBeVisible();
   });
 
