@@ -102,7 +102,14 @@ async function workBehindTheDot(page: Page): Promise<boolean> {
     return false;
   }
 
-  if (await page.getByTestId('desktop').getAttribute('data-takeover') !== null) {
+  // The desktop always carries a `data-takeover` attribute - it reads "none"
+  // when nothing holds the desk - so the test is for a real takeover value, not
+  // for the attribute's presence. A meeting or the workstation holds it; a
+  // ringing or slid interruption does not.
+  const takeover = await page.getByTestId('desktop')
+    .getAttribute('data-takeover');
+
+  if (takeover !== null && takeover !== 'none') {
     return false;
   }
 
@@ -310,19 +317,34 @@ test('behind the dot, the message is waved off and the morning is paid for', asy
   await page.getByTestId('presence-dnd').click();
   await expect(presenceState(page)).toHaveText('Do not disturb');
 
-  const suspicionBefore = await meter(page, 'scorecard-suspicion');
+  /*
+   * THE PRICE, AT ITS EXACT CADENCE. The drip is floor(minutes * 2 / 5) - two
+   * points per five-minute interval of working behind the dot - so five clean
+   * intervals from the top of the shift buy exactly ten points and not a
+   * fraction more. "Working" is a dispatched rotation the world accepts, read
+   * off the touch log; the interval is one meter boundary. The exact delta is
+   * the assertion with the teeth: a drip that charged the wrong rate, or
+   * sampled instead of integrating, would miss this by a point.
+   */
+  const dripFloor = await meter(page, 'scorecard-suspicion');
+  const DRIP_INTERVALS = 5;
 
-  // Across the hour the message would have landed in. By eleven the chat beat at
-  // ten to has already been slid by the dot, so this is the state to read the
-  // record in.
-  await workUntilMinute(page, 11 * 60 - 8 * 60);
+  for (let round = 0; round < DRIP_INTERVALS; round += 1) {
+    await workBehindTheDot(page);
+    await runSimMinutes(page, 5, 4);
+  }
+
+  expect(await meter(page, 'scorecard-suspicion'))
+    .toBe(dripFloor + DRIP_INTERVALS * 2);
 
   /*
-   * THE MESSAGE THAT DID NOT LAND. Nothing took the screen for it: the call
-   * window is open with nothing in it, and the record underneath is who tried
-   * and what about - Dennis, and the calendar - which is the honest trace the
-   * dot leaves.
+   * THE MESSAGE THAT DID NOT LAND. Idle behind the dot to just past ten to
+   * eleven - nothing worked, so no more drip, and the beat is nowhere near its
+   * mark - and the chat message slides rather than landing. The call window is
+   * open with nothing in it, and the record underneath is who tried and what
+   * about: Dennis, and the calendar.
    */
+  await workUntilMinute(page, 11 * 60 - 8 * 60);
   await openFromStartMenu(page, 'call');
   await expect(page.getByTestId('call-app'))
     .toHaveAttribute('data-call', 'none');
@@ -333,26 +355,11 @@ test('behind the dot, the message is waved off and the morning is paid for', asy
   await expect(missed).toContainText('calendar');
 
   /*
-   * THE PRICE. Now WORK behind the dot - a dispatched rotation the world
-   * accepts, which is what the drip reads - and the meter that reads the dot
-   * against the log climbs off the floor. "Working" is the accepted dispatch,
-   * asserted inside the helper; it is never a window's focus flag, which any
-   * arrival or the caught scene would drop.
-   */
-  for (let round = 0; round < DRIP_ROUNDS; round += 1) {
-    await workBehindTheDot(page);
-    await runSimMinutes(page, 5, 4);
-  }
-
-  expect(await meter(page, 'scorecard-suspicion'))
-    .toBeGreaterThan(suspicionBefore);
-
-  /*
-   * THE BEAT. Keep working behind the dot and the drip crosses the mark; the
+   * THE BEAT. Resume working behind the dot and the drip crosses the mark; the
    * corridor decides when, and the lead comes down about the status - the
    * caught-scene class, keyed to the dot rather than to a screen. The loop stops
-   * the moment the scene is up, and the work helper yields under it, so nothing
-   * reaches past a takeover to a desk that is not there.
+   * the moment the scene is up, and the work helper yields under a takeover, so
+   * nothing reaches past one to a desk that is not there.
    */
   const caught = page.getByTestId('window-caught');
 
