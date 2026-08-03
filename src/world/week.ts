@@ -37,6 +37,7 @@ import {
   shiftStartTick,
 } from './day';
 import type { ReadOnlyGraphNode } from '../engine-api';
+import type { AfterHoursSlot } from './after-hours';
 import { buildPatrolSchedule, patrolWindows } from './boss';
 import { COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
@@ -493,6 +494,16 @@ export interface DayScript {
   /** And who opens a chat with "Hi." and then makes you wait for the rest. */
   readonly noHello?: readonly NoHelloSlot[];
   /**
+   * And who pings you AFTER you clock off, in the gap before the next login.
+   *
+   * These are a property of the day BOUNDARY rather than of the shift: they
+   * arrive overnight, they are read on the next morning's brief, and they are
+   * neither tickets nor interruptions. A day authored here shows its pings on
+   * the FOLLOWING morning, so Friday's night has nowhere to be read and the last
+   * day carries none. See `src/world/after-hours.ts` for the trade they teach.
+   */
+  readonly afterHours?: readonly AfterHoursSlot[];
+  /**
    * A twist on the world seed for the lead's rounds, so two days do not walk
    * in lockstep even where their content is identical. Monday takes the seed
    * as it comes: it is the day every other schedule is read against.
@@ -552,6 +563,20 @@ export const WEEK: readonly DayScript[] = validateWeek([
         speaker: COMPANY_IDS.owen,
         minute: 10 * 60 + 50,
         typingMinutes: 5,
+      },
+    ],
+    // And, sometime after you have gone home, the man with eleven years'
+    // service remembering the thing he did not say on the phone. It is read on
+    // Tuesday's brief, it can be waved off by an overnight Do Not Disturb (he
+    // would not ping a busy dot), and answering it is a point of being the sort
+    // of person who answers, paid for with a point of it following you in.
+    afterHours: [
+      {
+        id: 'after:owen-monitor',
+        speaker: COMPANY_IDS.owen,
+        subject: 'Meant to say - the second screen has gone again. Not urgent, '
+          + 'it is gone eight, I only just sat down.',
+        declinable: true,
       },
     ],
     patrolSeed: 0,
@@ -673,6 +698,19 @@ export const WEEK: readonly DayScript[] = validateWeek([
           [FLAVOR.scene]: TICKET_HYGIENE_SYNC.id,
           [FLAVOR.subject]: TICKET_HYGIENE_SYNC.subject,
         },
+      },
+    ],
+    // And, late on, somebody trying to log in from home about the month-end
+    // run and finding the VPN will not have him. Read on Thursday's brief, waved
+    // off by an overnight Do Not Disturb like Owen's - the second of the week's
+    // two pings, which is what makes the surface a habit rather than a one-off.
+    afterHours: [
+      {
+        id: 'after:terry-vpn',
+        speaker: COMPANY_IDS.terry,
+        subject: 'Trying to get on from home for the month end and the VPN is '
+          + 'having none of it. Is that a tonight thing or a tomorrow thing?',
+        declinable: true,
       },
     ],
     patrolSeed: 5_927,
@@ -865,6 +903,7 @@ export function validateWeek(
 
   const scheduled = new Set<string>();
   const interruptions = new Set<string>();
+  const afterHours = new Set<string>();
 
   scripts.forEach((script, index) => {
     if (script.day !== index + 1) {
@@ -977,6 +1016,57 @@ export function validateWeek(
         slot.minute + slot.typingMinutes,
         slot.speaker,
       );
+    }
+
+    // And whoever pinged after hours. There is no minute to check - they land
+    // in the gap between one day and the next, not at a time on the clock - so
+    // what is checked is that the ping can be drawn and read: a person to be
+    // from, a line to be about, and an id the world can record the answer
+    // against. The id is week-wide unique for the same reason an interruption's
+    // is: two pings sharing one would share the record, so the second would
+    // arrive already answered.
+    //
+    // Friday's night is refused outright. A ping is read on the FOLLOWING
+    // morning, and Friday's following morning is a Saturday this game does not
+    // have - so a ping authored there is a ping nobody can ever reach, which is
+    // the quiet wrongness the loader exists to turn into a boot failure.
+    for (const slot of script.afterHours ?? []) {
+      const where = `Day ${String(script.day)}'s after-hours ping "${slot.id}"`;
+
+      if (slot.id.trim().length === 0) {
+        throw new Error(
+          `Day ${String(script.day)} carries an after-hours ping with no id.`,
+        );
+      }
+
+      if (isReviewDay(script.day)) {
+        throw new Error(
+          `${where} lands after the last day of the week, and a ping is read on `
+          + 'the following morning. There is no Saturday, so nobody ever reads '
+          + 'it.',
+        );
+      }
+
+      if (slot.speaker.trim().length === 0) {
+        throw new Error(`${where} is from nobody.`);
+      }
+
+      if (slot.subject.trim().length === 0) {
+        throw new Error(
+          `${where} says nothing. A ping with no subject is a blank line on the `
+          + 'morning surface with a point of stress behind it.',
+        );
+      }
+
+      if (afterHours.has(slot.id)) {
+        throw new Error(
+          `"${slot.id}" pings twice in one week. Two pings with one id share `
+          + 'the record of what was done about them, so the second arrives '
+          + 'already answered.',
+        );
+      }
+
+      afterHours.add(slot.id);
     }
 
     // And somebody at the desk. The interruption half is checked with all the
@@ -1398,6 +1488,18 @@ export function walkUpsOn(day: number): readonly WalkUpSlot[] {
 /** And who opens a chat today without saying what they want. */
 export function noHelloOn(day: number): readonly NoHelloSlot[] {
   return isWeekDay(day) ? dayScript(day).noHello ?? [] : [];
+}
+
+/**
+ * And who pinged after this day's clock-off, to be read on the next morning.
+ *
+ * Keyed to the NIGHT the pings landed on rather than the morning they are read:
+ * the caller (the driver, at a brief for day D) asks for day D-1, which is the
+ * night just gone. Off the end of the week there is nothing, which is also what
+ * a day with no `afterHours` column answers.
+ */
+export function afterHoursOn(day: number): readonly AfterHoursSlot[] {
+  return isWeekDay(day) ? dayScript(day).afterHours ?? [] : [];
 }
 
 /**

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 
-import { completeLogin, openFromStartMenu } from './helpers';
+import { completeLogin, logInOnDay, openFromStartMenu } from './helpers';
 
 /**
  * The house pattern (#15). An `expect` retries in REAL time while a raw speed
@@ -283,4 +283,37 @@ test('refuses a damaged save without taking the session with it', async ({
 
   await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
   await expect(page.getByTestId('day-state')).toHaveText('Shift');
+});
+
+/**
+ * The after-hours ping tail (slice 0.3.6, Part 1), on the shipped path.
+ *
+ * A day does not end when the shift does: a ping lands overnight and is read on
+ * the next morning's "while you were out" surface. The journey is the whole of
+ * it - the ping is there on Tuesday's brief, answering it strikes it through and
+ * takes the button away, and the trade it carries is the world's business, which
+ * the unit walk pins. Reached by playing Monday out and clocking off into
+ * Tuesday, which is the only way a next-morning surface can be reached.
+ */
+test('a ping that landed overnight is read and answered next morning', async ({
+  page,
+}) => {
+  await logInOnDay(page, 2, { brief: 'keep' });
+
+  // Tuesday's brief, with Monday night's ping on the overnight surface.
+  const night = page.getByTestId('brief-night');
+  await expect(night).toBeVisible();
+  await expect(night).toContainText('While you were out');
+
+  const item = page.getByTestId('brief-night-owen-monitor');
+  await expect(item).toHaveAttribute('data-answered', 'false');
+
+  const answer = page.getByTestId('brief-night-answer-owen-monitor');
+  await expect(answer).toBeVisible();
+  await answer.click();
+
+  // Answered: the button is gone and the ping is struck through, kept on the
+  // list rather than vanishing.
+  await expect(answer).toHaveCount(0);
+  await expect(item).toHaveAttribute('data-answered', 'true');
 });

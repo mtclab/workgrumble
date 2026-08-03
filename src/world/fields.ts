@@ -354,6 +354,24 @@ export const FIELDS = {
    */
   presenceNoticed: 'presence_noticed',
   /**
+   * The after-hours pings the player has answered, one id per line.
+   *
+   * A day does not end when the shift does: a ping or two lands overnight, in
+   * the gap between clocking off and the next login, and the "while you were
+   * out" surface on the morning brief is where they are read. Answering one is a
+   * tiny reputation gain paid against a tiny stress carryover into the new day;
+   * leaving it is free of both. This is the record that makes the trade once per
+   * ping - the world refuses a second answer off this field, so the button
+   * cannot be pressed twice for two lots of the same point, and a reload lands
+   * on the same answered set the save carried.
+   *
+   * ABSENT for anybody who has answered nothing, which is everybody who has
+   * never touched the surface - the same determinism argument the dot keeps: a
+   * field nothing writes is a field no scripted walk carries, so the golden
+   * weeks are byte-identical to the ones from before the tail existed.
+   */
+  afterHoursAnswered: 'after_hours_answered',
+  /**
    * The minute the room emptied after the mandatory sync, or absent while
    * nobody has sat through one.
    *

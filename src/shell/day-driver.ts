@@ -42,6 +42,12 @@ import {
   visitsTelegraphingBetween,
 } from '../world/boss';
 import {
+  type AfterHoursArrival,
+  AFTER_HOURS_REPUTATION,
+  AFTER_HOURS_STRESS,
+  afterHoursArrivals,
+} from '../world/after-hours';
+import {
   crashStartsAt,
   crashStress,
   DRINK_PRICE_PENCE,
@@ -117,6 +123,7 @@ import {
   PRESENCE_CAUGHT_KEY,
 } from '../world/scenes';
 import {
+  afterHoursOn,
   dayPlan,
   directMessagesOn,
   incidentsOn,
@@ -551,6 +558,24 @@ export interface DayApi {
    * exactly as the missed list is.
    */
   dodgedInterruptions(): readonly DodgedInterruption[];
+  /**
+   * The pings that landed after you clocked off last night, to be read on this
+   * morning's brief - each with whether it has already been answered.
+   *
+   * Free to read and changes nothing: it is the authored night joined to the
+   * dot the save carries and the answered record the world keeps, so the surface
+   * that draws it, a test and a reload all get the same list. Empty off the
+   * morning brief, empty on a morning with no night behind it (the first day),
+   * and short a ping wherever an overnight Do Not Disturb turned a declinable one
+   * away - which is the dot reaching across the night, not a fourth cost.
+   */
+  afterHoursPings(): readonly AfterHoursArrival[];
+  /**
+   * Answering one, from that surface. Answers rather than throws, like every
+   * other verb on this half: a second answer is refused in a sentence the player
+   * reads, and the world enforces the "once" off its own record.
+   */
+  answerAfterHours(id: string): DispatchResult;
   /**
    * Whether this person is mid-greeting: they have said hello, they have not
    * said what they want, and the dots are going.
@@ -1020,6 +1045,58 @@ export class DayDriver implements DayApi {
     }
 
     return dodged.sort((left, right) => left.tick - right.tick);
+  }
+
+  /**
+   * The pings from last night, as this morning's brief meets them.
+   *
+   * A pure read: the night just gone is `day - 1`, the authored pings for it are
+   * joined to the dot the player left on and the answers already given, and the
+   * result is the same on both sides of a save. Nothing here is written - the
+   * dodge under Do Not Disturb is a filter rather than a record, which is the
+   * round-trip the tail deliberately saves, and the only thing the world holds
+   * is the answer.
+   */
+  public afterHoursPings(): readonly AfterHoursArrival[] {
+    if (this.state() !== 'morning_brief') {
+      return [];
+    }
+
+    const night = this.day() - 1;
+
+    if (!isWeekDay(night)) {
+      return [];
+    }
+
+    const answered = new Set(
+      this.playerText(FIELDS.afterHoursAnswered)
+        .split('\n')
+        .filter((id) => id.length > 0),
+    );
+
+    return afterHoursArrivals(afterHoursOn(night), this.presence(), answered);
+  }
+
+  /**
+   * Answering one, through the same seam every other verb goes through.
+   *
+   * The two numbers are the world's constants rather than anything the surface
+   * chose - the shell knows it is a ping being answered, the world knows what a
+   * ping is worth and what it costs - and the world refuses a second answer off
+   * its own list, so this is a dispatch and a repaint and nothing the shell has
+   * to remember.
+   */
+  public answerAfterHours(id: string): DispatchResult {
+    return this.announced(this.engine.dispatch(
+      DAY_ACTIONS.afterHoursAnswer,
+      this.actor,
+      null,
+      {
+        id,
+        rep_up: AFTER_HOURS_REPUTATION,
+        stress_up: AFTER_HOURS_STRESS,
+      },
+    ));
   }
 
   /**

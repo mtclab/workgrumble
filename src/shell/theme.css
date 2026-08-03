@@ -3380,6 +3380,56 @@ input {
   font-style: italic;
 }
 
+/* The after-hours tail: what came in overnight, read before the shift. It is a
+   brief-panel like the two columns, so it inherits their frame; what is here is
+   only the list of pings and the strike a answered one wears. */
+.brief-night-note {
+  color: var(--color-ink-soft);
+}
+
+.brief-night-list {
+  display: grid;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.brief-night-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: baseline;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  box-shadow: var(--bevel-raised);
+  font-size: var(--text-xs);
+}
+
+.brief-night-subject {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+}
+
+/* Answered: struck through and dimmed, kept on the list rather than removed, so
+   the morning reads as a thing that was dealt with rather than a thing that
+   vanished. */
+.brief-night-item[data-answered="true"] {
+  opacity: var(--opacity-dim);
+}
+
+.brief-night-item[data-answered="true"] .brief-night-subject {
+  text-decoration: line-through;
+}
+
+.brief-night-done {
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+  font-style: italic;
+  white-space: nowrap;
+}
+
 .brief-footer,
 .scorecard-footer {
   display: flex;

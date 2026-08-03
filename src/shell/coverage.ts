@@ -630,6 +630,17 @@ const ENTRIES = [
     does: 'Opens the queue the morning has handed over.',
     run: 'week',
   },
+  {
+    id: 'brief.after-hours',
+    surface: 'brief',
+    control: 'brief-night-answer-*',
+    does: 'Answers a ping that landed after last night\'s clock-off, from the '
+      + '"while you were out" surface: a point of reputation paid against a '
+      + 'point of stress carried into the day. Leaving it is free and reaches '
+      + 'nothing.',
+    actions: [DAY_ACTIONS.afterHoursAnswer],
+    run: 'week',
+  },
 
   /* -- the day scorecard -------------------------------------------------- */
   {
@@ -2560,6 +2571,7 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'brief-start-shift',
   'brief-open-tickets',
   'brief-open-mail',
+  'brief-night-answer-*',
   'scorecard-clock-off',
   'caught-dismiss',
   'call-answer',

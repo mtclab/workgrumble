@@ -62,6 +62,14 @@ export const BRIEF_APP: AppDef = {
     const stamp = element('p', 'brief-stamp', 'brief-stamp');
     head.append(heading, stamp);
 
+    // The overnight surface, above the two columns because it is the one thing
+    // on this screen that is about last night rather than about the day ahead.
+    // Hidden outright when nobody pinged - a "while you were out" heading over an
+    // empty list is a small lie, and an overnight Do Not Disturb legitimately
+    // empties it.
+    const nightPanel = element('section', 'brief-panel brief-night', 'brief-night');
+    nightPanel.hidden = true;
+
     const mailPanel = element('section', 'brief-panel', 'brief-mail');
     const queuePanel = element('section', 'brief-panel', 'brief-queue');
     const columns = element('div', 'brief-columns');
@@ -74,7 +82,7 @@ export const BRIEF_APP: AppDef = {
     const note = element('p', 'brief-note', 'brief-note');
     footer.append(start, note);
 
-    root.append(head, columns, footer);
+    root.append(head, nightPanel, columns, footer);
 
     start.addEventListener('click', () => {
       api.day.startShift();
@@ -180,6 +188,64 @@ export const BRIEF_APP: AppDef = {
       queuePanel.append(open);
     };
 
+    const renderNight = (): void => {
+      const pings = api.day.afterHoursPings();
+
+      nightPanel.hidden = pings.length === 0;
+      nightPanel.replaceChildren();
+
+      if (pings.length === 0) {
+        return;
+      }
+
+      const heading2 = element('h3');
+      heading2.textContent = 'While you were out';
+      const note = element('p', 'brief-night-note', 'brief-night-note');
+      note.textContent = 'These landed after you clocked off. Answering one is '
+        + 'a small point in your favour and a small point of it following you '
+        + 'into today; leaving it is free. Nobody is counting either way.';
+      nightPanel.append(heading2, note);
+
+      const list = element('ul', 'brief-night-list', 'brief-night-list');
+
+      for (const ping of pings) {
+        const item = element(
+          'li',
+          'brief-night-item',
+          `brief-night-${nodeKey(ping.slot.id)}`,
+        );
+        item.dataset.answered = String(ping.answered);
+
+        const from = element('strong', 'brief-night-from');
+        from.textContent = textValue(
+          api.graph.getField(ping.slot.speaker, FIELDS.name),
+          ping.slot.speaker,
+        );
+        const subject = element('span', 'brief-night-subject');
+        subject.textContent = ping.slot.subject;
+        item.append(from, subject);
+
+        if (ping.answered) {
+          const done = element('span', 'brief-night-done', 'brief-night-done');
+          done.textContent = 'Answered';
+          item.append(done);
+        } else {
+          const answer = osButton('Answer', `brief-night-answer-${nodeKey(ping.slot.id)}`, {
+            compact: true,
+          });
+          answer.addEventListener('click', () => {
+            api.day.answerAfterHours(ping.slot.id);
+            render();
+          });
+          item.append(answer);
+        }
+
+        list.append(item);
+      }
+
+      nightPanel.append(list);
+    };
+
     const render = (): void => {
       const day = api.day.day();
       const state = api.day.state();
@@ -200,6 +266,7 @@ export const BRIEF_APP: AppDef = {
       // The panels are rebuilt every minute, and the player may be standing on
       // one of the buttons inside them when the clock moves.
       withFocusRestored(root, () => {
+        renderNight();
         renderMail();
         renderQueue();
       });

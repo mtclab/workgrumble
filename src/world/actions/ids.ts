@@ -366,6 +366,16 @@ export const DAY_ACTIONS = {
   reviewPassed: 'day.review_passed',
   reviewFired: 'day.review_fired',
   reviewRedundant: 'day.review_redundant',
+  /**
+   * Answering a ping that landed after you clocked off, from the morning brief.
+   *
+   * A verb rather than a shell flag because what it does is world state: a tiny
+   * reputation gain paid against a tiny stress carryover into the new day, and
+   * the record that keeps the trade once per ping. The world enforces the
+   * "once" off its own list, so a button pressed twice is a no-op with a
+   * sentence rather than two lots of the same point.
+   */
+  afterHoursAnswer: 'day.after_hours_answer',
   /** Friday's clock-off. There is no Saturday, so the week stops here. */
   endWeek: 'day.end_week',
   /** Opening a can: money out, empties up, and a clock the crash reads. */
