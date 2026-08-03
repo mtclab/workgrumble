@@ -31,6 +31,27 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.4.4',
+    date: '2026-08-03',
+    summary: 'This update adds a game that is actually a game.',
+    lines: Object.freeze([
+      'Office Solitaire is now in the software catalogue. It is real '
+        + 'Solitaire - a real deck, dealt properly, with every rule your wrist '
+        + 'already knows and no rule it does not. It is free, in the sense '
+        + 'that it came bundled with an operating system you did not buy. It '
+        + 'is the first program on this machine that does what it says.',
+      'Installing it works the way installing anything works here: fine, and '
+        + 'noted. Solitaire is not on the approved list, because nothing is, '
+        + 'and playing it drains the same tension the Browser did, only '
+        + 'better, because it is a better way to not work. The lead knows '
+        + 'what Solitaire looks like from behind. He invented looking at it '
+        + 'from behind.',
+      'Minesweeper is still marked coming soon. It is coming. The person who '
+        + 'writes these notes has been asked to stop promising dates and has '
+        + 'agreed, in writing, with a date.',
+    ]),
+  },
+  {
     version: '0.4.3',
     date: '2026-08-03',
     summary: 'This update makes Do Not Disturb cost something.',
