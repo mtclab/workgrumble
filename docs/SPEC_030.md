@@ -486,3 +486,55 @@ audit-recorded). Solvability + determinism (install set = save state). Coverage 
 about the three app categories. Goldens byte-identical (empty install set in walks) unless a
 walk installs - argue every number. Off-hours silence extended to any new fields. Both halves
 box, count checked; codex wave before release.
+
+---
+
+# Slice 0.4.1 - a tone of voice: the aggressive register (issue #18)
+
+Owner-requested: the player can tell a user where to go - up to and including telling them to
+fuck off. This is the aggressive register of the parked response-tones design (reply options
+gain a register; the others - wry / cheerful / sarcastic / exhausted - are content on this same
+framework later). Ships the FRAMEWORK + aggressive + neutral baseline. Follows 0.4.0 (shares
+dialogue/meters/coverage surface with the E3 lane - built next, not in parallel).
+
+## The load-bearing rule (house, structural, not a promise)
+
+Tone NEVER changes whether the ticket resolves. You can be as rude as the option allows and the
+fix still happens - you never lose a ticket for sarcasm. The consequence is SOCIAL and real:
+
+- a reputation cost (a genuinely rude reply damages your standing);
+- the reporter reacts - the next message in their stream sharpens, and repeating it escalates
+  (they complain / it comes back), reusing the customer-visible-stream machinery;
+- boss watching (patrol present) when it is sent -> a suspicion beat, caught-scene class,
+  evidence-armed (you were seen telling a user to get lost), never random;
+- it scales with the register: neutral costs nothing, aggressive costs the lot.
+
+## The mechanism (on the existing dialogue data model)
+
+- `DialogueOption` gains an optional `tone` (`neutral` | `aggressive`; extensible). Data.
+- A toned option's `effects` are the SAME ticket-work effects the neutral reply would run
+  (identical resolution path) PLUS a social-consequence registered action. The tone changes the
+  SOCIAL effect list, never the ticket effect list - which is what makes "the fix still happens"
+  a structural guarantee. The gate asserts the ticket-work effects of the aggressive and neutral
+  options on a beat are identical; only the social effects differ.
+- The crude line is authored CONTENT on the beat - genuinely blunt, the register the owner
+  asked for. The game does not endorse it: the social cost is always paid, it is a deliberate
+  pick, never the default option.
+
+## Content
+
+Aggressive options on SELECTED beats where the user has earned it (tone appears only where
+personality shows - a content multiplier, so not all 23 tickets). The fully-crude option on one
+or two of the most infuriating beats (the catharsis asked for); milder-aggressive on the rest,
+so it reads as a register and not a single button.
+
+## Gates
+
+The INVARIANT (aggressive reply resolves its ticket byte-identically to neutral + applies the
+social cost) asserted as a gate with teeth (a tone that drops a ticket effect reds it). Journey:
+send it, ticket still closes, reputation drops, boss-watching -> suspicion beat, repeat ->
+reporter escalates. Solvability unchanged (tone never blocks a path). Determinism. Goldens: move
+for rep/suspicion if a walk picks a toned option, argued - else walks pick neutral and goldens
+are byte-identical (assert which). Off-hours; save round-trip; both halves box; codex wave.
+Owner calibration: genuinely blunt per the directive, never endorsed (real cost); dial back at
+review if too far.
