@@ -145,16 +145,6 @@ export class AssistantVoice {
   /** Whether this instance has produced a real paint yet - a load lands here. */
   private painted = false;
   /**
-   * Whether a phone was ringing / a reboot was coming on the LAST paint.
-   *
-   * The gag comes back on the next big event, and "next" means the next fresh
-   * ARRIVAL - a new call is a new event even if it is the same kind as the one
-   * the player closed it during. So the arrival is an edge, false-to-true, and
-   * these are the previous side of it.
-   */
-  private wasRinging = false;
-  private wasReboot = false;
-  /**
    * Whether the line currently up is the note about having been closed.
    *
    * The note is the whole point of the dismissal-memory gag, so it must not be
@@ -182,16 +172,6 @@ export class AssistantVoice {
   ): AssistantView | null {
     this.followTakeovers(world, tick);
 
-    // The big-event arrival edges, computed before any early return so the
-    // previous-state flags never go stale: a call that arrives during a
-    // takeover is still a fresh call the minute the desk comes back.
-    const bigEventArrived = (world.ringing && !this.wasRinging)
-      || (world.rebootComing && !this.wasReboot)
-      // The desk being handed back this very tick is the third arrival.
-      || this.handedBackAt === tick;
-    this.wasRinging = world.ringing;
-    this.wasReboot = world.rebootComing;
-
     const freshlyBack = this.handedBackAt !== null
       && tick >= this.handedBackAt
       && tick - this.handedBackAt < ASSISTANT_HANDBACK;
@@ -207,11 +187,16 @@ export class AssistantVoice {
     this.painted = true;
 
     if (memory.closedOnDay !== null) {
-      // Three ways a closed character is owed its way back: a fresh mount (a
-      // reload re-arrives it), a new day, or a big event that just arrived.
-      const returned = !mounted
-        || world.day !== memory.closedOnDay
-        || bigEventArrived;
+      // Two ways a closed character is owed its way back, and closing it now
+      // means something because a big event is NOT one of them (slice 0.3.6,
+      // F7). Once it is shut it stays shut for the rest of THIS day, however
+      // many calls, reboots and hand-backs land after - the whole point of the
+      // close is a quiet the player bought and could not before, because every
+      // takeover used to re-admit it and the only move was to shut it again. It
+      // still returns tomorrow (`world.day` moved on) with the escalated note,
+      // and it still re-arrives on a fresh mount, because a reload is a new
+      // session rather than the one the player closed it in.
+      const returned = !mounted || world.day !== memory.closedOnDay;
 
       if (!returned) {
         // The quiet the player bought by closing it.
@@ -274,8 +259,6 @@ export class AssistantVoice {
     this.held = false;
     this.painted = false;
     this.holdingGag = false;
-    this.wasRinging = false;
-    this.wasReboot = false;
   }
 
   private followTakeovers(

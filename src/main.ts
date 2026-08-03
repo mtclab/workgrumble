@@ -188,6 +188,30 @@ async function boot(): Promise<void> {
     onNotice: (title, body) => {
       shell.notify(title, body);
     },
+    // The clock dropping to x1, said out loud. It is a self-dismissing toast
+    // like every other notice, and it is deliberately about the CLOCK rather
+    // than about the thing that came in - that already has its own window and
+    // its own notice. What this closes is the 0.3.2 flag: the drop leaves no
+    // signal but the speed button, nothing brings the speed back but the player,
+    // and an afternoon set to x4 could run the rest of itself at x1 unnoticed.
+    onClockDropped: (cause) => {
+      const why = cause === 'boss'
+        ? 'the lead came round'
+        : cause === 'meeting'
+          ? 'a meeting started'
+          : cause === 'machine'
+            ? 'the workstation took the desk'
+            : cause === 'chat'
+              ? 'a message came in'
+              : cause === 'walk_up'
+                ? 'somebody came to the desk'
+                : 'a call came in';
+      shell.notify(
+        'Clock dropped to x1',
+        `The clock is back to x1 because ${why}. It stays there until you put `
+        + 'it back up - nothing speeds it up again but you.',
+      );
+    },
     // The world has already been told what being caught costs. What is left is
     // the scene, which is a window like any other - closeable, on top of a
     // queue that is still there underneath it.

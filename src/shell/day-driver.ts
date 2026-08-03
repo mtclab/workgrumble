@@ -669,6 +669,18 @@ export interface DayDriverHandlers {
   /** Something the player ought to be told about. */
   onNotice?(title: string, body: string): void;
   /**
+   * The clock was just dropped to x1, and by what.
+   *
+   * Fired ONLY on a real drop - a takeover landing while the clock is already
+   * at x1 fires nothing - and never on the way back up, because there is no way
+   * back up but the player's own hand. It is a telegraph rather than a notice
+   * about the interruption: those exist already, and this is the separate fact
+   * that the SPEED the afternoon was chosen at is gone and will not come back on
+   * its own. The shell shows it self-dismissing; the cause is here so it can say
+   * what came in.
+   */
+  onClockDropped?(cause: InterruptionSource | 'boss'): void;
+  /**
    * The lead has arrived and there was something on the screen. The world has
    * already been told - suspicion, reputation and the count are moved before
    * this is called - and what is left is the scene, which is the shell's.
@@ -1095,9 +1107,23 @@ export class DayDriver implements DayApi {
    *
    * Pause is untouched in both directions. A day that was stopped when the
    * phone rang is still stopped, and it is still stopped at x1.
+   *
+   * And the drop says so. The only signal it used to leave was the speed button
+   * moving under nobody's hand, so an afternoon chosen at x4 could be run at x1
+   * for the rest of the day without the player ever registering that it had
+   * been dropped - and the no-auto-restore rule made that permanent. The
+   * telegraph fires exactly when the clock ACTUALLY drops (a takeover that lands
+   * while the clock is already at x1 changes nothing and says nothing), naming
+   * what came in, so the change is a fact the player was told rather than one
+   * they have to notice.
    */
-  private slowDown(): void {
+  private slowDown(cause: InterruptionSource | 'boss'): void {
+    const was = this.speed_;
     this.setSpeed(EVENT_SPEED);
+
+    if (was !== EVENT_SPEED) {
+      this.handlers.onClockDropped?.(cause);
+    }
   }
 
   /** True while the clock is actually converting real time into ticks. */
@@ -2237,7 +2263,7 @@ export class DayDriver implements DayApi {
         // It is not an interruption ENTRY - the corridor is its own schedule -
         // so it says so here rather than through `slowsTheClock`, which is a
         // question about sources.
-        this.slowDown();
+        this.slowDown('boss');
         // And the price, which is the clock rather than the scoreboard: he is
         // here now, and getting back to what you were doing is the rest of it.
         this.owedMinutes_ += CAUGHT_MINUTES;
@@ -2345,7 +2371,7 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    this.slowDown();
+    this.slowDown('boss');
     this.owedMinutes_ += CAUGHT_MINUTES;
     this.handlers.onCaught?.(PRESENCE_CAUGHT_KEY, visit.arrivalTick, minutes);
     this.handlers.onNotice?.(
@@ -2819,7 +2845,7 @@ export class DayDriver implements DayApi {
     this.assertOneTakeover(entry);
 
     if (slowsTheClock(entry.source)) {
-      this.slowDown();
+      this.slowDown(entry.source);
     }
 
     const benign = isBenign(entry, this.ticketInHand());

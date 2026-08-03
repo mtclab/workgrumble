@@ -56,6 +56,8 @@ interface Harness {
   readonly onScreen: string[];
   /** Every catch the corridor made, in the minute it made it. */
   readonly caught: string[];
+  /** Every telegraph the driver fired when the clock actually dropped. */
+  readonly dropped: string[];
 }
 
 /**
@@ -71,6 +73,7 @@ function harnessOn(day: number): Harness {
   const session = createWorldSession();
   const onScreen: string[] = [];
   const caught: string[] = [];
+  const dropped: string[] = [];
   const driver = new DayDriver(
     session.engine,
     COMPANY_IDS.player,
@@ -81,6 +84,9 @@ function harnessOn(day: number): Harness {
       focusedSlackApp: () => onScreen[0] ?? null,
       onCaught: (appId) => {
         caught.push(appId);
+      },
+      onClockDropped: (cause) => {
+        dropped.push(cause);
       },
     },
   );
@@ -99,7 +105,8 @@ function harnessOn(day: number): Harness {
 
   driver.startShift();
   caught.length = 0;
-  return { driver, session, onScreen, caught };
+  dropped.length = 0;
+  return { driver, session, onScreen, caught, dropped };
 }
 
 /** Every open ticket closed the way its own content says it can be. */
@@ -450,6 +457,63 @@ describe('pause is a different question', () => {
 
     expect(world.driver.interruption()?.entry.id).toBe('call:spooler');
     expect(world.driver.speed()).toBe(1);
+  });
+});
+
+/* -- the telegraph on the drop (F2) --------------------------------------- */
+
+/**
+ * The drop leaves a word behind it now (slice 0.3.6, F2).
+ *
+ * The only signal a drop ever left was the speed button moving, so an afternoon
+ * chosen at x4 could run the rest of itself at x1 with nobody the wiser and the
+ * no-auto-restore rule making it permanent. The telegraph fires exactly when
+ * the clock ACTUALLY drops - and says nothing when a takeover lands on a clock
+ * that was already at x1, because nothing changed and a telegraph about nothing
+ * is noise. Reverting the telegraph reds the first case; reverting the "only on
+ * a real drop" guard reds the second.
+ */
+describe('the drop tells the player it happened', () => {
+  it('fires a telegraph naming the cause when the clock is actually dropped', () => {
+    const world = harnessOn(2);
+    const entry = entryOn(world.session, 2, 'call:spooler');
+
+    world.driver.setSpeed(4);
+    turnTo(world.driver, world.session, entry.tick - 1);
+    expect(world.dropped).toEqual([]);
+
+    turnTo(world.driver, world.session, entry.tick);
+
+    expect(world.driver.speed()).toBe(1);
+    expect(world.dropped).toEqual(['call']);
+  });
+
+  it('says nothing when the takeover lands on a clock already at x1', () => {
+    const world = harnessOn(2);
+    const entry = entryOn(world.session, 2, 'call:spooler');
+
+    // The player is already watching at x1: the arrival changes no speed, so
+    // there is no drop to announce.
+    world.driver.setSpeed(1);
+    turnTo(world.driver, world.session, entry.tick);
+
+    expect(world.driver.interruption()?.entry.id).toBe('call:spooler');
+    expect(world.driver.speed()).toBe(1);
+    expect(world.dropped).toEqual([]);
+  });
+
+  it('names the lead when the corridor drops it', () => {
+    const world = harnessOn(1);
+
+    world.onScreen.push('bubbles');
+    world.driver.setSpeed(4);
+
+    while (world.caught.length === 0 && world.driver.state() === 'shift') {
+      world.driver.step(DRIVER_INTERVAL_MS);
+    }
+
+    expect(world.driver.speed()).toBe(1);
+    expect(world.dropped).toEqual(['boss']);
   });
 });
 

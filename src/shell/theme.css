@@ -1002,12 +1002,23 @@ input {
   border-right: var(--border-hair) solid var(--color-bevel-light);
 }
 
+/*
+ * F1: the window row can be crowded off the taskbar by the fixed tray cluster
+ * (chips + the presence control + the speed buttons), and `overflow: hidden`
+ * with no scroll meant the buttons it clipped were simply unreachable. It
+ * scrolls now: when the open windows do not fit, the row is a strip you can
+ * drag or wheel along rather than a set of buttons that vanish. The other half
+ * of the fix is collapsing the presence word (see `.presence-state`) so the
+ * fixed cluster stops eating the row in the first place.
+ */
 .taskbar-windows {
   display: flex;
   flex: 1;
   gap: var(--space-2);
   align-items: center;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .taskbar-button {
@@ -1098,14 +1109,23 @@ input {
 }
 
 /*
- * The durability chip, in the same clothes as the fumble chip and for the
- * opposite reason: this one is not a joke. It is up whenever a write has
- * failed and nothing has succeeded since.
+ * The durability chip - the one chip on this taskbar that is NOT a joke.
+ *
+ * It used to wear the fumble chip's exact clothes (a soft wash with alarm-
+ * coloured text), which was the legibility bug: the serious chip and the
+ * cosmetic-joke chip read as the same red, and the one real debuff beside them
+ * - the refocus chip - read as neutral. Severity was crossing colour. So this
+ * one is now a SOLID alarm fill with light ink and a raised edge: a filled
+ * warning, unmistakably a different weight from the washed joke beside it,
+ * because "the browser stopped keeping your week" is not the same sentence as
+ * "your hands are shaking" and must not look like it. It is up whenever a
+ * write has failed and nothing has succeeded since.
  */
 .save-chip {
   padding: var(--space-1) var(--space-3);
-  background: var(--color-alarm-soft);
-  color: var(--color-alarm);
+  background: var(--color-alarm);
+  color: var(--color-alarm-ink);
+  box-shadow: var(--bevel-raised);
   font-size: var(--text-xs);
   font-weight: 700;
   white-space: nowrap;
@@ -3194,11 +3214,28 @@ input {
   min-width: var(--size-day-controls);
 }
 
+/*
+ * F1: the status word is collapsed by default and revealed on hover or focus.
+ *
+ * It used to reserve ~84px of the taskbar at all times, which is a fixed bite
+ * out of the window row on every screen whether or not anybody is reading it.
+ * The three dots carry the status on their own - the active lamp is coloured
+ * and the others are dimmed - so the word only has to be THERE when it is
+ * wanted: the control's `title` names it for a hover, and hovering or tabbing
+ * into the cluster spells it out in place. The 84px is spent when the word is
+ * shown and given back the rest of the time.
+ */
 .presence-state {
-  min-width: var(--size-presence-state);
+  max-width: 0;
+  overflow: hidden;
   color: var(--color-ink-soft);
   font-size: var(--text-xs);
   white-space: nowrap;
+}
+
+.presence-control:hover .presence-state,
+.presence-control:focus-within .presence-state {
+  max-width: var(--size-presence-state);
 }
 
 .presence-state[data-presence="dnd"] {
@@ -4164,6 +4201,49 @@ input {
 .screen-desktop[data-takeover="machine"] .window-layer > *:not([data-app-id="reboot"]) {
   pointer-events: none;
   opacity: var(--opacity-eclipsed);
+}
+
+/*
+ * F6: the tray's presence control reads inert under a takeover too.
+ *
+ * The desk goes dim and dead under a block, but the tray beside it stayed fully
+ * live - so the presence buttons looked clickable, and clicking one refused
+ * (there is no desk to show a dot to) and popped its refusal panel OVER the
+ * meeting. A refused click that answers you back through the thing that refused
+ * it is worse than a dead one. So the presence control - the one tray control a
+ * takeover actually turns away - is made inert and dimmed while a block holds
+ * the desk, so it stops inviting the click it is only going to refuse.
+ *
+ * The pause and speed cluster are deliberately LEFT live: 0.3.0's exemption is
+ * that a block takes the desk and not the clock, those controls do not refuse
+ * (they change how fast the half hour passes, which is the one thing a player
+ * locked out of the desk still wants), and a block with no way to run the clock
+ * under it is the dead end the house rules forbid.
+ */
+.screen-desktop[data-takeover="meeting"] .presence-control,
+.screen-desktop[data-takeover="machine"] .presence-control {
+  pointer-events: none;
+  opacity: var(--opacity-dim);
+}
+
+/*
+ * F8: the lead's telegraph does not render over a machine (or meeting) takeover.
+ *
+ * The footsteps sweep and the taskbar tremor are a warning to clear the screen
+ * in the minute before he arrives - and behind an update screen or a meeting
+ * they are a warning about nothing, aimed at a desk nobody can touch. The
+ * schedule keeps his ARRIVAL off a takeover, but the telegraph that precedes it
+ * can still land against one, so the ambient half is suppressed while a block
+ * holds the desk. The chip may stay: it is a fact on a shelf, not an alarm.
+ */
+.screen-desktop[data-takeover="meeting"] .door-flash,
+.screen-desktop[data-takeover="machine"] .door-flash {
+  display: none;
+}
+
+.screen-desktop[data-takeover="meeting"] .taskbar,
+.screen-desktop[data-takeover="machine"] .taskbar {
+  animation: none;
 }
 
 /* The window itself is the screen: no beige, no padding, no seams. */

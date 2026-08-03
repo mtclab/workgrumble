@@ -277,7 +277,10 @@ describe('being closed', () => {
     expect(after?.line.id).not.toBe(note);
   });
 
-  it('comes back for the next thing that happens to the player', () => {
+  it('stays closed through a big event on the same day (F7)', () => {
+    // Slice 0.3.6, F7: closing it now MEANS something within the day. A big
+    // event used to re-admit it, so the only move was to shut it again on every
+    // call and every reboot; now a close is honoured until the day turns.
     const shell = new Shell();
 
     shell.speak(desk({ openTickets: 1 }), 60);
@@ -285,33 +288,33 @@ describe('being closed', () => {
 
     expect(shell.speak(desk({ openTickets: 1 }), 70)).toBeNull();
 
-    const rings = shell.speak(desk({ openTickets: 1, ringing: true }), 80);
+    // A phone rings, same day: it does NOT bring the character back. (Re-adding
+    // the big-event re-admit reds this.)
+    expect(shell.speak(desk({ openTickets: 1, ringing: true }), 80)).toBeNull();
+    // A workstation on its way back, same day: still nothing.
+    expect(shell.speak(desk({ openTickets: 1, rebootComing: true }), 95))
+      .toBeNull();
 
-    expect(rings?.line.id).toBe(returningLine(1).id);
+    // Tomorrow it is back, with the note about having been closed.
+    const tomorrow = shell.speak(desk({ openTickets: 1, day: 2 }), 60);
+
+    expect(tomorrow?.line.id).toBe(returningLine(1).id);
   });
 
-  it('comes back for a SECOND call after being closed during the first', () => {
-    // P2-1: "next big event" is the next OCCURRENCE, not the next different
-    // kind. Closed during a call, it stayed shut for every later call that day
-    // because the kind had not changed - so a whole afternoon of phones went
-    // unremarked. A fresh ring is a fresh arrival and brings it back.
+  it('stays shut for a whole afternoon of calls once closed (F7)', () => {
+    // Closed during a call, it stays shut for every later call THAT DAY - the
+    // quiet the player bought. Re-admitting on the next fresh ring was the exact
+    // move F7 removed: a close you have to make again on every phone is not one.
     const shell = new Shell();
 
-    // Closed while the first call is ringing.
     shell.speak(desk({ ringing: true }), 60);
     shell.dismiss(1);
 
-    // The same call, still ringing, does not readmit it - that is the call it
-    // was closed during.
+    // The same call, still ringing, and then call after call, same day: shut.
     expect(shell.speak(desk({ ringing: true }), 61)).toBeNull();
-
-    // The call ends...
     expect(shell.speak(desk({ openTickets: 1 }), 65)).toBeNull();
-
-    // ...and a second call, same day, is a fresh arrival that brings it back.
-    const second = shell.speak(desk({ ringing: true }), 90);
-
-    expect(second?.line.id).toBe(returningLine(1).id);
+    expect(shell.speak(desk({ ringing: true }), 90)).toBeNull();
+    expect(shell.speak(desk({ ringing: true }), 140)).toBeNull();
   });
 
   it('escalates the note by the number of times it has been closed', () => {

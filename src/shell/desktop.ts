@@ -1719,6 +1719,12 @@ export class Desktop {
 
     this.presenceState.textContent = PRESENCE_LABELS[showing];
     this.presenceState.dataset.presence = showing;
+    // F1: the word is collapsed on the taskbar and revealed on hover/focus, so
+    // the current status has to be legible without reading it - the title names
+    // it for a hover, and the control reflects it for anything styling the
+    // cluster by the status it is showing.
+    this.presenceControl.dataset.presence = showing;
+    this.presenceControl.title = `Your status: ${PRESENCE_LABELS[showing]}`;
   }
 
   /** The two things you can do to a desk, both through the registry. */
