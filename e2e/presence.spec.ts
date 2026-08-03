@@ -334,28 +334,32 @@ test('behind the dot, the message is waved off and the morning is paid for', asy
   await expect(presenceState(page)).toHaveText('Do not disturb');
 
   /*
-   * THE PRICE, AT ITS CADENCE, DERIVED FROM THE CLOCK. The drip is
+   * THE PRICE, AT ITS EXACT CADENCE, READ WHERE THE BILLING LANDS. The drip is
    * floor(workingMinutes * 2 / 5) - two points per five simulated minutes of
-   * working behind the dot. Two facts make the assertion:
+   * working behind the dot - but suspicion is billed at five-minute meter
+   * boundaries in two-point steps, and that boundary can fall on EITHER side of
+   * an arbitrary read: a boundary just after the start bills work from before
+   * it (drip leads the clock), a boundary just before the read has not billed
+   * the last minutes yet (drip lags). So the read is landed ON a boundary, where
+   * the billing is complete and aligned and there is no slop in either
+   * direction.
    *
-   *  - The elapsed minutes are READ, not assumed: the faked clock does not
-   *    advance a tick-precise number of intervals per `runFor` (day.spec's
-   *    granularity), so the only honest denominator is the clock itself,
-   *    captured at both ends of a window that is ALL working - the dot is red
-   *    throughout, the desk is re-touched (a dispatched rotation) inside the
-   *    recency window each round, and nothing else moves suspicion here (no
-   *    slack app open, the message has not slid, the beat is nowhere near its
-   *    mark). So the whole delta is the drip.
-   *  - Suspicion is billed at five-minute meter boundaries in two-point steps,
-   *    so at the instant of the read it reflects the working minutes up to the
-   *    LAST boundary - at most one interval (five minutes, two points) short of
-   *    the elapsed clock, and where that boundary falls depends on the phase.
-   *    Asserting an exact floor(elapsed*2/5) is therefore phase-dependent and
-   *    racy (measured headless: 33 elapsed minutes bill 12 on one boundary
-   *    phase, 13 on another). The exact-CADENCE assertion that holds every run
-   *    is that the drip is the elapsed working minutes at the 2/5 rate, give or
-   *    take that one un-billed interval - a three-point bracket. Teeth intact:
-   *    a wrong rate, or a sampled-not-integrated drip, lands outside it.
+   * `minute % 5 === 0` IS the meter-tick cadence here: the shift starts on a
+   * boundary (`shiftStartTick(4)` is 4380, a multiple of five) and one simulated
+   * minute is one tick, so clock minutes and meter ticks share a phase. Nudge a
+   * minute at a time - at x1 the faked clock lands exactly, no overshoot - until
+   * the clock sits on a boundary; the installed clock is manual (it only
+   * advances on `runSimMinutes`), so the reads that follow are frozen there.
+   *
+   * The window is ALL working: the dot is red throughout, the desk is
+   * re-touched (a dispatched rotation) inside the recency window every round and
+   * every nudge, and nothing else moves suspicion (no slack app open, the
+   * message has not slid, the beat is nowhere near its mark). Both ends sit on a
+   * boundary (`clockBefore` is the shift start), every minute between them was
+   * worked, so the drip is EXACTLY the rate over the billed minutes - the floor
+   * collapsing to a clean division because the span is a multiple of five. Teeth
+   * intact: a wrong rate (3/5 would read half again as much) or a
+   * sampled-not-integrated drip (nought) misses this exact number.
    */
   const dripFloor = await meter(page, 'scorecard-suspicion');
   const clockBefore = await simClockMinute(page);
@@ -365,15 +369,18 @@ test('behind the dot, the message is waved off and the morning is paid for', asy
     await runSimMinutes(page, 5, 4);
   }
 
-  const elapsed = await simClockMinute(page) - clockBefore;
-  const drip = await meter(page, 'scorecard-suspicion') - dripFloor;
-  const rate = Math.floor(elapsed * 2 / 5);
+  // Land the read on the next meter boundary, working through it so every minute
+  // still qualifies.
+  while (await simClockMinute(page) % 5 !== 0) {
+    await workBehindTheDot(page);
+    await runSimMinutes(page, 1, 1);
+  }
 
-  expect(drip).toBeLessThanOrEqual(rate);
-  expect(drip).toBeGreaterThanOrEqual(rate - 2);
-  // And it genuinely accrued - a floor that let a zero through would be no gate
-  // at all, and the window is long enough that the bracket's own floor is well
-  // clear of nought.
+  const billedMinutes = await simClockMinute(page) - clockBefore;
+  const drip = await meter(page, 'scorecard-suspicion') - dripFloor;
+
+  expect(billedMinutes % 5).toBe(0);
+  expect(drip).toBe(billedMinutes * 2 / 5);
   expect(drip).toBeGreaterThan(0);
 
   /*
