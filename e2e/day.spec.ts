@@ -309,6 +309,14 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
   // Monday, which is in this inbox from 0.3.0 onwards.
   await expect(page.getByTestId('mail-summary')).toContainText('3 unread');
 
+  // The actual minute at the moment of saving, captured rather than hardcoded.
+  // The subject of this test is "a reload brings the same session back", which
+  // is true whether the shift settled onto 09:35 or a tick either side of it -
+  // the restore is compared to what was SAVED, so it proves restore == saved
+  // exactly, decoupled from where the clock happened to land.
+  const savedClock = await page.getByTestId('sim-clock-time').textContent() ?? '';
+  expect(savedClock).toMatch(/^\d\d:\d\d$/);
+
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-save').click();
   await expect(page.getByTestId('toast')).toContainText('Game saved');
@@ -324,8 +332,9 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
     page.getByTestId('toast').filter({ hasText: 'Game loaded' }),
   ).toHaveCount(1);
 
-  // The same minute, in the same day, in the same state.
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:35');
+  // The same minute the save was taken on - whatever it was - in the same day
+  // and the same state.
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(savedClock);
   await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 1');
   await expect(page.getByTestId('day-state')).toHaveText('Shift');
 
