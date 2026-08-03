@@ -1384,9 +1384,28 @@ export class Desktop {
     const takeover = day.interruption();
     const holding = takeover?.entry.source;
 
-    this.element.dataset.takeover = holding === 'meeting' || holding === 'machine'
-      ? holding
-      : 'none';
+    const heldByTakeover = holding === 'meeting' || holding === 'machine';
+
+    this.element.dataset.takeover = heldByTakeover ? holding : 'none';
+
+    // F6: the presence control goes inert under a takeover so it stops inviting
+    // a click the world is only going to refuse - a refused status used to pop
+    // its panel over the meeting, which is a dead click that answers you back.
+    // The dimming is the teaching now, consistent with the dimmed desk, and it
+    // is a marked attribute rather than only a CSS-by-ancestor so the same fact
+    // drives the look and the tests. The OFF-SHIFT refusal is untouched: there
+    // is no takeover then, the control stays live, and the world still refuses a
+    // dot at a desk with no shift on - in that refusal's own sentence.
+    //
+    // The buttons are DISABLED and not merely un-pointered, so the keyboard
+    // cannot reach past the dimming: a tab-and-Enter that popped the refused
+    // panel over the meeting is the same dead click by another input device, and
+    // a rule that only holds for the mouse is a rule the product does not have.
+    this.presenceControl.dataset.inert = String(heldByTakeover);
+
+    for (const button of this.presenceButtons.values()) {
+      button.disabled = heldByTakeover;
+    }
 
     this.renderReboot();
 

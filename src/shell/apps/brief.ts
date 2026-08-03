@@ -202,8 +202,8 @@ export const BRIEF_APP: AppDef = {
       heading2.textContent = 'While you were out';
       const note = element('p', 'brief-night-note', 'brief-night-note');
       note.textContent = 'These landed after you clocked off. Answering one is '
-        + 'a small point in your favour and a small point of it following you '
-        + 'into today; leaving it is free. Nobody is counting either way.';
+        + 'a small point in your favour, traded for a small point of it '
+        + 'following you into today. Leaving it costs nothing at all.';
       nightPanel.append(heading2, note);
 
       const list = element('ul', 'brief-night-list', 'brief-night-list');

@@ -340,15 +340,16 @@ describe('being closed', () => {
   });
 
   /**
-   * THE BOX BUG, pinned through the shell path rather than the voice object.
+   * The whole-day dismissal survives a reload (slice 0.3.6, P1-2).
    *
-   * The unit that drove the voice directly passed while the box failed, because
-   * the box RE-MOUNTS the voice (a reload) and crosses a day boundary with the
-   * closed state living in the store. Here the durable memory survives the
-   * reload and the day turn, and the note is paid on the first paint after each
-   * - which is exactly the two e2e journeys that were red.
+   * The dismissal is keyed off the DURABLE closed-day the store carries, not any
+   * transient of the voice instance - so a reload on the same day it was closed
+   * rebuilds the voice, reads `closedOnDay === today`, and STAYS closed. Keying
+   * it off a fresh-mount flag was the 0.3.5 bug class again: the reload re-armed
+   * the character inside the quiet the player had bought. It still returns on the
+   * day turn, with the escalated note.
    */
-  it('pays the note on the first paint after a reload, then after a day turn', () => {
+  it('stays closed across a same-day reload, and returns on the day turn', () => {
     const shell = new Shell();
 
     // Day one: closed.
@@ -356,21 +357,42 @@ describe('being closed', () => {
     shell.dismiss(1);
 
     // A reload rebuilds the voice; the count and closed-day come back in the
-    // store. The very first paint pays the note - the box showed a situation
-    // line here because the fresh voice had no memory of the closure.
+    // store. The character does NOT re-arrive - the day it was closed on has not
+    // turned, so the quiet holds.
     shell.reload();
-    const afterReload = shell.speak(desk({ openTickets: 1 }), 60);
+    expect(shell.speak(desk({ openTickets: 1 }), 60)).toBeNull();
+    expect(shell.closedOnDay).toBe(1);
 
-    expect(afterReload?.line.id).toBe(returningLine(1).id);
+    // And a big event on the same day, after the reload, is still no reason.
+    expect(shell.speak(desk({ openTickets: 1, ringing: true }), 80)).toBeNull();
+
+    // The day turns: the note is paid on the first paint of day two.
+    const nextDay = shell.speak(desk({ openTickets: 1, day: 2 }), 60);
+
+    expect(nextDay?.line.id).toBe(returningLine(1).id);
+    expect(shell.closedOnDay).toBeNull();
+  });
+
+  /**
+   * And the escalation survives the durable path: closed twice across two day
+   * turns, the note climbs to tier two, even with a reload in between.
+   */
+  it('escalates across a reload and a day boundary', () => {
+    const shell = new Shell();
+
+    shell.speak(desk({ openTickets: 1 }), 60);
+    shell.dismiss(1);
+    shell.speak(desk({ openTickets: 1, day: 2 }), 60);
     expect(shell.closedOnDay).toBeNull();
 
-    // Close it again on day one and cross a day boundary: the note escalates
-    // to tier two, and it does so even though a boss beat could have fired in
-    // between (the store, not the voice, is what remembers).
-    shell.dismiss(1);
-    const nextDay = shell.speak(desk({ openTickets: 1, day: 2 }), 61);
+    // Close again on day two, reload, cross into day three.
+    shell.dismiss(2);
+    shell.reload();
+    expect(shell.speak(desk({ openTickets: 1, day: 2 }), 61)).toBeNull();
 
-    expect(nextDay?.line.id).toBe(returningLine(2).id);
+    const dayThree = shell.speak(desk({ openTickets: 1, day: 3 }), 60);
+
+    expect(dayThree?.line.id).toBe(returningLine(2).id);
   });
 
   it('is on screen again after a reload that was not mid-closure', () => {

@@ -307,9 +307,11 @@ const ENTRIES = [
     id: 'desktop.presence-refused',
     surface: 'desktop',
     control: 'presence-refusal',
-    does: 'Answers a status the world will not take - the desk is in a '
-      + 'meeting, or there is no shift on - in the sentence that refusal owns, '
-      + 'against the button that was pressed rather than as a toast.',
+    does: 'Answers a status the world will not take - there is no shift on, so a '
+      + 'dot set into a dark building tells nobody anything - in the sentence '
+      + 'that refusal owns, against the button that was pressed rather than as a '
+      + 'toast. (Under a takeover the control goes inert instead of popping this, '
+      + 'which is F6.)',
     run: 'week',
   },
   {

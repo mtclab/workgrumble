@@ -2073,6 +2073,38 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('window-brief')).toBeVisible();
   });
 
+  /* -- Tuesday's brief: what came in overnight, and a dot with no desk ------ */
+
+  await step('brief.after-hours', async () => {
+    // Monday night's ping, read on Tuesday's "while you were out" surface.
+    // Answering it is the world's trade - a point in your favour for a point of
+    // it following you in - not a number the button chose.
+    const item = page.getByTestId('brief-night-owen-monitor');
+    await expect(item).toHaveAttribute('data-answered', 'false');
+    await page.getByTestId('brief-night-answer-owen-monitor').click();
+    await expect(item).toHaveAttribute('data-answered', 'true');
+    await expect(page.getByTestId('brief-night-answer-owen-monitor'))
+      .toHaveCount(0);
+  });
+
+  await step('desktop.presence-refused', async () => {
+    // Off-shift, at the brief: a dot set into a dark building tells nobody
+    // anything, so the world refuses it. This is the refusal F6 stopped popping
+    // under a takeover - it still lands here, where it always did, against the
+    // button that was pressed rather than as a toast.
+    await page.getByTestId('presence-dnd').click();
+
+    const refusal = page.getByTestId('presence-refusal');
+
+    await expect(refusal).toBeVisible();
+    await expect(refusal).toContainText('no shift on');
+    // The world did not take it, so the dot did not move.
+    await expect(page.getByTestId('presence-state')).toHaveText('Available');
+    // It goes the way every other transient thing does, and takes the key.
+    await page.keyboard.press('Escape');
+    await expect(refusal).toBeHidden();
+  });
+
   /* -- Tuesday: the overnight outage, the spooler, and a favour ------------ */
 
   await beginShift(page);
@@ -2244,24 +2276,19 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('meeting-app')).toBeVisible();
   });
 
-  await step('desktop.presence-refused', async () => {
-    // The tray is reachable during a block on purpose - a half hour with no
-    // way to save or log off is the dead end the house rules forbid - so the
-    // status control is genuinely pressable here, and genuinely refused, in
-    // the sentence the meeting already owns.
-    await page.getByTestId('presence-dnd').click();
-
-    const refusal = page.getByTestId('presence-refusal');
-
-    await expect(refusal).toBeVisible();
-    await expect(refusal).toContainText('You are in a meeting');
-    // The world did not take it, so the dot did not move.
-    await expect(page.getByTestId('presence-state')).toHaveText('Available');
-    // Escape puts the note away and leaves the meeting exactly where it is.
-    await page.keyboard.press('Escape');
-    await expect(refusal).toBeHidden();
-    await expect(page.getByTestId('meeting-app')).toBeVisible();
-  });
+  // F6 (0.3.6): the status control goes INERT under the block rather than
+  // answering a click with a refusal panel popped over the meeting. The dimming
+  // is the teaching, and the buttons are disabled so the keyboard cannot reach
+  // past it either - a tab-and-Enter refusal is the same dead click by another
+  // device. The refusal it used to pop here now lives only off-shift, where the
+  // world still refuses a dot at a desk with no shift on (driven at Tuesday's
+  // brief, the `desktop.presence-refused` step above). It is an inline check
+  // rather than a coverage step because F6's inert state reaches no new function.
+  await expect(page.getByTestId('presence-control'))
+    .toHaveAttribute('data-inert', 'true');
+  await expect(page.getByTestId('presence-dnd')).toBeDisabled();
+  await expect(page.getByTestId('presence-refusal')).toBeHidden();
+  await expect(page.getByTestId('meeting-app')).toBeVisible();
 
   await step('meeting.defer', async () => {
     await page.getByTestId('meeting-defer').click();

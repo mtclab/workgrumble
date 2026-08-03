@@ -229,17 +229,23 @@ test('a save taken after closing it remembers how many times', async ({
     () => globalThis.careerSim?.screens().assistant.dismissals ?? -1,
   )).toBe(1);
 
-  // And THE MOUNT FIX: a reload rebuilds the character, but the "owes a note"
-  // fact rode the save - so the first paint after the load pays the note rather
-  // than a situation line, which is exactly what the box was getting wrong.
+  // And THE WHOLE-DAY DISMISSAL (0.3.6, P1-2): closing it holds for the day, and
+  // that fact rode the save too - so a reload on the same day it was closed comes
+  // back CLOSED rather than re-arriving inside the quiet the player bought. This
+  // is where the mount-flag version got it wrong.
+  await expect(assistant(page)).toBeHidden();
+
+  // The day turns: the note is paid on the first paint of day two, at tier one.
+  await clockOffFor(page, 1);
+  await beginShift(page);
   await expect(assistant(page)).toBeVisible();
   await expect(line(page)).toContainText(noteAt(1));
 
-  // Close it again and cross a day boundary: the note escalates, and it
-  // survives the boss beats and the checkpoint the boundary fires - none of
-  // which reset it any more, because the state is in the store, not the object.
+  // Close it again on day two and cross into day three: the note escalates, and
+  // it survives the boss beats and the checkpoint each boundary fires - none of
+  // which reset it, because the state is in the store, not the object.
   await page.getByTestId('assistant-dismiss').click();
-  await clockOffFor(page, 1);
+  await clockOffFor(page, 2);
   await beginShift(page);
   await expect(line(page)).toContainText(noteAt(2));
 });

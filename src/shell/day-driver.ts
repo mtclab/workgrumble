@@ -43,8 +43,6 @@ import {
 } from '../world/boss';
 import {
   type AfterHoursArrival,
-  AFTER_HOURS_REPUTATION,
-  AFTER_HOURS_STRESS,
   afterHoursArrivals,
 } from '../world/after-hours';
 import {
@@ -1080,22 +1078,38 @@ export class DayDriver implements DayApi {
   /**
    * Answering one, through the same seam every other verb goes through.
    *
-   * The two numbers are the world's constants rather than anything the surface
-   * chose - the shell knows it is a ping being answered, the world knows what a
-   * ping is worth and what it costs - and the world refuses a second answer off
-   * its own list, so this is a dispatch and a repaint and nothing the shell has
-   * to remember.
+   * The id is checked against the pings that ACTUALLY arrived first, because the
+   * verb cannot: the authored night is TS data rather than a node, so this seam
+   * - which derives the arrived set from the night, the dot the save carries and
+   * the answered record - is the only place that knows a real ping from a
+   * planted, future or dot-dodged one, exactly as the driver is the only place
+   * that knows a real interruption from an invented id. A refusal rather than a
+   * throw, like every other verb on this half: it is a sentence the player would
+   * read if a surface ever offered a ping this rejects.
+   *
+   * The trade itself is the world's - `afterHoursAnswer` bakes in the two
+   * constants and refuses a second answer off its own list - so this passes
+   * nothing but the id and lets the world price it.
    */
   public answerAfterHours(id: string): DispatchResult {
+    const arrived = this.afterHoursPings().some(
+      (ping) => ping.slot.id === id && !ping.answered,
+    );
+
+    if (!arrived) {
+      return {
+        ok: false,
+        reason: 'That is not a ping you have waiting. It was never sent, it has '
+          + 'already been dealt with, or the dot turned it away overnight - '
+          + 'either way there is nothing there to answer.',
+      };
+    }
+
     return this.announced(this.engine.dispatch(
       DAY_ACTIONS.afterHoursAnswer,
       this.actor,
       null,
-      {
-        id,
-        rep_up: AFTER_HOURS_REPUTATION,
-        stress_up: AFTER_HOURS_STRESS,
-      },
+      { id },
     ));
   }
 

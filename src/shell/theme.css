@@ -1014,6 +1014,12 @@ input {
 .taskbar-windows {
   display: flex;
   flex: 1;
+  /* Load-bearing: a flex item defaults to min-width:auto, which is its CONTENT
+     width - so without this the row grows to fit every button and there is no
+     overflow to scroll, only a taskbar wider than the screen. min-width:0 lets
+     it shrink below its content into a real scroll viewport, and the overflow
+     below then has a range to scroll through. */
+  min-width: 0;
   gap: var(--space-2);
   align-items: center;
   overflow-x: auto;
@@ -4269,9 +4275,12 @@ input {
  * (they change how fast the half hour passes, which is the one thing a player
  * locked out of the desk still wants), and a block with no way to run the clock
  * under it is the dead end the house rules forbid.
+ *
+ * Keyed on the control's own `data-inert` rather than on the takeover ancestor,
+ * so the one fact the desktop already decides (is a block holding the desk)
+ * drives the look and the tests from a single attribute.
  */
-.screen-desktop[data-takeover="meeting"] .presence-control,
-.screen-desktop[data-takeover="machine"] .presence-control {
+.presence-control[data-inert="true"] {
   pointer-events: none;
   opacity: var(--opacity-dim);
 }

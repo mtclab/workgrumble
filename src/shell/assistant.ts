@@ -142,8 +142,6 @@ export class AssistantVoice {
   /** The minute a takeover last handed the desk back, for the "after" beat. */
   private handedBackAt: number | null = null;
   private held = false;
-  /** Whether this instance has produced a real paint yet - a load lands here. */
-  private painted = false;
   /**
    * Whether the line currently up is the note about having been closed.
    *
@@ -181,22 +179,18 @@ export class AssistantVoice {
       return null;
     }
 
-    // From here on this is a real paint, which is what "a load lands here"
-    // reads: a fresh instance's first shift paint is a re-arrival.
-    const mounted = this.painted;
-    this.painted = true;
-
     if (memory.closedOnDay !== null) {
-      // Two ways a closed character is owed its way back, and closing it now
-      // means something because a big event is NOT one of them (slice 0.3.6,
-      // F7). Once it is shut it stays shut for the rest of THIS day, however
-      // many calls, reboots and hand-backs land after - the whole point of the
-      // close is a quiet the player bought and could not before, because every
-      // takeover used to re-admit it and the only move was to shut it again. It
-      // still returns tomorrow (`world.day` moved on) with the escalated note,
-      // and it still re-arrives on a fresh mount, because a reload is a new
-      // session rather than the one the player closed it in.
-      const returned = !mounted || world.day !== memory.closedOnDay;
+      // Closing it now means something for the whole DAY (slice 0.3.6, F7), and
+      // that is keyed off the DURABLE closed-day the save carries rather than any
+      // transient of this instance. Once it is shut it stays shut until the day
+      // turns - however many calls, reboots and hand-backs land after, AND
+      // across a reload: a session restored on the same day it was closed comes
+      // back with `closedOnDay` still equal to today, so it stays closed. Keying
+      // this off a fresh-mount flag was the 0.3.5 bug class again - a reload set
+      // mounted=false and the character re-arrived within the quiet the player
+      // had bought. It still returns tomorrow, when `world.day` has moved on,
+      // with the escalated note.
+      const returned = world.day !== memory.closedOnDay;
 
       if (!returned) {
         // The quiet the player bought by closing it.
@@ -245,8 +239,9 @@ export class AssistantVoice {
    * A load, a restart, a week that started again.
    *
    * Only the transient display is thrown away - the durable count and
-   * closed-day come back in the file - and `painted` is reset so the next paint
-   * is treated as the arrival it is. Wired to the store's reload hook, NOT to
+   * closed-day come back in the file, and the whole-day dismissal keys off the
+   * closed-day rather than anything reset here, so a reload on the day it was
+   * closed comes back closed. Wired to the store's reload hook, NOT to
    * `onReplaced`, so an ordinary external patch (a boss beat) never triggers
    * it: that wiring was the box bug.
    */
@@ -257,7 +252,6 @@ export class AssistantVoice {
     this.rotation.clear();
     this.handedBackAt = null;
     this.held = false;
-    this.painted = false;
     this.holdingGag = false;
   }
 

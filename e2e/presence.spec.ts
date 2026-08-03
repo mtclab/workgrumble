@@ -180,30 +180,44 @@ test('the dot turns the phone away, collects the drip, and meets the sync anyway
     .toHaveAttribute('data-takeover', 'meeting');
 
   /*
-   * THE REFUSAL, in the meeting's own sentence and beside the button that was
-   * pressed. The tray is reachable during a block by design - a half hour with
-   * no way to save or log off would be the dead end the house rules forbid -
-   * so the status control is genuinely pressable here, and genuinely refused.
+   * THE STATUS CONTROL, INERT (0.3.6, F6). It used to answer a click here with a
+   * refusal panel popped over the meeting - a dead click that talks back - so
+   * now it goes dim and dead under a block instead, the same way the desk does.
+   * The dimming IS the teaching. The buttons are disabled so neither the mouse
+   * nor the keyboard can reach past it, and NO refusal pops.
+   *
+   * The pause and speed cluster stay live by the 0.3.0 exemption; this is only
+   * the one tray control a block actually refuses.
    */
-  await page.getByTestId('presence-available').click();
+  await expect(page.getByTestId('presence-control'))
+    .toHaveAttribute('data-inert', 'true');
+  await expect(page.getByTestId('presence-available')).toBeDisabled();
+  await expect(page.getByTestId('presence-dnd')).toBeDisabled();
+  await expect(page.getByTestId('presence-away')).toBeDisabled();
 
-  const refusal = page.getByTestId('presence-refusal');
-
-  await expect(refusal).toBeVisible();
-  await expect(refusal).toContainText('You are in a meeting');
-  // And the dot did not move, because the world did not take it.
+  // No refused panel over the meeting - the dimming said it instead.
+  await expect(page.getByTestId('presence-refusal')).toBeHidden();
+  // And the dot did not move, because there was nothing to move it: the block
+  // rode in on Do Not Disturb and it is still Do Not Disturb.
   await expect(presenceState(page)).toHaveText('Do not disturb');
   await expect(page.getByTestId('presence-dnd'))
     .toHaveAttribute('aria-pressed', 'true');
 
-  // It goes the way every other transient thing on this desktop goes - and it
-  // takes the key with it, which is the load-bearing half: Escape reaching the
-  // meeting behind it would close a window nobody is allowed to leave.
-  await page.keyboard.press('Escape');
-  await expect(refusal).toBeHidden();
+  // The meeting is untouched by any of it.
   await expect(meeting).toBeVisible();
   await expect(page.getByTestId('desktop'))
     .toHaveAttribute('data-takeover', 'meeting');
+
+  // And the control comes back to life the minute the room empties: the buttons
+  // are live again once the block is over, so nothing has been left disabled.
+  for (let minute = 0; minute < 40 && await meeting.count() > 0; minute += 1) {
+    await runSimMinutes(page, 1, 1);
+  }
+
+  await expect(meeting).toHaveCount(0);
+  await expect(page.getByTestId('presence-control'))
+    .toHaveAttribute('data-inert', 'false');
+  await expect(page.getByTestId('presence-dnd')).toBeEnabled();
 });
 
 /* -- the away journey ------------------------------------------------------ */

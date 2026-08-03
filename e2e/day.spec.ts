@@ -37,6 +37,54 @@ async function underPause<T>(page: Page, read: () => Promise<T>): Promise<T> {
   }
 }
 
+function minutesOf(time: string): number {
+  const [hours, mins] = time.split(':').map(Number);
+  return (hours ?? 0) * 60 + (mins ?? 0);
+}
+
+/**
+ * Runs the clock to land EXACTLY on a minute, then reads it held.
+ *
+ * The driver is `setInterval(step, 250)`, and a big `page.clock.runFor` can
+ * cross one interval boundary more or fewer than the arithmetic expects when the
+ * faked clock's phase has drifted under a click or a retry - the read then sits
+ * one tick past the transition it was meant to pin (12:01 for 12:00). So the
+ * approach is split: a coarse run to five minutes short, then one simulated
+ * minute at a time. Each fine step is a single interval, so the phase stays
+ * aligned and the clock arrives ON the target minute rather than a tick beyond
+ * it, whatever the coarse run drifted to. The read is then taken under a pause,
+ * so a retry cannot race it forward off the minute it landed on.
+ *
+ * Teeth are untouched: a tick that overspends drives the coarse run clean past
+ * the target, the fine loop takes no steps, and the held read reds on a clock
+ * that is nowhere near the minute it was told to be.
+ */
+async function settleAtClock(
+  page: Page,
+  target: string,
+  speed: number,
+): Promise<void> {
+  const clock = page.getByTestId('sim-clock-time');
+  const targetMin = minutesOf(target);
+  const now = async (): Promise<number> => minutesOf(
+    await clock.textContent() ?? '00:00',
+  );
+
+  const start = await now();
+
+  if (targetMin - start > 5) {
+    await page.clock.runFor(realMs(targetMin - start - 5, speed));
+  }
+
+  for (let guard = 0; guard < 12 && (await now()) < targetMin; guard += 1) {
+    await page.clock.runFor(realMs(1, speed));
+  }
+
+  await underPause(page, async () => {
+    await expect(clock).toHaveText(target);
+  });
+}
+
 /**
  * Real milliseconds one simulated minute costs at x1 (`day-driver.ts`). The
  * driver is asked to convert four times a second and keeps the remainder, so
@@ -113,21 +161,14 @@ test('walks a day from the morning brief to the scorecard', async ({
     'data-active',
     'true',
   );
-  await page.clock.runFor(realMs(20, 4));
-  // The exact minute is read with the clock held: at x4 it advances a minute a
-  // quarter-second, and a bare retry can catch it a tick or two past the
-  // transition under parallel load. The runFor above is the transition; this is
-  // only the read.
-  await underPause(page, async () => {
-    await expect(page.getByTestId('sim-clock-time')).toHaveText('09:30');
-  });
+  // Landed exactly on the minute and read held: the coarse run proves the speed
+  // moved the clock, the fine steps pin it to the transition rather than a tick
+  // past it, and the pause stops a retry racing it forward.
+  await settleAtClock(page, '09:30', 4);
 
   // Lunch is flagged on the clock strip - lane B hangs the boss's habits on
   // the same window.
-  await page.clock.runFor(realMs(150, 4));
-  await underPause(page, async () => {
-    await expect(page.getByTestId('sim-clock-time')).toHaveText('12:00');
-  });
+  await settleAtClock(page, '12:00', 4);
   await expect(page.getByTestId('day-state')).toHaveText('Lunch');
 
   await page.clock.runFor(realMs(30, 4));

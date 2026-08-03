@@ -15,6 +15,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadEngineForTests } from '../engine-api/load-node';
+import { DAY_ACTIONS } from '../world/actions';
 import { AFTER_HOURS_REPUTATION, AFTER_HOURS_STRESS } from '../world/after-hours';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS } from '../world/fields';
@@ -212,5 +213,80 @@ describe('the ping that landed after you clocked off', () => {
 
     expect(driver.state()).toBe('shift');
     expect(driver.answerAfterHours('after:owen-monitor').ok).toBe(false);
+  });
+
+  it('refuses a ping that never arrived, and moves nothing', () => {
+    const { driver, session } = harness();
+
+    playDay(driver, session);
+
+    const repBefore = meter(session, FIELDS.reputation);
+    const stressBefore = meter(session, FIELDS.stress);
+
+    // A planted id - never authored, never sent. The seam that knows the
+    // arrived set turns it away before it can buy a point of anything.
+    const planted = driver.answerAfterHours('after:never-sent');
+
+    expect(planted.ok).toBe(false);
+    expect(meter(session, FIELDS.reputation)).toBe(repBefore);
+    expect(meter(session, FIELDS.stress)).toBe(stressBefore);
+  });
+
+  it('refuses a real ping the dot turned away overnight', () => {
+    const { driver } = harness();
+
+    driver.startShift();
+    expect(driver.setPresence('dnd').ok).toBe(true);
+
+    let turns = 0;
+
+    while (driver.state() === 'shift') {
+      driver.step(TICK_INTERVAL_MS);
+      turns += 1;
+
+      if (turns > 200_000) {
+        throw new Error('The day never ended.');
+      }
+    }
+
+    driver.clockOff();
+
+    // Owen's ping is a real authored ping, but Do Not Disturb turned it away, so
+    // it did not arrive - and a ping that did not arrive cannot be answered.
+    expect(driver.answerAfterHours('after:owen-monitor').ok).toBe(false);
+  });
+
+  it('prices the trade itself - a dispatch cannot buy a bigger point', () => {
+    const { driver, session } = harness();
+
+    playDay(driver, session);
+
+    const repBefore = meter(session, FIELDS.reputation);
+    const stressBefore = meter(session, FIELDS.stress);
+
+    // Straight at the engine, past the driver, claiming a windfall. The verb
+    // bakes in its own constants and ignores the numbers, so the trade is
+    // exactly the one point each way it always is.
+    const result = session.engine.dispatch(
+      DAY_ACTIONS.afterHoursAnswer,
+      COMPANY_IDS.player,
+      null,
+      { id: 'after:owen-monitor', rep_up: 100, stress_up: 100 },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(meter(session, FIELDS.reputation))
+      .toBe(repBefore + AFTER_HOURS_REPUTATION);
+    expect(meter(session, FIELDS.stress))
+      .toBe(stressBefore + AFTER_HOURS_STRESS);
+
+    // And once: a second dispatch of the same id is refused by the world's own
+    // list, driver or no driver.
+    expect(session.engine.dispatch(
+      DAY_ACTIONS.afterHoursAnswer,
+      COMPANY_IDS.player,
+      null,
+      { id: 'after:owen-monitor' },
+    ).ok).toBe(false);
   });
 });

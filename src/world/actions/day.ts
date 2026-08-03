@@ -1,4 +1,5 @@
 import type { ActionData, NodeRefData, PredData } from '../../engine-api';
+import { AFTER_HOURS_REPUTATION, AFTER_HOURS_STRESS } from '../after-hours';
 import { NO_RUN } from '../consumables';
 import { FIELDS } from '../fields';
 import { METER_CEILING, METER_FLOOR } from '../meters';
@@ -533,11 +534,18 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
    * a ping answered mid-shift would be a different beat with a different cost.
    * Once per ping, off the world's own list, so the button cannot be pressed
    * twice for two lots of the same point and a reload lands on the same answered
-   * set. The two meter moves are parameters rather than constants in here for
-   * the same reason every other meter move is - the shell reads what KIND of
-   * thing happened and the world decides where the number stops - and both are
-   * held to being whole and non-negative, so a caller cannot answer a ping for a
-   * windfall of reputation or hand the player a stress hit out of nothing.
+   * set. The trade is the WORLD'S rather than the caller's: the two meter moves
+   * are the constants baked in here (`AFTER_HOURS_REPUTATION` /
+   * `AFTER_HOURS_STRESS`), not numbers a dispatch supplies, so nothing can
+   * answer a ping for a windfall of reputation or a stress hit out of nothing.
+   *
+   * What this verb CANNOT check is that the id is a ping that actually arrived -
+   * the authored night is TS data, not a node in the graph, exactly as every
+   * interruption id is - so that half is enforced at the driver seam
+   * (`answerAfterHours`), which derives the arrived set from the authored night,
+   * the dot the save carries and the answered record and refuses anything not in
+   * it. This verb owns the trade and the once; the driver owns which pings are
+   * real, the same division the interruption family already keeps.
    */
   {
     id: DAY_ACTIONS.afterHoursAnswer,
@@ -565,24 +573,6 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
           + 'replied this morning, and the point it was worth has been counted '
           + 'once - which is all it is worth.',
       },
-      {
-        when: not({
-          pred: 'param_is_whole_number',
-          param: 'rep_up',
-          value: 0,
-        }),
-        reason: 'What being reachable is worth has to be a whole number of '
-          + 'points at or above zero, and this is not one.',
-      },
-      {
-        when: not({
-          pred: 'param_is_whole_number',
-          param: 'stress_up',
-          value: 0,
-        }),
-        reason: 'What being reachable costs has to be a whole number of points '
-          + 'at or above zero, and this is not one.',
-      },
     ],
     apply: [
       {
@@ -597,9 +587,9 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
           },
         },
       },
-      // The gain, and the cost it is paid against. Both clamp to the meter's own
-      // floor and ceiling, so a ping answered with reputation already at the top
-      // is the point it always was and no more.
+      // The gain, and the cost it is paid against - the world's own constants,
+      // clamped to the meter's floor and ceiling so a ping answered with
+      // reputation already at the top is the point it always was and no more.
       {
         op: 'set_field',
         node: ACTOR,
@@ -608,7 +598,7 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
           add: {
             node: ACTOR,
             field: FIELDS.reputation,
-            by: { param: 'rep_up' },
+            by: { const: AFTER_HOURS_REPUTATION },
             clamp: { min: METER_FLOOR, max: METER_CEILING },
           },
         },
@@ -621,7 +611,7 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
           add: {
             node: ACTOR,
             field: FIELDS.stress,
-            by: { param: 'stress_up' },
+            by: { const: AFTER_HOURS_STRESS },
             clamp: { min: METER_FLOOR, max: METER_CEILING },
           },
         },
