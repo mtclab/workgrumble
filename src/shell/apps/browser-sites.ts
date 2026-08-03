@@ -374,11 +374,14 @@ const WEB_STORE: BrowserSite = {
           + 'thing about it.',
       },
       {
-        name: 'Screen Saver Deluxe',
-        register: 'Shareware ($15, cheque only, do not send a cheque)',
-        blurb: 'Flying toasters, allegedly. This row does nothing yet - the '
-          + 'download is "coming soon", which on this site has historically '
-          + 'meant "coming never".',
+        appId: 'solitaire',
+        name: 'Office Solitaire',
+        register: 'Freeware (bundled with an operating system you did not buy)',
+        blurb: 'The genuine article: a full deck, an honest shuffle, and every '
+          + 'rule your wrist already knows. Turns the stock, builds the columns '
+          + 'down, sends the aces home. Wins nothing back on the queue and takes '
+          + 'the edge off better than the forum ever managed - right up until '
+          + 'somebody reads the board over your shoulder from the door.',
       },
       {
         name: 'Weather Tray 98',

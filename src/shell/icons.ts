@@ -502,6 +502,20 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { d: 'M10 8 L16 12 L10 16 Z' },
     },
   ],
+  'icon-solitaire': [
+    {
+      element: 'rect',
+      attributes: { x: '3', y: '4', width: '11', height: '15', rx: '1' },
+    },
+    {
+      element: 'rect',
+      attributes: { x: '9', y: '6', width: '12', height: '15', rx: '1' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M15 10 l2.5 3.5 -2.5 3.5 -2.5 -3.5 z' },
+    },
+  ],
   'icon-lock': [
     {
       element: 'rect',

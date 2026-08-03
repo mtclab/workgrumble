@@ -38,7 +38,7 @@ describe('every slack app has a scene', () => {
 
   it('refuses to load a slack app nobody has written one for', () => {
     expect(() => assertCaughtScenes([
-      { id: 'solitaire', slack: true },
+      { id: 'no-such-slack-app', slack: true },
     ])).toThrow('no caught scene');
 
     // A work app needs no scene: nobody is caught at the ticket queue.

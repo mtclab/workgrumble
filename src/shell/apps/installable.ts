@@ -2,6 +2,7 @@ import type { DispatchResult } from '../../engine-api';
 import { assertCaughtScenes } from '../../world/scenes';
 import { ARCADE_APP } from './arcade';
 import { MEDIA_APP } from './mediaplayer';
+import { SOLITAIRE_APP } from './solitaire';
 import { loadManifest } from './manifest';
 import type { AppDef } from './types';
 
@@ -19,12 +20,12 @@ import type { AppDef } from './types';
  * The installable catalogue is scene-checked the same as the base roster: an
  * installable `slack` app is one somebody can be caught at, so shipping it
  * without the content for what happens then would fail the boot here rather than
- * a player later. Both toys below are `slack: true` as of lane B - a game and a
- * media player, each a real slack app once installed - so each drags a caught
- * scene along, and this assertion is what proves it did.
+ * a player later. All three toys below are `slack: true` - the joke arcade, a
+ * media player, and a real game of Klondike - each a real slack app once
+ * installed, so each drags a caught scene along, and this assertion proves it.
  */
 export const INSTALLABLE_MANIFEST: readonly AppDef[] = assertCaughtScenes(
-  loadManifest([ARCADE_APP, MEDIA_APP]),
+  loadManifest([ARCADE_APP, MEDIA_APP, SOLITAIRE_APP]),
 );
 
 /** The ids the store can install, as a set for the quick membership questions. */

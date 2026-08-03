@@ -3343,6 +3343,17 @@ async function raiseOnly(page: Page, appId: string): Promise<void> {
  */
 const MONDAY_PATROLS = buildPatrolSchedule(1, WORLD_SEED).visits;
 
+/**
+ * Tuesday's corridors, for the fourth caught scene the store run needs.
+ *
+ * Monday has exactly three patrols (`PATROLS_PER_DAY`), and the store run spends
+ * all three - the game, the install audit, the media player. Office Solitaire is
+ * a fourth toy with a fourth scene, so its telling-off is driven at Tuesday's
+ * first corridor: the same deterministic `f(seed, day)` schedule, one day on.
+ * Ticks are absolute across the week, so `driveToArrival` reaches it the same way.
+ */
+const TUESDAY_PATROLS = buildPatrolSchedule(2, WORLD_SEED).visits;
+
 async function nowTick(page: Page): Promise<number> {
   return page.evaluate(() => globalThis.careerSim?.tick() ?? 0);
 }
@@ -3397,6 +3408,10 @@ test('walks the web store, the install, the audit and the uninstall', async ({
     await page.getByTestId('store-install-mediaplayer').click();
     await expect(page.getByTestId('desktop-icon-mediaplayer')).toBeVisible();
     await expect(page.getByTestId('store-uninstall-mediaplayer')).toBeVisible();
+
+    await page.getByTestId('store-install-solitaire').click();
+    await expect(page.getByTestId('desktop-icon-solitaire')).toBeVisible();
+    await expect(page.getByTestId('store-uninstall-solitaire')).toBeVisible();
   });
 
   // Close the Browser window we installed FROM before reaching for the icons it
@@ -3434,6 +3449,33 @@ test('walks the web store, the install, the audit and the uninstall', async ({
     const app = page.getByTestId('media-app');
     await page.getByTestId('media-play').click();
     await expect(app).toHaveAttribute('data-playing', 'true');
+  });
+
+  await step('solitaire.window', async () => {
+    // The start-menu route again, for the same reason the media player took it:
+    // two toy windows are already up and would fight a desktop double-click.
+    await openFromStartMenu(page, 'solitaire');
+    await expect(page.getByTestId('solitaire-app')).toBeVisible();
+  });
+
+  await step('solitaire.play', async () => {
+    // Draw from the stock: the one move legal in every deal. The board changes
+    // correctly - a card that was face down in the stock is now face up on the
+    // waste - which is a real move made, not a button that returned success.
+    const waste = page.getByTestId('solitaire-waste');
+    await expect(waste.locator('[data-testid^="solitaire-card-"]')).toHaveCount(0);
+
+    await page.getByTestId('solitaire-stock').click();
+    await expect(waste.locator('[data-testid^="solitaire-card-"]')).toHaveCount(1);
+    const first = await waste
+      .locator('[data-testid^="solitaire-card-"]')
+      .getAttribute('data-testid');
+
+    // A second draw turns a second card, so the top of the waste is a different
+    // card than the one the first draw left - the pile genuinely advanced.
+    await page.getByTestId('solitaire-stock').click();
+    await expect(waste.locator('[data-testid^="solitaire-card-"]'))
+      .not.toHaveAttribute('data-testid', first ?? '');
   });
 
   /* -- caught at the game on the screen, at the first Monday corridor ------- */
@@ -3476,6 +3518,26 @@ test('walks the web store, the install, the audit and the uninstall', async ({
     await page.keyboard.press('Backquote');
   });
 
+  /* -- caught mid-hand at the card game, at Tuesday's first corridor -------- */
+
+  await step('caught.scene-solitaire', async () => {
+    // Monday's three corridors are spent, so the fourth toy's scene is driven
+    // into Tuesday. The install set rode the night, so Solitaire is still on the
+    // machine; re-open it and raise it alone so it is the thing on the screen
+    // when the lead arrives.
+    await clockOffFor(page, 1);
+    await beginShift(page);
+
+    await openFromStartMenu(page, 'solitaire');
+    await raiseOnly(page, 'solitaire');
+    await driveToArrival(page, TUESDAY_PATROLS[0]?.arrivalTick ?? 0);
+    await expect(page.getByTestId('caught-app'))
+      .toHaveAttribute('data-app', 'solitaire');
+    await page.getByTestId('caught-dismiss').click();
+    await expect(page.getByTestId('window-caught')).toHaveCount(0);
+    await page.keyboard.press('Backquote');
+  });
+
   /* -- save, reload, and the install set exactly where it was -------------- */
 
   await page.getByTestId('start-button').click();
@@ -3494,10 +3556,11 @@ test('walks the web store, the install, the audit and the uninstall', async ({
   await expect(
     page.getByTestId('toast').filter({ hasText: 'Game loaded' }),
   ).toHaveCount(1);
-  // The install set rode the save: both toys are back on the desktop, live, off
-  // the loaded state and not this session's history.
+  // The install set rode the save: all three toys are back on the desktop, live,
+  // off the loaded state and not this session's history.
   await expect(page.getByTestId('desktop-icon-arcade')).toBeVisible();
   await expect(page.getByTestId('desktop-icon-mediaplayer')).toBeVisible();
+  await expect(page.getByTestId('desktop-icon-solitaire')).toBeVisible();
 
   /* -- and taken back off, the record staying behind ----------------------- */
 
@@ -3512,6 +3575,9 @@ test('walks the web store, the install, the audit and the uninstall', async ({
 
     await page.getByTestId('store-uninstall-mediaplayer').click();
     await expect(page.getByTestId('desktop-icon-mediaplayer')).toHaveCount(0);
+
+    await page.getByTestId('store-uninstall-solitaire').click();
+    await expect(page.getByTestId('desktop-icon-solitaire')).toHaveCount(0);
   });
 
   // The conduct file still carries the software line: uninstalling took the toy

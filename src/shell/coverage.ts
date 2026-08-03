@@ -2407,7 +2407,8 @@ const ENTRIES = [
   {
     id: 'store.install',
     surface: 'browser',
-    control: 'store-install-arcade, store-install-mediaplayer',
+    control: 'store-install-arcade, store-install-mediaplayer, '
+      + 'store-install-solitaire',
     does: 'Installs a program off the store: dispatches the install verb that '
       + 'writes the audit trail, adds it to the save-carried install set, and '
       + 're-mounts the desktop so its icon and start-menu entry appear at once '
@@ -2421,7 +2422,8 @@ const ENTRIES = [
   {
     id: 'store.uninstall',
     surface: 'browser',
-    control: 'store-uninstall-arcade, store-uninstall-mediaplayer',
+    control: 'store-uninstall-arcade, store-uninstall-mediaplayer, '
+      + 'store-uninstall-solitaire',
     does: 'Takes an installed toy back off: dispatches the uninstall verb, '
       + 'removes it from the install set and the desktop live, and leaves the '
       + 'install line on the audit - the record that it was there outliving the '
@@ -2476,6 +2478,29 @@ const ENTRIES = [
       + 'golden week ever installs the app it belongs to.',
   },
   {
+    id: 'solitaire.window',
+    surface: 'solitaire',
+    control: 'window-solitaire',
+    does: 'Office Solitaire, once installed: a real game of Klondike, and a real '
+      + 'slack app that drains stress at the installed-toy rate while it is up '
+      + 'and hides no better than the game it actually is.',
+    window: { routes: ['start-menu', 'desktop-icon'] },
+    run: 'store',
+    why: 'The third installable, present only in the run that installs it and '
+      + 'absent from the base roster the golden weeks mount.',
+  },
+  {
+    id: 'solitaire.play',
+    surface: 'solitaire',
+    control: 'solitaire-stock',
+    does: 'Turns the stock over onto the waste - the one always-legal move in '
+      + 'any deal - which is the toy being genuinely played and drips relief at '
+      + 'the installed-toy rate for as long as it is on the screen.',
+    run: 'store',
+    why: 'A control on a window only the store run mounts; no golden week ever '
+      + 'installs the game it belongs to.',
+  },
+  {
     id: 'caught.scene-arcade',
     surface: 'caught',
     control: 'window-arcade at an arrival',
@@ -2500,6 +2525,19 @@ const ENTRIES = [
     run: 'store',
     why: 'Same as the game: it needs the second toy installed and up at an '
       + 'arrival, which is the store run and no golden week.',
+  },
+  {
+    id: 'caught.scene-solitaire',
+    surface: 'caught',
+    control: 'window-solitaire at an arrival',
+    does: 'The installed card game, caught mid-hand at an arrival: the lead '
+      + 'watches a real move land before he mentions the audit, because the joke '
+      + 'is the specific thing that was on the screen.',
+    actions: [DAY_ACTIONS.bossCaught],
+    scene: 'caught.solitaire',
+    run: 'store',
+    why: 'Needs the game installed and up at an arrival, which is the store run '
+      + 'and no golden week - the weeks install nothing.',
   },
   {
     id: 'caught.scene-software',
@@ -2733,6 +2771,13 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   // And the toys those buttons put on the machine, once installed.
   'arcade-play',
   'media-play',
+  // Office Solitaire, a real game: the stock and the new-deal button are fixed
+  // controls; each face-up card and each empty-pile drop target is a control the
+  // player uses to move, so they carry ids in families rather than one by one.
+  'solitaire-stock',
+  'solitaire-new-deal',
+  'solitaire-card-*',
+  'solitaire-drop-*',
   'about-run-diagnostics',
   'about-reseat-fan',
   'about-refresh',

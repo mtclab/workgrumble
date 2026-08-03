@@ -120,6 +120,21 @@ export const CAUGHT_SCENES: readonly CaughtScene[] = validateCaughtScenes([
     fileSubject: 'an installed game',
   },
   {
+    appId: 'solitaire',
+    title: 'A quick word about what is installed',
+    bossLine: 'Solitaire. On the machine. Pat, that is the one everybody plays '
+      + 'because they think nobody can tell it is a game from across the room, '
+      + 'and I would like you to know that I can, and that I could from the door.',
+    narration: 'He watches you land a red seven on a black eight - a genuinely '
+      + 'good move, the kind you would be quietly pleased with if it were on '
+      + 'anything else - and he lets you finish it before he mentions the list.',
+    reply: 'You say you were letting a long query run. He agrees that something '
+      + 'was running, and that it was a game of cards, and that both of those '
+      + 'are now on the audit with your name against them.',
+    dismissLabel: 'Close it, and let it be logged',
+    fileSubject: 'an installed card game',
+  },
+  {
     appId: 'mediaplayer',
     title: 'A quick word about what is installed',
     bossLine: 'Is that a media player? We do not put media players on these. '

@@ -4123,6 +4123,165 @@ input {
   background: var(--color-ink);
 }
 
+/* -------------------------------------------------------- office solitaire */
+
+.solitaire-app {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  padding: var(--space-4);
+  font-family: var(--font-ui);
+}
+
+.solitaire-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
+}
+
+.solitaire-title {
+  grid-column: 1;
+  margin: var(--space-0);
+  font-size: var(--text-lg);
+  font-family: var(--font-read);
+}
+
+.solitaire-new-deal {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+.solitaire-tip,
+.solitaire-status {
+  grid-column: 1;
+  margin: var(--space-0);
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+}
+
+.solitaire-tip {
+  font-style: italic;
+}
+
+.solitaire-board {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: #2f6d3f;
+  box-shadow: var(--bevel-sunken);
+}
+
+.solitaire-row {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.solitaire-top {
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.solitaire-columns {
+  grid-template-columns: repeat(7, 1fr);
+  align-items: start;
+}
+
+.solitaire-gap {
+  grid-column: 3;
+}
+
+.solitaire-pile {
+  min-height: 46px;
+}
+
+.solitaire-column {
+  align-self: start;
+}
+
+.solitaire-stack {
+  display: grid;
+  /* Fan the column downwards: each card shows its top edge under the one above. */
+  grid-auto-rows: 18px;
+}
+
+.solitaire-stack > .solitaire-card:last-child {
+  height: 46px;
+}
+
+.solitaire-card,
+.solitaire-slot {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 46px;
+  border: var(--border-hair) solid var(--color-ink);
+  border-radius: var(--radius-tight, 3px);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.solitaire-card {
+  background: var(--color-surface-field);
+  color: var(--color-ink);
+}
+
+.solitaire-card[data-colour='red'] {
+  color: #b3261e;
+}
+
+.solitaire-card[data-colour='black'] {
+  color: var(--color-ink);
+}
+
+.solitaire-card.down {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      #2b4b8a,
+      #2b4b8a 3px,
+      #3a5fa8 3px,
+      #3a5fa8 6px
+    );
+  border-color: #14203c;
+  cursor: default;
+}
+
+.solitaire-card[data-selected='true'] {
+  outline: var(--border-bevel, 2px) solid var(--color-accent-bright);
+  outline-offset: -1px;
+}
+
+.solitaire-slot {
+  background: rgb(255 255 255 / 12%);
+  color: rgb(255 255 255 / 70%);
+  border-style: dashed;
+  border-color: rgb(255 255 255 / 45%);
+}
+
+.solitaire-stock {
+  background: rgb(255 255 255 / 20%);
+  color: #fff;
+}
+
+.solitaire-empty {
+  display: grid;
+  place-items: center;
+  height: 46px;
+  color: rgb(255 255 255 / 55%);
+  font-size: var(--text-xs);
+}
+
+.solitaire-win {
+  padding: var(--space-3);
+  background: var(--color-accent-deep);
+  color: var(--color-accent-ink);
+  font-weight: 700;
+  text-align: center;
+}
+
 /* ------------------------------------------------------ the caught scene */
 
 .caught-app {
