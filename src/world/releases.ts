@@ -31,6 +31,31 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.3.6',
+    date: '2026-08-03',
+    summary: 'This update tidies up after itself.',
+    lines: Object.freeze([
+      'The working day no longer ends when you leave. A message or two may '
+        + 'arrive after you have gone, and they will be waiting on the '
+        + 'morning screen when you come back. You can answer them. Answering '
+        + 'is a small point in your favour, traded for a small amount of the '
+        + 'evening following you into the next day. Leaving them costs '
+        + 'nothing at all, which is the correct choice and the one nobody '
+        + 'makes.',
+      'The taskbar no longer pushes your open windows off the end of itself '
+        + 'when a lot is happening at once. The status control has been made '
+        + 'smaller so it stops elbowing everything else. It is still there. '
+        + 'It is still watching.',
+      'When the day slows itself down because something has happened to you, '
+        + 'it now says so, rather than leaving you to notice ten minutes '
+        + 'later that the afternoon has been crawling. It still does not '
+        + 'speed itself back up. That part is yours.',
+      'The assistant, once dismissed, now stays dismissed for the rest of '
+        + 'the day, instead of returning the moment anything happens. It '
+        + 'still comes back tomorrow. It was very clear about that.',
+    ]),
+  },
+  {
     version: '0.3.5',
     date: '2026-08-02',
     summary: 'This update adds an assistant.',
