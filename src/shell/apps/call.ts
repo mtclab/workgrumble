@@ -56,6 +56,24 @@ interface CallRegister {
   readonly decline: string;
   /** What the callback state says, for the sources that can have one. */
   readonly again: string;
+  /**
+   * And the words the outcome of it is written in, which are the ones that were
+   * lying when a message wore a phone's.
+   *
+   * These are the same beat in three registers rather than one hardcoded set:
+   * "you put the phone down" is true of a call, false of a message, and a
+   * message that said it was the exact false-in-fiction line the content bar
+   * forbids. `ended` closes the thread, `loggedFrom` says where an on-the-record
+   * line came from, and the three under `defer`/`decline` are what asking for
+   * later or leaving it costs and says.
+   */
+  readonly ended: string;
+  readonly loggedFrom: string;
+  readonly deferAsk: string;
+  readonly deferOutcome: string;
+  readonly deferTitle: string;
+  readonly deferBody: string;
+  readonly declineOutcome: string;
 }
 
 const RINGING: CallRegister = {
@@ -67,8 +85,21 @@ const RINGING: CallRegister = {
   decline: 'Decline',
   again: 'Ringing again. This is them ringing back, which is the one you '
     + 'said you would take.',
+  ended: 'You put the phone down.',
+  loggedFrom: 'from the phone',
+  deferAsk: 'In the middle of something - can I ring you back?',
+  deferOutcome: 'They said no problem at all. They will ring back, and the '
+    + 'second time is the conversation.',
+  deferTitle: 'You said you would ring back',
+  deferBody: ' will ring again in a bit, and that one is not one you can '
+    + 'wave off.',
+  declineOutcome: 'It stops ringing. The minutes it would have taken are '
+    + 'yours.',
 };
 
+// A person at the desk shares the call's words for now (walk-ups are not this
+// slice's remit); only their register keys above differ. Kept as its own object
+// so a later pass can make the desk speak for itself without touching the call.
 const AT_THE_DESK: CallRegister = {
   waiting: 'Standing at your desk, waiting for you to look up. Your status '
     + 'has nothing to say about this: they can see you.',
@@ -78,6 +109,13 @@ const AT_THE_DESK: CallRegister = {
   decline: 'Say not now',
   again: 'Back at your desk, at the minute you asked for. This is the '
     + 'conversation.',
+  ended: RINGING.ended,
+  loggedFrom: RINGING.loggedFrom,
+  deferAsk: RINGING.deferAsk,
+  deferOutcome: RINGING.deferOutcome,
+  deferTitle: RINGING.deferTitle,
+  deferBody: RINGING.deferBody,
+  declineOutcome: RINGING.declineOutcome,
 };
 
 /**
@@ -90,6 +128,11 @@ const AT_THE_DESK: CallRegister = {
  * them: reply now, reply later, or leave it on read. The clock still drops and
  * the queue still runs, because a message you stop to answer is a message you
  * stopped to answer.
+ *
+ * Every word of it is a message's word. A chat does not ring, is not put down,
+ * and does not ring back - it is sent, closed, and picked up again later - and
+ * the reused call window would have said all three of the wrong ones until this
+ * register was given its own.
  */
 const MESSAGE: CallRegister = {
   waiting: 'A message, waiting on a reply. The queue does not stop for it and '
@@ -100,9 +143,19 @@ const MESSAGE: CallRegister = {
   decline: 'Leave it on read',
   again: 'Back in the chat, at the minute you said. This is the one you said '
     + 'you would get to.',
+  ended: 'You closed the chat.',
+  loggedFrom: 'from the chat',
+  deferAsk: 'In the middle of something - can I get back to you?',
+  deferOutcome: 'They said no problem at all. They will message again, and the '
+    + 'second time is the one you said you would take.',
+  deferTitle: 'You said you would get back to them',
+  deferBody: ' will message again in a bit, and that one is not one you can '
+    + 'wave off.',
+  declineOutcome: 'You leave it on read. The minutes it would have taken are '
+    + 'yours.',
 };
 
-function registerFor(source: InterruptionSource): CallRegister {
+export function registerFor(source: InterruptionSource): CallRegister {
   switch (source) {
     case 'walk_up':
       return AT_THE_DESK;
@@ -111,6 +164,32 @@ function registerFor(source: InterruptionSource): CallRegister {
     default:
       return RINGING;
   }
+}
+
+/**
+ * Every human string a register prints, for the one reader that has to prove a
+ * message never speaks as a phone.
+ *
+ * Exported for the content-honesty gate rather than for a surface: the window
+ * reads the fields by name, and a test reads them all at once to assert that a
+ * chat's are free of "phone", "ring" and "rang" - words that are true of a call
+ * and false of a message, and that the reused window printed for both until the
+ * register was split.
+ */
+export function registerCopy(source: InterruptionSource): readonly string[] {
+  const words = registerFor(source);
+  return [
+    words.waiting,
+    words.during,
+    words.again,
+    words.ended,
+    words.loggedFrom,
+    words.deferAsk,
+    words.deferOutcome,
+    words.deferTitle,
+    words.deferBody,
+    words.declineOutcome,
+  ];
 }
 
 /**
@@ -312,6 +391,7 @@ export const CALL_APP: AppDef = {
       option: Readonly<DialogueOption>,
     ): void => {
       const key = threadKey(view.entry.id);
+      const words = registerFor(view.entry.source);
       const said: ChatThread['lines'] = [
         ...thread.lines,
         { who: 'you', text: option.label },
@@ -325,7 +405,7 @@ export const CALL_APP: AppDef = {
           ? {
             ...thread,
             ended: true,
-            lines: [...said, { who: 'system', text: 'You put the phone down.' }],
+            lines: [...said, { who: 'system', text: words.ended }],
           }
           : {
             ...thread,
@@ -359,7 +439,9 @@ export const CALL_APP: AppDef = {
       const reported: string[] = [];
 
       if (played.done.some(isAskEffect)) {
-        reported.push('Logged on the ticket, in their words, from the phone.');
+        reported.push(
+          `Logged on the ticket, in their words, ${words.loggedFrom}.`,
+        );
       }
 
       if (played.done.some(isRevealEffect)) {
@@ -397,6 +479,7 @@ export const CALL_APP: AppDef = {
         const caller = flavorText(view.entry, FLAVOR.caller);
         const key = threadKey(view.entry.id);
         const existing = threads()[key];
+        const words = registerFor(view.entry.source);
 
         putThread(key, {
           nodeId: existing?.nodeId ?? '',
@@ -406,7 +489,7 @@ export const CALL_APP: AppDef = {
             ...existing?.lines ?? [],
             {
               who: 'you',
-              text: 'In the middle of something - can I ring you back?',
+              text: words.deferAsk,
             },
             {
               who: 'them',
@@ -414,14 +497,12 @@ export const CALL_APP: AppDef = {
             },
           ],
         });
-        outcome = 'They said no problem at all. They will ring back, and the '
-          + 'second time is the conversation.';
+        outcome = words.deferOutcome;
 
         if (caller !== null) {
           api.notify(
-            'You said you would ring back',
-            `${callerName(view)} will ring again in a bit, and that one is `
-            + 'not one you can wave off.',
+            words.deferTitle,
+            `${callerName(view)}${words.deferBody}`,
           );
         }
       }
@@ -429,11 +510,11 @@ export const CALL_APP: AppDef = {
       render();
     };
 
-    const sayNo = (): void => {
+    const sayNo = (view: Readonly<InterruptionView>): void => {
       const result = api.day.declineInterruption();
       refusal = result.ok ? null : result.reason;
       outcome = result.ok
-        ? 'It stops ringing. The minutes it would have taken are yours.'
+        ? registerFor(view.entry.source).declineOutcome
         : null;
       render();
     };
@@ -453,7 +534,11 @@ export const CALL_APP: AppDef = {
       }
     });
     decline.addEventListener('click', () => {
-      sayNo();
+      const view = api.day.interruption();
+
+      if (view !== null) {
+        sayNo(view);
+      }
     });
 
     /**

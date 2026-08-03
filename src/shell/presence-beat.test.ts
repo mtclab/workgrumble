@@ -595,6 +595,77 @@ describe('the record of a call the dot turned away', () => {
   });
 });
 
+/* -- the dodge has to actually dodge --------------------------------------- */
+
+/**
+ * The mechanic F5's arithmetic rests on, gated (0.4.3, P1-A).
+ *
+ * The dot SLIDES a declinable dot-reader rather than vanishing it, and a slide
+ * writes a different ledger from a postpone - so until this slice the
+ * arrival-stress waiver, which read only the postpone ledger, missed it: a
+ * message the dot pushed away RE-CHARGED its two points of arrival stress when
+ * it came back on an honest dot. That made Do Not Disturb strictly WORSE than
+ * Available (the drip AND the same stress on return) and made the spec's whole
+ * tradeoff - "dodge it, pay the drip instead" - a thing that did not exist.
+ *
+ * The gate isolates the return's charge by measuring the same late window on a
+ * reset meter in two runs whose only difference is whether the message comes
+ * back into it. TEETH: drop the slide half of the waiver in `arrive()` (leave
+ * only `postponesSpent`) and the return charges two points again, so the dodged
+ * run reads two over the clean one and this fails (measured 59 against 57).
+ */
+describe('a message the dot slid is not charged twice', () => {
+  function lowStress(world: Harness): void {
+    world.session.engine.applySetup([{
+      op: 'setField',
+      id: COMPANY_IDS.player,
+      field: FIELDS.stress,
+      value: 5,
+    }]);
+  }
+
+  it('charges the arrival once, not again when the dot goes green', () => {
+    const seed = harnessOn(4).session.seed;
+    const T = buildInterruptionSchedule(seed, 4, interruptionPlanFor(4, seed))
+      .entries.find((entry) => entry.id === 'chat:dennis-calendar')?.tick ?? 0;
+
+    expect(T).toBeGreaterThan(0);
+
+    // Available throughout: the message arrives at T and is long done by T+36.
+    // The T+36..T+50 window, on a meter reset the moment it opens, is the
+    // queue's climb and nothing else - and it holds the annexe call, which both
+    // runs take, so that cancels too.
+    const clean = harnessOn(4);
+    runTo(clean.driver, clean.session, T + 36);
+    lowStress(clean);
+    const cleanBefore = number(clean.session, FIELDS.stress);
+    runTo(clean.driver, clean.session, T + 50);
+    const queueOnly = number(clean.session, FIELDS.stress) - cleanBefore;
+
+    // Behind the dot across the message, then honest: it slides at T and is
+    // pushed back into that same window (behind the annexe it slid past). Same
+    // queue, same reset - so any excess over `queueOnly` is the return being
+    // charged a second time, which is the thing that must not happen.
+    const dodged = harnessOn(4);
+    expect(dodged.driver.setPresence('dnd')).toEqual({ ok: true });
+    runTo(dodged.driver, dodged.session, T + 2);
+    expect(dodged.driver.setPresence('available')).toEqual({ ok: true });
+    runTo(dodged.driver, dodged.session, T + 36);
+    lowStress(dodged);
+    const dodgedBefore = number(dodged.session, FIELDS.stress);
+    runTo(dodged.driver, dodged.session, T + 50);
+    const withReturn = number(dodged.session, FIELDS.stress) - dodgedBefore;
+
+    // The message did slide - the premise of the whole test - and its return
+    // cost nothing the honest morning had not already paid. The dodge dodges.
+    expect(
+      dodged.driver.dodgedInterruptions()
+        .some((record) => record.entry.id === 'chat:dennis-calendar'),
+    ).toBe(true);
+    expect(withReturn).toBe(queueOnly);
+  });
+});
+
 /* -- the chat beat, the whole tradeoff walked ------------------------------ */
 
 /**

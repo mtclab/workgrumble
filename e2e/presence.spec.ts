@@ -81,6 +81,60 @@ async function doSomeWork(page: Page): Promise<void> {
   await expect(viewport).toHaveAttribute('data-rotation', angle);
 }
 
+/**
+ * The same work, but for the behind-the-dot journey, where the desk is a moving
+ * target.
+ *
+ * The drip reads the TOUCH LOG - a dispatched action on a ticket's estate - not
+ * a window's focus flag, and behind a red dot the focus flag is worthless: an
+ * arrival, a slide, the caught scene itself all drop or minimise the window
+ * under the work. So this asserts the durable thing (the rotation the world
+ * accepted) and never the chrome, raises the remote window tolerantly rather
+ * than through the focus-toggle helper, and yields when a takeover owns the desk
+ * because there is nothing to dispatch to then - which the caller's loop is
+ * watching for anyway. Answers whether it managed to work, so a loop can tell a
+ * blocked minute from a worked one.
+ */
+async function workBehindTheDot(page: Page): Promise<boolean> {
+  // A takeover (the caught scene, chiefly) owns the whole desk: no window to
+  // raise and nothing to dispatch. Yield and let the caller read the scene.
+  if (await page.getByTestId('window-caught').count() > 0) {
+    return false;
+  }
+
+  if (await page.getByTestId('desktop').getAttribute('data-takeover') !== null) {
+    return false;
+  }
+
+  const remote = page.getByTestId('window-remote');
+
+  if (await remote.count() === 0) {
+    await openFromStartMenu(page, 'remote');
+  } else if (
+    await remote.getAttribute('data-focused') !== 'true'
+    || await remote.getAttribute('data-minimized') === 'true'
+  ) {
+    // Raise it to the front so the rotation control is reachable - only when it
+    // actually needs it, because the taskbar button toggles. No assertion on the
+    // focus that results: the point is the dispatch below, not the chrome.
+    await page.getByTestId('taskbar-button-remote').click();
+  }
+
+  await page.getByTestId('remote-machine-ada').click();
+
+  const viewport = page.getByTestId('remote-viewport');
+  const angle = await viewport.getAttribute('data-rotation') === '180'
+    ? '90'
+    : '180';
+
+  await page.getByTestId('remote-rotation-picker').selectOption(angle);
+  await page.getByTestId('remote-apply-rotation').click();
+  // The world accepted the work - the screen turned - which is the touch the
+  // drip reads. THIS is "working", not a focused window.
+  await expect(viewport).toHaveAttribute('data-rotation', angle);
+  return true;
+}
+
 /* -- the do-not-disturb journey -------------------------------------------- */
 
 /**
@@ -248,7 +302,7 @@ test('behind the dot, the message is waved off and the morning is paid for', asy
   // A morning of work behind the dot ends at the lead's shoulder, which is the
   // longest single-day journey in this file - it has to run the drip all the
   // way to the beat's mark - so it buys the cross-day budget.
-  test.setTimeout(300_000);
+  test.setTimeout(240_000);
   await logInOnDay(page, 4, { brief: 'keep' });
   await beginShift(page);
 
@@ -258,15 +312,10 @@ test('behind the dot, the message is waved off and the morning is paid for', asy
 
   const suspicionBefore = await meter(page, 'scorecard-suspicion');
 
-  // Work behind the dot across the hour the message would have landed in. By
-  // eleven the chat beat at ten to has already been slid, so this is the state
-  // to read the record in.
+  // Across the hour the message would have landed in. By eleven the chat beat at
+  // ten to has already been slid by the dot, so this is the state to read the
+  // record in.
   await workUntilMinute(page, 11 * 60 - 8 * 60);
-
-  for (let round = 0; round < DRIP_ROUNDS; round += 1) {
-    await doSomeWork(page);
-    await runSimMinutes(page, 5, 4);
-  }
 
   /*
    * THE MESSAGE THAT DID NOT LAND. Nothing took the screen for it: the call
@@ -283,8 +332,17 @@ test('behind the dot, the message is waved off and the morning is paid for', asy
   await expect(missed).toBeVisible();
   await expect(missed).toContainText('calendar');
 
-  /* THE PRICE. The dot said busy while the log said working, and the meter
-   * that reads both has moved. */
+  /*
+   * THE PRICE. Now WORK behind the dot - a dispatched rotation the world
+   * accepts, which is what the drip reads - and the meter that reads the dot
+   * against the log climbs off the floor. "Working" is the accepted dispatch,
+   * asserted inside the helper; it is never a window's focus flag, which any
+   * arrival or the caught scene would drop.
+   */
+  for (let round = 0; round < DRIP_ROUNDS; round += 1) {
+    await workBehindTheDot(page);
+    await runSimMinutes(page, 5, 4);
+  }
 
   expect(await meter(page, 'scorecard-suspicion'))
     .toBeGreaterThan(suspicionBefore);
@@ -292,12 +350,14 @@ test('behind the dot, the message is waved off and the morning is paid for', asy
   /*
    * THE BEAT. Keep working behind the dot and the drip crosses the mark; the
    * corridor decides when, and the lead comes down about the status - the
-   * caught-scene class, keyed to the dot rather than to a screen.
+   * caught-scene class, keyed to the dot rather than to a screen. The loop stops
+   * the moment the scene is up, and the work helper yields under it, so nothing
+   * reaches past a takeover to a desk that is not there.
    */
   const caught = page.getByTestId('window-caught');
 
-  for (let round = 0; round < 40 && await caught.count() === 0; round += 1) {
-    await doSomeWork(page);
+  for (let round = 0; round < 45 && await caught.count() === 0; round += 1) {
+    await workBehindTheDot(page);
     await runSimMinutes(page, 5, 4);
   }
 

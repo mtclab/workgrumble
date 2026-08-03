@@ -147,28 +147,38 @@ export const DND_WORKING_TICKS = 15;
  * OVERSEER TUNING KNOB, and the one most likely to move: it is the whole price
  * of the quiet the dot buys.
  *
- * RE-EVALUATED AND HELD at 2 in slice 0.4.3 (finding F5), now that there is
- * finally a beat pressing it. 0.3.6 deferred the call because the shipped week
- * authored no dodgeable chat/boss beat, so the drip never had anything to drip
- * against; 0.4.3 adds one - `chat:dennis-calendar`, ten to eleven on the
- * Thursday, a declinable chat message that reads the dot and costs, if taken,
- * severity-one arrival stress (2) plus the malignant refocus window. Judged
- * against THAT beat, 2 is not too cheap - it is already at the mark the review
- * asked it to reach:
+ * RE-EVALUATED AND HELD at 2 in slice 0.4.3 (finding F5) - but only after the
+ * mechanic the arithmetic rests on was FIXED, because the first reading was on a
+ * false premise. 0.3.6 deferred the call because the shipped week authored no
+ * dodgeable chat/boss beat; 0.4.3 adds one - `chat:dennis-calendar`, ten to
+ * eleven on the Thursday, a declinable chat message that reads the dot and
+ * costs, if taken, severity-one arrival stress (2) plus the malignant refocus
+ * window.
+ *
+ * The false premise (P1-A, fixed in `day-driver.ts arrive()`): the dot does not
+ * VANISH a dodged beat, it SLIDES it - and until 0.4.3 the arrival-stress waiver
+ * read only the postpone ledger, so a slid message RE-CHARGED its two points
+ * when it came back on an honest dot. Do Not Disturb was therefore strictly
+ * WORSE than Available (the drip AND the same stress on return), and "dodge it,
+ * pay the drip instead" was not a thing the world let you do. Once a slide is
+ * waived like a postpone, the dodge genuinely avoids the two points, and only
+ * then is there a trade to price. Judged against the CORRECTED mechanic, 2 is at
+ * the mark the review asked for:
  *
  *   - The drip is integrated, floor(minutes * 2 / 5) suspicion per minute the
  *     dot lied while the log worked - 0.4 a minute.
- *   - To be sure of dodging a beat you did not memorise the minute of, Do Not
- *     Disturb has to be up across a window around it. A realistic ~5-minute
- *     window costs floor(5 * 2 / 5) = 2 suspicion - which is exactly the 2
- *     stress the dodge saves. "Costs about what the dodge saves" is satisfied
- *     at 2; it is not below the mark, so there is nothing to raise it on.
- *   - The lazy version - sitting on the dot all morning rather than watching
- *     the clock - is where it is supposed to hurt, and it does: by ten to
- *     eleven a morning behind the dot has dripped ~44 suspicion, one interval
- *     short of the beat mark, so dodging this the lazy way walks the player
- *     straight into the "on Do Not Disturb all morning" scene. That is the
- *     trap the triangle is meant to have, and 2 already lands it.
+ *   - The message is unannounced (unlike a meeting, it is on no brief), so a
+ *     player cannot toggle the dot on its exact minute without knowing the
+ *     seed. To be SURE of sliding it, Do Not Disturb is held across a defensive
+ *     window. A realistic ~5-minute window costs floor(5 * 2 / 5) = 2 suspicion
+ *     - which is now genuinely the 2 stress the dodge saves. "Costs about what
+ *     the dodge saves" is satisfied at 2, on a true premise; nothing is below
+ *     the mark, so there is nothing to raise it on.
+ *   - The lazy version - sitting on the dot all morning rather than judging the
+ *     window - is where it is supposed to hurt, and it does: by ten to eleven a
+ *     morning behind the dot has dripped ~44 suspicion, one interval short of
+ *     the beat mark, so dodging this the lazy way walks the player straight into
+ *     the "on Do Not Disturb all morning" scene. 2 already lands that trap.
  *
  * Raising it to 3 (level with the browser slack window, which the 0.3.6 review
  * floated) would tip a realistic dodge from "costs about what it saves" to
@@ -180,11 +190,14 @@ export const DND_WORKING_TICKS = 15;
  * minutes rather than ~113); that is a lever left flagged for the owner, not
  * a correction the arithmetic demands. The value stands at 2.
  *
- * (Note the one thing no value of this constant fixes: a player who toggles the
- * dot for a single minute exactly on the beat pays floor(1 * 2 / 5) = 0. That
- * near-free precise dodge is inherent to an integrated drip meeting a short
- * dodge window, not a symptom of the rate - so it is not an argument for moving
- * this number either way.)
+ * (One edge the constant does not govern, now the mechanic is honest: a player
+ * who KNOWS the minute and toggles the dot for one minute on it pays ~0 and
+ * saves the two points - but the message still comes back and still interrupts
+ * them, because a one-minute slide is not a dropped beat, only an un-jolted one.
+ * Avoiding the interruption ITSELF needs the dot held until the beat runs out of
+ * day, which is the expensive committed dodge. So the cheap precise toggle buys
+ * only the jolt, not the quiet - a replay-mastery edge for two points, not a
+ * dominant line - and it is no argument for moving this number either way.)
  */
 export const DND_WORKING_SUSPICION = 2;
 

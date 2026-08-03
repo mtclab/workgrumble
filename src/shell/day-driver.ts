@@ -3041,6 +3041,20 @@ export class DayDriver implements DayApi {
   }
 
   /**
+   * How many times the dot has slid this one, which is the other way an
+   * interruption can be held off without being a fresh arrival.
+   *
+   * Read off the same stamped ledger the placement reads (`interruptionDodged`,
+   * "id@tick" a line), and kept apart from the postpone count for the reason the
+   * ledgers are kept apart: a slide spends no budget. What the two share is the
+   * one thing the arrival cost cares about - that a return is a return, charged
+   * once, not a new call charged again.
+   */
+  private dodgesSpent(id: string): number {
+    return (this.stampedLines(FIELDS.interruptionDodged)[id] ?? []).length;
+  }
+
+  /**
    * The ticket the player is actually on, which is what the cost model reads.
    *
    * The touch log knows: it is the ticket somebody most recently did something
@@ -3208,13 +3222,20 @@ export class DayDriver implements DayApi {
     }
 
     const benign = isBenign(entry, this.ticketInHand());
-    // An arrival the player pushed here themselves is the same dread coming
-    // round again rather than new dread, so it is charged once - at the first
-    // one. The world enforces it too, off the same ledger; this is only the
-    // half that keeps a dispatch nobody could accept out of the log.
-    const stress = this.postponesSpent(entry.id) > 0
-      ? 0
-      : arrivalStress(entry, benign);
+    // An arrival the player HELD OFF is the same dread coming round again rather
+    // than new dread, so it is charged once - at the first one. Two things can
+    // hold an interruption off, and until 0.4.3 only one of them counted here: a
+    // POSTPONE the player pressed, and a SLIDE the dot caused. A dodged call that
+    // comes back when the dot goes green is not a fresh call - it is the same one
+    // the status pushed away, arriving late - so charging its arrival stress
+    // again made Do Not Disturb a way to pay the cost TWICE (the drip AND the
+    // stress on return) rather than a way to trade one for the other. The dodge
+    // has to actually dodge: a slide spends no postpone, so the ledger it writes
+    // is read here as well, and an interruption that was ever slid is waived the
+    // arrival it would otherwise be charged a second time for.
+    const heldOff = this.postponesSpent(entry.id) > 0
+      || this.dodgesSpent(entry.id) > 0;
+    const stress = heldOff ? 0 : arrivalStress(entry, benign);
 
     if (stress > 0) {
       this.engine.dispatch(
@@ -3300,10 +3321,16 @@ export class DayDriver implements DayApi {
       );
 
       if (missed.ok) {
+        // A phone rings out; a message sits unread. Same record, same
+        // non-mention, but nothing in this world may print the wrong one of
+        // those two for the wrong source.
         this.handlers.onNotice?.(
           'You did not get to that one',
-          'It rang out. Nobody is going to mention it, and it is written '
-          + 'down, which is how most of the things nobody mentions work.',
+          entry.source === 'chat'
+            ? 'It sat unread. Nobody is going to mention it, and it is written '
+              + 'down, which is how most of the things nobody mentions work.'
+            : 'It rang out. Nobody is going to mention it, and it is written '
+              + 'down, which is how most of the things nobody mentions work.',
         );
       }
     }

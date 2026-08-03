@@ -421,11 +421,20 @@ async function boot(): Promise<void> {
         return;
       }
 
+      // A phone that did not ring, or a message that did not land - the record
+      // is the same and the word for it is not, because a chat does not ring
+      // and nothing in this world may say it did.
+      const subject = flavorText(entry, FLAVOR.subject) ?? 'Somebody wanted you';
+
       shell.notify(
-        'The phone did not ring',
-        `${flavorText(entry, FLAVOR.subject) ?? 'Somebody wanted you'}. They `
-        + 'saw the dot and did not put it through. It is in the call window '
-        + 'with the time on it, and they may well try again.',
+        entry.source === 'chat'
+          ? 'A message did not land'
+          : 'The phone did not ring',
+        entry.source === 'chat'
+          ? `${subject}. They saw the dot and left it - it is in the call `
+            + 'window with the time on it, and they may well try again.'
+          : `${subject}. They saw the dot and did not put it through. It is in `
+            + 'the call window with the time on it, and they may well try again.',
       );
     },
     // And somebody noticing that the dot says Away while the queue moves.
