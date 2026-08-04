@@ -620,3 +620,50 @@ audits under policy (reuse 0.4.0 rails). Goldens byte-identical (transient game 
 never play - assert). e2e: install from the web store, play a few real moves, get relief, get
 caught / audited. Coverage: the toys' controls catalogued as installable-until-installed (the
 0.4.0 three-category rule). Both halves box; codex wave.
+
+---
+
+# Version 0.5.0 - channel sprawl (E4 #5, issue #22) - THE FIRST BUNDLED VERSION
+
+Owner cadence: fewer, larger updates. This version bundles three slices; each gets its lane
+and its internal gate, and the VERSION gets one codex review + one box cycle + one release
+note at the end. Research: modern-stack.md section 6 (DM bypass, conversational ticketing,
+deflection bots), day-to-day-frustrations.md section 3.
+
+## Slice 1 - the third channel
+
+1. A Teams/Slack-parody app - CHANNELS + threads + @mentions + unread badges - distinct from
+   the 1:1 Chat. Shipped on the base manifest, not installable: the company rolled it out and
+   nobody asked for it, which is the joke and the truth.
+2. World data decides which requests arrive on which channel. The 0.3.3 presence dot is shared
+   across channels (one dot, everyone reads it).
+3. Parody-safe name at build. The register: enterprise chat that is very excited about itself.
+
+## Slice 2 - the same question everywhere
+
+4. One authored request arrives on MULTIPLE channels (mail + chat + the new app). Answering
+   the HUMAN anywhere satisfies them; only the TICKET path counts at review - the DM-bypass
+   truth generalized to the whole intake surface.
+5. Convert-to-ticket generalizes: any channel message can be minted into a real ticket (small
+   time cost, keeps both the human and the credit) - the conversational-ticketing
+   countermeasure, playable.
+6. Duplicate arrivals are NOISE the player learns to dedupe; answered-in-the-wrong-place
+   reuses the gratitude-no-credit scoring the DM bypass already has.
+
+## Slice 3 - attention as a resource, and the bot
+
+7. Unread badges across channels feed a small attention/stress input - the sprawl cost made
+   mechanical. Conservative, flagged, argued at the goldens.
+8. "Have you tried the portal": some tickets arrive pre-chewed by the deflection bot ("Bot
+   tried: password reset. User says: still broken") - explains mechanically why the surviving
+   queue is the weird stuff. The bot-frustrated archetype arrives pre-angry; the 0.4.1 tone
+   register is how the player meets them.
+9. Channel mix per employer is DATA (the E5 seam).
+
+## Gates (once, at the version)
+
+Journeys: the multi-channel request deduped and converted (counts at review); answered in the
+wrong place (gratitude, no credit, visible); the pre-chewed ticket; unread pressure felt and
+cleared. Goldens move once for the week's channel content - every number argued. Solvability,
+determinism, off-hours, save round-trip standing. One codex review of the whole version diff
+(</dev/null + timeout), one full box cycle, one release note.
