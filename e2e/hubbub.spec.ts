@@ -125,7 +125,10 @@ test('opens the queue from a message that is about a ticket', async ({
     // on the queue - the surface where the clock and the credit live. The
     // ticket named is Monday's own inherited one, so the queue has it.
     const open = page.getByTestId('hubbub-open-ticket-gary-account');
-    await expect(open).toContainText('locked');
+    // The button wears the ticket's own title ("About: Computer says the
+    // password is wrong (it is not wrong)"), which is how the message names
+    // the queue item it is about.
+    await expect(open).toContainText('password is wrong');
     await open.click();
     await expect(page.getByTestId('window-tickets'))
       .toHaveAttribute('data-focused', 'true');

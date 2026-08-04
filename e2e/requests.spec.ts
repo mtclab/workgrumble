@@ -37,53 +37,69 @@ async function reachTheRequest(page: import('@playwright/test').Page): Promise<v
 test('arrives in three windows, is converted, counts, and dedupes', async ({
   page,
 }) => {
+  test.setTimeout(240_000);
   await reachTheRequest(page);
+
+  // The one request lands on three surfaces at once, all sharing its id, so
+  // every assertion is scoped to the window it is about - the mail, chat and
+  // room windows stay open together, and an unscoped `request-*-bev-vpn` would
+  // hit strict mode across every copy on screen.
 
   // The inbox carries it...
   await openFromStartMenu(page, 'mail');
-  await expect(page.getByTestId('request-card-bev-vpn')).toBeVisible();
-  await expect(page.getByTestId('request-elsewhere-bev-vpn'))
+  const mail = page.getByTestId('mail-requests');
+  await expect(mail.getByTestId('request-card-bev-vpn')).toBeVisible();
+  await expect(mail.getByTestId('request-elsewhere-bev-vpn'))
     .toContainText('same request');
 
   // ...so does the one-to-one chat...
   await openFromStartMenu(page, 'chat');
-  await expect(page.getByTestId('request-card-bev-vpn')).toBeVisible();
+  const chat = page.getByTestId('chat-requests');
+  await expect(chat.getByTestId('request-card-bev-vpn')).toBeVisible();
 
   // ...and so does the room, where the bar lives on the message itself.
   await openFromStartMenu(page, 'hubbub');
   await page.getByTestId('hubbub-channel-helpdesk').click();
-  await expect(page.getByTestId('hubbub-message-bev-vpn')).toBeVisible();
-  await expect(page.getByTestId('request-convert-bev-vpn')).toBeVisible();
+  const roomMessage = page.getByTestId('hubbub-message-bev-vpn');
+  await expect(roomMessage).toBeVisible();
+  await expect(roomMessage.getByTestId('request-convert-bev-vpn')).toBeVisible();
 
   // Convert it: the correct play. A real ticket is minted and the queue opens
   // on it, which is where the credit lives.
-  await page.getByTestId('request-convert-bev-vpn').click();
+  await roomMessage.getByTestId('request-convert-bev-vpn').click();
   await expect(page.getByTestId('ticket-row-bev-vpn-request')).toBeVisible();
 
   // The room copy now reads converted...
   await openFromStartMenu(page, 'hubbub');
   await page.getByTestId('hubbub-channel-helpdesk').click();
-  await expect(page.getByTestId('request-status-bev-vpn'))
-    .toContainText('Converted');
+  await expect(
+    page.getByTestId('hubbub-message-bev-vpn').getByTestId('request-status-bev-vpn'),
+  ).toContainText('Converted');
 
   // ...and so does the inbox copy, because it is the same request: resolving one
   // quietens all three. There are no buttons left to press on it anywhere.
   await openFromStartMenu(page, 'mail');
-  await expect(page.getByTestId('request-status-bev-vpn'))
-    .toContainText('Converted');
+  await expect(
+    page.getByTestId('mail-requests').getByTestId('request-status-bev-vpn'),
+  ).toContainText('Converted');
   await expect(page.getByTestId('request-convert-bev-vpn')).toHaveCount(0);
 });
 
 test('answered in the wrong place: grateful, and no ticket', async ({ page }) => {
+  test.setTimeout(240_000);
   await reachTheRequest(page);
 
+  // Scoped to the room message: the same bar renders on the mail and chat
+  // copies too, so an unscoped `request-*-bev-vpn` would resolve to more than
+  // one element once those windows are open.
   await openFromStartMenu(page, 'hubbub');
   await page.getByTestId('hubbub-channel-helpdesk').click();
-  await expect(page.getByTestId('request-answer-bev-vpn')).toBeVisible();
+  const roomMessage = page.getByTestId('hubbub-message-bev-vpn');
+  await expect(roomMessage.getByTestId('request-answer-bev-vpn')).toBeVisible();
 
   // Answer the human here, off the books.
-  await page.getByTestId('request-answer-bev-vpn').click();
-  await expect(page.getByTestId('request-status-bev-vpn'))
+  await roomMessage.getByTestId('request-answer-bev-vpn').click();
+  await expect(roomMessage.getByTestId('request-status-bev-vpn'))
     .toContainText('off the books');
 
   // And there is nothing on the scorecard: the queue never gains the ticket,
@@ -93,6 +109,7 @@ test('answered in the wrong place: grateful, and no ticket', async ({ page }) =>
 
   // The chat copy is quiet too - the same request, dealt with once.
   await openFromStartMenu(page, 'chat');
-  await expect(page.getByTestId('request-status-bev-vpn'))
-    .toContainText('off the books');
+  await expect(
+    page.getByTestId('chat-requests').getByTestId('request-status-bev-vpn'),
+  ).toContainText('off the books');
 });
