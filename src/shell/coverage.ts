@@ -2874,6 +2874,8 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'request-convert-*',
   'request-answer-*',
   'request-deflect-*',
+  // and, once converted, the link to the ticket the paperwork became.
+  'request-open-ticket-*',
   'chat-option-*',
   'chat-typing',
   'chat-restart',
