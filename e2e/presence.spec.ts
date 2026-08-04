@@ -86,14 +86,16 @@ async function doSomeWork(page: Page): Promise<void> {
  * target.
  *
  * The drip reads the TOUCH LOG - a dispatched action on a ticket's estate - not
- * a window's focus flag, and behind a red dot the focus flag is worthless: an
- * arrival, a slide, the caught scene itself all drop or minimise the window
- * under the work. So this asserts the durable thing (the rotation the world
- * accepted) and never the chrome, raises the remote window tolerantly rather
- * than through the focus-toggle helper, and yields when a takeover owns the desk
- * because there is nothing to dispatch to then - which the caller's loop is
- * watching for anyway. Answers whether it managed to work, so a loop can tell a
- * blocked minute from a worked one.
+ * a window's focus flag, so what this ASSERTS is the durable thing (the rotation
+ * the world accepted) and never the chrome. But reaching the machine list still
+ * needs the remote window in front: behind a red dot an arrival, a slide or the
+ * caught scene can drop or minimise it BETWEEN rounds, so each round raises it
+ * again and, unlike the first cut of this helper, waits for the raise to LAND
+ * before dispatching - a raise clicked and then dispatched in the same beat left
+ * the machine-select click retrying against a still-covered button. It yields
+ * when a takeover owns the desk because there is nothing to dispatch to then -
+ * which the caller's loop is watching for anyway. Answers whether it managed to
+ * work, so a loop can tell a blocked minute from a worked one.
  */
 async function workBehindTheDot(page: Page): Promise<boolean> {
   // A takeover (the caught scene, chiefly) owns the whole desk: no window to
@@ -117,14 +119,17 @@ async function workBehindTheDot(page: Page): Promise<boolean> {
 
   if (await remote.count() === 0) {
     await openFromStartMenu(page, 'remote');
-  } else if (
-    await remote.getAttribute('data-focused') !== 'true'
-    || await remote.getAttribute('data-minimized') === 'true'
-  ) {
-    // Raise it to the front so the rotation control is reachable - only when it
-    // actually needs it, because the taskbar button toggles. No assertion on the
-    // focus that results: the point is the dispatch below, not the chrome.
-    await page.getByTestId('taskbar-button-remote').click();
+  } else {
+    // Raise it to the front and WAIT until it is there before dispatching.
+    // `focusWindow` clicks the taskbar toggle only when the window needs it (so
+    // a window that is already up is not minimised) and then blocks on
+    // data-focused='true'. That block is the fix: the window manager keeps the
+    // focused window the TOP visible one, so a confirmed focus is a guarantee
+    // the machine list underneath is uncovered. A fire-and-forget raise could
+    // not promise that - it clicked the toggle and dispatched in the same beat,
+    // and a raise that had not landed yet left the machine-select click retrying
+    // against a button still under another window until the whole test timed out.
+    await focusWindow(page, 'remote');
   }
 
   await page.getByTestId('remote-machine-ada').click();

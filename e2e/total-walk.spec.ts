@@ -2285,6 +2285,44 @@ test('walks every function of a probation week that goes well', async ({
   await addToGroup(page, 'bev', 'group:print-users');
   await expectClosed(page, 'tidied-list');
 
+  /*
+   * The same question everywhere (0.5.0 slice 2). Bev asked for the VPN at ten
+   * to ten in the inbox, a one-to-one chat and the #helpdesk room at once - one
+   * request wearing three coats. The proper week does the correct play: it
+   * CONVERTS the cross-post into a ticket, from the room where the bar hangs off
+   * the message itself, and resolving it there quietens the mail and chat copies
+   * too. That mint is the one intake Friday can see, and it is worked like any
+   * other ticket below. (Answer and deflect - the other two ends of the same bar
+   * - are held down on the real driver in src/shell/requests.test.ts, because a
+   * week that goes well takes the credited one.)
+   */
+  await step('hubbub.request', async () => {
+    await openFromStartMenu(page, 'hubbub');
+    await page.getByTestId('hubbub-channel-helpdesk').click();
+    const roomMessage = page.getByTestId('hubbub-message-bev-vpn');
+
+    await expect(roomMessage.getByTestId('request-convert-bev-vpn'))
+      .toBeVisible();
+    await roomMessage.getByTestId('request-convert-bev-vpn').click();
+
+    // Convert mints a real ticket the queue opens on, which is where the credit
+    // lives...
+    await expect(page.getByTestId('ticket-row-bev-vpn-request')).toBeVisible();
+
+    // ...and every copy now reads converted off the one world record: the room's
+    // own copy carries the resolved line rather than a button to press again.
+    await expect(
+      page.getByTestId('hubbub-message-bev-vpn')
+        .getByTestId('request-status-bev-vpn'),
+    ).toContainText('Converted');
+  });
+
+  // And the request-turned-ticket is worked like the rest: Bev has never been in
+  // VPN Users, so the one directory move is the whole of the fix, and the ticket
+  // the room minted closes on it.
+  await addToGroup(page, 'bev', 'group:vpn-users');
+  await expectClosed(page, 'bev-vpn-request');
+
   await workUntilMinute(page, 330);
 
   await step('cmd.grant', async () => {
