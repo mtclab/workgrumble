@@ -163,16 +163,21 @@ export const LOCKED_ACCOUNT: WorldTicket = {
         + 'also the answer. He is typing the password correctly. That was '
         + 'never the problem.',
       // The portal bot got here first, and made the exact category error Gary
-      // makes: it heard "password" and offered a reset, which does nothing to a
-      // LOCKED account. That the bot could not tell locked from wrong either is
-      // why this one is on your desk and not closed in the portal - the deflection
-      // layer sent on the thing it could not chew (0.5.0 slice 3).
+      // makes: it heard "password" and kept offering a self-service reset -
+      // which needs him signed in, and a locked account is precisely what he
+      // cannot sign in past. A real reset (the one a tech runs, `account.ts`)
+      // ends the lockout; the self-service one the bot pushed never could,
+      // because the lockout is the thing standing between him and it. So the
+      // deflection layer sent on the thing it could not chew rather than the
+      // thing it fixed (0.5.0 slice 3).
       preChew: {
         tried: 'Self-service password reset, offered twice by the support '
           + 'portal ("It looks like you are having trouble signing in!").',
-        stillBroken: 'Gary reset it and it changed nothing, because the account '
-          + 'is locked, not wrong - so the portal sent him here, crosser than it '
-          + 'found him.',
+        stillBroken: 'He never got as far as resetting anything: the '
+          + 'self-service reset needs him signed in, and being locked out is '
+          + 'exactly what he cannot sign in past - so the portal kept offering '
+          + 'the one fix its own lockout put out of reach, then sent him here '
+          + 'crosser than it found him.',
       },
     },
     reporter: COMPANY_IDS.gary,

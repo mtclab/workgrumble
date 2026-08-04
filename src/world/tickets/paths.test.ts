@@ -180,6 +180,57 @@ describe('hardware that reports a status', () => {
   });
 });
 
+/**
+ * Content honesty at flavour level: the deflection layer's pre-chew tells the
+ * player what the portal bot already tried, and nothing it says may be false in
+ * THIS game's own model.
+ *
+ * The bug it guards: the locked-account pre-chew used to say the bot reset the
+ * password and it changed nothing "because the account is locked" - but a real
+ * reset (`account.ts`) CLEARS the lock, so a reset that was carried out cannot
+ * have left him locked. The truthful flavour is that he never completed the
+ * self-service reset, because being locked out is what blocks the sign-in the
+ * self-service reset needs; the bot only kept OFFERING the fix its own lockout
+ * put out of reach.
+ */
+describe('the deflection pre-chew is true in this game\'s own model', () => {
+  const locked = WORLD_TICKETS.find(
+    (entry) => entry.def.id === 'ticket:locked-account',
+  );
+
+  it('a real password reset clears the lockout the ticket describes', () => {
+    const session = sessionWith('ticket:locked-account');
+    expect(session.engine.graph.getField(COMPANY_IDS.garyAccount, FIELDS.locked))
+      .toBe(true);
+
+    expect(
+      session.engine.dispatch(
+        HELPDESK_ACTIONS.accountResetPassword,
+        COMPANY_IDS.player,
+        COMPANY_IDS.garyAccount,
+        {},
+      ).ok,
+    ).toBe(true);
+
+    // A reset that WAS carried out ends the lockout - so any flavour claiming a
+    // reset was done and yet left him locked is false in-model.
+    expect(session.engine.graph.getField(COMPANY_IDS.garyAccount, FIELDS.locked))
+      .toBe(false);
+  });
+
+  it('never says a reset was carried out and left the account locked', () => {
+    const stillBroken = locked?.def.flavor.preChew?.stillBroken ?? '';
+    expect(stillBroken.length).toBeGreaterThan(0);
+
+    // The category error the fix removes: a reset that was DONE ("reset it" /
+    // "reset the account" / "reset his password") cleared the lock, by the test
+    // above, so the flavour may not pair a completed reset with a still-locked
+    // outcome. The bot OFFERING or suggesting a reset it could not complete is
+    // the comedy and stays; carrying one out and staying locked is the lie.
+    expect(stillBroken).not.toMatch(/reset (it|the account|his password)\b/i);
+  });
+});
+
 describe('escalation policy', () => {
   it('offers escalation only where the ticket rules accept it', () => {
     const escalatable = WORLD_TICKETS
