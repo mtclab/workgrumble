@@ -287,13 +287,20 @@ function layMines(
   safeCol: number,
 ): void {
   const total = state.rows * state.cols;
-  const generous = state.mines <= total - 9;
+
+  // The zone is the clicked cell plus its ACTUAL neighbours - three in a
+  // corner, five on an edge, eight in the open - so the room check has to
+  // count the zone it is actually protecting, not assume the open-field nine.
+  // A guard that assumed nine would refuse generosity on a narrow board that
+  // had room, and worse, grant it where there was none.
+  const zone = neighbours(state, safeRow, safeCol);
+  const generous = state.mines <= total - (zone.length + 1);
 
   const safe = new Set<string>();
   safe.add(key(safeRow, safeCol));
 
   if (generous) {
-    for (const spot of neighbours(state, safeRow, safeCol)) {
+    for (const spot of zone) {
       safe.add(key(spot.row, spot.col));
     }
   }

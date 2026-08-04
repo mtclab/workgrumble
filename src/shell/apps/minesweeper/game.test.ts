@@ -125,6 +125,23 @@ describe('the first click lays the field', () => {
     }
   });
 
+  it('sizes the safety zone by the neighbours the click actually has', () => {
+    // Teeth: a guard that assumed the open-field nine-cell zone would grant
+    // generosity where a corner or an edge has no room for it - the review's
+    // repro: 1x3, one mine, click the end cell. The zone there is two cells
+    // (the click and its one neighbour), the board has room for exactly that,
+    // so the mine MUST land on the far cell and the click must open clean.
+    for (let seed = 0; seed < 10; seed += 1) {
+      const narrow = createBoard(seed, { rows: 1, cols: 3, mines: 1 });
+      const opened = reveal(narrow, 0, 2);
+
+      expect(opened.cells[0]?.[2]?.mine).toBe(false);
+      expect(opened.cells[0]?.[1]?.mine).toBe(false);
+      expect(opened.cells[0]?.[0]?.mine).toBe(true);
+      expect(opened.cells[0]?.[2]?.revealed).toBe(true);
+    }
+  });
+
   it('computes every adjacency count correctly', () => {
     // Teeth: the numbers are the entire game. An off-by-one in the neighbour
     // sweep would light up here on the first mismatched cell.
