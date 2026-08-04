@@ -15,7 +15,7 @@ import {
   channelFeed,
   type ChannelRowModel,
   channelRows,
-  readAfterSeeing,
+  readAfterOnScreen,
   threadBlocks,
   totalUnread,
 } from './hubbub-model';
@@ -32,6 +32,9 @@ import {
   textValue,
   withFocusRestored,
 } from './ui';
+
+/** This app's id, worn by the window the read ledger asks about being on screen. */
+const HUBBUB_ID = 'hubbub';
 
 export function channelKey(id: string): string {
   return nodeKey(id);
@@ -70,7 +73,7 @@ export function messageKey(id: string): string {
  * so in slice 1 there is nothing for the dot to turn away.
  */
 export const HUBBUB_APP: AppDef = {
-  id: 'hubbub',
+  id: HUBBUB_ID,
   title: 'Hubbub',
   icon: 'icon-hubbub',
   tier_required: 1,
@@ -114,14 +117,27 @@ export const HUBBUB_APP: AppDef = {
      * the paint is the fact the ledger records - a message that arrives into
      * the room the player is already looking at has been seen the minute it
      * is drawn, and a badge that disagreed with a transcript beside it would
-     * be a badge lying about the screen it is on. `readAfterSeeing` answers
-     * the same array when nothing is new, so this writes nothing on the
-     * repaints that changed nothing - and `patch` does not announce, so there
-     * is no repaint loop to have.
+     * be a badge lying about the screen it is on.
+     *
+     * "On screen" is the whole of it, and a MINIMIZED window is not: minimizing
+     * hides a still-mounted window that goes on painting on every tick, so a
+     * message that lands in the selected room while Hubbub is minimized would be
+     * marked read by a window nobody is looking at - clearing its badge and, worse,
+     * clearing it before the meter tick that bills it, reading the sprawl away for
+     * free. `readAfterOnScreen` asks the shell's own window list whether this
+     * window is genuinely up before it records anything, and answers the same
+     * array when nothing is new or when the window is hidden - so this writes
+     * nothing on the repaints that changed nothing, and `patch` does not announce,
+     * so there is no repaint loop to have.
      */
     const markSeen = (seen: readonly ChannelMessage[]): void => {
       const before = rooms().read;
-      const after = readAfterSeeing(before, seen);
+      const after = readAfterOnScreen(
+        before,
+        seen,
+        api.appState.get().windows,
+        HUBBUB_ID,
+      );
 
       if (after !== before) {
         api.appState.patch('hubbub', { read: after });

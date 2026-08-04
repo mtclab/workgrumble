@@ -17,6 +17,7 @@ import {
   unreadCount,
   unreadMention,
 } from '../../world/channels';
+import type { WindowsState } from '../app-state';
 
 /** One room in the sidebar: the name, the noise, and whether it is up. */
 export interface ChannelRowModel {
@@ -110,6 +111,50 @@ export function readAfterSeeing(
   return unseen.length === 0
     ? read
     : [...read, ...unseen.map((message) => message.id)];
+}
+
+/**
+ * Whether this app's window is genuinely on the player's screen: open, and NOT
+ * minimized.
+ *
+ * Minimizing does not unmount a window - it hides a still-mounted one, which
+ * goes on rendering on every clock tick behind the scenes. A window nobody can
+ * see is not a window a message has been read in, so the read ledger has to ask
+ * this before it records anything as seen. Absent from the open set (closed, or
+ * never opened) is "not on screen" too: the same courtesy an unmounted app gets.
+ */
+export function windowOnScreen(
+  windows: Readonly<WindowsState>,
+  appId: string,
+): boolean {
+  const own = windows.open.find((entry) => entry.appId === appId);
+
+  return own !== undefined && !own.minimized;
+}
+
+/**
+ * The ledger after a room's arrived messages have been on screen - marking them
+ * read ONLY when the window genuinely WAS on screen.
+ *
+ * This is the seam where "read = was actually on screen" (the invariant slice 1
+ * stated) becomes true. The pane paints on every tick whether or not the player
+ * can see it, so a message that lands in the selected room while Hubbub is
+ * minimized would be marked read by a window nobody is looking at - clearing its
+ * badge and, worse, clearing it before the meter tick that would have billed it
+ * for attention, so a minimized window would read the sprawl away for free. When
+ * the window is off screen this answers the ledger UNCHANGED: the arrival stays
+ * unread, the badge keeps counting it, and the attention drip still bills it,
+ * until the player restores the window and the next paint actually sees it.
+ */
+export function readAfterOnScreen(
+  read: readonly string[],
+  seen: readonly ChannelMessage[],
+  windows: Readonly<WindowsState>,
+  appId: string,
+): readonly string[] {
+  return windowOnScreen(windows, appId)
+    ? readAfterSeeing(read, seen)
+    : read;
 }
 
 /** The toolbar's arithmetic: every room's unread, added up. */

@@ -14,14 +14,18 @@ import {
   channelMessageAt,
   type ChannelMessageSlot,
   CHANNELS,
+  unreadIds,
 } from '../../world/channels';
 import { COMPANY_IDS } from '../../world/company';
+import type { WindowsState } from '../app-state';
 import {
   channelFeed,
   channelRows,
+  readAfterOnScreen,
   readAfterSeeing,
   threadBlocks,
   totalUnread,
+  windowOnScreen,
 } from './hubbub-model';
 
 function message(over: Partial<ChannelMessageSlot> = {}) {
@@ -111,5 +115,63 @@ describe('the ledger\'s one write', () => {
 
     const more = readAfterSeeing(once, FEED);
     expect(more).toEqual(['hub:ask', 'hub:answer', 'hub:hello']);
+  });
+});
+
+/**
+ * The bug this pins: the pane paints on every clock tick whether or not the
+ * player can see it, so a minimized Hubbub would go on marking arrivals read -
+ * clearing badges the player never looked at, and clearing them BEFORE the
+ * meter tick that bills the sprawl, reading the attention cost away for free.
+ *
+ * The goal, not the call: not "the write was skipped" but "the message is still
+ * unread and still billable while the window is hidden, and becomes read the
+ * moment it is on screen again". `unreadIds(feed, read)` is exactly what the
+ * driver hands the attention drip (`scripted-week.test.ts` wires it that way),
+ * so asserting on it is asserting on the charge.
+ *
+ * Teeth: revert `readAfterOnScreen` to ignore the window list (return
+ * `readAfterSeeing(read, seen)` unconditionally) and the minimized leg reds -
+ * the arrival goes read, the badge clears, and `unreadIds` empties.
+ */
+describe('a minimized Hubbub does not read the room it cannot show', () => {
+  const helpdesk = channelFeed(FEED, 'chan:helpdesk');
+  const helpdeskIds = helpdesk.map((message) => message.id);
+  const focused: WindowsState = {
+    open: [{ appId: 'hubbub', minimized: false }],
+    focusedId: 'hubbub',
+  };
+  const minimized: WindowsState = {
+    open: [{ appId: 'hubbub', minimized: true }],
+    focusedId: null,
+  };
+  const closed: WindowsState = { open: [], focusedId: null };
+
+  it('knows on screen from open-and-not-minimized, closed, and absent', () => {
+    expect(windowOnScreen(focused, 'hubbub')).toBe(true);
+    expect(windowOnScreen(minimized, 'hubbub')).toBe(false);
+    expect(windowOnScreen(closed, 'hubbub')).toBe(false);
+    // Another app being up is not this window being up.
+    expect(windowOnScreen(
+      { open: [{ appId: 'mail', minimized: false }], focusedId: 'mail' },
+      'hubbub',
+    )).toBe(false);
+  });
+
+  it('leaves the arrival unread and billable while minimized, read once shown', () => {
+    // The tick that lands the room's messages while the window is minimized.
+    let read: readonly string[] = [];
+    read = readAfterOnScreen(read, helpdesk, minimized, 'hubbub');
+
+    // Nothing was read - the badge still counts them, and the drip still sees
+    // the whole pile unread, so the sprawl is charged rather than dodged.
+    expect(read).toEqual([]);
+    expect(unreadIds(helpdesk, read)).toEqual(helpdeskIds);
+
+    // The player restores the window. The very next paint - same messages, same
+    // selected room - now actually sees them, and only now are they read.
+    read = readAfterOnScreen(read, helpdesk, focused, 'hubbub');
+    expect(read).toEqual(helpdeskIds);
+    expect(unreadIds(helpdesk, read)).toEqual([]);
   });
 });
