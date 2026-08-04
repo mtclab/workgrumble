@@ -416,6 +416,38 @@ export const FIELDS = {
    */
   afterHoursAnswered: 'after_hours_answered',
   /**
+   * The linked requests the player has resolved, one bare id per line.
+   *
+   * A linked request is the same question arriving on mail, chat and a Hubbub
+   * room at once (0.5.0 slice 2); resolving it on ANY surface - converting it
+   * to a ticket, answering the human, or sending them to the form - quietens
+   * every copy, and this is the record that makes that dedupe true across all
+   * three. It is the SET the guard reads: `line_in_field` refuses a second
+   * resolution against a bare id, so a request cannot be resolved twice however
+   * many windows it is showing in.
+   *
+   * ABSENT for anybody who has resolved nothing, which is everybody who has
+   * left the cross-posted noise alone - the same determinism argument the dot
+   * and the after-hours tail keep: a field nothing writes is a field no
+   * scripted walk carries, so a week that ignores the requests is byte-identical
+   * to one from before they existed.
+   */
+  requestResolved: 'request_resolved',
+  /**
+   * And the same resolutions with WHICH way each went: `id@kind`, one per line,
+   * `kind` one of convert / answer / deflect.
+   *
+   * A second record rather than a richer version of the set above, and the
+   * reason is the guard: `line_in_field` matches whole lines, so the list a
+   * second resolution is refused against has to be bare ids - a ledger carrying
+   * the kind could only be refused by a caller that already knew the kind. So
+   * the refusal reads `request_resolved`, and every SURFACE reads this to say
+   * whether the request was converted, answered off the books, or sent to the
+   * form. The driver stamps the line the same way it stamps an install's
+   * `id@tick`, so a replay writes the identical string.
+   */
+  requestResolvedAs: 'request_resolved_as',
+  /**
    * The minute the room emptied after the mandatory sync, or absent while
    * nobody has sat through one.
    *

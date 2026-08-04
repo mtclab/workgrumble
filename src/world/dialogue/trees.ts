@@ -1116,15 +1116,25 @@ const BOSS_CHANNEL: DialogueTree = {
 const RECEPTION: DialogueTree = {
   id: 'dialogue/reception',
   speaker: COMPANY_IDS.bev,
-  tickets: ['ticket:tidied-list', 'ticket:share-maintenance'],
+  tickets: [
+    'ticket:tidied-list',
+    'ticket:share-maintenance',
+    'ticket:bev-vpn-request',
+  ],
   root: 'hello',
   roots: {
     'ticket:tidied-list': 'hello',
     'ticket:share-maintenance': 'drive',
+    // The one she asked for in three windows at once, once you have turned the
+    // asking into a ticket. Until then this tree is about nothing of hers, and
+    // the request itself lives on the convert / answer / deflect bar rather
+    // than in here.
+    'ticket:bev-vpn-request': 'vpn',
   },
   resolved_roots: {
     'ticket:tidied-list': 'after',
     'ticket:share-maintenance': 'drive-after',
+    'ticket:bev-vpn-request': 'vpn-after',
   },
   nodes: [
     {
@@ -1264,6 +1274,49 @@ const RECEPTION: DialogueTree = {
         + 'have shown their true intentions.',
       options: [
         { label: 'Take a plain one and go' },
+      ],
+    },
+    // The VPN request, once it is a ticket. The cause is not a fault and it is
+    // not hidden by accident - it is hidden by nobody ever having asked a
+    // receptionist whether she works from home - so the question that gets it
+    // out of her is the one nobody thinks to ask.
+    {
+      id: 'vpn',
+      npc_line: 'The working-from-home thing. Thursday, while the boiler is '
+        + 'off. I have never done it before, so I have never needed whatever it '
+        + 'is, and now I need it by Thursday and I have asked everywhere.',
+      options: [
+        {
+          label: 'Ask whether she has ever been set up for remote access',
+          next: 'vpn-never',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Reporter has never had remote access, because reception '
+                + 'has never worked from home until this week. Nothing is '
+                + 'broken; she is simply not in VPN Users.',
+            },
+          ],
+        },
+        { label: 'Tell her you will get her set up' },
+      ],
+    },
+    {
+      id: 'vpn-never',
+      npc_line: 'Never. Why would I. I answer the door. The door does not have '
+        + 'a home version. Apparently the boiler does.',
+      options: [
+        { label: 'Tell her that is exactly the answer', next: 'vpn' },
+        { label: 'Tell her you will add her to the right list' },
+      ],
+    },
+    {
+      id: 'vpn-after',
+      npc_line: 'It let me in. From my kitchen. I could see the whole boiler '
+        + 'situation and answer the door at the same time, which is more than '
+        + 'the boiler can say.',
+      options: [
+        { label: 'Log that it was a group membership, not a fault' },
       ],
     },
   ],

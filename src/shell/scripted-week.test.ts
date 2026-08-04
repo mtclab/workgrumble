@@ -322,6 +322,19 @@ function workedWeek(world: Week, day: number): void {
   const start = shiftStartTick(day);
 
   runTo(world, start + 90);
+
+  // The correct play on the Tuesday's cross-post: Bev asks the same thing in
+  // three windows at ten to ten, and competent play CONVERTS it into a ticket
+  // rather than answering her off the books (0.5.0 slice 2). The mint lands in
+  // the queue in the same minute, so the sweep below closes it exactly as it
+  // closes everything else - which is the whole of why converting is the right
+  // answer: the human is kept happy AND the work is on the scorecard. Answering
+  // her instead would be grateful and invisible, and that path is walked on the
+  // real driver in src/shell/requests.test.ts rather than in the golden week.
+  if (day === 2) {
+    world.driver.resolveRequest('req:bev-vpn', 'convert');
+  }
+
   workWhenAble(world);
 
   if (day === 3) {
@@ -855,7 +868,9 @@ interface GoldenWeek {
  *    the message left the twenty-three-minute-shaped hole in the morning that a
  *    printer in the annexe leaves, because it too was about no ticket in hand.
  *  - NOTHING ELSE MOVED, and that is the claim the slice is about: same
- *    arrivals (27 and 26), same closes, same breaches, same pence, same review
+ *    arrivals (27 and 26 at 0.4.3; the worked week became 28 at 0.5.0 when it
+ *    began converting Bev's cross-post), same closes, same breaches, same pence,
+ *    same review
  *    reading, same bar, same file, same caught counts, same endings, same
  *    five-profile table. The chat beat carries no ticket, so it is not in any
  *    denominator the review reads - it costs stress and focus, and the review
@@ -864,7 +879,7 @@ interface GoldenWeek {
  *    are, not here where the dot is green.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: '2488068b6e5b1fa0',
+  hash: 'd7efbd1c6b7cfab7',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -877,7 +892,13 @@ const GOLDEN_WORKED: GoldenWeek = {
   // conversation at three o'clock. Every one of them closes.
   days: [
     [5, 5, 0],
-    [6, 6, 0],
+    // Seven in and seven closed where 0.4.x left it at six and six: the extra
+    // one is Bev's cross-post, CONVERTED into a ticket on the ten-thirty sweep
+    // and closed by the same sweep on the one directory move it needs (0.5.0
+    // slice 2). It is minted and closed inside the same minute, so it spends no
+    // time in the queue and moves no meter - the correct play, keeping the human
+    // AND the credit, arriving and closing on the day it was made a ticket.
+    [7, 7, 0],
     // Six in and five closed: the sixth arrives at 16:55 and there are five
     // minutes of Wednesday left, which is the whole of what the field says.
     [6, 5, 0],
@@ -888,13 +909,14 @@ const GOLDEN_WORKED: GoldenWeek = {
     // Gary was ignored, Gary filed, and the one o'clock sweep closed it.
     [5, 5, 0],
   ],
-  arrived: 27,
-  closed: 27,
+  arrived: 28,
+  closed: 28,
   breached: 0,
   stillOpen: 0,
-  /** Five days at the rate, twenty-five resolution bonuses, the deductions
-   * nobody agreed to, and the probation bonus for surviving Friday. */
-  earnedPence: 77_525,
+  /** Five days at the rate, twenty-SIX resolution bonuses (the twenty-fifth was
+   * the converted cross-post, +250 pence), the deductions nobody agreed to, and
+   * the probation bonus for surviving Friday. */
+  earnedPence: 77_775,
   reviewRead: 99,
   // The published bar, untouched: the queue was dealt with, nobody was left
   // in silence, and a file with one line on it is a private document until
@@ -906,9 +928,12 @@ const GOLDEN_WORKED: GoldenWeek = {
   // non-work-related on passing (a discussion forum)." and it decides nothing.
   filed: 1,
   meters: {
-    // Twenty-five closed tickets carry the reputation from fifty to its
+    // Twenty-six closed tickets carry the reputation from fifty to its
     // ceiling well before Friday, which is what a week worked properly looks
-    // like - and which the review no longer reads. One round of the corridor
+    // like - and which the review no longer reads. The converted cross-post is
+    // the twenty-sixth, and its two points of credit land on a meter already
+    // pinned at the hundred, so they are clamped away and the number does not
+    // move. One round of the corridor
     // found the browser on the Wednesday, and the six points it cost were
     // earned back inside the hour; the conversation on Friday never hears
     // about either.
@@ -942,7 +967,7 @@ const GOLDEN_WORKED: GoldenWeek = {
     week_reputation: 100,
     // Counted per day and cleared at every clock-off: Friday was clean.
     caught_events: 0,
-    farm_fund: 77_525,
+    farm_fund: 77_775,
     week_attempt: 1,
   },
   // The week's own beats, in the minute they land. The lead's footsteps are
@@ -1322,7 +1347,11 @@ describe('the week at five skill levels', () => {
     {
       name: 'worked properly',
       play: workedWeek,
-      closed: 27,
+      // Twenty-eight where 0.4.x had twenty-seven: the extra one is Bev's
+      // cross-post, converted into a ticket and closed on the same sweep (0.5.0
+      // slice 2). Converting is the correct play, so the week that is worked
+      // properly is the week that converts it.
+      closed: 28,
       breached: 0,
       reputation: 100,
       reviewRead: 99,

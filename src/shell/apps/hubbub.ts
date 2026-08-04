@@ -6,6 +6,7 @@ import {
 } from '../../world/channels';
 import { FIELDS } from '../../world/fields';
 import { PRESENCE_LABELS, readPresence } from '../../world/presence';
+import type { LinkedRequest } from '../../world/requests';
 import { ticketTitle } from '../../world/tickets';
 import { channelFeedThrough } from '../../world/week';
 import type { HubbubState } from '../app-state';
@@ -18,6 +19,7 @@ import {
   threadBlocks,
   totalUnread,
 } from './hubbub-model';
+import { requestActions } from './request-card';
 import type { AppDef, AppInstance } from './types';
 import {
   element,
@@ -198,12 +200,32 @@ export const HUBBUB_APP: AppDef = {
      */
     let painted: string | null = null;
 
+    // The requests live this minute, held so `messageEntry` can hang the
+    // convert / answer / deflect bar off a message that carries one. Set on
+    // every render, before the pane is modelled, so the bar and the badge never
+    // disagree about the same request.
+    let liveRequests: readonly LinkedRequest[] = [];
+
+    const requestFor = (id: string | null): LinkedRequest | undefined => (
+      id === null
+        ? undefined
+        : liveRequests.find((request) => request.id === id)
+    );
+
     const renderPane = (
       channelId: string,
       inRoom: readonly ChannelMessage[],
     ): void => {
       const channel = channelById(channelId);
-      const signature = JSON.stringify({ channelId, inRoom });
+      // The resolution of any request in the room is part of what the pane
+      // SAYS - a converted request draws a different bar from a live one - so it
+      // is in the signature, or the pane would never repaint when a copy is
+      // resolved and the bar would sit on its buttons after the fact.
+      const resolutions = inRoom.map((message) => [
+        message.request,
+        requestFor(message.request)?.resolvedAs ?? null,
+      ]);
+      const signature = JSON.stringify({ channelId, inRoom, resolutions });
 
       if (signature === painted) {
         return;
@@ -309,12 +331,24 @@ export const HUBBUB_APP: AppDef = {
         entry.append(open);
       }
 
+      // And the mechanic slice 1 deferred: a message that IS a linked request
+      // gets the convert / answer / deflect bar, right here in the room. This
+      // is the composer the read-only slice would not prejudge - it answers a
+      // request rather than typing a line - and resolving it here quietens the
+      // mail and the chat copies too.
+      const request = requestFor(message.request);
+
+      if (request !== undefined) {
+        entry.append(requestActions(api, request));
+      }
+
       return entry;
     };
 
     const render = (): void => {
       const now = api.clock.now();
       const feed = channelFeedThrough(now);
+      liveRequests = api.day.liveRequests();
       const showing = selectedChannel();
       const inRoom = channelFeed(feed, showing);
 

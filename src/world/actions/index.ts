@@ -14,6 +14,7 @@ import { MACHINE_ACTIONS } from './machine';
 import { MAIL_RULE_ACTIONS } from './mail-rule';
 import { METER_ACTION_DATA } from './meters';
 import { PRESENCE_ACTION_DATA } from './presence';
+import { REQUEST_ACTION_DATA } from './request';
 import { SECURITY_ACTIONS } from './security';
 import { SERVICE_ACTIONS } from './service';
 import { SHARE_ACTIONS } from './share';
@@ -75,6 +76,9 @@ export {
   HELPDESK_ACTION_IDS,
   HELPDESK_ACTIONS,
   type HelpdeskActionId,
+  REQUEST_ACTION_IDS,
+  REQUEST_ACTIONS,
+  type RequestActionId,
   SOFTWARE_ACTION_IDS,
   SOFTWARE_ACTIONS,
   type SoftwareActionId,
@@ -86,6 +90,10 @@ export {
   INSTALL_TWICE_REASON,
   UNINSTALL_TWICE_REASON,
 } from './software';
+export {
+  REQUEST_ALREADY_RESOLVED_REASON,
+  REQUEST_OFF_SHIFT_REASON,
+} from './request';
 export {
   REBUFF_AGAIN_PARAM,
   REBUFF_FIRST_PARAM,
@@ -121,6 +129,7 @@ export function helpdeskActions(): readonly ActionData[] {
     ...PRESENCE_ACTION_DATA,
     ...CONSUMABLE_ACTION_DATA,
     ...SOFTWARE_ACTION_DATA,
+    ...REQUEST_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

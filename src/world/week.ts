@@ -35,6 +35,7 @@ import {
   SHIFT_MINUTES,
   SHIFT_START_MINUTE,
   shiftStartTick,
+  tickAtMinute,
 } from './day';
 import type { ReadOnlyGraphNode } from '../engine-api';
 import type { AfterHoursSlot } from './after-hours';
@@ -45,6 +46,10 @@ import {
   type ChannelMessageSlot,
   validateChannelSlots,
 } from './channels';
+import {
+  type LinkedRequestSlot,
+  validateRequestSlots,
+} from './requests';
 import { COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
 import { findIncident, INCIDENTS } from './incidents';
@@ -516,6 +521,19 @@ export interface DayScript {
    */
   readonly channels?: readonly ChannelMessageSlot[];
   /**
+   * And the same question arriving in several places at once (0.5.0 slice 2).
+   *
+   * A linked request is one human asking one thing in mail, in one-to-one chat
+   * and in a Hubbub room on the same morning. The mail and chat copies are
+   * authored here; the Hubbub copy is a `ChannelMessageSlot` in the column
+   * above carrying this request's id, and the loader checks the two agree. The
+   * player converts it into a ticket (credited), answers the human off the
+   * books (grateful, invisible), or sends them to the form - and resolving it
+   * on any one surface quietens all three. Nothing dispatches on arrival, so a
+   * week that ignores it is byte-identical to one from before it existed.
+   */
+  readonly requests?: readonly LinkedRequestSlot[];
+  /**
    * And who pings you AFTER you clock off, in the gap before the next login.
    *
    * These are a property of the day BOUNDARY rather than of the shift: they
@@ -677,6 +695,50 @@ export const WEEK: readonly DayScript[] = validateWeek([
           [FLAVOR.opens]: 'ringing-spooler',
           [FLAVOR.opensFumbling]: 'ringing-spooler-shaky',
         },
+      },
+    ],
+    // Ten to ten, and the same question in three windows at once: Bev on
+    // reception needs the VPN for a day working from home, and has asked in the
+    // inbox, in a one-to-one chat, and in #helpdesk, all within a couple of
+    // minutes, because she is not sure which one anybody reads. It is the
+    // modern pathology made playable (0.5.0 slice 2): the copies are noise,
+    // answering her anywhere satisfies her, and only converting it into a
+    // ticket is worth anything on Friday. The Hubbub copy is the channel
+    // message below carrying this id; the mail and chat copies are here.
+    //
+    // Nothing about it dispatches on arrival - a walk that ignores it is
+    // byte-identical to before it existed - and the summoned ticket it converts
+    // into (Bev not being in VPN Users) closes on the same one directory move
+    // Marcus's month-end request does.
+    requests: [
+      {
+        id: 'req:bev-vpn',
+        reporter: COMPANY_IDS.bev,
+        subject: 'VPN for a day working from home',
+        raises: 'ticket:bev-vpn-request',
+        minute: 9 * 60 + 50,
+        mail: 'Morning - I am working from home on Thursday while the boiler is '
+          + 'off and I cannot get the remote thing to let me in. Could you sort '
+          + 'it? Sorry if this is the wrong place to ask.',
+        chat: 'hiya - did you see my email about the VPN? working from home '
+          + 'thurs and it will not have me. also put it in the helpdesk room in '
+          + 'case!',
+      },
+    ],
+    // And the room copy of the same request, in #helpdesk, with the player's
+    // name on it. It carries the request id, which is what turns it from a post
+    // into the surface the convert / answer / deflect bar hangs off - and what
+    // makes resolving it here quieten the mail and the chat as well.
+    channels: [
+      {
+        id: 'hub:bev-vpn',
+        channel: 'chan:helpdesk',
+        author: COMPANY_IDS.bev,
+        body: '@you sorry to chase - VPN for Thursday, working from home. '
+          + 'Emailed and messaged too, not sure which you use!',
+        minute: 9 * 60 + 50,
+        mentionsPlayer: true,
+        request: 'req:bev-vpn',
       },
     ],
     // Half past two, and somebody who would rather message you than file
@@ -1002,6 +1064,7 @@ export function validateWeek(
   const interruptions = new Set<string>();
   const afterHours = new Set<string>();
   const channelIds = new Set<string>();
+  const requestIds = new Set<string>();
 
   scripts.forEach((script, index) => {
     if (script.day !== index + 1) {
@@ -1209,6 +1272,55 @@ export function validateWeek(
     // that answers something already posted - and the week owns the id set,
     // because the read ledger the ids key is not cleared overnight.
     validateChannelSlots(script.day, script.channels ?? [], channelIds);
+
+    // And the linked requests - the same question in three windows. The module
+    // owns what a well-formed one is (an id, a reporter, a subject, two copies,
+    // a working minute); the week owns the id set, because the resolution
+    // ledger the ids key is not cleared overnight, and the CROSS-SURFACE half:
+    // every request has exactly one Hubbub copy carrying its id, and every
+    // channel message that claims to be a request copy names a request that
+    // exists that day. Both failures are silent in play - a card with no
+    // buttons, or a room post that acts on nothing - which is why they fail the
+    // boot instead.
+    validateRequestSlots(script.day, script.requests ?? [], requestIds);
+
+    const requestsToday = new Map(
+      (script.requests ?? []).map((request) => [request.id, request]),
+    );
+    const channelCopies = new Map<string, number>();
+
+    for (const message of script.channels ?? []) {
+      if (message.request === undefined) {
+        continue;
+      }
+
+      if (!requestsToday.has(message.request)) {
+        throw new Error(
+          `Day ${String(script.day)}'s channel message "${message.id}" is the `
+          + `Hubbub copy of request "${message.request}", which nobody asked `
+          + 'that day. A room post that acts on a request nobody made is a '
+          + 'button wired to nothing.',
+        );
+      }
+
+      channelCopies.set(
+        message.request,
+        (channelCopies.get(message.request) ?? 0) + 1,
+      );
+    }
+
+    for (const request of script.requests ?? []) {
+      const copies = channelCopies.get(request.id) ?? 0;
+
+      if (copies !== 1) {
+        throw new Error(
+          `Day ${String(script.day)}'s linked request "${request.id}" has `
+          + `${String(copies)} Hubbub copies, and it needs exactly one: the `
+          + 'mail and chat copies are authored on the request, and the room '
+          + 'copy is the channel message that carries its id.',
+        );
+      }
+    }
 
     // An interruption's id is what the world records the player's decision
     // against, so two of them sharing one would share the record - and the
@@ -1464,6 +1576,32 @@ export function assertWeekTickets<Entry extends RosterEntry>(
     }
   }
 
+  // And the linked requests: converting one MINTS the ticket it raises, so that
+  // ticket has to be a real one nobody's day schedules - a summoned one, exactly
+  // like a walk-up's. A request that raised a ticket nobody wrote would throw
+  // the minute somebody did the right thing with it, which is the one beat that
+  // must not punish the correct play.
+  for (const script of WEEK) {
+    for (const request of script.requests ?? []) {
+      const entry = known.get(request.raises);
+
+      if (entry === undefined) {
+        throw new Error(
+          `Day ${String(script.day)}'s request "${request.id}" converts into `
+          + `"${request.raises}", which nobody wrote.`,
+        );
+      }
+
+      if (entry.arrival !== 'summoned') {
+        throw new Error(
+          `"${request.raises}" is minted by converting a channel request and `
+          + `arrives "${entry.arrival}". A ticket a request becomes only when `
+          + 'you choose to make it one cannot also be dealt by the morning.',
+        );
+      }
+    }
+  }
+
   const scheduled = new Set(scheduledTicketIds());
 
   for (const entry of roster) {
@@ -1612,6 +1750,52 @@ export function noHelloOn(day: number): readonly NoHelloSlot[] {
 /** What lands in the Hubbub rooms today, as the day's table authors it. */
 export function channelMessagesOn(day: number): readonly ChannelMessageSlot[] {
   return isWeekDay(day) ? dayScript(day).channels ?? [] : [];
+}
+
+/** The same question asked everywhere today (0.5.0 slice 2). */
+export function linkedRequestsOn(day: number): readonly LinkedRequestSlot[] {
+  return isWeekDay(day) ? dayScript(day).requests ?? [] : [];
+}
+
+/** One linked request by id, with the day it belongs to, or nothing. */
+export function findLinkedRequest(
+  id: string,
+): { readonly day: number; readonly slot: LinkedRequestSlot } | undefined {
+  for (const script of WEEK) {
+    const slot = (script.requests ?? []).find(
+      (request) => request.id === id,
+    );
+
+    if (slot !== undefined) {
+      return { day: script.day, slot };
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Every linked request the clock has passed, oldest first: the mail and chat
+ * copies as they stand at a tick.
+ *
+ * The same reading the channel feed is, and for the same reason: a request has
+ * arrived when `tick <= now`, so a save reproduces the surfaces from the tick
+ * alone and a week that never opens a window leaves the world untouched. The
+ * Hubbub copy is not in here - it rides the channel feed as a normal message -
+ * so this is what the inbox and the chat draw their copies from.
+ */
+export function linkedRequestsThrough(
+  now: number,
+): readonly { readonly day: number; readonly slot: LinkedRequestSlot }[] {
+  return WEEK
+    .flatMap((script) => (script.requests ?? []).map((slot) => ({
+      day: script.day,
+      slot,
+      tick: tickAtMinute(script.day, slot.minute),
+    })))
+    .filter((entry) => entry.tick <= now)
+    .sort((left, right) => left.tick - right.tick)
+    .map(({ day, slot }) => ({ day, slot }));
 }
 
 /**

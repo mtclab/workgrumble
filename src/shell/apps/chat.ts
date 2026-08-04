@@ -15,6 +15,7 @@ import { FIELDS } from '../../world/fields';
 import { ticketTitle } from '../../world/tickets';
 import type { ChatState, ChatThread } from '../app-state';
 import { createIcon } from '../icons';
+import { requestCard } from './request-card';
 import { settleAggressiveTone } from './tone';
 import type { AppDef, AppInstance } from './types';
 import {
@@ -115,6 +116,13 @@ export const CHAT_APP: AppDef = {
     note.textContent = 'Ask the question nobody thought to ask.';
     toolbar.append(summary, note);
 
+    // The cross-post strip: the same question that also arrived in a room and
+    // the inbox, shown here so the player can convert or answer it from the
+    // chat exactly as from anywhere else - and so they can SEE it is the same
+    // request, which is the dedupe the whole beat teaches (0.5.0 slice 2).
+    const requests = element('div', 'chat-requests', 'chat-requests');
+    let paintedRequests: string | null = null;
+
     const people = element('ul', 'chat-people', 'chat-people');
     const panel = element('section', 'chat-panel', 'chat-panel');
     const columns = element('div', 'chat-columns');
@@ -136,7 +144,30 @@ export const CHAT_APP: AppDef = {
      * is one click, and the player can read both before choosing either.
      */
     const typing = element('p', 'chat-typing', 'chat-typing');
-    root.append(toolbar, columns, typing);
+    root.append(toolbar, requests, columns, typing);
+
+    /**
+     * The cross-posted requests, drawn as cards, and only rebuilt when what
+     * they SAY changes - the same rule the panel keeps, so a button the player
+     * is reaching for is not thrown away under their cursor on a meter tick.
+     */
+    const renderRequests = (): void => {
+      const live = api.day.liveRequests();
+      const signature = JSON.stringify(
+        live.map((request) => [request.id, request.resolvedAs]),
+      );
+
+      if (signature === paintedRequests) {
+        return;
+      }
+
+      paintedRequests = signature;
+      requests.replaceChildren();
+
+      for (const request of live) {
+        requests.append(requestCard(api, request, 'chat'));
+      }
+    };
 
     const persons = (): readonly ReadOnlyGraphNode[] => api.graph
       .nodesOfKind('person');
@@ -537,6 +568,7 @@ export const CHAT_APP: AppDef = {
     };
 
     const render = (): void => {
+      renderRequests();
       const nodes = persons();
       const { selectedId } = chat();
 
@@ -627,6 +659,7 @@ export const CHAT_APP: AppDef = {
     const unsubscribeState = api.appState.onReplaced(() => {
       refusal = null;
       outcome = null;
+      paintedRequests = null;
       render();
     });
 

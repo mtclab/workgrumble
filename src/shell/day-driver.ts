@@ -21,9 +21,16 @@ import type {
 import {
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
+  REQUEST_ACTIONS,
   SOFTWARE_ACTIONS,
   WORLD_ACTIONS,
 } from '../world/actions';
+import {
+  type LinkedRequest,
+  type RequestKind,
+  resolutionLine,
+  resolutionsBy,
+} from '../world/requests';
 import {
   type BossPing,
   type BossVisit,
@@ -136,6 +143,8 @@ import {
   afterHoursOn,
   dayPlan,
   directMessagesOn,
+  findLinkedRequest,
+  linkedRequestsThrough,
   incidentsOn,
   interruptionPlanFor,
   isReviewDay,
@@ -611,6 +620,32 @@ export interface DayApi {
    * reads, and the world enforces the "once" off its own record.
    */
   answerAfterHours(id: string): DispatchResult;
+  /**
+   * The linked requests the clock has passed - the same question arriving on
+   * mail, chat and a Hubbub room at once (0.5.0 slice 2) - each with how it was
+   * resolved, or null while it is still live.
+   *
+   * Free to read and changes nothing: it is the week's own table joined to the
+   * world's resolution ledger, so the three surfaces that draw a request, a
+   * test and a reload all get the same list and the same answer to "has this
+   * been dealt with". The mail and chat copies come straight off this; the
+   * Hubbub copy rides the channel feed as a normal message and reads its own
+   * `resolvedAs` back through here by id.
+   */
+  liveRequests(): readonly LinkedRequest[];
+  /**
+   * Resolving one, from whichever surface it is showing on. Answers rather than
+   * throws, like every other verb on this half: a request already dealt with is
+   * refused in a sentence the player reads, because answering the same question
+   * in three places is the mistake this whole beat exists to teach.
+   *
+   * `convert` mints the ticket the request becomes - the correct play, and the
+   * only one Friday can see - after the world has recorded the resolution;
+   * `answer` pays the human's gratitude and raises nothing; `deflect` sends them
+   * to the form. All three quieten every copy, because the record is keyed on
+   * the request id and every surface reads it.
+   */
+  resolveRequest(id: string, kind: RequestKind): DispatchResult;
   /**
    * Whether this person is mid-greeting: they have said hello, they have not
    * said what they want, and the dots are going.
@@ -1256,6 +1291,83 @@ export class DayDriver implements DayApi {
       null,
       { id },
     ));
+  }
+
+  /**
+   * The linked requests as they stand this minute, joined to how each was
+   * resolved.
+   *
+   * A pure read: the arrivals are `linkedRequestsThrough` against the clock,
+   * and the answer is the world's own `request_resolved_as` ledger parsed by
+   * id. Nothing here is written and nothing is remembered, so a save reloaded
+   * mid-morning rebuilds the identical list - the same promise the channel feed
+   * keeps, because a request is a reading of the table exactly as a message is.
+   */
+  public liveRequests(): readonly LinkedRequest[] {
+    const resolved = resolutionsBy(this.playerText(FIELDS.requestResolvedAs));
+
+    return linkedRequestsThrough(this.engine.now()).map(({ day, slot }) => ({
+      id: slot.id,
+      reporter: slot.reporter,
+      subject: slot.subject,
+      raises: slot.raises,
+      minute: slot.minute,
+      mail: slot.mail,
+      chat: slot.chat,
+      day,
+      resolvedAs: resolved.get(slot.id) ?? null,
+    }));
+  }
+
+  /**
+   * Resolving one, through the world verb its answer names.
+   *
+   * The id is checked against the requests that ACTUALLY exist first, because
+   * the verb cannot: the week's requests are TS data rather than nodes, exactly
+   * as the interruption ids and the after-hours pings are, so this seam - the
+   * only place that holds the schedule - is where a real request is told from a
+   * planted one. Convert then mints the ticket the request becomes, in the same
+   * minute and only if the world recorded the resolution, so a refused convert
+   * (off shift, already resolved) raises nothing.
+   */
+  public resolveRequest(id: string, kind: RequestKind): DispatchResult {
+    const found = findLinkedRequest(id);
+
+    if (found === undefined) {
+      return {
+        ok: false,
+        reason: 'That is not a request in front of you. It was never asked, or '
+          + 'it is a copy of one you have already dealt with - either way there '
+          + 'is nothing here to resolve.',
+      };
+    }
+
+    const held = this.takeoverRefusal();
+
+    if (held !== null) {
+      return { ok: false, reason: held };
+    }
+
+    const action = kind === 'convert'
+      ? REQUEST_ACTIONS.convert
+      : kind === 'answer'
+        ? REQUEST_ACTIONS.answer
+        : REQUEST_ACTIONS.deflect;
+
+    const result = this.engine.dispatch(action, this.actor, null, {
+      id,
+      line: resolutionLine(id, kind),
+    });
+
+    // The ticket only when the world actually recorded the conversion. A
+    // convert refused for being off-shift or already-resolved must not leave a
+    // ticket behind it - that would be the wrong play earning the right play's
+    // credit.
+    if (result.ok && kind === 'convert') {
+      this.raiseSummonedTicket(found.slot.raises);
+    }
+
+    return this.announced(result);
   }
 
   /**

@@ -8,6 +8,7 @@ import {
 } from '../../world/mail';
 import { FIELDS } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
+import { requestCard } from './request-card';
 import type { AppDef, AppInstance, GameApi } from './types';
 import { element, textValue } from './ui';
 
@@ -46,11 +47,39 @@ export const MAIL_APP: AppDef = {
       + 'by one.';
     toolbar.append(summary, note);
 
+    // The cross-post strip: a request that also arrived in a room and a chat,
+    // shown at the top of the inbox so it can be converted or answered from
+    // here too, and so the player sees it is the same request (0.5.0 slice 2).
+    // It is time-sensitive - it arrives on a minute and can be resolved
+    // elsewhere - so, unlike the read-only inbox below it, it repaints on the
+    // clock and on world changes, with its own signature so it is not rebuilt
+    // under a cursor for nothing.
+    const requests = element('div', 'mail-requests', 'mail-requests');
+    let paintedRequests: string | null = null;
+
+    const renderRequests = (): void => {
+      const live = api.day.liveRequests();
+      const signature = JSON.stringify(
+        live.map((request) => [request.id, request.resolvedAs]),
+      );
+
+      if (signature === paintedRequests) {
+        return;
+      }
+
+      paintedRequests = signature;
+      requests.replaceChildren();
+
+      for (const request of live) {
+        requests.append(requestCard(api, request, 'mail'));
+      }
+    };
+
     const list = element('ul', 'mail-list', 'mail-list');
     const reader = element('section', 'mail-reader', 'mail-reader');
     const columns = element('div', 'mail-columns');
     columns.append(list, reader);
-    root.append(toolbar, columns);
+    root.append(toolbar, requests, columns);
 
     /** Newest traffic at the top, the way every inbox has always sorted. */
     const threads = (): readonly MailThread[] => [...visibleMail(api.graph)]
@@ -143,6 +172,7 @@ export const MAIL_APP: AppDef = {
       const { selectedId } = state();
       summary.textContent = `${String(unreadCount())} unread · `
         + `${String(visibleMail(api.graph).length)} threads`;
+      renderRequests();
       renderList();
       renderReader(selectedId === null ? undefined : findMailThread(selectedId));
     };
@@ -152,12 +182,25 @@ export const MAIL_APP: AppDef = {
 
     // A load replaces what every app was showing, and nothing else says so.
     const unsubscribeState = api.appState.onReplaced(() => {
+      paintedRequests = null;
       render();
+    });
+    // The inbox itself is read-only and does not repaint on the clock; the
+    // cross-post strip is the one live thing on this surface, so it - and only
+    // it - repaints on the tick it arrives on and on the world change a
+    // resolution elsewhere dispatches.
+    const unsubscribeTick = api.clock.onTick(() => {
+      renderRequests();
+    });
+    const unsubscribeWorld = api.onWorldChange(() => {
+      renderRequests();
     });
 
     return {
       unmount: (): void => {
         unsubscribeState();
+        unsubscribeTick();
+        unsubscribeWorld();
         root.remove();
       },
     };

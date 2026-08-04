@@ -109,6 +109,11 @@ describe('shipped tickets', () => {
       // only exists because somebody was asked to raise it.
       'ticket:vpn-month-end',
       'ticket:gary-restart',
+      // And the one nobody's day schedules at all: the ticket a linked request
+      // becomes when the player converts it rather than answering the human off
+      // the books (0.5.0 slice 2). Summoned, like Gary's restart - it exists
+      // only if you did the right thing with the cross-posted noise.
+      'ticket:bev-vpn-request',
     ]);
   });
 

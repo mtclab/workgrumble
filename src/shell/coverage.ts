@@ -27,6 +27,7 @@
 import {
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
+  REQUEST_ACTIONS,
   SOFTWARE_ACTIONS,
   WORLD_ACTIONS,
 } from '../world/actions';
@@ -1805,6 +1806,25 @@ const ENTRIES = [
     control: 'hubbub-presence',
     does: 'Wears the same dot the taskbar sets, read from the same field of '
       + 'the same node: one status, every surface, this room included.',
+    run: 'week',
+  },
+  {
+    id: 'hubbub.request',
+    surface: 'hubbub',
+    control: 'request-convert-<id>, request-answer-<id>, request-deflect-<id>',
+    does: 'The same question arriving everywhere, resolved (0.5.0 slice 2). '
+      + 'Convert mints the ticket the request becomes - the one intake Friday '
+      + 'can see; answer keeps the human happy off the books and raises '
+      + 'nothing; deflect sends them to the form. Any one of them quietens '
+      + 'every copy - the mail and the chat carry the same bar, off the same '
+      + 'world record - which is the dedupe. The proper week converts it, the '
+      + 'correct play; the answer and deflect resolutions of the same bar are '
+      + 'held down on the real driver in src/shell/requests.test.ts.',
+    actions: [
+      REQUEST_ACTIONS.convert,
+      REQUEST_ACTIONS.answer,
+      REQUEST_ACTIONS.deflect,
+    ],
     run: 'week',
   },
 

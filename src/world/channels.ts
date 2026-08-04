@@ -121,6 +121,17 @@ export interface ChannelMessageSlot {
   readonly mentionsPlayer?: boolean;
   /** The ticket it is about, for a message that is a request in a third coat. */
   readonly relatedTicket?: string;
+  /**
+   * The linked request this message is the Hubbub copy OF, for a request that
+   * arrived here as well as in the inbox and the chat (0.5.0 slice 2).
+   *
+   * It is what turns a room post into an intake surface the player can act on:
+   * a message carrying it gets the convert / answer / deflect bar, and
+   * resolving it here quietens the copies everywhere else. The loader checks
+   * that the id names a real linked request that day, and that each request has
+   * exactly one such copy.
+   */
+  readonly request?: string;
   /** The root message this answers, for a message living inside a thread. */
   readonly replyTo?: string;
 }
@@ -137,6 +148,8 @@ export interface ChannelMessage {
   readonly body: string;
   readonly mentionsPlayer: boolean;
   readonly relatedTicket: string | null;
+  /** The linked request this is the Hubbub copy of, or null. */
+  readonly request: string | null;
   readonly replyTo: string | null;
   readonly day: number;
   /** The world tick it arrives on. Arrived means `tick <= now`, inclusive. */
@@ -155,6 +168,7 @@ export function channelMessageAt(
     body: slot.body,
     mentionsPlayer: slot.mentionsPlayer ?? false,
     relatedTicket: slot.relatedTicket ?? null,
+    request: slot.request ?? null,
     replyTo: slot.replyTo ?? null,
     day,
     tick: tickAtMinute(day, slot.minute),

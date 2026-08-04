@@ -470,6 +470,32 @@ export const SOFTWARE_ACTION_IDS: readonly SoftwareActionId[] = Object.freeze(
   Object.values(SOFTWARE_ACTIONS),
 );
 
+/**
+ * The three answers to the same question arriving everywhere (0.5.0 slice 2).
+ *
+ * Three verbs rather than one with a kind parameter, exactly as the review's
+ * three endings are and for the same reason: each records the SAME dedupe fact
+ * - the request is resolved, every copy goes quiet - and differs only in the
+ * social effect, which the op language cannot branch on a string param to
+ * choose. Convert mints a ticket (its credit comes from that ticket, so it
+ * moves no meter here); answer pays gratitude; deflect costs goodwill. All
+ * three refuse a request that has already been resolved, off the world's own
+ * `request_resolved` set, which is what makes answering-in-three-places waste
+ * minutes rather than earn three answers.
+ */
+export const REQUEST_ACTIONS = {
+  convert: 'request.convert',
+  answer: 'request.answer',
+  deflect: 'request.deflect',
+} as const;
+
+export type RequestActionId =
+  (typeof REQUEST_ACTIONS)[keyof typeof REQUEST_ACTIONS];
+
+export const REQUEST_ACTION_IDS: readonly RequestActionId[] = Object.freeze(
+  Object.values(REQUEST_ACTIONS),
+);
+
 export type WorldActionId = (typeof WORLD_ACTIONS)[keyof typeof WORLD_ACTIONS];
 
 export const WORLD_ACTION_IDS: readonly WorldActionId[] = Object.freeze(
