@@ -31,6 +31,34 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.5.0',
+    date: '2026-08-05',
+    summary: 'This update adds more ways to be reached.',
+    lines: Object.freeze([
+      'The company has rolled out Hubbub, a channel client, because email and '
+        + 'a phone and a colleague at your desk were not enough places for a '
+        + 'person to be. Nobody asked for it. It has channels, it has threads, '
+        + 'it has a little badge that counts the things you have not read, and '
+        + 'it is very excited to be here.',
+      'People will now ask you the same thing in several places at once - the '
+        + 'inbox, the chat, and a Hubbub room, all one question. Answering any '
+        + 'one of them makes the person happy. Only turning it into a ticket '
+        + 'makes the day count it. You can do that from wherever it reached '
+        + 'you, and it costs you the couple of minutes the writing-up takes, '
+        + 'which is the honest price of being findable.',
+      'Messages you have not read now weigh something. Not much - but a stack '
+        + 'of unread rooms is a small steady cost until you clear it, and '
+        + 'clearing it means actually looking, not minimising the window and '
+        + 'hoping. Do Not Disturb does not help here: a room does not ring, so '
+        + 'there is nothing for the dot to hold back. The backlog is the one '
+        + 'thing the dot cannot buy off.',
+      'Some tickets now arrive already chewed on by the self-service portal '
+        + 'bot ("Bot tried: password reset"), which is how you can tell the '
+        + 'ones that reach you are the ones it could not solve. The people it '
+        + 'sent over are, on average, crosser than it found them.',
+    ]),
+  },
+  {
     version: '0.4.5',
     date: '2026-08-03',
     summary: 'This update keeps the promise about Minesweeper.',
