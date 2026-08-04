@@ -95,8 +95,11 @@ test('a ticket the portal bot chewed first reads honestly', async ({ page }) => 
     .toContainText('Bot tried: Self-service password reset');
   await expect(page.getByTestId('ticket-detail-prechew-still'))
     .toContainText('User says:');
+  // The bot could only OFFER the reset its own lockout put out of reach - he
+  // never completed one (a completed reset would have cleared the lock), which
+  // is the truth in this world's model.
   await expect(page.getByTestId('ticket-detail-prechew-still'))
-    .toContainText('locked, not wrong');
+    .toContainText('put out of reach');
 
   // And it is flavour, not a verb: there is no button in it, so it cannot be
   // confused for a step. The ticket still closes the way it always did.
