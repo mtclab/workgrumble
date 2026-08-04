@@ -2869,6 +2869,11 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'chat-person-*',
   'hubbub-channel-*',
   'hubbub-open-ticket-*',
+  // The cross-post request bar (mail / chat / a Hubbub message alike): the
+  // three answers a request offers, keyed by the request id.
+  'request-convert-*',
+  'request-answer-*',
+  'request-deflect-*',
   'chat-option-*',
   'chat-typing',
   'chat-restart',
