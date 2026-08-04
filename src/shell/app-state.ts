@@ -43,6 +43,22 @@ export interface MailState {
   readonly read: readonly string[];
 }
 
+/**
+ * What the Hubbub window was showing, and which messages have been read.
+ *
+ * The read ledger is message ids rather than a per-room high-water mark,
+ * because the messages are authored week data (`src/world/channels.ts`) and
+ * ids are what they are keyed by everywhere else. It is screen state, not
+ * world state - which messages EXIST at a tick is the week's table, and
+ * whether this player has read them changes nothing but a badge - so it rides
+ * in the store the save carries verbatim, exactly as the inbox's does.
+ */
+export interface HubbubState {
+  readonly selectedChannel: string | null;
+  /** Message ids the player has actually had on screen. */
+  readonly read: readonly string[];
+}
+
 export interface KbState {
   readonly selectedId: string | null;
 }
@@ -189,6 +205,7 @@ export interface InstalledState {
 export interface AppState {
   readonly chat: ChatState;
   readonly mail: MailState;
+  readonly hubbub: HubbubState;
   readonly kb: KbState;
   readonly day: DayScreensState;
   readonly browser: BrowserAppState;
@@ -202,6 +219,7 @@ export function createAppState(): AppState {
   return {
     chat: { selectedId: null, threads: {} },
     mail: { selectedId: null, read: [] },
+    hubbub: { selectedChannel: null, read: [] },
     kb: { selectedId: null },
     day: { briefShownFor: null, scorecardShownFor: null },
     browser: { siteId: null },
@@ -366,6 +384,33 @@ function readInstalled(value: unknown): InstalledState | undefined {
   return Object.freeze({ apps: Object.freeze(parsed) });
 }
 
+/**
+ * The rooms' screen state, read out of a file that may predate the rollout.
+ *
+ * An absent slice reads as "nothing read, nothing picked" rather than as a
+ * refusal, exactly as the dismissal count and the install set do: a save
+ * written before the company rolled the client out is a save about a desktop
+ * that had no rooms on it, and a session is not worth throwing away over a
+ * badge ledger. Anything PRESENT is read strictly - a read list that is not a
+ * list of strings is a file somebody has edited, and this shell refuses those.
+ */
+function readHubbub(value: unknown): HubbubState | undefined {
+  if (value === undefined) {
+    return { selectedChannel: null, read: [] };
+  }
+
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const selected = optionalId(value.selectedChannel);
+  const read = stringList(value.read);
+
+  return selected === undefined || read === undefined
+    ? undefined
+    : { selectedChannel: selected, read };
+}
+
 function isSpeaker(value: unknown): value is ChatSpeaker {
   return value === 'them' || value === 'you' || value === 'system';
 }
@@ -441,7 +486,7 @@ export function parseAppState(value: unknown): AppState | null {
   }
 
   const {
-    chat, mail, kb, day, browser, caught, windows, assistant, installed,
+    chat, mail, hubbub, kb, day, browser, caught, windows, assistant, installed,
   } = value;
 
   if (
@@ -480,10 +525,12 @@ export function parseAppState(value: unknown): AppState | null {
   const screen = readWindows(windows);
   const helper = readAssistant(assistant);
   const installedApps = readInstalled(installed);
+  const rooms = readHubbub(hubbub);
 
   if (
     installedApps === undefined
     || helper === undefined
+    || rooms === undefined
     || chatSelected === undefined
     || threads === undefined
     || mailSelected === undefined
@@ -504,6 +551,7 @@ export function parseAppState(value: unknown): AppState | null {
   return {
     chat: { selectedId: chatSelected, threads },
     mail: { selectedId: mailSelected, read },
+    hubbub: rooms,
     kb: { selectedId: kbSelected },
     day: { briefShownFor, scorecardShownFor },
     browser: { siteId },

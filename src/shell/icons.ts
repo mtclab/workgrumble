@@ -190,6 +190,30 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { x1: '8', y1: '12', x2: '13', y2: '12' },
     },
   ],
+  // The channel client: the chat bubble again, with a hash where the words
+  // would be - which is the whole product, drawn honestly.
+  'icon-hubbub': [
+    {
+      element: 'path',
+      attributes: { d: 'M4 4h16v12H9l-5 4z' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '10.5', y1: '7', x2: '9.5', y2: '13' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '14.5', y1: '7', x2: '13.5', y2: '13' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '9', x2: '16.5', y2: '9' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '7.5', y1: '11', x2: '16', y2: '11' },
+    },
+  ],
   'icon-mail': [
     {
       element: 'rect',

@@ -1032,6 +1032,75 @@ test('walks every function of a probation week that goes well', async ({
       .toHaveAttribute('data-focused', 'true');
   });
 
+  /* -- the rooms the company rolled out ------------------------------------
+   *
+   * Monday posts three messages: the welcome in #announcements at 09:05, the
+   * @-mention about the locked account in #helpdesk at 09:40, and the reply
+   * threaded under it at 09:48. Past 09:50 all three have arrived, so the
+   * badges are deterministic: the window opens on #announcements (first room,
+   * read the minute it is painted), and #helpdesk is sitting on 2 unread with
+   * the @ flying.
+   */
+
+  await workUntilMinute(page, 110);
+
+  await step('hubbub.window', async () => {
+    await openFromStartMenu(page, 'hubbub');
+    await expect(page.getByTestId('hubbub-summary')).toContainText('rooms');
+    // The first room is on screen, which is what reads it: its own badge is
+    // gone and the welcome nobody asked for is visible.
+    await expect(page.getByTestId('hubbub-message-welcome'))
+      .toContainText('Welcome to Hubbub');
+    await expect(page.getByTestId('hubbub-badge-announcements')).toBeHidden();
+  });
+
+  await step('hubbub.mention', async () => {
+    // The @ is on the room before the room is opened: two unread, flagged.
+    await expect(page.getByTestId('hubbub-badge-helpdesk')).toHaveText('2 @');
+    await expect(page.getByTestId('hubbub-channel-helpdesk'))
+      .toHaveAttribute('data-mention', 'true');
+  });
+
+  await step('hubbub.rooms', async () => {
+    await page.getByTestId('hubbub-channel-helpdesk').click();
+
+    // The goal, not the call: the message is READABLE - body, author's @, the
+    // reply threaded one level under its root - and having been on screen is
+    // what clears the badge and spends the @.
+    await expect(page.getByTestId('hubbub-message-gary-account'))
+      .toContainText('any movement on my account');
+    await expect(page.getByTestId('hubbub-mention-gary-account'))
+      .toHaveText('mentions you');
+    await expect(
+      page.getByTestId('hubbub-thread-gary-account')
+        .getByTestId('hubbub-message-owen-reply'),
+    ).toContainText('never the ticket system');
+    await expect(page.getByTestId('hubbub-badge-helpdesk')).toBeHidden();
+    await expect(page.getByTestId('hubbub-channel-helpdesk'))
+      .toHaveAttribute('data-mention', 'false');
+
+    // And the room shipped empty is honest about it.
+    await page.getByTestId('hubbub-channel-water-cooler').click();
+    await expect(page.getByTestId('hubbub-empty')).toBeVisible();
+    await page.getByTestId('hubbub-channel-helpdesk').click();
+  });
+
+  await step('hubbub.presence', async () => {
+    // One dot, everyone reads it: the walk left the tray on Available, and
+    // the room says the same word off the same field.
+    await expect(page.getByTestId('hubbub-presence'))
+      .toHaveAttribute('data-presence', 'available');
+    await expect(page.getByTestId('hubbub-presence')).toContainText('Available');
+  });
+
+  await step('hubbub.open-ticket', async () => {
+    await page.getByTestId('hubbub-open-ticket-gary-account').click();
+    await expect(page.getByTestId('window-tickets'))
+      .toHaveAttribute('data-focused', 'true');
+    await page.getByTestId('close-hubbub').click();
+    await expect(page.getByTestId('window-hubbub')).toHaveCount(0);
+  });
+
   /* -- the ticket that drips in, and the form second line will not keep ---- */
 
   await workUntilMinute(page, 155);

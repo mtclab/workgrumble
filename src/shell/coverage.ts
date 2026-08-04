@@ -1757,6 +1757,57 @@ const ENTRIES = [
     why: 'The other half of the same fork.',
   },
 
+  /* -- Hubbub --------------------------------------------------------------
+   *
+   * The channel client the company rolled out (0.5.0 slice 1). Read-only on
+   * purpose: the rooms fill from the week's channel table against the clock,
+   * nothing in the window dispatches, and the composer is slice 2's mechanic
+   * rather than a missing control. That is why no entry here carries an
+   * action.
+   */
+  {
+    id: 'hubbub.window',
+    surface: 'hubbub',
+    control: 'window-hubbub',
+    does: 'The channel client the company rolled out and nobody asked for: '
+      + 'named rooms, threads, mentions, and a badge per room.',
+    window: { routes: ['start-menu', 'desktop-icon'] },
+    run: 'week',
+  },
+  {
+    id: 'hubbub.rooms',
+    surface: 'hubbub',
+    control: 'hubbub-channel-<channel>',
+    does: 'Picks a room, which puts what has arrived there on screen - and '
+      + 'what has been on screen is read, so the room\'s badge clears.',
+    run: 'week',
+  },
+  {
+    id: 'hubbub.mention',
+    surface: 'hubbub',
+    control: 'hubbub-message-<id> (mentions you)',
+    does: 'Flags the message that names the player, on the message itself and '
+      + 'on the room\'s badge, until it has been read.',
+    run: 'week',
+  },
+  {
+    id: 'hubbub.open-ticket',
+    surface: 'hubbub',
+    control: 'hubbub-open-ticket-<id>',
+    does: 'Opens the queue from a message that says it is about a ticket - '
+      + 'the request in its third coat, pointed back at the surface where '
+      + 'the credit lives.',
+    run: 'week',
+  },
+  {
+    id: 'hubbub.presence',
+    surface: 'hubbub',
+    control: 'hubbub-presence',
+    does: 'Wears the same dot the taskbar sets, read from the same field of '
+      + 'the same node: one status, every surface, this room included.',
+    run: 'week',
+  },
+
   /* -- Mail --------------------------------------------------------------- */
   {
     id: 'mail.window',
@@ -2796,6 +2847,8 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'kb-see-also-*',
   'mail-row-*',
   'chat-person-*',
+  'hubbub-channel-*',
+  'hubbub-open-ticket-*',
   'chat-option-*',
   'chat-typing',
   'chat-restart',

@@ -39,6 +39,12 @@ import {
 import type { ReadOnlyGraphNode } from '../engine-api';
 import type { AfterHoursSlot } from './after-hours';
 import { buildPatrolSchedule, patrolWindows } from './boss';
+import {
+  type ChannelMessage,
+  channelMessageAt,
+  type ChannelMessageSlot,
+  validateChannelSlots,
+} from './channels';
 import { COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
 import { findIncident, INCIDENTS } from './incidents';
@@ -498,6 +504,18 @@ export interface DayScript {
   /** And who opens a chat with "Hi." and then makes you wait for the rest. */
   readonly noHello?: readonly NoHelloSlot[];
   /**
+   * And what lands in the Hubbub rooms today - the channel client the company
+   * rolled out, which is the third coat a request can arrive in.
+   *
+   * The 0.5.0 intake seam (`src/world/channels.ts`): a message has a room, an
+   * author, a body, an arrival minute, and optionally the player's name on it,
+   * a ticket it is about, and a thread it answers into. Nothing about one
+   * dispatches - a scripted week that never opens the window produces the
+   * same world, byte for byte - and slices 2 and 3 build on this column
+   * rather than on any window.
+   */
+  readonly channels?: readonly ChannelMessageSlot[];
+  /**
    * And who pings you AFTER you clock off, in the gap before the next login.
    *
    * These are a property of the day BOUNDARY rather than of the shift: they
@@ -567,6 +585,45 @@ export const WEEK: readonly DayScript[] = validateWeek([
         speaker: COMPANY_IDS.owen,
         minute: 10 * 60 + 50,
         typingMinutes: 5,
+      },
+    ],
+    // And the rooms, on the morning the rollout lands. Three messages, all
+    // Monday, all inert on a scripted walk: the welcome nobody asked for in
+    // #announcements, and - in #helpdesk - the week's first request wearing
+    // its third coat: the man whose account is locked, asking the queue's
+    // question in a room, with the player's name on it, plus the colleague
+    // answering INTO the thread so the window has a thread to draw. The
+    // ticket it names is Monday's own inherited one, so the message and the
+    // queue agree about what the morning is about. #water-cooler is left
+    // empty on purpose: the empty room is a state the window must be honest
+    // about, and shipped data is how that stays tested.
+    channels: [
+      {
+        id: 'hub:welcome',
+        channel: 'chan:announcements',
+        author: COMPANY_IDS.boss,
+        body: 'Welcome to Hubbub! From today this is where work happens. '
+          + 'No more long email chains - just drop it in the room! Please '
+          + 'keep tickets going through the ticket system as normal.',
+        minute: 9 * 60 + 5,
+      },
+      {
+        id: 'hub:gary-account',
+        channel: 'chan:helpdesk',
+        author: COMPANY_IDS.gary,
+        body: '@you any movement on my account? Raising it here as well in '
+          + 'case the ticket system is also locked out.',
+        minute: 9 * 60 + 40,
+        mentionsPlayer: true,
+        relatedTicket: 'ticket:locked-account',
+      },
+      {
+        id: 'hub:owen-reply',
+        channel: 'chan:helpdesk',
+        author: COMPANY_IDS.owen,
+        body: 'It is never the ticket system.',
+        minute: 9 * 60 + 48,
+        replyTo: 'hub:gary-account',
       },
     ],
     // And, sometime after you have gone home, the man with eleven years'
@@ -944,6 +1001,7 @@ export function validateWeek(
   const scheduled = new Set<string>();
   const interruptions = new Set<string>();
   const afterHours = new Set<string>();
+  const channelIds = new Set<string>();
 
   scripts.forEach((script, index) => {
     if (script.day !== index + 1) {
@@ -1145,6 +1203,12 @@ export function validateWeek(
         );
       }
     }
+
+    // And the rooms. The channel module owns what a well-formed message is -
+    // a room somebody created, an author, a body, a working minute, a thread
+    // that answers something already posted - and the week owns the id set,
+    // because the read ledger the ids key is not cleared overnight.
+    validateChannelSlots(script.day, script.channels ?? [], channelIds);
 
     // An interruption's id is what the world records the player's decision
     // against, so two of them sharing one would share the record - and the
@@ -1385,6 +1449,21 @@ export function assertWeekTickets<Entry extends RosterEntry>(
     }
   }
 
+  // And the rooms: a channel message that says it is about a ticket has to be
+  // about one somebody wrote. It may be about a ticket from any day and any
+  // arrival mode - the message is a coat, not a schedule - but a reference to
+  // nothing is a room quietly talking about a fault the world cannot hold.
+  for (const script of WEEK) {
+    for (const slot of script.channels ?? []) {
+      if (slot.relatedTicket !== undefined && !known.has(slot.relatedTicket)) {
+        throw new Error(
+          `Day ${String(script.day)}'s channel message "${slot.id}" is about `
+          + `"${slot.relatedTicket}", which nobody wrote.`,
+        );
+      }
+    }
+  }
+
   const scheduled = new Set(scheduledTicketIds());
 
   for (const entry of roster) {
@@ -1528,6 +1607,36 @@ export function walkUpsOn(day: number): readonly WalkUpSlot[] {
 /** And who opens a chat today without saying what they want. */
 export function noHelloOn(day: number): readonly NoHelloSlot[] {
   return isWeekDay(day) ? dayScript(day).noHello ?? [] : [];
+}
+
+/** What lands in the Hubbub rooms today, as the day's table authors it. */
+export function channelMessagesOn(day: number): readonly ChannelMessageSlot[] {
+  return isWeekDay(day) ? dayScript(day).channels ?? [] : [];
+}
+
+/**
+ * Every channel message the clock has passed, oldest first: the rooms as they
+ * stand at a tick.
+ *
+ * The whole arrival mechanism is this filter, and that is the design rather
+ * than a shortcut. A message has arrived when `tick <= now` - a READING of
+ * the week's table against the clock, not an event anybody dispatched - so
+ * the rooms fill up deterministically, a save reproduces them from the tick
+ * alone, and a scripted week that never opens the window leaves the world
+ * untouched. Yesterday's messages stay in the room, because a channel client
+ * that forgot its own history overnight would be the one honest feature the
+ * parody is not allowed.
+ *
+ * The sort is by tick and it is deliberately stable: two messages on one
+ * minute keep the order their day authored them in.
+ */
+export function channelFeedThrough(now: number): readonly ChannelMessage[] {
+  return WEEK
+    .flatMap((script) => (script.channels ?? []).map(
+      (slot) => channelMessageAt(script.day, slot),
+    ))
+    .filter((message) => message.tick <= now)
+    .sort((left, right) => left.tick - right.tick);
 }
 
 /**

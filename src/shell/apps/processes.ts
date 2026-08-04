@@ -58,6 +58,7 @@ export const PROGRAM_IMAGES: Readonly<Record<string, ProgramImage>> = {
   remote: { image: 'RASSIST.EXE', title: 'Remote Assist' },
   events: { image: 'EVENTVWR.EXE', title: 'Event Viewer' },
   chat: { image: 'WGCHAT.EXE', title: 'Chat' },
+  hubbub: { image: 'HUBBUB.EXE', title: 'Hubbub' },
   mail: { image: 'WGMAIL.EXE', title: 'Mail' },
   cmd: { image: 'CMD.EXE', title: 'Support Terminal' },
   kb: { image: 'KBASE.EXE', title: 'Knowledge Base' },

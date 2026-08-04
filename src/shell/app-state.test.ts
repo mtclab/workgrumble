@@ -47,6 +47,42 @@ describe('the shell-owned app state', () => {
     expect(fresh.caught)
       .toEqual({ appId: null, at: null, evidence: null, software: null });
     expect(fresh.assistant).toEqual({ dismissals: 0, closedOnDay: null });
+    expect(fresh.hubbub).toEqual({ selectedChannel: null, read: [] });
+  });
+
+  /**
+   * The rooms' ledger, both halves of how it is read: it has to SURVIVE,
+   * because a badge that came back after a load would charge the player for
+   * reading the same Monday twice - and a file written before the rollout has
+   * to LOAD, because a session is not worth throwing away over a badge.
+   */
+  it('carries the rooms\' read ledger, and reads a file from before it', () => {
+    const store = new AppStateStore();
+    store.patch('hubbub', {
+      selectedChannel: 'chan:helpdesk',
+      read: ['hub:welcome', 'hub:gary-account'],
+    });
+
+    const wire: unknown = JSON.parse(JSON.stringify(store.snapshot()));
+    expect(parseAppState(wire)?.hubbub).toEqual({
+      selectedChannel: 'chan:helpdesk',
+      read: ['hub:welcome', 'hub:gary-account'],
+    });
+
+    const older = { ...(wire as Record<string, unknown>) };
+    delete older.hubbub;
+    expect(parseAppState(older)?.hubbub)
+      .toEqual({ selectedChannel: null, read: [] });
+
+    // Present but nonsense is still a refusal: this arrives from storage.
+    for (const broken of [
+      { selectedChannel: 7, read: [] },
+      { selectedChannel: null, read: 'hub:welcome' },
+      { selectedChannel: null, read: [1, 2] },
+      'rooms',
+    ]) {
+      expect(parseAppState({ ...(wire as object), hubbub: broken })).toBeNull();
+    }
   });
 
   /**

@@ -11,6 +11,7 @@ import { CMD_APP } from './cmd';
 import { DIRECTORY_APP } from './directory';
 import { EVENTS_APP } from './events';
 import { FEEDBACK_APP } from './feedback';
+import { HUBBUB_APP } from './hubbub';
 import { KB_APP } from './kb';
 import { MAIL_APP } from './mail';
 import { MEETING_APP } from './meeting';
@@ -50,6 +51,10 @@ export const APP_MANIFEST = assertCaughtScenes(loadManifest([
   REMOTE_APP,
   EVENTS_APP,
   CHAT_APP,
+  // The channel client, straight after the 1:1 chat it is pretending to
+  // replace. Shipped on the base roster rather than the web store: nobody
+  // installs an enterprise chat tool, it happens to a company.
+  HUBBUB_APP,
   MAIL_APP,
   CMD_APP,
   KB_APP,
