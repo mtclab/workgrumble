@@ -79,6 +79,27 @@ export const REQUEST_ANSWER_REPUTATION = 1;
  */
 export const REQUEST_DEFLECT_REPUTATION = -2;
 
+/**
+ * What minting a ticket from a chat costs, in minutes off the shift.
+ *
+ * Conversational ticketing is not free (SPEC_030): converting is the correct
+ * play precisely because you do the PAPERWORK - you turn a plea in three
+ * windows into a node the queue and the review can see - and the paperwork
+ * takes minutes the shift does not get back. Answering is a quick reply and
+ * deflecting is a pointer at the form; neither writes a ticket, so neither
+ * carries this. Only convert does, and it is charged the same way being caught
+ * is: minutes owed against the clock, spent through the driver's own machinery
+ * (`day-driver.ts`), so the shift still ends at five and is that much shorter.
+ *
+ * TWO minutes, and an OVERSEER TUNING KNOB. Deliberately conservative - fewer
+ * than a caught lecture (`CAUGHT_MINUTES` is ten) and far fewer than a call,
+ * because filing one ticket you already understand is quick. It exists so that
+ * converting is not literally instantaneous, which the SPEC and the desk both
+ * say it is not; whether two is the right price is a question for a week that
+ * presses it.
+ */
+export const REQUEST_CONVERT_MINUTES = 2;
+
 /** The meter move each answer is worth, or nought for convert. */
 export function requestReputationDelta(kind: RequestKind): number {
   switch (kind) {

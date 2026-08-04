@@ -30,7 +30,10 @@ import { HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { dayLedger, tickAtMinute } from '../world/day';
 import { FIELDS } from '../world/fields';
-import { isRequestResolved } from '../world/requests';
+import {
+  isRequestResolved,
+  REQUEST_CONVERT_MINUTES,
+} from '../world/requests';
 import { createWorldSession } from '../world/session';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
 
@@ -147,6 +150,44 @@ describe('convert - the correct play', () => {
     expect(
       dayLedger(tickets(world), day).closed,
     ).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('convert costs the paperwork minutes; the cheap answers do not', () => {
+  /**
+   * The goal, not the call: not "resolveRequest returned ok" but "the shift is
+   * shorter for having done the paperwork" (SPEC_030). Being caught spends its
+   * minutes through `step`'s owed-minute drain; convert now spends its own the
+   * same way, so one turn of the clock after a convert advances the sim by the
+   * ordinary minute PLUS the convert cost, where a turn after answer or deflect
+   * advances by the plain minute.
+   *
+   * Teeth: drop the `owedMinutes_ += REQUEST_CONVERT_MINUTES` in
+   * `resolveRequest` and the convert leg reds - the clock advances one minute
+   * like the others, so converting became free.
+   */
+  it('burns REQUEST_CONVERT_MINUTES that answer and deflect leave on the clock', () => {
+    const converted = reachTheRequest();
+    const beforeConvert = converted.engine.now();
+    expect(converted.driver.resolveRequest(REQUEST_ID, 'convert').ok).toBe(true);
+    // One turn of the real clock: the ordinary minute, then the owed paperwork
+    // drained inside the same step.
+    converted.driver.step(TICK_INTERVAL_MS);
+    expect(converted.engine.now()).toBe(
+      beforeConvert + 1 + REQUEST_CONVERT_MINUTES,
+    );
+
+    const answered = reachTheRequest();
+    const beforeAnswer = answered.engine.now();
+    expect(answered.driver.resolveRequest(REQUEST_ID, 'answer').ok).toBe(true);
+    answered.driver.step(TICK_INTERVAL_MS);
+    expect(answered.engine.now()).toBe(beforeAnswer + 1);
+
+    const deflected = reachTheRequest();
+    const beforeDeflect = deflected.engine.now();
+    expect(deflected.driver.resolveRequest(REQUEST_ID, 'deflect').ok).toBe(true);
+    deflected.driver.step(TICK_INTERVAL_MS);
+    expect(deflected.engine.now()).toBe(beforeDeflect + 1);
   });
 });
 

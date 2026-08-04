@@ -27,6 +27,7 @@ import {
 } from '../world/actions';
 import {
   type LinkedRequest,
+  REQUEST_CONVERT_MINUTES,
   type RequestKind,
   resolutionLine,
   resolutionsBy,
@@ -1393,6 +1394,13 @@ export class DayDriver implements DayApi {
     // credit.
     if (result.ok && kind === 'convert') {
       this.raiseSummonedTicket(found.slot.raises);
+      // And the paperwork costs minutes (SPEC_030): minting a ticket from a
+      // chat is the correct play precisely because you did the writing-up, and
+      // the writing-up is not free. It is owed against the shift exactly as a
+      // caught lecture is - spent through `step`'s own drain, so the day still
+      // ends at five and is `REQUEST_CONVERT_MINUTES` shorter. Answer and
+      // deflect write no ticket, so neither owes this.
+      this.owedMinutes_ += REQUEST_CONVERT_MINUTES;
     }
 
     return this.announced(result);
