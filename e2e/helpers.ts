@@ -269,7 +269,20 @@ export async function workUntil(page: Page, tickOfDay: number): Promise<void> {
 
 /** Starts the shift from a morning brief that is already on screen. */
 export async function beginShift(page: Page): Promise<void> {
-  await page.getByTestId('brief-start-shift').click();
+  // On a fresh day-1 login the brief is not left standing open; the taskbar's
+  // day-state chip is the way back into it (the same door day.spec uses). On
+  // day 2+ logInOnDay's own loop leaves the brief up. Wait briefly for the
+  // button before reaching for the chip, so a brief that is merely mid-paint
+  // (day 2) is not mistaken for a closed one and toggled shut.
+  const startShift = page.getByTestId('brief-start-shift');
+  const alreadyOpen = await startShift
+    .waitFor({ state: 'visible', timeout: 2000 })
+    .then(() => true, () => false);
+  if (!alreadyOpen) {
+    await page.getByTestId('day-state').click();
+    await expect(page.getByTestId('window-brief')).toBeVisible();
+  }
+  await startShift.click();
   // At x4 a few sim-minutes pass between the click and the read.
   await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
   await page.getByTestId('close-brief').click();
