@@ -138,7 +138,7 @@ describe('the first click lays the field', () => {
       expect(opened.cells[0]?.[2]?.mine).toBe(false);
       expect(opened.cells[0]?.[1]?.mine).toBe(false);
       expect(opened.cells[0]?.[0]?.mine).toBe(true);
-      expect(opened.cells[0]?.[2]?.revealed).toBe(true);
+      expect(opened.cells[0]?.[2]?.state).toBe('revealed');
     }
   });
 
