@@ -260,6 +260,57 @@ export function ticketRows(
   });
 }
 
+/**
+ * The three counters a passing minute moves on its own, and that the queue
+ * rows and the two detail cells are told DIRECTLY on every tick rather than
+ * rebuilt for.
+ *
+ * The engine walks the deadline of a parked ticket out by one every minute -
+ * `sla_deadline`, with `held_ticks` or `off_hours_ticks` counting why - so a
+ * fingerprint that read them would change on every tick of a shift and rebuild
+ * this window once a minute, which is the exact thing the countdown cells are
+ * updated in place to avoid. They are excluded because they are the clock, not
+ * the content.
+ */
+const LIVE_CLOCK_FIELDS: ReadonlySet<string> = new Set([
+  FIELDS.slaDeadline,
+  FIELDS.heldTicks,
+  FIELDS.offHoursTicks,
+]);
+
+/**
+ * A fingerprint of everything on this screen that a WORLD change could move,
+ * and nothing a mere minute does: the queue's own content - every ticket's
+ * fields but the live-clock counters above - and which ticket is selected.
+ *
+ * It is the tickets app's half of the repaint discipline every list in this
+ * shell keeps. The detail pane is rebuilt on every world change, so a world
+ * change that leaves the queue untouched - the pressure meters ticking on the
+ * PLAYER node, a stress point charged for an unread Hubbub message, suspicion
+ * draining - would throw the pane away under the player's cursor, taking a
+ * ticked duplicate box and an open triage dropdown with it. The meters live on
+ * the player node and never on a ticket, so such a change produces the
+ * identical fingerprint and the pane is left standing. Only a change to a
+ * ticket the queue actually draws rebuilds it. The other detail panes in this
+ * shell (the directory's, Remote Assist's) keep the same discipline by
+ * comparing a model signature; this is that signature, read off the graph.
+ */
+export function ticketQueueFingerprint(
+  nodes: readonly Readonly<ReadOnlyGraphNode>[],
+  selectedId: string | null,
+): string {
+  const parts = nodes.map((node) => {
+    const fields = Object.keys(node.fields)
+      .filter((field) => !LIVE_CLOCK_FIELDS.has(field))
+      .sort()
+      .map((field) => `${field}=${JSON.stringify(node.fields[field])}`);
+
+    return `${node.id}#${fields.join(',')}`;
+  });
+
+  return `${selectedId ?? ''}|${parts.join(';')}`;
+}
+
 export const TICKETS_APP: AppDef = {
   id: 'tickets',
   title: 'Ticket Queue',
@@ -287,6 +338,13 @@ export const TICKETS_APP: AppDef = {
     // names the incident they are all duplicates of.
     const picked = new Set<string>();
     let linkOutcome: string | null = null;
+    // The fingerprint of the queue as it stood when this window was last
+    // rebuilt. A world change whose fingerprint matches it is a change to
+    // something this window does not draw - the meters on the player node, most
+    // often - and rebuilding for it would throw away the pane, the triage
+    // dropdowns and the ticked boxes the player is working in. Null until the
+    // first paint.
+    let painted: string | null = null;
     /**
      * The detail pane's two countdown cells, and which ticket they are about.
      * A minute passing moves those two sentences and nothing else on the pane,
@@ -1204,6 +1262,12 @@ export const TICKETS_APP: AppDef = {
         renderQueue(nodes);
         renderDetail(nodes.find((node) => node.id === selectedId), nodes);
       });
+
+      // The queue as it now stands, so the next world change can tell whether
+      // it moved anything this window draws. Recorded on every paint, world- or
+      // player-driven, so a rebuild the player's own click asked for resets the
+      // baseline just as a world one does.
+      painted = ticketQueueFingerprint(nodes, selectedId);
     };
 
     /**
@@ -1249,6 +1313,18 @@ export const TICKETS_APP: AppDef = {
       paintClocks();
     });
     const unsubscribeWorld = api.onWorldChange(() => {
+      // Only when the world moved something this window actually draws. The
+      // pressure meters tick on the player node every few minutes - a stress
+      // point for an unread Hubbub message, suspicion draining - and each is a
+      // world change that leaves every ticket untouched. Rebuilding for one
+      // threw the detail pane away under the player's cursor, unticking a
+      // duplicate box they had ticked and shutting a triage dropdown they had
+      // open. The fingerprint is the queue's own content, so such a change
+      // matches the last paint and this returns without touching the DOM.
+      if (ticketQueueFingerprint(ticketNodes(), selectedId) === painted) {
+        return;
+      }
+
       render();
     });
 
