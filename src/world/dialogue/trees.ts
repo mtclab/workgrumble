@@ -340,9 +340,16 @@ const LOCKED_ACCOUNT: DialogueTree = {
   call_roots: ['at-the-desk', 'at-the-desk-shaky'],
   nodes: [
     {
+      // The bot-frustrated register (0.5.0 slice 3): Gary has been round the
+      // self-service portal's loop - it heard "password" and kept offering him a
+      // reset, which does nothing to a locked account - and he has arrived at a
+      // human already cross. The tone framework (0.4.1) is how the player meets
+      // that: snap back in kind, or take one of the neutral roads and de-escalate.
       id: 'complaint',
-      npc_line: 'The computer says my password is wrong. It is not wrong. It '
-        + 'is the same password it has been since the merger.',
+      npc_line: 'I have now told your little chat robot four times that '
+        + 'resetting the password does nothing, and four times it has told ME to '
+        + 'reset the password. So I will say it to a person: it is not the '
+        + 'password. It is the same one it has been since the merger.',
       options: [
         {
           label: 'Ask him to read the message out, word for word',
@@ -352,6 +359,36 @@ const LOCKED_ACCOUNT: DialogueTree = {
             {
               reveal: 'Gary reads it out himself: "This account has been '
                 + 'locked out, please contact support."',
+            },
+          ],
+        },
+        {
+          // Meeting the bot-frustration in kind: the SAME question and the SAME
+          // reveal as the neutral read-it-out above, going to the SAME beat -
+          // the tone gate proves that, so the fix is untouched - with the flat
+          // temper of somebody who has also had a morning. It costs, because it
+          // is a snap at a man who is only confused, and the rebuff pays for it.
+          label: 'Tell him the robot is off the table, and to read the message '
+            + 'out to you, word for word, now',
+          tone: 'aggressive',
+          next: 'reads',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Gary reads it out himself: "This account has been '
+                + 'locked out, please contact support."',
+            },
+            {
+              action: HELPDESK_ACTIONS.reporterRebuff,
+              target: 'ticket:locked-account',
+              params: {
+                reaction_first: 'Gary blinks. "Well - there is no need for the '
+                  + 'tone, I have had the tone off the machine all morning." He '
+                  + 'reads it out anyway, because underneath it he just wants in.',
+                reaction_again: 'Gary, quietly now: "That is the second time. I '
+                  + 'came to a person to get away from being spoken to like a '
+                  + 'form. I will remember which of you it was."',
+              },
             },
           ],
         },

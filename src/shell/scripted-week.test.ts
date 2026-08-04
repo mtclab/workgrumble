@@ -30,6 +30,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import type { EngineApi } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
+import { unreadIds } from '../world/channels';
 import { COMPANY_IDS } from '../world/company';
 import { type ConductEntry, conductEntries } from '../world/conduct';
 import { shiftEndTick, shiftStartTick } from '../world/day';
@@ -38,6 +39,7 @@ import { isUnresolved } from '../world/sla';
 import { createWorldSession } from '../world/session';
 import { findWorldTicket } from '../world/tickets';
 import {
+  channelFeedThrough,
   REVIEW_DAY,
   REVIEW_PASS_PERFORMANCE,
   type ReviewOutcome,
@@ -72,6 +74,22 @@ function startWeek(): Week {
     .map((entry) => entry.appId);
   const driver = new DayDriver(engine, COMPANY_IDS.player, seed, {
     onDayBoundary: () => {},
+    // The attention drip (0.5.0 slice 3), wired exactly as the real shell wires
+    // it: the unread room pile read off the week's channel table against the
+    // shell's read ledger, and the charged ledger the driver advances beside it.
+    // Neither scripted week opens Hubbub, so the pile is never read and every
+    // room message the week deals is billed once - which is what moves the
+    // golden stress by a few points and nothing else.
+    unreadChannels: () => unreadIds(
+      channelFeedThrough(engine.now()),
+      appState.get().hubbub.read,
+    ),
+    attentionCharged: () => appState.get().hubbub.charged,
+    noteAttentionCharged: (ids) => {
+      appState.patch('hubbub', {
+        charged: [...appState.get().hubbub.charged, ...ids],
+      });
+    },
     openSlackApps: visible,
     focusedSlackApp: () => {
       const { focusedId } = appState.get().windows;
@@ -229,6 +247,19 @@ interface WalkedWeek {
   readonly assistantDismissals: number;
   readonly assistantClosedOnDay: number | null;
   /**
+   * The ids the attention drip billed across the week (0.5.0 slice 3).
+   *
+   * This is how the determinism gate WITNESSES the drip even though it moves no
+   * meter: neither walk opens Hubbub, so every room message the week deals is
+   * billed once and ends up here, in bill order - and the world hash above is
+   * nonetheless byte-identical, because a point of stress charged at the floor of
+   * the worked week or the ceiling of the idle one is a point the clamp eats. A
+   * wiring that stopped firing, double-billed, or billed the wrong messages would
+   * show here without needing a meter to move; the STRESS the drip adds when it
+   * is not clamped is proven in `day-driver.test.ts`, on a controlled pile.
+   */
+  readonly attentionCharged: readonly string[];
+  /**
    * What the player could have read an hour BEFORE the conversation: the file,
    * who had a reason to open it, and the bar that would produce. It is
    * captured at two o'clock on the Friday and is the whole of the legibility
@@ -306,6 +337,7 @@ function walk(play: (world: Week, day: number) => void): WalkedWeek {
     filed: conductEntries(world.driver.conductFile()),
     assistantDismissals: world.appState.get().assistant.dismissals,
     assistantClosedOnDay: world.appState.get().assistant.closedOnDay,
+    attentionCharged: world.appState.get().hubbub.charged,
     atTwo,
   };
 }
@@ -433,6 +465,8 @@ interface GoldenWeek {
   readonly triggersAtTwo: readonly string[];
   readonly meters: Record<string, number>;
   readonly timeline: readonly string[];
+  /** The room messages the attention drip billed, in bill order (0.5.0 slice 3). */
+  readonly attentionCharged: readonly string[];
 }
 
 /**
@@ -877,6 +911,42 @@ interface GoldenWeek {
  *    reads neither. The dodge path it exists to press is walked on Do Not
  *    Disturb in `presence-beat.test.ts`, where the drip and the lead's beat
  *    are, not here where the dot is green.
+ *
+ * EIGHTEENTH MOVE (0.5.0 slice 3, attention as a resource). NEITHER HASH MOVED,
+ * and that is the whole of the diff worth being exact about - the drip fired on
+ * both walks and was eaten by a clamp on both, so the world came out byte-
+ * identical and the only new thing the golden carries is the witness that it
+ * fired at all (`attentionCharged`).
+ *
+ *  - THE DRIP is one point of stress per unread Hubbub message, billed ONCE the
+ *    meter tick it first goes unread (`STRESS_PER_UNREAD_CHANNEL = 1`, an
+ *    OVERSEER TUNING KNOB). The week deals four room messages - the welcome and
+ *    Gary's two #helpdesk lines on the Monday (09:05, 09:40, 09:48->billed
+ *    09:50), and Bev's cross-post copy on the Tuesday (09:50) - and neither walk
+ *    opens Hubbub, so all four are billed, four points across the week. That the
+ *    charge is once-per-message rather than per-interval-while-unread is the
+ *    design: a pile that sat unread all week at a point an interval would pin the
+ *    meter to the ceiling and turn a backlog into a fumble, which an unread badge
+ *    is not.
+ *  - NEITHER STRESS MOVED. The worked week's stress touches its FLOOR of zero on
+ *    the quiet afternoons after its queue is cleared, so the four points charged
+ *    on the Monday and Tuesday are clamped away below and the Friday figure is
+ *    the same 59 it was. The idle week's stress is pinned near its CEILING from
+ *    the Wednesday, so its four points are clamped away above and the figure is
+ *    the same 98. Proven by turning the knob up: at twenty points a message the
+ *    hash moves, which is the four points being real and merely absorbed at one.
+ *  - THE WITNESS is `attentionCharged`, asserted equal on both walks to the four
+ *    ids in bill order. It is what makes the determinism gate SEE the feature
+ *    without a meter having to move for it - a wiring that stopped firing, double-
+ *    billed or billed the wrong messages reds this line. The STRESS the drip adds
+ *    when it is not against a clamp is proven on a controlled pile in
+ *    `day-driver.test.ts`, and the read-clears-it half beside it.
+ *  - THE DOT DOES NOT TOUCH ANY OF THIS. Slice 1 deferred "does a red dot slide a
+ *    channel arrival like a call?" to here, and the answer is no by construction:
+ *    a room post is not an interruption, nothing rings, so a status has nothing
+ *    to turn away. Both scripted weeks are Available anyway, but a DND week would
+ *    bill the same four - the backlog is the cost the dot cannot buy off, which
+ *    is the sprawl truth the resource is about.
  */
 const GOLDEN_WORKED: GoldenWeek = {
   hash: 'd7efbd1c6b7cfab7',
@@ -1013,6 +1083,18 @@ const GOLDEN_WORKED: GoldenWeek = {
     'review:passed@6180',
     'beer@6300',
     'week:passed@6300',
+  ],
+  // The four room messages the week dealt, each billed once for attention the
+  // meter tick it first went unread (0.5.0 slice 3): the welcome and Gary's two
+  // #helpdesk lines on the Monday, and Bev's cross-post copy on the Tuesday. The
+  // walk never opens Hubbub, so none is read and every one is billed - and the
+  // hash above did not move, because a point of stress on the worked week's
+  // stress touches its floor before Friday and is eaten there.
+  attentionCharged: [
+    'hub:welcome',
+    'hub:gary-account',
+    'hub:owen-reply',
+    'hub:bev-vpn',
   ],
 };
 
@@ -1154,6 +1236,18 @@ const GOLDEN_IDLE: GoldenWeek = {
     'review:fired@6180',
     'week:fired@6300',
   ],
+  // The same four, billed the same way on the same mornings: the drip does not
+  // care whether the week was worked, only whether the rooms were read, and this
+  // week reads them exactly as little. The hash did not move here either, because
+  // this week's stress is pinned near its ceiling and the points are clamped away
+  // as fast as they are charged - the same shape every content move since 0.2.6
+  // has found on the idle week.
+  attentionCharged: [
+    'hub:welcome',
+    'hub:gary-account',
+    'hub:owen-reply',
+    'hub:bev-vpn',
+  ],
 };
 
 function expectGolden(walked: WalkedWeek, golden: GoldenWeek): void {
@@ -1186,6 +1280,11 @@ function expectGolden(walked: WalkedWeek, golden: GoldenWeek): void {
   // byte-identical to the one committed before the character existed.
   expect(walked.assistantDismissals).toBe(0);
   expect(walked.assistantClosedOnDay).toBeNull();
+  // 0.5.0 slice 3: the attention drip fired, deterministically, once per room
+  // message the week dealt - and the hash above did not move, because those
+  // points of stress were charged at a clamp and eaten. This is the witness that
+  // the drip is wired and honest without a meter having to move for it.
+  expect(walked.attentionCharged).toEqual(golden.attentionCharged);
 
   /*
    * THE LEGIBILITY GATE, run on every golden week rather than as a case of

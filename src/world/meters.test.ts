@@ -36,6 +36,7 @@ import {
   STRESS_LUNCH_RELIEF,
   STRESS_PER_BREACH,
   STRESS_PER_EXCESS_TICKET,
+  STRESS_PER_UNREAD_CHANNEL,
   SUSPICION_CLEAN_DRAIN,
 } from './meters';
 import { INSTALL_PRESENT_SUSPICION } from './software';
@@ -144,6 +145,44 @@ describe('stress', () => {
 
   it('rates an app nobody has rated at the house rate', () => {
     expect(slackRate('a-game-nobody-wrote-down')).toEqual(DEFAULT_SLACK_RATE);
+  });
+
+  /**
+   * The sprawl of the third channel, priced (0.5.0 slice 3): a room message the
+   * meters are being told to bill for attention adds one point, once. The driver
+   * hands this the COUNT of newly-unread-and-unbilled messages - the ledger math
+   * is its job - so at this layer the rule is a straight multiply.
+   */
+  it('charges for unread channel messages the interval it is told to', () => {
+    expect(deltas({ attentionCharges: 1 }).stressUp)
+      .toBe(STRESS_PER_UNREAD_CHANNEL);
+    expect(deltas({ attentionCharges: 3 }).stressUp)
+      .toBe(STRESS_PER_UNREAD_CHANNEL * 3);
+    // Absent or nought is nothing - a world with no rooms in it, or a pile the
+    // driver already billed, adds not a point. This is what keeps a scripted
+    // week that never sees a message byte-identical to before Hubbub existed.
+    expect(deltas({ attentionCharges: 0 }).stressUp).toBe(0);
+    expect(deltas().stressUp).toBe(0);
+  });
+
+  /**
+   * It is stress and ONLY stress, and it stacks with the queue rather than
+   * replacing it: the unread pile is a pull on attention, not a slack window,
+   * so it never touches suspicion and never drains.
+   */
+  it('adds attention to the queue without touching the other meters', () => {
+    const both = deltas({ openTickets: COMFORTABLE_QUEUE + 2, attentionCharges: 2 });
+
+    expect(both.stressUp).toBe(
+      STRESS_PER_EXCESS_TICKET * 2 + STRESS_PER_UNREAD_CHANNEL * 2,
+    );
+    expect(both.suspicionUp).toBe(0);
+    expect(both.stressDown).toBe(0);
+  });
+
+  it('refuses an attention charge that is not a whole count', () => {
+    expect(() => deltas({ attentionCharges: -1 })).toThrow();
+    expect(() => deltas({ attentionCharges: 1.5 })).toThrow();
   });
 });
 

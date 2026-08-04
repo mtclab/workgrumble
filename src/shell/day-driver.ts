@@ -781,6 +781,34 @@ export interface DayDriverHandlers {
    */
   installPolicy?(): InstallPolicy;
   /**
+   * The channel messages that have arrived and are not in the read ledger - the
+   * unread pile the attention drip prices (0.5.0 slice 3).
+   *
+   * Ids rather than a count, because the driver bills each message ONCE and has
+   * to know which ones it has already billed - the difference against
+   * `attentionCharged` below is what it charges this interval. The driver cannot
+   * see the rooms (week data joined to the clock) or the read ledger (shell
+   * state) and has no business reading either; the shell knows both, and these
+   * two are the whole of what the pressure layer needs off them. Absent (a
+   * headless harness, a preflight, a driver built before the client existed) is
+   * an empty pile, which is what keeps such a run byte-identical to before the
+   * drip existed.
+   */
+  unreadChannels?(): readonly string[];
+  /** The ids already billed for attention - the drip's watermark. */
+  attentionCharged?(): readonly string[];
+  /**
+   * Remember that these ids have now been billed, so the next interval does not
+   * bill them again.
+   *
+   * The write half of the watermark. It is the shell's ledger the driver is
+   * advancing, the same shape as the read ledger the window advances on paint -
+   * and the driver calls it whether or not the meter dispatch it computed
+   * actually moved a number, because a message the meters noticed is a message
+   * they have noticed even if the stress it would have added was clamped away.
+   */
+  noteAttentionCharged?(ids: readonly string[]): void;
+  /**
    * Whether there is a desktop session for any of this to be happening in.
    *
    * The clock does not convert real time while there is not, and that is not a
@@ -3848,10 +3876,45 @@ export class DayDriver implements DayApi {
     };
   }
 
+  /**
+   * The unread channel messages this interval is billing for attention, and the
+   * side effect of billing them: they join the charged ledger so no later
+   * interval bills them twice.
+   *
+   * Both halves are here, in one place, because they are one fact: a message is
+   * charged exactly when the meters first notice it unread, and "noticed" is
+   * "added to the ledger". Advanced unconditionally - before the dispatch, and
+   * whether or not the dispatch ends up moving a meter - because a message the
+   * pressure layer saw sitting there is a message it has seen, and a stress
+   * point clamped away at the ceiling is still a point it does not get to
+   * charge again when the meter next has room.
+   */
+  private billAttention(): number {
+    const unread = this.handlers.unreadChannels?.() ?? [];
+
+    if (unread.length === 0) {
+      return 0;
+    }
+
+    const charged = this.handlers.attentionCharged?.() ?? [];
+    const fresh = unread.filter((id) => !charged.includes(id));
+
+    if (fresh.length > 0) {
+      this.handlers.noteAttentionCharged?.(fresh);
+    }
+
+    return fresh.length;
+  }
+
   private tickMeters(now: number): void {
     const tickets = this.tickets();
     const state = this.meterState();
     const deltas = meterDeltas({
+      // The sprawl of the third channel: the unread room messages the meters
+      // have not billed yet, charged a point each, once. The ledger is advanced
+      // as a side effect of asking, so a message counted here is a message that
+      // will not be counted again.
+      attentionCharges: this.billAttention(),
       // Everything that is still somebody's problem and is not parked - a
       // breached ticket very much included. The printer does not start working
       // because its SLA ran out, and a queue that stopped counting it would

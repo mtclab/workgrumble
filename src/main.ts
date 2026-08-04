@@ -24,12 +24,14 @@ import { openStorage } from './shell/storage';
 import { CloudSaves } from './shell/sync';
 import { updateOnBoot, VersionSlot } from './shell/updates';
 import { BUILD_VERSION } from './shared/build';
+import { unreadIds } from './world/channels';
 import { COMPANY, COMPANY_IDS, companyInstallPolicy } from './world/company';
 import { awayNoticedLine } from './world/dialogue';
 import { dayForTick } from './world/hours';
 import { FLAVOR, flavorText } from './world/interruptions';
 import { createWorldSession, FIRST_WEEK } from './world/session';
 import { ticketTitle } from './world/tickets';
+import { channelFeedThrough } from './world/week';
 
 /**
  * A read-only window onto the running session, for the journey gate.
@@ -199,6 +201,23 @@ async function boot(): Promise<void> {
     // above cannot tell it "locked down with nothing installed" from
     // "wild west". Read off the pack, the same place the drip is gated from.
     installPolicy: () => companyInstallPolicy(),
+    // The sprawl of the third channel, priced (0.5.0 slice 3): the unread room
+    // messages the meters have not billed, and the ledger that remembers the
+    // ones they have. The driver bills the difference a point each, once - and
+    // reads clear the pile the same way the badge does, because both read the
+    // same ledger. The dot does not slide any of this: a room post is not an
+    // interruption, so DND has nothing to turn away, which is the whole of why
+    // the backlog is the cost DND cannot buy off.
+    unreadChannels: () => unreadIds(
+      channelFeedThrough(engine.now()),
+      appState.get().hubbub.read,
+    ),
+    attentionCharged: () => appState.get().hubbub.charged,
+    noteAttentionCharged: (ids) => {
+      appState.patch('hubbub', {
+        charged: [...appState.get().hubbub.charged, ...ids],
+      });
+    },
     onNotice: (title, body) => {
       shell.notify(title, body);
     },

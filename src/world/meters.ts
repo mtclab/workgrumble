@@ -157,6 +157,38 @@ export function slackRate(appId: string): SlackRate {
   return SLACK_RATES[appId] ?? DEFAULT_SLACK_RATE;
 }
 
+/**
+ * What one unread channel message costs the moment the meters first notice it
+ * sitting there unread - the sprawl of the third channel, made mechanical.
+ *
+ * ONE point, once per message, and deliberately conservative - OVERSEER TUNING
+ * KNOB. A message that has arrived in a Hubbub room and has not been on screen
+ * by the meter tick after it lands is a small pull on attention: the badge is
+ * the stress, made a number. It is charged ONCE (the shell's charged ledger is
+ * the watermark - a message already billed is never billed again, and reading
+ * it before the tick clears it so it is never billed at all), which is what
+ * keeps it TEXTURE rather than a new failure axis: the shipped week's four
+ * room messages are worth at most four points across the whole of it, spread
+ * over the mornings they land on, and a player who keeps their rooms read pays
+ * none of it. It is not per-interval-while-unread on purpose - a pile that sat
+ * unread all week at a point an interval would pin the meter to the ceiling and
+ * turn "you have some unread messages" into "you are fumbling", which is not
+ * what an unread badge is.
+ *
+ * The DND question slice 1 deferred to here (does a red dot slide a channel
+ * arrival the way it slides a call?) is answered NO, and by construction rather
+ * than by policy: a channel message is not an interruption. It never arrives AT
+ * the player - nothing rings, nothing takes the screen - it lands in a room
+ * whether the dot is red or green (`world/channels.ts` says so), so there is no
+ * synchronous arrival for a status to turn away. DND buys quiet from the phone;
+ * it does not empty the backlog, which is exactly the modern-office truth the
+ * sprawl cost is about - muting notifications does not read your messages for
+ * you. So `READS_THE_DOT` (which is about interruption SOURCES) is untouched:
+ * `channel` is not one of them, and the attention drip is un-dodgeable by the
+ * dot on purpose.
+ */
+export const STRESS_PER_UNREAD_CHANNEL = 1;
+
 /** Suspicion bleeds away while the screen has nothing to hide on it. */
 export const SUSPICION_CLEAN_DRAIN = 1;
 
@@ -255,6 +287,20 @@ export interface MeterInputs {
    * the policy is per-employer pack data the meters have no business reading.
    */
   readonly installedAgainstPolicy?: number;
+  /**
+   * Channel messages the meters are billing for attention THIS interval: the
+   * ones that are unread now and have not been charged before.
+   *
+   * The driver does the set arithmetic, because the pile lives in the shell (the
+   * arrived feed against the read ledger) and so does the watermark (the charged
+   * ledger, beside the read one) - the same division of labour as the open slack
+   * windows, which the meters are told the COUNT of rather than reading the
+   * screen. Optional and zero by default: a dispatch from a world with no rooms
+   * in it says nothing here and pays nothing, which is what keeps a scripted
+   * week that never sees a channel message byte-identical to before Hubbub
+   * existed.
+   */
+  readonly attentionCharges?: number;
 }
 
 /**
@@ -330,6 +376,15 @@ export function meterDeltas(inputs: Readonly<MeterInputs>): MeterDeltas {
   const newBreaches = Math.max(0, breached - charged);
   const newCredit = Math.max(0, credit - paid);
   const excess = Math.max(0, openTickets - COMFORTABLE_QUEUE);
+  // The sprawl of the third channel, priced once per unread message the moment
+  // the meters first notice it. The driver has already filtered it to the ones
+  // that are unread now and were never billed, so this is a straight charge -
+  // and nought on every interval of every week nobody lets a room pile up, which
+  // is what keeps it texture rather than a wall.
+  const attention = nonNegative(
+    inputs.attentionCharges ?? 0,
+    'The unread channel charges',
+  ) * STRESS_PER_UNREAD_CHANNEL;
 
   const rates = inputs.openSlackApps.map(slackRate);
   const relief = inputs.focusedSlackApp === null
@@ -375,7 +430,9 @@ export function meterDeltas(inputs: Readonly<MeterInputs>): MeterDeltas {
     + owed;
 
   return {
-    stressUp: excess * STRESS_PER_EXCESS_TICKET + newBreaches * STRESS_PER_BREACH,
+    stressUp: excess * STRESS_PER_EXCESS_TICKET
+      + newBreaches * STRESS_PER_BREACH
+      + attention,
     stressDown: slackRelief + (inputs.lunch ? STRESS_LUNCH_RELIEF : 0),
     suspicionUp,
     // The clean drain does not run in a window the dot was lying in, whether

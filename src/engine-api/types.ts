@@ -195,6 +195,22 @@ export interface TicketDef {
   flavor: {
     title: string;
     body: string;
+    /**
+     * What the deflection bot tried before this reached a human, and why it did
+     * not stick (0.5.0 slice 3).
+     *
+     * READ-ONLY flavour, no verb: the "have you tried the portal" layer answered
+     * the easy 80% of the queue, so what survives to a person is the weird 20% -
+     * and this is that made legible on the ticket that shows it. It explains,
+     * mechanically, why the ticket in front of you is not the obvious thing: the
+     * obvious thing was already tried. `tried` is what the bot did; `stillBroken`
+     * is what the user came back saying. Absent on the tickets the bot never
+     * touched, which is most of them.
+     */
+    preChew?: {
+      readonly tried: string;
+      readonly stillBroken: string;
+    };
   };
   reporter: NodeId;
   setup: SetupOp[];

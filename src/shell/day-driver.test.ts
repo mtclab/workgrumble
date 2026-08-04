@@ -28,6 +28,7 @@ import {
   STARTING_REPUTATION,
   STRESS_PER_BREACH,
   STRESS_PER_EXCESS_TICKET,
+  STRESS_PER_UNREAD_CHANNEL,
 } from '../world/meters';
 import { createWorldSession, WORLD_SEED } from '../world/session';
 import { dayPlan, dayScript, inheritedTicketIds } from '../world/week';
@@ -1300,5 +1301,177 @@ describe('duplicates closing with their parent', () => {
     ).toEqual([
       expect.stringContaining('The concentrator is back up.') as unknown as string,
     ]);
+  });
+});
+
+/**
+ * The attention drip (0.5.0 slice 3): the unread channel pile made mechanical.
+ *
+ * The scripted week proves the drip FIRES and is deterministic, but it fires
+ * against a clamp on both walks, so no meter moves there. This is where the
+ * STRESS is proven - on a controlled pile, at a stress that is mid-range rather
+ * than pinned - and the two halves of the contract with it: a message is billed
+ * ONCE (the watermark), and reading it before the meters notice it clears it so
+ * it is never billed at all.
+ *
+ * The pile is a mutable list the test owns, standing in for "the arrived
+ * messages the read ledger has not seen" the shell computes: putting an id in it
+ * is a message arriving unread, taking one out is the player reading it. The
+ * charged ledger is the real driver's, advanced through the real handler.
+ */
+interface AttentionHarness {
+  readonly driver: DayDriver;
+  readonly engine: EngineApi;
+  /** The unread pile, by id - what the shell would read off the rooms. */
+  readonly pile: { unread: readonly string[] };
+  /** The charged watermark, as the driver leaves it. */
+  charged: () => readonly string[];
+  /** The player's stress right now. */
+  stress: () => number;
+}
+
+function attentionHarness(): AttentionHarness {
+  const { engine } = createWorldSession();
+  const pile: { unread: readonly string[] } = { unread: [] };
+  let charged: readonly string[] = [];
+
+  const driver = new DayDriver(engine, COMPANY_IDS.player, WORLD_SEED, {
+    onDayBoundary: () => {},
+    openSlackApps: () => [],
+    focusedSlackApp: () => null,
+    // The unread pile as the shell hands it over, and the watermark it advances.
+    // "Reading" is the test taking an id out of `pile.unread` - exactly what the
+    // real shell's `unreadIds(feed, read)` does when a message joins the read
+    // ledger.
+    unreadChannels: () => pile.unread,
+    attentionCharged: () => charged,
+    noteAttentionCharged: (ids) => {
+      charged = [...charged, ...ids];
+    },
+  });
+
+  return {
+    driver,
+    engine,
+    pile,
+    charged: () => charged,
+    stress: () => {
+      const value = engine.graph.getField(COMPANY_IDS.player, FIELDS.stress);
+      return typeof value === 'number' ? value : 0;
+    },
+  };
+}
+
+describe('the unread channel pile, as a pull on attention', () => {
+  it('bills each unread message once, and reading it in time bills it not at all', () => {
+    const world = attentionHarness();
+    world.driver.startShift();
+
+    // Two messages land unread. The next meter tick notices both and bills them.
+    world.pile.unread = ['msg:a', 'msg:b'];
+    world.driver.step(realMs(METER_INTERVAL_TICKS));
+    expect(world.charged()).toEqual(['msg:a', 'msg:b']);
+
+    // The same pile across another interval is billed nothing more: the whole
+    // point of the watermark is that a message that sat there is not re-charged
+    // for sitting there. (Revert the `!charged.includes` filter in
+    // `billAttention` and this reds: the pile bills every interval.)
+    world.driver.step(realMs(METER_INTERVAL_TICKS));
+    expect(world.charged()).toEqual(['msg:a', 'msg:b']);
+
+    // A third arrives; only the fresh one is billed.
+    world.pile.unread = ['msg:a', 'msg:b', 'msg:c'];
+    world.driver.step(realMs(METER_INTERVAL_TICKS));
+    expect(world.charged()).toEqual(['msg:a', 'msg:b', 'msg:c']);
+
+    // A fourth arrives and is READ before the next meter tick - taken out of the
+    // pile - so the meters never notice it unread and it is never billed. This
+    // is the badge-clear stopping the drip.
+    world.pile.unread = ['msg:a', 'msg:b', 'msg:c', 'msg:d'];
+    world.pile.unread = ['msg:a', 'msg:b', 'msg:c'];
+    world.driver.step(realMs(METER_INTERVAL_TICKS));
+    expect(world.charged()).not.toContain('msg:d');
+    expect(world.charged()).toEqual(['msg:a', 'msg:b', 'msg:c']);
+  });
+
+  it('adds exactly one point of stress per newly-billed message', () => {
+    // A/B against an identical world stepped identically: the only difference is
+    // the pile, so the difference in stress is the whole of what the pile cost.
+    // Both are stepped early, where stress is mid-range rather than at a clamp -
+    // which is exactly the condition the scripted week never gives it.
+    const withPile = attentionHarness();
+    const without = attentionHarness();
+
+    withPile.driver.startShift();
+    without.driver.startShift();
+
+    withPile.pile.unread = ['msg:a', 'msg:b', 'msg:c'];
+
+    // One meter interval past the start, both worlds otherwise untouched.
+    withPile.driver.step(realMs(METER_INTERVAL_TICKS));
+    without.driver.step(realMs(METER_INTERVAL_TICKS));
+
+    // Three fresh messages, one point each at the shipped rate, and nothing else
+    // differs between the two runs - so the difference is three points of stress.
+    // The number is written out rather than `3 * STRESS_PER_UNREAD_CHANNEL` ON
+    // PURPOSE: an expected value derived from the constant would read 0 == 0 the
+    // moment the constant is zeroed and prove nothing. This way, silencing the
+    // drip (rate to 0, or dropping `attention` from `meterDeltas`'s `stressUp`)
+    // reds the line - and a deliberate re-tune of the knob is a conscious edit
+    // here, which is what a tuning knob's teeth should be.
+    expect(STRESS_PER_UNREAD_CHANNEL).toBe(1);
+    expect(withPile.stress() - without.stress()).toBe(3);
+    expect(withPile.charged()).toEqual(['msg:a', 'msg:b', 'msg:c']);
+  });
+
+  /**
+   * The question slice 1 deferred to here: does a red dot slide a channel
+   * arrival the way it slides a call? The answer is NO, and by construction - a
+   * room post is not an interruption, nothing rings, so a status has nothing to
+   * turn away. The billing does not read the dot at all, which is what makes the
+   * backlog the one cost Do Not Disturb cannot buy off. This proves it: on Do
+   * Not Disturb, the same pile bills the same, because the drip never asks.
+   */
+  it('bills the pile the same on Do Not Disturb - the dot does not slide a room', () => {
+    const onDnd = attentionHarness();
+    const available = attentionHarness();
+
+    onDnd.driver.startShift();
+    available.driver.startShift();
+    expect(onDnd.driver.setPresence('dnd')).toEqual({ ok: true });
+
+    onDnd.pile.unread = ['msg:a', 'msg:b'];
+    available.pile.unread = ['msg:a', 'msg:b'];
+
+    onDnd.driver.step(realMs(METER_INTERVAL_TICKS));
+    available.driver.step(realMs(METER_INTERVAL_TICKS));
+
+    // Same two messages billed, dot red or green: the drip does not read it.
+    expect(onDnd.charged()).toEqual(['msg:a', 'msg:b']);
+    expect(available.charged()).toEqual(onDnd.charged());
+  });
+
+  it('does not bill the pile again for a message already read once', () => {
+    // Read is one-way: a message billed while unread stays billed after it is
+    // read, and a message read before it is billed is never billed - so a pile
+    // that is fully read stops costing entirely, rather than costing again each
+    // time a later message arrives.
+    const world = attentionHarness();
+    world.driver.startShift();
+
+    world.pile.unread = ['msg:a'];
+    world.driver.step(realMs(METER_INTERVAL_TICKS));
+    const afterFirst = world.stress();
+    expect(world.charged()).toEqual(['msg:a']);
+
+    // Read it. The pile empties, and no meter tick from here bills anything, so
+    // the stress the one message cost is the whole of what the rooms cost.
+    world.pile.unread = [];
+    world.driver.step(realMs(METER_INTERVAL_TICKS * 3));
+    expect(world.charged()).toEqual(['msg:a']);
+    // Stress does not keep climbing from the rooms once they are read (it may
+    // move for other reasons - the queue - so this asserts the CHARGED ledger,
+    // which is the drip's own record, did not grow).
+    expect(world.stress()).toBeGreaterThanOrEqual(afterFirst);
   });
 });

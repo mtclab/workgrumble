@@ -47,7 +47,7 @@ describe('the shell-owned app state', () => {
     expect(fresh.caught)
       .toEqual({ appId: null, at: null, evidence: null, software: null });
     expect(fresh.assistant).toEqual({ dismissals: 0, closedOnDay: null });
-    expect(fresh.hubbub).toEqual({ selectedChannel: null, read: [] });
+    expect(fresh.hubbub).toEqual({ selectedChannel: null, read: [], charged: [] });
   });
 
   /**
@@ -61,24 +61,40 @@ describe('the shell-owned app state', () => {
     store.patch('hubbub', {
       selectedChannel: 'chan:helpdesk',
       read: ['hub:welcome', 'hub:gary-account'],
+      // The attention drip's watermark (0.5.0 slice 3), carried the same way
+      // the read ledger is: a load that forgot it would re-bill the whole pile.
+      charged: ['hub:welcome'],
     });
 
     const wire: unknown = JSON.parse(JSON.stringify(store.snapshot()));
     expect(parseAppState(wire)?.hubbub).toEqual({
       selectedChannel: 'chan:helpdesk',
       read: ['hub:welcome', 'hub:gary-account'],
+      charged: ['hub:welcome'],
     });
 
     const older = { ...(wire as Record<string, unknown>) };
     delete older.hubbub;
     expect(parseAppState(older)?.hubbub)
-      .toEqual({ selectedChannel: null, read: [] });
+      .toEqual({ selectedChannel: null, read: [], charged: [] });
+
+    // A file from AFTER the rollout but BEFORE the drip: the rooms are there and
+    // the charged ledger is not, which loads as nothing owed rather than a
+    // refusal - the same courtesy the read ledger's own absence gets.
+    const preDrip = {
+      ...(wire as object),
+      hubbub: { selectedChannel: 'chan:helpdesk', read: ['hub:welcome'] },
+    };
+    expect(parseAppState(preDrip)?.hubbub)
+      .toEqual({ selectedChannel: 'chan:helpdesk', read: ['hub:welcome'], charged: [] });
 
     // Present but nonsense is still a refusal: this arrives from storage.
     for (const broken of [
       { selectedChannel: 7, read: [] },
       { selectedChannel: null, read: 'hub:welcome' },
       { selectedChannel: null, read: [1, 2] },
+      { selectedChannel: null, read: [], charged: 'hub:welcome' },
+      { selectedChannel: null, read: [], charged: [1, 2] },
       'rooms',
     ]) {
       expect(parseAppState({ ...(wire as object), hubbub: broken })).toBeNull();

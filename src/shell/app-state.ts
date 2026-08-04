@@ -57,6 +57,20 @@ export interface HubbubState {
   readonly selectedChannel: string | null;
   /** Message ids the player has actually had on screen. */
   readonly read: readonly string[];
+  /**
+   * Message ids the attention drip has already billed for stress (0.5.0 slice
+   * 3).
+   *
+   * The watermark for "unread channel content costs a point once": the driver
+   * charges a message the first meter tick it is unread and not already in here,
+   * then adds it, so a pile that sits unread all week is not billed every
+   * interval - it is billed once and remembered. It rides beside `read` because
+   * it is the same shape and the same kind of screen state - a fact about what
+   * THIS player has been charged, changing nothing in the world but which
+   * messages the meters have already noticed - and a save carries it verbatim so
+   * a reload does not re-bill the pile it was already billed for.
+   */
+  readonly charged: readonly string[];
 }
 
 export interface KbState {
@@ -219,7 +233,7 @@ export function createAppState(): AppState {
   return {
     chat: { selectedId: null, threads: {} },
     mail: { selectedId: null, read: [] },
-    hubbub: { selectedChannel: null, read: [] },
+    hubbub: { selectedChannel: null, read: [], charged: [] },
     kb: { selectedId: null },
     day: { briefShownFor: null, scorecardShownFor: null },
     browser: { siteId: null },
@@ -396,7 +410,7 @@ function readInstalled(value: unknown): InstalledState | undefined {
  */
 function readHubbub(value: unknown): HubbubState | undefined {
   if (value === undefined) {
-    return { selectedChannel: null, read: [] };
+    return { selectedChannel: null, read: [], charged: [] };
   }
 
   if (!isObject(value)) {
@@ -405,10 +419,15 @@ function readHubbub(value: unknown): HubbubState | undefined {
 
   const selected = optionalId(value.selectedChannel);
   const read = stringList(value.read);
+  // Absent is empty rather than a refusal, the same courtesy `read` gets: a
+  // save written before the drip existed knew nothing about being charged for
+  // its rooms, so it starts owing nothing. Present but not a list of strings is
+  // a hand-edited file, and that this shell refuses.
+  const charged = value.charged === undefined ? [] : stringList(value.charged);
 
-  return selected === undefined || read === undefined
+  return selected === undefined || read === undefined || charged === undefined
     ? undefined
-    : { selectedChannel: selected, read };
+    : { selectedChannel: selected, read, charged };
 }
 
 function isSpeaker(value: unknown): value is ChatSpeaker {

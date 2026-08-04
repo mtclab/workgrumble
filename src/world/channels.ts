@@ -292,6 +292,23 @@ export function unreadCount(
   return messages.filter((message) => !read.includes(message.id)).length;
 }
 
+/**
+ * The ids of the messages the read ledger has not seen - the unread pile, by
+ * id, for the attention drip that bills each of them once (0.5.0 slice 3).
+ *
+ * Ids rather than a count because the drip has to know WHICH are unread, to bill
+ * a new one and not re-bill an old one; the count is for a badge, this is for a
+ * ledger.
+ */
+export function unreadIds(
+  messages: readonly ChannelMessage[],
+  read: readonly string[],
+): readonly string[] {
+  return messages
+    .filter((message) => !read.includes(message.id))
+    .map((message) => message.id);
+}
+
 /** Whether anything UNREAD in here names the player. A read @ is a spent @. */
 export function unreadMention(
   messages: readonly ChannelMessage[],

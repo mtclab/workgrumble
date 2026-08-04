@@ -963,6 +963,25 @@ export const TICKETS_APP: AppDef = {
         ?? 'No description. The reporter is confident you know what they mean.';
 
       detail.append(heading, facts, body);
+
+      // The deflection bot's pre-chew, when there is one (0.5.0 slice 3): a
+      // read-only note that the obvious fix was already tried by the portal and
+      // did not stick, which is why this weird thing survived to a human. No
+      // control, no verb - it is context, the way the work notes are.
+      const preChew = entry?.def.flavor.preChew;
+
+      if (preChew !== undefined) {
+        const note = element('div', 'ticket-prechew', 'ticket-detail-prechew');
+        const label = element('h3', 'ticket-prechew-label');
+        label.textContent = 'The portal got here first';
+        const tried = element('p', 'ticket-prechew-tried', 'ticket-detail-prechew-tried');
+        tried.textContent = `Bot tried: ${preChew.tried}`;
+        const still = element('p', 'ticket-prechew-still', 'ticket-detail-prechew-still');
+        still.textContent = `User says: ${preChew.stillBroken}`;
+        note.append(label, tried, still);
+        detail.append(note);
+      }
+
       detail.append(renderTriage(node, entry, clocks));
 
       detail.append(

@@ -162,6 +162,18 @@ export const LOCKED_ACCOUNT: WorldTicket = {
         + 'locked out, please contact support" - without noticing that it is '
         + 'also the answer. He is typing the password correctly. That was '
         + 'never the problem.',
+      // The portal bot got here first, and made the exact category error Gary
+      // makes: it heard "password" and offered a reset, which does nothing to a
+      // LOCKED account. That the bot could not tell locked from wrong either is
+      // why this one is on your desk and not closed in the portal - the deflection
+      // layer sent on the thing it could not chew (0.5.0 slice 3).
+      preChew: {
+        tried: 'Self-service password reset, offered twice by the support '
+          + 'portal ("It looks like you are having trouble signing in!").',
+        stillBroken: 'Gary reset it and it changed nothing, because the account '
+          + 'is locked, not wrong - so the portal sent him here, crosser than it '
+          + 'found him.',
+      },
     },
     reporter: COMPANY_IDS.gary,
     // The lockout as it actually happened, in the order it happened in: five
