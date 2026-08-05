@@ -195,6 +195,13 @@ interface StaffSeed {
   readonly title: string;
   readonly username: string;
   readonly desk: string;
+  /**
+   * The customer whose staff this is, so their ACCOUNT carries the same
+   * customer field a machine does and an account-targeted action (unlock,
+   * resetpw, ...) runs the same scope + tenant pre-flight. Omitted for the
+   * MSP's own tech, whose account belongs to no customer.
+   */
+  readonly customer?: string;
 }
 
 const STAFF: readonly StaffSeed[] = [
@@ -213,6 +220,7 @@ const STAFF: readonly StaffSeed[] = [
     title: 'Practice Manager, Fontaine & Associates',
     username: 'nfontaine',
     desk: 'The front office of a law firm that runs on Windows and always has',
+    customer: MSP_CUSTOMERS.fontaine,
   },
   {
     person: MSP_IDS.meridianContact,
@@ -222,6 +230,7 @@ const STAFF: readonly StaffSeed[] = [
     username: 'tmarsh',
     desk: 'An open-plan SaaS office, laptops out, the product humming in a '
       + 'datacentre somewhere else',
+    customer: MSP_CUSTOMERS.meridian,
   },
   {
     person: MSP_IDS.northwindContact,
@@ -230,6 +239,7 @@ const STAFF: readonly StaffSeed[] = [
     title: 'Office Manager, Northwind Clinic',
     username: 'iokafor',
     desk: 'A clinic reception, where the only IT the MSP is paid to do is watch',
+    customer: MSP_CUSTOMERS.northwind,
   },
 
   // The end-users the Pass B tickets are ABOUT, at the two helpdesk customers.
@@ -242,6 +252,7 @@ const STAFF: readonly StaffSeed[] = [
     title: 'Partner, Fontaine & Associates',
     username: 'mreyes',
     desk: 'A corner office where iManage is closed by shutting the laptop lid',
+    customer: MSP_CUSTOMERS.fontaine,
   },
   {
     person: MSP_IDS.fontaineNewHire,
@@ -250,6 +261,7 @@ const STAFF: readonly StaffSeed[] = [
     title: 'Associate (started Monday), Fontaine & Associates',
     username: 'ekhoury',
     desk: 'A new desk, a full inbox, and not a single matter she can open yet',
+    customer: MSP_CUSTOMERS.fontaine,
   },
   {
     person: MSP_IDS.meridianDev,
@@ -258,6 +270,7 @@ const STAFF: readonly StaffSeed[] = [
     title: 'Engineer, Meridian',
     username: 'dchen',
     desk: 'A hot-desk where the SSO tile has started bouncing her straight back',
+    customer: MSP_CUSTOMERS.meridian,
   },
   {
     person: MSP_IDS.meridianContractor,
@@ -266,6 +279,7 @@ const STAFF: readonly StaffSeed[] = [
     title: 'Contractor (engagement ended in April), Meridian',
     username: 'rhassan',
     desk: 'Gone, and still - the ticket says - able to reach production',
+    customer: MSP_CUSTOMERS.meridian,
   },
   {
     person: MSP_IDS.meridianAnalyst,
@@ -274,6 +288,7 @@ const STAFF: readonly StaffSeed[] = [
     title: 'Analyst, Meridian',
     username: 'nprice',
     desk: 'A desk where the authenticator has stopped taking the code it makes',
+    customer: MSP_CUSTOMERS.meridian,
   },
 ];
 
@@ -505,7 +520,7 @@ export function mspSetup(): readonly SetupOp[] {
           : {}),
       },
     });
-    addNode(ops, accountNode(member.account, member.username));
+    addNode(ops, accountNode(member.account, member.username, member.customer));
     addEdge(ops, { from: member.person, to: member.account, kind: 'owns' });
   }
 
@@ -722,8 +737,18 @@ const VERIFICATION_CHANNELS_ON_FILE = verificationChannels([
 /**
  * One account node. Nothing locked or expired in the seed; every fault arrives
  * with the ticket about it, exactly as the other two employers' do.
+ *
+ * A customer's staff account carries that customer's id in the SAME field a box
+ * does (`FIELDS.machineCustomer`), so the scope + tenant pre-flight reads it and
+ * an account-targeted action is guarded exactly as a machine-targeted one is.
+ * The MSP's own tech gets no customer, so their account is in-house and
+ * unguarded - byte-identical to before.
  */
-function accountNode(id: string, username: string): GraphNode {
+function accountNode(
+  id: string,
+  username: string,
+  customer?: string,
+): GraphNode {
   return {
     id,
     kind: 'account',
@@ -736,6 +761,7 @@ function accountNode(id: string, username: string): GraphNode {
       [FIELDS.pwMustChange]: false,
       [FIELDS.mfaEnrolled]: false,
       [FIELDS.verificationChannels]: VERIFICATION_CHANNELS_ON_FILE,
+      ...(customer === undefined ? {} : { [FIELDS.machineCustomer]: customer }),
     },
   };
 }

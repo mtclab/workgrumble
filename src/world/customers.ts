@@ -31,17 +31,42 @@ import {
 } from './fields';
 
 /**
- * The customer a machine belongs to, by id, or null when it belongs to none.
+ * The customer a NODE belongs to, by id, or null when it belongs to none.
  *
- * Null is the in-house case: probation and Bodgeworth boxes carry no customer,
- * so every guard below reads null and stands down, which is the whole of why
- * the dimension is additive.
+ * The customer field (`FIELDS.machineCustomer`, whose value is the plain
+ * `customer` key) is the SAME on every node that carries one - a machine, and
+ * now an account - so the resolver reads it off any node. Null is the in-house
+ * case: probation and Bodgeworth nodes carry no customer, so every guard below
+ * reads null and stands down, which is the whole of why the dimension is
+ * additive.
  */
+export function customerIdOfNode(
+  node: Readonly<ReadOnlyGraphNode>,
+): string | null {
+  const value = node.fields[FIELDS.machineCustomer];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/** The customer a machine belongs to, by id, or null when it belongs to none. */
 export function customerIdOfMachine(
   machine: Readonly<ReadOnlyGraphNode>,
 ): string | null {
-  const value = machine.fields[FIELDS.machineCustomer];
-  return typeof value === 'string' && value.length > 0 ? value : null;
+  return customerIdOfNode(machine);
+}
+
+/**
+ * The customer an ACCOUNT belongs to, by id, or null when it belongs to none.
+ *
+ * The MSP seeds each customer's staff accounts with the customer field, exactly
+ * as it seeds their boxes, so an account-targeted action (unlock, resetpw, ...)
+ * resolves to a customer and runs the same scope + tenant pre-flight a
+ * machine-targeted one does. In-house accounts (probation, Bodgeworth, and the
+ * MSP's own desk) carry none and read null, so their behaviour is unchanged.
+ */
+export function customerIdOfAccount(
+  account: Readonly<ReadOnlyGraphNode>,
+): string | null {
+  return customerIdOfNode(account);
 }
 
 /** The customer node itself, or undefined when nobody built it. */
@@ -143,13 +168,16 @@ export type ScopeVerdict =
 
 export function scopeVerdict(
   scope: ServiceScope | null,
-  role: MachineRole,
+  role: MachineRole | null,
 ): ScopeVerdict {
   switch (scope) {
     case SERVICE_SCOPES.monitoringOnly:
       return 'monitoring_only';
     case SERVICE_SCOPES.helpdesk:
-      return isServerRole(role) ? 'helpdesk_server' : 'allowed';
+      // A null role is a non-machine target (an account): user-and-identity
+      // work is squarely helpdesk, so it is allowed; only the SERVER tier is
+      // out of a helpdesk contract.
+      return role !== null && isServerRole(role) ? 'helpdesk_server' : 'allowed';
     case SERVICE_SCOPES.coManaged:
       return 'co_managed';
     case SERVICE_SCOPES.fullyManaged:
@@ -195,49 +223,67 @@ export function scopeRefusalLines(verdict: ScopeVerdict): readonly string[] | nu
 }
 
 /**
- * The scope refusal for a remediation aimed at a machine, or null when the
- * contract covers it. The one call the terminal makes: it resolves the
- * machine's customer, reads the scope, and turns the verdict into the true
- * sentence.
+ * The scope refusal for a remediation aimed at a resolved CUSTOMER, at the
+ * given role, or null when the contract covers it (or there is no customer).
+ *
+ * The one decision both target paths share: a machine resolves a customer and a
+ * server-or-not role, an account resolves a customer and a `null` role
+ * (user-and-identity work, never a server). Reading the scope and turning the
+ * verdict into the true sentence happens here, once.
  */
-export function scopeRefusalForMachine(
+export function scopeRefusalForCustomer(
   graph: ReadOnlyGraphView,
-  machine: Readonly<ReadOnlyGraphNode>,
+  customerId: string | null,
+  role: MachineRole | null,
 ): readonly string[] | null {
-  const customerId = customerIdOfMachine(machine);
-
   if (customerId === null) {
     return null;
   }
 
   const scope = scopeOfCustomer(graph, customerId);
-  const role = machineRoleOf(machine.fields[FIELDS.machineRole]);
   return scopeRefusalLines(scopeVerdict(scope, role));
 }
 
 /**
- * The wrong-customer guard: an action aimed at a machine that belongs to a
+ * The scope refusal for a remediation aimed at a machine, or null when the
+ * contract covers it. Resolves the machine's customer and role and hands both
+ * to the shared decision above.
+ */
+export function scopeRefusalForMachine(
+  graph: ReadOnlyGraphView,
+  machine: Readonly<ReadOnlyGraphNode>,
+): readonly string[] | null {
+  return scopeRefusalForCustomer(
+    graph,
+    customerIdOfMachine(machine),
+    machineRoleOf(machine.fields[FIELDS.machineRole]),
+  );
+}
+
+/**
+ * The wrong-customer guard: an action aimed at a target that belongs to a
  * DIFFERENT customer than the one the open ticket put on screen.
  *
  * The single sharpest MSP hazard - acting in the wrong client's environment -
  * made mechanical. It fires only when BOTH customers are real and different: an
  * action with no customer selected (no ticket open) is not caught here, because
- * there is nothing on screen to be the wrong one; an action on an in-house box
- * (no target customer) is not caught either, because it belongs to no client.
+ * there is nothing on screen to be the wrong one; an action on an in-house
+ * target (no target customer) is not caught either, because it belongs to no
+ * client. The target is named by the label passed in - a box's hostname, or an
+ * account's username - so both machine and account paths share one guard.
  *
  * Returns the STOP lines naming both, or null when the target is the customer
  * already in context (or there is nothing to compare).
  */
-export function wrongCustomerGuardLines(
+export function wrongCustomerLines(
   graph: ReadOnlyGraphView,
-  machine: Readonly<ReadOnlyGraphNode>,
+  targetCustomerId: string | null,
+  targetLabel: string,
   currentCustomerId: string | null,
 ): readonly string[] | null {
   if (currentCustomerId === null) {
     return null;
   }
-
-  const targetCustomerId = customerIdOfMachine(machine);
 
   if (targetCustomerId === null || targetCustomerId === currentCustomerId) {
     return null;
@@ -245,15 +291,31 @@ export function wrongCustomerGuardLines(
 
   const here = customerName(graph, currentCustomerId);
   const there = customerName(graph, targetCustomerId);
-  const box = machineLabel(machine);
 
   return [
-    `STOP. ${here} is on your screen but ${box} belongs to ${there}.`,
+    `STOP. ${here} is on your screen but ${targetLabel} belongs to ${there}.`,
     'Are you in the right customer? Acting in the wrong tenant is the MSP horror '
       + 'story;',
     `open a ${there} ticket if that is where you mean to be, or aim at a ${here} `
       + 'box.',
   ];
+}
+
+/**
+ * The wrong-customer guard for a machine target: resolves the box's customer
+ * and its hostname label and hands both to the shared guard above.
+ */
+export function wrongCustomerGuardLines(
+  graph: ReadOnlyGraphView,
+  machine: Readonly<ReadOnlyGraphNode>,
+  currentCustomerId: string | null,
+): readonly string[] | null {
+  return wrongCustomerLines(
+    graph,
+    customerIdOfMachine(machine),
+    machineLabel(machine),
+    currentCustomerId,
+  );
 }
 
 /** How the guard names the box - its hostname, then its id as a last resort. */

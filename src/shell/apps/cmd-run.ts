@@ -26,9 +26,14 @@ import {
   startupTypeOf,
 } from '../../world/fields';
 import {
+  customerIdOfAccount,
+  customerIdOfMachine,
+  scopeRefusalForCustomer,
   scopeRefusalForMachine,
   wrongCustomerGuardLines,
+  wrongCustomerLines,
 } from '../../world/customers';
+import type { MachineRole } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { DEFAULT_CWD } from '../../world/filesystem';
 import { readSpoolJobs, type TerminalSession } from '../../world/fs';
@@ -297,18 +302,49 @@ function machineForTarget(
 }
 
 /**
- * The customer pre-flight the dispatch seam runs before it sends any mutating
- * action (0.8.0). It resolves the target's box and, in order:
+ * The one scope + tenant decision, on a RESOLVED customer id (0.8.0). Both the
+ * machine path and the account path feed it a customer id, a role and a label,
+ * and it runs, in order:
  *
  *  - the wrong-customer guard first (you are in the wrong tenant entirely - the
  *    STOP that names both), then
  *  - the scope-of-touch RBAC-403 (the contract does not cover this action).
  *
- * Null means the action is clear to dispatch, which is the in-house case for
- * every box that carries no customer - so probation and Bodgeworth are
- * untouched. It is the generalisation of the 0.7.0 honesty engine from OS to
- * CONTRACT and TENANT, and it lives at the seam every mutating verb funnels
- * through so there is ONE guard, not one per verb.
+ * A `null` role is a non-machine target (an account): user-and-identity work is
+ * helpdesk work, so a helpdesk contract allows it and only the SERVER tier is
+ * refused. Null return means clear to dispatch - the in-house case for every
+ * target that carries no customer, so probation and Bodgeworth are untouched.
+ * There is ONE guard, shared, not one per target kind.
+ */
+function customerScopeGuard(
+  api: GameApi,
+  customerId: string | null,
+  role: MachineRole | null,
+  label: string,
+): CommandResult | null {
+  const current = api.appState.getCustomerContext();
+  const wrongCustomer = wrongCustomerLines(api.graph, customerId, label, current);
+
+  if (wrongCustomer !== null) {
+    return lines(...wrongCustomer);
+  }
+
+  const scope = scopeRefusalForCustomer(api.graph, customerId, role);
+  return scope === null ? null : lines(...scope);
+}
+
+/**
+ * The customer pre-flight the dispatch seam runs before it sends any mutating
+ * action (0.8.0). It resolves the target's customer - the box behind a machine,
+ * service, unit or device target, or the customer an ACCOUNT target belongs to
+ * directly - and runs the shared scope + tenant guard.
+ *
+ * Account-targeted verbs (unlock, resetpw, and the rest) resolve to no machine,
+ * so they used to slip the guard entirely - a monitoring-only customer's user
+ * could be reset in silent breach of the contract. Reading the account's own
+ * customer here closes that hole: the mechanic has no bypass, whatever the verb
+ * aims at. It is the generalisation of the 0.7.0 honesty engine from OS to
+ * CONTRACT and TENANT, at the seam every mutating verb funnels through.
  */
 function customerPreflight(
   api: GameApi,
@@ -316,19 +352,30 @@ function customerPreflight(
 ): CommandResult | null {
   const machine = machineForTarget(api, targetId);
 
-  if (machine === null) {
-    return null;
+  if (machine !== null) {
+    return customerScopeGuard(
+      api,
+      customerIdOfMachine(machine),
+      machineRoleOf(machine.fields[FIELDS.machineRole]),
+      labelOf(machine),
+    );
   }
 
-  const current = api.appState.getCustomerContext();
-  const wrongCustomer = wrongCustomerGuardLines(api.graph, machine, current);
+  const node = api.graph.getNode(targetId);
 
-  if (wrongCustomer !== null) {
-    return lines(...wrongCustomer);
+  if (node?.kind === 'account') {
+    // An account is user-and-identity work - a null role, never a server - so a
+    // helpdesk contract covers it, a monitoring-only one refuses it, and the
+    // wrong-tenant guard fires on it exactly as it does for a box.
+    return customerScopeGuard(
+      api,
+      customerIdOfAccount(node),
+      null,
+      labelOf(node),
+    );
   }
 
-  const scope = scopeRefusalForMachine(api.graph, machine);
-  return scope === null ? null : lines(...scope);
+  return null;
 }
 
 function accountOf(api: GameApi, query: string): Lookup {

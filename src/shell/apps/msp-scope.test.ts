@@ -19,6 +19,7 @@ import {
   type WorldSession,
 } from '../../world/session';
 import { HELPDESK_ACTIONS } from '../../world/actions';
+import { FIELDS } from '../../world/fields';
 import { MSP_CUSTOMERS, MSP_IDS } from '../../world/msp-company';
 import { spawnWorldTicket } from '../../world/tickets';
 import { parseCommand } from './cmd-parse';
@@ -211,6 +212,107 @@ describe('the wrong-customer guard, through the real terminal', () => {
  * ticket a player actually gets, driven through the real terminal and the real
  * engine.
  */
+/**
+ * The hole Pass A/B left: an account-targeted verb (unlock, resetpw, ...)
+ * resolves to no MACHINE, so it used to skip the scope + tenant pre-flight
+ * entirely - a monitoring-only customer's user could be reset in silent breach
+ * of the contract. These drive the REAL terminal at a monitoring-only customer
+ * and prove the account path now runs the SAME guard the machine path does.
+ * Every assertion has teeth: revert the account customer field or the preflight
+ * account branch and the action dispatches, prints its success line, and these
+ * go red.
+ */
+describe('account-targeted actions run the same scope + tenant pre-flight', () => {
+  it('refuses a resetpw on a monitoring-only account and says escalate', () => {
+    const session = mspSession();
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.northwind);
+    const api = apiFor(session, appState);
+
+    // Ivy is Northwind's contact - a monitoring-only customer. Resetting her
+    // password is a REMEDIATION the contract forbids; absent the guard the
+    // account is enabled, so the reset would dispatch and succeed.
+    const output = run(api, 'resetpw iokafor');
+
+    expect(output).toContain('monitoring-only');
+    expect(output).toContain('notify-and-escalate');
+    // Teeth: the reset did NOT happen. Revert the fix and this prints and sets.
+    expect(output).not.toContain('Temporary password issued');
+    expect(
+      session.engine.graph.getField(MSP_IDS.northwindContactAccount, FIELDS.pwMustChange),
+    ).toBe(false);
+    expect(
+      session.engine.graph.getField(
+        MSP_IDS.northwindContactAccount,
+        FIELDS.passwordResetAt,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('refuses an unlock on a monitoring-only account (which would otherwise work)', () => {
+    const session = mspSession();
+    // Lock Ivy's account, so an unlock WOULD succeed if the guard were reverted -
+    // the teeth are that it does not, on the monitoring-only contract.
+    session.engine.applySetup([
+      {
+        op: 'setField',
+        id: MSP_IDS.northwindContactAccount,
+        field: FIELDS.locked,
+        value: true,
+      },
+    ]);
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.northwind);
+    const api = apiFor(session, appState);
+
+    const output = run(api, 'unlock iokafor');
+
+    expect(output).toContain('monitoring-only');
+    expect(output).toContain('notify-and-escalate');
+    // Teeth: still locked. Revert the fix and the unlock dispatches and clears it.
+    expect(output).not.toContain('unlocked');
+    expect(
+      session.engine.graph.getField(MSP_IDS.northwindContactAccount, FIELDS.locked),
+    ).toBe(true);
+  });
+
+  it('lets a helpdesk-customer account action through (the control)', () => {
+    // The in-scope control: a helpdesk customer's user is squarely helpdesk
+    // work, so a resetpw on them proceeds and issues the temporary password.
+    const session = mspSession();
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.meridian);
+    const api = apiFor(session, appState);
+
+    const output = run(api, 'resetpw dchen');
+
+    expect(output).toContain('Temporary password issued');
+    expect(
+      session.engine.graph.getField(MSP_IDS.meridianDevAccount, FIELDS.pwMustChange),
+    ).toBe(true);
+  });
+
+  it('STOPs an account action aimed at a DIFFERENT customer', () => {
+    // Fontaine is on screen; the account belongs to Meridian. The wrong-customer
+    // guard fires on the account exactly as it does on a box, and names both.
+    const session = mspSession();
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.fontaine);
+    const api = apiFor(session, appState);
+
+    const output = run(api, 'resetpw dchen');
+
+    expect(output).toContain('STOP.');
+    expect(output).toContain('FONTAINE-LAW');
+    expect(output).toContain('MERIDIAN-SAAS');
+    // Teeth: nothing was reset. Revert the fix and this dispatches.
+    expect(output).not.toContain('Temporary password issued');
+    expect(
+      session.engine.graph.getField(MSP_IDS.meridianDevAccount, FIELDS.passwordResetAt),
+    ).toBeUndefined();
+  });
+});
+
 describe('the Linux prod draw closes by escalation, never by touching prod', () => {
   it('refuses the tempting prod fix, then resolves on a clean escalation', () => {
     const session = mspSession('ticket:meridian-prod-down');
