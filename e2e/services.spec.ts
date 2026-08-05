@@ -90,7 +90,7 @@ test('runs a different list on a print server, a file server and a DC', async ({
 
   await runCommand(page, 'services DC-01');
   await expect(output).toContainText('Services on DC-01 (domain controller)');
-  await expect(output).toContainText('Directory Service');
+  await expect(output).toContainText('Active Directory Domain Services');
   await expect(output).toContainText('Kerberos Key Distribution Center');
   await expect(output).toContainText('DNS Server');
 
