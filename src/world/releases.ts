@@ -31,6 +31,33 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.8.0',
+    date: '2026-08-06',
+    summary: 'This update gives you customers - and takes away the right to '
+      + 'fix all of them.',
+    lines: Object.freeze([
+      'You have left the single building behind. The new job is a Managed '
+        + 'Service Provider - Fettle & Crane - and it does not have one estate, '
+        + 'it has other people\'s. A law firm, a software company, a clinic. '
+        + 'The ticket queue is a pile of everybody\'s problems at once, and the '
+        + 'first thing every ticket makes you do is work out whose it even is.',
+      'Each customer bought a different thing. Some pay you to run their whole '
+        + 'IT; some pay you only to WATCH, and raise a hand when something '
+        + 'breaks. Point a fix at a watch-only customer and the terminal tells '
+        + 'you the truth: the contract is notify-and-escalate, not remediate - '
+        + 'raising it IS the job here, and touching it is not yours to do. A '
+        + 'helpdesk customer\'s servers are someone else\'s contract. The '
+        + 'software company\'s Linux boxes are out of reach on two counts at '
+        + 'once. None of it is a wall. It is the shape of the work.',
+      'And because it is now entirely possible to be looking at one customer '
+        + 'while typing at another\'s machine, the terminal will stop you before '
+        + 'you do: this customer is on your screen, that box belongs to someone '
+        + 'else - are you sure you are where you think you are? Ignore it at '
+        + 'your peril. Somewhere, a script ran against the wrong company, and it '
+        + 'was not funny to the person who did it.',
+    ]),
+  },
+  {
     version: '0.7.0',
     date: '2026-08-05',
     summary: 'This update admits there are machines here your tools cannot '
