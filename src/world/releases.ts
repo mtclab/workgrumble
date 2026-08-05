@@ -31,6 +31,37 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.6.0',
+    date: '2026-08-05',
+    summary: 'This update lets you leave.',
+    lines: Object.freeze([
+      'Passing your probation review used to be the end of the road: the '
+        + 'fridge unlocked and then nothing happened, forever. There is now '
+        + 'somewhere to go. Clear the Friday review and an offer arrives from '
+        + 'another shop - Bodgeworth & Batch - and you can take it. Your '
+        + 'standing, your job title and the money in the coffee tin all cross '
+        + 'the road with you; the shop you are leaving does not get to keep '
+        + 'them.',
+      'Bodgeworth is not the shop you trained at. There is no domain '
+        + 'controller, no install audit, and nobody keeping a list of what you '
+        + 'put on your machine - the web store is simply open, and a toy you '
+        + 'install just goes on and stays on. This is being sold to you as '
+        + 'freedom. It is the specific kind of freedom that comes from nobody '
+        + 'being in charge of anything.',
+      'Its week has its own weather. On the Wednesday the entire company '
+        + 'discovers the Reply All button at the same moment, and somewhere in '
+        + 'the pile - underneath the all-staff message telling everyone to stop '
+        + 'replying to all - is the one message that is not about cake: the '
+        + 'shared drive is down, it has your name on it, and it is a ticket.',
+      'The Friday review followed you here, and it is a real one. Stay on top '
+        + 'of the queue and they keep you on. Ignore it for a week on the '
+        + 'grounds that nobody appeared to be watching, and you will learn who '
+        + 'was. If it goes badly, starting the week again starts it HERE, at '
+        + 'the shop you are actually standing in, and a saved game reopens at '
+        + 'the right shop too - both of which the old build got quietly wrong.',
+    ]),
+  },
+  {
     version: '0.5.1',
     date: '2026-08-05',
     summary: 'This update lets you panic without a keyboard.',
