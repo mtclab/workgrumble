@@ -109,6 +109,27 @@ export interface GameApi {
    */
   restartWeek(): void;
   /**
+   * Takes the offer and moves to the next employer, carrying the career.
+   *
+   * The forward twin of `restartWeek`: where the retry rebuilds the SAME week
+   * after a firing, this stands up the NEXT employer's first week seeded from
+   * the standing earned at this one. It is a SESSION verb rather than a world
+   * one for the same reason - the world it changes is the one being left behind
+   * - and it is reached from the offer on the weekend screen once the week has
+   * ended and the verdict is in.
+   */
+  acceptOffer(): void;
+  /**
+   * Which employer this session is a week at.
+   *
+   * The offer surface reads it to work out where the next job is, and the accept
+   * reads the same value so the two cannot disagree about the door. It is the
+   * session's own answer - the world stood up FROM it - rather than a graph
+   * field, because an employer's identity is deliberately not on the player node
+   * (a field there would move the probation goldens).
+   */
+  readonly employer: string;
+  /**
    * Files a report about the GAME - not about the estate, and not a world
    * change of any kind. It is the one call an app can make that leaves the
    * browser, and it answers rather than throwing: a form that took the tab

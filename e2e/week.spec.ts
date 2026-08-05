@@ -328,10 +328,15 @@ test('passes the review, opens the beer and reads the week back', async ({
   await expect(page.getByTestId('weekend-earned')).toContainText('£');
   await expect(page.getByTestId('weekend-farm-total')).toContainText('banked');
 
-  // Week two is not built yet, and the button says so rather than lying.
+  // Passing the probation is a job elsewhere, not week two at the same desk:
+  // the onward button is the offer itself, named and enabled, and the offer
+  // section says so in the tone a pass earns.
   const onward = page.getByTestId('weekend-onward');
-  await expect(onward).toBeDisabled();
-  await expect(onward).toHaveAttribute('title', /not built yet/);
+  await expect(onward).toBeEnabled();
+  await expect(onward).toHaveText(/Take the job at .+/);
+  await expect(page.getByTestId('weekend-offer'))
+    .toHaveAttribute('data-tone', 'earned');
+  await expect(page.getByTestId('weekend-offer-body')).toContainText('come with you');
 
   // And there is no Saturday: the clock stays where the week left it.
   await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 5');

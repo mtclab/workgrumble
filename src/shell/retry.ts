@@ -231,7 +231,7 @@ export function hydrateFromRetry(
  * caller can be tested on the difference.
  */
 export function acknowledgeCarry(
-  slot: RetrySlot,
+  slot: { clear(): void },
   save: () => SaveOutcome,
 ): boolean {
   const written = save();

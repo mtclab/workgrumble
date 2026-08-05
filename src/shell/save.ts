@@ -20,9 +20,19 @@ import { formatSimTime } from './clock-format';
 import type { DriverSaveSeam, DriverState } from './day-driver';
 import { DayDriver, parseDriverState } from './day-driver';
 import { recordFrom, type RetrySlot } from './retry';
+import { switchRecord, type SwitchSlot } from './switch';
 import { BUILD_VERSION } from '../shared/build';
-import { FIRST_EMPLOYER } from '../world/employers';
+import {
+  careerAfter,
+  type CareerStanding,
+} from '../world/career';
+import {
+  FIRST_EMPLOYER,
+  nextEmployerAfter,
+} from '../world/employers';
 import { FIELDS } from '../world/fields';
+import { exitForOutcome } from '../world/offer';
+import { isReviewOutcome } from '../world/week';
 
 /**
  * The shape written today. Bumped when the file's meaning changes.
@@ -342,6 +352,19 @@ export interface ShellSessionApi {
    * rather than about the world: this half is the part a test can drive.
    */
   retryWeek(): SaveOutcome;
+  /**
+   * Takes the offer: leaves this employer for the next one, carrying the career.
+   *
+   * The sibling of `retryWeek`, and a session verb for the same reason - the
+   * world it would change is the one being thrown away. It reads how the
+   * probation ended off the graph, turns that into the standing the next
+   * employer seeds from (`careerAfter`), writes the one record that outlives the
+   * tab (the switch slot), throws the save away and starts the page again on the
+   * new employer's Monday. It answers rather than throwing: a week that is not
+   * over yet has no offer to take, and a browser that will not keep the record
+   * says so with the session it was in still running.
+   */
+  switchEmployer(): SaveOutcome;
 }
 
 export interface SessionParts {
@@ -363,6 +386,14 @@ export interface SessionParts {
   readonly slot: SaveSlot;
   /** Where the one thing that survives a firing is written down. */
   readonly retry: RetrySlot;
+  /**
+   * Where the career that crosses a change of employer is written down.
+   *
+   * The switch's own slot, beside the retry's, because a switch throws the save
+   * away the same way a retry does and the record of who you are has to outlive
+   * both. Read on the boot that stands the next employer up.
+   */
+  readonly switch: SwitchSlot;
   /** The node the week's fund and attempt number live on. */
   readonly actor: NodeId;
   /**
@@ -581,6 +612,56 @@ export function createShellSession(
         appState.snapshot(),
         number(FIELDS.arcWeek),
       ));
+
+      parts.onWrite?.(written);
+
+      if (!written.ok) {
+        return written;
+      }
+
+      slot.clear();
+      parts.restart();
+      return { ok: true, value: undefined };
+    },
+
+    /**
+     * The same three-step order the retry keeps, and for the same reason: the
+     * record that outlives the tab is written FIRST, the save is thrown away
+     * next because it describes a world nobody is going back to, and the restart
+     * is last because after it nothing in this session runs again. A failure to
+     * write the switch record stops all three - a switch that lost the career
+     * would carry a fresh probationer into the next job wearing somebody else's
+     * fund.
+     */
+    switchEmployer: (): SaveOutcome => {
+      const outcome = engine.graph.getField(actor, FIELDS.reviewOutcome);
+
+      if (!isReviewOutcome(outcome) || outcome === 'pending') {
+        return refuse(
+          'There is no offer to take yet. The week is not over, so nothing has '
+          + 'decided which door you are walking out of.',
+        );
+      }
+
+      const exit = exitForOutcome(outcome);
+
+      if (exit === null) {
+        return refuse('There is no offer to take from a week that is not over.');
+      }
+
+      const title = engine.graph.getField(actor, FIELDS.title);
+      const standing: CareerStanding = {
+        reputation: number(FIELDS.reputation),
+        title: typeof title === 'string' && title.length > 0
+          ? title
+          : 'IT Support Technician',
+        farmFund: number(FIELDS.farmFund),
+      };
+      const next = nextEmployerAfter(parts.employer ?? FIRST_EMPLOYER);
+
+      const written = parts.switch.write(
+        switchRecord(next, careerAfter(exit, standing)),
+      );
 
       parts.onWrite?.(written);
 

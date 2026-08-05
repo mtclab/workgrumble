@@ -51,6 +51,8 @@ function apiFor(
     installApp: () => ({ ok: true }),
     uninstallApp: () => ({ ok: true }),
     restartWeek: () => {},
+    acceptOffer: () => {},
+    employer: 'workgrumble',
     actor,
   };
 }

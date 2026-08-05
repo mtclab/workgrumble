@@ -24,7 +24,18 @@ export interface InstallScreen {
   render(installStep: number): void;
 }
 
-export function createInstallScreen(): InstallScreen {
+/**
+ * The subject line under the bar, or the default one that names the build.
+ *
+ * The screen has two masters and now a third. Our deploy names the build,
+ * because the release-notes window opens the moment it finishes. The fiction's
+ * Thursday reboot names the updates. And an EMPLOYER SWITCH (0.6.0 slice 2)
+ * names the new shop - "here is your new machine" wearing the same install
+ * screen the reboot wears, because a new starter's first boot and an update are
+ * the same four seconds of a beige box thinking about itself. The caller passes
+ * the line; absent, it is the build, which is every boot that is not a switch.
+ */
+export function createInstallScreen(subject?: string): InstallScreen {
   const element = document.createElement('div');
   element.className = 'screen screen-installing';
   element.dataset.testid = 'install-screen';
@@ -44,10 +55,7 @@ export function createInstallScreen(): InstallScreen {
           ? 'restarting'
           : percent >= 100 ? 'restoring' : 'installing',
         percent,
-        // The one line that is not the fiction's: it names the build, because
-        // the window that opens the moment this finishes is that build's
-        // release notes and the two have to obviously be about the same thing.
-        subject: `DeskPro WorkGroup ${BUILD_VERSION}`,
+        subject: subject ?? `DeskPro WorkGroup ${BUILD_VERSION}`,
       });
     },
   };

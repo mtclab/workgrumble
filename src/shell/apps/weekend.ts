@@ -3,7 +3,9 @@ import {
   farmProgress,
   formatPence,
 } from '../../world/day';
+import { employerName, nextEmployerAfter } from '../../world/employers';
 import { FIELDS } from '../../world/fields';
+import { offerTone } from '../../world/offer';
 import {
   PROBATION_BONUS_PENCE,
   REDUNDANCY_PAYMENT_PENCE,
@@ -66,23 +68,57 @@ export const WEEKEND_APP: AppDef = {
     columns.append(days, totals);
 
     const verdict = element('section', 'weekend-verdict', 'weekend-verdict');
+    /**
+     * The offer, which is where a probation actually leads once the switching
+     * spine exists: you passed, so you got the job; you were let go, so you got
+     * a job. The next employer is named here in words the world does not have to
+     * read a graph for - the offer runs between two companies - and the tone
+     * follows the verdict: a pass is an offer you earned, a firing the one you
+     * could still get, a redundancy the even-handed one.
+     */
+    const offer = element('section', 'weekend-offer', 'weekend-offer');
     const farm = element('section', 'scorecard-farm', 'weekend-farm');
 
     const footer = element('div', 'scorecard-footer');
     const onward = osButton('Start Monday again', 'weekend-onward', {
       primary: true,
     });
+    // The second door, and it only exists on a firing. A pass or a redundancy
+    // walks straight out through the onward button above - the offer IS the way
+    // on - so this is the alternative to starting the same week again: take the
+    // worse job elsewhere rather than grind the Monday over. Both are honest;
+    // neither is punished into non-existence.
+    const accept = osButton('Take the offer', 'weekend-accept-offer', {
+      primary: false,
+    });
     const note = element('p', 'scorecard-note', 'weekend-note');
-    footer.append(onward, note);
+    footer.append(onward, accept, note);
 
-    root.append(heading, stamp, columns, verdict, farm, footer);
+    root.append(heading, stamp, columns, verdict, offer, farm, footer);
 
+    // The onward button carries whichever forward step the verdict makes
+    // primary: the retry after a firing, the offer after anything else. The
+    // world decides which - a screen that re-derived it would be a second
+    // opinion about the one thing the player is owed a straight answer on.
     onward.addEventListener('click', () => {
-      if (api.day.reviewOutcome() !== 'fired') {
+      const outcome = api.day.reviewOutcome();
+
+      if (outcome === 'fired') {
+        api.restartWeek();
         return;
       }
 
-      api.restartWeek();
+      if (outcome === 'passed' || outcome === 'redundant') {
+        api.acceptOffer();
+      }
+    });
+
+    accept.addEventListener('click', () => {
+      // Only the firing wires the accept button up, so this is the desperate
+      // offer being taken. The guard on the world verb refuses it anywhere the
+      // week is not over, so a stray click before the verdict costs a sentence
+      // rather than a wrong switch.
+      api.acceptOffer();
     });
 
     const renderDays = (card: Readonly<WeekScorecard>): void => {
@@ -189,10 +225,9 @@ export const WEEKEND_APP: AppDef = {
 
       if (card.outcome === 'passed') {
         title.textContent = 'Probation: passed';
-        body.textContent = 'Week two starts on Monday with the same queue, '
-          + 'the same lead and one fewer thing to worry about. It is not '
-          + 'written yet, which is the most honest thing this screen can '
-          + 'tell you.';
+        body.textContent = 'The probation is over. What comes next is not the '
+          + 'same queue and the same lead - it is a job, somewhere else, with '
+          + 'the standing you built to walk in on. The offer is below.';
       } else if (card.outcome === 'fired') {
         title.textContent = 'Probation: not continued';
         body.textContent = 'They keep the lanyard, the desk and the queue. '
@@ -226,6 +261,54 @@ export const WEEKEND_APP: AppDef = {
       }
 
       verdict.append(title, body);
+    };
+
+    /**
+     * The offer itself, named and toned. Hidden until there is a verdict: an
+     * offer before the conversation is a screen guessing at a job nobody has
+     * decided you are getting.
+     */
+    const renderOffer = (
+      card: Readonly<WeekScorecard>,
+      nextName: string,
+    ): void => {
+      offer.replaceChildren();
+      const tone = offerTone(card.outcome);
+
+      offer.dataset.outcome = card.outcome;
+      offer.hidden = tone === null;
+
+      if (tone === null) {
+        return;
+      }
+
+      offer.dataset.tone = tone;
+      offer.dataset.employer = nextName;
+
+      const title = element('h3', undefined, 'weekend-offer-title');
+      const body = element('p', undefined, 'weekend-offer-body');
+
+      if (tone === 'earned') {
+        title.textContent = `The offer: ${nextName}`;
+        body.textContent = `You passed, and word gets round. ${nextName} want `
+          + 'you, and they are offering on the standing you earned here rather '
+          + 'than a fresh probationer\'s. The desk is theirs; the reputation, '
+          + 'the title and the fund come with you.';
+      } else if (tone === 'even') {
+        title.textContent = `The offer: ${nextName}`;
+        body.textContent = 'The role went, not you, and the reference says as '
+          + `much. ${nextName} are offering on the strength of it: the standing `
+          + 'carries, the fund carries, and nothing follows you but the dull '
+          + 'factual truth.';
+      } else {
+        title.textContent = `What is going: ${nextName}`;
+        body.textContent = 'You were let go, and that follows you. '
+          + `${nextName} know it, and the offer is a worse one for it - the `
+          + 'standing takes the dent on the way out. The fund does not: the '
+          + 'fund has never once been theirs.';
+      }
+
+      offer.append(title, body);
     };
 
     const renderFarm = (banked: number): void => {
@@ -267,16 +350,24 @@ export const WEEKEND_APP: AppDef = {
         : 'The week is still being worked. This is what it would say if it '
           + 'stopped now.';
 
+      const nextName = employerName(nextEmployerAfter(api.employer));
+
       renderDays(card);
       renderTotals(card);
       renderVerdict(card);
+      renderOffer(card, nextName);
       renderFarm(card.bankedPence);
 
+      // The onward button is the primary forward step: the retry after a
+      // firing, and the offer itself after a pass or a redundancy - taking the
+      // job IS the way on from those, so there is no separate button for them.
       onward.textContent = card.outcome === 'fired'
         ? 'Start Monday again'
-        : card.outcome === 'redundant'
-          ? 'Somewhere else, then'
-          : 'Week two';
+        : card.outcome === 'passed'
+          ? `Take the job at ${nextName}`
+          : card.outcome === 'redundant'
+            ? `Take the offer at ${nextName}`
+            : 'Week two';
       setAvailability(
         onward,
         card.outcome === 'fired'
@@ -284,29 +375,44 @@ export const WEEKEND_APP: AppDef = {
             ? null
             : 'The week has not been clocked off yet. There is nothing to '
               + 'start again from until it has.'
-          : card.outcome === 'passed'
-            ? 'Week two is not built yet. It is Monday, it is the same '
-              + 'corridor, and it is waiting on the next milestone.'
-            // A redundancy does NOT go back to the start of the same week -
-            // that loop is the retry, and the retry is for being fired. This
-            // one leads to a different employer, which is a declared seam and
-            // is not built, and the honest thing is to say which of those two
-            // it is rather than to quietly offer the wrong one.
-            : card.outcome === 'redundant'
-              ? 'The next employer is not built yet. This is not the retry - '
-                + 'that one is for being sacked, and it puts you back on this '
-                + 'Monday. Being made redundant leads somewhere else, and '
-                + 'somewhere else is waiting on the next milestone.'
-              : 'Nobody has had the conversation yet.',
+          : card.outcome === 'passed' || card.outcome === 'redundant'
+            // The offer is real and built. Clocking off first is not a lock on
+            // it, it is the honest order: the week is not banked until you have,
+            // and the fund is what goes with you to the next desk.
+            ? ended
+              ? null
+              : 'The offer holds - clock off first. The week is not banked '
+                + 'until you have, and the fund is what walks out with you.'
+            : 'Nobody has had the conversation yet.',
       );
+
+      // The second door exists only on a firing: the desperate offer, beside
+      // the retry. A pass or a redundancy has already taken the offer with the
+      // onward button, so it is hidden there rather than a duplicate.
+      accept.hidden = card.outcome !== 'fired';
+
+      if (card.outcome === 'fired') {
+        accept.textContent = `Take the offer at ${nextName}`;
+        setAvailability(
+          accept,
+          ended
+            ? null
+            : 'Clock off first; the offer is not going anywhere while you do.',
+        );
+      }
+
       note.textContent = card.outcome === 'fired'
-        ? 'Starting again keeps the fund and what you had read. Everything '
-          + 'else is Monday morning, slightly rearranged.'
-        : card.outcome === 'redundant'
-          ? 'The fund carries, the notice is in it, and the file is not. That '
-            + 'is what being cut for the weather is worth: a clean sheet and '
-            + 'a week\'s money.'
-          : 'The fund carries. It always carries.';
+        ? 'Start again to keep the fund and what you had read on this same '
+          + 'Monday - or take the offer: a worse job, the same fund, a '
+          + 'different building.'
+        : card.outcome === 'passed'
+          ? 'The fund goes with you, because the fund always does - and so '
+            + 'does the standing you earned to be offered the job.'
+          : card.outcome === 'redundant'
+            ? 'The fund carries, the notice is in it, and the file is not. That '
+              + 'is what being cut for the weather is worth: a clean sheet and '
+              + 'a week\'s money at a new desk.'
+            : 'The fund carries. It always carries.';
     };
 
     host.replaceChildren(root);

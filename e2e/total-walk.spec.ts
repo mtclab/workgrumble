@@ -2941,10 +2941,20 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('weekend-farm-total')).toContainText('banked');
   });
 
-  await step('weekend.onward-locked', async () => {
+  await step('weekend.onward-offer', async () => {
+    // After a pass the onward button is the offer itself: named, enabled, and
+    // NOT clicked here - taking it reloads into the second employer, which is
+    // the switch run's job. This walk only proves the door is there.
     const onward = page.getByTestId('weekend-onward');
-    await expect(onward).toBeDisabled();
-    await expect(onward).toHaveAttribute('title', /not built yet/);
+    await expect(onward).toBeEnabled();
+    await expect(onward).toHaveText(/Take the job at .+/);
+  });
+
+  await step('weekend.offer', async () => {
+    await expect(page.getByTestId('weekend-offer'))
+      .toHaveAttribute('data-tone', 'earned');
+    await expect(page.getByTestId('weekend-offer-title')).toContainText('offer');
+    await expect(page.getByTestId('weekend-offer-body')).toContainText('standing');
   });
 
   /* -- and the two ways out of a session ----------------------------------- */
@@ -3350,6 +3360,20 @@ test('walks the week nobody worked, the firing, and the retry', async ({
   const banked = await page.getByTestId('weekend-farm-total').textContent();
   expect(banked ?? '').toMatch(/£\d/);
 
+  await step('weekend.offer-fired', async () => {
+    // The worse offer, beside the retry. The trail it leaves is on it and the
+    // second button would take the desperate job - verified present and enabled
+    // here, taken in the switch run rather than this one, which clicks retry.
+    await expect(page.getByTestId('weekend-offer'))
+      .toHaveAttribute('data-tone', 'desperate');
+    await expect(page.getByTestId('weekend-offer-body'))
+      .toContainText('follows you');
+    const accept = page.getByTestId('weekend-accept-offer');
+    await expect(accept).toBeVisible();
+    await expect(accept).toBeEnabled();
+    await expect(accept).toHaveText(/Take the offer at .+/);
+  });
+
   await step('weekend.onward-retry', async () => {
     const onward = page.getByTestId('weekend-onward');
     await expect(onward).toBeEnabled();
@@ -3363,6 +3387,70 @@ test('walks the week nobody worked, the firing, and the retry', async ({
     await expect(page.getByTestId('weekend-heading')).toHaveCount(0);
 
     // They keep the desk, the queue and the lanyard. The fund is still yours.
+    await openFromStartMenu(page, 'scorecard');
+    await expect(page.getByTestId('scorecard-farm-total'))
+      .toHaveText(banked ?? '');
+  });
+});
+
+/* ========================================================================= *
+ * The offer, taken. Its own run because accepting reloads the page into a
+ * different world: the week run above sees the pass offer without taking it and
+ * the fired run sees the worse one, and this is the single walk that crosses the
+ * threshold - fire a week, take the desperate offer, and arrive at the second
+ * employer with the standing and the fund carried across.
+ * ========================================================================= */
+
+test('walks the offer taken, and the arrival at the second employer', async ({
+  page,
+}) => {
+  await recordControls(page);
+  test.setTimeout(900_000);
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await completeLogin(page, { brief: 'keep' });
+  await beginShift(page);
+
+  // A week nobody worked, walked to the small room the cheap way: clock off each
+  // day, and on the Friday let the review fire.
+  for (let day = 1; day < 5; day += 1) {
+    await clockOffFor(page, day);
+    await beginShift(page);
+  }
+
+  await workUntilMinute(page, 425);
+  await expect(page.getByTestId('review-app'))
+    .toHaveAttribute('data-outcome', 'fired');
+  await page.getByTestId('review-dismiss').click();
+  await runToDayEnd(page);
+  await page.getByTestId('scorecard-clock-off').click();
+  await expect(page.getByTestId('window-weekend')).toBeVisible();
+
+  const banked = await page.getByTestId('weekend-farm-total').textContent();
+
+  await step('switch.accept', async () => {
+    // The desperate offer, taken. It writes the career that crosses the
+    // threshold, throws the save away, and reloads onto the next employer's
+    // Monday - the same reload shape a retry uses, a different world on the far
+    // side of it.
+    const accept = page.getByTestId('weekend-accept-offer');
+    await expect(accept).toBeEnabled();
+    await accept.click();
+  });
+
+  await step('switch.arrive', async () => {
+    // The new-machine screen names the shop before the log-on box: the arrival
+    // riding the install screen the update wears.
+    await expect(page.getByTestId('install-subject'))
+      .toContainText('Bodgeworth');
+
+    await completeLogin(page, { brief: 'keep' });
+
+    // A first Monday at the new employer, and the fund carried across intact -
+    // the joke the whole game is built on, unbroken by a change of company.
+    await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 1');
+    await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
     await openFromStartMenu(page, 'scorecard');
     await expect(page.getByTestId('scorecard-farm-total'))
       .toHaveText(banked ?? '');

@@ -63,6 +63,13 @@ export interface ShellContext {
   readonly day: DayApi;
   readonly session: ShellSessionApi;
   /**
+   * Which employer this session is a week at, stamped into every save and read
+   * by the offer surface to work out where the next job is. One fact, threaded
+   * from the session that stood the world up rather than read off the graph -
+   * the employer's identity is not a graph field, by design.
+   */
+  readonly employer: string;
+  /**
    * Whether writes are landing. It is on the context rather than inside the
    * session because the SURFACE for it is the taskbar: "nothing is being
    * kept" is a state a player has to be able to see at any moment, not a

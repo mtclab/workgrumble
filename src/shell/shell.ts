@@ -3,7 +3,7 @@ import type { ShellContext } from './context';
 import { holdsTheDesk } from './day-driver';
 import { Desktop } from './desktop';
 import { createIconSprite } from './icons';
-import { createInstallScreen } from './install-screen';
+import { createInstallScreen, type InstallScreen } from './install-screen';
 import { createLoginScreen, type LoginScreen } from './login-screen';
 import { NOTIFICATION_HISTORY_LIMIT } from './notifications';
 import {
@@ -56,7 +56,7 @@ export function flushableWindows(
  */
 export class Shell {
   private readonly boot = createBootScreen();
-  private readonly installing = createInstallScreen();
+  private readonly installing: InstallScreen;
   private readonly login: LoginScreen;
   private readonly abort = new AbortController();
   private state: ShellState;
@@ -95,7 +95,15 @@ export class Shell {
      * pure reducer cannot go and look.
      */
     installing = false,
+    /**
+     * The line the install screen prints while it holds this boot, or absent
+     * for the default that names the build. It is how the SAME screen serves
+     * both an update and an employer switch (0.6.0 slice 2): a new starter's
+     * "here is your new machine" is this screen with the shop's name on it.
+     */
+    installSubject?: string,
   ) {
+    this.installing = createInstallScreen(installSubject);
     this.state = createShellState(installing);
     this.login = createLoginScreen(
       context.user,

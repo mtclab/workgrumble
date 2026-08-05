@@ -19,6 +19,7 @@ import { spawnWorldTicket } from '../world/tickets';
 import { noHelloOn } from '../world/week';
 import { shiftStartTick } from '../world/day';
 import { acknowledgeCarry, carryFrom, RetrySlot } from './retry';
+import { SwitchSlot } from './switch';
 import { AppStateStore } from './app-state';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
 import {
@@ -78,6 +79,7 @@ interface Session {
   readonly session: ShellSessionApi;
   readonly storage: MemoryStorage;
   readonly retry: RetrySlot;
+  readonly switch: SwitchSlot;
   /** How many times the session asked the shell to start over. */
   readonly restarts: () => number;
 }
@@ -97,6 +99,7 @@ function session(
   });
   const slot = new SaveSlot(storage);
   const retry = new RetrySlot(storage);
+  const switchSlot = new SwitchSlot(storage);
   let restarts = 0;
 
   return {
@@ -105,6 +108,7 @@ function session(
     driver,
     storage,
     retry,
+    switch: switchSlot,
     restarts: () => restarts,
     // The shipped wiring, not a copy of it.
     session: createShellSession({
@@ -113,6 +117,7 @@ function session(
       day: driver,
       slot,
       retry,
+      switch: switchSlot,
       actor: COMPANY_IDS.player,
       // The shipped preflight, not a copy of it: a save is tried in a session
       // nobody is playing before it replaces the one somebody is.

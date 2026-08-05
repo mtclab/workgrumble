@@ -5,8 +5,10 @@ import { EMPLOYER_ARC } from './pressure';
 import {
   EMPLOYER_IDS,
   employerFor,
+  employerName,
   FIRST_EMPLOYER,
   isEmployerId,
+  nextEmployerAfter,
 } from './employers';
 
 describe('the employer registry', () => {
@@ -42,5 +44,40 @@ describe('the employer registry', () => {
     expect(isEmployerId('nope')).toBe(false);
     expect(isEmployerId(undefined)).toBe(false);
     expect(isEmployerId(0)).toBe(false);
+  });
+
+  it('ships a second employer to switch to', () => {
+    // Slice 2 needs somewhere to arrive; the second entry is a PLACEHOLDER that
+    // reuses the probation content under its own id and name, and slice 3
+    // replaces the content. What has to be true today is that it resolves, it is
+    // a different id, and it has a name of its own for the offer to print.
+    expect(EMPLOYER_IDS.length).toBeGreaterThan(1);
+    const second = employerFor('bodgeworth');
+    expect(second.id).toBe('bodgeworth');
+    expect(second.id).not.toBe(FIRST_EMPLOYER);
+    expect(second.name.length).toBeGreaterThan(0);
+    expect(second.name).not.toBe(employerFor(FIRST_EMPLOYER).name);
+  });
+
+  it('names an employer, and falls back to the id for a stranger', () => {
+    expect(employerName(FIRST_EMPLOYER)).toBe(employerFor(FIRST_EMPLOYER).name);
+    // Tolerant where employerFor is strict: a fixture id gets its own id back
+    // rather than a crash, because the offer screen has to say SOMETHING.
+    expect(employerName('fixture-shop')).toBe('fixture-shop');
+  });
+
+  it('points a career at the next employer, and defines every hop', () => {
+    // From the probation shop, the next job is the second employer - the whole
+    // of what slice 2 drives.
+    expect(nextEmployerAfter(FIRST_EMPLOYER)).toBe('bodgeworth');
+    // Every id resolves to a shipped employer, wrap included: a dead end here
+    // would be a switch that reloaded into `employerFor(undefined)`.
+    for (const id of EMPLOYER_IDS) {
+      expect(isEmployerId(nextEmployerAfter(id))).toBe(true);
+    }
+    // A stranger id leaves from the first employer, the only one it could have
+    // coherently been at.
+    expect(nextEmployerAfter('a-shop-that-does-not-exist'))
+      .toBe(nextEmployerAfter(FIRST_EMPLOYER));
   });
 });

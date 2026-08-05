@@ -61,6 +61,11 @@ export const WALK_RUNS = {
     + 'follows the badge to a browser that has never seen it, the form for '
     + 'saying the game is broken, and the update window on a workstation that '
     + 'remembers an older build.',
+  switch: 'The offer taken: pass the probation, accept the job at the second '
+    + 'employer, and arrive on a Monday with the standing and the fund carried '
+    + 'across. Its own run because accepting reloads the page into a different '
+    + 'world - the week and fired runs verify the offer is there without taking '
+    + 'it, and this is the single walk that crosses the threshold.',
 } as const;
 
 export type WalkRunId = keyof typeof WALK_RUNS;
@@ -725,11 +730,32 @@ const ENTRIES = [
     run: 'week',
   },
   {
-    id: 'weekend.onward-locked',
+    id: 'weekend.onward-offer',
     surface: 'weekend',
     control: 'weekend-onward',
-    does: 'Says week two is not built yet rather than pretending it is.',
+    does: 'After a pass, the onward button IS the offer: it names the next '
+      + 'employer and takes the job rather than pretending week two is built. '
+      + 'The week run verifies it is there; the switch run clicks it.',
     run: 'week',
+  },
+  {
+    id: 'weekend.offer',
+    surface: 'weekend',
+    control: 'weekend-offer, weekend-offer-title, weekend-offer-body',
+    does: 'The offer at the next employer, toned to the verdict: a pass is an '
+      + 'offer you earned, named, with the standing that walks in with you.',
+    run: 'week',
+  },
+  {
+    id: 'weekend.offer-fired',
+    surface: 'weekend',
+    control: 'weekend-offer, weekend-accept-offer',
+    does: 'The worse offer after a firing: the trail it leaves is on it, and a '
+      + 'second button takes the desperate job rather than starting the week '
+      + 'again - both honest, neither the only door out.',
+    run: 'fired',
+    why: 'The offer reads WORSE only after a week that lost the room, which is '
+      + 'the week the fired run plays and the passing week never does.',
   },
   {
     id: 'weekend.onward-retry',
@@ -738,6 +764,26 @@ const ENTRIES = [
     does: 'Starts the Monday again after a firing, keeping the fund.',
     run: 'fired',
     why: 'Only a week that ended in the small room offers it.',
+  },
+  {
+    id: 'switch.accept',
+    surface: 'weekend',
+    control: 'weekend-onward (a passed week), weekend-accept-offer (a fired one)',
+    does: 'Takes the offer: writes the career that crosses the threshold, throws '
+      + 'the save away, and reloads the page onto the next employer\'s Monday.',
+    run: 'switch',
+    why: 'Accepting reloads into a different world, so it cannot share a session '
+      + 'with the week or fired runs that verify the offer without taking it.',
+  },
+  {
+    id: 'switch.arrive',
+    surface: 'boot',
+    control: 'install-screen (new starter), sim-clock-day',
+    does: 'Arrives at the second employer: the new-machine screen names the '
+      + 'shop, and Monday opens with the reputation, title and fund carried.',
+    run: 'switch',
+    why: 'The arrival only exists on the boot that follows an accepted offer, '
+      + 'which is the reload no other run performs.',
   },
 
   /* -- being caught ------------------------------------------------------- */

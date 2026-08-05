@@ -50,6 +50,7 @@ const FIXTURE_TITLE = 'Second-shop Support Tech';
 function fixtureEmployer(): Employer {
   return {
     id: 'fixture-shop',
+    name: 'The Fixture Shop',
     playerId: FIXTURE_PLAYER,
     // A different archetype from the locked-down probation shop, which is what
     // slice 3 ships for real; here it just has to be a coherent, different value.

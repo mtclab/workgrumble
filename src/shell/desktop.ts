@@ -563,6 +563,10 @@ export class Desktop {
       restartWeek: () => {
         this.restartWeek();
       },
+      acceptOffer: () => {
+        this.acceptOffer();
+      },
+      employer: context.employer,
       report: (submission) => context.report(submission),
       actor: context.user.node,
     };
@@ -1879,6 +1883,20 @@ export class Desktop {
 
     if (!outcome.ok) {
       this.notify('Not starting again', outcome.reason);
+    }
+  }
+
+  /**
+   * Taking the offer. The session writes down the career that crosses the
+   * threshold and the page starts again on the next employer's Monday - a world
+   * that never happened cannot be un-happened in place, so the switch is a
+   * reload, exactly as the retry is.
+   */
+  private acceptOffer(): void {
+    const outcome = this.context.session.switchEmployer();
+
+    if (!outcome.ok) {
+      this.notify('The offer is still open', outcome.reason);
     }
   }
 

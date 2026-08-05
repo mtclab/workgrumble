@@ -22,6 +22,7 @@
 
 import type { NodeId, SetupOp } from '../engine-api';
 import {
+  COMPANY,
   companyInstallPolicy,
   companySetup,
   COMPANY_IDS,
@@ -31,12 +32,13 @@ import { EMPLOYER_ARC, type EmployerArc } from './pressure';
 import { inheritedTicketIds } from './week';
 
 /**
- * The employers this build ships. One for now - the probation shop - and the
- * list is the closed set the carry's employer id is checked against, so a save
- * that names an employer this build has never heard of is a refusal rather than
- * a silent fall back to the wrong world.
+ * The employers this build ships. The probation shop, and - since 0.6.0 slice 2
+ * - a SECOND one to switch to, so the transition surface has somewhere to land.
+ * The list is the closed set the carry's employer id is checked against, so a
+ * save that names an employer this build has never heard of is a refusal rather
+ * than a silent fall back to the wrong world.
  */
-export const EMPLOYER_IDS = ['workgrumble'] as const;
+export const EMPLOYER_IDS = ['workgrumble', 'bodgeworth'] as const;
 
 export type EmployerId = (typeof EMPLOYER_IDS)[number];
 
@@ -60,6 +62,13 @@ export function isEmployerId(value: unknown): value is EmployerId {
  */
 export interface Employer {
   readonly id: string;
+  /**
+   * What the offer letter and the arrival screen call the place, in words a
+   * player reads. The graph carries a company name of its own; this is the one
+   * the SWITCH surfaces name, because those screens run between two worlds and
+   * cannot read either graph for it.
+   */
+  readonly name: string;
   /** The node the week's fund, meters and standing live on. */
   readonly playerId: NodeId;
   /** What the audit does about an install here. Read by the drip in the shell. */
@@ -82,6 +91,35 @@ export interface Employer {
  */
 const PROBATION_EMPLOYER: Employer = Object.freeze({
   id: FIRST_EMPLOYER,
+  name: COMPANY.name,
+  playerId: COMPANY_IDS.player,
+  installPolicy: companyInstallPolicy(),
+  arc: EMPLOYER_ARC,
+  setup: companySetup,
+  mondayTicketIds: () => inheritedTicketIds(1),
+});
+
+/**
+ * The second employer, and a PLACEHOLDER on purpose (0.6.0 slice 2).
+ *
+ * Slice 2 builds the TRANSITION - pass probation, take the offer, arrive at a
+ * second shop, standing carried - and to prove that flow end to end it needs
+ * somewhere real to arrive. It does not need that somewhere to be a DIFFERENT
+ * place yet: the contrast (a wild-west small shop, its own estate, install
+ * policy, channel mix and event day) is the whole of slice 3. So every field
+ * below still reads through to the probation shop's own content - the same
+ * graph, the same arc, the same policy, the same Monday pile - and only the id
+ * and the NAME are new. That is enough for the switch engine to stand a second
+ * world up, seed it from the carried career, and save/reload it under its own
+ * employer id, which is what slice 2 has to demonstrate.
+ *
+ * SLICE 3 replaces `setup`, `arc`, `installPolicy` and `mondayTicketIds` here
+ * with the real archetype; nothing else about the switch has to move when it
+ * does, which is the point of proving the seam against a fixture first.
+ */
+const SECOND_EMPLOYER: Employer = Object.freeze({
+  id: 'bodgeworth',
+  name: 'Bodgeworth & Batch',
   playerId: COMPANY_IDS.player,
   installPolicy: companyInstallPolicy(),
   arc: EMPLOYER_ARC,
@@ -91,6 +129,7 @@ const PROBATION_EMPLOYER: Employer = Object.freeze({
 
 const REGISTRY: Readonly<Record<string, Employer>> = Object.freeze({
   [FIRST_EMPLOYER]: PROBATION_EMPLOYER,
+  [SECOND_EMPLOYER.id]: SECOND_EMPLOYER,
 });
 
 /**
@@ -114,4 +153,36 @@ export function employerFor(id: string = FIRST_EMPLOYER): Employer {
   }
 
   return employer;
+}
+
+/**
+ * The name the switch surfaces print for an employer, or the id itself when the
+ * build has never heard of it.
+ *
+ * A fixture employer built inside a test carries an id the registry does not
+ * know, and the offer screen for it should still say SOMETHING rather than
+ * throw - the id is a worse label than a name but a better one than a crash -
+ * so this is deliberately tolerant where `employerFor` is strict.
+ */
+export function employerName(id: string): string {
+  return REGISTRY[id]?.name ?? id;
+}
+
+/**
+ * The employer a career moves to next, given the one it is leaving.
+ *
+ * The offer surface and the accept that follows it both have to agree on where
+ * the next job is, so it is one function read from both rather than two guesses
+ * that could drift. It walks `EMPLOYER_IDS` from the current shop to the next
+ * one and wraps at the end - which, with two employers shipped, is the probation
+ * shop again. That wrap is a PLACEHOLDER, the same as the second employer is: a
+ * real career progression is slice-3-and-later content, and until it exists the
+ * honest thing is a defined destination rather than a dead end. An id the build
+ * does not ship (a fixture, a hand-edited save) leaves from the first employer,
+ * because that is the only one it could coherently have been at.
+ */
+export function nextEmployerAfter(id: string): EmployerId {
+  const at = EMPLOYER_IDS.indexOf(id as EmployerId);
+  const from = at === -1 ? 0 : at;
+  return EMPLOYER_IDS[(from + 1) % EMPLOYER_IDS.length] as EmployerId;
 }

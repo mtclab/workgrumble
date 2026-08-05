@@ -20,12 +20,14 @@ import {
 import { createShellSession, type SaveOutcome, SaveSlot } from './shell/save';
 import { SaveHealth } from './shell/save-health';
 import { Shell } from './shell/shell';
+import { carryForSwitch, SwitchSlot } from './shell/switch';
 import { openStorage } from './shell/storage';
 import { CloudSaves } from './shell/sync';
 import { updateOnBoot, VersionSlot } from './shell/updates';
 import { BUILD_VERSION } from './shared/build';
 import { unreadIds } from './world/channels';
 import { COMPANY, COMPANY_IDS, companyInstallPolicy } from './world/company';
+import { employerName } from './world/employers';
 import { awayNoticedLine } from './world/dialogue';
 import { dayForTick } from './world/hours';
 import { FLAVOR, flavorText } from './world/interruptions';
@@ -143,9 +145,18 @@ async function boot(): Promise<void> {
   // behind: the fund, the article that was up, and which attempt this is.
   // Reading the slot LEAVES it - see below for when it is finally let go of.
   const retry = new RetrySlot(store.storage);
-  const carried = retry.peek();
+  // And a probation that ENDED - passed or fired - leaves an offer taken: the
+  // career crossing into the next employer's world. It takes priority over a
+  // retry, because taking the offer is the later decision and it leads to a
+  // DIFFERENT employer rather than the same Monday. Read-and-leave, exactly like
+  // the retry, and let go of only once the arrival is durable.
+  const switchSlot = new SwitchSlot(store.storage);
+  const arriving = switchSlot.peek();
+  const carried = arriving === null ? retry.peek() : null;
   const { engine, tier, seed, employer } = createWorldSession(
-    carried === null ? FIRST_WEEK : carryFrom(carried),
+    arriving !== null
+      ? carryForSwitch(arriving)
+      : carried === null ? FIRST_WEEK : carryFrom(carried),
   );
   // The apps' own memory - transcripts, unread flags, the article that was
   // open. It outlives their windows and the save carries it.
@@ -512,10 +523,12 @@ async function boot(): Promise<void> {
     day,
     slot,
     retry,
+    switch: switchSlot,
     actor: COMPANY_IDS.player,
-    // Which employer every save this session writes is stamped with. One today,
-    // and read back off the session that stood the world up rather than assumed,
-    // so the day the second employer ships this is already carrying the truth.
+    // Which employer every save this session writes is stamped with, read back
+    // off the session that stood the world up rather than assumed - so an
+    // arrival at the second employer stamps ITS id, and the switch verb reads
+    // the same value to work out where the next job after this one is.
     employer,
     // A throwaway engine for the preflight: a save is tried in a session
     // nobody is playing before it replaces the one somebody is.
@@ -570,6 +583,15 @@ async function boot(): Promise<void> {
   const carryUnsaved = carried !== null
     && !acknowledgeCarry(retry, () => session.save());
 
+  // And the switch's carry is let go of the same way and for the same reason:
+  // the arrival is saved FIRST, and the record of the career that crossed the
+  // threshold is dropped only once that write worked. A browser that would not
+  // keep the arrival keeps the switch record and asks again next boot, which is
+  // the honest failure - and the player is told, because a refresh from here
+  // stands the new employer up again from the same carried career.
+  const switchUnsaved = arriving !== null
+    && !acknowledgeCarry(switchSlot, () => session.save());
+
   const context: ShellContext = {
     manifest: APP_MANIFEST,
     saveHealth: health,
@@ -608,6 +630,11 @@ async function boot(): Promise<void> {
     appState,
     day,
     session,
+    // Which employer this session is a week at - the offer surface reads it to
+    // work out where the next job is, and it is the id the world was actually
+    // stood up FROM (`createWorldSession` above), so it is right on an arrival
+    // as well as on a first Monday.
+    employer,
     clock: {
       now: () => engine.now(),
       onTick: (listener) => engine.onTick(listener),
@@ -657,7 +684,25 @@ async function boot(): Promise<void> {
   const installed = updateOnBoot(versions.read(), BUILD_VERSION);
   versions.write(BUILD_VERSION);
 
-  const shell = new Shell(mountPoint(), context, installed.length > 0);
+  // The "here is your new machine" beat, on the same screen the update wears.
+  // An arrival at a new employer plays the install ceremony with the shop's
+  // name on it before the log-on box - a new starter's first boot IS an update,
+  // as far as a beige box is concerned - and it rides the existing boot ->
+  // installing -> login path rather than a new state. A real version update on
+  // the same boot keeps its own subject; the two coinciding is rare and the
+  // arrival is the one worth naming when they do.
+  const arrivalSubject = arriving === null
+    ? undefined
+    : `Setting up your workstation - new starter - ${
+      employerName(arriving.employer)
+    }`;
+
+  const shell = new Shell(
+    mountPoint(),
+    context,
+    installed.length > 0 || arriving !== null,
+    arrivalSubject,
+  );
 
   engine.onEvent((event) => {
     if (event.type === 'ticket:resolved') {
@@ -760,6 +805,30 @@ async function boot(): Promise<void> {
       'This attempt is not saved',
       'The browser would not keep the new week. Everything works, and '
       + 'refreshing the page will start this attempt again from the fund you '
+      + 'carried in.',
+    );
+  }
+
+  // The arrival, said out loud once. A new employer, a Monday, and the two
+  // things that crossed with you: the standing you were hired on and the fund
+  // that has never been anybody's but yours. It is the "you got the job" half of
+  // the transition, the install screen having just done the "here is your new
+  // machine" half.
+  if (arriving !== null) {
+    shell.notify(
+      `First day at ${employerName(arriving.employer)}`,
+      'New desk, new machine, same you. The reputation and the title came with '
+        + `you, and so did the fund - £${
+          (arriving.career.farmFund / 100).toFixed(2)
+        } towards the farm, exactly where you left it.`,
+    );
+  }
+
+  if (switchUnsaved) {
+    shell.notify(
+      'This move is not saved',
+      'The browser would not keep the arrival. Everything works, and refreshing '
+      + 'the page will stand the new employer up again from the same career you '
       + 'carried in.',
     );
   }
