@@ -9,7 +9,8 @@ import {
   HELPDESK_TIER,
   KIND_LABELS,
 } from './actions';
-import { setActiveChannels } from './channels';
+import type { ChannelDef } from './channels';
+import type { InstallPolicy } from './company';
 import { DEMO_ACTION_DATA } from './demo-world';
 import {
   type Employer,
@@ -26,7 +27,7 @@ import {
   seasonAt,
 } from './pressure';
 import { spawnWorldTicket } from './tickets';
-import { setActiveWeek } from './week';
+import { type DayScript } from './week';
 
 /**
  * Where the first week is dealt from. The working day is replayable, so the
@@ -123,6 +124,18 @@ export interface WorldSession {
   readonly carry: WeekCarry;
   /** Which employer this session stood up - what a switch or save reads back. */
   readonly employer: string;
+  /**
+   * This employer's content, carried ON the session rather than in a module
+   * global (0.6.0 slice 3). The day driver and the shell read the week, rooms
+   * and install policy from HERE - which is what makes a second employer's
+   * world session-scoped and stops two live sessions from cross-contaminating.
+   */
+  readonly week: readonly DayScript[];
+  readonly channels: readonly ChannelDef[];
+  readonly installPolicy: InstallPolicy;
+  readonly reviewBar: number;
+  /** Whether this employer runs the probation lead's boss pings (P1-4). */
+  readonly runsBossPings: boolean;
 }
 
 /**
@@ -206,14 +219,6 @@ export function createWorldSession(
 ): WorldSession {
   const start = requireCarry(carry);
   const player = employer.playerId;
-  // Point the day readers and the channel window at THIS employer's content
-  // before anything is read off them - the week the scheduler deals, the rooms
-  // the storm lands in, the pile the Monday inherits. It is set on every
-  // stand-up (boot and load), keyed to the save-carried employer, so the active
-  // world is a function of who the carry names. The probation employer's is the
-  // shipped week and rooms, which is what keeps its goldens byte-identical.
-  setActiveWeek(employer.week);
-  setActiveChannels(employer.channels);
   engine.setTier(HELPDESK_TIER);
   engine.applySetup([
     ...employer.setup(),
@@ -248,6 +253,13 @@ export function createWorldSession(
     seed: seedForAttempt(start.attempt),
     carry: resolvedToCarry(start),
     employer: employer.id,
+    // The content the driver and shell read off the session, so the world plays
+    // as THIS employer without any module global to race.
+    week: employer.week,
+    channels: employer.channels,
+    installPolicy: employer.installPolicy,
+    reviewBar: employer.reviewBar,
+    runsBossPings: employer.runsBossPings,
   };
 }
 

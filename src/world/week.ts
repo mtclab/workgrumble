@@ -1043,34 +1043,21 @@ export const WEEK: readonly DayScript[] = validateWeek([
 ]);
 
 /**
- * The week whose world is currently stood up (0.6.0 slice 3).
+ * Which employer's week the day readers deal from (0.6.0 slice 3).
  *
- * Every reader below - the day scheduler, the interruption plan, the channel
- * feed, the scorecard - reads THIS rather than `WEEK` directly, so a second
- * employer's five days play through the shipped driver without the driver
- * learning a second table exists. It defaults to the probation week, which is
- * the whole of the byte-identical claim: a shell that never switches, and every
- * test that stands up no session, reads exactly the week it read before this
- * pointer existed, and the probation goldens do not move.
+ * Every reader below takes the week as a PARAMETER, defaulting to the probation
+ * `WEEK`. There is no mutable module state: a second employer's five days play
+ * because its runtime - the `DayDriver` and the shell - passes ITS week in, not
+ * because a global was flipped under everyone. That is the whole of why two live
+ * sessions cannot cross-contaminate, and why every test and surface that reads a
+ * probation week without saying so still gets exactly the week it always got.
  *
- * It is a module pointer selected by the save-carried employer id and set by
- * `createWorldSession` on every stand-up (boot and load), so the active week is
- * `f(employer)` deterministically - content selection, not world state. The
- * LOAD-TIME validators (`assertWeekTickets`, `assertWeekGreetings`) do NOT read
- * it: they take the weeks to check explicitly, because every employer's week
- * must be proven against the roster at boot, not just whichever is active.
+ * The default is the CONSTANT `WEEK`, not a variable pointed at it, so the
+ * byte-identical claim holds by construction rather than by remembering to reset
+ * anything. The LOAD-TIME validators (`assertWeekTickets`, `assertWeekGreetings`)
+ * take the weeks to check explicitly, because every employer's week must be
+ * proven against the shared roster at boot, not just whichever one is playing.
  */
-let activeWeek: readonly DayScript[] = WEEK;
-
-/** Point the day readers at an employer's week. */
-export function setActiveWeek(week: readonly DayScript[]): void {
-  activeWeek = week;
-}
-
-/** The week the readers are currently dealing from. */
-export function activeWeekScripts(): readonly DayScript[] {
-  return activeWeek;
-}
 
 /**
  * Load-time content gate for the week.
@@ -1529,8 +1516,10 @@ function scheduledIds(script: Readonly<DayScript>): readonly string[] {
 }
 
 /** Every ticket the week deals, in the order the week deals it. */
-export function scheduledTicketIds(): readonly string[] {
-  return activeWeek.flatMap(scheduledIds);
+export function scheduledTicketIds(
+  week: readonly DayScript[] = WEEK,
+): readonly string[] {
+  return week.flatMap(scheduledIds);
 }
 
 /** The shape this check needs of a ticket: an id and how it turns up. */
@@ -1717,8 +1706,11 @@ export function assertWeekGreetings<Tree extends {
   return trees;
 }
 
-export function dayScript(day: number): DayScript {
-  const script = activeWeek[day - 1];
+export function dayScript(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): DayScript {
+  const script = week[day - 1];
 
   if (script === undefined) {
     throw new Error(
@@ -1752,8 +1744,11 @@ export function reviewTick(day: number): number {
  * it is handed minutes and a flag saying which of them are pinned, which is
  * the whole of what placement has to know.
  */
-export function dayPlan(day: number): DayPlan {
-  const script = dayScript(day);
+export function dayPlan(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): DayPlan {
+  const script = dayScript(day, week);
 
   return {
     inherited: script.inherited,
@@ -1766,12 +1761,18 @@ export function dayPlan(day: number): DayPlan {
 }
 
 /** What the world does today, and who messages you, earliest first. */
-export function incidentsOn(day: number): readonly IncidentSlot[] {
-  return isWeekDay(day) ? dayScript(day).incidents ?? [] : [];
+export function incidentsOn(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): readonly IncidentSlot[] {
+  return isWeekDay(day) ? dayScript(day, week).incidents ?? [] : [];
 }
 
-export function directMessagesOn(day: number): readonly DmSlot[] {
-  return isWeekDay(day) ? dayScript(day).dms ?? [] : [];
+export function directMessagesOn(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): readonly DmSlot[] {
+  return isWeekDay(day) ? dayScript(day, week).dms ?? [] : [];
 }
 
 /**
@@ -1783,12 +1784,15 @@ export function directMessagesOn(day: number): readonly DmSlot[] {
  * rather than the schedule's. Two lists reaching the scheduler separately
  * would be two takeovers nobody had booked against each other.
  */
-export function interruptionsOn(day: number): readonly InterruptionSlot[] {
+export function interruptionsOn(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): readonly InterruptionSlot[] {
   if (!isWeekDay(day)) {
     return [];
   }
 
-  const script = dayScript(day);
+  const script = dayScript(day, week);
 
   return [
     ...script.interruptions ?? [],
@@ -1797,30 +1801,43 @@ export function interruptionsOn(day: number): readonly InterruptionSlot[] {
 }
 
 /** Who comes to the desk today, with the ask they bring with them. */
-export function walkUpsOn(day: number): readonly WalkUpSlot[] {
-  return isWeekDay(day) ? dayScript(day).walkUps ?? [] : [];
+export function walkUpsOn(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): readonly WalkUpSlot[] {
+  return isWeekDay(day) ? dayScript(day, week).walkUps ?? [] : [];
 }
 
 /** And who opens a chat today without saying what they want. */
-export function noHelloOn(day: number): readonly NoHelloSlot[] {
-  return isWeekDay(day) ? dayScript(day).noHello ?? [] : [];
+export function noHelloOn(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): readonly NoHelloSlot[] {
+  return isWeekDay(day) ? dayScript(day, week).noHello ?? [] : [];
 }
 
 /** What lands in the Hubbub rooms today, as the day's table authors it. */
-export function channelMessagesOn(day: number): readonly ChannelMessageSlot[] {
-  return isWeekDay(day) ? dayScript(day).channels ?? [] : [];
+export function channelMessagesOn(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): readonly ChannelMessageSlot[] {
+  return isWeekDay(day) ? dayScript(day, week).channels ?? [] : [];
 }
 
 /** The same question asked everywhere today (0.5.0 slice 2). */
-export function linkedRequestsOn(day: number): readonly LinkedRequestSlot[] {
-  return isWeekDay(day) ? dayScript(day).requests ?? [] : [];
+export function linkedRequestsOn(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): readonly LinkedRequestSlot[] {
+  return isWeekDay(day) ? dayScript(day, week).requests ?? [] : [];
 }
 
 /** One linked request by id, with the day it belongs to, or nothing. */
 export function findLinkedRequest(
   id: string,
+  week: readonly DayScript[] = WEEK,
 ): { readonly day: number; readonly slot: LinkedRequestSlot } | undefined {
-  for (const script of activeWeek) {
+  for (const script of week) {
     const slot = (script.requests ?? []).find(
       (request) => request.id === id,
     );
@@ -1845,8 +1862,9 @@ export function findLinkedRequest(
  */
 export function linkedRequestsThrough(
   now: number,
+  week: readonly DayScript[] = WEEK,
 ): readonly { readonly day: number; readonly slot: LinkedRequestSlot }[] {
-  return activeWeek
+  return week
     .flatMap((script) => (script.requests ?? []).map((slot) => ({
       day: script.day,
       slot,
@@ -1873,8 +1891,11 @@ export function linkedRequestsThrough(
  * The sort is by tick and it is deliberately stable: two messages on one
  * minute keep the order their day authored them in.
  */
-export function channelFeedThrough(now: number): readonly ChannelMessage[] {
-  return activeWeek
+export function channelFeedThrough(
+  now: number,
+  week: readonly DayScript[] = WEEK,
+): readonly ChannelMessage[] {
+  return week
     .flatMap((script) => (script.channels ?? []).map(
       (slot) => channelMessageAt(script.day, slot),
     ))
@@ -1890,8 +1911,11 @@ export function channelFeedThrough(now: number): readonly ChannelMessage[] {
  * night just gone. Off the end of the week there is nothing, which is also what
  * a day with no `afterHours` column answers.
  */
-export function afterHoursOn(day: number): readonly AfterHoursSlot[] {
-  return isWeekDay(day) ? dayScript(day).afterHours ?? [] : [];
+export function afterHoursOn(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): readonly AfterHoursSlot[] {
+  return isWeekDay(day) ? dayScript(day, week).afterHours ?? [] : [];
 }
 
 /**
@@ -1909,22 +1933,26 @@ export function afterHoursOn(day: number): readonly AfterHoursSlot[] {
 export function interruptionPlanFor(
   day: number,
   worldSeed: number,
+  week: readonly DayScript[] = WEEK,
 ): InterruptionPlan {
   if (!isWeekDay(day)) {
     return { slots: [], blocked: [] };
   }
 
   return {
-    slots: interruptionsOn(day),
+    slots: interruptionsOn(day, week),
     blocked: patrolWindows(
-      buildPatrolSchedule(day, patrolSeedFor(day, worldSeed)),
+      buildPatrolSchedule(day, patrolSeedFor(day, worldSeed, week)),
     ),
   };
 }
 
 /** The tickets waiting in the queue before the day starts. */
-export function inheritedTicketIds(day: number): readonly string[] {
-  return dayScript(day).inherited;
+export function inheritedTicketIds(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): readonly string[] {
+  return dayScript(day, week).inherited;
 }
 
 /**
@@ -1932,8 +1960,12 @@ export function inheritedTicketIds(day: number): readonly string[] {
  * the spine; the day's own twist is what stops two days with the same shape
  * from producing the same footsteps.
  */
-export function patrolSeedFor(day: number, worldSeed: number): number {
-  return (worldSeed + dayScript(day).patrolSeed) >>> 0;
+export function patrolSeedFor(
+  day: number,
+  worldSeed: number,
+  week: readonly DayScript[] = WEEK,
+): number {
+  return (worldSeed + dayScript(day, week).patrolSeed) >>> 0;
 }
 
 /* -- the week, scored ----------------------------------------------------- */
@@ -2025,8 +2057,9 @@ export function weekWorkThrough(
 export function weekScorecard(
   tickets: readonly ReadOnlyGraphNode[],
   totals: Readonly<WeekTotals>,
+  week: readonly DayScript[] = WEEK,
 ): WeekScorecard {
-  const days = activeWeek.map((script): WeekDayLine => ({
+  const days = week.map((script): WeekDayLine => ({
     day: script.day,
     label: script.label,
     ledger: dayLedger(tickets, script.day),

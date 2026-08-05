@@ -34,6 +34,7 @@
 import type { AppState, AppStateStore } from './app-state';
 import { createAppState } from './app-state';
 import type { SaveOutcome } from './save';
+import { FIRST_EMPLOYER } from '../world/employers';
 import { PROBATION_WEEK } from '../world/pressure';
 import type { WeekCarry } from '../world/session';
 
@@ -55,6 +56,21 @@ export interface RetryRecord {
    * career rather than a Monday.
    */
   readonly arcWeek: number;
+  /**
+   * And WHICH employer the fired week was at, so the retry replays the SAME
+   * shop (0.6.0, P1-5).
+   *
+   * A firing does not move you to a new company - it puts you back on the
+   * Monday of the one you were at - so the retry has to carry the employer the
+   * same way it carries the attempt and the arc week. It is carried rather than
+   * assumed because assuming it is the probation shop is only true while there
+   * is one shop: the day the second exists, a firing at Bodgeworth that dropped
+   * this would silently restart the probation week over a Bodgeworth career.
+   * Absent (a record written before the switch existed) is the first employer,
+   * the only one those saves could have been at - the same back-compat rule the
+   * carry reads forwards.
+   */
+  readonly employer: string;
 }
 
 function refuse(reason: string): SaveOutcome<never> {
@@ -67,12 +83,14 @@ export function recordFrom(
   farmFund: number,
   screens: Readonly<AppState>,
   arcWeek: number = PROBATION_WEEK,
+  employer: string = FIRST_EMPLOYER,
 ): RetryRecord {
   return {
     attempt: attempt + 1,
     farmFund: Math.max(0, farmFund),
     kbSelected: screens.kb.selectedId,
     arcWeek: Math.max(PROBATION_WEEK, arcWeek),
+    employer: employer.length > 0 ? employer : FIRST_EMPLOYER,
   };
 }
 
@@ -86,6 +104,7 @@ export function parseRetryRecord(value: unknown): RetryRecord | null {
     farmFund,
     kbSelected,
     arcWeek,
+    employer,
   } = value as Record<string, unknown>;
   const whole = (candidate: unknown, least: number): number | null => (
     typeof candidate === 'number'
@@ -114,6 +133,11 @@ export function parseRetryRecord(value: unknown): RetryRecord | null {
     farmFund: fund,
     kbSelected: selected,
     arcWeek: whole(arcWeek, PROBATION_WEEK) ?? PROBATION_WEEK,
+    // Absent or empty means a record from before the switch existed, which
+    // could only have been the first employer - the same rule the carry reads.
+    employer: typeof employer === 'string' && employer.length > 0
+      ? employer
+      : FIRST_EMPLOYER,
   };
 }
 
@@ -123,6 +147,9 @@ export function carryFrom(record: Readonly<RetryRecord>): WeekCarry {
     farmFund: record.farmFund,
     attempt: record.attempt,
     arcWeek: record.arcWeek,
+    // The retried week stands up the SAME shop it was fired at, not a fall-back
+    // to the probation one (0.6.0, P1-5).
+    employer: record.employer,
   };
 }
 

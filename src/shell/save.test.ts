@@ -7,7 +7,7 @@ import { WasmEngine } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
-import { FIRST_EMPLOYER } from '../world/employers';
+import { employerFor, FIRST_EMPLOYER } from '../world/employers';
 import { FIELDS } from '../world/fields';
 import {
   createWorldSession,
@@ -82,6 +82,8 @@ interface Session {
   readonly switch: SwitchSlot;
   /** How many times the session asked the shell to start over. */
   readonly restarts: () => number;
+  /** The employer a LOAD last stood up, as the shell heard about it. */
+  readonly loadedEmployer: () => string | null;
 }
 
 function session(
@@ -91,16 +93,22 @@ function session(
   now?: () => number,
 ): Session {
   const { engine, seed } = createWorldSession(carry);
+  // The employer content threaded exactly as `main.ts` threads it off the
+  // session - so this helper boots the driver at the shop the carry names, not
+  // the probation default. For a FIRST_WEEK carry that IS probation; for a
+  // Bodgeworth carry it is Bodgeworth's week and rooms.
+  const employer = employerFor(carry.employer);
   const appState = new AppStateStore();
   const driver = new DayDriver(engine, COMPANY_IDS.player, seed, {
     onDayBoundary: () => {},
     openSlackApps: () => [],
     focusedSlackApp: () => null,
-  });
+  }, undefined, employer.week, employer.channels, employer.runsBossPings);
   const slot = new SaveSlot(storage);
   const retry = new RetrySlot(storage);
   const switchSlot = new SwitchSlot(storage);
   let restarts = 0;
+  let loadedEmployer: string | null = null;
 
   return {
     engine,
@@ -110,6 +118,7 @@ function session(
     retry,
     switch: switchSlot,
     restarts: () => restarts,
+    loadedEmployer: () => loadedEmployer,
     // The shipped wiring, not a copy of it.
     session: createShellSession({
       engine,
@@ -119,6 +128,10 @@ function session(
       retry,
       switch: switchSlot,
       actor: COMPANY_IDS.player,
+      employer: employer.id,
+      onEmployerRestored: (id) => {
+        loadedEmployer = id;
+      },
       // The shipped preflight, not a copy of it: a save is tried in a session
       // nobody is playing before it replaces the one somebody is.
       probeEngine: () => new WasmEngine(seed),
@@ -635,6 +648,7 @@ describe('the carry-over a firing leaves behind', () => {
       farmFund: 41_000,
       kbSelected: null,
       arcWeek: 1,
+      employer: 'workgrumble',
     }))
       .toEqual({ ok: true, value: undefined });
 
@@ -646,6 +660,7 @@ describe('the carry-over a firing leaves behind', () => {
       farmFund: 0,
       kbSelected: null,
       arcWeek: 1,
+      employer: 'workgrumble',
     }));
     expect(acknowledgeCarry(slot, () => booted.session.save())).toBe(true);
 
@@ -666,7 +681,13 @@ describe('the carry-over a firing leaves behind', () => {
   it('holds on to the record when the new week could not be written', () => {
     const storage = new MemoryStorage();
     const slot = new RetrySlot(storage);
-    slot.write({ attempt: 3, farmFund: 900, kbSelected: null, arcWeek: 1 });
+    slot.write({
+      attempt: 3,
+      farmFund: 900,
+      kbSelected: null,
+      arcWeek: 1,
+      employer: 'workgrumble',
+    });
 
     const booted = session(storage, { farmFund: 900, attempt: 3 });
     storage.sealed = true;
@@ -718,5 +739,84 @@ describe('the carry-over a firing leaves behind', () => {
     expect(afterRefresh.engine.snapshotHash()).toBe(live.engine.snapshotHash());
     expect(afterRefresh.driver.boss()).toEqual(live.driver.boss());
     expect(seedForAttempt(2)).not.toBe(seedForAttempt(1));
+  });
+
+  /**
+   * A save taken at the SECOND employer reloads STILL at the second employer
+   * (0.6.0, P1-1).
+   *
+   * The bug this forbids: a save carries which employer its world is at, and
+   * `load` restored the graph but never applied the employer - so a Bodgeworth
+   * save opened in a tab booted at probation kept the probation week, rooms and
+   * policy over a Bodgeworth estate. The probation week deals `ticket:fan-noise`
+   * on the Monday, whose `service:chassis-fan` node Bodgeworth does not have, so
+   * it does not just draw the wrong rooms - it crashes the day. Driven through
+   * the real save -> load path: a shell session saved at Bodgeworth, reloaded by
+   * a DIFFERENT shell session booted at the probation shop.
+   */
+  it('reloads a second-employer save STILL at the second employer', () => {
+    const storage = new MemoryStorage();
+
+    // Stand Bodgeworth up, play a little, and save it.
+    const bodge = session(storage, { farmFund: 0, attempt: 1, employer: 'bodgeworth' });
+    bodge.driver.startShift();
+    bodge.driver.step(60_000 * 3);
+    expect(bodge.session.save()).toEqual({ ok: true, value: undefined });
+    const bodgeHash = bodge.engine.snapshotHash();
+    const bodgeRooms = bodge.driver.rooms().map((room) => room.id).sort();
+
+    // A fresh boot that knows nothing about it: the PROBATION shop, booted at
+    // its own week and its own rooms - the exact cross-employer load the bug
+    // walked through.
+    const reboot = session(storage);
+    expect(reboot.driver.rooms().map((room) => room.id).sort())
+      .not.toEqual(bodgeRooms);
+
+    expect(reboot.session.load()).toEqual({ ok: true, value: undefined });
+
+    // The world restored is Bodgeworth's, byte for byte.
+    expect(reboot.engine.snapshotHash()).toBe(bodgeHash);
+    // The DRIVER followed the save: it draws Bodgeworth's rooms now, not the
+    // probation shop's it booted with, and it deals Bodgeworth's week - so its
+    // channel feed is Bodgeworth's storm, not the probation shop's, and no
+    // probation fan ticket is scheduled into an estate with no chassis fan.
+    expect(reboot.driver.rooms().map((room) => room.id).sort()).toEqual(bodgeRooms);
+    expect(reboot.driver.schedule().arrivals)
+      .toEqual(bodge.driver.schedule().arrivals);
+    const feed = reboot.driver.channelFeed(Number.MAX_SAFE_INTEGER);
+    expect(feed.some((message) => message.id.startsWith('bodge:'))).toBe(true);
+    // And the shell was told which shop it is now at, so the install policy the
+    // audit reads and the name the offer prints follow the loaded save too.
+    expect(reboot.loadedEmployer()).toBe('bodgeworth');
+  });
+
+  /**
+   * And a save that names an employer this build never shipped is REFUSED, with
+   * the session the player was in left running - not stood up as the wrong shop
+   * (0.6.0, P1-1). Defaulting an unknown employer would be a silently wrong
+   * game; the preflight catches it before the live world is touched.
+   */
+  it('refuses a save naming an employer this build does not ship', () => {
+    const storage = new MemoryStorage();
+    const live = session(storage);
+    live.driver.startShift();
+    expect(live.session.save()).toEqual({ ok: true, value: undefined });
+
+    // Hand-edit the file to name a ghost shop.
+    const slot = new SaveSlot(storage);
+    const raw = slot.readRaw();
+    expect(raw).not.toBeNull();
+    const edited = JSON.stringify({
+      ...(JSON.parse(raw!) as Record<string, unknown>),
+      employer: 'a-shop-that-never-was',
+    });
+    slot.writeRaw(edited);
+
+    const before = live.engine.snapshotHash();
+    const outcome = live.session.load();
+    expect(outcome.ok).toBe(false);
+    // The running session is untouched: no half-loaded ghost world.
+    expect(live.engine.snapshotHash()).toBe(before);
+    expect(live.loadedEmployer()).toBeNull();
   });
 });

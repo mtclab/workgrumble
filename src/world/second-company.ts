@@ -321,10 +321,12 @@ export function bodgeMachineHostname(machineId: string): string {
  * The rooms Bodgeworth's channel client has, which is the whole of the channel
  * mix contrast (0.6.0 slice 3, off the 0.5.0 per-employer seam). The probation
  * shop rolled out three governed rooms with a single-source-of-truth topic and
- * a keep-tickets-in-the-ticket-system rule; Bodgeworth has ONE room the whole
- * firm is in and no rule about anything, which is why the reply-all storm has
- * somewhere to happen. The id prefix is `room:` rather than `chan:` so the two
- * employers' rooms cannot be confused for one another.
+ * a keep-tickets-in-the-ticket-system rule; Bodgeworth has TWO and governs
+ * neither - an all-staff `#office` the whole firm is in, and a `#yard` nobody
+ * keeps the deliveries out of `#office` for - which is why the reply-all storm
+ * has somewhere to happen: it lands in `#office`, the room with no rule about
+ * anything. The id prefix is `room:` rather than `chan:` so the two employers'
+ * rooms cannot be confused for one another.
  */
 export const BODGE_CHANNELS: readonly ChannelDef[] = Object.freeze([
   Object.freeze({

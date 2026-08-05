@@ -19,6 +19,7 @@ import { loadEngineForTests } from '../engine-api/load-node';
 import type { InstallPolicy } from '../world/company';
 import { COMPANY_IDS } from '../world/company';
 import { conductEntries } from '../world/conduct';
+import { employerFor } from '../world/employers';
 import { shiftEndTick } from '../world/day';
 import { FIELDS } from '../world/fields';
 import { parseInstallLedger, unspokenInstalls } from '../world/software';
@@ -260,12 +261,19 @@ describe('the beat the install audit arms', () => {
   });
 
   /**
-   * Teeth on the policy: a wild-west employer logs installs and they cost
-   * nothing. Flip the policy back to locked-down and this goes red, which is the
-   * proof the gate is on the employer and not on the install.
+   * Teeth on the policy, sourced the way the shipped shell sources it (0.6.0,
+   * P1-3): the policy is read off the EMPLOYER, so a toy installed at Bodgeworth
+   * - whose registry policy is `wild_west` - logs and costs nothing. The bug
+   * this forbids is `main.ts` reading the first company's policy for every
+   * employer; reading Bodgeworth's own is what makes its installs free. Flip the
+   * policy back to locked-down and this goes red, which is the proof the gate is
+   * on the employer and not on the install.
    */
-  it('never arms under a wild-west policy however much is installed', () => {
-    const world = harnessOn(1, 'wild_west');
+  it('never arms under Bodgeworth\'s wild-west policy, and installs cost nothing', () => {
+    // The exact value the shell reads off the pack for this shop.
+    expect(employerFor('bodgeworth').installPolicy).toBe('wild_west');
+    const world = harnessOn(1, employerFor('bodgeworth').installPolicy);
+    const suspicionBefore = player(world.session, FIELDS.suspicion);
 
     expect(world.driver.install('arcade')).toEqual({ ok: true });
     expect(world.driver.install('mediaplayer')).toEqual({ ok: true });
@@ -275,5 +283,8 @@ describe('the beat the install audit arms', () => {
 
     expect(world.caught).toEqual([]);
     expect(softwareLines(world.session)).toHaveLength(0);
+    // No suspicion accrued for the toys: the audit at a wild-west shop does not
+    // price them.
+    expect(player(world.session, FIELDS.suspicion)).toBe(suspicionBefore);
   });
 });

@@ -27,6 +27,7 @@ import {
   type CareerStanding,
 } from '../world/career';
 import {
+  employerFor,
   FIRST_EMPLOYER,
   nextEmployerAfter,
 } from '../world/employers';
@@ -406,6 +407,18 @@ export interface SessionParts {
    * graph field - see `SaveFile.employer`.
    */
   readonly employer?: string;
+  /**
+   * Told which employer a LOAD just stood up, so the shell can follow it
+   * (0.6.0, P1-1).
+   *
+   * A load can restore a world from a different shop than the one this session
+   * booted at, and two things outside this seam are keyed to the employer: the
+   * install-policy the audit drip reads, and the name the offer surface prints.
+   * The driver's own content the load re-points itself (`day.adoptEmployer`);
+   * this is how the rest of the shell hears about the change. Absent is fine -
+   * a headless save test has no shell to update.
+   */
+  onEmployerRestored?(employer: string): void;
   /** What the shell does once a retry has been written: reload, usually. */
   restart(): void;
   /**
@@ -471,6 +484,13 @@ function preflight(
     probe.restore(file.engine);
     const driver = new DayDriver(probe, actor, 0, SILENT_HANDLERS);
     driver.restoreDriverState(file.driver);
+    // The employer the file names, resolved against the closed set - a save
+    // naming a shop this build never shipped is refused HERE, before the live
+    // session is touched, rather than throwing mid-commit (0.6.0, P1-1). And
+    // its week is adopted so the schedule this preflight reads is the one the
+    // real load will deal, not the probation default the probe booted with.
+    const employer = employerFor(file.employer);
+    driver.adoptEmployer(employer.week, employer.channels, employer.runsBossPings);
     // The two reads every day screen makes on its first paint. A world that
     // cannot answer them is a world the shell cannot draw.
     driver.state();
@@ -520,6 +540,11 @@ export function createShellSession(
   parts: Readonly<SessionParts>,
 ): ShellSessionApi {
   const { engine, appState, day, slot, retry, actor } = parts;
+  // Which employer this session is a week at, as LIVE state rather than a
+  // constant: a load can move it (P1-1), and every save written afterwards - the
+  // day-boundary checkpoint, the retry record - has to stamp the shop the world
+  // is actually at now, or the next load would stand the wrong company up.
+  let employerId = parts.employer ?? FIRST_EMPLOYER;
   const number = (field: string): number => {
     const value = engine.graph.getField(actor, field);
     return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
@@ -536,7 +561,7 @@ export function createShellSession(
         savedAt: (parts.now ?? Date.now)(),
         version: BUILD_VERSION,
         label: `${display.day}, ${display.time}`,
-        employer: parts.employer ?? FIRST_EMPLOYER,
+        employer: employerId,
         engine: engine.serialize(),
         app: appState.snapshot(),
         driver: day.driverState(),
@@ -589,6 +614,23 @@ export function createShellSession(
         engine.restore(file.value.engine);
         appState.hydrate(file.value.app);
         day.restoreDriverState(file.value.driver);
+        // The file says which employer its world is at; the week, rooms and
+        // ping flag are the build's, keyed to that id. Re-point the driver at
+        // them so a Bodgeworth save reloads STILL Bodgeworth - its week deals,
+        // its rooms draw - rather than continuing on the booted shop's content
+        // (0.6.0, P1-1). Validated already in preflight, so this cannot throw on
+        // an unknown shop; it is inside the try regardless, so anything that
+        // does still leaves the player in the session they were in.
+        const restored = employerFor(file.value.employer);
+        day.adoptEmployer(
+          restored.week,
+          restored.channels,
+          restored.runsBossPings,
+        );
+        // Every save from here stamps the shop just loaded, and the rest of the
+        // shell (install policy, the offer's next-employer name) is told.
+        employerId = restored.id;
+        parts.onEmployerRestored?.(restored.id);
         return { ok: true, value: undefined };
       } catch (failure: unknown) {
         return undo(rollback, parts, failure);
@@ -611,6 +653,9 @@ export function createShellSession(
         number(FIELDS.farmFund),
         appState.snapshot(),
         number(FIELDS.arcWeek),
+        // The retry replays the shop the week was fired at, not a fall-back to
+        // the probation one (0.6.0, P1-5).
+        employerId,
       ));
 
       parts.onWrite?.(written);
@@ -657,7 +702,7 @@ export function createShellSession(
           : 'IT Support Technician',
         farmFund: number(FIELDS.farmFund),
       };
-      const next = nextEmployerAfter(parts.employer ?? FIRST_EMPLOYER);
+      const next = nextEmployerAfter(employerId);
 
       const written = parts.switch.write(
         switchRecord(next, careerAfter(exit, standing)),

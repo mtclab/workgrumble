@@ -107,6 +107,15 @@ export interface Employer {
    * drops below the published pass mark, which the review verbs enforce.
    */
   readonly reviewBar: number;
+  /**
+   * Whether this employer runs the probation lead's boss PINGS - the beat that
+   * mints his concern as a ticket and messages you (0.6.0 slice 3). It is
+   * probation content (a probation reporter, probation ping lines), so a shop
+   * with a different lead turns it off: its boss still walks the floor and
+   * catches slacking, but does not raise the probation lead's ticket into a
+   * world that lead is not in.
+   */
+  readonly runsBossPings: boolean;
   /** The world graph - company, estate, accounts - as construction ops. */
   setup(): readonly SetupOp[];
   /** The ids of the tickets already waiting when the player sits down Monday. */
@@ -130,6 +139,7 @@ const PROBATION_EMPLOYER: Employer = Object.freeze({
   week: WEEK,
   channels: CHANNELS,
   reviewBar: REVIEW_PASS_PERFORMANCE,
+  runsBossPings: true,
   setup: companySetup,
   mondayTicketIds: () => inheritedTicketIds(1),
 });
@@ -169,6 +179,10 @@ const SECOND_EMPLOYER: Employer = Object.freeze({
   week: SECOND_WEEK,
   channels: bodgeChannels(),
   reviewBar: REVIEW_PASS_PERFORMANCE,
+  // Bodgeworth's lead is Vernon, and it authors no boss-ping beat: no probation
+  // ticket to mint, no probation thread to write. The boss still walks the
+  // floor and still catches you slacking; he just does not ping.
+  runsBossPings: false,
   setup: bodgeSetup,
   mondayTicketIds: bodgeInheritedTicketIds,
 });

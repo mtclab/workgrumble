@@ -81,42 +81,28 @@ export const CHANNELS: readonly ChannelDef[] = Object.freeze([
 ]);
 
 /**
- * The rooms of the employer whose world is currently stood up (0.6.0 slice 3).
+ * A room by id, out of the roster it is looked up in (0.6.0 slice 3).
  *
  * Channel mix is per-employer DATA - the 0.5.0 seam paying off - and the room
  * ROSTER is the first half of it: the enterprise probation shop rolled out
- * three breathless rooms, and a wild-west haulage yard has one room everybody
- * is in and no governance at all. The runtime surfaces (the Hubbub window,
- * `channelById`) read whichever employer is active; the DEFAULT is the
- * probation rooms, so a shell that never switches - and every test that stands
- * up no session - reads exactly what it read before this pointer existed.
- *
- * It is a module pointer rather than a parameter threaded through the window
- * for the same reason the active week is: the room roster is selected by the
- * save-carried employer id, and `createWorldSession` sets it every time a world
- * stands up (boot and load), so the rooms are `f(employer)` deterministically.
- * The LOAD-TIME check - which rooms a week's messages are allowed to name - is
- * NOT this pointer: `validateChannelSlots` takes the valid set explicitly,
- * because a week is validated at module load before any employer is active.
+ * three breathless rooms, and a wild-west haulage yard has one everybody is in
+ * with no governance. Which roster to look in is a PARAMETER, defaulting to the
+ * probation rooms, rather than a mutable module pointer - so two live sessions
+ * cannot cross-contaminate, and the Hubbub window reads whichever employer's
+ * rooms the shell hands it off the session.
  */
-let activeChannels: readonly ChannelDef[] = CHANNELS;
-
-/** The rooms the active employer rolled out - what the Hubbub window draws. */
-export function activeChannelList(): readonly ChannelDef[] {
-  return activeChannels;
+export function channelById(
+  id: string,
+  channels: readonly ChannelDef[] = CHANNELS,
+): ChannelDef | undefined {
+  return channels.find((channel) => channel.id === id);
 }
 
-/** Point the runtime room surfaces at an employer's rooms. */
-export function setActiveChannels(channels: readonly ChannelDef[]): void {
-  activeChannels = channels;
-}
-
-export function channelById(id: string): ChannelDef | undefined {
-  return activeChannels.find((channel) => channel.id === id);
-}
-
-export function isChannelId(value: string): boolean {
-  return channelById(value) !== undefined;
+export function isChannelId(
+  value: string,
+  channels: readonly ChannelDef[] = CHANNELS,
+): boolean {
+  return channelById(value, channels) !== undefined;
 }
 
 /* -- the messages ---------------------------------------------------------- */

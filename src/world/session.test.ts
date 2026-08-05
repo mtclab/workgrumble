@@ -66,6 +66,7 @@ function fixtureEmployer(): Employer {
     week: [],
     channels: [],
     reviewBar: REVIEW_PASS_PERFORMANCE,
+    runsBossPings: false,
     setup: () => [
       {
         op: 'addNode',

@@ -15,6 +15,8 @@ import { loadEngineForTests } from '../engine-api/load-node';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS } from '../world/fields';
 import { STARTING_REPUTATION } from '../world/meters';
+import { PROBATION_WEEK } from '../world/pressure';
+import { BODGE_IDS } from '../world/second-company';
 import {
   createWorldSession,
   FIRST_WEEK,
@@ -88,8 +90,14 @@ function screensAfterAWeek(): AppStateStore {
 }
 
 describe('what a firing leaves behind', () => {
-  it('carries the fund, the article and the attempt, and nothing else', () => {
-    const record = recordFrom(1, 12_345, screensAfterAWeek().snapshot(), 4);
+  it('carries the fund, the article, the attempt and the employer', () => {
+    const record = recordFrom(
+      1,
+      12_345,
+      screensAfterAWeek().snapshot(),
+      4,
+      'bodgeworth',
+    );
 
     expect(record).toEqual({
       attempt: 2,
@@ -99,6 +107,9 @@ describe('what a firing leaves behind', () => {
       // career does not, so a firing in the fourth week of an employer arc
       // starts the fourth week again rather than the first.
       arcWeek: 4,
+      // And the SAME shop: a firing puts you back on this employer's Monday, not
+      // a fall-back to the probation one (0.6.0, P1-5).
+      employer: 'bodgeworth',
     });
 
     const screens = screensFrom(record);
@@ -147,6 +158,16 @@ describe('what a firing leaves behind', () => {
     expect(parseRetryRecord({ ...good, arcWeek: undefined })?.arcWeek).toBe(1);
     expect(parseRetryRecord({ ...good, arcWeek: 0 })?.arcWeek).toBe(1);
     expect(parseRetryRecord({ ...good, arcWeek: 6 })?.arcWeek).toBe(6);
+    // And the employer the same way (0.6.0, P1-5): a record naming a shop keeps
+    // it, and one written before the switch existed - no employer key, or an
+    // empty one - is a firing at the first employer, the only one those saves
+    // could have been at.
+    expect(parseRetryRecord({ ...good, employer: 'bodgeworth' })?.employer)
+      .toBe('bodgeworth');
+    expect(parseRetryRecord({ ...good, employer: undefined })?.employer)
+      .toBe('workgrumble');
+    expect(parseRetryRecord({ ...good, employer: '' })?.employer)
+      .toBe('workgrumble');
   });
 
   /**
@@ -203,6 +224,31 @@ describe('the week the retry starts', () => {
     expect(retried.engine.now()).toBe(0);
     expect([...graph.nodesOfKind('ticket')].map((node) => node.id).sort())
       .toEqual([...dayPlan(1).inherited].sort());
+  });
+
+  /**
+   * A firing at the SECOND employer retries the second employer (0.6.0, P1-5).
+   *
+   * The bug this forbids: the retry record dropped the employer, so a firing at
+   * Bodgeworth carried no shop, `carryFrom` produced a carry that defaulted to
+   * the probation employer, and the second attempt stood up Workgrumble's world
+   * under a Bodgeworth career - a different building, silently. The fund still
+   * survives, which is the joke the whole retry exists for, but at the right
+   * shop. Driven through the real record -> carry -> session path, not a
+   * hand-built carry.
+   */
+  it('retries the SAME employer a firing was at, fund intact', () => {
+    const fired = recordFrom(1, 30_000, createAppState(), PROBATION_WEEK, 'bodgeworth');
+    const retried = createWorldSession(carryFrom(fired));
+
+    // The same shop, stood up again - not a fall-back to probation.
+    expect(retried.employer).toBe('bodgeworth');
+    // Its own Monday pile, which the probation shop does not have.
+    expect(retried.engine.ticketState('ticket:office-login-locked')).toBe('open');
+    expect(retried.engine.ticketState('ticket:rotated-screen')).toBeUndefined();
+    // And the fund crossed the firing, the one thing it is never allowed to lose.
+    expect(retried.engine.graph.getField(BODGE_IDS.player, FIELDS.farmFund))
+      .toBe(30_000);
   });
 
   /**

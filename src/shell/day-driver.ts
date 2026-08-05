@@ -140,9 +140,13 @@ import {
   unspokenInstalls,
 } from '../world/software';
 import { type InstallPolicy } from '../world/company';
+import { CHANNELS, type ChannelDef, type ChannelMessage } from '../world/channels';
+import { channelFeedThrough } from '../world/week';
 import {
   afterHoursOn,
+  type DayScript,
   dayPlan,
+  dayScript,
   directMessagesOn,
   findLinkedRequest,
   linkedRequestsThrough,
@@ -157,6 +161,7 @@ import {
   REVIEW_PASS_PERFORMANCE,
   reviewOutcomeFor,
   reviewTick,
+  WEEK,
   type WeekScorecard,
   weekScorecard,
   walkUpsOn,
@@ -728,6 +733,18 @@ export interface DayApi {
   weekEnded(): boolean;
   /** Five days, added up out of the tickets they were made of. */
   weekScorecard(): WeekScorecard;
+  /**
+   * This employer's channel rooms and the feed through a tick (0.6.0 slice 3).
+   *
+   * The Hubbub window reads its rooms and messages from HERE rather than from a
+   * module global, so the client draws whichever employer's rooms the session
+   * stood up - the probation shop's three, or a wild-west shop's one. Free to
+   * read and changes nothing, like the rest of this half of the interface.
+   */
+  rooms(): readonly ChannelDef[];
+  channelFeed(now: number): readonly ChannelMessage[];
+  /** What the brief calls a day of THIS employer's week, or a bare number. */
+  dayLabel(day: number): string;
   /** Fires when the day, its state, the pause or the speed changed. */
   onChanged(listener: () => void): () => void;
 }
@@ -954,6 +971,19 @@ export interface DayDriverHandlers {
 export interface DriverSaveSeam {
   driverState(): DriverState;
   restoreDriverState(state: Readonly<DriverState>): void;
+  /**
+   * Re-point the driver at the employer a loaded save names (0.6.0, P1-1).
+   *
+   * A load can restore a world from a DIFFERENT shop than the one this session
+   * booted at - a Bodgeworth save opened in a tab that started at probation -
+   * so the week the days deal, the rooms Hubbub draws and whether the lead pings
+   * have to follow the file, not stay on the booted employer's content.
+   */
+  adoptEmployer(
+    week: readonly DayScript[],
+    channels: readonly ChannelDef[],
+    runsBossPings: boolean,
+  ): void;
 }
 
 /** What a save carries about how the player was watching. */
@@ -997,26 +1027,67 @@ export class DayDriver implements DayApi {
   private owedMinutes_ = 0;
   private readonly listeners = new Set<() => void>();
 
+  private readonly engine: EngineApi;
+  private readonly actor: NodeId;
+  private readonly handlers: Readonly<DayDriverHandlers>;
+  /**
+   * This session's employer content (0.6.0 slice 3), read off the session.
+   *
+   * Not `readonly`: a load can re-point it at a different shop's content
+   * (`adoptEmployer`, P1-1). It is still per-instance, set at construction and
+   * only ever changed by an explicit load - there is no module global to race,
+   * which is the whole of what de-globalising it bought.
+   */
+  private week_: readonly DayScript[];
+  private channels_: readonly ChannelDef[];
+  /**
+   * Whether this employer runs the probation lead's boss PINGS - the beat where
+   * a round of the corridor mints his concern as a ticket and messages you
+   * about it. It is probation content (`BOSS_TRAP_TICKET`, a probation reporter,
+   * probation ping lines), so a second employer whose lead is a different person
+   * and whose estate has none of that turns it OFF: its boss still walks the
+   * floor and still catches slacking, but he does not raise Desmond's ticket or
+   * send Desmond's messages into a world Desmond is not in.
+   */
+  private runsBossPings_: boolean;
+  private readonly plans: (day: number, seed: number) => InterruptionPlan;
+
   public constructor(
-    private readonly engine: EngineApi,
-    private readonly actor: NodeId,
+    engine: EngineApi,
+    actor: NodeId,
     seed: number,
-    private readonly handlers: Readonly<DayDriverHandlers>,
+    handlers: Readonly<DayDriverHandlers>,
     /**
      * Where a day's interruptions come from.
      *
-     * The shipped week, in the shipped game, and it is a parameter for the
+     * The employer's week, in the shipped game, and it is a parameter for the
      * same reason the seed is one: a rule about what happens when two
      * takeovers collide, or when a countdown runs out of postpones, is a rule
      * about the MACHINERY, and pinning it to whichever row the week happens to
      * carry this month would be testing the content instead. A harness hands
-     * in the day it needs; nothing else ever passes this.
+     * in the day it needs; the shipped shell passes nothing and gets the
+     * default, which binds this driver's own week.
      */
-    private readonly plans: (
-      day: number,
-      seed: number,
-    ) => InterruptionPlan = interruptionPlanFor,
+    plans?: (day: number, seed: number) => InterruptionPlan,
+    /**
+     * This session's employer content, defaulting to the probation shop's - so
+     * every existing caller that stands a probation driver up is unchanged, and
+     * the shell hands a second employer's week and rooms in off the session.
+     */
+    week: readonly DayScript[] = WEEK,
+    channels: readonly ChannelDef[] = CHANNELS,
+    runsBossPings = true,
   ) {
+    this.engine = engine;
+    this.actor = actor;
+    this.handlers = handlers;
+    this.week_ = week;
+    this.channels_ = channels;
+    this.runsBossPings_ = runsBossPings;
+    // The default plan reader binds THIS driver's week, so an injected harness
+    // day still wins and the shipped path deals the employer's own days.
+    this.plans = plans
+      ?? ((day, planSeed) => interruptionPlanFor(day, planSeed, this.week_));
     this.seed_ = seed;
     this.schedule_ = this.scheduleFor(this.day());
     this.patrol_ = this.patrolFor(this.day());
@@ -1281,7 +1352,7 @@ export class DayDriver implements DayApi {
         .filter((id) => id.length > 0),
     );
 
-    return afterHoursArrivals(afterHoursOn(night), this.presence(), answered);
+    return afterHoursArrivals(afterHoursOn(night, this.week_), this.presence(), answered);
   }
 
   /**
@@ -1335,7 +1406,7 @@ export class DayDriver implements DayApi {
   public liveRequests(): readonly LinkedRequest[] {
     const resolved = resolutionsBy(this.playerText(FIELDS.requestResolvedAs));
 
-    return linkedRequestsThrough(this.engine.now()).map(({ day, slot }) => ({
+    return linkedRequestsThrough(this.engine.now(), this.week_).map(({ day, slot }) => ({
       id: slot.id,
       reporter: slot.reporter,
       subject: slot.subject,
@@ -1360,7 +1431,7 @@ export class DayDriver implements DayApi {
    * (off shift, already resolved) raises nothing.
    */
   public resolveRequest(id: string, kind: RequestKind): DispatchResult {
-    const found = findLinkedRequest(id);
+    const found = findLinkedRequest(id, this.week_);
 
     if (found === undefined) {
       return {
@@ -1802,7 +1873,22 @@ export class DayDriver implements DayApi {
         ? this.weekReading()
         : this.playerNumber(FIELDS.reviewReputation, this.weekReading()),
       outcome,
-    });
+    }, this.week_);
+  }
+
+  /** This employer's rooms - what the Hubbub window draws (0.6.0 slice 3). */
+  public rooms(): readonly ChannelDef[] {
+    return this.channels_;
+  }
+
+  /** This employer's channel feed through a tick. */
+  public channelFeed(now: number): readonly ChannelMessage[] {
+    return channelFeedThrough(now, this.week_);
+  }
+
+  /** What the brief calls a day of this employer's week. */
+  public dayLabel(day: number): string {
+    return isWeekDay(day) ? dayScript(day, this.week_).label : `Day ${String(day)}`;
   }
 
   /** The bottle in the fridge with your name on it. */
@@ -1822,6 +1908,30 @@ export class DayDriver implements DayApi {
   public restoreDriverState(state: Readonly<DriverState>): void {
     this.paused_ = state.paused;
     this.speed_ = state.speed;
+    this.resync();
+  }
+
+  /**
+   * Re-point the driver at another employer's content on a load (0.6.0, P1-1).
+   *
+   * The save carries WHICH employer its world is at, but not the week, rooms or
+   * ping flag - those are DATA the build owns (`session.ts`, `employers.ts`),
+   * keyed to that id. A load that restored a Bodgeworth graph into a driver that
+   * booted at probation would keep dealing the probation week over a Bodgeworth
+   * estate - which is the `service:chassis-fan` crash the de-global exposed - so
+   * the loader hands the loaded shop's content back in here. `resync` then
+   * rebuilds the schedule, patrols and interruptions for the day the load landed
+   * on, off the week just adopted. Nothing here is a module global: it is this
+   * one driver instance following its own save, set only by an explicit load.
+   */
+  public adoptEmployer(
+    week: readonly DayScript[],
+    channels: readonly ChannelDef[],
+    runsBossPings: boolean,
+  ): void {
+    this.week_ = week;
+    this.channels_ = channels;
+    this.runsBossPings_ = runsBossPings;
     this.resync();
   }
 
@@ -2178,14 +2288,14 @@ export class DayDriver implements DayApi {
     return buildDaySchedule(
       day,
       this.seed_,
-      isWeekDay(day) ? dayPlan(day) : { inherited: [], drip: [] },
+      isWeekDay(day) ? dayPlan(day, this.week_) : { inherited: [], drip: [] },
     );
   }
 
   private patrolFor(day: number): PatrolSchedule {
     return buildPatrolSchedule(
       day,
-      isWeekDay(day) ? patrolSeedFor(day, this.seed_) : this.seed_,
+      isWeekDay(day) ? patrolSeedFor(day, this.seed_, this.week_) : this.seed_,
     );
   }
 
@@ -2267,7 +2377,7 @@ export class DayDriver implements DayApi {
   private applyIncidents(after: number, now: number): void {
     const day = this.day();
 
-    for (const slot of incidentsOn(day)) {
+    for (const slot of incidentsOn(day, this.week_)) {
       const at = tickAtMinute(day, slot.minute);
 
       if (at <= after || at > now) {
@@ -2308,7 +2418,7 @@ export class DayDriver implements DayApi {
   private settleDirectMessages(after: number, now: number): void {
     const day = this.day();
 
-    for (const slot of directMessagesOn(day)) {
+    for (const slot of directMessagesOn(day, this.week_)) {
       const asked = tickAtMinute(day, slot.minute);
       const files = tickAtMinute(day, slot.minute + slot.filesAfter);
 
@@ -2389,7 +2499,7 @@ export class DayDriver implements DayApi {
   private settleWalkUps(after: number, now: number): void {
     const day = this.day();
 
-    for (const walkUp of walkUpsOn(day)) {
+    for (const walkUp of walkUpsOn(day, this.week_)) {
       const entry = this.walkUpStood(walkUp.slot.id);
 
       if (entry === null) {
@@ -2448,7 +2558,7 @@ export class DayDriver implements DayApi {
   private settleNoHello(after: number, now: number): void {
     const day = this.day();
 
-    for (const slot of noHelloOn(day)) {
+    for (const slot of noHelloOn(day, this.week_)) {
       const said = tickAtMinute(day, slot.minute);
       const asked = said + slot.typingMinutes;
 
@@ -2475,7 +2585,7 @@ export class DayDriver implements DayApi {
     const day = this.day();
     const now = this.engine.now();
 
-    for (const slot of noHelloOn(day)) {
+    for (const slot of noHelloOn(day, this.week_)) {
       if (slot.speaker !== speaker) {
         continue;
       }
@@ -2593,8 +2703,14 @@ export class DayDriver implements DayApi {
       this.settleVisit(visit);
     }
 
-    for (const ping of pingsBetween(this.patrol_, after, now)) {
-      this.settlePing(ping);
+    // The pings are the probation lead's own beat - his concern minted as a
+    // ticket, his messages - so an employer that does not run them (a different
+    // lead, a different estate) fires none (0.6.0 slice 3, P1-4). His FOOTSTEPS
+    // and his catching you slacking above are generic office life and stay.
+    if (this.runsBossPings_) {
+      for (const ping of pingsBetween(this.patrol_, after, now)) {
+        this.settlePing(ping);
+      }
     }
   }
 

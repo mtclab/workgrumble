@@ -39,6 +39,14 @@ beforeAll(() => {
   loadEngineForTests();
 });
 
+/**
+ * The reply-all storm's true size: the ten #office messages the Wednesday table
+ * authors (`second-week.ts` day 3) - root, the cake replies, the three scolds,
+ * the two more-cake replies, and the one buried signal. NOT the whole week's
+ * room traffic; Monday's two welcomes and Tuesday's printer chat are separate.
+ */
+const BODGE_STORM_MESSAGES = 10;
+
 /** A carry that names Bodgeworth, fresh (no career) - a first real week there. */
 const BODGE_CARRY: WeekCarry = Object.freeze({
   farmFund: 0,
@@ -55,6 +63,7 @@ interface Week {
 
 function startWeek(): Week {
   const { engine, seed } = createWorldSession(BODGE_CARRY);
+  const bodge = employerFor('bodgeworth');
   const appState = new AppStateStore();
   const driver = new DayDriver(engine, COMPANY_IDS.player, seed, {
     onDayBoundary: () => {},
@@ -62,7 +71,9 @@ function startWeek(): Week {
     // unread pile is priced the way it is in the browser: the walk never opens
     // Hubbub, so every storm message is billed once.
     unreadChannels: () => unreadIds(
-      channelFeedThrough(engine.now()),
+      // Bodgeworth's own feed, threaded like the shell threads it - the default
+      // is the probation week, which for this shop is no messages at all.
+      channelFeedThrough(engine.now(), bodge.week),
       appState.get().hubbub.read,
     ),
     attentionCharged: () => appState.get().hubbub.charged,
@@ -77,8 +88,18 @@ function startWeek(): Week {
     // however much is installed, and the policy the audit beat reads is the
     // shop's own.
     installedAgainstPolicy: () => 0,
-    installPolicy: () => employerFor('bodgeworth').installPolicy,
-  });
+    installPolicy: () => bodge.installPolicy,
+  },
+  // The driver drives the REAL Bodgeworth week, rooms and ping flag - threaded
+  // in the same way the shipped shell threads them off the session (main.ts),
+  // NOT the probation defaults. Without this the driver deals the probation
+  // week over the Bodgeworth estate and spawns `service:chassis-fan`, a node
+  // that shop does not have - the exact shipped-wiring bug the de-global
+  // exposed (0.6.0, P1-2).
+  undefined,
+  bodge.week,
+  bodge.channels,
+  bodge.runsBossPings);
 
   return { driver, engine, appState };
 }
@@ -155,10 +176,13 @@ function walk(): Walked {
 
     if (day === BODGE_EVENT_DAY) {
       // The event day fires: by mid-morning the reply-all storm has arrived in
-      // the room, root and scolds and the one buried signal, all of it a
-      // reading of the week's table against the clock.
-      const feed = channelFeedThrough(world.engine.now());
-      const storm = feed.filter((message) => message.id.startsWith('bodge:'));
+      // #office, root and scolds and the one buried signal, all of it a reading
+      // of the week's WEDNESDAY table against the clock. Counted as the
+      // Wednesday storm exactly - not "every bodge room message so far", which
+      // folds in Monday's welcome and Tuesday's printer chat and let a loose
+      // `>= 8` pass without ever seeing the real storm.
+      const storm = world.driver.channelFeed(world.engine.now())
+        .filter((message) => message.day === BODGE_EVENT_DAY);
       const scolds = storm.filter(
         (message) => message.body.toUpperCase().includes('REPLYING ALL')
           || message.body.toUpperCase().includes('REPLYING. ALL'),
@@ -166,7 +190,8 @@ function walk(): Walked {
       const buried = storm.some(
         (message) => message.relatedTicket === 'ticket:the-share-down',
       );
-      stormFired = storm.length >= 8 && scolds.length >= 2 && buried;
+      stormFired = storm.length === BODGE_STORM_MESSAGES
+        && scolds.length >= 2 && buried;
     }
 
     runTo(world, shiftEndTick(day));
@@ -189,17 +214,29 @@ function walk(): Walked {
 /**
  * The Bodgeworth week golden.
  *
- * A first commit of a NEW hash, argued rather than inherited: it is the world
- * at Friday 17:00 of a wild-west week worked to a pass. The numbers behind it:
- * five tickets across Mon-Thu, all closed on the day they arrive (two inherited
- * Monday, one dripped each of Tue/Wed/Thu), nothing red, so the weighted review
- * reaches a pass over a bar of 45; the reply-all storm's eleven room messages
- * are each billed once for attention (the walk never opens Hubbub); and the
- * fund carries the probation joke forward from nought with the shop's own
- * survival bonus on the Friday. If it moves, it is a conscious diff, read the
- * same way the probation goldens are.
+ * A NEW hash, argued rather than inherited: it is the world at Friday 17:00 of
+ * a wild-west week worked to a pass. The numbers behind it: five tickets across
+ * Mon-Thu, all closed on the day they arrive (two inherited Monday, one dripped
+ * each of Tue/Wed/Thu), nothing red, so the weighted review reaches a pass over
+ * the published bar; the week's THIRTEEN room messages are each billed once for
+ * attention (two welcomes Monday, the printer chat Tuesday, and the reply-all
+ * storm's ten in #office on the Wednesday - the walk never opens Hubbub); and
+ * the fund carries the probation joke forward from nought with the shop's own
+ * survival bonus on the Friday.
+ *
+ * It MOVED from the slice-3 commit (`dcd232bc72ea5535` -> `7436e592a668181d`)
+ * for one reason, and a conscious one: the probation lead's boss-PING beat is
+ * now OFF at Bodgeworth (P1-4). Bodgeworth's lead is Vernon and it authors no
+ * ping content, so the driver no longer runs the probation ping loop into a
+ * shop whose estate has none of it - the boss still walks the floor and still
+ * catches slacking, he just does not mint Desmond's ticket or send Desmond's
+ * lines. The week content, the storm and the winnable queue are unchanged;
+ * what left the world is the ping beat's side effects. The probation goldens do
+ * NOT move (the switch is additive) - proven byte-identical in
+ * `scripted-week.test` / `session.test`. If this moves again, it is a conscious
+ * diff, read the same way the probation goldens are.
  */
-const BODGE_GOLDEN_HASH = 'dcd232bc72ea5535';
+const BODGE_GOLDEN_HASH = '7436e592a668181d';
 
 describe('the second employer plays, and differs', () => {
   it('stands up as a genuinely different archetype', () => {
@@ -237,8 +274,11 @@ describe('the second employer plays, and differs', () => {
     expect(walked.stormFired).toBe(true);
     // And the buried signal was found and fixed by ordinary play.
     expect(walked.shareClosedInWorkedWeek).toBe(true);
-    // The storm's room messages were each priced once for attention.
-    expect(walked.attentionCharged.length).toBeGreaterThanOrEqual(8);
+    // Every one of the week's room messages was priced once for attention, and
+    // exactly the week's worth: two welcomes Monday, the printer chat Tuesday,
+    // and the storm's ten in #office on the Wednesday - thirteen, the walk never
+    // opening Hubbub to read any of them clear.
+    expect(walked.attentionCharged.length).toBe(13);
   });
 
   it('is deterministic: the same carry stands up the same week', () => {

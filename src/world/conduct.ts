@@ -38,10 +38,10 @@ import { FIELDS } from './fields';
 import { dayForTick, minuteOfDay } from './hours';
 import { ticketTitle } from './tickets';
 import {
-  activeWeekScripts,
   dayScript,
   isWeekDay,
   REVIEW_PASS_PERFORMANCE,
+  WEEK,
 } from './week';
 
 /* -- the file -------------------------------------------------------------- */
@@ -232,9 +232,12 @@ export const CONDUCT_TRIGGER_CRITERIA: Readonly<
  * in `WEEK`, and this has to know about them without being edited.
  */
 export function favourTicketIds(): readonly string[] {
-  return activeWeekScripts().flatMap(
-    (script) => (script.dms ?? []).map((dm) => dm.raises),
-  );
+  // The probation week's DM-raised tickets. Conduct is a probation-week
+  // teaching system - its day labels are Monday-Friday, which every employer's
+  // week shares, and a second employer's favour ids (it authors none) are inert
+  // in a world that does not contain them - so it reads the probation `WEEK`
+  // directly rather than threading a per-employer one.
+  return WEEK.flatMap((script) => (script.dms ?? []).map((dm) => dm.raises));
 }
 
 function isResolved(ticket: Readonly<ReadOnlyGraphNode>): boolean {

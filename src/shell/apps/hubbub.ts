@@ -1,6 +1,5 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import {
-  activeChannelList,
   type ChannelMessage,
   channelById,
 } from '../../world/channels';
@@ -8,7 +7,6 @@ import { FIELDS } from '../../world/fields';
 import { PRESENCE_LABELS, readPresence } from '../../world/presence';
 import type { LinkedRequest } from '../../world/requests';
 import { ticketTitle } from '../../world/tickets';
-import { channelFeedThrough } from '../../world/week';
 import type { HubbubState } from '../app-state';
 import { formatSimTime } from '../clock-format';
 import {
@@ -105,9 +103,9 @@ export const HUBBUB_APP: AppDef = {
     /** The room on screen, defaulting to the first one the rollout made. */
     const selectedChannel = (): string => {
       const picked = rooms().selectedChannel;
-      return picked !== null && channelById(picked) !== undefined
+      return picked !== null && channelById(picked, api.day.rooms()) !== undefined
         ? picked
-        : activeChannelList()[0]?.id ?? '';
+        : api.day.rooms()[0]?.id ?? '';
     };
 
     /**
@@ -232,7 +230,7 @@ export const HUBBUB_APP: AppDef = {
       channelId: string,
       inRoom: readonly ChannelMessage[],
     ): void => {
-      const channel = channelById(channelId);
+      const channel = channelById(channelId, api.day.rooms());
       // The resolution of any request in the room is part of what the pane
       // SAYS - a converted request draws a different bar from a live one - so it
       // is in the signature, or the pane would never repaint when a copy is
@@ -363,7 +361,7 @@ export const HUBBUB_APP: AppDef = {
 
     const render = (): void => {
       const now = api.clock.now();
-      const feed = channelFeedThrough(now);
+      const feed = api.day.channelFeed(now);
       liveRequests = api.day.liveRequests();
       const showing = selectedChannel();
       const inRoom = channelFeed(feed, showing);
@@ -373,7 +371,7 @@ export const HUBBUB_APP: AppDef = {
       markSeen(inRoom);
 
       const read = rooms().read;
-      const rooms_ = activeChannelList();
+      const rooms_ = api.day.rooms();
       summary.textContent = `${String(rooms_.length)} rooms · `
         + `${String(totalUnread(feed, read))} unread`;
 

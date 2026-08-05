@@ -6,6 +6,7 @@ import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
 import { createWorldSession, type WorldSession } from '../session';
 import { inheritedTicketIds } from '../week';
+import { bodgeInheritedTicketIds } from '../second-week';
 import { BODGE_TICKETS } from './bodge';
 import { acceptsEscalation } from './escalation';
 import { allowsEscalation, spawnWorldTicket, WORLD_TICKETS } from './index';
@@ -105,7 +106,14 @@ describe('shipped tickets', () => {
         session.engine.ticketState(entry.def.id),
         entry.def.id,
       ).toBe(
-        inheritedTicketIds(1).includes(entry.def.id) ? 'open' : undefined,
+        // Each shop's own Monday pile: a Bodgeworth ticket is judged against
+        // Bodgeworth's inherited list, not the probation shop's.
+        (BODGE_TICKET_IDS.has(entry.def.id)
+          ? bodgeInheritedTicketIds()
+          : inheritedTicketIds(1)
+        ).includes(entry.def.id)
+          ? 'open'
+          : undefined,
       );
 
       spawnIfAbsent(session, entry);

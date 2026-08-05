@@ -3,7 +3,7 @@ import { isLunchtime, shiftStartTick } from '../../world/day';
 import { FIELDS } from '../../world/fields';
 import { latestTick, type MailThread, visibleMail } from '../../world/mail';
 import { findWorldTicket } from '../../world/tickets';
-import { dayScript, isWeekDay } from '../../world/week';
+import { isWeekDay } from '../../world/week';
 import { formatSimTime } from '../clock-format';
 import type { AppDef, AppInstance, GameApi } from './types';
 import {
@@ -252,8 +252,9 @@ export const BRIEF_APP: AppDef = {
       const display = formatSimTime(api.clock.now());
 
       // The day has a name as well as a number now: five of them, and the
-      // last one has a conversation at three o'clock in it.
-      const named = isWeekDay(day) ? `${dayScript(day).label}, ` : '';
+      // last one has a conversation at three o'clock in it. Read off the day
+      // driver so it is THIS employer's week the name comes from (0.6.0 slice 3).
+      const named = isWeekDay(day) ? `${api.day.dayLabel(day)}, ` : '';
       heading.textContent = `Day ${String(day)}, ${named}and it is ${
         display.time
       }`;

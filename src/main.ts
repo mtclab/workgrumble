@@ -26,8 +26,8 @@ import { CloudSaves } from './shell/sync';
 import { updateOnBoot, VersionSlot } from './shell/updates';
 import { BUILD_VERSION } from './shared/build';
 import { unreadIds } from './world/channels';
-import { COMPANY, COMPANY_IDS, companyInstallPolicy } from './world/company';
-import { employerName } from './world/employers';
+import { COMPANY, COMPANY_IDS } from './world/company';
+import { type Employer, employerFor, employerName } from './world/employers';
 import { awayNoticedLine } from './world/dialogue';
 import { dayForTick } from './world/hours';
 import { FLAVOR, flavorText } from './world/interruptions';
@@ -158,6 +158,13 @@ async function boot(): Promise<void> {
       ? carryForSwitch(arriving)
       : carried === null ? FIRST_WEEK : carryFrom(carried),
   );
+  // The employer this session is a week at, as LIVE state rather than a
+  // constant read once: the driver deals its week, the audit prices installs
+  // against its policy, and the offer names the shop after it - and a LOAD can
+  // move all of that to a different shop (`onEmployerRestored` below, P1-1). It
+  // is resolved off the id the world was actually stood up FROM, so it is right
+  // on a first Monday, an arrival, and a retry alike.
+  let currentEmployer: Employer = employerFor(employer);
   // The apps' own memory - transcripts, unread flags, the article that was
   // open. It outlives their windows and the save carries it.
   const appState = new AppStateStore();
@@ -203,15 +210,16 @@ async function boot(): Promise<void> {
     // every installed toy, a wild-west one counts none however many there are.
     // Empty on every scripted walk, so the goldens do not move.
     installedAgainstPolicy: () => (
-      companyInstallPolicy() === 'locked_down'
+      currentEmployer.installPolicy === 'locked_down'
         ? appState.get().installed.apps.length
         : 0
     ),
     // And the policy on its own, for the beat that reads the audit trail rather
     // than the current install set - it survives an uninstall, so the count
     // above cannot tell it "locked down with nothing installed" from
-    // "wild west". Read off the pack, the same place the drip is gated from.
-    installPolicy: () => companyInstallPolicy(),
+    // "wild west". Read off THIS employer, not the first one hardcoded: a toy
+    // installed at a wild-west shop accrues no suspicion (0.6.0, P1-3).
+    installPolicy: () => currentEmployer.installPolicy,
     // The sprawl of the third channel, priced (0.5.0 slice 3): the unread room
     // messages the meters have not billed, and the ledger that remembers the
     // ones they have. The driver bills the difference a point each, once - and
@@ -515,7 +523,16 @@ async function boot(): Promise<void> {
             + 'which is the only part of this they cannot take back.',
       );
     },
-  });
+  },
+  // No injected plan reader (the shipped shell deals its own days), then THIS
+  // employer's content: the week the driver schedules, the rooms Hubbub draws
+  // and whether the lead pings. Threading it off the session is what stops an
+  // arrival at a second employer from driving the probation week over its estate
+  // (0.6.0, P1-2/P1-4) - the `service:chassis-fan` crash the de-global exposed.
+  undefined,
+  currentEmployer.week,
+  currentEmployer.channels,
+  currentEmployer.runsBossPings);
 
   const session = createShellSession({
     engine,
@@ -530,6 +547,14 @@ async function boot(): Promise<void> {
     // arrival at the second employer stamps ITS id, and the switch verb reads
     // the same value to work out where the next job after this one is.
     employer,
+    // When a LOAD stands a different shop up than this tab booted at, the rest
+    // of the shell has to follow: the audit prices installs against the loaded
+    // shop's policy, and the offer names the shop after it (0.6.0, P1-1). The
+    // driver re-points its own week inside `load`; this catches everything else
+    // that reads the employer.
+    onEmployerRestored: (id) => {
+      currentEmployer = employerFor(id);
+    },
     // A throwaway engine for the preflight: a save is tried in a session
     // nobody is playing before it replaces the one somebody is.
     probeEngine: () => new WasmEngine(seed),

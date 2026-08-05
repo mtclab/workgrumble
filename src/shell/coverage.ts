@@ -2990,6 +2990,11 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'review-dismiss',
   'beer-open',
   'weekend-onward',
+  // The second door on the weekend screen: the desperate offer, taken beside
+  // the retry after a firing (0.6.0, E5 switch). Its FUNCTION is already in
+  // COVERAGE (weekend.offer-fired, switch.accept); this is the DOM half - the
+  // button is on screen on a fired week, so the inventory has to name it.
+  'weekend-accept-offer',
 ]);
 
 /**
