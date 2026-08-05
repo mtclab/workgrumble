@@ -144,7 +144,7 @@ async function boot(): Promise<void> {
   // Reading the slot LEAVES it - see below for when it is finally let go of.
   const retry = new RetrySlot(store.storage);
   const carried = retry.peek();
-  const { engine, tier, seed } = createWorldSession(
+  const { engine, tier, seed, employer } = createWorldSession(
     carried === null ? FIRST_WEEK : carryFrom(carried),
   );
   // The apps' own memory - transcripts, unread flags, the article that was
@@ -513,6 +513,10 @@ async function boot(): Promise<void> {
     slot,
     retry,
     actor: COMPANY_IDS.player,
+    // Which employer every save this session writes is stamped with. One today,
+    // and read back off the session that stood the world up rather than assumed,
+    // so the day the second employer ships this is already carrying the truth.
+    employer,
     // A throwaway engine for the preflight: a save is tried in a session
     // nobody is playing before it replaces the one somebody is.
     probeEngine: () => new WasmEngine(seed),

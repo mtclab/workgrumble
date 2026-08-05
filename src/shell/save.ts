@@ -21,6 +21,7 @@ import type { DriverSaveSeam, DriverState } from './day-driver';
 import { DayDriver, parseDriverState } from './day-driver';
 import { recordFrom, type RetrySlot } from './retry';
 import { BUILD_VERSION } from '../shared/build';
+import { FIRST_EMPLOYER } from '../world/employers';
 import { FIELDS } from '../world/fields';
 
 /**
@@ -34,8 +35,13 @@ import { FIELDS } from '../world/fields';
  *    "which of these two is newer" is a question the simulation tick cannot
  *    answer: the tick restarts every week and goes backwards on a retry. And
  *    the build that wrote it, so a file from a future version can say which.
+ * 4: the employer switch (E5). A save now says WHICH employer it is a week at,
+ *    because a career spans more than one and the standing/title are in the
+ *    engine payload but the employer's IDENTITY is not - it is the one fact a
+ *    reload needs that the graph does not carry. Absent means the first
+ *    employer, which is the only one a schema-3 file could have been at.
  */
-export const SAVE_SCHEMA = 3;
+export const SAVE_SCHEMA = 4;
 
 export const SAVE_KEY = 'workgrumble/save';
 
@@ -56,6 +62,17 @@ export interface SaveFile {
   readonly version: string | null;
   /** How the slot reads in a menu: "Day 2, 12:35". */
   readonly label: string;
+  /**
+   * Which employer this week is at.
+   *
+   * The career stats - reputation, title - ride the engine payload, because
+   * they are fields on the player node the graph serializes verbatim. The
+   * employer id does not: it is deliberately not a graph field (a new field on
+   * the player node would move the probation goldens), so it is carried here,
+   * beside the wall clock and the build, as the one thing a load needs to know
+   * which company the restored world belongs to.
+   */
+  readonly employer: string;
   /** The engine's own serialization, carried verbatim. */
   readonly engine: string;
   readonly app: AppState;
@@ -122,9 +139,11 @@ function migrate(file: Record<string, unknown>): SaveOutcome<
     return refuse(PRE_RELEASE_SAVE_REASON);
   }
 
-  // 2 -> 3. The seam was written for this and this is the first time it has
-  // been used, so it is worth saying what it is doing rather than what it is
-  // for. A schema-2 file has a complete world in it - nothing about the
+  // Each step upgrades one schema to the next, in order, so a schema-2 file
+  // walks 2 -> 3 -> 4 and arrives complete.
+  let value = file;
+
+  // 2 -> 3. A schema-2 file has a complete world in it - nothing about the
   // pressure layer changed - and is missing only the two facts that were added
   // for a save that can live in two places at once.
   //
@@ -133,14 +152,19 @@ function migrate(file: Record<string, unknown>): SaveOutcome<
   // before this build existed cannot have been written after one that was, and
   // a sync that treated an unknown time as NOW would let a stale local copy
   // beat the badge's own.
-  if (schema < 3) {
-    return {
-      ok: true,
-      value: { ...file, schema: 3, savedAt: 0, version: null },
-    };
+  if ((value.schema as number) < 3) {
+    value = { ...value, schema: 3, savedAt: 0, version: null };
   }
 
-  return { ok: true, value: file };
+  // 3 -> 4. The world is complete and the standing is already in the engine
+  // payload; the only fact a schema-3 file lacks is which employer it is at,
+  // and there is exactly one honest answer - the first, the only employer any
+  // file this old could have been written at.
+  if ((value.schema as number) < 4) {
+    value = { ...value, schema: 4, employer: FIRST_EMPLOYER };
+  }
+
+  return { ok: true, value };
 }
 
 export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {
@@ -170,6 +194,15 @@ export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {
     ? file.version
     : undefined;
 
+  // The employer is read tolerantly, not strictly: a migrated file always has
+  // it (the 3 -> 4 step wrote it), and a native schema-4 file always has it
+  // (the writer does), but a hand-edited or truncated one that lost it is a
+  // week at the first employer rather than a refused save - the same rule the
+  // migration reads, applied one layer out.
+  const employer = typeof file.employer === 'string' && file.employer.length > 0
+    ? file.employer
+    : FIRST_EMPLOYER;
+
   if (
     typeof file.engine !== 'string'
     || file.engine.length === 0
@@ -196,6 +229,7 @@ export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {
       savedAt: file.savedAt,
       version,
       label: file.label,
+      employer,
       engine: file.engine,
       app,
       driver,
@@ -331,6 +365,16 @@ export interface SessionParts {
   readonly retry: RetrySlot;
   /** The node the week's fund and attempt number live on. */
   readonly actor: NodeId;
+  /**
+   * Which employer this session is at, stamped into every save.
+   *
+   * Optional and defaulting to the first employer, because that is the only one
+   * this build stands up and the only one a session could be at until the
+   * switch is wired to the shell (slice 2). It comes in through the seam rather
+   * than being read off the graph because the employer's identity is not a
+   * graph field - see `SaveFile.employer`.
+   */
+  readonly employer?: string;
   /** What the shell does once a retry has been written: reload, usually. */
   restart(): void;
   /**
@@ -461,6 +505,7 @@ export function createShellSession(
         savedAt: (parts.now ?? Date.now)(),
         version: BUILD_VERSION,
         label: `${display.day}, ${display.time}`,
+        employer: parts.employer ?? FIRST_EMPLOYER,
         engine: engine.serialize(),
         app: appState.snapshot(),
         driver: day.driverState(),

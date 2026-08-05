@@ -7,6 +7,7 @@ import { WasmEngine } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
+import { FIRST_EMPLOYER } from '../world/employers';
 import { FIELDS } from '../world/fields';
 import {
   createWorldSession,
@@ -507,6 +508,32 @@ describe('the save file', () => {
     fresh.storage.setItem('workgrumble/save', JSON.stringify(older));
     expect(fresh.session.load().ok).toBe(true);
     expect(fresh.engine.snapshotHash()).toBe(live.engine.snapshotHash());
+  });
+
+  /**
+   * The employer stamp (0.6.0). The career stats ride the engine payload; the
+   * employer's IDENTITY is the one fact a reload needs that the graph does not
+   * carry, so a save says which company it is a week at - and a file from before
+   * the switch existed is a week at the first, the only one it could have been.
+   */
+  it('stamps a save with its employer and gives an older file the first one', () => {
+    const live = session();
+    live.session.save();
+
+    const written = parseSaveFile(live.storage.getItem('workgrumble/save') ?? '');
+    expect(written.ok && written.value.employer).toBe(FIRST_EMPLOYER);
+
+    // A schema-3 file has no employer on it at all; the migration is the whole
+    // back-compat rule, and if it stops writing the default a load has no
+    // company to resume. Reverting the 3 -> 4 step fails this.
+    const current = JSON.parse(live.storage.getItem('workgrumble/save') ?? '{}') as
+      Record<string, unknown>;
+    const older: Record<string, unknown> = { ...current, schema: 3 };
+    delete older.employer;
+
+    const migrated = parseSaveFile(JSON.stringify(older));
+    expect(migrated.ok && migrated.value.employer).toBe(FIRST_EMPLOYER);
+    expect(migrated.ok && migrated.value.schema).toBe(SAVE_SCHEMA);
   });
 
   /**

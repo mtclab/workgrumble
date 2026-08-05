@@ -1,5 +1,6 @@
 import {
   type EngineApi,
+  type NodeId,
   type SetupOp,
   WasmEngine,
 } from '../engine-api';
@@ -8,13 +9,23 @@ import {
   HELPDESK_TIER,
   KIND_LABELS,
 } from './actions';
-import { companySetup, COMPANY_IDS } from './company';
 import { DEMO_ACTION_DATA } from './demo-world';
+import {
+  type Employer,
+  employerFor,
+  FIRST_EMPLOYER,
+} from './employers';
 import { watchMachineEvents } from './events';
 import { FIELDS } from './fields';
-import { beatsFiredBy, PROBATION_WEEK, seasonAt } from './pressure';
+import { clampMeter } from './meters';
+import {
+  beatsFiredBy,
+  type EmployerArc,
+  PROBATION_WEEK,
+  seasonAt,
+} from './pressure';
 import { spawnWorldTicket } from './tickets';
-import { inheritedTicketIds, REVIEW_PASS_PERFORMANCE } from './week';
+import { REVIEW_PASS_PERFORMANCE } from './week';
 
 /**
  * Where the first week is dealt from. The working day is replayable, so the
@@ -63,12 +74,44 @@ export interface WeekCarry {
    * week one carries no weather by rule.
    */
   readonly arcWeek?: number;
+  /**
+   * Which employer stands this week up, defaulting to the shop that hired the
+   * probationer.
+   *
+   * Optional and absent means the first employer, which is the back-compat rule
+   * read forwards: a carry written before the switch existed - every retry
+   * record and every save this build has ever read - could only have been at
+   * the one employer there was. The day the second employer ships, a carry
+   * naming it stands up its graph instead; until then this is the whole of the
+   * switch parameter, threaded but pointed at one place.
+   */
+  readonly employer?: string;
+  /**
+   * The standing the player arrives with, or absent for a fresh start.
+   *
+   * This is the career half of the switch. On a first week and on a retry it is
+   * ABSENT, and absent means the employer's own starting reputation is seeded -
+   * which is why a fresh probation and a retried one are byte-identical to the
+   * world before this field existed: nothing new is written. On an employer
+   * SWITCH it carries the reputation earned at the last shop, and the new
+   * player node is seeded FROM it rather than fresh, which is the standing
+   * following the player across the swap.
+   */
+  readonly reputation?: number;
+  /**
+   * And the title, carried the same way and for the same reason: present only
+   * on a switch, when the player keeps the standing they held. Absent leaves the
+   * employer's own seeded title in place, so the probation week's "IT Support
+   * Technician (probationary)" is untouched and the goldens do not move.
+   */
+  readonly title?: string;
 }
 
 export const FIRST_WEEK: WeekCarry = Object.freeze({
   farmFund: 0,
   attempt: 1,
   arcWeek: PROBATION_WEEK,
+  employer: FIRST_EMPLOYER,
 });
 
 export interface WorldSession {
@@ -77,9 +120,30 @@ export interface WorldSession {
   /** The seed this week was dealt from - what the day driver schedules on. */
   readonly seed: number;
   readonly carry: WeekCarry;
+  /** Which employer this session stood up - what a switch or save reads back. */
+  readonly employer: string;
 }
 
-function requireCarry(carry: Readonly<WeekCarry>): Required<WeekCarry> {
+/**
+ * A carry with every world-seed field resolved, and the career fields kept as
+ * "present or not" rather than defaulted.
+ *
+ * The distinction is the whole of the byte-identical claim. `farmFund`,
+ * `attempt` and `arcWeek` default to a value and are always written. The career
+ * fields do NOT default to a value - they resolve to `null`, which means "write
+ * nothing, leave the employer's own seed" - so a carry with no career on it
+ * emits exactly the ops it emitted before the career existed.
+ */
+interface ResolvedCarry {
+  readonly farmFund: number;
+  readonly attempt: number;
+  readonly arcWeek: number;
+  readonly employer: string;
+  readonly reputation: number | null;
+  readonly title: string | null;
+}
+
+function requireCarry(carry: Readonly<WeekCarry>): ResolvedCarry {
   const arcWeek = carry.arcWeek ?? PROBATION_WEEK;
 
   if (!Number.isSafeInteger(carry.farmFund) || carry.farmFund < 0) {
@@ -94,7 +158,34 @@ function requireCarry(carry: Readonly<WeekCarry>): Required<WeekCarry> {
     throw new TypeError('A week of the employer arc is numbered from 1.');
   }
 
-  return { farmFund: carry.farmFund, attempt: carry.attempt, arcWeek };
+  // The carried standing, when there is one, is a meter reading: a whole number
+  // on the same nought-to-a-hundred scale the reputation meter runs, clamped so
+  // a firing penalty that took it below the floor arrives as the floor rather
+  // than as a negative the graph would refuse.
+  let reputation: number | null = null;
+
+  if (carry.reputation !== undefined) {
+    if (!Number.isSafeInteger(carry.reputation)) {
+      throw new TypeError('A carried reputation is a whole number.');
+    }
+
+    reputation = clampMeter(carry.reputation);
+  }
+
+  const title = carry.title ?? null;
+
+  if (title !== null && title.length === 0) {
+    throw new TypeError('A carried title is a name, not an empty string.');
+  }
+
+  return {
+    farmFund: carry.farmFund,
+    attempt: carry.attempt,
+    arcWeek,
+    employer: carry.employer ?? FIRST_EMPLOYER,
+    reputation,
+    title,
+  };
 }
 
 /**
@@ -110,14 +201,16 @@ function requireCarry(carry: Readonly<WeekCarry>): Required<WeekCarry> {
 export function createWorldSession(
   carry: Readonly<WeekCarry> = FIRST_WEEK,
   engine: EngineApi = new WasmEngine(seedForAttempt(carry.attempt)),
+  employer: Employer = employerFor(carry.employer),
 ): WorldSession {
   const start = requireCarry(carry);
+  const player = employer.playerId;
   engine.setTier(HELPDESK_TIER);
   engine.applySetup([
-    ...companySetup(),
-    ...weekOpeningSetup(),
-    ...carrySetup(start),
-    ...pressureSetup(start.arcWeek),
+    ...employer.setup(),
+    ...weekOpeningSetup(player),
+    ...carrySetup(start, player),
+    ...pressureSetup(start.arcWeek, employer.arc, player),
   ]);
   engine.registerActions({
     kind_labels: KIND_LABELS,
@@ -130,13 +223,13 @@ export function createWorldSession(
   // fell over, and the Event Viewer is the only surface that says when. A
   // subscription taken after the pile was spawned would open Monday on four
   // faults and an empty log.
-  watchMachineEvents(engine, COMPANY_IDS.player);
+  watchMachineEvents(engine, player);
 
   // Only Monday's inherited pile is spawned here: it is what was waiting when
   // the player sat down. Everything that ARRIVES during a shift, and every
   // other day of the week, is the day driver's to spawn at the tick the week's
   // table says it turns up.
-  for (const id of inheritedTicketIds(1)) {
+  for (const id of employer.mondayTicketIds()) {
     spawnWorldTicket(engine, id);
   }
 
@@ -144,7 +237,27 @@ export function createWorldSession(
     engine,
     tier: HELPDESK_TIER,
     seed: seedForAttempt(start.attempt),
-    carry: start,
+    carry: resolvedToCarry(start),
+    employer: employer.id,
+  };
+}
+
+/**
+ * The resolved carry as a plain `WeekCarry` again, for the session to report.
+ *
+ * The career fields are folded back to present-or-absent - a `null` standing is
+ * dropped rather than reported as `null` - so the carry a fresh probation
+ * reports is exactly the three-and-employer shape it was handed, which is what
+ * lets `createWorldSession(FIRST_WEEK).carry` still equal `FIRST_WEEK`.
+ */
+function resolvedToCarry(start: Readonly<ResolvedCarry>): WeekCarry {
+  return {
+    farmFund: start.farmFund,
+    attempt: start.attempt,
+    arcWeek: start.arcWeek,
+    employer: start.employer,
+    ...(start.reputation === null ? {} : { reputation: start.reputation }),
+    ...(start.title === null ? {} : { title: start.title }),
   };
 }
 
@@ -161,11 +274,11 @@ export function createWorldSession(
  * import cycle that runs at module load, which is a `WEEK` table built out of
  * a `COMPANY_IDS` that does not exist yet.
  */
-function weekOpeningSetup(): readonly SetupOp[] {
+function weekOpeningSetup(player: NodeId): readonly SetupOp[] {
   return [
     {
       op: 'setField',
-      id: COMPANY_IDS.player,
+      id: player,
       field: FIELDS.reviewBar,
       value: REVIEW_PASS_PERFORMANCE,
     },
@@ -191,8 +304,12 @@ function weekOpeningSetup(): readonly SetupOp[] {
  * itself, which is a fact about where the player is in a career rather than
  * about anything happening to them.
  */
-function pressureSetup(arcWeek: number): readonly SetupOp[] {
-  const season = seasonAt(arcWeek);
+function pressureSetup(
+  arcWeek: number,
+  arc: Readonly<EmployerArc>,
+  player: NodeId,
+): readonly SetupOp[] {
+  const season = seasonAt(arcWeek, arc);
 
   if (season === null) {
     return [];
@@ -204,7 +321,7 @@ function pressureSetup(arcWeek: number): readonly SetupOp[] {
   if (fired.has('weather')) {
     ops.push({
       op: 'setField',
-      id: COMPANY_IDS.player,
+      id: player,
       field: FIELDS.pressureWeatherAt,
       value: 0,
     });
@@ -213,7 +330,7 @@ function pressureSetup(arcWeek: number): readonly SetupOp[] {
   if (fired.has('notice')) {
     ops.push({
       op: 'setField',
-      id: COMPANY_IDS.player,
+      id: player,
       field: FIELDS.pressureNoticeAt,
       value: 0,
     });
@@ -230,23 +347,26 @@ function pressureSetup(arcWeek: number): readonly SetupOp[] {
  * fund does not start at nought. A screen that subtracted an opening balance
  * it had to guess at would be a screen that flatters a retry.
  */
-function carrySetup(carry: Required<WeekCarry>): readonly SetupOp[] {
-  return [
+function carrySetup(
+  carry: Readonly<ResolvedCarry>,
+  player: NodeId,
+): readonly SetupOp[] {
+  const ops: SetupOp[] = [
     {
       op: 'setField',
-      id: COMPANY_IDS.player,
+      id: player,
       field: FIELDS.farmFund,
       value: carry.farmFund,
     },
     {
       op: 'setField',
-      id: COMPANY_IDS.player,
+      id: player,
       field: FIELDS.weekOpeningFund,
       value: carry.farmFund,
     },
     {
       op: 'setField',
-      id: COMPANY_IDS.player,
+      id: player,
       field: FIELDS.weekAttempt,
       value: carry.attempt,
     },
@@ -255,9 +375,46 @@ function carrySetup(carry: Required<WeekCarry>): readonly SetupOp[] {
     // matrix - the one nobody can move - is read straight off it.
     {
       op: 'setField',
-      id: COMPANY_IDS.player,
+      id: player,
       field: FIELDS.arcWeek,
       value: carry.arcWeek,
     },
   ];
+
+  // The career, when a switch carried one. These ops are written ONLY when the
+  // carry holds a standing to continue, which is the whole of why a fresh
+  // probation and a retried one stay byte-identical: with no career on the
+  // carry nothing is pushed here, and the employer's own seed - the starting
+  // reputation, the probationary title - stands untouched exactly as it did
+  // before this field existed. On a switch they overwrite that seed with what
+  // the player earned at the last shop, which is the standing following them.
+  if (carry.reputation !== null) {
+    ops.push(
+      {
+        op: 'setField',
+        id: player,
+        field: FIELDS.reputation,
+        value: carry.reputation,
+      },
+      // The weighted week read starts where the meter does on a Monday - there
+      // are no days behind it to weigh - so an arriving standing seeds both.
+      {
+        op: 'setField',
+        id: player,
+        field: FIELDS.weekReputation,
+        value: carry.reputation,
+      },
+    );
+  }
+
+  if (carry.title !== null) {
+    ops.push({
+      op: 'setField',
+      id: player,
+      field: FIELDS.title,
+      value: carry.title,
+    });
+  }
+
+  return ops;
 }
