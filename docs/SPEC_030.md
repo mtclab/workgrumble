@@ -667,3 +667,49 @@ wrong place (gratitude, no credit, visible); the pre-chewed ticket; unread press
 cleared. Goldens move once for the week's channel content - every number argued. Solvability,
 determinism, off-hours, save round-trip standing. One codex review of the whole version diff
 (</dev/null + timeout), one full box cycle, one release note.
+
+---
+
+# Version 0.5.1 - mobile playable (issue #23, owner-flagged mobile UX)
+
+Owner: mobile UX is bad. Audit: the game is a fake-DESKTOP-OS, desktop-first by design, and
+the HARD blocker is the boss key - Backquote, a physical key with no touch equivalent, so the
+panic-hide-your-slacking core mechanic is DEAD on a phone. This is TIER 1: make it PLAYABLE on
+touch. The full responsive layout (single maximized window, bottom nav, terminal ergonomics)
+is TIER 2 - a separate epic, owner's scope call, NOT this version.
+
+## Slice 1 - the on-screen panic control (headline)
+
+1. Extract the boss-key action (`desktop.ts`: `closeTransientSurfaces()` +
+   `commitWindows(minimizeSlackWindows(...))`) into a `panic()` method. The keydown handler
+   and a new on-screen panic button both call it. The panic-key contract holds: no wait for a
+   field to lose focus.
+2. The button shows on touch / coarse-pointer / a narrow viewport (feature-detect via
+   `pointer: coarse` / width, never user-agent sniffing). On desktop the keyboard path is
+   unchanged. test-id for the button.
+
+## Slice 2 - windows fit a small viewport
+
+3. Clamp window geometry: max-width/height to the viewport (minus chrome), and reposition a
+   window that would open off-screen back into view - nothing unreachable or undraggable on a
+   phone. Clamp geometry only; do NOT rebuild the window manager (the cascade/occupancy logic
+   and the 0.3.6 taskbar-scroll fix are the precedent).
+
+## Slice 3 - touch tap targets
+
+4. The panic button, window close, and the key chips get ~44px hit areas on coarse-pointer via
+   tokens + `@media (pointer: coarse)`. Desktop sizing unchanged.
+
+## Not in scope (tier 2, an epic)
+
+Full responsive single-window layout, bottom nav, terminal touch ergonomics, orientation. This
+version makes the desktop OS PLAYABLE on a phone; it does not make it a phone app.
+
+## Gates
+
+The panic button fires the IDENTICAL action as the boss key (driver/unit teeth on the shared
+`panic()` - key and button minimize the same windows, close the same transient surfaces). A
+geometry unit for the off-viewport clamp. Desktop path unchanged (the existing boss-key e2e
+still passes). Goldens byte-identical (UI/CSS + a method extraction, no world state) - assert.
+Coverage: the panic button in the manifest + PLAYER_CONTROLS. Both box halves; codex wave
+(</dev/null + timeout).
