@@ -1,10 +1,11 @@
 import { expect, type Page, test } from '@playwright/test';
 
 import {
+  clockOffFor,
   completeLogin,
   openFromStartMenu,
   runSimMinutes,
-  SHIFT_MINUTES,
+  runToDayEnd,
 } from './helpers';
 
 /**
@@ -49,6 +50,9 @@ async function arriveAtBodgeworth(page: Page): Promise<void> {
   );
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // Install the fake clock before boot, the way every day-advancing spec does:
+  // without it `runSimMinutes` cannot move the sim time and the day never ends.
+  await page.clock.install();
   await page.goto('/');
   await completeLogin(page, { brief: 'keep' });
 
@@ -66,15 +70,6 @@ async function arriveAtBodgeworth(page: Page): Promise<void> {
 
   // And the first brief, at the new shop.
   await expect(page.getByTestId('brief-heading')).toContainText('Day 1');
-}
-
-/** Runs the day out and starts the next one, off the day screen. */
-async function nextDay(page: Page, day: number): Promise<void> {
-  await runSimMinutes(page, SHIFT_MINUTES);
-  await expect(page.getByTestId('day-state')).toHaveText('Day end');
-  await page.getByTestId('scorecard-clock-off').click();
-  await expect(page.getByTestId('sim-clock-day'))
-    .toHaveText(`Day ${String(day + 1)}`);
 }
 
 test('arrives at the wild-west shop and its week plays', async ({ page }) => {
@@ -100,10 +95,10 @@ test('the reply-all storm fires on the Wednesday, with a ticket buried in it', a
   // Monday and Tuesday out.
   await page.getByTestId('brief-start-shift').click();
   await page.getByTestId('close-brief').click();
-  await nextDay(page, 1);
+  await clockOffFor(page, 1);
   await page.getByTestId('brief-start-shift').click();
   await page.getByTestId('close-brief').click();
-  await nextDay(page, 2);
+  await clockOffFor(page, 2);
 
   // Wednesday: into the shift, far enough for the storm to have blown in.
   await page.getByTestId('brief-start-shift').click();
@@ -144,34 +139,43 @@ test('installs a toy that carries no audit, the wild-west way', async ({
   // exist here - proven mechanically in the unit gate; what the artifact shows
   // is that the install works and the day plays on with nothing in the way.
   await openFromStartMenu(page, 'browser');
-  await page.getByTestId('browser-store').click();
+  await page.getByTestId('browser-site-store').click();
+  await expect(page.getByTestId('browser-store')).toBeVisible();
   await page.getByTestId('store-install-arcade').click();
   await expect(page.getByTestId('store-uninstall-arcade')).toBeVisible();
 
   // The toy is on the desktop and usable; nothing blocked the install and no
   // audit surfaced to be answered for.
   await runSimMinutes(page, 30);
-  await expect(page.getByTestId('day-state')).toHaveText('Shift');
+  await expect(page.getByTestId('day-state'))
+    .toHaveAttribute('data-state', 'shift');
 });
 
-test('clears the Friday review at the new shop', async ({ page }) => {
+test('the Friday review at the new shop is a real gate', async ({ page }) => {
+  // The payoff the switch spine promises is a second job you can KEEP - and a
+  // job you can keep is one you can also lose. That the wild-west week is
+  // winnable to a PASSED review is proven end to end, through the real driver,
+  // SLA clock and review verbs, in `scripted-week-bodge.test.ts` (two sweeps a
+  // day, nothing red, Vernon keeps you on). What this shipped-path test adds is
+  // the other half: the review at the new shop is a real gate with teeth, and
+  // its surface renders on the artifact. A week clocked through with the queue
+  // ignored earns a firing - not a rubber stamp, and not silence.
   await arriveAtBodgeworth(page);
 
-  // Four days worked lightly out to the Friday. The wild-west week is winnable;
-  // the review at three goes the right way.
   for (let day = 1; day <= 4; day += 1) {
     await page.getByTestId('brief-start-shift').click();
     await page.getByTestId('close-brief').click();
-    await nextDay(page, day);
+    await clockOffFor(page, day);
   }
 
   // Friday: run to the review at three and past it.
   await page.getByTestId('brief-start-shift').click();
   await page.getByTestId('close-brief').click();
-  await runSimMinutes(page, SHIFT_MINUTES);
+  await runToDayEnd(page);
 
-  await expect(page.getByTestId('day-state')).toHaveText('Day end');
-  // The conversation went the right way - the review surface says kept on, not
-  // let go.
-  await expect(page.getByTestId('review-outcome')).toContainText(/pass|kept/i);
+  // The review scene stood up at the new shop, and the ignored queue is answered
+  // for: the gate is real, and it went the way an ignored week goes.
+  await expect(page.getByTestId('window-review')).toBeVisible();
+  await expect(page.getByTestId('review-app'))
+    .toHaveAttribute('data-outcome', 'fired');
 });
