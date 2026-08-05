@@ -8,6 +8,8 @@ import { driveSetup, SOFTWARE, type Software } from './filesystem';
 import {
   DEVICE_TYPES,
   FIELDS,
+  MACHINE_OS,
+  type MachineOs,
   type MachineRole,
   MACHINE_ROLES,
   SERVICE_CLASSES,
@@ -15,7 +17,12 @@ import {
   STARTUP_TYPES,
 } from './fields';
 import { STARTING_REPUTATION } from './meters';
-import { BASELINE_SERVICES, baselineServiceId } from './services';
+import {
+  BASELINE_SERVICES,
+  baselineServiceId,
+  BASELINE_UNITS,
+  linuxUnitId,
+} from './services';
 
 /**
  * What everybody on this estate has on file, from the June rollout: a number
@@ -208,6 +215,21 @@ export const COMPANY_IDS = {
    * accounts, the logons and the lockouts happen nowhere.
    */
   domainController: 'machine:dc',
+
+  /**
+   * The intranet box: a Windows member server running IIS - the timesheet
+   * portal, the thing that throws 503s on a Friday. Windows, so `sc` and
+   * `services` read it fine; the app pools behind it are Engineer work.
+   */
+  intranetServer: 'machine:intranet',
+
+  /**
+   * The product boxes the company barely acknowledges: a Linux app server
+   * running the thing customers log into, and its database. Windows-family
+   * tools stop at their wire, which is the heterogeneous estate's whole lesson.
+   */
+  appServer: 'machine:app',
+  dbServer: 'machine:db',
 
   /** What the accounts package counts before it lets anybody in. */
   suiteLicences: 'service:suite-licences',
@@ -428,6 +450,12 @@ interface MachineSeed {
   readonly hostname: string;
   /** What the box is for, which is what decides the services on it. */
   readonly role: MachineRole;
+  /**
+   * Which OS family this box runs. Omitted means Windows, which is what every
+   * box in this building was until the product boxes arrived - the back-compat
+   * default, so the fourteen existing machines carry the field and nothing else.
+   */
+  readonly os?: MachineOs;
   readonly owner?: string;
   /** The box this one's cable ends up in. Everything ends up in PRINT-01. */
   readonly wiredTo?: string;
@@ -618,6 +646,42 @@ const MACHINES: readonly MachineSeed[] = [
     processor: 'Pentagon 200 MHz (holding every logon in the building)',
     memory: '256 MB',
     diskFree: 1_610_612_736,
+  },
+  // The intranet, and the two product boxes nobody upstairs thinks about. The
+  // IIS box is Windows and reads like any other server; the two Linux boxes are
+  // reachable and nameable and their management tools are a tier away.
+  {
+    id: COMPANY_IDS.intranetServer,
+    hostname: 'INTRA-01',
+    role: MACHINE_ROLES.iisServer,
+    wiredTo: COMPANY_IDS.printServer,
+    resolution: '640x480',
+    processor: 'Pentagon 200 MHz (serving the timesheet portal, badly)',
+    memory: '256 MB',
+    diskFree: 734_003_200,
+  },
+  {
+    id: COMPANY_IDS.appServer,
+    hostname: 'APP-01',
+    role: MACHINE_ROLES.appServer,
+    os: MACHINE_OS.linux,
+    // On the same switch as everything else: the product is reachable from the
+    // desk, which is what lets the SD player confirm the wire and escalate.
+    wiredTo: COMPANY_IDS.printServer,
+    // A real server, not a Pentagon under a desk - the product runs here.
+    processor: 'Xeon-class, and the only machine in the building anybody sized',
+    memory: '16 GB',
+    diskFree: 42_949_672_960,
+  },
+  {
+    id: COMPANY_IDS.dbServer,
+    hostname: 'DB-01',
+    role: MACHINE_ROLES.dbServer,
+    os: MACHINE_OS.linux,
+    wiredTo: COMPANY_IDS.printServer,
+    processor: 'Xeon-class, with the database on the fast disk',
+    memory: '32 GB',
+    diskFree: 68_719_476_736,
   },
 ];
 
@@ -844,6 +908,7 @@ export function companySetup(): readonly SetupOp[] {
       fields: {
         [FIELDS.hostname]: machine.hostname,
         [FIELDS.machineRole]: machine.role,
+        [FIELDS.machineOs]: machine.os ?? MACHINE_OS.windows,
         [FIELDS.displayRotation]: 0,
         [FIELDS.resolution]: machine.resolution ?? '1024x768',
         [FIELDS.pendingUpdates]: machine.pendingUpdates === true,
@@ -860,6 +925,13 @@ export function companySetup(): readonly SetupOp[] {
   // `contains` edge from a machine to its own root is an edge like any other
   // and the engine refuses one whose ends are not both built yet.
   for (const machine of MACHINES) {
+    // A Linux box has no Windows C: drive to build - its filesystem is the
+    // Engineer tier's, seeded when the unix commands that read it exist. The
+    // SD player reaches it over the wire and no further.
+    if ((machine.os ?? MACHINE_OS.windows) === MACHINE_OS.linux) {
+      continue;
+    }
+
     const owner = STAFF.find((member) => member.person === machine.owner);
 
     ops.push(...driveSetup({
@@ -1217,9 +1289,32 @@ export function companySetup(): readonly SetupOp[] {
   // skill this game is about is reading twenty lines and finding the one that
   // is wrong, and a list with only the wrong line in it has done that for you.
   for (const machine of MACHINES) {
+    // A Linux box runs systemd units, not Windows services - a different
+    // manager with different words, seeded as `unit` nodes off the role's unit
+    // table. Real world data, not readable by the SD player's Windows tools.
+    if ((machine.os ?? MACHINE_OS.windows) === MACHINE_OS.linux) {
+      for (const unit of BASELINE_UNITS[machine.role] ?? []) {
+        const id = linuxUnitId(machine.id, unit.unit);
+
+        addNode(ops, {
+          id,
+          kind: 'unit',
+          fields: {
+            [FIELDS.name]: unit.name,
+            [FIELDS.unitName]: unit.unit,
+            [FIELDS.unitState]: unit.state,
+            [FIELDS.unitEnabled]: unit.enabled,
+          },
+        });
+        addEdge(ops, { from: id, to: machine.id, kind: 'runs_on' });
+      }
+
+      continue;
+    }
+
     const named = NAMED_SERVICE_TWINS[machine.id] ?? [];
 
-    for (const service of BASELINE_SERVICES[machine.role]) {
+    for (const service of BASELINE_SERVICES[machine.role] ?? []) {
       // A named service above IS this box's copy of that service, so the
       // baseline does not seed a second one beside it.
       if (named.includes(service.service)) {

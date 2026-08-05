@@ -14,6 +14,12 @@ export const NODE_KINDS = [
   'machine',
   'device',
   'service',
+  /**
+   * A systemd unit on a Linux box - the Linux analogue of a `service`, kept as
+   * its own kind because families are not one shell in hats: a unit carries
+   * systemd's own state words and no Windows service manager reaches it.
+   */
+  'unit',
   'share',
   'group',
   'mail_rule',

@@ -12,12 +12,17 @@ use crate::error::{EngineError, EngineResult};
 use crate::refuse;
 use crate::value::FieldValue;
 
-pub const NODE_KINDS: [&str; 11] = [
+pub const NODE_KINDS: [&str; 12] = [
     "person",
     "account",
     "machine",
     "device",
     "service",
+    // A systemd unit on a Linux box. Its own kind rather than a "service" with
+    // Linux words in it, because families are not one shell in hats: a unit has
+    // systemd's own state vocabulary and no Windows service manager knows about
+    // it, which is the whole reason the estate is heterogeneous.
+    "unit",
     "share",
     "group",
     "mail_rule",
@@ -165,6 +170,29 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
                     )
                 },
                 "\"running\", \"stopped\", or \"wedged\"",
+            )
+        }
+        "unit" => {
+            // A systemd unit: a description, the unit name systemctl takes, and
+            // the ActiveState/SubState line in the real words systemd prints.
+            // The state list is the Linux analogue of the service "status"
+            // check above - held as data, validated at load like everything else.
+            assert_optional(fields, "name", is_string, "a string")?;
+            assert_optional(fields, "unit", is_string, "a string")?;
+            assert_optional(
+                fields,
+                "unit_state",
+                |value| {
+                    matches!(
+                        value.as_str(),
+                        Some("active (running)")
+                            | Some("active (exited)")
+                            | Some("inactive (dead)")
+                            | Some("failed")
+                            | Some("activating")
+                    )
+                },
+                "a systemd unit state",
             )
         }
         "share" => {

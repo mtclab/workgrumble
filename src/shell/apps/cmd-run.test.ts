@@ -139,7 +139,10 @@ describe('support terminal commands', () => {
       expect(desk).not.toContain('TCP/IP Print Server');
       expect(files).toContain('Distributed File System');
       expect(desk).not.toContain('Distributed File System');
-      expect(dc).toContain('Directory Service');
+      // The DC names Active Directory the way a real one does, and SYSVOL
+      // replication honestly beside it.
+      expect(dc).toContain('Active Directory Domain Services');
+      expect(dc).toContain('DFS Replication');
       expect(dc).toContain('Kerberos Key Distribution Center');
       expect(desk).not.toContain('Kerberos Key Distribution Center');
 
@@ -376,7 +379,9 @@ describe('support terminal commands', () => {
     const api = apiFor(session);
     const refusal = run(api, 'restart spooler');
 
-    expect(refusal).toContain('matches 14 of them');
+    // Fifteen now, not fourteen: the IIS intranet box is a Windows server and
+    // runs its own spooler like every other Windows box in the building.
+    expect(refusal).toContain('matches 15 of them');
     expect(refusal).toContain('ACCTS-01, ACCTS-03, BEIGE-BOX');
     expect(refusal).toContain('the way sc makes you');
     // And the qualified form works, on the box that was named.
@@ -655,5 +660,108 @@ describe('support terminal commands', () => {
     expect(run(api, 'purge \\\\WHOUSE-01\\C$\\SCANNER\\EXPORT'))
       .toContain('310,902,784 bytes deleted');
     expect(session.engine.ticketState('ticket:disk-full')).toBe('resolved');
+  });
+});
+
+/**
+ * The heterogeneous estate (0.7.0): a Windows-family tool aimed at a Linux box
+ * refuses the way the real tool does, and the refusal names systemd - the other
+ * family and the on-ramp to the tools that reach it. The network layer is
+ * OS-agnostic, so ping/nslookup/tracert still reach and name the box.
+ *
+ * These run through the REAL dispatch path (`executeCommand` on a parsed line
+ * against the shipped world), and every assertion has teeth: each refusal both
+ * NAMES systemd and asserts the normal output is ABSENT, so removing the guard -
+ * which would list the box's units as services, or print its Windows block -
+ * fails the test rather than passing it quietly.
+ */
+describe('a Windows terminal meets the Linux boxes', () => {
+  it('refuses sc against a Linux host, and names systemd', () => {
+    const api = apiFor(createWorldSession());
+    const output = run(api, 'sc query APP-01\\nginx');
+
+    expect(output).toContain('APP-01 is not a Windows host');
+    expect(output).toContain('Windows Service Control Manager');
+    expect(output).toContain('systemd');
+    // The real block never gets printed: no manager answered.
+    expect(output).not.toContain('SERVICE_NAME');
+    expect(output).not.toContain('RUNNING');
+  });
+
+  it('refuses services against a Linux host, and names systemd', () => {
+    const api = apiFor(createWorldSession());
+    const output = run(api, 'services APP-01');
+
+    expect(output).toContain('APP-01 is not a Windows host');
+    expect(output).toContain('systemd');
+    // No list was rendered: the units did not get dressed up as services.
+    expect(output).not.toContain('DISPLAY NAME');
+    expect(output).not.toContain('nginx');
+  });
+
+  it('refuses restart against a Linux host, and names systemd', () => {
+    const api = apiFor(createWorldSession());
+    const output = run(api, 'restart APP-01\\nginx');
+
+    expect(output).toContain('APP-01 is not a Windows host');
+    expect(output).toContain('systemd unit');
+    // Nothing was bounced: no stop/start pair ran.
+    expect(output).not.toContain('reports RUNNING');
+  });
+
+  it('keeps the Remote Registry reason on tasklist /s, and adds the OS one', () => {
+    const api = apiFor(createWorldSession());
+    const linux = run(api, 'tasklist /s APP-01');
+    const windows = run(api, 'tasklist /s PRINT-01');
+
+    // The estate's own reason is on both, unchanged.
+    expect(linux).toContain('Remote Registry is Disabled');
+    expect(windows).toContain('Remote Registry is Disabled');
+    // The deeper reason is on the Linux one only.
+    expect(linux).toContain('is not a Windows host');
+    expect(linux).toContain('systemd');
+    expect(windows).not.toContain('systemd');
+  });
+
+  it('refuses systeminfo on a Linux box rather than calling it Windows', () => {
+    const api = apiFor(createWorldSession());
+    const output = run(api, 'systeminfo DB-01');
+
+    expect(output).toContain('DB-01 is not a Windows host');
+    expect(output).toContain('systemd');
+    // It never printed the Windows OS line for a box that is not one.
+    expect(output).not.toContain('OS Version');
+    expect(output).not.toContain('Registered Services');
+  });
+
+  it('still reaches the Linux boxes on the wire - that layer is OS-agnostic', () => {
+    const api = apiFor(createWorldSession());
+
+    // ping reaches and names the box, and still says a reply proves nothing
+    // about what is running on it.
+    const ping = run(api, 'ping APP-01');
+    expect(ping).toContain('Reply from APP-01');
+    expect(ping).toContain('nothing at all about what is running on it');
+
+    // nslookup resolves its name; tracert reaches it and completes.
+    expect(run(api, 'nslookup app-01')).toContain('app-01.workgrumble.local');
+    expect(run(api, 'tracert DB-01')).toContain('Trace complete.');
+  });
+
+  it('does not regress the Windows tools on the Windows boxes', () => {
+    const api = apiFor(createWorldSession());
+
+    // The new IIS box is Windows: sc and services read it exactly as before,
+    // web stack and all.
+    const services = run(api, 'services INTRA-01');
+    expect(services).toContain('DISPLAY NAME');
+    expect(services).toContain('World Wide Web Publishing Service');
+    expect(services).not.toContain('systemd');
+
+    expect(run(api, 'sc query INTRA-01\\W3SVC')).toContain('SERVICE_NAME: W3SVC');
+
+    // And the DC names Active Directory honestly.
+    expect(run(api, 'services DC-01'))
+      .toContain('Active Directory Domain Services');
   });
 });

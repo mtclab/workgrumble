@@ -949,7 +949,15 @@ interface GoldenWeek {
  *    is the sprawl truth the resource is about.
  */
 const GOLDEN_WORKED: GoldenWeek = {
-  hash: 'd7efbd1c6b7cfab7',
+  // Moved by 0.7.0 (`d7efbd1c6b7cfab7` -> `e32b73663e53a3ba`) for the estate
+  // alone: three boxes joined the fourteen (IIS INTRA-01, Linux APP-01/DB-01),
+  // every machine gained an `os` field, the IIS box its web stack, the DC its
+  // DFSR and the honest Active Directory name, and the two Linux boxes ten
+  // systemd `unit` nodes with no Windows drive. The WEEK is unchanged - the
+  // same queue, the same arrivals, the same closes - because nothing plays a
+  // command against the new boxes and no field on them moves. A conscious diff,
+  // read the way every golden here is: new nodes and one new field, nothing else.
+  hash: 'e32b73663e53a3ba',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -1116,8 +1124,12 @@ const GOLDEN_IDLE: GoldenWeek = {
   // integer the worked week moved for, and moved again by 0.4.3 for the chat
   // beat's arrival record and its malignant refocus window - and for nothing
   // that shows in a count or a meter, because this week's stress is pinned at
-  // 98 and clamps the two points away as fast as they are charged.
-  hash: 'b4db8d594a21a643',
+  // 98 and clamps the two points away as fast as they are charged. Moved again
+  // by 0.7.0 (`b4db8d594a21a643` -> `77813f87589dd468`) for the estate and
+  // nothing else - the same three new boxes, the same `os` field on every
+  // machine, the same ten systemd units - because this week, like the worked
+  // one, never touches them; the queue and every meter are the numbers they were.
+  hash: '77813f87589dd468',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.

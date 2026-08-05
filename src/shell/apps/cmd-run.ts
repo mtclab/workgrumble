@@ -15,8 +15,10 @@ import {
   FIELDS,
   isRotation,
   isService,
+  MACHINE_OS,
   MACHINE_ROLE_LABELS,
   machineRoleOf,
+  machineOsOf,
   SERVICE_CLASSES,
   serviceClassOf,
   SERVICE_STATUS,
@@ -183,6 +185,52 @@ function machineOf(api: GameApi, query: string): Lookup {
     'machine',
     query,
     `Unknown host "${query}". Check the name, then check the plug.`,
+  );
+}
+
+/**
+ * The name of the box a Windows-family command is aimed at, when that box is a
+ * Linux host - which every Windows service tool in here has to refuse, because
+ * the family it speaks stops at the wire.
+ *
+ * A service query arrives qualified - `APP-01\nginx` - so the host is the part
+ * before the slash; a bare machine name is the whole of it. Returns the box's
+ * name so the refusal can name it, or null when the target is a Windows box or
+ * no box at all - in which case the command's own refusal is already the right
+ * one (`sc` has never managed a service manager that is not Windows, and it does
+ * not pretend the Linux box is missing either).
+ */
+function linuxHostOf(api: GameApi, query: string): string | null {
+  const qualified = /^(.+?)[\\/](.+)$/u.exec(query.trim());
+  const hostQuery = (qualified?.[1] ?? query).trim();
+
+  if (hostQuery.length === 0) {
+    return null;
+  }
+
+  const found = machineOf(api, hostQuery);
+
+  if (!found.ok) {
+    return null;
+  }
+
+  return machineOsOf(found.node.fields[FIELDS.machineOs]) === MACHINE_OS.linux
+    ? labelOf(found.node)
+    : null;
+}
+
+/**
+ * The common tail of every "not a Windows host" refusal: it names systemd, the
+ * other family and its toolset, and points at the tier that has them - the
+ * on-ramp to E6, taught by the world refusing rather than by a tutorial. The
+ * lead line is the tool's own reason it cannot reach the box.
+ */
+function notWindowsHost(host: string, why: string): CommandResult {
+  return lines(
+    `${host} is not a Windows host. ${why}`,
+    'This box runs systemd - a different service manager, reached with systemctl',
+    'over ssh, a family this terminal does not speak. It is real and on the wire',
+    '(ping and nslookup find it); managing it is the next tier\'s job, not this one.',
   );
 }
 
@@ -489,6 +537,19 @@ function servicesLines(api: GameApi, query: string): CommandResult {
     return lines(found.reason);
   }
 
+  // A Windows service list on a Linux box is a category error the real
+  // services.msc cannot make either - it manages the Windows Service Control
+  // Manager, and this box does not run one.
+  const linux = linuxHostOf(api, query);
+
+  if (linux !== null) {
+    return notWindowsHost(
+      linux,
+      'services.msc lists the Windows Service Control Manager, which this box '
+        + 'has none of.',
+    );
+  }
+
   const host = labelOf(found.node);
   const registered = api.graph.neighbors(found.node.id, {
     direction: 'in',
@@ -583,6 +644,18 @@ function scLines(api: GameApi, sub: string, query: string): CommandResult {
     );
   }
 
+  // `sc` genuinely cannot reach a service manager that is not Windows: it talks
+  // to the Windows Service Control Manager, and a Linux box does not run one.
+  const linux = linuxHostOf(api, query);
+
+  if (linux !== null) {
+    return notWindowsHost(
+      linux,
+      'sc queries the Windows Service Control Manager, which this box does not '
+        + 'run.',
+    );
+  }
+
   const found = serviceOf(api, query);
 
   if (!found.ok) {
@@ -642,12 +715,25 @@ function tasklistLines(api: GameApi, args: readonly string[]): CommandResult {
   const flag = (args[0] ?? '').toLowerCase();
 
   if (flag === '/s') {
+    // The estate's own reason first - Remote Registry is Disabled everywhere -
+    // and, when the box named is Linux, the deeper one: tasklist /s speaks
+    // Windows RPC to a Windows box, and neither half of it reaches this one.
+    const linux = linuxHostOf(api, args[1] ?? '');
+
     return lines(
       'tasklist /s asks another machine what it is running, over the remote '
         + 'registry.',
       'Remote Registry is Disabled on every box in this building, which you '
         + 'can',
       'see for yourself in any services list. Nothing here can answer it.',
+      ...(linux === null
+        ? []
+        : [
+          '',
+          `And ${linux} is not a Windows host besides: it runs systemd, and `
+            + 'tasklist /s',
+          'speaks Windows RPC to a Windows box. Neither half of this reaches it.',
+        ]),
     );
   }
 
@@ -1168,6 +1254,19 @@ function systeminfoLines(api: GameApi, query: string): CommandResult {
     return noWorkstation();
   }
 
+  // systeminfo reads a Windows box - its version, services and hardware are WMI
+  // facts a Linux box does not hold in a form this terminal can pull. Printing
+  // this world's Windows labels over a systemd box would invent the one thing
+  // the family rule forbids: a fact the box does not hold.
+  if (query.trim().length > 0
+    && machineOsOf(machine.fields[FIELDS.machineOs]) === MACHINE_OS.linux) {
+    return notWindowsHost(
+      labelOf(machine),
+      'systeminfo reads a Windows box; its version and services are not facts '
+        + 'this terminal can pull from a systemd one.',
+    );
+  }
+
   const booted = machine.fields[FIELDS.uptimeSince];
   const services = api.graph.neighbors(machine.id, {
     direction: 'in',
@@ -1579,6 +1678,19 @@ export function executeCommand(
   }
 
   if (parsed.spec.name === 'restart') {
+    // A Windows stop/start pair does not reach a systemd unit - that is
+    // systemctl over ssh, a verb this terminal does not have. The box is up;
+    // bouncing a unit on it is Engineer work.
+    const linux = linuxHostOf(api, parsed.query);
+
+    if (linux !== null) {
+      return notWindowsHost(
+        linux,
+        'restart is the Windows stop/start pair, and a Windows stop control '
+          + 'does not reach a systemd unit.',
+      );
+    }
+
     const found = serviceOf(api, parsed.query);
 
     if (!found.ok) {

@@ -41,8 +41,15 @@ import { REVIEW_PASS_PERFORMANCE } from './week';
  * field leaked onto the probation world that was not there before - which is
  * exactly the failure "the switch is additive" forbids. It moved here because
  * the career carry fields default to writing NOTHING, so the graph is untouched.
+ *
+ * It moved with 0.7.0 (`c3504ada3edb1031` -> `66ecdc90a6e6b3a6`) for the
+ * heterogeneous estate: the probation world now stands up with the IIS box and
+ * the two Linux product boxes, every machine carries an `os` field, and the
+ * Linux boxes carry systemd `unit` nodes. That is new seed, not a leak - the
+ * carry fields still write nothing - and it is the same move the golden weeks
+ * take, argued the same way.
  */
-const PROBATION_OPENING_HASH = 'c3504ada3edb1031';
+const PROBATION_OPENING_HASH = '66ecdc90a6e6b3a6';
 
 /** A second employer that this build does not ship: the switch's test bench. */
 const FIXTURE_PLAYER = 'person:fixture-pat';

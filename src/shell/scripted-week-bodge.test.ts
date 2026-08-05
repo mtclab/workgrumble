@@ -235,8 +235,18 @@ function walk(): Walked {
  * NOT move (the switch is additive) - proven byte-identical in
  * `scripted-week.test` / `session.test`. If this moves again, it is a conscious
  * diff, read the same way the probation goldens are.
+ *
+ * It MOVED again with 0.7.0 (`7436e592a668181d` -> `3ca933392632fc62`) for the
+ * heterogeneous estate and that alone: Bodgeworth gained BODGE-CAM, the
+ * undocumented Linux box on the yard camera Kev never wrote down, and every
+ * Bodge machine gained an `os` field. The camera box brings four systemd
+ * `unit` nodes (motion.service plus the base stack) and no Windows drive; it is
+ * reachable and nameable and the Windows tools stop at its wire, which is the
+ * wild-west estate's version of the same lesson. The five-ticket week, the
+ * storm and the thirteen room messages are untouched - nothing plays a command
+ * against the corner box - so this moved for new nodes and one field, nothing else.
  */
-const BODGE_GOLDEN_HASH = '7436e592a668181d';
+const BODGE_GOLDEN_HASH = '3ca933392632fc62';
 
 describe('the second employer plays, and differs', () => {
   it('stands up as a genuinely different archetype', () => {

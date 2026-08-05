@@ -459,6 +459,16 @@ const ROLE_TREES: Readonly<Record<MachineRole, readonly TreeSeed[]>> = {
       ),
     ]),
   ],
+  // The IIS box is a Windows server: it has the same C: image as any other and
+  // its IIS-ness is expressed by its SERVICES, not by inventing web content.
+  // `inetpub` and the app-pool config are Engineer material (appcmd), and this
+  // slice ships no management of them, so the drive stays the honest base image.
+  [MACHINE_ROLES.iisServer]: [],
+  // The Linux roles never reach here: a Linux box has no Windows C: drive, so
+  // the seeder skips `driveSetup` for it entirely. The keys exist only to keep
+  // this map exhaustive over every role; their trees are never read.
+  [MACHINE_ROLES.appServer]: [],
+  [MACHINE_ROLES.dbServer]: [],
 };
 
 /* -- what is INSTALLED on a box, as opposed to what it is ----------------- */

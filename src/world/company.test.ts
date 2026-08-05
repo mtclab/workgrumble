@@ -15,6 +15,8 @@ import {
 import {
   FIELDS,
   isService,
+  MACHINE_OS,
+  machineOsOf,
   MACHINE_ROLES,
   machineRoleOf,
   SERVICE_CLASSES,
@@ -22,8 +24,9 @@ import {
   SERVICE_STATUS,
   STARTUP_TYPES,
   startupTypeOf,
+  SYSTEMD_STATES,
 } from './fields';
-import { BASELINE_SERVICES } from './services';
+import { BASELINE_SERVICES, BASELINE_UNITS } from './services';
 
 /** The seed applied by the engine that will run it, and read back through it. */
 function seededEngine(): WasmEngine {
@@ -70,18 +73,34 @@ describe('company world', () => {
     // The twelve monthly exports on that box are NOT files: they are a listing
     // on the directory itself, because a file's size here is what `type` would
     // print and thirty megabytes of barcodes is not something to print.
+    //
+    // 0.7.0 makes the estate heterogeneous, and every number below that moved,
+    // moved for that and only that:
+    //  - machine 14 -> 17: the IIS intranet box (INTRA-01), the Linux product
+    //    box (APP-01) and its database (DB-01).
+    //  - service 324 -> 350: +25 on the IIS box (the server baseline plus the
+    //    W3SVC/WAS/AppHostSvc web stack) and +1 on the DC (DFSR, SYSVOL
+    //    replication named honestly beside the legacy FRS). The two Linux boxes
+    //    add no services - they run units.
+    //  - unit 0 -> 10: five systemd units each on APP-01 and DB-01, a new kind
+    //    the estate did not have. Real data on real boxes, not readable by the
+    //    SD player's Windows tools yet.
+    //  - directory 153 -> 161, file 80 -> 85: the IIS box is Windows and gained
+    //    the standard C: image (its root and the base directories/files every
+    //    box is imaged with). The Linux boxes have no Windows drive and add none.
     expect(counts).toEqual({
       person: 17,
       account: 17,
-      machine: 14,
+      machine: 17,
       device: 5,
-      service: 324,
+      service: 350,
+      unit: 10,
       share: 2,
       group: 3,
       mail_rule: 2,
       ticket: 0,
-      directory: 153,
-      file: 80,
+      directory: 161,
+      file: 85,
     });
   });
 
@@ -97,20 +116,46 @@ describe('company world', () => {
     const graph = seeded();
 
     for (const machine of graph.nodesOfKind('machine')) {
-      const services = graph.neighbors(machine.id, {
+      const attached = graph.neighbors(machine.id, {
         direction: 'in',
         edgeKind: 'runs_on',
       });
       const role = machineRoleOf(machine.fields[FIELDS.machineRole]);
+      const os = machineOsOf(machine.fields[FIELDS.machineOs]);
+
+      // A machine role every box declares, and an OS to go with it.
+      expect(Object.values(MACHINE_ROLES)).toContain(role);
+
+      // A Linux box runs systemd units, not Windows services - a different kind
+      // with different words, and none of the Windows service assertions apply.
+      if (os === MACHINE_OS.linux) {
+        const units = attached;
+        const unitNames = units
+          .map((unit) => unit.fields[FIELDS.unitName])
+          .filter((name): name is string => typeof name === 'string');
+
+        expect(units.length, machine.id)
+          .toBeGreaterThanOrEqual((BASELINE_UNITS[role] ?? []).length);
+        expect(new Set(unitNames).size, machine.id).toBe(unitNames.length);
+
+        for (const unit of units) {
+          expect(unit.kind, unit.id).toBe('unit');
+          expect(typeof unit.fields[FIELDS.unitName], unit.id).toBe('string');
+          expect(Object.values(SYSTEMD_STATES), unit.id)
+            .toContain(unit.fields[FIELDS.unitState]);
+        }
+
+        continue;
+      }
+
+      const services = attached;
       const shorts = services
         .map((service) => service.fields[FIELDS.serviceName])
         .filter((short): short is string => typeof short === 'string');
 
-      // A machine role every box declares, and a list long enough to have to
-      // be read rather than glanced at.
-      expect(Object.values(MACHINE_ROLES)).toContain(role);
+      // A list long enough to have to be read rather than glanced at.
       expect(services.length, machine.id)
-        .toBeGreaterThanOrEqual(BASELINE_SERVICES[role].length);
+        .toBeGreaterThanOrEqual((BASELINE_SERVICES[role] ?? []).length);
       expect(new Set(shorts).size, machine.id).toBe(shorts.length);
 
       for (const service of services) {

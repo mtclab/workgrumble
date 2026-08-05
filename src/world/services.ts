@@ -41,6 +41,10 @@ import {
   type ServiceStatus,
   STARTUP_TYPES,
   type StartupType,
+  SYSTEMD_STATES,
+  type SystemdState,
+  UNIT_ENABLEMENTS,
+  type UnitEnablement,
 } from './fields';
 
 export interface BaselineService {
@@ -288,13 +292,25 @@ const DOMAIN_CONTROLLER_SERVICES: readonly BaselineService[] = ordered([
   },
   {
     service: 'NTDS',
-    name: 'Directory Service',
+    // The real display name of the NTDS service, and the honest one: this box
+    // IS the directory. "Directory Service" was the Windows 2000 wording; the
+    // estate names Active Directory the way a current DC's services list does.
+    name: 'Active Directory Domain Services',
     startup: STARTUP_TYPES.automatic,
     status: SERVICE_STATUS.running,
     // Stopping the directory on the only domain controller in the building is
     // not a thing the manager will take a control for, and it is the truest
     // "no" on this estate: everybody's logon is behind it.
     serviceClass: SERVICE_CLASSES.system,
+  },
+  {
+    service: 'DFSR',
+    name: 'DFS Replication',
+    // SYSVOL replication the modern way. It sits beside the legacy FRS below
+    // because this estate migrated and, like everything here, never cleaned up
+    // the service it replaced - which is exactly how real DCs are found.
+    startup: STARTUP_TYPES.automatic,
+    status: SERVICE_STATUS.running,
   },
   {
     service: 'DNS',
@@ -324,13 +340,158 @@ const DOMAIN_CONTROLLER_SERVICES: readonly BaselineService[] = ordered([
   },
 ]);
 
+/**
+ * The IIS member server: the server baseline plus the web stack.
+ *
+ * `WAS` is `W3SVC`'s dependency - stop the activation service and the web
+ * server goes with it, which is the real dependency lesson a recycled app pool
+ * teaches. The app pools themselves are NOT services (they are `appcmd` /
+ * IIS Manager objects), so they are not in this list any more than a chassis
+ * fan is; recycling one is Engineer work and arrives with the tools for it.
+ */
+const IIS_SERVER_SERVICES: readonly BaselineService[] = ordered([
+  ...SERVER_SERVICES,
+  {
+    service: 'W3SVC',
+    name: 'World Wide Web Publishing Service',
+    startup: STARTUP_TYPES.automatic,
+    status: SERVICE_STATUS.running,
+  },
+  {
+    service: 'WAS',
+    name: 'Windows Process Activation Service',
+    startup: STARTUP_TYPES.automatic,
+    status: SERVICE_STATUS.running,
+  },
+  {
+    service: 'AppHostSvc',
+    name: 'Application Host Helper Service',
+    startup: STARTUP_TYPES.automatic,
+    status: SERVICE_STATUS.running,
+  },
+]);
+
+/**
+ * A systemd unit on a Linux box.
+ *
+ * A parallel shape to `BaselineService`, not the same one, because a unit and a
+ * Windows service are two different things two different managers know about -
+ * a unit has systemd's own state words and a `.service` name that carries its
+ * type. Sharing a type would be the first step towards one shell in hats, which
+ * is the exact failure the terminal-fidelity bar forbids.
+ *
+ * These units EXIST on the boxes as world data - a future `systemctl status` at
+ * the Engineer tier reads them - but the Service-Desk player has no `systemctl`
+ * and no ssh, so nothing here is READABLE yet. The estate is real ahead of the
+ * tools to touch it, exactly how the filesystem slice seeded files first.
+ */
+export interface LinuxUnit {
+  /** What systemctl takes: `nginx.service`, `postgresql@16-main.service`. */
+  readonly unit: string;
+  /** The unit's `Description=`, what `systemctl status` prints on the top line. */
+  readonly name: string;
+  readonly state: SystemdState;
+  readonly enabled: UnitEnablement;
+}
+
+/**
+ * The units any Ubuntu 24.04 box runs whatever it is for - the Linux analogue
+ * of the workstation baseline. The product and the database sit on top of these.
+ */
+export const UBUNTU_BASE_UNITS: readonly LinuxUnit[] = [
+  {
+    unit: 'cron.service',
+    name: 'Regular background program processing daemon',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'ssh.service',
+    name: 'OpenBSD Secure Shell server',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'systemd-journald.service',
+    name: 'Journal Service',
+    state: SYSTEMD_STATES.activeRunning,
+    // Pulled in by systemd itself; it cannot be enabled or disabled, which is
+    // what `static` means and what `systemctl is-enabled` says for it.
+    enabled: UNIT_ENABLEMENTS.static,
+  },
+];
+
+/** Alphabetical by unit name, the way `systemctl list-units` sorts. */
+function orderedUnits(units: readonly LinuxUnit[]): readonly LinuxUnit[] {
+  return [...units].sort((left, right) => left.unit.localeCompare(right.unit));
+}
+
+/**
+ * The product application server: nginx out front, the product behind it, on
+ * the base units. `grumbleapp.service` is Workgrumble Ltd's own line-of-business
+ * app - the thing customers log into - run under systemd the way a gunicorn or
+ * uwsgi app is (`Type=notify`). A different employer's app server names its own
+ * product; the base stack below it is the same on any Ubuntu box.
+ */
+const APP_SERVER_UNITS: readonly LinuxUnit[] = orderedUnits([
+  {
+    unit: 'nginx.service',
+    name: 'A high performance web server and a reverse proxy server',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'grumbleapp.service',
+    name: 'Workgrumble product application',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  ...UBUNTU_BASE_UNITS,
+]);
+
+/**
+ * The database server. The `postgresql.service` meta-unit is a `Type=oneshot`
+ * that shows `active (exited)` - it does no work itself, it just brings up the
+ * real cluster, `postgresql@16-main.service`, which is the one that is running.
+ * Both are real, and both being present is the honest shape on Ubuntu 24.04.
+ */
+const DB_SERVER_UNITS: readonly LinuxUnit[] = orderedUnits([
+  {
+    unit: 'postgresql.service',
+    name: 'PostgreSQL RDBMS',
+    state: SYSTEMD_STATES.activeExited,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'postgresql@16-main.service',
+    name: 'PostgreSQL Cluster 16-main',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  ...UBUNTU_BASE_UNITS,
+]);
+
+/**
+ * The Windows service baseline per role. Partial because a role is either a
+ * Windows role (here) or a Linux role (`BASELINE_UNITS` below), never both - the
+ * seeder reads the machine's `os` and picks the matching map.
+ */
 export const BASELINE_SERVICES: Readonly<
-  Record<MachineRole, readonly BaselineService[]>
+  Partial<Record<MachineRole, readonly BaselineService[]>>
 > = {
   [MACHINE_ROLES.workstation]: ordered(WORKSTATION_SERVICES),
   [MACHINE_ROLES.printServer]: PRINT_SERVER_SERVICES,
   [MACHINE_ROLES.fileServer]: FILE_SERVER_SERVICES,
   [MACHINE_ROLES.domainController]: DOMAIN_CONTROLLER_SERVICES,
+  [MACHINE_ROLES.iisServer]: IIS_SERVER_SERVICES,
+};
+
+/** The systemd unit baseline per Linux role. */
+export const BASELINE_UNITS: Readonly<
+  Partial<Record<MachineRole, readonly LinuxUnit[]>>
+> = {
+  [MACHINE_ROLES.appServer]: APP_SERVER_UNITS,
+  [MACHINE_ROLES.dbServer]: DB_SERVER_UNITS,
 };
 
 /**
@@ -347,4 +508,17 @@ export function baselineServiceId(machineId: string, service: string): string {
     : machineId;
 
   return `service:${box}/${service.toLowerCase()}`;
+}
+
+/**
+ * The id a systemd unit gets on a given box - the `unit:` analogue of
+ * `baselineServiceId`, so every Linux box runs its own copy of `nginx.service`
+ * the way every Windows box runs its own `Spooler`.
+ */
+export function linuxUnitId(machineId: string, unit: string): string {
+  const box = machineId.includes(':')
+    ? machineId.slice(machineId.indexOf(':') + 1)
+    : machineId;
+
+  return `unit:${box}/${unit.toLowerCase()}`;
 }

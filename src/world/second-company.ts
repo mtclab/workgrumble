@@ -31,14 +31,24 @@ import { driveSetup } from './filesystem';
 import {
   DEVICE_TYPES,
   FIELDS,
+  MACHINE_OS,
+  type MachineOs,
   type MachineRole,
   MACHINE_ROLES,
   SERVICE_CLASSES,
   SERVICE_STATUS,
   STARTUP_TYPES,
+  SYSTEMD_STATES,
+  UNIT_ENABLEMENTS,
 } from './fields';
 import { STARTING_REPUTATION } from './meters';
-import { BASELINE_SERVICES, baselineServiceId } from './services';
+import {
+  BASELINE_SERVICES,
+  baselineServiceId,
+  type LinuxUnit,
+  linuxUnitId,
+  UBUNTU_BASE_UNITS,
+} from './services';
 
 /**
  * What Bodgeworth has on file to prove who you are: a phone number, and nothing
@@ -132,6 +142,16 @@ export const BODGE_IDS = {
   /** The one printer, in the yard, that everybody walks to. */
   printer: 'device:office-printer',
   spooler: 'service:bodge-spooler',
+
+  /**
+   * The box in the corner nobody wrote down. Kev put a Linux machine on the
+   * yard camera years ago, running the motion-capture recorder, and it has sat
+   * there ever since - no domain, no documentation, just a hostname only Kev
+   * knows. It is the wild-west estate's teaching: "there is no map of this
+   * place" is itself a condition, and a Windows tool aimed at it stops at the
+   * wire the same way it does at the corporate shop's product boxes.
+   */
+  cornerBox: 'machine:corner-box',
 } as const;
 
 export type BodgeNodeId = (typeof BODGE_IDS)[keyof typeof BODGE_IDS];
@@ -217,6 +237,8 @@ interface MachineSeed {
   readonly id: string;
   readonly hostname: string;
   readonly role: MachineRole;
+  /** Omitted means Windows, the back-compat default. */
+  readonly os?: MachineOs;
   readonly owner?: string;
   readonly wiredTo?: string;
   readonly resolution?: string;
@@ -286,6 +308,34 @@ const MACHINES: readonly MachineSeed[] = [
     memory: '128 MB',
     diskFree: 41_943_040,
   },
+  {
+    // Kev's undocumented Linux box on the yard camera. Reachable, nameable, and
+    // running one thing nobody but Kev could tell you about.
+    id: BODGE_IDS.cornerBox,
+    hostname: 'BODGE-CAM',
+    role: MACHINE_ROLES.appServer,
+    os: MACHINE_OS.linux,
+    wiredTo: BODGE_IDS.server,
+    processor: 'Something small in a case with a fan sticker on it',
+    memory: '4 GB',
+    diskFree: 12_884_901_888,
+  },
+];
+
+/**
+ * The units on Kev's camera box: the motion-capture recorder that is the whole
+ * reason it exists, on the same base stack any Ubuntu box runs. `motion` is a
+ * real package with a real unit; the rest is what a Linux box runs whether or
+ * not anyone wrote it down.
+ */
+const CORNER_BOX_UNITS: readonly LinuxUnit[] = [
+  {
+    unit: 'motion.service',
+    name: 'Motion detection and capture (yard camera)',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  ...UBUNTU_BASE_UNITS,
 ];
 
 const NAMED_SERVICE_TWINS: Readonly<Record<string, readonly string[]>> = {
@@ -410,6 +460,7 @@ export function bodgeSetup(): readonly SetupOp[] {
       fields: {
         [FIELDS.hostname]: machine.hostname,
         [FIELDS.machineRole]: machine.role,
+        [FIELDS.machineOs]: machine.os ?? MACHINE_OS.windows,
         [FIELDS.displayRotation]: 0,
         [FIELDS.resolution]: machine.resolution ?? '1024x768',
         [FIELDS.pendingUpdates]: machine.pendingUpdates === true,
@@ -421,6 +472,11 @@ export function bodgeSetup(): readonly SetupOp[] {
   }
 
   for (const machine of MACHINES) {
+    // The camera box is Linux and has no Windows drive to build.
+    if ((machine.os ?? MACHINE_OS.windows) === MACHINE_OS.linux) {
+      continue;
+    }
+
     const owner = STAFF.find((member) => member.person === machine.owner);
 
     ops.push(...driveSetup({
@@ -566,11 +622,17 @@ export function bodgeSetup(): readonly SetupOp[] {
   }
 
   // And the baseline services every box has run since it was built, from the
-  // table for its role - the noise the one wrong line hides in.
+  // table for its role - the noise the one wrong line hides in. The camera box
+  // is Linux and gets systemd units by hand below rather than from this loop,
+  // because its one service is nobody's product but Kev's.
   for (const machine of MACHINES) {
+    if ((machine.os ?? MACHINE_OS.windows) === MACHINE_OS.linux) {
+      continue;
+    }
+
     const named = NAMED_SERVICE_TWINS[machine.id] ?? [];
 
-    for (const service of BASELINE_SERVICES[machine.role]) {
+    for (const service of BASELINE_SERVICES[machine.role] ?? []) {
       if (named.includes(service.service)) {
         continue;
       }
@@ -592,6 +654,24 @@ export function bodgeSetup(): readonly SetupOp[] {
       });
       addEdge(ops, { from: id, to: machine.id, kind: 'runs_on' });
     }
+  }
+
+  // Kev's camera box, as systemd units. Real data on a real box; the SD player
+  // reaches it over the wire and the Windows tools stop there.
+  for (const unit of CORNER_BOX_UNITS) {
+    const id = linuxUnitId(BODGE_IDS.cornerBox, unit.unit);
+
+    addNode(ops, {
+      id,
+      kind: 'unit',
+      fields: {
+        [FIELDS.name]: unit.name,
+        [FIELDS.unitName]: unit.unit,
+        [FIELDS.unitState]: unit.state,
+        [FIELDS.unitEnabled]: unit.enabled,
+      },
+    });
+    addEdge(ops, { from: id, to: BODGE_IDS.cornerBox, kind: 'runs_on' });
   }
 
   return ops;

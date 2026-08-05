@@ -669,8 +669,24 @@ const GOLDEN_DAY = {
    * than false, no ranking is written, and both review verbs behave exactly as
    * they did. One number in the graph is the entire footprint of a slice that
    * added a third ending, and that is the claim this hash is the proof of.
+   *
+   * THIRTEENTH MOVE (0.7.0, the heterogeneous estate). The hash, and the hash
+   * alone - not a meter, not a minute, not a breach, not a penny, not a
+   * timeline entry - and the cause is all seed: the estate went mixed. Three
+   * boxes joined the fourteen (the IIS intranet server INTRA-01, the Linux
+   * product server APP-01, its database DB-01), every machine gained an `os`
+   * field saying which family it runs, the IIS box brought the server baseline
+   * plus its web stack, the DC gained DFSR and now names Active Directory the
+   * way a real one does, and the two Linux boxes brought ten systemd `unit`
+   * nodes - a kind the world did not have - instead of Windows services and
+   * with no Windows drive at all. None of it MOVES in this day: nothing in this
+   * scripted Monday touches the new boxes, runs a command against them, or
+   * changes a field on any machine. The three refusals a Windows tool now gives
+   * a Linux host are read-only and mutate nothing, so the day's numbers are
+   * again every one of them the number it was. The estate got bigger; the
+   * Monday did not change.
    */
-  hash: '700bc1695430eea8',
+  hash: 'f20684717a994fd5',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */

@@ -605,6 +605,20 @@ export const FIELDS = {
    */
   machineRole: 'role',
   /**
+   * Which family of operating system this box runs: `windows` or `linux`.
+   *
+   * Orthogonal to the role and seeded per machine the same way, never guessed
+   * from the hostname - `APP-01` being a Linux box is a fact about the estate,
+   * not a naming convention. Absent reads as `windows`, so every save and
+   * fixture that predates the heterogeneous estate stays a Windows building.
+   *
+   * It is the field the Windows-family tools read before they refuse: `sc`,
+   * `services` and `restart` aimed at a Linux box answer the way the real tools
+   * do - they cannot reach a service manager that is not Windows - and the
+   * refusal names systemd, which is the lesson that there is another family here.
+   */
+  machineOs: 'os',
+  /**
    * What is inside the case, as two lines a support call reads out.
    *
    * They are fields rather than strings in the About dialog because two
@@ -720,6 +734,31 @@ export const FIELDS = {
    * so a licence pool was refused in the words written for a fan.
    */
   serviceClass: 'service_class',
+  /**
+   * The name systemctl takes for a Linux unit: `nginx.service`,
+   * `postgresql@16-main.service`. The `.service` suffix is part of the name,
+   * because it is part of the name on a real box - a unit type is not decoration.
+   *
+   * On a `unit` node rather than reusing `service_name`, because a unit and a
+   * Windows service are two different things a different manager knows about,
+   * and a shared field would be the first step towards one shell in hats.
+   */
+  unitName: 'unit',
+  /**
+   * What systemd says a unit is doing, in the real words it prints:
+   * `active (running)`, `active (exited)`, `inactive (dead)`, `failed`,
+   * `activating`. The Linux analogue of a service `status`, and `failed` is the
+   * honest word for a unit that died - unlike the invented `wedged`, it has a
+   * real meaning in a real manager.
+   */
+  unitState: 'unit_state',
+  /**
+   * Whether a unit starts at boot, in systemctl's own vocabulary: `enabled`,
+   * `disabled`, `static`. The Linux analogue of a Windows `startup_type`, and
+   * `static` is the honest answer for a unit that cannot be enabled or disabled
+   * because it is pulled in by another - which is what journald is.
+   */
+  unitEnabled: 'unit_enabled',
   /**
    * Whether the certificate this service presents has run out.
    *
@@ -1125,6 +1164,12 @@ export const MACHINE_ROLES = {
   printServer: 'print_server',
   fileServer: 'file_server',
   domainController: 'domain_controller',
+  /** A Windows member server running IIS - the intranet, the timesheet portal. */
+  iisServer: 'iis_server',
+  /** A Linux box running the product the company sells. */
+  appServer: 'app_server',
+  /** A Linux box running the product's database. */
+  dbServer: 'db_server',
 } as const;
 
 export type MachineRole = (typeof MACHINE_ROLES)[keyof typeof MACHINE_ROLES];
@@ -1134,15 +1179,73 @@ export const MACHINE_ROLE_LABELS: Readonly<Record<MachineRole, string>> = {
   [MACHINE_ROLES.printServer]: 'Print server',
   [MACHINE_ROLES.fileServer]: 'File server',
   [MACHINE_ROLES.domainController]: 'Domain controller',
+  [MACHINE_ROLES.iisServer]: 'IIS server',
+  [MACHINE_ROLES.appServer]: 'Application server',
+  [MACHINE_ROLES.dbServer]: 'Database server',
 };
 
 export function machineRoleOf(value: unknown): MachineRole {
   return value === MACHINE_ROLES.printServer
     || value === MACHINE_ROLES.fileServer
     || value === MACHINE_ROLES.domainController
+    || value === MACHINE_ROLES.iisServer
+    || value === MACHINE_ROLES.appServer
+    || value === MACHINE_ROLES.dbServer
     ? value
     : MACHINE_ROLES.workstation;
 }
+
+/**
+ * The family of operating system a box runs. Two, because the estate is
+ * heterogeneous: Windows workstations and servers, Linux product boxes.
+ *
+ * Absent reads as `windows`, which is the back-compat rule - every box that
+ * predates this dimension is a Windows box, exactly what it was before.
+ */
+export const MACHINE_OS = {
+  windows: 'windows',
+  linux: 'linux',
+} as const;
+
+export type MachineOs = (typeof MACHINE_OS)[keyof typeof MACHINE_OS];
+
+export const MACHINE_OS_LABELS: Readonly<Record<MachineOs, string>> = {
+  [MACHINE_OS.windows]: 'Windows',
+  [MACHINE_OS.linux]: 'Linux',
+};
+
+export function machineOsOf(value: unknown): MachineOs {
+  return value === MACHINE_OS.linux ? value : MACHINE_OS.windows;
+}
+
+/**
+ * What systemd says a unit is doing, in the real words it prints - the Linux
+ * analogue of `SERVICE_STATUS`, stored verbatim so a future `systemctl status`
+ * prints exactly what the world holds and no label table has to keep them true.
+ */
+export const SYSTEMD_STATES = {
+  activeRunning: 'active (running)',
+  activeExited: 'active (exited)',
+  inactiveDead: 'inactive (dead)',
+  failed: 'failed',
+  activating: 'activating',
+} as const;
+
+export type SystemdState = (typeof SYSTEMD_STATES)[keyof typeof SYSTEMD_STATES];
+
+/**
+ * Whether a unit starts at boot, in systemctl's own vocabulary - the Linux
+ * analogue of `STARTUP_TYPES`. `static` is a unit that cannot be enabled or
+ * disabled because something else pulls it in, which is what journald is.
+ */
+export const UNIT_ENABLEMENTS = {
+  enabled: 'enabled',
+  disabled: 'disabled',
+  static: 'static',
+} as const;
+
+export type UnitEnablement =
+  (typeof UNIT_ENABLEMENTS)[keyof typeof UNIT_ENABLEMENTS];
 
 export const ROTATIONS = [0, 90, 180, 270] as const;
 
