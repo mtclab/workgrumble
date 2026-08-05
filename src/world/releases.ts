@@ -31,6 +31,32 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.7.0',
+    date: '2026-08-05',
+    summary: 'This update admits there are machines here your tools cannot '
+      + 'touch.',
+    lines: Object.freeze([
+      'The estate has been quietly pretending to be entirely ours - one family '
+        + 'of machines, one set of tools, every box a Windows box you could '
+        + 'point sc at. It was never true, and it has stopped pretending. There '
+        + 'are Linux servers in this building now: the box the product actually '
+        + 'runs on, and the database behind it, in the server room nobody on '
+        + 'this desk has a login for. They are on the network. They answer a '
+        + 'ping. They have a name. That is where your reach ends, for now.',
+      'Point a Windows tool at one of them - sc, services, restart, systeminfo '
+        + '- and it tells you the truth instead of a comforting fiction: this '
+        + 'is not a Windows host, it runs a thing called systemd, and this '
+        + 'terminal does not speak it. That is not a bug and it is not a wall. '
+        + 'It is the shape of the job. There is a whole other family of tools '
+        + 'for those boxes, reached over something called ssh, and you do not '
+        + 'have them yet. You will.',
+      'The Windows side is more honest too: there is an intranet server now '
+        + '(the timesheet portal, the thing that throws 503s on a Friday), and '
+        + 'the domain controller has stopped mumbling and names Active '
+        + 'Directory for what it is.',
+    ]),
+  },
+  {
     version: '0.6.0',
     date: '2026-08-05',
     summary: 'This update lets you leave.',
