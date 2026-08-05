@@ -764,3 +764,63 @@ employer. One codex (health-checked, </dev/null + timeout), one full box, both h
 
 Era/OS skins (Win/Linux/Mac x edition, LOOK + DIALECT, fidelity mandate, per-edition spikes);
 more employer archetypes; titles-as-difficulty; the full unemployable=game-over fail arc.
+
+# Version 0.7.0 - the heterogeneous estate (E5 estate half, #25)
+
+Owner refinement (2026-08-05): the estate is MIXED - Windows workstations + Windows servers
+(AD, IIS) + Linux servers running the actual product. Company archetype is a world axis on the
+0.6.0 employer registry. Sequencing decided: build the estate as WORLD DATA now, truthful in
+the read-only surfaces a Service-Desk player already has; the player's Linux DESKTOP and
+hands-on Linux-server MANAGEMENT gate to the Engineer tier (E6, unbuilt - 0.6.0 was a lateral
+switch, not a promotion). Data-scoped by docs/spikes/heterogeneous-estate.md (BUILD-READY).
+Family rule holds: families are not one shell in hats - a Windows tool aimed at a Linux box
+refuses the way the real tool does, and the refusal is the lesson.
+
+## Slice 1 - the os dimension + os-aware service baselines
+
+FIELDS.machineOs (`os`: windows | linux), seeded per machine, absent = windows (back-compat).
+New roles: iis_server (Windows), app_server + db_server (Linux). services.ts baseline map
+becomes os-aware: Windows roles keep their EXACT current service sets (the fourteen existing
+boxes change only by the added field - a conscious diff); Linux roles select real Ubuntu 24.04
+systemd unit sets (nginx.service / <product>.service / ssh.service / systemd-journald / cron;
+db gets postgresql). systemd status vocabulary is real (active (running) / failed / inactive) -
+the Linux analogue of RUNNING/STOPPED/WEDGED, held as data, printed only where the graph holds
+it. These units EXIST as world data (a future E6 `systemctl status` reads them) but are not yet
+readable - the estate real ahead of the tools, as the filesystem slice seeded files first.
+
+## Slice 2 - seed the heterogeneous estate
+
+Add an IIS intranet box (W3SVC / WAS / AppHostSvc - WAS is W3SVC's real dependency) and one or
+two Linux product/db servers to the first company (company.ts). Give Bodgeworth an undocumented
+Linux box (second-company.ts) fitting its wild-west character. Confirm DC-01's AD baseline is
+honestly named (NTDS / Kdc / DFSR on top of DNS/Netlogon). Employer estate-archetype read off
+the registry: corporate (workstation-heavy + DC + IIS + a Linux box or two) vs wild-west (small
+undocumented mix). SaaS/product archetype (mostly-Linux fleet) is NAMED as the future employer
+the axis exists for, not built here.
+
+## Slice 3 - cross-OS command honesty (the player-facing payload)
+
+The SD player's Windows-family tools, aimed at a Linux host, refuse the way the real ones do:
+`sc query APP-01\nginx` / `services APP-01` / `restart APP-01\nginx` answer honestly that the
+box is not a Windows host, that it runs systemd, and that this terminal does not speak it -
+which names the other family and the tools to learn (the on-ramp to E6, taught by refusal).
+`tasklist /s` gains the not-Windows reason on top of its existing Remote-Registry refusal.
+`ping` / `nslookup` / `tracert` stay OS-agnostic and reach + name the new boxes (the reply
+proves the wire and nothing about the service, the truth ping already tells). This is the whole
+change the SD player SEES.
+
+## Gates (once, at the version)
+
+Goldens move once (new field on every machine + new nodes), argued not silent. Journeys: the
+new boxes ping / resolve / trace; the Windows management tools refuse a Linux host with the
+honest wording and name systemd; the Windows tools still work on Windows boxes (no regression);
+services/sc on the IIS box list its real services; the DC names AD honestly. Determinism +
+solvability unchanged (no new tickets this slice). One codex (health-checked, </dev/null +
+timeout), one full box at --workers=2.
+
+## Not in scope (E6, per spike)
+
+The unix terminal (ls -la / systemctl / journalctl / ss / ip / dig at Ubuntu fidelity), ssh,
+the player's Linux DESKTOP skin, IIS app-pool recycles (appcmd), AD replication faults,
+product-down escalation content. The Ubuntu 24.04 command-surface research is recorded when E6
+builds it - not needed here because this slice ships no unix commands.
