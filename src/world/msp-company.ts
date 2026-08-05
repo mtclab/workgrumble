@@ -128,6 +128,21 @@ export const MSP_IDS = {
   fontaineFileServer: 'machine:font-file-01',
 
   /**
+   * The rest of the law firm the desk actually meets (0.8.0, Pass B). Nadia is
+   * the contact who FILES every Fontaine ticket; these are the people the
+   * tickets are ABOUT. A partner who closed iManage badly and left a deposition
+   * checked out, a new associate who needs a matter workspace, and the shared
+   * furniture those two faults hang off: the document-lock the partner is still
+   * holding, and the matter share the associate cannot see.
+   */
+  fontainePartner: 'person:fontaine-marcus',
+  fontainePartnerAccount: 'account:fontaine-marcus',
+  fontaineNewHire: 'person:fontaine-erin',
+  fontaineNewHireAccount: 'account:fontaine-erin',
+  fontaineCheckoutLock: 'group:fontaine-checkout-lock',
+  fontaineMatterShare: 'share:fontaine-matter',
+
+  /**
    * Theo at Meridian - the SaaS company's office contact. His laptop is in
    * scope; the Linux product fleet he keeps mentioning is not, on either count.
    */
@@ -138,6 +153,23 @@ export const MSP_IDS = {
   meridianDbServer: 'machine:meri-db-01',
 
   /**
+   * The identity estate the SaaS shop's corporate-IT work actually lives in
+   * (0.8.0, Pass B). Theo files the tickets; these are the colleagues behind
+   * them, and the two Okta groups their access hangs off. Everything here is
+   * user-and-identity scope - squarely helpdesk - which is the point: the
+   * PRODUCT fleet (the Linux app and db servers above) is out of reach on OS and
+   * contract both, and the day is spent on Okta instead.
+   */
+  meridianDev: 'person:meridian-dana',
+  meridianDevAccount: 'account:meridian-dana',
+  meridianContractor: 'person:meridian-rafiq',
+  meridianContractorAccount: 'account:meridian-rafiq',
+  meridianAnalyst: 'person:meridian-nora',
+  meridianAnalystAccount: 'account:meridian-nora',
+  meridianAppGroup: 'group:meridian-app-users',
+  meridianProdAdmins: 'group:meridian-prod-admins',
+
+  /**
    * Ivy at Northwind Clinic - the monitoring-only account's contact. The MSP
    * watches their server and nothing more; a fix is out of contract.
    */
@@ -145,6 +177,13 @@ export const MSP_IDS = {
   northwindContactAccount: 'account:northwind-ivy',
   northwindServer: 'machine:nw-srv-01',
   northwindBackup: 'service:nw-srv-01/backup',
+  /**
+   * The clinic's public portal, on the same watched box (0.8.0, Pass B). It has
+   * a TLS certificate the MSP monitors and - on a monitoring-only contract -
+   * may only raise, never renew: the cert-expiry alert fires on this, and the
+   * scope engine refuses the renew.
+   */
+  northwindPortal: 'service:nw-srv-01/clinicweb',
 } as const;
 
 export type MspNodeId = (typeof MSP_IDS)[keyof typeof MSP_IDS];
@@ -191,6 +230,50 @@ const STAFF: readonly StaffSeed[] = [
     title: 'Office Manager, Northwind Clinic',
     username: 'iokafor',
     desk: 'A clinic reception, where the only IT the MSP is paid to do is watch',
+  },
+
+  // The end-users the Pass B tickets are ABOUT, at the two helpdesk customers.
+  // They file nothing themselves - their customer's contact does - so none of
+  // them carries a dialogue tree; they exist to own the account a fault is on.
+  {
+    person: MSP_IDS.fontainePartner,
+    account: MSP_IDS.fontainePartnerAccount,
+    name: 'Marcus Reyes',
+    title: 'Partner, Fontaine & Associates',
+    username: 'mreyes',
+    desk: 'A corner office where iManage is closed by shutting the laptop lid',
+  },
+  {
+    person: MSP_IDS.fontaineNewHire,
+    account: MSP_IDS.fontaineNewHireAccount,
+    name: 'Erin Khoury',
+    title: 'Associate (started Monday), Fontaine & Associates',
+    username: 'ekhoury',
+    desk: 'A new desk, a full inbox, and not a single matter she can open yet',
+  },
+  {
+    person: MSP_IDS.meridianDev,
+    account: MSP_IDS.meridianDevAccount,
+    name: 'Dana Chen',
+    title: 'Engineer, Meridian',
+    username: 'dchen',
+    desk: 'A hot-desk where the SSO tile has started bouncing her straight back',
+  },
+  {
+    person: MSP_IDS.meridianContractor,
+    account: MSP_IDS.meridianContractorAccount,
+    name: 'Rafiq Hassan',
+    title: 'Contractor (engagement ended in April), Meridian',
+    username: 'rhassan',
+    desk: 'Gone, and still - the ticket says - able to reach production',
+  },
+  {
+    person: MSP_IDS.meridianAnalyst,
+    account: MSP_IDS.meridianAnalystAccount,
+    name: 'Nora Price',
+    title: 'Analyst, Meridian',
+    username: 'nprice',
+    desk: 'A desk where the authenticator has stopped taking the code it makes',
   },
 ];
 
@@ -510,6 +593,63 @@ export function mspSetup(): readonly SetupOp[] {
     from: MSP_IDS.northwindBackup,
     to: MSP_IDS.northwindServer,
     kind: 'runs_on',
+  });
+
+  // The clinic's public portal on the same watched box, with a TLS certificate
+  // the MSP monitors. Seeded in date and running; the cert-expiry ticket wedges
+  // the certificate when it arrives, the way every fault in this game arrives
+  // with its ticket. On a monitoring-only contract the renew is refused and the
+  // job is to raise it.
+  addNode(ops, {
+    id: MSP_IDS.northwindPortal,
+    kind: 'service',
+    fields: {
+      [FIELDS.name]: 'Clinic Portal',
+      [FIELDS.serviceName]: 'ClinicWeb',
+      [FIELDS.status]: SERVICE_STATUS.running,
+      [FIELDS.startupType]: STARTUP_TYPES.automatic,
+      [FIELDS.certExpired]: false,
+    },
+  });
+  addEdge(ops, {
+    from: MSP_IDS.northwindPortal,
+    to: MSP_IDS.northwindServer,
+    kind: 'runs_on',
+  });
+
+  // The identity furniture the helpdesk-scope tickets hang off: the iManage
+  // exclusive-lock the partner is still holding (its membership IS who has the
+  // document checked out), the matter workspace the new associate cannot see,
+  // and the two Okta groups a Meridian login is bounced on. The GROUPS and the
+  // SHARE are estate that always exists; the faulty memberships arrive with the
+  // ticket that is about them (in each ticket's `setup`), exactly as every other
+  // fault in this roster does.
+  const GROUPS: readonly Readonly<{ id: string; name: string }>[] = [
+    {
+      id: MSP_IDS.fontaineCheckoutLock,
+      name: 'iManage - Rossiter v Atlas (checked out)',
+    },
+    { id: MSP_IDS.meridianAppGroup, name: 'Okta - Salesforce Users' },
+    { id: MSP_IDS.meridianProdAdmins, name: 'Okta - Production Admins' },
+  ];
+
+  for (const group of GROUPS) {
+    addNode(ops, {
+      id: group.id,
+      kind: 'group',
+      fields: { [FIELDS.name]: group.name },
+    });
+  }
+
+  addNode(ops, {
+    id: MSP_IDS.fontaineMatterShare,
+    kind: 'share',
+    fields: {
+      [FIELDS.name]: 'Matter Workspace - Delacroix Estate',
+      // The customer's own UNC, not the MSP's: this share lives on Fontaine's
+      // file server, which is who the matter security groups belong to.
+      [FIELDS.path]: '\\\\FONTAINE\\matters\\delacroix',
+    },
   });
 
   // The baseline services every Windows box has run since it was built, from the

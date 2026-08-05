@@ -1006,4 +1006,338 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/power-cycle'],
   },
+  {
+    id: 'kb/document-checkout-lock',
+    title: 'A document is stuck "checked out" to somebody who is not there',
+    summary: 'A document management check-out is a lock one user holds; a client '
+      + 'that closed uncleanly never released it. An admin releases the '
+      + 'check-out.',
+    state: 'published',
+    issue: 'Nobody can edit a document in the document management system - '
+      + 'iManage or NetDocuments - because it is checked out to a colleague who '
+      + 'is out, off, or swears they closed it. It is read-only to everyone '
+      + 'else and there is a deadline on it.',
+    environment: 'A law firm or professional-services estate running a document '
+      + 'management system (iManage Work, NetDocuments) with check-in/check-out '
+      + 'version control.',
+    resolution: [
+      'Confirm who holds the check-out and that they genuinely are not working '
+        + 'on it. Releasing a lock somebody is actively editing throws away '
+        + 'their unsaved changes, which is a worse ticket than the one you have.',
+      'Release the stale check-out from the admin tool: iManage Control Center '
+        + '(Unlock / Check In on behalf of), or the NetDocuments admin console. '
+        + 'This is an administrator action, not a server login.',
+      'Tell the person waiting that the document is editable again, and note '
+        + 'whose check-out it was in case the client keeps doing it.',
+    ],
+    cause: [
+      'A document management system marks a document checked out to whoever '
+      + 'has it open, so that two people cannot silently overwrite each other. '
+      + 'The check-out is released when the user checks the document back in - '
+      + 'which a client that is closed cleanly does for them, and a client '
+      + 'that crashes or is killed by shutting the lid does not.',
+      'So the lock outlives the editing: the document stays held by a session '
+      + 'that no longer exists, read-only to everyone else, until an '
+      + 'administrator releases it. Nothing is corrupted and nothing needs '
+      + 'restoring; the hold is simply still there and has to be taken off.',
+    ],
+    see_also: ['kb/matter-workspace-access', 'kb/saved-into-temp'],
+  },
+  {
+    id: 'kb/matter-workspace-access',
+    title: 'A new starter cannot open a matter they have been staffed on',
+    summary: 'Matter workspaces are per-matter security groups because the '
+      + 'ethical wall is; a new starter is in none of them until somebody adds '
+      + 'them.',
+    state: 'published',
+    issue: 'Somebody - usually a new associate or a fee-earner just staffed on '
+      + 'a case - cannot see a matter workspace or shared drive at all, when '
+      + 'everyone else on the matter can.',
+    environment: 'A law firm document management or file-share estate where '
+      + 'access is granted per matter, with conflicts / ethical-wall screening '
+      + 'in front of it.',
+    resolution: [
+      'Check the request has been through the conflicts system before you '
+        + 'grant anything. A matter\'s access list is an ethical wall - the '
+        + 'firm can be sanctioned for putting a screened lawyer on the wrong '
+        + 'side of one - so "please add me" is not on its own authority to add.',
+      'Once it is cleared, add the person to that matter\'s security group. '
+        + 'Membership is per matter, not global: being on one matter grants '
+        + 'nothing about any other.',
+      'Confirm they can now open the workspace, and leave the grant on record '
+        + 'against the matter.',
+    ],
+    cause: [
+      'Access to a matter is a security group of its own, because the ethical '
+      + 'wall is drawn per matter: a firm has to be able to say exactly who can '
+      + 'and cannot see a given case, and the only honest way to enforce that '
+      + 'is one group per matter with a controlled membership.',
+      'A new starter, therefore, is in none of them - not because anything is '
+      + 'broken but because they have not been added to any yet. The grant is '
+      + 'the whole of the fix, and the only thing that makes it more than an '
+      + 'ordinary permission is the check that has to come before it.',
+    ],
+    see_also: ['kb/document-checkout-lock', 'kb/shared-mailbox-permissions'],
+  },
+  {
+    id: 'kb/e-filing-pdf-rejected',
+    title: 'The court e-filing system keeps rejecting the PDF',
+    summary: 'CM/ECF rejects PDFs with document security set or no text layer. '
+      + 'The fix is the flattened, OCR\'d PDF/A - and using the right file.',
+    state: 'published',
+    issue: 'An attorney cannot file a document before a court deadline because '
+      + 'CM/ECF rejects the upload - "malformed or contains security settings" - '
+      + 'and the deadline will not move for a technical failure.',
+    environment: 'A law firm filing into a federal court via CM/ECF (or a state '
+      + 'e-filing portal with the same PDF rules), under a statutory deadline '
+      + 'the court does not excuse for filer-side problems.',
+    resolution: [
+      'Read the rejection. "Security settings" means the PDF has document '
+        + 'restrictions (a permissions password / encryption) applied - often '
+        + 'from a "print to PDF" of a secured draft. "Not a valid PDF" or a '
+        + 'size failure usually means a scan with no text layer.',
+      'Get an acceptable copy. The correct artifact is a flattened PDF/A with '
+        + 'the security removed and a text layer present (OCR the scan if it is '
+        + 'an image). Very often the paralegal already exported one - check '
+        + 'where the "Save As PDF/A" dialog actually put it before remaking it.',
+      'Make sure the CM/ECF upload dialog is pointed at that file and not the '
+        + 'rejected draft, and confirm the docket entry once it goes through.',
+      'Because the clock is real: do the fastest safe thing first. If the '
+        + 'good file exists, place it; only regenerate if it does not.',
+    ],
+    cause: [
+      'CM/ECF enforces the court\'s document rules at upload: a PDF with '
+      + 'security restrictions cannot be processed (the court has to be able to '
+      + 'stamp and manipulate it), and a scanned image with no text layer fails '
+      + 'the searchable-PDF requirement. A draft printed with security on, or a '
+      + 'scan run without OCR, hits exactly these and bounces.',
+      'The trap under a deadline is that the acceptable copy frequently already '
+      + 'exists - somebody exported a flattened PDF/A earlier - but the export '
+      + 'landed somewhere nobody thought to look, so the office keeps '
+      + 're-uploading the one file that will never be accepted. The fix is as '
+      + 'much finding the right file as making one, and it is genuinely urgent '
+      + 'because the court does not care whose fault the format was.',
+    ],
+    see_also: ['kb/saved-into-temp', 'kb/document-checkout-lock'],
+  },
+  {
+    id: 'kb/okta-app-assignment',
+    title: 'The SSO tile just bounces back to the dashboard',
+    summary: 'An app login loop after an SSO change is usually a missing group '
+      + 'assignment: Okta authenticates, finds no app, and returns you.',
+    state: 'published',
+    issue: 'A user clicks an application in Okta (or another SSO portal) and is '
+      + 'returned straight to the dashboard - no error, no login, a loop - '
+      + 'while their colleagues reach the same app fine.',
+    environment: 'An estate using Okta (or Entra ID / OneLogin) with '
+      + 'group-based application assignment, typically just after an app\'s SSO '
+      + 'integration was rebuilt or migrated.',
+    resolution: [
+      'Check the user\'s assignment to the app in the admin console. A loop '
+        + 'with no error is the signature of an authenticated user who has no '
+        + 'assignment to the app they clicked.',
+      'If the app is assigned via a group, add the user to that group (or fix '
+        + 'the group rule that should have caught them). A migration that '
+        + 'rebuilds an app on a new group routinely leaves stragglers behind.',
+      'Have them retry from a fresh tile. Confirm they land in the app rather '
+        + 'than back on the dashboard.',
+    ],
+    cause: [
+      'SSO does two separate things: it proves who you are, and it decides '
+      + 'which applications you are entitled to. The login loop is what happens '
+      + 'when the first succeeds and the second finds nothing - the identity '
+      + 'provider authenticates the user, sees no assignment to the requested '
+      + 'app, and has nowhere to send them but back to the dashboard.',
+      'That is why it looks like a broken password and is not one. When an app '
+      + 'is rebuilt on a new group-based assignment, anyone not carried into '
+      + 'the new group is authenticated-but-unassigned, and the fix is the '
+      + 'membership, not the credential.',
+    ],
+    see_also: ['kb/offboarding-access-gap', 'kb/sso-mfa-lockout'],
+  },
+  {
+    id: 'kb/offboarding-access-gap',
+    title: 'A leaver still has access they should have lost',
+    summary: 'Disabling an account does not strip its group memberships. A '
+      + 'leaver keeps app and admin access until somebody removes the groups.',
+    state: 'published',
+    issue: 'An access review turns up somebody who has left - a contractor, a '
+      + 'former employee - still in a sensitive application or admin group, '
+      + 'able to reach things a non-employee should not.',
+    environment: 'Any estate with SSO / directory group-based access (Okta, '
+      + 'Entra ID, Active Directory) where offboarding disabled accounts but '
+      + 'did not fully deprovision them.',
+    resolution: [
+      'Confirm the person really has left and the account is genuinely a '
+        + 'leaver\'s, not a rename or a shared one. Removing access from the '
+        + 'wrong account is its own incident.',
+      'Remove the lingering group memberships - the app and admin groups the '
+        + 'review flagged. Disabling the sign-in earlier did not touch these.',
+      'Note it against the offboarding process: a gap that turned up once is a '
+        + 'gap the next leaver will have too until the checklist is fixed.',
+    ],
+    cause: [
+      'Disabling an account stops the person signing in, and it is easy to '
+      + 'assume that is the whole of offboarding. It is not: group memberships '
+      + 'are separate facts about the account, and nothing removes them when '
+      + 'the account is disabled - they simply persist.',
+      'So a half-finished offboarding leaves a disabled account that is still '
+      + 'a member of everything it ever was, and if the account is later '
+      + 're-enabled, or the access is evaluated by group rather than by '
+      + 'sign-in state, the leaver\'s reach is exactly what it was the day they '
+      + 'left. The finding is real and the fix is to strip the groups.',
+    ],
+    see_also: ['kb/okta-app-assignment', 'kb/licence-seats'],
+  },
+  {
+    id: 'kb/sso-mfa-lockout',
+    title: 'Okta has locked the account after too many failed sign-ins',
+    summary: 'An SSO/MFA lockout is a lockout: the platform shut the door after '
+      + 'a failed run, and an admin unlocks it from the console.',
+    state: 'published',
+    issue: 'A user cannot get into anything through SSO - the authenticator '
+      + 'stopped taking its code, they retried, and now the identity platform '
+      + 'has locked the account outright.',
+    environment: 'An estate using Okta (or Entra ID / Duo) with an account '
+      + 'lockout threshold on failed authentication attempts.',
+    resolution: [
+      'Read the state before you touch it: locked is not the same as a broken '
+        + 'factor or a disabled account, and each has its own fix. This one is '
+        + 'a lockout - the door is shut after a failed run.',
+      'Unlock the account from the admin console. The lockout clears and the '
+        + 'user can sign in again.',
+      'If the authenticator itself was the reason the sign-ins failed, that is '
+        + 'a separate question - a factor reset - to answer after they are '
+        + 'back in, not a reason to leave them locked out now.',
+    ],
+    cause: [
+      'An identity platform counts failed sign-ins and, past a threshold, '
+      + 'locks the account - the same defence Active Directory has, in a '
+      + 'different console. A user whose authenticator is misbehaving will trip '
+      + 'it quickly, because each rejected code is another failed attempt.',
+      'The lockout is working as designed and the fix is simply to unlock it. '
+      + 'What it is not is a password reset or a re-enrolment: those solve '
+      + 'different faults that happen to arrive at the same login box, and '
+      + 'reaching for the wrong one leaves the user exactly as stuck.',
+    ],
+    see_also: ['kb/account-lockout', 'kb/second-factor'],
+  },
+  {
+    id: 'kb/msp-scope-escalation',
+    title: 'It is a server / it is production and you are the helpdesk',
+    summary: 'A helpdesk contract covers workstations and users, not servers. A '
+      + 'prod issue on a box you do not manage is escalated, fast and clean.',
+    state: 'published',
+    issue: 'A customer asks the desk to fix something on a server - "just '
+      + 'restart the app server", "the product is down" - and the box is out '
+      + 'of the contract, out of your operating system, or both.',
+    environment: 'An MSP service desk on a helpdesk (workstations-and-users) '
+      + 'contract, where a customer also runs servers - often Linux production '
+      + 'boxes - that another team or the customer\'s own infrastructure owns.',
+    resolution: [
+      'Recognise the boundary before you reach for a tool. A helpdesk contract '
+        + 'covers workstations and user accounts; servers, and especially '
+        + 'production, are not in it. Workstation credentials do not cross into '
+        + 'the server tier, which is why the attempt is refused and not merely '
+        + 'discouraged.',
+      'Do not try to work around it. On a Linux prod box a Windows tech has no '
+        + 'console anyway, so the refusal is doubled - wrong contract and wrong '
+        + 'toolset - and forcing it is how a Tier-1 tech ends up in an incident '
+        + 'review.',
+      'Escalate it fast and clean: hand it to the team that owns the box - the '
+        + 'customer\'s infrastructure team or the field engineers - with what '
+        + 'is known and what was checked. A quick correct escalation beats a '
+        + 'slow wrong fix, and on production it beats it by a lot.',
+    ],
+    cause: [
+      'Scope on an MSP is enforced, not advisory: the contract decides what the '
+      + 'desk may touch, the same way delegated admin decides what an account '
+      + 'may reach. A server on a helpdesk contract is out of scope on purpose, '
+      + 'because the people who own it need to know who changed it and when.',
+      'When the server is also a different operating system - a Linux box to a '
+      + 'Windows service desk - the wall is doubled: there is no contract to '
+      + 'act under and no tool to act with. Being refused and escalating is not '
+      + 'a failure of the desk; it is the shape of the job, and on a customer-'
+      + 'facing outage it is the fastest route to the people who can actually '
+      + 'fix it.',
+    ],
+    see_also: ['kb/backup-verification-gap', 'kb/monitoring-only-alerts'],
+  },
+  {
+    id: 'kb/backup-verification-gap',
+    title: 'A backup that "succeeded" is not a backup you can restore from',
+    summary: 'Monitoring the backup JOB is not testing the RESTORE. A failed '
+      + 'job is raised; a green job that was never restore-tested is the real '
+      + 'risk.',
+    state: 'published',
+    issue: 'A monitoring alert reports a backup job failed on a server. On a '
+      + 'monitoring-only account the desk may only acknowledge and escalate - '
+      + 'and the deeper worry is what the green nights were hiding.',
+    environment: 'A monitoring-only MSP account where the MSP watches backup '
+      + 'job status but does not run or verify the backups themselves, and does '
+      + 'not perform test restores.',
+    resolution: [
+      'Acknowledge the alert and escalate it to whoever performs the customer\'s '
+        + 'remediation. On a monitoring-only contract that is the whole of the '
+        + 'job: the fix is not the desk\'s to make.',
+      'Say clearly in the escalation that the backup FAILED, so it is treated '
+        + 'as data-at-risk and not a noisy alert. A clinic or a firm losing a '
+        + 'night of backups is a real exposure.',
+      'Flag the standing gap when you raise it: nobody is test-restoring these. '
+        + 'A run of green nights is not evidence the data can be recovered, only '
+        + 'that the job reported success.',
+    ],
+    cause: [
+      'A backup job reporting success means the job ran and thought it wrote '
+      + 'its data. It does not mean the data is complete, uncorrupted, or '
+      + 'restorable - the only thing that proves that is actually restoring it, '
+      + 'and monitoring the job status never does.',
+      'So the failed alert in front of you is the honest one; the dangerous '
+      + 'case is the long stretch of green before it, which everybody read as '
+      + '"backups are fine" when all it ever said was "the job did not error". '
+      + 'A monitoring-only contract watches the job and no more, which is why '
+      + 'escalating the failure loudly - and naming the untested-restore gap - '
+      + 'is the value the account is paying for.',
+    ],
+    see_also: ['kb/monitoring-only-alerts', 'kb/msp-scope-escalation'],
+  },
+  {
+    id: 'kb/monitoring-only-alerts',
+    title: 'On a monitoring-only account you raise it, you do not fix it',
+    summary: 'A threshold alert - expiring cert, filling disk - on a '
+      + 'monitoring-only contract is escalated in time, not remediated. Early '
+      + 'is the point.',
+    state: 'published',
+    issue: 'A monitoring board flags a threshold on a customer\'s server - a '
+      + 'TLS certificate near expiry, a disk crossing its low-space line - and '
+      + 'the instinct is to renew it or clear it, which is out of contract.',
+    environment: 'A monitoring-only MSP account: the MSP watches the estate and '
+      + 'notifies, and remediation is explicitly out of scope until authorised '
+      + 'as separate billable work.',
+    resolution: [
+      'Acknowledge the alert. Do not renew the certificate or clear the disk - '
+        + 'both are remediation, and remediation is not what this contract '
+        + 'covers. The desk will be refused if it tries, which is the contract '
+        + 'working, not a bug.',
+      'Escalate to whoever does the customer\'s fixes, with the specifics: the '
+        + 'expiry date, the free-space number, the box. A threshold alert is '
+        + 'only worth anything if it is raised with enough runway to act on.',
+      'Raise it EARLY. The entire value of watching a threshold rather than an '
+        + 'outage is the head start; an alert escalated the morning the cert '
+        + 'expires or the disk fills has thrown that head start away.',
+    ],
+    cause: [
+      'A monitoring-only contract buys eyes, not hands: the MSP watches and '
+      + 'notifies, and the customer keeps their own remediation (or buys it '
+      + 'separately). A threshold alert is the product working exactly as sold '
+      + '- it fires before the thing breaks, so somebody who can act still has '
+      + 'time to.',
+      'That is why the honest move is to escalate rather than to reach in. A '
+      + 'certificate renewed or a disk cleared by the desk is out-of-scope work '
+      + 'that nobody agreed to and nobody is billing, and it hides the fact '
+      + 'that the customer\'s own process is not keeping up. Raising it in good '
+      + 'time is both what the contract allows and what actually protects them.',
+    ],
+    see_also: ['kb/expired-certificate', 'kb/backup-verification-gap'],
+  },
 ];

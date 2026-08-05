@@ -1,133 +1,125 @@
 /**
- * The MSP employer's SKELETON tickets (0.8.0, Pass A).
+ * The MSP employer's REAL per-vertical queue (0.8.0, Pass B).
  *
- * Just enough to PROVE the customer mechanics through the real path, one per
- * customer, each carrying its true scope:
+ * Pass A shipped the customer MODEL and the scope mechanic on three skeleton
+ * lockouts. This is the content those rails were built for: ten characteristic
+ * tickets, each drawn from the vertical research (docs/design/msp-arc.md), each
+ * landing on the correct customer's estate, each carrying its TRUE scope so the
+ * Pass A engine is exercised by real work rather than by a fixture.
  *
- *  - FONTAINE-LAW (helpdesk): a locked account - a workstation user, IN scope,
- *    closed by unlocking it. This is the desk's own job at a customer.
- *  - MERIDIAN-SAAS (helpdesk): the same shape at the SaaS company - a laptop
- *    user locked out, in scope - so the in-scope path is proven at a customer
- *    whose PROD is out of reach on OS and contract both (proven by the mechanic
- *    tests, not by a ticket the player could ever close there).
- *  - NORTHWIND-CLINIC (monitoring-only): a backup alert the player may only
- *    ACKNOWLEDGE and ESCALATE - closed by escalation, because remediation is out
- *    of contract. A player who reaches to FIX it is refused, truthfully.
+ *  - FONTAINE-LAW (law firm, helpdesk): a document-management check-out deadlock
+ *    (iManage), a matter-workspace access request (ethical-wall care), and the
+ *    tense one - an e-filing deadline where CM/ECF has bounced the PDF. All
+ *    workstation/user/share scope, so the desk CAN work them.
+ *  - MERIDIAN-SAAS (saas, helpdesk): an Okta SSO login loop, an offboarding
+ *    access-gap, an MFA lockout - all identity, all in scope - and one that DRAWS
+ *    the player onto the Linux product fleet, where the only honest move is to be
+ *    refused (OS + contract both) and escalate. That last one is the compose case
+ *    the 0.7.0 refusals and the 0.8.0 scope refusals stack on.
+ *  - NORTHWIND-CLINIC (monitoring-only): three alerts - a failed backup, an
+ *    expiring certificate, a full disk - the player may only ACKNOWLEDGE and
+ *    ESCALATE. Their resolution rule IS escalation; a player who reaches to FIX
+ *    one is refused, truthfully, by the monitoring-only scope engine.
  *
- * The rich per-vertical ticket streams the arc plan cites (the DMS deadlock, the
- * Okta SSO loop, the e-filing panic) are a LATER pass; these three exist to give
- * the scope, tenant and OS mechanics teeth. Each reuses an existing KB article
- * rather than shipping vertical KB content this pass.
+ * Every fix path is a REAL fix and names REAL systems; every KB article it points
+ * at is true (src/world/kb/articles.ts). Nothing here invents engine state: the
+ * verbs are the shipped helpdesk set, chosen to match the real remediation, and
+ * where the truest real fix is an admin unlock or a released lock the estate
+ * models it as the graph fact it is (a stale membership, a checked-out group).
  */
 
 import { HELPDESK_ACTIONS } from '../actions';
-import { FIELDS, SERVICE_STATUS } from '../fields';
-import { MSP_IDS } from '../msp-company';
+import { FIELDS, LOCKOUT_THRESHOLD, SERVICE_STATUS } from '../fields';
+import {
+  fsEntryId,
+  myDocumentsDirId,
+  TEMP_SEGMENTS,
+  tempDirId,
+} from '../filesystem';
+import { mspMachineHostname, MSP_IDS } from '../msp-company';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import type { WorldTicket } from './types';
 
-/** A law-firm helpdesk lockout: in scope, closed by unlocking the account. */
-const FONTAINE_LOCKOUT: WorldTicket = {
-  arrival: 'morning',
-  nodes: [MSP_IDS.fontaineContactAccount, MSP_IDS.fontaineWorkstation],
+/* -- FONTAINE-LAW: a Windows-only law firm on a helpdesk contract --------- */
+
+/**
+ * The iManage check-out deadlock. A partner closed the document management
+ * client the wrong way - shut the laptop lid on it - and the deposition he had
+ * open is still marked checked out TO HIM, read-only to everyone else. A
+ * paralegal with a hearing tomorrow cannot edit it.
+ *
+ * The fix is the real one: an administrator releases the stale check-out. In the
+ * estate that lock is exactly what it is in iManage - a hold one user has on the
+ * document - modelled as the partner's membership of the document's checked-out
+ * set, so releasing it is removing the stale holder. It is helpdesk-scope work
+ * on a user and a document, not a touch of a server.
+ */
+const CHECKOUT_DEADLOCK: WorldTicket = {
+  arrival: 'drip',
+  nodes: [
+    MSP_IDS.fontainePartnerAccount,
+    MSP_IDS.fontaineCheckoutLock,
+    MSP_IDS.fontaineWorkstation,
+  ],
   claimed_urgency: 3,
   true_urgency: 2,
   def: {
-    id: 'ticket:fontaine-lockout',
+    id: 'ticket:fontaine-checkout-deadlock',
     archetype: 'hidden_cause',
     flavor: {
-      title: 'Fontaine: locked out, and court at ten',
+      title: 'Fontaine: nobody can edit the Rossiter deposition',
       body:
-        'Nadia at Fontaine & Associates cannot sign in - the account is locked '
-        + 'after a run of failed attempts this morning. She has a filing at ten '
-        + 'and would like this treated as urgent, which at a law firm it '
-        + 'genuinely is.',
+        'Nadia reports that the Rossiter v Atlas deposition is stuck read-only '
+        + 'in iManage. A paralegal with a hearing tomorrow cannot check it out - '
+        + 'the system says Marcus already has it, and Marcus does not: he closed '
+        + 'his laptop on Friday with it open and has been in court since. It is '
+        + 'checked out to a man who is not there.',
     },
     reporter: MSP_IDS.fontaineContact,
+    // The stale hold arrives with the ticket, the way every fault in this roster
+    // does: the partner still holds the document, which is why nobody else can.
     setup: [
       {
-        op: 'setField',
-        id: MSP_IDS.fontaineContactAccount,
-        field: FIELDS.locked,
-        value: true,
+        op: 'addEdge',
+        edge: {
+          from: MSP_IDS.fontainePartnerAccount,
+          to: MSP_IDS.fontaineCheckoutLock,
+          kind: 'member_of',
+        },
       },
     ],
+    // Closed when the stale check-out is released - the document is no longer
+    // held by the man who is not there.
     resolved_when: {
-      op: 'eq',
-      selector: { id: MSP_IDS.fontaineContactAccount },
-      field: FIELDS.locked,
-      value: false,
+      op: 'not',
+      expr: {
+        op: 'edge',
+        from: { id: MSP_IDS.fontainePartnerAccount },
+        to: { id: MSP_IDS.fontaineCheckoutLock },
+        kind: 'member_of',
+      },
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 3 },
-    kb_ref: 'kb/account-lockout',
+    reward: { reputation: 4 },
+    kb_ref: 'kb/document-checkout-lock',
   },
-  cause: 'A run of failed sign-ins locked the account this morning. A '
-    + 'workstation user at a helpdesk customer - squarely the desk\'s job.',
+  cause: 'iManage marks a document checked out to whoever has it open, and a '
+    + 'client that closes uncleanly never releases the lock. Marcus\'s hold has '
+    + 'simply never been given back; an administrator releasing it is the whole '
+    + 'of the fix, and restoring anything or restarting anything would be neither '
+    + 'here nor there.',
   dialogue_ref: 'dialogue/msp-nadia',
   paths: [
     {
-      id: 'unlock-nadia',
-      app: 'cmd',
-      label: 'Unlock the account for nfontaine',
+      id: 'release-the-checkout',
+      app: 'directory',
+      label: 'Release Marcus\'s stale check-out on the deposition (iManage '
+        + 'Control Center)',
       steps: [
         {
-          action: HELPDESK_ACTIONS.accountUnlock,
-          target: MSP_IDS.fontaineContactAccount,
-        },
-      ],
-    },
-  ],
-};
-
-/** The same in-scope shape at Meridian, whose product fleet is out of reach. */
-const MERIDIAN_LOCKOUT: WorldTicket = {
-  arrival: 'drip',
-  nodes: [MSP_IDS.meridianContactAccount, MSP_IDS.meridianLaptop],
-  claimed_urgency: 2,
-  true_urgency: 2,
-  def: {
-    id: 'ticket:meridian-lockout',
-    archetype: 'hidden_cause',
-    flavor: {
-      title: 'Meridian: Theo locked out of his laptop account',
-      body:
-        'Theo at Meridian is locked out after fat-fingering his password on a '
-        + 'new laptop. He mentions, as he always does, that "the app servers are '
-        + 'fine" - which they are, and which is not something you could touch if '
-        + 'they were not.',
-    },
-    reporter: MSP_IDS.meridianContact,
-    setup: [
-      {
-        op: 'setField',
-        id: MSP_IDS.meridianContactAccount,
-        field: FIELDS.locked,
-        value: true,
-      },
-    ],
-    resolved_when: {
-      op: 'eq',
-      selector: { id: MSP_IDS.meridianContactAccount },
-      field: FIELDS.locked,
-      value: false,
-    },
-    sla_ticks: UNTRIAGED_SLA_TICKS,
-    reward: { reputation: 3 },
-    kb_ref: 'kb/account-lockout',
-  },
-  cause: 'A mistyped password locked the account. The user is in scope; the '
-    + 'Linux product fleet he mentions is not, on OS and contract both.',
-  dialogue_ref: 'dialogue/msp-theo',
-  paths: [
-    {
-      id: 'unlock-theo',
-      app: 'cmd',
-      label: 'Unlock the account for tmarsh',
-      steps: [
-        {
-          action: HELPDESK_ACTIONS.accountUnlock,
-          target: MSP_IDS.meridianContactAccount,
+          action: HELPDESK_ACTIONS.accountRemoveFromGroup,
+          target: MSP_IDS.fontainePartnerAccount,
+          params: { group: MSP_IDS.fontaineCheckoutLock },
         },
       ],
     },
@@ -135,27 +127,503 @@ const MERIDIAN_LOCKOUT: WorldTicket = {
 };
 
 /**
- * The monitoring-only alert. The ONLY honest ending is escalation: the contract
- * is watch-and-notify, so the ticket closes when it is escalated, not when the
- * service is fixed - and a player who tries to fix it is refused by the scope
- * engine. Its resolution rule accepts an escalation, which is the same
- * escalate-and-mean-it path the hardware ticket has.
+ * The matter-workspace access request. A new associate started Monday and cannot
+ * open the Delacroix estate matter - she is not in its security group. This is
+ * the everyday grant, with the one thing a law firm adds to it: the ethical
+ * wall. Erin is not screened off Delacroix (Nadia has checked the conflicts
+ * system before raising it), so the grant is clean; the job is to make it, not
+ * to invent a wall that is not there.
  */
-const NORTHWIND_ALERT: WorldTicket = {
+const MATTER_ACCESS: WorldTicket = {
+  arrival: 'morning',
+  nodes: [
+    MSP_IDS.fontaineNewHireAccount,
+    MSP_IDS.fontaineMatterShare,
+    MSP_IDS.fontaineWorkstation,
+  ],
+  claimed_urgency: 2,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:fontaine-matter-access',
+    archetype: 'hidden_cause',
+    flavor: {
+      title: 'Fontaine: new associate cannot open the Delacroix matter',
+      body:
+        'Nadia reports that Erin, who started this morning, has been staffed on '
+        + 'the Delacroix estate matter and cannot see the workspace at all. Nadia '
+        + 'adds - unprompted, and correctly - that she has already checked the '
+        + 'conflicts system: there is no ethical wall on this one, so Erin is '
+        + 'clear to be added.',
+    },
+    reporter: MSP_IDS.fontaineContact,
+    // Nothing is broken and nothing is seeded: the fault is the absence of a
+    // grant, exactly as the licence and mailbox requests are.
+    setup: [],
+    // Closed when the new associate can reach the matter workspace.
+    resolved_when: {
+      op: 'edge',
+      from: { id: MSP_IDS.fontaineNewHireAccount },
+      to: { id: MSP_IDS.fontaineMatterShare },
+      kind: 'has_access',
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 3 },
+    kb_ref: 'kb/matter-workspace-access',
+  },
+  cause: 'She has never been granted it. A matter workspace is a security group '
+    + 'on the document system, membership is per matter because the ethical wall '
+    + 'is, and a new starter is in none of them until somebody who has checked '
+    + 'the conflicts puts her in the right ones.',
+  dialogue_ref: 'dialogue/msp-nadia',
+  paths: [
+    {
+      id: 'grant-matter-access',
+      app: 'directory',
+      label: 'Add Erin to the Delacroix matter workspace',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.shareGrantAccess,
+          target: MSP_IDS.fontaineMatterShare,
+          params: { account: MSP_IDS.fontaineNewHireAccount },
+        },
+      ],
+    },
+  ],
+};
+
+/* -- the e-filing deadline: the tense law-firm headline ------------------- */
+
+/** The correct filing, in the wrong place, on the front-office workstation. */
+const EFILING_PDF = fsEntryId(
+  MSP_IDS.fontaineWorkstation,
+  [...TEMP_SEGMENTS, 'ROSSITER-MSJ-FINAL.PDF'],
+  'file',
+);
+const EFILING_TEMP = tempDirId(MSP_IDS.fontaineWorkstation);
+const EFILING_DOCS = myDocumentsDirId(MSP_IDS.fontaineWorkstation, 'nfontaine');
+
+/**
+ * What the good file has in it, so a tech can prove it is the right one - the
+ * flattened, OCR'd, unsecured PDF/A - before moving anything. It is the whole
+ * reason a court-ready PDF is worth reading the header of.
+ */
+const EFILING_TEXT = [
+  'ROSSITER v ATLAS - MOTION FOR SUMMARY JUDGMENT',
+  'US District Court, filed via CM/ECF',
+  '',
+  'PDF/A-1b   |   Text layer: PRESENT (OCR)   |   Security: NONE',
+  '',
+  'This is the flattened copy the paralegal exported for filing.',
+  'The one the system keeps rejecting is the DRAFT print - it has',
+  'document security set and no text layer, which is why CM/ECF',
+  'bounced it: "PDF document is malformed or contains security',
+  'settings that prevent it from being processed."',
+].join('\n');
+
+/**
+ * The e-filing deadline panic. An attorney is trying to file a motion before the
+ * court's cutoff and CM/ECF keeps rejecting the PDF. The court does not excuse
+ * filer-side failures, so this is genuinely high-severity - the tense headline
+ * of the law-firm week.
+ *
+ * The rejection cause is a real one: the file being uploaded is the DRAFT print,
+ * which carries document-security restrictions and has no OCR text layer, and
+ * CM/ECF refuses it. The paralegal already produced the acceptable copy - a
+ * flattened, OCR'd PDF/A - but the "Save As PDF/A" export dropped it into the
+ * temp directory the way an opened attachment lands there, and it never made it
+ * to the folder the CM/ECF upload dialog points at. The desk's job under the
+ * clock is to prove which file is the right one and put it where the filing goes.
+ */
+const EFILING_PANIC: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.fontaineWorkstation, MSP_IDS.fontaineContactAccount],
+  // A statutory deadline the court will not move, minutes out. This is the one
+  // ticket on the law-firm desk that is exactly as urgent as it is claimed.
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:fontaine-efiling',
+    archetype: 'hidden_cause',
+    flavor: {
+      title: 'Fontaine: CM/ECF keeps rejecting the filing and it is due at noon',
+      body:
+        'Nadia is on the line for a partner who cannot file the Rossiter summary '
+        + 'judgment motion. CM/ECF rejects the upload every time - "malformed or '
+        + 'contains security settings" - and the filing is due at noon, which the '
+        + 'court will not move for an IT problem. The paralegal insists she made '
+        + 'a proper PDF/A earlier; nobody can find it, and the draft they keep '
+        + 'uploading is the one being bounced.',
+    },
+    reporter: MSP_IDS.fontaineContact,
+    // The right file, written into TEMP by the export dialog and never moved.
+    setup: [
+      {
+        op: 'addNode',
+        node: {
+          id: EFILING_PDF,
+          kind: 'file',
+          fields: {
+            [FIELDS.name]: 'ROSSITER-MSJ-FINAL.PDF',
+            [FIELDS.modified]: '09/06/2025  10:41',
+            [FIELDS.volume]: mspMachineHostname(MSP_IDS.fontaineWorkstation),
+            [FIELDS.content]: EFILING_TEXT,
+          },
+        },
+      },
+      {
+        op: 'addEdge',
+        edge: { from: EFILING_TEMP, to: EFILING_PDF, kind: 'contains' },
+      },
+    ],
+    // Closed when the acceptable copy is where the upload dialog is pointed - in
+    // the filer's own documents, out of the temp directory nobody looks in.
+    resolved_when: {
+      op: 'edge',
+      from: { id: EFILING_DOCS },
+      to: { id: EFILING_PDF },
+      kind: 'contains',
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 6 },
+    kb_ref: 'kb/e-filing-pdf-rejected',
+  },
+  cause: 'CM/ECF rejected the draft because it had document security set and no '
+    + 'text layer - a real and common e-filing failure. The acceptable copy, the '
+    + 'flattened OCR\'d PDF/A the paralegal exported, is sitting in WINDOWS\\TEMP '
+    + 'where the Save As dialog left it, and the upload dialog is pointed at My '
+    + 'Documents. Nothing is broken; the right file is one move from where it is '
+    + 'needed.',
+  dialogue_ref: 'dialogue/msp-nadia',
+  paths: [
+    {
+      id: 'place-the-court-ready-pdf',
+      app: 'cmd',
+      label: 'Move the flattened PDF/A out of TEMP into the filer\'s documents',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.fileMove,
+          target: EFILING_PDF,
+          params: { from: EFILING_TEMP, to: EFILING_DOCS },
+        },
+      ],
+    },
+  ],
+};
+
+/* -- MERIDIAN-SAAS: a SaaS shop, helpdesk, the Linux prod out of reach ---- */
+
+/**
+ * The Okta SSO login loop. IT swapped the CRM's SSO integration over the
+ * weekend, and the new app assignment did not carry everyone across: an engineer
+ * clicks the tile and Okta bounces her straight back to the dashboard, over and
+ * over, because she is not in the group the new app grants access from. The fix
+ * is to restore her app assignment - add her to the Okta group behind it.
+ */
+const SSO_LOGIN_LOOP: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.meridianDevAccount, MSP_IDS.meridianAppGroup, MSP_IDS.meridianLaptop],
+  claimed_urgency: 3,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:meridian-app-assignment',
+    archetype: 'hidden_cause',
+    flavor: {
+      title: 'Meridian: Salesforce SSO just bounces Dana back to the dashboard',
+      body:
+        'Theo reports that after the weekend\'s SSO change, Dana clicks the '
+        + 'Salesforce tile in Okta and lands straight back on the Okta '
+        + 'dashboard - no error, no login, just a loop. Everyone else on her '
+        + 'team is fine. The product servers are fine too, he adds, which is '
+        + 'true and is not something the desk could touch if they were not.',
+    },
+    reporter: MSP_IDS.meridianContact,
+    // The assignment that did not carry across is simply not there; the loop is
+    // the absence of it. Nothing seeded, like every missing-grant ticket.
+    setup: [],
+    // Closed when her app assignment is back - she is in the group the new
+    // integration grants from.
+    resolved_when: {
+      op: 'edge',
+      from: { id: MSP_IDS.meridianDevAccount },
+      to: { id: MSP_IDS.meridianAppGroup },
+      kind: 'member_of',
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/okta-app-assignment',
+  },
+  cause: 'The weekend migration rebuilt the Salesforce app on a new group-based '
+    + 'assignment and Dana was not carried into the group. Okta will authenticate '
+    + 'her and then find she has no assignment to the app, so it returns her to '
+    + 'the dashboard - which looks like a loop and is really a missing membership.',
+  dialogue_ref: 'dialogue/msp-theo',
+  paths: [
+    {
+      id: 'restore-app-assignment',
+      app: 'directory',
+      label: 'Add Dana to the Okta Salesforce Users group',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.accountAddToGroup,
+          target: MSP_IDS.meridianDevAccount,
+          params: { group: MSP_IDS.meridianAppGroup },
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The offboarding access-gap. A contractor's engagement ended in April and the
+ * deprovisioning stopped one step short: he is still in the Production Admins
+ * group in Okta, which is access a person who no longer works here should not
+ * have. Nothing is on fire; it is the quiet security finding that offboarding
+ * is supposed to close and did not. The fix is to remove the lingering
+ * membership.
+ */
+const OFFBOARDING_GAP: WorldTicket = {
+  arrival: 'drip',
+  nodes: [
+    MSP_IDS.meridianContractorAccount,
+    MSP_IDS.meridianProdAdmins,
+    MSP_IDS.meridianLaptop,
+  ],
+  claimed_urgency: 2,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:meridian-offboarding',
+    archetype: 'hidden_cause',
+    flavor: {
+      title: 'Meridian: a contractor who left in April is still a Prod Admin',
+      body:
+        'Theo has been through the Okta access review and found Rafiq - whose '
+        + 'contract ended in April - still in the Production Admins group. He is '
+        + 'gone, the account was never fully offboarded, and the membership is '
+        + 'exactly the access review that turned it up says it is: a person who '
+        + 'does not work here who can still reach production.',
+    },
+    reporter: MSP_IDS.meridianContact,
+    // The lingering membership arrives with the ticket that is about it.
+    setup: [
+      {
+        op: 'addEdge',
+        edge: {
+          from: MSP_IDS.meridianContractorAccount,
+          to: MSP_IDS.meridianProdAdmins,
+          kind: 'member_of',
+        },
+      },
+    ],
+    // Closed when the leaver is out of the group he should never still be in.
+    resolved_when: {
+      op: 'not',
+      expr: {
+        op: 'edge',
+        from: { id: MSP_IDS.meridianContractorAccount },
+        to: { id: MSP_IDS.meridianProdAdmins },
+        kind: 'member_of',
+      },
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/offboarding-access-gap',
+  },
+  cause: 'Offboarding disabled the account and stopped there. Group memberships '
+    + 'are not removed by disabling somebody - nothing removes them until a '
+    + 'person does - so the leaver\'s access to the production admin group has '
+    + 'simply outlived the leaver, which is the whole of the finding.',
+  dialogue_ref: 'dialogue/msp-theo',
+  paths: [
+    {
+      id: 'revoke-lingering-access',
+      app: 'directory',
+      label: 'Remove Rafiq from the Okta Production Admins group',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.accountRemoveFromGroup,
+          target: MSP_IDS.meridianContractorAccount,
+          params: { group: MSP_IDS.meridianProdAdmins },
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The MFA lockout. An analyst mistyped her way past the threshold on a Monday
+ * and her identity account is locked. It is the same skill the probation shop
+ * teaches on an Active Directory lockout - a lockout is a lockout in any
+ * directory - said true to the estate it happens in: an Okta account, locked by
+ * failed attempts, unlocked from the admin console.
+ */
+const MFA_LOCKOUT: WorldTicket = {
+  arrival: 'morning',
+  nodes: [MSP_IDS.meridianAnalystAccount, MSP_IDS.meridianLaptop],
+  claimed_urgency: 3,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:meridian-mfa-lockout',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Meridian: Nora is locked out of everything after a bad Monday',
+      body:
+        'Theo reports that Nora cannot get into anything - the authenticator '
+        + 'stopped taking the code it was generating, she tried a few more '
+        + 'times, and now Okta has locked the account outright. She has a '
+        + 'client call at ten. The product fleet is fine, he says, which it is.',
+    },
+    reporter: MSP_IDS.meridianContact,
+    // The lockout arrives with the ticket: the failed run and the shut door.
+    setup: [
+      {
+        op: 'setField',
+        id: MSP_IDS.meridianAnalystAccount,
+        field: FIELDS.badPwCount,
+        value: LOCKOUT_THRESHOLD,
+      },
+      {
+        op: 'setField',
+        id: MSP_IDS.meridianAnalystAccount,
+        field: FIELDS.lockedSince,
+        value: 0,
+      },
+      {
+        op: 'setField',
+        id: MSP_IDS.meridianAnalystAccount,
+        field: FIELDS.locked,
+        value: true,
+      },
+    ],
+    // Closed when the account is unlocked - the door is open again.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: MSP_IDS.meridianAnalystAccount },
+      field: FIELDS.locked,
+      value: false,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 3 },
+    kb_ref: 'kb/sso-mfa-lockout',
+  },
+  cause: 'A run of failed sign-ins tripped Okta\'s lockout, exactly as it is '
+    + 'meant to. An identity user at a helpdesk customer - the desk unlocks it '
+    + 'from the admin console, and whether the authenticator itself needs a '
+    + 'reset afterwards is the next question, not this one.',
+  dialogue_ref: 'dialogue/msp-theo',
+  paths: [
+    {
+      id: 'unlock-nprice',
+      app: 'cmd',
+      label: 'Unlock the account for nprice',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.accountUnlock,
+          target: MSP_IDS.meridianAnalystAccount,
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The Linux prod draw - the compose case, made content.
+ *
+ * The product is down and the ticket points straight at MERI-APP-01, the Linux
+ * application server. Every instinct says restart the app or the web server, and
+ * every instinct is wrong here on BOTH counts: it is a SERVER (out of the
+ * helpdesk contract) and it is Linux (a Windows stop control does not reach a
+ * systemd unit). The only honest ending is to be refused and escalate to the
+ * customer's own infrastructure team - which is what the resolution rule accepts
+ * and the fix path does. The refusal itself is proven, on real content, by
+ * `msp-scope.test.ts`.
+ */
+const PROD_DOWN_ESCALATE: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.meridianAppServer, MSP_IDS.meridianDbServer],
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:meridian-prod-down',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Meridian: the product is down - "just restart the app server?"',
+      body:
+        'Theo reports the product is throwing 502s and customers are noticing. '
+        + 'He asks, reasonably, whether the desk can "just bounce the app '
+        + 'server" - MERI-APP-01. It is the product\'s Linux box, it is a '
+        + 'server, and it is under the customer\'s own infrastructure team on '
+        + 'this contract: reaching into it is out of scope on OS and contract '
+        + 'both, and the job is to raise it fast to the people whose it is.',
+    },
+    reporter: MSP_IDS.meridianContact,
+    setup: [],
+    // The only honest ending: escalate. Remediation on the prod fleet is out of
+    // reach on both counts, so escalation is not a fallback here - it is the job.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: 'ticket:meridian-prod-down' },
+      field: FIELDS.escalated,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/msp-scope-escalation',
+  },
+  cause: 'The product is down on a Linux server the MSP does not manage under a '
+    + 'helpdesk contract. There is nothing here a Tier-1 Windows tech may - or '
+    + 'even could - do to it; the fast, correct move is a clean escalation to '
+    + 'the customer\'s infrastructure team with what is known.',
+  dialogue_ref: 'dialogue/msp-theo',
+  paths: [
+    {
+      id: 'escalate-prod-to-infra',
+      app: 'tickets',
+      label: 'Escalate it: prod is out of scope on OS and contract both',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.ticketEscalate,
+          target: 'ticket:meridian-prod-down',
+          params: {
+            reported: 'Product returning 502s; customer-visible outage.',
+            tried:
+              'Confirmed MERI-APP-01 is the Linux prod app server\n'
+              + 'Checked scope: helpdesk contract, servers out of reach - not '
+              + 'the desk\'s to touch',
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/* -- NORTHWIND-CLINIC: monitoring-only, escalate-and-mean-it -------------- */
+
+/**
+ * The backup-failed alert, and the gap behind it.
+ *
+ * The board goes red because last night's backup job failed. The honest end is
+ * escalation - Northwind is monitoring-only, remediation is out of contract - and
+ * a player who reaches to restart the backup service is refused. But the article
+ * this points at says the harder truth the alert only half-tells: a backup job
+ * reporting success is not the same as a restorable backup, and monitoring the
+ * JOB is not testing the RESTORE. Raising it correctly is the whole of the job.
+ */
+const BACKUP_ALERT: WorldTicket = {
   arrival: 'drip',
   nodes: [MSP_IDS.northwindServer, MSP_IDS.northwindBackup],
   claimed_urgency: 2,
-  true_urgency: 2,
+  true_urgency: 3,
   def: {
     id: 'ticket:northwind-backup-alert',
     archetype: 'read_the_screen',
     flavor: {
-      title: 'Northwind: backup alert on NW-SRV-01',
+      title: 'Northwind: backup job FAILED on NW-SRV-01',
       body:
-        'The monitoring board is red on NW-SRV-01: the backup service has '
-        + 'wedged. Northwind is a monitoring-only account - the MSP watches this '
-        + 'box and nothing more - so the job is to raise it, not to reach in and '
-        + 'restart it.',
+        'The monitoring board is red on NW-SRV-01: last night\'s backup job '
+        + 'failed outright. Northwind is a monitoring-only account - the MSP '
+        + 'watches this box and no more - so the job is to acknowledge it and '
+        + 'raise it to whoever does their fixes, not to reach in and restart '
+        + 'the backup service.',
     },
     reporter: MSP_IDS.northwindContact,
     setup: [
@@ -174,14 +642,17 @@ const NORTHWIND_ALERT: WorldTicket = {
     },
     sla_ticks: UNTRIAGED_SLA_TICKS,
     reward: { reputation: 3 },
-    kb_ref: 'kb/event-log',
+    kb_ref: 'kb/backup-verification-gap',
   },
-  cause: 'The backup service wedged. On a monitoring-only contract the fix is '
-    + 'out of scope; acknowledging and escalating IS the job.',
+  cause: 'The backup service wedged and the job failed. On a monitoring-only '
+    + 'contract the fix is out of scope; acknowledging and escalating IS the '
+    + 'job - and it is worth doing loudly, because a monitoring that watches the '
+    + 'job and never tests a restore is one green tick away from a backup nobody '
+    + 'can actually restore from.',
   dialogue_ref: 'dialogue/msp-ivy',
   paths: [
     {
-      id: 'escalate-northwind',
+      id: 'escalate-backup',
       app: 'tickets',
       label: 'Escalate it: monitoring-only, remediation is not contracted',
       steps: [
@@ -189,10 +660,152 @@ const NORTHWIND_ALERT: WorldTicket = {
           action: HELPDESK_ACTIONS.ticketEscalate,
           target: 'ticket:northwind-backup-alert',
           params: {
-            reported: 'Backup service wedged on NW-SRV-01 (monitoring alert).',
+            reported: 'Backup job failed overnight on NW-SRV-01 (monitoring '
+              + 'alert).',
             tried:
-              'Confirmed the alert on the board\nChecked the contract: '
-              + 'monitoring-only, remediation out of scope',
+              'Confirmed the failure on the board\n'
+              + 'Checked the contract: monitoring-only, remediation out of scope',
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The certificate-expiry threshold alert. The clinic portal's TLS certificate is
+ * days from expiry and the board has flagged it. On a monitoring-only contract
+ * the renew is not the desk's to do - a player who reaches for it is refused - so
+ * the winnable move is to raise it before it expires, which is the entire value
+ * of watching a threshold rather than an outage.
+ */
+const CERT_ALERT: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.northwindServer, MSP_IDS.northwindPortal],
+  claimed_urgency: 2,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:northwind-cert-alert',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Northwind: TLS certificate on the clinic portal expiring',
+      body:
+        'The board has flagged the clinic portal on NW-SRV-01: its TLS '
+        + 'certificate is inside the expiry threshold and counting down. '
+        + 'Northwind is monitoring-only, so renewing it is not the MSP\'s to '
+        + 'do - the point of the alert is to raise it in time for the people '
+        + 'who can, before the day it expires and the whole portal starts '
+        + 'refusing patients.',
+    },
+    reporter: MSP_IDS.northwindContact,
+    setup: [
+      {
+        op: 'setField',
+        id: MSP_IDS.northwindPortal,
+        field: FIELDS.certExpired,
+        value: true,
+      },
+    ],
+    resolved_when: {
+      op: 'eq',
+      selector: { id: 'ticket:northwind-cert-alert' },
+      field: FIELDS.escalated,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 3 },
+    kb_ref: 'kb/monitoring-only-alerts',
+  },
+  cause: 'The portal\'s certificate is near expiry - a threshold the monitoring '
+    + 'exists to catch early. Renewing it is real work, but not work this '
+    + 'contract covers; raising it with enough runway that it never actually '
+    + 'expires is exactly what a monitoring-only account is paying for.',
+  dialogue_ref: 'dialogue/msp-ivy',
+  paths: [
+    {
+      id: 'escalate-cert',
+      app: 'tickets',
+      label: 'Escalate it: monitoring-only, the renew is not contracted',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.ticketEscalate,
+          target: 'ticket:northwind-cert-alert',
+          params: {
+            reported: 'Clinic portal TLS certificate inside the expiry '
+              + 'threshold on NW-SRV-01.',
+            tried:
+              'Confirmed the expiry date on the board\n'
+              + 'Checked the contract: monitoring-only, renewal out of scope',
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The disk-full threshold alert. NW-SRV-01 has crossed its low-space threshold.
+ * On any other customer this is a directory to empty; here it is an alert to
+ * raise, because the contract is watch-and-notify and clearing space on the box
+ * is out of scope. The winnable move is escalation, before the disk fills the
+ * rest of the way and the server stops doing anything at all.
+ */
+const DISK_ALERT: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.northwindServer],
+  claimed_urgency: 2,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:northwind-disk-alert',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Northwind: NW-SRV-01 crossed its low-disk threshold',
+      body:
+        'The board is amber on NW-SRV-01: free space has dropped below the '
+        + 'threshold and is still falling. It is a file server, it is monitoring-'
+        + 'only, and clearing space on it is not the MSP\'s to do - the job is to '
+        + 'raise it now, while there is still room to raise it in, rather than '
+        + 'the morning it fills and everything on the box stops.',
+    },
+    reporter: MSP_IDS.northwindContact,
+    setup: [
+      {
+        op: 'setField',
+        id: MSP_IDS.northwindServer,
+        field: FIELDS.diskFree,
+        value: 1_073_741_824,
+      },
+    ],
+    resolved_when: {
+      op: 'eq',
+      selector: { id: 'ticket:northwind-disk-alert' },
+      field: FIELDS.escalated,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 3 },
+    kb_ref: 'kb/monitoring-only-alerts',
+  },
+  cause: 'The server is low on disk and dropping. Emptying anything on it is '
+    + 'real remediation and out of a monitoring-only contract; the value the '
+    + 'account bought is the early warning, and spending it means escalating '
+    + 'while there is still headroom, not after.',
+  dialogue_ref: 'dialogue/msp-ivy',
+  paths: [
+    {
+      id: 'escalate-disk',
+      app: 'tickets',
+      label: 'Escalate it: monitoring-only, clearing space is not contracted',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.ticketEscalate,
+          target: 'ticket:northwind-disk-alert',
+          params: {
+            reported: 'NW-SRV-01 below its low-disk threshold and falling '
+              + '(monitoring alert).',
+            tried:
+              'Confirmed free space on the board\n'
+              + 'Checked the contract: monitoring-only, remediation out of scope',
           },
         },
       ],
@@ -201,7 +814,17 @@ const NORTHWIND_ALERT: WorldTicket = {
 };
 
 export const MSP_TICKETS: readonly WorldTicket[] = [
-  FONTAINE_LOCKOUT,
-  MERIDIAN_LOCKOUT,
-  NORTHWIND_ALERT,
+  // FONTAINE-LAW - the law firm, helpdesk scope.
+  MATTER_ACCESS,
+  CHECKOUT_DEADLOCK,
+  EFILING_PANIC,
+  // MERIDIAN-SAAS - the SaaS shop, helpdesk identity work, prod out of reach.
+  SSO_LOGIN_LOOP,
+  OFFBOARDING_GAP,
+  MFA_LOCKOUT,
+  PROD_DOWN_ESCALATE,
+  // NORTHWIND-CLINIC - monitoring-only, escalate and mean it.
+  BACKUP_ALERT,
+  CERT_ALERT,
+  DISK_ALERT,
 ];

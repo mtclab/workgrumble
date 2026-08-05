@@ -1,17 +1,23 @@
 /**
- * Fettle & Crane Managed IT, week one (0.8.0, Pass A).
+ * Fettle & Crane Managed IT, week one (0.8.0).
  *
- * The MSP employer's week, and deliberately a LIGHT one - three tickets across
- * three customers, one each, enough to walk the customer dimension end to end:
- * open a ticket and land in that customer's context, work an in-scope helpdesk
- * job at one, hit the monitoring-only scope wall at another, and have the OS +
- * scope compose reachable at the SaaS shop. The rich per-vertical streams are a
- * later pass; this proves the mechanics on a real week.
+ * Pass A stood this up as three skeleton lockouts to prove the customer
+ * mechanics; Pass B fills it with the real per-vertical queue - ten tickets
+ * across three customers, spread over five days the way every other employer's
+ * week is. It is still a Tier-1 service-desk week: a morning pile of at most
+ * two, drips landing inside the hours, the ramp climbing Monday-light to a
+ * Thursday that carries the tense e-filing deadline and the prod-down escalation
+ * at once, and a lighter Friday for the review.
  *
- * Same loader and rules as the other two employers' weeks: a morning pile of at
- * most two, every ticket arrives once, drips land inside the hours. The room set
- * passed to `validateWeek` is Fettle & Crane's, so a service-desk message is
- * legal here and one in another shop's room is the boot failure it should be.
+ * The week teaches the shape of the job by where it puts its tickets: two
+ * customers before nine on the first morning (the tenant switch, made routine),
+ * the monitoring-only wall on every day Northwind speaks, and - on Thursday - the
+ * one the whole arc is built to reach: the product down on a Linux box the desk
+ * may not, and could not, touch, whose only honest ending is to escalate.
+ *
+ * Same loader and rules as the other two employers' weeks. The room set passed
+ * to `validateWeek` is Fettle & Crane's, so a service-desk message is legal here
+ * and one in another shop's room is the boot failure it should be.
  */
 
 import { MSP_CHANNELS } from './msp-company';
@@ -23,50 +29,62 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
   {
     day: 1,
     label: 'Monday',
-    // One customer on the desk before nine: Fontaine's practice manager is
-    // locked out with a filing at ten - the desk's own job, at a customer.
-    inherited: ['ticket:fontaine-lockout'],
-    drip: [],
+    // Two customers before the kettle has boiled: Fontaine's new associate
+    // cannot open her first matter, and Northwind's backup failed overnight.
+    // One in-scope grant, one monitoring-only wall - the tenant switch and the
+    // scope constraint, both on the first morning.
+    inherited: ['ticket:fontaine-matter-access'],
+    drip: [{ ticketId: 'ticket:northwind-backup-alert', minute: 10 * 60 }],
     patrolSeed: 0,
     load: 1,
   },
   {
     day: 2,
     label: 'Tuesday',
-    inherited: [],
-    // Meridian's Theo locks himself out of his laptop mid-morning - in scope,
-    // at a customer whose product fleet is out of reach on OS and contract both.
-    drip: [{ ticketId: 'ticket:meridian-lockout', minute: 10 * 60 + 15 }],
+    // Meridian's analyst is locked out of Okta before her ten o'clock call, and
+    // mid-morning Fontaine surfaces the iManage deadlock a partner left behind.
+    inherited: ['ticket:meridian-mfa-lockout'],
+    drip: [{ ticketId: 'ticket:fontaine-checkout-deadlock', minute: 10 * 60 + 20 }],
     patrolSeed: 1_699,
-    load: 1,
+    load: 2,
   },
   {
     day: 3,
     label: 'Wednesday',
     inherited: [],
-    // The monitoring-only wall: Northwind's backup service wedges and the board
-    // goes red at ten. The job is to escalate, and the world refuses a fix.
-    drip: [{ ticketId: 'ticket:northwind-backup-alert', minute: 10 * 60 }],
+    // The weekend SSO change catches up with a Meridian engineer, and the
+    // afternoon brings Northwind's certificate ticking towards expiry.
+    drip: [
+      { ticketId: 'ticket:meridian-app-assignment', minute: 9 * 60 + 40 },
+      { ticketId: 'ticket:northwind-cert-alert', minute: 13 * 60 + 30 },
+    ],
     patrolSeed: 4_057,
-    load: 1,
+    load: 2,
   },
   {
     day: 4,
     label: 'Thursday',
     inherited: [],
-    drip: [],
+    // The heavy day, and the one the arc was built to reach: an offboarding gap
+    // to close, the e-filing deadline at eleven, and - after lunch - the product
+    // down on a Linux box the desk may only escalate.
+    drip: [
+      { ticketId: 'ticket:meridian-offboarding', minute: 9 * 60 + 50 },
+      { ticketId: 'ticket:fontaine-efiling', minute: 11 * 60 },
+      { ticketId: 'ticket:meridian-prod-down', minute: 14 * 60 },
+    ],
     patrolSeed: 6_421,
-    load: 1,
+    load: 3,
   },
   {
     day: 5,
     label: 'Friday',
     inherited: [],
-    // Friday brings nothing new; it is the review, run against the same bar the
-    // other shops' Fridays are.
-    drip: [],
+    // A lighter Friday, the way every week's is: one last monitoring alert -
+    // Northwind's disk crossing its threshold - and then the review.
+    drip: [{ ticketId: 'ticket:northwind-disk-alert', minute: 10 * 60 + 30 }],
     patrolSeed: 2_939,
-    load: 1,
+    load: 2,
   },
 ], MSP_ROOM_IDS);
 

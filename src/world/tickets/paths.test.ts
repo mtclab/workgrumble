@@ -190,12 +190,21 @@ describe('shipped tickets', () => {
       'ticket:yard-printer-wedged',
       'ticket:the-share-down',
       'ticket:vernon-mouse',
-      // And the MSP's three (0.8.0), spawned into the MSP world: a helpdesk
-      // lockout at each of two customers, and a monitoring-only alert the player
-      // may only escalate.
-      'ticket:fontaine-lockout',
-      'ticket:meridian-lockout',
+      // And the MSP's ten (0.8.0, Pass B), spawned into the MSP world: the law
+      // firm's three (matter access, the iManage check-out deadlock, the e-filing
+      // panic), the SaaS shop's four (SSO loop, offboarding gap, MFA lockout, and
+      // the prod-down that can only be escalated), and the clinic's three
+      // monitoring-only alerts.
+      'ticket:fontaine-matter-access',
+      'ticket:fontaine-checkout-deadlock',
+      'ticket:fontaine-efiling',
+      'ticket:meridian-app-assignment',
+      'ticket:meridian-offboarding',
+      'ticket:meridian-mfa-lockout',
+      'ticket:meridian-prod-down',
       'ticket:northwind-backup-alert',
+      'ticket:northwind-cert-alert',
+      'ticket:northwind-disk-alert',
     ]);
   });
 
@@ -319,15 +328,20 @@ describe('escalation policy', () => {
       .filter((entry) => acceptsEscalation(entry.def.resolved_when, entry.def.id))
       .map(({ def }) => def.id);
 
-    // Three, each for an honest reason: a fan whose bearing is going wants a
+    // Each for an honest reason: a fan whose bearing is going wants a
     // screwdriver and somebody on site; a report that has not run since March
-    // wants the people whose job the job is; and the MSP's monitoring-only
-    // Northwind alert is escalate-ONLY by contract - remediation is out of
-    // scope, so escalation is not a fallback there but the whole of the job.
+    // wants the people whose job the job is; the SaaS shop's prod-down is on a
+    // Linux server out of reach on OS and contract both, so escalation is the
+    // only ending; and all three of the clinic's monitoring-only alerts are
+    // escalate-ONLY by contract - remediation is out of scope, so escalation is
+    // not a fallback there but the whole of the job.
     expect(escalatable).toEqual([
       'ticket:fan-noise',
       'ticket:hr-report-macro',
+      'ticket:meridian-prod-down',
       'ticket:northwind-backup-alert',
+      'ticket:northwind-cert-alert',
+      'ticket:northwind-disk-alert',
     ]);
   });
 

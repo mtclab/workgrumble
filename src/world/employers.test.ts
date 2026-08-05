@@ -70,7 +70,7 @@ describe('the employer registry', () => {
     expect(msp.name).not.toBe(employerFor('bodgeworth').name);
     expect(nextEmployerAfter('bodgeworth')).toBe('msp');
     // Its Monday pile is its own customer's ticket, not another shop's.
-    expect(msp.mondayTicketIds()).toContain('ticket:fontaine-lockout');
+    expect(msp.mondayTicketIds()).toContain('ticket:fontaine-matter-access');
   });
 
   it('names an employer, and falls back to the id for a stranger', () => {
