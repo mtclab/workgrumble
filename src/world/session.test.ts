@@ -32,6 +32,7 @@ import {
   FIRST_WEEK,
   type WeekCarry,
 } from './session';
+import { REVIEW_PASS_PERFORMANCE } from './week';
 
 /**
  * The Monday-morning graph hash of a fresh probation, pinned.
@@ -58,6 +59,13 @@ function fixtureEmployer(): Employer {
     // Its own arc is slice 3's; for the switch engine the probation arc's shape
     // is fine, and week one of any arc is quiet, so nothing weathers here.
     arc: EMPLOYER_ARC,
+    // The switch-engine tests read the arriving player node and never drive the
+    // day loop, so the week and rooms can be empty here - a coherent value the
+    // session can point the active pointers at, no more. Slice 3's real second
+    // employer carries a genuine five-day week; this bench does not need one.
+    week: [],
+    channels: [],
+    reviewBar: REVIEW_PASS_PERFORMANCE,
     setup: () => [
       {
         op: 'addNode',

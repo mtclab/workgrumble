@@ -33,6 +33,7 @@
  */
 
 import { COMPANY_IDS } from '../company';
+import { BODGE_IDS } from '../second-company';
 import { WORLD_TICKETS } from '../tickets';
 import { type Presence, PRESENCE_VALUES } from '../presence';
 
@@ -88,6 +89,23 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
   [COMPANY_IDS.boss]: 'Pat. Your status says Away. You are demonstrably not '
     + 'away. I do not mind which of those two you fix, but I would like it to '
     + 'be one of them.',
+  // Bodgeworth & Batch (0.6.0 slice 3). The same thought in the wild-west
+  // register: nobody here has ever used a status dot for anything, so being
+  // caught working while marked Away reads less as a lie and more as a mystery.
+  [BODGE_IDS.sharon]: 'Your little dot has gone grey. I did not know we had '
+    + 'dots. It says away, and yet something is very much being done over '
+    + 'there, so I am going to assume the dot is new and you are not.',
+  [BODGE_IDS.kev]: 'You are marked away. I set those dots up, I think, years '
+    + 'ago, and nobody has touched one since - so you being away while the desk '
+    + 'is clearly not is either a first for this firm or the dot is wrong.',
+  [BODGE_IDS.baz]: 'Says you are away. You are sat right there doing a thing. '
+    + 'Out in the yard we just shout, which has its problems but not this one.',
+  [BODGE_IDS.trev]: 'Away, apparently. In my day away meant you had gone to '
+    + 'the wholesaler. Now it means you are at the desk doing everything except '
+    + 'the thing I asked. I preferred the wholesaler.',
+  [BODGE_IDS.vernon]: 'Your status says away. I pay for that desk and the desk '
+    + 'is working, so one of us is confused about what away means and I do not '
+    + 'think it is me.',
 });
 
 /**

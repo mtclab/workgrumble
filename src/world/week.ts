@@ -41,6 +41,7 @@ import type { ReadOnlyGraphNode } from '../engine-api';
 import type { AfterHoursSlot } from './after-hours';
 import { buildPatrolSchedule, patrolWindows } from './boss';
 import {
+  CHANNELS,
   type ChannelMessage,
   channelMessageAt,
   type ChannelMessageSlot,
@@ -1042,6 +1043,36 @@ export const WEEK: readonly DayScript[] = validateWeek([
 ]);
 
 /**
+ * The week whose world is currently stood up (0.6.0 slice 3).
+ *
+ * Every reader below - the day scheduler, the interruption plan, the channel
+ * feed, the scorecard - reads THIS rather than `WEEK` directly, so a second
+ * employer's five days play through the shipped driver without the driver
+ * learning a second table exists. It defaults to the probation week, which is
+ * the whole of the byte-identical claim: a shell that never switches, and every
+ * test that stands up no session, reads exactly the week it read before this
+ * pointer existed, and the probation goldens do not move.
+ *
+ * It is a module pointer selected by the save-carried employer id and set by
+ * `createWorldSession` on every stand-up (boot and load), so the active week is
+ * `f(employer)` deterministically - content selection, not world state. The
+ * LOAD-TIME validators (`assertWeekTickets`, `assertWeekGreetings`) do NOT read
+ * it: they take the weeks to check explicitly, because every employer's week
+ * must be proven against the roster at boot, not just whichever is active.
+ */
+let activeWeek: readonly DayScript[] = WEEK;
+
+/** Point the day readers at an employer's week. */
+export function setActiveWeek(week: readonly DayScript[]): void {
+  activeWeek = week;
+}
+
+/** The week the readers are currently dealing from. */
+export function activeWeekScripts(): readonly DayScript[] {
+  return activeWeek;
+}
+
+/**
  * Load-time content gate for the week.
  *
  * Everything it refuses is a bug nobody would see as one: a day whose queue is
@@ -1052,10 +1083,22 @@ export const WEEK: readonly DayScript[] = validateWeek([
  */
 export function validateWeek(
   scripts: readonly DayScript[],
+  /**
+   * The rooms this week's employer created - the closed set its channel
+   * messages are allowed to land in (0.6.0 slice 3). A week is validated at
+   * MODULE LOAD, before any employer is active, so the valid rooms are passed
+   * in rather than read off the active pointer: the probation week is checked
+   * against the probation rooms, and a second employer's week against its own.
+   * Defaults to the probation shop's rooms so the shipped `WEEK` call is
+   * unchanged.
+   */
+  validChannelIds: ReadonlySet<string> = new Set(
+    CHANNELS.map((room) => room.id),
+  ),
 ): readonly DayScript[] {
   if (scripts.length !== WEEK_DAYS) {
     throw new Error(
-      `The probation week has ${String(WEEK_DAYS)} days in it; this one has `
+      `A working week has ${String(WEEK_DAYS)} days in it; this one has `
       + `${String(scripts.length)}.`,
     );
   }
@@ -1271,7 +1314,12 @@ export function validateWeek(
     // a room somebody created, an author, a body, a working minute, a thread
     // that answers something already posted - and the week owns the id set,
     // because the read ledger the ids key is not cleared overnight.
-    validateChannelSlots(script.day, script.channels ?? [], channelIds);
+    validateChannelSlots(
+      script.day,
+      script.channels ?? [],
+      channelIds,
+      validChannelIds,
+    );
 
     // And the linked requests - the same question in three windows. The module
     // owns what a well-formed one is (an id, a reporter, a subject, two copies,
@@ -1482,7 +1530,7 @@ function scheduledIds(script: Readonly<DayScript>): readonly string[] {
 
 /** Every ticket the week deals, in the order the week deals it. */
 export function scheduledTicketIds(): readonly string[] {
-  return WEEK.flatMap(scheduledIds);
+  return activeWeek.flatMap(scheduledIds);
 }
 
 /** The shape this check needs of a ticket: an id and how it turns up. */
@@ -1502,10 +1550,18 @@ export interface RosterEntry {
  */
 export function assertWeekTickets<Entry extends RosterEntry>(
   roster: readonly Entry[],
+  /**
+   * Every employer's week, because the roster is shared and every ticket in it
+   * has to be proven against SOME week - the probation shop's or the second
+   * employer's (0.6.0 slice 3). Defaults to the probation week alone so the
+   * existing callers and tests are unchanged; `tickets/index.ts` passes both.
+   */
+  weeks: readonly (readonly DayScript[])[] = [WEEK],
 ): readonly Entry[] {
   const known = new Map(roster.map((entry) => [entry.def.id, entry]));
+  const scripts = weeks.flat();
 
-  for (const script of WEEK) {
+  for (const script of scripts) {
     for (const id of scheduledIds(script)) {
       const entry = known.get(id);
 
@@ -1529,7 +1585,7 @@ export function assertWeekTickets<Entry extends RosterEntry>(
   // throws at twenty past two, in front of a player, on a beat that only fires
   // when they were polite about it. A walk-up is the same claim standing up,
   // so both columns are held to it in one loop rather than two.
-  for (const script of WEEK) {
+  for (const script of scripts) {
     const asks: readonly { readonly by: string; readonly raises: string }[] = [
       ...(script.dms ?? []).map((slot) => ({
         by: slot.speaker,
@@ -1565,7 +1621,7 @@ export function assertWeekTickets<Entry extends RosterEntry>(
   // about one somebody wrote. It may be about a ticket from any day and any
   // arrival mode - the message is a coat, not a schedule - but a reference to
   // nothing is a room quietly talking about a fault the world cannot hold.
-  for (const script of WEEK) {
+  for (const script of scripts) {
     for (const slot of script.channels ?? []) {
       if (slot.relatedTicket !== undefined && !known.has(slot.relatedTicket)) {
         throw new Error(
@@ -1581,7 +1637,7 @@ export function assertWeekTickets<Entry extends RosterEntry>(
   // like a walk-up's. A request that raised a ticket nobody wrote would throw
   // the minute somebody did the right thing with it, which is the one beat that
   // must not punish the correct play.
-  for (const script of WEEK) {
+  for (const script of scripts) {
     for (const request of script.requests ?? []) {
       const entry = known.get(request.raises);
 
@@ -1602,7 +1658,7 @@ export function assertWeekTickets<Entry extends RosterEntry>(
     }
   }
 
-  const scheduled = new Set(scheduledTicketIds());
+  const scheduled = new Set(scripts.flatMap(scheduledIds));
 
   for (const entry of roster) {
     if (entry.arrival !== 'summoned' && !scheduled.has(entry.def.id)) {
@@ -1633,8 +1689,11 @@ export function assertWeekGreetings<Tree extends {
   readonly id: string;
   readonly speaker: string;
   readonly hello_root?: string;
-}>(trees: readonly Tree[]): readonly Tree[] {
-  for (const script of WEEK) {
+}>(
+  trees: readonly Tree[],
+  weeks: readonly (readonly DayScript[])[] = [WEEK],
+): readonly Tree[] {
+  for (const script of weeks.flat()) {
     for (const slot of script.noHello ?? []) {
       const tree = trees.find((candidate) => candidate.speaker === slot.speaker);
 
@@ -1659,11 +1718,11 @@ export function assertWeekGreetings<Tree extends {
 }
 
 export function dayScript(day: number): DayScript {
-  const script = WEEK[day - 1];
+  const script = activeWeek[day - 1];
 
   if (script === undefined) {
     throw new Error(
-      `Day ${String(day)} is not part of the probation week, which is `
+      `Day ${String(day)} is not part of the working week, which is `
       + `${String(WEEK_DAYS)} days long and does not include a Saturday.`,
     );
   }
@@ -1761,7 +1820,7 @@ export function linkedRequestsOn(day: number): readonly LinkedRequestSlot[] {
 export function findLinkedRequest(
   id: string,
 ): { readonly day: number; readonly slot: LinkedRequestSlot } | undefined {
-  for (const script of WEEK) {
+  for (const script of activeWeek) {
     const slot = (script.requests ?? []).find(
       (request) => request.id === id,
     );
@@ -1787,7 +1846,7 @@ export function findLinkedRequest(
 export function linkedRequestsThrough(
   now: number,
 ): readonly { readonly day: number; readonly slot: LinkedRequestSlot }[] {
-  return WEEK
+  return activeWeek
     .flatMap((script) => (script.requests ?? []).map((slot) => ({
       day: script.day,
       slot,
@@ -1815,7 +1874,7 @@ export function linkedRequestsThrough(
  * minute keep the order their day authored them in.
  */
 export function channelFeedThrough(now: number): readonly ChannelMessage[] {
-  return WEEK
+  return activeWeek
     .flatMap((script) => (script.channels ?? []).map(
       (slot) => channelMessageAt(script.day, slot),
     ))
@@ -1967,7 +2026,7 @@ export function weekScorecard(
   tickets: readonly ReadOnlyGraphNode[],
   totals: Readonly<WeekTotals>,
 ): WeekScorecard {
-  const days = WEEK.map((script): WeekDayLine => ({
+  const days = activeWeek.map((script): WeekDayLine => ({
     day: script.day,
     label: script.label,
     ledger: dayLedger(tickets, script.day),

@@ -37,7 +37,12 @@ import { BOSS_TRAP_TICKET } from './boss';
 import { FIELDS } from './fields';
 import { dayForTick, minuteOfDay } from './hours';
 import { ticketTitle } from './tickets';
-import { dayScript, isWeekDay, REVIEW_PASS_PERFORMANCE, WEEK } from './week';
+import {
+  activeWeekScripts,
+  dayScript,
+  isWeekDay,
+  REVIEW_PASS_PERFORMANCE,
+} from './week';
 
 /* -- the file -------------------------------------------------------------- */
 
@@ -227,7 +232,9 @@ export const CONDUCT_TRIGGER_CRITERIA: Readonly<
  * in `WEEK`, and this has to know about them without being edited.
  */
 export function favourTicketIds(): readonly string[] {
-  return WEEK.flatMap((script) => (script.dms ?? []).map((dm) => dm.raises));
+  return activeWeekScripts().flatMap(
+    (script) => (script.dms ?? []).map((dm) => dm.raises),
+  );
 }
 
 function isResolved(ticket: Readonly<ReadOnlyGraphNode>): boolean {

@@ -21,6 +21,7 @@
  */
 
 import type { NodeId, SetupOp } from '../engine-api';
+import { CHANNELS, type ChannelDef } from './channels';
 import {
   COMPANY,
   companyInstallPolicy,
@@ -29,7 +30,19 @@ import {
   type InstallPolicy,
 } from './company';
 import { EMPLOYER_ARC, type EmployerArc } from './pressure';
-import { inheritedTicketIds } from './week';
+import {
+  bodgeChannels,
+  BODGE_COMPANY,
+  BODGE_IDS,
+  bodgeSetup,
+} from './second-company';
+import { bodgeInheritedTicketIds, SECOND_WEEK } from './second-week';
+import {
+  type DayScript,
+  inheritedTicketIds,
+  REVIEW_PASS_PERFORMANCE,
+  WEEK,
+} from './week';
 
 /**
  * The employers this build ships. The probation shop, and - since 0.6.0 slice 2
@@ -75,6 +88,25 @@ export interface Employer {
   readonly installPolicy: InstallPolicy;
   /** The career arc this employer runs - one season of weather in it, or none. */
   readonly arc: EmployerArc;
+  /**
+   * This employer's five days, as data (0.6.0 slice 3). The session points the
+   * day readers at it (`setActiveWeek`), so the shipped driver plays whichever
+   * shop's week the carry names without learning a second table exists. The
+   * probation employer's is the probation `WEEK`, which is what keeps its
+   * goldens byte-identical.
+   */
+  readonly week: readonly DayScript[];
+  /**
+   * The rooms this employer's channel client rolled out - the channel-mix half
+   * of the archetype contrast (0.6.0 slice 3, off the 0.5.0 per-employer seam).
+   */
+  readonly channels: readonly ChannelDef[];
+  /**
+   * The mark the Friday review is held against here. It is per-employer because
+   * a different shop asks a different thing of a first week - though it never
+   * drops below the published pass mark, which the review verbs enforce.
+   */
+  readonly reviewBar: number;
   /** The world graph - company, estate, accounts - as construction ops. */
   setup(): readonly SetupOp[];
   /** The ids of the tickets already waiting when the player sits down Monday. */
@@ -95,36 +127,50 @@ const PROBATION_EMPLOYER: Employer = Object.freeze({
   playerId: COMPANY_IDS.player,
   installPolicy: companyInstallPolicy(),
   arc: EMPLOYER_ARC,
+  week: WEEK,
+  channels: CHANNELS,
+  reviewBar: REVIEW_PASS_PERFORMANCE,
   setup: companySetup,
   mondayTicketIds: () => inheritedTicketIds(1),
 });
 
 /**
- * The second employer, and a PLACEHOLDER on purpose (0.6.0 slice 2).
+ * The second employer, made REAL (0.6.0 slice 3).
  *
- * Slice 2 builds the TRANSITION - pass probation, take the offer, arrive at a
- * second shop, standing carried - and to prove that flow end to end it needs
- * somewhere real to arrive. It does not need that somewhere to be a DIFFERENT
- * place yet: the contrast (a wild-west small shop, its own estate, install
- * policy, channel mix and event day) is the whole of slice 3. So every field
- * below still reads through to the probation shop's own content - the same
- * graph, the same arc, the same policy, the same Monday pile - and only the id
- * and the NAME are new. That is enough for the switch engine to stand a second
- * world up, seed it from the carried career, and save/reload it under its own
- * employer id, which is what slice 2 has to demonstrate.
+ * Slice 2 shipped this as a placeholder that reused the probation shop's own
+ * content under a new id and name - enough to prove the transition flow stood a
+ * second world up and seeded it from the carried career. Slice 3 is where the
+ * placeholder becomes a genuinely different building: Bodgeworth & Batch, a
+ * wild-west haulage firm with its own estate (`second-company.ts`), its own
+ * five-day week and reply-all event day (`second-week.ts`), its own rooms, and
+ * an install policy of `wild_west` - the 0.4.0 audit seam paying off by its
+ * ABSENCE, and the 0.5.0 channel-mix seam paying off with one all-staff room
+ * instead of three governed ones.
  *
- * SLICE 3 replaces `setup`, `arc`, `installPolicy` and `mondayTicketIds` here
- * with the real archetype; nothing else about the switch has to move when it
- * does, which is the point of proving the seam against a fixture first.
+ * The id is kept as `bodgeworth` from slice 2 (the name already read as a
+ * bodge-shop, which is exactly the archetype), so no shipped save or slice-2
+ * test has to move for the rename that was not needed. Everything ELSE moved:
+ * the setup, the policy, the week, the channels and the Monday pile are all the
+ * shop's own now, and the switch mechanism did not have to change to carry it -
+ * which is the whole point of having proved the seam against the placeholder
+ * first. `playerId` stays `person:pat`: it is the same person, a fortnight into
+ * a very different job, and the career carry seeds their standing onto it.
+ *
+ * `reviewBar` is the published pass mark: the contrast Bodgeworth teaches is in
+ * the building, not in a harder or softer Friday, and the review verbs forbid a
+ * bar below the published figure anyway.
  */
 const SECOND_EMPLOYER: Employer = Object.freeze({
   id: 'bodgeworth',
-  name: 'Bodgeworth & Batch',
-  playerId: COMPANY_IDS.player,
-  installPolicy: companyInstallPolicy(),
+  name: BODGE_COMPANY.name,
+  playerId: BODGE_IDS.player,
+  installPolicy: 'wild_west',
   arc: EMPLOYER_ARC,
-  setup: companySetup,
-  mondayTicketIds: () => inheritedTicketIds(1),
+  week: SECOND_WEEK,
+  channels: bodgeChannels(),
+  reviewBar: REVIEW_PASS_PERFORMANCE,
+  setup: bodgeSetup,
+  mondayTicketIds: bodgeInheritedTicketIds,
 });
 
 const REGISTRY: Readonly<Record<string, Employer>> = Object.freeze({

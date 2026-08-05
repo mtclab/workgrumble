@@ -34,9 +34,21 @@ import {
   KIND_LABELS,
 } from '../world/actions';
 import { companySetup, COMPANY_IDS } from '../world/company';
+import { BODGE_TICKETS } from '../world/tickets/bodge';
 import { DEMO_ACTION_DATA, DEMO_ACTIONS, WORLD_IDS } from '../world/demo-world';
 import { FIELDS } from '../world/fields';
 import { WORLD_TICKETS } from '../world/tickets';
+
+/**
+ * The probation shop's tickets only (0.6.0 slice 3). Parity stands up the
+ * probation estate (`companySetup`), and the shared roster now also carries
+ * Bodgeworth's tickets, which name a different estate's nodes - registering one
+ * here would fail for a reporter this world does not have. The engine-parity
+ * claim is about the engine, and the probation roster exercises it fully.
+ */
+const PROBATION_TICKETS = WORLD_TICKETS.filter(
+  (entry) => !BODGE_TICKETS.some((bodge) => bodge.def.id === entry.def.id),
+);
 import {
   GOLDEN_ACTION_DATA,
   GOLDEN_ACTOR,
@@ -116,7 +128,7 @@ function wasmWorld(): Harness {
   });
   engine.registerActions(helpdeskActionPayload());
 
-  for (const entry of WORLD_TICKETS) {
+  for (const entry of PROBATION_TICKETS) {
     engine.registerTicket(entry.def);
   }
 
@@ -533,7 +545,7 @@ const SCRIPT: readonly Step[] = [
 
 /** Every advertised solution path, driven step by step. */
 function pathSteps(): readonly Step[] {
-  return WORLD_TICKETS.flatMap((entry) => entry.paths.flatMap(
+  return PROBATION_TICKETS.flatMap((entry) => entry.paths.flatMap(
     (path) => path.steps.map((step, index) => ({
       label: `${entry.def.id}/${path.id}#${String(index)}`,
       id: step.action,
@@ -789,7 +801,7 @@ describe('determinism over the shipped world', () => {
       expect(wasm.engine.now()).toBe(replica.engine.now());
     }
 
-    for (const entry of WORLD_TICKETS) {
+    for (const entry of PROBATION_TICKETS) {
       expect(wasm.engine.ticketState(entry.def.id))
         .toBe(replica.engine.ticketState(entry.def.id));
       expect(wasm.engine.wasTicketBreached(entry.def.id))

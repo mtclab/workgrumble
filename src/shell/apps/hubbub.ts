@@ -1,7 +1,7 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import {
+  activeChannelList,
   type ChannelMessage,
-  CHANNELS,
   channelById,
 } from '../../world/channels';
 import { FIELDS } from '../../world/fields';
@@ -107,7 +107,7 @@ export const HUBBUB_APP: AppDef = {
       const picked = rooms().selectedChannel;
       return picked !== null && channelById(picked) !== undefined
         ? picked
-        : CHANNELS[0]?.id ?? '';
+        : activeChannelList()[0]?.id ?? '';
     };
 
     /**
@@ -373,7 +373,8 @@ export const HUBBUB_APP: AppDef = {
       markSeen(inRoom);
 
       const read = rooms().read;
-      summary.textContent = `${String(CHANNELS.length)} rooms · `
+      const rooms_ = activeChannelList();
+      summary.textContent = `${String(rooms_.length)} rooms · `
         + `${String(totalUnread(feed, read))} unread`;
 
       const dot = readPresence(
@@ -383,7 +384,7 @@ export const HUBBUB_APP: AppDef = {
       setText(presenceLabel, PRESENCE_LABELS[dot]);
 
       withFocusRestored(root, () => {
-        channelList.sync(channelRows(CHANNELS, feed, read, showing));
+        channelList.sync(channelRows(rooms_, feed, read, showing));
         renderPane(showing, inRoom);
       });
     };

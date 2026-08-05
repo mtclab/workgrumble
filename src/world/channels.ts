@@ -80,8 +80,39 @@ export const CHANNELS: readonly ChannelDef[] = Object.freeze([
   }),
 ]);
 
+/**
+ * The rooms of the employer whose world is currently stood up (0.6.0 slice 3).
+ *
+ * Channel mix is per-employer DATA - the 0.5.0 seam paying off - and the room
+ * ROSTER is the first half of it: the enterprise probation shop rolled out
+ * three breathless rooms, and a wild-west haulage yard has one room everybody
+ * is in and no governance at all. The runtime surfaces (the Hubbub window,
+ * `channelById`) read whichever employer is active; the DEFAULT is the
+ * probation rooms, so a shell that never switches - and every test that stands
+ * up no session - reads exactly what it read before this pointer existed.
+ *
+ * It is a module pointer rather than a parameter threaded through the window
+ * for the same reason the active week is: the room roster is selected by the
+ * save-carried employer id, and `createWorldSession` sets it every time a world
+ * stands up (boot and load), so the rooms are `f(employer)` deterministically.
+ * The LOAD-TIME check - which rooms a week's messages are allowed to name - is
+ * NOT this pointer: `validateChannelSlots` takes the valid set explicitly,
+ * because a week is validated at module load before any employer is active.
+ */
+let activeChannels: readonly ChannelDef[] = CHANNELS;
+
+/** The rooms the active employer rolled out - what the Hubbub window draws. */
+export function activeChannelList(): readonly ChannelDef[] {
+  return activeChannels;
+}
+
+/** Point the runtime room surfaces at an employer's rooms. */
+export function setActiveChannels(channels: readonly ChannelDef[]): void {
+  activeChannels = channels;
+}
+
 export function channelById(id: string): ChannelDef | undefined {
-  return CHANNELS.find((channel) => channel.id === id);
+  return activeChannels.find((channel) => channel.id === id);
 }
 
 export function isChannelId(value: string): boolean {
@@ -197,6 +228,15 @@ export function validateChannelSlots(
   day: number,
   slots: readonly ChannelMessageSlot[],
   seen: Set<string>,
+  /**
+   * The rooms this week's employer created - the closed set a message is
+   * allowed to land in. Passed rather than read off the active pointer because
+   * a week is validated at MODULE LOAD, before any employer is stood up, and a
+   * second employer's week must be checked against its OWN rooms rather than
+   * whatever happens to be active. Defaults to the probation shop's rooms so
+   * every existing caller reads exactly what it read before.
+   */
+  validIds: ReadonlySet<string> = new Set(CHANNELS.map((room) => room.id)),
 ): void {
   const today = new Map<string, ChannelMessageSlot>();
 
@@ -218,7 +258,7 @@ export function validateChannelSlots(
       );
     }
 
-    if (!isChannelId(slot.channel)) {
+    if (!validIds.has(slot.channel)) {
       throw new Error(
         `${where} lands in "${slot.channel}", which is a room nobody created. `
         + 'A message in no room renders nowhere, which is a beat that '

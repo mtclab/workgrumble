@@ -6,9 +6,36 @@ import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
 import { createWorldSession, type WorldSession } from '../session';
 import { inheritedTicketIds } from '../week';
+import { BODGE_TICKETS } from './bodge';
 import { acceptsEscalation } from './escalation';
 import { allowsEscalation, spawnWorldTicket, WORLD_TICKETS } from './index';
 import type { WorldTicket } from './types';
+
+/**
+ * The roster is shared across both employers (0.6.0 slice 3), so a ticket has
+ * to be spawned into the estate it is ABOUT. These name which shop each ticket
+ * belongs to and stand up the right world for it - only one world is ever up at
+ * a time, and a Bodgeworth fault in the probation estate is a missing reporter.
+ */
+const BODGE_TICKET_IDS = new Set(BODGE_TICKETS.map((entry) => entry.def.id));
+const BODGE_CARRY = Object.freeze({
+  farmFund: 0,
+  attempt: 1,
+  arcWeek: 1,
+  employer: 'bodgeworth',
+});
+
+function sessionForTicket(entry: WorldTicket): WorldSession {
+  const session = createWorldSession(
+    BODGE_TICKET_IDS.has(entry.def.id) ? BODGE_CARRY : undefined,
+  );
+
+  if (session.engine.graph.getNode(entry.def.id) === undefined) {
+    spawnWorldTicket(session.engine, entry.def.id);
+  }
+
+  return session;
+}
 
 /**
  * Puts a ticket in the world that the morning does not.
@@ -48,14 +75,28 @@ function sessionWith(...ticketIds: readonly string[]): WorldSession {
 }
 
 function sessionWithEveryTicket(): WorldSession {
-  return sessionWith(...WORLD_TICKETS.map(({ def }) => def.id));
+  // The probation world, with every PROBATION ticket in it. Bodgeworth's
+  // tickets are about a different estate and are spawned into their own world
+  // (0.6.0 slice 3), so a helper that mixed them would be a world where half
+  // the tickets name nodes that do not exist.
+  return sessionWith(
+    ...WORLD_TICKETS
+      .filter((entry) => !BODGE_TICKET_IDS.has(entry.def.id))
+      .map(({ def }) => def.id),
+  );
 }
 
 describe('shipped tickets', () => {
   it('spawns every shipped ticket open, with a live SLA', () => {
-    const session = createWorldSession();
-
     for (const entry of WORLD_TICKETS) {
+      // Each ticket into its own employer's fresh world, before anybody has
+      // clicked anything (0.6.0 slice 3). Creating the session points the day
+      // readers at that shop's week, so `inheritedTicketIds(1)` is that shop's
+      // Monday pile.
+      const session = createWorldSession(
+        BODGE_TICKET_IDS.has(entry.def.id) ? BODGE_CARRY : undefined,
+      );
+
       // The morning pile is in the world before anybody has clicked anything.
       // The one that drips in and the one the lead summons are not there yet,
       // and asserting they WERE would be asserting the queue lies about the
@@ -114,6 +155,14 @@ describe('shipped tickets', () => {
       // the books (0.5.0 slice 2). Summoned, like Gary's restart - it exists
       // only if you did the right thing with the cross-posted noise.
       'ticket:bev-vpn-request',
+      // And the second employer's five (0.6.0 slice 3), in the one roster
+      // because the gates read one roster - spawned into the Bodgeworth world,
+      // not this one.
+      'ticket:office-login-locked',
+      'ticket:accounts-package-down',
+      'ticket:yard-printer-wedged',
+      'ticket:the-share-down',
+      'ticket:vernon-mouse',
     ]);
   });
 
@@ -291,7 +340,7 @@ describe('escalation policy', () => {
    */
   it('agrees with the engine on every shipped ticket', () => {
     for (const entry of WORLD_TICKETS) {
-      const session = sessionWith(entry.def.id);
+      const session = sessionForTicket(entry);
       const offered = allowsEscalation(entry.def.id);
       const result = session.engine.dispatch(
         HELPDESK_ACTIONS.ticketEscalate,

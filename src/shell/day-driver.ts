@@ -2907,9 +2907,30 @@ export class DayDriver implements DayApi {
     }
   }
 
-  /** A ticket the day scheduler was never given a slot for. */
+  /**
+   * A ticket the day scheduler was never given a slot for.
+   *
+   * The boss's first ping raises one - his concern, made a ticket by his
+   * mentioning it - and that ticket is a piece of a PARTICULAR shop's content:
+   * the probation lead's `ticket:boss-phone`, reported by a probation person.
+   * A second employer (0.6.0 slice 3) whose lead is not that man, and whose
+   * estate does not contain that reporter, has no such ticket to raise - so the
+   * driver only raises one whose reporter is actually in the world it is
+   * standing in. In the probation world that reporter is present and nothing
+   * changes; in a world without them there is simply nothing to summon, which
+   * is the honest reading of a shop that never authored the beat. Everything
+   * else the ping does - the stress, the thread - still happens, because the
+   * lead is still at your shoulder whichever building it is.
+   */
   private raiseSummonedTicket(ticketId: string): void {
     if (this.engine.graph.getNode(ticketId) !== undefined) {
+      return;
+    }
+
+    const reporter = findWorldTicket(ticketId)?.def.reporter;
+
+    if (reporter === undefined
+      || this.engine.graph.getNode(reporter) === undefined) {
       return;
     }
 

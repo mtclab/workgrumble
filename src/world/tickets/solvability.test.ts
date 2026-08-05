@@ -76,6 +76,7 @@ import { UNTRIAGED_SLA_TICKS } from '../priority';
 import { TICKET_HYGIENE_SYNC } from '../scenes/meeting';
 import { createWorldSession, seedForAttempt, type WorldSession } from '../session';
 import { dayPlan, interruptionPlanFor } from '../week';
+import { BODGE_TICKETS } from './bodge';
 import {
   findWorldTicket,
   ticketsNeededFor,
@@ -112,8 +113,29 @@ function driverFor(session: WorldSession): DayDriver {
  * duplicate is attached to a parent and then closed with it, so the parent has
  * to have been raised, which is true in play because a flood arrives together.
  */
+/**
+ * The employer a ticket belongs to (0.6.0 slice 3). The roster is shared across
+ * both shops, so a ticket has to be spawned into the estate it is about - a
+ * Bodgeworth fault into the Bodgeworth world, or the reporter and the nodes it
+ * names do not exist. Only one world is ever stood up per session; this is how
+ * the gate stands up the RIGHT one for each row.
+ */
+const BODGE_TICKET_IDS = new Set(BODGE_TICKETS.map((entry) => entry.def.id));
+const BODGE_CARRY = Object.freeze({
+  farmFund: 0,
+  attempt: 1,
+  arcWeek: 1,
+  employer: 'bodgeworth',
+});
+
+function freshWorld(entry: Readonly<WorldTicket>): WorldSession {
+  return createWorldSession(
+    BODGE_TICKET_IDS.has(entry.def.id) ? BODGE_CARRY : undefined,
+  );
+}
+
 function worldFor(entry: Readonly<WorldTicket>): WorldSession {
-  const session = createWorldSession();
+  const session = freshWorld(entry);
 
   if (entry.follows !== undefined) {
     raiseByFixing(session, entry.follows, entry.def.id);
@@ -376,10 +398,14 @@ describe('every shipped ticket is solvable', () => {
    * that has to say so out loud, by naming it, rather than being deleted.
    */
   it('ships nothing that is already fixed when it arrives', () => {
-    const session = createWorldSession();
     const solvedOnArrival: string[] = [];
 
+    // Each ticket into its own employer's world (0.6.0 slice 3): a Bodgeworth
+    // fault spawned into the probation estate would fail to raise for a missing
+    // reporter, which is a different bug from the one this gate is about.
     for (const entry of WORLD_TICKETS) {
+      const session = freshWorld(entry);
+
       if (session.engine.graph.getNode(entry.def.id) === undefined) {
         spawnWorldTicket(session.engine, entry.def.id);
       }

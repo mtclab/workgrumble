@@ -446,11 +446,22 @@ describe('shipped conversations', () => {
     }
   });
 
-  it('speaks only for people who exist in the company', () => {
-    const session = createWorldSession();
+  it('speaks only for people who exist in a company', () => {
+    // Both employers (0.6.0 slice 3): the tree registry is shared, so a speaker
+    // is real if they exist in EITHER shop's graph - Bodgeworth's cast in the
+    // Bodgeworth world, the probation cast in the probation one.
+    const probation = createWorldSession();
+    const bodge = createWorldSession(Object.freeze({
+      farmFund: 0,
+      attempt: 1,
+      arcWeek: 1,
+      employer: 'bodgeworth',
+    }));
 
     for (const conversation of WORLD_DIALOGUE) {
-      expect(session.engine.graph.getNode(conversation.speaker)?.kind).toBe('person');
+      const kind = probation.engine.graph.getNode(conversation.speaker)?.kind
+        ?? bodge.engine.graph.getNode(conversation.speaker)?.kind;
+      expect(kind, conversation.speaker).toBe('person');
     }
   });
 });

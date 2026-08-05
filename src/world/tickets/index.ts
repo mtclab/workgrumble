@@ -15,6 +15,7 @@ import {
 } from '../priority';
 import { ACCESS_TICKETS } from './access';
 import { ARC_TICKETS } from './arc';
+import { BODGE_TICKETS } from './bodge';
 import { BOSS_PHONE } from './boss-trash';
 import { CHANNEL_REQUEST_TICKETS } from './channel-requests';
 import { COLLEAGUE_TICKETS } from './colleagues';
@@ -28,7 +29,9 @@ import { acceptsParent } from './parent';
 import { PILOT_TICKETS } from './pilot';
 import { assertPathsAimAtRealNodes, seededNodeIds } from './solvable';
 import type { WorldTicket } from './types';
-import { assertWeekTickets } from '../week';
+import { bodgeSetup } from '../second-company';
+import { SECOND_WEEK } from '../second-week';
+import { assertWeekTickets, WEEK } from '../week';
 
 export { BOSS_PHONE } from './boss-trash';
 export { SHARE_PARENT, VPN_PARENT } from './flood';
@@ -229,8 +232,18 @@ function validateWorldTickets(
 
   // And the cheap half of the solvability gate, which is about ids rather than
   // about outcomes: a step aimed at a node nobody built arrives as a refusal
-  // in front of a player rather than as an error in front of us.
-  assertPathsAimAtRealNodes(entries, seededNodeIds(companySetup()));
+  // in front of a player rather than as an error in front of us. The estate is
+  // the UNION of both employers' worlds (0.6.0 slice 3): the roster is shared,
+  // so a Bodgeworth ticket's path aims at a Bodgeworth node, and both sets of
+  // ids have to count as real - only one world is ever stood up at a time, but
+  // the load-time id check spans them both.
+  assertPathsAimAtRealNodes(
+    entries,
+    new Set([
+      ...seededNodeIds(companySetup()),
+      ...seededNodeIds(bodgeSetup()),
+    ]),
+  );
   assertChainsAreChains(entries);
 
   return Object.freeze([...entries]);
@@ -325,7 +338,15 @@ export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekTickets(
     ...DRIVE_TICKETS,
     ...COLLEAGUE_TICKETS,
     ...CHANNEL_REQUEST_TICKETS,
+    // The second employer's queue (0.6.0 slice 3). It is in the one roster
+    // because the roster is what the solvability, path and dialogue gates read;
+    // its tickets are proven against the second employer's week below.
+    ...BODGE_TICKETS,
   ]),
+  // Both employers' weeks, so every ticket in the shared roster is proven to
+  // arrive on SOME shop's day - Bodgeworth's five as well as the probation
+  // twenty-eight - rather than shipping dead.
+  [WEEK, SECOND_WEEK],
 );
 
 /**

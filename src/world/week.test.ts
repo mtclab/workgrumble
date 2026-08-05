@@ -31,6 +31,7 @@ import {
 import { STARTING_REPUTATION } from './meters';
 import { HYGIENE_SYNC_MINUTE, HYGIENE_SYNC_MINUTES } from './scenes/meeting';
 import { seedForAttempt } from './session';
+import { SECOND_WEEK } from './second-week';
 import { WORLD_TICKETS } from './tickets';
 import {
   arrivesBeforeClose,
@@ -164,7 +165,15 @@ describe('the shipped week', () => {
   });
 
   it('deals every ticket that is not summoned, exactly once', () => {
-    const scheduled = scheduledTicketIds();
+    // Both employers' weeks (0.6.0 slice 3): the roster is shared, so "every
+    // non-summoned ticket is dealt on some day" spans the probation week AND
+    // Bodgeworth's. `scheduledTicketIds` reads the active week (the default,
+    // probation); the second shop's is read straight off its table.
+    const bodgeScheduled = SECOND_WEEK.flatMap((script) => [
+      ...script.inherited,
+      ...script.drip.map((slot) => slot.ticketId),
+    ]);
+    const scheduled = [...scheduledTicketIds(), ...bodgeScheduled];
     expect(new Set(scheduled).size).toBe(scheduled.length);
 
     const schedulable = WORLD_TICKETS
@@ -566,12 +575,15 @@ describe('the day\'s interruptions', () => {
 
 describe('the week against the roster', () => {
   it('takes the roster it ships', () => {
-    expect(() => assertWeekTickets(WORLD_TICKETS)).not.toThrow();
+    // Both weeks, because the shared roster spans both employers (0.6.0 slice 3).
+    expect(() => assertWeekTickets(WORLD_TICKETS, [WEEK, SECOND_WEEK]))
+      .not.toThrow();
   });
 
   it('refuses a day that deals a ticket nobody wrote', () => {
     expect(() => assertWeekTickets(
       WORLD_TICKETS.filter((entry) => entry.def.id !== 'ticket:rotated-screen'),
+      [WEEK, SECOND_WEEK],
     )).toThrow(/schedules "ticket:rotated-screen", which nobody wrote/);
   });
 
@@ -582,7 +594,8 @@ describe('the week against the roster', () => {
         : entry
     ));
 
-    expect(() => assertWeekTickets(summoned)).toThrow(/which is summoned/);
+    expect(() => assertWeekTickets(summoned, [WEEK, SECOND_WEEK]))
+      .toThrow(/which is summoned/);
   });
 
   it('refuses content that ships dead', () => {
@@ -592,7 +605,7 @@ describe('the week against the roster', () => {
         def: { id: 'ticket:nobody-sees-this' },
         arrival: 'morning' as const,
       },
-    ])).toThrow(/is not in anybody's week/);
+    ], [WEEK, SECOND_WEEK])).toThrow(/is not in anybody's week/);
   });
 });
 

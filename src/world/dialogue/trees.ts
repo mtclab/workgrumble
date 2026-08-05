@@ -1,6 +1,7 @@
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { WORLD_IDS } from '../demo-world';
+import { BODGE_TREES } from './bodge-trees';
 import { STAFF_TREES } from './staff';
 import type { DialogueTree } from './types';
 
@@ -1367,4 +1368,9 @@ export const DIALOGUE_TREES: readonly DialogueTree[] = [
   BOSS_CHANNEL,
   RECEPTION,
   ...STAFF_TREES,
+  // The second employer's cast (0.6.0 slice 3), added to the one registry so
+  // `findDialogueTree` reaches them exactly as it reaches everyone else - the
+  // conversations are per-reporter, and a reporter is a reporter whichever shop
+  // they work in.
+  ...BODGE_TREES,
 ];

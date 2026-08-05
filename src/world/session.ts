@@ -9,6 +9,7 @@ import {
   HELPDESK_TIER,
   KIND_LABELS,
 } from './actions';
+import { setActiveChannels } from './channels';
 import { DEMO_ACTION_DATA } from './demo-world';
 import {
   type Employer,
@@ -25,7 +26,7 @@ import {
   seasonAt,
 } from './pressure';
 import { spawnWorldTicket } from './tickets';
-import { REVIEW_PASS_PERFORMANCE } from './week';
+import { setActiveWeek } from './week';
 
 /**
  * Where the first week is dealt from. The working day is replayable, so the
@@ -205,10 +206,18 @@ export function createWorldSession(
 ): WorldSession {
   const start = requireCarry(carry);
   const player = employer.playerId;
+  // Point the day readers and the channel window at THIS employer's content
+  // before anything is read off them - the week the scheduler deals, the rooms
+  // the storm lands in, the pile the Monday inherits. It is set on every
+  // stand-up (boot and load), keyed to the save-carried employer, so the active
+  // world is a function of who the carry names. The probation employer's is the
+  // shipped week and rooms, which is what keeps its goldens byte-identical.
+  setActiveWeek(employer.week);
+  setActiveChannels(employer.channels);
   engine.setTier(HELPDESK_TIER);
   engine.applySetup([
     ...employer.setup(),
-    ...weekOpeningSetup(player),
+    ...weekOpeningSetup(player, employer.reviewBar),
     ...carrySetup(start, player),
     ...pressureSetup(start.arcWeek, employer.arc, player),
   ]);
@@ -274,13 +283,16 @@ function resolvedToCarry(start: Readonly<ResolvedCarry>): WeekCarry {
  * import cycle that runs at module load, which is a `WEEK` table built out of
  * a `COMPANY_IDS` that does not exist yet.
  */
-function weekOpeningSetup(player: NodeId): readonly SetupOp[] {
+function weekOpeningSetup(
+  player: NodeId,
+  reviewBar: number,
+): readonly SetupOp[] {
   return [
     {
       op: 'setField',
       id: player,
       field: FIELDS.reviewBar,
-      value: REVIEW_PASS_PERFORMANCE,
+      value: reviewBar,
     },
   ];
 }
