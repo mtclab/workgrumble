@@ -713,3 +713,54 @@ geometry unit for the off-viewport clamp. Desktop path unchanged (the existing b
 still passes). Goldens byte-identical (UI/CSS + a method extraction, no world state) - assert.
 Coverage: the panic button in the manifest + PLAYER_CONTROLS. Both box halves; codex wave
 (</dev/null + timeout).
+
+---
+
+# Version 0.6.0 - employer switching spine (E5 #24) - NEW EPIC, bundled
+
+Owner GO (2026-08-05, "full spine"). Settles the event-day home: they live in the second
+employer's arc. The architecture is already seamed (session.ts WeekCarry persists player
+stats; companySetup is parameterizable; 0.4.0 policy + 0.5.0 channel-mix are per-employer
+data) - this EXTENDS, it does not rewrite. Era/OS SKINS are a LATER E5 version (per-edition
+research spikes), NOT this one.
+
+## Slice 1 - the switch engine
+
+1. Extend the carry so a company SWAP keeps the player's CAREER: reputation / title / standing
+   + farmFund + arc position survive when the world graph (company, estate, tickets, accounts)
+   is replaced. Today WeekCarry = {farmFund, attempt, arcWeek}; add the employer identity + the
+   career stats that must persist, seeding the new employer's player node FROM the carry (not
+   fresh). Three exits set up the next employer differently: completed probation, resigned,
+   fired. Determinism: same carry + employer = same world; save round-trips the career carry
+   across the switch. The PROBATION week stays byte-identical (a fresh probation still plays
+   the same) - asserted.
+
+## Slice 2 - the post-probation transition
+
+2. Pass probation (the Friday review that goes the right way) -> an OFFER -> accept -> arrive at
+   a second employer, Monday, week 1 of the new arc. Reputation follows you: a good probation =
+   a better offer; a firing = worse offers / the trail. The farm-fund joke persists. A diegetic
+   "you got the job, here is your new machine" transition (rides the boot / update-screen
+   precedent). The player keeps title/standing; the WORLD is new.
+
+## Slice 3 - the second employer (archetype + the event day)
+
+3. A second companySetup with a DIFFERENT ARCHETYPE from the enterprise-locked-down probation
+   shop: ship one contrasting employer (a wild-west small shop - install policy wild_west so
+   installs carry no audit cost, the 0.4.0 seam paying off; a different channel mix, the 0.5.0
+   seam; a different estate, ticket flavor, boss and culture). Its week carries an EVENT DAY -
+   the deferred reply-all storm OR password rotation, finally homed. The contrast is the
+   teaching: the same skills, a different building.
+
+## Gates (once, at the version)
+
+Probation-week goldens BYTE-IDENTICAL (the switch is additive) - asserted. New goldens for the
+second-employer week, argued. Journeys: pass probation -> offer -> second employer plays;
+career stats persist across the switch (save round-trip); the second employer's policy /
+channel / archetype genuinely differ; the event day fires there. Solvability + determinism per
+employer. One codex (health-checked, </dev/null + timeout), one full box, both halves.
+
+## Deferred (later E5)
+
+Era/OS skins (Win/Linux/Mac x edition, LOOK + DIALECT, fidelity mandate, per-edition spikes);
+more employer archetypes; titles-as-difficulty; the full unemployable=game-over fail arc.
