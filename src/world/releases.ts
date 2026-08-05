@@ -31,6 +31,23 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.5.1',
+    date: '2026-08-05',
+    summary: 'This update lets you panic without a keyboard.',
+    lines: Object.freeze([
+      'It turns out people have been trying to play this on their phones, '
+        + 'where there is no key to press when the boss appears - which meant '
+        + 'the single most important button in the whole product did not '
+        + 'exist. There is now an on-screen one. It is labelled as a tidy-up '
+        + 'button, for the same reason the key was never labelled at all.',
+      'On a touch screen the windows now fit the screen instead of hanging '
+        + 'off the edge of it, and the things you tap are big enough to tap. '
+        + 'This is not the same as the game being good on a phone. It is the '
+        + 'game being possible on a phone. The difference is a later update, '
+        + 'and IT has been asked not to promise when.',
+    ]),
+  },
+  {
     version: '0.5.0',
     date: '2026-08-05',
     summary: 'This update adds more ways to be reached.',
