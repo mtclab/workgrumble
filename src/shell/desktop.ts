@@ -124,6 +124,7 @@ export class Desktop {
   private readonly clockDay: HTMLElement;
   private readonly dayState: HTMLButtonElement;
   private readonly pauseButton: HTMLButtonElement;
+  private readonly panicButton: HTMLButtonElement;
   private readonly fumbleChip: HTMLElement;
   private readonly refocusChip: HTMLElement;
   private readonly rebootChip: HTMLElement;
@@ -443,6 +444,38 @@ export class Desktop {
     this.saveChip.textContent = 'Not saving';
     this.saveChip.hidden = true;
 
+    // The on-screen twin of the panic key.
+    //
+    // Backquote is a physical key with no touch equivalent, so on a phone the
+    // hide-your-slacking mechanic was simply dead: the button is the thing you
+    // jab when the boss appears and you have no keyboard. It fires the exact
+    // same `panic()` the key does - one method, so the two cannot drift.
+    //
+    // It is in the DOM on every device, so the desktop keyboard path is
+    // untouched and the control is always testable; CSS brings it forward and
+    // up to a finger-sized target only where a coarse pointer or a narrow
+    // viewport says a finger will actually need it.
+    this.panicButton = document.createElement('button');
+    this.panicButton.type = 'button';
+    this.panicButton.className = 'boss-panic';
+    this.panicButton.dataset.testid = 'boss-panic';
+    this.panicButton.append(createIcon('icon-minimize'));
+    this.panicButton.setAttribute(
+      'aria-label',
+      'Look busy - minimise everything that is not work',
+    );
+    this.panicButton.title = 'Look busy. Drops everything that is not work to '
+      + 'the taskbar at once - the touch version of the panic key. Officially '
+      + 'this is the "tidy your desktop" button. It is not for tidying your '
+      + 'desktop.';
+    this.panicButton.addEventListener(
+      'click',
+      () => {
+        this.panic();
+      },
+      { signal: this.abort.signal },
+    );
+
     tray.append(
       this.bossChip,
       this.saveChip,
@@ -451,6 +484,7 @@ export class Desktop {
       this.fumbleChip,
       presence,
       dayControls,
+      this.panicButton,
       this.trayButton,
       clock,
     );
@@ -1041,6 +1075,18 @@ export class Desktop {
     }
 
     event.preventDefault();
+    this.panic();
+  }
+
+  /**
+   * The panic action, behind both the boss key and the on-screen panic button.
+   *
+   * Extracted so the two controls cannot drift: the key and the button close
+   * the same transient surfaces and minimise the same slack windows, because
+   * they are the same method. No wait for a field to lose focus - the manager
+   * in the doorway does not wait, and neither does this.
+   */
+  private panic(): void {
     this.closeTransientSurfaces();
     this.commitWindows(minimizeSlackWindows(this.requireWindowManager()));
   }

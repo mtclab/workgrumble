@@ -338,6 +338,14 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'desktop.boss-panic',
+    surface: 'desktop',
+    control: 'boss-panic',
+    does: 'The on-screen twin of the panic key: one tap minimizes every slack '
+      + 'window at once, for the player on a phone with no key to press.',
+    run: 'week',
+  },
+  {
     id: 'desktop.escape-scene',
     surface: 'desktop',
     control: 'Escape',
@@ -2809,6 +2817,9 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'presence-available',
   'presence-dnd',
   'presence-away',
+  // The touch twin of the boss key: the on-screen jab that minimises the slack
+  // windows, for the phone player who has no Backquote to press.
+  'boss-panic',
   'notification-tray',
   'toast-dismiss',
 

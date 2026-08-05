@@ -368,4 +368,39 @@ describe('window manager movement, resize, and viewport constraints', () => {
     });
     assertWindowManagerInvariants(state);
   });
+
+  /**
+   * The phone case, stated explicitly (0.5.1 slice 2).
+   *
+   * A window asked to open both far off the right/bottom of a phone-sized
+   * viewport AND far larger than it must land fully on screen, or it is a
+   * window nobody with a finger can reach or drag back. The desktop default
+   * (620x480) is bigger than a 360x600 phone, so this is the every-window
+   * case, not an edge one.
+   */
+  it('clamps a window opened larger than and off a small viewport into view', () => {
+    const viewport = { width: 360, height: 600 };
+    const state = openWindow(createWindowManager(viewport), {
+      id: 'runaway',
+      appId: 'demo',
+      title: 'Runaway',
+      icon: 'icon-about',
+      slack: false,
+      bounds: {
+        x: 5_000,
+        y: 5_000,
+        width: 9_000,
+        height: 9_000,
+      },
+    });
+
+    const { x, y, width, height } = selected(state, 'runaway').bounds;
+    expect(x).toBeGreaterThanOrEqual(0);
+    expect(y).toBeGreaterThanOrEqual(0);
+    expect(width).toBeLessThanOrEqual(viewport.width);
+    expect(height).toBeLessThanOrEqual(viewport.height);
+    expect(x + width).toBeLessThanOrEqual(viewport.width);
+    expect(y + height).toBeLessThanOrEqual(viewport.height);
+    assertWindowManagerInvariants(state);
+  });
 });

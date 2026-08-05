@@ -135,6 +135,10 @@
   --size-desktop-icon: 84px;
   --size-resize-edge: 6px;
   --size-resize-corner: 14px;
+  /* The minimum a fingertip can hit reliably. Applied only under a coarse
+     pointer (see the media query near the taskbar rules), so the mouse-sized
+     chrome above is unchanged - this is the touch floor, not a resize. */
+  --size-touch-target: 44px;
   --size-start-menu: 232px;
   --size-panel: 300px;
   --size-toast: 288px;
@@ -1083,6 +1087,32 @@ input {
   border: none;
   background: none;
   cursor: pointer;
+}
+
+/*
+ * The on-screen panic control (0.5.1).
+ *
+ * The boss key is a physical key with no touch equivalent, so on a phone the
+ * hide-your-slacking mechanic was dead. This button is its twin - the same jab,
+ * for a finger. On a desktop, where the key already covers the job, it sits
+ * quiet and small in the tray (muted, no fill): present and clickable so the
+ * keyboard path is untouched and the control stays testable, but not competing
+ * with the bell beside it. The media queries below bring it forward - and up to
+ * a finger-sized target - only where a coarse pointer or a narrow viewport says
+ * a thumb will need it.
+ */
+.boss-panic {
+  display: grid;
+  place-items: center;
+  padding: var(--space-1);
+  border: none;
+  background: none;
+  color: var(--color-ink-soft);
+  cursor: pointer;
+}
+
+.boss-panic:active {
+  color: var(--color-ink);
 }
 
 .tray-badge {
@@ -5058,4 +5088,54 @@ input {
 .screen-desktop[data-paused="true"] .assistant-character,
 .screen-desktop[data-paused="true"] .door-flash {
   animation-play-state: paused;
+}
+
+/* ------------------------------------------------------------ touch (0.5.1)
+
+   Mobile playable, tier 1: the desktop OS is desktop-first by design, and this
+   is the touch FLOOR that makes it playable on a phone - not the responsive
+   single-window rebuild, which is tier 2 and a separate epic. Everything below
+   is feature-detected on a coarse pointer or a genuinely narrow viewport,
+   never a user-agent string, and nothing here touches the fine-pointer chrome
+   above. */
+
+/* The panic button stops being the quiet tray glyph and becomes the emergency
+   jab it is: a filled, bevelled control the thumb can find without looking. The
+   max-width half also catches a narrow window on a device that still reports a
+   fine pointer - a slim browser column, a split screen. */
+@media (pointer: coarse), (max-width: 640px) {
+  .boss-panic {
+    background: var(--color-alarm-soft);
+    box-shadow: var(--bevel-raised);
+    color: var(--color-alarm);
+  }
+
+  .boss-panic:active {
+    box-shadow: var(--bevel-sunken);
+  }
+}
+
+/* Touch tap targets. The controls a fingertip has to hit get the 44px floor
+   every touch guideline names, and the two bars that hold them grow to fit so
+   the target is real rather than clipped by 9x-tight chrome. Min-size and
+   min-height only, coarse-pointer only: a mouse keeps the compact chrome, a
+   roomy taskbar is unchanged, and a crowded one still scrolls (the 0.3.6
+   taskbar-scroll fix). */
+@media (pointer: coarse) {
+  .taskbar {
+    height: auto;
+    min-height: var(--size-touch-target);
+  }
+
+  .window-titlebar {
+    height: auto;
+    min-height: var(--size-touch-target);
+  }
+
+  .boss-panic,
+  .window-control,
+  .taskbar-button {
+    min-width: var(--size-touch-target);
+    min-height: var(--size-touch-target);
+  }
 }

@@ -1482,6 +1482,23 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('door-flash')).toBeVisible();
   });
 
+  await step('desktop.boss-panic', async () => {
+    // The on-screen twin of the panic key, for a player with no keyboard: the
+    // same jab, the same result. It minimises the same slack windows Backquote
+    // does, because it fires the same panic().
+    await page.getByTestId('boss-panic').click();
+    await expect(page.getByTestId('window-browser')).toBeHidden();
+    await expect(page.getByTestId('window-bubbles')).toBeHidden();
+    await expect(page.getByTestId('taskbar-button-bubbles'))
+      .toHaveAttribute('data-minimized', 'true');
+    // Put them back, so the key's own step below has the same two windows to
+    // hide - the two controls are proven to reach the identical outcome.
+    await page.getByTestId('taskbar-button-browser').click();
+    await page.getByTestId('taskbar-button-bubbles').click();
+    await expect(page.getByTestId('window-browser')).toBeVisible();
+    await expect(page.getByTestId('window-bubbles')).toBeVisible();
+  });
+
   await step('desktop.boss-key', async () => {
     await page.keyboard.press('Backquote');
     await expect(page.getByTestId('window-browser')).toBeHidden();
