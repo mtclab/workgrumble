@@ -824,3 +824,73 @@ The unix terminal (ls -la / systemctl / journalctl / ss / ip / dig at Ubuntu fid
 the player's Linux DESKTOP skin, IIS app-pool recycles (appcmd), AD replication faults,
 product-down escalation content. The Ubuntu 24.04 command-surface research is recorded when E6
 builds it - not needed here because this slice ships no unix commands.
+
+# Version 0.8.0 - the MSP employer + customers + scope-of-touch (E5, #26)
+
+The customer/MSP arc opens (Path A, owner 2026-08-05). Research base: six syntheses distilled in
+docs/design/estate-and-customers.md (three-axis model) and docs/design/msp-arc.md (this arc's
+plan). A THIRD employer - a Managed Service Provider serving many customer companies - reached
+via the 0.6.0 offer/switch the way Bodgeworth is, NOT a reframe of the shipping employers. The
+one big new concept is the first-class CUSTOMER; almost everything else reuses shipping systems
+(tickets + P1-P4 SLA + the timesheet mechanic = the PSA; the 0.7.0 estate = each customer's
+infrastructure; the KB = the runbook; the remote surface = ScreenConnect). This version ships
+the spine; the RMM board, more verticals, the change-request authorisation moment, onboarding,
+co-managed and SLA tiers are the backlog (msp-arc.md).
+
+## Slice 1 - the CUSTOMER entity + the MSP employer
+
+A customer is a first-class world entity owned by the MSP employer: an id, a business-type (which
+selects its estate, reusing the 0.7.0 os/role/service machinery whole), a service-scope contract
+(monitoring_only | helpdesk | co_managed | fully_managed), and an SLA tier. The MSP employer
+(on the 0.6.0 registry, like Bodgeworth) stands up N customer sub-estates, each tagged with its
+customer id. Reached via the existing offer/switch; career stats carry across per 0.6.0.
+
+## Slice 2 - the customer dimension on tickets + context
+
+Tickets carry a `customer`. The queue shows which customer each is for; opening a ticket LOADS
+that customer's context (the estate/creds an action then targets). Every ticket names its customer
+- the multi-customer board the round-1 research calls the defining fact of MSP work ("the queue,
+not the tech, decides which company you are in").
+
+## Slice 3 - scope-of-touch, as a real RBAC-403 (reuses the 0.7.0 honesty engine)
+
+Each customer's contract defines an allowed-actions scope; an out-of-scope action REFUSES with the
+true reason - the same honesty engine 0.7.0 shipped for cross-OS refusals, generalised OS ->
+CONTRACT, and it COMPOSES with 0.7.0 (a helpdesk player reaching for the SaaS customer's Linux
+prod is refused on BOTH counts). Reasons are all real (Azure Lighthouse / GDAP / PAM-tiering
+model): monitoring-only = notify-and-escalate not remediate; helpdesk = workstations/users, servers
+out of contract; co-managed = notify their IT first; risky = needs a change request. Not a wall -
+the shape of the job, taught by the world refusing.
+
+## Slice 4 - the "which customer am I in?" pre-flight guard
+
+A currently-selected customer (loaded from the open ticket). An action aimed at a machine that
+belongs to a DIFFERENT customer is caught by a pre-flight tenant-match check that names both -
+the MSP multi-tenancy horror (acting in the wrong client's environment) made mechanical, funny and
+true. One guard; high value.
+
+## Slice 5 - three verticals, real tickets, correctly scoped
+
+Ship 3 customers spanning the poles, with real tickets from the vertical research (docs/design/
+msp-arc.md cites them): a Windows-only LAW FIRM (helpdesk: DMS check-out deadlock, mailbox perms,
+the e-filing-deadline panic, "always printing"); a SaaS/Linux SHOP (helpdesk: Okta SSO loop, SCIM
+provisioning, Jamf Mac - with the Linux prod fleet OUT OF REACH, refused on OS + scope both); and
+ONE MONITORING-ONLY account (an alert you may only acknowledge + escalate, not fix - the sharpest
+scope contrast). Each ticket carries its true scope; the estates are seeded per business-type.
+
+## Gates (once, at the version)
+
+Goldens move (new customer entities + estates); argued. Journeys through the REAL path (the 0.6.0
+lesson): switch to the MSP; open a ticket and land in the right customer's context; work an
+in-scope helpdesk ticket to resolution; hit an out-of-scope action and get the truthful refusal
+(monitoring-only can't-fix; helpdesk can't-touch-server; SaaS prod refused on OS+scope both); trip
+the wrong-customer guard by aiming at another customer's box. Scope refusals proven with teeth
+(fail when the guard is reverted). Determinism + solvability per customer. Existing employers
+(probation, Bodgeworth) BYTE-IDENTICAL (the MSP is additive). One codex (health-checked; overseer
+reviews by hand if codex is down), one full box at --workers=2.
+
+## Not in scope (backlog, msp-arc.md)
+
+The RMM/monitoring BOARD as a surface (monitoring-only starts as a scope-refusal); the Mac creative
++ dental verticals; the change-request authorisation gate; customer onboarding/discovery content;
+co-managed coordination depth; Bronze/Silver/Gold SLA tiers + service credits.
