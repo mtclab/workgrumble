@@ -20,6 +20,14 @@ export const NODE_KINDS = [
    * systemd's own state words and no Windows service manager reaches it.
    */
   'unit',
+  /**
+   * A CUSTOMER of an MSP employer (0.8.0) - a machine dimension exactly like
+   * `os`, first-class because the ticket queue is organised BY customer. It
+   * carries the contract scope that decides what the player may DO to its
+   * estate, the business type that shapes that estate, and an SLA tier; its
+   * machines carry its id in their `customer` field.
+   */
+  'customer',
   'share',
   'group',
   'mail_rule',

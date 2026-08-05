@@ -27,8 +27,11 @@ import { FLOOD_TICKETS } from './flood';
 import { IDENTITY_TICKETS } from './identity';
 import { acceptsParent } from './parent';
 import { PILOT_TICKETS } from './pilot';
+import { MSP_TICKETS } from './msp';
 import { assertPathsAimAtRealNodes, seededNodeIds } from './solvable';
 import type { WorldTicket } from './types';
+import { mspSetup } from '../msp-company';
+import { MSP_WEEK } from '../msp-week';
 import { bodgeSetup } from '../second-company';
 import { SECOND_WEEK } from '../second-week';
 import { assertWeekTickets, WEEK } from '../week';
@@ -242,6 +245,7 @@ function validateWorldTickets(
     new Set([
       ...seededNodeIds(companySetup()),
       ...seededNodeIds(bodgeSetup()),
+      ...seededNodeIds(mspSetup()),
     ]),
   );
   assertChainsAreChains(entries);
@@ -342,11 +346,13 @@ export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekTickets(
     // because the roster is what the solvability, path and dialogue gates read;
     // its tickets are proven against the second employer's week below.
     ...BODGE_TICKETS,
+    // The MSP's skeleton queue (0.8.0), proven against the MSP's week below.
+    ...MSP_TICKETS,
   ]),
-  // Both employers' weeks, so every ticket in the shared roster is proven to
-  // arrive on SOME shop's day - Bodgeworth's five as well as the probation
-  // twenty-eight - rather than shipping dead.
-  [WEEK, SECOND_WEEK],
+  // Every employer's week, so every ticket in the shared roster is proven to
+  // arrive on SOME shop's day rather than shipping dead - the probation
+  // twenty-eight, Bodgeworth's five, and the MSP's three.
+  [WEEK, SECOND_WEEK, MSP_WEEK],
 );
 
 /**

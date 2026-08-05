@@ -9,6 +9,10 @@ import {
   LINK_CLOSED_REASON,
   WAITING_NEEDS_QUESTION_REASON,
 } from '../../world/actions';
+import {
+  customerIdForTicketNodes,
+  customerName,
+} from '../../world/customers';
 import { FIELDS } from '../../world/fields';
 import { articleLinkNote, findKbArticle, WORLD_KB } from '../../world/kb';
 import {
@@ -217,6 +221,13 @@ export interface TicketRow {
   readonly key: string;
   readonly title: string;
   readonly reporter: string;
+  /**
+   * Which CUSTOMER this ticket is for (0.8.0), derived from the box its fault is
+   * on, or null for an in-house ticket. The multi-customer board is the defining
+   * fact of MSP work - the queue, not the tech, decides which company you are in
+   * - so the row names it.
+   */
+  readonly customer: string | null;
   readonly state: TicketState;
   readonly breached: boolean;
   readonly selected: boolean;
@@ -242,12 +253,16 @@ export function ticketRows(
   return nodes.map((node) => {
     const entry = findWorldTicket(node.id);
     const clocks = ticketClocks(node, now);
+    const customerId = entry === undefined
+      ? null
+      : customerIdForTicketNodes(api.graph, entry.nodes);
 
     return {
       id: node.id,
       key: ticketKey(node.id),
       title: entry?.def.flavor.title ?? node.id,
       reporter: reporterName(api, entry),
+      customer: customerId === null ? null : customerName(api.graph, customerId),
       state: ticketState(node),
       breached: wasBreached(node),
       selected: node.id === view.selectedId,
@@ -448,6 +463,16 @@ export const TICKETS_APP: AppDef = {
       row.append(title, meta, status);
       row.addEventListener('click', () => {
         selectedId = id;
+        // Opening a ticket LOADS its customer's context (0.8.0): the terminal's
+        // wrong-customer guard reads this to know which tenant is "on screen".
+        // An in-house ticket has no customer, which clears it - you are back to
+        // no tenant selected.
+        const opened = findWorldTicket(id);
+        api.appState.setCustomerContext(
+          opened === undefined
+            ? null
+            : customerIdForTicketNodes(api.graph, opened.nodes),
+        );
         refusal = null;
         pickedImpact = null;
         pickedUrgency = null;
@@ -466,7 +491,15 @@ export const TICKETS_APP: AppDef = {
           setFlag(row, 'selected', String(next.selected));
           setFlag(row, 'priority', next.priority);
           setText(title, next.title);
-          setText(meta, next.reporter);
+          // The reporter, and - for an MSP ticket - which customer it is for in
+          // front of them, because at an MSP the first thing a row has to answer
+          // is "whose company is this?".
+          setText(
+            meta,
+            next.customer === null
+              ? next.reporter
+              : `${next.customer} - ${next.reporter}`,
+          );
           setFlag(priority, 'priority', next.priority);
           setText(priority, next.priorityLabel);
           setFlag(badge, 'state', next.state);

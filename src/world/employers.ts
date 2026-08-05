@@ -31,6 +31,13 @@ import {
 } from './company';
 import { EMPLOYER_ARC, type EmployerArc } from './pressure';
 import {
+  mspChannels,
+  MSP_COMPANY,
+  MSP_IDS,
+  mspSetup,
+} from './msp-company';
+import { mspInheritedTicketIds, MSP_WEEK } from './msp-week';
+import {
   bodgeChannels,
   BODGE_COMPANY,
   BODGE_IDS,
@@ -51,7 +58,7 @@ import {
  * save that names an employer this build has never heard of is a refusal rather
  * than a silent fall back to the wrong world.
  */
-export const EMPLOYER_IDS = ['workgrumble', 'bodgeworth'] as const;
+export const EMPLOYER_IDS = ['workgrumble', 'bodgeworth', 'msp'] as const;
 
 export type EmployerId = (typeof EMPLOYER_IDS)[number];
 
@@ -187,9 +194,38 @@ const SECOND_EMPLOYER: Employer = Object.freeze({
   mondayTicketIds: bodgeInheritedTicketIds,
 });
 
+/**
+ * The MSP, made real (0.8.0, E5 #26) - a THIRD employer, reached the way
+ * Bodgeworth is: a new entry on this registry, wrapped to next after Bodgeworth
+ * by `nextEmployerAfter`. It is a Managed Service Provider serving many customer
+ * companies (`msp-company.ts`), with its own estate spanning three customers,
+ * its own light first week (`msp-week.ts`), and its own two governed rooms. The
+ * player is `person:pat` still - the same career, now on a service desk - so a
+ * switch seeds their standing onto it exactly as a switch to Bodgeworth does.
+ *
+ * `runsBossPings` is false: the MSP's lead is not the probation reporter, so it
+ * authors no probation ping beat, the same as Bodgeworth. `installPolicy` is
+ * `governed`, because an MSP tech's own workstation is a managed device with an
+ * audit - the customer estates are what is new, not a wild-west desk.
+ */
+const MSP_EMPLOYER: Employer = Object.freeze({
+  id: 'msp',
+  name: MSP_COMPANY.name,
+  playerId: MSP_IDS.player,
+  installPolicy: MSP_COMPANY.installPolicy,
+  arc: EMPLOYER_ARC,
+  week: MSP_WEEK,
+  channels: mspChannels(),
+  reviewBar: REVIEW_PASS_PERFORMANCE,
+  runsBossPings: false,
+  setup: mspSetup,
+  mondayTicketIds: mspInheritedTicketIds,
+});
+
 const REGISTRY: Readonly<Record<string, Employer>> = Object.freeze({
   [FIRST_EMPLOYER]: PROBATION_EMPLOYER,
   [SECOND_EMPLOYER.id]: SECOND_EMPLOYER,
+  [MSP_EMPLOYER.id]: MSP_EMPLOYER,
 });
 
 /**

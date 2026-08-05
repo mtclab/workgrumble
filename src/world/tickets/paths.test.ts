@@ -6,17 +6,20 @@ import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
 import { createWorldSession, type WorldSession } from '../session';
 import { inheritedTicketIds } from '../week';
+import { mspInheritedTicketIds } from '../msp-week';
 import { bodgeInheritedTicketIds } from '../second-week';
 import { BODGE_TICKETS } from './bodge';
+import { MSP_TICKETS } from './msp';
 import { acceptsEscalation } from './escalation';
 import { allowsEscalation, spawnWorldTicket, WORLD_TICKETS } from './index';
 import type { WorldTicket } from './types';
 
 /**
- * The roster is shared across both employers (0.6.0 slice 3), so a ticket has
- * to be spawned into the estate it is ABOUT. These name which shop each ticket
- * belongs to and stand up the right world for it - only one world is ever up at
- * a time, and a Bodgeworth fault in the probation estate is a missing reporter.
+ * The roster is shared across all three employers (0.6.0 slice 3, 0.8.0), so a
+ * ticket has to be spawned into the estate it is ABOUT. These name which shop
+ * each ticket belongs to and stand up the right world for it - only one world is
+ * ever up at a time, and a Bodgeworth or MSP fault in the probation estate is a
+ * missing reporter.
  */
 const BODGE_TICKET_IDS = new Set(BODGE_TICKETS.map((entry) => entry.def.id));
 const BODGE_CARRY = Object.freeze({
@@ -25,11 +28,26 @@ const BODGE_CARRY = Object.freeze({
   arcWeek: 1,
   employer: 'bodgeworth',
 });
+const MSP_TICKET_IDS = new Set(MSP_TICKETS.map((entry) => entry.def.id));
+const MSP_CARRY = Object.freeze({
+  farmFund: 0,
+  attempt: 1,
+  arcWeek: 1,
+  employer: 'msp',
+});
+
+function carryForTicket(entry: WorldTicket): Readonly<{
+  farmFund: number; attempt: number; arcWeek: number; employer: string;
+}> | undefined {
+  if (BODGE_TICKET_IDS.has(entry.def.id)) {
+    return BODGE_CARRY;
+  }
+
+  return MSP_TICKET_IDS.has(entry.def.id) ? MSP_CARRY : undefined;
+}
 
 function sessionForTicket(entry: WorldTicket): WorldSession {
-  const session = createWorldSession(
-    BODGE_TICKET_IDS.has(entry.def.id) ? BODGE_CARRY : undefined,
-  );
+  const session = createWorldSession(carryForTicket(entry));
 
   if (session.engine.graph.getNode(entry.def.id) === undefined) {
     spawnWorldTicket(session.engine, entry.def.id);
@@ -82,7 +100,8 @@ function sessionWithEveryTicket(): WorldSession {
   // the tickets name nodes that do not exist.
   return sessionWith(
     ...WORLD_TICKETS
-      .filter((entry) => !BODGE_TICKET_IDS.has(entry.def.id))
+      .filter((entry) => !BODGE_TICKET_IDS.has(entry.def.id)
+        && !MSP_TICKET_IDS.has(entry.def.id))
       .map(({ def }) => def.id),
   );
 }
@@ -94,9 +113,7 @@ describe('shipped tickets', () => {
       // clicked anything (0.6.0 slice 3). Creating the session points the day
       // readers at that shop's week, so `inheritedTicketIds(1)` is that shop's
       // Monday pile.
-      const session = createWorldSession(
-        BODGE_TICKET_IDS.has(entry.def.id) ? BODGE_CARRY : undefined,
-      );
+      const session = createWorldSession(carryForTicket(entry));
 
       // The morning pile is in the world before anybody has clicked anything.
       // The one that drips in and the one the lead summons are not there yet,
@@ -106,11 +123,13 @@ describe('shipped tickets', () => {
         session.engine.ticketState(entry.def.id),
         entry.def.id,
       ).toBe(
-        // Each shop's own Monday pile: a Bodgeworth ticket is judged against
-        // Bodgeworth's inherited list, not the probation shop's.
+        // Each shop's own Monday pile: a Bodgeworth or MSP ticket is judged
+        // against ITS inherited list, not the probation shop's.
         (BODGE_TICKET_IDS.has(entry.def.id)
           ? bodgeInheritedTicketIds()
-          : inheritedTicketIds(1)
+          : MSP_TICKET_IDS.has(entry.def.id)
+            ? mspInheritedTicketIds()
+            : inheritedTicketIds(1)
         ).includes(entry.def.id)
           ? 'open'
           : undefined,
@@ -171,6 +190,12 @@ describe('shipped tickets', () => {
       'ticket:yard-printer-wedged',
       'ticket:the-share-down',
       'ticket:vernon-mouse',
+      // And the MSP's three (0.8.0), spawned into the MSP world: a helpdesk
+      // lockout at each of two customers, and a monitoring-only alert the player
+      // may only escalate.
+      'ticket:fontaine-lockout',
+      'ticket:meridian-lockout',
+      'ticket:northwind-backup-alert',
     ]);
   });
 
@@ -294,12 +319,15 @@ describe('escalation policy', () => {
       .filter((entry) => acceptsEscalation(entry.def.resolved_when, entry.def.id))
       .map(({ def }) => def.id);
 
-    // Two, and both for the same honest reason: a fan whose bearing is going
-    // wants a screwdriver and somebody on site, and a report that has not run
-    // since March wants the people whose job the job is.
+    // Three, each for an honest reason: a fan whose bearing is going wants a
+    // screwdriver and somebody on site; a report that has not run since March
+    // wants the people whose job the job is; and the MSP's monitoring-only
+    // Northwind alert is escalate-ONLY by contract - remediation is out of
+    // scope, so escalation is not a fallback there but the whole of the job.
     expect(escalatable).toEqual([
       'ticket:fan-noise',
       'ticket:hr-report-macro',
+      'ticket:northwind-backup-alert',
     ]);
   });
 

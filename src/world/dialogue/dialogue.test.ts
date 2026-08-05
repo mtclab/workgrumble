@@ -447,9 +447,10 @@ describe('shipped conversations', () => {
   });
 
   it('speaks only for people who exist in a company', () => {
-    // Both employers (0.6.0 slice 3): the tree registry is shared, so a speaker
-    // is real if they exist in EITHER shop's graph - Bodgeworth's cast in the
-    // Bodgeworth world, the probation cast in the probation one.
+    // Every employer (0.6.0 slice 3, 0.8.0): the tree registry is shared, so a
+    // speaker is real if they exist in ANY shop's graph - Bodgeworth's cast in
+    // the Bodgeworth world, the MSP's customer contacts in the MSP world, the
+    // probation cast in the probation one.
     const probation = createWorldSession();
     const bodge = createWorldSession(Object.freeze({
       farmFund: 0,
@@ -457,10 +458,17 @@ describe('shipped conversations', () => {
       arcWeek: 1,
       employer: 'bodgeworth',
     }));
+    const msp = createWorldSession(Object.freeze({
+      farmFund: 0,
+      attempt: 1,
+      arcWeek: 1,
+      employer: 'msp',
+    }));
 
     for (const conversation of WORLD_DIALOGUE) {
       const kind = probation.engine.graph.getNode(conversation.speaker)?.kind
-        ?? bodge.engine.graph.getNode(conversation.speaker)?.kind;
+        ?? bodge.engine.graph.getNode(conversation.speaker)?.kind
+        ?? msp.engine.graph.getNode(conversation.speaker)?.kind;
       expect(kind, conversation.speaker).toBe('person');
     }
   });

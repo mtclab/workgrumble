@@ -35,19 +35,24 @@ import {
 } from '../world/actions';
 import { companySetup, COMPANY_IDS } from '../world/company';
 import { BODGE_TICKETS } from '../world/tickets/bodge';
+import { MSP_TICKETS } from '../world/tickets/msp';
 import { DEMO_ACTION_DATA, DEMO_ACTIONS, WORLD_IDS } from '../world/demo-world';
 import { FIELDS } from '../world/fields';
 import { WORLD_TICKETS } from '../world/tickets';
 
 /**
- * The probation shop's tickets only (0.6.0 slice 3). Parity stands up the
+ * The probation shop's tickets only (0.6.0 slice 3, 0.8.0). Parity stands up the
  * probation estate (`companySetup`), and the shared roster now also carries
- * Bodgeworth's tickets, which name a different estate's nodes - registering one
- * here would fail for a reporter this world does not have. The engine-parity
- * claim is about the engine, and the probation roster exercises it fully.
+ * Bodgeworth's and the MSP's tickets, which name a different estate's nodes -
+ * registering one here would fail for a reporter this world does not have. The
+ * engine-parity claim is about the engine, and the probation roster exercises it
+ * fully.
  */
+const OTHER_EMPLOYER_TICKET_IDS = new Set(
+  [...BODGE_TICKETS, ...MSP_TICKETS].map((entry) => entry.def.id),
+);
 const PROBATION_TICKETS = WORLD_TICKETS.filter(
-  (entry) => !BODGE_TICKETS.some((bodge) => bodge.def.id === entry.def.id),
+  (entry) => !OTHER_EMPLOYER_TICKET_IDS.has(entry.def.id),
 );
 import {
   GOLDEN_ACTION_DATA,

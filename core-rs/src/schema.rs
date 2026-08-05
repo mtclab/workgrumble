@@ -12,7 +12,7 @@ use crate::error::{EngineError, EngineResult};
 use crate::refuse;
 use crate::value::FieldValue;
 
-pub const NODE_KINDS: [&str; 12] = [
+pub const NODE_KINDS: [&str; 13] = [
     "person",
     "account",
     "machine",
@@ -23,6 +23,13 @@ pub const NODE_KINDS: [&str; 12] = [
     // systemd's own state vocabulary and no Windows service manager knows about
     // it, which is the whole reason the estate is heterogeneous.
     "unit",
+    // A CUSTOMER of an MSP employer (0.8.0). A machine dimension, exactly like
+    // `os` and `role`: a customer carries the contract that decides what the
+    // player may DO to its estate (service_scope), the business it is in
+    // (business_type, which shapes that estate), and its SLA tier. Its own kind
+    // because a customer is a first-class world entity the ticket queue is
+    // organised by, not a field on a machine - the machines carry its id.
+    "customer",
     "share",
     "group",
     "mail_rule",
@@ -193,6 +200,42 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
                     )
                 },
                 "a systemd unit state",
+            )
+        }
+        "customer" => {
+            // A customer of an MSP employer. The name the queue prints, the
+            // business it is in (an open set - the estate research names more
+            // verticals than 0.8.0 ships), and the two closed enums that decide
+            // gameplay: the contract scope the honesty engine reads before it
+            // refuses an out-of-contract action, and the SLA tier. Held as data
+            // and validated at load, exactly like a service's status or a unit's
+            // state.
+            assert_optional(fields, "name", is_string, "a string")?;
+            assert_optional(fields, "business_type", is_string, "a string")?;
+            assert_optional(
+                fields,
+                "service_scope",
+                |value| {
+                    matches!(
+                        value.as_str(),
+                        Some("monitoring_only")
+                            | Some("helpdesk")
+                            | Some("co_managed")
+                            | Some("fully_managed")
+                    )
+                },
+                "a customer service scope",
+            )?;
+            assert_optional(
+                fields,
+                "sla_tier",
+                |value| {
+                    matches!(
+                        value.as_str(),
+                        Some("bronze") | Some("silver") | Some("gold")
+                    )
+                },
+                "a bronze, silver, or gold SLA tier",
             )
         }
         "share" => {

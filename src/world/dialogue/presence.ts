@@ -33,6 +33,7 @@
  */
 
 import { COMPANY_IDS } from '../company';
+import { MSP_IDS } from '../msp-company';
 import { BODGE_IDS } from '../second-company';
 import { WORLD_TICKETS } from '../tickets';
 import { type Presence, PRESENCE_VALUES } from '../presence';
@@ -106,6 +107,18 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
   [BODGE_IDS.vernon]: 'Your status says away. I pay for that desk and the desk '
     + 'is working, so one of us is confused about what away means and I do not '
     + 'think it is me.',
+  // The MSP customers (0.8.0). They are contacts at other companies, so the
+  // thought is a paying customer's: the desk they are paying to watch is busy,
+  // and it is busy with somebody else's tenant.
+  [MSP_IDS.fontaineContact]: 'Your portal says you are away. I have a filing at '
+    + 'ten and a desk that is clearly not away, so I will assume the status is '
+    + 'for somebody else\'s emergency and mine is next.',
+  [MSP_IDS.meridianContact]: 'You are showing as away. I do this for a living '
+    + 'too, so I know away on a service desk means "in another customer" - I '
+    + 'just would rather the other customer were us this minute.',
+  [MSP_IDS.northwindContact]: 'Says away. We only pay you to watch, so I do not '
+    + 'want to be a bother - it is only that the thing you were watching has '
+    + 'gone red and the watching desk has gone quiet.',
 });
 
 /**

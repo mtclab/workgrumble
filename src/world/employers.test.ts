@@ -59,6 +59,20 @@ describe('the employer registry', () => {
     expect(second.name).not.toBe(employerFor(FIRST_EMPLOYER).name);
   });
 
+  it('ships the MSP as a third employer, reached after Bodgeworth', () => {
+    // 0.8.0: the MSP is a real third entry, resolves to its own id and name, and
+    // is where a career lands after Bodgeworth via the same offer/switch hop.
+    // Drop it from the registry and this whole block goes red.
+    const msp = employerFor('msp');
+    expect(msp.id).toBe('msp');
+    expect(msp.name.length).toBeGreaterThan(0);
+    expect(msp.name).not.toBe(employerFor(FIRST_EMPLOYER).name);
+    expect(msp.name).not.toBe(employerFor('bodgeworth').name);
+    expect(nextEmployerAfter('bodgeworth')).toBe('msp');
+    // Its Monday pile is its own customer's ticket, not another shop's.
+    expect(msp.mondayTicketIds()).toContain('ticket:fontaine-lockout');
+  });
+
   it('names an employer, and falls back to the id for a stranger', () => {
     expect(employerName(FIRST_EMPLOYER)).toBe(employerFor(FIRST_EMPLOYER).name);
     // Tolerant where employerFor is strict: a fixture id gets its own id back

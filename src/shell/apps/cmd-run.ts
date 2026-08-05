@@ -25,6 +25,10 @@ import {
   STARTUP_TYPE_LABELS,
   startupTypeOf,
 } from '../../world/fields';
+import {
+  scopeRefusalForMachine,
+  wrongCustomerGuardLines,
+} from '../../world/customers';
 import { formatSimTime } from '../clock-format';
 import { DEFAULT_CWD } from '../../world/filesystem';
 import { readSpoolJobs, type TerminalSession } from '../../world/fs';
@@ -220,6 +224,28 @@ function linuxHostOf(api: GameApi, query: string): string | null {
 }
 
 /**
+ * The machine a service-taking query names - the host part of `APP-01\nginx`,
+ * or the whole of a bare `APP-01`. Returns the node so a refusal can read its
+ * customer, or null when the query names no box. It is the node behind
+ * `linuxHostOf`, factored out so the customer guards can compose with the
+ * cross-OS refusal on the same box.
+ */
+function hostMachineOfQuery(
+  api: GameApi,
+  query: string,
+): Readonly<ReadOnlyGraphNode> | null {
+  const qualified = /^(.+?)[\\/](.+)$/u.exec(query.trim());
+  const hostQuery = (qualified?.[1] ?? query).trim();
+
+  if (hostQuery.length === 0) {
+    return null;
+  }
+
+  const found = machineOf(api, hostQuery);
+  return found.ok ? found.node : null;
+}
+
+/**
  * The common tail of every "not a Windows host" refusal: it names systemd, the
  * other family and its toolset, and points at the tier that has them - the
  * on-ramp to E6, taught by the world refusing rather than by a tutorial. The
@@ -232,6 +258,77 @@ function notWindowsHost(host: string, why: string): CommandResult {
     'over ssh, a family this terminal does not speak. It is real and on the wire',
     '(ping and nslookup find it); managing it is the next tier\'s job, not this one.',
   );
+}
+
+/**
+ * The MACHINE an action's target sits on, for the customer guards - the box
+ * itself when the target is one, the box a service or unit runs on, the box a
+ * device is plugged into. Null for a target with no machine behind it (an
+ * account, a mail rule, a share): the customer mechanics are about boxes, and a
+ * target that resolves to none is left to the in-house path unchanged.
+ */
+function machineForTarget(
+  api: GameApi,
+  targetId: string,
+): Readonly<ReadOnlyGraphNode> | null {
+  const node = api.graph.getNode(targetId);
+
+  if (node === undefined) {
+    return null;
+  }
+
+  if (node.kind === 'machine') {
+    return node;
+  }
+
+  if (node.kind === 'service' || node.kind === 'unit') {
+    return api.graph
+      .neighbors(node.id, { direction: 'out', edgeKind: 'runs_on' })
+      .find((owner) => owner.kind === 'machine') ?? null;
+  }
+
+  if (node.kind === 'device') {
+    return api.graph
+      .neighbors(node.id, { direction: 'out', edgeKind: 'connected_to' })
+      .find((owner) => owner.kind === 'machine') ?? null;
+  }
+
+  return null;
+}
+
+/**
+ * The customer pre-flight the dispatch seam runs before it sends any mutating
+ * action (0.8.0). It resolves the target's box and, in order:
+ *
+ *  - the wrong-customer guard first (you are in the wrong tenant entirely - the
+ *    STOP that names both), then
+ *  - the scope-of-touch RBAC-403 (the contract does not cover this action).
+ *
+ * Null means the action is clear to dispatch, which is the in-house case for
+ * every box that carries no customer - so probation and Bodgeworth are
+ * untouched. It is the generalisation of the 0.7.0 honesty engine from OS to
+ * CONTRACT and TENANT, and it lives at the seam every mutating verb funnels
+ * through so there is ONE guard, not one per verb.
+ */
+function customerPreflight(
+  api: GameApi,
+  targetId: string,
+): CommandResult | null {
+  const machine = machineForTarget(api, targetId);
+
+  if (machine === null) {
+    return null;
+  }
+
+  const current = api.appState.getCustomerContext();
+  const wrongCustomer = wrongCustomerGuardLines(api.graph, machine, current);
+
+  if (wrongCustomer !== null) {
+    return lines(...wrongCustomer);
+  }
+
+  const scope = scopeRefusalForMachine(api.graph, machine);
+  return scope === null ? null : lines(...scope);
 }
 
 function accountOf(api: GameApi, query: string): Lookup {
@@ -866,6 +963,17 @@ function dispatchLines(
   params: Record<string, string | number>,
   success: readonly string[],
 ): CommandResult {
+  // The customer guards run BEFORE the action is sent (0.8.0): a wrong-tenant
+  // action or one the contract does not cover is refused here, at the one seam
+  // every mutating verb passes through, the way the real RBAC-403 refuses
+  // before anything happens. Null for every in-house box, so nothing off the
+  // MSP moves.
+  const refused = customerPreflight(api, target);
+
+  if (refused !== null) {
+    return refused;
+  }
+
   const result = api.dispatch(action, api.actor, target, params);
   return result.ok ? lines(...success) : lines(result.reason);
 }
@@ -1684,11 +1792,35 @@ export function executeCommand(
     const linux = linuxHostOf(api, parsed.query);
 
     if (linux !== null) {
-      return notWindowsHost(
+      // The box is a Linux host AND it may belong to a customer whose contract
+      // does not cover it. Both are true and both are taught: a wrong-tenant
+      // aim stops here (the STOP is the more urgent truth), and a helpdesk
+      // player reaching for a SaaS customer's Linux PROD is refused on BOTH
+      // counts - the scope reason, then the systemd one - which is the
+      // compose-with-0.7.0 case the arc is built around.
+      const host = hostMachineOfQuery(api, parsed.query);
+      const current = api.appState.getCustomerContext();
+      const osRefusal = notWindowsHost(
         linux,
         'restart is the Windows stop/start pair, and a Windows stop control '
           + 'does not reach a systemd unit.',
       );
+
+      if (host === null) {
+        return osRefusal;
+      }
+
+      const tenant = wrongCustomerGuardLines(api.graph, host, current);
+
+      if (tenant !== null) {
+        return lines(...tenant);
+      }
+
+      const scope = scopeRefusalForMachine(api.graph, host);
+
+      return scope === null
+        ? osRefusal
+        : lines(...scope, '', ...osRefusal.lines);
     }
 
     const found = serviceOf(api, parsed.query);

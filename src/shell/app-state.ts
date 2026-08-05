@@ -598,11 +598,38 @@ export function parseAppState(value: unknown): AppState | null {
  */
 export class AppStateStore {
   private state: AppState = createAppState();
+  /**
+   * Which CUSTOMER the player is working in right now (0.8.0), loaded from the
+   * ticket they last opened, or null before any is open.
+   *
+   * It is screen state - "which customer's context is on screen" - so it lives
+   * here with the rest of it rather than in the world graph. But UNLIKE the
+   * serialised slices above it is deliberately NOT carried by a save: it is
+   * re-derivable from the open ticket, no ticket is "open" in the terminal
+   * sense on a fresh load, and keeping it out of the snapshot is what leaves
+   * every existing save golden byte-identical - the customer dimension adds
+   * nothing to the file. The terminal reads it for the wrong-customer guard;
+   * the tickets app writes it when a ticket is opened.
+   */
+  private customerContext: string | null = null;
   private readonly listeners = new Set<() => void>();
   private readonly reloadListeners = new Set<() => void>();
 
   public get(): Readonly<AppState> {
     return this.state;
+  }
+
+  /** The customer whose context is loaded, or null before a ticket is opened. */
+  public getCustomerContext(): string | null {
+    return this.customerContext;
+  }
+
+  /**
+   * Loads a customer's context - what opening a ticket does. Null clears it,
+   * which is what leaving the queue or opening an in-house ticket means.
+   */
+  public setCustomerContext(customerId: string | null): void {
+    this.customerContext = customerId;
   }
 
   /** Replaces part of one slice, leaving the rest of it alone. */
@@ -653,6 +680,10 @@ export class AppStateStore {
     }
 
     this.state = parsed;
+    // A loaded session has no ticket open in the terminal sense, so it works in
+    // no customer until one is opened - the same fresh-start the context has on
+    // a new game.
+    this.customerContext = null;
     this.announce();
     this.announceReload();
     return true;
@@ -661,6 +692,7 @@ export class AppStateStore {
   /** Resets to a fresh session - what a restart means for the apps. */
   public reset(): void {
     this.state = createAppState();
+    this.customerContext = null;
     this.announce();
     this.announceReload();
   }

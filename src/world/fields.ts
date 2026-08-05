@@ -619,6 +619,38 @@ export const FIELDS = {
    */
   machineOs: 'os',
   /**
+   * Which CUSTOMER of the MSP this box belongs to (0.8.0), by customer-node id.
+   *
+   * A machine dimension seeded per machine, exactly like `os` above and never
+   * guessed - `FONT-DC-01` belonging to Fontaine & Associates is a fact about
+   * whose estate it is, not a naming convention. Absent means NO customer: the
+   * in-house probation estate and break-fix Bodgeworth boxes carry none, which
+   * is why the customer dimension is purely additive and their goldens do not
+   * move. It is the field the scope-of-touch honesty engine reads before it
+   * refuses an out-of-contract action, and the field the wrong-customer guard
+   * compares against the customer the open ticket put on screen.
+   */
+  machineCustomer: 'customer',
+  /**
+   * A customer node's business type (0.8.0): `law_firm`, `saas`, and so on.
+   *
+   * An open set on purpose - the estate research names more verticals than the
+   * spine ships - so it is a plain string the display maps to a label, not a
+   * closed enum like the scope below.
+   */
+  customerBusinessType: 'business_type',
+  /**
+   * A customer node's contract scope (0.8.0): `monitoring_only`, `helpdesk`,
+   * `co_managed` or `fully_managed`.
+   *
+   * The gameplay-relevant field: the honesty engine reads it before an action
+   * lands and refuses, truthfully, anything the contract does not cover - the
+   * same engine 0.7.0 shipped for cross-OS refusals, generalised OS -> CONTRACT.
+   */
+  customerServiceScope: 'service_scope',
+  /** A customer node's SLA tier (0.8.0): `bronze`, `silver`, or `gold`. */
+  customerSlaTier: 'sla_tier',
+  /**
    * What is inside the case, as two lines a support call reads out.
    *
    * They are fields rather than strings in the About dialog because two
@@ -1232,6 +1264,102 @@ export const SYSTEMD_STATES = {
 } as const;
 
 export type SystemdState = (typeof SYSTEMD_STATES)[keyof typeof SYSTEMD_STATES];
+
+/**
+ * The business a customer is in, which shapes the estate the MSP looks after
+ * for them (0.8.0). An OPEN set - the estate research names a dozen verticals
+ * and the spine ships three - so this is documentation of what 0.8.0 uses, not
+ * a closed enum the engine enforces. Extending it is adding a value here and a
+ * label below; the machine field carries the id whatever it is.
+ */
+export const BUSINESS_TYPES = {
+  /** Windows-only: workstations, an AD domain controller, a file server. */
+  lawFirm: 'law_firm',
+  /** Mac/Windows laptops in the office, a Linux product fleet in the cloud. */
+  saas: 'saas',
+  /** A small estate the MSP only watches - the monitoring-only contrast. */
+  monitoringTarget: 'monitoring_target',
+} as const;
+
+export type BusinessType = (typeof BUSINESS_TYPES)[keyof typeof BUSINESS_TYPES];
+
+export const BUSINESS_TYPE_LABELS: Readonly<Record<BusinessType, string>> = {
+  [BUSINESS_TYPES.lawFirm]: 'Law firm',
+  [BUSINESS_TYPES.saas]: 'SaaS company',
+  [BUSINESS_TYPES.monitoringTarget]: 'Monitored site',
+};
+
+/**
+ * What a customer's CONTRACT lets the player do to their estate (0.8.0), and
+ * therefore what the honesty engine refuses. A CLOSED set, validated at load in
+ * the Rust schema the same way a service status is, because it is the axis the
+ * scope-of-touch RBAC-403 turns on and a scope this build has never heard of is
+ * a contract nobody can enforce.
+ *
+ * The order is widening authority: watch only, then the desk, then alongside
+ * their own IT, then the whole stack.
+ */
+export const SERVICE_SCOPES = {
+  /** Watch the board, acknowledge, escalate. Remediation is not contracted. */
+  monitoringOnly: 'monitoring_only',
+  /** Workstations and users. Servers and infrastructure are out of contract. */
+  helpdesk: 'helpdesk',
+  /** Alongside the customer's own IT - notify them, do not act unilaterally. */
+  coManaged: 'co_managed',
+  /** The whole stack, all creds, own the outcome. Nothing is out of reach. */
+  fullyManaged: 'fully_managed',
+} as const;
+
+export type ServiceScope = (typeof SERVICE_SCOPES)[keyof typeof SERVICE_SCOPES];
+
+export const SERVICE_SCOPE_LABELS: Readonly<Record<ServiceScope, string>> = {
+  [SERVICE_SCOPES.monitoringOnly]: 'Monitoring only',
+  [SERVICE_SCOPES.helpdesk]: 'Managed helpdesk',
+  [SERVICE_SCOPES.coManaged]: 'Co-managed',
+  [SERVICE_SCOPES.fullyManaged]: 'Fully managed',
+};
+
+/**
+ * A service scope read defensively off a field: an unknown or absent value is
+ * NOT silently treated as a permissive scope. Absent reads as `null` (no
+ * contract known - the caller decides what that means), and only the four
+ * closed values are ever returned, so a hand-edited save cannot widen a
+ * contract by writing nonsense into it.
+ */
+export function serviceScopeOf(value: unknown): ServiceScope | null {
+  return value === SERVICE_SCOPES.monitoringOnly
+    || value === SERVICE_SCOPES.helpdesk
+    || value === SERVICE_SCOPES.coManaged
+    || value === SERVICE_SCOPES.fullyManaged
+    ? value
+    : null;
+}
+
+/** The SLA tier a customer buys (0.8.0), a simple bronze/silver/gold enum. */
+export const SLA_TIERS = {
+  bronze: 'bronze',
+  silver: 'silver',
+  gold: 'gold',
+} as const;
+
+export type SlaTier = (typeof SLA_TIERS)[keyof typeof SLA_TIERS];
+
+export const SLA_TIER_LABELS: Readonly<Record<SlaTier, string>> = {
+  [SLA_TIERS.bronze]: 'Bronze',
+  [SLA_TIERS.silver]: 'Silver',
+  [SLA_TIERS.gold]: 'Gold',
+};
+
+/**
+ * Whether a machine role is a SERVER - infrastructure - rather than a
+ * workstation. The helpdesk scope turns on exactly this line: the desk covers
+ * workstations and users, and everything a server role names is out of that
+ * contract. A pure function of the role so the queue, the refusal and any test
+ * read the same answer.
+ */
+export function isServerRole(role: MachineRole): boolean {
+  return role !== MACHINE_ROLES.workstation;
+}
 
 /**
  * Whether a unit starts at boot, in systemctl's own vocabulary - the Linux

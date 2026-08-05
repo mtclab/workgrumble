@@ -22,6 +22,7 @@ export const KIND_LABELS: Readonly<Record<NodeKind, string>> = {
   device: 'a device',
   service: 'a service',
   unit: 'a systemd unit',
+  customer: 'a customer',
   share: 'a network share',
   group: 'a group',
   mail_rule: 'a mail rule',

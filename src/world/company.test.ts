@@ -95,6 +95,10 @@ describe('company world', () => {
       device: 5,
       service: 350,
       unit: 10,
+      // No customers in the in-house probation estate: the customer dimension
+      // (0.8.0) belongs to the MSP employer, and this count is 0 here for the
+      // same reason every probation golden is untouched - it is purely additive.
+      customer: 0,
       share: 2,
       group: 3,
       mail_rule: 2,
