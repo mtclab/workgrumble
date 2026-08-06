@@ -174,6 +174,7 @@ import {
   typingMinutesLeft,
 } from '../world/no-hello';
 import { FIELDS } from '../world/fields';
+import { planChangeRequestFiling } from '../world/change-request';
 import { seedForAttempt } from '../world/session';
 import {
   isMeterTick,
@@ -582,6 +583,20 @@ export interface DayApi {
    */
   install(id: string): DispatchResult;
   uninstall(id: string): DispatchResult;
+  /**
+   * Files a change request for an action (0.10.0): the diegetic form that gates
+   * risky/out-of-scope work into a real path - request, approve, act in a window.
+   *
+   * It puts a `change_request` node into the world (via a setup op, the way a
+   * ticket is spawned mid-day) with the decision the authority the real one needs
+   * would reach baked in - approve for the server/co-managed work a change process
+   * authorises, reject for a monitoring-only remediation a CR cannot grant - and a
+   * deterministic review delay and window. It answers with the lines the terminal
+   * prints; filing NEVER dispatches the risky action, and an in-scope target files
+   * nothing at all. The scope pre-flight's CONSULT is the only thing that ever lets
+   * the action through, once the request is approved and inside its window.
+   */
+  fileChangeRequest(targetId: string, verb: string): readonly string[];
   /**
    * What the lead would have to go on if he read the install audit this minute:
    * the policy, the installs on the trail he has not already been down about,
@@ -1235,6 +1250,27 @@ export class DayDriver implements DayApi {
 
   public uninstall(id: string): DispatchResult {
     return this.softwareVerb(SOFTWARE_ACTIONS.uninstall, id);
+  }
+
+  public fileChangeRequest(
+    targetId: string,
+    verb: string,
+  ): readonly string[] {
+    const plan = planChangeRequestFiling(
+      this.engine.graph,
+      targetId,
+      verb,
+      this.engine.now(),
+    );
+
+    if (plan.kind === 'filed') {
+      // The same runtime addNode a ticket spawn uses, and serialised whole by a
+      // save, so a request filed mid-day round-trips a reload. Filing is
+      // paperwork - it adds the request and nothing else moves.
+      this.engine.applySetup(plan.ops);
+    }
+
+    return plan.lines;
   }
 
   private softwareVerb(action: string, id: string): DispatchResult {

@@ -12,7 +12,7 @@ use crate::error::{EngineError, EngineResult};
 use crate::refuse;
 use crate::value::FieldValue;
 
-pub const NODE_KINDS: [&str; 13] = [
+pub const NODE_KINDS: [&str; 14] = [
     "person",
     "account",
     "machine",
@@ -30,6 +30,14 @@ pub const NODE_KINDS: [&str; 13] = [
     // because a customer is a first-class world entity the ticket queue is
     // organised by, not a field on a machine - the machines carry its id.
     "customer",
+    // A CHANGE REQUEST (0.10.0). The diegetic form that gates risky/out-of-scope
+    // work: it names the action it authorises (cr_target + cr_verb), states a
+    // risk and a rollback, and carries a decision the scope pre-flight reads
+    // before it refuses. Its own kind for the same reason a customer is - it is
+    // a first-class world artifact filed against a specific action, not a field
+    // on the thing it authorises - and its approval window is data the engine
+    // serialises whole, so a save round-trips a request mid-review.
+    "change_request",
     "share",
     "group",
     "mail_rule",
@@ -237,6 +245,42 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
                 },
                 "a bronze, silver, or gold SLA tier",
             )
+        }
+        "change_request" => {
+            // A change request (0.10.0). The paperwork strings (target, verb,
+            // risk, rollback, the approver's reason) and the tick fields that
+            // drive its lifecycle, plus the two closed enums the scope engine
+            // reads: the STATUS the form is filed at, and the DECISION the
+            // authority reached. Validated at load like a customer's scope or a
+            // service's status - a hand-edited save cannot invent a fifth status
+            // or a third decision and slip it past the pre-flight.
+            assert_optional(fields, "name", is_string, "a string")?;
+            assert_optional(fields, "cr_target", is_string, "a string")?;
+            assert_optional(fields, "cr_verb", is_string, "a string")?;
+            assert_optional(fields, "cr_risk", is_string, "a string")?;
+            assert_optional(fields, "cr_rollback", is_string, "a string")?;
+            assert_optional(fields, "cr_reason", is_string, "a string")?;
+            assert_optional(
+                fields,
+                "cr_status",
+                |value| {
+                    matches!(
+                        value.as_str(),
+                        Some("draft") | Some("submitted") | Some("approved") | Some("rejected")
+                    )
+                },
+                "a change-request status",
+            )?;
+            assert_optional(
+                fields,
+                "cr_decision",
+                |value| matches!(value.as_str(), Some("approve") | Some("reject")),
+                "\"approve\" or \"reject\"",
+            )?;
+            assert_optional(fields, "cr_submitted_at", is_number, "a number")?;
+            assert_optional(fields, "cr_review_until", is_number, "a number")?;
+            assert_optional(fields, "cr_window_open", is_number, "a number")?;
+            assert_optional(fields, "cr_window_close", is_number, "a number")
         }
         "share" => {
             assert_optional(fields, "name", is_string, "a string")?;

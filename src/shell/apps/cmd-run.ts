@@ -28,11 +28,16 @@ import {
 import {
   customerIdOfAccount,
   customerIdOfMachine,
-  scopeRefusalForCustomer,
+  scopeOfCustomer,
   scopeRefusalForMachine,
+  scopeVerdict,
   wrongCustomerGuardLines,
   wrongCustomerLines,
 } from '../../world/customers';
+import {
+  changeRequestConsult,
+  changeRequestListing,
+} from '../../world/change-request';
 import type { MachineRole } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { DEFAULT_CWD } from '../../world/filesystem';
@@ -321,6 +326,8 @@ function customerScopeGuard(
   customerId: string | null,
   role: MachineRole | null,
   label: string,
+  targetId: string,
+  verb: string,
 ): CommandResult | null {
   const current = api.appState.getCustomerContext();
   const wrongCustomer = wrongCustomerLines(api.graph, customerId, label, current);
@@ -329,8 +336,31 @@ function customerScopeGuard(
     return lines(...wrongCustomer);
   }
 
-  const scope = scopeRefusalForCustomer(api.graph, customerId, role);
-  return scope === null ? null : lines(...scope);
+  // An in-house target has no contract to be out of.
+  if (customerId === null) {
+    return null;
+  }
+
+  const verdict = scopeVerdict(scopeOfCustomer(api.graph, customerId), role);
+
+  if (verdict === 'allowed') {
+    return null;
+  }
+
+  // The heart of 0.10.0: before it refuses an out-of-scope action, the scope
+  // engine consults approvals. An APPROVED change request covering this exact
+  // (target, verb) and inside its window lets the action through; otherwise the
+  // refusal names the path (file one) rather than dead-ending - except for
+  // monitoring-only, which stays notify-and-escalate and never offers a CR.
+  const consult = changeRequestConsult({
+    graph: api.graph,
+    now: api.clock.now(),
+    targetId,
+    verb,
+    verdict,
+  });
+
+  return consult.allowed ? null : lines(...consult.lines);
 }
 
 /**
@@ -349,6 +379,7 @@ function customerScopeGuard(
 function customerPreflight(
   api: GameApi,
   targetId: string,
+  verb: string,
 ): CommandResult | null {
   const machine = machineForTarget(api, targetId);
 
@@ -358,6 +389,8 @@ function customerPreflight(
       customerIdOfMachine(machine),
       machineRoleOf(machine.fields[FIELDS.machineRole]),
       labelOf(machine),
+      targetId,
+      verb,
     );
   }
 
@@ -372,6 +405,8 @@ function customerPreflight(
       customerIdOfAccount(node),
       null,
       labelOf(node),
+      targetId,
+      verb,
     );
   }
 
@@ -1015,7 +1050,7 @@ function dispatchLines(
   // every mutating verb passes through, the way the real RBAC-403 refuses
   // before anything happens. Null for every in-house box, so nothing off the
   // MSP moves.
-  const refused = customerPreflight(api, target);
+  const refused = customerPreflight(api, target, action);
 
   if (refused !== null) {
     return refused;
@@ -1023,6 +1058,47 @@ function dispatchLines(
 
   const result = api.dispatch(action, api.actor, target, params);
   return result.ok ? lines(...success) : lines(result.reason);
+}
+
+/**
+ * The change-request verb (0.10.0): `changereq file <service>` files one for
+ * restarting that service - the risky/out-of-scope action the 0.8.0 scope engine
+ * refuses - and `changereq list` reads back what has been filed and where each
+ * one's review has got to.
+ *
+ * Filing is paperwork: it always succeeds (or answers that no request is needed
+ * for an in-scope target), and it never dispatches the risky action - the CONSULT
+ * in the scope pre-flight is the only thing that ever lets that through, once the
+ * request it names is approved and inside its window. The world does the deciding
+ * and applies the node; this only resolves which service the player meant.
+ */
+function changeRequestCommandLines(
+  api: GameApi,
+  sub: string,
+  query: string,
+): CommandResult {
+  if (sub === 'list') {
+    return lines(...changeRequestListing(api.graph, api.clock.now()));
+  }
+
+  if (sub !== 'file') {
+    return lines(
+      `"changereq ${sub}" is not something this terminal does.`,
+      'It does "changereq file <service>" - to authorise restarting one the '
+        + 'contract',
+      'does not cover - and "changereq list", to read back what has been filed.',
+    );
+  }
+
+  const found = serviceOf(api, query);
+
+  if (!found.ok) {
+    return lines(found.reason);
+  }
+
+  return lines(
+    ...api.day.fileChangeRequest(found.node.id, HELPDESK_ACTIONS.serviceRestart),
+  );
 }
 
 /**
@@ -1759,6 +1835,10 @@ export function executeCommand(
   if (parsed.spec.name === 'verify' || parsed.spec.name === 'mfa'
     || parsed.spec.name === 'revoke') {
     return accountVerbLines(api, parsed.spec.name, parsed.query, parsed.sub);
+  }
+
+  if (parsed.spec.name === 'changereq') {
+    return changeRequestCommandLines(api, parsed.sub, parsed.query);
   }
 
   if (parsed.spec.name === 'licence') {

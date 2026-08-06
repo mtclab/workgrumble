@@ -650,6 +650,60 @@ export const FIELDS = {
   customerServiceScope: 'service_scope',
   /** A customer node's SLA tier (0.8.0): `bronze`, `silver`, or `gold`. */
   customerSlaTier: 'sla_tier',
+  /* -- the change request (0.10.0) ---------------------------------------- */
+  /**
+   * The exact action a change request authorises: the id of the node it is
+   * aimed at, and the verb (a registered action id) it clears. The scope
+   * pre-flight reads BOTH before it lets an out-of-scope action through - a
+   * request that clears a restart of one service does not clear a restart of
+   * another, which is the whole of what "for a specific action" means.
+   */
+  crTarget: 'cr_target',
+  crVerb: 'cr_verb',
+  /**
+   * The paperwork the form is defined by: a stated RISK and a ROLLBACK note,
+   * and the approver's REASON (an approval's rationale, or a rejection's why).
+   * Content, read back on the request and in its refusal, never gameplay-typed.
+   */
+  crRisk: 'cr_risk',
+  crRollback: 'cr_rollback',
+  crReason: 'cr_reason',
+  /**
+   * The filed status - `draft`, `submitted`, `approved` or `rejected`. It is
+   * `submitted` the moment a verb files one; the LIVE lifecycle (under review,
+   * approved-but-not-in-window, open, closed) is derived from the tick fields
+   * below against the clock, the same read-never-copy discipline the monitoring
+   * board keeps, so it cannot drift from the review it is in.
+   */
+  crStatus: 'cr_status',
+  /**
+   * The decision the authority reached, baked at file time and deterministic:
+   * `approve` for the risky/out-of-scope work a change request exists to gate,
+   * `reject` for a request that asks a change to do a contract's job (a
+   * monitoring-only remediation - which is a contract change, not a change
+   * request).
+   */
+  crDecision: 'cr_decision',
+  /**
+   * When it was filed, and the tick the review clears on. Until `cr_review_until`
+   * the request is under review; after it, the decision lands. Deterministic
+   * (seeded off the request id, never a wall clock or Math.random), so a save
+   * mid-review reloads to the same minute the paperwork was always going to
+   * clear on.
+   */
+  crSubmittedAt: 'cr_submitted_at',
+  crReviewUntil: 'cr_review_until',
+  /**
+   * The approval window, in absolute ticks - the maintenance slot an approved
+   * change may be acted in. WRITTEN ONLY when the decision is `approve`, so it
+   * is genuinely empty until approved; acting before it opens or after it closes
+   * is refused with the window named, which is the emergency-you-cannot-touch
+   * and the hour-nobody-wanted made mechanical.
+   */
+  crWindowOpen: 'cr_window_open',
+  crWindowClose: 'cr_window_close',
+  /** Which customer the request is for, by id, for the queue and the listing. */
+  crCustomer: 'cr_customer',
   /**
    * What is inside the case, as two lines a support call reads out.
    *
@@ -1349,6 +1403,46 @@ export const SLA_TIER_LABELS: Readonly<Record<SlaTier, string>> = {
   [SLA_TIERS.silver]: 'Silver',
   [SLA_TIERS.gold]: 'Gold',
 };
+
+/**
+ * The four states a change request is filed in (0.10.0). Only `submitted` is
+ * ever WRITTEN by the filing verb; `approved`/`rejected` are the derived
+ * lifecycle the tick fields carry, and `draft` is reserved for a form that is
+ * being written but not yet filed. The engine validates the enum at load so a
+ * hand-edited save cannot invent a fifth.
+ */
+export const CHANGE_REQUEST_STATUSES = {
+  draft: 'draft',
+  submitted: 'submitted',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export type ChangeRequestStatus =
+  (typeof CHANGE_REQUEST_STATUSES)[keyof typeof CHANGE_REQUEST_STATUSES];
+
+/**
+ * The decision an authority reaches on a change request (0.10.0): `approve` for
+ * the risky/out-of-scope work a CR exists to gate, `reject` for a request that
+ * asks a change to do a contract's job. Read defensively - an absent or unknown
+ * value is `null` (no decision known), never a permissive default.
+ */
+export const CHANGE_REQUEST_DECISIONS = {
+  approve: 'approve',
+  reject: 'reject',
+} as const;
+
+export type ChangeRequestDecision =
+  (typeof CHANGE_REQUEST_DECISIONS)[keyof typeof CHANGE_REQUEST_DECISIONS];
+
+export function changeRequestDecisionOf(
+  value: unknown,
+): ChangeRequestDecision | null {
+  return value === CHANGE_REQUEST_DECISIONS.approve
+    || value === CHANGE_REQUEST_DECISIONS.reject
+    ? value
+    : null;
+}
 
 /**
  * Whether a machine role is a SERVER - infrastructure - rather than a

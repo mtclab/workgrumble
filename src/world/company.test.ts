@@ -99,6 +99,10 @@ describe('company world', () => {
       // (0.8.0) belongs to the MSP employer, and this count is 0 here for the
       // same reason every probation golden is untouched - it is purely additive.
       customer: 0,
+      // No change requests either: the CR authorisation moment (0.10.0) is filed
+      // by the player against out-of-scope MSP work, and the in-house estate has
+      // none - 0 here for the same additive reason the customer count is.
+      change_request: 0,
       share: 2,
       group: 3,
       mail_rule: 2,

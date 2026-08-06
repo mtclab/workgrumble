@@ -216,6 +216,15 @@ export const COMMANDS: readonly CommandSpec[] = [
     joined: true,
   },
   {
+    name: 'changereq',
+    usage: 'changereq <file <service> | list>',
+    summary: 'File a change request to authorise risky work, or list them.',
+    minArgs: 1,
+    maxArgs: 5,
+    joined: true,
+    subcommand: true,
+  },
+  {
     name: 'rotate',
     usage: 'rotate <machine> <0|90|180|270>',
     summary: 'Put a display back the way a human can read it.',

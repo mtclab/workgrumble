@@ -2263,6 +2263,22 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'cmd.changereq',
+    surface: 'cmd',
+    control: 'changereq <file <service> | list>',
+    does: 'Files a change request to authorise risky/out-of-scope work - the '
+      + '0.10.0 path that turns a hard scope refusal into request, approve, act '
+      + 'in a window - and lists what has been filed. On the probation desk it '
+      + 'answers that in-house work needs no request and that none are filed; '
+      + 'the filing, the deterministic approval, the window and the consult that '
+      + 'lets an approved action through live at the MSP and are driven through '
+      + 'the real terminal in change-request.test.ts. It dispatches nothing '
+      + 'itself - filing is paperwork, and the scope pre-flight is the only thing '
+      + 'that ever lets the action it authorises through.',
+    command: 'changereq',
+    run: 'week',
+  },
+  {
     id: 'cmd.rotate',
     surface: 'cmd',
     control: 'rotate <machine> <0|90|180|270>',

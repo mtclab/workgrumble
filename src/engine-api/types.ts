@@ -28,6 +28,13 @@ export const NODE_KINDS = [
    * machines carry its id in their `customer` field.
    */
   'customer',
+  /**
+   * A CHANGE REQUEST (0.10.0) - the diegetic authorisation form that gates
+   * risky/out-of-scope work. First-class because it is a world artifact filed
+   * against a specific action (cr_target + cr_verb), not a field on the thing
+   * it authorises; its approval window is data a save serialises whole.
+   */
+  'change_request',
   'share',
   'group',
   'mail_rule',
