@@ -472,6 +472,34 @@ const DB_SERVER_UNITS: readonly LinuxUnit[] = orderedUnits([
 ]);
 
 /**
+ * Fettle & Crane's OWN infrastructure box (E6, Pass B): the MSP's internal
+ * Linux server, running the client portal customers log into behind nginx, on
+ * the same Ubuntu base every other Linux box carries.
+ *
+ * `fcportal.service` is the MSP's own line-of-business app - not a customer's,
+ * which is the whole point: an engineer fixing the employer's OWN infra crosses
+ * no customer contract, so the box is the honest place the 0.7.0 "your tools do
+ * not reach a Linux box" wall comes down. Seeded HEALTHY here; the first-fix
+ * incident downs `fcportal.service` when it arrives, the way every fault in this
+ * game arrives with its ticket.
+ */
+export const FC_INFRA_UNITS: readonly LinuxUnit[] = orderedUnits([
+  {
+    unit: 'nginx.service',
+    name: 'A high performance web server and a reverse proxy server',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'fcportal.service',
+    name: 'Fettle & Crane client portal',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  ...UBUNTU_BASE_UNITS,
+]);
+
+/**
  * The Windows service baseline per role. Partial because a role is either a
  * Windows role (here) or a Linux role (`BASELINE_UNITS` below), never both - the
  * seeder reads the machine's `os` and picks the matching map.

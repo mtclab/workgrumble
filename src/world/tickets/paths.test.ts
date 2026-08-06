@@ -256,6 +256,10 @@ describe('shipped tickets', () => {
       'ticket:elmwood-xray-sensor',
       'ticket:elmwood-imaging-bridge',
       'ticket:elmwood-hipaa-audit',
+      // And the engineer's first fix (E6, Pass B): the MSP's OWN client portal
+      // down on FC-RMM-01. Summoned - raised by the promotion, not by a scripted
+      // day - and the payoff of the whole tier crossing.
+      'ticket:syseng-first-incident',
     ]);
   });
 

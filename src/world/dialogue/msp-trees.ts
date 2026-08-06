@@ -905,6 +905,68 @@ const GRACE: DialogueTree = {
   ],
 };
 
+/**
+ * Morgan Okafor, Fettle & Crane's infrastructure lead (E6, Pass B).
+ *
+ * The one internal reporter: the incident is the MSP's OWN client portal down,
+ * not a customer's, and Morgan is the engineer who owns the box and pages the
+ * newly-promoted player onto it. The shape is every other tree's - a question
+ * that counts as asking, the reveal that writes the cause, a neutral line - but
+ * the ENDING is different: this one the player FIXES rather than escalates,
+ * because it is the employer's own infra and the player is now the engineer for
+ * it. The reveal names the real reason a `systemctl restart` is the fix: the
+ * unit crashed once and systemd hit its start-limit and stopped retrying.
+ */
+const MORGAN: DialogueTree = {
+  id: 'dialogue/msp-morgan',
+  speaker: MSP_IDS.mspLead,
+  tickets: ['ticket:syseng-first-incident'],
+  root: 'portal',
+  resolved_root: 'portal-done',
+  nodes: [
+    {
+      id: 'portal',
+      npc_line: 'Congratulations on the move - and welcome to being on call. The '
+        + 'client portal is down: FC-RMM-01, fcportal.service, customers cannot '
+        + 'log in to raise anything. It is our own box, so it is ours to fix. ssh '
+        + 'in and have a look?',
+      options: [
+        {
+          label: 'Ask what the unit is actually doing',
+          next: 'portal-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the journal and work out why it will not start',
+          effects: [
+            {
+              reveal: 'fcportal.service crashed once this morning and systemd '
+                + 'retried it too fast, tripped its start-limit, and gave up - so '
+                + 'it is sitting failed rather than restarting itself. A '
+                + 'systemctl restart clears the counter and brings it back; there '
+                + 'is nothing to change, it just needs starting by hand.',
+            },
+          ],
+        },
+        { label: 'Tell him you are on it' },
+      ],
+    },
+    {
+      id: 'portal-q',
+      npc_line: 'systemctl status says failed - it fell over at about quarter to '
+        + 'nine and has not come back. journalctl -u fcportal will have the why. '
+        + 'You have the tier for it now; the box is yours.',
+      options: [{ label: 'ssh in and read the unit' }],
+    },
+    {
+      id: 'portal-done',
+      npc_line: 'It is back - customers are logging in again. First one on your '
+        + 'own tier, and you brought it up clean. That is the job now. Good.',
+      options: [{ label: 'Log the fix' }],
+    },
+  ],
+};
+
 export const MSP_TREES: readonly DialogueTree[] = [
   NADIA,
   THEO,
@@ -913,4 +975,5 @@ export const MSP_TREES: readonly DialogueTree[] = [
   DEV,
   GLENDA,
   GRACE,
+  MORGAN,
 ];

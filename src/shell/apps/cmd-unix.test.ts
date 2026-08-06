@@ -5,6 +5,7 @@ import {
   SYSTEMS_ENGINEER_TITLE,
 } from '../../world/actions';
 import { COMPANY_IDS } from '../../world/company';
+import { MSP_IDS } from '../../world/msp-company';
 import { WasmEngine } from '../../engine-api';
 import {
   FIELDS,
@@ -315,13 +316,16 @@ describe('the promotion, ssh, and the unix terminal (E6)', () => {
       expect(unix(api, ssh, 'logout').exitSession).toBe(true);
     });
 
-    it('refuses systemctl restart honestly - it does not fake success', () => {
+    it('systemctl restart is SILENT on success - it never fakes a line', () => {
       const { api, ssh } = onBox();
-      const out = unix(api, ssh, 'systemctl restart nginx').lines.join('\n');
-      // The fidelity bar: a restart is silent on success on a real box, and Pass
-      // B owns it. This refuses rather than fabricating a confirmation line.
-      expect(out).toContain('not wired');
-      expect(out).not.toContain('reports RUNNING');
+      const result = unix(api, ssh, 'systemctl restart nginx');
+      // The sharpest fidelity beat: systemd says nothing when it works, so this
+      // prints NOTHING - no fabricated "started successfully", which is the
+      // Windows family's shape (`restart` prints "reports RUNNING") and a lie
+      // here. Re-reading status is how a real engineer confirms it.
+      expect(result.lines).toEqual([]);
+      expect(result.lines.join('\n')).not.toContain('reports RUNNING');
+      expect(result.lines.join('\n')).not.toContain('successfully');
     });
 
     it('answers an unknown unix command in the unix shape', () => {
@@ -367,6 +371,223 @@ describe('the promotion, ssh, and the unix terminal (E6)', () => {
       // The desk default writes nothing - byte-identical to before the tier.
       expect(deskCarry.engine.graph.getField(COMPANY_IDS.player, FIELDS.playerTier))
         .toBeUndefined();
+    });
+  });
+});
+
+/* ========================================================================= *
+ * Pass B: the full command surface, and THE FIRST FIX (the payoff).
+ * ========================================================================= */
+
+const MSP_CARRY = {
+  farmFund: 0,
+  attempt: 1,
+  arcWeek: 1,
+  employer: 'msp',
+} as const;
+
+interface OnMsp {
+  readonly world: WorldSession;
+  readonly api: GameApi;
+  readonly ssh: SshSession;
+}
+
+/**
+ * The MSP world, promoted, ssh'd onto a box. The promotion RAISES the first
+ * incident (`day.raiseFirstIncident`), which downs fcportal.service on the MSP's
+ * own FC-RMM-01 - so this is the real path a player walks to the fix.
+ */
+function onMsp(host = 'FC-RMM-01'): OnMsp {
+  const world = createWorldSession(MSP_CARRY);
+  const api = apiFor(world);
+  earnPromotion(world);
+  win(api, 'promotion accept');
+  const ssh = connect(api, `ssh pat@${host}`);
+
+  if (ssh === null) {
+    throw new Error(`ssh did not open a session on ${host}`);
+  }
+
+  return { world, api, ssh };
+}
+
+describe('the sysadmin command surface (E6, Pass B)', () => {
+  describe('journalctl', () => {
+    it('reads a failed unit\'s journal - the timestamped why', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'journalctl -u fcportal').lines.join('\n');
+
+      // The real MMM DD HH:MM:SS host process[pid]: message shape, and the
+      // start-limit that is the actual reason a restart is the fix.
+      expect(out).toMatch(/^Sep 07 08:44:\d\d FC-RMM-01 /mu);
+      expect(out).toContain('Start request repeated too quickly');
+      expect(out).toContain('Failed to start Fettle & Crane client portal');
+    });
+
+    it('says "-- No entries --" for a unit the world holds no journal for', () => {
+      const { api, ssh } = onMsp();
+      // nginx is healthy and carries no seeded journal - the honest omission,
+      // the real journalctl answer, not an invented startup line.
+      expect(unix(api, ssh, 'journalctl -u nginx').lines.join('\n'))
+        .toContain('-- No entries --');
+    });
+  });
+
+  describe('df -h / ps aux / ip a', () => {
+    it('df -h prints the Mounted-on shape off the box\'s seeded disk', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'df -h').lines.join('\n');
+
+      expect(out).toContain('Filesystem');
+      expect(out).toContain('Mounted on');
+      expect(out).toContain('/dev/root');
+      // A mount point, not a drive letter - the family difference.
+      expect(out).not.toContain('C:');
+    });
+
+    it('ps aux lists systemd as PID 1 and running units, a downed one absent', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'ps aux').lines.join('\n');
+
+      expect(out).toContain('USER');
+      expect(out).toContain('COMMAND');
+      expect(out).toContain('/sbin/init'); // PID 1
+      expect(out).toContain('/usr/bin/nginx'); // a running unit
+      // fcportal is FAILED at this point - a downed unit is not a process, and
+      // ps is honest about it.
+      expect(out).not.toContain('/usr/bin/fcportal');
+    });
+
+    it('ip a prints the CIDR shape, not ipconfig\'s dotted mask', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'ip a').lines.join('\n');
+
+      expect(out).toContain('eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500');
+      expect(out).toMatch(/inet 10\.42\.0\.\d+\/24 /u);
+      expect(out).not.toContain('Subnet Mask');
+    });
+  });
+
+  describe('THE FIRST FIX: diagnose and fix the downed portal', () => {
+    it('walks status(failed) -> journalctl(why) -> restart(silent) -> resolved', () => {
+      const { world, api, ssh } = onMsp();
+      const unitId = MSP_IDS.mspInfraPortalUnit;
+      const ticket = 'ticket:syseng-first-incident';
+
+      // The incident is real and the unit is genuinely failed at seed: the
+      // promotion raised it and its setup downed the portal node.
+      expect(world.engine.graph.getNode(ticket)).toBeDefined();
+      expect(world.engine.graph.getField(unitId, FIELDS.unitState))
+        .toBe(SYSTEMD_STATES.failed);
+      expect(world.engine.ticketState(ticket)).not.toBe('resolved');
+
+      // systemctl status shows it failed, with the journal tail under the block.
+      const status = unix(api, ssh, 'systemctl status fcportal').lines.join('\n');
+      expect(status).toContain('Active: failed');
+      expect(status).toContain('× fcportal.service');
+      expect(status).not.toContain('Main PID:');
+      expect(status).toContain('Failed to start Fettle & Crane client portal');
+
+      // journalctl shows WHY.
+      expect(unix(api, ssh, 'journalctl -u fcportal').lines.join('\n'))
+        .toContain('Start request repeated too quickly');
+
+      // systemctl restart brings it back - SILENT on success.
+      const restart = unix(api, ssh, 'systemctl restart fcportal');
+      expect(restart.lines).toEqual([]);
+
+      // The node flipped to active(running) - and the ticket resolved off it.
+      expect(world.engine.graph.getField(unitId, FIELDS.unitState))
+        .toBe(SYSTEMD_STATES.activeRunning);
+      expect(world.engine.ticketState(ticket)).toBe('resolved');
+
+      // And status now reads running, with a Main PID.
+      const after = unix(api, ssh, 'systemctl status fcportal').lines.join('\n');
+      expect(after).toContain('Active: active (running)');
+      expect(after).toContain('Main PID:');
+    });
+
+    it('restart READS and WRITES the node (teeth): revert the flip, status reverts', () => {
+      const { world, api, ssh } = onMsp();
+      const unitId = MSP_IDS.mspInfraPortalUnit;
+
+      unix(api, ssh, 'systemctl restart fcportal');
+      expect(world.engine.graph.getField(unitId, FIELDS.unitState))
+        .toBe(SYSTEMD_STATES.activeRunning);
+
+      // Re-seed it failed (what reverting the fix would leave) and the status
+      // reads failed again - the block is a function of the node, not hardcoded.
+      world.engine.applySetup([{
+        op: 'setField',
+        id: unitId,
+        field: FIELDS.unitState,
+        value: SYSTEMD_STATES.failed,
+      }]);
+      expect(unix(api, ssh, 'systemctl status fcportal').lines.join('\n'))
+        .toContain('Active: failed');
+    });
+
+    it('is genuinely broken at seed: with no restart, the ticket stays open', () => {
+      const { world } = onMsp();
+      // A minute passes, nothing is done - the fix journey has something to fix.
+      expect(world.engine.ticketState('ticket:syseng-first-incident'))
+        .not.toBe('resolved');
+    });
+  });
+
+  describe('the scope wall stays up over ssh (non-bypassing)', () => {
+    it('refuses systemctl restart on a customer\'s out-of-scope server', () => {
+      // MERI-APP-01 is a helpdesk customer's Linux prod box: the engineer can
+      // ssh in and LOOK, but the CONTRACT still governs what may change on it -
+      // so a restart is refused, exactly as the desk's Windows tools are. This
+      // is what keeps the fix on the MSP's OWN infra non-bypassing.
+      const { api, ssh } = onMsp('MERI-APP-01');
+      const result = unix(api, ssh, 'systemctl restart grumbleapp');
+
+      // A refusal is NOT silent - a successful restart prints nothing, so
+      // non-empty lines prove the action was stopped before it landed.
+      expect(result.lines.length).toBeGreaterThan(0);
+      expect(result.lines.join('\n')).toContain('CONTRACT still governs');
+      // And the unit was not touched: still running, because nothing dispatched.
+      expect(api.graph.getField(
+        MSP_IDS.meridianAppServer.replace('machine:', 'unit:') + '/grumbleapp.service',
+        FIELDS.unitState,
+      )).not.toBe(SYSTEMD_STATES.failed);
+    });
+
+    it('lets the engineer fix the MSP\'s OWN box - no customer to be out of', () => {
+      // The same verb on FC-RMM-01 (no customer) is allowed and silent: the
+      // employer's own infra is the engineer's to fix.
+      const { api, ssh } = onMsp('FC-RMM-01');
+      expect(unix(api, ssh, 'systemctl restart fcportal').lines).toEqual([]);
+    });
+  });
+
+  describe('the diegetic promotion offer', () => {
+    it('bare "promotion" reads as an earned OFFER once the standing is there', () => {
+      const session = createWorldSession(MSP_CARRY);
+      const api = apiFor(session);
+      earnPromotion(session);
+
+      const out = win(api, 'promotion').lines.join('\n');
+      expect(out).toContain('they want you on');
+      expect(out).toContain('promotion accept');
+    });
+
+    it('bare "promotion" says not-yet below the standing', () => {
+      const api = apiFor(createWorldSession(MSP_CARRY));
+      expect(win(api, 'promotion').lines.join('\n'))
+        .toContain('No Systems Engineer offer on the table yet');
+    });
+
+    it('bare "promotion" tells an engineer the crossing is one-way', () => {
+      const session = createWorldSession(MSP_CARRY);
+      const api = apiFor(session);
+      earnPromotion(session);
+      win(api, 'promotion accept');
+
+      expect(win(api, 'promotion').lines.join('\n'))
+        .toContain('Systems Engineer already');
     });
   });
 });

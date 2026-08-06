@@ -536,6 +536,36 @@ export const CAREER_ACTION_IDS: readonly CareerActionId[] = Object.freeze(
   Object.values(CAREER_ACTIONS),
 );
 
+/**
+ * The systemd verbs the engineer works a Linux box with (E6, Pass B): the Linux
+ * analogue of `serviceRestart`, on a `unit` node rather than a Windows service.
+ *
+ * They are their own group because a unit is not a Windows service and systemd
+ * is not the Service Control Manager - the whole terminal-fidelity point is that
+ * the two families differ in shape, and one shared verb would be the first step
+ * towards one shell in hats. Each flips the unit node's `unit_state` the way
+ * `serviceRestart` flips a `status`, and each is SILENT on success in the shell,
+ * because a real `systemctl restart` prints nothing and returns to the prompt -
+ * a fabricated "started successfully" line is the Windows family's shape and a
+ * lie here. Engine tier is helpdesk like every other verb; the ENGINEER gate is
+ * the shell's (there is no ssh, and so no unix terminal, below the promotion).
+ */
+export const SYSTEMD_ACTIONS = {
+  /** `systemctl restart <unit>`: flips a failed/inactive unit to active(running). */
+  unitRestart: 'unit.restart',
+  /** `systemctl start <unit>`: brings an inactive/failed unit up. */
+  unitStart: 'unit.start',
+  /** `systemctl stop <unit>`: takes a running unit down to inactive(dead). */
+  unitStop: 'unit.stop',
+} as const;
+
+export type SystemdActionId =
+  (typeof SYSTEMD_ACTIONS)[keyof typeof SYSTEMD_ACTIONS];
+
+export const SYSTEMD_ACTION_IDS: readonly SystemdActionId[] = Object.freeze(
+  Object.values(SYSTEMD_ACTIONS),
+);
+
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
 
 export const DAY_ACTION_IDS: readonly DayActionId[] = Object.freeze(

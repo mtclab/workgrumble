@@ -179,6 +179,7 @@ import { FIELDS, slaTierOf } from '../world/fields';
 import { planChangeRequestFiling } from '../world/change-request';
 import { planCoordination } from '../world/coordination';
 import { seedForAttempt } from '../world/session';
+import { MSP_IDS } from '../world/msp-company';
 import {
   breachCostOf,
   isMeterTick,
@@ -612,6 +613,18 @@ export interface DayApi {
    * needed.
    */
   fileCoordination(targetId: string): readonly string[];
+  /**
+   * Raises the engineer's first incident (E6, Pass B), the moment the promotion
+   * fires: the MSP's own client portal down on FC-RMM-01, spawned into the world
+   * the way a drip is, so the newly-promoted player has a real Linux box to fix
+   * over ssh. Idempotent - it does nothing if the incident is already in the
+   * world (the promotion is one-way, so it fires once anyway) - and it only
+   * raises it where the box exists, which is the MSP world; promoted at another
+   * employer, there is no FC-RMM-01 to down, and it stays quiet. It is the shell
+   * that raises it rather than the promotion ACTION, because spawning a ticket is
+   * registering a def with the engine, which is a shell/driver job, not an op.
+   */
+  raiseFirstIncident(): void;
   /**
    * What the lead would have to go on if he read the install audit this minute:
    * the policy, the installs on the trail he has not already been down about,
@@ -1304,6 +1317,22 @@ export class DayDriver implements DayApi {
     }
 
     return plan.lines;
+  }
+
+  public raiseFirstIncident(): void {
+    const id = 'ticket:syseng-first-incident';
+
+    // One-way promotion, so this fires once; the guard makes a reload or a
+    // double-call a no-op rather than a second down portal. And only where the
+    // box it downs exists - the MSP world - so a promotion earned at another
+    // employer raises nothing and stays byte-identical.
+    if (this.engine.graph.getNode(id) !== undefined
+      || this.engine.graph.getNode(MSP_IDS.mspInfraServer) === undefined) {
+      return;
+    }
+
+    spawnWorldTicket(this.engine, id);
+    this.announce();
   }
 
   private softwareVerb(action: string, id: string): DispatchResult {

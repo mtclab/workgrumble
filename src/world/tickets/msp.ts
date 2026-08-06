@@ -28,8 +28,13 @@
  * models it as the graph fact it is (a stale membership, a checked-out group).
  */
 
-import { HELPDESK_ACTIONS } from '../actions';
-import { FIELDS, LOCKOUT_THRESHOLD, SERVICE_STATUS } from '../fields';
+import { HELPDESK_ACTIONS, SYSTEMD_ACTIONS } from '../actions';
+import {
+  FIELDS,
+  LOCKOUT_THRESHOLD,
+  SERVICE_STATUS,
+  SYSTEMD_STATES,
+} from '../fields';
 import {
   fsEntryId,
   myDocumentsDirId,
@@ -1515,6 +1520,117 @@ const HIPAA_ACCESS_REVIEW: WorldTicket = {
   ],
 };
 
+/* -- FETTLE & CRANE's OWN infra: the first fix at the engineer tier (E6) --- */
+
+/**
+ * The client portal down - the payoff of the promotion (E6, Pass B).
+ *
+ * The first incident the newly-promoted engineer is paged onto, and the honest
+ * counterpart to the MERIDIAN prod-down escalate: this box is FETTLE & CRANE's
+ * OWN (FC-RMM-01), running the client portal customers log into, so there is no
+ * customer contract in the way and the engineer FIXES it rather than escalating.
+ * That is the wall coming down truthfully - the Linux box a service-desk player
+ * could never reach is fixable now, on the employer's own infra, without
+ * bypassing any customer scope (a helpdesk customer's server stays out of reach,
+ * engineer or not).
+ *
+ * The fault is a REAL node state, not a string: `fcportal.service` is seeded
+ * healthy in `mspSetup`, and this ticket's setup flips its `unit_state` to
+ * `failed` and writes the failure cascade into its journal - the crash, the
+ * retries, the start-limit systemd hit and gave up on. The fix path is the exact
+ * engineer workflow: ssh in, `systemctl status` (failed), `journalctl -u` (why),
+ * `systemctl restart` (silent), and the unit flips back to active(running),
+ * which is what this closes on. Arrival is `summoned`: it is not on anybody's
+ * scripted week, so every existing golden is byte-identical until the promotion
+ * fires and the shell raises it (`day.raiseFirstIncident`).
+ */
+const SYSENG_FIRST_INCIDENT: WorldTicket = {
+  arrival: 'summoned',
+  nodes: [MSP_IDS.mspInfraServer, MSP_IDS.mspInfraPortalUnit],
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:syseng-first-incident',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Fettle & Crane: the client portal is down - customers can\'t log in',
+      body:
+        'Morgan pages you the moment the tier flips: the client portal is down. '
+        + 'It runs on FC-RMM-01 - our own box, not a customer\'s - as '
+        + 'fcportal.service, and it fell over this morning and has not come back. '
+        + 'Customers cannot log in to raise anything. It is ours to fix now: ssh '
+        + 'in, read the unit, and bring it up. systemctl status will show it '
+        + 'failed and journalctl -u will show why.',
+    },
+    reporter: MSP_IDS.mspLead,
+    // The fault is a REAL node state: flip the seeded-healthy unit to failed, and
+    // write the journal that says why - the crash, systemd's retries, and the
+    // start-limit it hit. `systemctl restart` is the fix, and it works because
+    // nothing is misconfigured; the unit just exhausted its automatic retries.
+    setup: [
+      {
+        op: 'setField',
+        id: MSP_IDS.mspInfraPortalUnit,
+        field: FIELDS.unitState,
+        value: SYSTEMD_STATES.failed,
+      },
+      {
+        op: 'setField',
+        id: MSP_IDS.mspInfraPortalUnit,
+        field: FIELDS.unitJournal,
+        value: [
+          'Sep 07 08:44:10 FC-RMM-01 fcportal[2143]: [CRITICAL] worker 3 died: '
+            + 'unhandled exception in request handler',
+          'Sep 07 08:44:10 FC-RMM-01 systemd[1]: fcportal.service: Main process '
+            + 'exited, code=exited, status=1/FAILURE',
+          'Sep 07 08:44:10 FC-RMM-01 systemd[1]: fcportal.service: Failed with '
+            + 'result \'exit-code\'.',
+          'Sep 07 08:44:10 FC-RMM-01 systemd[1]: fcportal.service: Scheduled '
+            + 'restart job, restart counter is at 5.',
+          'Sep 07 08:44:11 FC-RMM-01 systemd[1]: fcportal.service: Start request '
+            + 'repeated too quickly.',
+          'Sep 07 08:44:11 FC-RMM-01 systemd[1]: fcportal.service: Failed with '
+            + 'result \'exit-code\'.',
+          'Sep 07 08:44:11 FC-RMM-01 systemd[1]: Failed to start Fettle & Crane '
+            + 'client portal.',
+        ].join('\n'),
+      },
+    ],
+    // Closed when the unit is answering again: active (running) on the portal
+    // node. Read straight off the state the restart writes, so a fabricated
+    // confirmation could never close it - only the real flip does.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: MSP_IDS.mspInfraPortalUnit },
+      field: FIELDS.unitState,
+      value: SYSTEMD_STATES.activeRunning,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 5 },
+    kb_ref: 'kb/systemd-start-limit',
+  },
+  cause: 'fcportal.service crashed once and systemd, after retrying it too fast, '
+    + 'hit its start-limit and stopped trying - so it is sitting failed rather '
+    + 'than running. Nothing is misconfigured; the unit just exhausted its '
+    + 'automatic retries. ssh in, confirm it with systemctl status, read '
+    + 'journalctl -u for the why, and systemctl restart brings it back - which '
+    + 'is silent on success, because systemd says nothing when it works.',
+  dialogue_ref: 'dialogue/msp-morgan',
+  paths: [
+    {
+      id: 'restart-the-portal-unit',
+      app: 'cmd',
+      label: 'ssh in and restart fcportal.service on FC-RMM-01',
+      steps: [
+        {
+          action: SYSTEMD_ACTIONS.unitRestart,
+          target: MSP_IDS.mspInfraPortalUnit,
+        },
+      ],
+    },
+  ],
+};
+
 export const MSP_TICKETS: readonly WorldTicket[] = [
   // FONTAINE-LAW - the law firm, helpdesk scope.
   MATTER_ACCESS,
@@ -1544,4 +1660,7 @@ export const MSP_TICKETS: readonly WorldTicket[] = [
   XRAY_SENSOR_NOT_DETECTED,
   IMAGING_BRIDGE_BREAK,
   HIPAA_ACCESS_REVIEW,
+  // FETTLE & CRANE's own infra: the first fix at the engineer tier (E6, Pass B).
+  // Summoned - raised by the promotion, not by a scripted day.
+  SYSENG_FIRST_INCIDENT,
 ];

@@ -883,6 +883,22 @@ export const FIELDS = {
    */
   unitEnabled: 'unit_enabled',
   /**
+   * A unit's journal (E6, Pass B): the lines `journalctl -u <unit>` prints and
+   * the tail `systemctl status` shows, one journal line per newline, in the real
+   * `MMM DD HH:MM:SS host process[pid]: message` shape.
+   *
+   * A real field the world holds rather than an invented one, and the honest
+   * home for WHY a unit failed: a downed product unit carries its failure
+   * cascade here (the process exit, systemd's retries, the start-limit it hit),
+   * which is what a diagnosing engineer reads before the restart. Absent means
+   * the world holds no journal for this unit, and `journalctl` says exactly that
+   * - `-- No entries --`, the real answer - rather than inventing startup lines
+   * for it. Seeded by the incident that downs a unit, the way every other fault
+   * in this game arrives with its ticket; a healthy baseline unit carries none,
+   * so the estate is byte-identical until an incident writes one.
+   */
+  unitJournal: 'unit_journal',
+  /**
    * Whether the certificate this service presents has run out.
    *
    * Its own field rather than a stopped status because it is its own fault

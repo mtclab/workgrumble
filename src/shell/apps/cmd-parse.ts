@@ -322,9 +322,9 @@ export const COMMANDS: readonly CommandSpec[] = [
   },
   {
     name: 'promotion',
-    usage: 'promotion accept',
-    summary: 'Take the Systems Engineer offer, when it has been earned.',
-    minArgs: 1,
+    usage: 'promotion [accept]',
+    summary: 'Read the Systems Engineer offer, and take it when you have earned it.',
+    minArgs: 0,
     maxArgs: 1,
     joined: false,
     subcommand: true,

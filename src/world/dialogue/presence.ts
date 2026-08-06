@@ -134,6 +134,9 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
   [MSP_IDS.elmwoodContact]: 'You are marked away, and I have a patient in the '
     + 'chair. I can see you working on something - just not on us - and "away" is '
     + 'not a word I can say to a surgery that is running behind because of it.',
+  [MSP_IDS.mspLead]: 'You are showing away, and the portal is still down - '
+    + 'customers cannot log in. You are on the tier now; "away" while our own box '
+    + 'is on the floor is not a look I can carry upstairs for you.',
 });
 
 /**

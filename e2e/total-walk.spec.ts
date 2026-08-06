@@ -3559,35 +3559,78 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
   await openFromStartMenu(page, 'cmd');
 
   await step('cmd.promotion', async () => {
-    // The offer is earned - the MSP arrival carries the standing it is made at -
-    // so accepting it flips the tier through the real dispatch and says so.
+    // Bare "promotion" reads as the earned OFFER first - the diegetic frame -
+    // then "promotion accept" takes it, flips the tier through the real
+    // dispatch, and raises the first incident (the downed client portal).
+    await runCommand(page, 'promotion');
+    await expect(page.getByTestId('cmd-output')).toContainText('they want you on');
     await runCommand(page, 'promotion accept');
     await expect(page.getByTestId('cmd-output'))
       .toContainText('Systems Engineer now');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('the client portal is down');
   });
 
   await step('cmd.ssh', async () => {
-    // Past the promotion ssh connects: trust-on-first-use shows the fingerprint,
-    // records the host, and the prompt becomes the server's.
-    await runCommand(page, 'ssh pat@MERI-APP-01');
+    // Past the promotion ssh connects to the MSP's OWN box - FC-RMM-01, where
+    // the portal is down: trust-on-first-use shows the fingerprint, records the
+    // host, and the prompt becomes the server's.
+    await runCommand(page, 'ssh pat@FC-RMM-01');
     await expect(page.getByTestId('cmd-output'))
       .toContainText('ED25519 key fingerprint is');
     await expect(page.locator('.cmd-prompt').first())
-      .toHaveText('pat@MERI-APP-01:~$');
+      .toHaveText('pat@FC-RMM-01:~$');
   });
 
-  await step('cmd.systemctl', async () => {
-    // The seeded unit, read as the richer ●-dot block - not sc's flat STATE line.
-    await runCommand(page, 'systemctl status nginx');
+  await step('cmd.journalctl', async () => {
+    // The why, before the fix: the journal shows the crash and the start-limit.
+    await runCommand(page, 'journalctl -u fcportal');
     await expect(page.getByTestId('cmd-output'))
-      .toContainText('Active: active (running)');
-    await expect(page.getByTestId('cmd-output')).toContainText('Main PID:');
+      .toContainText('Start request repeated too quickly');
+  });
+
+  await step('cmd.df', async () => {
+    // The disk, in the Mounted-on shape - no drive letter.
+    await runCommand(page, 'df -h');
+    await expect(page.getByTestId('cmd-output')).toContainText('Mounted on');
+  });
+
+  await step('cmd.ps', async () => {
+    // The processes: systemd as PID 1, and a downed unit honestly absent.
+    await runCommand(page, 'ps aux');
+    await expect(page.getByTestId('cmd-output')).toContainText('/sbin/init');
+  });
+
+  await step('cmd.ip', async () => {
+    // The address, in CIDR - the family difference from ipconfig.
+    await runCommand(page, 'ip a');
+    await expect(page.getByTestId('cmd-output')).toContainText('inet 10.42.0');
   });
 
   await step('cmd.ls', async () => {
     // The mode/owner/group columns, the family difference from dir.
     await runCommand(page, 'ls -la');
     await expect(page.getByTestId('cmd-output')).toContainText('drwxr-xr-x');
+  });
+
+  await step('cmd.systemctl', async () => {
+    // THE FIX: status shows it failed, restart is SILENT on success, and status
+    // reads running afterwards - the payoff, walked on the real build. Then the
+    // scope wall proven still up: a customer's out-of-scope server refuses the
+    // same verb, so the fix on our OWN box is non-bypassing.
+    await runCommand(page, 'systemctl status fcportal');
+    await expect(page.getByTestId('cmd-output')).toContainText('Active: failed');
+
+    await runCommand(page, 'systemctl restart fcportal');
+    await runCommand(page, 'systemctl status fcportal');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Active: active (running)');
+
+    await runCommand(page, 'exit');
+    await runCommand(page, 'ssh pat@MERI-APP-01');
+    await runCommand(page, 'systemctl restart grumbleapp');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('CONTRACT still governs');
   });
 
   await step('cmd.logout', async () => {
@@ -3597,11 +3640,11 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
   });
 
   await step('cmd.exit', async () => {
-    // The other spelling: ssh back in (a known host now, no fingerprint) and
-    // exit out again.
-    await runCommand(page, 'ssh pat@MERI-APP-01');
+    // The other spelling: ssh back to our own box (known host now, no
+    // fingerprint) and exit out again.
+    await runCommand(page, 'ssh pat@FC-RMM-01');
     await expect(page.locator('.cmd-prompt').first())
-      .toHaveText('pat@MERI-APP-01:~$');
+      .toHaveText('pat@FC-RMM-01:~$');
     await runCommand(page, 'exit');
     await expect(page.locator('.cmd-prompt').first()).toHaveText(/C:\\/);
   });

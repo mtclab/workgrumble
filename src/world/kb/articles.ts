@@ -1574,4 +1574,42 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/backup-verification-gap', 'kb/reading-the-error'],
   },
+  {
+    id: 'kb/systemd-start-limit',
+    title: 'A Linux service that failed and stopped trying to come back',
+    summary: 'A crashed unit that hit its start-limit needs starting by hand.',
+    state: 'published',
+    issue: 'A service on one of our Linux boxes is down and has not come back on '
+      + 'its own. systemctl status shows it as failed, and whatever it served is '
+      + 'unreachable - a web app throwing errors, a portal nobody can log in to.',
+    environment: 'A Linux server reached over ssh, at the engineer tier: a unit '
+      + 'run under systemd (Type=notify or a plain daemon) that is meant to be up '
+      + 'and is sitting failed rather than running.',
+    resolution: [
+      'ssh to the box and read the unit: "systemctl status <unit>". A failed unit '
+        + 'shows a red state and no Main PID - it is down, not merely busy.',
+      'Read WHY before you touch it: "journalctl -u <unit>" shows the crash and, '
+        + 'under it, systemd\'s own lines - the process exited, it was rescheduled, '
+        + 'and "Start request repeated too quickly" is the start-limit being hit.',
+      'Bring it back: "systemctl restart <unit>". This resets the start-limit '
+        + 'counter and starts the unit - it prints nothing on success, which is '
+        + 'systemd telling you it worked; do not expect a confirmation line.',
+      'Confirm with "systemctl status <unit>" again: Active should read active '
+        + '(running) with a Main PID, and the thing it serves should answer.',
+    ],
+    cause: [
+      'systemd will restart a crashed unit for you, but only so many times in so '
+      + 'long. If a service dies and is restarted repeatedly inside its '
+      + 'StartLimitIntervalSec window, systemd decides the restarts are not '
+      + 'helping, gives up, and leaves the unit in the failed state - which is why '
+      + 'a service that "just crashed once" can be sitting stopped an hour later.',
+      'That is the whole reason a manual restart is the fix here rather than a '
+      + 'config change: nothing is misconfigured, the unit simply exhausted its '
+      + 'automatic retries and stopped trying. "systemctl restart" resets the '
+      + 'counter and starts it cleanly. If it fails AGAIN straight away the crash '
+      + 'is not transient and the journal is where the real cause is - but a unit '
+      + 'that comes up and stays up was only ever waiting to be started by hand.',
+    ],
+    see_also: ['kb/reading-the-error'],
+  },
 ];

@@ -7,6 +7,7 @@ import { executeCommand } from './cmd-run';
 import {
   executeUnix,
   parseUnixCommand,
+  promotionEarned,
   type SshSession,
   unixPrompt,
 } from './cmd-unix';
@@ -216,6 +217,18 @@ export const CMD_APP: AppDef = {
 
     for (const line of BANNER) {
       print(line);
+    }
+
+    // The offer, pushed rather than pulled (E6): when the standing has earned
+    // the Systems Engineer promotion and it has not been taken, the terminal
+    // says so on open, so the beat ARRIVES rather than waiting to be typed at.
+    // Reuses the shell's own notice surface; `promotion` reads the full offer.
+    if (promotionEarned(api)) {
+      api.notify(
+        'The engineering team want you',
+        'You have earned the Systems Engineer move. Open the Support Terminal '
+          + 'and type "promotion" to read the offer, "promotion accept" to take it.',
+      );
     }
 
     input.focus();

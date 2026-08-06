@@ -30,6 +30,7 @@ import {
   HELPDESK_ACTIONS,
   REQUEST_ACTIONS,
   SOFTWARE_ACTIONS,
+  SYSTEMD_ACTIONS,
   WORLD_ACTIONS,
 } from '../world/actions';
 import { DEMO_ACTIONS } from '../world/demo-world';
@@ -67,10 +68,13 @@ export const WALK_RUNS = {
     + 'across. Its own run because accepting reloads the page into a different '
     + 'world - the week and fired runs verify the offer is there without taking '
     + 'it, and this is the single walk that crosses the threshold.',
-  sysadmin: 'The promotion crossed (E6): at the MSP, with the standing built, '
-    + 'accept the Systems Engineer offer, ssh to a Linux server (the fingerprint '
-    + 'and the known_hosts it writes), and work it in the unix dialect - '
-    + 'systemctl status on a seeded unit, ls -la, and exit back to the desktop. '
+  sysadmin: 'The promotion crossed and the first fix (E6): at the MSP, with the '
+    + 'standing built, read the earned offer and accept it (which raises the '
+    + 'downed-portal incident), ssh to the MSP\'s own Linux server (the '
+    + 'fingerprint and the known_hosts it writes), and work it in the unix '
+    + 'dialect - journalctl for the why, df/ps/ip and ls -la, systemctl status '
+    + '(failed) then restart (silent) then status (running), the payoff walked '
+    + 'end to end - plus the scope wall proven still up on a customer\'s server. '
     + 'Its own run because a service-desk week cannot hold the engineer tier: ssh '
     + 'is refused until the promotion fires, so the whole server surface lives on '
     + 'the far side of a threshold no probation week reaches.',
@@ -2381,15 +2385,70 @@ const ENTRIES = [
   {
     id: 'cmd.systemctl',
     surface: 'cmd',
-    control: 'systemctl status <unit>',
-    does: 'Reads a seeded systemd unit in the unix dialect: the richer ●-dot '
-      + 'block - the state dot, the Loaded line, the Active line, a Main PID for '
-      + 'a running unit - off the unit node, not sc\'s flat STATE line.',
+    control: 'systemctl <status|restart|start|stop> <unit>',
+    does: 'Reads and works a systemd unit in the unix dialect: "status" prints '
+      + 'the richer ●-dot block (dot, Loaded, Active, Main PID, a journal tail) '
+      + 'off the unit node; "restart"/"start"/"stop" flip the unit\'s state and '
+      + 'are SILENT on success, the way systemd is - never a fabricated line.',
     command: 'systemctl',
+    actions: [
+      SYSTEMD_ACTIONS.unitRestart,
+      SYSTEMD_ACTIONS.unitStart,
+      SYSTEMD_ACTIONS.unitStop,
+    ],
     run: 'sysadmin',
     why: 'It only runs inside an ssh session on a Linux box, which is reachable '
       + 'only once the promotion has unlocked ssh - the same threshold the whole '
       + 'run turns on.',
+  },
+  {
+    id: 'cmd.journalctl',
+    surface: 'cmd',
+    control: 'journalctl -u <unit>',
+    does: 'Reads a unit\'s journal off its node: the timestamped '
+      + 'MMM DD HH:MM:SS host process[pid]: message lines a failed unit carries '
+      + '- the crash, systemd\'s retries, the start-limit - and "-- No entries --" '
+      + 'for a unit the world holds no journal for.',
+    command: 'journalctl',
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.df',
+    surface: 'cmd',
+    control: 'df -h',
+    does: 'Shows the box\'s disk in the Filesystem/Size/Used/Avail/Use%/Mounted '
+      + 'on shape - a device path and a mount point, no drive letter - off the '
+      + 'machine\'s seeded free space.',
+    command: 'df',
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.ps',
+    surface: 'cmd',
+    control: 'ps aux',
+    does: 'Lists the box\'s processes in the USER/PID/%CPU/%MEM/VSZ/RSS/TTY/STAT/'
+      + 'START/TIME/COMMAND shape: systemd as PID 1 and a row per running unit, '
+      + 'a downed unit honestly absent.',
+    command: 'ps',
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.ip',
+    surface: 'cmd',
+    control: 'ip a',
+    does: 'Shows the box\'s address in the eth0 <...> mtu 1500 / inet X/24 CIDR '
+      + 'shape - the family difference from ipconfig\'s dotted subnet-mask row - '
+      + 'off the estate\'s own derived address.',
+    command: 'ip',
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks.',
   },
   {
     id: 'cmd.ls',

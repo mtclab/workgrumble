@@ -25,6 +25,7 @@ import { SECURITY_ACTIONS } from './security';
 import { SERVICE_ACTIONS } from './service';
 import { SHARE_ACTIONS } from './share';
 import { SOFTWARE_ACTION_DATA } from './software';
+import { SYSTEMD_ACTION_DATA } from './systemd';
 import { TICKET_ACTIONS } from './ticket';
 import { TONE_ACTION_DATA } from './tone';
 import { WORLD_ACTION_DATA } from './world';
@@ -91,6 +92,9 @@ export {
   SOFTWARE_ACTION_IDS,
   SOFTWARE_ACTIONS,
   type SoftwareActionId,
+  SYSTEMD_ACTION_IDS,
+  SYSTEMD_ACTIONS,
+  type SystemdActionId,
   WORLD_ACTION_IDS,
   WORLD_ACTIONS,
   type WorldActionId,
@@ -143,6 +147,9 @@ export function helpdeskActions(): readonly ActionData[] {
     // ledger. Player-initiated verbs on the player's own node, so they sit with
     // the helpdesk set rather than the world's own timetable verbs below.
     ...CAREER_ACTION_DATA,
+    // The systemd verbs (E6, Pass B): restart/start/stop a unit over ssh. The
+    // engineer's remediation surface, the Linux twin of `serviceRestart`.
+    ...SYSTEMD_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

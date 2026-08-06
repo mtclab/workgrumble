@@ -52,6 +52,7 @@ import {
   BASELINE_SERVICES,
   baselineServiceId,
   BASELINE_UNITS,
+  FC_INFRA_UNITS,
   linuxUnitId,
 } from './services';
 
@@ -161,6 +162,25 @@ export const MSP_IDS = {
   playerAccount: 'account:pat-msp',
   playerMachine: 'machine:msp-desk',
   playerMonitor: 'device:msp-monitor',
+
+  /**
+   * Fettle & Crane's own infrastructure lead (E6, Pass B) - the engineer who
+   * runs the MSP's internal estate and pages the newly-promoted player when the
+   * client portal falls over. Belongs to no customer: they are the MSP's own,
+   * exactly like the player and the infra box below.
+   */
+  mspLead: 'person:fc-morgan',
+  mspLeadAccount: 'account:fc-morgan',
+  /**
+   * The MSP's OWN Linux box and the product on it (E6, Pass B): Fettle & Crane's
+   * client portal server, running `fcportal.service` behind nginx. No customer -
+   * this is the employer's own infra, which is the honest, non-bypassing place a
+   * promoted engineer fixes a downed unit over ssh (a helpdesk customer's server
+   * stays out of reach on contract, engineer or not). The first-fix incident
+   * downs the portal unit; `systemctl restart` brings it back.
+   */
+  mspInfraServer: 'machine:fc-rmm-01',
+  mspInfraPortalUnit: 'unit:fc-rmm-01/fcportal.service',
 
   /**
    * Nadia Fontaine's practice manager contact at the law firm - the person who
@@ -321,6 +341,17 @@ const STAFF: readonly StaffSeed[] = [
     title: 'Service Desk Technician (Tier 1)',
     username: 'pat',
     desk: 'A hot desk at Fettle & Crane, three customers deep before nine',
+  },
+  {
+    // The MSP's own infrastructure lead (E6). No customer - Fettle & Crane's own
+    // - so their account runs the in-house path, not a tenant scope. They file
+    // the first-fix incident about the client portal the whole shop runs on.
+    person: MSP_IDS.mspLead,
+    account: MSP_IDS.mspLeadAccount,
+    name: 'Morgan Okafor',
+    title: 'Infrastructure Lead, Fettle & Crane',
+    username: 'mokafor',
+    desk: 'The engineer who owns the boxes Fettle & Crane itself runs on',
   },
   {
     person: MSP_IDS.fontaineContact,
@@ -1021,6 +1052,52 @@ export function mspSetup(): readonly SetupOp[] {
       });
       addEdge(ops, { from: id, to: machine.id, kind: 'runs_on' });
     }
+  }
+
+  // Fettle & Crane's OWN infrastructure box (E6, Pass B): the MSP's internal
+  // Linux server, seeded explicitly rather than through the customer MACHINES
+  // table because it belongs to NO customer - it is the employer's own, the way
+  // the player's desk is. It runs the client portal the shop and its customers
+  // log into, HEALTHY at boot; the first-fix incident downs the portal unit. It
+  // is on the same wire as the desk, so it is reachable and pingable, and its
+  // units seed the same way every other Linux box's do.
+  addNode(ops, {
+    id: MSP_IDS.mspInfraServer,
+    kind: 'machine',
+    fields: {
+      [FIELDS.hostname]: 'FC-RMM-01',
+      [FIELDS.machineRole]: MACHINE_ROLES.appServer,
+      [FIELDS.machineOs]: MACHINE_OS.linux,
+      [FIELDS.displayRotation]: 0,
+      [FIELDS.resolution]: '1024x768',
+      [FIELDS.pendingUpdates]: false,
+      [FIELDS.processor]: 'A cloud instance running Fettle & Crane\'s own tooling',
+      [FIELDS.memory]: '8 GB',
+      // A modest 40 GB root, mostly used - what df -h reads and a later
+      // disk-full incident would be about.
+      [FIELDS.diskFree]: 6_442_450_944,
+    },
+  });
+  addEdge(ops, {
+    from: MSP_IDS.mspInfraServer,
+    to: MSP_IDS.playerMachine,
+    kind: 'connected_to',
+  });
+
+  for (const unit of FC_INFRA_UNITS) {
+    const id = linuxUnitId(MSP_IDS.mspInfraServer, unit.unit);
+
+    addNode(ops, {
+      id,
+      kind: 'unit',
+      fields: {
+        [FIELDS.name]: unit.name,
+        [FIELDS.unitName]: unit.unit,
+        [FIELDS.unitState]: unit.state,
+        [FIELDS.unitEnabled]: unit.enabled,
+      },
+    });
+    addEdge(ops, { from: id, to: MSP_IDS.mspInfraServer, kind: 'runs_on' });
   }
 
   return ops;
