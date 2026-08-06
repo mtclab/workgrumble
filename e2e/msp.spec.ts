@@ -93,3 +93,24 @@ test('a fix at the monitoring-only customer is refused by the terminal', async (
   await expect(page.getByTestId('cmd-output'))
     .toContainText(/monitoring-only|notify-and-escalate|not.*remediate/i);
 });
+
+test('an out-of-scope server action names the change-request path, and one files', async ({
+  page,
+}) => {
+  await arriveAtMsp(page);
+
+  await openFromStartMenu(page, 'cmd');
+
+  // FONTAINE-LAW is a helpdesk contract: a server is out of the day-to-day
+  // scope, but - unlike monitoring-only - it is work a change request can
+  // authorise, so the refusal names the path rather than being a dead end.
+  await runCommand(page, 'restart FONT-FILE-01\\Spooler');
+  await expect(page.getByTestId('cmd-output'))
+    .toContainText(/change request|changereq/i);
+
+  // Filing one is a real verb through the real terminal, and it then reads back
+  // on the board of requests, under review.
+  await runCommand(page, 'changereq file FONT-FILE-01\\Spooler');
+  await runCommand(page, 'changereq list');
+  await expect(page.getByTestId('cmd-output')).toContainText('FONT-FILE-01');
+});
