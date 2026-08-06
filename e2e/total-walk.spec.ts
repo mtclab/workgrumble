@@ -1832,6 +1832,18 @@ test('walks every function of a probation week that goes well', async ({
       .toContainText('Support contract expired before you were hired');
   });
 
+  await step('cmd.changereq', async () => {
+    // A base command, so it answers on the probation desk: nothing is filed,
+    // and in-house work needs no request. The MSP loop - file, approve, act in
+    // a window, and the scope consult that lets an approved action through - is
+    // driven through the real terminal in change-request.test.ts.
+    await runCommand(page, 'changereq list');
+    await expect(page.getByTestId('cmd-output')).toContainText(/change request/i);
+    await runCommand(page, 'changereq file BEIGE-BOX\\Spooler');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText(/change request|in-house|no /i);
+  });
+
   await step('cmd.ping', async () => {
     await runCommand(page, 'ping SALES-02');
     await expect(page.getByTestId('cmd-output')).toContainText('Reply from');
