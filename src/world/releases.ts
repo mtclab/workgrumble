@@ -31,6 +31,30 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.14.0',
+    date: '2026-08-06',
+    summary: 'This update adds a customer where being slow has a patient in the '
+      + 'chair.',
+    lines: Object.freeze([
+      'A dental practice signs on - ELMWOOD - and the MSP runs the whole thing, '
+        + 'which means the machine that matters most is the one at the chair '
+        + 'with a patient in front of it. When the X-ray sensor stops being '
+        + 'detected mid-appointment, that is not a ticket that can wait: it is '
+        + 'Gold, it is urgent, and the clock on it is the tightest in the '
+        + 'building. The fix is the one every clinic tech knows in their hands - '
+        + 'reseat the sensor, swap the port - dressed up as a command.',
+      'The imaging bridge is the other kind of problem: a Windows update quietly '
+        + 'broke the thing that writes X-rays into the patient chart, and no '
+        + 'amount of restarting a service that is already running will fix a '
+        + 'vendor\'s integration. That one you escalate, because it is theirs, '
+        + 'and the terminal will not let you pretend otherwise.',
+      'And a request that is not a fault at all: who opened this patient\'s '
+        + 'chart? You pull the log, report what it says, and hand back the '
+        + 'accounting - because in a place that holds medical records, who '
+        + 'looked is a question with a real answer and a real weight.',
+    ]),
+  },
+  {
     version: '0.13.0',
     date: '2026-08-06',
     summary: 'This update signs a new customer, and lets you find out what they '
