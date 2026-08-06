@@ -1089,3 +1089,48 @@ down), one box (workers=1 serial, the box is degraded) + msp.spec extended for t
 
 Mac creative + dental verticals; onboarding/discovery; a full CAB; service-credit BILLING surfaces
 (the credit is a review/reputation effect, not an invoice).
+
+# Version 0.13.0 - customer onboarding + the discovery horror (E5, MSP arc, #31)
+
+The MSP arc's capstone: how a customer JOINS. A new customer is signed; you run DISCOVERY on their
+estate (what machines, what services, what state), and you hit the genre-defining moment the research
+names - "their backups were never actually working." Onboarding is where an MSP earns or loses a
+client in the first ninety days; the game makes it a played beat. Research base: the onboarding
+synthesis (discovery/audit -> RMM deploy -> the backup-never-worked horror-discovery) in
+docs/design/msp-arc.md. Reuses the estate (0.7.0), the customer model (0.8.0), and the monitoring
+board (0.9.0); the new thing is the onboarding event + the discovery/audit surface.
+
+## Slice 1 - a new customer signs (the onboarding event)
+
+A new customer arrives mid-week as an event (like the reply-all storm is an event): a small business
+just signed, and the MSP has taken them on undocumented. The customer + a rough estate stand up, but
+UNKNOWN - you have not audited it yet, and the runbook is thin or wrong (the round-1 "documentation is
+the single most cited MSP pain" made real).
+
+## Slice 2 - the discovery / audit
+
+A discovery verb/surface that AUDITS the new customer's estate: enumerate the machines, the services,
+the state - the real onboarding scan (the round-2 tooling research's estate-discovery step). It reads
+the estate (0.7.0 machinery), so nothing is invented; it is the map you did not have. Deterministic.
+
+## Slice 3 - the horror discovery
+
+The audit surfaces the thing nobody wrote down and nobody was watching: the classic is a backup that
+has been CONFIGURED and has been FAILING silently - the job "succeeds" but restores nothing, or has
+not run in months. The board (0.9.0) or the audit shows it once you look. The beat is real and the
+research-cited horror (an MSP that skipped discovery ate an incident + a lost contract). The player's
+move is to RAISE it (escalate/notify), not paper over it - onboarding done honestly. Truthful, no
+invented failure the estate does not hold.
+
+## Gates (once, at the version)
+
+Goldens move (the new customer + estate + the event); argued. Journeys through the REAL path: the
+onboarding event fires; the discovery audit enumerates the new customer's real estate; the horror
+(the silently-failing backup) is surfaced by the audit/board and is a REAL state on the estate, not a
+string; raising it is the honest resolution. Existing employers + 0.8-0.12 customers BYTE-IDENTICAL
+until the event fires. Determinism. One codex (overseer by hand if down), one box (workers=1 serial,
+box degraded) + msp.spec extended for the onboarding/discovery path.
+
+## Not in scope (backlog)
+
+Mac creative + dental verticals (need os=mac); a full CAB; the deferred E6 sysadmin / E7 cloud tiers.
