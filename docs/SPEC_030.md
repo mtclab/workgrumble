@@ -894,3 +894,52 @@ reviews by hand if codex is down), one full box at --workers=2.
 The RMM/monitoring BOARD as a surface (monitoring-only starts as a scope-refusal); the Mac creative
 + dental verticals; the change-request authorisation gate; customer onboarding/discovery content;
 co-managed coordination depth; Bronze/Silver/Gold SLA tiers + service credits.
+
+# Version 0.9.0 - the RMM / monitoring board (E5, MSP arc, #27)
+
+The monitoring-only customer gets its real surface. In 0.8.0 monitoring_only was only a terminal
+REFUSAL (you may not fix); 0.9.0 gives it the RMM board it is defined by - "eyes on glass" - so
+the monitoring-only contract becomes a played surface, not just a wall. Research base: the round-1/2
+syntheses (NOC/RMM, alert fatigue, monitoring-only = notify-and-escalate) distilled in
+docs/design/msp-arc.md. Reuses the estate (0.7.0), the customer/scope model (0.8.0), the app/window
+shell, and the escalate verb; the one new thing is the board app.
+
+## Slice 1 - the board app (a new AppDef, like the browser/tickets apps)
+
+An RMM/monitoring board: per monitoring-only customer, the watched things (a backup job, a TLS cert,
+a disk) each as a row with a live STATUS (ok / warning / failed / firing) read from the estate (the
+service/machine nodes 0.8.0 already seeds on the clinic). The board is the monitoring-only customer's
+whole visible surface - it shows state; it has no fix button, by contract and by design.
+
+## Slice 2 - acknowledge + escalate, the only valid moves
+
+An alert can be ACKNOWLEDGED (you have seen it; stops it re-nagging) and ESCALATED (raise it to the
+customer / their own IT - the contracted action). These are the monitoring-only player's entire verb
+set on the board; a fix is refused exactly as 0.8.0 refuses it. The 0.8.0 northwind alert tickets
+(backup / cert / disk) now resolve THROUGH the board's acknowledge+escalate, not only via the terminal
+- the ticket and the board agree (the same node state, read two ways, cannot drift - the spool-is-the-
+queue discipline).
+
+## Slice 3 - alert fatigue (the comedy + the skill)
+
+The board carries NOISE: benign/auto-clearing alerts (a transient CPU spike that resolves itself, a
+flapping check) mixed with the real ones. The skill and the joke is triage - acknowledging the noise
+without missing the backup that is genuinely failing. Noise is deterministic (seeded, no Math.random)
+and auto-clears on its own clock; the real ones do not. A player who escalates every blip is the
+boy-who-cried-wolf; one who ignores the board misses the one that mattered.
+
+## Gates (once, at the version)
+
+Goldens move (board state + any new alert nodes); argued. Journeys through the REAL path: at the
+monitoring-only customer the board shows the watched things with true state; acknowledge quiets an
+alert; escalate resolves the contracted ticket; a FIX is still refused (the 0.8.0 mechanic intact,
+proven through the board too); the board state and the alert ticket agree (no drift); noise
+auto-clears and real alerts do not. Existing employers + the 0.8.0 helpdesk customers BYTE-IDENTICAL
+(the board is additive, monitoring-only-scoped). One codex (overseer by hand if down), one full box
+at --workers=2.
+
+## Not in scope (backlog)
+
+Monitoring for NON-monitoring-only customers (a fuller RMM across all contracts); on-call / after-
+hours paging off the board (that is E6); the Mac creative + dental verticals; change-request auth;
+onboarding; SLA tiers.
