@@ -31,6 +31,30 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.13.0',
+    date: '2026-08-06',
+    summary: 'This update signs a new customer, and lets you find out what they '
+      + 'were not telling you.',
+    lines: Object.freeze([
+      'A new client signs mid-week - TILLMAN-FREIGHT, a haulage firm - and the '
+        + 'MSP takes them on the way it usually does: undocumented. There is no '
+        + 'map of their estate and the runbook they handed over is thin and '
+        + 'half wrong. So you make your own map. "audit <customer>" walks their '
+        + 'machines and services off the wire and shows you what is actually '
+        + 'there, which is not what anyone said was there.',
+      'And there, in the audit, is the thing nobody was watching: a backup that '
+        + 'runs every night, reports success every morning, and cannot restore a '
+        + 'single file. It is green. It has been green for months. Green is not '
+        + 'the same as working, and a status light was never going to tell you '
+        + 'the difference - you had to go and look.',
+      'The move is the honest one: raise it. Not paper over it, not note it for '
+        + 'later - raise it, on the first week, before the thing it was supposed '
+        + 'to protect against arrives. Somewhere there is an MSP that skipped '
+        + 'this step and found out the hard way, ninety days in, that a backup '
+        + 'nobody checked is just a folder full of nothing.',
+    ]),
+  },
+  {
     version: '0.12.0',
     date: '2026-08-06',
     summary: 'This update puts a price on the clock, and the price is not the '
