@@ -165,6 +165,34 @@ test('a ticket wears its customer SLA tier', async ({ page }) => {
     .toBeVisible();
 });
 
+test('an on-call page fires overnight and surfaces in the brief (E6, 0.17.0)', async ({
+  page,
+}) => {
+  await arriveAtMsp(page);
+
+  // On-call is the engineers' tier: take the promotion first (the arrival's
+  // standing is above the bar). Accepting raises the first incident too; we let
+  // it sit and walk the week to the on-call night.
+  await openFromStartMenu(page, 'cmd');
+  await runCommand(page, 'promotion accept');
+  await expect(page.getByTestId('cmd-output'))
+    .toContainText('Systems Engineer now');
+
+  // Monday out; Tuesday is the on-call night - clocking off it pages a real fire
+  // (nginx down on the company box), which surfaces on the Wednesday brief.
+  await clockOffFor(page, 1);
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('close-brief').click();
+  await clockOffFor(page, 2);
+
+  // The Wednesday brief carries the page: a real fire, named, with the one
+  // convenience the surface offers - a way to the terminal where the fix lives.
+  await expect(page.getByTestId('brief-pages')).toBeVisible();
+  await expect(page.getByTestId('brief-pages-list'))
+    .toContainText(/reverse proxy|FC-RMM-01|real fire/i);
+  await expect(page.getByText('Open the terminal').first()).toBeVisible();
+});
+
 /**
  * The onboarding capstone on the built artifact (0.13.0, E5 #31).
  *
