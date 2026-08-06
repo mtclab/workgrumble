@@ -992,3 +992,54 @@ hand if down), one full box at --workers=2, plus the MSP e2e (e2e/msp.spec.ts) e
 
 Mac creative + dental verticals; onboarding; co-managed coordination depth; SLA tiers; a full CAB /
 multi-approver flow.
+
+# Version 0.11.0 - the remaining contract tiers as customers (E5, MSP arc, #29)
+
+Completes the scope-tier matrix with real content. 0.8.0 shipped helpdesk (FONTAINE, MERIDIAN) and
+monitoring-only (NORTHWIND); the scopeVerdict engine ALSO handles fully_managed (everything allowed)
+and co_managed (notify their IT / coordinate) but no customer exercises them. This ships two more
+customers so both tiers are PLAYED, not just coded - and it exercises the 0.10.0 change-request path
+(co_managed sign-off) with real content. Mostly content on the proven 0.8.0/0.10.0 rails; the one new
+seam is the co_managed "notify their IT first" step made real. Research base: docs/design/msp-arc.md
+(the service-scope table; co-managed = shared access, coordinate, RACI "I thought you had it").
+
+## Slice 1 - a FULLY-MANAGED customer
+
+A small business where the MSP IS the whole IT department: a fully_managed contract, an estate
+(workstations + a server or two), and 3-4 real tickets that span what helpdesk could NOT do at the
+other customers - a server-side fix included - all IN SCOPE here (fully_managed = everything). This
+is the contrast the tier teaches: at this customer the wall the other contracts put up is simply not
+there. Real tickets (a shared-drive/server issue, a workstation issue, an account issue).
+
+## Slice 2 - a CO-MANAGED customer + the notify-their-IT step
+
+A mid-size business with its OWN internal IT the MSP works ALONGSIDE (co_managed): a RACI split -
+their IT owns day-to-day user support, the MSP fills the gaps (after-hours, specialist, project).
+The mechanic the tier turns on: acting on this customer's estate requires COORDINATION - a "notify
+their IT first" step before (or as) you act, not unilateral action (the research's "I thought you
+were handling that" risk, made mechanical). Wire it truthfully: a co_managed action either routes
+through a notify/coordinate step, or - for risky work - through the 0.10.0 change request with the
+customer's IT as the sign-off. 3-4 tickets showing the coordination (one where you must hand back to
+their IT; one where you fill a gap they cannot).
+
+## Slice 3 - the tickets, correctly scoped, real
+
+Author the fully-managed + co-managed tickets at the fidelity bar (real systems, true KB), each
+exercising its tier: fully_managed resolves work that would be refused elsewhere; co_managed requires
+the notify/coordinate step (or a CR) and a unilateral attempt is caught. Reuse existing verbs; the
+co_managed coordinate step is the one small new affordance.
+
+## Gates (once, at the version)
+
+Goldens move (2 new customers + estates + tickets); argued. Journeys through the REAL path: at the
+fully-managed customer a server fix that is refused at a helpdesk customer SUCCEEDS; at the co-managed
+customer a unilateral action is caught and routes through notify-their-IT / a CR; both tiers' tickets
+are solvable via their intended path; monitoring-only + helpdesk customers UNCHANGED. Teeth: the
+co_managed coordinate gate fails closed (revert -> unilateral action wrongly allowed). Existing
+employers + 0.8/0.9/0.10 customers BYTE-IDENTICAL. One codex (overseer by hand if down), one box at
+--workers=2 (run in halves if the worker crashes) + msp.spec extended for the two new tiers.
+
+## Not in scope (backlog)
+
+Mac creative + dental verticals (need os=mac / a Mac skin); customer onboarding/discovery; Bronze/
+Silver/Gold SLA tiers; a full CAB.
