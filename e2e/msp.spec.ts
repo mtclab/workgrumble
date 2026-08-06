@@ -1,11 +1,11 @@
 import { expect, type Page, test } from '@playwright/test';
 
 import {
+  clockOffFor,
   completeLogin,
   openFromStartMenu,
   runCommand,
   runSimMinutes,
-  SHIFT_MINUTES,
 } from './helpers';
 
 /**
@@ -181,20 +181,13 @@ test('the mid-week onboarding stands a customer up and discovery finds the horro
 }) => {
   await arriveAtMsp(page);
 
-  // arriveAtMsp opens the Monday shift; run it out and clock off, then do the
-  // Tuesday, to reach the Wednesday the client signs on.
-  await runSimMinutes(page, SHIFT_MINUTES);
-  await expect(page.getByTestId('day-state')).toHaveText('Day end');
-  await page.getByTestId('scorecard-clock-off').click();
-
-  await expect(page.getByTestId('brief-heading')).toContainText('Day 2');
+  // arriveAtMsp opens the Monday shift; run it to its end and clock off (the
+  // loop-until-day_end helper, not a hardcoded shift length - the arrival spends
+  // clock), then do the Tuesday, to reach the Wednesday the client signs on.
+  await clockOffFor(page, 1);
   await page.getByTestId('brief-start-shift').click();
   await page.getByTestId('close-brief').click();
-  await runSimMinutes(page, SHIFT_MINUTES);
-  await expect(page.getByTestId('day-state')).toHaveText('Day end');
-  await page.getByTestId('scorecard-clock-off').click();
-
-  await expect(page.getByTestId('brief-heading')).toContainText('Day 3');
+  await clockOffFor(page, 2);
   await page.getByTestId('brief-start-shift').click();
   await page.getByTestId('close-brief').click();
 
