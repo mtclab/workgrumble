@@ -114,3 +114,37 @@ test('an out-of-scope server action names the change-request path, and one files
   await runCommand(page, 'changereq list');
   await expect(page.getByTestId('cmd-output')).toContainText('FONT-FILE-01');
 });
+
+test('a co-managed customer needs coordination before you act', async ({
+  page,
+}) => {
+  await arriveAtMsp(page);
+
+  await openFromStartMenu(page, 'cmd');
+
+  // ARDEN-MFG is co-managed: their own IT owns the box. A unilateral server
+  // touch is caught and names the coordinate path, not a dead end.
+  await runCommand(page, 'restart ARDEN-SRV-01\\W3SVC');
+  await expect(page.getByTestId('cmd-output'))
+    .toContainText(/co-managed|notify|coordinat|unilateral|RACI/i);
+
+  // Notifying their IT files the coordination notice through the real terminal
+  // - the coordinate step the tier turns on. That this notice then clears the
+  // action (coordinate-then-act) is proven end to end in msp-scope.test.ts.
+  await runCommand(page, 'notify ARDEN-SRV-01\\W3SVC');
+  await expect(page.getByTestId('cmd-output'))
+    .toContainText(/coordinat|their (own )?IT|noted|ARDEN/i);
+});
+
+test('a fully-managed customer has no server scope wall', async ({ page }) => {
+  await arriveAtMsp(page);
+
+  await openFromStartMenu(page, 'cmd');
+
+  // HOLLOWAY-ACCT is fully-managed: the MSP is the whole IT department, so a
+  // server action carries none of the helpdesk contract's "not your servers"
+  // wall - the exact restart refused at a helpdesk customer is in scope here.
+  await runCommand(page, 'restart HOLL-SRV-01\\Dfs');
+  await expect(page.getByTestId('cmd-output'))
+    .not.toContainText('Servers are not in this contract');
+});
