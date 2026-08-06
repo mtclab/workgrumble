@@ -1301,3 +1301,55 @@ total-walk sysadmin run extended for the new commands + a msp.spec touch.
 apt/dpkg packages (+ actually installing the not-installed tools); du; users/perms (id/getent/chmod/
 sudo depth); the deeper Linux fs (cat/cd/var/log); on-call; change control; incidents; the Linux
 desktop skin.
+
+# Version 0.17.0 - on-call (the 3am page) (E6 #7)
+
+The signature sysadmin experience: being on-call. The Engineer carries the pager after hours, and
+the page - the real one, and the one that self-resolves before you touch it - is the emotional core
+of the tier. Reuses the 0.9.0 monitoring board (the paging surface), the E1 after-hours mechanic
+(overnight -> morning), and the 0.15.0/0.16.0 unix tools (the fix). Research base: e6-sysadmin.md's
+on-call section (Google SRE / PagerDuty / incident.io - the 3am page, the self-resolving alert that
+teaches you NOT to jump, alert fatigue, being measured on uptime/MTTR).
+
+## Slice 1 - the on-call rotation + the page
+
+The promoted Engineer goes ON-CALL (after-hours coverage - reuse the week + the E1 after-hours seam).
+A PAGE fires after hours off the monitoring/board surface: a service is down, it is your night, and
+the page demands a response (not a next-morning brief item like E1's tail - a real "you are woken
+now" beat). Model the page truthfully: a severity, the box/service, the time (3am). The player
+answers by doing the sysadmin fix (ssh in, diagnose with 0.16.0's ss/curl/journal, systemctl
+restart) - the tools they now have.
+
+## Slice 2 - the page that clears itself (the lesson) + alert fatigue
+
+The truest on-call beat (research: PagerDuty delays notification precisely because most alerts
+self-resolve): some pages CLEAR THEMSELVES before/if you wait a beat - a transient blip, a flapping
+check. Jumping on every page (waking fully, ssh-ing in) for a self-resolving one is the boy-who-
+cried-wolf cost; ignoring the board is missing the real fire. Deterministic (seeded, no Math.random):
+the self-resolving ones auto-clear on their own clock; the real ones do not and need the fix. The
+skill + the comedy is telling them apart at 3am.
+
+## Slice 3 - the cost + the shape of the job
+
+Being paged has a COST that reads truthfully: a night answered is a real fix (uptime saved, standing
+up) but also fatigue; a real page missed is downtime (a hit at the review the way performance already
+reads); a self-resolving page you scrambled for is effort wasted. The measurement is the sysadmin
+one - uptime / did you catch it - not ticket-count. Keep it truthful: never punish honesty, the cost
+is the missed/blown page. A light post-incident note (what happened, blameless) if it fits; the full
+postmortem is backlog.
+
+## Gates (once, at the version)
+
+Goldens: on-call is additive + gated behind the promotion (only an Engineer is on-call); existing
+worlds + pre-promotion play BYTE-IDENTICAL. Journeys through the REAL path: on-call, a real page
+fires after hours; answering it (ssh -> diagnose -> restart) resolves it and saves uptime; a
+self-resolving page clears on its own if you wait (teeth: it auto-clears deterministically - the
+real ones do NOT); a missed real page is downtime at the review. Determinism (the page schedule +
+which self-resolve, seeded). One codex (if it completes; else self-review), one box (workers=1,
+fresh workers) + the sysadmin/on-call walk on the shipped shell.
+
+## Not in scope (backlog)
+
+apt/packages; du; users/perms; deeper fs; change control / maintenance windows / break-glass; the
+full blameless postmortem; the characteristic incidents (disk-full/cert-expiry/failed-deploy); the
+player Linux DESKTOP skin; error budgets / SLOs (E7).
