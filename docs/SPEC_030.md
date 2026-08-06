@@ -1248,3 +1248,56 @@ The full unix command surface (network ss/ip/dig depth, du, apt/patching, users/
 not-installed traceroute/net-tools/htop gags, sudo -i vs -s); on-call off the board; change control /
 maintenance windows / break-glass; the characteristic incidents (disk-full, cert-expiry,
 failed-deploy) + the postmortem; the player's own Linux DESKTOP skin; bastion/ProxyJump depth; tmux.
+
+# Version 0.16.0 - the sysadmin's network toolbox + the "not installed" gags (E6 #7)
+
+The unix terminal fills out with the network commands a sysadmin lives in, and the fidelity bar's
+sharpest teaching moment: the tools that are NOT there. Content on the 0.15.0 unix engine (cmd-unix.ts
+/ UNIX_COMMANDS), each command at cited Ubuntu 24.04 fidelity, reading the estate. Research base: the
+command-surface fidelity synthesis in e6-sysadmin.md / the 0.15.0 research.
+
+## Slice 1 - the network commands (in an ssh session, reading the box)
+
+Add to UNIX_COMMANDS, each reading the box's real estate (the 0.7.0 addresses/units), real output
+SHAPE cited:
+- `ss -tlnp` - the listeners: `State Recv-Q Send-Q Local Address:Port ...`, `LISTEN 0 128 *:ssh *:*`,
+  `-p` appends `users:(("sshd",pid=...))`. Reads the box's listening services (its units). The
+  modern replacement for netstat.
+- `dig <name>` / `host <name>` - the QUESTION/ANSWER SECTION shape (`name. TTL IN A addr`) + the
+  stats footer, over the estate's DNS (the same graph ping/nslookup already resolve). `host` terser.
+- `ping <host>` - CONTINUOUS by default (the sharpest family diff vs Windows' 4-and-stop); `-c N`
+  bounds it; `64 bytes from ...: icmp_seq=1 ttl=57 time=...` + the transmitted/received/loss summary.
+- `curl -I <url>` - the raw HTTP response line + headers (`HTTP/2 200`, `server: nginx`), over a
+  service the box serves. No Windows cmd cousin.
+
+## Slice 2 - the "not installed" gags (a refusal that teaches)
+
+The fidelity bar's best beat: on a stock Ubuntu 24.04 box, `traceroute`, net-tools (`ifconfig` /
+`netstat`), and `htop` are NOT installed. Typing them gives the REAL `command not found` + Ubuntu's
+actual command-not-found hint (`Command 'htop' not found, but can be installed with: sudo apt install
+htop`), NOT a silent success and NOT a fake output. This teaches `ip`/`ss` as canonical - exactly
+what Ubuntu itself steers users to - and `apt install <x>` as the fix. (Whether `apt install` actually
+installs them is a later apt/packages slice; here the gag is the honest refusal + the hint.)
+
+## Slice 3 - a network-diagnosis touch (optional, if it fits)
+
+A small task/beat where the network commands earn their place: a service the box serves is
+unreachable, and `ss -tlnp` shows it is not listening (or `dig`/`curl` shows the DNS/HTTP truth) -
+the diagnosis before the 0.15.0 restart. Reuse the existing incident/ticket pattern; keep it light.
+
+## Gates (once, at the version)
+
+Goldens: the unix additions are additive + gated behind the promotion + the ssh session; existing
+worlds BYTE-IDENTICAL until an engineer ssh's in. The FIDELITY has teeth: `ping` is continuous
+(needs -c) not 4-and-stop; the not-installed commands give the real `command not found` + apt hint,
+never a fake output; `ss` reads the box's real listeners (flip a unit -> the listener changes); the
+shapes match cited Ubuntu output. Journeys through the REAL path (in an ssh session on a Linux box):
+ss/dig/ping/curl read the estate; traceroute/htop/ifconfig refuse honestly with the apt hint.
+Determinism. One codex (if it completes; else self-review), one box (workers=1, fresh workers) + the
+total-walk sysadmin run extended for the new commands + a msp.spec touch.
+
+## Not in scope (backlog)
+
+apt/dpkg packages (+ actually installing the not-installed tools); du; users/perms (id/getent/chmod/
+sudo depth); the deeper Linux fs (cat/cd/var/log); on-call; change control; incidents; the Linux
+desktop skin.
