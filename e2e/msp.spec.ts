@@ -148,3 +148,13 @@ test('a fully-managed customer has no server scope wall', async ({ page }) => {
   await expect(page.getByTestId('cmd-output'))
     .not.toContainText('Servers are not in this contract');
 });
+
+test('a ticket wears its customer SLA tier', async ({ page }) => {
+  await arriveAtMsp(page);
+
+  // The queue names each MSP ticket's customer and its SLA tier, so the player
+  // can triage by it - a Gold customer's clock is tighter than a Bronze one's.
+  await openFromStartMenu(page, 'tickets');
+  await expect(page.getByText(/\((Gold|Silver|Bronze)\)/).first())
+    .toBeVisible();
+});
