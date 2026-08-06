@@ -56,6 +56,7 @@ export const PROGRAM_IMAGES: Readonly<Record<string, ProgramImage>> = {
   tickets: { image: 'HELPDESK.EXE', title: 'Ticket queue' },
   directory: { image: 'ACTDICT.EXE', title: 'Active Dictionary' },
   remote: { image: 'RASSIST.EXE', title: 'Remote Assist' },
+  monitor: { image: 'RMMBOARD.EXE', title: 'Monitoring board' },
   events: { image: 'EVENTVWR.EXE', title: 'Event Viewer' },
   chat: { image: 'WGCHAT.EXE', title: 'Chat' },
   hubbub: { image: 'HUBBUB.EXE', title: 'Hubbub' },

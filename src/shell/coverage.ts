@@ -2478,6 +2478,25 @@ const ENTRIES = [
     run: 'week',
   },
 
+  /* -- the RMM / monitoring board (0.9.0) --------------------------------- */
+  {
+    id: 'monitor.window',
+    surface: 'monitor',
+    control: 'window-monitor',
+    does: 'The RMM / monitoring board: per monitoring-only customer, the watched '
+      + 'things - a backup, a certificate, a disk - each a row with a live '
+      + 'status read off the estate, the acknowledge and escalate the contract '
+      + 'allows, and no fix it does not. It is a base tool, so it opens on the '
+      + 'probation desk too, where it says plainly that there is no monitoring '
+      + 'contract here to watch - the lit board, its rows, its noise and the '
+      + 'escalate that resolves an alert ticket live at the MSP, and are driven '
+      + 'through the real dispatch path in monitor.test.ts, which is where the '
+      + 'third employer is reachable and the browser walk (second employer at '
+      + 'the furthest) is not.',
+    window: { routes: ['start-menu', 'desktop-icon'] },
+    run: 'week',
+  },
+
   {
     id: 'browser.window',
     surface: 'browser',
@@ -2937,6 +2956,15 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'chat-typing',
   'chat-restart',
   'chat-open-tickets',
+  // The monitoring board's two verbs (0.9.0), one family each: acknowledge a
+  // firing alert and escalate a real one to the customer's IT. They light up at
+  // the MSP - a monitoring-only customer with a firing alert - which the browser
+  // total-walk does not reach (it stops at the second employer). They are driven
+  // through the real dispatch path in monitor.test.ts and declared here so that
+  // a control on the board is a control somebody wrote down, not a stray the
+  // seen-controls gate would flag if a later MSP walk ever met it.
+  'monitor-ack-*',
+  'monitor-escalate-*',
   'browser-site-*',
   'browser-home-button',
   // The web store's live buttons, one per shipped installable, per direction.

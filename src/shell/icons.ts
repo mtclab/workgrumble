@@ -242,6 +242,25 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { points: '9 8 12 10 9 12' },
     },
   ],
+  // A screen with a heartbeat across it: a monitoring board, eyes on glass.
+  'icon-monitor': [
+    {
+      element: 'rect',
+      attributes: { x: '3', y: '4', width: '18', height: '12', rx: '1' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '20', x2: '16', y2: '20' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '12', y1: '16', x2: '12', y2: '20' },
+    },
+    {
+      element: 'polyline',
+      attributes: { points: '5 11 9 11 11 7 13 13 15 10 19 10' },
+    },
+  ],
   // A page of ruled lines with one of them flagged: a log, and the one entry
   // somebody should have read.
   'icon-events': [

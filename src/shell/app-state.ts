@@ -216,6 +216,25 @@ export interface InstalledState {
   readonly apps: readonly string[];
 }
 
+/**
+ * Which monitoring alerts the player has acknowledged (0.9.0, the RMM board).
+ *
+ * Acknowledging an alert is "I have seen this" - it quiets the board's nag
+ * without touching the world, so it is screen state and lives here, not in the
+ * graph: what a monitoring alert's TRUE status is lives on the estate node the
+ * board reads, and whether THIS player has looked at it changes nothing but a
+ * marker. It rides beside the inbox's read ledger and the rooms' because it is
+ * the same kind of thing - a list of ids this player has had on screen - and a
+ * save carries it verbatim so a reload does not un-see what was seen. Escalating
+ * is the opposite: that IS a world change (it resolves the alert ticket), so it
+ * goes through the engine, not here. Every scripted walk leaves this empty, and
+ * the goldens are asserted byte-identical on that fact.
+ */
+export interface MonitorState {
+  /** Ack ids (a real alert's stable id, or a noise flare's per-day id). */
+  readonly acknowledged: readonly string[];
+}
+
 export interface AppState {
   readonly chat: ChatState;
   readonly mail: MailState;
@@ -227,6 +246,7 @@ export interface AppState {
   readonly windows: WindowsState;
   readonly assistant: AssistantState;
   readonly installed: InstalledState;
+  readonly monitor: MonitorState;
 }
 
 export function createAppState(): AppState {
@@ -241,6 +261,7 @@ export function createAppState(): AppState {
     windows: { open: [], focusedId: null },
     assistant: { dismissals: 0, closedOnDay: null },
     installed: { apps: [] },
+    monitor: { acknowledged: [] },
   };
 }
 
@@ -430,6 +451,29 @@ function readHubbub(value: unknown): HubbubState | undefined {
     : { selectedChannel: selected, read, charged };
 }
 
+/**
+ * The board's acknowledged set, read out of a file that may predate it.
+ *
+ * An absent slice reads as "nothing acknowledged" rather than a refusal, the
+ * same courtesy the room ledger and the install set get: a save written before
+ * the board existed knew nothing about acknowledging an alert, so it starts
+ * owing nothing. Anything PRESENT is read strictly - a list that is not a list
+ * of strings is a hand-edited file, and this shell refuses those.
+ */
+function readMonitor(value: unknown): MonitorState | undefined {
+  if (value === undefined) {
+    return { acknowledged: [] };
+  }
+
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const acknowledged = stringList(value.acknowledged);
+
+  return acknowledged === undefined ? undefined : { acknowledged };
+}
+
 function isSpeaker(value: unknown): value is ChatSpeaker {
   return value === 'them' || value === 'you' || value === 'system';
 }
@@ -506,6 +550,7 @@ export function parseAppState(value: unknown): AppState | null {
 
   const {
     chat, mail, hubbub, kb, day, browser, caught, windows, assistant, installed,
+    monitor,
   } = value;
 
   if (
@@ -545,9 +590,11 @@ export function parseAppState(value: unknown): AppState | null {
   const helper = readAssistant(assistant);
   const installedApps = readInstalled(installed);
   const rooms = readHubbub(hubbub);
+  const board = readMonitor(monitor);
 
   if (
-    installedApps === undefined
+    board === undefined
+    || installedApps === undefined
     || helper === undefined
     || rooms === undefined
     || chatSelected === undefined
@@ -583,6 +630,7 @@ export function parseAppState(value: unknown): AppState | null {
     windows: screen,
     assistant: helper,
     installed: installedApps,
+    monitor: board,
   };
 }
 

@@ -4247,6 +4247,140 @@ input {
   white-space: nowrap;
 }
 
+/* --------------------------------------------- the RMM / monitoring board */
+
+.monitor-app {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  min-height: 0;
+}
+
+.monitor-toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-raised);
+}
+
+.monitor-heading {
+  font-family: var(--font-ui);
+  font-weight: 700;
+}
+
+.monitor-contract {
+  color: var(--color-ink-soft);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.monitor-viewport {
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.monitor-board {
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+}
+
+.monitor-empty {
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+}
+
+.monitor-customer-name {
+  margin: var(--space-0) var(--space-0) var(--space-3);
+  font-size: var(--text-md);
+}
+
+.monitor-rows {
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+  margin: var(--space-0);
+  padding: var(--space-0);
+}
+
+.monitor-row {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-sunken);
+  border-left: var(--space-1) solid var(--color-ink-disabled);
+}
+
+.monitor-row[data-status='ok'] {
+  border-left-color: var(--color-presence-available);
+}
+
+.monitor-row[data-status='warning'] {
+  border-left-color: var(--color-note-edge);
+}
+
+.monitor-row[data-status='failed'] {
+  border-left-color: var(--color-alarm);
+}
+
+.monitor-row[data-firing='true'][data-acknowledged='false'] {
+  background: var(--color-surface);
+}
+
+.monitor-row-head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.monitor-status {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0 var(--space-2);
+  color: var(--color-ink-inverse);
+  background: var(--color-ink-disabled);
+}
+
+.monitor-status[data-status='ok'] {
+  background: var(--color-presence-available);
+}
+
+.monitor-status[data-status='warning'] {
+  color: var(--color-ink);
+  background: var(--color-note-edge);
+}
+
+.monitor-status[data-status='failed'] {
+  background: var(--color-alarm);
+}
+
+.monitor-row-target {
+  color: var(--color-ink-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.monitor-row-state {
+  margin-left: auto;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--color-ink-soft);
+}
+
+.monitor-row-note {
+  margin: var(--space-0);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+}
+
 /* ------------------------------------------------- the toys off the store */
 
 .arcade-app,

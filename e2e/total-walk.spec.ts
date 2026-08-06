@@ -1321,6 +1321,21 @@ test('walks every function of a probation week that goes well', async ({
       .toContainText('hall of fame');
   });
 
+  await step('monitor.window', async () => {
+    // The RMM board is a base tool, so it opens on the probation desk - where
+    // there is no monitoring-only customer, and it says so rather than drawing a
+    // board with nothing on it. The lit board, its rows, its noise and the
+    // escalate that resolves an alert ticket are the MSP's, driven through the
+    // real dispatch path in monitor.test.ts because the browser walk stops at
+    // the second employer and the board's customers live at the third.
+    await openFromStartMenu(page, 'monitor');
+    await expect(page.getByTestId('window-monitor')).toBeVisible();
+    await expect(page.getByTestId('monitor-empty'))
+      .toContainText('No monitoring contracts on this desk');
+    await page.getByTestId('close-monitor').click();
+    await expect(page.getByTestId('window-monitor')).toHaveCount(0);
+  });
+
   await step('browser.window', async () => {
     await openFromStartMenu(page, 'browser');
     await expect(page.getByTestId('browser-address'))

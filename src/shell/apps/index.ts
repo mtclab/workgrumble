@@ -16,6 +16,7 @@ import { KB_APP } from './kb';
 import { MAIL_APP } from './mail';
 import { MEETING_APP } from './meeting';
 import { loadManifest } from './manifest';
+import { MONITOR_APP } from './monitor';
 import { REBOOT_APP } from './reboot';
 import { REMOTE_APP } from './remote';
 import { REVIEW_APP } from './review';
@@ -49,6 +50,10 @@ export const APP_MANIFEST = assertCaughtScenes(loadManifest([
   TICKETS_APP,
   DIRECTORY_APP,
   REMOTE_APP,
+  // The RMM board (0.9.0): the monitoring-only contract's own surface. A base
+  // app like the other tools - empty at an employer with no monitoring
+  // customers, and lit up at the MSP where the watched estates live.
+  MONITOR_APP,
   EVENTS_APP,
   CHAT_APP,
   // The channel client, straight after the 1:1 chat it is pretending to
