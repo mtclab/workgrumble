@@ -11,6 +11,7 @@ import { inheritedTicketIds } from '../week';
 import { mspInheritedTicketIds } from '../msp-week';
 import { bodgeInheritedTicketIds } from '../second-week';
 import { BODGE_TICKETS } from './bodge';
+import { MSP_CUSTOMERS, mspOnboardingSetup } from '../msp-company';
 import { MSP_TICKETS } from './msp';
 import { acceptsEscalation } from './escalation';
 import { allowsEscalation, spawnWorldTicket, WORLD_TICKETS } from './index';
@@ -51,6 +52,14 @@ function carryForTicket(entry: WorldTicket): Readonly<{
 function sessionForTicket(entry: WorldTicket): WorldSession {
   const session = createWorldSession(carryForTicket(entry));
 
+  // The onboarding customer (0.13.0) signs mid-week and is not in the MSP boot
+  // estate, so its ticket has no reporter or nodes to spawn against until the
+  // event has fired. Stand the signed-up client up the way the day driver does,
+  // then spawn the ticket into it.
+  if (MSP_TICKET_IDS.has(entry.def.id)) {
+    session.engine.applySetup(mspOnboardingSetup());
+  }
+
   if (session.engine.graph.getNode(entry.def.id) === undefined) {
     spawnWorldTicket(session.engine, entry.def.id);
   }
@@ -69,6 +78,14 @@ function sessionForTicket(entry: WorldTicket): WorldSession {
  */
 function spawnIfAbsent(session: WorldSession, entry: WorldTicket): void {
   if (session.engine.graph.getNode(entry.def.id) === undefined) {
+    // The onboarding customer (0.13.0) signs mid-week and is absent from the MSP
+    // boot estate, so its ticket has no reporter to spawn against - stand the
+    // signed-up client up the way the day driver does before spawning it.
+    if (MSP_TICKET_IDS.has(entry.def.id)
+      && session.engine.graph.getNode(MSP_CUSTOMERS.tillman) === undefined) {
+      session.engine.applySetup(mspOnboardingSetup());
+    }
+
     // Through the real spawn seam, so a customer ticket lands with its tier
     // scaled onto the clock the way the day driver spawns it - a raw
     // registerTicket would skip the 0.12.0 tier and stamp the authored budget.
@@ -229,6 +246,10 @@ describe('shipped tickets', () => {
       'ticket:holloway-lockout',
       'ticket:arden-lockout-handback',
       'ticket:arden-portal-afterhours',
+      // And the onboarding capstone (0.13.0): the discovery of a silently-failing
+      // backup at the customer that signs mid-week, spawned into the estate the
+      // onboarding event stands up.
+      'ticket:tillman-backup-discovery',
     ]);
   });
 
@@ -360,7 +381,9 @@ describe('escalation policy', () => {
     // escalate-ONLY by contract - remediation is out of scope, so escalation is
     // not a fallback there but the whole of the job; and the co-managed
     // manufacturer's user lockout is the RACI hand-back - a daytime user reset is
-    // their own helpdesk's, so handing it back is the resolution, not a reset.
+    // their own helpdesk's, so handing it back is the resolution, not a reset;
+    // and the onboarding discovery is a finding to RAISE, not a desk fix - a
+    // backup that never worked is escalated to whoever owns the remediation plan.
     expect(escalatable).toEqual([
       'ticket:fan-noise',
       'ticket:hr-report-macro',
@@ -369,6 +392,7 @@ describe('escalation policy', () => {
       'ticket:northwind-cert-alert',
       'ticket:northwind-disk-alert',
       'ticket:arden-lockout-handback',
+      'ticket:tillman-backup-discovery',
     ]);
   });
 

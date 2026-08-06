@@ -1967,6 +1967,18 @@ test('walks every function of a probation week that goes well', async ({
       .toContainText('"sc config" is not something this terminal does');
   });
 
+  await step('cmd.audit', async () => {
+    // A base command, so it answers on the probation desk: this shop has no
+    // managed customers, so audit names nobody and says so. The real MSP
+    // discovery - the estate enumerated and the silently-failing backup
+    // surfaced off the node - is driven through the real terminal in
+    // onboarding.test.ts, which reaches the third employer the browser walk
+    // does not.
+    await runCommand(page, 'audit customer:tillman');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText(/no customer called|managed customer/i);
+  });
+
   await step('cmd.tasklist', async () => {
     // The terminal is open, so the terminal is on the list: this window is a
     // process like any other, and so is the browser when it is up.

@@ -2183,6 +2183,20 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'cmd.audit',
+    surface: 'cmd',
+    control: 'audit <customer>',
+    does: 'Runs discovery on a managed customer\'s estate - the machines, the '
+      + 'services, their state - and surfaces the onboarding horror, a backup '
+      + 'reporting success it cannot restore from, read off the estate. On the '
+      + 'probation desk it names no customer and says so; the real MSP audit, '
+      + 'the enumeration and the silently-failing backup are driven through the '
+      + 'real terminal in onboarding.test.ts, which the browser walk cannot '
+      + 'reach past the second employer.',
+    command: 'audit',
+    run: 'week',
+  },
+  {
     id: 'cmd.tasklist',
     surface: 'cmd',
     control: 'tasklist',

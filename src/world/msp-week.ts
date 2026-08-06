@@ -61,13 +61,24 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     label: 'Wednesday',
     inherited: [],
     // The weekend SSO change catches up with a Meridian engineer, the afternoon
-    // brings Northwind's certificate ticking towards expiry, and - the headline
-    // - Holloway's whole office loses the shared drive: the server fix a
-    // helpdesk contract would refuse, in scope because they are fully-managed.
+    // brings Northwind's certificate ticking towards expiry, Holloway's whole
+    // office loses the shared drive - and, at ten, the capstone: a new customer
+    // signs. TILLMAN-FREIGHT is taken on undocumented; the onboarding event
+    // stands their estate up mid-morning and the discovery ticket lands twenty
+    // minutes later, once there is a client to audit. The horror the audit finds
+    // is a real state on that estate, not a line in the ticket.
     drip: [
       { ticketId: 'ticket:meridian-app-assignment', minute: 9 * 60 + 40 },
+      { ticketId: 'ticket:tillman-backup-discovery', minute: 10 * 60 + 20 },
       { ticketId: 'ticket:holloway-shared-drive', minute: 11 * 60 + 30 },
       { ticketId: 'ticket:northwind-cert-alert', minute: 13 * 60 + 30 },
+    ],
+    // The customer that signs mid-shift, the way Bodgeworth's storm is a beat the
+    // Wednesday fires. It stands up TILLMAN's estate at ten, before the discovery
+    // ticket drips - so the audit has something to enumerate and the runbook it
+    // contradicts is already thin.
+    onboarding: [
+      { onboardingId: 'onboarding:tillman', minute: 10 * 60 },
     ],
     patrolSeed: 4_057,
     load: 3,

@@ -128,6 +128,9 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
   [MSP_IDS.ardenContact]: 'Marked away. I run a desk too, so I get it - but we '
     + 'are co-managed, and the whole point is that one of us is always reachable. '
     + 'Right now neither of us is picking this up, which is the gap we pay to close.',
+  [MSP_IDS.tillmanContact]: 'You are showing away. We only signed this week and '
+    + 'you are the whole of our IT now - if away means nobody is looking, that is '
+    + 'exactly the arrangement we thought we were getting away from.',
 });
 
 /**

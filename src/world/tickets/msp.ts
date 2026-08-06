@@ -1182,6 +1182,91 @@ const ARDEN_PORTAL_AFTERHOURS: WorldTicket = {
   ],
 };
 
+/* -- TILLMAN-FREIGHT: the onboarding discovery, and the horror (0.13.0) ---- */
+
+/**
+ * The onboarding-discovery ticket: the new customer's runbook says the backups
+ * are green, and discovery is the job of finding out whether that is true.
+ *
+ * It arrives twenty minutes after TILLMAN signs (the Wednesday onboarding
+ * event), by which point the estate the audit reads is standing up. The ticket
+ * itself invents nothing: the fault is a real state on the backup service
+ * (`backup_verified: false`, seeded by `mspOnboardingSetup`), the audit reads it
+ * off the node, and the honest onboarding move is to RAISE it - the same
+ * escalate the prod-down and the monitoring alerts resolve on, because "their
+ * backups were never actually working" is a finding for whoever owns the
+ * remediation plan, not a thing to quietly restart and hope. Papering over it is
+ * exactly the skipped-discovery mistake that eats the contract.
+ *
+ * Setup is empty - the failure was already on the estate when they signed, not
+ * something the ticket stands up - so the solvability gate can spawn it into a
+ * bare MSP world (no onboarding fired) and still prove the escalate closes it.
+ */
+const TILLMAN_BACKUP_DISCOVERY: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.tillmanServer, MSP_IDS.tillmanBackup],
+  claimed_urgency: 2,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:tillman-backup-discovery',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Tillman onboarding: audit the estate before we take it on',
+      body:
+        'TILLMAN-FREIGHT signed this morning and we have taken them on '
+        + 'undocumented. The handover note is one line - "nightly backups run, '
+        + 'all green" - and that is the whole of the runbook. Run discovery on '
+        + 'their estate (audit customer:tillman) and confirm what is actually '
+        + 'there. Onboarding is where an MSP earns or loses a client; find what '
+        + 'nobody wrote down and raise it, do not paper over it.',
+    },
+    reporter: MSP_IDS.tillmanContact,
+    setup: [],
+    // Raise it. The finding - a backup reporting success without a restorable
+    // backup behind it - is not a desk fix on a client the MSP does not fully
+    // know yet; the honest onboarding move is a clean escalation of what
+    // discovery turned up, and that is the rule this ticket closes on.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: 'ticket:tillman-backup-discovery' },
+      field: FIELDS.escalated,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/backup-verification-gap',
+  },
+  cause: 'The backup job on TILL-SRV-01 reports success every night and has not '
+    + 'produced a restorable backup in months - configured, green, and empty, '
+    + 'the classic onboarding horror. Monitoring the job is not testing the '
+    + 'restore; the discovery finds it, and raising it before the estate goes '
+    + 'live is the whole value of doing onboarding honestly.',
+  dialogue_ref: 'dialogue/msp-glenda',
+  paths: [
+    {
+      id: 'escalate-tillman-backup',
+      app: 'tickets',
+      label: 'Raise it: the backup has never actually worked, flag it on the '
+        + 'onboarding plan',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.ticketEscalate,
+          target: 'ticket:tillman-backup-discovery',
+          params: {
+            reported: 'TILL-SRV-01 backup (wbengine) reports success nightly but '
+              + 'has no verified restore point since 2025-11-09 - failing '
+              + 'silently.',
+            tried:
+              'Ran discovery on the estate (audit customer:tillman)\n'
+              + 'Read the backup off TILL-SRV-01: RUNNING, backup_verified '
+              + 'false - green screen, empty restore',
+          },
+        },
+      ],
+    },
+  ],
+};
+
 export const MSP_TICKETS: readonly WorldTicket[] = [
   // FONTAINE-LAW - the law firm, helpdesk scope.
   MATTER_ACCESS,
@@ -1203,4 +1288,6 @@ export const MSP_TICKETS: readonly WorldTicket[] = [
   // ARDEN-MFG - co-managed, coordinate-then-act (0.11.0).
   ARDEN_LOCKOUT_HANDBACK,
   ARDEN_PORTAL_AFTERHOURS,
+  // TILLMAN-FREIGHT - the mid-week onboarding + the discovery horror (0.13.0).
+  TILLMAN_BACKUP_DISCOVERY,
 ];

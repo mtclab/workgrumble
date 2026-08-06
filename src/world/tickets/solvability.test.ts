@@ -77,6 +77,7 @@ import { TICKET_HYGIENE_SYNC } from '../scenes/meeting';
 import { createWorldSession, seedForAttempt, type WorldSession } from '../session';
 import { dayPlan, interruptionPlanFor } from '../week';
 import { BODGE_TICKETS } from './bodge';
+import { mspOnboardingSetup } from '../msp-company';
 import { MSP_TICKETS } from './msp';
 import {
   findWorldTicket,
@@ -142,7 +143,14 @@ function carryFor(entry: Readonly<WorldTicket>): WorldSession {
   }
 
   if (MSP_TICKET_IDS.has(entry.def.id)) {
-    return createWorldSession(MSP_CARRY);
+    const session = createWorldSession(MSP_CARRY);
+    // The onboarding customer (0.13.0) signs mid-week and is not in the boot
+    // estate, so a ticket about it - the backup discovery - has no reporter or
+    // estate to spawn against until the event has fired. The gate proves every
+    // ticket solvable against the estate it is ABOUT, so it stands the signed-up
+    // client up the way the day driver does, then spawns the ticket into it.
+    session.engine.applySetup(mspOnboardingSetup());
+    return session;
   }
 
   return createWorldSession();

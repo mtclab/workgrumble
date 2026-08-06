@@ -11,26 +11,33 @@ import {
   type VerificationMethod,
 } from '../../world/fallout';
 import {
+  type BusinessType,
+  BUSINESS_TYPE_LABELS,
   DEVICE_TYPES,
   FIELDS,
   isRotation,
   isService,
   MACHINE_OS,
+  MACHINE_OS_LABELS,
   MACHINE_ROLE_LABELS,
   machineRoleOf,
   machineOsOf,
   SERVICE_CLASSES,
   serviceClassOf,
+  SERVICE_SCOPE_LABELS,
   SERVICE_STATUS,
+  SLA_TIER_LABELS,
   STARTUP_TYPE_LABELS,
   startupTypeOf,
 } from '../../world/fields';
 import {
   customerIdOfAccount,
   customerIdOfMachine,
+  customerName,
   scopeOfCustomer,
   scopeRefusalForMachine,
   scopeVerdict,
+  slaTierOfCustomer,
   wrongCustomerGuardLines,
   wrongCustomerLines,
 } from '../../world/customers';
@@ -826,6 +833,135 @@ function servicesLines(api: GameApi, query: string): CommandResult {
  * real manager, and the honest reading of it is exactly what the block says:
  * running, and not answering.
  */
+/**
+ * The customer a discovery audit is aimed at, resolved by name (TILLMAN-FREIGHT)
+ * or by id (`customer:tillman`, or the `tillman` after the colon) - the same
+ * resolver every other target uses, pointed at the customer kind.
+ *
+ * The refusal is the honest base-desk answer as well: probation and Bodgeworth
+ * have no customers, so `audit` there names nobody and says so - `audit` is an
+ * MSP tool, and the desk it is typed on has none to map.
+ */
+function customerOf(api: GameApi, query: string): Lookup {
+  return lookup(
+    api,
+    'customer',
+    query,
+    `No customer called "${query}". "audit" maps a managed customer's estate; `
+      + 'this desk has none by that name.',
+  );
+}
+
+/**
+ * Discovery: the onboarding audit that enumerates a customer's estate off the
+ * graph and surfaces what nobody wrote down (0.13.0).
+ *
+ * It reads the estate the same way `services` does - the machines that carry the
+ * customer's id, and the services/units on each by its `runs_on` edges - so it
+ * invents nothing; it is the map you did not have. The FINDINGS section is the
+ * point of it: any backup service whose `backup_verified` field is false is a job
+ * that reports success and cannot restore, and that is read straight off the node
+ * (flip the field true and the finding is gone). The honest move on a finding is
+ * to raise it, which the note says and the discovery ticket resolves on.
+ */
+function auditLines(api: GameApi, query: string): CommandResult {
+  const found = customerOf(api, query);
+
+  if (!found.ok) {
+    return lines(found.reason);
+  }
+
+  const customerId = found.node.id;
+  const name = customerName(api.graph, customerId);
+  const scope = scopeOfCustomer(api.graph, customerId);
+  const tier = slaTierOfCustomer(api.graph, customerId);
+  const businessRaw = textValue(
+    found.node.fields[FIELDS.customerBusinessType],
+    'unrecorded',
+  );
+  const business = BUSINESS_TYPE_LABELS[businessRaw as BusinessType]
+    ?? businessRaw;
+
+  const machines = api.graph
+    .nodesOfKind('machine')
+    .filter((node) => customerIdOfMachine(node) === customerId)
+    .sort((left, right) => labelOf(left).localeCompare(labelOf(right)));
+
+  const out: string[] = [
+    `Discovery audit - ${name} (${customerId})`,
+    `Contract: ${scope === null ? 'unrecorded' : SERVICE_SCOPE_LABELS[scope]}`
+      + `  |  SLA: ${tier === null ? 'unrecorded' : SLA_TIER_LABELS[tier]}`
+      + `  |  Business: ${business}`,
+    `Estate: ${String(machines.length)} machine(s), enumerated off the wire - `
+      + 'no runbook required.',
+    '',
+  ];
+
+  const findings: string[] = [];
+
+  for (const machine of machines) {
+    const host = labelOf(machine);
+    const role = machineRoleOf(machine.fields[FIELDS.machineRole]);
+    const os = machineOsOf(machine.fields[FIELDS.machineOs]);
+    const services = api.graph
+      .neighbors(machine.id, { direction: 'in', edgeKind: 'runs_on' })
+      .filter((node) => node.kind === 'service' || node.kind === 'unit')
+      .sort((left, right) => labelOf(left).localeCompare(labelOf(right)));
+
+    out.push(
+      `${host}  [${MACHINE_ROLE_LABELS[role]}, ${MACHINE_OS_LABELS[os]}]  - `
+      + `${String(services.length)} service(s)`,
+    );
+
+    for (const service of services) {
+      // A Windows service reads its status; a Linux unit reads its state, the
+      // vocabulary each manager actually prints (0.7.0). The audit shows both,
+      // because the estate is mixed and the point is an honest map.
+      const state = service.kind === 'unit'
+        ? textValue(service.fields[FIELDS.unitState], 'unknown')
+        : statusWord(service);
+
+      out.push(`    ${pad(labelOf(service), NAME_COLUMN - 4)}${state}`);
+
+      // The horror, read off the node and nowhere else: a backup that reports
+      // running while `backup_verified` says it has restored nothing.
+      if (service.fields[FIELDS.backupVerified] === false) {
+        const short = textValue(service.fields[FIELDS.serviceName], labelOf(service));
+        const last = textValue(service.fields[FIELDS.backupLastSuccess], 'never');
+
+        findings.push(
+          `  ! ${host}\\${short}: backup job is ${statusWord(service)} and `
+          + 'reports success nightly, but has no verified restore point since '
+          + `${last} - it has been failing silently for months. Configured, `
+          + 'green, and empty.',
+        );
+      }
+    }
+
+    out.push('');
+  }
+
+  out.push('FINDINGS');
+  out.push('-'.repeat(NAME_COLUMN));
+
+  if (findings.length === 0) {
+    out.push(
+      '  Nothing flagged. The estate reads clean - which, on a handover with no '
+      + 'documentation behind it, is a thing to have checked rather than assumed.',
+    );
+  } else {
+    out.push(...findings);
+    out.push('');
+    out.push(
+      'A backup that reports success is not a backup you can restore from. '
+      + 'Monitoring the job was never testing the restore. Raise the finding on '
+      + 'the onboarding plan - do not just restart it and hope.',
+    );
+  }
+
+  return lines(...out);
+}
+
 function scLines(api: GameApi, sub: string, query: string): CommandResult {
   if (sub !== 'query') {
     return lines(
@@ -1819,6 +1955,8 @@ export function executeCommand(
       return servicesLines(api, parsed.query);
     case 'sc':
       return scLines(api, parsed.sub, parsed.query);
+    case 'audit':
+      return auditLines(api, parsed.query);
     case 'tasklist':
       return tasklistLines(api, parsed.args);
     case 'queue':

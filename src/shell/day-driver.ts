@@ -89,6 +89,7 @@ import {
 } from '../world/conduct';
 import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
 import { findIncident } from '../world/incidents';
+import { findOnboarding } from '../world/onboarding';
 import {
   arrivalStress,
   buildInterruptionSchedule,
@@ -153,6 +154,7 @@ import {
   incidentsOn,
   interruptionPlanFor,
   isReviewDay,
+  onboardingsOn,
   isReviewOutcome,
   isWeekDay,
   noHelloOn,
@@ -1726,6 +1728,10 @@ export class DayDriver implements DayApi {
     // something the player did, and everything else this minute has to see
     // the world as it now is.
     this.applyIncidents(before, now);
+    // And the customer that signs mid-shift (0.13.0), for the same reason and in
+    // the same place: it stands a whole estate up, and the ticket that drips
+    // against it later this morning needs that estate to exist first.
+    this.applyOnboardings(before, now);
     this.settleDirectMessages(before, now);
     this.settleNoHello(before, now);
     this.settleStaleAuth(now);
@@ -2469,6 +2475,42 @@ export class DayDriver implements DayApi {
       if (incident.notice !== null) {
         this.handlers.onNotice?.(incident.notice.title, incident.notice.body);
       }
+    }
+  }
+
+  /**
+   * The customer that signs mid-shift (0.13.0), stood up when its minute lands.
+   *
+   * The onboarding equivalent of `applyIncidents`: a beat the day fires that
+   * changes the WORLD rather than the queue. Where an incident dispatches steps
+   * at the engine, this applies the customer's estate as SETUP OPS - the same
+   * runtime `applySetup` a filed change request uses, which a save then
+   * serialises whole - and shows the notice the client arrives with.
+   *
+   * Idempotent by the customer node: if the client is already in the graph the
+   * onboarding is skipped, so a save reloaded back inside the day, or a minute
+   * crossed twice, cannot stand the same estate up a second time. That guard is
+   * what lets the event be a plain world mutation rather than a logged dispatch.
+   */
+  private applyOnboardings(after: number, now: number): void {
+    const day = this.day();
+
+    for (const slot of onboardingsOn(day, this.week_)) {
+      const at = tickAtMinute(day, slot.minute);
+
+      if (at <= after || at > now) {
+        continue;
+      }
+
+      const event = findOnboarding(slot.onboardingId);
+
+      if (event === undefined
+        || this.engine.graph.getNode(event.customer) !== undefined) {
+        continue;
+      }
+
+      this.engine.applySetup(event.setup());
+      this.handlers.onNotice?.(event.notice.title, event.notice.body);
     }
   }
 

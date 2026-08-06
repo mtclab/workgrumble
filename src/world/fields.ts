@@ -868,6 +868,29 @@ export const FIELDS = {
    */
   certExpired: 'cert_expired',
   /**
+   * Whether the last backup this service ran actually produced a RESTORABLE
+   * backup, as opposed to a job that merely reported success (0.13.0).
+   *
+   * Its own field, and the whole of the onboarding horror, because the two facts
+   * a real backup keeps are different questions that a running job conflates: the
+   * job ran and exited zero (`status` says `running`, green), and the job left
+   * something you could actually restore from (this). A backup that has been
+   * FAILING SILENTLY is `status: running` and `backup_verified: false` - the
+   * screen is green and the restore is empty, which is exactly the state a
+   * discovery audit exists to find and a monitoring board that only reads
+   * `status` walks straight past. Flip it true and the box is genuinely safe;
+   * that is the field the audit's finding is read from and nothing else.
+   */
+  backupVerified: 'backup_verified',
+  /**
+   * When this backup last produced a verified restore point, as the date the
+   * audit prints it (0.13.0). Flavour beside the machine-readable `backupVerified`
+   * above: a stale date is what makes "months" a real number on the screen rather
+   * than a word, and it is seeded, never computed, because the estate holds no
+   * wall clock to subtract one from.
+   */
+  backupLastSuccess: 'backup_last_success',
+  /**
    * How many seats of a licence pool are unclaimed.
    *
    * On the pool rather than counted off the accounts, because the number is
@@ -1359,6 +1382,15 @@ export const BUSINESS_TYPES = {
    * coordinate-then-act rather than a free hand.
    */
   manufacturing: 'manufacturing',
+  /**
+   * A small trades business the MSP has just SIGNED and taken on undocumented
+   * (0.13.0): a workstation or two and one server nobody wrote a runbook for.
+   * The vertical the onboarding arc lands on because it is the one where "there
+   * was a guy who set the backups up and left" is the whole story - the estate
+   * is real, the documentation is thin or wrong, and discovery is how the MSP
+   * earns or loses the client in the first ninety days.
+   */
+  trades: 'trades',
 } as const;
 
 export type BusinessType = (typeof BUSINESS_TYPES)[keyof typeof BUSINESS_TYPES];
@@ -1369,6 +1401,7 @@ export const BUSINESS_TYPE_LABELS: Readonly<Record<BusinessType, string>> = {
   [BUSINESS_TYPES.monitoringTarget]: 'Monitored site',
   [BUSINESS_TYPES.accountancy]: 'Accountancy practice',
   [BUSINESS_TYPES.manufacturing]: 'Manufacturer',
+  [BUSINESS_TYPES.trades]: 'Trades firm',
 };
 
 /**

@@ -1,6 +1,12 @@
 import { expect, type Page, test } from '@playwright/test';
 
-import { completeLogin, openFromStartMenu, runCommand } from './helpers';
+import {
+  completeLogin,
+  openFromStartMenu,
+  runCommand,
+  runSimMinutes,
+  SHIFT_MINUTES,
+} from './helpers';
 
 /**
  * The MSP employer, on the built artifact (0.8.0 + 0.9.0, E5 #26/#27).
@@ -157,4 +163,53 @@ test('a ticket wears its customer SLA tier', async ({ page }) => {
   await openFromStartMenu(page, 'tickets');
   await expect(page.getByText(/\((Gold|Silver|Bronze)\)/).first())
     .toBeVisible();
+});
+
+/**
+ * The onboarding capstone on the built artifact (0.13.0, E5 #31).
+ *
+ * The event, the audit and the horror are proven at the unit level through the
+ * real driver and terminal (onboarding.test.ts); this walks the shipped SHELL to
+ * the day it fires - the browser reaches the third employer only by arriving at
+ * it, and only mid-week does the client sign. Work Monday and Tuesday, open the
+ * Wednesday shift, cross ten o'clock, and the customer that was not in the world
+ * at boot is now on the wire: `audit customer:tillman` enumerates the estate
+ * nobody documented and surfaces the backup that is green and empty.
+ */
+test('the mid-week onboarding stands a customer up and discovery finds the horror', async ({
+  page,
+}) => {
+  await arriveAtMsp(page);
+
+  // arriveAtMsp opens the Monday shift; run it out and clock off, then do the
+  // Tuesday, to reach the Wednesday the client signs on.
+  await runSimMinutes(page, SHIFT_MINUTES);
+  await expect(page.getByTestId('day-state')).toHaveText('Day end');
+  await page.getByTestId('scorecard-clock-off').click();
+
+  await expect(page.getByTestId('brief-heading')).toContainText('Day 2');
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('close-brief').click();
+  await runSimMinutes(page, SHIFT_MINUTES);
+  await expect(page.getByTestId('day-state')).toHaveText('Day end');
+  await page.getByTestId('scorecard-clock-off').click();
+
+  await expect(page.getByTestId('brief-heading')).toContainText('Day 3');
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('close-brief').click();
+
+  // The shift opens at 09:00; the client signs at 10:00 and the discovery ticket
+  // lands at 10:20. Run past both.
+  await runSimMinutes(page, 100);
+
+  await openFromStartMenu(page, 'cmd');
+  await runCommand(page, 'audit customer:tillman');
+
+  const output = page.getByTestId('cmd-output');
+  // The map the handover did not come with: the real estate, off the wire.
+  await expect(output).toContainText('TILLMAN-FREIGHT');
+  await expect(output).toContainText('TILL-SRV-01');
+  // And the horror, read off the estate node: a backup reporting success it
+  // cannot restore from.
+  await expect(output).toContainText('failing silently');
 });

@@ -688,4 +688,71 @@ const DEV: DialogueTree = {
   ],
 };
 
-export const MSP_TREES: readonly DialogueTree[] = [NADIA, THEO, IVY, PRIYA, DEV];
+/**
+ * Glenda at TILLMAN-FREIGHT, the customer that signs mid-week (0.13.0). She is
+ * right about her own morning - the office runs, the screen is green - and wrong
+ * about the one thing onboarding exists to find. The `reveal` is the horror read
+ * off the estate: a backup that reports success and restores nothing. Her tree
+ * only exists once the onboarding event has stood her company up.
+ */
+const GLENDA: DialogueTree = {
+  id: 'dialogue/msp-glenda',
+  speaker: MSP_IDS.tillmanContact,
+  tickets: ['ticket:tillman-backup-discovery'],
+  root: 'backup',
+  roots: {
+    'ticket:tillman-backup-discovery': 'backup',
+  },
+  resolved_roots: {
+    'ticket:tillman-backup-discovery': 'backup-done',
+  },
+  nodes: [
+    {
+      id: 'backup',
+      npc_line: 'Welcome aboard, I suppose - the chap who set our computers up '
+        + 'years ago is long gone, so you are it now. It all works fine as far as '
+        + 'I can see. He did say the backups run every night, if that helps.',
+      options: [
+        {
+          label: 'Ask whether anyone has ever restored from one of those backups',
+          next: 'backup-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Audit the estate and read the backup on TILL-SRV-01',
+          effects: [
+            {
+              reveal: 'The backup service is RUNNING and reports success every '
+                + 'night - green on any screen that reads status - but it has not '
+                + 'produced a verified restore point since last November. It is '
+                + 'configured, green, and empty: monitoring the job was never '
+                + 'testing the restore. Raise it before the estate goes live.',
+            },
+          ],
+        },
+        { label: 'Tell her you will take a proper look at it' },
+      ],
+    },
+    {
+      id: 'backup-q',
+      npc_line: 'Restored? No - why would we, nothing has ever gone wrong. That '
+        + 'is rather the point of a backup, isn\'t it, that you never need it.',
+      options: [{ label: 'Raise the finding on the onboarding plan' }],
+    },
+    {
+      id: 'backup-done',
+      npc_line: 'Flagged, then. I did not know a backup could just quietly not '
+        + 'work - glad you looked. Better we find it now than the day we need it.',
+      options: [{ label: 'Log the escalation' }],
+    },
+  ],
+};
+
+export const MSP_TREES: readonly DialogueTree[] = [
+  NADIA,
+  THEO,
+  IVY,
+  PRIYA,
+  DEV,
+  GLENDA,
+];

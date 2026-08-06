@@ -200,6 +200,14 @@ export const COMMANDS: readonly CommandSpec[] = [
     subcommand: true,
   },
   {
+    name: 'audit',
+    usage: 'audit <customer>',
+    summary: 'Run discovery on a customer estate: machines, services, findings.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+  },
+  {
     name: 'tasklist',
     usage: 'tasklist',
     summary: 'List what is actually running on this desk, windows and all.',

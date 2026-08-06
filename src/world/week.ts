@@ -54,6 +54,7 @@ import {
 import { COMPANY_IDS } from './company';
 import { FIELDS } from './fields';
 import { findIncident, INCIDENTS } from './incidents';
+import { isOnboardingId } from './onboarding';
 import {
   FLAVOR,
   flavorText,
@@ -469,6 +470,24 @@ export interface DmSlot {
   readonly doneWhen: { readonly node: string; readonly field: string };
 }
 
+/**
+ * A customer signing on mid-shift (0.13.0): the onboarding event, scheduled the
+ * way an incident is - an id the world knows how to stand up, at a minute of the
+ * day's choosing.
+ *
+ * It is not a ticket and not an interruption: nothing takes the screen, nothing
+ * goes in a queue. It is a change to the WORLD - a whole customer estate stood
+ * up - announced by a notice, exactly as the reply-all storm is a change to the
+ * rooms announced by messages. What the driver does with it lives in
+ * `src/world/onboarding.ts`; the slot only says which event, and when.
+ */
+export interface OnboardingSlot {
+  /** The onboarding the world knows how to stand up (`findOnboarding`). */
+  readonly onboardingId: string;
+  /** Minute of the day it lands, on the clock the player reads. */
+  readonly minute: number;
+}
+
 export interface DayScript {
   readonly day: number;
   /** What the brief calls it. */
@@ -544,6 +563,17 @@ export interface DayScript {
    * day carries none. See `src/world/after-hours.ts` for the trade they teach.
    */
   readonly afterHours?: readonly AfterHoursSlot[];
+  /**
+   * And the customer that SIGNS today, if one does (0.13.0).
+   *
+   * The onboarding event: a new client stood up mid-shift, undocumented, the way
+   * the reply-all storm is a beat the day fires rather than a thing that was
+   * always there. It is world data, not a ticket - the estate it stands up and
+   * the notice it shows live in `src/world/onboarding.ts` - and the loader checks
+   * only that the id names an onboarding somebody wrote and that it lands in the
+   * working hours. Absent on every day but the one the arc's capstone lands on.
+   */
+  readonly onboarding?: readonly OnboardingSlot[];
   /**
    * A twist on the world seed for the lead's rounds, so two days do not walk
    * in lockstep even where their content is identical. Monday takes the seed
@@ -1095,6 +1125,7 @@ export function validateWeek(
   const afterHours = new Set<string>();
   const channelIds = new Set<string>();
   const requestIds = new Set<string>();
+  const onboardings = new Set<string>();
 
   scripts.forEach((script, index) => {
     if (script.day !== index + 1) {
@@ -1170,6 +1201,34 @@ export function validateWeek(
       }
 
       requireWorkingMinute(script.day, slot.minute, slot.incidentId);
+    }
+
+    // And the customer that signs today, if one does (0.13.0). It stands up a
+    // whole estate at its minute, so a minute outside the hours is a client who
+    // joined a desk nobody was at - the same quiet wrongness the drip window
+    // catches. The id has to name an onboarding the world knows how to build,
+    // and it has to be week-wide unique: the driver skips one whose customer is
+    // already in the graph, so two slots sharing an id would stand up the second
+    // as a no-op nobody could see.
+    for (const slot of script.onboarding ?? []) {
+      if (!isOnboardingId(slot.onboardingId)) {
+        throw new Error(
+          `Day ${String(script.day)} onboards "${slot.onboardingId}", which `
+          + 'nobody wrote - no customer estate stands up for it.',
+        );
+      }
+
+      requireWorkingMinute(script.day, slot.minute, slot.onboardingId);
+
+      if (onboardings.has(slot.onboardingId)) {
+        throw new Error(
+          `"${slot.onboardingId}" onboards twice in one week. The driver stands `
+          + 'up a client once, by its customer node, so the second slot is a '
+          + 'beat that quietly does nothing.',
+        );
+      }
+
+      onboardings.add(slot.onboardingId);
     }
 
     for (const slot of script.dms ?? []) {
@@ -1773,6 +1832,14 @@ export function directMessagesOn(
   week: readonly DayScript[] = WEEK,
 ): readonly DmSlot[] {
   return isWeekDay(day) ? dayScript(day, week).dms ?? [] : [];
+}
+
+/** The customers that sign today, as the week's table declares them (0.13.0). */
+export function onboardingsOn(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): readonly OnboardingSlot[] {
+  return isWeekDay(day) ? dayScript(day, week).onboarding ?? [] : [];
 }
 
 /**

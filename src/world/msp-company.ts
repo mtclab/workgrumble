@@ -86,6 +86,9 @@ export const MSP_CUSTOMERS = {
   // 0.11.0, the two tiers the 0.8.0 engine handled but no customer exercised:
   holloway: 'customer:holloway',
   arden: 'customer:arden',
+  // 0.13.0, the customer that SIGNS mid-week and is stood up by the onboarding
+  // event rather than at Monday boot - so it is absent until the day it joins.
+  tillman: 'customer:tillman',
 } as const;
 
 const CUSTOMERS: readonly CustomerSeed[] = [
@@ -238,6 +241,22 @@ export const MSP_IDS = {
   ardenSupervisorAccount: 'account:arden-marika',
   ardenWorkstation: 'machine:arden-ws-01',
   ardenServer: 'machine:arden-srv-01',
+
+  /**
+   * TILLMAN-FREIGHT, the small trades business the MSP signs mid-week (0.13.0).
+   * None of these is in `mspSetup()`: they are stood up by the onboarding event
+   * (`mspOnboardingSetup`), so at Monday boot the customer does not exist and the
+   * MSP world is byte-identical to 0.12.0. Glenda runs the office and files the
+   * one ticket; the estate is two workstations and a server nobody documented,
+   * and the backup service on that server is the whole horror - configured,
+   * green, and empty.
+   */
+  tillmanContact: 'person:tillman-glenda',
+  tillmanContactAccount: 'account:tillman-glenda',
+  tillmanReception: 'machine:till-ws-01',
+  tillmanYardPc: 'machine:till-ws-02',
+  tillmanServer: 'machine:till-srv-01',
+  tillmanBackup: 'service:till-srv-01/backup',
 } as const;
 
 export type MspNodeId = (typeof MSP_IDS)[keyof typeof MSP_IDS];
@@ -871,6 +890,193 @@ export function mspSetup(): readonly SetupOp[] {
       addEdge(ops, { from: id, to: machine.id, kind: 'runs_on' });
     }
   }
+
+  return ops;
+}
+
+/**
+ * The estate the onboarding event stands up mid-week (0.13.0): TILLMAN-FREIGHT,
+ * the small trades business the MSP has just signed and taken on undocumented.
+ *
+ * Deliberately NOT part of `mspSetup()`: it is applied at the event minute
+ * (`onboarding.ts`, the day driver's `applyOnboardings`) exactly the way a change
+ * request or a dripped ticket is added mid-day - a runtime `applySetup` a save
+ * then serialises whole - so at Monday boot the customer is absent and the MSP
+ * world is byte-identical to 0.12.0 until the day it signs.
+ *
+ * It builds the customer, its one contact, two workstations and a server the
+ * same way `mspSetup` builds every other estate: real baseline services off the
+ * role table, real drives, real edges. The one hand-added service is the backup
+ * on the server, and it is the whole point of the arc - `status: running` (the
+ * job reports success and the screen is green) beside `backup_verified: false`
+ * (it has not produced a restorable backup in months). That is the silent
+ * failure a discovery audit finds and a monitoring board that reads only status
+ * would not: a real state on a real node, not a printed string.
+ */
+export function mspOnboardingSetup(): readonly SetupOp[] {
+  const ops: SetupOp[] = [];
+
+  addNode(ops, {
+    id: MSP_CUSTOMERS.tillman,
+    kind: 'customer',
+    fields: {
+      [FIELDS.name]: 'TILLMAN-FREIGHT',
+      [FIELDS.customerBusinessType]: BUSINESS_TYPES.trades,
+      // Fully-managed: the MSP is taking over their whole IT, which is why the
+      // honest onboarding move on what discovery finds is to RAISE it, not to
+      // shrug it off as somebody else's box.
+      [FIELDS.customerServiceScope]: SERVICE_SCOPES.fullyManaged,
+      [FIELDS.customerSlaTier]: SLA_TIERS.silver,
+    },
+  });
+
+  // Glenda runs the office and files the ticket; her account carries the
+  // customer id like every other customer's staff, so an action aimed at it
+  // runs the same scope + tenant pre-flight.
+  addNode(ops, {
+    id: MSP_IDS.tillmanContact,
+    kind: 'person',
+    fields: {
+      [FIELDS.name]: 'Glenda Tillman',
+      [FIELDS.title]: 'Office Manager, Tillman Freight',
+      [FIELDS.desk]: 'The front office of a haulage yard, where the IT is a '
+        + 'server in the stationery cupboard nobody has opened in years',
+    },
+  });
+  addNode(ops, accountNode(
+    MSP_IDS.tillmanContactAccount,
+    'gtillman',
+    MSP_CUSTOMERS.tillman,
+  ));
+  addEdge(ops, {
+    from: MSP_IDS.tillmanContact,
+    to: MSP_IDS.tillmanContactAccount,
+    kind: 'owns',
+  });
+
+  // The estate nobody wrote down: reception's PC, the yard-office PC, and the
+  // server the backup runs on. Windows-only, small, and real.
+  const machines: readonly MachineSeed[] = [
+    {
+      id: MSP_IDS.tillmanReception,
+      hostname: 'TILL-WS-01',
+      role: MACHINE_ROLES.workstation,
+      customer: MSP_CUSTOMERS.tillman,
+      owner: MSP_IDS.tillmanContact,
+      wiredTo: MSP_IDS.tillmanServer,
+      processor: 'A reception desktop that also runs the haulage booking system',
+      memory: '8 GB',
+      diskFree: 96_636_764_160,
+    },
+    {
+      id: MSP_IDS.tillmanYardPc,
+      hostname: 'TILL-WS-02',
+      role: MACHINE_ROLES.workstation,
+      customer: MSP_CUSTOMERS.tillman,
+      wiredTo: MSP_IDS.tillmanServer,
+      processor: 'A shared PC in the yard office, older than the newest lorry',
+      memory: '8 GB',
+      diskFree: 128_849_018_880,
+    },
+    {
+      id: MSP_IDS.tillmanServer,
+      hostname: 'TILL-SRV-01',
+      role: MACHINE_ROLES.fileServer,
+      customer: MSP_CUSTOMERS.tillman,
+      processor: 'The one server: file shares, the booking database, and a '
+        + 'backup job somebody set up once and left',
+      memory: '16 GB',
+      diskFree: 171_798_691_840,
+    },
+  ];
+
+  for (const machine of machines) {
+    addNode(ops, {
+      id: machine.id,
+      kind: 'machine',
+      fields: {
+        [FIELDS.hostname]: machine.hostname,
+        [FIELDS.machineRole]: machine.role,
+        [FIELDS.machineOs]: machine.os ?? MACHINE_OS.windows,
+        ...(machine.customer === undefined
+          ? {}
+          : { [FIELDS.machineCustomer]: machine.customer }),
+        [FIELDS.displayRotation]: 0,
+        [FIELDS.resolution]: machine.resolution ?? '1024x768',
+        [FIELDS.pendingUpdates]: false,
+        [FIELDS.processor]: machine.processor,
+        [FIELDS.memory]: machine.memory,
+        [FIELDS.diskFree]: machine.diskFree,
+      },
+    });
+  }
+
+  for (const machine of machines) {
+    const owner = STAFF.find((member) => member.person === machine.owner)
+      ?? (machine.owner === MSP_IDS.tillmanContact
+        ? { username: 'gtillman' }
+        : undefined);
+
+    ops.push(...driveSetup({
+      machineId: machine.id,
+      hostname: machine.hostname,
+      role: machine.role,
+      ...(owner === undefined ? {} : { ownerUsername: owner.username }),
+    }));
+  }
+
+  for (const machine of machines) {
+    if (machine.owner !== undefined) {
+      addEdge(ops, { from: machine.owner, to: machine.id, kind: 'owns' });
+    }
+
+    if (machine.wiredTo !== undefined) {
+      addEdge(ops, { from: machine.id, to: machine.wiredTo, kind: 'connected_to' });
+    }
+
+    for (const service of BASELINE_SERVICES[machine.role] ?? []) {
+      const id = baselineServiceId(machine.id, service.service);
+
+      addNode(ops, {
+        id,
+        kind: 'service',
+        fields: {
+          [FIELDS.name]: service.name,
+          [FIELDS.serviceName]: service.service,
+          [FIELDS.status]: service.status,
+          [FIELDS.startupType]: service.startup,
+          ...(service.serviceClass === undefined
+            ? {}
+            : { [FIELDS.serviceClass]: service.serviceClass }),
+        },
+      });
+      addEdge(ops, { from: id, to: machine.id, kind: 'runs_on' });
+    }
+  }
+
+  // The horror, seeded as the estate fact it is. The service is Windows Server
+  // Backup (`wbengine`, the real service name), it is RUNNING and set to start
+  // automatically - green on any board that reads status - and it has not
+  // verified a restore since last November. `backup_verified: false` is the
+  // whole failing state; flip it true and the box is genuinely safe, which is
+  // what gives the audit's finding its teeth.
+  addNode(ops, {
+    id: MSP_IDS.tillmanBackup,
+    kind: 'service',
+    fields: {
+      [FIELDS.name]: 'Backup Service',
+      [FIELDS.serviceName]: 'wbengine',
+      [FIELDS.status]: SERVICE_STATUS.running,
+      [FIELDS.startupType]: STARTUP_TYPES.automatic,
+      [FIELDS.backupVerified]: false,
+      [FIELDS.backupLastSuccess]: '2025-11-09',
+    },
+  });
+  addEdge(ops, {
+    from: MSP_IDS.tillmanBackup,
+    to: MSP_IDS.tillmanServer,
+    kind: 'runs_on',
+  });
 
   return ops;
 }

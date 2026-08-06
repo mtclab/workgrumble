@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
+import { mspOnboardingSetup } from '../msp-company';
 import { createWorldSession } from '../session';
 import { findWorldTicket, WORLD_TICKETS } from '../tickets';
 import { directMessagesOn, WEEK_DAYS } from '../week';
@@ -464,6 +465,10 @@ describe('shipped conversations', () => {
       arcWeek: 1,
       employer: 'msp',
     }));
+    // The onboarding customer (0.13.0) signs mid-week, so its contact is not in
+    // the MSP boot world - stand the signed-up client up the way the day driver
+    // does, so a conversation authored for its reporter has a person to speak for.
+    msp.engine.applySetup(mspOnboardingSetup());
 
     for (const conversation of WORLD_DIALOGUE) {
       const kind = probation.engine.graph.getNode(conversation.speaker)?.kind
