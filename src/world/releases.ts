@@ -31,6 +31,30 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.9.0',
+    date: '2026-08-06',
+    summary: 'This update gives you a wall of lights you are not allowed to '
+      + 'touch.',
+    lines: Object.freeze([
+      'The clinic you watch but do not run now has a screen of its own - a '
+        + 'monitoring board, which is the thing "eyes on glass" means. Its '
+        + 'backup job, its certificate, its disk, each a row with a light on '
+        + 'it, read straight off the machines. When one goes red you will know '
+        + 'before they do. You still cannot fix it. That was never the deal.',
+      'Two buttons, and no third. ACKNOWLEDGE, which means "I have seen it" and '
+        + 'stops it nagging - seeing is not fixing. And ESCALATE, which raises '
+        + 'it to the people whose box it actually is - the whole job of a '
+        + 'watch-only contract, done properly. Reach for a repair and the '
+        + 'terminal says what it said before: not yours to touch.',
+      'And the board lies to you a little, on purpose, the way real ones do. A '
+        + 'CPU spike that clears itself, a network check that flaps - noise, '
+        + 'mixed in with the one alert that is a real fire. Acknowledge the '
+        + 'nonsense, escalate the fire, and do not get so used to red that you '
+        + 'wave the real one through. Somewhere a backup failed quietly for a '
+        + 'month because every light was always red.',
+    ]),
+  },
+  {
     version: '0.8.0',
     date: '2026-08-06',
     summary: 'This update gives you customers - and takes away the right to '
