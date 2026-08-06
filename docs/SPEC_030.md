@@ -1134,3 +1134,48 @@ box degraded) + msp.spec extended for the onboarding/discovery path.
 ## Not in scope (backlog)
 
 Mac creative + dental verticals (need os=mac); a full CAB; the deferred E6 sysadmin / E7 cloud tiers.
+
+# Version 0.14.0 - the dental clinic vertical (E5, MSP arc, #32)
+
+More curriculum breadth: a managed dental clinic, the hands-on Windows vertical the research details
+(Dentrix/Eaglesoft/Open Dental + imaging). Distinct from the existing monitoring-only NORTHWIND-CLINIC
+- this one is a MANAGED contract (helpdesk or fully-managed) with real, chair-side, time-pressured
+tickets. Pure content on the proven customer/scope/ticket rails (no new mechanic; no os=mac - a dental
+clinic is Windows-locked-down). Research base: the dental vertical in docs/design/msp-arc.md (X-ray
+sensor not detected; imaging-bridge-to-PMS break; backup verification; HIPAA audit-log).
+
+## Slice 1 - the clinic customer + estate
+
+A new managed dental clinic customer (helpdesk or fully_managed - pick the one that lets the hands-on
+tickets be in scope): Windows workstations at the chairs + reception, a practice-management/imaging
+server, locked down. Real practice-management + imaging vocabulary (a Dentrix/Eaglesoft/Open Dental
+-class PMS; a Dexis/Schick-class imaging bridge). Estate reuses the 0.7.0 machinery.
+
+## Slice 2 - the hands-on tickets, real + time-pressured
+
+The characteristic dental tickets from the research, each solvable via its real fix path:
+- X-RAY SENSOR "not detected" - the single most common chair-side ticket; the real triage is
+  reseat/swap the USB interface (a hands-on hardware-ish fix, chair-side, tight SLA because a patient
+  is in the chair).
+- IMAGING-BRIDGE-TO-PMS break after a Windows/PMS update - images stop writing to the patient chart;
+  an integration fix (escalation-flavoured).
+- A HIPAA audit-log / access review request - who opened a chart, a compliance-adjacent ticket.
+The chair-side reliability = a tighter SLA than an office ticket (ties to the 0.12.0 tier clock).
+
+## Slice 3 - correct scope + fidelity
+
+Each ticket carries its true scope + severity (the chair-side ones tight); real product names; true
+KB. The imaging-bridge one is the escalation/integration boundary; the sensor one is hands-on
+helpdesk. Reuse existing verbs.
+
+## Gates (once, at the version)
+
+Goldens move (new customer + estate + tickets); argued. Journeys through the REAL path: the clinic's
+tickets are solvable via their intended fixes; the chair-side sensor ticket runs on a tight clock; the
+imaging-bridge ticket escalates the integration way; existing employers + 0.8-0.13 customers
+BYTE-IDENTICAL. One codex (if it ever completes a review; else overseer self-review), one box
+(workers=2, box rebooted + healthy) + msp.spec extended for the clinic.
+
+## Not in scope (backlog)
+
+Mac creative vertical (needs os=mac); a full CAB; the deferred E6 sysadmin / E7 cloud tiers.
