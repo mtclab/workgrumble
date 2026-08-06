@@ -31,6 +31,29 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.12.0',
+    date: '2026-08-06',
+    summary: 'This update puts a price on the clock, and the price is not the '
+      + 'same for everyone.',
+    lines: Object.freeze([
+      'Every customer\'s ticket now carries the name of what they pay for. '
+        + 'GOLD means a tight clock - their problem is due back fast, and the '
+        + 'terminal shows you how fast. BRONZE means a slower one. So a Gold '
+        + 'customer\'s second-worst problem can outrank a Bronze customer\'s '
+        + 'worst, and the queue now tells you which, so you can pick the one '
+        + 'that costs the most to be late on.',
+      'It is the same ticket and the same fix, but the deadline is the '
+        + 'contract\'s, not the problem\'s. A Gold shop paid for fifteen minutes '
+        + 'and expects fifteen minutes; a Bronze shop bought the cheap plan and '
+        + 'knows it. The clock on each one is set to what they signed.',
+      'And missing a Gold deadline reads louder at the review than missing a '
+        + 'Bronze one - it is worth more, and the person who sold them Gold will '
+        + 'hear about it. The cost is the missed clock, never the tone: be as '
+        + 'blunt as you like, just do not be late to the customer who paid not '
+        + 'to be.',
+    ]),
+  },
+  {
     version: '0.11.0',
     date: '2026-08-06',
     summary: 'This update adds two customers who bought the opposite of each '
