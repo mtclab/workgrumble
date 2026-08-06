@@ -4,6 +4,12 @@ import { promptPath } from '../../world/fs';
 import { isFumbling, isRefocusing } from '../../world/meters';
 import { fumbleTypo, parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
+import {
+  executeUnix,
+  parseUnixCommand,
+  type SshSession,
+  unixPrompt,
+} from './cmd-unix';
 import type { AppDef } from './types';
 import { element } from './ui';
 
@@ -64,10 +70,19 @@ export const CMD_APP: AppDef = {
     const history: string[] = [];
     let historyIndex = 0;
     let cwd: readonly string[] = DEFAULT_CWD;
+    // The server session the terminal is standing in, or null on the desktop.
+    // Window-local, exactly like `cwd`: a second terminal is a second shell at
+    // its own Windows prompt, and a reload comes back at the desktop. While it
+    // is set the terminal speaks the unix dialect and the prompt says so.
+    let session: SshSession | null = null;
+
+    const currentPrompt = (): string => session === null
+      ? promptFor(cwd)
+      : unixPrompt(session);
 
     const showPrompt = (): void => {
-      prompt.textContent = promptFor(cwd);
-      input.setAttribute('aria-label', `${promptFor(cwd)} command`);
+      prompt.textContent = currentPrompt();
+      input.setAttribute('aria-label', `${currentPrompt()} command`);
     };
 
     const print = (text: string, kind = 'output'): void => {
@@ -104,7 +119,7 @@ export const CMD_APP: AppDef = {
     const submit = (): void => {
       const raw = input.value;
       input.value = '';
-      const typed = promptFor(cwd);
+      const typed = currentPrompt();
 
       // The gag, in full: what your hands did, then the correction, then the
       // command that actually ran - which is the one you typed.
@@ -125,7 +140,22 @@ export const CMD_APP: AppDef = {
 
       historyIndex = history.length;
 
-      const result = executeCommand(parseCommand(raw), api, cwd);
+      // The dialect is decided by the session (E6): on the desktop the Windows
+      // grammar and verb set, in an ssh session the unix ones. Which one runs
+      // is the whole of the family difference, and it hangs off one nullable.
+      const result = session === null
+        ? executeCommand(parseCommand(raw), api, cwd)
+        : executeUnix(parseUnixCommand(raw), api, session);
+
+      if (result.enterSession !== undefined) {
+        session = result.enterSession;
+        showPrompt();
+      }
+
+      if (result.exitSession === true) {
+        session = null;
+        showPrompt();
+      }
 
       if (result.cwd !== undefined) {
         cwd = result.cwd;

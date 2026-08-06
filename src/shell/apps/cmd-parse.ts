@@ -313,6 +313,23 @@ export const COMMANDS: readonly CommandSpec[] = [
     joined: false,
   },
   {
+    name: 'ssh',
+    usage: 'ssh <user@host>',
+    summary: 'Reach a Linux server - the engineers\' tier, not the desk\'s.',
+    minArgs: 1,
+    maxArgs: 1,
+    joined: false,
+  },
+  {
+    name: 'promotion',
+    usage: 'promotion accept',
+    summary: 'Take the Systems Engineer offer, when it has been earned.',
+    minArgs: 1,
+    maxArgs: 1,
+    joined: false,
+    subcommand: true,
+  },
+  {
     name: 'ver',
     usage: 'ver',
     summary: 'Print the version. It is not reassuring.',
@@ -372,10 +389,19 @@ function editDistance(left: string, right: string): number {
   return previous[right.length] ?? Math.max(left.length, right.length);
 }
 
-export function suggestCommand(name: string): string | null {
+/**
+ * The nearest command in a registry, or null when nothing is close. Takes the
+ * registry rather than closing over `COMMANDS` because there are two of them
+ * now - the Windows dialect this file ships and the unix dialect an ssh session
+ * switches to (`cmd-unix.ts`) - and the grammar is the same for both.
+ */
+export function suggestFrom(
+  name: string,
+  commands: readonly CommandSpec[],
+): string | null {
   let best: { name: string; distance: number } | null = null;
 
-  for (const spec of COMMANDS) {
+  for (const spec of commands) {
     const distance = spec.name.startsWith(name)
       ? 1
       : editDistance(name, spec.name);
@@ -390,8 +416,19 @@ export function suggestCommand(name: string): string | null {
     : null;
 }
 
+export function suggestCommand(name: string): string | null {
+  return suggestFrom(name, COMMANDS);
+}
+
+export function findIn(
+  name: string,
+  commands: readonly CommandSpec[],
+): CommandSpec | undefined {
+  return commands.find((spec) => spec.name === name);
+}
+
 export function findCommand(name: string): CommandSpec | undefined {
-  return COMMANDS.find((spec) => spec.name === name);
+  return findIn(name, COMMANDS);
 }
 
 /**
@@ -440,7 +477,16 @@ export function splitArguments(input: string): readonly string[] {
   return tokens;
 }
 
-export function parseCommand(input: string): ParsedCommand {
+/**
+ * The grammar, over whichever registry it is handed. `parseCommand` is this
+ * pointed at the Windows dialect; an ssh session points it at the unix one, so
+ * the sub-command rule, the argument counting and the did-you-mean are one
+ * implementation the two dialects share rather than two that can drift.
+ */
+export function parseWith(
+  input: string,
+  commands: readonly CommandSpec[],
+): ParsedCommand {
   const tokens = splitArguments(input);
   const head = tokens[0];
 
@@ -449,11 +495,11 @@ export function parseCommand(input: string): ParsedCommand {
   }
 
   const name = head.toLowerCase();
-  const spec = findCommand(name);
+  const spec = findIn(name, commands);
   const args = tokens.slice(1);
 
   if (spec === undefined) {
-    return { kind: 'unknown', name, suggestion: suggestCommand(name) };
+    return { kind: 'unknown', name, suggestion: suggestFrom(name, commands) };
   }
 
   // A sub-command is not part of the value it is aimed at: `net user gpoole`
@@ -467,6 +513,10 @@ export function parseCommand(input: string): ParsedCommand {
   return args.length < spec.minArgs || args.length > spec.maxArgs
     ? { kind: 'usage', spec, args, query, sub }
     : { kind: 'command', spec, args, query, sub };
+}
+
+export function parseCommand(input: string): ParsedCommand {
+  return parseWith(input, COMMANDS);
 }
 
 /**

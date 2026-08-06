@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { careerAfter } from './career';
+import { PLAYER_TIERS } from './fields';
 import { exitForOutcome, offerTone } from './offer';
 import { REVIEW_OUTCOMES } from './week';
 
@@ -28,7 +29,12 @@ describe('the review outcome as a career exit', () => {
     // The whole reason the mapping matters: the exit it chooses is what
     // `careerAfter` reads, so a wrong mapping is a wrong standing at the next
     // desk. A firing dents the reputation and leaves a trail; a pass leaves both.
-    const standing = { reputation: 60, title: 'Tech', farmFund: 25_000 };
+    const standing = {
+      reputation: 60,
+      title: 'Tech',
+      farmFund: 25_000,
+      tier: PLAYER_TIERS.serviceDesk,
+    };
 
     const fired = careerAfter(exitForOutcome('fired') ?? 'completed', standing);
     expect(fired.reputation).toBeLessThan(standing.reputation);

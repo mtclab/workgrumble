@@ -72,6 +72,11 @@ import {
   traceLine,
 } from './cmd-net';
 import { COMMANDS, type ParsedCommand } from './cmd-parse';
+import {
+  promotionLines,
+  sshLines,
+  type SshSession,
+} from './cmd-unix';
 import { runningPrograms } from './processes';
 import type { GameApi } from './types';
 import { textValue } from './ui';
@@ -89,6 +94,15 @@ export interface CommandResult {
    * being written anywhere.
    */
   readonly cwd?: readonly string[];
+  /**
+   * An `ssh` that connected: the server session the terminal now stands in
+   * (E6). The window holds it and switches to the unix dialect while it is set,
+   * the same way it holds the working directory - a window-local fact no save
+   * carries, because a reloaded terminal is a fresh shell at the desktop.
+   */
+  readonly enterSession?: SshSession;
+  /** An `exit`/`logout` inside a session: leave it, back to the Windows prompt. */
+  readonly exitSession?: boolean;
 }
 
 type Lookup =
@@ -1963,6 +1977,13 @@ export function executeCommand(
       return queueLines(api, parsed.query);
     case 'rotate':
       return rotateLines(api, parsed.args);
+    case 'ssh':
+      // The on-ramp to the server tier (E6). Gated on the promotion inside
+      // sshLines, and on success it hands back the session the terminal enters
+      // - which is what flips the dialect to unix.
+      return sshLines(api, parsed.query);
+    case 'promotion':
+      return promotionLines(api, parsed.sub);
     case 'dir':
     case 'cd':
     case 'type':

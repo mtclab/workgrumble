@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { EmployerCareer } from '../world/career';
+import { PLAYER_TIERS } from '../world/fields';
 import {
   carryForSwitch,
   parseSwitchRecord,
@@ -48,6 +49,7 @@ const CAREER: EmployerCareer = {
   title: 'IT Support Technician',
   farmFund: 25_000,
   trail: 'fired',
+  tier: PLAYER_TIERS.serviceDesk,
 };
 
 describe('the switch slot', () => {

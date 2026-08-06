@@ -1,9 +1,15 @@
 import type { ActionData, ActionPayload } from '../../engine-api';
 import { ACCOUNT_ACTIONS } from './account';
 import { BOSS_ACTION_DATA } from './boss';
+import { CAREER_ACTION_DATA } from './career';
 import { CONSUMABLE_ACTION_DATA } from './consumables';
 
 export { BEER_TOO_EARLY_REASON, LATE_CAN_REASON } from './consumables';
+export {
+  PROMOTION_REPUTATION,
+  SSH_HOST_PARAM,
+  SYSTEMS_ENGINEER_TITLE,
+} from './career';
 import { DAY_ACTION_DATA } from './day';
 import { DEVICE_ACTIONS } from './device';
 import { DRIVE_ACTIONS } from './drive';
@@ -70,6 +76,9 @@ export {
 export { FULL_BATTERY } from './device';
 export { HELPDESK_TIER, KIND_LABELS } from './helpers';
 export {
+  CAREER_ACTION_IDS,
+  CAREER_ACTIONS,
+  type CareerActionId,
   DAY_ACTION_IDS,
   DAY_ACTIONS,
   type DayActionId,
@@ -130,6 +139,10 @@ export function helpdeskActions(): readonly ActionData[] {
     ...CONSUMABLE_ACTION_DATA,
     ...SOFTWARE_ACTION_DATA,
     ...REQUEST_ACTION_DATA,
+    // The career the player crosses (E6): the promotion, and the ssh trust
+    // ledger. Player-initiated verbs on the player's own node, so they sit with
+    // the helpdesk set rather than the world's own timetable verbs below.
+    ...CAREER_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

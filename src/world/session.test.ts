@@ -24,7 +24,7 @@ import {
   serializeCareer,
 } from './career';
 import type { Employer } from './employers';
-import { FIELDS } from './fields';
+import { FIELDS, PLAYER_TIERS } from './fields';
 import { STARTING_REPUTATION } from './meters';
 import { EMPLOYER_ARC, PROBATION_WEEK } from './pressure';
 import {
@@ -252,6 +252,7 @@ describe('the career carry survives a save across the switch', () => {
       reputation: 81,
       title: 'Service Desk Analyst',
       farmFund: 55_000,
+      tier: PLAYER_TIERS.serviceDesk,
     });
 
     const back = parseCareer(JSON.parse(serializeCareer(left)));
@@ -276,6 +277,7 @@ describe('the career carry survives a save across the switch', () => {
       reputation: 40,
       title: 'Probationer',
       farmFund: 12_000,
+      tier: PLAYER_TIERS.serviceDesk,
     });
 
     const carry = carryForEmployer(

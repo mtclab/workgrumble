@@ -18,7 +18,7 @@ import {
   FIRST_EMPLOYER,
 } from './employers';
 import { watchMachineEvents } from './events';
-import { FIELDS } from './fields';
+import { FIELDS, PLAYER_TIERS, type PlayerTier } from './fields';
 import { clampMeter } from './meters';
 import {
   beatsFiredBy,
@@ -107,6 +107,17 @@ export interface WeekCarry {
    * Technician (probationary)" is untouched and the goldens do not move.
    */
   readonly title?: string;
+  /**
+   * The PAM tier the player carries in (E6), or absent for a desk player.
+   *
+   * The third carried career field, and it keeps the byte-identical rule the
+   * hardest way of the three: a `service_desk` tier - which is every carry a
+   * probation, a retry and every existing switch record produces - writes
+   * NOTHING to the graph, exactly as an absent reputation and title do. Only a
+   * `systems_engineer` carry writes the field, which is the promotion following
+   * a player across a change of employer, permanently.
+   */
+  readonly playerTier?: PlayerTier;
 }
 
 export const FIRST_WEEK: WeekCarry = Object.freeze({
@@ -155,6 +166,13 @@ interface ResolvedCarry {
   readonly employer: string;
   readonly reputation: number | null;
   readonly title: string | null;
+  /**
+   * The tier to WRITE, or null to leave the employer's seed. `service_desk`
+   * resolves to null - the default is written nowhere, which is what keeps a
+   * fresh week byte-identical - and only `systems_engineer` resolves to a value
+   * the carry setup pushes onto the player node.
+   */
+  readonly playerTier: PlayerTier | null;
 }
 
 function requireCarry(carry: Readonly<WeekCarry>): ResolvedCarry {
@@ -192,6 +210,13 @@ function requireCarry(carry: Readonly<WeekCarry>): ResolvedCarry {
     throw new TypeError('A carried title is a name, not an empty string.');
   }
 
+  // Only a systems_engineer carry writes the field; a service_desk carry and an
+  // absent one resolve to null, which is "leave the employer's seed", which is
+  // "write nothing" - the whole of why a fresh week's world does not move.
+  const playerTier = carry.playerTier === PLAYER_TIERS.systemsEngineer
+    ? PLAYER_TIERS.systemsEngineer
+    : null;
+
   return {
     farmFund: carry.farmFund,
     attempt: carry.attempt,
@@ -199,6 +224,7 @@ function requireCarry(carry: Readonly<WeekCarry>): ResolvedCarry {
     employer: carry.employer ?? FIRST_EMPLOYER,
     reputation,
     title,
+    playerTier,
   };
 }
 
@@ -279,6 +305,7 @@ function resolvedToCarry(start: Readonly<ResolvedCarry>): WeekCarry {
     employer: start.employer,
     ...(start.reputation === null ? {} : { reputation: start.reputation }),
     ...(start.title === null ? {} : { title: start.title }),
+    ...(start.playerTier === null ? {} : { playerTier: start.playerTier }),
   };
 }
 
@@ -437,6 +464,21 @@ function carrySetup(
       id: player,
       field: FIELDS.title,
       value: carry.title,
+    });
+  }
+
+  // The tier, on a switch that carried a promoted one. Written ONLY for a
+  // systems_engineer carry (requireCarry resolved service_desk to null), so a
+  // fresh probation, a retry and a switch that never promoted push nothing here
+  // and the player node is byte-identical to the world before the tier existed.
+  // On a promoted switch it seeds the engineer tier, which is the promotion
+  // following the player across the swap - permanent, as the design requires.
+  if (carry.playerTier !== null) {
+    ops.push({
+      op: 'setField',
+      id: player,
+      field: FIELDS.playerTier,
+      value: carry.playerTier,
     });
   }
 

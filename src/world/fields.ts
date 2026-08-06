@@ -171,6 +171,30 @@ export const FIELDS = {
   suspicion: 'suspicion',
   reputation: 'reputation',
   /**
+   * The player's PAM tier (E6): `service_desk` (Tier 2, the desk you were
+   * hired to) or `systems_engineer` (Tier 1, the server tier the promotion
+   * crosses to). Absent reads as `service_desk`, which is the whole of why the
+   * probation and MSP goldens are byte-identical until the promotion fires:
+   * the default is written NOWHERE, exactly as the seeded title and reputation
+   * are written nowhere on a fresh week. Only the promotion action ever writes
+   * it, and only ever the one direction - it is permanent, so nothing sets it
+   * back. On the player node because it has to survive a save and be replayed,
+   * and it carries across an employer switch the way the title and standing do.
+   */
+  playerTier: 'player_tier',
+  /**
+   * The ssh known_hosts set (E6): the host ids the player's ssh client has
+   * done trust-on-first-use against, joined by newlines the way a real
+   * `~/.ssh/known_hosts` is one host per line. Absent reads as "trusts nobody
+   * yet", so a fresh player and every existing golden carry no such field and
+   * stay byte-identical. It is on the player node - a fact about the player's
+   * client rather than about any one estate - so it survives a save through the
+   * engine's own serialization and is deliberately NOT carried across an
+   * employer switch: a new estate is new boxes, and last job's fingerprints
+   * mean nothing at this one.
+   */
+  knownHosts: 'known_hosts',
+  /**
    * How many suspicious minutes the day has had: intervals in which something
    * the boss would rather not see was open on the screen. The scorecard counts
    * these rather than the meter, because a meter that drained back to zero
@@ -1348,6 +1372,46 @@ export function machineOsOf(value: unknown): MachineOs {
 }
 
 /**
+ * The player's PAM tier (E6), in Microsoft's own AD tier vocabulary - the same
+ * model 0.8.0's customer scope already uses, now on the PLAYER. Tier 2 is the
+ * workstation/helpdesk tier the player is hired to; Tier 1 is the server/
+ * sysadmin tier the promotion crosses to. The crossing is ONE-WAY: you never
+ * lose service-desk access, you GAIN server access, and once at the engineer
+ * tier the player is permanently at least there. The server-tier capabilities
+ * (ssh, the unix terminal) gate on `systemsEngineer`.
+ */
+export const PLAYER_TIERS = {
+  serviceDesk: 'service_desk',
+  systemsEngineer: 'systems_engineer',
+} as const;
+
+export type PlayerTier = (typeof PLAYER_TIERS)[keyof typeof PLAYER_TIERS];
+
+export const PLAYER_TIER_LABELS: Readonly<Record<PlayerTier, string>> = {
+  [PLAYER_TIERS.serviceDesk]: 'Service Desk (Tier 2)',
+  [PLAYER_TIERS.systemsEngineer]: 'Systems Engineer (Tier 1)',
+};
+
+/**
+ * The player's tier, read off the field with the back-compat default: absent is
+ * `serviceDesk`, which is what every box, every golden and every save that
+ * predates the promotion holds. Only the promotion action ever writes the field,
+ * and only ever `systemsEngineer`.
+ */
+export function playerTierOf(value: unknown): PlayerTier {
+  return value === PLAYER_TIERS.systemsEngineer ? value : PLAYER_TIERS.serviceDesk;
+}
+
+/**
+ * Whether a player at this tier holds the server tier - the one predicate the
+ * ssh mechanic and the unix terminal gate on. Reads the raw field value so a
+ * caller with a node's field in hand does not have to spell the default twice.
+ */
+export function isSystemsEngineer(value: unknown): boolean {
+  return playerTierOf(value) === PLAYER_TIERS.systemsEngineer;
+}
+
+/**
  * What systemd says a unit is doing, in the real words it prints - the Linux
  * analogue of `SERVICE_STATUS`, stored verbatim so a future `systemctl status`
  * prints exactly what the world holds and no label table has to keep them true.
@@ -1564,6 +1628,18 @@ export const UNIT_ENABLEMENTS = {
 
 export type UnitEnablement =
   (typeof UNIT_ENABLEMENTS)[keyof typeof UNIT_ENABLEMENTS];
+
+/**
+ * A unit's enablement, read off the field with the back-compat default: an
+ * absent or unrecognised value reads as `disabled`, which is the safest thing
+ * to say about a unit systemctl cannot vouch for - it does not claim a box
+ * starts something at boot that nothing recorded it would.
+ */
+export function unitEnablementOf(value: unknown): UnitEnablement {
+  return value === UNIT_ENABLEMENTS.enabled || value === UNIT_ENABLEMENTS.static
+    ? value
+    : UNIT_ENABLEMENTS.disabled;
+}
 
 export const ROTATIONS = [0, 90, 180, 270] as const;
 

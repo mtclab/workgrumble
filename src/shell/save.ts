@@ -31,7 +31,7 @@ import {
   FIRST_EMPLOYER,
   nextEmployerAfter,
 } from '../world/employers';
-import { FIELDS } from '../world/fields';
+import { FIELDS, playerTierOf } from '../world/fields';
 import { exitForOutcome } from '../world/offer';
 import { isReviewOutcome } from '../world/week';
 
@@ -701,6 +701,12 @@ export function createShellSession(
           ? title
           : 'IT Support Technician',
         farmFund: number(FIELDS.farmFund),
+        // The tier crosses the switch permanently (E6): read off the graph with
+        // the desk default, so a player promoted at this shop arrives at the
+        // next one an engineer, and one who never was arrives service_desk -
+        // which carries as null and writes nothing, keeping the switch goldens
+        // byte-identical until a promotion actually happens.
+        tier: playerTierOf(engine.graph.getField(actor, FIELDS.playerTier)),
       };
       const next = nextEmployerAfter(employerId);
 

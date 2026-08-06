@@ -25,6 +25,7 @@
  */
 
 import {
+  CAREER_ACTIONS,
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
   REQUEST_ACTIONS,
@@ -66,6 +67,13 @@ export const WALK_RUNS = {
     + 'across. Its own run because accepting reloads the page into a different '
     + 'world - the week and fired runs verify the offer is there without taking '
     + 'it, and this is the single walk that crosses the threshold.',
+  sysadmin: 'The promotion crossed (E6): at the MSP, with the standing built, '
+    + 'accept the Systems Engineer offer, ssh to a Linux server (the fingerprint '
+    + 'and the known_hosts it writes), and work it in the unix dialect - '
+    + 'systemctl status on a seeded unit, ls -la, and exit back to the desktop. '
+    + 'Its own run because a service-desk week cannot hold the engineer tier: ssh '
+    + 'is refused until the promotion fires, so the whole server surface lives on '
+    + 'the far side of a threshold no probation week reaches.',
 } as const;
 
 export type WalkRunId = keyof typeof WALK_RUNS;
@@ -2337,6 +2345,85 @@ const ENTRIES = [
       + 'a dead control would hide in.',
     command: 'clearqueue',
     run: 'week',
+  },
+
+  /* -- the sysadmin tier: the promotion, ssh, the unix dialect (E6) -------- */
+  {
+    id: 'cmd.promotion',
+    surface: 'cmd',
+    control: 'promotion accept',
+    does: 'Takes the Systems Engineer offer: the world flips the player from '
+      + 'Tier 2 to Tier 1, updates the title, and unlocks ssh and the unix '
+      + 'terminal. Earned (refused below the standing the offer is made at) and '
+      + 'one-way (refused once you are already an engineer).',
+    command: 'promotion',
+    actions: [CAREER_ACTIONS.acceptPromotion],
+    run: 'sysadmin',
+    why: 'The offer is earned off a career built, so it is only on the table '
+      + 'with the standing the MSP arrival carries - which no probation week '
+      + 'reaches, and which is the whole of the crossing this run exists for.',
+  },
+  {
+    id: 'cmd.ssh',
+    surface: 'cmd',
+    control: 'ssh <user@host>',
+    does: 'Reaches a Linux server: refused for a service-desk player (that is '
+      + 'the engineers\' tier), and past the promotion it does trust-on-first-'
+      + 'use - the ED25519 fingerprint, the known_hosts line, and the session '
+      + 'the terminal enters, where the dialect becomes unix.',
+    command: 'ssh',
+    actions: [CAREER_ACTIONS.sshTrustHost],
+    run: 'sysadmin',
+    why: 'ssh connects only past the promotion; before it the tier gate refuses '
+      + 'it, so the mechanic it opens lives on the far side of a threshold the '
+      + 'service-desk weeks never cross.',
+  },
+  {
+    id: 'cmd.systemctl',
+    surface: 'cmd',
+    control: 'systemctl status <unit>',
+    does: 'Reads a seeded systemd unit in the unix dialect: the richer ●-dot '
+      + 'block - the state dot, the Loaded line, the Active line, a Main PID for '
+      + 'a running unit - off the unit node, not sc\'s flat STATE line.',
+    command: 'systemctl',
+    run: 'sysadmin',
+    why: 'It only runs inside an ssh session on a Linux box, which is reachable '
+      + 'only once the promotion has unlocked ssh - the same threshold the whole '
+      + 'run turns on.',
+  },
+  {
+    id: 'cmd.ls',
+    surface: 'cmd',
+    control: 'ls -la',
+    does: 'Lists a directory in the unix dialect: the mode/owner/group/size/'
+      + 'mtime columns that are the family difference from dir\'s volume header '
+      + 'and free-space footer.',
+    command: 'ls',
+    run: 'sysadmin',
+    why: 'It is a unix-dialect verb, so it only exists inside an ssh session the '
+      + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.exit',
+    surface: 'cmd',
+    control: 'exit',
+    does: 'Leaves the ssh session and comes back to the Windows desktop '
+      + 'terminal, the prompt switching from user@host back to C:\\>.',
+    command: 'exit',
+    run: 'sysadmin',
+    why: 'There is no session to exit without one, and a session needs the '
+      + 'promotion and an ssh in first.',
+  },
+  {
+    id: 'cmd.logout',
+    surface: 'cmd',
+    control: 'logout',
+    does: 'The same as exit: closes the connection and returns to the desktop '
+      + 'terminal, because a shell answers to both.',
+    command: 'logout',
+    run: 'sysadmin',
+    why: 'The other spelling of leaving the session, reachable only once there '
+      + 'is a session to leave.',
   },
 
   /* -- the Knowledge Base ------------------------------------------------- */

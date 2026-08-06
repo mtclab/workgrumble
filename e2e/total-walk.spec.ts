@@ -3506,6 +3506,107 @@ test('walks the offer taken, and the arrival at the second employer', async ({
   });
 });
 
+/**
+ * The sysadmin run (E6): the promotion crossed, ssh, and the unix dialect.
+ *
+ * Its own session because a service-desk week cannot hold the engineer tier -
+ * ssh is refused until the promotion fires, and the whole server surface lives
+ * on the far side of that threshold. The MSP is stood up the way the shell
+ * stands an arrival up: a switch record in storage carrying the standing the
+ * offer is made at (the same seam msp.spec.ts uses), so booting lands on the
+ * MSP's Monday with a reputation the promotion can be earned against.
+ */
+const E6_SWITCH_KEY = 'workgrumble/switch';
+const E6_ARRIVAL = {
+  employer: 'msp',
+  career: {
+    reputation: 74,
+    title: 'IT Support Technician',
+    farmFund: 30_000,
+    trail: null,
+  },
+};
+
+test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
+  page,
+}) => {
+  await recordControls(page);
+  test.setTimeout(900_000);
+  await page.addInitScript(
+    ([key, record]) => {
+      window.localStorage.setItem(key, JSON.stringify(record));
+    },
+    [E6_SWITCH_KEY, E6_ARRIVAL] as [string, typeof E6_ARRIVAL],
+  );
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await completeLogin(page, { brief: 'keep' });
+
+  // The arrival rides the update screen; close it if it is up, the way msp.spec
+  // does, so the desktop is clear to work on.
+  const arrival = page.getByTestId('window-updates');
+
+  if (await arrival.count()) {
+    const close = arrival.getByTestId('window-close');
+
+    if (await close.count()) {
+      await close.first().click();
+    }
+  }
+
+  await dismissBrief(page);
+  await openFromStartMenu(page, 'cmd');
+
+  await step('cmd.promotion', async () => {
+    // The offer is earned - the MSP arrival carries the standing it is made at -
+    // so accepting it flips the tier through the real dispatch and says so.
+    await runCommand(page, 'promotion accept');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Systems Engineer now');
+  });
+
+  await step('cmd.ssh', async () => {
+    // Past the promotion ssh connects: trust-on-first-use shows the fingerprint,
+    // records the host, and the prompt becomes the server's.
+    await runCommand(page, 'ssh pat@MERI-APP-01');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('ED25519 key fingerprint is');
+    await expect(page.locator('.cmd-prompt').first())
+      .toHaveText('pat@MERI-APP-01:~$');
+  });
+
+  await step('cmd.systemctl', async () => {
+    // The seeded unit, read as the richer ●-dot block - not sc's flat STATE line.
+    await runCommand(page, 'systemctl status nginx');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Active: active (running)');
+    await expect(page.getByTestId('cmd-output')).toContainText('Main PID:');
+  });
+
+  await step('cmd.ls', async () => {
+    // The mode/owner/group columns, the family difference from dir.
+    await runCommand(page, 'ls -la');
+    await expect(page.getByTestId('cmd-output')).toContainText('drwxr-xr-x');
+  });
+
+  await step('cmd.logout', async () => {
+    // Leaves the session, back to the desktop terminal and its Windows prompt.
+    await runCommand(page, 'logout');
+    await expect(page.locator('.cmd-prompt').first()).toHaveText(/C:\\/);
+  });
+
+  await step('cmd.exit', async () => {
+    // The other spelling: ssh back in (a known host now, no fingerprint) and
+    // exit out again.
+    await runCommand(page, 'ssh pat@MERI-APP-01');
+    await expect(page.locator('.cmd-prompt').first())
+      .toHaveText('pat@MERI-APP-01:~$');
+    await runCommand(page, 'exit');
+    await expect(page.locator('.cmd-prompt').first()).toHaveText(/C:\\/);
+  });
+});
+
 /* ========================================================================= *
  * Runs three and four: the fork a single week cannot hold both sides of.
  * ========================================================================= */

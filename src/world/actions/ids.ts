@@ -502,6 +502,40 @@ export const WORLD_ACTION_IDS: readonly WorldActionId[] = Object.freeze(
   Object.values(WORLD_ACTIONS),
 );
 
+/**
+ * The career the player crosses (E6): the PROMOTION out of the service desk and
+ * the ssh client's trust ledger.
+ *
+ * Player-initiated verbs on the player's OWN node - accepting the promotion is a
+ * decision the player makes, and trusting a host is what their ssh client does
+ * on the first connection - so they go through the registry like everything else
+ * that changes the world, which is what makes the flipped tier and the recorded
+ * host survive a save and a replay rather than being a variable in the shell.
+ */
+export const CAREER_ACTIONS = {
+  /**
+   * Accepting the Systems Engineer offer: crossing Tier 2 -> Tier 1. Earned
+   * (the world refuses it below the reputation the promotion is offered at) and
+   * one-way (it refuses once the player is already an engineer), which is what
+   * makes "permanent" a property of the world rather than a promise.
+   */
+  acceptPromotion: 'career.accept_promotion',
+  /**
+   * The ssh client trusting a host on first use: appending its id to the
+   * known_hosts ledger so the second connection to it skips the fingerprint.
+   * The shell only dispatches it for a host not already trusted, which is what
+   * keeps the ledger one line per host.
+   */
+  sshTrustHost: 'career.ssh_trust_host',
+} as const;
+
+export type CareerActionId =
+  (typeof CAREER_ACTIONS)[keyof typeof CAREER_ACTIONS];
+
+export const CAREER_ACTION_IDS: readonly CareerActionId[] = Object.freeze(
+  Object.values(CAREER_ACTIONS),
+);
+
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
 
 export const DAY_ACTION_IDS: readonly DayActionId[] = Object.freeze(

@@ -12,7 +12,7 @@ import {
 import { carryForSwitch, type SwitchRecord, SwitchSlot } from './switch';
 import { WasmEngine } from '../engine-api';
 import { COMPANY_IDS } from '../world/company';
-import { FIELDS } from '../world/fields';
+import { FIELDS, PLAYER_TIERS } from '../world/fields';
 import { createWorldSession, FIRST_WEEK } from '../world/session';
 import type { ReviewOutcome } from '../world/week';
 
@@ -211,6 +211,7 @@ describe('a save taken after arriving round-trips the transition', () => {
       title: 'IT Support Technician',
       farmFund: 25_000,
       trail: null,
+      tier: PLAYER_TIERS.serviceDesk,
     },
   };
 
@@ -280,6 +281,7 @@ describe('a fresh probation is untouched by the switch existing', () => {
       title: 'IT Support Technician',
       farmFund: 25_000,
       trail: null,
+      tier: PLAYER_TIERS.serviceDesk,
     } };
     const arrival = createWorldSession(carryForSwitch(record));
 

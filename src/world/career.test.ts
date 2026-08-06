@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { PLAYER_TIERS } from './fields';
 import { STARTING_REPUTATION } from './meters';
 import { PROBATION_WEEK } from './pressure';
 import {
@@ -17,6 +18,7 @@ const STANDING: CareerStanding = Object.freeze({
   reputation: 62,
   title: 'IT Support Technician',
   farmFund: 42_000,
+  tier: PLAYER_TIERS.serviceDesk,
 });
 
 describe('the exit -> carry mapping', () => {
@@ -120,8 +122,45 @@ describe('a career across a switch, written down and read back', () => {
       title: 'Probationer',
       farmFund: 0,
       trail: null,
+      tier: PLAYER_TIERS.serviceDesk,
     };
 
     expect(parseCareer(JSON.parse(serializeCareer(fresh)))).toEqual(fresh);
+  });
+
+  it('reads an absent or unknown tier as the desk rather than refusing', () => {
+    const bag = JSON.parse(
+      serializeCareer(careerAfter('completed', STANDING)),
+    ) as Record<string, unknown>;
+
+    // A switch record written before the tier existed - every one any prior
+    // build wrote - is a career at the service desk, which is what it was.
+    expect(parseCareer({ ...bag, tier: undefined })?.tier)
+      .toBe(PLAYER_TIERS.serviceDesk);
+    expect(parseCareer({ ...bag, tier: 'principal_architect' })?.tier)
+      .toBe(PLAYER_TIERS.serviceDesk);
+  });
+});
+
+describe('the promotion crosses the switch permanently', () => {
+  const ENGINEER: CareerStanding = {
+    ...STANDING,
+    title: 'Systems Engineer',
+    tier: PLAYER_TIERS.systemsEngineer,
+  };
+
+  it('carries the engineer tier through every exit - even a firing', () => {
+    // The tier is not a thing you are fired out of: a Systems Engineer let go
+    // is still a Systems Engineer at the next desk, dented reputation and all.
+    for (const exit of EMPLOYER_EXITS) {
+      expect(careerAfter(exit, ENGINEER).tier)
+        .toBe(PLAYER_TIERS.systemsEngineer);
+    }
+  });
+
+  it('seeds the next week from the carried tier', () => {
+    const carry = carryForEmployer(careerAfter('fired', ENGINEER), 'bodgeworth');
+
+    expect(carry.playerTier).toBe(PLAYER_TIERS.systemsEngineer);
   });
 });

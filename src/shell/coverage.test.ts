@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { COMMANDS } from './apps/cmd-parse';
+import { UNIX_COMMANDS } from './apps/cmd-unix';
 import { APP_MANIFEST } from './apps/index';
 import { INSTALLABLE_MANIFEST } from './apps/installable';
 import {
@@ -217,8 +218,11 @@ describe('coverage manifest', () => {
   });
 
   it('covers every command the terminal admits to having', () => {
+    // Both dialects (E6): the Windows verb set the desktop terminal ships and
+    // the unix one an ssh session switches to. A command in either registry
+    // with no coverage entry reds here, exactly as a Windows one always has.
     expect(claimed('command')).toEqual(
-      sorted(COMMANDS.map((spec) => spec.name)),
+      sorted([...COMMANDS, ...UNIX_COMMANDS].map((spec) => spec.name)),
     );
   });
 

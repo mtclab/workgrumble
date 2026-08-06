@@ -29,6 +29,7 @@
  * left the last one", and inventing one would move the goldens for nothing.
  */
 
+import { type PlayerTier, PLAYER_TIERS, playerTierOf } from './fields';
 import { clampMeter } from './meters';
 import { PROBATION_WEEK } from './pressure';
 import type { WeekCarry } from './session';
@@ -76,6 +77,15 @@ export interface CareerStanding {
   readonly reputation: number;
   readonly title: string;
   readonly farmFund: number;
+  /**
+   * The PAM tier the player crossed to, or the desk they never left (E6). It
+   * rides the career the way the title does, and for the sharper reason: the
+   * promotion is PERMANENT, so a tier once crossed has to survive the change of
+   * employer that would otherwise reset every field on the player node. Absent
+   * off the graph reads as `service_desk`, which is every player who has not
+   * been promoted and every save that predates the tier.
+   */
+  readonly tier: PlayerTier;
 }
 
 /**
@@ -92,6 +102,13 @@ export interface EmployerCareer {
   readonly title: string;
   readonly farmFund: number;
   readonly trail: EmployerTrail | null;
+  /**
+   * The tier the player carries into the next job (E6). Permanent: a firing
+   * dents the reputation and leaves the tier, because a Systems Engineer who is
+   * let go is still a Systems Engineer at the next desk - the promotion crosses
+   * a tier once and nothing walks it back.
+   */
+  readonly tier: PlayerTier;
 }
 
 /**
@@ -116,6 +133,9 @@ export function careerAfter(
     // the reference, and the money towards the farm is still yours.
     farmFund: Math.max(0, standing.farmFund),
     trail: exit === 'completed' ? null : exit,
+    // Permanent through every exit. A pass keeps it, a redundancy keeps it, and
+    // a firing keeps it too - the tier is not a thing you are fired out of.
+    tier: standing.tier,
   };
 }
 
@@ -141,6 +161,7 @@ export function carryForEmployer(
     employer,
     reputation: career.reputation,
     title: career.title,
+    playerTier: career.tier,
   };
 }
 
@@ -164,6 +185,7 @@ export function parseCareer(value: unknown): EmployerCareer | null {
     title,
     farmFund,
     trail,
+    tier,
   } = value as Record<string, unknown>;
 
   const whole = (candidate: unknown, least: number): number | null => (
@@ -187,6 +209,11 @@ export function parseCareer(value: unknown): EmployerCareer | null {
     title,
     farmFund: fund,
     trail: isEmployerTrail(trail) ? trail : null,
+    // Absent, or a tier this build does not know, reads as the desk - the same
+    // back-compat courtesy the trail gets: a record written before the tier
+    // existed (every switch record any prior build wrote) is a career at the
+    // service desk, which is exactly what it was.
+    tier: playerTierOf(tier),
   };
 }
 
@@ -197,5 +224,9 @@ export function serializeCareer(career: Readonly<EmployerCareer>): string {
     title: career.title,
     farmFund: career.farmFund,
     trail: career.trail,
+    tier: career.tier,
   });
 }
+
+/** The default a fresh career carries: the desk, until the promotion crosses it. */
+export const FRESH_CAREER_TIER: PlayerTier = PLAYER_TIERS.serviceDesk;
