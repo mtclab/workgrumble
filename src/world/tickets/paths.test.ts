@@ -250,6 +250,12 @@ describe('shipped tickets', () => {
       // backup at the customer that signs mid-week, spawned into the estate the
       // onboarding event stands up.
       'ticket:tillman-backup-discovery',
+      // And the dental vertical (0.14.0): the fully-managed clinic's three
+      // hands-on tickets - the chair-side X-ray sensor reseat, the imaging-bridge
+      // vendor escalation, and the HIPAA access-review report.
+      'ticket:elmwood-xray-sensor',
+      'ticket:elmwood-imaging-bridge',
+      'ticket:elmwood-hipaa-audit',
     ]);
   });
 
@@ -383,7 +389,10 @@ describe('escalation policy', () => {
     // manufacturer's user lockout is the RACI hand-back - a daytime user reset is
     // their own helpdesk's, so handing it back is the resolution, not a reset;
     // and the onboarding discovery is a finding to RAISE, not a desk fix - a
-    // backup that never worked is escalated to whoever owns the remediation plan.
+    // backup that never worked is escalated to whoever owns the remediation plan;
+    // and the dental clinic's imaging bridge is a vendor integration a PMS update
+    // broke - a restart cannot reconcile it even on a fully-managed contract, so
+    // escalating it to the imaging vendor is the job, not a fallback.
     expect(escalatable).toEqual([
       'ticket:fan-noise',
       'ticket:hr-report-macro',
@@ -393,6 +402,7 @@ describe('escalation policy', () => {
       'ticket:northwind-disk-alert',
       'ticket:arden-lockout-handback',
       'ticket:tillman-backup-discovery',
+      'ticket:elmwood-imaging-bridge',
     ]);
   });
 

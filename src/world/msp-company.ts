@@ -89,6 +89,10 @@ export const MSP_CUSTOMERS = {
   // 0.13.0, the customer that SIGNS mid-week and is stood up by the onboarding
   // event rather than at Monday boot - so it is absent until the day it joins.
   tillman: 'customer:tillman',
+  // 0.14.0, the managed dental clinic - the hands-on Windows vertical. Distinct
+  // from monitoring-only NORTHWIND-CLINIC: this one is fully-managed, with real
+  // chair-side, time-pressured tickets.
+  elmwood: 'customer:elmwood',
 } as const;
 
 const CUSTOMERS: readonly CustomerSeed[] = [
@@ -134,6 +138,20 @@ const CUSTOMERS: readonly CustomerSeed[] = [
     businessType: BUSINESS_TYPES.manufacturing,
     scope: SERVICE_SCOPES.coManaged,
     sla: SLA_TIERS.silver,
+  },
+  {
+    // ELMWOOD-DENTAL: a managed dental practice with no in-house IT, so the MSP
+    // is the whole IT department - a fully-managed contract, which puts the
+    // chair-side workstation, the USB X-ray sensor on it and the practice
+    // server all in reach. Gold, because a clinic that stops the moment a chair
+    // goes down pays for the tightest response there is: the chair-side sensor
+    // ticket lands on the tiniest resolution budget in the game. Distinct from
+    // monitoring-only NORTHWIND-CLINIC - two clinics at opposite scope poles.
+    id: MSP_CUSTOMERS.elmwood,
+    name: 'ELMWOOD-DENTAL',
+    businessType: BUSINESS_TYPES.dentalClinic,
+    scope: SERVICE_SCOPES.fullyManaged,
+    sla: SLA_TIERS.gold,
   },
 ] as const;
 
@@ -257,6 +275,24 @@ export const MSP_IDS = {
   tillmanYardPc: 'machine:till-ws-02',
   tillmanServer: 'machine:till-srv-01',
   tillmanBackup: 'service:till-srv-01/backup',
+
+  /**
+   * ELMWOOD-DENTAL, the fully-managed dental practice (0.14.0). Grace runs the
+   * front office and files every clinic ticket on behalf of the surgery. The
+   * estate is the hands-on Windows vertical: an operatory (chair-side)
+   * workstation with the USB X-ray sensor plugged into it, a reception
+   * workstation, and the practice server running the Dentrix-class PMS and the
+   * DEXIS-class imaging bridge. The sensor "not detected" and the imaging bridge
+   * a PMS update broke both hang off this estate; the HIPAA access-review is
+   * read off the server's audit trail.
+   */
+  elmwoodContact: 'person:elmwood-grace',
+  elmwoodContactAccount: 'account:elmwood-grace',
+  elmwoodOperatory: 'machine:elm-ws-01',
+  elmwoodReception: 'machine:elm-ws-02',
+  elmwoodServer: 'machine:elm-srv-01',
+  elmwoodSensor: 'device:elm-sensor-01',
+  elmwoodImagingBridge: 'service:elm-srv-01/imaging-bridge',
 } as const;
 
 export type MspNodeId = (typeof MSP_IDS)[keyof typeof MSP_IDS];
@@ -409,6 +445,20 @@ const STAFF: readonly StaffSeed[] = [
       + 'not this one',
     customer: MSP_CUSTOMERS.arden,
   },
+
+  // ELMWOOD-DENTAL, fully-managed (0.14.0). Grace files every clinic ticket; the
+  // faults are about the surgery's shared machines and its server, not about a
+  // named colleague's account, so she is the whole of the clinic's cast.
+  {
+    person: MSP_IDS.elmwoodContact,
+    account: MSP_IDS.elmwoodContactAccount,
+    name: 'Grace Bellamy',
+    title: 'Practice Manager, Elmwood Dental',
+    username: 'gbellamy',
+    desk: 'A dental reception where a chair standing empty is a bill nobody sent, '
+      + 'and the server lives in a cupboard behind the sterilisation room',
+    customer: MSP_CUSTOMERS.elmwood,
+  },
 ];
 
 interface MachineSeed {
@@ -559,6 +609,46 @@ const MACHINES: readonly MachineSeed[] = [
     processor: 'The IIS box the shop-floor scheduling portal runs on',
     memory: '32 GB',
     diskFree: 171_798_691_840,
+  },
+
+  // ELMWOOD-DENTAL: fully-managed, Windows-only and locked down. An operatory
+  // (chair-side) workstation the X-ray sensor plugs into, a reception desktop,
+  // and the practice server the PMS and imaging bridge run on - the whole estate
+  // the MSP's, server included.
+  {
+    // The chair-side PC: a shared operatory workstation nobody personally owns,
+    // the way the yard PC at Tillman is shared - it belongs to the chair, not a
+    // person, which is why the sensor plugged into it takes a whole surgery down.
+    id: MSP_IDS.elmwoodOperatory,
+    hostname: 'ELM-WS-01',
+    role: MACHINE_ROLES.workstation,
+    customer: MSP_CUSTOMERS.elmwood,
+    wiredTo: MSP_IDS.elmwoodServer,
+    processor: 'The operatory PC by the chair, running the imaging capture front '
+      + 'end all day',
+    memory: '8 GB',
+    diskFree: 96_636_764_160,
+  },
+  {
+    id: MSP_IDS.elmwoodReception,
+    hostname: 'ELM-WS-02',
+    role: MACHINE_ROLES.workstation,
+    customer: MSP_CUSTOMERS.elmwood,
+    owner: MSP_IDS.elmwoodContact,
+    wiredTo: MSP_IDS.elmwoodServer,
+    processor: 'The front-desk desktop, appointment book and the practice suite',
+    memory: '8 GB',
+    diskFree: 128_849_018_880,
+  },
+  {
+    id: MSP_IDS.elmwoodServer,
+    hostname: 'ELM-SRV-01',
+    role: MACHINE_ROLES.fileServer,
+    customer: MSP_CUSTOMERS.elmwood,
+    processor: 'The practice server: the Dentrix patient database and the DEXIS '
+      + 'imaging bridge, in a cupboard behind the sterilisation room',
+    memory: '32 GB',
+    diskFree: 214_748_364_800,
   },
 ];
 
@@ -794,6 +884,48 @@ export function mspSetup(): readonly SetupOp[] {
   addEdge(ops, {
     from: MSP_IDS.northwindPortal,
     to: MSP_IDS.northwindServer,
+    kind: 'runs_on',
+  });
+
+  // ELMWOOD-DENTAL's two named pieces of estate (0.14.0), seeded HEALTHY the way
+  // every other named service is - the fault arrives with the ticket about it.
+  //
+  // The intraoral X-ray sensor: a USB device on the operatory workstation, on
+  // and enumerating. Its ticket sets it powered-off ("not detected"), and the
+  // fix is the reseat every dental practice knows - a device power-cycle here.
+  addNode(ops, {
+    id: MSP_IDS.elmwoodSensor,
+    kind: 'device',
+    fields: {
+      [FIELDS.name]: 'DEXIS intraoral X-ray sensor (USB)',
+      [FIELDS.type]: DEVICE_TYPES.sensor,
+      [FIELDS.powered]: true,
+    },
+  });
+  addEdge(ops, {
+    from: MSP_IDS.elmwoodSensor,
+    to: MSP_IDS.elmwoodOperatory,
+    kind: 'connected_to',
+  });
+
+  // The DEXIS imaging bridge: the integration that hands captured images from
+  // DEXIS to the Dentrix chart. It runs on the practice server, seeded running -
+  // the imaging-bridge ticket is an integration break a PMS update caused, and
+  // its honest close is a vendor escalation (like the prod-down), so the service
+  // itself is never wedged; it is real estate the ticket names and a tech reads.
+  addNode(ops, {
+    id: MSP_IDS.elmwoodImagingBridge,
+    kind: 'service',
+    fields: {
+      [FIELDS.name]: 'DEXIS Imaging Bridge',
+      [FIELDS.serviceName]: 'DTXImagingBridge',
+      [FIELDS.status]: SERVICE_STATUS.running,
+      [FIELDS.startupType]: STARTUP_TYPES.automatic,
+    },
+  });
+  addEdge(ops, {
+    from: MSP_IDS.elmwoodImagingBridge,
+    to: MSP_IDS.elmwoodServer,
     kind: 'runs_on',
   });
 

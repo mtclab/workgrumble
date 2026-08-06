@@ -1459,4 +1459,119 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/co-managed-raci', 'kb/the-restart-nobody-does'],
   },
+  {
+    id: 'kb/xray-sensor-not-detected',
+    title: 'The intraoral X-ray sensor says "not detected"',
+    summary: 'A chair-side sensor that stops being detected has usually dropped '
+      + 'off the USB bus. Reseat the connection first; it is the fix in the '
+      + 'overwhelming majority of cases.',
+    state: 'published',
+    issue: 'The dentist goes to take a radiograph and the imaging software reports '
+      + 'no sensor connected, with a patient in the chair mid-procedure. It was '
+      + 'working earlier the same day.',
+    environment: 'A dental operatory: a USB intraoral sensor (DEXIS-class or '
+      + 'similar) plugged into the chair-side workstation, often through a hub or '
+      + 'a run of cable that gets moved during cleaning and setup.',
+    resolution: [
+      'Reseat the sensor\'s USB connection - unplug it and plug it back in, at the '
+        + 'workstation end and at the sensor/interface end. In this game that is a '
+        + 'device power-cycle on the sensor ("power <device>" or the control on the '
+        + 'Remote Assist screen).',
+      'Confirm the imaging software now sees the sensor and the dentist can '
+        + 'capture. Tell reception it is back so the appointment can carry on.',
+      'If reseating does not bring it back, the next steps are a different USB port '
+        + 'or hub and then the sensor driver - but the reseat comes first, because '
+        + 'it is the fastest and by far the most common cause.',
+    ],
+    cause: [
+      'An intraoral sensor is a USB device, and "not detected" is the imaging '
+      + 'software saying the operating system is not enumerating it on the bus. A '
+      + 'connector worked loose, a powered hub browned out, or the interface '
+      + 'stopped responding - none of which is a fault of the workstation, the '
+      + 'imaging software, or the patient database, all of which are fine.',
+      'That is why re-seating the USB connection is the whole of the first-line '
+      + 'fix and why rebuilding software or touching the patient record would be '
+      + 'exactly the wrong move: the image pipeline and the chart are intact, and '
+      + 'the only thing missing is the device on the bus. Under a patient-in-the-'
+      + 'chair clock, the reseat is both the fastest and the correct answer.',
+    ],
+    see_also: ['kb/power-cycle', 'kb/reading-the-error'],
+  },
+  {
+    id: 'kb/imaging-bridge-pms-update',
+    title: 'X-rays stop saving to the chart after a PMS update',
+    summary: 'When captures stop writing to the patient chart after a practice-'
+      + 'management update, the imaging bridge and the new PMS version no longer '
+      + 'agree. Restarting the bridge will not fix it - escalate to the vendor.',
+    state: 'published',
+    issue: 'After a practice-management-system update, the surgery can still '
+      + 'capture X-rays but they never appear in the patient\'s chart. The imaging '
+      + 'bridge service is running and restarting it changes nothing.',
+    environment: 'A managed dental practice where a DEXIS-class imaging package '
+      + 'writes captured images into a Dentrix-class PMS through an integration '
+      + 'bridge running on the practice server, all Windows.',
+    resolution: [
+      'Confirm the shape of it: capture works, the write to the chart does not, '
+        + 'and it started with the PMS update. The bridge service being "running" is '
+        + 'the trap - it is up, it just cannot hand images across any more.',
+      'Do not keep restarting the bridge. A restart reloads the same integration '
+        + 'against the same changed interface, so it cannot help; it only burns the '
+        + 'clock on a clinical workflow that is down.',
+      'Escalate to the imaging vendor with the specifics - which PMS update went '
+        + 'on, when it last worked, and that captures succeed but do not write. A '
+        + 'version reconciliation of the bridge is the vendor\'s to make, and a fast '
+        + 'clean escalation with the details is the job at any contract tier.',
+    ],
+    cause: [
+      'An imaging bridge is glue between two vendors\' software: it takes what the '
+      + 'imaging package captures and writes it into the PMS through whatever '
+      + 'interface that PMS version exposes. When the PMS updates and moves or '
+      + 'changes that interface, the bridge is left calling something that is no '
+      + 'longer there, so the capture succeeds and the hand-off silently fails.',
+      'That is why a restart is useless and why this is not a desk fix even on a '
+      + 'fully-managed contract where the server is yours to touch: the defect is a '
+      + 'version mismatch between two third-party products, and only the vendor can '
+      + 'reconcile the bridge to the new PMS release. Recognising a vendor '
+      + 'integration break and escalating it fast beats a morning of restarts.',
+    ],
+    see_also: ['kb/msp-scope-escalation', 'kb/announced-maintenance'],
+  },
+  {
+    id: 'kb/hipaa-access-review',
+    title: 'Who opened this chart: answering an access review from the audit trail',
+    summary: 'A patient\'s "who has seen my record" request is answered by reading '
+      + 'the PMS audit trail and reporting it back - a read and a report, not a '
+      + 'repair, and nothing on the estate changes.',
+    state: 'published',
+    issue: 'A patient asks the practice for an accounting of who has accessed '
+      + 'their record, and the office manager needs the answer pulled from the '
+      + 'practice management system to give back to them.',
+    environment: 'A managed dental practice whose PMS (Dentrix-class) keeps a '
+      + 'HIPAA-style audit trail of chart access - who opened which record and '
+      + 'when - on the practice server the MSP administers.',
+    resolution: [
+      'Get the patient and the date range the accounting has to cover from the '
+        + 'practice before you run anything, so the report answers the actual '
+        + 'request and not a broader one.',
+      'Run the PMS audit-trail report for that patient and period. It lists each '
+        + 'chart open with the account and the timestamp - that is the accounting, '
+        + 'already recorded; you are reading it, not building it.',
+      'Report the result back to the practice on the ticket, so the office manager '
+        + 'can give the patient a straight answer. Nothing is remediated because '
+        + 'nothing is broken - the deliverable is the accurate answer, given.',
+    ],
+    cause: [
+      'A practice management system logs chart access as a matter of course, '
+      + 'because a covered entity has to be able to say who saw a record. So an '
+      + 'access review is not an investigation you assemble - it is a report you '
+      + 'run against a log the system has been keeping all along, filtered to the '
+      + 'patient and the dates the request is about.',
+      'That is why the honest close is a report back rather than a fix: reading an '
+      + 'audit trail and running its report is administrative work a managed '
+      + 'contract covers, no record is altered, and the value is entirely in the '
+      + 'accounting being accurate and given to the practice to pass on. Changing '
+      + 'anything on the chart would be the one thing an access review must not do.',
+    ],
+    see_also: ['kb/backup-verification-gap', 'kb/reading-the-error'],
+  },
 ];

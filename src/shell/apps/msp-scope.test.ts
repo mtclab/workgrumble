@@ -349,6 +349,53 @@ describe('the Linux prod draw closes by escalation, never by touching prod', () 
 });
 
 /**
+ * The dental clinic's imaging bridge (0.14.0), proven through the real terminal:
+ * an integration a PMS update broke closes by ESCALATION, never by a restart -
+ * even though the clinic is fully-managed and the server IS reachable.
+ *
+ * ELMWOOD-DENTAL is fully-managed, so scope does not wall the server off - which
+ * is exactly why this needs proving: the honest close is a vendor escalation, and
+ * the tempting restart is refused because the bridge is RUNNING (the fault is the
+ * integration, not a downed service). Teeth: make escalation stop closing it, or
+ * make a healthy-service restart close it, and this goes red.
+ */
+describe('the imaging bridge closes by vendor escalation, not by a restart', () => {
+  it('refuses the tempting restart of a running bridge, then closes on escalation', () => {
+    const session = mspSession('ticket:elmwood-imaging-bridge');
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.elmwood);
+    const api = apiFor(session, appState);
+
+    // The instinct is to bounce the bridge. Fully-managed reaches the server, so
+    // this is NOT a scope refusal - it is refused because the bridge is running:
+    // the fault is a version mismatch the update caused, not a downed service.
+    const refused = run(api, 'restart ELM-SRV-01\\DTXImagingBridge');
+    expect(refused).toContain('already running');
+    expect(refused).not.toContain('service reports RUNNING');
+    expect(session.engine.ticketState('ticket:elmwood-imaging-bridge'))
+      .toBe('open');
+
+    // The honest ending: escalate to the imaging vendor with the update details.
+    // That - and only that - closes it. Teeth: stop escalation closing it, red.
+    const escalate = session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketEscalate,
+      MSP_IDS.player,
+      'ticket:elmwood-imaging-bridge',
+      {
+        reported: 'DEXIS captures do not write to the Dentrix chart since the '
+          + 'weekend PMS update; images lost.',
+        tried: 'Confirmed the imaging bridge on ELM-SRV-01 is RUNNING\n'
+          + 'A restart reloads the same version-mismatched integration - it is a '
+          + 'vendor reconcile, not a desk fix',
+      },
+    );
+    expect(escalate.ok).toBe(true);
+    expect(session.engine.ticketState('ticket:elmwood-imaging-bridge'))
+      .toBe('resolved');
+  });
+});
+
+/**
  * The fully-managed tier (0.11.0), proven through the real terminal: the server
  * fix a helpdesk contract WALLS OFF succeeds here, because the MSP owns the whole
  * estate. Teeth: the SAME server fix at a helpdesk customer is refused, so the

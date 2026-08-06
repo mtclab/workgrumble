@@ -1267,6 +1267,254 @@ const TILLMAN_BACKUP_DISCOVERY: WorldTicket = {
   ],
 };
 
+/* -- ELMWOOD-DENTAL: the hands-on Windows vertical, fully-managed (0.14.0) --- */
+
+/**
+ * The chair-side headline: the intraoral X-ray sensor "not detected", with a
+ * patient in the chair.
+ *
+ * The single most common dental-IT ticket, and the one whose SLA is genuinely
+ * tight because a surgery cannot take the radiograph it is mid-procedure for.
+ * The real triage is the reseat: the USB sensor or its interface has dropped off
+ * the bus, and re-seating the connector brings it back - which is a device
+ * power-cycle in this world's terms (the same verb the flat mouse and the dead
+ * warehouse printer take). Modelled as the device fact it is: the sensor on the
+ * operatory workstation, powered off in the ticket's setup, brought back on by
+ * the reseat. In scope because ELMWOOD is fully-managed - a chair-side device on
+ * a managed workstation is squarely the MSP's - and on the tightest clock in the
+ * game because the clinic is Gold and the fault is high-severity.
+ */
+const XRAY_SENSOR_NOT_DETECTED: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.elmwoodSensor, MSP_IDS.elmwoodOperatory],
+  // A patient is in the chair and the surgery cannot take the image it is
+  // mid-procedure for: as urgent as it is claimed, and the desk agrees.
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:elmwood-xray-sensor',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Elmwood: the X-ray sensor is "not detected" and there is a patient '
+        + 'in the chair',
+      body:
+        'Grace is calling from reception for the surgery: the DEXIS sensor on the '
+        + 'chair-side PC has stopped being detected mid-appointment - the imaging '
+        + 'software says no sensor is connected and the dentist cannot take the '
+        + 'radiograph. It was working an hour ago. There is a patient sitting in '
+        + 'the chair with their mouth open, so this one is now, not later.',
+    },
+    reporter: MSP_IDS.elmwoodContact,
+    // The sensor drops off the USB bus, which reads as "not detected" - the
+    // device simply not being there. It arrives with the ticket, like every
+    // fault in this roster; nothing about the workstation itself is broken.
+    setup: [
+      {
+        op: 'setField',
+        id: MSP_IDS.elmwoodSensor,
+        field: FIELDS.powered,
+        value: false,
+      },
+    ],
+    // Closed when the sensor is enumerating again - back on the bus, detected.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: MSP_IDS.elmwoodSensor },
+      field: FIELDS.powered,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/xray-sensor-not-detected',
+  },
+  cause: 'An intraoral sensor that reports "not detected" has almost always '
+    + 'dropped off the USB bus - a connector worked loose, a hub browned out, or '
+    + 'the interface stopped enumerating. Re-seating the USB connection brings it '
+    + 'back on the bus and the imaging software finds it again; nothing on the '
+    + 'workstation and nothing in the patient database is wrong, which is why '
+    + 'reseating is the first move and rebuilding anything is the wrong one.',
+  dialogue_ref: 'dialogue/msp-grace',
+  paths: [
+    {
+      id: 'reseat-the-sensor',
+      app: 'remote',
+      label: 'Reseat the USB X-ray sensor on the operatory PC (power-cycle the '
+        + 'device)',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.devicePowerCycle,
+          target: MSP_IDS.elmwoodSensor,
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The imaging bridge a PMS update broke - the integration boundary, escalated.
+ *
+ * After a weekend Dentrix update, captured X-rays stop landing in the patient
+ * chart: the DEXIS-to-Dentrix imaging bridge and the new PMS version no longer
+ * agree on the interface, so images are taken and then go nowhere. Every instinct
+ * says restart the bridge service, and on a fully-managed contract the desk MAY
+ * touch the server - but a restart puts the same version-mismatched bridge back
+ * up in front of the same broken chart write. This is a vendor integration
+ * defect, not a wedged service, so the honest close is a clean escalation to the
+ * imaging vendor with the PMS version that broke it - the same shape the
+ * prod-down and the onboarding-backup discovery resolve on. The service is real
+ * estate a tech can read; nothing on it is wedged, which is exactly the trap.
+ */
+const IMAGING_BRIDGE_BREAK: WorldTicket = {
+  arrival: 'drip',
+  nodes: [
+    MSP_IDS.elmwoodServer,
+    MSP_IDS.elmwoodImagingBridge,
+    MSP_IDS.elmwoodOperatory,
+  ],
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:elmwood-imaging-bridge',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Elmwood: X-rays are being taken but not saving to the patient chart',
+      body:
+        'Grace reports that since the Dentrix update over the weekend, the '
+        + 'surgery can capture X-rays on the DEXIS sensor but they never appear in '
+        + 'the patient\'s chart - the image is taken and then simply is not there. '
+        + 'The imaging bridge on the practice server is running; restarting it '
+        + 'changes nothing, because the update moved the interface out from under '
+        + 'it. This is the vendor\'s integration to reconcile, and it wants '
+        + 'raising with the version that broke it.',
+    },
+    reporter: MSP_IDS.elmwoodContact,
+    // Nothing is wedged and nothing is seeded: the bridge runs, the PMS runs, and
+    // the fault is that the two no longer agree - an integration break the estate
+    // cannot hold as a status, exactly as the prod-down outage is a fiction the
+    // escalate resolves rather than a field on a box.
+    setup: [],
+    // The honest ending: escalate to the imaging vendor. A Tier-1 restart cannot
+    // reconcile a bridge with a PMS version it was not built for, so escalation
+    // is the job here, not a fallback - the resolution rule is the raise.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: 'ticket:elmwood-imaging-bridge' },
+      field: FIELDS.escalated,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 5 },
+    kb_ref: 'kb/imaging-bridge-pms-update',
+  },
+  cause: 'A PMS update changed the interface the imaging bridge writes through, '
+    + 'so DEXIS captures an image and the bridge can no longer hand it to the '
+    + 'Dentrix chart. The bridge service is running - restarting it just reloads '
+    + 'the same version-mismatched integration - so this is not a desk fix at any '
+    + 'tier; it is a vendor reconciliation of the bridge to the new PMS version, '
+    + 'and the fast, correct move is to escalate it with the update details.',
+  dialogue_ref: 'dialogue/msp-grace',
+  paths: [
+    {
+      id: 'escalate-imaging-bridge',
+      app: 'tickets',
+      label: 'Escalate it: the PMS update broke the bridge, it is the vendor\'s '
+        + 'to reconcile',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.ticketEscalate,
+          target: 'ticket:elmwood-imaging-bridge',
+          params: {
+            reported: 'DEXIS captures succeed but do not write to the Dentrix '
+              + 'chart since the weekend PMS update; images lost.',
+            tried:
+              'Confirmed the DEXIS imaging bridge on ELM-SRV-01 is RUNNING\n'
+              + 'Restart reloads the same bridge - the PMS update moved the '
+              + 'interface, so it is a vendor integration reconcile, not a desk '
+              + 'fix at any tier',
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The HIPAA access-review request - who opened a patient chart.
+ *
+ * A patient (or their guardian) has asked the practice for an accounting of who
+ * viewed their record, and Grace has passed it to the MSP because the audit
+ * trail lives in the PMS the MSP administers. This is compliance-adjacent work,
+ * and its deliverable is not a fix on the estate - it is the answer, pulled from
+ * the Dentrix audit log and reported back to the practice. So the ticket closes
+ * on a reply to the reporter (the same rule the phish report closes on): reading
+ * the audit trail is a read, running the report is in scope on a managed
+ * contract, and the accounting handed back to the practice manager IS the job.
+ * Nothing is remediated because nothing is broken; the record is produced.
+ */
+const HIPAA_ACCESS_REVIEW: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.elmwoodServer, MSP_IDS.elmwoodContactAccount],
+  claimed_urgency: 2,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:elmwood-hipaa-audit',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Elmwood: a patient wants to know who opened their chart',
+      body:
+        'Grace has a request from a patient asking, under their right to an '
+        + 'accounting, who has accessed their record over the last month. The '
+        + 'practice keeps that in the Dentrix audit trail on the server, and Grace '
+        + 'needs the answer to give back. It is not a thing to fix - it is a thing '
+        + 'to look up and report accurately, from the log the system already '
+        + 'keeps.',
+    },
+    reporter: MSP_IDS.elmwoodContact,
+    // Nothing is broken and nothing is seeded: the audit trail exists on the PMS
+    // and always has. The job is to read it and report, not to change anything.
+    setup: [],
+    // Closed when the accounting has been written back to the practice - the
+    // access review answered from the log, on the record where it belongs.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: 'ticket:elmwood-hipaa-audit' },
+      field: FIELDS.replied,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/hipaa-access-review',
+  },
+  cause: 'A HIPAA access review is answered from the audit trail the practice '
+    + 'management system keeps as a matter of course - every chart open is logged '
+    + 'with who and when. Producing the accounting is running that report for the '
+    + 'patient and date range and handing it back to the practice; it is a read '
+    + 'and a report, not remediation, which is why the ticket closes on the '
+    + 'answer being given rather than on anything being changed.',
+  dialogue_ref: 'dialogue/msp-grace',
+  paths: [
+    {
+      id: 'report-the-access-review',
+      app: 'chat',
+      label: 'Pull the Dentrix audit trail and report the chart-access accounting '
+        + 'to the practice',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.ticketReplyToReporter,
+          target: 'ticket:elmwood-hipaa-audit',
+          params: {
+            comment: 'Access review complete: the Dentrix audit trail for that '
+              + 'chart over the last month shows only the treating dentist and '
+              + 'the practice manager, each entry stamped with the login and time. '
+              + 'No unexpected access. Full report is on the ticket for your '
+              + 'records.',
+          },
+        },
+      ],
+    },
+  ],
+};
+
 export const MSP_TICKETS: readonly WorldTicket[] = [
   // FONTAINE-LAW - the law firm, helpdesk scope.
   MATTER_ACCESS,
@@ -1290,4 +1538,10 @@ export const MSP_TICKETS: readonly WorldTicket[] = [
   ARDEN_PORTAL_AFTERHOURS,
   // TILLMAN-FREIGHT - the mid-week onboarding + the discovery horror (0.13.0).
   TILLMAN_BACKUP_DISCOVERY,
+  // ELMWOOD-DENTAL - the fully-managed dental vertical, hands-on + chair-side
+  // time pressure (0.14.0): the X-ray sensor reseat, the imaging-bridge vendor
+  // escalation, the HIPAA access-review report.
+  XRAY_SENSOR_NOT_DETECTED,
+  IMAGING_BRIDGE_BREAK,
+  HIPAA_ACCESS_REVIEW,
 ];

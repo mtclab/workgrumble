@@ -36,10 +36,17 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     // locked out before payroll: the fully-managed tier, opening on its most
     // ordinary work (a user), so the server fix later in the week reads as the
     // contrast it is.
+    // And in the afternoon, ELMWOOD-DENTAL's imaging bridge: the weekend Dentrix
+    // update has stopped X-rays writing to the chart, and the surgery has been
+    // writing them on paper since. A restart will not fix a vendor integration
+    // the update moved the interface under - the honest close is to escalate.
     inherited: ['ticket:fontaine-matter-access', 'ticket:holloway-lockout'],
-    drip: [{ ticketId: 'ticket:northwind-backup-alert', minute: 10 * 60 }],
+    drip: [
+      { ticketId: 'ticket:northwind-backup-alert', minute: 10 * 60 },
+      { ticketId: 'ticket:elmwood-imaging-bridge', minute: 13 * 60 + 30 },
+    ],
     patrolSeed: 0,
-    load: 2,
+    load: 3,
   },
   {
     day: 2,
@@ -48,13 +55,17 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     // mid-morning Fontaine surfaces the iManage deadlock a partner left behind,
     // and Holloway's reception spooler wedges - a fully-managed workstation fix
     // beside the helpdesk ones, the same work with no wall on the server half.
+    // And the chair-side emergency: ELMWOOD-DENTAL's X-ray sensor drops off the
+    // USB bus with a patient in the chair. On the tightest clock in the game -
+    // Gold clinic, high severity - and closed by the reseat every practice knows.
     inherited: ['ticket:meridian-mfa-lockout'],
     drip: [
+      { ticketId: 'ticket:elmwood-xray-sensor', minute: 11 * 60 },
       { ticketId: 'ticket:fontaine-checkout-deadlock', minute: 10 * 60 + 20 },
       { ticketId: 'ticket:holloway-spooler', minute: 13 * 60 + 15 },
     ],
     patrolSeed: 1_699,
-    load: 2,
+    load: 3,
   },
   {
     day: 3,
@@ -106,15 +117,18 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     label: 'Friday',
     inherited: [],
     // A lighter Friday, the way every week's is: one last monitoring alert -
-    // Northwind's disk crossing its threshold - and Arden's shop-floor portal
-    // wedged as their IT clocks off, the co-managed gap the MSP fills by
-    // notifying their team first and then acting. Then the review.
+    // Northwind's disk crossing its threshold - Elmwood's HIPAA access review (a
+    // patient asking who opened their chart, answered from the audit trail, not a
+    // fix), and Arden's shop-floor portal wedged as their IT clocks off, the
+    // co-managed gap the MSP fills by notifying their team first and then acting.
+    // Then the review.
     drip: [
       { ticketId: 'ticket:northwind-disk-alert', minute: 10 * 60 + 30 },
+      { ticketId: 'ticket:elmwood-hipaa-audit', minute: 11 * 60 },
       { ticketId: 'ticket:arden-portal-afterhours', minute: 14 * 60 + 45 },
     ],
     patrolSeed: 2_939,
-    load: 2,
+    load: 3,
   },
 ], MSP_ROOM_IDS);
 

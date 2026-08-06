@@ -681,6 +681,29 @@ describe('a customer\'s SLA tier sets the clock', () => {
       );
   });
 
+  /**
+   * The chair-side sensor ticket (0.14.0) is on the tightest clock in the game.
+   *
+   * ELMWOOD-DENTAL is a Gold clinic - a surgery that stops the moment a chair
+   * goes down pays for the tightest response there is - so its X-ray-sensor
+   * ticket lands stamped Gold and on a resolution budget strictly tighter than
+   * the tier-less in-house default. That is what "chair-side reliability = a
+   * tighter SLA" means mechanically, and it goes red if the tier lookup is
+   * reverted (the ticket would spawn on the default 240 and read no tier).
+   */
+  it('puts the chair-side X-ray sensor ticket on a tight (Gold) clock', () => {
+    const sensor = mspHarness('ticket:elmwood-xray-sensor');
+
+    expect(sensor.node().fields[FIELDS.customerSlaTier]).toBe(SLA_TIERS.gold);
+    expect(sensor.clocks().tier).toBe(SLA_TIERS.gold);
+    // The Gold budget, and it is strictly tighter than the tier-less default a
+    // probation or Bodgeworth ticket carries (`tierResolutionTicks(null)`).
+    expect(sensor.clocks().resolution.dueAt)
+      .toBe(tierResolutionTicks(SLA_TIERS.gold));
+    expect(sensor.clocks().resolution.dueAt)
+      .toBeLessThan(UNTRIAGED_SLA_TICKS);
+  });
+
   it('still pauses the resolution clock waiting on the customer', () => {
     // The pause is the engine's, and the tier does not change it: a parked Gold
     // ticket has its deadline walked out minute for minute, and the response

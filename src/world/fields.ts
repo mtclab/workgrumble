@@ -1183,6 +1183,13 @@ export const DEVICE_TYPES = {
    * relocks four minutes after every unlock.
    */
   tablet: 'tablet',
+  /**
+   * The chair-side kind (0.14.0). An intraoral X-ray sensor is a USB device on
+   * the operatory workstation, and its whole failure mode is the one the dental
+   * vertical is built on: "not detected", cleared by a reseat of the USB
+   * connector - which is a power-cycle of the device in this world's terms.
+   */
+  sensor: 'sensor',
 } as const;
 
 /**
@@ -1391,6 +1398,16 @@ export const BUSINESS_TYPES = {
    * earns or loses the client in the first ninety days.
    */
   trades: 'trades',
+  /**
+   * A managed dental practice (0.14.0): Windows-locked-down workstations at the
+   * chairs and reception, and a practice-management/imaging server running a
+   * Dentrix-class PMS with a DEXIS-class imaging bridge. The hands-on Windows
+   * vertical - real, chair-side, time-pressured tickets (an X-ray sensor that
+   * will not enumerate with a patient in the chair, an imaging bridge a PMS
+   * update broke, a HIPAA access-review request) - and distinct from the
+   * monitoring-only clinic the MSP only watches: this one is a MANAGED contract.
+   */
+  dentalClinic: 'dental_clinic',
 } as const;
 
 export type BusinessType = (typeof BUSINESS_TYPES)[keyof typeof BUSINESS_TYPES];
@@ -1402,6 +1419,7 @@ export const BUSINESS_TYPE_LABELS: Readonly<Record<BusinessType, string>> = {
   [BUSINESS_TYPES.accountancy]: 'Accountancy practice',
   [BUSINESS_TYPES.manufacturing]: 'Manufacturer',
   [BUSINESS_TYPES.trades]: 'Trades firm',
+  [BUSINESS_TYPES.dentalClinic]: 'Dental clinic',
 };
 
 /**

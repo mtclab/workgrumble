@@ -748,6 +748,163 @@ const GLENDA: DialogueTree = {
   ],
 };
 
+/**
+ * Grace at ELMWOOD-DENTAL, the fully-managed dental practice (0.14.0). She files
+ * three very different things on behalf of the surgery - a chair-side emergency,
+ * an integration that broke over a weekend, and a compliance request - and is
+ * right about each as she experiences it. The `reveal` on each is the cause read
+ * plainly: a USB sensor off the bus, a bridge a PMS update moved the interface
+ * under, and an audit trail that is a read rather than a repair. Each fault opens
+ * on its own line, each carries an `asks` so the SLA can be parked honestly, and
+ * each reacts to its own fix.
+ */
+const GRACE: DialogueTree = {
+  id: 'dialogue/msp-grace',
+  speaker: MSP_IDS.elmwoodContact,
+  tickets: [
+    'ticket:elmwood-xray-sensor',
+    'ticket:elmwood-imaging-bridge',
+    'ticket:elmwood-hipaa-audit',
+  ],
+  root: 'sensor',
+  roots: {
+    'ticket:elmwood-xray-sensor': 'sensor',
+    'ticket:elmwood-imaging-bridge': 'bridge',
+    'ticket:elmwood-hipaa-audit': 'hipaa',
+  },
+  resolved_roots: {
+    'ticket:elmwood-xray-sensor': 'sensor-done',
+    'ticket:elmwood-imaging-bridge': 'bridge-done',
+    'ticket:elmwood-hipaa-audit': 'hipaa-done',
+  },
+  nodes: [
+    {
+      id: 'sensor',
+      npc_line: 'The X-ray sensor on the chair-side machine has just stopped - '
+        + 'the software says no sensor is connected and the dentist cannot take '
+        + 'the picture. There is a patient in the chair right now with their mouth '
+        + 'open, so if there is anything quick, now would be the time.',
+      options: [
+        {
+          label: 'Ask whether the sensor or its cable was moved before it dropped',
+          next: 'sensor-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check what "not detected" means on an intraoral sensor',
+          effects: [
+            {
+              reveal: 'A sensor that reports "not detected" has almost always '
+                + 'dropped off the USB bus - a connector worked loose or the '
+                + 'interface stopped enumerating. Re-seating the USB connection '
+                + 'brings it back and the imaging software finds it again; nothing '
+                + 'on the PC or in the patient database is wrong.',
+            },
+          ],
+        },
+        { label: 'Tell her you will reseat it right now' },
+      ],
+    },
+    {
+      id: 'sensor-q',
+      npc_line: 'The nurse did tidy the cables round the back this morning, now '
+        + 'you mention it - so it could have been nudged. Whatever it takes, there '
+        + 'is a patient waiting.',
+      options: [{ label: 'Reseat the USB sensor on the operatory PC' }],
+    },
+    {
+      id: 'sensor-done',
+      npc_line: 'It is back - the dentist has the image. Thank you, that was '
+        + 'genuinely holding up the appointment. I will tell the nurse to leave '
+        + 'the cables where they are.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'bridge',
+      npc_line: 'Ever since the practice software updated over the weekend, the '
+        + 'X-rays we take do not save to the patient\'s chart - the picture is '
+        + 'captured and then it just is not there. The imaging bridge on the '
+        + 'server is running; someone here tried restarting it and it made no '
+        + 'difference.',
+      options: [
+        {
+          label: 'Ask exactly which update went on and when it was last working',
+          next: 'bridge-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check why a restart of a running bridge changes nothing',
+          effects: [
+            {
+              reveal: 'The Dentrix update moved the interface the DEXIS bridge '
+                + 'writes through, so a capture succeeds and the bridge can no '
+                + 'longer hand it to the chart. Restarting just reloads the same '
+                + 'version-mismatched integration - it is the vendor\'s to '
+                + 'reconcile the bridge to the new PMS version, and it wants '
+                + 'raising with the update details.',
+            },
+          ],
+        },
+        { label: 'Tell her you will raise it with the imaging vendor' },
+      ],
+    },
+    {
+      id: 'bridge-q',
+      npc_line: 'It was the Dentrix update - it ran itself on Saturday night. It '
+        + 'was saving images fine on Friday. Can you not just fix it your end?',
+      options: [{ label: 'Escalate it to the imaging vendor with the update details' }],
+    },
+    {
+      id: 'bridge-done',
+      npc_line: 'Raised, then - I understand it is theirs to sort. As long as '
+        + 'somebody is on it; we are writing the X-rays down on paper until then, '
+        + 'which is nobody\'s idea of a good afternoon.',
+      options: [{ label: 'Log the escalation' }],
+    },
+    {
+      id: 'hipaa',
+      npc_line: 'One of our patients has asked us who has looked at their record '
+        + 'in the last month - they are entitled to know. It is all logged in the '
+        + 'system, I just do not know how to get it out, and I need to give them a '
+        + 'straight answer.',
+      options: [
+        {
+          label: 'Ask the patient and the date range the accounting has to cover',
+          next: 'hipaa-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check where a chart-access record is kept',
+          effects: [
+            {
+              reveal: 'The practice management system keeps an audit trail as a '
+                + 'matter of course - every chart open logged with who and when. '
+                + 'This is a read and a report, not a repair: run the audit report '
+                + 'for that patient and date range and hand the accounting back. '
+                + 'Nothing needs changing on the estate.',
+            },
+          ],
+        },
+        { label: 'Tell her you will pull the log and write it up' },
+      ],
+    },
+    {
+      id: 'hipaa-q',
+      npc_line: 'It is for one patient, over the last month - I will send you the '
+        + 'name. They just want to know it was only the people who should have '
+        + 'seen it. Which I am sure it was, but they are entitled to the list.',
+      options: [{ label: 'Pull the Dentrix audit trail and report the accounting back' }],
+    },
+    {
+      id: 'hipaa-done',
+      npc_line: 'That is exactly what I needed - only the dentist and me, both '
+        + 'accounted for. I will pass it on. Good to know the system was watching '
+        + 'all along; I will sleep better for it.',
+      options: [{ label: 'Log the report' }],
+    },
+  ],
+};
+
 export const MSP_TREES: readonly DialogueTree[] = [
   NADIA,
   THEO,
@@ -755,4 +912,5 @@ export const MSP_TREES: readonly DialogueTree[] = [
   PRIYA,
   DEV,
   GLENDA,
+  GRACE,
 ];
