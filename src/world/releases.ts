@@ -31,6 +31,40 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.15.0',
+    date: '2026-08-06',
+    summary: 'This update lets you off the service desk.',
+    lines: Object.freeze([
+      'It has taken a while. You started on the desk, and every server in every '
+        + 'building has been a box you could see and not touch - the terminal '
+        + 'telling you, over and over, that this one is not your tier. That was '
+        + 'never a wall. It was a door with a lock you had not earned. Now you '
+        + 'have earned it: when your standing is high enough the engineering '
+        + 'team comes for you, and if you take it, you cross a line the industry '
+        + 'has a name for - from the workstation tier to the server tier, one '
+        + 'way, for good. You keep everything you had. You gain the servers.',
+      'And the servers are Linux, and Linux does not speak your language, so you '
+        + 'learn theirs. "ssh" to a box - it shows you a fingerprint the first '
+        + 'time and asks if you trust it, the way the real thing does - and you '
+        + 'are IN, at a prompt that is not yours, on a machine that runs '
+        + '"systemctl", not "sc". "systemctl status" tells you the truth in a '
+        + 'shape your old tools never had; "journalctl" shows you why; and when '
+        + 'a service is down, "systemctl restart" brings it back and says '
+        + 'nothing at all, because on Linux success is silent and only a Windows '
+        + 'tool would congratulate you for doing your job.',
+      'The first thing they hand you is one of your own company\'s boxes with a '
+        + 'service face-down on it - the portal is down, customers cannot log '
+        + 'in, and it is yours now. You ssh in, read the journal, find the '
+        + 'crash-loop that tripped the start limit, restart it, and it comes up. '
+        + 'Nobody thanks you. That is the job. One thing the promotion does NOT '
+        + 'do: walk you into a customer\'s server just because you can now. A '
+        + 'helpdesk contract still says their servers are not yours to touch - '
+        + 'engineer or not - and the terminal will still stop you at the door of '
+        + 'a box you were never sold. You got the keys to your own building. Not '
+        + 'everyone\'s.',
+    ]),
+  },
+  {
     version: '0.14.0',
     date: '2026-08-06',
     summary: 'This update adds a customer where being slow has a patient in the '
