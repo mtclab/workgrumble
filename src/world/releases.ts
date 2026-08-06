@@ -31,6 +31,31 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.10.0',
+    date: '2026-08-06',
+    summary: 'This update lets you do the thing you were told you could not - '
+      + 'once the paperwork clears.',
+    lines: Object.freeze([
+      'The refusals had no give in them. A server you were not contracted to '
+        + 'touch, a risky job at the wrong hour - the terminal said no and that '
+        + 'was the end of it. Now some of those noes have a door in them. File a '
+        + 'change request - what you want to do, what could go wrong, how you '
+        + 'would undo it - and it goes to the people whose call it is.',
+      'It is not a rubber stamp and it is not instant. A request sits under '
+        + 'review for as long as review takes, and if it is approved it comes '
+        + 'back with a WINDOW - a stretch of time, and only then, in which you '
+        + 'may act. Reach for the work before the window or after it closes and '
+        + 'you are told no again, politely, with the clock. The emergency you '
+        + 'cannot touch until the form clears is a real feeling, and it is in '
+        + 'here now.',
+      'One line does not move: a watch-only contract stays watch-only. No '
+        + 'amount of paperwork turns "we only look" into "we may fix" - that is '
+        + 'a different contract, not a change request. Monitoring-only still '
+        + 'means raise it and step back. The door is for work the contract has '
+        + 'a path for, not for the wall the contract is.',
+    ]),
+  },
+  {
     version: '0.9.0',
     date: '2026-08-06',
     summary: 'This update gives you a wall of lights you are not allowed to '
