@@ -206,3 +206,42 @@ test('the mid-week onboarding stands a customer up and discovery finds the horro
   // cannot restore from.
   await expect(output).toContainText('failing silently');
 });
+
+test('the network toolbox diagnoses the downed portal over ssh (E6, 0.16.0)', async ({
+  page,
+}) => {
+  // The 0.16.0 surface on the shipped path: promote, ssh to the MSP\'s own box
+  // (the portal is down there), and READ it with the network commands before the
+  // 0.15.0 restart - ss shows the port unheld, curl shows nginx 502ing on its
+  // dead upstream, and the not-installed netstat refuses with the apt hint.
+  await arriveAtMsp(page);
+  await openFromStartMenu(page, 'cmd');
+
+  await runCommand(page, 'promotion accept');
+  const output = page.getByTestId('cmd-output');
+  await expect(output).toContainText('Systems Engineer now');
+
+  await runCommand(page, 'ssh pat@FC-RMM-01');
+  await expect(page.locator('.cmd-prompt').first()).toHaveText('pat@FC-RMM-01:~$');
+
+  // ss: the listeners in the real shape. nginx holds its ports; the failed
+  // portal\'s 8000 upstream is honestly absent - the not-listening diagnosis.
+  await runCommand(page, 'ss -tlnp');
+  await expect(output).toContainText('Local Address:Port');
+  await expect(output).toContainText('*:22');
+
+  // netstat is NOT installed - the refusal that teaches ss as canonical.
+  await runCommand(page, 'netstat -tlnp');
+  await expect(output).toContainText('sudo apt install net-tools');
+
+  // curl: nginx answers but 502s, because the app it proxies to is down.
+  await runCommand(page, 'curl -I http://localhost');
+  await expect(output).toContainText('502');
+  await expect(output).toContainText('server: nginx');
+
+  // The restart (0.15.0) fixes it, and curl now reads 200 - the diagnosis
+  // closed by the fix, both over the same ssh session.
+  await runCommand(page, 'systemctl restart fcportal');
+  await runCommand(page, 'curl -I http://localhost');
+  await expect(output).toContainText('HTTP/2 200');
+});

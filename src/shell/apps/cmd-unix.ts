@@ -47,7 +47,7 @@ import {
   type UnitEnablement,
   unitEnablementOf,
 } from '../../world/fields';
-import { addressOf, stableHash } from './cmd-net';
+import { addressOf, fqdn, GATEWAY, stableHash } from './cmd-net';
 import {
   type CommandSpec,
   type ParsedCommand,
@@ -77,9 +77,13 @@ export interface SshSession {
 /**
  * The unix dialect's registry - the parallel to the Windows `COMMANDS`. The
  * core sysadmin surface at fidelity: `systemctl` (status + the restart/start/stop
- * fix verbs), `journalctl`, `df`, `ps`, `ip`, `ls`, and `exit`/`logout`. The
- * deeper surface (ss/dig, du, apt, users/perms, the not-installed gags) is the
- * backlog later E6 slices work through.
+ * fix verbs), `journalctl`, `df`, `ps`, `ip`, `ls`, and `exit`/`logout`, plus
+ * the network toolbox a sysadmin lives in - `ss` (the listeners), `dig`/`host`
+ * (the DNS answer), `ping` (continuous, the sharpest family diff), `curl` (the
+ * HTTP truth). The deeper surface (du, apt, users/perms) is the backlog later E6
+ * slices work through; the not-installed gags (traceroute/ifconfig/netstat/htop)
+ * are handled below at the command-not-found seam, on purpose - they are NOT in
+ * this registry because a stock Ubuntu box does not have them either.
  */
 export const UNIX_COMMANDS: readonly CommandSpec[] = [
   {
@@ -129,6 +133,46 @@ export const UNIX_COMMANDS: readonly CommandSpec[] = [
     summary: 'List a directory the long way: mode, owner, group, size, mtime.',
     minArgs: 0,
     maxArgs: 4,
+    joined: false,
+  },
+  {
+    name: 'ss',
+    usage: 'ss -tlnp',
+    summary: 'Show the box\'s listening sockets - the modern netstat.',
+    minArgs: 0,
+    maxArgs: 3,
+    joined: false,
+  },
+  {
+    name: 'dig',
+    usage: 'dig <name>',
+    summary: 'Resolve a name the long way: QUESTION/ANSWER sections and stats.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+  },
+  {
+    name: 'host',
+    usage: 'host <name>',
+    summary: 'Resolve a name the terse way: "name has address addr".',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+  },
+  {
+    name: 'ping',
+    usage: 'ping [-c N] <host>',
+    summary: 'Ping a host - continuous by default on Linux; -c N bounds it.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: false,
+  },
+  {
+    name: 'curl',
+    usage: 'curl -I <url>',
+    summary: 'Fetch a URL\'s response line and headers over a served box.',
+    minArgs: 1,
+    maxArgs: 3,
     joined: false,
   },
   {
@@ -532,7 +576,7 @@ function systemctlStatusLines(
   const running = state === SYSTEMD_STATES.activeRunning;
   // A plausible pid, derived from the unit id and stable for it - the same
   // move `cmd-net.ts` makes for an address, and honest for the same reason.
-  const pid = 400 + (stableHash(unit.id) % 9000);
+  const pid = unitPid(unit.id);
   const journal = readUnitJournal(unit.fields[FIELDS.unitJournal]);
   const tail = journal.slice(-STATUS_LOG_TAIL);
 
@@ -855,14 +899,7 @@ function psLines(
     pad('START', 6)
   }${pad('TIME', 6)}COMMAND`;
 
-  const running = api.graph
-    .neighbors(session.hostId, { direction: 'in', edgeKind: 'runs_on' })
-    .filter((node) => node.kind === 'unit')
-    .filter(
-      (node) => textValue(node.fields[FIELDS.unitState], '')
-        === SYSTEMD_STATES.activeRunning,
-    )
-    .sort((left, right) => left.id.localeCompare(right.id));
+  const running = runningUnitsOn(api, session);
 
   const row = (
     user: string,
@@ -882,7 +919,7 @@ function psLines(
     const base = name.endsWith('.service')
       ? name.slice(0, -'.service'.length)
       : name;
-    const pid = 400 + (stableHash(unit.id) % 9000);
+    const pid = unitPid(unit.id);
     // The app runs as the session's user; the base plumbing runs as root, the
     // way a real box splits them.
     const user = base === 'nginx' || base === 'cron' || base === 'ssh'
@@ -922,6 +959,438 @@ function ipLines(session: Readonly<SshSession>): CommandResult {
   );
 }
 
+/* -- the network toolbox: ss / dig / host / ping / curl ------------------- */
+
+/**
+ * A plausible pid for a unit, derived from its id and stable for it.
+ *
+ * The one derivation `systemctl status`, `ps aux` and `ss -p` all read, so the
+ * three agree about a unit's pid the way three real commands reading the same
+ * `/proc` do - and honest for the reason `cmd-net` derives an address: the
+ * estate holds no pid table, so a derived one cannot disagree with a truth that
+ * is not there.
+ */
+function unitPid(unitId: string): number {
+  return 400 + (stableHash(unitId) % 9000);
+}
+
+/** The running units on the box the session is standing on, id-sorted. */
+function runningUnitsOn(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): readonly ReadOnlyGraphNode[] {
+  return api.graph
+    .neighbors(session.hostId, { direction: 'in', edgeKind: 'runs_on' })
+    .filter((node) => node.kind === 'unit')
+    .filter(
+      (node) => textValue(node.fields[FIELDS.unitState], '')
+        === SYSTEMD_STATES.activeRunning,
+    )
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+/** The socket a unit listens on: the process name, the bind, the port, backlog. */
+interface Listener {
+  readonly proc: string;
+  /** `*` for a wildcard bind, `127.0.0.1` for a loopback-only one. */
+  readonly addr: string;
+  readonly port: number;
+  /** The listen backlog `ss` prints in Send-Q for a listening socket. */
+  readonly backlog: number;
+}
+
+/** The base of a unit name: `nginx.service` -> `nginx`, kept whole otherwise. */
+function unitBase(node: Readonly<ReadOnlyGraphNode>): string {
+  const name = textValue(node.fields[FIELDS.unitName], node.id).toLowerCase();
+
+  return name.endsWith('.service') ? name.slice(0, -'.service'.length) : name;
+}
+
+/**
+ * The sockets a running unit listens on, by what the unit IS - the real ports
+ * the daemons behind these units bind (sshd:22, nginx:80/443, postgres:5432,
+ * the product app on a loopback 8000 behind nginx). A unit that listens on
+ * nothing (cron, journald) returns none, so it is honestly absent from `ss` -
+ * and a unit that is not running never reaches here, which is the whole teeth
+ * of `ss`: down a service and its listener drops off the box.
+ */
+function listenersOf(node: Readonly<ReadOnlyGraphNode>): readonly Listener[] {
+  const base = unitBase(node);
+
+  if (base === 'ssh') {
+    return [{ proc: 'sshd', addr: '*', port: 22, backlog: 128 }];
+  }
+
+  if (base === 'nginx') {
+    return [
+      { proc: 'nginx', addr: '*', port: 80, backlog: 511 },
+      { proc: 'nginx', addr: '*', port: 443, backlog: 511 },
+    ];
+  }
+
+  if (base === 'postgresql' || base.startsWith('postgresql@')) {
+    return [{ proc: 'postgres', addr: '127.0.0.1', port: 5432, backlog: 244 }];
+  }
+
+  // The product app behind nginx - grumbleapp, fcportal - binds a loopback
+  // upstream port nginx proxies to. Named by suffix rather than a hard list so a
+  // new employer's `<name>app`/`<name>portal` unit is a listener without editing
+  // this file; anything else the world runs listens on nothing until it says so.
+  if (base.endsWith('app') || base.endsWith('portal')) {
+    return [{ proc: base, addr: '127.0.0.1', port: 8000, backlog: 128 }];
+  }
+
+  return [];
+}
+
+/** Lays an `ss` row out in fixed columns; the last cell runs to the margin. */
+function ssRow(cells: readonly string[]): string {
+  const widths = [7, 7, 7, 22, 20];
+
+  return cells
+    .map((cell, index) => (index === cells.length - 1 ? cell : pad(cell, widths[index] ?? 8)))
+    .join('');
+}
+
+/**
+ * `ss -tlnp` - the box's listening sockets, in the real column shape and the
+ * modern replacement for `netstat` (which is why net-tools is a not-installed
+ * gag below).
+ *
+ * It reads the box's RUNNING units and prints one row per socket they listen
+ * on: State/Recv-Q/Send-Q/Local Address:Port/Peer Address:Port, and with `-p`
+ * the `users:(("proc",pid=,fd=))` process column. A failed or stopped unit is
+ * not running, so it is not in `runningUnitsOn` and its listener is simply gone
+ * - the honest half, and the diagnosis a downed service is read by: `ss` shows
+ * the port it should hold is not held. The estate models listeners, not live
+ * connections, so `ss` here always lists the listening set (documented in
+ * `terminal-fidelity.md` beside the other honest omissions).
+ */
+function ssLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  args: readonly string[],
+): CommandResult {
+  const withProc = args.join('').includes('p');
+  const header = ssRow([
+    'State', 'Recv-Q', 'Send-Q', 'Local Address:Port', 'Peer Address:Port',
+    ...(withProc ? ['Process'] : []),
+  ]);
+
+  const rows = runningUnitsOn(api, session)
+    .flatMap((unit) => listenersOf(unit).map((listener) => ({
+      listener,
+      pid: unitPid(unit.id),
+    })))
+    .sort((left, right) => left.listener.port - right.listener.port)
+    .map(({ listener, pid }) => ssRow([
+      'LISTEN',
+      '0',
+      String(listener.backlog),
+      `${listener.addr}:${String(listener.port)}`,
+      '*:*',
+      ...(withProc
+        ? [`users:(("${listener.proc}",pid=${String(pid)},fd=3))`]
+        : []),
+    ]));
+
+  return lines(header, ...rows);
+}
+
+/** The DNS name a resolver command is aimed at: the first non-flag argument. */
+function nameArg(args: readonly string[]): string {
+  return (args.find((arg) => !arg.startsWith('-')) ?? '').trim();
+}
+
+/** A short, stable, plausible query time for a resolver, in whole msec. */
+function queryMs(name: string): number {
+  return stableHash(`${name}:dig`) % 5;
+}
+
+/**
+ * `dig <name>` - name resolution the long way, over the SAME estate DNS graph
+ * `nslookup`/`ping` walk, at the real DiG output shape.
+ *
+ * The QUESTION and ANSWER sections (`name. TTL IN A addr`) and the Query
+ * time/SERVER/MSG SIZE footer are the shape a player has to read differently
+ * from `nslookup`'s flat Name/Address pair. A name the estate holds answers
+ * NOERROR with an ANSWER section; a name it does not answers the honest way a
+ * real resolver does - NXDOMAIN, a QUESTION and no ANSWER. The EDNS OPT
+ * pseudo-section and the WHEN line are omitted rather than faked, the same
+ * honest-omission discipline the rest of the dialect keeps.
+ */
+function digLines(api: GameApi, name: string): CommandResult {
+  const machine = machineByName(api, name);
+  const id = stableHash(`${name}:id`) % 65536;
+  const banner = [
+    `; <<>> DiG 9.18.30 <<>> ${name}`,
+    ';; global options: +cmd',
+    ';; Got answer:',
+  ];
+  const footer = (bytes: number): readonly string[] => [
+    '',
+    `;; Query time: ${String(queryMs(name))} msec`,
+    `;; SERVER: ${GATEWAY}#53(${GATEWAY}) (UDP)`,
+    `;; MSG SIZE  rcvd: ${String(bytes)}`,
+  ];
+
+  if (machine === null) {
+    return lines(
+      ...banner,
+      `;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: ${String(id)}`,
+      ';; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 0',
+      '',
+      ';; QUESTION SECTION:',
+      `;${name}.\t\t\tIN\tA`,
+      ...footer(34),
+    );
+  }
+
+  const canonical = fqdn(labelOf(machine));
+  const address = addressOf(machine.id);
+
+  return lines(
+    ...banner,
+    `;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: ${String(id)}`,
+    ';; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0',
+    '',
+    ';; QUESTION SECTION:',
+    `;${canonical}.\t\t\tIN\tA`,
+    '',
+    ';; ANSWER SECTION:',
+    `${canonical}.\t300\tIN\tA\t${address}`,
+    ...footer(canonical.length + 45),
+  );
+}
+
+/**
+ * `host <name>` - the terse resolver, the one-line answer to `dig`'s block. A
+ * name the estate holds is `name has address addr`; one it does not is the real
+ * `Host <name> not found: 3(NXDOMAIN)`.
+ */
+function hostLines(api: GameApi, name: string): CommandResult {
+  const machine = machineByName(api, name);
+
+  return machine === null
+    ? lines(`Host ${name} not found: 3(NXDOMAIN)`)
+    : lines(`${fqdn(labelOf(machine))} has address ${addressOf(machine.id)}`);
+}
+
+/** How many replies `ping` shows for a continuous (no -c) run before it teaches. */
+const PING_CONTINUOUS_SAMPLE = 3;
+
+/** The round-trip time for one ping, derived and stable, in tenths of a msec. */
+function pingMs(hostId: string, seq: number): string {
+  const tenths = 20 + ((stableHash(hostId) + seq * 13) % 40);
+
+  return (tenths / 10).toFixed(1);
+}
+
+/** One `64 bytes from ...` reply row. */
+function pingReply(address: string, hostId: string, seq: number): string {
+  return `64 bytes from ${address}: icmp_seq=${String(seq)} ttl=57 time=${
+    pingMs(hostId, seq)
+  } ms`;
+}
+
+/**
+ * `ping <host>` - and the sharpest single family difference in the whole
+ * dialect: on Linux ping is CONTINUOUS. Windows sends four and stops; Linux
+ * keeps sending until you press Ctrl-C, and `-c N` is how you bound it.
+ *
+ * So a bare `ping host` shows a few replies and then SAYS it would run forever
+ * and names `-c` - it does not quietly send four and stop, which would be the
+ * Windows shape and a lie about the family. `-c N` sends exactly N and prints
+ * the transmitted/received/loss statistics block. Reachability is the estate's:
+ * a resolvable box on this flat /24 answers; a name that is not a machine gets
+ * the real `Name or service not known`. Times are derived off the host id, so
+ * the run is deterministic.
+ */
+function pingLines(
+  api: GameApi,
+  args: readonly string[],
+): CommandResult {
+  const flagAt = args.findIndex((arg) => arg === '-c');
+  const countRaw = flagAt >= 0 ? (args[flagAt + 1] ?? '') : null;
+  // The host is the first bare argument that is NOT the `-c` count value - so
+  // `ping -c 4 host` reads `host`, not the `4`.
+  const host = nameArg(
+    flagAt >= 0
+      ? args.filter((_, index) => index !== flagAt && index !== flagAt + 1)
+      : args,
+  );
+
+  const machine = machineByName(api, host);
+
+  if (machine === null) {
+    return lines(`ping: ${host}: Name or service not known`);
+  }
+
+  const address = addressOf(machine.id);
+  const canonical = fqdn(labelOf(machine));
+  const header = `PING ${canonical} (${address}) 56(84) bytes of data.`;
+
+  // Continuous: a few replies, then the teaching. No statistics block, because
+  // the run did not end - a real one would still be going.
+  if (countRaw === null) {
+    return lines(
+      header,
+      ...Array.from(
+        { length: PING_CONTINUOUS_SAMPLE },
+        (_, index) => pingReply(address, machine.id, index + 1),
+      ),
+      '',
+      'This is Linux ping: it does not stop on its own - it would keep sending '
+        + 'until',
+      `you press Ctrl-C. Bound it with -c, e.g. "ping -c 4 ${host}", for a `
+        + 'fixed run',
+      'and a transmitted/received summary.',
+    );
+  }
+
+  const count = Number.parseInt(countRaw, 10);
+
+  if (!Number.isInteger(count) || count <= 0) {
+    return lines('ping: bad number of packets to transmit.');
+  }
+
+  const capped = Math.min(count, 100);
+  const times = Array.from({ length: capped }, (_, index) => Number(
+    pingMs(machine.id, index + 1),
+  ));
+  const min = Math.min(...times).toFixed(1);
+  const max = Math.max(...times).toFixed(1);
+  const avg = (times.reduce((sum, time) => sum + time, 0) / capped).toFixed(1);
+  const elapsed = (capped - 1) * 1000 + (stableHash(machine.id) % 20);
+
+  return lines(
+    header,
+    ...times.map((_, index) => pingReply(address, machine.id, index + 1)),
+    '',
+    `--- ${canonical} ping statistics ---`,
+    `${String(capped)} packets transmitted, ${String(capped)} received, `
+      + `0% packet loss, time ${String(elapsed)}ms`,
+    `rtt min/avg/max/mdev = ${min}/${avg}/${max}/0.050 ms`,
+  );
+}
+
+/** The host part of a URL: scheme and path stripped, port dropped. */
+function hostFromUrl(url: string): string {
+  const withoutScheme = url.replace(/^[a-z]+:\/\//iu, '');
+  const authority = withoutScheme.split('/')[0] ?? '';
+
+  return (authority.split(':')[0] ?? '').trim().toLowerCase();
+}
+
+/** The names that mean "this box" to a curl running on it. */
+const LOCALHOST_NAMES: ReadonlySet<string> = new Set([
+  '', 'localhost', '127.0.0.1', '::1',
+]);
+
+/**
+ * `curl -I <url>` - the HTTP truth over a box that serves it, the one command
+ * here with no Windows cmd cousin.
+ *
+ * It reads the target box's web units: if nginx is up it answers, and whether
+ * the answer is 200 or 502 is the honest state of the app BEHIND nginx - a
+ * running product app is 200, a downed one is the 502 Bad Gateway nginx returns
+ * when its upstream is gone. That is the diagnosis a downed portal is read by:
+ * nginx answers (server: nginx) but 502, because the thing it proxies to is not
+ * listening. A box not serving http at all is the real `curl: (7) Failed to
+ * connect`; a host that does not resolve is `curl: (6) Could not resolve host`.
+ * The estate models services, not content, so curl reports the response line
+ * and headers (as `-I` does) rather than a fabricated body.
+ */
+function curlLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  args: readonly string[],
+): CommandResult {
+  const url = args.find((arg) => !arg.startsWith('-')) ?? '';
+  const host = hostFromUrl(url);
+  const port = /^https:/iu.test(url) ? 443 : 80;
+
+  const box = LOCALHOST_NAMES.has(host) || host === session.hostname.toLowerCase()
+    ? api.graph.getNode(session.hostId)
+    : machineByName(api, host);
+
+  if (box === undefined || box === null) {
+    return lines(`curl: (6) Could not resolve host: ${host}`);
+  }
+
+  const units = api.graph
+    .neighbors(box.id, { direction: 'in', edgeKind: 'runs_on' })
+    .filter((node) => node.kind === 'unit');
+  const nginx = units.find((node) => unitBase(node) === 'nginx');
+  const nginxUp = nginx !== undefined
+    && textValue(nginx.fields[FIELDS.unitState], '') === SYSTEMD_STATES.activeRunning;
+
+  if (!nginxUp) {
+    return lines(
+      `curl: (7) Failed to connect to ${host || box.id} port ${String(port)} `
+        + 'after 0 ms: Connection refused',
+    );
+  }
+
+  // nginx is up. Whether it can serve the app or must 502 is the app's own
+  // state: the product unit behind it (an *app/*portal unit) being down is the
+  // upstream failure nginx reports as 502.
+  const app = units.find((node) => {
+    const base = unitBase(node);
+
+    return base.endsWith('app') || base.endsWith('portal');
+  });
+  const appDown = app !== undefined
+    && textValue(app.fields[FIELDS.unitState], '') !== SYSTEMD_STATES.activeRunning;
+
+  return appDown
+    ? lines(
+      'HTTP/2 502 ',
+      'server: nginx',
+      'content-type: text/html',
+    )
+    : lines(
+      'HTTP/2 200 ',
+      'server: nginx',
+      'content-type: text/html',
+    );
+}
+
+/* -- the not-installed gags: a refusal that teaches ----------------------- */
+
+/**
+ * The tools that are NOT on a stock Ubuntu 24.04 box, mapped to the package
+ * that carries them.
+ *
+ * `traceroute` and net-tools (`ifconfig`/`netstat`) and `htop` are all absent
+ * by default, and typing them on a real box does not silently succeed and does
+ * not print a fake output - it prints `command not found` and the exact
+ * `sudo apt install <pkg>` hint Ubuntu's command-not-found handler offers. That
+ * refusal is the teaching: it steers the player to `ip`/`ss` as canonical (which
+ * is what Ubuntu itself does) and names `apt` as the fix. They are deliberately
+ * NOT in `UNIX_COMMANDS` - a stock box has no such command either, so they fall
+ * through to `command not found`, where this map turns the generic miss into the
+ * real hinted one. (Whether `apt install` then works is a later slice.)
+ */
+const NOT_INSTALLED: Readonly<Record<string, string>> = {
+  traceroute: 'traceroute',
+  ifconfig: 'net-tools',
+  netstat: 'net-tools',
+  htop: 'htop',
+};
+
+/** Ubuntu's command-not-found hint for a known-but-absent tool, or null. */
+function notInstalledHint(name: string): CommandResult | null {
+  const pkg = NOT_INSTALLED[name];
+
+  return pkg === undefined
+    ? null
+    : lines(
+      `Command '${name}' not found, but can be installed with:`,
+      `sudo apt install ${pkg}`,
+    );
+}
+
 /**
  * Runs one parsed unix command against the world and the session. The twin of
  * `executeCommand` in `cmd-run.ts`, and DOM-free for the same reason.
@@ -934,14 +1403,25 @@ export function executeUnix(
   switch (parsed.kind) {
     case 'empty':
       return { lines: [], clear: false };
-    case 'unknown':
+    case 'unknown': {
+      // The not-installed gags first: a stock Ubuntu box does not carry
+      // traceroute/ifconfig/netstat/htop, so typing one is a real miss - and the
+      // miss teaches, with Ubuntu's own `sudo apt install <pkg>` hint, not a fake
+      // output. Only if it is not one of those does it fall to the generic miss.
+      const hint = notInstalledHint(parsed.name);
+
+      if (hint !== null) {
+        return hint;
+      }
+
       return lines(
         `${parsed.name}: command not found`,
         parsed.suggestion === null
           ? 'This dialect is the core sysadmin surface - the deeper tools '
-            + '(ss, dig, du, apt) are a later slice.'
+            + '(du, apt, id/getent, chmod) are a later slice.'
           : `Did you mean "${parsed.suggestion}"?`,
       );
+    }
     case 'usage':
       return lines(`usage: ${parsed.spec.usage}`, parsed.spec.summary);
     case 'command':
@@ -973,6 +1453,16 @@ export function executeUnix(
       return psLines(api, session);
     case 'ip':
       return ipLines(session);
+    case 'ss':
+      return ssLines(api, session, parsed.args);
+    case 'dig':
+      return digLines(api, nameArg(parsed.args));
+    case 'host':
+      return hostLines(api, nameArg(parsed.args));
+    case 'ping':
+      return pingLines(api, parsed.args);
+    case 'curl':
+      return curlLines(api, session, parsed.args);
     case 'ls':
       return lsLines(api, session, parsed.args);
     case 'exit':

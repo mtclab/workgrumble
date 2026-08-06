@@ -3613,6 +3613,63 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await expect(page.getByTestId('cmd-output')).toContainText('drwxr-xr-x');
   });
 
+  await step('cmd.ss', async () => {
+    // The listeners, in the real State/Local Address:Port shape: sshd holds 22,
+    // nginx is up - but the portal is failed, so its 8000 upstream is honestly
+    // absent. ss is how a not-listening service is diagnosed before the fix.
+    await runCommand(page, 'ss -tlnp');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Local Address:Port');
+    await expect(page.getByTestId('cmd-output')).toContainText('*:22');
+
+    // The not-installed gags, right where they belong: ss is canonical, and
+    // netstat/ifconfig (net-tools), traceroute and htop are NOT on a stock box -
+    // a real command-not-found with Ubuntu's own "sudo apt install" hint, never
+    // a fake output. This teaches ip/ss as the tools to learn.
+    await runCommand(page, 'netstat -tlnp');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('sudo apt install net-tools');
+    await runCommand(page, 'traceroute FC-RMM-01');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('sudo apt install traceroute');
+    await runCommand(page, 'htop');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('sudo apt install htop');
+  });
+
+  await step('cmd.dig', async () => {
+    // Name resolution the long way, over the estate DNS: the ANSWER SECTION.
+    await runCommand(page, 'dig FC-RMM-01');
+    await expect(page.getByTestId('cmd-output')).toContainText('ANSWER SECTION');
+  });
+
+  await step('cmd.host', async () => {
+    // The terse cousin: "name has address addr".
+    await runCommand(page, 'host FC-RMM-01');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('has address 10.42.0');
+  });
+
+  await step('cmd.ping.unix', async () => {
+    // Continuous by default - the sharpest family diff. It SAYS it would keep
+    // going and names -c; a Windows 4-and-stop would fail this.
+    await runCommand(page, 'ping FC-RMM-01');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('does not stop on its own');
+    // Bounded with -c: the transmitted/received statistics block.
+    await runCommand(page, 'ping -c 4 FC-RMM-01');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('4 packets transmitted');
+  });
+
+  await step('cmd.curl', async () => {
+    // The HTTP truth that pairs with ss: nginx ANSWERS (server: nginx) but 502s,
+    // because its upstream - the portal - is down. The diagnosis before restart.
+    await runCommand(page, 'curl -I http://localhost');
+    await expect(page.getByTestId('cmd-output')).toContainText('502');
+    await expect(page.getByTestId('cmd-output')).toContainText('server: nginx');
+  });
+
   await step('cmd.systemctl', async () => {
     // THE FIX: status shows it failed, restart is SILENT on success, and status
     // reads running afterwards - the payoff, walked on the real build. Then the

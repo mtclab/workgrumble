@@ -330,7 +330,9 @@ describe('the promotion, ssh, and the unix terminal (E6)', () => {
 
     it('answers an unknown unix command in the unix shape', () => {
       const { api, ssh } = onBox();
-      expect(unix(api, ssh, 'htop').lines.join('\n'))
+      // A name that is not a command and not a known-but-absent tool: the plain
+      // miss. (htop and friends have their own not-installed shape, tested below.)
+      expect(unix(api, ssh, 'frobnicate').lines.join('\n'))
         .toContain('command not found');
     });
   });
@@ -588,6 +590,246 @@ describe('the sysadmin command surface (E6, Pass B)', () => {
 
       expect(win(api, 'promotion').lines.join('\n'))
         .toContain('Systems Engineer already');
+    });
+  });
+});
+
+/* ========================================================================= *
+ * 0.16.0: the network toolbox (ss/dig/host/ping/curl) and the not-installed
+ * gags (traceroute/ifconfig/netstat/htop). Content on the Pass B engine.
+ * ========================================================================= */
+
+describe('the sysadmin network toolbox (E6, 0.16.0)', () => {
+  describe('ss -tlnp: the box\'s listeners', () => {
+    it('reads the running units\' listening sockets in the real shape', () => {
+      // MERI-APP-01 is healthy: sshd, nginx and the product app are all up, so
+      // their listeners are on the box. The header is ss's own columns.
+      const { api, ssh } = onMsp('MERI-APP-01');
+      const out = unix(api, ssh, 'ss -tlnp').lines.join('\n');
+
+      expect(out).toContain('State');
+      expect(out).toContain('Recv-Q');
+      expect(out).toContain('Local Address:Port');
+      expect(out).toContain('Peer Address:Port');
+      // The listeners the running units hold, at their real ports.
+      expect(out).toMatch(/LISTEN\s+0\s+128\s+\*:22\s+\*:\*/u); // sshd
+      expect(out).toMatch(/LISTEN\s+0\s+511\s+\*:80\s+\*:\*/u); // nginx
+      expect(out).toContain('*:443'); // nginx tls
+      expect(out).toContain('127.0.0.1:8000'); // the product app upstream
+    });
+
+    it('-p appends the process column, -tln does not', () => {
+      const { api, ssh } = onMsp('MERI-APP-01');
+
+      const withProc = unix(api, ssh, 'ss -tlnp').lines.join('\n');
+      expect(withProc).toContain('Process');
+      expect(withProc).toContain('users:(("sshd",pid=');
+      expect(withProc).toContain('fd=3))');
+
+      const noProc = unix(api, ssh, 'ss -tln').lines.join('\n');
+      expect(noProc).not.toContain('Process');
+      expect(noProc).not.toContain('users:((');
+    });
+
+    it('a downed unit is NOT listening (teeth): flip nginx, *:80 drops', () => {
+      const { world, api, ssh } = onMsp('MERI-APP-01');
+
+      const before = unix(api, ssh, 'ss -tlnp').lines.join('\n');
+      expect(before).toContain('*:80');
+
+      // The world is the only source: down nginx and its listeners must vanish
+      // from ss, because a stopped service holds no port. A fabricated static
+      // listing would still show *:80 here and fail.
+      world.engine.applySetup([{
+        op: 'setField',
+        id: linuxUnitId(MSP_IDS.meridianAppServer, 'nginx.service'),
+        field: FIELDS.unitState,
+        value: SYSTEMD_STATES.failed,
+      }]);
+
+      const after = unix(api, ssh, 'ss -tlnp').lines.join('\n');
+      expect(after).not.toContain('*:80');
+      expect(after).not.toContain('*:443');
+      // ssh is still up, so the box still listens on 22 - only nginx dropped.
+      expect(after).toContain('*:22');
+    });
+
+    it('the downed portal is not listening, and restart brings its port back', () => {
+      // The diagnosis touch: on FC-RMM-01 the portal is failed at seed, so its
+      // 8000 upstream is absent from ss - the read that says "the thing nginx
+      // proxies to is not there" - and the restart brings the listener back.
+      const { api, ssh } = onMsp('FC-RMM-01');
+
+      const down = unix(api, ssh, 'ss -tlnp').lines.join('\n');
+      expect(down).toContain('*:80'); // nginx is up
+      expect(down).not.toContain('127.0.0.1:8000'); // fcportal is failed
+
+      expect(unix(api, ssh, 'systemctl restart fcportal').lines).toEqual([]);
+
+      const up = unix(api, ssh, 'ss -tlnp').lines.join('\n');
+      expect(up).toContain('127.0.0.1:8000'); // now it listens
+    });
+  });
+
+  describe('dig / host: DNS over the estate graph', () => {
+    it('dig prints the QUESTION/ANSWER sections and the stats footer', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'dig FC-RMM-01').lines.join('\n');
+
+      expect(out).toContain(';; QUESTION SECTION:');
+      expect(out).toContain(';; ANSWER SECTION:');
+      expect(out).toContain('status: NOERROR');
+      // The `name. TTL IN A addr` answer row, over the estate's own address.
+      expect(out).toMatch(/fc-rmm-01\.workgrumble\.local\.\s+300\s+IN\s+A\s+10\.42\.0\.\d+/u);
+      // The stats footer the shape requires.
+      expect(out).toContain(';; Query time:');
+      expect(out).toContain(';; SERVER: 10.42.0.1#53');
+      expect(out).toContain(';; MSG SIZE  rcvd:');
+    });
+
+    it('dig answers NXDOMAIN for a name the world does not hold', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'dig nowhere-at-all').lines.join('\n');
+
+      expect(out).toContain('status: NXDOMAIN');
+      expect(out).toContain(';; QUESTION SECTION:');
+      // NXDOMAIN carries a question and no answer - the honest empty reply.
+      expect(out).not.toContain(';; ANSWER SECTION:');
+    });
+
+    it('host is the terse answer, and the terse not-found', () => {
+      const { api, ssh } = onMsp();
+
+      expect(unix(api, ssh, 'host FC-RMM-01').lines.join('\n'))
+        .toMatch(/fc-rmm-01\.workgrumble\.local has address 10\.42\.0\.\d+/u);
+      expect(unix(api, ssh, 'host nowhere-at-all').lines.join('\n'))
+        .toContain('not found: 3(NXDOMAIN)');
+    });
+  });
+
+  describe('ping: continuous by default (the sharpest family diff)', () => {
+    it('bare ping says it is CONTINUOUS and names -c - not 4-and-stop (teeth)', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'ping FC-RMM-01').lines.join('\n');
+
+      // The real reply shape.
+      expect(out).toMatch(/64 bytes from 10\.42\.0\.\d+: icmp_seq=1 ttl=57 time=/u);
+      // The family teeth: it does NOT stop on its own, and it says so, and it
+      // does NOT print a Windows-style completed statistics block. A 4-and-stop
+      // like Windows would have a transmitted/received summary here and no
+      // "keep sending" line - so this reds a Windows-shaped ping.
+      expect(out).toContain('does not stop on its own');
+      expect(out).toContain('Ctrl-C');
+      expect(out).toContain('-c');
+      expect(out).not.toContain('packets transmitted');
+    });
+
+    it('ping -c N sends exactly N and prints the statistics block', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'ping -c 4 FC-RMM-01').lines.join('\n');
+
+      expect(out).toContain('icmp_seq=4');
+      expect(out).not.toContain('icmp_seq=5');
+      expect(out).toContain('4 packets transmitted, 4 received, 0% packet loss');
+      expect(out).toContain('rtt min/avg/max/mdev =');
+      // Bounded: no "keep sending" teaching when -c ended the run.
+      expect(out).not.toContain('does not stop on its own');
+    });
+
+    it('refuses a name nothing answers to, the real ping way', () => {
+      const { api, ssh } = onMsp();
+      expect(unix(api, ssh, 'ping nowhere-at-all').lines.join('\n'))
+        .toContain('Name or service not known');
+    });
+
+    it('is deterministic: the same host pings the same times', () => {
+      const first = unix(onMsp().api, onMsp().ssh, 'ping -c 3 FC-RMM-01');
+      const second = unix(onMsp().api, onMsp().ssh, 'ping -c 3 FC-RMM-01');
+      expect(first.lines).toEqual(second.lines);
+    });
+  });
+
+  describe('curl -I: the HTTP truth over the box\'s web units', () => {
+    it('nginx up and the app up is HTTP 200, server: nginx', () => {
+      const { api, ssh } = onMsp('MERI-APP-01');
+      const out = unix(api, ssh, 'curl -I http://localhost').lines.join('\n');
+
+      expect(out).toContain('HTTP/2 200');
+      expect(out).toContain('server: nginx');
+    });
+
+    it('nginx up but the app DOWN is a 502 - the portal diagnosis', () => {
+      // FC-RMM-01: nginx is up, fcportal is failed, so nginx answers but 502s
+      // because its upstream is gone. curl reads it, and the restart fixes it.
+      const { api, ssh } = onMsp('FC-RMM-01');
+
+      const down = unix(api, ssh, 'curl -I http://localhost').lines.join('\n');
+      expect(down).toContain('HTTP/2 502');
+      expect(down).toContain('server: nginx');
+
+      expect(unix(api, ssh, 'systemctl restart fcportal').lines).toEqual([]);
+      expect(unix(api, ssh, 'curl -I http://localhost').lines.join('\n'))
+        .toContain('HTTP/2 200');
+    });
+
+    it('a box not serving http is the real "Failed to connect"', () => {
+      const { world, api, ssh } = onMsp('MERI-APP-01');
+      // Down nginx entirely: nothing is answering on 80/443 now.
+      world.engine.applySetup([{
+        op: 'setField',
+        id: linuxUnitId(MSP_IDS.meridianAppServer, 'nginx.service'),
+        field: FIELDS.unitState,
+        value: SYSTEMD_STATES.failed,
+      }]);
+
+      expect(unix(api, ssh, 'curl -I http://localhost').lines.join('\n'))
+        .toContain('Failed to connect');
+    });
+  });
+
+  describe('the not-installed gags (a refusal that teaches)', () => {
+    it('htop is not installed - command not found + the real apt hint', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'htop').lines;
+
+      // Ubuntu's own command-not-found shape, exactly - NOT a silent success and
+      // NOT a fabricated process table (a fake htop screen would fail here).
+      expect(out[0]).toBe('Command \'htop\' not found, but can be installed with:');
+      expect(out[1]).toBe('sudo apt install htop');
+    });
+
+    it('ifconfig and netstat point at net-tools (ip/ss are canonical)', () => {
+      const { api, ssh } = onMsp();
+
+      expect(unix(api, ssh, 'ifconfig').lines).toEqual([
+        'Command \'ifconfig\' not found, but can be installed with:',
+        'sudo apt install net-tools',
+      ]);
+      expect(unix(api, ssh, 'netstat -tlnp').lines).toEqual([
+        'Command \'netstat\' not found, but can be installed with:',
+        'sudo apt install net-tools',
+      ]);
+    });
+
+    it('traceroute is not installed either - its own package', () => {
+      const { api, ssh } = onMsp();
+      expect(unix(api, ssh, 'traceroute FC-RMM-01').lines).toEqual([
+        'Command \'traceroute\' not found, but can be installed with:',
+        'sudo apt install traceroute',
+      ]);
+    });
+
+    it('teeth: the gag is a refusal, never a fabricated output', () => {
+      const { api, ssh } = onMsp();
+      // Every not-installed tool answers with the hint and nothing that looks
+      // like real tool output - no interface block, no route table, no header.
+      for (const tool of ['htop', 'ifconfig', 'netstat', 'traceroute']) {
+        const out = unix(api, ssh, tool).lines.join('\n');
+        expect(out).toContain('not found, but can be installed with');
+        expect(out).toContain('sudo apt install');
+        expect(out).not.toContain('inet ');
+        expect(out).not.toContain('LISTEN');
+      }
     });
   });
 });

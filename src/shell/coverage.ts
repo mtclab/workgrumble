@@ -2463,6 +2463,73 @@ const ENTRIES = [
       + 'promotion unlocks.',
   },
   {
+    id: 'cmd.ss',
+    surface: 'cmd',
+    control: 'ss -tlnp',
+    does: 'Lists the box\'s listening sockets in the State/Recv-Q/Send-Q/Local '
+      + 'Address:Port shape off its RUNNING units (sshd:22, nginx:80/443, the '
+      + 'app on a loopback 8000), -p adding the users:(("proc",pid=)) column - '
+      + 'a downed unit is honestly absent, which is how a not-listening service '
+      + 'is diagnosed. The modern replacement for netstat.',
+    command: 'ss',
+    run: 'sysadmin',
+    why: 'It reads the box\'s listeners over an ssh session, so it only runs past '
+      + 'the promotion that unlocks ssh - the threshold no service-desk week '
+      + 'crosses.',
+  },
+  {
+    id: 'cmd.dig',
+    surface: 'cmd',
+    control: 'dig <name>',
+    does: 'Resolves a name over the estate DNS in DiG\'s full shape: the QUESTION '
+      + 'and ANSWER sections (name. TTL IN A addr) and the Query time/SERVER/MSG '
+      + 'SIZE footer, with the honest NXDOMAIN answer for a name the world does '
+      + 'not hold.',
+    command: 'dig',
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.host',
+    surface: 'cmd',
+    control: 'host <name>',
+    does: 'The terse resolver: "name has address addr" for a name the estate '
+      + 'holds, and "Host <name> not found: 3(NXDOMAIN)" for one it does not - '
+      + 'dig\'s one-line cousin over the same DNS graph.',
+    command: 'host',
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.ping.unix',
+    surface: 'cmd',
+    control: 'ping [-c N] <host>',
+    does: 'Pings a host the LINUX way: continuous by default (it says so and '
+      + 'names -c, never the Windows 4-and-stop), and with -c N a bounded run '
+      + 'plus the transmitted/received/loss statistics block, over the estate\'s '
+      + 'own reachability.',
+    command: 'ping',
+    run: 'sysadmin',
+    why: 'The unix ping is its own verb inside the ssh session - the Windows '
+      + 'desktop ping (cmd.ping) is the desk-tier one; this continuous-by-default '
+      + 'shape lives past the promotion the server tier is behind.',
+  },
+  {
+    id: 'cmd.curl',
+    surface: 'cmd',
+    control: 'curl -I <url>',
+    does: 'Fetches a URL\'s response line and headers over a box that serves it: '
+      + 'HTTP 200 when nginx and the app behind it are up, the honest 502 when '
+      + 'nginx answers but its upstream app is down, and curl: (7) Failed to '
+      + 'connect when nothing is serving - the HTTP truth, no Windows cousin.',
+    command: 'curl',
+    run: 'sysadmin',
+    why: 'A unix-dialect verb reading the box\'s web units, reachable only inside '
+      + 'the ssh session the promotion unlocks.',
+  },
+  {
     id: 'cmd.exit',
     surface: 'cmd',
     control: 'exit',

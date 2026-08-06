@@ -221,8 +221,12 @@ describe('coverage manifest', () => {
     // Both dialects (E6): the Windows verb set the desktop terminal ships and
     // the unix one an ssh session switches to. A command in either registry
     // with no coverage entry reds here, exactly as a Windows one always has.
+    // The comparison is of the SET of names, because a command that exists in
+    // BOTH dialects (ping - the Windows desk-tier one and the continuous unix
+    // one) is one covered NAME with a coverage entry each; claimed() already
+    // dedupes its side, so the registry side dedupes to match.
     expect(claimed('command')).toEqual(
-      sorted([...COMMANDS, ...UNIX_COMMANDS].map((spec) => spec.name)),
+      sorted(new Set([...COMMANDS, ...UNIX_COMMANDS].map((spec) => spec.name))),
     );
   });
 
