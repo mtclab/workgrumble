@@ -943,3 +943,52 @@ at --workers=2.
 Monitoring for NON-monitoring-only customers (a fuller RMM across all contracts); on-call / after-
 hours paging off the board (that is E6); the Mac creative + dental verticals; change-request auth;
 onboarding; SLA tiers.
+
+# Version 0.10.0 - the change-request authorisation moment (E5, MSP arc, #28)
+
+Completes the scope loop. In 0.8.0 an out-of-contract action is a flat REFUSAL; in reality risky or
+out-of-scope work is not forbidden, it is GATED - you file a change request (scope, risk, rollback),
+it is approved, and only then may you act, in a window. This turns some hard refusals into a real
+path: request -> approve -> act. Research base: the scope-enforcement synthesis (change management:
+"a change request logs scope, risk, impact and rollback plan, goes through approval, and only after
+sign-off can the requester schedule it") in docs/design/msp-arc.md. Reuses the 0.8.0 scope engine and
+the 0.9.0 escalate/handoff pattern; the new thing is the change-request object + its approval gate.
+
+## Slice 1 - the change-request object + verb
+
+A change request is a world object: the action it authorises (target + verb), a stated risk, a
+rollback note, and a status (draft -> submitted -> approved | rejected). A verb files one for a
+specific out-of-scope/risky action. It is the diegetic form of "do we have authorisation to reboot
+production at 2pm" - the artifact that gates the action, separate from the alert that surfaced it.
+
+## Slice 2 - the scope engine consults approvals
+
+The 0.8.0 scope pre-flight gains a branch: before refusing an out-of-scope/risky action, it checks
+for an APPROVED change request covering that exact action. If one exists (and is in its window), the
+action is ALLOWED; if not, the refusal now names the PATH ("this needs a change request - file one")
+rather than a dead end. Monitoring-only stays notify-and-escalate (no CR makes a watch-only contract
+into a remediation one - that is a contract change, not a change request); helpdesk-reaching-for-a-
+server and genuinely risky work are what a CR unlocks. Distinguish clearly, per the research.
+
+## Slice 3 - approval + the window
+
+Approval is diegetic and truthful: a submitted CR is approved by the authority the real one needs
+(the customer / their IT for co-managed; a lead for internal risk) - modelled without hand-waving
+(e.g. an approver beat, or a deterministic approval after a stated review, never a fake instant yes).
+An approved CR opens a WINDOW; acting outside the window refuses. A rejected CR says why. The comedy
++ truth: the emergency you cannot touch until the paperwork clears, and the maintenance window at an
+hour nobody wanted.
+
+## Gates (once, at the version)
+
+Goldens move (CR objects); argued. Journeys through the REAL path: an out-of-scope action now names
+the CR path; filing + approving a CR then permits the exact action it covers; acting outside the
+window/without approval still refuses; monitoring-only is NOT unlockable by a CR (still escalate-only);
+a rejected CR blocks. Teeth: the approval gate fails closed (revert -> the action is wrongly allowed).
+Existing employers + 0.8.0/0.9.0 customers BYTE-IDENTICAL where no CR is filed. One codex (overseer by
+hand if down), one full box at --workers=2, plus the MSP e2e (e2e/msp.spec.ts) extended for the CR path.
+
+## Not in scope (backlog)
+
+Mac creative + dental verticals; onboarding; co-managed coordination depth; SLA tiers; a full CAB /
+multi-approver flow.
