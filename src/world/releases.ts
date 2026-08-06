@@ -31,6 +31,32 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.11.0',
+    date: '2026-08-06',
+    summary: 'This update adds two customers who bought the opposite of each '
+      + 'other.',
+    lines: Object.freeze([
+      'The MSP now runs four kinds of relationship, not two. HOLLOWAY, an '
+        + 'accountancy firm, bought EVERYTHING - you are their whole IT '
+        + 'department, and their servers are yours to fix the way your first '
+        + 'shop\'s never were. The wall the other contracts put up is simply '
+        + 'not there. Do the work.',
+      'ARDEN, a manufacturer, bought the other thing: they have their own IT, '
+        + 'and you work ALONGSIDE them. Touch one of their boxes without a word '
+        + 'and you are stopped - not because you cannot, but because somebody '
+        + 'there might be doing it too, and "I thought you had it" is how the '
+        + 'real outages happen. Say so first - "notify <box>" tells their '
+        + 'people you are on it - and then you act. Some of it is theirs to do, '
+        + 'and the honest move is to hand it back, not to fix it and learn later '
+        + 'it was never yours to touch.',
+      'Four contracts now, and the terminal tells the truth about each: '
+        + 'watch-only raises and steps back, helpdesk stops at the servers, '
+        + 'co-managed coordinates first, fully-managed does the lot. The same '
+        + 'command, four different answers, because it is four different jobs '
+        + 'depending on whose name is on the contract.',
+    ]),
+  },
+  {
     version: '0.10.0',
     date: '2026-08-06',
     summary: 'This update lets you do the thing you were told you could not - '
