@@ -1179,3 +1179,72 @@ BYTE-IDENTICAL. One codex (if it ever completes a review; else overseer self-rev
 ## Not in scope (backlog)
 
 Mac creative vertical (needs os=mac); a full CAB; the deferred E6 sysadmin / E7 cloud tiers.
+
+# Version 0.15.0 - E6 opens: the promotion, ssh, the unix terminal (E6 #7)
+
+The north-star epic opens - the biggest single version yet. The player is PROMOTED out of the
+service desk into a Linux systems engineer, ssh's to a Linux server, and fixes it in a real unix
+terminal. Everything built converges (docs/design/e6-sysadmin.md): the 0.7.0 Linux servers + their
+seeded systemd units become manageable; the 0.7.0 "Windows tools don't reach Linux" wall is
+RESOLVED; the 0.8.0 PAM scope-tier is the boundary the promotion crosses. This version ships the
+SPINE; the full command surface, on-call, change control, incidents, and the player Linux desktop
+are the backlog. Fidelity reference: the Ubuntu 24.04 command-surface research (cited real output) -
+families differ in OUTPUT SHAPE, not spelling; a refusal teaches, a fake teaches something wrong.
+
+## Slice 1 - THE PROMOTION (SD -> Systems Engineer, earned)
+
+The player's first real PROMOTION (0.6.0 was a lateral switch; this is UP). Earned off MSP career
+progression - a reputation/tenure threshold or an offer-style beat like the 0.6.0 switch, reusing
+that machinery. It crosses the PAM tier boundary (the SAME model 0.8.0 scope uses): Tier 2
+(workstation/helpdesk) -> Tier 1 (server/sysadmin), ONE-WAY and DIRECTIONAL - the player keeps
+service-desk access, GAINS server access, permanently. It grants the sysadmin capabilities (ssh, the
+unix terminal, the Linux estate). The weight is dramatised: you can now stop a service ten thousand
+people depend on. New title/tier state on the player; reuse the career/title + the 0.8.0 tier model.
+
+## Slice 2 - ssh + the unix terminal (the biggest new build)
+
+The player stays on their Windows desktop and ssh's OUT to a Linux server (a 0.7.0 Linux box).
+- **ssh** as its own mechanic, not a reskinned RDP: `ssh user@host` -> a trust-on-first-use
+  FINGERPRINT prompt (`ED25519 key fingerprint SHA256:...`, accept -> appended to known_hosts;
+  a later changed key is a scary refusal, not a fresh prompt). Key auth; `sudo` prompts the player's
+  OWN password (not a target password), governed by /etc/sudoers.
+- **The unix terminal**: an ssh session into a linux box switches the terminal to the UNIX DIALECT
+  (the box's os=linux decides it - the dialect-is-data seam the 0.7.0 spike named). A CORE command
+  set at fidelity, each READING the estate the box already holds (the seeded systemd units):
+  `systemctl status <unit>` (the richer ●-dot block: Loaded/Active/Main PID/CGroup/log-tail in one
+  call, vs sc's flat STATE line), `systemctl restart/start/stop <unit>` (SILENT on success - exit 0,
+  NEVER a fabricated confirmation line), `journalctl -u <unit>` (timestamped journal lines),
+  `ls -la` (mode/owner/group/size/mtime vs dir), `cd` bare -> HOME (the quirk vs Windows cd printing
+  cwd), `df -h` (Mounted on, no drive letters), `ps aux` (USER/PID/%CPU/STAT vs tasklist), `ip a`
+  (CIDR /24, no subnet-mask line vs ipconfig). Real output shape, cited at build time. Reuse the
+  existing terminal engine (COMMANDS registry / cmd-parse / cmd-run structure) with a unix dialect.
+
+## Slice 3 - the first Linux fix (the payoff)
+
+A service down on a Linux server (a seeded systemd unit in a `failed`/`inactive` state - a real node
+state, not a string). The now-promoted player ssh's in, `systemctl status <unit>` shows it failed,
+`journalctl -u <unit>` shows why, `systemctl restart <unit>` brings it back (the unit node flips to
+`active (running)`), and the thing it served is up. The 0.7.0 wall finally down: the box a helpdesk
+player was refused is now yours to fix. A real ticket/incident wraps it.
+
+## Gates (once, at the version)
+
+Goldens move (the promotion state + the ssh/unix additions + the seeded-failed unit); argued. The
+UNIX FIDELITY has teeth: the command output shapes match the cited real Ubuntu output; a Linux
+`systemctl restart` is silent on success (a fabricated confirmation line fails a gate); the family
+differs in shape from Windows (ls -la != dir). Journeys through the REAL path: earn the promotion ->
+the tier unlocks (a server action refused BEFORE is allowed AFTER); ssh to a Linux box (fingerprint
+-> known_hosts); the unix commands read the seeded units; the downed service is diagnosed (status +
+journalctl) and fixed (restart -> node flips to running). Pre-promotion the player still cannot reach
+a server (the 0.8.0/0.7.0 walls intact until promoted). Existing employers + the MSP customers +
+probation/Bodgeworth BYTE-IDENTICAL until the promotion fires. Determinism (no Math.random - ssh
+fingerprints, any seeded values off id/tick). One codex (if it completes a review; else overseer
+self-review), one box (workers=1 on fresh workers, box degrades per-run) + an e2e walking the
+promotion -> ssh -> unix-fix on the shipped shell.
+
+## Not in scope (backlog, e6-sysadmin.md)
+
+The full unix command surface (network ss/ip/dig depth, du, apt/patching, users/perms, the
+not-installed traceroute/net-tools/htop gags, sudo -i vs -s); on-call off the board; change control /
+maintenance windows / break-glass; the characteristic incidents (disk-full, cert-expiry,
+failed-deploy) + the postmortem; the player's own Linux DESKTOP skin; bastion/ProxyJump depth; tmux.
