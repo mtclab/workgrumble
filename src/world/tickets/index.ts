@@ -10,9 +10,11 @@ import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
 import {
   type Classification,
   classify,
+  tierResolutionTicks,
   trueImpact,
   UNTRIAGED_SLA_TICKS,
 } from '../priority';
+import { slaTierForTicketNodes } from '../customers';
 import { ACCESS_TICKETS } from './access';
 import { ARC_TICKETS } from './arc';
 import { BODGE_TICKETS } from './bodge';
@@ -385,7 +387,10 @@ export function findWorldTicket(id: string): WorldTicket | undefined {
  * sentence in one place rather than three that could drift.
  */
 export function spawnWorldTicket(
-  engine: { registerTicket(def: TicketDef): void },
+  engine: {
+    registerTicket(def: TicketDef): void;
+    readonly graph: ReadOnlyGraphView;
+  },
   id: string,
 ): void {
   const entry = findWorldTicket(id);
@@ -394,7 +399,39 @@ export function spawnWorldTicket(
     throw new Error(`Nobody wrote a ticket called "${id}".`);
   }
 
-  engine.registerTicket(entry.def);
+  engine.registerTicket(defForTier(entry, engine.graph));
+}
+
+/**
+ * The ticket def as it goes to the engine, with its customer's SLA tier folded
+ * in (0.12.0).
+ *
+ * The tier is read off the estate the ticket is about - which is already in the
+ * graph when it spawns - and it sets two things: the tier is STAMPED on the def
+ * so the engine writes it onto the ticket node (where the clock, the display and
+ * the breach cost all read it), and the RESOLUTION budget the ticket lands with
+ * is the tier's, so a Gold ticket's deadline is tighter than a Bronze one's from
+ * the minute it arrives.
+ *
+ * An in-house ticket resolves no tier, so this returns the authored def UNTOUCHED
+ * - same object, same `sla_ticks`, no `sla_tier` - which is exactly why the
+ * probation and Bodgeworth goldens do not move.
+ */
+function defForTier(
+  entry: WorldTicket,
+  graph: ReadOnlyGraphView,
+): TicketDef {
+  const tier = slaTierForTicketNodes(graph, entry.nodes);
+
+  if (tier === null) {
+    return entry.def;
+  }
+
+  return {
+    ...entry.def,
+    sla_ticks: tierResolutionTicks(tier),
+    sla_tier: tier,
+  };
 }
 
 export function ticketTitle(id: string): string {

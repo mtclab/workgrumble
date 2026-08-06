@@ -85,6 +85,14 @@ pub struct TicketDef {
     pub setup: Vec<SetupMutation>,
     pub resolved_when: Rc<Expr>,
     pub sla_ticks: i64,
+    /// The customer SLA tier this ticket runs on (0.12.0), or `None` for an
+    /// in-house ticket with no customer behind it. Stamped onto the ticket node
+    /// at spawn so the tier is a fact OF the ticket - the clock display, the
+    /// tier-aware response target and the tier-weighted breach cost all read it
+    /// off the node rather than re-walking the estate. Absent leaves the node
+    /// exactly as it was before 0.12.0, which is why the in-house probation and
+    /// Bodgeworth tickets stay byte-identical.
+    pub sla_tier: Option<String>,
     /// The definition exactly as it arrived, for `serialize`.
     pub raw: Json,
 }
@@ -172,12 +180,27 @@ impl TicketDef {
             return refuse!("Ticket kb_ref must be a string.");
         }
 
+        // The customer SLA tier (0.12.0), optional and validated as the closed
+        // bronze/silver/gold enum: a hand-edited save cannot invent a fourth and
+        // slip it onto the ticket node past the schema, the same care a
+        // customer's own `sla_tier` gets. Absent is the in-house case.
+        let sla_tier = match object.get("sla_tier") {
+            None | Some(Json::Null) => None,
+            Some(Json::String(tier))
+                if matches!(tier.as_str(), "bronze" | "silver" | "gold") =>
+            {
+                Some(tier.clone())
+            }
+            Some(_) => return refuse!("Ticket sla_tier must be bronze, silver, or gold."),
+        };
+
         Ok(Self {
             id: id.to_owned(),
             reporter: reporter.to_owned(),
             setup,
             resolved_when: Rc::new(resolved_when),
             sla_ticks,
+            sla_tier,
             raw: value.clone(),
         })
     }
@@ -476,6 +499,27 @@ mod tests {
         assert_eq!(def.id, "ticket:x");
         assert_eq!(def.sla_ticks, 10);
         assert_eq!(def.reporter, "person:pat");
+        // Absent is the in-house case: no tier stamped, the node stays as it was.
+        assert_eq!(def.sla_tier, None);
+    }
+
+    #[test]
+    fn parses_and_refuses_the_customer_sla_tier() {
+        // A valid tier rides through to the struct, so spawn can stamp it.
+        let mut gold = valid_def();
+        gold["sla_tier"] = json!("gold");
+        assert_eq!(
+            TicketDef::parse(&gold).expect("valid").sla_tier,
+            Some("gold".to_owned()),
+        );
+
+        // A fourth tier is refused at load, exactly like a bad customer scope.
+        let mut wrong = valid_def();
+        wrong["sla_tier"] = json!("platinum");
+        assert_eq!(
+            TicketDef::parse(&wrong).expect_err("refused").message(),
+            "Ticket sla_tier must be bronze, silver, or gold.",
+        );
     }
 
     #[test]

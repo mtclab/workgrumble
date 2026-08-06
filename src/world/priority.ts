@@ -14,6 +14,7 @@
  */
 
 import type { ReadOnlyGraphNode, ReadOnlyGraphView } from '../engine-api';
+import { SLA_TIERS, type SlaTier } from './fields';
 
 /** 1 low, 2 medium, 3 high - for both axes. */
 export const LEVELS = [1, 2, 3] as const;
@@ -120,6 +121,76 @@ export const UNTRIAGED_PRIORITY: Priority = 3;
 
 export function targetsFor(priority: Priority | null): SlaTarget {
   return SLA_TARGETS[priority ?? UNTRIAGED_PRIORITY];
+}
+
+/* -- the tier x severity SLA table (0.12.0) ------------------------------- */
+
+/**
+ * Response and resolution targets per (SLA tier, priority), in simulated
+ * minutes - the table that makes a customer's tier mean something.
+ *
+ * The shape is the one the research names (docs/design/msp-arc.md): P1 tight,
+ * P4 loose, and Gold much tighter than Bronze at every severity - the response
+ * targets run a clean 4x from Gold to Bronze (a Gold P1 answered in ten minutes,
+ * a Bronze in forty). Every cell is an authored integer rather than a multiplier
+ * on the default ladder, because a table is what a real SLA schedule is and a
+ * float rounded per cell is a table nobody can argue with - and because the
+ * numbers have to stay deterministic sim-minutes the engine can breach against.
+ *
+ * It is DECOUPLED from `SLA_TARGETS`: that ladder is the tier-less default the
+ * in-house probation and Bodgeworth worlds keep, and it does not move. This is
+ * the separate ladder a customer buys into. Every column is strictly monotone -
+ * Gold < Silver < Bronze at each priority, P1 < P2 < P3 < P4 within each tier -
+ * so "a Gold ticket is on a tighter clock than a Bronze one of the same
+ * severity" is true by construction, which is what the tier is FOR.
+ */
+export const TIER_SLA_TARGETS:
+  Readonly<Record<SlaTier, Readonly<Record<Priority, SlaTarget>>>> = {
+    [SLA_TIERS.gold]: {
+      1: { response: 10, resolution: 45 },
+      2: { response: 20, resolution: 90 },
+      3: { response: 40, resolution: 180 },
+      4: { response: 80, resolution: 360 },
+    },
+    [SLA_TIERS.silver]: {
+      1: { response: 20, resolution: 60 },
+      2: { response: 40, resolution: 120 },
+      3: { response: 80, resolution: 240 },
+      4: { response: 160, resolution: 420 },
+    },
+    [SLA_TIERS.bronze]: {
+      1: { response: 40, resolution: 90 },
+      2: { response: 80, resolution: 180 },
+      3: { response: 160, resolution: 300 },
+      4: { response: 240, resolution: 480 },
+    },
+  };
+
+/**
+ * The targets a ticket's clock runs on: its customer's tier crossed with its
+ * severity. A `null` tier is the in-house case and returns the default ladder
+ * byte-for-byte - so a probation ticket's clock is the number it always was, and
+ * only a ticket at a customer reads the tiered table.
+ */
+export function tierTargetsFor(
+  tier: SlaTier | null,
+  priority: Priority | null,
+): SlaTarget {
+  return tier === null
+    ? targetsFor(priority)
+    : TIER_SLA_TARGETS[tier][priority ?? UNTRIAGED_PRIORITY];
+}
+
+/**
+ * The resolution budget a ticket SPAWNS with, given its tier.
+ *
+ * The resolution deadline is fixed at spawn, before any triage, so it is read
+ * at the untriaged priority the way `UNTRIAGED_SLA_TICKS` is - a Gold ticket
+ * lands with a tighter budget than a Bronze one, and a tier-less in-house ticket
+ * lands with exactly `UNTRIAGED_SLA_TICKS`, unchanged.
+ */
+export function tierResolutionTicks(tier: SlaTier | null): number {
+  return tierTargetsFor(tier, null).resolution;
 }
 
 /**

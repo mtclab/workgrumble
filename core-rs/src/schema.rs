@@ -345,6 +345,21 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
             // ticket closed, not only whether it is closed now.
             assert_optional(fields, "resolved_at", is_number, "a number")?;
             assert_optional(fields, "breached_at", is_number, "a number")?;
+            // The customer SLA tier the ticket runs on (0.12.0), stamped at
+            // spawn from the customer behind its estate. The closed enum a
+            // customer's own tier gets, validated the same way: an in-house
+            // ticket carries none, and a hand-edited save cannot forge a fourth.
+            assert_optional(
+                fields,
+                "sla_tier",
+                |value| {
+                    matches!(
+                        value.as_str(),
+                        Some("bronze") | Some("silver") | Some("gold")
+                    )
+                },
+                "a bronze, silver, or gold SLA tier",
+            )?;
 
             if !optional(fields, "state").is_some_and(is_ticket_state) {
                 return refuse!("Ticket nodes require a valid \"state\" field.");

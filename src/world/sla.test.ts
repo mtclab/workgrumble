@@ -14,9 +14,12 @@ import type { EngineApi, ReadOnlyGraphNode } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { HELPDESK_ACTIONS } from './actions';
 import { COMPANY_IDS } from './company';
-import { FIELDS } from './fields';
+import { FIELDS, SLA_TIERS } from './fields';
+import { breachCostOf, meterDeltas, type MeterInputs } from './meters';
+import { MSP_IDS } from './msp-company';
 import {
   SLA_TARGETS,
+  tierResolutionTicks,
   UNTRIAGED_PRIORITY,
   UNTRIAGED_SLA_TICKS,
 } from './priority';
@@ -539,5 +542,163 @@ describe('business hours', () => {
     expect(world.clocks().resolution.breached).toBe(false);
     // The scratch the sum was built in does not outlive the action.
     expect(world.node().fields[FIELDS.slaRecut]).toBeUndefined();
+  });
+});
+
+/* -- customer SLA tiers (0.12.0) ------------------------------------------ */
+
+/**
+ * The tier x severity clock, driven on the shipped MSP world through the
+ * shipped engine - the REAL path (the 0.6.0 lesson): a Gold customer's ticket
+ * is stamped with its tier at spawn and lands on a tighter clock than a Bronze
+ * customer's of the same severity, the tier shows on the ticket, a breach at a
+ * higher tier costs more, and the clock still pauses waiting on the customer.
+ *
+ * TEETH: every "Gold tighter than Bronze" assertion here goes red if the tier
+ * lookup is reverted (defForTier returns the authored def, so both tickets
+ * spawn on the default 240-minute clock and read no tier). The breach-cost
+ * assertion goes red if the tier stops being stamped (both breaches weigh one).
+ */
+const MSP_CARRY = Object.freeze({
+  farmFund: 0,
+  attempt: 1,
+  arcWeek: 1,
+  employer: 'msp',
+});
+
+// A Gold customer's ticket (MERIDIAN-SAAS) and a Bronze customer's (NORTHWIND-
+// CLINIC), both in-scope faults the desk can hold or let go red.
+const GOLD_TICKET = 'ticket:meridian-mfa-lockout';
+const BRONZE_TICKET = 'ticket:northwind-backup-alert';
+
+function mspHarness(ticketId: string): Harness {
+  const { engine } = createWorldSession(MSP_CARRY);
+
+  if (engine.graph.getNode(ticketId) === undefined) {
+    spawnWorldTicket(engine, ticketId);
+  }
+  const node = (): ReadOnlyGraphNode => {
+    const found = engine.graph.getNode(ticketId);
+
+    if (found === undefined) {
+      throw new Error(`The MSP world has no ticket "${ticketId}".`);
+    }
+
+    return found;
+  };
+
+  return {
+    engine,
+    node,
+    clocks: () => ticketClocks(node(), engine.now()),
+    act: (id, params = {}) => {
+      const result = engine.dispatch(id, MSP_IDS.player, ticketId, params);
+
+      if (!result.ok) {
+        throw new Error(`"${id}" was refused: ${result.reason}`);
+      }
+    },
+  };
+}
+
+const QUIET: MeterInputs = {
+  openTickets: 0,
+  breachedTickets: 0,
+  breachesCharged: 0,
+  resolveCredit: 0,
+  resolveCreditPaid: 0,
+  openSlackApps: [],
+  focusedSlackApp: null,
+  lunch: false,
+  dndWorkingMinutes: 0,
+  dndWorkingTicks: 0,
+  dndSuspicionCharged: 0,
+};
+
+describe('a customer\'s SLA tier sets the clock', () => {
+  it('stamps the tier on the ticket at spawn, so it shows on it', () => {
+    // The tier is a fact OF the ticket, read off its own field - which is what
+    // lets the queue and the detail pane name it without re-walking the estate.
+    expect(mspHarness(GOLD_TICKET).node().fields[FIELDS.customerSlaTier])
+      .toBe(SLA_TIERS.gold);
+    expect(mspHarness(BRONZE_TICKET).node().fields[FIELDS.customerSlaTier])
+      .toBe(SLA_TIERS.bronze);
+    // The clock reads it back and carries it, so every surface reads one tier.
+    expect(mspHarness(GOLD_TICKET).clocks().tier).toBe(SLA_TIERS.gold);
+  });
+
+  it('puts a Gold ticket on a tighter clock than a Bronze one of the same '
+    + 'severity', () => {
+    const gold = mspHarness(GOLD_TICKET);
+    const bronze = mspHarness(BRONZE_TICKET);
+
+    // Both untriaged (same severity), so the only difference is the tier. The
+    // RESOLUTION deadline is the engine's own field, set from the tier-scaled
+    // budget at spawn: Gold's runs out first. Revert the tier lookup and both
+    // spawn on the default 240 - these strict comparisons go red.
+    expect(gold.clocks().resolution.dueAt)
+      .toBe(tierResolutionTicks(SLA_TIERS.gold));
+    expect(bronze.clocks().resolution.dueAt)
+      .toBe(tierResolutionTicks(SLA_TIERS.bronze));
+    expect(gold.clocks().resolution.dueAt)
+      .toBeLessThan(bronze.clocks().resolution.dueAt);
+
+    // The RESPONSE clock is tighter too: same severity, tier is the whole gap.
+    expect(gold.clocks().target.response)
+      .toBeLessThan(bronze.clocks().target.response);
+    expect(gold.clocks().response.dueAt)
+      .toBeLessThan(bronze.clocks().response.dueAt);
+  });
+
+  it('costs more when a higher tier breaches', () => {
+    // Both breach through the real engine: left open well past even the Bronze
+    // deadline, the clock runs out and the engine latches the breach.
+    const gold = mspHarness(GOLD_TICKET);
+    const bronze = mspHarness(BRONZE_TICKET);
+    gold.engine.advance(2_000);
+    bronze.engine.advance(2_000);
+
+    expect(gold.node().fields[FIELDS.breached]).toBe(true);
+    expect(bronze.node().fields[FIELDS.breached]).toBe(true);
+
+    // The driver bills the breach at its tier's cost, read off the stamped
+    // field - so a Gold miss weighs more than a Bronze one, and that weight IS
+    // the reputation hit the review reads. Revert the stamp and both weigh one.
+    const goldCost = breachCostOf(
+      gold.node().fields[FIELDS.customerSlaTier] === SLA_TIERS.gold
+        ? SLA_TIERS.gold
+        : null,
+    );
+    const bronzeCost = breachCostOf(
+      bronze.node().fields[FIELDS.customerSlaTier] === SLA_TIERS.bronze
+        ? SLA_TIERS.bronze
+        : null,
+    );
+    expect(goldCost).toBeGreaterThan(bronzeCost);
+    expect(meterDeltas({ ...QUIET, breachedTickets: goldCost }).reputationDown)
+      .toBeGreaterThan(
+        meterDeltas({ ...QUIET, breachedTickets: bronzeCost }).reputationDown,
+      );
+  });
+
+  it('still pauses the resolution clock waiting on the customer', () => {
+    // The pause is the engine's, and the tier does not change it: a parked Gold
+    // ticket has its deadline walked out minute for minute, and the response
+    // clock - which is about the reporter - does not move.
+    const gold = mspHarness(GOLD_TICKET);
+    gold.act(HELPDESK_ACTIONS.ticketAddComment, {
+      comment: 'Which account is locked - the Okta one or the local?',
+    });
+    gold.act(HELPDESK_ACTIONS.ticketSetWaiting);
+
+    const parked = gold.clocks();
+    expect(parked.onHold).toBe(true);
+
+    gold.engine.advance(30);
+    const after = gold.clocks();
+
+    expect(after.resolution.dueAt).toBe(parked.resolution.dueAt + 30);
+    expect(after.heldTicks).toBe(30);
+    expect(after.response.dueAt).toBe(parked.response.dueAt);
   });
 });

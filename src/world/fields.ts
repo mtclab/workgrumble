@@ -1433,6 +1433,23 @@ export const SLA_TIER_LABELS: Readonly<Record<SlaTier, string>> = {
 };
 
 /**
+ * A field value read back as an SLA tier, or null when it is anything else.
+ *
+ * The defensive reader the tier machinery goes through - on a customer node
+ * (`customerSlaTier`) and, since 0.12.0, on a ticket node stamped with the tier
+ * it runs on. Null is the in-house case: a ticket with no tier reads null and
+ * every tier consumer falls back to the default, which is the whole of why the
+ * dimension is additive.
+ */
+export function slaTierOf(value: unknown): SlaTier | null {
+  return value === SLA_TIERS.bronze
+    || value === SLA_TIERS.silver
+    || value === SLA_TIERS.gold
+    ? value
+    : null;
+}
+
+/**
  * The four states a change request is filed in (0.10.0). Only `submitted` is
  * ever WRITTEN by the filing verb; `approved`/`rejected` are the derived
  * lifecycle the tick fields carry, and `draft` is reserved for a form that is

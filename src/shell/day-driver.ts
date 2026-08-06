@@ -173,11 +173,12 @@ import {
   typingLine,
   typingMinutesLeft,
 } from '../world/no-hello';
-import { FIELDS } from '../world/fields';
+import { FIELDS, slaTierOf } from '../world/fields';
 import { planChangeRequestFiling } from '../world/change-request';
 import { planCoordination } from '../world/coordination';
 import { seedForAttempt } from '../world/session';
 import {
+  breachCostOf,
   isMeterTick,
   meterDeltas,
   type MeterState,
@@ -4131,9 +4132,16 @@ export class DayDriver implements DayApi {
       // because its SLA ran out, and a queue that stopped counting it would
       // pay the player to let the next one go the same way.
       openTickets: tickets.filter(isActiveWork).length,
-      breachedTickets: tickets.filter(
-        (ticket) => ticket.fields[FIELDS.breached] === true,
-      ).length,
+      // The tier-weighted breach total (0.12.0): a Gold miss costs more than a
+      // Bronze one, so what the meters bill is the SUM of the breached tickets'
+      // tier costs, not a headcount. A tier-less in-house ticket weighs one, so
+      // a world with no customers in it sums to the count it always was.
+      breachedTickets: tickets.reduce(
+        (weight, ticket) => ticket.fields[FIELDS.breached] === true
+          ? weight + breachCostOf(slaTierOf(ticket.fields[FIELDS.customerSlaTier]))
+          : weight,
+        0,
+      ),
       breachesCharged: state.breachesCharged,
       resolveCredit: resolveCredit(tickets),
       resolveCreditPaid: state.resolveCreditPaid,

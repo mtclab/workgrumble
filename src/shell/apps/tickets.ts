@@ -13,7 +13,7 @@ import {
   customerIdForTicketNodes,
   customerName,
 } from '../../world/customers';
-import { FIELDS } from '../../world/fields';
+import { FIELDS, SLA_TIER_LABELS, type SlaTier } from '../../world/fields';
 import { articleLinkNote, findKbArticle, WORLD_KB } from '../../world/kb';
 import {
   type Classification,
@@ -24,7 +24,7 @@ import {
   LEVEL_LABELS,
   LEVELS,
   priorityLabel,
-  targetsFor,
+  tierTargetsFor,
 } from '../../world/priority';
 import {
   HOLD_REASON_LABELS,
@@ -180,7 +180,7 @@ function clocksFor(
  * the minute-by-minute repaint and the full one cannot come to disagree. */
 function responseLine(clocks: Readonly<TicketClocks>): string {
   return `${clockSummary(clocks.response, 'Answered')}`
-    + ` · target ${formatDuration(targetsFor(clocks.priority).response)}`;
+    + ` · target ${formatDuration(clocks.target.response)}`;
 }
 
 function resolutionLine(clocks: Readonly<TicketClocks>): string {
@@ -228,6 +228,12 @@ export interface TicketRow {
    * - so the row names it.
    */
   readonly customer: string | null;
+  /**
+   * The customer's SLA tier (0.12.0), or null in-house. The queue names it
+   * beside the customer so the player can triage BY it - a Gold P2 outranks a
+   * Bronze P1, which is the real prioritisation call the tier exists to make.
+   */
+  readonly tier: SlaTier | null;
   readonly state: TicketState;
   readonly breached: boolean;
   readonly selected: boolean;
@@ -263,6 +269,7 @@ export function ticketRows(
       title: entry?.def.flavor.title ?? node.id,
       reporter: reporterName(api, entry),
       customer: customerId === null ? null : customerName(api.graph, customerId),
+      tier: clocks.tier,
       state: ticketState(node),
       breached: wasBreached(node),
       selected: node.id === view.selectedId,
@@ -493,12 +500,16 @@ export const TICKETS_APP: AppDef = {
           setText(title, next.title);
           // The reporter, and - for an MSP ticket - which customer it is for in
           // front of them, because at an MSP the first thing a row has to answer
-          // is "whose company is this?".
+          // is "whose company is this?". The customer's SLA tier rides with it
+          // (0.12.0) so the queue can be triaged by what the clock is worth.
           setText(
             meta,
             next.customer === null
               ? next.reporter
-              : `${next.customer} - ${next.reporter}`,
+              : next.tier === null
+                ? `${next.customer} - ${next.reporter}`
+                : `${next.customer} (${SLA_TIER_LABELS[next.tier]}) `
+                  + `- ${next.reporter}`,
           );
           setFlag(priority, 'priority', next.priority);
           setText(priority, next.priorityLabel);
@@ -605,13 +616,19 @@ export const TICKETS_APP: AppDef = {
         }),
       );
 
+      // The targets the preview quotes are THIS ticket's - its customer's tier
+      // (0.12.0) crossed with the priority the picked cell would make - so the
+      // number a Gold ticket shows is the tighter one it will actually run on.
+      const previewTarget = pair === null
+        ? null
+        : tierTargetsFor(clocks.tier, pair.priority);
       const outcome = element('p', 'triage-outcome', 'triage-outcome');
-      outcome.textContent = pair === null
+      outcome.textContent = pair === null || previewTarget === null
         ? 'Priority is what the matrix makes of those two. Pick both.'
         : `The matrix says ${priorityLabel(pair.priority)}: respond within ${
-          formatDuration(targetsFor(pair.priority).response)
+          formatDuration(previewTarget.response)
         }, resolve within ${
-          formatDuration(targetsFor(pair.priority).resolution)
+          formatDuration(previewTarget.resolution)
         }.`;
 
       const file = osButton('File this triage', 'triage-file', {
@@ -1020,6 +1037,17 @@ export const TICKETS_APP: AppDef = {
         ? 'Untriaged (treated as P3)'
         : priorityLabel(clocks.priority);
       priorityValue.append(priorityBadge);
+
+      // The customer's SLA tier (0.12.0), the thing the two clocks below are set
+      // by. Only when there is one: an in-house ticket has no tier, so the row is
+      // simply not there and the pane reads as it always did.
+      if (clocks.tier !== null) {
+        const tierValue = definitionRow(facts, 'SLA tier', 'ticket-detail-tier');
+        const tierBadge = element('span', 'ticket-tier');
+        tierBadge.dataset.tier = clocks.tier;
+        tierBadge.textContent = SLA_TIER_LABELS[clocks.tier];
+        tierValue.append(tierBadge);
+      }
 
       // The countdown moves every minute and the deadline does not, so the
       // deadline gets an attribute of its own: a test that reads them out of

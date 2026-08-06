@@ -15,8 +15,13 @@
 
 import { serviceDeadline, serviceMinutesBetween } from './day';
 import type { ReadOnlyGraphNode } from '../engine-api';
-import { FIELDS } from './fields';
-import { isPriority, type Priority, targetsFor } from './priority';
+import { FIELDS, type SlaTier, slaTierOf } from './fields';
+import {
+  isPriority,
+  type Priority,
+  type SlaTarget,
+  tierTargetsFor,
+} from './priority';
 
 export const HOLD_REASONS = ['awaiting_user', 'awaiting_vendor'] as const;
 
@@ -45,6 +50,14 @@ export interface ClockState {
 
 export interface TicketClocks {
   readonly priority: Priority | null;
+  /**
+   * The customer SLA tier this ticket runs on (0.12.0), or null in-house. The
+   * clock below is read off `target`, which is this tier crossed with the
+   * priority - so the tier IS the clock, not a label beside it.
+   */
+  readonly tier: SlaTier | null;
+  /** The tier x priority targets the two clocks are measured against. */
+  readonly target: SlaTarget;
   readonly response: ClockState;
   readonly resolution: ClockState;
   readonly onHold: boolean;
@@ -78,6 +91,19 @@ function ticketPriority(
 ): Priority | null {
   const value = node.fields[FIELDS.priority];
   return isPriority(value) ? value : null;
+}
+
+/**
+ * The tier stamped on the ticket at spawn (0.12.0), or null in-house.
+ *
+ * Read off the ticket's own field rather than re-walking the estate: the tier
+ * was resolved once when the ticket arrived and written onto the node, so every
+ * clock read since is a field lookup, not a graph walk.
+ */
+function ticketTier(
+  node: Readonly<ReadOnlyGraphNode>,
+): SlaTier | null {
+  return slaTierOf(node.fields[FIELDS.customerSlaTier]);
 }
 
 export function holdReasonOf(
@@ -127,6 +153,11 @@ export function ticketClocks(
   now: number,
 ): TicketClocks {
   const priority = ticketPriority(node);
+  const tier = ticketTier(node);
+  // The tier crossed with the severity IS the clock (0.12.0): a Gold ticket's
+  // response target is tighter than a Bronze one's of the same priority, and a
+  // tier-less in-house ticket reads the default ladder byte-for-byte.
+  const target = tierTargetsFor(tier, priority);
   const spawnedAt = numberField(node, FIELDS.spawnedAt) ?? 0;
   const deadline = numberField(node, FIELDS.slaDeadline) ?? spawnedAt;
   const respondedAt = numberField(node, FIELDS.respondedAt);
@@ -138,7 +169,7 @@ export function ticketClocks(
   // so the minute it runs out on is the minute the desk has been sat at that
   // long. A ticket inherited at 08:00 owes its first word by half past nine,
   // not by half past eight with the office still dark.
-  const responseDueAt = serviceDeadline(spawnedAt, targetsFor(priority).response);
+  const responseDueAt = serviceDeadline(spawnedAt, target.response);
   const responseRunning = respondedAt === null && !resolved;
   // A ticket that was fixed before anybody logged a word to the reporter is
   // not a missed response - it is a problem that stopped existing. Saying so
@@ -149,6 +180,8 @@ export function ticketClocks(
 
   return {
     priority,
+    tier,
+    target,
     response: {
       dueAt: responseDueAt,
       stoppedAt: respondedAt,

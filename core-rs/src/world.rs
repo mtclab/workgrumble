@@ -893,15 +893,23 @@ impl World {
             return refuse!("Reporter \"{reporter}\" does not exist.");
         }
 
+        let mut fields = serde_json::Map::new();
+        fields.insert("state".to_owned(), serde_json::json!("open"));
+        fields.insert("spawned_at".to_owned(), serde_json::json!(self.clock.now()));
+        fields.insert("sla_deadline".to_owned(), serde_json::json!(deadline));
+        fields.insert("breached".to_owned(), serde_json::json!(false));
+
+        // The tier is stamped only when there is one (0.12.0): an in-house
+        // ticket carries no `sla_tier`, so its node is exactly the four fields
+        // it was before, and its goldens do not move.
+        if let Some(tier) = &definition.sla_tier {
+            fields.insert("sla_tier".to_owned(), serde_json::json!(tier));
+        }
+
         let node = serde_json::json!({
             "id": id,
             "kind": "ticket",
-            "fields": {
-                "state": "open",
-                "spawned_at": self.clock.now(),
-                "sla_deadline": deadline,
-                "breached": false,
-            },
+            "fields": fields,
         });
         self.add_node_json(&node)?;
 

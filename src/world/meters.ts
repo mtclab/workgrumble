@@ -15,6 +15,7 @@
  * arithmetic exact all the way through - see `METER_INTERVAL_TICKS`.
  */
 
+import { SLA_TIERS, type SlaTier } from './fields';
 import { DND_WORKING_SUSPICION } from './presence';
 import { INSTALL_PRESENT_SUSPICION, INSTALLED_TOY_SLACK_RATE } from './software';
 
@@ -209,6 +210,34 @@ export const SUSPICION_CLEAN_DRAIN = 1;
 export const REPUTATION_PER_BREACH = 3;
 
 /**
+ * What a breach costs BY TIER (0.12.0): the higher the tier the sharper the
+ * miss, because the Gold customer pays for fifteen minutes and expects fifteen.
+ *
+ * It is a COST MULTIPLIER on the flat per-breach charge above, not a second
+ * charge: a Gold breach weighs three, a Bronze one weighs one - a shrug - and
+ * the driver feeds the meters the SUM of these weights over the breached
+ * tickets rather than a raw count, so `newBreaches * REPUTATION_PER_BREACH`
+ * already carries the tier. An in-house ticket has no tier and weighs one, which
+ * is exactly the count it used to be - so the probation and Bodgeworth weeks,
+ * which breach only tier-less tickets, are byte-identical. Conservative and
+ * flagged: OVERSEER TUNING KNOBS, one weight per tier.
+ */
+export const BREACH_TIER_COST: Readonly<Record<SlaTier, number>> = {
+  [SLA_TIERS.bronze]: 1,
+  [SLA_TIERS.silver]: 2,
+  [SLA_TIERS.gold]: 3,
+};
+
+/**
+ * The cost weight of a single breach at the given tier - one for a tier-less
+ * in-house ticket, so the weighted sum reduces to a plain count where no tier
+ * is in play.
+ */
+export function breachCostOf(tier: SlaTier | null): number {
+  return tier === null ? 1 : BREACH_TIER_COST[tier];
+}
+
+/**
  * What being rude to a user costs your standing, and what saying it AGAIN adds.
  *
  * The aggressive register of the tone framework: neutral costs nothing,
@@ -234,9 +263,16 @@ export const RUDE_REPUTATION_ESCALATION = 3;
 export interface MeterInputs {
   /** Tickets that are neither closed nor parked - the live pile. */
   readonly openTickets: number;
-  /** Tickets that have EVER breached, total, however they ended. */
+  /**
+   * The tier-WEIGHTED total of tickets that have EVER breached, however they
+   * ended (0.12.0): each breach counts its tier's cost (`breachCostOf`), so a
+   * Gold miss adds three where a Bronze one adds one. The driver does the
+   * weighting off the tier stamped on each breached ticket; a world with no
+   * tiers in it sums to the plain count it always was, which is why this stays
+   * byte-identical where no customer is involved.
+   */
   readonly breachedTickets: number;
-  /** How many of those the meters have already been billed for. */
+  /** How much of that weighted total the meters have already been billed for. */
   readonly breachesCharged: number;
   /** Reputation earned by everything resolved so far, in total. */
   readonly resolveCredit: number;

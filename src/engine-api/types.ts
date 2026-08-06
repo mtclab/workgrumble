@@ -246,6 +246,14 @@ export interface TicketDef {
   resolved_when: Expr;
   sla_ticks: number;
   /**
+   * The customer SLA tier this ticket runs on (0.12.0), stamped onto the ticket
+   * node at spawn so the tier is a fact of the ticket. Absent for an in-house
+   * ticket with no customer - which leaves the node exactly as it was before
+   * 0.12.0. The literal union rather than the world's `SlaTier` type keeps the
+   * engine-api layer from reaching up into `world/`.
+   */
+  sla_tier?: 'bronze' | 'silver' | 'gold';
+  /**
    * What closing it is worth, and it is worth REPUTATION only.
    *
    * There used to be a `money` beside it, from 5 to 30 per ticket, and nothing

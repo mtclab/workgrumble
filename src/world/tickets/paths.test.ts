@@ -5,6 +5,8 @@ import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
 import { createWorldSession, type WorldSession } from '../session';
+import { slaTierForTicketNodes } from '../customers';
+import { tierResolutionTicks } from '../priority';
 import { inheritedTicketIds } from '../week';
 import { mspInheritedTicketIds } from '../msp-week';
 import { bodgeInheritedTicketIds } from '../second-week';
@@ -67,7 +69,10 @@ function sessionForTicket(entry: WorldTicket): WorldSession {
  */
 function spawnIfAbsent(session: WorldSession, entry: WorldTicket): void {
   if (session.engine.graph.getNode(entry.def.id) === undefined) {
-    session.engine.registerTicket(entry.def);
+    // Through the real spawn seam, so a customer ticket lands with its tier
+    // scaled onto the clock the way the day driver spawns it - a raw
+    // registerTicket would skip the 0.12.0 tier and stamp the authored budget.
+    spawnWorldTicket(session.engine, entry.def.id);
   }
 }
 
@@ -137,8 +142,17 @@ describe('shipped tickets', () => {
 
       spawnIfAbsent(session, entry);
       expect(session.engine.ticketState(entry.def.id)).toBe('open');
-      expect(session.engine.graph.getField(entry.def.id, FIELDS.slaDeadline))
-        .toBe(entry.def.sla_ticks);
+      // Spawned at tick 0, so the deadline IS the resolution budget it landed
+      // with - and since 0.12.0 that budget is the customer's TIER (Gold tighter
+      // than Bronze), read off the same estate its clock is. A tier-less
+      // in-house ticket resolves no tier and keeps its authored `sla_ticks`, so
+      // `tierResolutionTicks(null) === UNTRIAGED_SLA_TICKS` and the probation and
+      // Bodgeworth deadlines do not move.
+      const tier = slaTierForTicketNodes(session.engine.graph, entry.nodes);
+      expect(
+        session.engine.graph.getField(entry.def.id, FIELDS.slaDeadline),
+        entry.def.id,
+      ).toBe(tier === null ? entry.def.sla_ticks : tierResolutionTicks(tier));
     }
 
     // The roster, in spawn order, written out so that adding or losing a

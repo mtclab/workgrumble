@@ -28,6 +28,8 @@ import {
   type ServiceScope,
   SERVICE_SCOPES,
   serviceScopeOf,
+  type SlaTier,
+  slaTierOf,
 } from './fields';
 
 /**
@@ -131,6 +133,34 @@ export function customerIdForTicketNodes(
   }
 
   return null;
+}
+
+/** The SLA tier a customer bought (0.12.0), read defensively (unknown -> null). */
+export function slaTierOfCustomer(
+  graph: ReadOnlyGraphView,
+  customerId: string,
+): SlaTier | null {
+  const node = customerNode(graph, customerId);
+  return node === undefined
+    ? null
+    : slaTierOf(node.fields[FIELDS.customerSlaTier]);
+}
+
+/**
+ * The SLA tier a TICKET runs on (0.12.0), derived the same way its customer is:
+ * off the box behind its estate nodes. Null when the ticket is in-house (no
+ * customer, so no tier) - which is what keeps the probation and Bodgeworth
+ * clocks the default and their goldens still.
+ *
+ * Read at SPAWN to stamp the tier onto the ticket and set its tier-scaled
+ * resolution budget; every later read is off the stamped field, not this walk.
+ */
+export function slaTierForTicketNodes(
+  graph: ReadOnlyGraphView,
+  nodeIds: readonly string[],
+): SlaTier | null {
+  const customerId = customerIdForTicketNodes(graph, nodeIds);
+  return customerId === null ? null : slaTierOfCustomer(graph, customerId);
 }
 
 /** The contract scope a customer bought, read defensively (unknown -> null). */
