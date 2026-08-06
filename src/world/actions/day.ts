@@ -1,6 +1,11 @@
 import type { ActionData, NodeRefData, PredData } from '../../engine-api';
 import { AFTER_HOURS_REPUTATION, AFTER_HOURS_STRESS } from '../after-hours';
 import { NO_RUN } from '../consumables';
+import {
+  ON_CALL_ANSWERED_REPUTATION,
+  ON_CALL_MISS_REPUTATION,
+  ON_CALL_SCRAMBLE_STRESS,
+} from '../on-call';
 import { FIELDS } from '../fields';
 import { METER_CEILING, METER_FLOOR } from '../meters';
 import {
@@ -612,6 +617,210 @@ export const DAY_ACTION_DATA: readonly ActionData[] = [
             node: ACTOR,
             field: FIELDS.stress,
             by: { const: AFTER_HOURS_STRESS },
+            clamp: { min: METER_FLOOR, max: METER_CEILING },
+          },
+        },
+      },
+    ],
+  },
+  /**
+   * Settling a night's on-call page (E6, 0.17.0): three verbs, three ways a page
+   * ends, each moving one meter once.
+   *
+   * They are driver-raised rather than pressed on a button - the world's own
+   * unit state is what says a fire was caught (the unit is up again), missed
+   * (still failed at the on-call clock-off) or a flap scrambled for (a unit a
+   * page named, restarted before it settled). What each verb OWNS is the trade
+   * and the once: the meter move is the world's constant baked in here, not a
+   * number a dispatch supplies, and the `on_call_settled` set refuses a second
+   * settle of the same page, so nothing can pay the uptime twice or charge the
+   * downtime on a page that was already caught. The `id` param is the bare page
+   * id the set records; `line` is the `id@outcome` the parallel record reads.
+   *
+   * Which pages are real and which flaps - the thing that decides whether the
+   * DRIVER raises answer/miss or scramble/clear - is the driver's to know, the
+   * same division the after-hours seam keeps: the verb owns the trade and the
+   * once, the driver owns which page is which.
+   */
+  {
+    id: DAY_ACTIONS.onCallAnswer,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: { pred: 'param_blank', param: 'id' },
+        reason: 'A page answered with no id is an answer that cannot be read '
+          + 'back, which is the same as not having given one.',
+      },
+      {
+        when: {
+          pred: 'line_in_field',
+          node: ACTOR,
+          field: FIELDS.onCallSettled,
+          value: { param: 'id' },
+        },
+        reason: 'That page has already been settled. It happened one night, it '
+          + 'was dealt with, and the standing it moved has been counted once.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.onCallSettled,
+        value: {
+          append_line: {
+            node: ACTOR,
+            field: FIELDS.onCallSettled,
+            value: { param: 'id' },
+          },
+        },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.onCallSettledAs,
+        value: {
+          append_line: {
+            node: ACTOR,
+            field: FIELDS.onCallSettledAs,
+            value: { param: 'line' },
+          },
+        },
+      },
+      // The uptime saved, standing up - the world's own constant, clamped so a
+      // page answered with reputation already at the top is the points it always
+      // was and no more.
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reputation,
+        value: {
+          add: {
+            node: ACTOR,
+            field: FIELDS.reputation,
+            by: { const: ON_CALL_ANSWERED_REPUTATION },
+            clamp: { min: METER_FLOOR, max: METER_CEILING },
+          },
+        },
+      },
+    ],
+  },
+  {
+    id: DAY_ACTIONS.onCallMiss,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: { pred: 'param_blank', param: 'id' },
+        reason: 'A page missed with no id is a miss nobody can read back.',
+      },
+      {
+        when: {
+          pred: 'line_in_field',
+          node: ACTOR,
+          field: FIELDS.onCallSettled,
+          value: { param: 'id' },
+        },
+        reason: 'That page has already been settled. It cannot be missed after '
+          + 'it was caught, nor charged for twice.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.onCallSettled,
+        value: {
+          append_line: {
+            node: ACTOR,
+            field: FIELDS.onCallSettled,
+            value: { param: 'id' },
+          },
+        },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.onCallSettledAs,
+        value: {
+          append_line: {
+            node: ACTOR,
+            field: FIELDS.onCallSettledAs,
+            value: { param: 'line' },
+          },
+        },
+      },
+      // The downtime, read at the review the way a breach is - the standing
+      // comes off, clamped at the floor.
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.reputation,
+        value: {
+          sub: {
+            node: ACTOR,
+            field: FIELDS.reputation,
+            by: { const: ON_CALL_MISS_REPUTATION },
+            clamp: { min: METER_FLOOR, max: METER_CEILING },
+          },
+        },
+      },
+    ],
+  },
+  {
+    id: DAY_ACTIONS.onCallScramble,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: { pred: 'param_blank', param: 'id' },
+        reason: 'A scramble with no id is a cost nobody can read back.',
+      },
+      {
+        when: {
+          pred: 'line_in_field',
+          node: ACTOR,
+          field: FIELDS.onCallSettled,
+          value: { param: 'id' },
+        },
+        reason: 'That page has already been settled. Getting up for it twice is '
+          + 'not billed twice.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.onCallSettled,
+        value: {
+          append_line: {
+            node: ACTOR,
+            field: FIELDS.onCallSettled,
+            value: { param: 'id' },
+          },
+        },
+      },
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.onCallSettledAs,
+        value: {
+          append_line: {
+            node: ACTOR,
+            field: FIELDS.onCallSettledAs,
+            value: { param: 'line' },
+          },
+        },
+      },
+      // The alert-fatigue cost: you got out of bed and ssh'd in for a flap that
+      // would have settled itself. Stress up, clamped at the ceiling.
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.stress,
+        value: {
+          add: {
+            node: ACTOR,
+            field: FIELDS.stress,
+            by: { const: ON_CALL_SCRAMBLE_STRESS },
             clamp: { min: METER_FLOOR, max: METER_CEILING },
           },
         },

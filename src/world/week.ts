@@ -39,6 +39,7 @@ import {
 } from './day';
 import type { ReadOnlyGraphNode } from '../engine-api';
 import type { AfterHoursSlot } from './after-hours';
+import type { OnCallPage } from './on-call';
 import { buildPatrolSchedule, patrolWindows } from './boss';
 import {
   CHANNELS,
@@ -563,6 +564,20 @@ export interface DayScript {
    * day carries none. See `src/world/after-hours.ts` for the trade they teach.
    */
   readonly afterHours?: readonly AfterHoursSlot[];
+  /**
+   * And what PAGES you after hours, once you carry the pager (E6, 0.17.0).
+   *
+   * A property of the day BOUNDARY like the after-hours pings, and read the same
+   * way - authored on a night, fired when you clock off into it and read on the
+   * following morning. But a page is not a ping: it is a service down on a Linux
+   * box, a "you are woken now" beat, and it fires ONLY for a Systems Engineer
+   * (the pager is the engineer tier's, so a desk player and every pre-promotion
+   * golden carry this column inert). Whether a given page is a real fire or a
+   * flap that clears itself is deterministic and seeded, not authored here. Like
+   * the after-hours column, a page authored on the last day has no morning to be
+   * read on, so the loader refuses it. See `src/world/on-call.ts`.
+   */
+  readonly onCall?: readonly OnCallPage[];
   /**
    * And the customer that SIGNS today, if one does (0.13.0).
    *
@@ -1123,6 +1138,7 @@ export function validateWeek(
   const scheduled = new Set<string>();
   const interruptions = new Set<string>();
   const afterHours = new Set<string>();
+  const onCall = new Set<string>();
   const channelIds = new Set<string>();
   const requestIds = new Set<string>();
   const onboardings = new Set<string>();
@@ -1317,6 +1333,51 @@ export function validateWeek(
       }
 
       afterHours.add(slot.id);
+    }
+
+    // And the pages, checked the same way and refused on the same last-day
+    // rule: a page is read on the FOLLOWING morning, so one authored on the
+    // review day lands on a Saturday this game does not have. Beyond that a page
+    // must be drawable - a box, a unit, a service phrase, a real page-ticket to
+    // raise when it is a fire, and a week-wide unique id the world records what
+    // was done about it against.
+    for (const page of script.onCall ?? []) {
+      const where = `Day ${String(script.day)}'s on-call page "${page.id}"`;
+
+      if (page.id.trim().length === 0) {
+        throw new Error(
+          `Day ${String(script.day)} carries an on-call page with no id.`,
+        );
+      }
+
+      if (isReviewDay(script.day)) {
+        throw new Error(
+          `${where} lands after the last day of the week, and a page is read on `
+          + 'the following morning. There is no Saturday, so nobody ever reads '
+          + 'it.',
+        );
+      }
+
+      if (page.box.trim().length === 0 || page.unit.trim().length === 0) {
+        throw new Error(`${where} names no box or no unit to be about.`);
+      }
+
+      if (page.service.trim().length === 0 || page.note.trim().length === 0) {
+        throw new Error(
+          `${where} has no service phrase or no note. A page nobody can read is `
+          + 'a blank line on the pager with an outage behind it.',
+        );
+      }
+
+      if (onCall.has(page.id)) {
+        throw new Error(
+          `"${page.id}" pages twice in one week. Two pages with one id share the `
+          + 'record of what was done about them, so the second arrives already '
+          + 'dealt with.',
+        );
+      }
+
+      onCall.add(page.id);
     }
 
     // And somebody at the desk. The interruption half is checked with all the
@@ -1983,6 +2044,22 @@ export function afterHoursOn(
   week: readonly DayScript[] = WEEK,
 ): readonly AfterHoursSlot[] {
   return isWeekDay(day) ? dayScript(day, week).afterHours ?? [] : [];
+}
+
+/**
+ * The pages authored to fire on a given night's on-call rotation.
+ *
+ * Keyed to the NIGHT they fire on rather than the morning they are read: the
+ * driver, clocking off day D into D+1, asks for day D - the night just gone -
+ * and the morning brief for D+1 asks for D too. Off the end of the week there is
+ * nothing, which is also what a day with no `onCall` column answers, so a week
+ * that authors no pages is byte-identical to one from before the column existed.
+ */
+export function onCallOn(
+  day: number,
+  week: readonly DayScript[] = WEEK,
+): readonly OnCallPage[] {
+  return isWeekDay(day) ? dayScript(day, week).onCall ?? [] : [];
 }
 
 /**

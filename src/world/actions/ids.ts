@@ -389,6 +389,20 @@ export const DAY_ACTIONS = {
    * sentence rather than two lots of the same point.
    */
   afterHoursAnswer: 'day.after_hours_answer',
+  /**
+   * The three ways a night's page is settled (E6, 0.17.0), all driver-raised
+   * off the world's own state rather than pressed on a button: a real fire
+   * ANSWERED (the unit is up again - uptime saved, standing up), a real fire
+   * MISSED (still failed at the on-call day's clock-off - downtime, a hit the
+   * review reads), and a flap SCRAMBLED for (you ssh'd in and restarted one that
+   * would have settled itself - the alert-fatigue cost). Each moves one meter
+   * and each is once, off `on_call_settled`, so a re-tick or a reload cannot pay
+   * or charge the same page twice. The flap that settles on its own is marked
+   * settled with no verb at all: it costs nothing, so there is nothing to bill.
+   */
+  onCallAnswer: 'day.on_call_answer',
+  onCallMiss: 'day.on_call_miss',
+  onCallScramble: 'day.on_call_scramble',
   /** Friday's clock-off. There is no Saturday, so the week stops here. */
   endWeek: 'day.end_week',
   /** Opening a can: money out, empties up, and a clock the crash reads. */

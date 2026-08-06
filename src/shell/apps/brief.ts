@@ -3,6 +3,11 @@ import { isLunchtime, shiftStartTick } from '../../world/day';
 import { FIELDS } from '../../world/fields';
 import { latestTick, type MailThread, visibleMail } from '../../world/mail';
 import { findWorldTicket } from '../../world/tickets';
+import {
+  formatPageTime,
+  type OnCallPageArrival,
+  severityLabel,
+} from '../../world/on-call';
 import { isWeekDay } from '../../world/week';
 import { formatSimTime } from '../clock-format';
 import type { AppDef, AppInstance, GameApi } from './types';
@@ -70,6 +75,12 @@ export const BRIEF_APP: AppDef = {
     const nightPanel = element('section', 'brief-panel brief-night', 'brief-night');
     nightPanel.hidden = true;
 
+    // The pager, above even the overnight pings: a page is the loudest thing on
+    // this screen and the one that woke you. Hidden outright for a desk player
+    // and any morning with no on-call night behind it.
+    const pagesPanel = element('section', 'brief-panel brief-pages', 'brief-pages');
+    pagesPanel.hidden = true;
+
     const mailPanel = element('section', 'brief-panel', 'brief-mail');
     const queuePanel = element('section', 'brief-panel', 'brief-queue');
     const columns = element('div', 'brief-columns');
@@ -82,7 +93,7 @@ export const BRIEF_APP: AppDef = {
     const note = element('p', 'brief-note', 'brief-note');
     footer.append(start, note);
 
-    root.append(head, nightPanel, columns, footer);
+    root.append(head, pagesPanel, nightPanel, columns, footer);
 
     start.addEventListener('click', () => {
       api.day.startShift();
@@ -188,6 +199,95 @@ export const BRIEF_APP: AppDef = {
       queuePanel.append(open);
     };
 
+    const pageStatus = (arrival: OnCallPageArrival): string => {
+      switch (arrival.outcome) {
+        case 'answered':
+          return 'Answered - you got up, ssh\'d in, and brought it back. The '
+            + 'uptime is saved and it reads in your favour.';
+        case 'missed':
+          return 'Missed - it was down the whole on-call day and nobody brought '
+            + 'it back. That is downtime, and the review reads it.';
+        case 'scrambled':
+          return 'You scrambled for it - up, ssh\'d in, restarted - and it had '
+            + 'already settled. A flap, not a fire: the one to trust the board on.';
+        case 'cleared':
+          return 'It settled on its own, exactly as a flap does. You were right '
+            + 'to leave it - jumping would have been a night\'s sleep for nothing.';
+        default:
+          return arrival.kind === 'real'
+            ? 'Still DOWN. This is a real fire: ssh into the box, read the unit '
+              + '(systemctl status, journalctl -u) and restart it.'
+            : 'The board is twitching. Look before you leap - a systemctl status '
+              + 'says whether it is really down or already back.';
+      }
+    };
+
+    const renderPages = (): void => {
+      const pages = api.day.onCallPages();
+
+      pagesPanel.hidden = pages.length === 0;
+      pagesPanel.replaceChildren();
+
+      if (pages.length === 0) {
+        return;
+      }
+
+      const heading2 = element('h3');
+      heading2.textContent = 'You were on call';
+      const note = element('p', 'brief-pages-note', 'brief-pages-note');
+      note.textContent = 'The pager went off overnight. A real fire is yours to '
+        + 'fix - ssh in and restart the unit. A flap settles itself if you leave '
+        + 'it, and getting up for one is a night lost for nothing. Tell them '
+        + 'apart by looking.';
+      pagesPanel.append(heading2, note);
+
+      const list = element('ul', 'brief-pages-list', 'brief-pages-list');
+
+      for (const arrival of pages) {
+        const item = element(
+          'li',
+          'brief-pages-item',
+          `brief-page-${nodeKey(arrival.page.id)}`,
+        );
+        item.dataset.kind = arrival.kind;
+        item.dataset.outcome = arrival.outcome ?? 'open';
+
+        const host = textValue(
+          api.graph.getField(arrival.page.box, FIELDS.hostname),
+          arrival.page.box,
+        );
+        const headline = element('strong', 'brief-pages-headline');
+        headline.textContent = `${severityLabel(arrival.page.severity)} - ${
+          arrival.page.service
+        } on ${host}`;
+        const when = element('span', 'brief-pages-when');
+        when.textContent = `Paged ${formatPageTime(arrival.pagedAt)}`;
+        const status = element('span', 'brief-pages-status');
+        status.textContent = pageStatus(arrival);
+        item.append(headline, when, status);
+
+        // The one convenience the surface offers - a way to the terminal where
+        // the real fix lives. Only on a fire that is still down; a settled page
+        // or a flap needs no button, which is the lesson.
+        if (arrival.outcome === null && arrival.kind === 'real'
+          && arrival.unitFailed) {
+          const open = osButton(
+            'Open the terminal',
+            `brief-page-terminal-${nodeKey(arrival.page.id)}`,
+            { compact: true },
+          );
+          open.addEventListener('click', () => {
+            api.openApp('cmd');
+          });
+          item.append(open);
+        }
+
+        list.append(item);
+      }
+
+      pagesPanel.append(list);
+    };
+
     const renderNight = (): void => {
       const pings = api.day.afterHoursPings();
 
@@ -267,6 +367,7 @@ export const BRIEF_APP: AppDef = {
       // The panels are rebuilt every minute, and the player may be standing on
       // one of the buttons inside them when the clock moves.
       withFocusRestored(root, () => {
+        renderPages();
         renderNight();
         renderMail();
         renderQueue();

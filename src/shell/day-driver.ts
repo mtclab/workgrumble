@@ -154,6 +154,7 @@ import {
   incidentsOn,
   interruptionPlanFor,
   isReviewDay,
+  onCallOn,
   onboardingsOn,
   isReviewOutcome,
   isWeekDay,
@@ -171,11 +172,23 @@ import {
   weekWorkThrough,
 } from '../world/week';
 import {
+  formatPageTime,
+  isOnCall,
+  type OnCallOutcome,
+  type OnCallPageArrival,
+  ON_CALL_OUTCOMES,
+  pagedAtMinute,
+  pageKind,
+  selfClearDelayMinutes,
+  settledLine,
+  severityLabel,
+} from '../world/on-call';
+import {
   stillTyping,
   typingLine,
   typingMinutesLeft,
 } from '../world/no-hello';
-import { FIELDS, slaTierOf } from '../world/fields';
+import { FIELDS, slaTierOf, SYSTEMD_STATES } from '../world/fields';
 import { planChangeRequestFiling } from '../world/change-request';
 import { planCoordination } from '../world/coordination';
 import { seedForAttempt } from '../world/session';
@@ -669,6 +682,14 @@ export interface DayApi {
    * reads, and the world enforces the "once" off its own record.
    */
   answerAfterHours(id: string): DispatchResult;
+  /**
+   * The pages you were woken by on the night just gone (E6, 0.17.0) - each with
+   * what the seed made it, whether its unit is still down, and how it settled.
+   * Free to read and changes nothing; empty for anybody the pager was never
+   * handed. The page surface on the morning brief draws it; the fix itself is
+   * the terminal, and the cost is the world's, reconciled off this same state.
+   */
+  onCallPages(): readonly OnCallPageArrival[];
   /**
    * The linked requests the clock has passed - the same question arriving on
    * mail, chat and a Hubbub room at once (0.5.0 slice 2) - each with how it was
@@ -1491,6 +1512,289 @@ export class DayDriver implements DayApi {
     ));
   }
 
+  /* -- on-call: the 3am page (E6, 0.17.0) --------------------------------- */
+
+  /** Whether this player carries the pager - only a Systems Engineer is on call. */
+  private onCall(): boolean {
+    return isOnCall(this.engine.graph.getField(this.actor, FIELDS.playerTier));
+  }
+
+  /** A newline-list field off the player node, as a set of non-empty lines. */
+  private playerSet(field: string): ReadonlySet<string> {
+    return new Set(
+      this.playerText(field).split('\n').filter((line) => line.length > 0),
+    );
+  }
+
+  /** The systemd state a unit node currently holds, or the empty string. */
+  private unitState(unitId: string): string {
+    const value = this.engine.graph.getField(unitId, FIELDS.unitState);
+    return typeof value === 'string' ? value : '';
+  }
+
+  /** The hostname a box is known by, for the pager line. */
+  private hostnameOf(machineId: string): string {
+    const value = this.engine.graph.getField(machineId, FIELDS.hostname);
+    return typeof value === 'string' && value.length > 0 ? value : machineId;
+  }
+
+  /** How each settled page ended, by page id, off the `id@outcome` record. */
+  private onCallOutcomes(): ReadonlyMap<string, OnCallOutcome> {
+    const map = new Map<string, OnCallOutcome>();
+
+    for (const line of this.playerSet(FIELDS.onCallSettledAs)) {
+      const at = line.lastIndexOf('@');
+
+      if (at > 0) {
+        map.set(line.slice(0, at), line.slice(at + 1) as OnCallOutcome);
+      }
+    }
+
+    return map;
+  }
+
+  /**
+   * The pages you were woken by on the night just gone, read on this morning.
+   *
+   * The played twin of `afterHoursPings`, and pure the same way: the authored
+   * night joined to what FIRED (the driver's record), what the seed made each
+   * page (a fire or a flap), whether its unit is still down this minute, and how
+   * it was settled. Empty for a desk player (never paged) and on a morning with
+   * no on-call night behind it, which is what keeps the pre-promotion goldens
+   * byte-identical.
+   */
+  public onCallPages(): readonly OnCallPageArrival[] {
+    if (!this.onCall()) {
+      return [];
+    }
+
+    const night = this.day() - 1;
+
+    if (!isWeekDay(night)) {
+      return [];
+    }
+
+    const fired = this.playerSet(FIELDS.onCallFired);
+    const outcomes = this.onCallOutcomes();
+
+    return onCallOn(night, this.week_)
+      .filter((page) => fired.has(page.id))
+      .map((page) => ({
+        page,
+        night,
+        kind: pageKind(page.id, night, this.seed_),
+        pagedAt: pagedAtMinute(page.id, night, this.seed_),
+        unitFailed: this.unitState(page.unit) === SYSTEMD_STATES.failed,
+        outcome: outcomes.get(page.id) ?? null,
+      }));
+  }
+
+  /**
+   * Fire the pages a night carries, once each. Real or flap, a page downs its
+   * unit for real and writes the failure journal - so the two are told apart
+   * only by looking (a `systemctl status`), which is the skill - and wakes the
+   * player with a pager toast. Guarded on the tier and idempotent off the fired
+   * record, so a desk player is never paged and a reload cannot fire the same
+   * page twice. Called at the clock-off into the night, the way the after-hours
+   * pings are authored against the same boundary.
+   */
+  private raiseOnCallPages(night: number): void {
+    if (!this.onCall() || !isWeekDay(night)) {
+      return;
+    }
+
+    const fired = new Set(this.playerSet(FIELDS.onCallFired));
+
+    for (const page of onCallOn(night, this.week_)) {
+      if (fired.has(page.id)) {
+        continue;
+      }
+
+      fired.add(page.id);
+      this.engine.applySetup([
+        {
+          op: 'setField',
+          id: page.unit,
+          field: FIELDS.unitState,
+          value: SYSTEMD_STATES.failed,
+        },
+        ...(page.journal.length > 0
+          ? [{
+            op: 'setField' as const,
+            id: page.unit,
+            field: FIELDS.unitJournal,
+            value: page.journal.join('\n'),
+          }]
+          : []),
+        {
+          op: 'setField',
+          id: this.actor,
+          field: FIELDS.onCallFired,
+          value: [...fired].join('\n'),
+        },
+      ]);
+
+      this.handlers.onNotice?.(
+        `Pager: ${severityLabel(page.severity)} on ${this.hostnameOf(page.box)}`,
+        `${formatPageTime(pagedAtMinute(page.id, night, this.seed_))} - ${
+          page.note
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Settle the pages you had all on-call day to answer, at the clock-off that
+   * ends it. A real fire whose unit is up again was ANSWERED (the uptime saved);
+   * one still failed was MISSED (downtime, a hit the review reads). A flap left
+   * hanging settled itself while you were not looking, so it is marked cleared
+   * for no charge. Reconciles the night whose morning was today - one clock-off
+   * back from the one that fires tonight's pages.
+   */
+  private settleOnCallMisses(night: number): void {
+    if (!this.onCall() || !isWeekDay(night)) {
+      return;
+    }
+
+    const fired = this.playerSet(FIELDS.onCallFired);
+    const settled = this.playerSet(FIELDS.onCallSettled);
+
+    for (const page of onCallOn(night, this.week_)) {
+      if (!fired.has(page.id) || settled.has(page.id)) {
+        continue;
+      }
+
+      if (pageKind(page.id, night, this.seed_) === 'real') {
+        // A last-minute restart at the frozen day-end still counts as caught.
+        if (this.unitState(page.unit) === SYSTEMD_STATES.activeRunning) {
+          this.settleOnCallPage(
+            DAY_ACTIONS.onCallAnswer,
+            page.id,
+            ON_CALL_OUTCOMES.answered,
+          );
+        } else {
+          this.settleOnCallPage(
+            DAY_ACTIONS.onCallMiss,
+            page.id,
+            ON_CALL_OUTCOMES.missed,
+          );
+        }
+      } else {
+        this.markOnCallCleared(page.id);
+      }
+    }
+  }
+
+  /**
+   * The minute-by-minute reconcile, run in the settle: a real fire answered the
+   * moment its unit is back up, and a flap either settling ITSELF on its seeded
+   * clock (if you left it) or caught having-been-restarted-early (the wasted
+   * scramble, if you did not). The whole distinction the version turns on lives
+   * here, off world state and a deterministic clear-time - no `Math.random`, so
+   * a replay lands on the same page settled the same way.
+   */
+  private settleOnCall(now: number): void {
+    if (this.playerText(FIELDS.onCallFired).length === 0 || !this.onCall()) {
+      return;
+    }
+
+    const night = this.day() - 1;
+
+    if (!isWeekDay(night)) {
+      return;
+    }
+
+    const fired = this.playerSet(FIELDS.onCallFired);
+    const settled = this.playerSet(FIELDS.onCallSettled);
+    const shiftStart = shiftStartTick(this.day());
+
+    for (const page of onCallOn(night, this.week_)) {
+      if (!fired.has(page.id) || settled.has(page.id)) {
+        continue;
+      }
+
+      const running = this.unitState(page.unit) === SYSTEMD_STATES.activeRunning;
+
+      if (pageKind(page.id, night, this.seed_) === 'real') {
+        // The uptime is saved the minute the unit answers again - a fabricated
+        // confirmation could never trip this, only the real flip does.
+        if (running) {
+          this.settleOnCallPage(
+            DAY_ACTIONS.onCallAnswer,
+            page.id,
+            ON_CALL_OUTCOMES.answered,
+          );
+        }
+
+        continue;
+      }
+
+      // A flap. Its own clock is a few minutes into the shift, seeded off the id
+      // and the night; the real ones have no such clock, which is the difference.
+      const clearTick = shiftStart
+        + selfClearDelayMinutes(page.id, night, this.seed_);
+
+      if (running) {
+        if (now < clearTick) {
+          // Up before it would have settled: you got out of bed and restarted a
+          // flap. The alert-fatigue cost, charged once.
+          this.settleOnCallPage(
+            DAY_ACTIONS.onCallScramble,
+            page.id,
+            ON_CALL_OUTCOMES.scrambled,
+          );
+        } else {
+          this.markOnCallCleared(page.id);
+        }
+      } else if (now >= clearTick) {
+        // It settles on its own - the flap you were right to leave alone.
+        this.engine.applySetup([{
+          op: 'setField',
+          id: page.unit,
+          field: FIELDS.unitState,
+          value: SYSTEMD_STATES.activeRunning,
+        }]);
+        this.markOnCallCleared(page.id);
+      }
+    }
+  }
+
+  /** Dispatch one settling verb (answer/miss/scramble) and record the outcome. */
+  private settleOnCallPage(
+    action: string,
+    id: string,
+    outcome: OnCallOutcome,
+  ): void {
+    this.announced(this.engine.dispatch(action, this.actor, null, {
+      id,
+      line: settledLine(id, outcome),
+    }));
+  }
+
+  /** Mark a flap settled with no meter move - it cleared, which costs nothing. */
+  private markOnCallCleared(id: string): void {
+    const settled = [...this.playerSet(FIELDS.onCallSettled), id];
+    const settledAs = [
+      ...this.playerSet(FIELDS.onCallSettledAs),
+      settledLine(id, ON_CALL_OUTCOMES.cleared),
+    ];
+
+    this.engine.applySetup([
+      {
+        op: 'setField',
+        id: this.actor,
+        field: FIELDS.onCallSettled,
+        value: settled.join('\n'),
+      },
+      {
+        op: 'setField',
+        id: this.actor,
+        field: FIELDS.onCallSettledAs,
+        value: settledAs.join('\n'),
+      },
+    ]);
+  }
+
   /**
    * The linked requests as they stand this minute, joined to how each was
    * resolved.
@@ -1761,6 +2065,11 @@ export class DayDriver implements DayApi {
     // the same place: it stands a whole estate up, and the ticket that drips
     // against it later this morning needs that estate to exist first.
     this.applyOnboardings(before, now);
+    // The pager, reconciled: a real fire answered the moment its unit is up, a
+    // flap settling on its own clock or caught having been scrambled for. Off
+    // world state, once per page, and inert for anybody the pager was never
+    // handed - so a week with no on-call night in it does not feel it.
+    this.settleOnCall(now);
     this.settleDirectMessages(before, now);
     this.settleNoHello(before, now);
     this.settleStaleAuth(now);
@@ -1897,6 +2206,13 @@ export class DayDriver implements DayApi {
     this.patrol_ = this.patrolFor(day + 1);
     this.rebuildInterruptions(day + 1);
     this.spawnArrivals(now, this.engine.now());
+    // On-call, at the one boundary that has a night in it: first settle the
+    // pages whose on-call day just ended - a real fire still down is a miss, the
+    // downtime read at the review - then fire tonight's, which the engineer
+    // wakes to on tomorrow's brief. A desk player is paged with neither. Both are
+    // additive and tier-gated, so a pre-promotion clock-off is byte-identical.
+    this.settleOnCallMisses(day - 1);
+    this.raiseOnCallPages(day);
     this.carriedMs = 0;
     this.engine.checkpoint();
     this.announce();

@@ -3075,6 +3075,21 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'people above the line. Career-layer: it belongs to a week of the '
     + 'employer arc that the probation week is not, and the walk that drives '
     + 'it is `scripted-arc.test.ts` rather than a browser.',
+  [DAY_ACTIONS.onCallAnswer]: 'A 3am page caught: the day loop banking the '
+    + 'uptime the minute a real fire\'s unit is answering again over ssh. The '
+    + 'player presses no button for it - the fix is the systemctl restart in the '
+    + 'terminal, and this reads that flip off the unit state and reads it once. '
+    + 'On-call is the engineer tier\'s, a week of the employer arc the probation '
+    + 'week is not; the loop is driven end to end in `on-call.test.ts`.',
+  [DAY_ACTIONS.onCallMiss]: 'A 3am page missed: the clock-off that ends the '
+    + 'on-call day finding a real fire still down. Nobody presses it - the '
+    + 'downtime is the consequence of never reaching the terminal - and it reads '
+    + 'at the review the way a breach does. Driven in `on-call.test.ts`.',
+  [DAY_ACTIONS.onCallScramble]: 'A flap scrambled for: the day loop catching a '
+    + 'page\'s unit restarted before it would have settled itself. The control '
+    + 'the player did touch is the systemctl restart in the terminal; this is '
+    + 'the world pricing it the alert-fatigue cost it was. Driven in '
+    + '`on-call.test.ts`.',
 };
 
 /**
@@ -3264,6 +3279,10 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'brief-open-tickets',
   'brief-open-mail',
   'brief-night-answer-*',
+  // The one convenience on the on-call page surface: a way to the terminal
+  // where the real fix lives, on a fire that is still down (E6, 0.17.0). One per
+  // page. The fix itself is systemctl restart in the terminal, not a button here.
+  'brief-page-terminal-*',
   'scorecard-clock-off',
   'caught-dismiss',
   'call-answer',

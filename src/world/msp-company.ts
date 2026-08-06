@@ -181,6 +181,16 @@ export const MSP_IDS = {
    */
   mspInfraServer: 'machine:fc-rmm-01',
   mspInfraPortalUnit: 'unit:fc-rmm-01/fcportal.service',
+  /**
+   * The other two FC-RMM-01 units on-call pages land on (E6, 0.17.0): the
+   * reverse proxy out front, and the cron daemon the nightly jobs run under.
+   * Seeded healthy in `FC_INFRA_UNITS`; a page downs one overnight - nginx for
+   * the real fire (the whole box goes dark), cron for the flap (a timer check
+   * twitches and settles). Same box, no customer, so both stay the engineer's to
+   * fix without crossing a contract.
+   */
+  mspInfraNginxUnit: 'unit:fc-rmm-01/nginx.service',
+  mspInfraCronUnit: 'unit:fc-rmm-01/cron.service',
 
   /**
    * Nadia Fontaine's practice manager contact at the law firm - the person who

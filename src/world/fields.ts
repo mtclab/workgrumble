@@ -440,6 +440,47 @@ export const FIELDS = {
    */
   afterHoursAnswered: 'after_hours_answered',
   /**
+   * The on-call pages that have already FIRED, one page id per line (E6, 0.17.0).
+   *
+   * A promoted engineer carries the pager after hours: on an on-call night a
+   * service falls over and a page fires - a real fire that downs a unit and
+   * raises a ticket, or a flap that clears itself. This is the idempotency
+   * record the driver writes when it raises a night's pages, so a reload or a
+   * second clock-off cannot fire the same page twice - the same watermark shape
+   * `raiseFirstIncident` guards the first incident with, made a list because a
+   * career has many nights.
+   *
+   * ABSENT for a service-desk player and every pre-promotion save, which is the
+   * whole of why on-call is byte-identical until the promotion: nobody below the
+   * engineer tier is ever paged, so nothing is written and no golden carries it.
+   */
+  onCallFired: 'on_call_fired',
+  /**
+   * The pages the on-call day is DONE with, one bare page id per line (E6,
+   * 0.17.0).
+   *
+   * The idempotency set every settling verb reads: a page is answered, missed,
+   * cleared or scrambled exactly once, and this is the record that makes "once"
+   * true across a reload and a re-tick. `line_in_field` refuses a second settle
+   * against a bare id, so a jittery hand cannot pay the scramble twice and a
+   * unit restarted, downed and restarted again cannot be answered twice for two
+   * lots of reputation. It is the SET; which way each went is the parallel
+   * record below, the same split `request_resolved` / `request_resolved_as`
+   * keeps and for the same reason.
+   */
+  onCallSettled: 'on_call_settled',
+  /**
+   * And the same pages with HOW each ended, one `pageId@outcome` per line (E6,
+   * 0.17.0), `outcome` one of answered / missed / cleared / scrambled.
+   *
+   * A second record rather than a richer version of the set above, because
+   * `line_in_field` matches whole lines: the list a second settle is refused
+   * against has to be bare ids, so the refusal reads `on_call_settled` and the
+   * page SURFACE reads this to say whether the fire was caught or missed and
+   * whether the flap was left or scrambled for. Absent for anybody never paged.
+   */
+  onCallSettledAs: 'on_call_settled_as',
+  /**
    * The linked requests the player has resolved, one bare id per line.
    *
    * A linked request is the same question arriving on mail, chat and a Hubbub

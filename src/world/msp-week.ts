@@ -20,10 +20,70 @@
  * and one in another shop's room is the boot failure it should be.
  */
 
-import { MSP_CHANNELS } from './msp-company';
+import { MSP_CHANNELS, MSP_IDS } from './msp-company';
+import type { OnCallPage } from './on-call';
 import { type DayScript, validateWeek } from './week';
 
 const MSP_ROOM_IDS = new Set(MSP_CHANNELS.map((room) => room.id));
+
+/**
+ * The two on-call pages the first engineer week carries (E6, 0.17.0), both on
+ * Fettle & Crane's OWN box (FC-RMM-01, no customer, the engineer's to fix
+ * without crossing a contract). They fire only once the player carries the pager
+ * - a service-desk week never sees them - and whether each is a real fire or a
+ * flap that settles itself is deterministic and seeded, not decided here.
+ *
+ * The reverse proxy goes on Tuesday night and the nightly-jobs timer on
+ * Wednesday night, so the arc has a page on two separate nights rather than a
+ * wall of them. Under the shipped seed the proxy is a real fire (the whole
+ * portal dark - ssh in and restart nginx) and the timer is a flap (it twitches
+ * and settles on its own by morning - the one you learn NOT to jump for); a
+ * retry's fresh seed can flip which is which, which is the point of seeding it.
+ */
+const PAGE_FC_NGINX_DOWN: OnCallPage = {
+  id: 'page/fc-nginx-down',
+  severity: 'sev1',
+  box: MSP_IDS.mspInfraServer,
+  unit: MSP_IDS.mspInfraNginxUnit,
+  service: 'the reverse proxy in front of the client portal',
+  note: 'nginx is down on FC-RMM-01 and the whole client portal is dark - every '
+    + 'customer request is hitting a closed door. ssh in, read the unit, and '
+    + 'bring it back up.',
+  journal: [
+    'Sep 08 02:50:03 FC-RMM-01 nginx[1180]: nginx: [alert] worker process 1182 '
+      + 'exited on signal 11',
+    'Sep 08 02:50:03 FC-RMM-01 systemd[1]: nginx.service: Main process exited, '
+      + 'code=killed, status=11/SEGV',
+    'Sep 08 02:50:03 FC-RMM-01 systemd[1]: nginx.service: Failed with result '
+      + '\'signal\'.',
+    'Sep 08 02:50:04 FC-RMM-01 systemd[1]: nginx.service: Scheduled restart job, '
+      + 'restart counter is at 5.',
+    'Sep 08 02:50:04 FC-RMM-01 systemd[1]: nginx.service: Start request repeated '
+      + 'too quickly.',
+    'Sep 08 02:50:04 FC-RMM-01 systemd[1]: Failed to start A high performance '
+      + 'web server and a reverse proxy server.',
+  ],
+};
+
+const PAGE_FC_BACKUP_FLAP: OnCallPage = {
+  id: 'page/fc-backup-flap',
+  severity: 'sev2',
+  box: MSP_IDS.mspInfraServer,
+  unit: MSP_IDS.mspInfraCronUnit,
+  service: 'the nightly-jobs timer on FC-RMM-01',
+  note: 'The cron daemon that runs the overnight jobs went unresponsive and the '
+    + 'monitoring paged it. It is the kind of check that flaps and settles - look '
+    + 'before you leap: a status will tell you whether it is really down or '
+    + 'already back.',
+  journal: [
+    'Sep 09 03:10:41 FC-RMM-01 cron[912]: (CRON) INFO (running with inotify '
+      + 'support)',
+    'Sep 09 03:11:02 FC-RMM-01 systemd[1]: cron.service: A process of this unit '
+      + 'has been killed by the OOM killer.',
+    'Sep 09 03:11:02 FC-RMM-01 systemd[1]: cron.service: Failed with result '
+      + '\'oom-kill\'.',
+  ],
+};
 
 export const MSP_WEEK: readonly DayScript[] = validateWeek([
   {
@@ -64,6 +124,10 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
       { ticketId: 'ticket:fontaine-checkout-deadlock', minute: 10 * 60 + 20 },
       { ticketId: 'ticket:holloway-spooler', minute: 13 * 60 + 15 },
     ],
+    // And the first night on the pager, once you carry it: the reverse proxy on
+    // the MSP's own box falls over in the small hours. Read on Wednesday's brief,
+    // fired only for an engineer - a desk player's Tuesday night is silent.
+    onCall: [PAGE_FC_NGINX_DOWN],
     patrolSeed: 1_699,
     load: 3,
   },
@@ -91,6 +155,10 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     onboarding: [
       { onboardingId: 'onboarding:tillman', minute: 10 * 60 },
     ],
+    // The second night's page: the nightly-jobs timer flaps. Under the shipped
+    // seed this is the one that settles itself - read on Thursday's brief, it is
+    // the page you learn not to scramble for.
+    onCall: [PAGE_FC_BACKUP_FLAP],
     patrolSeed: 4_057,
     load: 3,
   },
