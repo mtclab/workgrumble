@@ -32,19 +32,27 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     // Two customers before the kettle has boiled: Fontaine's new associate
     // cannot open her first matter, and Northwind's backup failed overnight.
     // One in-scope grant, one monitoring-only wall - the tenant switch and the
-    // scope constraint, both on the first morning.
-    inherited: ['ticket:fontaine-matter-access'],
+    // scope constraint, both on the first morning. And Holloway's bookkeeper is
+    // locked out before payroll: the fully-managed tier, opening on its most
+    // ordinary work (a user), so the server fix later in the week reads as the
+    // contrast it is.
+    inherited: ['ticket:fontaine-matter-access', 'ticket:holloway-lockout'],
     drip: [{ ticketId: 'ticket:northwind-backup-alert', minute: 10 * 60 }],
     patrolSeed: 0,
-    load: 1,
+    load: 2,
   },
   {
     day: 2,
     label: 'Tuesday',
-    // Meridian's analyst is locked out of Okta before her ten o'clock call, and
-    // mid-morning Fontaine surfaces the iManage deadlock a partner left behind.
+    // Meridian's analyst is locked out of Okta before her ten o'clock call,
+    // mid-morning Fontaine surfaces the iManage deadlock a partner left behind,
+    // and Holloway's reception spooler wedges - a fully-managed workstation fix
+    // beside the helpdesk ones, the same work with no wall on the server half.
     inherited: ['ticket:meridian-mfa-lockout'],
-    drip: [{ ticketId: 'ticket:fontaine-checkout-deadlock', minute: 10 * 60 + 20 }],
+    drip: [
+      { ticketId: 'ticket:fontaine-checkout-deadlock', minute: 10 * 60 + 20 },
+      { ticketId: 'ticket:holloway-spooler', minute: 13 * 60 + 15 },
+    ],
     patrolSeed: 1_699,
     load: 2,
   },
@@ -52,25 +60,31 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     day: 3,
     label: 'Wednesday',
     inherited: [],
-    // The weekend SSO change catches up with a Meridian engineer, and the
-    // afternoon brings Northwind's certificate ticking towards expiry.
+    // The weekend SSO change catches up with a Meridian engineer, the afternoon
+    // brings Northwind's certificate ticking towards expiry, and - the headline
+    // - Holloway's whole office loses the shared drive: the server fix a
+    // helpdesk contract would refuse, in scope because they are fully-managed.
     drip: [
       { ticketId: 'ticket:meridian-app-assignment', minute: 9 * 60 + 40 },
+      { ticketId: 'ticket:holloway-shared-drive', minute: 11 * 60 + 30 },
       { ticketId: 'ticket:northwind-cert-alert', minute: 13 * 60 + 30 },
     ],
     patrolSeed: 4_057,
-    load: 2,
+    load: 3,
   },
   {
     day: 4,
     label: 'Thursday',
     inherited: [],
     // The heavy day, and the one the arc was built to reach: an offboarding gap
-    // to close, the e-filing deadline at eleven, and - after lunch - the product
-    // down on a Linux box the desk may only escalate.
+    // to close, the e-filing deadline at eleven, the product down on a Linux box
+    // the desk may only escalate - and Arden's misrouted user lockout, the RACI
+    // hand-back that teaches co-managed is coordinate-then-act by first teaching
+    // what the MSP does NOT touch.
     drip: [
       { ticketId: 'ticket:meridian-offboarding', minute: 9 * 60 + 50 },
       { ticketId: 'ticket:fontaine-efiling', minute: 11 * 60 },
+      { ticketId: 'ticket:arden-lockout-handback', minute: 12 * 60 + 30 },
       { ticketId: 'ticket:meridian-prod-down', minute: 14 * 60 },
     ],
     patrolSeed: 6_421,
@@ -81,8 +95,13 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     label: 'Friday',
     inherited: [],
     // A lighter Friday, the way every week's is: one last monitoring alert -
-    // Northwind's disk crossing its threshold - and then the review.
-    drip: [{ ticketId: 'ticket:northwind-disk-alert', minute: 10 * 60 + 30 }],
+    // Northwind's disk crossing its threshold - and Arden's shop-floor portal
+    // wedged as their IT clocks off, the co-managed gap the MSP fills by
+    // notifying their team first and then acting. Then the review.
+    drip: [
+      { ticketId: 'ticket:northwind-disk-alert', minute: 10 * 60 + 30 },
+      { ticketId: 'ticket:arden-portal-afterhours', minute: 14 * 60 + 45 },
+    ],
     patrolSeed: 2_939,
     load: 2,
   },

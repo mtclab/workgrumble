@@ -175,6 +175,7 @@ import {
 } from '../world/no-hello';
 import { FIELDS } from '../world/fields';
 import { planChangeRequestFiling } from '../world/change-request';
+import { planCoordination } from '../world/coordination';
 import { seedForAttempt } from '../world/session';
 import {
   isMeterTick,
@@ -597,6 +598,17 @@ export interface DayApi {
    * the action through, once the request is approved and inside its window.
    */
   fileChangeRequest(targetId: string, verb: string): readonly string[];
+  /**
+   * Files a coordination notice for a target (0.11.0): the co-managed heads-up to
+   * a customer's OWN IT that puts a `coordination` node into the world and thereby
+   * clears the action the scope pre-flight would otherwise refuse. Coordinate-
+   * then-act, the RACI "I thought you had it" gap closed. Like a change request it
+   * NEVER dispatches the action - the scope pre-flight's consult is the only thing
+   * that lets it through, once a notice for the target exists - and a target with
+   * no co-managed customer files nothing at all, answering that no notice is
+   * needed.
+   */
+  fileCoordination(targetId: string): readonly string[];
   /**
    * What the lead would have to go on if he read the install audit this minute:
    * the policy, the installs on the trail he has not already been down about,
@@ -1267,6 +1279,24 @@ export class DayDriver implements DayApi {
       // The same runtime addNode a ticket spawn uses, and serialised whole by a
       // save, so a request filed mid-day round-trips a reload. Filing is
       // paperwork - it adds the request and nothing else moves.
+      this.engine.applySetup(plan.ops);
+    }
+
+    return plan.lines;
+  }
+
+  public fileCoordination(targetId: string): readonly string[] {
+    const plan = planCoordination(
+      this.engine.graph,
+      targetId,
+      this.engine.now(),
+    );
+
+    if (plan.kind === 'filed') {
+      // The same runtime addNode filing a change request uses: the notice is a
+      // node the save serialises whole, so a heads-up given mid-day round-trips
+      // a reload. It adds the notice and nothing else moves - clearing the
+      // action is the scope pre-flight's job, not this one's.
       this.engine.applySetup(plan.ops);
     }
 

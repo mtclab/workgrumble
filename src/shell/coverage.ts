@@ -2279,6 +2279,22 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'cmd.notify',
+    surface: 'cmd',
+    control: 'notify <service>',
+    does: 'Notifies a co-managed customer\'s OWN IT before acting on their box - '
+      + 'the coordinate-then-act seam - and thereby clears the action the scope '
+      + 'pre-flight would otherwise refuse. On the probation desk it answers that '
+      + 'an in-house box has no customer IT to notify; the co-managed loop (a '
+      + 'unilateral action caught, the notify clearing it, and the fail-closed '
+      + 'teeth) is driven through the real terminal in msp-scope.test.ts. It '
+      + 'dispatches nothing itself - filing the notice is paperwork, and the '
+      + 'scope pre-flight is the only thing that lets the action it clears '
+      + 'through.',
+    command: 'notify',
+    run: 'week',
+  },
+  {
     id: 'cmd.rotate',
     surface: 'cmd',
     control: 'rotate <machine> <0|90|180|270>',

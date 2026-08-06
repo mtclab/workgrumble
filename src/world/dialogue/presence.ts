@@ -119,6 +119,15 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
   [MSP_IDS.northwindContact]: 'Says away. We only pay you to watch, so I do not '
     + 'want to be a bother - it is only that the thing you were watching has '
     + 'gone red and the watching desk has gone quiet.',
+  // The two remaining tiers (0.11.0): a fully-managed practice for whom the MSP
+  // IS the IT department, and a co-managed IT manager who knows exactly what a
+  // service desk being away means.
+  [MSP_IDS.hollowayContact]: 'You are showing away. You are our entire IT '
+    + 'department, so away is not a status I have anywhere else to route around - '
+    + 'when your desk is quiet, ours simply is not covered.',
+  [MSP_IDS.ardenContact]: 'Marked away. I run a desk too, so I get it - but we '
+    + 'are co-managed, and the whole point is that one of us is always reachable. '
+    + 'Right now neither of us is picking this up, which is the gap we pay to close.',
 });
 
 /**

@@ -38,6 +38,7 @@ import {
 } from '../filesystem';
 import { mspMachineHostname, MSP_IDS } from '../msp-company';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
+import { baselineServiceId } from '../services';
 import type { WorldTicket } from './types';
 
 /* -- FONTAINE-LAW: a Windows-only law firm on a helpdesk contract --------- */
@@ -813,6 +814,374 @@ const DISK_ALERT: WorldTicket = {
   ],
 };
 
+/* -- HOLLOWAY-ACCT: a small practice, fully-managed, whole estate in reach --- */
+
+/** The DFS service the practice's shared S: drive maps through, on their server. */
+const HOLLOWAY_DFS = baselineServiceId(MSP_IDS.hollowayFileServer, 'Dfs');
+
+/**
+ * The shared-drive outage - the server fix a helpdesk contract would REFUSE, in
+ * scope here because the contract is fully-managed.
+ *
+ * The whole practice maps its client folders through a DFS namespace on
+ * HOLL-SRV-01, and the Distributed File System service on that server has
+ * wedged: the S: drive is there but nothing under it resolves, so nobody can
+ * open a client file. The fix is the real one - restart the wedged service on
+ * the server - and it is the exact move the scope engine refuses at FONTAINE-LAW
+ * (a server, out of a helpdesk contract). At HOLLOWAY-ACCT the MSP IS the IT
+ * department, so the wall is simply not there: this is the contrast the tier
+ * teaches, proven end to end in `msp-scope.test.ts`.
+ */
+const SHARED_DRIVE_DOWN: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.hollowayFileServer, MSP_IDS.hollowayWorkstation],
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:holloway-shared-drive',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Holloway: nobody can open anything on the S: drive',
+      body:
+        'Priya reports the whole office has lost the S: drive - the letter is '
+        + 'still there but every client folder under it comes back empty or errors, '
+        + 'and it is month-end. It is the Distributed File System on HOLL-SRV-01, '
+        + 'their server. On a helpdesk contract that would be a wall; Holloway is '
+        + 'fully-managed, so the server is the MSP\'s to fix, and the fix is to '
+        + 'restart the wedged service.',
+    },
+    reporter: MSP_IDS.hollowayContact,
+    // The DFS service wedges the way the spooler does: up, and not answering.
+    setup: [
+      {
+        op: 'setField',
+        id: HOLLOWAY_DFS,
+        field: FIELDS.status,
+        value: SERVICE_STATUS.wedged,
+      },
+    ],
+    // Closed when the file system service is answering again and the shares
+    // resolve.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: HOLLOWAY_DFS },
+      field: FIELDS.status,
+      value: SERVICE_STATUS.running,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 5 },
+    kb_ref: 'kb/dfs-namespace-down',
+  },
+  cause: 'The Distributed File System service on HOLL-SRV-01 wedged - the '
+    + 'manager reports it running, the namespace it serves does not resolve, and '
+    + 'the S: drive maps straight through it. Restarting the service on the '
+    + 'server clears it. At a helpdesk customer this is out of contract and the '
+    + 'move is to escalate; here the MSP owns the server, so the fix is the fix.',
+  dialogue_ref: 'dialogue/msp-priya',
+  paths: [
+    {
+      id: 'restart-dfs-on-the-server',
+      app: 'cmd',
+      label: 'Restart the Distributed File System service on HOLL-SRV-01',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.serviceRestart,
+          target: HOLLOWAY_DFS,
+        },
+      ],
+    },
+  ],
+};
+
+/** The Print Spooler on the reception workstation, the everyday helpdesk fix. */
+const HOLLOWAY_SPOOLER = baselineServiceId(
+  MSP_IDS.hollowayWorkstation,
+  'Spooler',
+);
+
+/**
+ * The workstation issue - a wedged Print Spooler on the reception desktop. It is
+ * the same everyday fix a helpdesk contract covers everywhere, sitting beside
+ * the server fix above precisely to make the point: fully-managed is not a
+ * different KIND of work, it is the SAME work with no wall in front of the
+ * server half of it.
+ */
+const HOLLOWAY_SPOOLER_TICKET: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.hollowayWorkstation],
+  claimed_urgency: 2,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:holloway-spooler',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Holloway: the reception PC will not print, jobs just pile up',
+      body:
+        'Priya cannot print from the reception workstation - jobs sit in the '
+        + 'queue and nothing comes out. The Print Spooler on HOLL-WS-01 has '
+        + 'wedged: it reports running and answers nobody, which is the one status '
+        + 'a spooler earns its own paragraph for. Restart it and the queue drains.',
+    },
+    reporter: MSP_IDS.hollowayContact,
+    setup: [
+      {
+        op: 'setField',
+        id: HOLLOWAY_SPOOLER,
+        field: FIELDS.status,
+        value: SERVICE_STATUS.wedged,
+      },
+    ],
+    resolved_when: {
+      op: 'eq',
+      selector: { id: HOLLOWAY_SPOOLER },
+      field: FIELDS.status,
+      value: SERVICE_STATUS.running,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 3 },
+    kb_ref: 'kb/print-spooler',
+  },
+  cause: 'The Print Spooler wedged - running, and not accepting or releasing a '
+    + 'job. It is a workstation service the desk restarts, the same at a fully-'
+    + 'managed customer as anywhere: the tier changes what the SERVER half of '
+    + 'the estate lets you do, not this.',
+  dialogue_ref: 'dialogue/msp-priya',
+  paths: [
+    {
+      id: 'restart-the-spooler',
+      app: 'cmd',
+      label: 'Restart the Print Spooler on HOLL-WS-01',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.serviceRestart,
+          target: HOLLOWAY_SPOOLER,
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The account issue - the bookkeeper locked out before the payroll run. A plain
+ * lockout, unlocked from the desk, squarely in scope: the third of the practice
+ * estate the fully-managed contract covers whole (a user, a workstation and a
+ * server, none of them walled off).
+ */
+const HOLLOWAY_LOCKOUT: WorldTicket = {
+  arrival: 'morning',
+  nodes: [MSP_IDS.hollowayBookkeeperAccount, MSP_IDS.hollowayWorkstation],
+  claimed_urgency: 3,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:holloway-lockout',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Holloway: Gordon is locked out and payroll runs this morning',
+      body:
+        'Priya reports that Gordon, the bookkeeper, is locked out of his account '
+        + 'and cannot get into the practice suite - and the payroll run is due '
+        + 'this morning. He tried his password too many times after a long '
+        + 'weekend. The desk unlocks it; it is a user, and users are helpdesk '
+        + 'work at any tier.',
+    },
+    reporter: MSP_IDS.hollowayContact,
+    setup: [
+      {
+        op: 'setField',
+        id: MSP_IDS.hollowayBookkeeperAccount,
+        field: FIELDS.badPwCount,
+        value: LOCKOUT_THRESHOLD,
+      },
+      {
+        op: 'setField',
+        id: MSP_IDS.hollowayBookkeeperAccount,
+        field: FIELDS.lockedSince,
+        value: 0,
+      },
+      {
+        op: 'setField',
+        id: MSP_IDS.hollowayBookkeeperAccount,
+        field: FIELDS.locked,
+        value: true,
+      },
+    ],
+    resolved_when: {
+      op: 'eq',
+      selector: { id: MSP_IDS.hollowayBookkeeperAccount },
+      field: FIELDS.locked,
+      value: false,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 3 },
+    kb_ref: 'kb/account-lockout',
+  },
+  cause: 'A run of failed sign-ins tripped the lockout, exactly as it should. '
+    + 'Unlocking the account is the whole of the fix - a user at a fully-managed '
+    + 'customer is helpdesk work like any other, and nothing about this tier '
+    + 'changes an unlock.',
+  dialogue_ref: 'dialogue/msp-priya',
+  paths: [
+    {
+      id: 'unlock-gainsley',
+      app: 'directory',
+      label: 'Unlock the account for gainsley',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.accountUnlock,
+          target: MSP_IDS.hollowayBookkeeperAccount,
+        },
+      ],
+    },
+  ],
+};
+
+/* -- ARDEN-MFG: co-managed, coordinate-then-act ---------------------------- */
+
+/**
+ * The RACI hand-back - the one you must give BACK to their IT.
+ *
+ * A floor supervisor is locked out and the ticket landed in the MSP queue by
+ * mistake (she mailed the wrong address). Under the co-managed split, day-to-day
+ * user support is ARDEN's own IT's - the MSP covers after-hours, servers and
+ * specialist work. Reaching in to reset her, even coordinated, poaches their
+ * team's job and is exactly the "I thought you had it" double-work the contract
+ * exists to avoid. The honest, RACI-correct move is to hand it back to Dev's
+ * desk - so, like the prod-down escalation, the resolution rule IS the handoff.
+ */
+const ARDEN_LOCKOUT_HANDBACK: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.ardenSupervisorAccount, MSP_IDS.ardenWorkstation],
+  claimed_urgency: 3,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:arden-lockout-handback',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Arden: a floor supervisor is locked out - "can you reset her?"',
+      body:
+        'Dev forwards a lockout: Marika on the shop floor mailed the MSP alias by '
+        + 'mistake and cannot log in. It is a routine daytime user reset, which '
+        + 'under the co-managed split is Arden\'s OWN helpdesk\'s to do - the MSP '
+        + 'has the servers and the after-hours, their team has the users. Reaching '
+        + 'in to reset her here steps on Dev\'s desk; the correct move is to hand '
+        + 'it back to their IT, not to poach it.',
+    },
+    reporter: MSP_IDS.ardenContact,
+    setup: [],
+    // The RACI-correct close: hand it to the team whose job it is. Resetting her
+    // from the MSP desk is not the resolution - handing it back is.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: 'ticket:arden-lockout-handback' },
+      field: FIELDS.escalated,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 3 },
+    kb_ref: 'kb/co-managed-raci',
+  },
+  cause: 'A daytime user lockout is Arden\'s internal helpdesk\'s responsibility '
+    + 'under the co-managed RACI, not the MSP\'s - the MSP owns servers, after-'
+    + 'hours and specialist work. The ticket reached the wrong queue; the fix is '
+    + 'to route it back to their team, cleanly, rather than double-handle a user '
+    + 'both desks think the other has.',
+  dialogue_ref: 'dialogue/msp-dev',
+  paths: [
+    {
+      id: 'hand-back-to-their-it',
+      app: 'tickets',
+      label: 'Hand it back: day-to-day user support is Arden\'s IT under the RACI',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.ticketEscalate,
+          target: 'ticket:arden-lockout-handback',
+          params: {
+            reported: 'Floor supervisor locked out; routed to the MSP in error.',
+            tried:
+              'Confirmed the lockout is a routine daytime user reset\n'
+              + 'Checked the RACI: day-to-day user support is Arden\'s own '
+              + 'helpdesk, not the MSP - handing back rather than double-handling',
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/** The shop-floor scheduling portal, on their IIS box - the W3SVC that serves it. */
+const ARDEN_W3SVC = baselineServiceId(MSP_IDS.ardenServer, 'W3SVC');
+
+/**
+ * The after-hours gap the MSP fills - and the one that needs COORDINATION.
+ *
+ * The shop-floor scheduling portal is down for the night shift: the World Wide
+ * Web Publishing service on ARDEN-SRV-01 has wedged, and Arden's own IT has gone
+ * home. This is squarely the MSP's to do under co-managed - after-hours, on a
+ * server - but co-managed is coordinate-then-act: acting on their estate
+ * unilaterally is refused, and the move is to NOTIFY their IT first (`notify
+ * <service>`) and then restart. The graph path here is the restart itself; the
+ * coordinate step is the scope-engine seam, proven in `msp-scope.test.ts` (a
+ * unilateral restart is caught, the notify clears it).
+ */
+const ARDEN_PORTAL_AFTERHOURS: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.ardenServer],
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:arden-portal-afterhours',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Arden: the shop-floor portal is down as their IT clocks off',
+      body:
+        'Dev flags that the scheduling portal is down heading into the night '
+        + 'shift - the IIS service on ARDEN-SRV-01 has wedged - and his team is '
+        + 'clocking off for the day. This is the MSP\'s to fill: after their '
+        + 'hours, on a server. But Arden is co-managed, so it is not a free hand '
+        + '- notify their IT first ("notify <service>"), then restart the '
+        + 'service. Acting unilaterally is the coordination gap the contract '
+        + 'closes.',
+    },
+    reporter: MSP_IDS.ardenContact,
+    setup: [
+      {
+        op: 'setField',
+        id: ARDEN_W3SVC,
+        field: FIELDS.status,
+        value: SERVICE_STATUS.wedged,
+      },
+    ],
+    resolved_when: {
+      op: 'eq',
+      selector: { id: ARDEN_W3SVC },
+      field: FIELDS.status,
+      value: SERVICE_STATUS.running,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 5 },
+    kb_ref: 'kb/co-managed-coordination',
+  },
+  cause: 'The World Wide Web Publishing service on ARDEN-SRV-01 wedged and the '
+    + 'portal it serves went dark. Under co-managed this is the MSP\'s gap to '
+    + 'fill after hours, but the act is gated by coordination: their own IT is '
+    + 'notified first so both teams know who is on the box, and then the wedged '
+    + 'service is restarted - coordinate, then act.',
+  dialogue_ref: 'dialogue/msp-dev',
+  paths: [
+    {
+      id: 'coordinate-then-restart-w3svc',
+      app: 'cmd',
+      label: 'Notify Arden\'s IT, then restart the portal service on ARDEN-SRV-01',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.serviceRestart,
+          target: ARDEN_W3SVC,
+        },
+      ],
+    },
+  ],
+};
+
 export const MSP_TICKETS: readonly WorldTicket[] = [
   // FONTAINE-LAW - the law firm, helpdesk scope.
   MATTER_ACCESS,
@@ -827,4 +1196,11 @@ export const MSP_TICKETS: readonly WorldTicket[] = [
   BACKUP_ALERT,
   CERT_ALERT,
   DISK_ALERT,
+  // HOLLOWAY-ACCT - fully-managed, whole estate in reach (0.11.0).
+  SHARED_DRIVE_DOWN,
+  HOLLOWAY_SPOOLER_TICKET,
+  HOLLOWAY_LOCKOUT,
+  // ARDEN-MFG - co-managed, coordinate-then-act (0.11.0).
+  ARDEN_LOCKOUT_HANDBACK,
+  ARDEN_PORTAL_AFTERHOURS,
 ];

@@ -103,6 +103,10 @@ describe('company world', () => {
       // by the player against out-of-scope MSP work, and the in-house estate has
       // none - 0 here for the same additive reason the customer count is.
       change_request: 0,
+      // And no coordination notices: the co-managed coordinate-then-act notice
+      // (0.11.0) is filed by the player against a co-managed customer's box, of
+      // which the in-house estate has none - 0 here for the same additive reason.
+      coordination: 0,
       share: 2,
       group: 3,
       mail_rule: 2,

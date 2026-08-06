@@ -19,8 +19,9 @@ import {
   type WorldSession,
 } from '../../world/session';
 import { HELPDESK_ACTIONS } from '../../world/actions';
-import { FIELDS } from '../../world/fields';
+import { FIELDS, SERVICE_STATUS } from '../../world/fields';
 import { MSP_CUSTOMERS, MSP_IDS } from '../../world/msp-company';
+import { baselineServiceId } from '../../world/services';
 import { spawnWorldTicket } from '../../world/tickets';
 import { parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
@@ -343,6 +344,145 @@ describe('the Linux prod draw closes by escalation, never by touching prod', () 
     );
     expect(escalate.ok).toBe(true);
     expect(session.engine.ticketState('ticket:meridian-prod-down'))
+      .toBe('resolved');
+  });
+});
+
+/**
+ * The fully-managed tier (0.11.0), proven through the real terminal: the server
+ * fix a helpdesk contract WALLS OFF succeeds here, because the MSP owns the whole
+ * estate. Teeth: the SAME server fix at a helpdesk customer is refused, so the
+ * contrast is real and not an accident of the box.
+ */
+const HOLLOWAY_DFS = baselineServiceId(MSP_IDS.hollowayFileServer, 'Dfs');
+const ARDEN_W3SVC = baselineServiceId(MSP_IDS.ardenServer, 'W3SVC');
+
+describe('the fully-managed tier reaches the server a helpdesk contract walls off', () => {
+  it('restarts a wedged server service at a fully-managed customer', () => {
+    const session = mspSession('ticket:holloway-shared-drive');
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.holloway);
+    const api = apiFor(session, appState);
+
+    // The DFS service on their server is wedged (the ticket's fault). At a
+    // helpdesk customer this restart is refused as a server touch; on a fully-
+    // managed contract it goes through, and the shared-drive ticket resolves.
+    const output = run(api, 'restart HOLL-SRV-01\\Dfs');
+
+    expect(output).toContain('service reports RUNNING');
+    expect(session.engine.graph.getField(HOLLOWAY_DFS, FIELDS.status))
+      .toBe(SERVICE_STATUS.running);
+    expect(session.engine.ticketState('ticket:holloway-shared-drive'))
+      .toBe('resolved');
+  });
+
+  it('refuses the SAME class of server fix at a helpdesk customer (the contrast)', () => {
+    // The wall the fully-managed tier is defined against: a server service at
+    // FONTAINE-LAW (helpdesk) is out of contract, and the identical verb that
+    // just succeeded above is refused here.
+    const session = mspSession();
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.fontaine);
+    const api = apiFor(session, appState);
+
+    const output = run(api, 'restart FONT-FILE-01\\Dfs');
+
+    expect(output).toContain('Servers are not in this contract');
+    expect(output).not.toContain('service reports RUNNING');
+  });
+});
+
+/**
+ * The co-managed tier (0.11.0), proven through the real terminal, and the seam
+ * this version is built on: acting on a co-managed customer's estate is
+ * coordinate-then-act. A unilateral action is CAUGHT; a `notify` to their own IT
+ * clears it; and the gate FAILS CLOSED - the teeth are that the unilateral
+ * attempt changes nothing, so reverting the coordinate check (dropping the
+ * `isCoordinated` clause and allowing co-managed unconditionally) reds this.
+ */
+describe('co-managed is coordinate-then-act, and the gate fails closed', () => {
+  it('catches a unilateral action, then the notify clears it and the fix lands', () => {
+    const session = mspSession('ticket:arden-portal-afterhours');
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.arden);
+    const api = apiFor(session, appState);
+
+    // Unilateral: no coordination notice filed. The portal service on ARDEN-
+    // SRV-01 is wedged (the ticket's fault), but a co-managed action without a
+    // heads-up to their IT is refused.
+    const refused = run(api, 'restart ARDEN-SRV-01\\W3SVC');
+    expect(refused).toContain('co-managed');
+    expect(refused).toContain('notify them first');
+    expect(refused).not.toContain('service reports RUNNING');
+    // Teeth (fail-closed): nothing was restarted and the ticket is untouched.
+    // Revert the coordinate check - allow co-managed with no notice - and this
+    // dispatches, the service restarts, and both assertions red.
+    expect(session.engine.graph.getField(ARDEN_W3SVC, FIELDS.status))
+      .toBe(SERVICE_STATUS.wedged);
+    expect(session.engine.ticketState('ticket:arden-portal-afterhours'))
+      .toBe('open');
+
+    // Coordinate: notify their own IT. This files the notice and clears the
+    // action; it dispatches nothing itself (the service is still wedged after).
+    const notified = run(api, 'notify ARDEN-SRV-01\\W3SVC');
+    expect(notified).toContain('ARDEN-MFG');
+    expect(notified.toLowerCase()).toContain('notified');
+    expect(session.engine.graph.getField(ARDEN_W3SVC, FIELDS.status))
+      .toBe(SERVICE_STATUS.wedged);
+
+    // Act: the same restart now goes through, and the portal ticket resolves.
+    const done = run(api, 'restart ARDEN-SRV-01\\W3SVC');
+    expect(done).toContain('service reports RUNNING');
+    expect(session.engine.graph.getField(ARDEN_W3SVC, FIELDS.status))
+      .toBe(SERVICE_STATUS.running);
+    expect(session.engine.ticketState('ticket:arden-portal-afterhours'))
+      .toBe('resolved');
+  });
+
+  it('a notice for one box does not clear an action on another', () => {
+    // The coordinate gate is per-target: notifying about the portal service does
+    // NOT license a unilateral touch of a different co-managed box. Fail-closed
+    // means a notice clears exactly what it names and nothing else.
+    const session = mspSession();
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.arden);
+    const api = apiFor(session, appState);
+
+    run(api, 'notify ARDEN-SRV-01\\W3SVC');
+
+    // A different service on the same customer, with no notice of its own.
+    const output = run(api, 'restart ARDEN-SRV-01\\Spooler');
+    expect(output).toContain('co-managed');
+    expect(output).not.toContain('service reports RUNNING');
+  });
+
+  it('the hand-back ticket resolves the RACI way, and the reset is caught unilateral', () => {
+    const session = mspSession('ticket:arden-lockout-handback');
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.arden);
+    const api = apiFor(session, appState);
+
+    // Reaching to reset the floor supervisor directly is a co-managed action
+    // with no coordination - caught. (Day-to-day user support is their team's
+    // under the RACI, which is why the honest close is a hand-back, not a reset.)
+    const reset = run(api, 'resetpw mvoss');
+    expect(reset).toContain('co-managed');
+    expect(reset).not.toContain('Temporary password issued');
+
+    // The RACI-correct close: hand it back to their own IT. That - and only
+    // that - resolves it, exactly as the prod-down escalation does.
+    const escalate = session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketEscalate,
+      MSP_IDS.player,
+      'ticket:arden-lockout-handback',
+      {
+        reported: 'Floor supervisor locked out; routed to the MSP in error.',
+        tried: 'Confirmed it is a routine daytime user reset\n'
+          + 'Checked the RACI: day-to-day user support is Arden\'s own helpdesk',
+      },
+    );
+    expect(escalate.ok).toBe(true);
+    expect(session.engine.ticketState('ticket:arden-lockout-handback'))
       .toBe('resolved');
   });
 });

@@ -705,6 +705,19 @@ export const FIELDS = {
   /** Which customer the request is for, by id, for the queue and the listing. */
   crCustomer: 'cr_customer',
   /**
+   * The coordination notice a co-managed action is cleared by (0.11.0). The
+   * target it clears (the id of the box or service the MSP told the customer's
+   * own IT it was touching), the customer whose IT was notified, and the minute
+   * the heads-up was given. The scope pre-flight reads `coord_target` before it
+   * refuses a co-managed action - a notice on one box does not clear another,
+   * the way "notify their IT first" is coordinate-then-act rather than a free
+   * hand. Written by the `notify` verb; serialised whole, so a notice given
+   * mid-day survives a reload.
+   */
+  coordTarget: 'coord_target',
+  coordCustomer: 'coord_customer',
+  coordNotifiedAt: 'coord_notified_at',
+  /**
    * What is inside the case, as two lines a support call reads out.
    *
    * They are fields rather than strings in the About dialog because two
@@ -1333,6 +1346,19 @@ export const BUSINESS_TYPES = {
   saas: 'saas',
   /** A small estate the MSP only watches - the monitoring-only contrast. */
   monitoringTarget: 'monitoring_target',
+  /**
+   * A small Windows-only practice where the MSP is the WHOLE IT department
+   * (0.11.0): a handful of workstations and a file server, and nobody in-house
+   * to touch either - which is why the fully-managed contract reaches all of it.
+   */
+  accountancy: 'accountancy',
+  /**
+   * A mid-size manufacturer with its OWN internal IT (0.11.0): the MSP works
+   * alongside it, co-managed - their team owns day-to-day user support, the MSP
+   * fills the after-hours and specialist gaps, and touching their estate is a
+   * coordinate-then-act rather than a free hand.
+   */
+  manufacturing: 'manufacturing',
 } as const;
 
 export type BusinessType = (typeof BUSINESS_TYPES)[keyof typeof BUSINESS_TYPES];
@@ -1341,6 +1367,8 @@ export const BUSINESS_TYPE_LABELS: Readonly<Record<BusinessType, string>> = {
   [BUSINESS_TYPES.lawFirm]: 'Law firm',
   [BUSINESS_TYPES.saas]: 'SaaS company',
   [BUSINESS_TYPES.monitoringTarget]: 'Monitored site',
+  [BUSINESS_TYPES.accountancy]: 'Accountancy practice',
+  [BUSINESS_TYPES.manufacturing]: 'Manufacturer',
 };
 
 /**

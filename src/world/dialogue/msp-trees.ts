@@ -456,4 +456,236 @@ const IVY: DialogueTree = {
   ],
 };
 
-export const MSP_TREES: readonly DialogueTree[] = [NADIA, THEO, IVY];
+/* -- HOLLOWAY-ACCT: fully-managed, the whole estate in reach (0.11.0) ------- */
+
+const PRIYA: DialogueTree = {
+  id: 'dialogue/msp-priya',
+  speaker: MSP_IDS.hollowayContact,
+  tickets: [
+    'ticket:holloway-shared-drive',
+    'ticket:holloway-spooler',
+    'ticket:holloway-lockout',
+  ],
+  root: 'drive',
+  roots: {
+    'ticket:holloway-shared-drive': 'drive',
+    'ticket:holloway-spooler': 'spool',
+    'ticket:holloway-lockout': 'lock',
+  },
+  resolved_roots: {
+    'ticket:holloway-shared-drive': 'drive-done',
+    'ticket:holloway-spooler': 'spool-done',
+    'ticket:holloway-lockout': 'lock-done',
+  },
+  nodes: [
+    {
+      id: 'drive',
+      npc_line: 'The whole office has lost the S: drive - the letter is there but '
+        + 'every client folder under it is empty or errors, and it is month-end. '
+        + 'You look after all of this for us, so I am hoping you can just fix it.',
+      options: [
+        {
+          label: 'Ask whether one PC or everyone has lost the drive',
+          next: 'drive-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check the file service on HOLL-SRV-01',
+          effects: [
+            {
+              reveal: 'The Distributed File System service on HOLL-SRV-01 has '
+                + 'wedged - running, and serving a namespace that resolves to '
+                + 'nothing. Restarting the service on the server clears it, and '
+                + 'fully-managed means the server is ours to restart.',
+            },
+          ],
+        },
+        { label: 'Tell her you are on it' },
+      ],
+    },
+    {
+      id: 'drive-q',
+      npc_line: 'Everyone - every desk in the office, all at once. Which is why I '
+        + 'thought it must be the server rather than any one machine.',
+      options: [{ label: 'Restart the file service on the server' }],
+    },
+    {
+      id: 'drive-done',
+      npc_line: 'The folders are back - all of them, straight away. On month-end, '
+        + 'no less. This is exactly why we hand the lot to you.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'spool',
+      npc_line: 'The reception PC will not print - jobs just stack up in the queue '
+        + 'and nothing comes out. Same machine as always. Can you have a look?',
+      options: [
+        {
+          label: 'Ask whether anything prints or the queue just grows',
+          next: 'spool-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the spooler status on HOLL-WS-01',
+          effects: [
+            {
+              reveal: 'The Print Spooler on the reception workstation has wedged - '
+                + 'holding every job and releasing none. A restart of the spooler '
+                + 'drains the queue; it is a workstation service, the same fix at '
+                + 'any tier.',
+            },
+          ],
+        },
+        { label: 'Tell her you will sort the printing' },
+      ],
+    },
+    {
+      id: 'spool-q',
+      npc_line: 'Nothing at all comes out - they just pile up. The printer itself '
+        + 'is awake, the light is on, it simply never gets anything.',
+      options: [{ label: 'Restart the spooler on the reception PC' }],
+    },
+    {
+      id: 'spool-done',
+      npc_line: 'Printing again - the backlog all came out in a rush. Half of it '
+        + 'we did not need, but that is our fault, not yours.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'lock',
+      npc_line: 'Gordon is locked out - he cannot get into the practice suite and '
+        + 'the payroll run is this morning. He had a go at his password rather too '
+        + 'many times after the weekend.',
+      options: [
+        {
+          label: 'Ask how many times Gordon tried before it locked',
+          next: 'lock-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the lockout trail on his account',
+          effects: [
+            {
+              reveal: 'A run of failed sign-ins tripped the lockout, exactly as it '
+                + 'should. Unlocking Gordon\'s account is the whole of it - a user '
+                + 'is helpdesk work at any tier, fully-managed included.',
+            },
+          ],
+        },
+        { label: 'Tell her you will get him back in' },
+      ],
+    },
+    {
+      id: 'lock-q',
+      npc_line: 'Enough that it gave up on him - four or five, he says, though I '
+        + 'suspect it was more like eight. It was a long weekend.',
+      options: [{ label: 'Unlock his account' }],
+    },
+    {
+      id: 'lock-done',
+      npc_line: 'He is in, with time before payroll. Thank you - he was starting '
+        + 'to sweat about it, and so was I, frankly.',
+      options: [{ label: 'Log the fix' }],
+    },
+  ],
+};
+
+/* -- ARDEN-MFG: co-managed, coordinate-then-act (0.11.0) ------------------- */
+
+const DEV: DialogueTree = {
+  id: 'dialogue/msp-dev',
+  speaker: MSP_IDS.ardenContact,
+  tickets: [
+    'ticket:arden-lockout-handback',
+    'ticket:arden-portal-afterhours',
+  ],
+  root: 'handback',
+  roots: {
+    'ticket:arden-lockout-handback': 'handback',
+    'ticket:arden-portal-afterhours': 'portal',
+  },
+  resolved_roots: {
+    'ticket:arden-lockout-handback': 'handback-done',
+    'ticket:arden-portal-afterhours': 'portal-done',
+  },
+  nodes: [
+    {
+      id: 'handback',
+      npc_line: 'Marika on the floor mailed your alias by mistake - she is locked '
+        + 'out and cannot log in. I am forwarding it on. Can you reset her, or is '
+        + 'this one of the ones that is really ours?',
+      options: [
+        {
+          label: 'Ask whose desk daytime user resets sit with on this account',
+          next: 'handback-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check the RACI split on day-to-day user support',
+          effects: [
+            {
+              reveal: 'A daytime user lockout is Arden\'s own helpdesk\'s under the '
+                + 'co-managed split - the MSP has the servers, the after-hours and '
+                + 'the specialist work, their team has the users. The correct move '
+                + 'is to hand it back, not to double-handle it.',
+            },
+          ],
+        },
+        { label: 'Tell him you will route it to the right desk' },
+      ],
+    },
+    {
+      id: 'handback-q',
+      npc_line: 'Day-to-day users are my team, yes - I know that. It is half past '
+        + 'four and I was hoping you would just take it. But you are right, it is '
+        + 'ours.',
+      options: [{ label: 'Hand it back to their helpdesk' }],
+    },
+    {
+      id: 'handback-done',
+      npc_line: 'Fair enough - my desk has her. Cleaner that way, honestly; last '
+        + 'time we both reset someone and locked each other straight back out.',
+      options: [{ label: 'Log the handoff' }],
+    },
+    {
+      id: 'portal',
+      npc_line: 'The shop-floor scheduling portal is down for the night shift - '
+        + 'the IIS box, ARDEN-SRV-01 - and my lot have all gone home. That server '
+        + 'is your side after hours. Can you get it back up?',
+      options: [
+        {
+          label: 'Ask whether their IT is around to coordinate with tonight',
+          next: 'portal-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check what the co-managed contract asks before touching it',
+          effects: [
+            {
+              reveal: 'The Web Publishing service on ARDEN-SRV-01 has wedged and '
+                + 'taken the portal with it. It is the MSP\'s to fix after hours - '
+                + 'but co-managed, so notify their IT first ("notify <service>") '
+                + 'and then restart, rather than acting on their box unannounced.',
+            },
+          ],
+        },
+        { label: 'Tell him you will get on it, coordinated' },
+      ],
+    },
+    {
+      id: 'portal-q',
+      npc_line: 'I am the only one still reachable, and I am telling you now - so '
+        + 'consider us notified. Log it your end too, so nobody trips over anyone '
+        + 'on that server.',
+      options: [{ label: 'Notify their IT, then restart the portal service' }],
+    },
+    {
+      id: 'portal-done',
+      npc_line: 'Portal is back - the night shift can schedule again. Thanks for '
+        + 'flagging it to me first; that is the bit the last outfit never did.',
+      options: [{ label: 'Log the fix' }],
+    },
+  ],
+};
+
+export const MSP_TREES: readonly DialogueTree[] = [NADIA, THEO, IVY, PRIYA, DEV];

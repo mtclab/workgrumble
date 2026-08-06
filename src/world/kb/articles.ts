@@ -1340,4 +1340,123 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/expired-certificate', 'kb/backup-verification-gap'],
   },
+  {
+    id: 'kb/dfs-namespace-down',
+    title: 'The shared drive is there but empty: DFS wedged on the server',
+    summary: 'A mapped drive whose folders all vanish is usually the Distributed '
+      + 'File System service on the file server, wedged. On a fully-managed '
+      + 'contract the server is yours to restart.',
+    state: 'published',
+    issue: 'A whole office loses a mapped drive at once - the letter is still '
+      + 'mapped but every folder under it is empty or errors - and it is the same '
+      + 'for everyone, which points at the server rather than any one desk.',
+    environment: 'A fully-managed MSP customer where the MSP runs the entire '
+      + 'estate, including a Windows file server that publishes the shared drive '
+      + 'through a DFS namespace.',
+    resolution: [
+      'Confirm it is everyone, not one machine. A drive that is empty on every '
+        + 'desk at once is a server-side fault, not a per-workstation mapping - '
+        + 'which is what tells you to look at the server rather than reconnect a '
+        + 'drive letter.',
+      'Check the Distributed File System service on the file server. A wedged '
+        + 'service reports running while the namespace it serves resolves to '
+        + 'nothing, so the drive maps and then shows empty.',
+      'Restart the service on the server. On a fully-managed contract the server '
+        + 'is in scope, so this is the fix - not an escalation. The shares come '
+        + 'back the moment the namespace is answering again.',
+    ],
+    cause: [
+      'A DFS namespace is the layer that turns a friendly share path into the '
+      + 'real servers behind it. When the Distributed File System service on the '
+      + 'host wedges, the mapping still resolves to a drive letter but the '
+      + 'namespace underneath returns nothing, so every folder reads as empty at '
+      + 'once and on every machine - which is the tell that it is the server, not '
+      + 'the desk.',
+      'This is a server-side fix, and that is the whole point of the tier. At a '
+      + 'helpdesk customer a server is out of contract and the move would be to '
+      + 'escalate; on a fully-managed contract the MSP owns the server, so '
+      + 'restarting the wedged service on it is the desk\'s job and the honest, '
+      + 'fastest route back to a working shared drive.',
+    ],
+    see_also: ['kb/print-spooler', 'kb/msp-scope-escalation'],
+  },
+  {
+    id: 'kb/co-managed-raci',
+    title: 'Co-managed: hand the user resets back to their own helpdesk',
+    summary: 'On a co-managed contract, day-to-day user support is the '
+      + 'customer\'s internal IT. A routine reset that lands in the MSP queue is '
+      + 'handed back, not double-handled.',
+    state: 'published',
+    issue: 'A routine daytime user issue - a lockout, a password reset - reaches '
+      + 'the MSP queue from a co-managed customer, often because a user mailed '
+      + 'the wrong address, and the instinct is to just fix it.',
+    environment: 'A co-managed MSP customer that keeps its own internal IT team. '
+      + 'A RACI split divides the work: their team owns day-to-day user support, '
+      + 'the MSP owns servers, after-hours, and specialist or project work.',
+    resolution: [
+      'Read who owns the work before you touch it. Under a co-managed RACI, '
+        + 'day-to-day user support - lockouts, resets, the ordinary desk stuff - '
+        + 'is the customer\'s internal team\'s responsibility, not the MSP\'s.',
+      'Do not just do it because you can. Resetting their user from the MSP side '
+        + 'poaches their team\'s job and risks two desks acting on one account - '
+        + 'the "I thought you had it" double-work the split exists to prevent.',
+      'Hand it back to their helpdesk, cleanly, with a note of what it is and why '
+        + 'it is theirs. A correct hand-back is the resolution here, exactly as a '
+        + 'correct escalation is on an out-of-scope server.',
+    ],
+    cause: [
+      'Co-managed is not fully-managed with extra steps: it is a genuine division '
+      + 'of labour between two IT teams, written down as a RACI so both sides '
+      + 'know who is Responsible for what. Day-to-day user support sitting with '
+      + 'the customer\'s own team is the commonest split, and it is deliberate - '
+      + 'their people are on site and know the users.',
+      'When a user-support ticket lands in the MSP queue anyway, the value the '
+      + 'desk adds is knowing it is not theirs and routing it back, not quietly '
+      + 'fixing it. Two teams both resetting the same account is how people get '
+      + 'locked out twice and how the account of who did what falls apart, which '
+      + 'is precisely the failure the co-managed boundary is drawn to avoid.',
+    ],
+    see_also: ['kb/co-managed-coordination', 'kb/msp-scope-escalation'],
+  },
+  {
+    id: 'kb/co-managed-coordination',
+    title: 'Co-managed: notify their IT first, then act',
+    summary: 'On a co-managed contract the MSP can act on the customer\'s estate '
+      + '- but not unilaterally. Notify their own IT before you touch a shared '
+      + 'box, then do the work.',
+    state: 'published',
+    issue: 'An after-hours or specialist job on a co-managed customer is the '
+      + 'MSP\'s to do - a wedged service on a server their team has left for the '
+      + 'night - but acting on their box without a word is caught by the scope '
+      + 'engine.',
+    environment: 'A co-managed MSP customer with its own internal IT. Servers, '
+      + 'after-hours and specialist work are the MSP\'s under the RACI, but the '
+      + 'estate is shared, so both teams can reach the same boxes.',
+    resolution: [
+      'Confirm the work is yours under the split - after-hours, a server, a '
+        + 'specialist task - so you know coordinating is the last gate, not a way '
+        + 'of dodging a hand-back that should go to their team.',
+      'Notify their IT first ("notify <service>"). This files the heads-up that '
+        + 'the MSP is on the box, so their team is not surprised by a change and '
+        + 'nobody trips over anybody on a shared server. It clears the action.',
+      'Then do the work - restart the wedged service, make the change. The notify '
+        + 'is what turns a refused unilateral action into a coordinated one; for '
+        + 'genuinely risky work a change request with their IT as sign-off is the '
+        + 'heavier version of the same idea.',
+    ],
+    cause: [
+      'A shared estate is the defining fact of co-managed: two teams can both '
+      + 'reach the same servers, so an unannounced change by one is a change the '
+      + 'other did not know about. Coordinating first - a simple heads-up that '
+      + 'the MSP is on the box - is what keeps two teams working the same '
+      + 'infrastructure from standing on each other.',
+      'That is why acting unilaterally is refused rather than allowed with a '
+      + 'warning: the "I thought you had it" gap is the exact risk the contract '
+      + 'exists to close, and a coordination step you can skip is a coordination '
+      + 'step that gets skipped. Notify, then act - and for risky work, route it '
+      + 'through a change request their IT signs off, which is the same '
+      + 'coordination with a bigger paper trail.',
+    ],
+    see_also: ['kb/co-managed-raci', 'kb/the-restart-nobody-does'],
+  },
 ];

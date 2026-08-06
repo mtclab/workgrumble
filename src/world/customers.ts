@@ -213,11 +213,12 @@ export function scopeRefusalLines(verdict: ScopeVerdict): readonly string[] | nu
       ];
     case 'co_managed':
       return [
-        'This is co-managed. Their own IT owns this box - notify them first; the '
-          + 'RACI says',
-        'it is theirs. Acting unilaterally here is exactly the coordination gap '
-          + 'the contract',
-        'exists to close.',
+        'This is co-managed. Their own IT owns this estate alongside the MSP - '
+          + 'notify them first',
+        '("notify <target>"), the RACI says it is shared. Acting unilaterally '
+          + 'here is exactly the',
+        '"I thought you had it" coordination gap the contract exists to close; '
+          + 'coordinate, then act.',
       ];
   }
 }

@@ -83,6 +83,9 @@ export const MSP_CUSTOMERS = {
   fontaine: 'customer:fontaine',
   meridian: 'customer:meridian',
   northwind: 'customer:northwind',
+  // 0.11.0, the two tiers the 0.8.0 engine handled but no customer exercised:
+  holloway: 'customer:holloway',
+  arden: 'customer:arden',
 } as const;
 
 const CUSTOMERS: readonly CustomerSeed[] = [
@@ -106,6 +109,28 @@ const CUSTOMERS: readonly CustomerSeed[] = [
     businessType: BUSINESS_TYPES.monitoringTarget,
     scope: SERVICE_SCOPES.monitoringOnly,
     sla: SLA_TIERS.bronze,
+  },
+  // 0.11.0: the fully-managed and co-managed tiers, made real.
+  {
+    // HOLLOWAY-ACCT: a small accountancy practice where Fettle & Crane IS the
+    // whole IT department - a fully-managed contract, so nothing on their estate
+    // is out of reach, including the server work a helpdesk contract walls off.
+    id: MSP_CUSTOMERS.holloway,
+    name: 'HOLLOWAY-ACCT',
+    businessType: BUSINESS_TYPES.accountancy,
+    scope: SERVICE_SCOPES.fullyManaged,
+    sla: SLA_TIERS.gold,
+  },
+  {
+    // ARDEN-MFG: a mid-size manufacturer with its OWN internal IT the MSP works
+    // alongside - a co-managed contract, so acting on their estate is coordinate-
+    // then-act: notify their team first, or route risky work through a change
+    // request with their IT as the sign-off.
+    id: MSP_CUSTOMERS.arden,
+    name: 'ARDEN-MFG',
+    businessType: BUSINESS_TYPES.manufacturing,
+    scope: SERVICE_SCOPES.coManaged,
+    sla: SLA_TIERS.silver,
   },
 ] as const;
 
@@ -184,6 +209,35 @@ export const MSP_IDS = {
    * scope engine refuses the renew.
    */
   northwindPortal: 'service:nw-srv-01/clinicweb',
+
+  /**
+   * HOLLOWAY-ACCT, the fully-managed accountancy practice (0.11.0). Priya is the
+   * office manager who files every Holloway ticket; the workstation and the file
+   * server are the whole of a small practice's estate, and on a fully-managed
+   * contract BOTH are the MSP's - the server DFS fix a helpdesk contract would
+   * refuse is in scope here, which is the contrast this tier teaches.
+   */
+  hollowayContact: 'person:holloway-priya',
+  hollowayContactAccount: 'account:holloway-priya',
+  hollowayBookkeeper: 'person:holloway-gordon',
+  hollowayBookkeeperAccount: 'account:holloway-gordon',
+  hollowayWorkstation: 'machine:holl-ws-01',
+  hollowayFileServer: 'machine:holl-srv-01',
+
+  /**
+   * ARDEN-MFG, the co-managed manufacturer with its own internal IT (0.11.0).
+   * Dev Sharma is their IT manager and the MSP's point of contact - he files
+   * both Arden tickets. The intranet server is the box the MSP fills the after-
+   * hours gap on (co-managed reaches it, once their IT is notified); the floor
+   * supervisor is the user whose lockout is their OWN team's to clear under the
+   * RACI split - the hand-back the MSP does not poach.
+   */
+  ardenContact: 'person:arden-dev',
+  ardenContactAccount: 'account:arden-dev',
+  ardenSupervisor: 'person:arden-marika',
+  ardenSupervisorAccount: 'account:arden-marika',
+  ardenWorkstation: 'machine:arden-ws-01',
+  ardenServer: 'machine:arden-srv-01',
 } as const;
 
 export type MspNodeId = (typeof MSP_IDS)[keyof typeof MSP_IDS];
@@ -290,6 +344,52 @@ const STAFF: readonly StaffSeed[] = [
     desk: 'A desk where the authenticator has stopped taking the code it makes',
     customer: MSP_CUSTOMERS.meridian,
   },
+
+  // HOLLOWAY-ACCT, fully-managed (0.11.0). Priya files; Gordon is the bookkeeper
+  // the account ticket is about.
+  {
+    person: MSP_IDS.hollowayContact,
+    account: MSP_IDS.hollowayContactAccount,
+    name: 'Priya Mehta',
+    title: 'Office Manager, Holloway & Finch',
+    username: 'pmehta',
+    desk: 'A small practice where the MSP is the entire IT department, and knows '
+      + 'it',
+    customer: MSP_CUSTOMERS.holloway,
+  },
+  {
+    person: MSP_IDS.hollowayBookkeeper,
+    account: MSP_IDS.hollowayBookkeeperAccount,
+    name: 'Gordon Ainsley',
+    title: 'Bookkeeper, Holloway & Finch',
+    username: 'gainsley',
+    desk: 'Locked out on the morning the payroll run is due, which is always the '
+      + 'morning',
+    customer: MSP_CUSTOMERS.holloway,
+  },
+
+  // ARDEN-MFG, co-managed (0.11.0). Dev is their IT manager and the MSP's
+  // counterpart; Marika is the floor supervisor whose lockout is Dev's team's.
+  {
+    person: MSP_IDS.ardenContact,
+    account: MSP_IDS.ardenContactAccount,
+    name: 'Dev Sharma',
+    title: 'IT Manager, Arden Manufacturing',
+    username: 'dsharma',
+    desk: 'The other IT team on the account - the one the MSP coordinates with '
+      + 'rather than around',
+    customer: MSP_CUSTOMERS.arden,
+  },
+  {
+    person: MSP_IDS.ardenSupervisor,
+    account: MSP_IDS.ardenSupervisorAccount,
+    name: 'Marika Voss',
+    title: 'Floor Supervisor, Arden Manufacturing',
+    username: 'mvoss',
+    desk: 'Locked out, and routed to the MSP by mistake - her helpdesk is Dev\'s, '
+      + 'not this one',
+    customer: MSP_CUSTOMERS.arden,
+  },
 ];
 
 interface MachineSeed {
@@ -394,6 +494,52 @@ const MACHINES: readonly MachineSeed[] = [
     processor: 'A clinic server the MSP is paid to watch and not to touch',
     memory: '16 GB',
     diskFree: 53_687_091_200,
+  },
+
+  // HOLLOWAY-ACCT: fully-managed, so the file server is as much the MSP's as the
+  // workstation is - a small Windows-only practice, whole estate in reach.
+  {
+    id: MSP_IDS.hollowayWorkstation,
+    hostname: 'HOLL-WS-01',
+    role: MACHINE_ROLES.workstation,
+    customer: MSP_CUSTOMERS.holloway,
+    owner: MSP_IDS.hollowayContact,
+    wiredTo: MSP_IDS.hollowayFileServer,
+    processor: 'A reception desktop that also runs the practice management suite',
+    memory: '8 GB',
+    diskFree: 96_636_764_160,
+  },
+  {
+    id: MSP_IDS.hollowayFileServer,
+    hostname: 'HOLL-SRV-01',
+    role: MACHINE_ROLES.fileServer,
+    customer: MSP_CUSTOMERS.holloway,
+    processor: 'The file server the S: drive every client folder lives on maps to',
+    memory: '16 GB',
+    diskFree: 214_748_364_800,
+  },
+
+  // ARDEN-MFG: co-managed, so these are shared with Arden's own IT - the MSP
+  // acts on them coordinated, never unilaterally. The intranet is the box the
+  // MSP fills the after-hours gap on.
+  {
+    id: MSP_IDS.ardenWorkstation,
+    hostname: 'ARDEN-WS-01',
+    role: MACHINE_ROLES.workstation,
+    customer: MSP_CUSTOMERS.arden,
+    owner: MSP_IDS.ardenContact,
+    processor: 'An IT manager\'s workstation, two service desks open at once',
+    memory: '16 GB',
+    diskFree: 128_849_018_880,
+  },
+  {
+    id: MSP_IDS.ardenServer,
+    hostname: 'ARDEN-SRV-01',
+    role: MACHINE_ROLES.iisServer,
+    customer: MSP_CUSTOMERS.arden,
+    processor: 'The IIS box the shop-floor scheduling portal runs on',
+    memory: '32 GB',
+    diskFree: 171_798_691_840,
   },
 ];
 

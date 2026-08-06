@@ -12,7 +12,7 @@ use crate::error::{EngineError, EngineResult};
 use crate::refuse;
 use crate::value::FieldValue;
 
-pub const NODE_KINDS: [&str; 14] = [
+pub const NODE_KINDS: [&str; 15] = [
     "person",
     "account",
     "machine",
@@ -38,6 +38,16 @@ pub const NODE_KINDS: [&str; 14] = [
     // on the thing it authorises - and its approval window is data the engine
     // serialises whole, so a save round-trips a request mid-review.
     "change_request",
+    // A COORDINATION notice (0.11.0). The co-managed coordinate-then-act seam:
+    // a first-class record that the MSP has notified a customer's own IT before
+    // touching their estate. It names the target it clears (coord_target) and
+    // the customer whose IT was told (coord_customer), and the scope pre-flight
+    // reads it before it refuses a co-managed action - the RACI "I thought you
+    // had it" gap closed by making the heads-up a thing the world holds. Its own
+    // kind, like a change request, because it is filed against a specific action
+    // rather than being a field on the thing it clears, and it serialises whole
+    // so a notice given mid-day round-trips a reload.
+    "coordination",
     "share",
     "group",
     "mail_rule",
@@ -281,6 +291,17 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
             assert_optional(fields, "cr_review_until", is_number, "a number")?;
             assert_optional(fields, "cr_window_open", is_number, "a number")?;
             assert_optional(fields, "cr_window_close", is_number, "a number")
+        }
+        "coordination" => {
+            // A coordination notice (0.11.0). The target it clears, the customer
+            // whose IT was notified, and the minute it was given - all validated
+            // at load like a change request's fields, so a hand-edited save
+            // cannot forge a notice out of the wrong shape and slip a co-managed
+            // action past the pre-flight.
+            assert_optional(fields, "name", is_string, "a string")?;
+            assert_optional(fields, "coord_target", is_string, "a string")?;
+            assert_optional(fields, "coord_customer", is_string, "a string")?;
+            assert_optional(fields, "coord_notified_at", is_number, "a number")
         }
         "share" => {
             assert_optional(fields, "name", is_string, "a string")?;

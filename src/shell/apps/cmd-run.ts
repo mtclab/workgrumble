@@ -38,6 +38,7 @@ import {
   changeRequestConsult,
   changeRequestListing,
 } from '../../world/change-request';
+import { isCoordinated } from '../../world/coordination';
 import type { MachineRole } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { DEFAULT_CWD } from '../../world/filesystem';
@@ -344,6 +345,18 @@ function customerScopeGuard(
   const verdict = scopeVerdict(scopeOfCustomer(api.graph, customerId), role);
 
   if (verdict === 'allowed') {
+    return null;
+  }
+
+  // The co-managed coordinate-then-act seam (0.11.0): a coordination notice for
+  // this target - the heads-up to the customer's OWN IT - clears the action,
+  // before the change-request consult is even asked. It is the middle weight
+  // between a helpdesk wall (never) and a fully-managed free hand (always):
+  // notify, then act. The `isCoordinated` clause is the fail-closed gate - drop
+  // it and a co-managed action would pass with no notice at all, which is the
+  // unilateral hazard the tier exists to catch, and exactly what the teeth test
+  // proves goes red on revert.
+  if (verdict === 'co_managed' && isCoordinated(api.graph, targetId)) {
     return null;
   }
 
@@ -1102,6 +1115,30 @@ function changeRequestCommandLines(
 }
 
 /**
+ * The coordinate-then-act verb (0.11.0): `notify <service>` tells a co-managed
+ * customer's OWN IT that the MSP is about to touch that service's box, files the
+ * coordination notice, and thereby clears the action the scope pre-flight would
+ * otherwise refuse - the RACI heads-up made a real step rather than a courtesy.
+ *
+ * Filing is paperwork, exactly like a change request: it never dispatches the
+ * action itself - the CONSULT in the scope pre-flight is the only thing that
+ * lets that through, once a notice for the target exists. On an in-house box, or
+ * a customer whose contract is not co-managed, it answers that no notice is
+ * needed rather than filing one nobody's IT would know what to do with. The
+ * world does the deciding and applies the node; this only resolves which service
+ * the player meant.
+ */
+function notifyCommandLines(api: GameApi, query: string): CommandResult {
+  const found = serviceOf(api, query);
+
+  if (!found.ok) {
+    return lines(found.reason);
+  }
+
+  return lines(...api.day.fileCoordination(found.node.id));
+}
+
+/**
  * How the terminal spells the four approved identity-proofing channels.
  *
  * Short words because a player types them, and a fixed list because the point
@@ -1839,6 +1876,10 @@ export function executeCommand(
 
   if (parsed.spec.name === 'changereq') {
     return changeRequestCommandLines(api, parsed.sub, parsed.query);
+  }
+
+  if (parsed.spec.name === 'notify') {
+    return notifyCommandLines(api, parsed.query);
   }
 
   if (parsed.spec.name === 'licence') {

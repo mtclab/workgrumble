@@ -1844,6 +1844,16 @@ test('walks every function of a probation week that goes well', async ({
       .toContainText(/change request|in-house|no /i);
   });
 
+  await step('cmd.notify', async () => {
+    // A base command, so it answers on the probation desk: an in-house box has
+    // no customer IT to notify. The co-managed loop - a unilateral action
+    // caught, the notify clearing it, and the fail-closed teeth - is driven
+    // through the real terminal in msp-scope.test.ts.
+    await runCommand(page, 'notify BEIGE-BOX\\Spooler');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText(/coordination|in-house|co-managed|notif/i);
+  });
+
   await step('cmd.ping', async () => {
     await runCommand(page, 'ping SALES-02');
     await expect(page.getByTestId('cmd-output')).toContainText('Reply from');

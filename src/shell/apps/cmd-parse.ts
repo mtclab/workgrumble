@@ -225,6 +225,14 @@ export const COMMANDS: readonly CommandSpec[] = [
     subcommand: true,
   },
   {
+    name: 'notify',
+    usage: 'notify <service>',
+    summary: 'Tell a co-managed customer\'s own IT before you act, then act.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+  },
+  {
     name: 'rotate',
     usage: 'rotate <machine> <0|90|180|270>',
     summary: 'Put a display back the way a human can read it.',

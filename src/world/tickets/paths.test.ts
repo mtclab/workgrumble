@@ -205,6 +205,16 @@ describe('shipped tickets', () => {
       'ticket:northwind-backup-alert',
       'ticket:northwind-cert-alert',
       'ticket:northwind-disk-alert',
+      // And the two remaining scope tiers, made real (0.11.0): the fully-managed
+      // practice's three (the shared-drive server fix a helpdesk contract walls
+      // off, a workstation spooler, a user lockout), and the co-managed
+      // manufacturer's two (the RACI hand-back and the coordinate-then-act
+      // after-hours portal gap).
+      'ticket:holloway-shared-drive',
+      'ticket:holloway-spooler',
+      'ticket:holloway-lockout',
+      'ticket:arden-lockout-handback',
+      'ticket:arden-portal-afterhours',
     ]);
   });
 
@@ -332,9 +342,11 @@ describe('escalation policy', () => {
     // screwdriver and somebody on site; a report that has not run since March
     // wants the people whose job the job is; the SaaS shop's prod-down is on a
     // Linux server out of reach on OS and contract both, so escalation is the
-    // only ending; and all three of the clinic's monitoring-only alerts are
+    // only ending; all three of the clinic's monitoring-only alerts are
     // escalate-ONLY by contract - remediation is out of scope, so escalation is
-    // not a fallback there but the whole of the job.
+    // not a fallback there but the whole of the job; and the co-managed
+    // manufacturer's user lockout is the RACI hand-back - a daytime user reset is
+    // their own helpdesk's, so handing it back is the resolution, not a reset.
     expect(escalatable).toEqual([
       'ticket:fan-noise',
       'ticket:hr-report-macro',
@@ -342,6 +354,7 @@ describe('escalation policy', () => {
       'ticket:northwind-backup-alert',
       'ticket:northwind-cert-alert',
       'ticket:northwind-disk-alert',
+      'ticket:arden-lockout-handback',
     ]);
   });
 

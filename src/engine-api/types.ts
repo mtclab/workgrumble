@@ -35,6 +35,14 @@ export const NODE_KINDS = [
    * it authorises; its approval window is data a save serialises whole.
    */
   'change_request',
+  /**
+   * A COORDINATION notice (0.11.0) - the co-managed coordinate-then-act record.
+   * First-class for the same reason a change request is: it is a world artifact
+   * filed against a specific target (coord_target), the heads-up to a customer's
+   * own IT that the scope pre-flight reads before it refuses a co-managed action,
+   * and a save serialises it whole so a notice given mid-day survives a reload.
+   */
+  'coordination',
   'share',
   'group',
   'mail_rule',
