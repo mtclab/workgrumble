@@ -1043,3 +1043,49 @@ employers + 0.8/0.9/0.10 customers BYTE-IDENTICAL. One codex (overseer by hand i
 
 Mac creative + dental verticals (need os=mac / a Mac skin); customer onboarding/discovery; Bronze/
 Silver/Gold SLA tiers; a full CAB.
+
+# Version 0.12.0 - customer SLA tiers (E5, MSP arc, #30)
+
+The slaTier field has ridden on every customer since 0.8.0 (Holloway Gold, Arden Silver, ...) but
+means nothing yet. 0.12.0 wires it: a customer's tier x a ticket's severity sets the response/
+resolution CLOCK, so a Gold customer's problem is on a tighter deadline than a Bronze one's, and the
+breach has a tiered consequence. Research base: the SLA-per-tier synthesis (Bronze/Silver/Gold x
+P1-P4; Platinum 15-min P1 vs Silver 4-hour; breach = a service credit) in docs/design/msp-arc.md.
+Layers onto the existing P1-P4 SLA + the ticket/severity model; mostly data + the clock computation.
+
+## Slice 1 - the tier x severity SLA table
+
+A real table: response + resolution targets per (slaTier, severity). Gold tighter than Silver
+tighter than Bronze; P1 tighter than P4; the shape from the research (P1 minutes, P4 next-business-
+day, Gold ~4x tighter than Bronze). A ticket at a customer reads ITS customer's tier and its own
+severity to get its clock - replacing/parameterising the uniform SLA the game has now. Truthful,
+deterministic. Existing (non-MSP) tickets keep their current clock (absent tier = the default the
+probation/Bodgeworth world already uses - byte-identical).
+
+## Slice 2 - the clock, shown and enforced
+
+The ticket surface shows the tier + the deadline it earns; the SLA clock counts against the tiered
+target; a breach is recorded. The tier is visible so the player can TRIAGE by it (a Gold P2 outranks
+a Bronze P1 in the queue - the real prioritisation call). The clock pauses on "waiting on customer"
+as it already does.
+
+## Slice 3 - the tiered breach consequence
+
+A breach costs by tier, truthfully: the higher the tier the more the miss costs (a Gold breach is a
+service credit / a sharper reputation hit; a Bronze breach is a shrug). Never punish honesty; the
+cost is the missed CLOCK, and it reads at the review the way performance already does. The comedy +
+truth: the Gold customer who pays for 15 minutes and expects 15 minutes.
+
+## Gates (once, at the version)
+
+Goldens: MSP tickets' clocks move (they now read a tier); argued. Existing employers' tickets
+BYTE-IDENTICAL (absent tier = current default). Journeys through the REAL path: a Gold ticket has a
+tighter deadline than a Bronze ticket of the same severity; the tier shows on the ticket; a breach at
+a higher tier costs more; the clock still pauses waiting-on-customer. Teeth: the tier actually changes
+the deadline (revert -> all tiers get the same clock). Determinism. One codex (overseer by hand if
+down), one box (workers=1 serial, the box is degraded) + msp.spec extended for the tier clock.
+
+## Not in scope (backlog)
+
+Mac creative + dental verticals; onboarding/discovery; a full CAB; service-credit BILLING surfaces
+(the credit is a review/reputation effect, not an invoice).
