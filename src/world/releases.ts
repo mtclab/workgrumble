@@ -31,6 +31,34 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.16.0',
+    date: '2026-08-06',
+    summary: 'This update gives you the rest of the terminal, and is honest '
+      + 'about the parts that were never there.',
+    lines: Object.freeze([
+      'Now that you live on the servers, the terminal fills out. "ss -tlnp" '
+        + 'shows what is actually listening - sshd on 22, nginx on 80 and 443, '
+        + 'and the one that matters, the app on 8000 that is not there because '
+        + 'the service is down. "dig" answers in sections, "ping" runs forever '
+        + 'until you stop it (that is not a bug, that is Linux; "-c" if you want '
+        + 'it bounded), and "curl -I" shows you the 502 nginx throws when the '
+        + 'thing behind it has died.',
+      'And the sharpest lesson: the tools that are NOT installed. Reach for '
+        + '"traceroute", or "ifconfig", or "htop", and the box tells you the '
+        + 'truth - "command not found", and how to fix it: "sudo apt install". '
+        + 'It is not being unhelpful. A stock Ubuntu box genuinely does not ship '
+        + 'these - it wants you on "ip" and "ss" instead - and the terminal '
+        + 'would rather say so than pretend a command exists that does not. A '
+        + 'refusal that teaches you the real thing beats a fake that teaches you '
+        + 'a wrong one.',
+      'So the next time the portal is down you have the whole path: "ss" says '
+        + 'nothing is listening on 8000, "curl" says nginx is 502ing on a dead '
+        + 'upstream, the journal says it crashed into its start limit - and only '
+        + 'then do you restart it, knowing exactly what you are restarting and '
+        + 'why.',
+    ]),
+  },
+  {
     version: '0.15.0',
     date: '2026-08-06',
     summary: 'This update lets you off the service desk.',
