@@ -34,7 +34,8 @@ import type {
   ReadOnlyGraphView,
   SetupOp,
 } from '../engine-api';
-import { HELPDESK_ACTIONS } from './actions';
+import { HELPDESK_ACTIONS, SYSTEMD_ACTIONS } from './actions';
+import { isRiskyProductionChange } from './change-control';
 import {
   CHANGE_REQUEST_DECISIONS,
   CHANGE_REQUEST_STATUSES,
@@ -251,6 +252,22 @@ function paperworkFor(
       rollback: 'Start the service again; it comes back in its last-tested '
         + 'configuration. If it does not come back clean, escalate to the '
         + 'customer\'s infrastructure team with the service name and the minute.',
+    };
+  }
+
+  if (verb === SYSTEMD_ACTIONS.unitRestart || verb === SYSTEMD_ACTIONS.unitStop) {
+    const bounces = verb === SYSTEMD_ACTIONS.unitStop;
+    return {
+      risk: bounces
+        ? 'Stopping this unit takes a live production service down and holds it '
+          + 'down: everyone on it drops, and it stays gone until it is started '
+          + 'again. Ten thousand people can be depending on it.'
+        : 'Restarting this unit bounces a live production service: its open '
+          + 'connections drop and it is unavailable for as long as the restart '
+          + 'takes. On prod, in hours, that is felt by everyone on it.',
+      rollback: 'systemctl start the unit; it comes back on its last-good '
+        + 'config. If it does not come back active(running), read journalctl for '
+        + 'the why and escalate before the window closes.',
     };
   }
 
@@ -499,21 +516,50 @@ export function planChangeRequestFiling(
   verb: string,
   now: number,
 ): ChangeRequestFiling {
-  const { customerId, verdict } = targetContext(graph, targetId);
+  // The in-house PRODUCTION change first (E6, 0.18.0): a risky verb on the
+  // engineer's own live customer-facing prod is a NORMAL change - approvable
+  // with a window, signed off for internal risk by the infrastructure lead, not
+  // by a customer. It carries no customer, so it is caught here BEFORE the 0.8.0
+  // customer branch treats an in-house target as needing nothing. Everything
+  // else - the timing, the deterministic review and window - is the shared body
+  // below, so the window a systemctl gate consults is the exact 0.10.0 one.
+  const prodChange = isRiskyProductionChange(graph, targetId, verb)
+    ? {
+      customerId: null as string | null,
+      label: 'the infrastructure lead',
+      outcome: {
+        decision: CHANGE_REQUEST_DECISIONS.approve,
+        reason: 'Approved by the infrastructure lead: risky work on our own '
+          + 'production, signed off as a change - to be done inside the window, '
+          + 'with the rollback ready.',
+      },
+    }
+    : null;
 
-  if (customerId === null || verdict === 'allowed') {
-    return {
-      kind: 'not_needed',
-      lines: [
-        'No change request needed - this is in scope from this desk.',
-        'A change request is for the work the contract does not cover. This is',
-        'work it does; just do it.',
-      ],
-    };
+  let customerId: string | null;
+  let label: string;
+  let outcome: { readonly decision: ChangeRequestDecision; readonly reason: string } | null;
+
+  if (prodChange !== null) {
+    ({ customerId, label, outcome } = prodChange);
+  } else {
+    const context = targetContext(graph, targetId);
+
+    if (context.customerId === null || context.verdict === 'allowed') {
+      return {
+        kind: 'not_needed',
+        lines: [
+          'No change request needed - this is in scope from this desk.',
+          'A change request is for the work the contract does not cover. This is',
+          'work it does; just do it.',
+        ],
+      };
+    }
+
+    customerId = context.customerId;
+    label = customerName(graph, context.customerId);
+    outcome = decisionForVerdict(context.verdict, label);
   }
-
-  const label = customerName(graph, customerId);
-  const outcome = decisionForVerdict(verdict, label);
 
   if (outcome === null) {
     // Unreachable for the refusing verdicts above, but a null decision is not a
@@ -546,7 +592,10 @@ export function planChangeRequestFiling(
     [FIELDS.crRollback]: rollback,
     [FIELDS.crSubmittedAt]: now,
     [FIELDS.crReviewUntil]: reviewUntil,
-    [FIELDS.crCustomer]: customerId,
+    // A customer id only when there is one: an in-house production change is
+    // filed against no customer, so the field is genuinely absent rather than a
+    // null the queue would have to special-case.
+    ...(customerId === null ? {} : { [FIELDS.crCustomer]: customerId }),
     // The window is written ONLY when approved, so it is genuinely empty until
     // then - a rejected request never carries a slot to act in.
     ...(approved
@@ -555,7 +604,7 @@ export function planChangeRequestFiling(
   };
 
   const lines = [
-    `Change request filed against ${label}.`,
+    `Change request filed with ${label}.`,
     `  Action:   ${verb} on ${targetId}`,
     `  Risk:     ${risk}`,
     `  Rollback: ${rollback}`,

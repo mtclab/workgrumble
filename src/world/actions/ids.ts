@@ -580,6 +580,28 @@ export const SYSTEMD_ACTION_IDS: readonly SystemdActionId[] = Object.freeze(
   Object.values(SYSTEMD_ACTIONS),
 );
 
+/**
+ * The change-control verbs (E6, 0.18.0): break-glass and its abuse record.
+ *
+ * `breakGlassRecord` writes the legitimate emergency onto `break_glass_audit`;
+ * `breakGlassAbuse` writes an override pulled with no fire onto
+ * `break_glass_abuse` and charges its suspicion. Both aimed at the player - the
+ * trail is a property of who broke the glass - and both append-only, the same
+ * shape the software audit keeps. The systemctl gate and the maintenance window
+ * reuse the 0.10.0 change request; only these two are new verbs.
+ */
+export const CHANGE_ACTIONS = {
+  breakGlassRecord: 'change.break_glass_record',
+  breakGlassAbuse: 'change.break_glass_abuse',
+} as const;
+
+export type ChangeActionId =
+  (typeof CHANGE_ACTIONS)[keyof typeof CHANGE_ACTIONS];
+
+export const CHANGE_ACTION_IDS: readonly ChangeActionId[] = Object.freeze(
+  Object.values(CHANGE_ACTIONS),
+);
+
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
 
 export const DAY_ACTION_IDS: readonly DayActionId[] = Object.freeze(

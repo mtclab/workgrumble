@@ -26,6 +26,7 @@
 
 import {
   CAREER_ACTIONS,
+  CHANGE_ACTIONS,
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
   REQUEST_ACTIONS,
@@ -2400,6 +2401,28 @@ const ENTRIES = [
     why: 'It only runs inside an ssh session on a Linux box, which is reachable '
       + 'only once the promotion has unlocked ssh - the same threshold the whole '
       + 'run turns on.',
+  },
+  {
+    id: 'cmd.breakglass',
+    surface: 'cmd',
+    control: 'breakglass <unit>',
+    does: 'The emergency override (0.18.0): a service ACTIVELY DOWN in an '
+      + 'incident is a fire, and break-glass fixes it outside the change window '
+      + 'and logs the override loudly on break_glass_audit for the review after. '
+      + 'On a healthy service it refuses - there is no fire behind it - records '
+      + 'the abuse on break_glass_abuse and charges its suspicion, because an '
+      + 'override with no emergency reads at the review. The legitimacy gate is a '
+      + 'real active incident; the planned counterpart is a change request + '
+      + 'window, and both are driven through the real terminal in '
+      + 'change-control.test.ts.',
+    command: 'breakglass',
+    actions: [
+      CHANGE_ACTIONS.breakGlassRecord,
+      CHANGE_ACTIONS.breakGlassAbuse,
+    ],
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks - only a Systems Engineer can break the glass.',
   },
   {
     id: 'cmd.journalctl',

@@ -3670,6 +3670,20 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await expect(page.getByTestId('cmd-output')).toContainText('server: nginx');
   });
 
+  await step('cmd.breakglass', async () => {
+    // Change control (0.18.0): fcportal is DOWN in an active incident, so the box
+    // has a real fire on it. That makes break-glass LEGITIMATE - the emergency,
+    // audited override outside the change window - so bouncing nginx to help
+    // clear it is allowed and logged loudly, where the same restart in hours with
+    // nothing on fire would be a NORMAL change waiting on a request + window.
+    await runCommand(page, 'breakglass nginx');
+    await expect(page.getByTestId('cmd-output')).toContainText('BREAK-GLASS');
+    await expect(page.getByTestId('cmd-output')).toContainText('logged');
+    // fcportal is untouched by that - the fire is still lit for the fix below.
+    await runCommand(page, 'systemctl status fcportal');
+    await expect(page.getByTestId('cmd-output')).toContainText('Active: failed');
+  });
+
   await step('cmd.systemctl', async () => {
     // THE FIX: status shows it failed, restart is SILENT on success, and status
     // reads running afterwards - the payoff, walked on the real build. Then the

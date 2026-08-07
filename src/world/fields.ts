@@ -481,6 +481,38 @@ export const FIELDS = {
    */
   onCallSettledAs: 'on_call_settled_as',
   /**
+   * The break-glass trail (E6, 0.18.0): every emergency change control was
+   * broken for, `unit@tick`, one line per override, oldest first.
+   *
+   * The same append-only `id@tick` shape as `install_audit` and read the same
+   * way - the DRIVER builds the line in the minute the glass was broken and the
+   * world appends it, so a replay writes the identical string. Break-glass is
+   * the emergency, audited override for a service ACTIVELY DOWN in an incident:
+   * it acts outside the normal window and is LOGGED LOUDLY here for the review
+   * after, exactly as a real break-glass account is. It only ever grows, because
+   * a trail that could be cleared would defeat the point of breaking the glass
+   * being a thing you answer for.
+   *
+   * ABSENT for a service-desk player and every pre-promotion save - nobody below
+   * the engineer tier can break the glass, so nothing is written and no golden
+   * carries it, which is the whole of why change control is byte-identical until
+   * the promotion.
+   */
+  breakGlassAudit: 'break_glass_audit',
+  /**
+   * And the other half of the trail (E6, 0.18.0): every time the glass was
+   * broken with NOTHING on fire, `unit@tick`, one line per attempt.
+   *
+   * A separate field rather than a marker on the trail above, for the reason the
+   * slice turns on: breaking the glass for routine work is ABUSE, and it reads at
+   * the review the way a morning on Do Not Disturb does - so the abuse is its own
+   * record AND it costs suspicion when it happens. A legitimate emergency and an
+   * abused override are two different things a review asks two different questions
+   * about, so they are two different lists. Append-only and absent until an
+   * engineer misuses the override.
+   */
+  breakGlassAbuse: 'break_glass_abuse',
+  /**
    * The linked requests the player has resolved, one bare id per line.
    *
    * A linked request is the same question arriving on mail, chat and a Hubbub

@@ -33,6 +33,13 @@ import {
   SYSTEMD_ACTIONS,
 } from '../../world/actions';
 import {
+  changeControlGate,
+} from '../../world/change-control';
+import {
+  changeRequestAuthorises,
+  changeRequestListing,
+} from '../../world/change-request';
+import {
   scopeRefusalForMachine,
   wrongCustomerGuardLines,
 } from '../../world/customers';
@@ -174,6 +181,23 @@ export const UNIX_COMMANDS: readonly CommandSpec[] = [
     minArgs: 1,
     maxArgs: 3,
     joined: false,
+  },
+  {
+    name: 'changereq',
+    usage: 'changereq <file <unit> [restart|stop] | list>',
+    summary: 'Raise a change to authorise risky prod work, and read what is filed.',
+    minArgs: 1,
+    maxArgs: 3,
+    joined: true,
+    subcommand: true,
+  },
+  {
+    name: 'breakglass',
+    usage: 'breakglass <unit>',
+    summary: 'The emergency override: fix a DOWN service outside the window, audited.',
+    minArgs: 1,
+    maxArgs: 2,
+    joined: true,
   },
   {
     name: 'exit',
@@ -764,6 +788,29 @@ function systemctlVerbLines(
         'or a change request, not a systemctl on our say-so.',
       );
     }
+  }
+
+  // Change control (E6, 0.18.0): on the engineer's OWN prod, a risky verb on a
+  // LIVE customer-facing service in business hours is a NORMAL change and is
+  // gated - refused unless an approved change request opens a window for it. A
+  // DOWN unit is the fire (never gated, so the 0.17.0 on-call fix flows), and
+  // out of hours is the window's own stretch. The one authorisation that lets it
+  // through is the 0.10.0 change request, reused whole: an approved, in-window
+  // request for this exact (unit, verb). Break-glass is the other door and is a
+  // command of its own, so the gate deliberately does not know about it.
+  const authorised = api.graph
+    .nodesOfKind('change_request')
+    .some((cr) => changeRequestAuthorises(cr, unit.id, action, api.clock.now()));
+  const gate = changeControlGate({
+    graph: api.graph,
+    now: api.clock.now(),
+    unitId: unit.id,
+    verb: action,
+    authorised,
+  });
+
+  if (!gate.allowed) {
+    return lines(...gate.lines);
   }
 
   const result = api.dispatch(action, api.actor, unit.id, {});
@@ -1391,6 +1438,99 @@ function notInstalledHint(name: string): CommandResult | null {
     );
 }
 
+/* -- change control: the change request, and the break-glass override ----- */
+
+/** The systemd verb a `changereq file <unit> <word>` names, defaulting to restart. */
+function changeVerbFor(word: string): string {
+  if (word === 'stop') {
+    return SYSTEMD_ACTIONS.unitStop;
+  }
+
+  if (word === 'start') {
+    return SYSTEMD_ACTIONS.unitStart;
+  }
+
+  return SYSTEMD_ACTIONS.unitRestart;
+}
+
+/**
+ * `changereq file <unit> [restart|stop]` and `changereq list` in the unix
+ * dialect (E6, 0.18.0).
+ *
+ * The engineer's counterpart to the desktop `changereq`: on the box you are
+ * ssh'd into, raise a change for the risky prod work the systemctl gate refused,
+ * or read back what is filed. Filing is paperwork - it never dispatches the
+ * action; the systemctl gate's consult of the approved-and-in-window request is
+ * the only thing that ever lets it through, which is the whole 0.10.0 shape,
+ * reused for the engineer's own prod.
+ */
+function changeReqUnixLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sub: string,
+  query: string,
+): CommandResult {
+  if (sub === 'list') {
+    return lines(...changeRequestListing(api.graph, api.clock.now()));
+  }
+
+  if (sub !== 'file') {
+    return lines(
+      `"changereq ${sub}" is not something this terminal does.`,
+      'It does "changereq file <unit> [restart|stop]" - to raise a change for '
+        + 'risky',
+      'prod work - and "changereq list", to read back what has been filed.',
+    );
+  }
+
+  const words = query.trim().split(/\s+/u).filter((word) => word.length > 0);
+  const unitName = words[0] ?? '';
+  const verb = changeVerbFor((words[1] ?? '').toLowerCase());
+
+  if (unitName.length === 0) {
+    return lines('usage: changereq file <unit> [restart|stop]');
+  }
+
+  const unit = unitOnBox(api, session, unitName);
+
+  if (unit === null) {
+    return lines(`Unit ${unitName}.service could not be found on this box.`);
+  }
+
+  return lines(...api.day.fileChangeRequest(unit.id, verb));
+}
+
+/**
+ * `breakglass <unit>` - the emergency override (E6, 0.18.0).
+ *
+ * When a service is ACTIVELY DOWN in an incident, the fix is outside the normal
+ * change window: break the glass, act now, and it is logged loudly for the
+ * review after. The one thing that legitimises it is a real active incident (a
+ * failed unit on the box); breaking it on a healthy service is refused and reads
+ * as the abuse it is. The DRIVER decides which, off the estate, and does the
+ * emergency restart and the audit; this only resolves which unit the player
+ * meant on the box they are standing on.
+ */
+function breakGlassUnixLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  query: string,
+): CommandResult {
+  const unitName = query.trim();
+
+  if (unitName.length === 0) {
+    return lines('usage: breakglass <unit>');
+  }
+
+  const unit = unitOnBox(api, session, unitName);
+
+  if (unit === null) {
+    return lines(`Unit ${unitName}.service could not be found on this box.`);
+  }
+
+  return lines(...api.day.breakGlass(unit.id));
+}
+
 /**
  * Runs one parsed unix command against the world and the session. The twin of
  * `executeCommand` in `cmd-run.ts`, and DOM-free for the same reason.
@@ -1463,6 +1603,10 @@ export function executeUnix(
       return pingLines(api, parsed.args);
     case 'curl':
       return curlLines(api, session, parsed.args);
+    case 'changereq':
+      return changeReqUnixLines(api, session, parsed.sub, parsed.query);
+    case 'breakglass':
+      return breakGlassUnixLines(api, session, parsed.query);
     case 'ls':
       return lsLines(api, session, parsed.args);
     case 'exit':

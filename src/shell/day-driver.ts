@@ -19,10 +19,12 @@ import type {
   ReadOnlyGraphNode,
 } from '../engine-api';
 import {
+  CHANGE_ACTIONS,
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
   REQUEST_ACTIONS,
   SOFTWARE_ACTIONS,
+  SYSTEMD_ACTIONS,
   WORLD_ACTIONS,
 } from '../world/actions';
 import {
@@ -189,6 +191,12 @@ import {
   typingMinutesLeft,
 } from '../world/no-hello';
 import { FIELDS, slaTierOf, SYSTEMD_STATES } from '../world/fields';
+import {
+  boxOfUnit,
+  breakGlassAbuseLines,
+  breakGlassLegitLines,
+  hasActiveIncident,
+} from '../world/change-control';
 import { planChangeRequestFiling } from '../world/change-request';
 import { planCoordination } from '../world/coordination';
 import { seedForAttempt } from '../world/session';
@@ -626,6 +634,21 @@ export interface DayApi {
    * needed.
    */
   fileCoordination(targetId: string): readonly string[];
+  /**
+   * Breaks the glass on a unit (E6, 0.18.0): the emergency, audited override for
+   * a service ACTIVELY DOWN in an incident, when the fix would normally need
+   * change control.
+   *
+   * It decides legitimacy off the estate - `hasActiveIncident`, a failed unit on
+   * the box, is a real fire - and only then acts: the emergency `unit.restart`,
+   * and the `break_glass_audit` line that logs the override loudly for the review
+   * after. Broken on a healthy service it does NOT act: it records the abuse on
+   * `break_glass_abuse` and charges its suspicion, because an emergency override
+   * pulled with no emergency is exactly what a review looks for. The one thing
+   * that makes it legitimate is the active incident; that is the fail-closed
+   * gate the teeth test proves. It answers with the lines the terminal prints.
+   */
+  breakGlass(unitId: string): readonly string[];
   /**
    * Raises the engineer's first incident (E6, Pass B), the moment the promotion
    * fires: the MSP's own client portal down on FC-RMM-01, spawned into the world
@@ -1338,6 +1361,55 @@ export class DayDriver implements DayApi {
     }
 
     return plan.lines;
+  }
+
+  public breakGlass(unitId: string): readonly string[] {
+    const unit = this.engine.graph.getNode(unitId);
+
+    if (unit === undefined || unit.kind !== 'unit') {
+      return [`${unitId} is not a unit this box knows about.`];
+    }
+
+    const box = boxOfUnit(this.engine.graph, unitId);
+
+    if (box === null) {
+      return [`${unitId} is not on any box I can see; there is no glass to break.`];
+    }
+
+    const now = this.engine.now();
+    const line = `${unitId}@${String(now)}`;
+    const unitName = typeof unit.fields[FIELDS.unitName] === 'string'
+      ? unit.fields[FIELDS.unitName] as string
+      : unitId;
+
+    // Legitimacy is the fire: a failed unit on the box is a real active
+    // incident, and only then does the glass break for real. This is the
+    // fail-closed gate - remove it and break-glass would authorise anything.
+    if (hasActiveIncident(this.engine.graph, box.id)) {
+      // The emergency fix (the ordinary restart) and the loud audit line. The
+      // restart is the same verb the fire is fixed with; break-glass is the
+      // DECLARATION that it was done outside change control, and the record.
+      this.engine.dispatch(SYSTEMD_ACTIONS.unitRestart, this.actor, unitId, {});
+      this.announced(this.engine.dispatch(
+        CHANGE_ACTIONS.breakGlassRecord,
+        this.actor,
+        null,
+        { id: unitId, line },
+      ));
+
+      return breakGlassLegitLines(unitName, line);
+    }
+
+    // No fire: the glass does not break, the abuse is recorded, and it costs
+    // suspicion - an emergency override with no emergency reads at the review.
+    this.announced(this.engine.dispatch(
+      CHANGE_ACTIONS.breakGlassAbuse,
+      this.actor,
+      null,
+      { id: unitId, line },
+    ));
+
+    return breakGlassAbuseLines(unitName, this.hostnameOf(box.id));
   }
 
   public raiseFirstIncident(): void {

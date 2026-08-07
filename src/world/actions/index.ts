@@ -2,6 +2,7 @@ import type { ActionData, ActionPayload } from '../../engine-api';
 import { ACCOUNT_ACTIONS } from './account';
 import { BOSS_ACTION_DATA } from './boss';
 import { CAREER_ACTION_DATA } from './career';
+import { CHANGE_ACTION_DATA } from './change';
 import { CONSUMABLE_ACTION_DATA } from './consumables';
 
 export { BEER_TOO_EARLY_REASON, LATE_CAN_REASON } from './consumables';
@@ -76,10 +77,14 @@ export {
 } from './security';
 export { FULL_BATTERY } from './device';
 export { HELPDESK_TIER, KIND_LABELS } from './helpers';
+export { BREAK_GLASS_TWICE_REASON } from './change';
 export {
   CAREER_ACTION_IDS,
   CAREER_ACTIONS,
   type CareerActionId,
+  CHANGE_ACTION_IDS,
+  CHANGE_ACTIONS,
+  type ChangeActionId,
   DAY_ACTION_IDS,
   DAY_ACTIONS,
   type DayActionId,
@@ -150,6 +155,9 @@ export function helpdeskActions(): readonly ActionData[] {
     // The systemd verbs (E6, Pass B): restart/start/stop a unit over ssh. The
     // engineer's remediation surface, the Linux twin of `serviceRestart`.
     ...SYSTEMD_ACTION_DATA,
+    // The change-control verbs (E6, 0.18.0): break-glass and its abuse record.
+    // Player-initiated verbs on the player's own trail, like the software audit.
+    ...CHANGE_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,
