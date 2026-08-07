@@ -156,11 +156,13 @@ describe('command parser', () => {
       kind: 'unknown',
       name: 'unlok',
       suggestion: 'unlock',
+      args: ['gpoole'],
     });
     expect(parseCommand('restrat spooler')).toEqual({
       kind: 'unknown',
       name: 'restrat',
       suggestion: 'restart',
+      args: ['spooler'],
     });
     expect(suggestCommand('serv')).toBe('services');
     expect(suggestCommand('q')).toBe('queue');
@@ -175,6 +177,7 @@ describe('command parser', () => {
       kind: 'unknown',
       name: 'xyzzy',
       suggestion: null,
+      args: ['the', 'mainframe'],
     });
   });
 

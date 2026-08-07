@@ -27,6 +27,7 @@ import {
   ed25519Fingerprint,
   executeUnix,
   parseUnixCommand,
+  readInstalledPackages,
   readKnownHosts,
   type SshSession,
   unixPrompt,
@@ -873,6 +874,237 @@ describe('the characteristic-incident commands (E6, 0.19.0)', () => {
       expect(out).toContain('Found the following certs');
       expect(out).toContain('EXPIRED');
     });
+  });
+});
+
+/* ========================================================================= *
+ * 0.20.0: apt / packages / patching - the not-installed gag, closed.
+ * ========================================================================= */
+
+/** Forces the box's installed-packages set, for the round-trip teeth. */
+function setInstalled(
+  world: WorldSession,
+  hostId: string,
+  value: string,
+): void {
+  world.engine.applySetup([{
+    op: 'setField',
+    id: hostId,
+    field: FIELDS.installedPackages,
+    value,
+  }]);
+}
+
+describe('apt install closes the not-installed gag (E6, 0.20.0)', () => {
+  it('parses a sudo prefix off a unix line, and only there', () => {
+    const parsed = parseUnixCommand('sudo apt install htop');
+    expect(parsed.kind).toBe('command');
+    expect(parsed.kind === 'command' && parsed.spec.name).toBe('apt');
+    expect(parsed.kind === 'command' && parsed.sub).toBe('install');
+    expect(parsed.kind === 'command' && parsed.query).toBe('htop');
+    expect(parsed.kind === 'command' && parsed.sudo).toBe(true);
+
+    // Without the prefix the same line parses, with sudo absent - which is what
+    // the privileged subcommands refuse on.
+    const bare = parseUnixCommand('apt install htop');
+    expect(bare.kind === 'command' && bare.sudo).toBeUndefined();
+
+    // A bare "sudo" with nothing to run is not a command - it is the plain miss.
+    expect(parseUnixCommand('sudo').kind).toBe('unknown');
+  });
+
+  it('the ROUND TRIP: htop gags, apt install runs it, flip it back and it gags', () => {
+    const { world, api, ssh } = onMsp();
+
+    // Before: the 0.16.0 gag, unchanged - command not found + the apt hint.
+    const before = unix(api, ssh, 'htop').lines;
+    expect(before[0]).toBe('Command \'htop\' not found, but can be installed with:');
+    expect(before[1]).toBe('sudo apt install htop');
+
+    // The install: the real apt NEW-packages shape, and the package recorded.
+    const install = unix(api, ssh, 'sudo apt install htop').lines.join('\n');
+    expect(install).toContain('The following NEW packages will be installed:');
+    expect(install).toContain('Setting up htop (3.3.0-4build1) ...');
+    expect(readInstalledPackages(
+      api.graph.getField(ssh.hostId, FIELDS.installedPackages),
+    )).toContain('htop');
+
+    // After: the SAME command now RUNS - a curses snapshot, not the hint.
+    const after = unix(api, ssh, 'htop').lines.join('\n');
+    expect(after).toContain('Load average');
+    expect(after).not.toContain('can be installed with');
+
+    // Flip the box state back and it REVERTS to the gag - the field is the switch.
+    setInstalled(world, ssh.hostId, '');
+    expect(unix(api, ssh, 'htop').lines[1]).toBe('sudo apt install htop');
+  });
+
+  it('net-tools closes BOTH ifconfig and netstat in one install', () => {
+    const { api, ssh } = onMsp();
+
+    // Both gag first.
+    expect(unix(api, ssh, 'ifconfig').lines[1]).toBe('sudo apt install net-tools');
+    expect(unix(api, ssh, 'netstat -tlnp').lines[1])
+      .toBe('sudo apt install net-tools');
+
+    unix(api, ssh, 'sudo apt install net-tools');
+
+    // ifconfig runs, in the DOTTED-netmask shape (the family diff from ip a /24).
+    const ifc = unix(api, ssh, 'ifconfig').lines.join('\n');
+    expect(ifc).toContain('netmask 255.255.255.0');
+    expect(ifc).not.toContain('can be installed with');
+
+    // netstat runs, in net-tools' older PID/Program shape over the box listeners.
+    const net = unix(api, ssh, 'netstat -tlnp').lines.join('\n');
+    expect(net).toContain('LISTEN');
+    expect(net).toContain('/sshd');
+  });
+
+  it('traceroute installs and then traces the same-subnet host, unix shape', () => {
+    const { api, ssh } = onMsp();
+    expect(unix(api, ssh, 'traceroute FC-RMM-01').lines[1])
+      .toBe('sudo apt install traceroute');
+
+    unix(api, ssh, 'sudo apt install traceroute');
+    const out = unix(api, ssh, 'traceroute FC-RMM-01').lines.join('\n');
+    expect(out).toContain('hops max, 60 byte packets');
+    expect(out).toContain('10.42.0'); // the estate's own derived address
+  });
+
+  it('is privileged: apt install with no sudo fails on the dpkg lock', () => {
+    const { api, ssh } = onMsp();
+    const out = unix(api, ssh, 'apt install htop').lines.join('\n');
+    expect(out).toContain('are you root?');
+    // And nothing was installed - the refusal is real, htop still gags.
+    expect(unix(api, ssh, 'htop').lines[1]).toBe('sudo apt install htop');
+  });
+
+  it('says so when a package is already installed, and never double-appends', () => {
+    const { api, ssh } = onMsp();
+    unix(api, ssh, 'sudo apt install htop');
+    const again = unix(api, ssh, 'sudo apt install htop').lines.join('\n');
+    expect(again).toContain('htop is already the newest version');
+    // Still exactly one line in the set - the shell guards the duplicate append.
+    expect(readInstalledPackages(
+      api.graph.getField(ssh.hostId, FIELDS.installedPackages),
+    )).toEqual(['htop']);
+  });
+
+  it('answers Unable to locate package for one outside the catalogue', () => {
+    const { api, ssh } = onMsp();
+    expect(unix(api, ssh, 'sudo apt install cowsay').lines.join('\n'))
+      .toContain('Unable to locate package cowsay');
+  });
+
+  it('the install PERSISTS across a save (the installed set round-trips)', () => {
+    const { world, api, ssh } = onMsp();
+    unix(api, ssh, 'sudo apt install htop');
+
+    // The installed set is a field on the box node, so the engine's own
+    // serialization carries it - the string a save file holds verbatim.
+    const saved = world.engine.serialize();
+    const reloaded = new WasmEngine(WORLD_SEED);
+    reloaded.restore(saved);
+
+    expect(readInstalledPackages(
+      reloaded.graph.getField(ssh.hostId, FIELDS.installedPackages),
+    )).toContain('htop');
+  });
+});
+
+describe('apt update / list / upgrade: the pending-updates state (0.20.0)', () => {
+  it('apt update reads the box is behind, incl a security update', () => {
+    const { api, ssh } = onMsp();
+    const out = unix(api, ssh, 'sudo apt update').lines.join('\n');
+    expect(out).toMatch(/\d+ packages? can be upgraded/u);
+    expect(out).toContain('security update');
+  });
+
+  it('apt list --upgradable lists the rows, incl the noble-security one', () => {
+    const { api, ssh } = onMsp();
+    const out = unix(api, ssh, 'apt list --upgradable').lines;
+    expect(out[0]).toBe('Listing... Done');
+    const body = out.join('\n');
+    expect(body).toContain('[upgradable from:');
+    // The security update is always in the set - it slices from the front.
+    expect(body).toContain('libssl3t64/noble-updates,noble-security');
+  });
+
+  it('apt list needs no sudo, but apt update/upgrade do', () => {
+    const { api, ssh } = onMsp();
+    // Read-only: no sudo needed.
+    expect(unix(api, ssh, 'apt list --upgradable').lines[0]).toBe('Listing... Done');
+    // Privileged: the lock error names sudo.
+    expect(unix(api, ssh, 'apt update').lines.join('\n')).toContain('are you root?');
+    expect(unix(api, ssh, 'apt upgrade').lines.join('\n')).toContain('are you root?');
+  });
+
+  it('apt upgrade applies them and the box reads clean after', () => {
+    const { api, ssh } = onMsp();
+    const upgrade = unix(api, ssh, 'sudo apt upgrade').lines.join('\n');
+    expect(upgrade).toContain('The following packages will be upgraded:');
+    expect(upgrade).toContain('0 not upgraded');
+
+    // The world wrote the flag; the box is clean.
+    expect(api.graph.getField(ssh.hostId, FIELDS.updatesApplied)).toBe(true);
+    expect(unix(api, ssh, 'sudo apt update').lines.join('\n'))
+      .toContain('All packages are up to date.');
+    expect(unix(api, ssh, 'apt list --upgradable').lines).toEqual(['Listing... Done']);
+  });
+
+  it('TEETH: the upgradable count reads a REAL state - flip it, nothing to upgrade', () => {
+    const { world, api, ssh } = onMsp();
+    // Behind by default.
+    expect(unix(api, ssh, 'sudo apt update').lines.join('\n'))
+      .toContain('can be upgraded');
+
+    // Flip the real state directly (not via the command): the count follows it.
+    world.engine.applySetup([{
+      op: 'setField',
+      id: ssh.hostId,
+      field: FIELDS.updatesApplied,
+      value: true,
+    }]);
+    expect(unix(api, ssh, 'sudo apt update').lines.join('\n'))
+      .toContain('All packages are up to date.');
+  });
+
+  it('is deterministic and always carries the security update, per box', () => {
+    const { api, ssh } = onMsp();
+    const first = unix(api, ssh, 'apt list --upgradable').lines.join('\n');
+    const second = unix(api, ssh, 'apt list --upgradable').lines.join('\n');
+    expect(first).toBe(second); // no Math.random - stable across calls
+    expect(first).toContain('noble-security');
+
+    // A different box is behind on its own (possibly different) amount, but the
+    // security update is always in it - it is the front of the pool.
+    const other = onMsp('MERI-APP-01');
+    expect(unix(other.api, other.ssh, 'apt list --upgradable').lines.join('\n'))
+      .toContain('noble-security');
+  });
+});
+
+describe('dpkg -l and unattended-upgrades (0.20.0)', () => {
+  it('dpkg -l lists the base set, and apt-installed packages as ii', () => {
+    const { api, ssh } = onMsp();
+    const before = unix(api, ssh, 'dpkg -l').lines.join('\n');
+    expect(before).toContain('ii  '); // the base set is there
+    expect(before).not.toContain('ii  htop');
+
+    unix(api, ssh, 'sudo apt install htop');
+    const after = unix(api, ssh, 'dpkg -l').lines.join('\n');
+    // The install shows up in the read - the two surfaces agree off one field.
+    expect(after).toContain('ii  htop');
+    expect(after).toContain('interactive processes viewer');
+  });
+
+  it('unattended-upgrades is a LOG, not a stdout command', () => {
+    const { api, ssh } = onMsp();
+    const out = unix(api, ssh, 'unattended-upgrades').lines.join('\n');
+    // Its evidence is a log tail, not a fabricated interactive run.
+    expect(out).toContain('evidence is a');
+    expect(out).toContain('/var/log/unattended-upgrades/');
+    expect(out).not.toContain('Setting up');
   });
 });
 

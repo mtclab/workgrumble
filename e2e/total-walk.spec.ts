@@ -3637,6 +3637,55 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
       .toContainText('sudo apt install htop');
   });
 
+  await step('cmd.apt', async () => {
+    // The pending-updates state (0.20.0): FC-RMM-01 is behind on patches, incl a
+    // security one. apt update reads the count, apt list --upgradable lists them.
+    await runCommand(page, 'sudo apt update');
+    await expect(page.getByTestId('cmd-output')).toContainText('can be upgraded');
+    await runCommand(page, 'apt list --upgradable');
+    await expect(page.getByTestId('cmd-output')).toContainText('upgradable from');
+    // libssl3t64/noble-security - the security update is always in the set.
+    await expect(page.getByTestId('cmd-output')).toContainText('security');
+
+    // INSTALL CLOSES THE GAG: htop was command-not-found up in cmd.ss. After
+    // apt install it is present - the real NEW-packages shape, then it RUNS.
+    await runCommand(page, 'sudo apt install htop');
+    await expect(page.getByTestId('cmd-output')).toContainText('Setting up htop');
+
+    // Apply the updates: the box is clean after, and apt update says so.
+    await runCommand(page, 'sudo apt upgrade');
+    await expect(page.getByTestId('cmd-output')).toContainText('0 not upgraded');
+    await runCommand(page, 'sudo apt update');
+    await expect(page.getByTestId('cmd-output')).toContainText('up to date');
+  });
+
+  await step('cmd.gagged-tools-installed', async () => {
+    // The loop closed, walked: htop now RUNS (it was gagged in cmd.ss), and net-
+    // tools + traceroute install and then run in their real shapes. Before the
+    // install each was command-not-found; the box's installed set is the switch.
+    await runCommand(page, 'htop');
+    await expect(page.getByTestId('cmd-output')).toContainText('Load average');
+
+    await runCommand(page, 'sudo apt install net-tools');
+    await runCommand(page, 'ifconfig');
+    // The dotted netmask - the family diff from ip a's /24 the gag taught toward.
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('netmask 255.255.255.0');
+    await runCommand(page, 'netstat -tlnp');
+    await expect(page.getByTestId('cmd-output')).toContainText('LISTEN');
+
+    await runCommand(page, 'sudo apt install traceroute');
+    await runCommand(page, 'traceroute FC-RMM-01');
+    await expect(page.getByTestId('cmd-output')).toContainText('hops max');
+  });
+
+  await step('cmd.dpkg', async () => {
+    // The installed set read: dpkg -l shows the apt-installed packages as ii,
+    // agreeing with apt install off the one real box field.
+    await runCommand(page, 'dpkg -l');
+    await expect(page.getByTestId('cmd-output')).toContainText('ii  htop');
+  });
+
   await step('cmd.dig', async () => {
     // Name resolution the long way, over the estate DNS: the ANSWER SECTION.
     await runCommand(page, 'dig FC-RMM-01');

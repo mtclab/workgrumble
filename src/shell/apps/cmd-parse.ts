@@ -349,13 +349,27 @@ export const COMMANDS: readonly CommandSpec[] = [
 
 export type ParsedCommand =
   | { kind: 'empty' }
-  | { kind: 'unknown'; name: string; suggestion: string | null }
+  | {
+    kind: 'unknown';
+    name: string;
+    suggestion: string | null;
+    /**
+     * The arguments the unknown command was typed with. An unknown command
+     * still has arguments, and the unix dialect reads them: a not-installed
+     * tool that gets `apt install`ed later RUNS off the same seam a stock box
+     * gags at (`cmd-unix.ts`), and running `traceroute FC-RMM-01` needs the
+     * host the same way the gag never did. Empty for a bare unknown word.
+     */
+    args: readonly string[];
+  }
   | {
     kind: 'usage';
     spec: CommandSpec;
     args: readonly string[];
     query: string;
     sub: string;
+    /** Whether a `sudo` prefix was stripped (unix dialect only). */
+    sudo?: boolean;
   }
   | {
     kind: 'command';
@@ -364,6 +378,14 @@ export type ParsedCommand =
     query: string;
     /** The sub-command, lower-cased, or '' for the commands that have none. */
     sub: string;
+    /**
+     * Whether the line was prefixed with `sudo` (unix dialect only). The
+     * privileged apt subcommands (install/update/upgrade) require it, and run
+     * WITHOUT it fail with Ubuntu's own dpkg-lock permission error - which is
+     * how the dialect teaches sudo. Absent on the Windows dialect, which has no
+     * such prefix.
+     */
+    sudo?: boolean;
   };
 
 /** Longest typo we are willing to read the player's mind about. */
@@ -499,7 +521,12 @@ export function parseWith(
   const args = tokens.slice(1);
 
   if (spec === undefined) {
-    return { kind: 'unknown', name, suggestion: suggestFrom(name, commands) };
+    return {
+      kind: 'unknown',
+      name,
+      suggestion: suggestFrom(name, commands),
+      args,
+    };
   }
 
   // A sub-command is not part of the value it is aimed at: `net user gpoole`

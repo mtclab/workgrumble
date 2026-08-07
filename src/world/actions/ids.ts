@@ -631,6 +631,34 @@ export const INCIDENT_ACTION_IDS: readonly IncidentActionId[] = Object.freeze(
   Object.values(INCIDENT_ACTIONS),
 );
 
+/**
+ * The package-management verbs (E6, 0.20.0): the two that change a Linux box's
+ * state, so the two that have to survive a save and be rebuilt by a replay.
+ *
+ * `aptInstall` records a package in the box's `installed_packages` set - the
+ * write that CLOSES the 0.16.0 not-installed gag, after which the previously-
+ * absent command (htop/traceroute/net-tools) runs. `aptUpgrade` sets the box's
+ * `updates_applied` flag, clearing the pending-updates state `apt update`/
+ * `apt list --upgradable` read. `apt update` and `apt list --upgradable` are
+ * reads and dispatch nothing; `dpkg -l` is a read too. Both verbs target the
+ * MACHINE (a package is installed on a box) and both are guarded and dispatched
+ * through the op language like every other change to the world. Engine tier is
+ * helpdesk like every other verb; the ENGINEER gate is the shell's - there is no
+ * ssh, and so no apt, below the promotion.
+ */
+export const APT_ACTIONS = {
+  /** `sudo apt install <pkg>`: record the package, closing the not-installed gag. */
+  aptInstall: 'apt.install',
+  /** `sudo apt upgrade`: apply the pending updates, the box is clean after. */
+  aptUpgrade: 'apt.upgrade',
+} as const;
+
+export type AptActionId = (typeof APT_ACTIONS)[keyof typeof APT_ACTIONS];
+
+export const APT_ACTION_IDS: readonly AptActionId[] = Object.freeze(
+  Object.values(APT_ACTIONS),
+);
+
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
 
 export const DAY_ACTION_IDS: readonly DayActionId[] = Object.freeze(

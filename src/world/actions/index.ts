@@ -1,11 +1,13 @@
 import type { ActionData, ActionPayload } from '../../engine-api';
 import { ACCOUNT_ACTIONS } from './account';
+import { APT_ACTION_DATA } from './apt';
 import { BOSS_ACTION_DATA } from './boss';
 import { CAREER_ACTION_DATA } from './career';
 import { CHANGE_ACTION_DATA } from './change';
 import { CONSUMABLE_ACTION_DATA } from './consumables';
 
 export { BEER_TOO_EARLY_REASON, LATE_CAN_REASON } from './consumables';
+export { APT_PACKAGE_PARAM } from './apt';
 export {
   PROMOTION_REPUTATION,
   SSH_HOST_PARAM,
@@ -90,6 +92,9 @@ export {
   POSTMORTEM_UNIT_STILL_DOWN_REASON,
 } from './incidents';
 export {
+  APT_ACTION_IDS,
+  APT_ACTIONS,
+  type AptActionId,
   CAREER_ACTION_IDS,
   CAREER_ACTIONS,
   type CareerActionId,
@@ -175,6 +180,10 @@ export function helpdeskActions(): readonly ActionData[] {
     // The characteristic-incident fixes (E6, 0.19.0): the disk-full vacuum, the
     // cert renew, and the blameless postmortem that closes an incident.
     ...INCIDENT_ACTION_DATA,
+    // The package-management verbs (E6, 0.20.0): apt install (closing the not-
+    // installed gag) and apt upgrade (applying the pending updates). Player-
+    // initiated verbs on the box's own state, like the systemd fix verbs above.
+    ...APT_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

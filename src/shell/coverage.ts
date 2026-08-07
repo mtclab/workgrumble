@@ -25,6 +25,7 @@
  */
 
 import {
+  APT_ACTIONS,
   CAREER_ACTIONS,
   CHANGE_ACTIONS,
   DAY_ACTIONS,
@@ -2472,6 +2473,55 @@ const ENTRIES = [
     run: 'sysadmin',
     why: 'A unix-dialect verb, reachable only inside the ssh session the '
       + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.apt',
+    surface: 'cmd',
+    control: 'apt <install <pkg> | update | list --upgradable | upgrade>',
+    does: 'Package management (0.20.0), the loop the 0.16.0 gags opened, closed: '
+      + '"sudo apt install htop/traceroute/net-tools" prints the real NEW-packages '
+      + 'shape and records the package in the box\'s installed_packages set - after '
+      + 'which the previously-gagged command RUNS. "apt update" reads the box\'s '
+      + 'pending updates (a derived, deterministic baseline incl a security one), '
+      + '"apt list --upgradable" lists them, and "apt upgrade" applies them (sets '
+      + 'updates_applied), after which the box is clean. Privileged: without sudo '
+      + 'the mutating subcommands fail on the dpkg lock ("are you root?").',
+    command: 'apt',
+    actions: [APT_ACTIONS.aptInstall, APT_ACTIONS.aptUpgrade],
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks - only a Systems Engineer installs a package or patches '
+      + 'a box.',
+  },
+  {
+    id: 'cmd.dpkg',
+    surface: 'cmd',
+    control: 'dpkg -l',
+    does: 'Lists the box\'s installed packages in dpkg\'s ii/name/version/arch/'
+      + 'desc shape under its status legend (0.20.0): the base set every Ubuntu '
+      + 'box carries plus the packages the engineer has apt-installed here, so a '
+      + 'package installed a moment ago shows up as ii - the read that agrees with '
+      + 'apt install off the one real box field.',
+    command: 'dpkg',
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.gagged-tools-installed',
+    surface: 'cmd',
+    control: 'htop | traceroute <host> | ifconfig | netstat -tlnp',
+    does: 'The four tools the 0.16.0 gags pointed at, now that apt has installed '
+      + 'them (0.20.0): htop opens a curses process snapshot off the ps aux data; '
+      + 'traceroute traces the same-subnet host in the unix shape (the family diff '
+      + 'from Windows tracert); ifconfig prints the box\'s address with a DOTTED '
+      + 'netmask (vs ip a\'s /24); netstat -tlnp lists the same listeners ss does '
+      + 'in net-tools\' older PID/Program shape. Before install each is still the '
+      + 'command-not-found gag; the box\'s installed_packages set is the switch.',
+    run: 'sysadmin',
+    why: 'They run only past an apt install inside the ssh session the promotion '
+      + 'unlocks - and only once the package is on the box, which no service-desk '
+      + 'week and no stock box reaches.',
   },
   {
     id: 'cmd.ps',

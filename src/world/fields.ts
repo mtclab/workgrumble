@@ -1064,6 +1064,39 @@ export const FIELDS = {
    * this flag on the unit it documents. Absent (never filed) reads as false.
    */
   postmortemFiled: 'postmortem_filed',
+  /**
+   * The packages an engineer has `apt install`ed onto a Linux box (E6, 0.20.0),
+   * one package name per line the way `dpkg` keeps one record per package.
+   *
+   * The state that CLOSES the 0.16.0 not-installed gags: `htop`/`traceroute`/
+   * net-tools are absent on a stock box, so typing one is `command not found` +
+   * the `sudo apt install <pkg>` hint - until the engineer installs it, which
+   * appends the package here, after which the previously-gagged command RUNS.
+   * On the machine because a package is installed on a box, not on the player,
+   * and a REAL field the gag reads: append the package and the command resolves,
+   * strip it and it reverts to the gag. Absent (a stock box, and every existing
+   * save) reads as "nothing installed by hand yet", so the estate is byte-
+   * identical until an engineer ssh's in and installs - the append is the only
+   * thing that ever writes it, and it round-trips a save through the engine's own
+   * serialization exactly as `known_hosts` and `postmortems` do.
+   */
+  installedPackages: 'installed_packages',
+  /**
+   * Whether a Linux box's pending security/package updates have been applied
+   * (E6, 0.20.0): `false`/absent is a box BEHIND on patches, `true` is a box
+   * that has run `apt upgrade` and is clean.
+   *
+   * A box drifts behind on updates the way real ones do, so the pending set is a
+   * deterministic baseline DERIVED off the box id (`cmd-unix.ts`) rather than
+   * seeded into the graph - which is what keeps every existing save byte-
+   * identical, since the derivation writes no field. This one boolean is the
+   * REAL state `apt update`/`apt list --upgradable` read (behind -> the N
+   * upgradable rows incl a security one; applied -> nothing to upgrade) and
+   * `apt upgrade` writes: flip it and the upgradable count flips with it. Absent
+   * reads as `false` (behind), so a box is byte-identical until the engineer
+   * patches it, and the flip round-trips a save like every other node field.
+   */
+  updatesApplied: 'updates_applied',
   /** directory + file */
   /**
    * Which drive this entry is on, by the hostname of the box it belongs to.

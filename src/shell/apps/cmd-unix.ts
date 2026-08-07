@@ -27,6 +27,8 @@
 
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import {
+  APT_ACTIONS,
+  APT_PACKAGE_PARAM,
   CAREER_ACTIONS,
   INCIDENT_ACTIONS,
   PROMOTION_REPUTATION,
@@ -123,6 +125,23 @@ export const UNIX_COMMANDS: readonly CommandSpec[] = [
     name: 'du',
     usage: 'du -sh <path>',
     summary: 'Show what a directory is eating: a size and a path per line.',
+    minArgs: 0,
+    maxArgs: 3,
+    joined: false,
+  },
+  {
+    name: 'apt',
+    usage: 'apt <install <pkg> | update | list --upgradable | upgrade>',
+    summary: 'Install a package, or read and apply the box\'s pending updates.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+    subcommand: true,
+  },
+  {
+    name: 'dpkg',
+    usage: 'dpkg -l',
+    summary: 'List the packages installed on the box: ii name version arch desc.',
     minArgs: 0,
     maxArgs: 3,
     joined: false,
@@ -244,9 +263,30 @@ export const UNIX_COMMANDS: readonly CommandSpec[] = [
   },
 ];
 
-/** The unix grammar is the same grammar, pointed at the unix registry. */
+/** Matches a leading `sudo ` prefix, the one privilege escalation the dialect models. */
+const SUDO_PREFIX = /^\s*sudo\s+/u;
+
+/**
+ * The unix grammar is the same grammar, pointed at the unix registry - plus the
+ * one thing the Windows dialect has no cousin for: a `sudo` prefix.
+ *
+ * `sudo apt install htop` is the real spelling, and the `sudo` is not part of
+ * the command - it is the privilege the command runs with. So it is stripped
+ * before the grammar sees `apt install htop`, and the fact that it was there is
+ * remembered on the parse, because the privileged apt subcommands need it (a
+ * bare `apt install` on a real box fails on the dpkg lock, "are you root?") and
+ * that refusal is how the dialect teaches sudo. A bare `sudo` with nothing after
+ * it is left alone - there is no command to run privileged, so it is the plain
+ * command-not-found miss.
+ */
 export function parseUnixCommand(input: string): ParsedCommand {
-  return parseWith(input, UNIX_COMMANDS);
+  const sudo = SUDO_PREFIX.test(input) && input.replace(SUDO_PREFIX, '').trim().length > 0;
+  const line = sudo ? input.replace(SUDO_PREFIX, '') : input;
+  const parsed = parseWith(line, UNIX_COMMANDS);
+
+  return sudo && (parsed.kind === 'command' || parsed.kind === 'usage')
+    ? { ...parsed, sudo: true }
+    : parsed;
 }
 
 /** The server prompt, a real family difference from the Windows `C:\>`. */
@@ -1622,21 +1662,27 @@ function curlLines(
     );
 }
 
-/* -- the not-installed gags: a refusal that teaches ----------------------- */
+/* -- the not-installed gags, and the apt that CLOSES them (0.20.0) --------- */
 
 /**
  * The tools that are NOT on a stock Ubuntu 24.04 box, mapped to the package
  * that carries them.
  *
  * `traceroute` and net-tools (`ifconfig`/`netstat`) and `htop` are all absent
- * by default, and typing them on a real box does not silently succeed and does
+ * by default, and typing one on a stock box does not silently succeed and does
  * not print a fake output - it prints `command not found` and the exact
  * `sudo apt install <pkg>` hint Ubuntu's command-not-found handler offers. That
  * refusal is the teaching: it steers the player to `ip`/`ss` as canonical (which
  * is what Ubuntu itself does) and names `apt` as the fix. They are deliberately
  * NOT in `UNIX_COMMANDS` - a stock box has no such command either, so they fall
  * through to `command not found`, where this map turns the generic miss into the
- * real hinted one. (Whether `apt install` then works is a later slice.)
+ * real hinted one.
+ *
+ * 0.20.0 CLOSES the loop: once the package is in the box's `installed_packages`
+ * set (an `apt install` away), the command RUNS instead of gagging. The gag is a
+ * door; apt is the key. So the seam below resolves BOTH ways off one real box
+ * field - present, the tool works; absent, the hint - which is the whole teeth
+ * of the round trip.
  */
 const NOT_INSTALLED: Readonly<Record<string, string>> = {
   traceroute: 'traceroute',
@@ -1645,16 +1691,714 @@ const NOT_INSTALLED: Readonly<Record<string, string>> = {
   htop: 'htop',
 };
 
-/** Ubuntu's command-not-found hint for a known-but-absent tool, or null. */
-function notInstalledHint(name: string): CommandResult | null {
+/** The packages `installed_packages` holds, read one-per-line off the box field. */
+export function readInstalledPackages(value: unknown): readonly string[] {
+  return readKnownHosts(value);
+}
+
+/** Whether a package is installed on the box the session is standing on. */
+function isPackageInstalled(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  pkg: string,
+): boolean {
+  return readInstalledPackages(
+    api.graph.getField(session.hostId, FIELDS.installedPackages),
+  ).includes(pkg);
+}
+
+/**
+ * The names whose evidence is a LOG, not the stdout of an interactive run
+ * (0.20.0, slice 3). `unattended-upgrades` is Ubuntu's automatic security-patch
+ * service: it runs on a systemd timer and writes what it did to a log, so typing
+ * it is not how you read it - the honest answer points at the log tail, which
+ * reinforces the 0.16.0 "some evidence is a log, not a command" lesson rather
+ * than fabricating an interactive screen. It is the manual `apt update && apt
+ * upgrade` that patches by hand.
+ */
+function systemNoteFor(name: string): CommandResult | null {
+  if (name !== 'unattended-upgrades' && name !== 'unattended-upgrade') {
+    return null;
+  }
+
+  return lines(
+    `${name}: this is not an interactive command you read the output of. It runs`,
+    'as a systemd timer and writes what it patched to a LOG - its evidence is a',
+    'log tail, not stdout: /var/log/unattended-upgrades/unattended-upgrades.log',
+    '(and "journalctl -u unattended-upgrades"). To patch by hand, use "sudo apt',
+    'update" then "sudo apt upgrade".',
+  );
+}
+
+/** Ubuntu's command-not-found hint for a known-but-absent tool. */
+function notInstalledHint(name: string, pkg: string): CommandResult {
+  return lines(
+    `Command '${name}' not found, but can be installed with:`,
+    `sudo apt install ${pkg}`,
+  );
+}
+
+/**
+ * The not-installed seam, resolved for the box (0.20.0). A gagged tool whose
+ * package the engineer has NOT installed answers with Ubuntu's command-not-found
+ * hint, exactly as before; one whose package is now in the box's installed set
+ * RUNS - the gag the 0.16.0 slice opened, closed. Returns null for a name that
+ * is not one of the four gagged tools, so a genuine miss still falls through to
+ * the plain `command not found`.
+ */
+function resolveGaggedTool(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  name: string,
+  args: readonly string[],
+): CommandResult | null {
   const pkg = NOT_INSTALLED[name];
 
-  return pkg === undefined
-    ? null
-    : lines(
-      `Command '${name}' not found, but can be installed with:`,
-      `sudo apt install ${pkg}`,
+  if (pkg === undefined) {
+    return null;
+  }
+
+  if (!isPackageInstalled(api, session, pkg)) {
+    return notInstalledHint(name, pkg);
+  }
+
+  switch (name) {
+    case 'htop':
+      return htopLines(api, session);
+    case 'traceroute':
+      return tracerouteLines(api, nameArg(args));
+    case 'ifconfig':
+      return ifconfigLines(session);
+    case 'netstat':
+      return netstatLines(api, session, args);
+    default:
+      return null;
+  }
+}
+
+/* -- the gagged tools, now that apt has installed them -------------------- */
+
+/**
+ * `htop` - a curses process view, once `apt install htop` has put it on the box.
+ *
+ * htop is a full-screen interactive app; this terminal cannot host one, so it
+ * prints the SNAPSHOT htop opens on - the summary header (CPU/Mem/Swap gauges,
+ * tasks, load average, uptime) and the process table - off the SAME data `ps aux`
+ * reads: systemd as PID 1 and a row per running unit, the numbers derived off the
+ * unit id the way the rest of the dialect derives them. It is the honest half of
+ * "installed now" - a real-ish view of what the box is running, not a fabricated
+ * empty screen.
+ */
+function htopLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): CommandResult {
+  const running = runningUnitsOn(api, session);
+  const tasks = running.length + 1; // + systemd(1)
+  const load = ((stableHash(session.hostId) % 40) / 100).toFixed(2);
+  const upMinutes = 540 + api.clock.now();
+  const upH = Math.floor(upMinutes / 60);
+  const upM = upMinutes % 60;
+
+  const header = `${pad('  PID USER', 16)}${pad('PRI', 4)}${pad('NI', 4)}${
+    pad('VIRT', 7)
+  }${pad('RES', 7)}${pad('SHR', 7)}${pad('S', 3)}${pad('CPU%', 6)}${
+    pad('MEM%', 6)
+  }${pad('TIME+', 9)}Command`;
+
+  const row = (
+    pid: number,
+    user: string,
+    cpu: string,
+    mem: string,
+    command: string,
+  ): string => `${pad(`${String(pid).padStart(5, ' ')} ${user}`, 16)}${
+    pad('20', 4)
+  }${pad('0', 4)}${pad(`${String(9 + (pid % 90))}M`, 7)}${
+    pad(`${String(2 + (pid % 20))}M`, 7)
+  }${pad(`${String(1 + (pid % 9))}M`, 7)}${pad('S', 3)}${pad(cpu, 6)}${
+    pad(mem, 6)
+  }${pad('0:00.12', 9)}${command}`;
+
+  const procRows = running.map((unit) => {
+    const base = unitBase(unit);
+    const pid = unitPid(unit.id);
+    const user = base === 'nginx' || base === 'cron' || base === 'ssh'
+      || base === 'systemd-journald'
+      ? 'root'
+      : session.username;
+
+    return row(pid, user, '0.0', '1.2', `/usr/bin/${base}`);
+  });
+
+  return lines(
+    `  0[                                        0.0%]   Tasks: ${
+      String(tasks)
+    }, 0 thr; 1 running`,
+    `  Mem[||||||||||||                    1.024G/3.84G]   Load average: ${
+      load
+    } ${load} ${load}`,
+    `  Swp[                                    0K/0K]   Uptime: ${
+      String(upH).padStart(2, '0')
+    }:${String(upM).padStart(2, '0')}:00`,
+    '',
+    header,
+    row(1, 'root', '0.0', '0.4', '/sbin/init'),
+    ...procRows,
+  );
+}
+
+/**
+ * `traceroute <host>` - the trace, once net-tools' cousin is installed, in the
+ * UNIX shape (the family difference from the Windows `tracert`'s `Tracing route`
+ * header and star-timeout rows).
+ *
+ * The estate is one flat /24, so a box and its neighbour are on the same subnet -
+ * directly connected, one hop, which is exactly what a real traceroute to a
+ * same-subnet host shows: the destination itself as hop 1, no router in between.
+ * The address is the estate's own derived one and the three probe times are
+ * derived off the host id, so the run is deterministic.
+ */
+function tracerouteLines(api: GameApi, host: string): CommandResult {
+  if (host.length === 0) {
+    return lines('Usage: traceroute [OPTIONS] HOST');
+  }
+
+  const machine = machineByName(api, host);
+
+  if (machine === null) {
+    return lines(`traceroute: unknown host ${host}`);
+  }
+
+  const address = addressOf(machine.id);
+  const canonical = fqdn(labelOf(machine));
+  const probe = (sample: number): string => (
+    (5 + ((stableHash(machine.id) + sample * 7) % 30)) / 10
+  ).toFixed(3);
+
+  return lines(
+    `traceroute to ${canonical} (${address}), 30 hops max, 60 byte packets`,
+    ` 1  ${canonical} (${address})  ${probe(1)} ms  ${probe(2)} ms  ${
+      probe(3)
+    } ms`,
+  );
+}
+
+/**
+ * `ifconfig` - net-tools' interface view, once it is installed, over the box's
+ * own address. The family difference the gag was teaching AGAINST is right here:
+ * ifconfig prints the DOTTED `netmask 255.255.255.0` where `ip a` prints the
+ * CIDR `/24`. Same address, older tool - which is why `ip` is canonical.
+ */
+function ifconfigLines(session: Readonly<SshSession>): CommandResult {
+  const address = addressOf(session.hostId);
+
+  return lines(
+    'eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500',
+    `        inet ${address}  netmask 255.255.255.0  broadcast 10.42.0.255`,
+    '        ether 02:42:0a:2a:00:01  txqueuelen 1000  (Ethernet)',
+    '        RX packets 18432  bytes 2113536 (2.1 MB)',
+    '        TX packets 12094  bytes 1508722 (1.5 MB)',
+    '',
+    'lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536',
+    '        inet 127.0.0.1  netmask 255.0.0.0',
+    '        loop  txqueuelen 1000  (Local Loopback)',
+  );
+}
+
+/**
+ * `netstat -tlnp` - net-tools' listener view, once it is installed. It reads the
+ * SAME running-unit listeners `ss` does and prints them in netstat's older column
+ * shape - `Proto Recv-Q Send-Q Local Address Foreign Address State PID/Program
+ * name`, the `PID/Program` cell where ss prints `users:(("proc",pid=,fd=))`. The
+ * gag steered the player to ss as the modern tool; installed, netstat is the same
+ * truth in the old shape, a downed unit honestly absent from both.
+ */
+function netstatLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  args: readonly string[],
+): CommandResult {
+  const withProc = args.join('').includes('p');
+  const header = `${pad('Proto', 6)}${pad('Recv-Q', 7)}${pad('Send-Q', 7)}${
+    pad('Local Address', 24)
+  }${pad('Foreign Address', 24)}${pad('State', 8)}${
+    withProc ? 'PID/Program name' : ''
+  }`;
+
+  const rows = runningUnitsOn(api, session)
+    .flatMap((unit) => listenersOf(unit).map((listener) => ({
+      listener,
+      pid: unitPid(unit.id),
+    })))
+    .sort((left, right) => left.listener.port - right.listener.port)
+    .map(({ listener, pid }) => `${pad('tcp', 6)}${pad('0', 7)}${pad('0', 7)}${
+      pad(`${listener.addr === '*' ? '0.0.0.0' : listener.addr}:${
+        String(listener.port)
+      }`, 24)
+    }${pad('0.0.0.0:*', 24)}${pad('LISTEN', 8)}${
+      withProc ? `${String(pid)}/${listener.proc}` : ''
+    }`);
+
+  return lines(
+    'Active Internet connections (only servers)',
+    header,
+    ...rows,
+  );
+}
+
+/* -- apt / dpkg: install, and the box's pending-updates state ------------- */
+
+/** One upgradable package as `apt list --upgradable` prints one. */
+interface Upgradable {
+  readonly pkg: string;
+  /** The apt pocket(s) the update is in - `noble-security` is a security one. */
+  readonly pocket: string;
+  readonly arch: string;
+  readonly from: string;
+  readonly to: string;
+  readonly bytes: number;
+}
+
+/**
+ * The pool of real Ubuntu 24.04 (noble) upgradable packages a box can be behind
+ * on, security update FIRST so it is always in a box's pending set. Real package
+ * names, pockets and version bumps - nothing invented - so `apt list --upgradable`
+ * reads like a real one. A `noble-security` pocket is what marks the security
+ * update, exactly as apt does.
+ */
+const UPGRADABLE_POOL: readonly Upgradable[] = [
+  {
+    pkg: 'libssl3t64',
+    pocket: 'noble-updates,noble-security',
+    arch: 'amd64',
+    from: '3.0.13-0ubuntu3.1',
+    to: '3.0.13-0ubuntu3.4',
+    bytes: 1_938_432,
+  },
+  {
+    pkg: 'openssh-server',
+    pocket: 'noble-updates',
+    arch: 'amd64',
+    from: '1:9.6p1-3ubuntu13.4',
+    to: '1:9.6p1-3ubuntu13.5',
+    bytes: 512_000,
+  },
+  {
+    pkg: 'curl',
+    pocket: 'noble-updates',
+    arch: 'amd64',
+    from: '8.5.0-2ubuntu10.5',
+    to: '8.5.0-2ubuntu10.6',
+    bytes: 227_328,
+  },
+  {
+    pkg: 'tzdata',
+    pocket: 'noble-updates',
+    arch: 'all',
+    from: '2024a-0ubuntu0.24.04.1',
+    to: '2024b-0ubuntu0.24.04.1',
+    bytes: 274_432,
+  },
+  {
+    pkg: 'vim-common',
+    pocket: 'noble-updates',
+    arch: 'all',
+    from: '2:9.1.0016-1ubuntu7.7',
+    to: '2:9.1.0016-1ubuntu7.8',
+    bytes: 98_304,
+  },
+];
+
+/** Whether an upgradable row is a security update, off its pocket. */
+function isSecurity(row: Readonly<Upgradable>): boolean {
+  return row.pocket.includes('security');
+}
+
+/**
+ * The updates a box is behind on: a deterministic slice of the pool sized off
+ * the box id (so different boxes are behind on different amounts) and ALWAYS
+ * including the security one, because it slices from the front where the security
+ * row lives. It is DERIVED, not seeded into the graph, which is what keeps every
+ * existing world byte-identical - and once the engineer runs `apt upgrade` the
+ * box's `updates_applied` flag reads clean and this returns none.
+ */
+function pendingUpdatesFor(boxId: string): readonly Upgradable[] {
+  const spread = UPGRADABLE_POOL.length - 2; // 3..POOL.length inclusive
+  const count = 3 + (stableHash(`${boxId}:apt`) % spread);
+
+  return UPGRADABLE_POOL.slice(0, count);
+}
+
+/** The box's pending updates - the derived baseline, or none once patched. */
+function boxPending(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): readonly Upgradable[] {
+  const applied = api.graph.getField(session.hostId, FIELDS.updatesApplied)
+    === true;
+
+  return applied ? [] : pendingUpdatesFor(session.hostId);
+}
+
+/**
+ * The packages `apt install` can actually put on this box - the three the
+ * not-installed gags point at, each with the real version and sizes apt prints.
+ * A package outside this catalogue is `Unable to locate package`, exactly as a
+ * real box answers for one it has no source for.
+ */
+interface Installable {
+  readonly version: string;
+  readonly arch: string;
+  readonly component: string;
+  readonly downloadBytes: number;
+  readonly installBytes: number;
+}
+
+const INSTALLABLE_PACKAGES: Readonly<Record<string, Installable>> = {
+  htop: {
+    version: '3.3.0-4build1',
+    arch: 'amd64',
+    component: 'universe',
+    downloadBytes: 176_128,
+    installBytes: 495_616,
+  },
+  traceroute: {
+    version: '1:2.1.5-1',
+    arch: 'amd64',
+    component: 'main',
+    downloadBytes: 46_080,
+    installBytes: 153_600,
+  },
+  'net-tools': {
+    version: '2.10-0.1ubuntu4',
+    arch: 'amd64',
+    component: 'main',
+    downloadBytes: 208_896,
+    installBytes: 829_440,
+  },
+};
+
+/** A byte count as apt prints an archive size (`176 kB`, `1,938 kB`). */
+function aptSize(bytes: number): string {
+  return bytes >= 1_000_000
+    ? `${(bytes / 1_000_000).toFixed(1)} MB`
+    : `${String(Math.round(bytes / 1000))} kB`;
+}
+
+/** The three "Reading..." lines apt opens every run with. */
+const APT_PREAMBLE: readonly string[] = [
+  'Reading package lists... Done',
+  'Building dependency tree... Done',
+  'Reading state information... Done',
+];
+
+/** The dpkg-lock permission error apt prints when a privileged run has no sudo. */
+function aptNeedsRoot(): CommandResult {
+  return lines(
+    ...APT_PREAMBLE,
+    'E: Could not open lock file /var/lib/dpkg/lock-frontend - open (13: '
+      + 'Permission denied)',
+    'E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), '
+      + 'are you root?',
+  );
+}
+
+/**
+ * `apt install <pkg>` - the key that closes the not-installed gag.
+ *
+ * It is privileged, so without `sudo` it fails on the dpkg lock ("are you
+ * root?"), which is how the dialect teaches sudo. With it: a package outside the
+ * catalogue is `Unable to locate package`; one already installed says so (apt's
+ * own "already the newest version"); and one that installs prints the real apt
+ * NEW-packages shape and records the package in the box's `installed_packages`
+ * set - the write that makes the previously-gagged command run. The shell guards
+ * the already-installed case, so the dispatched append is never a duplicate.
+ */
+function aptInstallLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  pkg: string,
+  sudo: boolean,
+): CommandResult {
+  if (pkg.length === 0) {
+    return lines('apt install: a package name is required.');
+  }
+
+  if (!sudo) {
+    return aptNeedsRoot();
+  }
+
+  const spec = INSTALLABLE_PACKAGES[pkg];
+
+  if (spec === undefined) {
+    return lines(
+      ...APT_PREAMBLE,
+      `E: Unable to locate package ${pkg}`,
     );
+  }
+
+  const notUpgraded = boxPending(api, session).length;
+
+  if (isPackageInstalled(api, session, pkg)) {
+    return lines(
+      ...APT_PREAMBLE,
+      `${pkg} is already the newest version (${spec.version}).`,
+      `0 upgraded, 0 newly installed, 0 to remove and ${
+        String(notUpgraded)
+      } not upgraded.`,
+    );
+  }
+
+  const result = api.dispatch(
+    APT_ACTIONS.aptInstall,
+    api.actor,
+    session.hostId,
+    { [APT_PACKAGE_PARAM]: pkg },
+  );
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  return lines(
+    ...APT_PREAMBLE,
+    'The following NEW packages will be installed:',
+    `  ${pkg}`,
+    `0 upgraded, 1 newly installed, 0 to remove and ${
+      String(notUpgraded)
+    } not upgraded.`,
+    `Need to get ${aptSize(spec.downloadBytes)} of archives.`,
+    `After this operation, ${
+      aptSize(spec.installBytes)
+    } of additional disk space will be used.`,
+    `Get:1 http://archive.ubuntu.com/ubuntu noble/${spec.component} ${
+      spec.arch
+    } ${pkg} ${spec.arch} ${spec.version} [${aptSize(spec.downloadBytes)}]`,
+    `Fetched ${aptSize(spec.downloadBytes)} in 0s (0 B/s)`,
+    `Selecting previously unselected package ${pkg}.`,
+    '(Reading database ... 41234 files and directories currently installed.)',
+    `Preparing to unpack .../${pkg}_${spec.version}_${spec.arch}.deb ...`,
+    `Unpacking ${pkg} (${spec.version}) ...`,
+    `Setting up ${pkg} (${spec.version}) ...`,
+    'Processing triggers for man-db (2.12.0-4build2) ...',
+  );
+}
+
+/**
+ * `apt update` - refreshing the package lists. Privileged (no sudo -> the lock
+ * error), and it reads the box's pending state to print the "N packages can be
+ * upgraded" summary a box behind on patches shows, or "All packages are up to
+ * date." once `apt upgrade` has cleared it.
+ */
+function aptUpdateLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sudo: boolean,
+): CommandResult {
+  if (!sudo) {
+    return aptNeedsRoot();
+  }
+
+  const pending = boxPending(api, session);
+  const security = pending.filter(isSecurity).length;
+
+  return lines(
+    'Hit:1 http://archive.ubuntu.com/ubuntu noble InRelease',
+    'Hit:2 http://archive.ubuntu.com/ubuntu noble-updates InRelease',
+    'Get:3 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]',
+    `Fetched 126 kB in 0s (0 B/s)`,
+    'Reading package lists... Done',
+    'Building dependency tree... Done',
+    'Reading state information... Done',
+    ...(pending.length === 0
+      ? ['All packages are up to date.']
+      : [
+        `${String(pending.length)} package${
+          pending.length === 1 ? '' : 's'
+        } can be upgraded. Run 'apt list --upgradable' to see them.`,
+        ...(security > 0
+          ? [`${String(security)} of these updates ${
+            security === 1 ? 'is a security update' : 'are security updates'
+          }.`]
+          : []),
+      ]),
+  );
+}
+
+/**
+ * `apt list --upgradable` - the list itself, one `pkg/pocket ver arch [upgradable
+ * from: old]` row per pending update, off the box's real pending state. Read-only,
+ * so no sudo needed. A patched box lists nothing but the `Listing... Done` line.
+ */
+function aptListLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): CommandResult {
+  const pending = boxPending(api, session);
+
+  return lines(
+    'Listing... Done',
+    ...pending.map((row) => `${row.pkg}/${row.pocket} ${row.to} ${row.arch} `
+      + `[upgradable from: ${row.from}]`),
+  );
+}
+
+/**
+ * `apt upgrade` - applying the pending updates. Privileged (no sudo -> the lock
+ * error). It prints the real upgrade shape off the box's pending set and
+ * dispatches the verb that sets `updates_applied`, after which the box reads
+ * clean; run on an already-clean box it is the honest no-op apt prints ("0
+ * upgraded ... 0 not upgraded").
+ */
+function aptUpgradeLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sudo: boolean,
+): CommandResult {
+  if (!sudo) {
+    return aptNeedsRoot();
+  }
+
+  const pending = boxPending(api, session);
+
+  if (pending.length === 0) {
+    return lines(
+      ...APT_PREAMBLE,
+      'Calculating upgrade... Done',
+      '0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.',
+    );
+  }
+
+  const result = api.dispatch(
+    APT_ACTIONS.aptUpgrade,
+    api.actor,
+    session.hostId,
+    {},
+  );
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  const totalBytes = pending.reduce((sum, row) => sum + row.bytes, 0);
+
+  return lines(
+    ...APT_PREAMBLE,
+    'Calculating upgrade... Done',
+    'The following packages will be upgraded:',
+    `  ${pending.map((row) => row.pkg).join(' ')}`,
+    `${String(pending.length)} upgraded, 0 newly installed, 0 to remove and `
+      + '0 not upgraded.',
+    `Need to get ${aptSize(totalBytes)} of archives.`,
+    'After this operation, 0 B of additional disk space will be used.',
+    ...pending.map(
+      (row) => `Setting up ${row.pkg} (${row.to}) ...`,
+    ),
+    'Processing triggers for man-db (2.12.0-4build2) ...',
+    'Processing triggers for libc-bin (2.39-0ubuntu8.3) ...',
+  );
+}
+
+/** Dispatches an `apt <sub>`, or names the four subcommands for an unknown one. */
+function aptLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sub: string,
+  query: string,
+  args: readonly string[],
+  sudo: boolean,
+): CommandResult {
+  switch (sub) {
+    case 'install':
+      return aptInstallLines(api, session, query.trim(), sudo);
+    case 'update':
+      return aptUpdateLines(api, session, sudo);
+    case 'upgrade':
+      return aptUpgradeLines(api, session, sudo);
+    case 'list':
+      // `apt list --upgradable` is the one this dialect answers; a bare `apt
+      // list` on a real box is every package, which the dpkg -l surface covers.
+      return args.some((arg) => arg === '--upgradable')
+        ? aptListLines(api, session)
+        : lines(
+          'apt list: this terminal answers "apt list --upgradable" - the '
+            + 'pending updates. For the installed set, use "dpkg -l".',
+        );
+    default:
+      return lines(
+        `"apt ${sub}" is not something this terminal does.`,
+        'It does "apt install <pkg>", "apt update", "apt list --upgradable" '
+          + 'and "apt upgrade".',
+      );
+  }
+}
+
+/**
+ * The base packages every Ubuntu 24.04 box carries, as `dpkg -l` rows: real
+ * package names and versions. Representative rather than exhaustive - a real
+ * dpkg -l is hundreds of lines - the same honest abstraction `ps aux` makes by
+ * listing the units rather than every kernel thread.
+ */
+const DPKG_BASE: readonly (readonly [string, string, string, string])[] = [
+  ['apt', '2.7.14build2', 'amd64', 'commandline package manager'],
+  ['bash', '5.2.21-2ubuntu4', 'amd64', 'GNU Bourne Again SHell'],
+  ['coreutils', '9.4-3ubuntu6', 'amd64', 'GNU core utilities'],
+  ['dpkg', '1.22.6ubuntu6', 'amd64', 'Debian package management system'],
+  ['libc6', '2.39-0ubuntu8.3', 'amd64', 'GNU C Library: Shared libraries'],
+  ['nginx', '1.24.0-2ubuntu7', 'amd64', 'small, powerful, scalable web server'],
+  ['openssh-server', '1:9.6p1-3ubuntu13.4', 'amd64', 'secure shell (SSH) server'],
+  ['systemd', '255.4-1ubuntu8', 'amd64', 'system and service manager'],
+];
+
+/** The descriptions for the packages apt can install, for their dpkg -l rows. */
+const DPKG_INSTALLED_DESC: Readonly<Record<string, string>> = {
+  htop: 'interactive processes viewer',
+  traceroute: 'Traces the route taken by packets over a network',
+  'net-tools': 'NET-3 networking toolkit',
+};
+
+/**
+ * `dpkg -l` - the installed-package list, in dpkg's `ii name version arch desc`
+ * shape under its four-line status legend. It lists the base set every box
+ * carries PLUS the packages the engineer has `apt install`ed here, so a package
+ * installed a moment ago shows up in dpkg -l as `ii` - the two surfaces agreeing
+ * off the one real box field.
+ */
+function dpkgLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): CommandResult {
+  const installed = readInstalledPackages(
+    api.graph.getField(session.hostId, FIELDS.installedPackages),
+  );
+  const extras = installed
+    .map((pkg): readonly [string, string, string, string] | null => {
+      const spec = INSTALLABLE_PACKAGES[pkg];
+
+      return spec === undefined
+        ? null
+        : [pkg, spec.version, spec.arch, DPKG_INSTALLED_DESC[pkg] ?? pkg];
+    })
+    .filter((row): row is readonly [string, string, string, string] => row !== null);
+
+  const rows = [...DPKG_BASE, ...extras]
+    .slice()
+    .sort((left, right) => left[0].localeCompare(right[0]))
+    .map(([name, version, arch, desc]) => `ii  ${pad(name, 22)}${
+      pad(version, 24)
+    }${pad(arch, 8)}${desc}`);
+
+  return lines(
+    'Desired=Unknown/Install/Remove/Purge/Hold',
+    '| Status=Not/Inst/Conf-files/Unpacked/halF-conf/Half-inst/trig-aWait/'
+      + 'Trig-pend',
+    '|/ Err?=(none)/Reinst-required (Status,Err: uppercase=bad)',
+    `||/ ${pad('Name', 22)}${pad('Version', 24)}${pad('Architecture', 8)}`
+      + 'Description',
+    `+++-${'='.repeat(21)}-${'='.repeat(23)}-${'='.repeat(7)}-${'='.repeat(33)}`,
+    ...rows,
+  );
 }
 
 /* -- change control: the change request, and the break-glass override ----- */
@@ -1913,14 +2657,25 @@ export function executeUnix(
     case 'empty':
       return { lines: [], clear: false };
     case 'unknown': {
-      // The not-installed gags first: a stock Ubuntu box does not carry
-      // traceroute/ifconfig/netstat/htop, so typing one is a real miss - and the
-      // miss teaches, with Ubuntu's own `sudo apt install <pkg>` hint, not a fake
-      // output. Only if it is not one of those does it fall to the generic miss.
-      const hint = notInstalledHint(parsed.name);
+      // The not-installed seam (0.16.0, closed 0.20.0): a stock Ubuntu box does
+      // not carry traceroute/ifconfig/netstat/htop, so typing one is a real miss
+      // that teaches, with Ubuntu's own `sudo apt install <pkg>` hint. Once the
+      // engineer has `apt install`ed its package the SAME seam RUNS it instead -
+      // the gag closed. Only a name that is not one of the four falls through to
+      // the generic miss.
+      const tool = resolveGaggedTool(api, session, parsed.name, parsed.args);
 
-      if (hint !== null) {
-        return hint;
+      if (tool !== null) {
+        return tool;
+      }
+
+      // The log-not-a-command names (unattended-upgrades): its evidence is a log
+      // tail, not stdout, so the honest answer points there rather than faking a
+      // run - the 0.16.0 "some evidence is a log" lesson, on the patching surface.
+      const note = systemNoteFor(parsed.name);
+
+      if (note !== null) {
+        return note;
       }
 
       return lines(
@@ -1960,6 +2715,17 @@ export function executeUnix(
       return dfLines(api, session);
     case 'du':
       return duLines(api, session, parsed.args);
+    case 'apt':
+      return aptLines(
+        api,
+        session,
+        parsed.sub,
+        parsed.query,
+        parsed.args,
+        parsed.sudo === true,
+      );
+    case 'dpkg':
+      return dpkgLines(api, session);
     case 'ps':
       return psLines(api, session);
     case 'ip':
