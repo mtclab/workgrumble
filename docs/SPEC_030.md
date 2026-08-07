@@ -1465,3 +1465,53 @@ the sysadmin/incidents walk.
 apt/packages (install the gapped tools); users/perms (id/getent/chmod/sudo); the deeper Linux fs
 (cat/cd/var/log browsing); the player Linux DESKTOP skin; error budgets / SLOs / the full incident-
 command structure (E7).
+
+# Version 0.20.0 - apt / packages / patching (E6 #7)
+
+Closes the loop the 0.16.0 not-installed gags opened, and adds the sysadmin's patching story. `sudo
+apt install <x>` actually INSTALLS the tool the gag pointed at (htop/traceroute/net-tools -> now
+present), and the fleet-patching commands (`apt update`, `apt list --upgradable`, `apt upgrade`,
+`unattended-upgrades`) do the real thing at fidelity. Content on the 0.15/0.16 unix engine; the new
+piece is an installed-packages state on the box + a pending-updates state. Research base: the Ubuntu
+command-surface fidelity (apt/dpkg shapes) in the 0.15/0.16 research.
+
+## Slice 1 - apt install closes the not-installed gag
+
+`sudo apt install <pkg>` for the gagged tools (htop, traceroute, net-tools) does the real apt thing:
+the `Reading package lists... / Building dependency tree... / The following NEW packages will be
+installed: / Setting up ...` shape, and AFTER it the tool is PRESENT - `htop` now runs (a real curses-
+ish process view / or at least the honest "it is installed now" behaviour), `traceroute` now traces,
+`ifconfig` now prints. The install state is on the box (a per-box installed-packages set, round-trips
+a save). sudo prompts as it does (the 0.15.0 sudo). The payoff: the gag was a door, apt is the key.
+
+## Slice 2 - apt update / list --upgradable / upgrade (the patching story)
+
+`apt update` refreshes the package lists (`Hit/Get ... / Reading package lists... Done / N packages
+can be upgraded. Run 'apt list --upgradable' to see them.`), `apt list --upgradable` lists them
+(`pkg/release version arch [upgradable from: ...]`), `apt upgrade` applies them (the install shape +
+the count). A real pending-updates state on the box (seeded N upgradable, incl a security one); after
+upgrade it is clean. Deterministic. Fidelity: dpkg -l shape too if cheap (`ii pkg version arch desc`).
+
+## Slice 3 - unattended-upgrades / the patching incident touch
+
+`unattended-upgrades` on Ubuntu logs to /var/log/unattended-upgrades/ - not stdout of an interactive
+command; its evidence is a log-tail read (journalctl/the log), reinforcing the 0.16.0 "some evidence
+is a log not a command" lesson. Optional light touch: a box behind on a SECURITY update is a real
+state the patching addresses (compose with the review/monitoring - being behind on patches reads as a
+risk), and applying it is the fix. Keep it light; the full patch-compliance/CVE story is backlog.
+
+## Gates (once, at the version)
+
+Goldens: additive + gated behind the promotion + the ssh session; existing worlds BYTE-IDENTICAL until
+an engineer ssh's in. Journeys through the REAL path: apt install a gagged tool -> it is then present
+and runs (the 0.16.0 gag now resolves); apt update -> the upgradable count; apt list --upgradable ->
+the list; apt upgrade -> clean; a box behind on a security update is a real state the upgrade clears.
+Determinism. Teeth: the gag-then-install round trip (before install: command not found + hint; after:
+runs - flip the install state and it reverts to the gag); the upgradable count reads a real pending
+state (flip it -> nothing to upgrade); apt install persists across a save. One codex (if it completes;
+else self-review), one box (workers=1) + the sysadmin/apt walk.
+
+## Not in scope (backlog)
+
+users/perms (id/getent/chmod/sudo depth); the deeper Linux fs (cat/cd/var/log browsing); the full
+patch-compliance/CVE story; the player Linux DESKTOP skin; error budgets / SLOs (E7).
