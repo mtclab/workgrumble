@@ -31,6 +31,33 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.21.0',
+    date: '2026-08-07',
+    summary: 'This update is about who is allowed to read what.',
+    lines: Object.freeze([
+      'Half of everything that breaks on a Linux box is a permission bit in the '
+        + 'wrong place, so now you have the tools for it. "id" tells you who you '
+        + 'are and what groups you are in; "getent passwd" reads the accounts on '
+        + 'the box in that old colon-separated shape - root, the daemons, the '
+        + 'service account each one runs as. And "chmod" and "chown" change the '
+        + 'permissions and the owner of a file, and "ls -la" shows you the change '
+        + 'the instant you make it, because it is reading the same thing you just '
+        + 'wrote.',
+      'Which matters, because tonight a service is down and the logs say '
+        + '"Permission denied". A deploy left the auth file owned by root and '
+        + 'readable by nobody else, and the account the service runs as cannot '
+        + 'open its own config. No restart fixes that - the file has to be '
+        + 'readable first. "ls -la" shows you it is 600 root root; you give it to '
+        + 'the service group and make it group-readable, and only then does the '
+        + 'restart take.',
+      'And getting it UP is not the same as getting it RIGHT. You could make the '
+        + 'file readable by the whole world and the service would start - but an '
+        + 'auth file the whole world can read is a different problem wearing the '
+        + 'first one\'s clothes. The job is the least permission that works, not '
+        + 'the first one that does.',
+    ]),
+  },
+  {
     version: '0.20.0',
     date: '2026-08-07',
     summary: 'This update lets you install the tools it told you were missing.',
