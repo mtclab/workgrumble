@@ -31,6 +31,31 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.20.0',
+    date: '2026-08-07',
+    summary: 'This update lets you install the tools it told you were missing.',
+    lines: Object.freeze([
+      'A few versions ago the box started telling the truth about the tools it '
+        + 'did not have - reach for htop or traceroute and it said "command not '
+        + 'found", and how to fix it. Now the fix works. "sudo apt install '
+        + 'htop", watch it read the package lists and set it up, and then htop '
+        + 'runs - the door the refusal pointed at, opened. traceroute traces, '
+        + 'ifconfig prints the old dotted netmask, netstat lists the ports. What '
+        + 'the box installs it remembers, even after you close it.',
+      'And now that you speak apt, you can do the other half of the job nobody '
+        + 'thanks you for: keeping things patched. "apt update" tells you how '
+        + 'many packages are behind, and how many of those are security. "apt '
+        + 'list --upgradable" names them. "apt upgrade" brings them current. '
+        + 'There is always a security update waiting - there always is - and now '
+        + 'clearing it is a thing you do, not a thing you read about.',
+      'One small honesty: "unattended-upgrades" is not a command you run and '
+        + 'watch, it is a thing that already happened while you slept, and its '
+        + 'record is in a log. So the box points you at the log instead of '
+        + 'pretending to run it - because a tool that lied about what it does '
+        + 'would be worse than one that admits it keeps its receipts elsewhere.',
+    ]),
+  },
+  {
     version: '0.19.0',
     date: '2026-08-07',
     summary: 'This update gives you the three outages every engineer meets.',
