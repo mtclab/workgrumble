@@ -31,6 +31,31 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.17.0',
+    date: '2026-08-07',
+    summary: 'This update wakes you up at three in the morning.',
+    lines: Object.freeze([
+      'Being an engineer is not a nine-to-five - you carry the pager now. On an '
+        + 'on-call night, a service can go down while you sleep, and you get '
+        + 'paged: SEV-1, the reverse proxy in front of the portal is dead on '
+        + 'FC-RMM-01, and it is 3am, and it is yours. It waits for you on the '
+        + 'morning brief with one button - a way to the terminal - and you do '
+        + 'what you now know how to do: ssh in, read the unit, read the journal, '
+        + 'restart it, and the portal comes back. Nobody thanks you. You go back '
+        + 'to sleep.',
+      'And here is the part the job actually teaches: not every page is a fire. '
+        + 'Some clear themselves before you have even found your glasses - a '
+        + 'flap, a blip, a check that failed once and passed the next minute. '
+        + 'The trick, the whole trick, is telling the fire from the flap at 3am '
+        + 'without scrambling for every one and without sleeping through the one '
+        + 'that matters. A page you jumped on that settled itself is a night\'s '
+        + 'sleep spent for nothing. A real one you slept through is downtime, '
+        + 'and it reads at the review.',
+      'You are not measured on tickets any more. You are measured on whether the '
+        + 'things stayed up - and, tonight, on whether you woke up.',
+    ]),
+  },
+  {
     version: '0.16.0',
     date: '2026-08-06',
     summary: 'This update gives you the rest of the terminal, and is honest '
