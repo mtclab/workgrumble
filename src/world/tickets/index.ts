@@ -4,6 +4,7 @@ import type {
   TicketDef,
 } from '../../engine-api';
 import {
+  FS_ACTION_IDS,
   HELPDESK_ACTION_IDS,
   INCIDENT_ACTION_IDS,
   SYSTEMD_ACTION_IDS,
@@ -132,6 +133,9 @@ const KNOWN_ACTION_IDS: ReadonlySet<string> = new Set<string>([
   // The characteristic-incident fixes (E6, 0.19.0): a fix path vacuums a runaway
   // journal, renews an expired cert, or files the blameless postmortem.
   ...INCIDENT_ACTION_IDS,
+  // The filesystem-permission verbs (E6, 0.21.0): the permission-denied fix path
+  // chowns/chmods a config file readable before it restarts the unit.
+  ...FS_ACTION_IDS,
   ...Object.values(DEMO_ACTIONS),
 ]);
 

@@ -200,6 +200,17 @@ export const MSP_IDS = {
    * restart, and the incident closes on the blameless postmortem.
    */
   mspInfraWorkerUnit: 'unit:fc-rmm-01/fcworker.service',
+  /**
+   * The auth service and its secret env file the permission-denied incident is
+   * about (E6, 0.21.0): fcauth.service reads /etc/fcauth/auth.env at startup, and
+   * both are BUILT by the incident's own setup (the unit `failed`, the file owned
+   * wrong) rather than seeded - so FC-RMM-01 is byte-identical until the promotion
+   * raises it. A bad deploy left the env file `600 root:root` where the fcauth
+   * service account needs read, so the service fails with "Permission denied"; the
+   * fix is chown/chmod the file readable, then systemctl restart.
+   */
+  mspInfraAuthUnit: 'unit:fc-rmm-01/fcauth.service',
+  mspInfraAuthConfig: 'file:fc-rmm-01/etc/fcauth/auth.env',
 
   /**
    * Nadia Fontaine's practice manager contact at the law firm - the person who

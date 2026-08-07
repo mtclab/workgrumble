@@ -48,8 +48,11 @@ const MSP_CARRY = {
 const DISK = 'ticket:syseng-disk-full';
 const CERT = 'ticket:syseng-cert-expiry';
 const DEPLOY = 'ticket:syseng-failed-deploy';
+const PERM = 'ticket:syseng-permission-denied';
 const WORKER = MSP_IDS.mspInfraWorkerUnit;
 const NGINX = MSP_IDS.mspInfraNginxUnit;
+const AUTH = MSP_IDS.mspInfraAuthUnit;
+const AUTHCFG = MSP_IDS.mspInfraAuthConfig;
 
 interface Rig {
   readonly session: WorldSession;
@@ -152,6 +155,11 @@ describe('the characteristic incidents, on the real path (E6, 0.19.0)', () => {
       expect(session.engine.graph.getNode(DISK)).toBeUndefined();
       expect(session.engine.graph.getNode(CERT)).toBeUndefined();
       expect(session.engine.graph.getNode(DEPLOY)).toBeUndefined();
+      expect(session.engine.graph.getNode(PERM)).toBeUndefined();
+      // The auth unit and its config file are BUILT by the permission incident,
+      // so with no incident there is neither - the box is as it was before 0.21.0.
+      expect(session.engine.graph.getNode(AUTH)).toBeUndefined();
+      expect(session.engine.graph.getNode(AUTHCFG)).toBeUndefined();
       // The worker unit is built by the failed-deploy incident, so with no
       // incident there is no such unit - the box is as it was before 0.19.0.
       expect(session.engine.graph.getNode(WORKER)).toBeUndefined();
@@ -355,6 +363,80 @@ describe('the characteristic incidents, on the real path (E6, 0.19.0)', () => {
       const pm = run(api, s, 'postmortem file fcworker');
       expect(pm).toContain('still down');
       expect(session.engine.ticketState(DEPLOY)).toBe('open');
+    });
+  });
+
+  describe('slice 4 - the permission-denied incident (chmod/chown + restart)', () => {
+    it('diagnoses the wrong-mode config and fixes it, on the real path', () => {
+      const rigged = rig();
+      promoteAndRaise(rigged);
+      const { session, api } = rigged;
+      const s = ssh(api);
+
+      // The real state: the auth service failed, and the journal names the denied
+      // path - not a crash, a file it cannot read.
+      expect(field(session, AUTH, FIELDS.unitState)).toBe(SYSTEMD_STATES.failed);
+      expect(run(api, s, 'journalctl -u fcauth')).toContain('Permission denied');
+
+      // ls -la shows the wrong owner and mode - readable only by root.
+      const before = run(api, s, 'ls -la /etc/fcauth/auth.env');
+      expect(before).toContain('-rw-------');
+      expect(before).toContain('root');
+      expect(before).toContain('auth.env');
+
+      // A restart BEFORE the fix fails again and does not close the incident - the
+      // fix is the permission, not the retry.
+      expect(session.engine.ticketState(PERM)).toBe('open');
+      expect(run(api, s, 'systemctl restart fcauth'))
+        .toContain('Job for fcauth.service failed');
+      expect(field(session, AUTH, FIELDS.unitState)).toBe(SYSTEMD_STATES.failed);
+      expect(session.engine.ticketState(PERM)).toBe('open');
+
+      // Fix the owner and the bits, least privilege - the group reads, the world
+      // does not - then restart. Now it comes up and the ticket closes.
+      expect(run(api, s, 'chown root:fcauth /etc/fcauth/auth.env')).toBe('');
+      expect(run(api, s, 'chmod 640 /etc/fcauth/auth.env')).toBe('');
+      // ls -la reflects the fix - it reads the fields chown/chmod wrote.
+      const after = run(api, s, 'ls -la /etc/fcauth/auth.env');
+      expect(after).toContain('-rw-r-----');
+      expect(after).toContain('fcauth');
+
+      expect(run(api, s, 'systemctl restart fcauth')).toBe('');
+      expect(field(session, AUTH, FIELDS.unitState))
+        .toBe(SYSTEMD_STATES.activeRunning);
+      expect(session.engine.ticketState(PERM)).toBe('resolved');
+    });
+
+    it('chmod/chown write the real fields ls -la reads - no drift (teeth)', () => {
+      const rigged = rig();
+      promoteAndRaise(rigged);
+      const { session, api } = rigged;
+      const s = ssh(api);
+
+      run(api, s, 'chmod 604 /etc/fcauth/auth.env');
+      // The listing follows the field, not an invented column.
+      expect(field(session, AUTHCFG, FIELDS.fsMode)).toBe('604');
+      expect(run(api, s, 'ls -la /etc/fcauth/auth.env')).toContain('-rw----r--');
+    });
+
+    it('flipped healthy, the restart is not blocked and there is nothing to fix (teeth)', () => {
+      const rigged = rig();
+      promoteAndRaise(rigged);
+      const { session, api } = rigged;
+      const s = ssh(api);
+
+      // Make the file readable by the service account from the start: the gate is
+      // the wrong permission and nothing else, so now there is no block.
+      session.engine.applySetup([
+        { op: 'setField', id: AUTHCFG, field: FIELDS.fsOwner, value: 'root' },
+        { op: 'setField', id: AUTHCFG, field: FIELDS.fsGroup, value: 'fcauth' },
+        { op: 'setField', id: AUTHCFG, field: FIELDS.fsMode, value: '640' },
+      ]);
+
+      expect(run(api, s, 'systemctl restart fcauth')).toBe('');
+      expect(field(session, AUTH, FIELDS.unitState))
+        .toBe(SYSTEMD_STATES.activeRunning);
+      expect(session.engine.ticketState(PERM)).toBe('resolved');
     });
   });
 });

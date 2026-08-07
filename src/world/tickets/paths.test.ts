@@ -267,6 +267,9 @@ describe('shipped tickets', () => {
       'ticket:syseng-disk-full',
       'ticket:syseng-cert-expiry',
       'ticket:syseng-failed-deploy',
+      // The permission-denied incident (E6, 0.21.0): a service down on a
+      // wrong-owned config file - chown/chmod it readable, then restart.
+      'ticket:syseng-permission-denied',
     ]);
   });
 

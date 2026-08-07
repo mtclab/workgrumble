@@ -29,6 +29,7 @@ import {
   CAREER_ACTIONS,
   CHANGE_ACTIONS,
   DAY_ACTIONS,
+  FS_ACTIONS,
   HELPDESK_ACTIONS,
   INCIDENT_ACTIONS,
   REQUEST_ACTIONS,
@@ -2558,6 +2559,80 @@ const ENTRIES = [
     run: 'sysadmin',
     why: 'It is a unix-dialect verb, so it only exists inside an ssh session the '
       + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.id',
+    surface: 'cmd',
+    control: 'id [<user>]',
+    does: 'Prints a user\'s identity on the box (0.21.0) in the real '
+      + 'uid=1000(user) gid=1000(user) groups=1000(user),4(adm),27(sudo) shape: '
+      + 'bare id is the ssh login, id <name> is that user, read off the box\'s '
+      + 'derived user set (root, the daemons\' service accounts, the login), with '
+      + 'the honest "no such user" for one the box does not have.',
+    command: 'id',
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.whoami.unix',
+    surface: 'cmd',
+    control: 'whoami',
+    does: 'Prints just the login name of the ssh session (0.21.0) - the family '
+      + 'difference from the Windows whoami\'s domain\\user, a Linux box answers '
+      + 'the bare login and nothing else.',
+    command: 'whoami',
+    run: 'sysadmin',
+    why: 'The unix whoami is its own verb inside the ssh session - the Windows '
+      + 'desktop whoami (cmd.whoami) is the desk-tier one; the bare-login shape '
+      + 'lives past the promotion the server tier is behind.',
+  },
+  {
+    id: 'cmd.getent',
+    surface: 'cmd',
+    control: 'getent passwd [<user>]',
+    does: 'Reads the box\'s user database (0.21.0) in /etc/passwd\'s exact '
+      + '7-colon-field shape (name:x:uid:gid:gecos:home:shell): getent passwd '
+      + 'lists every account, getent passwd root is the one line, and a name the '
+      + 'box does not have is the honest empty answer - off the same derived user '
+      + 'set id reads.',
+    command: 'getent',
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.chmod',
+    surface: 'cmd',
+    control: 'chmod <mode> <path>',
+    does: 'Rewrites a file\'s permission bits (0.21.0), octal (640) or symbolic '
+      + '(g+r, applied to the current mode), writing the SAME fs_mode field ls -la '
+      + 'renders to the -rw-r----- column - so a listing after it reflects the '
+      + 'change with no drift. Silent on success. The fix half of the '
+      + 'permission-denied incident; the Windows family has no octal-permission '
+      + 'concept.',
+    command: 'chmod',
+    actions: [FS_ACTIONS.chmod],
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks - only a Systems Engineer changes a file\'s mode on a '
+      + 'server.',
+  },
+  {
+    id: 'cmd.chown',
+    surface: 'cmd',
+    control: 'chown <owner[:group]> <path>',
+    does: 'Rewrites a file\'s owner and group (0.21.0), writing the SAME '
+      + 'fs_owner/fs_group fields ls -la reads, validated against the box\'s real '
+      + 'user set (a chown to a user the box does not have is refused). A bare '
+      + 'chown user leaves the group; chown user:group sets both. Silent on '
+      + 'success. The other half of the permission-denied fix.',
+    command: 'chown',
+    actions: [FS_ACTIONS.chown],
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks - only a Systems Engineer changes a file\'s owner on a '
+      + 'server.',
   },
   {
     id: 'cmd.ss',

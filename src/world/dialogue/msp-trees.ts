@@ -930,6 +930,7 @@ const MORGAN: DialogueTree = {
     'ticket:syseng-disk-full',
     'ticket:syseng-cert-expiry',
     'ticket:syseng-failed-deploy',
+    'ticket:syseng-permission-denied',
   ],
   root: 'portal',
   roots: {
@@ -937,12 +938,14 @@ const MORGAN: DialogueTree = {
     'ticket:syseng-disk-full': 'disk',
     'ticket:syseng-cert-expiry': 'cert',
     'ticket:syseng-failed-deploy': 'deploy',
+    'ticket:syseng-permission-denied': 'perm',
   },
   resolved_roots: {
     'ticket:syseng-first-incident': 'portal-done',
     'ticket:syseng-disk-full': 'disk-done',
     'ticket:syseng-cert-expiry': 'cert-done',
     'ticket:syseng-failed-deploy': 'deploy-done',
+    'ticket:syseng-permission-denied': 'perm-done',
   },
   nodes: [
     {
@@ -1101,6 +1104,48 @@ const MORGAN: DialogueTree = {
       npc_line: 'Worker is back and the postmortem reads clean - the system, not '
         + 'a name. That is the professional move, and it is how we stop the next '
         + 'one. Good work.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'perm',
+      npc_line: 'Portal logins are failing - the auth service is down, and it is '
+        + 'not a crash. This afternoon\'s deploy touched a file. Have a look at why '
+        + 'it will not start before you go restarting it.',
+      options: [
+        {
+          label: 'Ask what a deploy has to do with it',
+          next: 'perm-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read why it will not start',
+          effects: [
+            {
+              reveal: 'journalctl shows it dying on "Permission denied" reading '
+                + '/etc/fcauth/auth.env. The deploy left the file owned root:root '
+                + 'mode 600, so the fcauth service account cannot read it. ls -la '
+                + 'shows it; chown root:fcauth and chmod 640 make it readable, then '
+                + 'restart. Half of Linux breakage is a permission bit.',
+            },
+          ],
+        },
+        { label: 'Tell him you are on it' },
+      ],
+    },
+    {
+      id: 'perm-q',
+      npc_line: 'Because the deploy re-copied the config as root-only, and a '
+        + 'service that cannot read its own config will not start. Nothing crashed '
+        + 'and nothing in the app is wrong - a permission bit is. ls -la the file, '
+        + 'chown/chmod it so the service account can read it, then restart. A '
+        + 'restart before the file is readable just fails again.',
+      options: [{ label: 'ssh in and ls -la the file' }],
+    },
+    {
+      id: 'perm-done',
+      npc_line: 'Auth is back and logins are flowing. A wrong owner and a wrong '
+        + 'mode, nothing more - and the fix was least privilege, the group reads '
+        + 'and the world does not. Good work.',
       options: [{ label: 'Log the fix' }],
     },
   ],

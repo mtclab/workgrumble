@@ -1119,3 +1119,185 @@ function carryFor(tier: PlayerTier): Parameters<typeof createWorldSession>[0] {
     playerTier: tier,
   };
 }
+
+describe('identity and permissions (E6, 0.21.0)', () => {
+  describe('id / whoami / getent - who is on the box', () => {
+    it('whoami is the bare login, not the Windows domain\\user shape', () => {
+      const { api, ssh } = onMsp();
+      // The unix whoami answers the ssh login and nothing else - the family
+      // difference from the desktop whoami's workgrumble\\pat.
+      expect(unix(api, ssh, 'whoami').lines).toEqual(['pat']);
+    });
+
+    it('id prints the real uid/gid/groups shape, sudo and all', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'id').lines.join('\n');
+
+      expect(out).toBe('uid=1000(pat) gid=1000(pat) groups=1000(pat),4(adm),'
+        + '27(sudo)');
+    });
+
+    it('id <user> reads root off the box - uid=0(root)', () => {
+      const { api, ssh } = onMsp();
+      expect(unix(api, ssh, 'id root').lines.join('\n'))
+        .toBe('uid=0(root) gid=0(root) groups=0(root)');
+    });
+
+    it('id refuses a user the box does not have, the real way', () => {
+      const { api, ssh } = onMsp();
+      expect(unix(api, ssh, 'id nobodyhere').lines.join('\n'))
+        .toBe("id: 'nobodyhere': no such user");
+    });
+
+    it('getent passwd <user> is the 7 colon-fields of /etc/passwd', () => {
+      const { api, ssh } = onMsp();
+      expect(unix(api, ssh, 'getent passwd root').lines.join('\n'))
+        .toBe('root:x:0:0:root:/root:/bin/bash');
+      // Seven fields, exactly - name:x:uid:gid:gecos:home:shell.
+      expect(unix(api, ssh, 'getent passwd root').lines[0]?.split(':'))
+        .toHaveLength(7);
+    });
+
+    it('getent reads the REAL user set - the box\'s units drive it (teeth)', () => {
+      const { api, ssh } = onMsp();
+      const all = unix(api, ssh, 'getent passwd').lines.join('\n');
+
+      // The base account, the login, the daemons that run here (nginx -> www-data)
+      // and the service account of a unit ON this box (fcauth, built by the
+      // permission incident) are all present because they are read off the estate.
+      expect(all).toContain('root:x:0:0:');
+      expect(all).toContain('pat:x:1000:1000:');
+      expect(all).toContain('www-data:x:33:33:');
+      expect(all).toContain('fcauth:x:');
+      // A service account for a unit that is NOT on this box does not appear -
+      // the set is derived, not a fixed catalogue.
+      expect(all).not.toContain('grumbleapp:x:');
+      expect(unix(api, ssh, 'getent passwd fcauth').lines[0])
+        .toContain(':/usr/sbin/nologin');
+    });
+
+    it('getent answers only the passwd database it models', () => {
+      const { api, ssh } = onMsp();
+      expect(unix(api, ssh, 'getent group root').lines.join('\n'))
+        .toContain('getent passwd');
+    });
+  });
+
+  describe('chmod / chown + ls -la - the rwx model, no drift', () => {
+    it('ls -la reads the wrong mode/owner off the incident file', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'ls -la /etc/fcauth/auth.env').lines.join('\n');
+
+      // The bad deploy's state: readable only by root.
+      expect(out).toContain('-rw-------');
+      expect(out).toContain('root');
+      expect(out).toContain('auth.env');
+    });
+
+    it('chmod writes the field ls -la reads - the listing follows it (no drift)', () => {
+      const { world, api, ssh } = onMsp();
+
+      expect(unix(api, ssh, 'chmod 640 /etc/fcauth/auth.env').lines).toEqual([]);
+      // ls -la reflects the chmod - it reads the field the chmod wrote.
+      expect(unix(api, ssh, 'ls -la /etc/fcauth/auth.env').lines.join('\n'))
+        .toContain('-rw-r-----');
+      // And the field itself is the octal the chmod wrote.
+      expect(world.engine.graph.getField(MSP_IDS.mspInfraAuthConfig, FIELDS.fsMode))
+        .toBe('640');
+    });
+
+    it('chmod is symbolic too - g+r on 600 is 640', () => {
+      const { api, ssh } = onMsp();
+      unix(api, ssh, 'chmod g+r /etc/fcauth/auth.env');
+      expect(unix(api, ssh, 'ls -la /etc/fcauth/auth.env').lines.join('\n'))
+        .toContain('-rw-r-----');
+    });
+
+    it('chown rewrites owner and group, and ls -la shows it', () => {
+      const { api, ssh } = onMsp();
+      unix(api, ssh, 'chown root:fcauth /etc/fcauth/auth.env');
+      const out = unix(api, ssh, 'ls -la /etc/fcauth/auth.env').lines.join('\n');
+      expect(out).toContain('root');
+      expect(out).toContain('fcauth');
+    });
+
+    it('chmod writes the real field - flip it and the listing changes (teeth)', () => {
+      const { api, ssh } = onMsp();
+
+      const before = unix(api, ssh, 'ls -la /etc/fcauth/auth.env').lines.join('\n');
+      expect(before).toContain('-rw-------');
+
+      // A different mode gives a different listing - ls reads what chmod wrote,
+      // not an invented column.
+      unix(api, ssh, 'chmod 604 /etc/fcauth/auth.env');
+      const after = unix(api, ssh, 'ls -la /etc/fcauth/auth.env').lines.join('\n');
+      expect(after).toContain('-rw----r--');
+      expect(after).not.toBe(before);
+    });
+
+    it('chown refuses a user the box does not have (the real error)', () => {
+      const { api, ssh } = onMsp();
+      expect(unix(api, ssh, 'chown ghost:ghost /etc/fcauth/auth.env')
+        .lines.join('\n')).toContain('invalid user');
+    });
+
+    it('chmod on a path the box does not hold is No such file', () => {
+      const { api, ssh } = onMsp();
+      expect(unix(api, ssh, 'chmod 640 /etc/nope/gone.env').lines.join('\n'))
+        .toContain('No such file or directory');
+    });
+  });
+
+  describe('the permission gate on systemctl restart', () => {
+    it('restart is REFUSED while the file is unreadable, and the unit stays down', () => {
+      const { world, api, ssh } = onMsp();
+
+      // The unit is failed on the wrong permission.
+      expect(world.engine.graph.getField(MSP_IDS.mspInfraAuthUnit, FIELDS.unitState))
+        .toBe(SYSTEMD_STATES.failed);
+
+      const blocked = unix(api, ssh, 'systemctl restart fcauth').lines.join('\n');
+      expect(blocked).toContain('Job for fcauth.service failed');
+      // Not a retry: the unit is STILL failed, because the shell never dispatched.
+      expect(world.engine.graph.getField(MSP_IDS.mspInfraAuthUnit, FIELDS.unitState))
+        .toBe(SYSTEMD_STATES.failed);
+    });
+
+    it('once the file is made readable, the SAME restart brings it up (teeth)', () => {
+      const { world, api, ssh } = onMsp();
+
+      // Fix the owner and the bits so the service account can read it.
+      unix(api, ssh, 'chown root:fcauth /etc/fcauth/auth.env');
+      unix(api, ssh, 'chmod 640 /etc/fcauth/auth.env');
+
+      // Now the restart is silent-on-success and the unit comes up.
+      expect(unix(api, ssh, 'systemctl restart fcauth').lines).toEqual([]);
+      expect(world.engine.graph.getField(MSP_IDS.mspInfraAuthUnit, FIELDS.unitState))
+        .toBe(SYSTEMD_STATES.activeRunning);
+    });
+
+    it('a healthy file has no block - the gate is the wrong-mode, nothing else', () => {
+      const { world, api, ssh } = onMsp();
+
+      // Flip the file healthy from the start: no wrong mode to diagnose.
+      world.engine.applySetup([
+        {
+          op: 'setField',
+          id: MSP_IDS.mspInfraAuthConfig,
+          field: FIELDS.fsGroup,
+          value: 'fcauth',
+        },
+        {
+          op: 'setField',
+          id: MSP_IDS.mspInfraAuthConfig,
+          field: FIELDS.fsMode,
+          value: '640',
+        },
+      ]);
+
+      expect(unix(api, ssh, 'systemctl restart fcauth').lines).toEqual([]);
+      expect(world.engine.graph.getField(MSP_IDS.mspInfraAuthUnit, FIELDS.unitState))
+        .toBe(SYSTEMD_STATES.activeRunning);
+    });
+  });
+});

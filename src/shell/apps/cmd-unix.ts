@@ -30,6 +30,10 @@ import {
   APT_ACTIONS,
   APT_PACKAGE_PARAM,
   CAREER_ACTIONS,
+  FS_ACTIONS,
+  FS_GROUP_PARAM,
+  FS_MODE_PARAM,
+  FS_OWNER_PARAM,
   INCIDENT_ACTIONS,
   PROMOTION_REPUTATION,
   SSH_HOST_PARAM,
@@ -168,6 +172,47 @@ export const UNIX_COMMANDS: readonly CommandSpec[] = [
     summary: 'List a directory the long way: mode, owner, group, size, mtime.',
     minArgs: 0,
     maxArgs: 4,
+    joined: false,
+  },
+  {
+    name: 'id',
+    usage: 'id [<user>]',
+    summary: 'Print a user\'s uid, gid and groups - the box\'s own identity.',
+    minArgs: 0,
+    maxArgs: 1,
+    joined: false,
+  },
+  {
+    name: 'whoami',
+    usage: 'whoami',
+    summary: 'Print the login name of the user this ssh session is running as.',
+    minArgs: 0,
+    maxArgs: 0,
+    joined: false,
+  },
+  {
+    name: 'getent',
+    usage: 'getent passwd [<user>]',
+    summary: 'Read the box\'s user database: the 7 colon-fields of /etc/passwd.',
+    minArgs: 1,
+    maxArgs: 2,
+    joined: false,
+    subcommand: true,
+  },
+  {
+    name: 'chmod',
+    usage: 'chmod <mode> <path>',
+    summary: 'Change a file\'s permission bits - octal 640 or symbolic g+r.',
+    minArgs: 2,
+    maxArgs: 3,
+    joined: false,
+  },
+  {
+    name: 'chown',
+    usage: 'chown <owner[:group]> <path>',
+    summary: 'Change a file\'s owner (and group) - the fix for a wrong owner.',
+    minArgs: 2,
+    maxArgs: 3,
     joined: false,
   },
   {
@@ -749,6 +794,20 @@ function lsLines(
   const user = session.username;
   const when = lsDate(api.clock.now());
 
+  // A path that names a seeded file/dir on the box lists it the long way (E6,
+  // 0.21.0) - the mode/owner/group a chmod/chown then rewrites. A path the world
+  // holds nothing for falls through to the shape-proving home listing below, so
+  // a bare `ls -la` and browsing an unseeded box are byte-identical to before.
+  const pathArg = args.find((arg) => !arg.startsWith('-'));
+
+  if (pathArg !== undefined) {
+    const listed = lsPathLines(api, session, pathArg, all, when);
+
+    if (listed !== null) {
+      return listed;
+    }
+  }
+
   if (!long) {
     // Without -l it is bare names in columns; without -a the dotfiles are
     // hidden, so the home directory the world holds is, for now, empty.
@@ -878,6 +937,22 @@ function systemctlVerbLines(
 
   if (!gate.allowed) {
     return lines(...gate.lines);
+  }
+
+  // The permission gate (E6, 0.21.0): a unit that needs to READ a config/key
+  // file cannot come up while that file is not readable by its service account -
+  // a real box refuses the start and systemd reports it failed, so `restart`/
+  // `start` here refuse the same way and leave the unit down. The fix is not a
+  // retry: it is chmod/chown on the file, then this. `stop` is exempt - you can
+  // always take a unit down. The gate reads the SAME fs fields `ls -la` shows, so
+  // the diagnosis and the block agree, and an ordinary unit (no `requires_file`)
+  // never reaches it and restarts as before.
+  if (action !== SYSTEMD_ACTIONS.unitStop) {
+    const blocked = permissionBlockingStart(api, unit);
+
+    if (blocked !== null) {
+      return blocked;
+    }
   }
 
   const result = api.dispatch(action, api.actor, unit.id, {});
@@ -2644,6 +2719,698 @@ function postmortemUnixLines(
   return lines(...api.day.filePostmortem(unit.id));
 }
 
+/* -- id / whoami / getent: who is on the box (E6, 0.21.0) ----------------- */
+
+/**
+ * One entry in the box's user database - a row of /etc/passwd, plus the group
+ * membership `id` prints. Derived from the box, never seeded: a Linux box's user
+ * set is a real function of what runs on it (the daemons' service accounts) and
+ * who logged in (the ssh session), so it reads off the estate the way `ps aux`
+ * and `ss` do rather than adding a field every existing world would have to carry.
+ */
+interface PasswdEntry {
+  readonly name: string;
+  readonly uid: number;
+  readonly gid: number;
+  /** The primary group's name, for the `gid=G(name)` id column. */
+  readonly group: string;
+  readonly gecos: string;
+  readonly home: string;
+  readonly shell: string;
+  /** Primary + supplementary groups, the `groups=` list `id` prints. */
+  readonly groups: readonly (readonly [number, string])[];
+}
+
+/**
+ * The real service account each stock daemon runs as: nginx is `www-data`,
+ * postgres is `postgres`, and the base plumbing (cron, sshd, journald) is root.
+ * A product unit that is not one of these runs as its OWN account, named after
+ * the unit - the convention a real deployment follows and the one `ps aux`
+ * already splits on.
+ */
+const DAEMON_USERS: Readonly<Record<string, string>> = {
+  nginx: 'www-data',
+  cron: 'root',
+  ssh: 'root',
+  sshd: 'root',
+  'systemd-journald': 'root',
+  postgresql: 'postgres',
+};
+
+/** The account a unit's daemon runs as - a real service user, off the unit name. */
+function serviceUserOf(node: Readonly<ReadOnlyGraphNode>): string {
+  const base = unitBase(node);
+  const postgres = base.startsWith('postgresql@') ? 'postgres' : undefined;
+
+  return postgres ?? DAEMON_USERS[base] ?? base;
+}
+
+/** Every unit on the box the session stands on, running or not, id-sorted. */
+function unitsOnBox(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): readonly ReadOnlyGraphNode[] {
+  return api.graph
+    .neighbors(session.hostId, { direction: 'in', edgeKind: 'runs_on' })
+    .filter((node) => node.kind === 'unit')
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+/** A stable, plausible sysuser uid for a service account (adduser --system range). */
+function serviceUid(name: string): number {
+  return 900 + (stableHash(`${name}:uid`) % 90);
+}
+
+/**
+ * The box's user database, derived from the estate: the base system accounts
+ * every Ubuntu box carries (root, daemon, nobody), the service accounts of the
+ * daemons that actually run on THIS box (www-data if nginx is here, postgres if
+ * postgresql is, and a dedicated account per product unit), and the login user
+ * the ssh session is running as. Deterministic and off the graph - the same box
+ * always answers the same set, and a box running a different product answers a
+ * different one.
+ */
+function boxUsers(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): readonly PasswdEntry[] {
+  const login = session.username;
+  const services = new Set(unitsOnBox(api, session).map(serviceUserOf));
+
+  const entries: PasswdEntry[] = [
+    {
+      name: 'root',
+      uid: 0,
+      gid: 0,
+      group: 'root',
+      gecos: 'root',
+      home: '/root',
+      shell: '/bin/bash',
+      groups: [[0, 'root']],
+    },
+    {
+      name: 'daemon',
+      uid: 1,
+      gid: 1,
+      group: 'daemon',
+      gecos: 'daemon',
+      home: '/usr/sbin',
+      shell: '/usr/sbin/nologin',
+      groups: [[1, 'daemon']],
+    },
+  ];
+
+  if (services.has('www-data')) {
+    entries.push({
+      name: 'www-data',
+      uid: 33,
+      gid: 33,
+      group: 'www-data',
+      gecos: 'www-data',
+      home: '/var/www',
+      shell: '/usr/sbin/nologin',
+      groups: [[33, 'www-data']],
+    });
+  }
+
+  if (services.has('postgres')) {
+    entries.push({
+      name: 'postgres',
+      uid: 114,
+      gid: 120,
+      group: 'postgres',
+      gecos: 'PostgreSQL administrator',
+      home: '/var/lib/postgresql',
+      shell: '/bin/bash',
+      groups: [[120, 'postgres']],
+    });
+  }
+
+  // A dedicated service account per product unit - anything not a stock daemon
+  // and not the login user, in name order so the listing is stable.
+  const productAccounts = [...services]
+    .filter((name) => name !== 'root' && name !== 'www-data'
+      && name !== 'postgres' && name !== login)
+    .sort((left, right) => left.localeCompare(right));
+
+  for (const name of productAccounts) {
+    const uid = serviceUid(name);
+
+    entries.push({
+      name,
+      uid,
+      gid: uid,
+      group: name,
+      gecos: '',
+      home: '/nonexistent',
+      shell: '/usr/sbin/nologin',
+      groups: [[uid, name]],
+    });
+  }
+
+  entries.push({
+    name: 'nobody',
+    uid: 65534,
+    gid: 65534,
+    group: 'nobody',
+    gecos: 'nobody',
+    home: '/nonexistent',
+    shell: '/usr/sbin/nologin',
+    groups: [[65534, 'nobody']],
+  });
+
+  // The human at the keyboard - the ssh login, a real user with a home and a
+  // shell, and a sudoer (they ssh in to work the box, and apt needs it).
+  entries.push({
+    name: login,
+    uid: 1000,
+    gid: 1000,
+    group: login,
+    gecos: '',
+    home: `/home/${login}`,
+    shell: '/bin/bash',
+    groups: [[1000, login], [4, 'adm'], [27, 'sudo']],
+  });
+
+  return entries;
+}
+
+/** The passwd entry for a named user on the box, or null. */
+function userNamed(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  name: string,
+): PasswdEntry | null {
+  const needle = name.trim();
+
+  return boxUsers(api, session).find((entry) => entry.name === needle) ?? null;
+}
+
+/** The `id` line for one user: uid, gid and the groups list, in id's shape. */
+function idLineFor(entry: Readonly<PasswdEntry>): string {
+  const groups = entry.groups
+    .map(([gid, name]) => `${String(gid)}(${name})`)
+    .join(',');
+
+  return `uid=${String(entry.uid)}(${entry.name}) gid=${String(entry.gid)}(${
+    entry.group
+  }) groups=${groups}`;
+}
+
+/**
+ * `id [<user>]` - who a user is on this box, at fidelity: the real
+ * `uid=1000(user) gid=1000(user) groups=1000(user),4(adm),27(sudo)` shape. Bare
+ * `id` is the ssh session's own login; `id <name>` is that user, read off the
+ * box's derived user set, with the real `id: 'x': no such user` for one the box
+ * does not have.
+ */
+function idLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  query: string,
+): CommandResult {
+  const name = query.trim();
+  const entry = name.length === 0
+    ? userNamed(api, session, session.username)
+    : userNamed(api, session, name);
+
+  if (entry === null) {
+    return lines(`id: '${name}': no such user`);
+  }
+
+  return lines(idLineFor(entry));
+}
+
+/**
+ * `whoami` (unix) - just the login name, and a family difference from the
+ * Windows whoami's `domain\user`: a Linux box answers the bare login the ssh
+ * session is running as, nothing else.
+ */
+function unixWhoamiLines(session: Readonly<SshSession>): CommandResult {
+  return lines(session.username);
+}
+
+/** The 7 colon-fields of one /etc/passwd line: name:x:uid:gid:gecos:home:shell. */
+function passwdLine(entry: Readonly<PasswdEntry>): string {
+  return `${entry.name}:x:${String(entry.uid)}:${String(entry.gid)}:${
+    entry.gecos
+  }:${entry.home}:${entry.shell}`;
+}
+
+/**
+ * `getent passwd [<user>]` - the box's user database in /etc/passwd's exact
+ * 7-colon-field shape. `getent passwd` lists every account; `getent passwd root`
+ * is the one line for that user, and a name the box does not have is the honest
+ * empty answer getent gives (no output, the way its non-zero exit reads on a
+ * terminal). Only the `passwd` database is answered here - the box's user set is
+ * the one this slice models.
+ */
+function getentLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  database: string,
+  query: string,
+): CommandResult {
+  if (database !== 'passwd') {
+    return lines(
+      `getent: this terminal answers "getent passwd" - the box's user database. `
+        + `"${database}" is a database it does not model here.`,
+    );
+  }
+
+  const users = boxUsers(api, session);
+  const name = query.trim();
+
+  if (name.length === 0) {
+    return lines(...users.map(passwdLine));
+  }
+
+  const entry = users.find((user) => user.name === name);
+
+  return entry === undefined
+    ? { lines: [], clear: false }
+    : lines(passwdLine(entry));
+}
+
+/* -- the Linux filesystem: mode / owner / group (E6, 0.21.0) --------------- */
+
+/** The mode a file/dir carries if the world holds none - a sensible ext4 default. */
+function modeOf(node: Readonly<ReadOnlyGraphNode>): string {
+  const seeded = textValue(node.fields[FIELDS.fsMode], '');
+
+  if (seeded.length > 0) {
+    return seeded;
+  }
+
+  return node.kind === 'directory' ? '755' : '644';
+}
+
+/** The owner a file/dir carries, defaulting to root the way a fresh file does. */
+function ownerOf(node: Readonly<ReadOnlyGraphNode>): string {
+  return textValue(node.fields[FIELDS.fsOwner], 'root');
+}
+
+/** The group a file/dir carries, defaulting to root. */
+function groupOf(node: Readonly<ReadOnlyGraphNode>): string {
+  return textValue(node.fields[FIELDS.fsGroup], 'root');
+}
+
+/** The last path segment - the name `ls` prints for an entry. */
+function basename(path: string): string {
+  const trimmed = path.endsWith('/') ? path.slice(0, -1) : path;
+  const at = trimmed.lastIndexOf('/');
+
+  return at >= 0 ? trimmed.slice(at + 1) : trimmed;
+}
+
+/** A file's size in bytes, derived and stable off its path - deterministic. */
+function fileSize(node: Readonly<ReadOnlyGraphNode>): number {
+  if (node.kind === 'directory') {
+    return 4096;
+  }
+
+  const path = textValue(node.fields[FIELDS.path], node.id);
+
+  return 200 + (stableHash(`${path}:size`) % 600);
+}
+
+/** Whether a mode string is octal (`640`, `0640`) rather than symbolic (`g+r`). */
+function isOctalMode(mode: string): boolean {
+  return /^[0-7]{3,4}$/u.test(mode.trim());
+}
+
+/** The three permission digits of a mode string, owner/group/other. */
+function modeDigits(mode: string): [number, number, number] {
+  const octal = mode.trim().slice(-3).padStart(3, '0');
+
+  return [
+    Number.parseInt(octal[0] ?? '0', 8) || 0,
+    Number.parseInt(octal[1] ?? '0', 8) || 0,
+    Number.parseInt(octal[2] ?? '0', 8) || 0,
+  ];
+}
+
+/**
+ * A mode as `ls -la` renders it: the type char (`-` file, `d` directory) and
+ * three rwx triads read off the octal digits. `640` on a file is `-rw-r-----`.
+ */
+function octalToSymbolic(mode: string, isDir: boolean): string {
+  const triad = (digit: number): string => `${(digit & 4) === 4 ? 'r' : '-'}${
+    (digit & 2) === 2 ? 'w' : '-'
+  }${(digit & 1) === 1 ? 'x' : '-'}`;
+  const [owner, group, other] = modeDigits(mode);
+
+  return `${isDir ? 'd' : '-'}${triad(owner)}${triad(group)}${triad(other)}`;
+}
+
+/**
+ * A symbolic chmod (`g+r`, `u-w`, `o=rx`, comma-separated) applied to the file's
+ * CURRENT octal mode, to a new octal string - the arithmetic a real chmod does
+ * that the op language cannot, kept in the shell so the engine action stays the
+ * single write `ls -la` reads back. Null for a clause it cannot parse, which the
+ * caller reports as chmod's own `invalid mode`.
+ */
+function applySymbolic(current: string, spec: string): string | null {
+  const digits = modeDigits(current);
+  const clauses = spec.split(',').map((clause) => clause.trim());
+
+  for (const clause of clauses) {
+    const match = /^([ugoa]*)([+\-=])([rwx]*)$/u.exec(clause);
+
+    if (match === null) {
+      return null;
+    }
+
+    const who = (match[1] ?? '').length === 0 ? 'a' : (match[1] ?? '');
+    const op = match[2] ?? '+';
+    const perms = match[3] ?? '';
+    const bits = (perms.includes('r') ? 4 : 0)
+      + (perms.includes('w') ? 2 : 0)
+      + (perms.includes('x') ? 1 : 0);
+    const targets = new Set<number>();
+
+    if (who.includes('u') || who.includes('a')) {
+      targets.add(0);
+    }
+
+    if (who.includes('g') || who.includes('a')) {
+      targets.add(1);
+    }
+
+    if (who.includes('o') || who.includes('a')) {
+      targets.add(2);
+    }
+
+    for (const index of targets) {
+      const before = digits[index] ?? 0;
+      digits[index] = op === '+'
+        ? before | bits
+        : op === '-' ? before & ~bits : bits;
+    }
+  }
+
+  return `${String(digits[0] ?? 0)}${String(digits[1] ?? 0)}${
+    String(digits[2] ?? 0)
+  }`;
+}
+
+/**
+ * Whether a user can READ a file, off its mode/owner/group - the real rwx test:
+ * owner-read applies when the user IS the owner, group-read when the user is in
+ * the file's group (which, for a service account whose primary group is its own
+ * name, is when the group equals the user), else the other-read bit. The one
+ * function the permission gate reads, off the same three fields `ls -la` shows.
+ */
+function canRead(
+  user: string,
+  mode: string,
+  owner: string,
+  group: string,
+): boolean {
+  const [ownerBits, groupBits, otherBits] = modeDigits(mode);
+
+  if (user === owner) {
+    return (ownerBits & 4) === 4;
+  }
+
+  if (user === group) {
+    return (groupBits & 4) === 4;
+  }
+
+  return (otherBits & 4) === 4;
+}
+
+/** A path, trimmed and with a lone trailing slash dropped, the way ls reads one. */
+function normalizeFsPath(raw: string): string {
+  const trimmed = raw.trim();
+
+  return trimmed.length > 1 && trimmed.endsWith('/')
+    ? trimmed.slice(0, -1)
+    : trimmed;
+}
+
+/** Every file/directory node the box the session stands on holds, by volume. */
+function fsNodesOnBox(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): readonly ReadOnlyGraphNode[] {
+  const host = session.hostname.toLowerCase();
+
+  return [
+    ...api.graph.nodesOfKind('file'),
+    ...api.graph.nodesOfKind('directory'),
+  ].filter(
+    (node) => textValue(node.fields[FIELDS.volume], '').toLowerCase() === host,
+  );
+}
+
+/** The file/dir node at an exact path on the box, or null. */
+function fsNodeAt(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  path: string,
+): ReadOnlyGraphNode | null {
+  const target = normalizeFsPath(path);
+
+  return fsNodesOnBox(api, session).find(
+    (node) => textValue(node.fields[FIELDS.path], '') === target,
+  ) ?? null;
+}
+
+/** One `ls -la` row for a seeded file/dir node, in the real column shape. */
+function fsRow(node: Readonly<ReadOnlyGraphNode>, when: string): string {
+  const isDir = node.kind === 'directory';
+  const path = textValue(node.fields[FIELDS.path], node.id);
+
+  return `${octalToSymbolic(modeOf(node), isDir)} ${isDir ? '2' : '1'} ${
+    pad(ownerOf(node), 8)
+  } ${pad(groupOf(node), 8)} ${String(fileSize(node)).padStart(6, ' ')} ${
+    when
+  } ${basename(path)}`;
+}
+
+/**
+ * `ls -la <path>` over the box's seeded filesystem (E6, 0.21.0): a path that
+ * names a seeded file lists that one row, and one that names a directory (or a
+ * prefix the box holds files under) lists its entries the long way - the
+ * mode/owner/group a chmod/chown then rewrites. Null when the path names nothing
+ * the world holds, so a bare `ls -la` and browsing an unseeded box fall through
+ * to the shape-proving home listing exactly as before, and every existing world
+ * is byte-identical.
+ */
+function lsPathLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  target: string,
+  all: boolean,
+  when: string,
+): CommandResult | null {
+  const path = normalizeFsPath(target);
+  const node = fsNodeAt(api, session, path);
+  const prefix = `${path}/`;
+  const children = fsNodesOnBox(api, session)
+    .filter((child) => {
+      const childPath = textValue(child.fields[FIELDS.path], '');
+
+      if (!childPath.startsWith(prefix)) {
+        return false;
+      }
+
+      const rest = childPath.slice(prefix.length);
+
+      return rest.length > 0 && !rest.includes('/');
+    })
+    .sort((left, right) => textValue(left.fields[FIELDS.path], '')
+      .localeCompare(textValue(right.fields[FIELDS.path], '')));
+
+  // A named file, with nothing under it: `ls -la <file>` prints just its row.
+  if (node !== null && node.kind === 'file' && children.length === 0) {
+    return lines(fsRow(node, when));
+  }
+
+  // A directory (a seeded dir node, or a path the box holds files directly
+  // under): the long listing, with the dot-entries when -a is set.
+  if (node?.kind === 'directory' || children.length > 0) {
+    const dotMode = node !== null
+      ? octalToSymbolic(modeOf(node), true)
+      : HOME_MODE;
+    const owner = node !== null ? ownerOf(node) : 'root';
+    const group = node !== null ? groupOf(node) : 'root';
+    const dot = (name: string): string => `${dotMode} 2 ${pad(owner, 8)} ${
+      pad(group, 8)
+    } ${DIR_SIZE.padStart(6, ' ')} ${when} ${name}`;
+
+    return lines(
+      'total 8',
+      ...(all ? [dot('.'), dot('..')] : []),
+      ...children.map((child) => fsRow(child, when)),
+    );
+  }
+
+  return null;
+}
+
+/**
+ * The refusal a unit's `systemctl restart`/`start` gets while the config file it
+ * needs is not readable by its service account (E6, 0.21.0), or null when there
+ * is no such block. A real box's systemd reports the start failed and leaves the
+ * unit down - so this returns systemd's own job-failed message and the shell
+ * does NOT dispatch, which is what keeps the unit `failed` until the permission
+ * is fixed. The read is off the SAME fs fields `ls -la` shows, so the block and
+ * the diagnosis cannot disagree.
+ */
+function permissionBlockingStart(
+  api: GameApi,
+  unit: Readonly<ReadOnlyGraphNode>,
+): CommandResult | null {
+  const fileId = textValue(unit.fields[FIELDS.requiresFile], '');
+
+  if (fileId.length === 0) {
+    return null;
+  }
+
+  const file = api.graph.getNode(fileId);
+
+  if (file === undefined) {
+    return null;
+  }
+
+  const user = serviceUserOf(unit);
+
+  if (canRead(user, modeOf(file), ownerOf(file), groupOf(file))) {
+    return null;
+  }
+
+  const name = textValue(unit.fields[FIELDS.unitName], labelOf(unit));
+
+  return lines(
+    `Job for ${name} failed because the control process exited with error code.`,
+    `See "systemctl status ${name}" and "journalctl -xeu ${name}" for details.`,
+  );
+}
+
+/* -- chmod / chown: mutate the rwx state ls -la reads (E6, 0.21.0) --------- */
+
+/**
+ * `chmod <mode> <path>` - rewrite a file's permission bits, octal (`640`) or
+ * symbolic (`g+r`, applied to the current mode). It resolves the target file on
+ * the box, computes the new octal (the symbolic arithmetic lives here so the
+ * engine action stays a single write), and dispatches the chmod that writes the
+ * SAME `fs_mode` field `ls -la` reads - so a listing after it reflects it with no
+ * drift. Silent on success, the way a real chmod is.
+ */
+function chmodLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  args: readonly string[],
+): CommandResult {
+  const positional = args.filter((arg) => !arg.startsWith('-'));
+  const mode = (positional[0] ?? '').trim();
+  const rawPath = positional[1] ?? '';
+
+  if (mode.length === 0 || rawPath.length === 0) {
+    return lines('usage: chmod <mode> <path>');
+  }
+
+  const file = fsNodeAt(api, session, rawPath);
+
+  if (file === null) {
+    return lines(
+      `chmod: cannot access '${normalizeFsPath(rawPath)}': No such file or `
+        + 'directory',
+    );
+  }
+
+  const octal = isOctalMode(mode)
+    ? mode.slice(-3).padStart(3, '0')
+    : applySymbolic(modeOf(file), mode);
+
+  if (octal === null) {
+    return lines(`chmod: invalid mode: '${mode}'`);
+  }
+
+  const result = api.dispatch(
+    FS_ACTIONS.chmod,
+    api.actor,
+    file.id,
+    { [FS_MODE_PARAM]: octal },
+  );
+
+  return result.ok ? { lines: [], clear: false } : lines(result.reason);
+}
+
+/**
+ * `chown <owner[:group]> <path>` - rewrite a file's owner and group. A bare
+ * `chown user` leaves the group where it was; `chown user:group` sets both; a
+ * trailing colon (`chown user:`) sets the group to the user's own. The owner and
+ * group are validated against the box's real user set (a chown to a user the box
+ * does not have is refused, the way a real one is), then dispatched to write the
+ * SAME `fs_owner`/`fs_group` fields `ls -la` reads. Silent on success.
+ */
+function chownLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  args: readonly string[],
+): CommandResult {
+  const positional = args.filter((arg) => !arg.startsWith('-'));
+  const spec = (positional[0] ?? '').trim();
+  const rawPath = positional[1] ?? '';
+
+  if (spec.length === 0 || rawPath.length === 0) {
+    return lines('usage: chown <owner[:group]> <path>');
+  }
+
+  const file = fsNodeAt(api, session, rawPath);
+
+  if (file === null) {
+    return lines(
+      `chown: cannot access '${normalizeFsPath(rawPath)}': No such file or `
+        + 'directory',
+    );
+  }
+
+  const colon = spec.indexOf(':');
+  const ownerPart = colon >= 0 ? spec.slice(0, colon) : spec;
+  const groupPart = colon >= 0 ? spec.slice(colon + 1) : '';
+  const owner = ownerPart.length > 0 ? ownerPart : ownerOf(file);
+  // No colon: leave the group. Trailing colon: the group is the user's own.
+  const group = colon < 0
+    ? groupOf(file)
+    : groupPart.length > 0 ? groupPart : owner;
+
+  if (userNamed(api, session, owner) === null) {
+    return lines(`chown: invalid user: '${spec}'`);
+  }
+
+  if (!isKnownGroup(api, session, group)) {
+    return lines(`chown: invalid group: '${spec}'`);
+  }
+
+  const result = api.dispatch(
+    FS_ACTIONS.chown,
+    api.actor,
+    file.id,
+    { [FS_OWNER_PARAM]: owner, [FS_GROUP_PARAM]: group },
+  );
+
+  return result.ok ? { lines: [], clear: false } : lines(result.reason);
+}
+
+/** The groups a chown will accept: the box's user-eponymous groups, plus stock. */
+const STOCK_GROUPS: ReadonlySet<string> = new Set([
+  'root', 'daemon', 'adm', 'sudo', 'www-data', 'postgres', 'nogroup',
+  'users', 'ssl-cert', 'nobody',
+]);
+
+/** Whether a group name is one this box would accept for a chown. */
+function isKnownGroup(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  group: string,
+): boolean {
+  return STOCK_GROUPS.has(group) || userNamed(api, session, group) !== null;
+}
+
 /**
  * Runs one parsed unix command against the world and the session. The twin of
  * `executeCommand` in `cmd-run.ts`, and DOM-free for the same reason.
@@ -2681,8 +3448,8 @@ export function executeUnix(
       return lines(
         `${parsed.name}: command not found`,
         parsed.suggestion === null
-          ? 'This dialect is the core sysadmin surface - the deeper tools '
-            + '(apt, id/getent, chmod) are a later slice.'
+          ? 'This dialect is the core sysadmin surface - the deeper filesystem '
+            + 'browsing (cat/cd beyond what a fix needs) is a later slice.'
           : `Did you mean "${parsed.suggestion}"?`,
       );
     }
@@ -2750,6 +3517,16 @@ export function executeUnix(
       return postmortemUnixLines(api, session, parsed.sub, parsed.query);
     case 'ls':
       return lsLines(api, session, parsed.args);
+    case 'id':
+      return idLines(api, session, parsed.query);
+    case 'whoami':
+      return unixWhoamiLines(session);
+    case 'getent':
+      return getentLines(api, session, parsed.sub, parsed.query);
+    case 'chmod':
+      return chmodLines(api, session, parsed.args);
+    case 'chown':
+      return chownLines(api, session, parsed.args);
     case 'exit':
     case 'logout':
       return {

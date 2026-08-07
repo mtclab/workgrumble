@@ -1097,6 +1097,48 @@ export const FIELDS = {
    * patches it, and the flip round-trips a save like every other node field.
    */
   updatesApplied: 'updates_applied',
+  /**
+   * A Linux file or directory's permission bits, as the octal string `chmod`
+   * takes and `ls -la` prints the rwx triad of (E6, 0.21.0): `"600"`, `"640"`,
+   * `"755"`. The ONE truth the two commands share - `ls -la` renders it to the
+   * `-rw-r-----` mode column, and `chmod` (octal `640` or symbolic `g+r`)
+   * rewrites it - so a listing after a chmod cannot disagree with the chmod,
+   * because it reads the field the chmod wrote. A meaningful bit: a config file a
+   * service cannot read because its mode is wrong is the permission-denied
+   * incident's real fault. Linux-only, absent on a Windows `file` node (dir shows
+   * no rwx), so every existing world is byte-identical until an engineer ssh's in.
+   */
+  fsMode: 'fs_mode',
+  /**
+   * The owning user of a Linux file or directory (E6, 0.21.0): the third column
+   * `ls -la` prints and what `chown user:group` rewrites. A plain user name
+   * (`root`, `fcauth`), read against the box's passwd set. The owner half of the
+   * rwx question - owner-read applies when the reading user IS the owner - so it
+   * decides, with `fs_group` and `fs_mode`, whether a service can read its file.
+   * Linux-only, absent on Windows file nodes.
+   */
+  fsOwner: 'fs_owner',
+  /**
+   * The owning group of a Linux file or directory (E6, 0.21.0): the fourth column
+   * `ls -la` prints and the second half of `chown user:group`. Group-read applies
+   * when the reading user is a MEMBER of this group - which, for a service account
+   * whose primary group is its own name, is when the group equals the user. The
+   * permission-denied fix restores the group (`chown root:fcauth`) so group-read
+   * reaches the service. Linux-only, absent on Windows file nodes.
+   */
+  fsGroup: 'fs_group',
+  /**
+   * The config/key file a systemd unit must be able to READ to start (E6,
+   * 0.21.0): the file node id its startup depends on. Present only on a unit
+   * whose fault is a permission one - the permission-denied incident's unit
+   * points here at its unreadable env file - and read by the shell's
+   * `systemctl restart/start` gate, which refuses to bring the unit up while the
+   * file is not readable by the unit's service account (the same `fs_mode`/
+   * `fs_owner`/`fs_group` `ls -la` reads). Absent on every ordinary unit, so a
+   * restart is ungated exactly as before; the estate is byte-identical until the
+   * incident builds the unit that carries it.
+   */
+  requiresFile: 'requires_file',
   /** directory + file */
   /**
    * Which drive this entry is on, by the hostname of the box it belongs to.

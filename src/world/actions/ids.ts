@@ -659,6 +659,33 @@ export const APT_ACTION_IDS: readonly AptActionId[] = Object.freeze(
   Object.values(APT_ACTIONS),
 );
 
+/**
+ * The filesystem-permission verbs (E6, 0.21.0): the two that change a Linux
+ * file or directory's rwx state, so the two that have to survive a save and be
+ * rebuilt by a replay.
+ *
+ * `chmod` rewrites a node's `fs_mode` (the octal `ls -la` renders to `-rw-r-----`);
+ * `chown` rewrites its `fs_owner` and `fs_group`. Both target a `file`/`directory`
+ * node and both are pure `set_field`s: the shell does the symbolic-to-octal
+ * arithmetic (`g+r` -> the octal) and the "leave this half alone" reads of a bare
+ * `chown user`, then dispatches the resolved values, so the engine action is the
+ * single write `ls -la` then reads back - no drift. Engine tier is helpdesk like
+ * every other verb; the ENGINEER gate is the shell's, since there is no ssh and
+ * so no chmod below the promotion.
+ */
+export const FS_ACTIONS = {
+  /** `chmod <mode> <path>`: rewrite the file's permission bits. */
+  chmod: 'fs.chmod',
+  /** `chown <owner[:group]> <path>`: rewrite the file's owner and group. */
+  chown: 'fs.chown',
+} as const;
+
+export type FsActionId = (typeof FS_ACTIONS)[keyof typeof FS_ACTIONS];
+
+export const FS_ACTION_IDS: readonly FsActionId[] = Object.freeze(
+  Object.values(FS_ACTIONS),
+);
+
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
 
 export const DAY_ACTION_IDS: readonly DayActionId[] = Object.freeze(

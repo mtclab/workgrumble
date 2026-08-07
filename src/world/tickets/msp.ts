@@ -29,6 +29,10 @@
  */
 
 import {
+  FS_ACTIONS,
+  FS_GROUP_PARAM,
+  FS_MODE_PARAM,
+  FS_OWNER_PARAM,
   HELPDESK_ACTIONS,
   INCIDENT_ACTIONS,
   INCIDENT_DISK_FREE_LOW,
@@ -1934,6 +1938,181 @@ const SYSENG_FAILED_DEPLOY: WorldTicket = {
   ],
 };
 
+/**
+ * The permission-denied incident (E6, 0.21.0): half of Linux breakage is a bit.
+ *
+ * fcauth.service - the portal's authentication service - is down, and not
+ * because it crashed: a deploy re-copied its secret env file
+ * (/etc/fcauth/auth.env) as `root:root` mode `600`, so the `fcauth` service
+ * account can no longer READ it, and the service fails to start with "Permission
+ * denied". The whole fault is a permission bit, and the fix is the real one: read
+ * the journal for the denied path, `ls -la` it to see the wrong `-rw-------`
+ * root:root, `chown root:fcauth` to restore the group the service reads through,
+ * `chmod 640` so that group gets read (least privilege, not chmod 777), then
+ * `systemctl restart`. It is a REAL state: the file node carries the wrong
+ * mode/owner and the shell's restart gate refuses to bring the unit up until the
+ * file is readable - so a restart before the fix fails exactly as a real one
+ * does, and only the corrected permission lets it come up. The unit and the file
+ * are BUILT by this ticket's setup, so FC-RMM-01 is byte-identical until the
+ * promotion raises it.
+ */
+const SYSENG_PERMISSION_DENIED: WorldTicket = {
+  arrival: 'summoned',
+  nodes: [MSP_IDS.mspInfraAuthUnit, MSP_IDS.mspInfraAuthConfig],
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:syseng-permission-denied',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Fettle & Crane: portal logins failing - the auth service is down',
+      body:
+        'Nobody can log in to the client portal - the sign-in just hangs and '
+        + 'fails. fcauth.service on FC-RMM-01 (our own box) is down and will not '
+        + 'start. It is not a crash: journalctl -u fcauth shows it dying on '
+        + '"Permission denied" reading its config. This afternoon\'s deploy '
+        + 'touched that file. ssh in, ls -la the file to see who owns it, fix the '
+        + 'owner and mode so the service can read it, and restart it.',
+    },
+    reporter: MSP_IDS.mspLead,
+    // The real state, BUILT by the ticket: the secret env file owned root:root at
+    // mode 600 (the fcauth account cannot read it), and the unit failed with the
+    // permission-denied cascade in its journal, pointing at requires_file so the
+    // shell's restart gate refuses until the file is made readable.
+    setup: [
+      {
+        op: 'addNode',
+        node: {
+          id: MSP_IDS.mspInfraAuthConfig,
+          kind: 'file',
+          fields: {
+            [FIELDS.name]: 'auth.env',
+            [FIELDS.path]: '/etc/fcauth/auth.env',
+            [FIELDS.volume]: 'FC-RMM-01',
+            // The wrong state a deploy left: readable only by root.
+            [FIELDS.fsMode]: '600',
+            [FIELDS.fsOwner]: 'root',
+            [FIELDS.fsGroup]: 'root',
+          },
+        },
+      },
+      {
+        op: 'addNode',
+        node: {
+          id: MSP_IDS.mspInfraAuthUnit,
+          kind: 'unit',
+          fields: {
+            [FIELDS.name]: 'Fettle & Crane authentication service',
+            [FIELDS.unitName]: 'fcauth.service',
+            [FIELDS.unitState]: SYSTEMD_STATES.failed,
+            [FIELDS.unitEnabled]: UNIT_ENABLEMENTS.enabled,
+            [FIELDS.requiresFile]: MSP_IDS.mspInfraAuthConfig,
+            [FIELDS.unitJournal]: [
+              'Sep 07 15:12:04 FC-RMM-01 fcauth[4102]: [ERROR] cannot open '
+                + '/etc/fcauth/auth.env: Permission denied',
+              'Sep 07 15:12:04 FC-RMM-01 fcauth[4102]: [CRITICAL] cannot start '
+                + 'without its configuration; refusing to run',
+              'Sep 07 15:12:04 FC-RMM-01 systemd[1]: fcauth.service: Main process '
+                + 'exited, code=exited, status=1/FAILURE',
+              'Sep 07 15:12:04 FC-RMM-01 systemd[1]: fcauth.service: Failed with '
+                + 'result \'exit-code\'.',
+              'Sep 07 15:12:05 FC-RMM-01 systemd[1]: fcauth.service: Scheduled '
+                + 'restart job, restart counter is at 5.',
+              'Sep 07 15:12:05 FC-RMM-01 systemd[1]: fcauth.service: Start request '
+                + 'repeated too quickly.',
+              'Sep 07 15:12:05 FC-RMM-01 systemd[1]: Failed to start Fettle & '
+                + 'Crane authentication service.',
+            ].join('\n'),
+          },
+        },
+      },
+      {
+        op: 'addEdge',
+        edge: {
+          from: MSP_IDS.mspInfraAuthUnit,
+          to: MSP_IDS.mspInfraServer,
+          kind: 'runs_on',
+        },
+      },
+    ],
+    // Closed only when the file is in its correct least-privilege state AND the
+    // service is back up: root-owned, group fcauth, mode 640 (the group reads,
+    // the world does not), and the unit active. That is a STRONGER close than
+    // "the unit is running" - it verifies the permission was actually fixed the
+    // right way, not that the service merely happens to be up - so every step of
+    // the fix (chown the group, chmod the bits, restart) is load-bearing and no
+    // step is a ritual. The canonical fix the KB teaches is exactly this.
+    resolved_when: {
+      op: 'and',
+      exprs: [
+        {
+          op: 'eq',
+          selector: { id: MSP_IDS.mspInfraAuthUnit },
+          field: FIELDS.unitState,
+          value: SYSTEMD_STATES.activeRunning,
+        },
+        {
+          op: 'eq',
+          selector: { id: MSP_IDS.mspInfraAuthConfig },
+          field: FIELDS.fsOwner,
+          value: 'root',
+        },
+        {
+          op: 'eq',
+          selector: { id: MSP_IDS.mspInfraAuthConfig },
+          field: FIELDS.fsGroup,
+          value: 'fcauth',
+        },
+        {
+          op: 'eq',
+          selector: { id: MSP_IDS.mspInfraAuthConfig },
+          field: FIELDS.fsMode,
+          value: '640',
+        },
+      ],
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/permission-denied',
+  },
+  cause: 'fcauth.service reads /etc/fcauth/auth.env at startup, and this '
+    + 'afternoon\'s deploy re-copied that file as root:root mode 600 - readable '
+    + 'only by root. The fcauth service account is neither root nor in the file\'s '
+    + 'group and there is no other-read bit, so it is denied, the process exits, '
+    + 'and systemd leaves the unit failed. Nothing crashed and nothing in the app '
+    + 'is misconfigured: a permission bit is wrong. journalctl -u fcauth shows the '
+    + '"Permission denied" on the path and ls -la /etc/fcauth/auth.env shows the '
+    + '-rw------- root root. The fix is least privilege: chown root:fcauth to '
+    + 'restore the group the service reads through, chmod 640 so that group gets '
+    + 'read while the secret stays off everyone else, then systemctl restart. A '
+    + 'restart before the file is readable just fails again - the fix is the '
+    + 'permission, not the retry.',
+  dialogue_ref: 'dialogue/msp-morgan',
+  paths: [
+    {
+      id: 'fix-the-permission-and-restart',
+      app: 'cmd',
+      label: 'ssh in, chown/chmod the config readable, and restart fcauth.service',
+      steps: [
+        {
+          action: FS_ACTIONS.chown,
+          target: MSP_IDS.mspInfraAuthConfig,
+          params: { [FS_OWNER_PARAM]: 'root', [FS_GROUP_PARAM]: 'fcauth' },
+        },
+        {
+          action: FS_ACTIONS.chmod,
+          target: MSP_IDS.mspInfraAuthConfig,
+          params: { [FS_MODE_PARAM]: '640' },
+        },
+        {
+          action: SYSTEMD_ACTIONS.unitRestart,
+          target: MSP_IDS.mspInfraAuthUnit,
+        },
+      ],
+    },
+  ],
+};
+
 export const MSP_TICKETS: readonly WorldTicket[] = [
   // FONTAINE-LAW - the law firm, helpdesk scope.
   MATTER_ACCESS,
@@ -1973,4 +2152,7 @@ export const MSP_TICKETS: readonly WorldTicket[] = [
   SYSENG_DISK_FULL,
   SYSENG_CERT_EXPIRY,
   SYSENG_FAILED_DEPLOY,
+  // The permission-denied incident (E6, 0.21.0): a service down because its
+  // config file is owned wrong - the fix is chown/chmod + restart, not a retry.
+  SYSENG_PERMISSION_DENIED,
 ];

@@ -1737,4 +1737,50 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/systemd-start-limit', 'kb/reading-the-error'],
   },
+  {
+    id: 'kb/permission-denied',
+    title: 'A Linux service down because it cannot read its own config file',
+    summary: 'The unit is failed and the journal says "Permission denied" on a '
+      + 'file: the owner or the mode is wrong. chown/chmod it readable, then '
+      + 'restart.',
+    state: 'published',
+    issue: 'A service on one of our Linux boxes is down and will not start. '
+      + 'systemctl status shows it failed, and journalctl shows it dying on '
+      + '"Permission denied" for a config or key file - not a crash, a service '
+      + 'that cannot read a file it needs.',
+    environment: 'A Linux server reached over ssh, at the engineer tier: a unit '
+      + 'that reads a config/secret file at startup, whose owner or permission '
+      + 'bits were changed (often by a deploy) so the service account can no '
+      + 'longer read it.',
+    resolution: [
+      'Read why it failed: "journalctl -u <unit>" shows the startup error - here, '
+        + '"Permission denied" on a specific file path. That path is the whole of '
+        + 'the fault.',
+      'Look at the file the long way: "ls -la <path>". The mode column '
+        + '(-rw-------) and the owner/group columns tell you who can read it - and '
+        + 'a service account that is neither the owner nor in the group, with no '
+        + 'other-read bit, cannot.',
+      'Fix the owner and the bits: "chown root:<service> <path>" restores the '
+        + 'group the service reads through, and "chmod 640 <path>" gives that group '
+        + 'read while keeping the secret off everyone else. Least privilege, not '
+        + 'chmod 777.',
+      'Bring it up: "systemctl restart <unit>", then confirm with "systemctl '
+        + 'status" - active (running). A restart before the file is readable just '
+        + 'fails again; the fix is the permission, not the retry.',
+    ],
+    cause: [
+      'A service runs as its own unprivileged account, and it can only start if '
+        + 'it can READ the config or key file it loads. When a deploy or a hurried '
+        + 'copy leaves that file owned root:root at mode 600, the owner (root) can '
+        + 'read it and nobody else can - so the service account is denied, the '
+        + 'process exits, and systemd leaves the unit failed. Nothing crashed and '
+        + 'nothing is misconfigured in the app: a permission bit is wrong.',
+      'That is the lesson worth keeping: a large share of "the service is down" '
+        + 'turns out to be a permission, not a bug. The mode column in ls -la and '
+        + 'the "Permission denied" line in the journal point straight at it, and '
+        + 'the fix is chown/chmod to least privilege - the group reads, the world '
+        + 'does not - never a panicky chmod 777 that trades the outage for a leak.',
+    ],
+    see_also: ['kb/systemd-start-limit', 'kb/reading-the-error'],
+  },
 ];

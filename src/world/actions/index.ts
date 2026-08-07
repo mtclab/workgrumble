@@ -8,6 +8,7 @@ import { CONSUMABLE_ACTION_DATA } from './consumables';
 
 export { BEER_TOO_EARLY_REASON, LATE_CAN_REASON } from './consumables';
 export { APT_PACKAGE_PARAM } from './apt';
+export { FS_GROUP_PARAM, FS_MODE_PARAM, FS_OWNER_PARAM } from './fs';
 export {
   PROMOTION_REPUTATION,
   SSH_HOST_PARAM,
@@ -17,6 +18,7 @@ import { DAY_ACTION_DATA } from './day';
 import { DEVICE_ACTIONS } from './device';
 import { DRIVE_ACTIONS } from './drive';
 import { FACILITIES_ACTIONS } from './facilities';
+import { FS_ACTION_DATA } from './fs';
 import { KIND_LABELS } from './helpers';
 import { INCIDENT_ACTION_DATA } from './incidents';
 import { INTERRUPTION_ACTION_DATA } from './interruptions';
@@ -104,6 +106,9 @@ export {
   DAY_ACTION_IDS,
   DAY_ACTIONS,
   type DayActionId,
+  FS_ACTION_IDS,
+  FS_ACTIONS,
+  type FsActionId,
   HELPDESK_ACTION_IDS,
   HELPDESK_ACTIONS,
   type HelpdeskActionId,
@@ -184,6 +189,10 @@ export function helpdeskActions(): readonly ActionData[] {
     // installed gag) and apt upgrade (applying the pending updates). Player-
     // initiated verbs on the box's own state, like the systemd fix verbs above.
     ...APT_ACTION_DATA,
+    // The filesystem-permission verbs (E6, 0.21.0): chmod and chown, rewriting a
+    // Linux file's rwx state the way ls -la reads it - the fix half of the
+    // permission-denied incident.
+    ...FS_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

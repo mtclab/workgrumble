@@ -1443,6 +1443,7 @@ export class DayDriver implements DayApi {
       'ticket:syseng-disk-full',
       'ticket:syseng-cert-expiry',
       'ticket:syseng-failed-deploy',
+      'ticket:syseng-permission-denied',
     ];
 
     let raised = false;
