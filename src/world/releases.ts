@@ -31,6 +31,33 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.19.0',
+    date: '2026-08-07',
+    summary: 'This update gives you the three outages every engineer meets.',
+    lines: Object.freeze([
+      'The disk fills up. Not dramatically - a service just keeps writing logs '
+        + 'nobody rotates until "df -h" reads 100% and everything grinds. "du '
+        + '-sh" walks the directories and finds the twenty-six gigabytes of '
+        + 'journal nobody was watching; a vacuum clears it and the box breathes '
+        + 'again. It is the most boring emergency there is, and you will have it '
+        + 'more than once.',
+      'The certificate expires. The service is up - it was always up - but every '
+        + 'browser slams the door, because the padlock ran out. This is the one '
+        + 'that took down phone networks and chat platforms the whole world '
+        + 'over, and it is never a technical failure. The cert was fine. Nobody '
+        + 'put the renewal in a calendar. A "curl" shows you the expiry, a renew '
+        + 'fixes it in seconds, and the real fix - the one the game cannot do '
+        + 'for you - is remembering next time.',
+      'And a deploy that worked in staging does not work in prod, and takes a '
+        + 'service down with it. You roll it back. Then you do the thing that '
+        + 'separates a trade from a craft: you write the postmortem. What '
+        + 'happened, what the SYSTEM let happen, what changes so it cannot happen '
+        + 'the same way twice - and not one word about whose fault it was, '
+        + 'because a blameless writeup is the only kind that makes the next '
+        + 'outage less likely instead of just quieter.',
+    ]),
+  },
+  {
     version: '0.18.0',
     date: '2026-08-07',
     summary: 'This update stops you from restarting a live service just because '
