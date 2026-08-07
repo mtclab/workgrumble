@@ -45,6 +45,7 @@ export {
   NOT_DISABLED_REASON,
   NOT_LOCKED_REASON,
   REVOKE_WITHOUT_FACTOR_REASON,
+  RULE_PARAM,
   SEATS_PARAM,
 } from './account';
 export {

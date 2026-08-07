@@ -15,6 +15,12 @@
  * she asks for is reasonable in the moment and a hole in hindsight. The `reveal`
  * on each beat is the risk the desk can SEE - the thing a later incident makes
  * true - said to the player and written to the ticket, never preached at Denise.
+ *
+ * Pass B gives her the fourth beat, `bec`: from inside the mailbox she was
+ * granted, she is the one who notices the compromise and asks for the reflex fix
+ * (just reset his password). Its `reveal` is the incident's whole lesson - a
+ * reset stops the least - and its `bec-done` reaction closes the con out loud:
+ * she was locked out of the very mailbox she was just given.
  */
 
 import { HALCYON_IDS } from '../corporate-company';
@@ -27,17 +33,20 @@ const DENISE: DialogueTree = {
     'ticket:halcyon-ceo-mfa-off',
     'ticket:halcyon-ea-delegate',
     'ticket:halcyon-ceo-filter',
+    'ticket:halcyon-ceo-bec',
   ],
   root: 'mfa',
   roots: {
     'ticket:halcyon-ceo-mfa-off': 'mfa',
     'ticket:halcyon-ea-delegate': 'delegate',
     'ticket:halcyon-ceo-filter': 'filter',
+    'ticket:halcyon-ceo-bec': 'bec',
   },
   resolved_roots: {
     'ticket:halcyon-ceo-mfa-off': 'mfa-done',
     'ticket:halcyon-ea-delegate': 'delegate-done',
     'ticket:halcyon-ceo-filter': 'filter-done',
+    'ticket:halcyon-ceo-bec': 'bec-done',
   },
   nodes: [
     {
@@ -157,6 +166,49 @@ const DENISE: DialogueTree = {
       npc_line: 'His mail comes straight through now, all of it. He is happier. '
         + 'He did say he told you so about the filter.',
       options: [{ label: 'Log the change' }],
+    },
+    {
+      id: 'bec',
+      npc_line: 'I am in Roland\'s mailbox and something is very wrong - there '
+        + 'are emails going out AS him to Finance, asking them to change a '
+        + 'supplier\'s bank details and push a wire through today. He swears he '
+        + 'has sent nothing. Can you not just reset his password and make it '
+        + 'stop?',
+      options: [
+        {
+          label: 'Ask what she can still see happening in the mailbox',
+          next: 'bec-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Think about what a reset alone would and would not stop',
+          effects: [
+            {
+              reveal: 'A password reset changes the password and nothing else. '
+                + 'The session the attacker phished stays signed in, and any '
+                + 'inbox rule they set - a forward-to-external on anything about '
+                + 'a wire, marked read and moved to Deleted - keeps running from '
+                + 'inside the "reset" account. Contain it, revoke the session, '
+                + 'find and pull the rule, and check the delegate you set up.',
+            },
+          ],
+        },
+        { label: 'Tell her you are opening it as an incident now' },
+      ],
+    },
+    {
+      id: 'bec-q',
+      npc_line: 'New ones every few minutes, and the ones he is supposedly '
+        + 'sending are not in his Sent - they just are not there. It is like '
+        + 'somebody else is in here with me. Which, now I say it out loud.',
+      options: [{ label: 'Work the incident' }],
+    },
+    {
+      id: 'bec-done',
+      npc_line: 'It has gone quiet - no more going out as him. Finance held the '
+        + 'wire, thank god. I did not love being locked out of the mailbox I was '
+        + 'just given, but I understand why.',
+      options: [{ label: 'Write it up' }],
     },
   ],
 };

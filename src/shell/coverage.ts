@@ -3315,6 +3315,27 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'filter - the exec-mail-skips-filtering bypass, granted. Closes the '
     + 'filter-exemption ticket at the corporate employer; driven in '
     + '`corporate.test.ts`, out of the browser walk\'s reach.',
+  // The BEC incident response (E8, 0.22.0, Pass B): the ordered verbs the
+  // corporate P1 closes on - disable the compromised exec, revoke the stolen
+  // session (the shared revoke verb already has a control), pull the malicious
+  // inbox rule, and tear down the delegate. Player verbs with a real fix, but at
+  // the FOURTH employer the browser total-walk does not reach (it stops at the
+  // second) - the same reason the exec-exception grants above and the engineer-
+  // tier verbs are proven in unit tests rather than the walk. Driven end to end
+  // through the real dispatch path in `bec.test.ts`.
+  [HELPDESK_ACTIONS.accountDisable]: 'Switching a compromised executive account '
+    + 'off - the first, containing move of the BEC incident response. Closes '
+    + 'the disable clause of the corporate P1; driven in `bec.test.ts`, out of '
+    + 'the browser walk\'s reach.',
+  [HELPDESK_ACTIONS.accountRemoveMailboxRule]: 'Pulling the attacker\'s '
+    + 'forwarding rule off a compromised mailbox - the teeth of the BEC hunt, '
+    + 'the one step a password reset cannot stand in for. Closes the rule clause '
+    + 'of the corporate P1; driven in `bec.test.ts`, out of the browser walk\'s '
+    + 'reach.',
+  [HELPDESK_ACTIONS.accountRemoveMailboxDelegate]: 'Tearing down the mailbox '
+    + 'delegate the setup granted, now the incident\'s persistence vector - '
+    + 'where the con lands. Closes the delegate clause of the corporate P1; '
+    + 'driven in `bec.test.ts`, out of the browser walk\'s reach.',
 };
 
 /**

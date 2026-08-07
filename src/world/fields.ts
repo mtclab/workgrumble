@@ -681,6 +681,21 @@ export const FIELDS = {
    */
   sessionsRevokedAt: 'sessions_revoked_at',
   /**
+   * Whether a live, attacker-held session is standing on this account (E8,
+   * 0.22.0): the research truth the BEC incident turns on - a session or OAuth
+   * token stolen in the phish SURVIVES a password reset, because a reset changes
+   * the credential and not the sessions already minted from it.
+   *
+   * `true` is a stolen session still live; seeded by the BEC incident onto the
+   * compromised exec, and cleared ONLY by `accountRevokeSessions` - not by a
+   * reset, not by re-enabling. It is a real, eq-checkable state the incident's
+   * resolution rule reads, which is what makes "revoke the sessions" a distinct
+   * required step rather than a thing a password change quietly covers. Absent on
+   * every ordinary account (the byte-clean default), and the revoke verb only
+   * writes it where it is already present, so no other world moves an inch.
+   */
+  sessionLive: 'session_live',
+  /**
    * Whether this account is holding one of the suite's seats.
    *
    * A seat is not a permission and it is not a group: it is a thing the company

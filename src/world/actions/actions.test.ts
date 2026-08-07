@@ -329,8 +329,15 @@ describe('helpdesk action registry', () => {
     // delegate (`account.grant_mailbox_delegate`), and taking a mailbox off the
     // filter (`account.set_filter_exempt`). Each is a real granted state a later
     // BEC incident reads back, and the setup half of the org-dysfunction arc.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(42);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(42);
+    //
+    // Forty-five from 0.22.0 Pass B (E8): the three BEC-response verbs the
+    // corporate P1 closes on - switching a compromised account off
+    // (`account.disable`), pulling the attacker's forwarding rule off a mailbox
+    // (`account.remove_mailbox_rule`), and tearing down the delegate the setup
+    // granted (`account.remove_mailbox_delegate`). The payoff half of the arc,
+    // and the con landing on the access the grants above opened.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(45);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(45);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});

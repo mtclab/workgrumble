@@ -25,15 +25,38 @@
  * the standing hit any unworked ticket carries, on the account most able to make
  * it hurt. The comedy and the truth are the same: the technical control was easy,
  * and the organisation was the vulnerability.
+ *
+ * Pass B adds the PAYOFF (E8, 0.22.0): `CEO_BEC_INCIDENT`, the summoned P1 that
+ * follows the delegate grant. The setup half above is what it reads back - the
+ * exempted, un-MFA'd, off-filter exec is the one who gets phished, and the
+ * FullAccess delegate is the persistence the hunt finds - so the two halves are
+ * one arc in one file.
  */
 
-import { DELEGATE_PARAM, HELPDESK_ACTIONS } from '../actions';
+import { DELEGATE_PARAM, HELPDESK_ACTIONS, RULE_PARAM } from '../actions';
 import { HALCYON_IDS } from '../corporate-company';
 import { FIELDS } from '../fields';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import type { WorldTicket } from './types';
 
 const KB_EXEC_EXCEPTION = 'kb/exec-exception-risk';
+const KB_BEC_RESPONSE = 'kb/bec-incident-response';
+
+/**
+ * The one external address the attacker forwards to, and the malicious inbox
+ * rule in the `name|action|target` shape the mailbox field carries (E8, 0.22.0).
+ *
+ * It is a real BEC tell: a rule that catches anything about an invoice or a wire,
+ * forwards a copy to an address the attacker controls, marks it read and moves it
+ * to Deleted so the exec never sees the thread they are being impersonated in.
+ * Exported because the incident SEEDS it, the response NAMES it to pull it, the
+ * resolution rule watches for it, and the hunt test reads it - one string, one
+ * place, so those four cannot drift into disagreeing about what the rule is.
+ */
+const BEC_EXTERNAL_ADDRESS = 'ap.remittance@halcyongrange-invoices.com';
+
+export const BEC_MALICIOUS_RULE =
+  `Auto-forward finance|forward,markread,delete|${BEC_EXTERNAL_ADDRESS}`;
 
 /**
  * "The CEO does not do MFA." The flagship exception, and the one a later BEC
@@ -213,8 +236,155 @@ const CEO_FILTER_EXEMPT: WorldTicket = {
   ],
 };
 
+/**
+ * The payoff (E8, 0.22.0): the exempted CEO is compromised, and the desk runs
+ * the ORDERED BEC incident response - the con landing on the access the setup
+ * granted.
+ *
+ * It is `summoned` and `follows` the EA-delegate grant, which is what keys it on
+ * the exec being exempted: it fires the minute the delegate is handed over, so
+ * the persistence the hunt finds is, by construction, the very key the player
+ * just cut. The setup seeds the two things a password reset cannot touch - the
+ * attacker's live session and their forwarding rule - both on the CEO account,
+ * the one the earlier exceptions made the softest target in the building.
+ *
+ * The response is four real verbs in order, and each is a clause of the close:
+ * DISABLE the account (contain it), REVOKE the stolen session (a reset would not
+ * - the session outlives the credential), pull the malicious inbox RULE (a reset
+ * would not - the forward outlives the credential too, which is the whole teeth),
+ * and tear down the DELEGATE (the persistence the setup granted). Skip any one
+ * and the incident stays open; skip the rule hunt and the silent forward keeps
+ * running behind a "resolved" password reset - which is the exact bug the rule
+ * clause forbids.
+ */
+const CEO_BEC_INCIDENT: WorldTicket = {
+  arrival: 'summoned',
+  follows: 'ticket:halcyon-ea-delegate',
+  nodes: [HALCYON_IDS.ceoAccount, HALCYON_IDS.eaAccount, HALCYON_IDS.ceoLaptop],
+  // A P1 the moment it lands, and honestly so: the CEO's account is sending mail
+  // as him. The claim and the truth agree for once - this really is the fire.
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:halcyon-ceo-bec',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Halcyon P1: Roland\'s account is sending wire requests he did not send',
+      body:
+        'Denise has flagged it from inside the mailbox she now runs: emails are '
+        + 'going out AS Roland asking Finance to change supplier bank details and '
+        + 'push a wire through today, and Roland swears he has sent nothing and '
+        + 'clicked nothing. His account is compromised - the phish got in past an '
+        + 'inbox with no second factor and no filter on it. Run the incident: '
+        + 'lock the account down, kill the live session, hunt the mailbox for '
+        + 'what the attacker left behind, and check who else has a key to it. '
+        + 'A password reset alone will not do it, and Finance is waiting on the '
+        + '"urgent" wire.',
+    },
+    reporter: HALCYON_IDS.ea,
+    // The two things the phish left that a password reset cannot reach: the live
+    // stolen session, and the forwarding rule. Both on the CEO's account, seeded
+    // the way every fault in this game arrives - with the ticket about it.
+    setup: [
+      {
+        op: 'setField',
+        id: HALCYON_IDS.ceoAccount,
+        field: FIELDS.mailboxRules,
+        value: BEC_MALICIOUS_RULE,
+      },
+      {
+        op: 'setField',
+        id: HALCYON_IDS.ceoAccount,
+        field: FIELDS.sessionLive,
+        value: true,
+      },
+    ],
+    // Contained, the session killed, the forward pulled, and the delegate torn
+    // down - four states, four verbs, and NONE of them a password reset. The
+    // rule clause is the teeth: while the malicious rule is still on the mailbox
+    // the incident is open, however green the account otherwise looks, because
+    // the forward is still running.
+    resolved_when: {
+      op: 'and',
+      exprs: [
+        {
+          op: 'eq',
+          selector: { id: HALCYON_IDS.ceoAccount },
+          field: FIELDS.enabled,
+          value: false,
+        },
+        {
+          op: 'eq',
+          selector: { id: HALCYON_IDS.ceoAccount },
+          field: FIELDS.sessionLive,
+          value: false,
+        },
+        {
+          op: 'not',
+          expr: {
+            op: 'eq',
+            selector: { id: HALCYON_IDS.ceoAccount },
+            field: FIELDS.mailboxRules,
+            value: BEC_MALICIOUS_RULE,
+          },
+        },
+        {
+          op: 'not',
+          expr: {
+            op: 'eq',
+            selector: { id: HALCYON_IDS.ceoAccount },
+            field: FIELDS.mailboxDelegate,
+            value: HALCYON_IDS.eaAccount,
+          },
+        },
+      ],
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 7 },
+    kb_ref: KB_BEC_RESPONSE,
+  },
+  cause: 'The exempted exec was phished - no second factor to stop the stolen '
+    + 'password, no filter to catch the mail - and the attacker did what a BEC '
+    + 'attacker does: minted a session that survives a password reset, and set a '
+    + 'mailbox rule that forwards every invoice and wire to an address they '
+    + 'control and hides it in Deleted, so the fraud runs from inside a "reset" '
+    + 'account. The FullAccess delegate granted earlier is a second way back in. '
+    + 'Only revoking the session, pulling the rule and removing the delegate '
+    + 'actually ends it; the reset is the part everybody remembers and the part '
+    + 'that changes the least.',
+  dialogue_ref: 'dialogue/halcyon-denise',
+  paths: [
+    {
+      id: 'work-the-bec',
+      app: 'directory',
+      label: 'Contain Roland\'s account, revoke the stolen session, pull the '
+        + 'forwarding rule, and remove the delegate',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.accountDisable,
+          target: HALCYON_IDS.ceoAccount,
+        },
+        {
+          action: HELPDESK_ACTIONS.accountRevokeSessions,
+          target: HALCYON_IDS.ceoAccount,
+        },
+        {
+          action: HELPDESK_ACTIONS.accountRemoveMailboxRule,
+          target: HALCYON_IDS.ceoAccount,
+          params: { [RULE_PARAM]: BEC_MALICIOUS_RULE },
+        },
+        {
+          action: HELPDESK_ACTIONS.accountRemoveMailboxDelegate,
+          target: HALCYON_IDS.ceoAccount,
+        },
+      ],
+    },
+  ],
+};
+
 export const CORPORATE_TICKETS: readonly WorldTicket[] = [
   CEO_MFA_OFF,
   EA_MAILBOX_DELEGATE,
   CEO_FILTER_EXEMPT,
+  CEO_BEC_INCIDENT,
 ];

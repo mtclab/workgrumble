@@ -1845,6 +1845,69 @@ export const KB_ARTICLES: readonly KbArticle[] = [
         + 'somebody else\'s incident, with the grant you made sitting in the '
         + 'timeline.',
     ],
-    see_also: ['kb/second-factor'],
+    see_also: ['kb/second-factor', 'kb/bec-incident-response'],
+  },
+  {
+    id: 'kb/bec-incident-response',
+    title: 'When the exec account is the one that got in',
+    summary: 'An executive mailbox is compromised and sending fraudulent wire '
+      + 'requests. Contain it, revoke the stolen session, hunt the mailbox for '
+      + 'the rule the attacker left, and remove the delegate - a password reset '
+      + 'is the part that changes the least.',
+    state: 'published',
+    issue: 'An executive account is sending mail the executive did not send - '
+      + 'usually asking Finance to change supplier bank details or push an urgent '
+      + 'wire. The account is compromised, the exec insists they clicked nothing, '
+      + 'and Finance is waiting on the "urgent" payment while you work.',
+    environment: 'A compromised executive mailbox on the corporate estate: often '
+      + 'one that had an exception on it - no second factor, off the mail filter, '
+      + 'a delegate other people were given - which is what made it the account '
+      + 'the phish landed on and got in through.',
+    resolution: [
+      'Contain the account first: DISABLE it. You interrogate an account you '
+        + 'have already switched off, not one still logging in - and while you '
+        + 'hesitate, the account is sending mail as its owner.',
+      'REVOKE the sessions. This is the step everyone skips because they reset '
+        + 'the password instead, and the reset does not do it: a session or OAuth '
+        + 'token minted in the phish outlives a password change, so the attacker '
+        + 'stays signed in through a "reset" account until the sessions are '
+        + 'explicitly killed.',
+      'HUNT THE INBOX RULES, and this is the part that actually ends the fraud. '
+        + 'A BEC attacker sets a rule that forwards anything about an invoice or a '
+        + 'wire to an address they control, marks it read and moves it to Deleted, '
+        + 'so the exec never sees the thread they are being impersonated in. That '
+        + 'rule KEEPS FORWARDING after a password reset - it is a permission on '
+        + 'the mailbox, not a session - so list the rules, find the one that is '
+        + 'not theirs, and remove it. If you stop at the reset, the forward runs '
+        + 'on and you have closed nothing.',
+      'Check the DELEGATES. A FullAccess delegate granted as a convenience is a '
+        + 'second way in that also survives the reset, and during an incident it '
+        + 'is a persistence vector until proven otherwise. Review who holds one '
+        + 'and remove the access the compromise had any reach through.',
+      'Then scope what it touched and notify Finance and the account owner - but '
+        + 'the containment above is what stops the bleeding, and it is worth doing '
+        + 'in that order before the write-up.',
+    ],
+    cause: [
+      'Business email compromise is a fraud that runs off mailbox PERMISSIONS, '
+        + 'not malware, which is why it is invisible to the reflex fix. The '
+        + 'attacker phishes a session, and then does two quiet things: they leave '
+        + 'a live session behind, and they set an inbox rule that hides their own '
+        + 'traffic by forwarding and deleting it. Both are properties of the '
+        + 'mailbox, and a password reset changes the password and neither of them.',
+      'That is the trap the incident turns on. A reset feels like the fix - it is '
+        + 'the thing muscle memory reaches for - and it is the change that matters '
+        + 'least here: it does not sign out the stolen session and it does not '
+        + 'touch the forwarding rule, so the money keeps moving from behind an '
+        + 'account the timeline records as "remediated". The revoke and the '
+        + 'rule-hunt are the steps that actually close the door.',
+      'And it lands on the exec because the exec is where the exceptions are. The '
+        + 'account with no second factor, off the filter, with a delegate nobody '
+        + 'tracked is the softest target in the building and the one that can move '
+        + 'money - so the setup that felt reasonable in the moment is the exact '
+        + 'shape of the blast radius, with the grants you made sitting in the '
+        + 'incident timeline.',
+    ],
+    see_also: ['kb/exec-exception-risk', 'kb/second-factor'],
   },
 ];

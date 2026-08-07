@@ -294,6 +294,9 @@ describe('shipped tickets', () => {
       'ticket:halcyon-ceo-mfa-off',
       'ticket:halcyon-ea-delegate',
       'ticket:halcyon-ceo-filter',
+      // The BEC incident (E8, 0.22.0, Pass B): the summoned P1 that follows the
+      // delegate grant - the payoff the three exceptions above set up.
+      'ticket:halcyon-ceo-bec',
     ]);
   });
 

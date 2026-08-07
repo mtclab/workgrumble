@@ -65,11 +65,47 @@ export const HELPDESK_ACTIONS = {
    */
   accountSetFilterExempt: 'account.set_filter_exempt',
   /**
+   * Switching an account OFF - the first move of the BEC incident response (E8,
+   * 0.22.0).
+   *
+   * The inverse of `accountEnable`, and its own verb for the same reason enable
+   * is: disabling an account is a deliberate DECISION - a compromise, a hold, a
+   * leaver - and the incident's ordered response opens with it, because you
+   * contain the account before you interrogate it. It refuses an account that is
+   * already off, the way enable refuses one that is already on.
+   */
+  accountDisable: 'account.disable',
+  /**
+   * Pulling a malicious inbox rule off a mailbox (E8, 0.22.0).
+   *
+   * The teeth of the BEC hunt: the attacker set a forward-to-external rule that
+   * KEEPS FORWARDING after a password reset, because a rule is a permission on
+   * the mailbox and not a session on it. Its own verb because removing it is the
+   * only thing that stops the forward - a reset does not, a re-enable does not -
+   * and the incident does not truly close until this runs. It names the rule it
+   * is pulling, and refuses a mailbox that does not carry it.
+   */
+  accountRemoveMailboxRule: 'account.remove_mailbox_rule',
+  /**
+   * Tearing down a mailbox delegate (E8, 0.22.0).
+   *
+   * The other half of the BEC hunt, and where the con lands: the FullAccess
+   * delegate granted as a convenience in the setup is now the persistence vector
+   * - a spare key that outlives a password reset - so reviewing and REMOVING it
+   * is part of closing the incident. The inverse of `accountGrantMailboxDelegate`;
+   * it refuses a mailbox with no delegate to remove.
+   */
+  accountRemoveMailboxDelegate: 'account.remove_mailbox_delegate',
+  /**
    * Signing an account out of everything, everywhere.
    *
    * The right fix for a session somebody else is holding and the wrong one for
    * a dead authenticator - and it says so, in a refusal, which is the only
-   * honest way to ship a wrong-flavour trap.
+   * honest way to ship a wrong-flavour trap. It is also the second move of the
+   * BEC response (E8, 0.22.0): a live session stolen in the phish survives a
+   * password reset, so revoking is a distinct required step - and on a DISABLED
+   * (contained) account the wrong-flavour refusal does not apply, because there
+   * is no legitimate user left to lock out.
    */
   accountRevokeSessions: 'account.revoke_sessions',
   /** Giving an account one of the seats the company actually bought. */

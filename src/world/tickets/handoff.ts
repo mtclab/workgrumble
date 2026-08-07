@@ -42,6 +42,11 @@ const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.accountGrantMailboxDelegate]:
     'Granted a delegate full access to the mailbox',
   [HELPDESK_ACTIONS.accountSetFilterExempt]: 'Took the mailbox off the filter',
+  [HELPDESK_ACTIONS.accountDisable]: 'Disabled the account',
+  [HELPDESK_ACTIONS.accountRemoveMailboxRule]:
+    'Pulled a malicious inbox rule off the mailbox',
+  [HELPDESK_ACTIONS.accountRemoveMailboxDelegate]:
+    'Removed the mailbox delegate',
   [HELPDESK_ACTIONS.accountRevokeSessions]: 'Signed every device out',
   [HELPDESK_ACTIONS.accountAssignLicence]: 'Gave the account a licence seat',
   [HELPDESK_ACTIONS.accountRevokeLicence]: 'Took a licence seat back',

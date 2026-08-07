@@ -17,6 +17,9 @@ const GROUP_PARAM = 'group';
 /** Who is being given FullAccess to a mailbox (E8, 0.22.0): the delegate account. */
 export const DELEGATE_PARAM = 'delegate';
 
+/** Which inbox rule the BEC hunt is pulling off the mailbox (E8, 0.22.0). */
+export const RULE_PARAM = 'rule';
+
 /** Which approved channel the identity was proved through. */
 export const METHOD_PARAM = 'method';
 
@@ -425,12 +428,108 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
     ],
   },
   {
-    id: HELPDESK_ACTIONS.accountRevokeSessions,
+    // The BEC response opens by CONTAINING the account (E8, 0.22.0): switch it
+    // off before you interrogate it. The mirror of `accountEnable` - it refuses
+    // an account already off, so "disable" is one decision recorded once rather
+    // than a field written over itself.
+    id: HELPDESK_ACTIONS.accountDisable,
     tier: HELPDESK_TIER,
     validate: [
       ...targetGuards('account'),
       {
-        when: not(fieldIs(TARGET, FIELDS.mfaEnrolled, true)),
+        when: fieldIs(TARGET, FIELDS.enabled, false),
+        reason: '"{target.label}" is already disabled. Whatever else the '
+          + 'incident needs, switching off a switched-off account is not it.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.enabled,
+        value: { const: false },
+      },
+    ],
+  },
+  {
+    // The teeth of the BEC hunt (E8, 0.22.0): pulling the attacker's forwarding
+    // rule off the mailbox. It names the rule it is removing - the player has
+    // read the rules and found the malicious one - and refuses a mailbox that
+    // does not carry it, the way every other verb here refuses a no-op.
+    //
+    // The apply CLEARS the mailbox's rules. The op language has no "delete one
+    // line" and the compromised mailbox carries exactly the one rule the
+    // incident set, so clearing the field is removing that rule; a targeted
+    // line-removal is a generalisation for the day a mailbox carries benign
+    // rules beside a malicious one, and there is no op for it yet.
+    id: HELPDESK_ACTIONS.accountRemoveMailboxRule,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('account'),
+      {
+        when: { pred: 'param_string_missing', param: RULE_PARAM },
+        reason: 'Say which rule you are pulling off the mailbox. Removing "the '
+          + 'inbox rules" without naming the one you mean is how the wrong thing '
+          + 'gets deleted in the middle of an incident.',
+      },
+      {
+        when: not({
+          pred: 'line_in_field',
+          node: TARGET,
+          field: FIELDS.mailboxRules,
+          value: { param: RULE_PARAM },
+        }),
+        reason: 'There is no rule "{v:' + RULE_PARAM + '}" on "{target.label}". '
+          + 'Read the mailbox\'s rules and remove the one that is actually there '
+          + '- a rule you cannot see is a rule you cannot pull.',
+      },
+    ],
+    apply: [
+      { op: 'clear_field', node: TARGET, field: FIELDS.mailboxRules },
+    ],
+  },
+  {
+    // The other half of the BEC hunt (E8, 0.22.0), and where the con lands: the
+    // FullAccess delegate granted as a convenience is now the persistence
+    // vector, so reviewing and tearing it down is part of closing the incident.
+    // The inverse of the grant, refusing a mailbox with no delegate to remove.
+    id: HELPDESK_ACTIONS.accountRemoveMailboxDelegate,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('account'),
+      {
+        when: { pred: 'field_missing', node: TARGET, field: FIELDS.mailboxDelegate },
+        reason: '"{target.label}" has no delegate on the mailbox. There is no '
+          + 'spare key here to take back.',
+      },
+    ],
+    apply: [
+      { op: 'clear_field', node: TARGET, field: FIELDS.mailboxDelegate },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.accountRevokeSessions,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('account'),
+      // The wrong-flavour refusal, made precise (E8, 0.22.0). Signing every
+      // device out of an account with no working second factor locks its owner
+      // out of the one thing they can still reach - which is a real trap, but
+      // only for an account somebody legitimate is still using. A DISABLED
+      // account has been contained (a leaver, a compromise): there is no
+      // legitimate user to lock out, and revoking is exactly right - the fix for
+      // a session somebody else is holding, which is precisely what a stolen
+      // session is. So the refusal fires only for a live, un-MFA'd account, and
+      // steps out of the way once the account is switched off. The lost-
+      // authenticator ticket's account is enabled, so its trap is unchanged.
+      {
+        when: {
+          pred: 'all',
+          of: [
+            not(fieldIs(TARGET, FIELDS.mfaEnrolled, true)),
+            not(fieldIs(TARGET, FIELDS.enabled, false)),
+          ],
+        },
         reason: REVOKE_WITHOUT_FACTOR_REASON,
       },
     ],
@@ -440,6 +539,24 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
         node: TARGET,
         field: FIELDS.sessionsRevokedAt,
         value: { now: true },
+      },
+      // And if a stolen session was standing on this account, it comes down here
+      // and nowhere else (E8, 0.22.0). Only an account the BEC incident flagged
+      // carries `session_live`, so this writes on that account alone and every
+      // other world is byte-identical: a revoke elsewhere sets the timestamp and
+      // touches nothing new. The clear is the whole point of the step - a
+      // password reset does not do it, which is why revoking is its own move.
+      {
+        op: 'when',
+        cond: { pred: 'field_eq', node: TARGET, field: FIELDS.sessionLive, value: { const: true } },
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.sessionLive,
+            value: { const: false },
+          },
+        ],
       },
     ],
   },
