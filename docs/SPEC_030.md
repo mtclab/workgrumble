@@ -1515,3 +1515,51 @@ else self-review), one box (workers=1) + the sysadmin/apt walk.
 
 users/perms (id/getent/chmod/sudo depth); the deeper Linux fs (cat/cd/var/log browsing); the full
 patch-compliance/CVE story; the player Linux DESKTOP skin; error budgets / SLOs (E7).
+
+# Version 0.21.0 - users, permissions, the passwd file (E6 #7)
+
+Rounds out the unix command surface with the identity + permission tools a sysadmin uses daily, and a
+real permission-denied fix. Content on the 0.15-0.20 unix engine; the new piece is a file/dir owner+
+mode state (rwx) on the Linux fs the engine already lists. Research base: the Ubuntu command-surface
+fidelity (id/getent/chmod/sudo shapes + /etc/passwd's 7 colon-fields) in the 0.15/0.16 research.
+
+## Slice 1 - the identity commands (who am I, who is on this box)
+
+Add at fidelity, each reading the box's real user/account state: `id` (`uid=1000(user) gid=1000(user)
+groups=1000(user),27(sudo),...`), `whoami` (just the name - already exists in a form; the unix one is
+the login on the box), `getent passwd <user>` / `getent passwd` (the `root:x:0:0:root:/root:/bin/bash`
+7-colon-field shape), and `cat /etc/passwd` if the fs slice makes it cheap. A Linux box's users are a
+small real set (the service account the app runs as, root, the login) - reads them off the estate.
+
+## Slice 2 - chmod / chown + the rwx model
+
+`ls -la` already prints the mode/owner/group columns (0.15.0). Now `chmod` (symbolic `u+x` + octal
+`755`) and `chown user:group <file>` MUTATE the file/dir's mode+owner on the fs - a real state that
+`ls -la` then reflects (no drift: the listing reads the same field the chmod wrote). Real rwx: the
+mode is meaningful (a file the service can't read because the perms are wrong is a real fault). The
+Windows family has no octal-permission concept - the family diff.
+
+## Slice 3 - the permission-denied incident (the payoff)
+
+A real sysadmin fault: a service is failing because a file it needs is owned wrong or not readable
+(a config/key file the app can't read - perms `600 root:root` where it needs to be readable by the
+service user, or an ownership mistake after a deploy). Diagnose: the service is `failed`, `journalctl`
+shows a `Permission denied` on the path, `ls -la` shows the wrong mode/owner; fix: `chmod`/`chown` it
+right, `systemctl restart`, it comes up. Composes with the E6 incident pattern (reuse the FC-RMM-01 /
+the incident machinery). The lesson: half of Linux breakage is a permission bit.
+
+## Gates (once, at the version)
+
+Goldens: additive + gated behind the promotion + the ssh session; existing worlds BYTE-IDENTICAL
+until an engineer ssh's in. Journeys through the REAL path: id/getent read the box's real users;
+chmod/chown mutate a file's mode/owner and ls -la reflects it (no drift); the permission-denied
+incident is diagnosed (failed + journalctl Permission-denied + ls -la wrong-mode) and fixed (chmod/
+chown + restart). Determinism. Teeth: chmod/chown write the real node field (ls -la reads what chmod
+wrote - flip it and the listing changes); the permission incident is a real wrong-mode state (fix the
+mode -> the service can read it -> recovers; a healthy mode -> nothing to fix); getent reads the real
+user set. One codex (if it completes; else self-review), one box (workers=1) + the sysadmin/perms walk.
+
+## Not in scope (backlog)
+
+the deeper Linux fs (cat/cd/var/log free browsing beyond what perms needs); ACLs / setuid / sticky-bit
+depth; the player Linux DESKTOP skin (the last E6 piece); error budgets / SLOs (E7).
