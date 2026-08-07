@@ -31,6 +31,35 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.18.0',
+    date: '2026-08-07',
+    summary: 'This update stops you from restarting a live service just because '
+      + 'you can.',
+    lines: Object.freeze([
+      'Now that the servers are yours, so is the discipline that keeps them up. '
+        + 'There is a difference between a service that is DOWN and a service '
+        + 'that is UP, and it decides everything. A down service is a fire - you '
+        + 'fix it now, no permission needed, that is on-call. But reach to '
+        + 'restart a service that is currently UP and serving customers, in the '
+        + 'middle of the working day, and the terminal stops you: that is a '
+        + 'change, and a change on a live thing needs a plan, an approval, and a '
+        + 'window - a stretch of quiet, off-hours time to do it in, where if it '
+        + 'goes wrong nobody is watching but you.',
+      'Not every change is a big deal. Bringing a stopped service back up, '
+        + 'touching something nothing depends on - those are standard, routine, '
+        + 'get on with it. It is the risky ones - bouncing the thing ten '
+        + 'thousand people are using right now - that need the paperwork. '
+        + 'Knowing which is which is the job.',
+      'And for the genuine emergency there is the last resort: break-glass. When '
+        + 'something is actually on fire and the fix cannot wait for a window, '
+        + 'you break the glass, you fix it, and it is written down in red for '
+        + 'everyone to see afterward - because acting outside the rules is '
+        + 'sometimes right, and always accountable. Break it for a real fire and '
+        + 'nobody blinks. Break it at 2pm because you did not feel like raising a '
+        + 'change, and that, too, is written down.',
+    ]),
+  },
+  {
     version: '0.17.0',
     date: '2026-08-07',
     summary: 'This update wakes you up at three in the morning.',
