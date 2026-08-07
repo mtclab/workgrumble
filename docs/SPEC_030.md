@@ -1353,3 +1353,60 @@ fresh workers) + the sysadmin/on-call walk on the shipped shell.
 apt/packages; du; users/perms; deeper fs; change control / maintenance windows / break-glass; the
 full blameless postmortem; the characteristic incidents (disk-full/cert-expiry/failed-deploy); the
 player Linux DESKTOP skin; error budgets / SLOs (E7).
+
+# Version 0.18.0 - change control + the maintenance window (E6 #7)
+
+The discipline that governs an engineer's risky work - the planned-change counterpart to on-call's
+emergency. A change to a production server (a restart-in-hours, a config change, a patch) is not
+forbidden but GATED: you raise a change, it is approved, and you do it inside a MAINTENANCE WINDOW -
+scheduled downtime, off-hours, announced. Reuses the 0.10.0 change-request (the artifact + approval +
+window already exist) applied to the ENGINEER's server work, plus the sysadmin vocabulary: standard
+vs normal change, the window, break-glass for the fire. Research base: e6-sysadmin.md (ITIL change
+management / SRE - the maintenance window, break-glass "outside normal change control when something
+is actively on fire").
+
+## Slice 1 - risky prod work needs a change + a window
+
+An engineer action on a PRODUCTION service that is risky in-hours (e.g. restarting a live customer-
+facing service that is currently UP, a config change, a patch - not an emergency fix of a DOWN
+service, which on-call already covers) is gated: doing it in-hours, unannounced, is refused/penalised
+with the true reason ("this is a live service in business hours - raise a change and do it in the
+window"). Reuse the 0.10.0 change-request as the artifact (scope/risk/rollback), now for a server
+action, approved, with a WINDOW (the CR already has window ticks); the action inside the window is
+allowed. Distinguish from on-call: a DOWN service is a fire you fix now; an UP service you change
+under control.
+
+## Slice 2 - standard vs normal change
+
+The real distinction: a STANDARD change is pre-approved and boring by design (low-risk, routine -
+goes ahead without the full approval dance); a NORMAL change is the risk-assessed, approved-with-a-
+window one. Model both truthfully: a routine low-risk action is a standard change (proceeds, logged);
+a risky one is a normal change (needs the CR + window). The lesson: knowing which is which is the
+judgment the tier teaches.
+
+## Slice 3 - break-glass (the emergency override)
+
+When something is ACTIVELY ON FIRE (an on-call incident, a down service) and the fix would normally
+need change control, BREAK-GLASS: the emergency, audited, "outside the normal window" override - you
+act now and it is logged loudly for review after. Model it truthfully: break-glass is available only
+for a real active incident (not a convenience to skip the window for routine work - abusing it reads
+at the review); it is heavily audited (an append-only record, like the 0.4.0 install audit). The
+composition with on-call: the 3am fire is break-glass-legitimate; the 2pm "I'll just restart it" is
+not.
+
+## Gates (once, at the version)
+
+Goldens: additive + gated behind the promotion; existing worlds + pre-promotion play BYTE-IDENTICAL.
+Journeys through the REAL path: an in-hours risky change to a live service is refused and names the
+change path; raising + approving a change + acting IN the window is allowed; a standard (routine) low-
+risk change proceeds without the dance; break-glass on a real active fire is allowed + audited; break-
+glass abused for routine work reads at the review. Determinism. Teeth: the window gate fails closed
+(revert -> in-hours risky change wrongly allowed); break-glass requires a real active incident (revert
+-> it authorises anything). One codex (if it completes; else self-review), one box (workers=1) + the
+sysadmin/change-control walk.
+
+## Not in scope (backlog)
+
+apt/packages; du; users/perms; deeper fs; the full blameless postmortem; the characteristic incidents
+(disk-full/cert-expiry/failed-deploy) as authored content; the player Linux DESKTOP skin; error
+budgets / SLOs (E7).
