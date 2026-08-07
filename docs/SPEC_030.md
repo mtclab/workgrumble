@@ -1563,3 +1563,60 @@ user set. One codex (if it completes; else self-review), one box (workers=1) + t
 
 the deeper Linux fs (cat/cd/var/log free browsing beyond what perms needs); ACLs / setuid / sticky-bit
 depth; the player Linux DESKTOP skin (the last E6 piece); error budgets / SLOs (E7).
+
+# Version 0.22.0 - E8 opens: the exec weak spot + the BEC incident (E8 #40)
+
+The org-dysfunction epic opens (owner 2026-08-07): the ORGANISATION going wrong, not the machine.
+The first arc is the epic's thesis in one setup-and-payoff: a VIP exec pressures you into a security
+EXCEPTION (the bypass IS the hole), then that exec gets compromised and you run the BEC incident
+response - and the persistence you have to hunt is the very access you granted. Reuses everything
+(the 0.6.0 switch/offer, the account/MFA/revoke verbs, the ticket/incident machinery); the one small
+new surface is mailbox rules. Design: docs/design/org-dysfunction.md. Hosted at a NEW in-house
+corporate employer (you support the execs directly).
+
+## Slice 1 - the new in-house corporate employer
+
+A new employer on the 0.6.0 registry, reached via the offer/switch the way Bodgeworth is: an in-house
+corporate IT desk at a company with EXECUTIVES you support directly (a mid-size company - a CEO, a
+CFO, an exec's EA, ordinary staff). Its own estate (Windows workstations + AD/M365-style accounts).
+The distinguishing character: the politics. Career stats carry across per 0.6.0.
+
+## Slice 2 - the VIP exception (the setup)
+
+An exec (or their EA) DEMANDS a security exception the player is pressured to grant: "I'm the CEO - I
+do not do MFA" / "give the assistant full access to my mailbox" / "take my mail off the filter." The
+truth the research names: the VIP-bypass is a real thing, and the exception IS the vulnerability.
+Granting it is a real action (disable MFA on the exec / grant the EA delegate FullAccess / exempt the
+filter) that SETS the world state the BEC incident then exploits. The pressure is real (refusing has a
+social cost - the exec escalates); granting is the path of least resistance that you pay for later.
+This is the setup half - it should feel harmless/reasonable in the moment.
+
+## Slice 3 - the BEC incident + the inbox-rule-hunt (the payoff, the teeth)
+
+The exempted exec is compromised (clicked the phish / the unfiltered mail landed). A P1 incident that
+forces the ORDERED response, each step a real verb: disable the account -> REVOKE SESSIONS/TOKENS (the
+research's key truth: a live session survives a password reset - reuse the revoke verb) -> **HUNT THE
+INBOX RULES** (the new small surface: list the mailbox rules on the account; the attacker set a
+forward-to-external / move-finance-to-deleted rule that KEEPS FORWARDING after the password reset -
+find + remove it) -> check the delegates (the EA FullAccess you granted in slice 2 is now a
+persistence vector - the con lands) -> scope what it touched -> notify. The incident FAILS to truly
+close if you skip the inbox-rule hunt (the silent forward survives - a real teeth, the whole point).
+
+## Gates (once, at the version)
+
+Goldens: additive; existing employers + customers BYTE-IDENTICAL until you switch to the new one.
+Journeys through the REAL path: switch to the corporate employer; the VIP exception is granted and
+SETS a real world state (MFA off / delegate present / filter exempt); the BEC incident fires on the
+exempted exec; the ordered response works (disable/revoke/hunt-rules/check-delegates); the incident is
+NOT truly resolved until the malicious inbox rule is found + removed (skipping it = the forward
+survives). Teeth: the inbox-rule survives a password reset (revert the rule-hunt requirement -> the
+forward wrongly stops on reset - the exact bug the mechanic forbids); the granted exception is the
+persistence the hunt finds (the slice-2 grant + slice-3 find are the same node). Determinism. One
+codex (if it completes; else self-review), one box (workers=1) + an e2e walking exception -> BEC ->
+rule-hunt.
+
+## Not in scope (backlog, org-dysfunction.md)
+
+the access recertification / access-hell review (#3); the CYA / manager-override mechanic (#4); the
+legendary-manager implement-then-revert chain (#5); the VIP support-tier queue-jump; deeper politics
+(shadow IT, the personal device); the Linux desktop skins (separate track).
