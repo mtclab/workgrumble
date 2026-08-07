@@ -1410,3 +1410,58 @@ sysadmin/change-control walk.
 apt/packages; du; users/perms; deeper fs; the full blameless postmortem; the characteristic incidents
 (disk-full/cert-expiry/failed-deploy) as authored content; the player Linux DESKTOP skin; error
 budgets / SLOs (E7).
+
+# Version 0.19.0 - the characteristic incidents + the postmortem (E6 #7)
+
+The E6 machinery (ssh, the unix tools, on-call, change control) exists but has one real incident to
+handle - the downed portal. This authors the classic sysadmin incidents the research names, each a
+real diagnosable+fixable state on the estate, each teaching a distinct diagnosis+fix, plus the
+blameless postmortem that closes an incident. Content on the proven E6 engine; the new pieces are a
+`du` command (for the disk one) and the postmortem beat. Research base: e6-sysadmin.md (the disk that
+fills with logs / df -h+du; the cert nobody renewed - took down O2 + Teams, a monitoring/process
+failure not technical; "worked in staging"; the blameless postmortem - analyse the system not the
+person).
+
+## Slice 1 - the disk-full incident (df -h -> du -> clear)
+
+A Linux box's disk fills - a service writing logs unbounded (a real `disk_free` state near zero on the
+machine node; a log dir eating it). Paged/ticketed. The diagnosis is the textbook fire drill: `df -h`
+shows the filesystem near 100%, `du -sh` (new command this slice) on the dirs finds what is eating it
+(the runaway log), and the fix clears it (rotate/remove the log - reuse an existing clear/remove verb
+or a light unix one) - disk frees, the service recovers. Real fields, real path. Add `du -sh` at
+fidelity (`20K /path` shape).
+
+## Slice 2 - the cert-expiry incident (the process failure)
+
+A TLS certificate EXPIRED - the service is up but browsers refuse it (the classic that took down O2
+and Teams). The truth the research names: it is NOT a technical failure, it is a monitoring/process
+failure - the cert was fine, nobody tracked the expiry. Diagnose (`curl -I`/`openssl`-style shows the
+expired cert; or the monitoring board flagged it - reuse the 0.9.0 cert row), fix (renew - a renew
+verb, or the real "replace + reload the service"). The lesson lands: a cert is a deadline nobody
+scheduled.
+
+## Slice 3 - the failed-deploy incident + the blameless postmortem
+
+"It worked in staging." A deploy broke a prod service (a unit that went `failed` after a change - a
+real state), and the fix is the rollback / the corrected restart. Then: the BLAMELESS POSTMORTEM -
+after an incident resolves, a short post-incident record: what happened, the timeline, what the system
+(not the person) let happen, the follow-up. Model it truthfully (an append-only record like the audit
+trail / the break-glass log; the copy is blameless per SRE culture - analyse the system, never the
+name). It closes an incident and reads at the review as the professional move (not a punishment).
+
+## Gates (once, at the version)
+
+Goldens: additive + tier-gated behind the promotion; existing worlds + pre-promotion BYTE-IDENTICAL.
+Journeys through the REAL path: the disk-full incident diagnoses with df/du and clears; the cert-expiry
+is diagnosed + renewed and reads as a process failure; the failed-deploy is rolled back/fixed; the
+postmortem records blamelessly and closes the incident. Determinism. Teeth: each incident is a REAL
+estate state (disk near zero / cert expired / unit failed - flip it healthy -> the incident has nothing
+to fix); du reads the real dir sizes; the postmortem is blameless (names no person - a gate on the
+copy, like the KB honesty gate). One codex (if it completes; else self-review), one box (workers=1) +
+the sysadmin/incidents walk.
+
+## Not in scope (backlog)
+
+apt/packages (install the gapped tools); users/perms (id/getent/chmod/sudo); the deeper Linux fs
+(cat/cd/var/log browsing); the player Linux DESKTOP skin; error budgets / SLOs / the full incident-
+command structure (E7).
