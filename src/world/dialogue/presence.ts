@@ -33,6 +33,7 @@
  */
 
 import { COMPANY_IDS } from '../company';
+import { HALCYON_IDS } from '../corporate-company';
 import { MSP_IDS } from '../msp-company';
 import { BODGE_IDS } from '../second-company';
 import { WORLD_TICKETS } from '../tickets';
@@ -137,6 +138,10 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
   [MSP_IDS.mspLead]: 'You are showing away, and the portal is still down - '
     + 'customers cannot log in. You are on the tier now; "away" while our own box '
     + 'is on the floor is not a look I can carry upstairs for you.',
+  [HALCYON_IDS.ea]: 'Your status is set to away, and Roland is asking me why his '
+    + 'thing is not done. I cannot tell the CEO his IT has gone quiet - so I will '
+    + 'just say it is being looked at, and you can imagine how that goes for both '
+    + 'of us.',
 });
 
 /**

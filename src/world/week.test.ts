@@ -32,6 +32,7 @@ import { STARTING_REPUTATION } from './meters';
 import { HYGIENE_SYNC_MINUTE, HYGIENE_SYNC_MINUTES } from './scenes/meeting';
 import { seedForAttempt } from './session';
 import { MSP_WEEK } from './msp-week';
+import { CORPORATE_WEEK } from './corporate-week';
 import { SECOND_WEEK } from './second-week';
 import { WORLD_TICKETS } from './tickets';
 import {
@@ -170,10 +171,11 @@ describe('the shipped week', () => {
     // "every non-summoned ticket is dealt on some day" spans the probation week,
     // Bodgeworth's AND the MSP's. `scheduledTicketIds` reads the active week (the
     // default, probation); the other shops' are read straight off their tables.
-    const otherScheduled = [...SECOND_WEEK, ...MSP_WEEK].flatMap((script) => [
-      ...script.inherited,
-      ...script.drip.map((slot) => slot.ticketId),
-    ]);
+    const otherScheduled = [...SECOND_WEEK, ...MSP_WEEK, ...CORPORATE_WEEK]
+      .flatMap((script) => [
+        ...script.inherited,
+        ...script.drip.map((slot) => slot.ticketId),
+      ]);
     const scheduled = [...scheduledTicketIds(), ...otherScheduled];
     expect(new Set(scheduled).size).toBe(scheduled.length);
 
@@ -577,14 +579,14 @@ describe('the day\'s interruptions', () => {
 describe('the week against the roster', () => {
   it('takes the roster it ships', () => {
     // Both weeks, because the shared roster spans both employers (0.6.0 slice 3).
-    expect(() => assertWeekTickets(WORLD_TICKETS, [WEEK, SECOND_WEEK, MSP_WEEK]))
+    expect(() => assertWeekTickets(WORLD_TICKETS, [WEEK, SECOND_WEEK, MSP_WEEK, CORPORATE_WEEK]))
       .not.toThrow();
   });
 
   it('refuses a day that deals a ticket nobody wrote', () => {
     expect(() => assertWeekTickets(
       WORLD_TICKETS.filter((entry) => entry.def.id !== 'ticket:rotated-screen'),
-      [WEEK, SECOND_WEEK, MSP_WEEK],
+      [WEEK, SECOND_WEEK, MSP_WEEK, CORPORATE_WEEK],
     )).toThrow(/schedules "ticket:rotated-screen", which nobody wrote/);
   });
 
@@ -595,7 +597,7 @@ describe('the week against the roster', () => {
         : entry
     ));
 
-    expect(() => assertWeekTickets(summoned, [WEEK, SECOND_WEEK, MSP_WEEK]))
+    expect(() => assertWeekTickets(summoned, [WEEK, SECOND_WEEK, MSP_WEEK, CORPORATE_WEEK]))
       .toThrow(/which is summoned/);
   });
 
@@ -606,7 +608,7 @@ describe('the week against the roster', () => {
         def: { id: 'ticket:nobody-sees-this' },
         arrival: 'morning' as const,
       },
-    ], [WEEK, SECOND_WEEK, MSP_WEEK])).toThrow(/is not in anybody's week/);
+    ], [WEEK, SECOND_WEEK, MSP_WEEK, CORPORATE_WEEK])).toThrow(/is not in anybody's week/);
   });
 });
 

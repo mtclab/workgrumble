@@ -688,6 +688,39 @@ export const FIELDS = {
    * accounts package on their first morning is almost never the new starter.
    */
   licence: 'licence',
+  /**
+   * The exec weak spot (E8, 0.22.0): the three states a VIP security EXCEPTION
+   * writes onto an account, and the persistence surface an inbox compromise
+   * later hides in.
+   *
+   * The whole thesis of the org-dysfunction epic is that the exception IS the
+   * vulnerability - a shipped, sanctioned bypass an executive demands and the
+   * desk grants under pressure - so each of these is a real, granted state a
+   * later incident reads, not a flag the game merely displays.
+   *
+   * `mailboxDelegate` is who has been given FullAccess to this mailbox, by
+   * account id, or absent for the ordinary case of nobody. Granting the EA a
+   * delegate is the everyday convenience that is also the persistence vector a
+   * BEC hunt finds: a delegate keeps reading the mailbox after the owner's
+   * password is reset, exactly as it does in the real product.
+   *
+   * `filterExempt` is whether this mailbox has been taken OFF the mail filter -
+   * the exec-mail-skips-filtering bypass Mimecast/Defender ship as a feature.
+   * `true` is the exemption granted (the hole open); absent/`false` is the
+   * ordinary filtered mailbox. It is why the phish that compromises the exempted
+   * exec reaches them at all.
+   *
+   * `mailboxRules` is the inbox rules on this mailbox, one rule per line, in the
+   * shape a later hunt reads (`name|action|target`). Seeded EMPTY (absent) on
+   * every account here: benign inbox rules are the ordinary case, and the
+   * malicious forward-to-external rule the BEC attacker sets - the one that KEEPS
+   * FORWARDING after a password reset - is a later pass's to seed and hunt. It is
+   * a newline-joined list field, read with `line_in_field`, so it round-trips a
+   * save through the engine's own serialization exactly as the audit trails do.
+   */
+  mailboxDelegate: 'mailbox_delegate',
+  filterExempt: 'filter_exempt',
+  mailboxRules: 'mailbox_rules',
   /** machine */
   hostname: 'hostname',
   /**

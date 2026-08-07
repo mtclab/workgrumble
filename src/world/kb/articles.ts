@@ -1783,4 +1783,68 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/systemd-start-limit', 'kb/reading-the-error'],
   },
+  {
+    id: 'kb/exec-exception-risk',
+    title: 'The executive who wants the exception',
+    summary: 'A senior person asks the desk to open a hole - MFA off, a mailbox '
+      + 'delegate, off the filter. The bypass is a real feature, and it is also '
+      + 'the vulnerability. Grant it narrowly, in writing, knowing what it costs.',
+    state: 'published',
+    issue: 'The CEO (or their assistant, on their behalf) wants a security '
+      + 'control removed because it is inconvenient: turn off the two-factor '
+      + 'prompts, give the EA full access to the mailbox, take the mailbox off '
+      + 'the mail filter. They are senior, they are insistent, and it needs '
+      + 'doing today.',
+    environment: 'An executive account on the corporate estate: enrolled in the '
+      + 'MFA rollout, on the mail filter, with a mailbox other people would like '
+      + 'a key to. The exceptions are all real, supported settings - which is '
+      + 'exactly why they are dangerous.',
+    resolution: [
+      'Slow down before you grant. Every one of these is a REAL product feature '
+        + '- the MFA exemption, the FullAccess delegate, the per-user filter '
+        + 'bypass - so nothing will stop you doing it. That is not permission; it '
+        + 'is the absence of a guardrail, and the guardrail has to be you.',
+      'Name what it exposes, once, plainly, to the person who can accept the '
+        + 'risk - not to punish the request but so the decision is theirs on the '
+        + 'record. MFA off is the one control that survives a stolen password, '
+        + 'gone from the account most worth stealing. A FullAccess delegate is a '
+        + 'key that keeps working after a password reset. Off the filter is the '
+        + 'busiest inbox in the building with nothing in front of a forgery.',
+      'Grant the narrowest thing that meets the actual need. The EA wants to '
+        + 'answer email - that is a delegate scoped to send-on-behalf, not '
+        + 'FullAccess. The exec hates the prompts - that is a hardware key or a '
+        + 'longer session, not MFA removed. A specific supplier is being '
+        + 'quarantined - that is an allow-list entry, not the whole mailbox off '
+        + 'the filter.',
+      'If it is granted anyway - and with an executive it often is - get the '
+        + 'risk acceptance in writing from someone senior enough to own it, and '
+        + 'record what was changed and when. When the exempted account is the one '
+        + 'that gets compromised, the incident starts with "who opened this, and '
+        + 'who said yes", and "the CEO asked" is not the same as an answer.',
+    ],
+    cause: [
+      'These are not misconfigurations or exploits; they are sanctioned bypasses '
+        + 'that ship in the product precisely so that important people can be '
+        + 'exempted from the controls everyone else lives with. The exec-mail-'
+        + 'skips-filtering setting is a documented feature; so is a FullAccess '
+        + 'delegate; so is removing a second factor. The exception IS the '
+        + 'vulnerability, and it is a vulnerability the vendor built a button for.',
+      'The reason it matters is who ends up on the other end of it. Attackers do '
+        + 'not target the intern; they target the executive, because the '
+        + 'executive can move money and is the one person the organisation has '
+        + 'quietly agreed to stop protecting. Business email compromise - the '
+        + 'fraudulent-wire scam that runs off exactly these gaps - costs '
+        + 'organisations billions a year, and it almost always lands on an account '
+        + 'that had an exception on it: no second factor, a delegate nobody '
+        + 'tracked, mail that skipped the filter.',
+      'So the skill here is not technical - the technical part is a checkbox - it '
+        + 'is organisational. "No" to a senior person is a political act, and the '
+        + 'job is to make the risk visible and the decision owned rather than to '
+        + 'quietly absorb it. Granting the exception is the path of least '
+        + 'resistance every single time, and the bill for it arrives later, in '
+        + 'somebody else\'s incident, with the grant you made sitting in the '
+        + 'timeline.',
+    ],
+    see_also: ['kb/second-factor'],
+  },
 ];

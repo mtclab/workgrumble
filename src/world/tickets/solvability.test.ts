@@ -77,6 +77,7 @@ import { TICKET_HYGIENE_SYNC } from '../scenes/meeting';
 import { createWorldSession, seedForAttempt, type WorldSession } from '../session';
 import { dayPlan, interruptionPlanFor } from '../week';
 import { BODGE_TICKETS } from './bodge';
+import { CORPORATE_TICKETS } from './corporate';
 import { mspOnboardingSetup } from '../msp-company';
 import { MSP_TICKETS } from './msp';
 import {
@@ -136,10 +137,23 @@ const MSP_CARRY = Object.freeze({
   arcWeek: 1,
   employer: 'msp',
 });
+const CORPORATE_TICKET_IDS = new Set(
+  CORPORATE_TICKETS.map((entry) => entry.def.id),
+);
+const CORPORATE_CARRY = Object.freeze({
+  farmFund: 0,
+  attempt: 1,
+  arcWeek: 1,
+  employer: 'corporate',
+});
 
 function carryFor(entry: Readonly<WorldTicket>): WorldSession {
   if (BODGE_TICKET_IDS.has(entry.def.id)) {
     return createWorldSession(BODGE_CARRY);
+  }
+
+  if (CORPORATE_TICKET_IDS.has(entry.def.id)) {
+    return createWorldSession(CORPORATE_CARRY);
   }
 
   if (MSP_TICKET_IDS.has(entry.def.id)) {

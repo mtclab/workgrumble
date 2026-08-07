@@ -32,6 +32,39 @@ export const HELPDESK_ACTIONS = {
   /** Binding a new authenticator to an account whose old one is gone. */
   accountRegisterMfa: 'account.register_mfa',
   /**
+   * Taking the second factor BACK OFF an account, at the account owner's
+   * insistence (E8, 0.22.0).
+   *
+   * The inverse of `accountRegisterMfa`, and its own verb for the same reason
+   * every exception here is: turning MFA off is a real, granted state a later
+   * incident reads, not a display flag. The whole trap of the org epic is that
+   * this is the path of least resistance - the exec will not do MFA, the desk is
+   * leaned on, and the account that loses its second factor is the one that gets
+   * phished. Nothing about it is a wall; it records what was done at the desk.
+   */
+  accountRemoveMfa: 'account.remove_mfa',
+  /**
+   * Giving somebody FullAccess to another account's mailbox (E8, 0.22.0).
+   *
+   * The EA-delegate onboarding, and the persistence vector a BEC hunt later
+   * finds: a delegate keeps reading the mailbox after the owner's password is
+   * reset, exactly as it does in the real product. Its own verb because the
+   * grant is the setup - the slice-2 grant and the slice-3 find are the same
+   * node's field - and because "who can read this mailbox" is a question an
+   * incident report asks and a display flag has never answered.
+   */
+  accountGrantMailboxDelegate: 'account.grant_mailbox_delegate',
+  /**
+   * Taking a mailbox OFF the mail filter (E8, 0.22.0).
+   *
+   * The exec-mail-skips-filtering bypass, made a real granted state: `true` is
+   * the exemption the exec demanded and the reason the phish that compromises
+   * them reaches them at all. Its own verb because the exemption IS the
+   * vulnerability the epic is about, and a later incident reads the field it
+   * sets rather than a sentence somebody typed.
+   */
+  accountSetFilterExempt: 'account.set_filter_exempt',
+  /**
    * Signing an account out of everything, everywhere.
    *
    * The right fix for a session somebody else is holding and the wrong one for

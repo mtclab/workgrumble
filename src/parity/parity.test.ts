@@ -35,6 +35,7 @@ import {
 } from '../world/actions';
 import { companySetup, COMPANY_IDS } from '../world/company';
 import { BODGE_TICKETS } from '../world/tickets/bodge';
+import { CORPORATE_TICKETS } from '../world/tickets/corporate';
 import { MSP_TICKETS } from '../world/tickets/msp';
 import { DEMO_ACTION_DATA, DEMO_ACTIONS, WORLD_IDS } from '../world/demo-world';
 import { FIELDS } from '../world/fields';
@@ -49,7 +50,8 @@ import { WORLD_TICKETS } from '../world/tickets';
  * fully.
  */
 const OTHER_EMPLOYER_TICKET_IDS = new Set(
-  [...BODGE_TICKETS, ...MSP_TICKETS].map((entry) => entry.def.id),
+  [...BODGE_TICKETS, ...MSP_TICKETS, ...CORPORATE_TICKETS]
+    .map((entry) => entry.def.id),
 );
 const PROBATION_TICKETS = WORLD_TICKETS.filter(
   (entry) => !OTHER_EMPLOYER_TICKET_IDS.has(entry.def.id),

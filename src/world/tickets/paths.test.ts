@@ -9,8 +9,10 @@ import { slaTierForTicketNodes } from '../customers';
 import { tierResolutionTicks } from '../priority';
 import { inheritedTicketIds } from '../week';
 import { mspInheritedTicketIds } from '../msp-week';
+import { corporateInheritedTicketIds } from '../corporate-week';
 import { bodgeInheritedTicketIds } from '../second-week';
 import { BODGE_TICKETS } from './bodge';
+import { CORPORATE_TICKETS } from './corporate';
 import { MSP_CUSTOMERS, mspOnboardingSetup } from '../msp-company';
 import { MSP_TICKETS } from './msp';
 import { acceptsEscalation } from './escalation';
@@ -38,12 +40,25 @@ const MSP_CARRY = Object.freeze({
   arcWeek: 1,
   employer: 'msp',
 });
+const CORPORATE_TICKET_IDS = new Set(
+  CORPORATE_TICKETS.map((entry) => entry.def.id),
+);
+const CORPORATE_CARRY = Object.freeze({
+  farmFund: 0,
+  attempt: 1,
+  arcWeek: 1,
+  employer: 'corporate',
+});
 
 function carryForTicket(entry: WorldTicket): Readonly<{
   farmFund: number; attempt: number; arcWeek: number; employer: string;
 }> | undefined {
   if (BODGE_TICKET_IDS.has(entry.def.id)) {
     return BODGE_CARRY;
+  }
+
+  if (CORPORATE_TICKET_IDS.has(entry.def.id)) {
+    return CORPORATE_CARRY;
   }
 
   return MSP_TICKET_IDS.has(entry.def.id) ? MSP_CARRY : undefined;
@@ -123,7 +138,8 @@ function sessionWithEveryTicket(): WorldSession {
   return sessionWith(
     ...WORLD_TICKETS
       .filter((entry) => !BODGE_TICKET_IDS.has(entry.def.id)
-        && !MSP_TICKET_IDS.has(entry.def.id))
+        && !MSP_TICKET_IDS.has(entry.def.id)
+        && !CORPORATE_TICKET_IDS.has(entry.def.id))
       .map(({ def }) => def.id),
   );
 }
@@ -149,9 +165,11 @@ describe('shipped tickets', () => {
         // against ITS inherited list, not the probation shop's.
         (BODGE_TICKET_IDS.has(entry.def.id)
           ? bodgeInheritedTicketIds()
-          : MSP_TICKET_IDS.has(entry.def.id)
-            ? mspInheritedTicketIds()
-            : inheritedTicketIds(1)
+          : CORPORATE_TICKET_IDS.has(entry.def.id)
+            ? corporateInheritedTicketIds()
+            : MSP_TICKET_IDS.has(entry.def.id)
+              ? mspInheritedTicketIds()
+              : inheritedTicketIds(1)
         ).includes(entry.def.id)
           ? 'open'
           : undefined,
@@ -270,6 +288,12 @@ describe('shipped tickets', () => {
       // The permission-denied incident (E6, 0.21.0): a service down on a
       // wrong-owned config file - chown/chmod it readable, then restart.
       'ticket:syseng-permission-denied',
+      // And the corporate employer's three VIP exceptions (E8, 0.22.0), spawned
+      // into the Halcyon world: the CEO's MFA off, the EA's mailbox delegate, and
+      // the CEO taken off the mail filter - the setup a later BEC incident reads.
+      'ticket:halcyon-ceo-mfa-off',
+      'ticket:halcyon-ea-delegate',
+      'ticket:halcyon-ceo-filter',
     ]);
   });
 

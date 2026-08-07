@@ -23,6 +23,7 @@ import { slaTierForTicketNodes } from '../customers';
 import { ACCESS_TICKETS } from './access';
 import { ARC_TICKETS } from './arc';
 import { BODGE_TICKETS } from './bodge';
+import { CORPORATE_TICKETS } from './corporate';
 import { BOSS_PHONE } from './boss-trash';
 import { CHANNEL_REQUEST_TICKETS } from './channel-requests';
 import { COLLEAGUE_TICKETS } from './colleagues';
@@ -41,6 +42,8 @@ import { mspSetup } from '../msp-company';
 import { MSP_WEEK } from '../msp-week';
 import { bodgeSetup } from '../second-company';
 import { SECOND_WEEK } from '../second-week';
+import { halcyonSetup } from '../corporate-company';
+import { CORPORATE_WEEK } from '../corporate-week';
 import { assertWeekTickets, WEEK } from '../week';
 
 export { BOSS_PHONE } from './boss-trash';
@@ -261,6 +264,7 @@ function validateWorldTickets(
       ...seededNodeIds(companySetup()),
       ...seededNodeIds(bodgeSetup()),
       ...seededNodeIds(mspSetup()),
+      ...seededNodeIds(halcyonSetup()),
     ]),
   );
   assertChainsAreChains(entries);
@@ -363,11 +367,14 @@ export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekTickets(
     ...BODGE_TICKETS,
     // The MSP's skeleton queue (0.8.0), proven against the MSP's week below.
     ...MSP_TICKETS,
+    // The corporate employer's VIP-exception queue (E8, 0.22.0), proven against
+    // the corporate week below.
+    ...CORPORATE_TICKETS,
   ]),
   // Every employer's week, so every ticket in the shared roster is proven to
   // arrive on SOME shop's day rather than shipping dead - the probation
   // twenty-eight, Bodgeworth's five, and the MSP's three.
-  [WEEK, SECOND_WEEK, MSP_WEEK],
+  [WEEK, SECOND_WEEK, MSP_WEEK, CORPORATE_WEEK],
 );
 
 /**

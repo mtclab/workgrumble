@@ -323,8 +323,14 @@ describe('helpdesk action registry', () => {
     // Thirty-nine from 0.4.1: `reporter.rebuff`, the aggressive register's one
     // social verb - a rude reply's cost, dispatched beside the same fix the
     // plain reply runs.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(39);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(39);
+    //
+    // Forty-two from 0.22.0 (E8): the three exec-exception grants - taking the
+    // second factor off an account (`account.remove_mfa`), granting a mailbox
+    // delegate (`account.grant_mailbox_delegate`), and taking a mailbox off the
+    // filter (`account.set_filter_exempt`). Each is a real granted state a later
+    // BEC incident reads back, and the setup half of the org-dysfunction arc.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(42);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(42);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});

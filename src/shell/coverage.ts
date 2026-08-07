@@ -3294,6 +3294,27 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'the player did touch is the systemctl restart in the terminal; this is '
     + 'the world pricing it the alert-fatigue cost it was. Driven in '
     + '`on-call.test.ts`.',
+  // The exec-exception grants (E8, 0.22.0): the VIP tickets at the corporate
+  // employer close on these - MFA off the CEO, the EA delegate, the filter
+  // exemption. They are player verbs with a real fix, but they live at the
+  // FOURTH employer, which the browser total-walk does not reach (it stops at
+  // the second) - the same reason the monitoring board's MSP behaviour and the
+  // engineer-tier verbs are proven in unit tests rather than the walk. They are
+  // driven end to end through the real dispatch path in `corporate.test.ts`; the
+  // corporate employer's shell surface and its own walk are a later pass's, so
+  // no browser control reaches them yet.
+  [HELPDESK_ACTIONS.accountRemoveMfa]: 'Taking the second factor off an '
+    + 'executive\'s account at their insistence - the flagship VIP exception. '
+    + 'Closes the CEO-MFA ticket at the corporate employer; driven in '
+    + '`corporate.test.ts`, out of the browser walk\'s reach.',
+  [HELPDESK_ACTIONS.accountGrantMailboxDelegate]: 'Granting FullAccess to a '
+    + 'mailbox - the EA-delegate onboarding, and the persistence a later BEC '
+    + 'hunt finds. Closes the delegate ticket at the corporate employer; driven '
+    + 'in `corporate.test.ts`, out of the browser walk\'s reach.',
+  [HELPDESK_ACTIONS.accountSetFilterExempt]: 'Taking a mailbox off the mail '
+    + 'filter - the exec-mail-skips-filtering bypass, granted. Closes the '
+    + 'filter-exemption ticket at the corporate employer; driven in '
+    + '`corporate.test.ts`, out of the browser walk\'s reach.',
 };
 
 /**

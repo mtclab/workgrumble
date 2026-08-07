@@ -469,11 +469,20 @@ describe('shipped conversations', () => {
     // the MSP boot world - stand the signed-up client up the way the day driver
     // does, so a conversation authored for its reporter has a person to speak for.
     msp.engine.applySetup(mspOnboardingSetup());
+    // The corporate employer (E8, 0.22.0): its exec floor speaks too, so its
+    // world has to be one of the ones a speaker can exist in.
+    const corporate = createWorldSession(Object.freeze({
+      farmFund: 0,
+      attempt: 1,
+      arcWeek: 1,
+      employer: 'corporate',
+    }));
 
     for (const conversation of WORLD_DIALOGUE) {
       const kind = probation.engine.graph.getNode(conversation.speaker)?.kind
         ?? bodge.engine.graph.getNode(conversation.speaker)?.kind
-        ?? msp.engine.graph.getNode(conversation.speaker)?.kind;
+        ?? msp.engine.graph.getNode(conversation.speaker)?.kind
+        ?? corporate.engine.graph.getNode(conversation.speaker)?.kind;
       expect(kind, conversation.speaker).toBe('person');
     }
   });

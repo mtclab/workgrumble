@@ -38,6 +38,10 @@ const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.accountRemoveFromGroup]: 'Removed the account from a group',
   [HELPDESK_ACTIONS.accountVerifyIdentity]: 'Verified who they were first',
   [HELPDESK_ACTIONS.accountRegisterMfa]: 'Enrolled a new authenticator',
+  [HELPDESK_ACTIONS.accountRemoveMfa]: 'Took the second factor off the account',
+  [HELPDESK_ACTIONS.accountGrantMailboxDelegate]:
+    'Granted a delegate full access to the mailbox',
+  [HELPDESK_ACTIONS.accountSetFilterExempt]: 'Took the mailbox off the filter',
   [HELPDESK_ACTIONS.accountRevokeSessions]: 'Signed every device out',
   [HELPDESK_ACTIONS.accountAssignLicence]: 'Gave the account a licence seat',
   [HELPDESK_ACTIONS.accountRevokeLicence]: 'Took a licence seat back',

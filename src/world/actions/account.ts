@@ -14,6 +14,9 @@ import { HELPDESK_ACTIONS } from './ids';
 
 const GROUP_PARAM = 'group';
 
+/** Who is being given FullAccess to a mailbox (E8, 0.22.0): the delegate account. */
+export const DELEGATE_PARAM = 'delegate';
+
 /** Which approved channel the identity was proved through. */
 export const METHOD_PARAM = 'method';
 
@@ -334,6 +337,90 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
             value: { const: true },
           },
         ],
+      },
+    ],
+  },
+  {
+    // The exec exception: the inverse of the enrolment (E8, 0.22.0). Turning
+    // the second factor OFF at the owner's insistence - the path of least
+    // resistance, and the setup the BEC incident later exploits. It refuses only
+    // when there is nothing to take off, the way the enrolment refuses when
+    // there is already one; it does NOT refuse for want of an approval, because
+    // the whole trap of the epic is that nothing here says no for you.
+    id: HELPDESK_ACTIONS.accountRemoveMfa,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('account'),
+      {
+        when: not(fieldIs(TARGET, FIELDS.mfaEnrolled, true)),
+        reason: '"{target.label}" has no second factor to take off - there is '
+          + 'nothing enrolled on it. Whatever they are really asking for, it is '
+          + 'not this.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.mfaEnrolled,
+        value: { const: false },
+      },
+    ],
+  },
+  {
+    // The EA-delegate onboarding (E8, 0.22.0): FullAccess to another account's
+    // mailbox, named by the `delegate` account. The everyday convenience that is
+    // also the persistence vector a BEC hunt later finds - a delegate keeps
+    // reading the mailbox after the owner's password is reset. It refuses a
+    // mailbox that already has a delegate, so the grant is one decision recorded
+    // once rather than a field overwritten silently.
+    id: HELPDESK_ACTIONS.accountGrantMailboxDelegate,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('account'),
+      ...paramNodeGuards(DELEGATE_PARAM, 'account'),
+      {
+        when: not({
+          pred: 'field_missing',
+          node: TARGET,
+          field: FIELDS.mailboxDelegate,
+        }),
+        reason: '"{target.label}" already has a delegate on the mailbox. '
+          + 'Granting a second FullAccess over the top of the first is how a '
+          + 'mailbox ends up with more keys than anybody can account for.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.mailboxDelegate,
+        value: { param: DELEGATE_PARAM },
+      },
+    ],
+  },
+  {
+    // Taking a mailbox off the mail filter (E8, 0.22.0): the exec-mail-skips-
+    // filtering bypass, granted. `true` is the exemption the exec demanded - the
+    // hole the phish that compromises them comes through. It refuses a mailbox
+    // that is already exempt, in the same shape the other exceptions refuse a
+    // no-op.
+    id: HELPDESK_ACTIONS.accountSetFilterExempt,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('account'),
+      {
+        when: fieldIs(TARGET, FIELDS.filterExempt, true),
+        reason: '"{target.label}" is already off the filter. Whatever is or is '
+          + 'not reaching them, it is not the filter doing it.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.filterExempt,
+        value: { const: true },
       },
     ],
   },

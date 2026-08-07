@@ -2,6 +2,7 @@ import { HELPDESK_ACTIONS } from '../actions';
 import { COMPANY_IDS } from '../company';
 import { WORLD_IDS } from '../demo-world';
 import { BODGE_TREES } from './bodge-trees';
+import { CORPORATE_TREES } from './corporate-trees';
 import { MSP_TREES } from './msp-trees';
 import { STAFF_TREES } from './staff';
 import type { DialogueTree } from './types';
@@ -1377,4 +1378,7 @@ export const DIALOGUE_TREES: readonly DialogueTree[] = [
   // The MSP customers' contacts (0.8.0), added the same way: a customer contact
   // is a reporter like any other, reached through the one registry.
   ...MSP_TREES,
+  // The corporate employer's exec floor (E8, 0.22.0): the CEO's EA, who files
+  // the VIP-exception requests, reached through the one registry the same way.
+  ...CORPORATE_TREES,
 ];

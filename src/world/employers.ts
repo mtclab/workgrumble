@@ -45,6 +45,13 @@ import {
 } from './second-company';
 import { bodgeInheritedTicketIds, SECOND_WEEK } from './second-week';
 import {
+  halcyonChannels,
+  HALCYON_COMPANY,
+  HALCYON_IDS,
+  halcyonSetup,
+} from './corporate-company';
+import { corporateInheritedTicketIds, CORPORATE_WEEK } from './corporate-week';
+import {
   type DayScript,
   inheritedTicketIds,
   REVIEW_PASS_PERFORMANCE,
@@ -58,7 +65,17 @@ import {
  * save that names an employer this build has never heard of is a refusal rather
  * than a silent fall back to the wrong world.
  */
-export const EMPLOYER_IDS = ['workgrumble', 'bodgeworth', 'msp'] as const;
+export const EMPLOYER_IDS = [
+  'workgrumble',
+  'bodgeworth',
+  'msp',
+  // The in-house corporate employer (E8, 0.22.0): the exec weak spot lives here,
+  // reached after the MSP the way the MSP is reached after Bodgeworth. Appended,
+  // so every existing transition (workgrumble -> bodgeworth -> msp) is unmoved
+  // and only `nextEmployerAfter('msp')` gains a real destination instead of the
+  // placeholder wrap.
+  'corporate',
+] as const;
 
 export type EmployerId = (typeof EMPLOYER_IDS)[number];
 
@@ -222,10 +239,41 @@ const MSP_EMPLOYER: Employer = Object.freeze({
   mondayTicketIds: mspInheritedTicketIds,
 });
 
+/**
+ * The corporate employer, made real (E8, 0.22.0) - a FOURTH employer, reached
+ * the way the MSP is: a new entry on this registry, wrapped to next after the
+ * MSP by `nextEmployerAfter`. It is an in-house corporate IT desk at Halcyon
+ * Grange Holdings (`corporate-company.ts`), where the player supports the
+ * executives directly, and its distinguishing character is the POLITICS - the
+ * exec who demands a security exception the desk is pressured to grant. The
+ * player is `person:pat` still, so a switch seeds their standing onto it exactly
+ * as a switch to Bodgeworth or the MSP does.
+ *
+ * `runsBossPings` is false: Halcyon's lead is not the probation reporter, so it
+ * authors no probation ping beat, the same as Bodgeworth and the MSP.
+ * `installPolicy` is `locked_down` - a corporate IT desk is a managed device
+ * with an audit, exactly as watched as the probation shop; the exec politics are
+ * what is new, not a wild-west desk.
+ */
+const CORPORATE_EMPLOYER: Employer = Object.freeze({
+  id: 'corporate',
+  name: HALCYON_COMPANY.name,
+  playerId: HALCYON_IDS.player,
+  installPolicy: HALCYON_COMPANY.installPolicy,
+  arc: EMPLOYER_ARC,
+  week: CORPORATE_WEEK,
+  channels: halcyonChannels(),
+  reviewBar: REVIEW_PASS_PERFORMANCE,
+  runsBossPings: false,
+  setup: halcyonSetup,
+  mondayTicketIds: corporateInheritedTicketIds,
+});
+
 const REGISTRY: Readonly<Record<string, Employer>> = Object.freeze({
   [FIRST_EMPLOYER]: PROBATION_EMPLOYER,
   [SECOND_EMPLOYER.id]: SECOND_EMPLOYER,
   [MSP_EMPLOYER.id]: MSP_EMPLOYER,
+  [CORPORATE_EMPLOYER.id]: CORPORATE_EMPLOYER,
 });
 
 /**
