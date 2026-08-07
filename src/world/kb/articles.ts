@@ -1612,4 +1612,129 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/reading-the-error'],
   },
+  {
+    id: 'kb/disk-full-journal',
+    title: 'A Linux box out of disk, and the journal that ate it',
+    summary: 'df -h shows the root filesystem full; du finds the runaway journal; '
+      + 'vacuum it and the space comes back.',
+    state: 'published',
+    issue: 'A Linux server is out of disk. Jobs are failing with "No space left on '
+      + 'device", services will not write, and monitoring is flagging the root '
+      + 'filesystem at or near 100%.',
+    environment: 'A Linux server reached over ssh, at the engineer tier: a box '
+      + 'whose root filesystem has filled up, usually because something has been '
+      + 'writing logs faster than anything rotates them.',
+    resolution: [
+      'Confirm it: "df -h". The line mounted on / shows Use% at or near 100% and '
+        + 'Avail near zero - that is the fire, not a warning.',
+      'Find what is eating it before you delete anything: "du -sh /var/log/*" (or '
+        + '"du -sh /var/log/journal") points at the biggest directory. On a box '
+        + 'that has been crash-looping, the systemd journal is the usual culprit - '
+        + 'du shows it at several gigabytes.',
+      'Reclaim it: "journalctl --vacuum-size=200M" deletes the archived journals '
+        + 'down to a 200M cap and frees the rest. It reports how much it freed.',
+      'Confirm with "df -h" again: Avail is back up and Use% has dropped, and the '
+        + 'jobs that were failing on "No space left on device" run again.',
+    ],
+    cause: [
+      'A disk does not fill by magic - something is writing and nothing is '
+        + 'cleaning up. The commonest version on an app box is a service that '
+        + 'crash-loops: every restart logs to journald, and with no size cap the '
+        + 'journal grows without bound until it has eaten the whole root '
+        + 'filesystem. df tells you the disk is full; du tells you WHICH directory '
+        + 'did it, which is the difference between fixing the cause and deleting '
+        + 'something you needed.',
+      'Vacuuming the journal is the immediate fix, but it is treating a symptom: '
+        + 'the real fix is capping the journal (SystemMaxUse in journald.conf) so '
+        + 'it can never do this again, and fixing whatever was crash-looping so it '
+        + 'stops filling the journal in the first place. A disk that filled once '
+        + 'with nothing capping it will fill again.',
+    ],
+    see_also: ['kb/systemd-start-limit', 'kb/one-directory-ate-the-drive'],
+  },
+  {
+    id: 'kb/cert-expiry-process',
+    title: 'A certificate that expired, which is a process failure, not a '
+      + 'technical one',
+    summary: 'The service is up and refusing everybody because its TLS '
+      + 'certificate ran out; renew it, and put the next expiry on a calendar.',
+    state: 'published',
+    issue: 'A public web service is throwing certificate errors - "your '
+      + 'connection is not private", a full-page security warning - and nobody can '
+      + 'reach it. The service itself is up; it is the certificate that is being '
+      + 'refused.',
+    environment: 'A Linux server reached over ssh, at the engineer tier: a web '
+      + 'service (nginx or similar) terminating TLS with a certificate that has '
+      + 'passed its expiry date. The service is running and healthy; browsers, '
+      + 'correctly, refuse an expired certificate.',
+    resolution: [
+      'Confirm it is the cert and not the service: "curl -I https://<host>". An '
+        + 'expired certificate reports "SSL certificate problem: certificate has '
+        + 'expired" - the handshake fails before any HTTP status, which tells you '
+        + 'the service is up and the cert is the problem.',
+      '"certbot certificates" reads what is on the box and its expiry.',
+      'Renew it: "certbot renew" replaces the certificate and reloads the service. '
+        + 'The service was up the whole time; it stops being refused the moment the '
+        + 'new certificate is in place.',
+      'Confirm with "curl -I https://<host>" again: a normal HTTP response line, '
+        + 'no certificate error.',
+    ],
+    cause: [
+      'This is the trap worth learning, and it took down O2 and Microsoft Teams: '
+        + 'an expired certificate is NOT a technical failure. Nothing crashed, no '
+        + 'config changed, no deploy went out - the service ran perfectly right up '
+        + 'to the moment the certificate reached a date on it, and then every '
+        + 'browser refused it. It is a MONITORING and PROCESS failure: the '
+        + 'certificate was fine until the day it was not, and nobody was tracking '
+        + 'the deadline.',
+      'The renew is the fix in the moment. The fix for good is that a certificate '
+        + 'is a deadline nobody scheduled: put every certificate expiry on a '
+        + 'calendar with an alarm weeks ahead, or automate the renewal (certbot '
+        + 'can), and monitor the expiry date the way you monitor whether the '
+        + 'service is up - because a service that is up and refusing everybody is '
+        + 'down in every way that matters to the person trying to use it.',
+    ],
+    see_also: ['kb/expired-certificate', 'kb/systemd-start-limit'],
+  },
+  {
+    id: 'kb/failed-deploy-postmortem',
+    title: 'A deploy that "worked in staging", and the blameless postmortem after',
+    summary: 'Roll back the broken release to stop the bleeding; then write the '
+      + 'blameless postmortem that closes the incident - the system, never the '
+      + 'name.',
+    state: 'published',
+    issue: 'A service that was fine is down after a release. "It worked in '
+      + 'staging." The unit failed to start in production, and whatever it does '
+      + 'has stopped.',
+    environment: 'A Linux server reached over ssh, at the engineer tier: a service '
+      + 'that failed to start after a deploy, usually because production is not '
+      + 'identical to the staging it was tested in.',
+    resolution: [
+      'Read why it failed: "journalctl -u <unit>" shows the startup error - here, '
+        + 'a config key the build needs that production does not set and staging '
+        + 'did.',
+      'Stop the bleeding: roll the release back to the last-good build and '
+        + '"systemctl restart <unit>". Confirm it is up with "systemctl status".',
+      'Close the incident properly: "postmortem file <unit>". A blameless '
+        + 'postmortem is how the tier closes an incident - the restart stops the '
+        + 'outage, the postmortem stops it happening the same way twice.',
+    ],
+    cause: [
+      '"It worked in staging" is true and means nothing when staging is not '
+        + 'production. The build read a config key that staging sets and '
+        + 'production does not, exited non-zero on startup, and systemd hit the '
+        + 'start-limit and left it failed. The gap that let a good build fail was '
+        + 'not the person who ran the deploy - it was that staging was not a '
+        + 'faithful copy of production, and the pipeline had no pre-flight to catch '
+        + 'the difference and no automated rollback to soften it.',
+      'That is why the postmortem is BLAMELESS: it analyses the system, never the '
+        + 'name. A postmortem that stops at "so-and-so pushed it" teaches the team '
+        + 'to hide mistakes; one that says "staging had no parity and the pipeline '
+        + 'had no rollback" produces the changes that actually stop the class of '
+        + 'thing - bring staging into parity, gate deploys on a config pre-flight, '
+        + 'wire an automatic rollback on a failed start. The write-up is the '
+        + 'professional move, not the punishment.',
+    ],
+    see_also: ['kb/systemd-start-limit', 'kb/reading-the-error'],
+  },
 ];

@@ -920,9 +920,30 @@ const GRACE: DialogueTree = {
 const MORGAN: DialogueTree = {
   id: 'dialogue/msp-morgan',
   speaker: MSP_IDS.mspLead,
-  tickets: ['ticket:syseng-first-incident'],
+  // Morgan is the infra lead who raises all the engineer-tier incidents on the
+  // MSP's own box - the promotion's first fix (the portal) and the characteristic
+  // ones (E6, 0.19.0: the disk, the cert, the deploy). One tree because he is one
+  // speaker, but each incident has its own opening line: sharing a root is a
+  // person answering the phone about the wrong problem.
+  tickets: [
+    'ticket:syseng-first-incident',
+    'ticket:syseng-disk-full',
+    'ticket:syseng-cert-expiry',
+    'ticket:syseng-failed-deploy',
+  ],
   root: 'portal',
-  resolved_root: 'portal-done',
+  roots: {
+    'ticket:syseng-first-incident': 'portal',
+    'ticket:syseng-disk-full': 'disk',
+    'ticket:syseng-cert-expiry': 'cert',
+    'ticket:syseng-failed-deploy': 'deploy',
+  },
+  resolved_roots: {
+    'ticket:syseng-first-incident': 'portal-done',
+    'ticket:syseng-disk-full': 'disk-done',
+    'ticket:syseng-cert-expiry': 'cert-done',
+    'ticket:syseng-failed-deploy': 'deploy-done',
+  },
   nodes: [
     {
       id: 'portal',
@@ -962,6 +983,124 @@ const MORGAN: DialogueTree = {
       id: 'portal-done',
       npc_line: 'It is back - customers are logging in again. First one on your '
         + 'own tier, and you brought it up clean. That is the job now. Good.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'disk',
+      npc_line: 'FC-RMM-01 is out of disk - the root filesystem is at 100% and '
+        + 'jobs are failing on "No space left on device". Something has been '
+        + 'writing logs unbounded. Find WHAT before you delete anything.',
+      options: [
+        {
+          label: 'Ask where to look',
+          next: 'disk-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Work out what is eating the disk',
+          effects: [
+            {
+              reveal: 'df -h shows the filesystem full; du -sh on /var/log points '
+                + 'at the runaway. It will be the systemd journal - a crash-looping '
+                + 'service floods it and nothing caps it. journalctl --vacuum-size '
+                + 'reclaims the space.',
+            },
+          ],
+        },
+        { label: 'Tell him you are on it' },
+      ],
+    },
+    {
+      id: 'disk-q',
+      npc_line: 'df -h first to confirm it, then du -sh /var/log/* to find the '
+        + 'biggest thing in there. Nine times out of ten on an app box it is the '
+        + 'journal. Do not just delete blindly - know what you are freeing.',
+      options: [{ label: 'ssh in and run df' }],
+    },
+    {
+      id: 'disk-done',
+      npc_line: 'Space is back and the jobs are running. Worth capping that '
+        + 'journal so it cannot do it again - but you stopped the fire. Good.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'cert',
+      npc_line: 'The client portal is throwing certificate warnings and nobody can '
+        + 'log in - but the service is UP, I have checked. This is not a crash. '
+        + 'Have a look before you go restarting things.',
+      options: [
+        {
+          label: 'Ask what he means it is not a crash',
+          next: 'cert-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check the certificate',
+          effects: [
+            {
+              reveal: 'The TLS certificate has expired. Nothing broke - it just '
+                + 'reached its expiry date and browsers refuse it. curl -I shows '
+                + 'it; certbot renew replaces it. It is a monitoring failure, not '
+                + 'a technical one: nobody tracked the deadline.',
+            },
+          ],
+        },
+        { label: 'Tell him you are on it' },
+      ],
+    },
+    {
+      id: 'cert-q',
+      npc_line: 'The service is running fine - it is the certificate that ran out. '
+        + 'A cert is a deadline nobody put in the calendar. curl -I will confirm '
+        + 'the expiry; certbot renew fixes it in the moment. The real fix is '
+        + 'monitoring the expiry so this never surprises us again.',
+      options: [{ label: 'ssh in and curl it' }],
+    },
+    {
+      id: 'cert-done',
+      npc_line: 'Portal is serving again. The service never went anywhere - it was '
+        + 'the cert the whole time. Put its next expiry on a calendar, would you? '
+        + 'Good work.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'deploy',
+      npc_line: 'The background worker is down after this afternoon\'s release. '
+        + '"It worked in staging." Roll it back and get it up - and then write the '
+        + 'postmortem, because this one is not closed until it is written up.',
+      options: [
+        {
+          label: 'Ask why the postmortem matters here',
+          next: 'deploy-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Work out why it failed in prod',
+          effects: [
+            {
+              reveal: 'journalctl shows it failing on a config key staging sets '
+                + 'and production does not. Roll back and restart to stop the '
+                + 'bleeding. The real gap is that staging was not a copy of prod - '
+                + 'which is a system to fix, not a person to blame.',
+            },
+          ],
+        },
+        { label: 'Tell him you are on it' },
+      ],
+    },
+    {
+      id: 'deploy-q',
+      npc_line: 'Because the restart stops the outage but does not stop it '
+        + 'happening again. A blameless postmortem - what the SYSTEM let happen, '
+        + 'never whose hand was on the deploy - is what turns a fire into a thing '
+        + 'we fixed. postmortem file the unit once it is back up.',
+      options: [{ label: 'ssh in and read the worker' }],
+    },
+    {
+      id: 'deploy-done',
+      npc_line: 'Worker is back and the postmortem reads clean - the system, not '
+        + 'a name. That is the professional move, and it is how we stop the next '
+        + 'one. Good work.',
       options: [{ label: 'Log the fix' }],
     },
   ],

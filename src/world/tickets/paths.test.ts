@@ -260,6 +260,13 @@ describe('shipped tickets', () => {
       // down on FC-RMM-01. Summoned - raised by the promotion, not by a scripted
       // day - and the payoff of the whole tier crossing.
       'ticket:syseng-first-incident',
+      // And the characteristic sysadmin incidents (E6, 0.19.0): the disk that
+      // fills with logs, the cert that expired (a process failure), and the
+      // deploy that "worked in staging", closed by the blameless postmortem. All
+      // summoned by the promotion, on the MSP's own box.
+      'ticket:syseng-disk-full',
+      'ticket:syseng-cert-expiry',
+      'ticket:syseng-failed-deploy',
     ]);
   });
 

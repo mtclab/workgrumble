@@ -1022,6 +1022,48 @@ export const FIELDS = {
    * disk-full ticket will be about.
    */
   diskFree: 'disk_free',
+  /**
+   * How many bytes the systemd journal is eating on a Linux box (E6, 0.19.0).
+   *
+   * The disk-full incident's real state, and the number `du -sh /var/log/journal`
+   * reads: a crash-looping service floods journald and the journal grows unbounded
+   * until the root filesystem is at 100%. It is on the machine beside `disk_free`
+   * and it is a REAL field du reads, not a printed string - change it and du
+   * changes, which is the teeth of the diagnosis. Absent (a healthy box) reads as
+   * a small baseline, so the estate is byte-identical until the incident seeds a
+   * runaway. `journalctl --vacuum-size` reduces it to the vacuum target and frees
+   * the difference back onto `disk_free`, exactly as the real command does.
+   */
+  journalBytes: 'journal_bytes',
+  /**
+   * The blameless post-incident record, one `unit@tick` line per postmortem
+   * filed, oldest first (E6, 0.19.0).
+   *
+   * The same append-only `id@tick` trail as `break_glass_audit` and read the
+   * same way - the DRIVER builds the line in the minute the postmortem was
+   * written and the world appends it, so a replay writes the identical string.
+   * After an incident resolves, the engineer writes a short post-incident record:
+   * what happened, what the SYSTEM (never the person) let happen, the follow-up.
+   * The prose itself is authored, blameless content (`world/postmortem.ts`), gated
+   * so it names no person; this field is the world's proof that one was filed and
+   * the record it closed the incident on. It only ever grows, because a postmortem
+   * that could be un-filed would defeat the point of writing it. ABSENT for a
+   * service-desk player and every pre-promotion save.
+   */
+  postmortems: 'postmortems',
+  /**
+   * Whether the failed-deploy incident's unit has had its postmortem written
+   * (E6, 0.19.0).
+   *
+   * The close marker the failed-deploy incident's resolution rule reads: the fire
+   * is out when the unit is back up AND the blameless postmortem has been filed,
+   * because a postmortem is how that incident is CLOSED rather than merely fixed.
+   * A boolean on the unit rather than a read of the append-only trail above,
+   * because a ticket's `resolved_when` compares a field to a value and cannot walk
+   * a line ledger - so the postmortem verb writes both, the prose to the trail and
+   * this flag on the unit it documents. Absent (never filed) reads as false.
+   */
+  postmortemFiled: 'postmortem_filed',
   /** directory + file */
   /**
    * Which drive this entry is on, by the hostname of the box it belongs to.

@@ -191,6 +191,15 @@ export const MSP_IDS = {
    */
   mspInfraNginxUnit: 'unit:fc-rmm-01/nginx.service',
   mspInfraCronUnit: 'unit:fc-rmm-01/cron.service',
+  /**
+   * The background worker the failed-deploy incident is about (E6, 0.19.0):
+   * fcworker.service, the queue processor behind the portal. It is NOT in the
+   * seeded baseline - the incident's own setup adds it `failed`, exactly the way
+   * a runtime addNode drips a ticket - so FC-RMM-01 is byte-identical until the
+   * promotion raises the incident. "Worked in staging"; the fix is the rollback +
+   * restart, and the incident closes on the blameless postmortem.
+   */
+  mspInfraWorkerUnit: 'unit:fc-rmm-01/fcworker.service',
 
   /**
    * Nadia Fontaine's practice manager contact at the law firm - the person who

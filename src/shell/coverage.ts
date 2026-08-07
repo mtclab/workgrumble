@@ -29,6 +29,7 @@ import {
   CHANGE_ACTIONS,
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
+  INCIDENT_ACTIONS,
   REQUEST_ACTIONS,
   SOFTWARE_ACTIONS,
   SYSTEMD_ACTIONS,
@@ -69,16 +70,20 @@ export const WALK_RUNS = {
     + 'across. Its own run because accepting reloads the page into a different '
     + 'world - the week and fired runs verify the offer is there without taking '
     + 'it, and this is the single walk that crosses the threshold.',
-  sysadmin: 'The promotion crossed and the first fix (E6): at the MSP, with the '
+  sysadmin: 'The promotion crossed and the fixes (E6): at the MSP, with the '
     + 'standing built, read the earned offer and accept it (which raises the '
-    + 'downed-portal incident), ssh to the MSP\'s own Linux server (the '
-    + 'fingerprint and the known_hosts it writes), and work it in the unix '
-    + 'dialect - journalctl for the why, df/ps/ip and ls -la, systemctl status '
-    + '(failed) then restart (silent) then status (running), the payoff walked '
-    + 'end to end - plus the scope wall proven still up on a customer\'s server. '
-    + 'Its own run because a service-desk week cannot hold the engineer tier: ssh '
-    + 'is refused until the promotion fires, so the whole server surface lives on '
-    + 'the far side of a threshold no probation week reaches.',
+    + 'downed-portal incident and the characteristic ones), ssh to the MSP\'s own '
+    + 'Linux server (the fingerprint and the known_hosts it writes), and work it '
+    + 'in the unix dialect - journalctl for the why, df/du/ps/ip and ls -la, '
+    + 'systemctl status (failed) then restart (silent) then status (running), the '
+    + 'payoff walked end to end - plus the scope wall proven still up on a '
+    + 'customer\'s server. And the 0.19.0 incidents on the same box: df -h and du '
+    + 'find the runaway journal and journalctl --vacuum-size frees it; curl -I and '
+    + 'certbot renew clear an expired certificate; a failed deploy is rolled back '
+    + 'and closed by the blameless postmortem. Its own run because a service-desk '
+    + 'week cannot hold the engineer tier: ssh is refused until the promotion '
+    + 'fires, so the whole server surface lives on the far side of a threshold no '
+    + 'probation week reaches.',
 } as const;
 
 export type WalkRunId = keyof typeof WALK_RUNS;
@@ -2427,12 +2432,16 @@ const ENTRIES = [
   {
     id: 'cmd.journalctl',
     surface: 'cmd',
-    control: 'journalctl -u <unit>',
+    control: 'journalctl -u <unit> | journalctl --vacuum-size=<x>',
     does: 'Reads a unit\'s journal off its node: the timestamped '
       + 'MMM DD HH:MM:SS host process[pid]: message lines a failed unit carries '
       + '- the crash, systemd\'s retries, the start-limit - and "-- No entries --" '
-      + 'for a unit the world holds no journal for.',
+      + 'for a unit the world holds no journal for. With --vacuum-size it is the '
+      + 'disk-full fix (0.19.0): deletes the archived journals down to the cap and '
+      + 'hands the freed bytes back to the box\'s disk_free, refusing on a box '
+      + 'whose journal is already small.',
     command: 'journalctl',
+    actions: [INCIDENT_ACTIONS.journalVacuum],
     run: 'sysadmin',
     why: 'A unix-dialect verb, reachable only inside the ssh session the '
       + 'promotion unlocks.',
@@ -2445,6 +2454,21 @@ const ENTRIES = [
       + 'on shape - a device path and a mount point, no drive letter - off the '
       + 'machine\'s seeded free space.',
     command: 'df',
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.du',
+    surface: 'cmd',
+    control: 'du -sh <path>',
+    does: 'Shows what a directory is eating in the real size-tab-path shape '
+      + '(0.19.0): -s the summed total under the path, without it each directory '
+      + 'under it and then the total. The journal\'s size is the box\'s real '
+      + 'journal_bytes field, so du CHANGES when it does - the disk-full '
+      + 'diagnosis, du -sh /var/log/journal finding the runaway df -h\'s missing '
+      + 'space went into.',
+    command: 'du',
     run: 'sysadmin',
     why: 'A unix-dialect verb, reachable only inside the ssh session the '
       + 'promotion unlocks.',
@@ -2551,6 +2575,38 @@ const ENTRIES = [
     run: 'sysadmin',
     why: 'A unix-dialect verb reading the box\'s web units, reachable only inside '
       + 'the ssh session the promotion unlocks.',
+  },
+  {
+    id: 'cmd.certbot',
+    surface: 'cmd',
+    control: 'certbot <renew|certificates>',
+    does: 'The cert-expiry fix (0.19.0): "renew" replaces an EXPIRED certificate '
+      + 'and reloads the service, flipping the cert_expired flag the served box '
+      + 'refuses on - and, against a valid cert, refuses with certbot\'s own "not '
+      + 'yet due for renewal". "certificates" reads the box\'s cert state without '
+      + 'changing it. The service is up the whole time; it is the certificate that '
+      + 'was refused.',
+    command: 'certbot',
+    actions: [INCIDENT_ACTIONS.certRenew],
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks.',
+  },
+  {
+    id: 'cmd.postmortem',
+    surface: 'cmd',
+    control: 'postmortem <file <unit> | list>',
+    does: 'Writes the blameless post-incident record that CLOSES an incident '
+      + '(0.19.0): "file" records the filing on the append-only postmortems trail '
+      + 'and prints the authored, gated write-up (what happened, the timeline, '
+      + 'what the SYSTEM let happen, the follow-up - never a name), refusing on a '
+      + 'unit still down or already written up; "list" reads the trail back. The '
+      + 'failed-deploy incident closes on this, not on the restart.',
+    command: 'postmortem',
+    actions: [INCIDENT_ACTIONS.postmortemFile],
+    run: 'sysadmin',
+    why: 'A unix-dialect verb, reachable only inside the ssh session the '
+      + 'promotion unlocks - only a Systems Engineer files a postmortem.',
   },
   {
     id: 'cmd.exit',

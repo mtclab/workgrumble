@@ -602,6 +602,35 @@ export const CHANGE_ACTION_IDS: readonly ChangeActionId[] = Object.freeze(
   Object.values(CHANGE_ACTIONS),
 );
 
+/**
+ * The characteristic-incident verbs (E6, 0.19.0): the fixes for the three
+ * classic sysadmin incidents the tier is measured on.
+ *
+ * `journalVacuum` clears a runaway systemd journal and hands its bytes back to
+ * the box's free space (the disk-full fix); `certRenew` replaces an expired TLS
+ * certificate and the service serves again (the cert-expiry fix); `postmortemFile`
+ * writes the blameless post-incident record that CLOSES an incident once it is
+ * resolved. Each is a real state change on a real node - the diagnosis reads the
+ * same fields the fix writes, so a fabricated confirmation could never close one.
+ * Engine tier is helpdesk like every other verb; the ENGINEER gate is the shell's
+ * (there is no ssh, and so no unix terminal, below the promotion).
+ */
+export const INCIDENT_ACTIONS = {
+  /** `journalctl --vacuum-size`: shrink a runaway journal, free the disk. */
+  journalVacuum: 'incident.journal_vacuum',
+  /** `certbot renew`: replace an expired certificate, the service serves again. */
+  certRenew: 'incident.cert_renew',
+  /** `postmortem file <unit>`: write the blameless record that closes it. */
+  postmortemFile: 'incident.postmortem_file',
+} as const;
+
+export type IncidentActionId =
+  (typeof INCIDENT_ACTIONS)[keyof typeof INCIDENT_ACTIONS];
+
+export const INCIDENT_ACTION_IDS: readonly IncidentActionId[] = Object.freeze(
+  Object.values(INCIDENT_ACTIONS),
+);
+
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
 
 export const DAY_ACTION_IDS: readonly DayActionId[] = Object.freeze(

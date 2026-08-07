@@ -28,6 +28,7 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import {
   CAREER_ACTIONS,
+  INCIDENT_ACTIONS,
   PROMOTION_REPUTATION,
   SSH_HOST_PARAM,
   SYSTEMD_ACTIONS,
@@ -119,6 +120,14 @@ export const UNIX_COMMANDS: readonly CommandSpec[] = [
     joined: false,
   },
   {
+    name: 'du',
+    usage: 'du -sh <path>',
+    summary: 'Show what a directory is eating: a size and a path per line.',
+    minArgs: 0,
+    maxArgs: 3,
+    joined: false,
+  },
+  {
     name: 'ps',
     usage: 'ps aux',
     summary: 'List processes: USER/PID/%CPU/%MEM/.../STAT/START/TIME/COMMAND.',
@@ -181,6 +190,24 @@ export const UNIX_COMMANDS: readonly CommandSpec[] = [
     minArgs: 1,
     maxArgs: 3,
     joined: false,
+  },
+  {
+    name: 'certbot',
+    usage: 'certbot <renew|certificates>',
+    summary: 'Renew an expired TLS certificate, or read what is on the box.',
+    minArgs: 1,
+    maxArgs: 3,
+    joined: true,
+    subcommand: true,
+  },
+  {
+    name: 'postmortem',
+    usage: 'postmortem <file <unit> | list>',
+    summary: 'Write the blameless post-incident record that closes an incident.',
+    minArgs: 1,
+    maxArgs: 3,
+    joined: true,
+    subcommand: true,
   },
   {
     name: 'changereq',
@@ -837,6 +864,16 @@ function journalctlLines(
   session: Readonly<SshSession>,
   args: readonly string[],
 ): CommandResult {
+  // `journalctl --vacuum-size=<x>`: the disk-full fix. It deletes archived
+  // journals down to a size cap and hands the space back - a real state change
+  // on the box, not a read - so it dispatches the vacuum verb, which refuses on
+  // a box whose journal is already small (nothing to reclaim).
+  const vacuumAt = args.findIndex((arg) => arg.startsWith('--vacuum-size'));
+
+  if (vacuumAt >= 0) {
+    return journalVacuumLines(api, session);
+  }
+
   const flagAt = args.findIndex((arg) => arg === '-u' || arg === '--unit');
   const named = flagAt >= 0 ? (args[flagAt + 1] ?? '').trim() : '';
 
@@ -871,6 +908,58 @@ function journalctlLines(
   return journal.length === 0
     ? lines('-- No entries --')
     : lines(...journal);
+}
+
+/**
+ * `journalctl --vacuum-size=<x>` - the disk-full fix, over the box's real disk.
+ *
+ * It reads the box's `journal_bytes` before and after the vacuum verb so the
+ * "freed" figure it prints is the true difference the world wrote, not a guess.
+ * On a healthy box the verb refuses (the journal is already small, nothing to
+ * reclaim) and its own sentence is the answer; on the disk-full box the runaway
+ * archives are deleted, the space is handed back to the root filesystem, and
+ * `df -h` reads free again.
+ */
+function journalVacuumLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): CommandResult {
+  const box = api.graph.getNode(session.hostId);
+
+  if (box === undefined) {
+    return lines('journalctl: this session is not standing on a box.');
+  }
+
+  const beforeValue = box.fields[FIELDS.journalBytes];
+  const before = typeof beforeValue === 'number' ? beforeValue : 0;
+
+  const result = api.dispatch(
+    INCIDENT_ACTIONS.journalVacuum,
+    api.actor,
+    session.hostId,
+    {},
+  );
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  const afterValue = api.graph.getField(session.hostId, FIELDS.journalBytes);
+  const after = typeof afterValue === 'number' ? afterValue : 0;
+  const freed = Math.max(0, before - after);
+
+  return lines(
+    'Deleted archived journal /var/log/journal/'
+      + '3f2a1c9d8b7e6f5a4c3d2e1f0a9b8c7d/system@'
+      + '00061a3c9e2b4d10-1c8e5f2a9d3b6c47.journal~ '
+      + `(${humanSize(before / 2)}).`,
+    'Deleted archived journal /var/log/journal/'
+      + '3f2a1c9d8b7e6f5a4c3d2e1f0a9b8c7d/system@'
+      + '00061a3d1f4e5a20-2b9f6c3d8e1a7b58.journal~ '
+      + `(${humanSize(before / 2)}).`,
+    `Vacuuming done, freed ${humanSize(freed)} of archived journals from `
+      + '/var/log/journal.',
+  );
 }
 
 /* -- df -h / ps aux / ip a: the box's disk, processes and address --------- */
@@ -923,6 +1012,116 @@ function dfLines(
       pad(humanSize(used), 6)
     }${pad(humanSize(avail), 6)}${pad(`${String(usePct)}%`, 5)}/`,
   );
+}
+
+/**
+ * A healthy box's journal size, in bytes (~40M): what `du -sh /var/log/journal`
+ * reads when the machine holds no `journal_bytes` field - a normal, rotated
+ * journal. The disk-full incident replaces it with the runaway ~26G.
+ */
+const DU_JOURNAL_BASELINE = 41_943_040;
+
+/** One directory du knows the size of on a Linux box: a path and its bytes. */
+interface DuLeaf {
+  readonly path: string;
+  readonly bytes: number;
+}
+
+/**
+ * The directories `du` reads on the box, sizes and all.
+ *
+ * The journal's size is the box's REAL `journal_bytes` field - the one the
+ * disk-full incident seeds and the vacuum shrinks - so `du -sh /var/log/journal`
+ * reads a real state and CHANGES when it does, which is the teeth of the
+ * diagnosis. The rest are fixed, plausible sizes for the directories a stock
+ * app box carries, so a listing has context around the runaway; nothing here is
+ * invented to disagree with a truth the world holds, because the world holds no
+ * other directory sizes for a Linux box (the fs is not seeded), exactly as
+ * `ls -la` says.
+ */
+function duLeaves(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): readonly DuLeaf[] {
+  const box = api.graph.getNode(session.hostId);
+  const journal = box?.fields[FIELDS.journalBytes];
+  const journalBytes = typeof journal === 'number' ? journal : DU_JOURNAL_BASELINE;
+
+  return [
+    { path: '/var/log/journal', bytes: journalBytes },
+    { path: '/var/log/nginx', bytes: 12_582_912 },
+    { path: '/var/lib/fcportal', bytes: 357_564_416 },
+    { path: `/home/${session.username}`, bytes: 8_388_608 },
+    { path: '/usr', bytes: 1_503_238_553 },
+  ];
+}
+
+/** A du path, normalised: trailing slash and a trailing `/*` wildcard dropped. */
+function duTarget(raw: string): string {
+  const trimmed = raw.trim();
+  const noWildcard = trimmed.endsWith('/*') ? trimmed.slice(0, -2) : trimmed;
+  const noSlash = noWildcard.length > 1 && noWildcard.endsWith('/')
+    ? noWildcard.slice(0, -1)
+    : noWildcard;
+
+  return noSlash.length === 0 ? '.' : noSlash;
+}
+
+/** Whether a leaf is at or under a path - the same containment du walks. */
+function underPath(leafPath: string, target: string): boolean {
+  return leafPath === target || leafPath.startsWith(`${target}/`);
+}
+
+/** One du row: the human size, a tab, and the path - the real `20K\t/path` shape. */
+function duRow(bytes: number, path: string): string {
+  return `${humanSize(bytes)}\t${path}`;
+}
+
+/**
+ * `du -sh <path>` (and `du -h`/bare `du`) - what a directory is eating, the
+ * command the disk-full fire drill is read by.
+ *
+ * `-s` summarises: one line, the total under the path. Without `-s` it lists each
+ * directory under the path and then the total, the way you drill into `/var/log`
+ * and find the journal. The size of the journal is the box's real `journal_bytes`
+ * field, so the runaway is a fact du reads rather than a number it invented -
+ * `du -sh /var/log/journal` on the disk-full box shows the ~26G that `df -h`'s
+ * missing space went into. A bare `du` reads the home directory the ssh session
+ * stands in. A path the box holds no directories under is an ordinary small
+ * directory, and du says so - `4.0K`, an empty one - rather than erroring.
+ */
+function duLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  args: readonly string[],
+): CommandResult {
+  const flags = args.filter((arg) => arg.startsWith('-')).join('');
+  const summarise = flags.includes('s');
+  const rawPath = args.find((arg) => !arg.startsWith('-'));
+  const target = duTarget(rawPath ?? `/home/${session.username}`);
+
+  const leaves = duLeaves(api, session);
+  const under = leaves.filter((leaf) => underPath(leaf.path, target));
+  const total = under.reduce((sum, leaf) => sum + leaf.bytes, 0);
+
+  // A path with no directories under it is a small ordinary directory - du
+  // reports the 4K an empty ext4 directory takes, not an error.
+  if (under.length === 0) {
+    return lines(duRow(4096, target));
+  }
+
+  // -s is the total alone; without it, every directory under the path and then
+  // the summed total for the path, which is how the drill-down reads.
+  if (summarise) {
+    return lines(duRow(total, target));
+  }
+
+  const rows = under
+    .filter((leaf) => leaf.path !== target)
+    .sort((left, right) => left.path.localeCompare(right.path))
+    .map((leaf) => duRow(leaf.bytes, leaf.path));
+
+  return lines(...rows, duRow(total, target));
 }
 
 /**
@@ -1379,6 +1578,26 @@ function curlLines(
     );
   }
 
+  // nginx is up and listening. Before it can answer HTTP over TLS the
+  // certificate has to be valid: an EXPIRED cert (the cert-expiry incident's
+  // real state) fails the handshake, which is exactly what a browser refuses on
+  // and what curl reports as (60) - the service is up, and it is still refused.
+  const certExpired = nginx !== undefined
+    && nginx.fields[FIELDS.certExpired] === true;
+
+  if (port === 443 && certExpired) {
+    return lines(
+      'curl: (60) SSL certificate problem: certificate has expired',
+      'More details here: https://curl.se/docs/sslcerts.html',
+      '',
+      'curl failed to verify the legitimacy of the server and therefore could '
+        + 'not',
+      'establish a secure connection to it. The service is up; the certificate '
+        + 'it',
+      'presents has expired. certbot renew replaces it.',
+    );
+  }
+
   // nginx is up. Whether it can serve the app or must 502 is the app's own
   // state: the product unit behind it (an *app/*portal unit) being down is the
   // upstream failure nginx reports as 502.
@@ -1531,6 +1750,156 @@ function breakGlassUnixLines(
   return lines(...api.day.breakGlass(unit.id));
 }
 
+/* -- certbot: the cert-expiry fix ----------------------------------------- */
+
+/**
+ * The unit on the box that terminates TLS - nginx, the reverse proxy the cert is
+ * presented by. The cert-expiry incident's `cert_expired` flag lives on it, and
+ * this is what curl refuses on and certbot renews.
+ */
+function certBearingUnit(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): ReadOnlyGraphNode | null {
+  return api.graph
+    .neighbors(session.hostId, { direction: 'in', edgeKind: 'runs_on' })
+    .filter((node) => node.kind === 'unit')
+    .find((node) => unitBase(node) === 'nginx') ?? null;
+}
+
+/**
+ * `certbot renew` / `certbot certificates` - the cert-expiry fix, and reading
+ * the box's certificate state.
+ *
+ * `renew` replaces an EXPIRED certificate and reloads the service, which is a
+ * real state change (the `cert_expired` flag the served box refuses on) - it
+ * dispatches the renew verb, silent-on-refusal in the verb's own words when the
+ * cert is valid (certbot really does say "not yet due for renewal"). `certificates`
+ * reads the box's cert state without changing it, the diagnosis half.
+ */
+function certbotLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sub: string,
+): CommandResult {
+  const unit = certBearingUnit(api, session);
+
+  if (unit === null) {
+    return lines(
+      'certbot: no web server with a certificate on this box - there is nothing '
+        + 'here to renew.',
+    );
+  }
+
+  const expired = unit.fields[FIELDS.certExpired] === true;
+  const domain = fqdn(session.hostname);
+
+  if (sub === 'certificates') {
+    return lines(
+      'Found the following certs:',
+      `  Certificate Name: ${domain}`,
+      `    Domains: ${domain}`,
+      `    Expiry Date: ${expired
+        ? 'EXPIRED (renew now: certbot renew)'
+        : 'valid (not yet due for renewal)'}`,
+      '    Certificate Path: /etc/letsencrypt/live/'
+        + `${domain}/fullchain.pem`,
+    );
+  }
+
+  if (sub !== 'renew') {
+    return lines(
+      `"certbot ${sub}" is not something this terminal does.`,
+      'It does "certbot renew" (replace an expired certificate) and "certbot '
+        + 'certificates" (read what is on the box).',
+    );
+  }
+
+  const result = api.dispatch(
+    INCIDENT_ACTIONS.certRenew,
+    api.actor,
+    unit.id,
+    {},
+  );
+
+  // A valid cert refuses the renew with the verb's own reason - certbot's real
+  // "not yet due for renewal" is that same honest non-event.
+  if (!result.ok) {
+    return lines(
+      `Certificate not yet due for renewal; no action taken for ${domain}.`,
+      '',
+      result.reason,
+    );
+  }
+
+  return lines(
+    'Processing /etc/letsencrypt/renewal/'
+      + `${domain}.conf`,
+    `Renewing an existing certificate for ${domain}`,
+    '',
+    'Congratulations, all renewals succeeded:',
+    `  /etc/letsencrypt/live/${domain}/fullchain.pem (success)`,
+    '',
+    'Reloading nginx to pick up the new certificate. The service was up the '
+      + 'whole time - it is the certificate that was refused, and now it is not.',
+  );
+}
+
+/* -- postmortem: the blameless record that closes an incident -------------- */
+
+/**
+ * `postmortem file <unit>` / `postmortem list` (E6, 0.19.0).
+ *
+ * `file` writes the blameless post-incident record that closes an incident once
+ * the fire is out - it resolves the unit on the box and hands off to the driver,
+ * which reads the authored (gated) prose, records the filing on the append-only
+ * trail and prints the write-up. `list` reads back how many postmortems are on
+ * the player's own trail. The verb refuses a postmortem on a unit still down, or
+ * one already written - a postmortem is the record of a fire that is OUT.
+ */
+function postmortemUnixLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sub: string,
+  query: string,
+): CommandResult {
+  if (sub === 'list') {
+    const filed = readKnownHosts(
+      api.graph.getField(api.actor, FIELDS.postmortems),
+    );
+
+    return filed.length === 0
+      ? lines('No postmortems on the record yet.')
+      : lines(
+        `${String(filed.length)} postmortem(s) on the record:`,
+        ...filed,
+      );
+  }
+
+  if (sub !== 'file') {
+    return lines(
+      `"postmortem ${sub}" is not something this terminal does.`,
+      'It does "postmortem file <unit>" - to write the blameless record that '
+        + 'closes an incident once it is resolved - and "postmortem list", to '
+        + 'read back what has been filed.',
+    );
+  }
+
+  const unitName = query.trim();
+
+  if (unitName.length === 0) {
+    return lines('usage: postmortem file <unit>');
+  }
+
+  const unit = unitOnBox(api, session, unitName);
+
+  if (unit === null) {
+    return lines(`Unit ${unitName}.service could not be found on this box.`);
+  }
+
+  return lines(...api.day.filePostmortem(unit.id));
+}
+
 /**
  * Runs one parsed unix command against the world and the session. The twin of
  * `executeCommand` in `cmd-run.ts`, and DOM-free for the same reason.
@@ -1558,7 +1927,7 @@ export function executeUnix(
         `${parsed.name}: command not found`,
         parsed.suggestion === null
           ? 'This dialect is the core sysadmin surface - the deeper tools '
-            + '(du, apt, id/getent, chmod) are a later slice.'
+            + '(apt, id/getent, chmod) are a later slice.'
           : `Did you mean "${parsed.suggestion}"?`,
       );
     }
@@ -1589,6 +1958,8 @@ export function executeUnix(
       return journalctlLines(api, session, parsed.args);
     case 'df':
       return dfLines(api, session);
+    case 'du':
+      return duLines(api, session, parsed.args);
     case 'ps':
       return psLines(api, session);
     case 'ip':
@@ -1607,6 +1978,10 @@ export function executeUnix(
       return changeReqUnixLines(api, session, parsed.sub, parsed.query);
     case 'breakglass':
       return breakGlassUnixLines(api, session, parsed.query);
+    case 'certbot':
+      return certbotLines(api, session, parsed.sub);
+    case 'postmortem':
+      return postmortemUnixLines(api, session, parsed.sub, parsed.query);
     case 'ls':
       return lsLines(api, session, parsed.args);
     case 'exit':

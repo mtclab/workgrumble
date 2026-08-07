@@ -28,12 +28,20 @@
  * models it as the graph fact it is (a stale membership, a checked-out group).
  */
 
-import { HELPDESK_ACTIONS, SYSTEMD_ACTIONS } from '../actions';
+import {
+  HELPDESK_ACTIONS,
+  INCIDENT_ACTIONS,
+  INCIDENT_DISK_FREE_LOW,
+  INCIDENT_JOURNAL_BYTES,
+  JOURNAL_VACUUM_TARGET,
+  SYSTEMD_ACTIONS,
+} from '../actions';
 import {
   FIELDS,
   LOCKOUT_THRESHOLD,
   SERVICE_STATUS,
   SYSTEMD_STATES,
+  UNIT_ENABLEMENTS,
 } from '../fields';
 import {
   fsEntryId,
@@ -1631,6 +1639,301 @@ const SYSENG_FIRST_INCIDENT: WorldTicket = {
   ],
 };
 
+/* -- the characteristic sysadmin incidents (E6, 0.19.0) ------------------- */
+
+/**
+ * The disk-full incident (E6, 0.19.0): df -h -> du -> clear.
+ *
+ * The textbook fire drill, on FC-RMM-01. A crash-looping service has flooded
+ * journald and the systemd journal has grown until the root filesystem is at
+ * 100% - a REAL state, not a string: the incident sets the box's `disk_free`
+ * near zero and `journal_bytes` to ~26G. The diagnosis is the classic: `df -h`
+ * shows the filesystem near full, `du -sh /var/log/journal` (the new command)
+ * finds what is eating it, and `journalctl --vacuum-size=200M` reclaims it -
+ * disk frees, and the ticket closes on the journal being back down to the vacuum
+ * target. Summoned by the promotion, so the estate is byte-identical until then.
+ */
+const SYSENG_DISK_FULL: WorldTicket = {
+  arrival: 'summoned',
+  nodes: [MSP_IDS.mspInfraServer],
+  claimed_urgency: 3,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:syseng-disk-full',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Fettle & Crane: FC-RMM-01 root filesystem at 100% - jobs failing',
+      body:
+        'Monitoring is screaming that FC-RMM-01 is out of disk. Overnight jobs '
+        + 'have started failing with "No space left on device". ssh in and find '
+        + 'what is eating the root filesystem: df -h shows how full it is, and '
+        + 'du -sh on the log directories finds the runaway. It will be a log that '
+        + 'has grown unbounded - clear it and the space comes back.',
+    },
+    reporter: MSP_IDS.mspLead,
+    // The real state: the box near-full, and the journal that ate it. `df -h`
+    // reads `disk_free`, `du -sh /var/log/journal` reads `journal_bytes` - the
+    // two the vacuum writes, so a fabricated confirmation could never close it.
+    setup: [
+      {
+        op: 'setField',
+        id: MSP_IDS.mspInfraServer,
+        field: FIELDS.diskFree,
+        value: INCIDENT_DISK_FREE_LOW,
+      },
+      {
+        op: 'setField',
+        id: MSP_IDS.mspInfraServer,
+        field: FIELDS.journalBytes,
+        value: INCIDENT_JOURNAL_BYTES,
+      },
+    ],
+    // Closed when the journal is back down to the vacuum target - the honest
+    // read of the fix's own write. The disk freeing is the same event, from the
+    // other side of the one field the vacuum touches.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: MSP_IDS.mspInfraServer },
+      field: FIELDS.journalBytes,
+      value: JOURNAL_VACUUM_TARGET,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/disk-full-journal',
+  },
+  cause: 'A service on FC-RMM-01 crash-looped and logged to journald on every '
+    + 'restart, so the systemd journal grew unbounded until it filled the root '
+    + 'filesystem and everything that needed to write failed with "No space left '
+    + 'on device". df -h shows the filesystem at 100%; du -sh /var/log/journal is '
+    + 'what points at the journal as the culprit rather than a guess. journalctl '
+    + '--vacuum-size=200M deletes the archived journals down to a cap and hands '
+    + 'the space back - the disk frees, and the jobs run again.',
+  dialogue_ref: 'dialogue/msp-morgan',
+  paths: [
+    {
+      id: 'vacuum-the-journal',
+      app: 'cmd',
+      label: 'ssh in, du to find the runaway journal, and vacuum it',
+      steps: [
+        {
+          action: INCIDENT_ACTIONS.journalVacuum,
+          target: MSP_IDS.mspInfraServer,
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The cert-expiry incident (E6, 0.19.0): the process failure, not a technical one.
+ *
+ * The classic that took down O2 and Teams. The portal's TLS certificate has
+ * EXPIRED: nginx is up and serving, the app behind it is healthy, and every
+ * browser refuses the connection - a REAL state, `cert_expired: true` on the
+ * nginx unit that terminates TLS. The truth the version teaches is that this is
+ * NOT a technical failure: nothing broke, nothing crashed - a deadline nobody
+ * scheduled arrived, and no monitoring tracked it. Diagnose with `curl -I`
+ * (SSL certificate problem: certificate has expired), fix with `certbot renew`
+ * (the certificate is replaced and the service serves again). The lesson lands
+ * in the KB and the cause: a cert is a deadline nobody put in the calendar.
+ */
+const SYSENG_CERT_EXPIRY: WorldTicket = {
+  arrival: 'summoned',
+  nodes: [MSP_IDS.mspInfraNginxUnit],
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:syseng-cert-expiry',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Fettle & Crane: the client portal is throwing certificate errors',
+      body:
+        'Customers are getting a full-page security warning on the client portal '
+        + 'and nobody can log in - "your connection is not private". The portal '
+        + 'itself is up: this is not a crash. ssh in and check it with curl -I; if '
+        + 'the certificate has expired, renew it with certbot. Nothing is broken - '
+        + 'the certificate just ran out, and no alarm went off when it did.',
+    },
+    reporter: MSP_IDS.mspLead,
+    // The real state: the TLS certificate on the nginx unit is expired. The
+    // service is UP the whole time - `cert_expired` is a fault of its own, the
+    // running-and-refusing state an expired cert looks like from a browser.
+    setup: [
+      {
+        op: 'setField',
+        id: MSP_IDS.mspInfraNginxUnit,
+        field: FIELDS.certExpired,
+        value: true,
+      },
+    ],
+    // Closed when the certificate is valid again - read straight off the flag
+    // the renew clears and the served box refuses on, so only the real renew
+    // closes it.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: MSP_IDS.mspInfraNginxUnit },
+      field: FIELDS.certExpired,
+      value: false,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/cert-expiry-process',
+  },
+  cause: 'The TLS certificate the client portal presents expired. This is the '
+    + 'trap the whole incident teaches: it is NOT a technical failure. nginx is '
+    + 'running, the app behind it is healthy, nothing crashed - the certificate '
+    + 'simply reached its expiry date and browsers, correctly, refuse an expired '
+    + 'certificate. It is a monitoring and process failure: the cert was fine '
+    + 'until the day it was not, and nobody was tracking the deadline. curl -I '
+    + 'shows the expired certificate; certbot renew replaces it and reloads the '
+    + 'service, and the portal serves again. A certificate is a deadline nobody '
+    + 'scheduled - the fix in the moment is a renew, the fix for good is putting '
+    + 'the expiry on a calendar with an alarm.',
+  dialogue_ref: 'dialogue/msp-morgan',
+  paths: [
+    {
+      id: 'renew-the-certificate',
+      app: 'cmd',
+      label: 'ssh in, confirm the expired cert with curl -I, and certbot renew',
+      steps: [
+        {
+          action: INCIDENT_ACTIONS.certRenew,
+          target: MSP_IDS.mspInfraNginxUnit,
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The failed-deploy incident + the blameless postmortem (E6, 0.19.0).
+ *
+ * "It worked in staging." A routine release of the background worker broke prod:
+ * `fcworker.service` went `failed` after the deploy, because the build read a
+ * config key that exists in staging and not in production. The fix is the
+ * rollback + the corrected restart (systemctl restart, reused). THEN the beat the
+ * version is named for: the incident is not CLOSED by the restart, it is closed
+ * by the blameless POSTMORTEM - a short, append-only post-incident record that
+ * analyses the SYSTEM (staging had no parity, the pipeline had no rollback) and
+ * never the person. The unit is built by this ticket's own setup, so FC-RMM-01 is
+ * byte-identical until the promotion raises it.
+ */
+const SYSENG_FAILED_DEPLOY: WorldTicket = {
+  arrival: 'summoned',
+  nodes: [MSP_IDS.mspInfraWorkerUnit],
+  claimed_urgency: 3,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:syseng-failed-deploy',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Fettle & Crane: fcportal worker down after this afternoon\'s deploy',
+      body:
+        'The background worker (fcworker.service) is down after the release that '
+        + 'went out this afternoon. "It worked in staging." journalctl -u will '
+        + 'show it failing on a config key that is not in production. Roll it back '
+        + 'and restart it to stop the bleeding - and then write the postmortem: '
+        + 'this incident is not closed until there is a blameless write-up of what '
+        + 'the SYSTEM let happen, which is how the tier does it.',
+    },
+    reporter: MSP_IDS.mspLead,
+    // The unit is BUILT by this ticket, failed, with the deploy's failure cascade
+    // in its journal - so the box is byte-identical until the incident raises it.
+    setup: [
+      {
+        op: 'addNode',
+        node: {
+          id: MSP_IDS.mspInfraWorkerUnit,
+          kind: 'unit',
+          fields: {
+            [FIELDS.name]: 'Fettle & Crane portal background worker',
+            [FIELDS.unitName]: 'fcworker.service',
+            [FIELDS.unitState]: SYSTEMD_STATES.failed,
+            [FIELDS.unitEnabled]: UNIT_ENABLEMENTS.enabled,
+            [FIELDS.unitJournal]: [
+              'Sep 07 14:03:07 FC-RMM-01 fcworker[3288]: [ERROR] config key '
+                + 'QUEUE_BROKER_URL is not set',
+              'Sep 07 14:03:07 FC-RMM-01 fcworker[3288]: [CRITICAL] cannot start '
+                + 'without a broker; it worked in staging because staging sets it',
+              'Sep 07 14:03:07 FC-RMM-01 systemd[1]: fcworker.service: Main '
+                + 'process exited, code=exited, status=78/CONFIG',
+              'Sep 07 14:03:07 FC-RMM-01 systemd[1]: fcworker.service: Failed with '
+                + 'result \'exit-code\'.',
+              'Sep 07 14:03:08 FC-RMM-01 systemd[1]: fcworker.service: Scheduled '
+                + 'restart job, restart counter is at 5.',
+              'Sep 07 14:03:08 FC-RMM-01 systemd[1]: fcworker.service: Start '
+                + 'request repeated too quickly.',
+              'Sep 07 14:03:08 FC-RMM-01 systemd[1]: Failed to start Fettle & '
+                + 'Crane portal background worker.',
+            ].join('\n'),
+          },
+        },
+      },
+      {
+        op: 'addEdge',
+        edge: {
+          from: MSP_IDS.mspInfraWorkerUnit,
+          to: MSP_IDS.mspInfraServer,
+          kind: 'runs_on',
+        },
+      },
+    ],
+    // Closed only when the fire is OUT and written up: the unit back active AND
+    // the blameless postmortem filed. The restart alone does not close it - the
+    // postmortem is how the tier closes an incident, which is the whole point.
+    resolved_when: {
+      op: 'and',
+      exprs: [
+        {
+          op: 'eq',
+          selector: { id: MSP_IDS.mspInfraWorkerUnit },
+          field: FIELDS.unitState,
+          value: SYSTEMD_STATES.activeRunning,
+        },
+        {
+          op: 'eq',
+          selector: { id: MSP_IDS.mspInfraWorkerUnit },
+          field: FIELDS.postmortemFiled,
+          value: true,
+        },
+      ],
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 5 },
+    kb_ref: 'kb/failed-deploy-postmortem',
+  },
+  cause: 'A release of fcworker.service was deployed to production having "worked '
+    + 'in staging". It failed to start in production because it read a config key '
+    + '(QUEUE_BROKER_URL) that staging sets and production does not, exited '
+    + 'non-zero, and systemd hit the start-limit and left it failed. The '
+    + 'immediate fix is the rollback and restart. But the incident is closed by '
+    + 'the blameless postmortem, not the restart: the record of what happened, '
+    + 'the timeline, what the SYSTEM let happen (staging was not a faithful copy '
+    + 'of production, the pipeline had no pre-flight and no automated rollback), '
+    + 'and the follow-up. Blameless means it analyses the system, never the '
+    + 'person who ran the deploy - which is how the tier turns a fire into a '
+    + 'thing that does not happen the same way twice.',
+  dialogue_ref: 'dialogue/msp-morgan',
+  paths: [
+    {
+      id: 'rollback-and-write-it-up',
+      app: 'cmd',
+      label: 'ssh in, restart the rolled-back worker, and file the postmortem',
+      steps: [
+        {
+          action: SYSTEMD_ACTIONS.unitRestart,
+          target: MSP_IDS.mspInfraWorkerUnit,
+        },
+        {
+          action: INCIDENT_ACTIONS.postmortemFile,
+          target: MSP_IDS.mspInfraWorkerUnit,
+          params: { line: 'fcworker@0' },
+        },
+      ],
+    },
+  ],
+};
+
 export const MSP_TICKETS: readonly WorldTicket[] = [
   // FONTAINE-LAW - the law firm, helpdesk scope.
   MATTER_ACCESS,
@@ -1663,4 +1966,11 @@ export const MSP_TICKETS: readonly WorldTicket[] = [
   // FETTLE & CRANE's own infra: the first fix at the engineer tier (E6, Pass B).
   // Summoned - raised by the promotion, not by a scripted day.
   SYSENG_FIRST_INCIDENT,
+  // The characteristic sysadmin incidents (E6, 0.19.0): the disk that fills with
+  // logs (df -h -> du -> vacuum), the cert that expired (a process failure, not a
+  // technical one), and the deploy that "worked in staging" - closed by the
+  // blameless postmortem. All summoned by the promotion, all on the MSP's own box.
+  SYSENG_DISK_FULL,
+  SYSENG_CERT_EXPIRY,
+  SYSENG_FAILED_DEPLOY,
 ];

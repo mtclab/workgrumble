@@ -22,6 +22,7 @@ import {
   CHANGE_ACTIONS,
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
+  INCIDENT_ACTIONS,
   REQUEST_ACTIONS,
   SOFTWARE_ACTIONS,
   SYSTEMD_ACTIONS,
@@ -92,6 +93,7 @@ import {
 import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
 import { findIncident } from '../world/incidents';
 import { findOnboarding } from '../world/onboarding';
+import { postmortemFor } from '../world/postmortem';
 import {
   arrivalStress,
   buildInterruptionSchedule,
@@ -650,17 +652,30 @@ export interface DayApi {
    */
   breakGlass(unitId: string): readonly string[];
   /**
-   * Raises the engineer's first incident (E6, Pass B), the moment the promotion
-   * fires: the MSP's own client portal down on FC-RMM-01, spawned into the world
-   * the way a drip is, so the newly-promoted player has a real Linux box to fix
-   * over ssh. Idempotent - it does nothing if the incident is already in the
-   * world (the promotion is one-way, so it fires once anyway) - and it only
-   * raises it where the box exists, which is the MSP world; promoted at another
-   * employer, there is no FC-RMM-01 to down, and it stays quiet. It is the shell
-   * that raises it rather than the promotion ACTION, because spawning a ticket is
-   * registering a def with the engine, which is a shell/driver job, not an op.
+   * Raises the engineer's incidents (E6), the moment the promotion fires: the
+   * MSP's own client portal down on FC-RMM-01 (Pass B), and the characteristic
+   * sysadmin incidents (0.19.0) - the disk that filled with logs, the cert that
+   * expired, and the deploy that "worked in staging" - all on FC-RMM-01, spawned
+   * into the world the way a drip is, so the newly-promoted player has a real
+   * estate to work over ssh. Idempotent per incident - it does nothing for one
+   * already in the world (the promotion is one-way, so it fires once anyway) -
+   * and it only raises them where the box exists, which is the MSP world; promoted
+   * at another employer, there is no FC-RMM-01 to down, and it stays quiet. It is
+   * the shell that raises them rather than the promotion ACTION, because spawning
+   * a ticket is registering a def with the engine, a shell/driver job, not an op.
    */
   raiseFirstIncident(): void;
+  /**
+   * Files the blameless postmortem for an incident (E6, 0.19.0): the append-only
+   * post-incident record that CLOSES the failed-deploy incident once the fire is
+   * out. It reads the authored, blameless prose for the unit (`world/postmortem.ts`,
+   * gated so it names no person), builds the `unit@tick` audit line in the minute
+   * it was written (the same contract break-glass keeps, so a replay writes the
+   * identical string), and dispatches the postmortem verb - which refuses if the
+   * unit is still down (a postmortem is written AFTER the fire is out) or already
+   * filed. It answers with the record the terminal prints.
+   */
+  filePostmortem(unitId: string): readonly string[];
   /**
    * What the lead would have to go on if he read the install audit this minute:
    * the policy, the installs on the trail he has not already been down about,
@@ -1413,19 +1428,97 @@ export class DayDriver implements DayApi {
   }
 
   public raiseFirstIncident(): void {
-    const id = 'ticket:syseng-first-incident';
-
-    // One-way promotion, so this fires once; the guard makes a reload or a
-    // double-call a no-op rather than a second down portal. And only where the
-    // box it downs exists - the MSP world - so a promotion earned at another
-    // employer raises nothing and stays byte-identical.
-    if (this.engine.graph.getNode(id) !== undefined
-      || this.engine.graph.getNode(MSP_IDS.mspInfraServer) === undefined) {
+    // The MSP's own box has to exist to down anything on it - a promotion earned
+    // at another employer raises nothing and stays byte-identical.
+    if (this.engine.graph.getNode(MSP_IDS.mspInfraServer) === undefined) {
       return;
     }
 
-    spawnWorldTicket(this.engine, id);
-    this.announce();
+    // The engineer's incidents, all on FC-RMM-01: the marquee portal-down (Pass
+    // B) and the three characteristic incidents (0.19.0). Each is spawned only if
+    // it is not already in the world, so the one-way promotion firing twice, or a
+    // reload, is a no-op rather than a second down portal or a duplicate disk.
+    const ids = [
+      'ticket:syseng-first-incident',
+      'ticket:syseng-disk-full',
+      'ticket:syseng-cert-expiry',
+      'ticket:syseng-failed-deploy',
+    ];
+
+    let raised = false;
+
+    for (const id of ids) {
+      if (this.engine.graph.getNode(id) === undefined) {
+        spawnWorldTicket(this.engine, id);
+        raised = true;
+      }
+    }
+
+    if (raised) {
+      this.announce();
+    }
+  }
+
+  public filePostmortem(unitId: string): readonly string[] {
+    const unit = this.engine.graph.getNode(unitId);
+
+    if (unit === undefined || unit.kind !== 'unit') {
+      return [`${unitId} is not a unit this box knows about.`];
+    }
+
+    const doc = postmortemFor(unitId);
+    const unitName = typeof unit.fields[FIELDS.unitName] === 'string'
+      ? unit.fields[FIELDS.unitName] as string
+      : unitId;
+
+    // The postmortem is authored per incident: a unit with no blameless record
+    // written for it has no incident to close this way, and says so rather than
+    // filing an empty one.
+    if (doc === undefined) {
+      return [
+        `There is no incident postmortem to file for ${unitName}.`,
+        'A postmortem is the write-up of a specific incident; this unit is not '
+          + 'one the tier has a record for.',
+      ];
+    }
+
+    const now = this.engine.now();
+    const line = `${unitId}@${String(now)}`;
+    const result = this.engine.dispatch(
+      INCIDENT_ACTIONS.postmortemFile,
+      this.actor,
+      unitId,
+      { line },
+    );
+
+    // Refused - the fire is not out yet, or it is already written up. The verb's
+    // own sentence is the honest answer.
+    if (!result.ok) {
+      return [result.reason];
+    }
+
+    this.announced(result);
+
+    // The blameless record itself, printed as the engineer would read it back:
+    // what happened, the timeline, what the SYSTEM let happen, the follow-up -
+    // and never a name, which the load-time gate on the prose proves.
+    return [
+      `Postmortem filed for ${unitName}. The incident is closed.`,
+      '',
+      doc.title,
+      '',
+      'WHAT HAPPENED',
+      ...doc.whatHappened,
+      '',
+      'TIMELINE',
+      ...doc.timeline,
+      '',
+      'WHAT THE SYSTEM LET HAPPEN (blameless - we analyse the system, not a name)',
+      ...doc.whatTheSystemLetHappen,
+      '',
+      'FOLLOW-UP',
+      ...doc.followUp,
+    ];
   }
 
   private softwareVerb(action: string, id: string): DispatchResult {

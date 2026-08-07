@@ -3,7 +3,11 @@ import type {
   ReadOnlyGraphView,
   TicketDef,
 } from '../../engine-api';
-import { HELPDESK_ACTION_IDS, SYSTEMD_ACTION_IDS } from '../actions';
+import {
+  HELPDESK_ACTION_IDS,
+  INCIDENT_ACTION_IDS,
+  SYSTEMD_ACTION_IDS,
+} from '../actions';
 import { companySetup } from '../company';
 import { FIELDS } from '../fields';
 import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
@@ -125,6 +129,9 @@ const KNOWN_ACTION_IDS: ReadonlySet<string> = new Set<string>([
   ...HELPDESK_ACTION_IDS,
   // The systemd verbs (E6, Pass B): a fix path may restart a unit over ssh.
   ...SYSTEMD_ACTION_IDS,
+  // The characteristic-incident fixes (E6, 0.19.0): a fix path vacuums a runaway
+  // journal, renews an expired cert, or files the blameless postmortem.
+  ...INCIDENT_ACTION_IDS,
   ...Object.values(DEMO_ACTIONS),
 ]);
 

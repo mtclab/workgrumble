@@ -16,6 +16,7 @@ import { DEVICE_ACTIONS } from './device';
 import { DRIVE_ACTIONS } from './drive';
 import { FACILITIES_ACTIONS } from './facilities';
 import { KIND_LABELS } from './helpers';
+import { INCIDENT_ACTION_DATA } from './incidents';
 import { INTERRUPTION_ACTION_DATA } from './interruptions';
 import { MACHINE_ACTIONS } from './machine';
 import { MAIL_RULE_ACTIONS } from './mail-rule';
@@ -79,6 +80,16 @@ export { FULL_BATTERY } from './device';
 export { HELPDESK_TIER, KIND_LABELS } from './helpers';
 export { BREAK_GLASS_TWICE_REASON } from './change';
 export {
+  CERT_NOT_EXPIRED_REASON,
+  INCIDENT_DISK_FREE_LOW,
+  INCIDENT_JOURNAL_BYTES,
+  JOURNAL_NOT_RUNAWAY_REASON,
+  JOURNAL_VACUUM_TARGET,
+  LINUX_DISK_CEILING,
+  POSTMORTEM_TWICE_REASON,
+  POSTMORTEM_UNIT_STILL_DOWN_REASON,
+} from './incidents';
+export {
   CAREER_ACTION_IDS,
   CAREER_ACTIONS,
   type CareerActionId,
@@ -91,6 +102,9 @@ export {
   HELPDESK_ACTION_IDS,
   HELPDESK_ACTIONS,
   type HelpdeskActionId,
+  INCIDENT_ACTION_IDS,
+  INCIDENT_ACTIONS,
+  type IncidentActionId,
   REQUEST_ACTION_IDS,
   REQUEST_ACTIONS,
   type RequestActionId,
@@ -158,6 +172,9 @@ export function helpdeskActions(): readonly ActionData[] {
     // The change-control verbs (E6, 0.18.0): break-glass and its abuse record.
     // Player-initiated verbs on the player's own trail, like the software audit.
     ...CHANGE_ACTION_DATA,
+    // The characteristic-incident fixes (E6, 0.19.0): the disk-full vacuum, the
+    // cert renew, and the blameless postmortem that closes an incident.
+    ...INCIDENT_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

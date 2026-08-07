@@ -834,6 +834,48 @@ describe('the sysadmin network toolbox (E6, 0.16.0)', () => {
   });
 });
 
+describe('the characteristic-incident commands (E6, 0.19.0)', () => {
+  describe('du: what a directory is eating, at the real size-tab-path shape', () => {
+    it('du -sh <path> prints one summed size-tab-path line', () => {
+      const { api, ssh } = onMsp();
+      // On the disk-full box the journal is the ~26G runaway - a real read off
+      // the node, in the `26G\t/var/log/journal` shape du actually prints.
+      const out = unix(api, ssh, 'du -sh /var/log/journal').lines;
+
+      expect(out).toHaveLength(1);
+      expect(out[0]).toBe('26G\t/var/log/journal');
+    });
+
+    it('without -s it lists each directory under the path, then the total', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'du -h /var/log').lines;
+
+      // The journal and the nginx logs, then the summed /var/log - the drill-down
+      // that finds the runaway.
+      expect(out.some((line) => line.endsWith('\t/var/log/journal'))).toBe(true);
+      expect(out.some((line) => line.endsWith('\t/var/log/nginx'))).toBe(true);
+      expect(out[out.length - 1]).toBe(`26G\t/var/log`);
+    });
+
+    it('a path with nothing under it is a small ordinary directory', () => {
+      const { api, ssh } = onMsp();
+      // The world seeds no directories under /etc for a Linux box; du reports the
+      // 4K an empty ext4 directory takes, not an error.
+      expect(unix(api, ssh, 'du -sh /etc').lines).toEqual(['4.0K\t/etc']);
+    });
+  });
+
+  describe('certbot certificates: reading the box\'s cert state', () => {
+    it('reports the certificate as EXPIRED on the cert-expiry box', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'certbot certificates').lines.join('\n');
+
+      expect(out).toContain('Found the following certs');
+      expect(out).toContain('EXPIRED');
+    });
+  });
+});
+
 /** A first-week carry arriving with the given tier, for the switch test. */
 function carryFor(tier: PlayerTier): Parameters<typeof createWorldSession>[0] {
   return {

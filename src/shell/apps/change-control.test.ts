@@ -240,13 +240,23 @@ describe('change control (E6, 0.18.0)', () => {
     it('refuses on a healthy service (no active incident) and reads as abuse', () => {
       const { world, api, ssh } = onMsp();
 
-      // Put the fire out first, so the box has NO active incident.
-      world.engine.applySetup([{
-        op: 'setField',
-        id: MSP_IDS.mspInfraPortalUnit,
-        field: FIELDS.unitState,
-        value: SYSTEMD_STATES.activeRunning,
-      }]);
+      // Put every fire out first, so the box has NO active incident. The
+      // promotion raises the portal down AND the 0.19.0 failed-deploy incident
+      // (fcworker failed), so both have to come up for the box to be clean.
+      world.engine.applySetup([
+        {
+          op: 'setField',
+          id: MSP_IDS.mspInfraPortalUnit,
+          field: FIELDS.unitState,
+          value: SYSTEMD_STATES.activeRunning,
+        },
+        {
+          op: 'setField',
+          id: MSP_IDS.mspInfraWorkerUnit,
+          field: FIELDS.unitState,
+          value: SYSTEMD_STATES.activeRunning,
+        },
+      ]);
       expect(hasActiveIncident(world.engine.graph, MSP_IDS.mspInfraServer)).toBe(false);
 
       const before = playerField(world, FIELDS.suspicion);
@@ -326,13 +336,23 @@ describe('change control (E6, 0.18.0)', () => {
 
       // Put every unit back up: no failed unit, no incident, so break-glass on
       // this box is abuse. hasActiveIncident is the fail-closed predicate; a
-      // revert that returned true unconditionally would authorise anything.
-      world.engine.applySetup([{
-        op: 'setField',
-        id: MSP_IDS.mspInfraPortalUnit,
-        field: FIELDS.unitState,
-        value: SYSTEMD_STATES.activeRunning,
-      }]);
+      // revert that returned true unconditionally would authorise anything. The
+      // promotion raises the portal AND the failed-deploy worker (0.19.0), so
+      // both come up for the box to be genuinely clean.
+      world.engine.applySetup([
+        {
+          op: 'setField',
+          id: MSP_IDS.mspInfraPortalUnit,
+          field: FIELDS.unitState,
+          value: SYSTEMD_STATES.activeRunning,
+        },
+        {
+          op: 'setField',
+          id: MSP_IDS.mspInfraWorkerUnit,
+          field: FIELDS.unitState,
+          value: SYSTEMD_STATES.activeRunning,
+        },
+      ]);
       expect(hasActiveIncident(graph, MSP_IDS.mspInfraServer)).toBe(false);
     });
   });
