@@ -31,6 +31,34 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.26.0',
+    date: '2026-08-08',
+    summary: 'This update puts a tick in a box next to one man\'s name, and '
+      + 'everything else waits.',
+    lines: Object.freeze([
+      'There is a flag on the CEO\'s record. Not a setting he asked for, not '
+        + 'something anyone decided this week - just a checkbox, ticked years '
+        + 'ago, that says every ticket he raises is important. So when his '
+        + 'wireless earbuds will not pair, the system marks it high priority '
+        + 'before a single human being has read it, and starts a clock that is '
+        + 'twice as tight as the fault deserves. The queue tells you the truth if '
+        + 'you look: it says P2 (VIP). Not because of what broke. Because of who '
+        + 'asked.',
+      'At the same minute on Thursday, the finance team cannot get into the '
+        + 'ledger, on the day the supplier run has to go out. Four people, '
+        + 'blocked, on a real deadline. Triage it honestly and it comes out P2 as '
+        + 'well - the same priority, the same target, the same deadline to the '
+        + 'minute as a pair of earbuds. One earned it. One was given it.',
+      'You have one desk and two clocks. There is no clever third answer, no way '
+        + 'to unpick the flag, nothing to merge. Work the earbuds first and a '
+        + 'finance team sits idle through their payment run. Work the ledger '
+        + 'first and a very senior man goes over your head about his headphones, '
+        + 'and that lands on you too. Both are real costs, and you pick which one '
+        + 'to carry. That is the whole mechanic, and it is not a bug in the '
+        + 'software.',
+    ]),
+  },
+  {
     version: '0.25.0',
     date: '2026-08-08',
     summary: 'This update introduces a man who will change everything and then '
