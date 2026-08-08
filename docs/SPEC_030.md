@@ -1675,3 +1675,58 @@ self-review), one box (workers=1) + a recert e2e touch.
 the CYA / manager-override mechanic (#4); the legendary-manager implement-then-revert chain (#5); the
 VIP support-tier queue-jump; deeper politics (shadow IT, the personal device); the Linux desktop skins;
 E7 cloud.
+
+# Version 0.24.0 - the manager override you can't refuse (the CYA) (E8 #40)
+
+The org-dysfunction epic's 3rd mechanic: being ordered to do the wrong thing by someone senior, and
+the only professional path being to GET IT IN WRITING. A distinct mechanic - not a fix, a
+documentation/authorisation gate - where refusing outright AND silently complying both fail; the win
+is the risk-acceptance sign-off. Content on the 0.22.0 corporate employer + the 0.10.0 change-request
+as the artifact. Research base: docs/design/org-dysfunction.md #4 (ISC2 risk-acceptance, the named
+accepting owner's signature, the CYA email; overusing it is its own trap).
+
+## Slice 1 - the order against policy
+
+A manager/VP at Halcyon ORDERS something against best practice as a ticket: "open the firewall port
+for the vendor now" / "give the contractor domain admin, we'll narrow it later" / "ship the change
+without the window" / "turn off the thing that's blocking the exec." A real, plausible order that a
+good tech knows is wrong. The pressure is senior (refusing has a cost); the thing itself is a real
+action the player CAN do.
+
+## Slice 2 - the CYA / risk-acceptance gate (the mechanic)
+
+The truthful path (per research): the player CANNOT just comply and cannot just refuse. The gate is a
+RISK ACCEPTANCE - name the specific risk, name why it can't be remediated now, and get the ACCEPTING
+OWNER's SIGNATURE (the manager who ordered it signs that they accept the risk - not just requests it).
+Reuse the 0.10.0 change-request as the artifact (it already has scope/risk/an approver): file the
+risk-acceptance naming the risk, the ordering manager signs it, THEN the action is authorised. So:
+- SILENTLY COMPLYING (doing it with no sign-off) FAILS - you own the incident, no cover.
+- REFUSING OUTRIGHT (not doing it, no escalation) FAILS - insubordination, the ticket breaches.
+- The WIN: file the risk-acceptance, get the named signature, then execute. Documented, authorised,
+  the accountability where it belongs.
+
+## Slice 3 - the sign-off has teeth both ways (the truth)
+
+Two truths to land: (1) the sign-off ATTRIBUTES the risk correctly - if the risky thing later causes
+an incident (a light follow-up, or it reads at the review), the signed risk-acceptance means it is
+NOT the player's fault (the cost lands on the accepting owner, not you) - vs the silent-comply path
+where it IS your fault. (2) But overusing it is the research's named trap ("what begins as an
+exception slowly becomes the rule") - a light touch: the manager who signs everything, the exception
+that becomes the standing rule. Keep it truthful: the CYA is the RIGHT move (never punished), and the
+point is the accountability, not gaming it.
+
+## Gates (once, at the version)
+
+Goldens: additive + at the corporate employer; existing + pre-switch BYTE-IDENTICAL. Journeys through
+the REAL path: the order against policy is a ticket; silently complying (no sign-off) FAILS; refusing
+outright FAILS; filing the risk-acceptance + getting the named signature + executing is the win; a
+later incident on the risky thing attributes to the SIGNER not the player. Teeth: the gate fails
+closed both ways (comply-without-sign-off fails AND refuse-without-escalation fails - revert -> one of
+them wrongly passes); the sign-off attributes the risk (the signed path vs the silent path read
+differently at the consequence). Determinism. One codex (if it completes; else self-review), one box
+(workers=1) + a CYA e2e touch.
+
+## Not in scope (backlog, org-dysfunction.md)
+
+the legendary-manager implement-then-revert chain (#5); the VIP support-tier queue-jump; deeper
+politics (shadow IT, the personal device); the Linux desktop skins; E7 cloud.
