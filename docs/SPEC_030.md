@@ -1730,3 +1730,56 @@ differently at the consequence). Determinism. One codex (if it completes; else s
 
 the legendary-manager implement-then-revert chain (#5); the VIP support-tier queue-jump; deeper
 politics (shadow IT, the personal device); the Linux desktop skins; E7 cloud.
+
+# Version 0.25.0 - the legendary manager (implement-then-revert) (E8 #40)
+
+The org-dysfunction epic's 4th mechanic - the owner's marquee scenario: a "legendary" manager arrives
+with a sweeping bad mandate, you are made to IMPLEMENT it, the manager leaves (kicked upstairs / off
+to the next company), and you REVERT it because the prior state was better - the churn eaten twice.
+The teaching: keep the rollback documentation the FIRST time, because you WILL need it. Content on the
+0.22.0 corporate employer. Research base: docs/design/org-dysfunction.md #5 (seagull management,
+resume-driven development, the Peter principle / percussive sublimation).
+
+## Slice 1 - the mandate + the implementation (keep the rollback docs)
+
+A new manager arrives at Halcyon (a seagull - a big splashy mandate picked for their CV, not the org:
+a forced migration / a permission reorg / a mandated bad tool). A ticket: IMPLEMENT the mandated
+change - a real action that changes the world state (moves the estate to the bad config). The KEY
+mechanic: when you implement, you either DO or DO NOT capture the rollback (a backup of the prior
+config / the rollback doc - reuse the change-request/audit pattern as the "rollback record"). Keeping
+it is the diligent move (a small extra step, no cost now); skipping it is the path of least resistance
+that bites in slice 3. The prior (better) state is recorded IF you kept the rollback.
+
+## Slice 2 - the manager leaves (the churn turns)
+
+The manager is gone - percussive-sublimation (kicked upstairs) / off to the next company, before the
+cost lands (a beat: a mail/notice - "X has moved on to an exciting new opportunity"). The mandated
+change is now revealed as the mess it is (it caused a problem - a degraded state / a complaint the
+change created). The org decides to REVERT to what was there before. This is the turn: the thing you
+built, you now unbuild.
+
+## Slice 3 - the revert (the rollback docs pay off, or don't)
+
+A ticket to REVERT the mandated change. If you KEPT the rollback (slice 1), the revert is clean -
+restore the prior config from the record, done. If you did NOT, the revert is PAINFUL - you have to
+reconstruct the prior state the hard way (more steps / a partial restore / a follow-up), because the
+better prior state was not captured. So the score is set in slice 1: the diligent player who kept the
+rollback reverts cleanly; the one who skipped it eats the churn twice over. Never punish diligence -
+the cost is the skipped rollback. The "we told you so" + the manager who faces no consequence = the
+truthful, cynical close (flavour/KB).
+
+## Gates (once, at the version)
+
+Goldens: additive + at the corporate employer; existing + pre-switch BYTE-IDENTICAL. Journeys through
+the REAL path: implement the mandate (with OR without keeping the rollback - a real state difference);
+the manager leaves; the revert is CLEAN if the rollback was kept, PAINFUL if not (a real different
+path). Teeth: the rollback record is load-bearing - the clean revert REQUIRES it (revert without the
+record -> the clean path wrongly available, or the painful path wrongly skipped); keeping vs skipping
+the rollback is a real captured-state difference (the prior config is recorded iff kept); the mandate
+implementation is a real state change. Determinism. One codex (if it completes; else self-review), one
+box (workers=1, fresh-port) + a legendary-manager e2e touch.
+
+## Not in scope (backlog, org-dysfunction.md)
+
+the VIP support-tier queue-jump; deeper politics (shadow IT, the personal device with corporate mail);
+the Linux desktop skins; E7 cloud.
