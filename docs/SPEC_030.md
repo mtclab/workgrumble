@@ -1620,3 +1620,58 @@ rule-hunt.
 the access recertification / access-hell review (#3); the CYA / manager-override mechanic (#4); the
 legendary-manager implement-then-revert chain (#5); the VIP support-tier queue-jump; deeper politics
 (shadow IT, the personal device); the Linux desktop skins (separate track).
+
+# Version 0.23.0 - access hell: the recertification (E8 #40)
+
+The org-dysfunction epic's second mechanic: access recertification - the periodic review where you
+clean up privilege creep, and the friction is entirely human. Content on the 0.22.0 corporate
+employer (Halcyon's accounts) + the account/group/PAM model. Research base: docs/design/org-
+dysfunction.md #3 (privilege creep / orphaned accounts / the domain-admin service account / the
+rubber-stamp UAR / SoD).
+
+## Slice 1 - the recert queue + the access model
+
+A "Q3 access recertification" ticket at Halcyon: a QUEUE of entitlements (who is in which privileged
+group / has which access), each to be KEPT or REVOKED. Reuses the account/group model (the 0.8.0/
+0.3.x group membership). Seed the estate with the real findings to catch: a LEAVER still enabled +
+still in a privileged group (the orphaned account - research: avg 116 days to deprovision), a person
+who changed roles and kept EVERY role's access (privilege creep - in 3 groups they no longer need),
+a SERVICE ACCOUNT sitting in Domain Admins with no reason (the textbook least-privilege violation),
+and a SoD conflict (one account that can both create a vendor and approve its payment). Plus benign
+entries that are CORRECT to keep (so it is a real judgement, not revoke-everything).
+
+## Slice 2 - clear the queue right (the judgement) + resist the rubber-stamp
+
+The player works the queue: KEEP the legitimate access, REVOKE the leaver / the crept roles / the
+over-privileged service account / one side of the SoD conflict. The mechanic is the judgement - a
+correct recert flags the real findings and keeps the benign. THE RUBBER-STAMP: the manager replies
+"just approve all" (the research's rubber-stamped UAR) - accepting it (blanket-approve) FAILS the
+recert (you rubber-stamped the audit); the right move is to work each line. A blanket-REVOKE is also
+wrong (breaks legitimate access). Least-privilege is the graded outcome.
+
+## Slice 3 - the wrong revoke bites back (the consequence)
+
+The truthful cost, per research ("revoking the wrong entitlement breaks a scheduled job the org forgot
+depended on it"): if the player revokes a legitimate access (or the service account that was ACTUALLY
+load-bearing despite looking over-privileged - the real trap), a follow-up ticket fires later - a
+broken job / a locked-out user mid-shift - that they must fix (restore the access). So the service
+account is the sharp judgement: it IS over-privileged (domain admin it doesn't need) BUT something
+depends on it, so the right move is to RIGHT-SIZE it (reduce to least privilege), not kill it - and
+killing it outright bites back. Never punish honest diligence; the cost is the careless revoke.
+
+## Gates (once, at the version)
+
+Goldens: additive + at the corporate employer; existing employers + pre-switch BYTE-IDENTICAL.
+Journeys through the REAL path: the recert queue surfaces the entitlements; flagging the leaver + the
+crept roles + the SoD is the correct recert; a blanket "approve all" FAILS (rubber-stamp); a careless
+revoke of load-bearing access fires the broken-job follow-up; right-sizing the service account (not
+killing it) is the clean path. Teeth: the rubber-stamp fails closed (blanket-approve leaves the
+findings live); the wrong revoke has a real consequence (revert -> a careless revoke wrongly costs
+nothing); the leaver/creep/SoD are real estate states. Determinism. One codex (if it completes; else
+self-review), one box (workers=1) + a recert e2e touch.
+
+## Not in scope (backlog, org-dysfunction.md)
+
+the CYA / manager-override mechanic (#4); the legendary-manager implement-then-revert chain (#5); the
+VIP support-tier queue-jump; deeper politics (shadow IT, the personal device); the Linux desktop skins;
+E7 cloud.
