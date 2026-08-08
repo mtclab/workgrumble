@@ -1833,3 +1833,60 @@ lunch (whichever waits, a real cost lands - revert -> waiting costs nothing). De
 ## Not in scope (backlog)
 
 deeper shadow-IT / MDM enrolment mechanics; the Linux desktop skins; E7 cloud.
+
+# Version 0.27.0 - the Linux desktop (the skin system + three desktops) (E6/E5 #7/#6)
+
+The last E6 piece and the original E5-skins idea, made concrete: a promoted engineer can run LINUX ON
+THEIR OWN MACHINE, and the desktop actually looks like the desktop they chose. Design:
+docs/design/linux-desktop-skins.md (research-grounded). The model is two ORTHOGONAL axes - DE = the
+LOOK (chrome), DISTRO = the DIALECT (commands) - exactly the 0.7.0 spike's split. This version ships
+the SKIN SYSTEM plus three maximally-distinct desktops, so the system is proven general rather than a
+single reskin. World, apps, tickets, mechanics are IDENTICAL under every skin: it is a LOOK.
+
+## Slice 1 - the skin system (chrome as data)
+
+The shell's chrome becomes skinnable data rather than one hardcoded Windows caricature. Three things
+a skin controls, and nothing else: (a) the TOKENS (the existing `:root` CSS custom properties -
+already the seam), (b) the PANEL - where the taskbar sits and what it holds, (c) the WINDOW BUTTONS -
+which buttons a titlebar has and where. The default Windows-caricature skin is one entry in the
+registry and MUST render byte-identically to today (the whole existing suite is its gate). No world
+state changes; a skin is shell-only.
+
+## Slice 2 - three desktops that are genuinely different
+
+Ship three, chosen because their tells are maximally distinct (per the research):
+- **KDE Plasma** - bottom panel, full width; Kickoff launcher bottom-left; min/max/close top-right.
+  The Windows-refugee-friendly one; the comfortable landing.
+- **GNOME** - TOP BAR ONLY, no taskbar; an Activities button top-left; and the sharp tell: windows
+  have a CLOSE BUTTON ONLY (no minimize, no maximize). Deliberately the awkward one - it is the
+  opinionated desktop people either love or refuse, and the game should let the player meet it.
+- **Cinnamon** - bottom panel, a Start-menu-shaped launcher, min/max/close. The most Windows-like of
+  the three (Mint's), which is the joke: the Linux desktop that looks most like what you left.
+Each must be recognisable from its layout alone. The player CHOOSES (a settings/desktop control),
+gated on the engineer tier (the seniors-run-Linux unlock).
+
+## Slice 3 - the distro as dialect (the second axis, wired thin)
+
+The distro decides the PACKAGE MANAGER the player's own box speaks - the 0.20.0 apt engine plus a
+`dnf` overlay over the SAME install/update/list mechanics (Ubuntu/Mint = apt, Fedora/RHEL-family =
+dnf). Wire the axis honestly but THIN: the pairing (a distro ships a default DE - Ubuntu/GNOME,
+Mint/Cinnamon, Fedora/GNOME, openSUSE/KDE) and the package-manager verb. Deeper distro behaviour
+(SELinux enforcing, zypper/pacman, the snap controversy, subscription-manager) is backlog.
+
+## Gates (once, at the version)
+
+Goldens: the DEFAULT skin renders byte-identically (the entire existing e2e + unit suite is the
+proof - if any existing test moves, the skin system leaked into the default). The world is untouched:
+no golden world hash may move, because a skin is chrome. Journeys through the REAL path: an engineer
+switches their desktop; the panel/launcher/window-buttons change to match the chosen DE; GNOME
+genuinely has no minimize/maximize (the sharp tell); the same app, the same ticket, the same fix works
+under every skin (a mechanic that breaks under a skin is the bug this gate forbids). Teeth: the skin
+actually changes the chrome (revert -> every DE renders the same); GNOME's missing buttons are real
+(the titlebar has no minimize element, not a hidden one); the default skin is unchanged. One codex (if
+it completes; else self-review), one box (workers=1, fresh-port) + an e2e that switches skin and
+asserts the layout tells.
+
+## Not in scope (backlog)
+
+more DEs (Xfce/MATE/LXQt); deeper distro behaviour (SELinux, zypper/pacman, snap, subscription-
+manager); the Windows ERA axis (95/98/XP); the Mac family; E7 cloud.
