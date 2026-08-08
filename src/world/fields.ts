@@ -736,6 +736,21 @@ export const FIELDS = {
   mailboxDelegate: 'mailbox_delegate',
   filterExempt: 'filter_exempt',
   mailboxRules: 'mailbox_rules',
+  /**
+   * The rubber-stamp (E8, 0.23.0): whether the access recertification was
+   * "approved all" without working the queue.
+   *
+   * On the recert ticket, set only by `recertApproveAll` - the manager's "just
+   * approve them all" made a real, dispatchable action. It records that the
+   * audit was rubber-stamped and touches NO membership, so the recert's
+   * resolution rule (which reads the findings, never this) stays false: the
+   * blanket-approve fails closed, the findings stay live, and the review breaches.
+   * Absent on every other ticket and never written by a scripted walk, so the
+   * goldens are byte-identical to before the recert existed. It exists as world
+   * state - rather than the approve-all being a pure no-op - so the dialogue and
+   * a save can both read that the desk signed off without looking.
+   */
+  recertRubberStamped: 'recert_rubber_stamped',
   /** machine */
   hostname: 'hostname',
   /**

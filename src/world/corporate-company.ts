@@ -39,6 +39,8 @@ import {
   type MachineOs,
   type MachineRole,
   MACHINE_ROLES,
+  SERVICE_STATUS,
+  STARTUP_TYPES,
 } from './fields';
 import { STARTING_REPUTATION } from './meters';
 import { BASELINE_SERVICES, baselineServiceId } from './services';
@@ -122,6 +124,61 @@ export const HALCYON_IDS = {
   dc: 'machine:halcyon-dc-01',
   /** The file server the whole office maps its drives through. */
   fileServer: 'machine:halcyon-srv-01',
+
+  /* -- the access recertification (E8, 0.23.0) --------------------------- */
+  /**
+   * Gordon Frey, who left Finance in the spring. The account is a person the
+   * offboarding forgot: still enabled, still in a privileged group, months after
+   * his last logon - the orphaned account the research puts at an average of 116
+   * days to deprovision. The recert's revoke is to disable it.
+   */
+  gordon: 'person:halcyon-gordon',
+  gordonAccount: 'account:halcyon-gordon',
+  /**
+   * Marguerite Sole, who has been at Halcyon for years and in three departments,
+   * and whose access is the sum of all of them. She is Finance now and needs the
+   * Finance group; she is NOT Sales, Operations or a legacy-system admin any more,
+   * and the memberships she kept from each are privilege creep - three groups to
+   * strip, one to keep.
+   */
+  marguerite: 'person:halcyon-marguerite',
+  margueriteAccount: 'account:halcyon-marguerite',
+  /**
+   * Cass Holloway, Accounts Payable, who can both create a vendor and approve its
+   * payments - the segregation-of-duties conflict, one person able to pay
+   * themselves. The recert splits it: keep one entitlement, revoke the other.
+   */
+  cass: 'person:halcyon-cass',
+  cassAccount: 'account:halcyon-cass',
+  /**
+   * The nightly-backup service account. It is in Domain Admins for no reason
+   * anybody can name (the textbook least-privilege violation) - AND its scheduled
+   * job genuinely runs as it, through the Backup Operators group. So it is
+   * over-privileged BUT load-bearing: the recert RIGHT-SIZES it (out of Domain
+   * Admins, kept in Backup Operators), and killing it outright breaks the job.
+   */
+  svcBackupAccount: 'account:halcyon-svc-backup',
+  /** The scheduled job that runs AS the backup account, via Backup Operators. */
+  nightlyBackup: 'service:halcyon-nightly-backup',
+
+  /** Domain Admins - the crown jewels, and where the service account should not be. */
+  domainAdmins: 'group:halcyon-domain-admins',
+  /** Backup Operators - the specific access the nightly job actually needs. */
+  backupOperators: 'group:halcyon-backup-operators',
+  /** Finance Admins - the privileged group the leaver was never taken out of. */
+  financeAdmins: 'group:halcyon-finance-admins',
+  /** Finance - Marguerite's current, legitimate group. Kept, not revoked. */
+  finance: 'group:halcyon-finance',
+  /** Sales - CRM Access. Neil's by right; Marguerite's only by history. */
+  salesCrm: 'group:halcyon-sales-crm',
+  /** Operations shared drive - Marguerite's old department, kept by accident. */
+  opsShare: 'group:halcyon-ops-share',
+  /** Legacy System Admins - an old admin group Marguerite no longer needs. */
+  legacyAdmin: 'group:halcyon-legacy-admin',
+  /** AP - Vendor Maintenance: create a vendor. One half of the SoD conflict. */
+  vendorCreate: 'group:halcyon-vendor-create',
+  /** AP - Payment Approval: approve a payment. The other half of the conflict. */
+  paymentApprove: 'group:halcyon-payment-approve',
 } as const;
 
 export type HalcyonNodeId = (typeof HALCYON_IDS)[keyof typeof HALCYON_IDS];
@@ -186,6 +243,30 @@ const STAFF: readonly StaffSeed[] = [
     title: 'Office Manager',
     username: 'bkettle',
     desk: 'The front desk, and everywhere the front desk can see',
+  },
+  {
+    person: HALCYON_IDS.marguerite,
+    account: HALCYON_IDS.margueriteAccount,
+    name: 'Marguerite Sole',
+    title: 'Finance Business Partner (formerly Sales, formerly Operations)',
+    username: 'msole',
+    desk: 'A desk she has moved three times without ever losing a login',
+  },
+  {
+    person: HALCYON_IDS.cass,
+    account: HALCYON_IDS.cassAccount,
+    name: 'Cass Holloway',
+    title: 'Accounts Payable Clerk',
+    username: 'cholloway',
+    desk: 'The accounts payable desk, where the vendors and the payments both live',
+  },
+  {
+    person: HALCYON_IDS.gordon,
+    account: HALCYON_IDS.gordonAccount,
+    name: 'Gordon Frey',
+    title: 'Financial Analyst (left in the spring)',
+    username: 'gfrey',
+    desk: 'A desk somebody else has now, and a login nobody switched off',
   },
 ];
 
@@ -470,7 +551,95 @@ export function halcyonSetup(): readonly SetupOp[] {
     }
   }
 
+  seedRecertEstate(ops);
+
   return ops;
+}
+
+/**
+ * The access-recertification estate (E8, 0.23.0) - the standing world the Q3
+ * review is about.
+ *
+ * What lives here is the ESTATE: the privileged groups, the two accounts the
+ * review adds (the leaver and the service account), and the BENIGN, legitimate
+ * memberships the player must have the judgement to KEEP - Neil is genuinely in
+ * Sales CRM, Marguerite genuinely in Finance, the service account genuinely in
+ * Backup Operators, Cass genuinely able to create vendors. The FINDINGS - the
+ * crept and orphaned and over-privileged memberships - arrive with the recert
+ * ticket's own `setup`, exactly as every other fault in this game does, so the
+ * estate is byte-clean until the review is dealt and a player cannot tidy a
+ * finding away before the ticket that is about it exists.
+ *
+ * The nightly-backup job is the "something depends on it" made real: it runs AS
+ * the service account, through Backup Operators, so revoking that specific group
+ * (or disabling the account) breaks a real scheduled job - which is the whole of
+ * why the service account is right-sized, not killed.
+ */
+function seedRecertEstate(ops: SetupOp[]): void {
+  const GROUPS: readonly Readonly<{ id: string; name: string }>[] = [
+    { id: HALCYON_IDS.domainAdmins, name: 'Domain Admins' },
+    { id: HALCYON_IDS.backupOperators, name: 'Backup Operators' },
+    { id: HALCYON_IDS.financeAdmins, name: 'Finance Admins' },
+    { id: HALCYON_IDS.finance, name: 'Finance' },
+    { id: HALCYON_IDS.salesCrm, name: 'Sales - CRM Access' },
+    { id: HALCYON_IDS.opsShare, name: 'Operations - Shared Drive' },
+    { id: HALCYON_IDS.legacyAdmin, name: 'Legacy System Admins' },
+    { id: HALCYON_IDS.vendorCreate, name: 'AP - Vendor Maintenance' },
+    { id: HALCYON_IDS.paymentApprove, name: 'AP - Payment Approval' },
+  ];
+
+  for (const group of GROUPS) {
+    addNode(ops, {
+      id: group.id,
+      kind: 'group',
+      fields: { [FIELDS.name]: group.name },
+    });
+  }
+
+  // The service account, which is nobody's person: a login the scheduled job
+  // authenticates as. Ordinary account fields, so the directory can show it
+  // beside the humans; what makes it a finding is where it sits, which the
+  // ticket seeds.
+  addNode(ops, accountNode(HALCYON_IDS.svcBackupAccount, 'svc-halcyonbackup'));
+
+  // The scheduled job the service account runs, on the file server - the real
+  // thing that depends on the account's Backup Operators membership.
+  addNode(ops, {
+    id: HALCYON_IDS.nightlyBackup,
+    kind: 'service',
+    fields: {
+      [FIELDS.name]: 'Nightly Backup (Scheduled Task)',
+      [FIELDS.serviceName]: 'HalcyonBackupTask',
+      [FIELDS.status]: SERVICE_STATUS.running,
+      [FIELDS.startupType]: STARTUP_TYPES.automatic,
+    },
+  });
+  addEdge(ops, {
+    from: HALCYON_IDS.nightlyBackup,
+    to: HALCYON_IDS.fileServer,
+    kind: 'runs_on',
+  });
+
+  // The BENIGN memberships - the ones a correct recert KEEPS. Each is a real,
+  // legitimate access, and the judgement the mechanic tests is telling them from
+  // the findings that arrive with the ticket: Neil is Sales (Sales CRM), so his
+  // membership of the group Marguerite must be TAKEN OUT of is correct; keeping
+  // his while stripping hers is the whole lesson that a recert is per-person, not
+  // per-group.
+  const BENIGN: readonly Readonly<{ account: string; group: string }>[] = [
+    { account: HALCYON_IDS.neilAccount, group: HALCYON_IDS.salesCrm },
+    { account: HALCYON_IDS.margueriteAccount, group: HALCYON_IDS.finance },
+    { account: HALCYON_IDS.svcBackupAccount, group: HALCYON_IDS.backupOperators },
+    { account: HALCYON_IDS.cassAccount, group: HALCYON_IDS.vendorCreate },
+  ];
+
+  for (const membership of BENIGN) {
+    addEdge(ops, {
+      from: membership.account,
+      to: membership.group,
+      kind: 'member_of',
+    });
+  }
 }
 
 /**

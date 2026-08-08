@@ -561,6 +561,42 @@ export const ACCOUNT_ACTIONS: readonly ActionData[] = [
     ],
   },
   {
+    // The rubber-stamp (E8, 0.23.0): accepting the manager's "just approve them
+    // all" on the access recertification. It targets the review TICKET, records
+    // that it was signed off without being worked, and - the whole point -
+    // touches NO entitlement, so the review's resolution rule (which reads the
+    // findings) stays false. The blanket-approve fails closed: the leaver stays
+    // enabled, the crept access stays granted, the over-privilege stays, and the
+    // audit breaches. Nothing here says no for the player, exactly as the rest of
+    // the org epic does not; it refuses only a second stamp on a review already
+    // signed and a review that is already closed - the no-op guards every verb
+    // here carries.
+    id: HELPDESK_ACTIONS.recertApproveAll,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('ticket'),
+      {
+        when: fieldIs(TARGET, FIELDS.recertRubberStamped, true),
+        reason: '"{target.label}" has already been approved wholesale. Signing '
+          + 'off the same review twice does not make it any more reviewed than '
+          + 'it was the first time, which was not at all.',
+      },
+      {
+        when: fieldIs(TARGET, FIELDS.state, 'resolved'),
+        reason: '"{target.label}" is closed. There is nothing left to approve - '
+          + 'the review has already been worked to a decision.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.recertRubberStamped,
+        value: { const: true },
+      },
+    ],
+  },
+  {
     id: HELPDESK_ACTIONS.accountRevokeLicence,
     tier: HELPDESK_TIER,
     validate: [

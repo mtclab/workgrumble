@@ -3336,6 +3336,18 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'delegate the setup granted, now the incident\'s persistence vector - '
     + 'where the con lands. Closes the delegate clause of the corporate P1; '
     + 'driven in `bec.test.ts`, out of the browser walk\'s reach.',
+  // The access-recertification rubber-stamp (E8, 0.23.0): accepting the CFO's
+  // "just approve them all" on the Q3 review. A player verb with a real (bad)
+  // effect - it fails the review closed - offered in the corporate dialogue at
+  // the FOURTH employer, which the browser total-walk does not reach (it stops
+  // at the second), the same reason the exec-exception and BEC verbs are proven
+  // in unit tests rather than the walk. Driven through the real dispatch path in
+  // `recert.test.ts`.
+  [HELPDESK_ACTIONS.recertApproveAll]: 'Approving an access review wholesale - '
+    + 'the manager\'s rubber-stamp, made a real action that fails closed (the '
+    + 'findings stay live and the audit breaches). Offered in the recert dialogue '
+    + 'at the corporate employer; driven in `recert.test.ts`, out of the browser '
+    + 'walk\'s reach.',
 };
 
 /**

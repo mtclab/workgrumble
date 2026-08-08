@@ -1910,4 +1910,71 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/exec-exception-risk', 'kb/second-factor'],
   },
+  {
+    id: 'kb/access-recertification',
+    title: 'The access review, and how not to rubber-stamp it',
+    summary: 'A periodic review of who is in the privileged groups. Work each '
+      + 'line: revoke the leaver and the crept access, split the duties conflict, '
+      + 'right-size the over-privileged service account - and never approve the '
+      + 'whole list to make it go away.',
+    state: 'published',
+    issue: 'You have been handed a list of who is in the privileged groups and '
+      + 'asked to certify it - keep what is legitimate, revoke what is not - and '
+      + 'the manager who owns it would rather you just approved the lot so it can '
+      + 'be signed off before the auditor asks.',
+    environment: 'A directory full of accounts and groups that has been accreting '
+      + 'access for years: leavers nobody disabled, long-serving people carrying '
+      + 'every department they were ever in, service accounts somebody made a '
+      + 'domain admin to make an error stop, and duties that should be split '
+      + 'sitting on one person.',
+    resolution: [
+      'Work it per PERSON, not per group. The same group can be right for one '
+        + 'account and wrong for another - a Sales group is correct for the person '
+        + 'in Sales and stale on the person who moved to Finance three years ago - '
+        + 'so "revoke the group" is never the answer; "revoke this membership" is.',
+      'Disable the LEAVER. An account whose owner has gone but which is still '
+        + 'enabled - and still in a privileged group - is the orphaned account, '
+        + 'and it is the finding that turns up in breach reports because nobody '
+        + 'switched it off. Deprovisioning is disabling the account, not trimming '
+        + 'one group off it.',
+      'Strip PRIVILEGE CREEP. Someone who has changed roles keeps the access of '
+        + 'every role unless somebody takes it away; the review is where you take '
+        + 'it away. Keep the group their current job needs and remove the ones the '
+        + 'old jobs left behind.',
+      'Split the SEGREGATION-OF-DUTIES conflict. One person who can both create a '
+        + 'vendor and approve its payment can pay themselves. The fix is to remove '
+        + 'ONE of the two entitlements - keep the one their job needs - not to '
+        + 'strip both and not to leave both.',
+      'RIGHT-SIZE, do not kill, the service account. A service account sitting in '
+        + 'Domain Admins is a textbook least-privilege violation - but before you '
+        + 'touch it, find out what runs as it. Take it out of Domain Admins and '
+        + 'leave it the specific group its job actually needs. Disabling it, or '
+        + 'stripping the group it depends on, breaks whatever scheduled job runs '
+        + 'as it - usually 48 hours later, as a fresh ticket.',
+      'Do NOT approve-all. "Just approve the lot" is the rubber-stamped review, '
+        + 'and it is how every one of these findings survived to this quarter. '
+        + 'Signing off the list without working it certifies the rot; the audit is '
+        + 'only worth the minutes you spend actually reading each line.',
+    ],
+    cause: [
+      'Access accretes and almost never sheds. Every grant is a decision somebody '
+        + 'made once; taking it away is a decision nobody is assigned to make, so '
+        + 'leavers stay enabled, role-changers keep old permissions, and '
+        + '"temporary" domain-admin grants become permanent. The recertification '
+        + 'exists precisely because there is no other moment when anyone looks.',
+      'The friction is human, not technical. Removing a group membership is a '
+        + 'click; knowing WHICH ones to remove, and standing behind a "no" when a '
+        + 'busy manager wants the list waved through, is the job. The rubber-stamp '
+        + 'is the path of least resistance, and it is why the average orphaned '
+        + 'account lives on for months.',
+      'And the sharp edge is the service account, because over-privileged and '
+        + 'load-bearing are not opposites. The account that should not be a domain '
+        + 'admin can still be the account a critical job authenticates as, through '
+        + 'some other group. Diligence that reads only "it has too much" and '
+        + 'revokes everything breaks production; diligence that reads "it has too '
+        + 'much AND something depends on it" right-sizes it. The cost the review '
+        + 'punishes is the careless revoke, never the careful one.',
+    ],
+    see_also: ['kb/exec-exception-risk', 'kb/shared-mailbox-permissions'],
+  },
 ];

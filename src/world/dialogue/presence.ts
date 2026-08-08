@@ -142,6 +142,15 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
     + 'thing is not done. I cannot tell the CEO his IT has gone quiet - so I will '
     + 'just say it is being looked at, and you can imagine how that goes for both '
     + 'of us.',
+  // The recert reporters (E8, 0.23.0): the CFO who owns the review and the office
+  // manager whose backup broke.
+  [HALCYON_IDS.cfo]: 'You are showing away, and I have compliance waiting on that '
+    + 'access review with a deadline I did not set. Away on the one afternoon I '
+    + 'need it signed off is not a status I can put in front of an auditor.',
+  [HALCYON_IDS.bronwen]: 'Your dot says away, and the backup is still down. I do '
+    + 'the door and the diary, not the servers - so if the desk that does the '
+    + 'servers is away while a production job is broken, I have run out of people '
+    + 'to ask.',
 });
 
 /**

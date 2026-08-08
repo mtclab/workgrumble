@@ -23,7 +23,9 @@
  * she was locked out of the very mailbox she was just given.
  */
 
+import { HELPDESK_ACTIONS } from '../actions';
 import { HALCYON_IDS } from '../corporate-company';
+import { RECERT_FOLLOWUP, RECERT_TICKET } from '../recert';
 import type { DialogueTree } from './types';
 
 const DENISE: DialogueTree = {
@@ -213,4 +215,135 @@ const DENISE: DialogueTree = {
   ],
 };
 
-export const CORPORATE_TREES: readonly DialogueTree[] = [DENISE];
+/**
+ * Miriam Thale, the CFO who owns the Q3 access recertification (E8, 0.23.0) - and
+ * the rubber-stamp.
+ *
+ * Her register is the manager buried in year-end who would rather the list were
+ * waved through than worked. She is the one who offers "just approve them all",
+ * and taking her up on it is a real, dispatchable action (`recertApproveAll`)
+ * that fails closed - it signs off the review without touching a single finding,
+ * so the audit stays live and breaches. The `reveal` is what the list is actually
+ * hiding, said to the player and written to the ticket, never preached at her; the
+ * `asks` is the scope question that lets the review be parked on her.
+ */
+const MIRIAM: DialogueTree = {
+  id: 'dialogue/halcyon-miriam',
+  speaker: HALCYON_IDS.cfo,
+  tickets: [RECERT_TICKET],
+  root: 'recert',
+  resolved_root: 'recert-done',
+  nodes: [
+    {
+      id: 'recert',
+      npc_line: 'The Q3 access review. Compliance wants the privileged groups '
+        + 'certified and I am up to my eyes in year-end. Honestly, Pat, could you '
+        + 'just approve the lot so I can sign it off? I am sure most of it is '
+        + 'fine.',
+      options: [
+        {
+          label: 'Ask which groups the review actually covers',
+          next: 'recert-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Think about what a list like this usually hides',
+          effects: [
+            {
+              reveal: 'These lists rot: there will be a leaver still enabled in a '
+                + 'privileged group, somebody who changed roles and kept every '
+                + 'one\'s access, a service account made a domain admin nobody can '
+                + 'justify, and a clerk who can both raise a vendor and pay it. '
+                + 'Some of it is legitimate and must be kept - the judgement is '
+                + 'telling them apart, per person, not per group.',
+            },
+          ],
+        },
+        {
+          label: 'Just approve them all, the way she is asking',
+          effects: [
+            {
+              action: HELPDESK_ACTIONS.recertApproveAll,
+              target: RECERT_TICKET,
+            },
+          ],
+        },
+        { label: 'Tell her you will work each line properly' },
+      ],
+    },
+    {
+      id: 'recert-q',
+      npc_line: 'Everything privileged - Domain Admins, the Finance groups, the '
+        + 'AP roles, the old admin groups nobody has looked at in years. The whole '
+        + 'lot. That is rather the point of the exercise, apparently.',
+      options: [{ label: 'Start working the review' }],
+    },
+    {
+      id: 'recert-done',
+      npc_line: 'That was more thorough than I expected, and I gather one or two '
+        + 'of those really should not have been there. Signed off. Thank you for '
+        + 'not letting me wave it through.',
+      options: [{ label: 'File the review' }],
+    },
+  ],
+};
+
+/**
+ * Bronwen Kettle, who reports the broken backup (E8, 0.23.0, slice 3).
+ *
+ * The follow-up's reporter: the office manager who gets the monitoring email when
+ * the overnight job fails. Her `reveal` is the diagnosis the player can see - the
+ * review took the access the job depended on - and the fix is to restore it
+ * right-sized, not to put the account back in Domain Admins.
+ */
+const BRONWEN: DialogueTree = {
+  id: 'dialogue/halcyon-bronwen',
+  speaker: HALCYON_IDS.bronwen,
+  tickets: [RECERT_FOLLOWUP],
+  root: 'backup',
+  resolved_root: 'backup-done',
+  nodes: [
+    {
+      id: 'backup',
+      npc_line: 'The overnight backup did not run - I got an alert saying the '
+        + 'service account was denied access. It has run every night for years. '
+        + 'The only thing that changed yesterday was that access review.',
+      options: [
+        {
+          label: 'Ask exactly what the monitoring alert said',
+          next: 'backup-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Think about what the review changed for that account',
+          effects: [
+            {
+              reveal: 'The backup account was over-privileged - a domain admin it '
+                + 'did not need - so the review was right to trim it. But the '
+                + 'nightly job genuinely runs AS that account, through its Backup '
+                + 'Operators membership, so killing the account or stripping that '
+                + 'group broke the job. Restore only what the job needs: re-enable '
+                + 'it and put it back in Backup Operators, not Domain Admins.',
+            },
+          ],
+        },
+        { label: 'Tell her you will put the access back' },
+      ],
+    },
+    {
+      id: 'backup-q',
+      npc_line: '"Scheduled task HalcyonBackupTask failed: logon failure for the '
+        + 'service account." That is all it says. It just could not get in.',
+      options: [{ label: 'Look at the service account' }],
+    },
+    {
+      id: 'backup-done',
+      npc_line: 'It ran tonight - I got the green one for once. And you did not '
+        + 'just make it a domain admin again to make it stop, which I am told is '
+        + 'the thing not to do. Thank you.',
+      options: [{ label: 'Close it out' }],
+    },
+  ],
+};
+
+export const CORPORATE_TREES: readonly DialogueTree[] = [DENISE, MIRIAM, BRONWEN];

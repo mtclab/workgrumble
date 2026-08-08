@@ -297,6 +297,12 @@ describe('shipped tickets', () => {
       // The BEC incident (E8, 0.22.0, Pass B): the summoned P1 that follows the
       // delegate grant - the payoff the three exceptions above set up.
       'ticket:halcyon-ceo-bec',
+      // The access recertification (E8, 0.23.0): the Q3 review whose queue is the
+      // classic findings (leaver / creep / SoD / over-privileged service
+      // account), and the summoned broken-job it raises when the load-bearing
+      // service account is killed rather than right-sized.
+      'ticket:halcyon-recert',
+      'ticket:halcyon-recert-followup',
     ]);
   });
 

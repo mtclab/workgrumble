@@ -336,8 +336,14 @@ describe('helpdesk action registry', () => {
     // (`account.remove_mailbox_rule`), and tearing down the delegate the setup
     // granted (`account.remove_mailbox_delegate`). The payoff half of the arc,
     // and the con landing on the access the grants above opened.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(45);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(45);
+    //
+    // Forty-six from 0.23.0 (E8): the access-recertification rubber-stamp
+    // (`recert.approve_all`) - accepting the manager's "just approve them all",
+    // made a real, dispatchable action that fails the review closed. The rest of
+    // the recert is the ordinary disable / remove-from-group verbs, so this is the
+    // one new verb the mechanic needs.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(46);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(46);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});

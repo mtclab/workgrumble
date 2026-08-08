@@ -48,6 +48,7 @@ const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.accountRemoveMailboxDelegate]:
     'Removed the mailbox delegate',
   [HELPDESK_ACTIONS.accountRevokeSessions]: 'Signed every device out',
+  [HELPDESK_ACTIONS.recertApproveAll]: 'Approved the whole access review',
   [HELPDESK_ACTIONS.accountAssignLicence]: 'Gave the account a licence seat',
   [HELPDESK_ACTIONS.accountRevokeLicence]: 'Took a licence seat back',
   [HELPDESK_ACTIONS.serviceRestart]: 'Restarted the service',

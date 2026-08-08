@@ -103,12 +103,14 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
   {
     day: 4,
     label: 'Thursday',
-    inherited: [],
-    // Thursday is quiet - the exceptions are granted (or not) and the account
-    // sits the way the week left it, waiting for the payoff a later pass builds.
+    // Thursday is the access recertification (E8, 0.23.0): the quiet day the Q3
+    // review lands on, a whole queue of who-has-what to certify or revoke. It is
+    // in the morning pile because compliance sent the list overnight; the exec
+    // exceptions from earlier in the week sit the way they were left.
+    inherited: ['ticket:halcyon-recert'],
     drip: [],
     patrolSeed: 7_919,
-    load: 1,
+    load: 2,
   },
   {
     day: 5,

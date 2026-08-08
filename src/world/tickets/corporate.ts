@@ -37,10 +37,22 @@ import { DELEGATE_PARAM, HELPDESK_ACTIONS, RULE_PARAM } from '../actions';
 import { HALCYON_IDS } from '../corporate-company';
 import { FIELDS } from '../fields';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
+import { RECERT_FOLLOWUP, RECERT_TICKET } from '../recert';
 import type { WorldTicket } from './types';
 
 const KB_EXEC_EXCEPTION = 'kb/exec-exception-risk';
 const KB_BEC_RESPONSE = 'kb/bec-incident-response';
+const KB_RECERT = 'kb/access-recertification';
+
+/** The one member_of edge check the recert reuses for every finding. */
+function memberOf(account: string, group: string) {
+  return {
+    op: 'edge' as const,
+    from: { id: account },
+    to: { id: group },
+    kind: 'member_of' as const,
+  };
+}
 
 /**
  * The one external address the attacker forwards to, and the malicious inbox
@@ -382,9 +394,329 @@ const CEO_BEC_INCIDENT: WorldTicket = {
   ],
 };
 
+/**
+ * The Q3 access recertification (E8, 0.23.0) - access hell, and the friction is
+ * entirely human.
+ *
+ * One ticket, but a QUEUE: its resolution rule is the whole least-privilege end
+ * state, and the path that closes it is the six decisions that get there. Four of
+ * them are the classic findings the research names, seeded as real account/group
+ * state by this ticket's own `setup`:
+ *
+ *  - the LEAVER: Gordon Frey, gone since the spring, still enabled and still in a
+ *    privileged group - the orphaned account. Revoke = disable him.
+ *  - PRIVILEGE CREEP: Marguerite Sole, three departments deep, holding every
+ *    role's access. Strip the three she no longer needs (Sales CRM, Ops, Legacy
+ *    Admin); keep the one she does (Finance).
+ *  - the SERVICE ACCOUNT in Domain Admins: over-privileged, and the sharp one -
+ *    it is ALSO load-bearing (slice 3), so right-size it OUT of Domain Admins, do
+ *    not touch the Backup Operators group its job needs.
+ *  - the SoD conflict: Cass Holloway can both create a vendor and approve its
+ *    payment. Split it - revoke one side, keep the other.
+ *
+ * And two of the clauses are BENIGN access the review must KEEP: Marguerite in
+ * Finance and Neil in Sales CRM. They are in the rule so that a blanket-REVOKE is
+ * wrong too - strip Neil's Sales CRM (or Marguerite's Finance) and the review does
+ * not close, because least-privilege is the graded outcome, not
+ * revoke-everything. Neil sharing Sales CRM with Marguerite is the teaching in one
+ * group: keep his, strip hers.
+ *
+ * The rubber-stamp is not a path. The manager offers "just approve them all" in
+ * the dialogue (`recertApproveAll`), and it fails closed - it records the
+ * sign-off and touches no entitlement, so this rule stays false and the audit
+ * breaches. The only way to close it is to work each line.
+ */
+const ACCESS_RECERT: WorldTicket = {
+  arrival: 'morning',
+  nodes: [
+    HALCYON_IDS.gordonAccount,
+    HALCYON_IDS.margueriteAccount,
+    HALCYON_IDS.cassAccount,
+    HALCYON_IDS.svcBackupAccount,
+    HALCYON_IDS.domainAdmins,
+    HALCYON_IDS.nightlyBackup,
+  ],
+  // A compliance deadline, real and not on fire: the audit wants it this quarter,
+  // and the manager who owns it wants it off her desk.
+  claimed_urgency: 2,
+  true_urgency: 2,
+  def: {
+    id: RECERT_TICKET,
+    archetype: 'hidden_cause',
+    flavor: {
+      title: 'Halcyon: Q3 access recertification - review the privileged groups',
+      body:
+        'Compliance wants the quarterly access review done. Miriam, the CFO, has '
+        + 'sent over the list of who is in the privileged groups and asked you to '
+        + 'certify it: keep what is legitimate, revoke what is not. She has added '
+        + 'that she is buried in year-end and would honestly rather you "just '
+        + 'approved the lot" so she can sign it off - which is exactly how these '
+        + 'lists rot in the first place.',
+    },
+    reporter: HALCYON_IDS.cfo,
+    // The findings arrive with the ticket, the way every fault in this game does:
+    // the orphaned membership, the three crept groups, the over-privileged
+    // service account, and the second half of the SoD conflict (Cass is already
+    // in vendor-create by right; this is the approval group that makes it a
+    // conflict).
+    setup: [
+      {
+        op: 'addEdge',
+        edge: {
+          from: HALCYON_IDS.gordonAccount,
+          to: HALCYON_IDS.financeAdmins,
+          kind: 'member_of',
+        },
+      },
+      {
+        op: 'addEdge',
+        edge: {
+          from: HALCYON_IDS.margueriteAccount,
+          to: HALCYON_IDS.salesCrm,
+          kind: 'member_of',
+        },
+      },
+      {
+        op: 'addEdge',
+        edge: {
+          from: HALCYON_IDS.margueriteAccount,
+          to: HALCYON_IDS.opsShare,
+          kind: 'member_of',
+        },
+      },
+      {
+        op: 'addEdge',
+        edge: {
+          from: HALCYON_IDS.margueriteAccount,
+          to: HALCYON_IDS.legacyAdmin,
+          kind: 'member_of',
+        },
+      },
+      {
+        op: 'addEdge',
+        edge: {
+          from: HALCYON_IDS.svcBackupAccount,
+          to: HALCYON_IDS.domainAdmins,
+          kind: 'member_of',
+        },
+      },
+      {
+        op: 'addEdge',
+        edge: {
+          from: HALCYON_IDS.cassAccount,
+          to: HALCYON_IDS.paymentApprove,
+          kind: 'member_of',
+        },
+      },
+    ],
+    // The correct least-privilege end state, in full: the leaver disabled, the
+    // crept access stripped, the legit access KEPT, the service account
+    // right-sized out of Domain Admins, and the SoD conflict split to exactly one
+    // side. Every clause is load-bearing - leave one finding unworked and it
+    // stays false, revoke one benign membership and it stays false.
+    resolved_when: {
+      op: 'and',
+      exprs: [
+        // The leaver, deprovisioned.
+        {
+          op: 'eq',
+          selector: { id: HALCYON_IDS.gordonAccount },
+          field: FIELDS.enabled,
+          value: false,
+        },
+        // Privilege creep, stripped: the three groups she no longer needs.
+        { op: 'not', expr: memberOf(HALCYON_IDS.margueriteAccount, HALCYON_IDS.salesCrm) },
+        { op: 'not', expr: memberOf(HALCYON_IDS.margueriteAccount, HALCYON_IDS.opsShare) },
+        { op: 'not', expr: memberOf(HALCYON_IDS.margueriteAccount, HALCYON_IDS.legacyAdmin) },
+        // Kept: her current, legitimate group, and Neil's by-right Sales CRM.
+        // These make blanket-revoke wrong - strip either and the review is unmet.
+        memberOf(HALCYON_IDS.margueriteAccount, HALCYON_IDS.finance),
+        memberOf(HALCYON_IDS.neilAccount, HALCYON_IDS.salesCrm),
+        // The service account, right-sized: out of Domain Admins.
+        { op: 'not', expr: memberOf(HALCYON_IDS.svcBackupAccount, HALCYON_IDS.domainAdmins) },
+        // The SoD conflict, split to exactly one entitlement (either is fine; both
+        // is the conflict, neither is over-revoked).
+        {
+          op: 'or',
+          exprs: [
+            {
+              op: 'and',
+              exprs: [
+                memberOf(HALCYON_IDS.cassAccount, HALCYON_IDS.vendorCreate),
+                { op: 'not', expr: memberOf(HALCYON_IDS.cassAccount, HALCYON_IDS.paymentApprove) },
+              ],
+            },
+            {
+              op: 'and',
+              exprs: [
+                { op: 'not', expr: memberOf(HALCYON_IDS.cassAccount, HALCYON_IDS.vendorCreate) },
+                memberOf(HALCYON_IDS.cassAccount, HALCYON_IDS.paymentApprove),
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 6 },
+    kb_ref: KB_RECERT,
+  },
+  cause: 'Access accretes and never sheds: a leaver whose account was never '
+    + 'disabled, a long-serving person carrying every department they have ever '
+    + 'been in, a service account somebody made a domain admin to make an error '
+    + 'go away, and one clerk who can both raise a vendor and pay it. None of it '
+    + 'is an attack; all of it is the org, and the recertification is the only '
+    + 'time anybody looks. The service account is the trap - it IS over-privileged '
+    + 'and it IS load-bearing, so it is right-sized, not killed.',
+  dialogue_ref: 'dialogue/halcyon-miriam',
+  paths: [
+    {
+      id: 'work-the-recert',
+      app: 'directory',
+      label: 'Work the review: disable the leaver, strip the crept access, '
+        + 'right-size the service account, and split the SoD conflict',
+      steps: [
+        { action: HELPDESK_ACTIONS.accountDisable, target: HALCYON_IDS.gordonAccount },
+        {
+          action: HELPDESK_ACTIONS.accountRemoveFromGroup,
+          target: HALCYON_IDS.margueriteAccount,
+          params: { group: HALCYON_IDS.salesCrm },
+        },
+        {
+          action: HELPDESK_ACTIONS.accountRemoveFromGroup,
+          target: HALCYON_IDS.margueriteAccount,
+          params: { group: HALCYON_IDS.opsShare },
+        },
+        {
+          action: HELPDESK_ACTIONS.accountRemoveFromGroup,
+          target: HALCYON_IDS.margueriteAccount,
+          params: { group: HALCYON_IDS.legacyAdmin },
+        },
+        {
+          action: HELPDESK_ACTIONS.accountRemoveFromGroup,
+          target: HALCYON_IDS.svcBackupAccount,
+          params: { group: HALCYON_IDS.domainAdmins },
+        },
+        {
+          action: HELPDESK_ACTIONS.accountRemoveFromGroup,
+          target: HALCYON_IDS.cassAccount,
+          params: { group: HALCYON_IDS.paymentApprove },
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The wrong revoke bites back (E8, 0.23.0, slice 3).
+ *
+ * Summoned - and neither scheduled nor `follows` - because it turns up only when
+ * the player has actually KILLED the service account: disabled it, or taken it out
+ * of Backup Operators, instead of right-sizing it. The day driver reads that
+ * state off the graph once the review is closed and raises this; a clean
+ * right-size raises nothing, so honest diligence is never punished.
+ *
+ * Its setup normalises the account to the fully-broken state the job cannot run
+ * under - switched off and out of its group - so the fix is unambiguous whichever
+ * way the player killed it: re-enable it and put it back in Backup Operators. It
+ * is restored RIGHT-SIZED - it does not go back into Domain Admins, because the
+ * recert was right about that part.
+ */
+const RECERT_BROKEN_JOB: WorldTicket = {
+  arrival: 'summoned',
+  nodes: [
+    HALCYON_IDS.svcBackupAccount,
+    HALCYON_IDS.backupOperators,
+    HALCYON_IDS.nightlyBackup,
+  ],
+  // A production backup is not running. Real, and reasonably urgent.
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: RECERT_FOLLOWUP,
+    archetype: 'hidden_cause',
+    flavor: {
+      title: 'Halcyon: the nightly backup failed - "access denied" for the '
+        + 'service account',
+      body:
+        'Bronwen has flagged that the overnight backup job did not run - the '
+        + 'monitoring email says the service account it runs as was denied access. '
+        + 'It worked yesterday. The only thing that changed is the access review: '
+        + 'the service account was in Domain Admins, and cleaning that up took the '
+        + 'access the job actually depended on with it. The backup needs putting '
+        + 'back - right-sized, not made a domain admin again.',
+    },
+    reporter: HALCYON_IDS.bronwen,
+    // The broken state, normalised: whatever the careless revoke did, the job's
+    // account is off and out of its group here, so the restore is the same two
+    // moves every time.
+    setup: [
+      {
+        op: 'setField',
+        id: HALCYON_IDS.svcBackupAccount,
+        field: FIELDS.enabled,
+        value: false,
+      },
+      {
+        op: 'removeEdge',
+        edge: {
+          from: HALCYON_IDS.svcBackupAccount,
+          to: HALCYON_IDS.backupOperators,
+          kind: 'member_of',
+        },
+      },
+    ],
+    // Restored to the RIGHT-SIZED state the recert should have left it in: enabled
+    // and back in Backup Operators (the group its job needs) - and NOT back in
+    // Domain Admins, which the review was correct to remove.
+    resolved_when: {
+      op: 'and',
+      exprs: [
+        {
+          op: 'eq',
+          selector: { id: HALCYON_IDS.svcBackupAccount },
+          field: FIELDS.enabled,
+          value: true,
+        },
+        memberOf(HALCYON_IDS.svcBackupAccount, HALCYON_IDS.backupOperators),
+      ],
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 3 },
+    kb_ref: KB_RECERT,
+  },
+  cause: 'The service account was over-privileged AND load-bearing: it did not '
+    + 'need Domain Admins, but the nightly job genuinely runs as it, through '
+    + 'Backup Operators. Killing the account - disabling it, or stripping the '
+    + 'group its job needs - is what breaks the job. Right-sizing it would not '
+    + 'have: the fix now is to restore only the access the job depends on.',
+  dialogue_ref: 'dialogue/halcyon-bronwen',
+  paths: [
+    {
+      id: 'restore-right-sized',
+      app: 'directory',
+      label: 'Put the backup account back: re-enable it and return it to Backup '
+        + 'Operators (not Domain Admins)',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.accountEnable,
+          target: HALCYON_IDS.svcBackupAccount,
+        },
+        {
+          action: HELPDESK_ACTIONS.accountAddToGroup,
+          target: HALCYON_IDS.svcBackupAccount,
+          params: { group: HALCYON_IDS.backupOperators },
+        },
+      ],
+    },
+  ],
+};
+
 export const CORPORATE_TICKETS: readonly WorldTicket[] = [
   CEO_MFA_OFF,
   EA_MAILBOX_DELEGATE,
   CEO_FILTER_EXEMPT,
   CEO_BEC_INCIDENT,
+  ACCESS_RECERT,
+  RECERT_BROKEN_JOB,
 ];

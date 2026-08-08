@@ -91,6 +91,7 @@ import {
   readConductFile,
 } from '../world/conduct';
 import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
+import { recertFollowUpDue } from '../world/recert';
 import { findIncident } from '../world/incidents';
 import { findOnboarding } from '../world/onboarding';
 import { postmortemFor } from '../world/postmortem';
@@ -2084,6 +2085,9 @@ export class DayDriver implements DayApi {
     // half. The new starter is back before the window has repainted, which is
     // both the joke and, in every shop this is drawn from, the truth.
     this.settleFollowUps();
+    // And a careless revoke that closed the access review has just broken a
+    // production job - a follow-up the world raises off the state it was left in.
+    this.settleRecertFollowUp();
     return result;
   }
 
@@ -2240,6 +2244,7 @@ export class DayDriver implements DayApi {
     this.settleNoHello(before, now);
     this.settleStaleAuth(now);
     this.settleFollowUps();
+    this.settleRecertFollowUp();
     this.walkTheFloor(before, now);
     // After the corridor, in the same minute: the lead arriving is a takeover
     // too, and the assert inside this one is entitled to see it. Before the
@@ -3268,6 +3273,37 @@ export class DayDriver implements DayApi {
         + 'request, forty minutes after you closed it.',
       );
     }
+  }
+
+  /**
+   * The wrong revoke biting back (E8, 0.23.0).
+   *
+   * A conditional summon, the same shape as `settleSecurityFallout`: the world
+   * decides whether there is a consequence, and this raises the ticket when there
+   * is. It is due only when the access recertification has been worked to a close
+   * AND the service account was killed doing it - disabled, or taken out of the
+   * group its scheduled job needs - rather than right-sized. Right-size it
+   * correctly and nothing fires, so honest diligence is never punished; only a
+   * careless revoke left standing at the close costs anything.
+   *
+   * `recertFollowUpDue` reads Halcyon-specific nodes, so it returns nothing in
+   * every other world - the review is not there to be resolved - which is what
+   * keeps this inert everywhere the recert does not live, exactly as the summoned
+   * boss-phone ticket is inert away from the probation shop.
+   */
+  private settleRecertFollowUp(): void {
+    const due = recertFollowUpDue(this.engine.graph);
+
+    if (due === undefined) {
+      return;
+    }
+
+    this.raiseSummonedTicket(due);
+    this.handlers.onNotice?.(
+      'A scheduled job has failed',
+      `${ticketTitle(due)} - the access review took a permission a production `
+      + 'job actually depended on. It needs restoring, right-sized.',
+    );
   }
 
   /**

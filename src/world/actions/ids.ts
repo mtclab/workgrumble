@@ -108,6 +108,19 @@ export const HELPDESK_ACTIONS = {
    * is no legitimate user left to lock out.
    */
   accountRevokeSessions: 'account.revoke_sessions',
+  /**
+   * Accepting the manager's "just approve them all" on an access review (E8,
+   * 0.23.0) - the rubber-stamp made mechanical.
+   *
+   * Its own verb because the rubber-stamp is a real choice the desk is pressured
+   * into, not the absence of one: the manager offers it in the dialogue, and it
+   * is the wrong play. It records that the recertification was signed off without
+   * being worked (`recert_rubber_stamped`) and touches NO entitlement, so it
+   * cannot resolve the review - the findings stay live and the audit breaches.
+   * The whole lesson of the mechanic is that nothing stops you doing this; the
+   * guardrail has to be the player choosing to work each line instead.
+   */
+  recertApproveAll: 'recert.approve_all',
   /** Giving an account one of the seats the company actually bought. */
   accountAssignLicence: 'account.assign_licence',
   /** And taking one back off somebody who has not needed it since April. */
