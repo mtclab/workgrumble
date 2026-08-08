@@ -167,7 +167,34 @@ test('an engineer switches desktop and the chrome follows', async ({ page }) => 
 test('the desktop the player chose survives a save and a load', async ({
   page,
 }) => {
-  await arrive(page);
+  // Seeded ONCE, by hand, rather than through `arrive`: an init script re-runs
+  // on every navigation, so the reload below would arrive at the MSP a SECOND
+  // time - a fresh first-day session standing itself up over the one the load
+  // just restored. The question here is what a save carries, so the arrival has
+  // to happen once and stay happened.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.install();
+  await page.goto('/');
+  await page.evaluate(
+    ([key, record]) => {
+      window.localStorage.setItem(key, JSON.stringify(record));
+    },
+    [SWITCH_KEY, ARRIVAL] as [string, typeof ARRIVAL],
+  );
+  await page.reload();
+  await completeLogin(page, { brief: 'keep' });
+
+  const arrival = page.getByTestId('window-updates');
+
+  if (await arrival.count()) {
+    const close = arrival.getByTestId('window-close');
+
+    if (await close.count()) {
+      await close.first().click();
+    }
+  }
+
+  await dismissBrief(page);
   await promote(page);
   await openFromStartMenu(page, 'display');
   await page.getByTestId('display-desktop-gnome').click();
