@@ -27,7 +27,10 @@
  *
  * The per-DE facts below are the researched ones (docs/design/linux-desktop-
  * skins.md), not invented flavour: they are what makes each desktop
- * recognisable from its layout alone, which is the point of shipping three.
+ * recognisable from its layout alone, which is the point of shipping more than
+ * one. 0.27.0 shipped three (KDE, GNOME, Cinnamon); 0.28.0 added the rest of
+ * the researched set (MATE, Xfce, LXQt) and, with MATE, the one thing the
+ * original shape could not say: a desktop with TWO panels.
  */
 
 import type { DispatchResult } from '../engine-api';
@@ -48,6 +51,12 @@ export const LAUNCHER_STYLES = [
   'kickoff',
   'activities',
   'menu',
+  /** MATE's: a WORD in a menu bar, the GNOME-2 shape it continues. */
+  'classic',
+  /** Xfce's: the Applications menu, with the grid glyph beside it. */
+  'applications',
+  /** LXQt's: a button with the desktop's name on it and no decoration. */
+  'plain',
 ] as const;
 
 export type LauncherStyle = (typeof LAUNCHER_STYLES)[number];
@@ -63,10 +72,19 @@ export interface LauncherSpec {
   readonly icon: string | null;
 }
 
-/** Where the panel sits, and what it holds. */
-export interface PanelSpec {
+/**
+ * Where a panel sits and what it holds - everything about a panel EXCEPT the
+ * launcher.
+ *
+ * The launcher is deliberately not in here, because a desktop has exactly one
+ * of them however many panels it has: MATE's menu bar carries it and MATE's
+ * taskbar does not. Making it a per-panel field would have meant a nullable
+ * launcher on every skin plus an "exactly one panel has it" rule the compiler
+ * cannot keep, so the launcher lives on the panel that always exists (below)
+ * and the SECOND panel is this shape - see `Skin.secondPanel`.
+ */
+export interface SecondPanelSpec {
   readonly position: PanelPosition;
-  readonly launcher: LauncherSpec;
   /**
    * Whether the panel carries a list of the open windows. GNOME is the false:
    * it has no taskbar at all, the overview replaces it, and a window list
@@ -75,6 +93,17 @@ export interface PanelSpec {
   readonly windowList: boolean;
   /** The clock/status end of the panel. Every shipped desktop has one. */
   readonly tray: boolean;
+}
+
+/**
+ * The panel every desktop has: the one with the launcher in it.
+ *
+ * On the six single-panel desktops it is the whole of the chrome. On MATE it
+ * is the menu bar along the top, and the taskbar along the bottom is the
+ * `secondPanel` beside it.
+ */
+export interface PanelSpec extends SecondPanelSpec {
+  readonly launcher: LauncherSpec;
 }
 
 export const WINDOW_BUTTONS = ['minimize', 'maximize', 'close'] as const;
@@ -87,20 +116,28 @@ export type WindowButton = (typeof WINDOW_BUTTONS)[number];
  *
  * The ORDER is the list itself: a button that is not in it does not exist -
  * not hidden, not disabled, ABSENT from the DOM - because GNOME's close-only
- * titlebar is the sharpest tell of the three desktops and a CSS-hidden fake
+ * titlebar is the sharpest tell in the whole registry and a CSS-hidden fake
  * would be the skin system lying about the one thing it was built to prove.
  *
  * `side` is declared because "and where" is half the question, and because the
  * backlog the spec names (the Mac family) is the case that needs it. Every
- * desktop shipped in 0.27.0 puts them on the right, which is what all three of
- * the researched DEs actually do.
+ * desktop shipped so far puts them on the right, which is what all of the
+ * researched DEs actually do.
  */
 export interface WindowButtonSpec {
   readonly order: readonly WindowButton[];
   readonly side: 'left' | 'right';
 }
 
-export const SKIN_IDS = ['deskpro', 'kde', 'gnome', 'cinnamon'] as const;
+export const SKIN_IDS = [
+  'deskpro',
+  'kde',
+  'gnome',
+  'cinnamon',
+  'mate',
+  'xfce',
+  'lxqt',
+] as const;
 
 export type SkinId = (typeof SKIN_IDS)[number];
 
@@ -119,6 +156,21 @@ export interface Skin {
    */
   readonly tokens: Readonly<Record<string, string>>;
   readonly panel: PanelSpec;
+  /**
+   * The OTHER panel, for the one desktop that has two (0.28.0).
+   *
+   * MATE is a menu bar along the top AND a taskbar along the bottom - the
+   * GNOME-2 arrangement it exists to continue - and that is a layout no amount
+   * of tokens can say. It is a field rather than a `panels` array because a
+   * launcher is a per-DESKTOP singleton, not a per-panel one: an array would
+   * have made `launcher` nullable on every panel of every skin and left the
+   * "exactly one of them has it" rule to a runtime check, where this shape
+   * makes the launcher panel the one that cannot be missing. Every other
+   * desktop says `null` here, which is the extension staying out of their way -
+   * and the default skin is byte-identical because a null second panel is not
+   * built at all.
+   */
+  readonly secondPanel: SecondPanelSpec | null;
   readonly windowButtons: WindowButtonSpec;
   /**
    * The distro this desktop ships on by default - the DE half of the pairing.
@@ -230,6 +282,7 @@ const DESKPRO: Skin = {
     windowList: true,
     tray: true,
   },
+  secondPanel: null,
   windowButtons: { order: ['minimize', 'maximize', 'close'], side: 'right' },
   distro: null,
 };
@@ -287,6 +340,7 @@ const KDE: Skin = {
     windowList: true,
     tray: true,
   },
+  secondPanel: null,
   windowButtons: { order: ['minimize', 'maximize', 'close'], side: 'right' },
   distro: 'fedora',
 };
@@ -347,6 +401,7 @@ const GNOME: Skin = {
     windowList: false,
     tray: true,
   },
+  secondPanel: null,
   // The tell. Not hidden, not disabled: the two buttons are not built.
   windowButtons: { order: ['close'], side: 'right' },
   distro: 'ubuntu',
@@ -402,8 +457,198 @@ const CINNAMON: Skin = {
     windowList: true,
     tray: true,
   },
+  secondPanel: null,
   windowButtons: { order: ['minimize', 'maximize', 'close'], side: 'right' },
   distro: 'mint',
+};
+
+/**
+ * MATE: the GNOME-2 continuation, and the reason the second panel exists.
+ *
+ * TWO panels. A menu bar along the top whose launcher is a WORD - the classic
+ * Applications menu, no glyph, exactly the bar GNOME 2 had - and a taskbar
+ * along the bottom carrying the window list and the tray. Every other desktop
+ * in this registry says everything it has to say with one panel; this one
+ * cannot, and that is precisely why it is here: the layout IS the tell, and no
+ * amount of tokens can fake a second bar.
+ */
+const MATE: Skin = {
+  id: 'mate',
+  label: 'MATE',
+  blurb: 'GNOME 2, carried on by people who refused to let it go. A menu bar '
+    + 'across the top, a taskbar across the bottom, and a window manager that '
+    + 'has not changed its mind about anything since 2010.',
+  family: 'linux',
+  tokens: {
+    // The warm brown-orange of the era it continues, which is the one palette
+    // nothing else in this registry is anywhere near.
+    '--color-surface': '#efe9e3',
+    '--color-surface-raised': '#faf7f4',
+    '--color-surface-sunken': '#ddd5cc',
+    '--color-surface-field': '#ffffff',
+    '--color-bevel-light': '#ffffff',
+    '--color-bevel-dark': '#c3b8ac',
+    '--color-bevel-shadow': '#948877',
+    '--color-ink': '#2b2622',
+    '--color-ink-soft': '#5a5148',
+    '--color-ink-disabled': '#948877',
+    '--color-ink-inverse': '#ffffff',
+    '--color-accent': '#b35b2e',
+    '--color-accent-bright': '#d97c48',
+    '--color-accent-deep': '#8a431f',
+    '--color-accent-ink': '#ffffff',
+    '--color-wallpaper': '#2f2620',
+    '--color-wallpaper-weave': '#3a2f27',
+    '--color-wallpaper-glow': '#4a3b30',
+    '--font-ui': '"DejaVu Sans", "Noto Sans", Verdana, sans-serif',
+    // Slimmer than anybody else's, because there are two of them: a desktop
+    // that spent a taskbar's height twice would have given the player a
+    // smaller screen as a styling decision.
+    '--size-taskbar': '32px',
+    '--radius-chrome': '2px',
+    '--bevel-raised': 'inset 0 0 0 1px var(--color-bevel-dark)',
+    '--bevel-sunken': 'inset 0 0 0 1px var(--color-bevel-shadow)',
+    '--bevel-window': 'inset 0 0 0 1px var(--color-bevel-dark)',
+  },
+  panel: {
+    position: 'top',
+    launcher: {
+      style: 'classic',
+      label: 'Applications',
+      // A word in a menu bar, the way the GNOME-2 bar read.
+      icon: null,
+    },
+    // The menu bar is a MENU BAR: the open windows are downstairs, and the
+    // clock is down there with them.
+    windowList: false,
+    tray: false,
+  },
+  secondPanel: {
+    position: 'bottom',
+    windowList: true,
+    tray: true,
+  },
+  windowButtons: { order: ['minimize', 'maximize', 'close'], side: 'right' },
+  distro: 'ubuntu',
+};
+
+/**
+ * Xfce: the no-frills one, and the desktop that outlives the hardware.
+ *
+ * A single bottom panel, the classic Applications menu with the grid glyph
+ * beside it, all three window buttons. Told apart from Cinnamon and LXQt by
+ * the launcher (a named Applications menu rather than a Start-menu clone or a
+ * bare button) and by a palette with no colour in it worth the name - which is
+ * the honest look of a desktop whose entire pitch is that it does not get in
+ * the way.
+ */
+const XFCE: Skin = {
+  id: 'xfce',
+  label: 'Xfce',
+  blurb: 'The one that still runs on the laptop everybody else gave up on. No '
+    + 'animations, no opinions, an Applications menu in the corner, and it '
+    + 'will be exactly like this in ten years.',
+  family: 'linux',
+  tokens: {
+    '--color-surface': '#e8eaec',
+    '--color-surface-raised': '#f7f8f9',
+    '--color-surface-sunken': '#d5d9dd',
+    '--color-surface-field': '#ffffff',
+    '--color-bevel-light': '#ffffff',
+    '--color-bevel-dark': '#b6bcc2',
+    '--color-bevel-shadow': '#868f97',
+    '--color-ink': '#22282d',
+    '--color-ink-soft': '#4f585f',
+    '--color-ink-disabled': '#868f97',
+    '--color-ink-inverse': '#ffffff',
+    // Slate rather than a colour: Greybird's whole personality is restraint.
+    '--color-accent': '#5c6f7d',
+    '--color-accent-bright': '#7f96a5',
+    '--color-accent-deep': '#3f4d58',
+    '--color-accent-ink': '#ffffff',
+    '--color-wallpaper': '#2b3138',
+    '--color-wallpaper-weave': '#353d45',
+    '--color-wallpaper-glow': '#454f59',
+    '--font-ui': '"Noto Sans", "DejaVu Sans", Tahoma, sans-serif',
+    '--size-taskbar': '36px',
+    '--radius-chrome': '2px',
+    '--bevel-raised': 'inset 0 0 0 1px var(--color-bevel-dark)',
+    '--bevel-sunken': 'inset 0 0 0 1px var(--color-bevel-shadow)',
+    '--bevel-window': 'inset 0 0 0 1px var(--color-bevel-dark)',
+  },
+  panel: {
+    position: 'bottom',
+    launcher: {
+      style: 'applications',
+      label: 'Applications',
+      icon: 'icon-applications',
+    },
+    windowList: true,
+    tray: true,
+  },
+  secondPanel: null,
+  windowButtons: { order: ['minimize', 'maximize', 'close'], side: 'right' },
+  distro: 'mint',
+};
+
+/**
+ * LXQt: the lightest, and the one with the least to say.
+ *
+ * One SLIM bottom panel - the shortest bar any desktop here draws - and a
+ * launcher that is the desktop's own name on a plain button: no glyph, no
+ * accent, no Start-menu costume. That is the third bottom-panel desktop told
+ * apart from the other two by layout and launcher alone, which is the bar the
+ * spec sets.
+ */
+const LXQT: Skin = {
+  id: 'lxqt',
+  label: 'LXQt',
+  blurb: 'The lightest desktop that is still a desktop. A thin bar along the '
+    + 'bottom, a button with its own name on it, and enough memory left over '
+    + 'to actually open the thing you came here to open.',
+  family: 'linux',
+  tokens: {
+    '--color-surface': '#f2f4f6',
+    '--color-surface-raised': '#ffffff',
+    '--color-surface-sunken': '#e0e5ea',
+    '--color-surface-field': '#ffffff',
+    '--color-bevel-light': '#ffffff',
+    '--color-bevel-dark': '#c2ccd4',
+    '--color-bevel-shadow': '#8e9aa4',
+    '--color-ink': '#1e2830',
+    '--color-ink-soft': '#4a5760',
+    '--color-ink-disabled': '#8e9aa4',
+    '--color-ink-inverse': '#ffffff',
+    '--color-accent': '#1f8fa5',
+    '--color-accent-bright': '#2fb0c9',
+    '--color-accent-deep': '#14636f',
+    '--color-accent-ink': '#ffffff',
+    '--color-wallpaper': '#1c2430',
+    '--color-wallpaper-weave': '#26303d',
+    '--color-wallpaper-glow': '#33404f',
+    '--font-ui': '"Noto Sans", "DejaVu Sans", Arial, sans-serif',
+    // The slimmest bar in the registry, and the tell you can see across the
+    // room. Not slimmer than the tray inside it can be read at, for the same
+    // reason GNOME's top bar is not.
+    '--size-taskbar': '30px',
+    '--radius-chrome': '0px',
+    '--bevel-raised': 'inset 0 0 0 1px var(--color-bevel-dark)',
+    '--bevel-sunken': 'inset 0 0 0 1px var(--color-bevel-shadow)',
+    '--bevel-window': 'inset 0 0 0 1px var(--color-bevel-dark)',
+  },
+  panel: {
+    position: 'bottom',
+    launcher: {
+      style: 'plain',
+      label: 'LXQt',
+      icon: null,
+    },
+    windowList: true,
+    tray: true,
+  },
+  secondPanel: null,
+  windowButtons: { order: ['minimize', 'maximize', 'close'], side: 'right' },
+  distro: 'ubuntu',
 };
 
 export const SKINS: readonly Skin[] = Object.freeze([
@@ -411,6 +656,9 @@ export const SKINS: readonly Skin[] = Object.freeze([
   KDE,
   GNOME,
   CINNAMON,
+  MATE,
+  XFCE,
+  LXQT,
 ]);
 
 export function isSkinId(value: unknown): value is SkinId {

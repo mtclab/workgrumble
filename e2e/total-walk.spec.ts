@@ -4074,14 +4074,84 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await expect(page.getByTestId('tickets-queue')).toBeVisible();
     await page.getByTestId('close-tickets').click();
 
+    // Xfce and LXQt (0.28.0): the other two bottom-panel desktops, and the
+    // proof they are not the same desktop twice. Same edge, same three window
+    // buttons - so the CORNER is what tells them apart, and it is asserted as
+    // the exact word rather than as containment: "Applications" contains no
+    // part of "LXQt" and neither contains "Menu", so a launcher that failed to
+    // repaint would be caught rather than pass on a leftover.
+    await openFromStartMenu(page, 'display');
+    await page.getByTestId('display-desktop-xfce').click();
+    await expect(desktop).toHaveAttribute('data-skin', 'xfce');
+    await expect(desktop).toHaveAttribute('data-panel', 'bottom');
+    await expect(desktop).toHaveAttribute('data-launcher', 'applications');
+    await expect(page.getByTestId('start-button')).toHaveText('Applications');
+    await expect(page.getByTestId('taskbar-windows')).toBeVisible();
+    await expect(page.getByTestId('minimize-display')).toHaveCount(1);
+
+    await page.getByTestId('display-desktop-lxqt').click();
+    await expect(desktop).toHaveAttribute('data-skin', 'lxqt');
+    await expect(desktop).toHaveAttribute('data-panel', 'bottom');
+    await expect(desktop).toHaveAttribute('data-launcher', 'plain');
+    await expect(page.getByTestId('start-button')).toHaveText('LXQt');
+    await expect(page.getByTestId('minimize-display')).toHaveCount(1);
+
     // Cinnamon: the joke. Back to a bottom panel and all three buttons - the
     // Linux desktop that looks most like the one you left.
-    await openFromStartMenu(page, 'display');
     await page.getByTestId('display-desktop-cinnamon').click();
     await expect(desktop).toHaveAttribute('data-skin', 'cinnamon');
     await expect(desktop).toHaveAttribute('data-panel', 'bottom');
     await expect(page.getByTestId('start-button')).toContainText('Menu');
     await expect(page.getByTestId('minimize-display')).toHaveCount(1);
+  });
+
+  /*
+   * MATE, and the second panel with it. It sits BETWEEN the desktop step and
+   * the distro step on purpose, and the ordering is not taste: `display.distro`
+   * below opens on a Cinnamon box speaking apt and asserts that moving to
+   * Fedora leaves the DESKTOP where it is, so whatever runs in here has to hand
+   * the machine back exactly as it found it. That is also the honest ending for
+   * this step - leaving MATE is the only way to see the second bar taken out of
+   * the document again, which is the half of the extension the other six
+   * desktops depend on.
+   */
+  await step('display.two-panels', async () => {
+    const secondBar = page.getByTestId('taskbar-second');
+
+    await page.getByTestId('display-desktop-mate').click();
+    await expect(desktop).toHaveAttribute('data-skin', 'mate');
+    await expect(desktop).toHaveAttribute('data-panel', 'top');
+    await expect(desktop).toHaveAttribute('data-panel-second', 'bottom');
+    await expect(secondBar).toBeVisible();
+
+    // The split, asked INSIDE each bar: the launcher is up in the menu bar, and
+    // the window list and the clock are down in the taskbar. Two panels that
+    // both existed with everything in the wrong one would satisfy every count
+    // taken across the whole page, which is why none of these are.
+    const menuBar = page.getByTestId('taskbar');
+    await expect(menuBar.getByTestId('start-button'))
+      .toHaveText('Applications');
+    await expect(menuBar.getByTestId('taskbar-windows')).toHaveCount(0);
+    await expect(menuBar.getByTestId('sim-clock')).toHaveCount(0);
+    await expect(secondBar.getByTestId('taskbar-windows')).toBeVisible();
+    await expect(secondBar.getByTestId('sim-clock')).toBeVisible();
+
+    // ONE window list on the machine, not one per bar - and it is the live one:
+    // the queue opens from the top bar and its button appears in the bottom.
+    await expect(page.getByTestId('taskbar-windows')).toHaveCount(1);
+    await openFromStartMenu(page, 'tickets');
+    await expect(secondBar.getByTestId('taskbar-button-tickets')).toBeVisible();
+    await expect(page.getByTestId('tickets-summary')).toContainText('open');
+    await page.getByTestId('close-tickets').click();
+
+    // And back to Cinnamon, which is where the next step needs the box: the
+    // second bar leaves the DOCUMENT, rather than being emptied and hidden.
+    await focusWindow(page, 'display');
+    await page.getByTestId('display-desktop-cinnamon').click();
+    await expect(desktop).toHaveAttribute('data-skin', 'cinnamon');
+    await expect(desktop).toHaveAttribute('data-panel-second', 'none');
+    await expect(secondBar).toHaveCount(0);
+    await expect(page.getByTestId('taskbar-windows')).toBeVisible();
   });
 
   await step('display.distro', async () => {

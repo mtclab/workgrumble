@@ -136,7 +136,7 @@ interface RenderedWindow {
    * The maximize button, or NULL under a skin whose titlebars do not have one.
    *
    * Null rather than hidden: GNOME's close-only titlebar is the sharpest tell
-   * of the three desktops, so the button is not built at all - there is nothing
+   * any desktop has, so the button is not built at all - there is nothing
    * in the DOM to un-hide - and every read of it here has to cope with that.
    */
   maximizeButton: HTMLButtonElement | null;

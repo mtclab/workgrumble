@@ -5287,9 +5287,9 @@ input {
   }
 }
 
-/* ------------------------------------------------- the desktop skins (0.27.0)
+/* ------------------------------------------- the desktop skins (0.27.0/0.28.0)
 
-   Three desktops, and the layout each one is recognisable BY. Everything about
+   Six desktops, and the layout each one is recognisable BY. Everything about
    the colours, the type, the panel height and the flatness of the chrome comes
    through the tokens at the top of this file - a skin sets those on the desktop
    element and the whole shell picks them up, which is why there are no
@@ -5309,7 +5309,9 @@ input {
   grid-template-rows: auto 1fr;
 }
 
-.screen-desktop[data-panel="top"] .taskbar {
+/* The launcher panel, and only it: on MATE the SECOND bar is also a `.taskbar`,
+   and it belongs at the other end of the grid (see the two-panel block). */
+.screen-desktop[data-panel="top"] .taskbar:not(.taskbar-second) {
   grid-row: 1;
 }
 
@@ -5328,9 +5330,46 @@ input {
   max-height: calc(100vh - var(--size-taskbar) - var(--space-3));
 }
 
+/* MATE (0.28.0): TWO panels - a menu bar along the top and a taskbar along the
+   bottom. Its launcher panel is the top one, so the block above has already
+   made the desktop a top-panel grid and moved the menus down from it; what is
+   left is the THIRD row for the second bar, and putting the surfaces that hang
+   off the TRAY back at the bottom, because on this desktop the tray is down
+   there with the window list.
+
+   Keyed off where the second panel IS rather than off the skin id: the layout
+   follows the data the way every other rule in this section does, and a second
+   desktop that wanted two bars would need no new CSS. It comes after the
+   top-panel block on purpose - same specificity, and these have to win. */
+.screen-desktop[data-panel-second="bottom"] {
+  grid-template-rows: auto 1fr auto;
+}
+
+.screen-desktop[data-panel-second="bottom"] .taskbar-second {
+  grid-row: 3;
+}
+
+.screen-desktop[data-panel-second="bottom"] .tray-panel,
+.screen-desktop[data-panel-second="bottom"] .presence-refusal {
+  top: auto;
+  bottom: var(--size-taskbar);
+}
+
+/* And the menu drops from the top bar towards the bottom one, so it has TWO
+   bars to clear rather than one. Without this the longest app list would run
+   under the taskbar, where its last entry is visible and unclickable - which is
+   the exact dead end the single-panel cap above exists to prevent. */
+.screen-desktop[data-panel-second="bottom"] .start-menu {
+  max-height: calc(100vh - (2 * var(--size-taskbar)) - var(--space-3));
+}
+
 /* The launcher, per desktop. Kickoff is an icon-led button in the far corner;
    Activities is a WORD with no glyph at all, which is exactly how the real one
-   reads; Cinnamon's Menu is the Start-menu clone it is, in the accent. */
+   reads; Cinnamon's Menu is the Start-menu clone it is, in the accent; MATE's
+   Applications is the flat word a GNOME-2 menu bar had; Xfce's is the same
+   word with the grid glyph and a raised button under it; LXQt's is the plain
+   one - its own name, no glyph, no colour, which is the whole personality of
+   the lightest desktop here. */
 .screen-desktop[data-launcher="kickoff"] .start-button {
   padding: var(--space-1) var(--space-3);
   background: var(--color-surface-raised);
@@ -5359,6 +5398,32 @@ input {
 
 .screen-desktop[data-launcher="menu"] .start-button .svg-icon {
   color: var(--color-accent-ink);
+}
+
+.screen-desktop[data-launcher="classic"] .start-button {
+  padding: var(--space-0) var(--space-3);
+  background: var(--color-clear);
+  box-shadow: none;
+}
+
+.screen-desktop[data-launcher="classic"] .start-button[aria-expanded="true"] {
+  background: var(--color-surface-sunken);
+  box-shadow: none;
+}
+
+.screen-desktop[data-launcher="applications"] .start-button {
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface-raised);
+}
+
+.screen-desktop[data-launcher="applications"] .start-button .svg-icon {
+  color: var(--color-accent);
+}
+
+.screen-desktop[data-launcher="plain"] .start-button {
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface-raised);
+  font-size: var(--text-xs);
 }
 
 /* Which end of the titlebar the buttons live at. Every desktop shipped in

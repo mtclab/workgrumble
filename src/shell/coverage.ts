@@ -2877,20 +2877,36 @@ const ENTRIES = [
     id: 'display.desktop',
     surface: 'display',
     control: 'display-desktop-kde, display-desktop-gnome, '
+      + 'display-desktop-xfce, display-desktop-lxqt, '
       + 'display-desktop-cinnamon, display-desktop-deskpro',
     does: 'Installs a different desktop on the machine, live: the panel moves '
       + 'to the edge that desktop puts it on, the launcher becomes that '
-      + 'desktop\'s (Start, Kickoff, Activities, Menu), the window list is there '
-      + 'or genuinely is not, and every open titlebar is re-chromed with the '
-      + 'buttons that desktop has - GNOME with the close button and NO minimize '
-      + 'or maximize anywhere in the document. The apps underneath are untouched: '
-      + 'a skin is a look, and the same ticket is worked the same way under all '
-      + 'four. The choice rides the save.',
+      + 'desktop\'s (Start, Kickoff, Activities, Menu, Applications, LXQt), the '
+      + 'window list is there or genuinely is not, and every open titlebar is '
+      + 're-chromed with the buttons that desktop has - GNOME with the close '
+      + 'button and NO minimize or maximize anywhere in the document. The apps '
+      + 'underneath are untouched: a skin is a look, and the same ticket is '
+      + 'worked the same way under every one of them. The choice rides the save.',
     run: 'sysadmin',
     why: 'The desk is issued a Windows box and IT keeps the image: choosing a '
       + 'desktop is gated on the promotion, which no probation week reaches. The '
       + 'refusal below the tier is walked in the week run; this is the far side '
       + 'of the same gate.',
+  },
+  {
+    id: 'display.two-panels',
+    surface: 'display',
+    control: 'display-desktop-mate',
+    does: 'Installs the one desktop that has TWO panels: a menu bar along the '
+      + 'top with the launcher in it, a taskbar along the bottom with the '
+      + 'window list and the clock in it, and the split really that way round - '
+      + 'one window list on the screen, in the lower bar, still answering. '
+      + 'Switching to any other desktop takes the second bar back out of the '
+      + 'document rather than emptying it, which is what keeps the six '
+      + 'one-panel desktops exactly as they were.',
+    run: 'sysadmin',
+    why: 'Behind the same promotion gate as every other desktop: the desk is '
+      + 'issued a Windows box and IT keeps the image.',
   },
   {
     id: 'display.distro',

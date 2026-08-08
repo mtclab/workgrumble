@@ -8,7 +8,7 @@ import {
 } from './helpers';
 
 /**
- * The Linux desktop, on the built artifact (0.27.0, E6/E5).
+ * The Linux desktop, on the built artifact (0.27.0 and 0.28.0, E6/E5).
  *
  * The skin system is proven at the unit level as DATA (`src/shell/skins.test.ts`
  * asserts each desktop declares chrome nobody else does), but a registry is not
@@ -162,6 +162,84 @@ test('an engineer switches desktop and the chrome follows', async ({ page }) => 
   await expect(desktop).toHaveAttribute('data-skin', 'deskpro');
   await expect(desktop).toHaveAttribute('data-distro', 'none');
   await expect(page.getByTestId('start-button')).toContainText('Start');
+});
+
+/**
+ * 0.28.0: the second panel, and the two light desktops beside it.
+ *
+ * The registry says MATE has two panels (`skins.test.ts` is the tooth on the
+ * declaration); this is the half only a browser can answer - that both bars are
+ * really on the screen, on opposite edges, with the launcher up in the menu bar
+ * and the window list and the clock down in the taskbar. And that switching
+ * away takes the second bar out of the DOCUMENT again, which is the whole
+ * promise the extension made to the six desktops that never asked for it.
+ */
+test('MATE puts up two panels and the others put up one', async ({ page }) => {
+  await arrive(page);
+  await promote(page);
+
+  const desktop = page.getByTestId('desktop');
+  const firstBar = page.getByTestId('taskbar');
+  const secondBar = page.getByTestId('taskbar-second');
+  await openFromStartMenu(page, 'display');
+
+  await page.getByTestId('display-desktop-mate').click();
+  await expect(desktop).toHaveAttribute('data-skin', 'mate');
+  await expect(desktop).toHaveAttribute('data-panel', 'top');
+  await expect(desktop).toHaveAttribute('data-panel-second', 'bottom');
+  await expect(secondBar).toBeVisible();
+
+  // The split, which is the whole point: the launcher is in the TOP bar and the
+  // window list and the tray are in the BOTTOM one. Asked as "inside this bar"
+  // rather than "on the page", because two panels that both existed with
+  // everything in the wrong one would pass every count on the screen.
+  await expect(firstBar.getByTestId('start-button')).toContainText(
+    'Applications',
+  );
+  await expect(firstBar.getByTestId('taskbar-windows')).toHaveCount(0);
+  await expect(firstBar.getByTestId('sim-clock')).toHaveCount(0);
+  await expect(secondBar.getByTestId('taskbar-windows')).toBeVisible();
+  await expect(secondBar.getByTestId('sim-clock')).toBeVisible();
+  await expect(secondBar.getByTestId('start-button')).toHaveCount(0);
+
+  // There is ONE of each, not a copy per bar: the taskbar buttons are painted
+  // off the window manager, and a second stale list would be a row of buttons
+  // that stopped answering.
+  await expect(page.getByTestId('taskbar-windows')).toHaveCount(1);
+  await expect(page.getByTestId('notification-tray')).toHaveCount(1);
+
+  // And the product works under it - the launcher opens from the top bar, the
+  // window opens, and the taskbar button for it lands in the bottom bar.
+  await openFromStartMenu(page, 'tickets');
+  await expect(page.getByTestId('window-tickets')).toBeVisible();
+  await expect(secondBar.getByTestId('taskbar-button-tickets')).toBeVisible();
+  await page.getByTestId('close-tickets').click();
+
+  // Xfce: one bottom panel, the Applications menu with its glyph, all three
+  // window buttons. The second bar is GONE - not emptied, not hidden.
+  await openFromStartMenu(page, 'display');
+  await page.getByTestId('display-desktop-xfce').click();
+  await expect(desktop).toHaveAttribute('data-skin', 'xfce');
+  await expect(desktop).toHaveAttribute('data-panel', 'bottom');
+  await expect(desktop).toHaveAttribute('data-panel-second', 'none');
+  await expect(secondBar).toHaveCount(0);
+  await expect(firstBar.getByTestId('start-button')).toContainText(
+    'Applications',
+  );
+  await expect(firstBar.getByTestId('taskbar-windows')).toBeVisible();
+  await expect(firstBar.getByTestId('sim-clock')).toBeVisible();
+  await expect(page.getByTestId('minimize-display')).toHaveCount(1);
+
+  // LXQt: the slim one, and a launcher that is a word with no glyph on it.
+  await page.getByTestId('display-desktop-lxqt').click();
+  await expect(desktop).toHaveAttribute('data-skin', 'lxqt');
+  await expect(desktop).toHaveAttribute('data-panel', 'bottom');
+  await expect(desktop).toHaveAttribute('data-panel-second', 'none');
+  await expect(secondBar).toHaveCount(0);
+  await expect(page.getByTestId('start-button')).toHaveText('LXQt');
+  await expect(page.getByTestId('start-button').locator('.svg-icon'))
+    .toHaveCount(0);
+  await expect(page.getByTestId('minimize-display')).toHaveCount(1);
 });
 
 test('the desktop the player chose survives a save and a load', async ({

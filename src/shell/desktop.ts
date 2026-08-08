@@ -47,6 +47,7 @@ import {
   canChooseDesktop,
   type DesktopChoice,
   resolveDesktopChoice,
+  type SecondPanelSpec,
   type Skin,
   skinById,
 } from './skins';
@@ -120,6 +121,15 @@ export class Desktop {
   private readonly windowLayer: HTMLElement;
   private readonly toastStack: HTMLElement;
   private readonly taskbar: HTMLElement;
+  /**
+   * MATE's other panel (0.28.0), and nobody else's.
+   *
+   * Built once and kept, but only IN the document while a desktop that
+   * declares two panels is on: a skin with one panel has one bar in its DOM,
+   * not an empty second one hidden by a rule. `renderPanel` is the only thing
+   * that puts it in or takes it out.
+   */
+  private readonly panelSecond: HTMLElement;
   private readonly taskbarDivider: HTMLElement;
   private readonly taskbarTray: HTMLElement;
   private readonly taskbarWindows: HTMLElement;
@@ -252,6 +262,13 @@ export class Desktop {
     const taskbar = document.createElement('div');
     taskbar.className = 'taskbar';
     taskbar.dataset.testid = 'taskbar';
+
+    // The second bar, for the one desktop that has one. Same class, so it is
+    // the same chrome the tokens dress - a panel is a panel, and MATE's two
+    // are the same object twice, not a bar and a special case.
+    this.panelSecond = document.createElement('div');
+    this.panelSecond.className = 'taskbar taskbar-second';
+    this.panelSecond.dataset.testid = 'taskbar-second';
 
     // The launcher. Its glyph, its word and its style are the skin's to say -
     // Start, Kickoff, Activities, Menu - so the element is built empty here and
@@ -823,6 +840,12 @@ export class Desktop {
     this.skinTokens = Object.keys(skin.tokens);
     this.element.dataset.skin = skin.id;
     this.element.dataset.panel = skin.panel.position;
+    // Where the OTHER panel is, or that there is not one. The layout a second
+    // bar needs - a third grid row, and the surfaces that hang off the tray
+    // coming back UP from the bottom of it - is CSS the stylesheet can only
+    // write if the document says which edges are in use, and "none" is the
+    // honest answer for the six desktops with one bar.
+    this.element.dataset.panelSecond = skin.secondPanel?.position ?? 'none';
     this.element.dataset.launcher = skin.panel.launcher.style;
     this.element.dataset.distro = choice.distro ?? 'none';
     this.renderPanel();
@@ -833,7 +856,8 @@ export class Desktop {
   }
 
   /**
-   * The panel, filled with what this desktop's panel holds.
+   * The panel - or, on MATE, both of them - filled with what this desktop's
+   * panels hold.
    *
    * GNOME's window list is genuinely NOT IN THE PANEL - it is a desktop with no
    * taskbar, and the overview is what replaces it - so the row is emptied and
@@ -841,18 +865,72 @@ export class Desktop {
    * existing as an element either way, because the taskbar buttons are painted
    * off the window manager whether or not this desktop shows them, and putting
    * it back is then one append rather than a rebuild.
+   *
+   * The same is true one level up for MATE's second bar: the window list and
+   * the tray MOVE into it, they are not copied, so there is exactly one of each
+   * on the screen and the taskbar buttons the window manager paints are the
+   * ones the player is looking at whichever bar they ended up on.
    */
   private renderPanel(): void {
-    const panel = this.skin().panel;
+    const skin = this.skin();
     this.renderLauncher();
     this.taskbar.replaceChildren(this.startButton);
+    this.fillPanel(this.taskbar, skin.panel, true);
 
+    if (skin.secondPanel === null) {
+      // Out of the document entirely, not emptied and left there: a desktop
+      // with one panel has ONE bar, and the reverted-MATE case has to leave
+      // nothing behind.
+      this.panelSecond.remove();
+      this.panelSecond.replaceChildren();
+      return;
+    }
+
+    this.panelSecond.replaceChildren();
+    this.fillPanel(this.panelSecond, skin.secondPanel, false);
+
+    // Straight after the first bar, so the document reads top-bar-then-taskbar
+    // whichever edges they are on; the grid rows are the stylesheet's job.
+    //
+    // The guard is for the one call that happens while the desktop element is
+    // still being assembled: the constructor fills the panel BEFORE it appends
+    // the bar to the desktop, and `applySkin` at the end of the constructor is
+    // what puts this right. It asks for a PARENT rather than for
+    // `isConnected`, because the desktop element is mounted into the document
+    // after it is built, and a skin restored from a save has to hang its second
+    // bar off an element that is not on screen yet.
+    const placed = this.panelSecond.parentNode !== null;
+
+    if (!placed && this.taskbar.parentNode !== null) {
+      this.taskbar.after(this.panelSecond);
+    }
+  }
+
+  /**
+   * One emptied panel's contents, in the order a panel holds them: the window
+   * list first, the tray at the far end.
+   *
+   * The launcher is not here because it belongs to the skin rather than to a
+   * panel - `renderPanel` puts it in the panel that always exists before this
+   * fills the rest of that row. `afterLauncher` is what the divider is FOR: it
+   * separates the corner button from the windows beside it, so a panel with no
+   * launcher in it must not start with a rule against its own left edge.
+   */
+  private fillPanel(
+    element: HTMLElement,
+    panel: Readonly<SecondPanelSpec>,
+    afterLauncher: boolean,
+  ): void {
     if (panel.windowList) {
-      this.taskbar.append(this.taskbarDivider, this.taskbarWindows);
+      if (afterLauncher) {
+        element.append(this.taskbarDivider);
+      }
+
+      element.append(this.taskbarWindows);
     }
 
     if (panel.tray) {
-      this.taskbar.append(this.taskbarTray);
+      element.append(this.taskbarTray);
     }
   }
 

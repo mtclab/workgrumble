@@ -392,7 +392,10 @@ describe('the desktop the box is running', () => {
     const good: unknown = JSON.parse(JSON.stringify(store.snapshot()));
 
     for (const desktop of [
-      { skin: 'xfce', distro: null },
+      // A desktop this build does not ship. It used to be `xfce`, which 0.28.0
+      // went and shipped; Enlightenment is not in the registry and is not on
+      // the roadmap, which is the only property this case needs.
+      { skin: 'enlightenment', distro: null },
       { skin: 'gnome', distro: 'slackware' },
       // A Windows box on a distro: a combination this shell never writes, and
       // one that would put a package manager on a machine that has none.

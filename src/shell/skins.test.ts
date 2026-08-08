@@ -25,16 +25,37 @@ import {
  * The DOM half - that the panel really moves, that GNOME's titlebar really has
  * one button in it - is walked on the built artifact in `e2e/skins.spec.ts` and
  * `e2e/total-walk.spec.ts`. What is asserted HERE is the half those cannot see:
- * that the three desktops are genuinely different from each other and from the
+ * that the six desktops are genuinely different from each other and from the
  * default, which is what makes the lookup load-bearing. Revert `skinById` to
  * "always the default" and every assertion in the first block below reds.
  */
 
+/**
+ * Everything about a desktop a player could point at from across the room: the
+ * panels and where they are, what is in them, the shape AND the word of the
+ * launcher, and the titlebar. Two desktops with the same string here are two
+ * desktops nobody can tell apart, which is what the tooth below forbids.
+ *
+ * The launcher's LABEL is in it because 0.28.0 put three desktops on the same
+ * bottom edge (Cinnamon, Xfce, LXQt): with only the style in the key, two of
+ * them could have been given the same word in the corner and nothing would
+ * have complained. The second panel is in it for the same reason in the other
+ * direction - MATE's whole tell is the bar the others do not have.
+ */
 function chrome(skin: Readonly<Skin>): string {
+  const second = skin.secondPanel;
+
   return [
     skin.panel.position,
     skin.panel.launcher.style,
+    skin.panel.launcher.label,
     String(skin.panel.windowList),
+    String(skin.panel.tray),
+    second === null
+      ? 'one-panel'
+      : `${second.position}:${String(second.windowList)}:${
+        String(second.tray)
+      }`,
     skin.windowButtons.order.join('+'),
     skin.windowButtons.side,
   ].join('/');
@@ -68,6 +89,24 @@ describe('the skin registry', () => {
       for (const name of Object.keys(skin.tokens)) {
         expect(name.startsWith('--'), `${skin.id} sets "${name}"`).toBe(true);
       }
+
+      if (skin.secondPanel === null) {
+        continue;
+      }
+
+      // A desktop with two panels puts them on OPPOSITE edges. Both on the
+      // same one is not a layout - it is two bars in the same grid row, which
+      // is what the stylesheet would try to draw, and the shell has no way to
+      // say it is wrong at runtime. Said here, once, for every skin that ever
+      // declares a second bar.
+      expect(skin.secondPanel.position, skin.id)
+        .not.toBe(skin.panel.position);
+      // And it is a panel that HOLDS something. An empty second bar is a strip
+      // of the player's screen spent on nothing.
+      expect(
+        skin.secondPanel.windowList || skin.secondPanel.tray,
+        `${skin.id}'s second panel holds nothing`,
+      ).toBe(true);
     }
 
     expect(SKINS.map((skin) => skin.id)).toContain(DEFAULT_SKIN_ID);
@@ -108,6 +147,10 @@ describe('the skin registry', () => {
     expect(deskpro.panel.launcher.icon).toBe('icon-start');
     expect(deskpro.panel.windowList).toBe(true);
     expect(deskpro.panel.tray).toBe(true);
+    // ONE panel, and the 0.28.0 extension is not in its DOM at all: a second
+    // bar declared here - even an empty one - would be a bar the byte-identical
+    // default does not have.
+    expect(deskpro.secondPanel).toBeNull();
     expect(deskpro.windowButtons).toEqual({
       order: ['minimize', 'maximize', 'close'],
       side: 'right',
@@ -165,11 +208,133 @@ describe('the skin registry', () => {
     expect(cinnamon.tokens).not.toEqual({});
   });
 
+  /**
+   * MATE, and the whole of the 0.28.0 system extension.
+   *
+   * The tooth on the second panel: revert MATE to one panel - drop
+   * `secondPanel`, or move the window list and the tray back up into the menu
+   * bar - and this reds in several places at once. It is the only skin that
+   * uses the extension, which is the point: an extension proven by the one
+   * desktop that needs it leaves the other six exactly where they were.
+   */
+  it('gives MATE a menu bar on top and a taskbar underneath', () => {
+    const mate = skinById('mate');
+
+    // Two panels, on opposite edges, and the launcher is in the top one.
+    expect(mate.panel.position).toBe('top');
+    expect(mate.panel.launcher.style).toBe('classic');
+    expect(mate.panel.launcher.label).toBe('Applications');
+    expect(mate.panel.launcher.icon).toBeNull();
+    expect(mate.secondPanel).toEqual({
+      position: 'bottom',
+      windowList: true,
+      tray: true,
+    });
+
+    // And the split is the tell: the menu bar is a MENU BAR - the open windows
+    // and the clock are downstairs. A MATE whose top bar held the window list
+    // would be GNOME with an extra strip of grey at the bottom.
+    expect(mate.panel.windowList).toBe(false);
+    expect(mate.panel.tray).toBe(false);
+    expect(mate.windowButtons.order)
+      .toEqual(['minimize', 'maximize', 'close']);
+  });
+
+  it('gives the second panel to MATE and to nobody else', () => {
+    const twoPanelled = SKINS.filter((skin) => skin.secondPanel !== null);
+
+    expect(twoPanelled.map((skin) => skin.id)).toEqual(['mate']);
+    // Which is the other half of "the extension left every other desktop
+    // untouched": six skins declare one panel, and the shell builds one bar
+    // for each of them.
+    expect(SKINS.length - twoPanelled.length).toBe(6);
+  });
+
+  it('makes Xfce the no-frills bottom panel with an Applications menu', () => {
+    const xfce = skinById('xfce');
+
+    expect(xfce.panel.position).toBe('bottom');
+    expect(xfce.panel.launcher.style).toBe('applications');
+    expect(xfce.panel.launcher.label).toBe('Applications');
+    expect(xfce.panel.launcher.icon).toBe('icon-applications');
+    expect(xfce.panel.windowList).toBe(true);
+    expect(xfce.secondPanel).toBeNull();
+    expect(xfce.windowButtons.order)
+      .toEqual(['minimize', 'maximize', 'close']);
+  });
+
+  it('makes LXQt the slim one with a plain launcher', () => {
+    const lxqt = skinById('lxqt');
+
+    expect(lxqt.panel.position).toBe('bottom');
+    expect(lxqt.panel.launcher.style).toBe('plain');
+    expect(lxqt.panel.launcher.label).toBe('LXQt');
+    // No glyph and no Start-menu costume: a button with the desktop's own name
+    // on it, which is what the lightest one actually looks like.
+    expect(lxqt.panel.launcher.icon).toBeNull();
+    expect(lxqt.secondPanel).toBeNull();
+    expect(lxqt.windowButtons.order)
+      .toEqual(['minimize', 'maximize', 'close']);
+    // The slimmest bar in the registry, and the tell you can see across the
+    // room. Every other desktop that declares a bar height declares a taller
+    // one; the default declares no tokens at all, which is its own gate.
+    const height = (skin: Readonly<Skin>): number | null => {
+      const declared = skin.tokens['--size-taskbar'];
+
+      return declared === undefined ? null : Number.parseInt(declared, 10);
+    };
+    const slim = height(lxqt);
+
+    expect(slim).not.toBeNull();
+
+    for (const skin of SKINS) {
+      const other = height(skin);
+
+      if (skin.id === 'lxqt' || other === null) {
+        continue;
+      }
+
+      expect(slim ?? 0, `${skin.id} is no taller than LXQt`)
+        .toBeLessThan(other);
+    }
+  });
+
+  /**
+   * The three desktops that share the bottom edge and the same three window
+   * buttons. Cinnamon, Xfce and LXQt are the case the spec calls out by name:
+   * with the same panel position and the same titlebar, the LAUNCHER and the
+   * palette are all that is left to tell them apart, so they must genuinely
+   * differ - and the twin-chrome tooth above is what would catch it if a
+   * fourth one landed on the same edge wearing the same corner.
+   */
+  it('tells the three bottom-panel Linux desktops apart', () => {
+    const bottom = ['cinnamon', 'xfce', 'lxqt'] as const;
+    const styles = new Set<string>();
+    const labels = new Set<string>();
+    const accents = new Set<string>();
+
+    for (const id of bottom) {
+      const skin = skinById(id);
+
+      expect(skin.panel.position, id).toBe('bottom');
+      styles.add(skin.panel.launcher.style);
+      labels.add(skin.panel.launcher.label);
+      accents.add(skin.tokens['--color-accent'] ?? '');
+    }
+
+    expect(styles.size).toBe(bottom.length);
+    expect(labels.size).toBe(bottom.length);
+    expect(accents.size).toBe(bottom.length);
+  });
+
   it('refuses an id no desktop answers to', () => {
     // The id type is closed, so the cast is how a test asks the RUNTIME
     // question: a hand-edited save is refused by the parse, and this is the
-    // other half of the same guard.
-    expect(() => skinById('xfce' as SkinId)).toThrow('Unknown desktop skin');
+    // other half of the same guard. Enlightenment is not shipped, which is the
+    // only property this id needs - `xfce` used to sit here and is a real
+    // desktop now.
+    expect(() => skinById('enlightenment' as SkinId))
+      .toThrow('Unknown desktop skin');
   });
 });
 
@@ -196,6 +361,15 @@ describe('the distro axis', () => {
     expect(skinById('gnome').distro).toBe('ubuntu');
     expect(skinById('cinnamon').distro).toBe('mint');
     expect(skinById('kde').distro).toBe('fedora');
+
+    // 0.28.0's three, paired the way they actually ship: Ubuntu MATE and
+    // Lubuntu are official flavours, and Mint's other edition is the Xfce one.
+    // No new distro is invented to hold them - the DE half of the pairing
+    // points at a distro that already exists, which is what keeps this a table
+    // rather than a second registry.
+    expect(skinById('mate').distro).toBe('ubuntu');
+    expect(skinById('xfce').distro).toBe('mint');
+    expect(skinById('lxqt').distro).toBe('ubuntu');
   });
 
   it('speaks apt on the Debian family and dnf on the RHEL one', () => {

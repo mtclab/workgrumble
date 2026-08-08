@@ -613,13 +613,16 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
     },
   ],
   /*
-   * The three glyphs the 0.27.0 skins wear.
+   * The glyphs the desktop skins wear.
    *
    * `icon-kickoff` is KDE's launcher: a disc with a wedge out of it, which is
    * what a Kickoff button reads as in the corner of a Plasma panel. `icon-menu`
    * is Cinnamon's: the stack of bars every Start-menu clone has settled on.
-   * GNOME has no launcher glyph at all - Activities is a WORD - which is why
-   * there is no third one here. `icon-display` is the window where all of this
+   * `icon-applications` is Xfce's: the grid of squares an Applications menu has
+   * carried since the panel was invented, and the thing that tells that corner
+   * apart from Cinnamon's at a glance. GNOME, MATE and LXQt have no launcher
+   * glyph at all - Activities, Applications and LXQt are WORDS - which is why
+   * there are only three here. `icon-display` is the window where all of this
    * is chosen, and it is a monitor with a slider under it, because on the
    * caricature this game is set in that is exactly what Display Properties was.
    */
@@ -645,6 +648,24 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
     {
       element: 'line',
       attributes: { x1: '4', y1: '17', x2: '20', y2: '17' },
+    },
+  ],
+  'icon-applications': [
+    {
+      element: 'rect',
+      attributes: { x: '4', y: '4', width: '6', height: '6', rx: '1' },
+    },
+    {
+      element: 'rect',
+      attributes: { x: '14', y: '4', width: '6', height: '6', rx: '1' },
+    },
+    {
+      element: 'rect',
+      attributes: { x: '4', y: '14', width: '6', height: '6', rx: '1' },
+    },
+    {
+      element: 'rect',
+      attributes: { x: '14', y: '14', width: '6', height: '6', rx: '1' },
     },
   ],
   'icon-display': [
