@@ -15,6 +15,12 @@
  *   are separate. (On the issued Windows box there is no desktop to leave
  *   alone, so a distro brings the one it ships - see `resolveDesktopChoice`.)
  *
+ * 0.28.0 adds the one distro that breaks the second half of that: Arch ships no
+ * desktop, so choosing it on a machine that has none either cannot resolve to
+ * anything, and this window MAKES THE PLAYER PICK. That is not a workaround for
+ * a null in a table - it is the truest single thing the distro axis says, and it
+ * is the only place in the whole shell where a choice opens another choice.
+ *
  * The gate is the promotion, the same one ssh keeps: IT issues the desk a
  * Windows box and IT keeps the image. A service-desk player still gets this
  * window - it reads their machine back to them and it is where the refusal is
@@ -30,7 +36,10 @@ import { createIcon } from '../icons';
 import {
   DISTROS,
   distroById,
+  type DistroId,
+  needsDesktopReason,
   packageManagerFor,
+  resolveDesktopChoice,
   SKINS,
   skinById,
 } from '../skins';
@@ -116,14 +125,34 @@ export const DISPLAY_APP: AppDef = {
     const distros = document.createElement('div');
     distros.className = 'display-choices';
     const distroButtons = DISTROS.map((distro) => {
+      const shipped = distro.defaultDesktop;
       const button = choiceButton(
         `display-distro-${distro.id}`,
         distro.label,
-        `${distro.blurb} Ships ${
-          skinById(distro.defaultDesktop).label
+        `${distro.blurb} ${
+          shipped === null
+            // The one row whose desktop half is a fact rather than a name.
+            ? 'Ships no desktop at all'
+            : `Ships ${skinById(shipped).label}`
         }; speaks ${distro.packageManager}.`,
       );
       button.addEventListener('click', () => {
+        // The Arch case: a distro with no desktop of its own, pressed on a
+        // machine with no desktop either. The resolution is PURE, so the window
+        // can ask it for free and without reaching anywhere - and it answers
+        // "there is a question outstanding" rather than a machine, so the
+        // honest response is to ask the question rather than to install
+        // something nobody chose.
+        const resolution = resolveDesktopChoice(
+          api.appState.get().desktop,
+          { distro: distro.id },
+        );
+
+        if (resolution.kind === 'needs-desktop') {
+          openPick(resolution.distro);
+          return;
+        }
+
         choose(() => api.setDesktop({ distro: distro.id }));
       });
       distros.append(button);
@@ -137,6 +166,65 @@ export const DISPLAY_APP: AppDef = {
     refusal.dataset.testid = 'display-refusal';
     refusal.setAttribute('role', 'status');
     refusal.hidden = true;
+
+    /*
+     * The pick a desktopless distro opens: the same choice the Desktop list
+     * above offers, asked at the moment it actually has to be answered and
+     * bound to the distro that raised it.
+     *
+     * It is a second list rather than a mode on the first because the two are
+     * different questions - "change my desktop" and "this distribution ships
+     * none, so which one are you installing" - and because the answer here has
+     * to carry the distro with it in ONE call: a pick that set the desktop and
+     * then the distro would leave the machine, for a beat, running a
+     * distribution nobody asked for.
+     */
+    const pick = document.createElement('div');
+    pick.className = 'display-pick';
+    pick.dataset.testid = 'display-desktop-pick';
+    pick.hidden = true;
+    const pickPrompt = document.createElement('p');
+    pickPrompt.className = 'display-pick-prompt';
+    pickPrompt.dataset.testid = 'display-pick-prompt';
+    pickPrompt.setAttribute('role', 'status');
+    const pickChoices = document.createElement('div');
+    pickChoices.className = 'display-choices';
+    pick.append(pickPrompt, pickChoices);
+
+    /** The distro waiting on a desktop, or null when nothing is being asked. */
+    let pendingDistro: DistroId | null = null;
+
+    function openPick(distro: DistroId): void {
+      pendingDistro = distro;
+      pickPrompt.textContent = needsDesktopReason(distro);
+      pick.hidden = false;
+      refusal.hidden = true;
+      refusal.textContent = '';
+    }
+
+    function closePick(): void {
+      pendingDistro = null;
+      pick.hidden = true;
+      pickPrompt.textContent = '';
+    }
+
+    for (const skin of SKINS.filter((entry) => entry.family === 'linux')) {
+      const button = choiceButton(
+        `display-pick-${skin.id}`,
+        skin.label,
+        skin.blurb,
+      );
+      button.addEventListener('click', () => {
+        const distro = pendingDistro;
+
+        if (distro === null) {
+          return;
+        }
+
+        choose(() => api.setDesktop({ skin: skin.id, distro }));
+      });
+      pickChoices.append(button);
+    }
 
     const note = document.createElement('p');
     note.className = 'about-note';
@@ -179,11 +267,17 @@ export const DISPLAY_APP: AppDef = {
      * here beside the button that was pressed. The window repaints off the
      * store either way - a chooser that showed what it asked for rather than
      * what the box actually runs would be the one surface lying about it.
+     *
+     * Any answered choice also puts the desktop pick away: it was a question
+     * about a machine that has now been decided one way or the other, and a
+     * prompt left standing over a settled machine is the window asking about
+     * something that has already happened.
      */
     function choose(ask: () => ReturnType<GameApi['setDesktop']>): void {
       const outcome = ask();
       refusal.hidden = outcome.ok;
       refusal.textContent = outcome.ok ? '' : outcome.reason;
+      closePick();
       render();
     }
 
@@ -198,6 +292,7 @@ export const DISPLAY_APP: AppDef = {
       desktops,
       distroHeading,
       distros,
+      pick,
       refusal,
       note,
     );

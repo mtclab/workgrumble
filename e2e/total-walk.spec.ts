@@ -4165,6 +4165,20 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await expect(desktop).toHaveAttribute('data-distro', 'fedora');
     await expect(page.getByTestId('display-package-manager')).toContainText('dnf');
     await expect(page.getByTestId('display-current')).toContainText('Fedora');
+
+    // Debian (0.28.0): the row whose difference is TEMPERAMENT and not a verb.
+    // It is here to prove the axis admits a distro that changes nothing
+    // mechanical - the box goes back to speaking the same apt Ubuntu speaks,
+    // and the only thing that moved is which name is running.
+    await page.getByTestId('display-distro-debian').click();
+    await expect(desktop).toHaveAttribute('data-distro', 'debian');
+    await expect(desktop).toHaveAttribute('data-skin', 'cinnamon');
+    await expect(page.getByTestId('display-package-manager')).toContainText('apt');
+    await expect(page.getByTestId('display-current')).toContainText('Debian');
+
+    // And back onto dnf, which is where the step below needs the box.
+    await page.getByTestId('display-distro-fedora').click();
+    await expect(desktop).toHaveAttribute('data-distro', 'fedora');
     await page.getByTestId('close-display').click();
   });
 
@@ -4201,6 +4215,198 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await runCommand(page, 'exit');
     // Back on the desktop's own dialect - whichever directory this run left the
     // Windows terminal standing in.
+    await expect(page.locator('.cmd-prompt').first()).toHaveText(/^C:\\/u);
+  });
+
+  /* -- 0.28.0: the other three families, on the same one box -------------- */
+
+  /*
+   * Everything below stands on FC-DESK-07, which cmd.dnf has just left PATCHED
+   * and carrying htop. That is deliberate rather than a compromise: one box can
+   * only be behind on its updates once, so the pending path is walked in the
+   * dialect that already owned it (dnf, above) and the dialects below walk what
+   * a PATCHED box says - which is where zypper's "No updates found." and, more
+   * to the point, pacman's eternal `-Syu` actually live. The pending shapes of
+   * all four are covered exhaustively in cmd-unix.test.ts.
+   *
+   * Every assertion here is against a string that appears NOWHERE ELSE in the
+   * scrollback - `cmd-output` is the whole session and is never cleared, so a
+   * line the run has already printed is not evidence of anything. That rules
+   * out "Complete!", "hops max", "LISTEN" and every other family-shared phrase,
+   * which is why the assertions below are the redirect lines, the transaction
+   * rows and the version strings in each family's OWN spelling.
+   */
+
+  await step('cmd.yum', async () => {
+    // Onto the enterprise rebuild: the same dnf, and the distro that carries
+    // the other two beats in this block.
+    await openFromStartMenu(page, 'display');
+    await page.getByTestId('display-distro-rhel').click();
+    await expect(desktop).toHaveAttribute('data-distro', 'rhel');
+    await expect(desktop).toHaveAttribute('data-skin', 'cinnamon');
+    await expect(page.getByTestId('display-package-manager')).toContainText('dnf');
+    await page.getByTestId('close-display').click();
+
+    await focusWindow(page, 'cmd');
+    await runCommand(page, 'ssh engineer@FC-DESK-07');
+    await expect(page.locator('.cmd-prompt').first())
+      .toHaveText('engineer@FC-DESK-07:~$');
+
+    // The muscle memory, answered: the wrapper says where it went and dnf does
+    // the rest. The redirect carries the WHOLE line, which is what makes it a
+    // string this run has printed nowhere else.
+    await runCommand(page, 'yum check-update');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText("Redirecting to '/usr/bin/dnf check-update'");
+
+    // And it is not a read-only impersonation: it installs, through the same
+    // action, into the same installed_packages set - proven three steps later,
+    // when pacman lists what yum put here.
+    await runCommand(page, 'sudo yum install traceroute');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText("Redirecting to '/usr/bin/dnf install traceroute'");
+    // The gag closed, read off a usage line no earlier traceroute printed:
+    // every other one in this run was given a host.
+    await runCommand(page, 'traceroute');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Usage: traceroute [OPTIONS] HOST');
+  });
+
+  await step('cmd.subscription-manager', async () => {
+    // The register beat, and the whole of it: it fails, and nothing cares.
+    await runCommand(page, 'subscription-manager status');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Overall Status: Disabled');
+
+    await runCommand(page, 'subscription-manager register');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Unable to register');
+
+    // The teeth: dnf works exactly as well after the failed registration as
+    // before it, and it can still READ the box - the already-installed answer
+    // is dnf reaching the same installed_packages set it wrote a step ago. A
+    // second `yum check-update` would have proved nothing: that line is
+    // already in the scrollback and the scrollback is never cleared.
+    await runCommand(page, 'sudo yum install htop');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('is already installed');
+    await runCommand(page, 'subscription-manager list');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Not Subscribed');
+    await runCommand(page, 'exit');
+  });
+
+  await step('cmd.zypper', async () => {
+    await openFromStartMenu(page, 'display');
+    await page.getByTestId('display-distro-opensuse').click();
+    await expect(desktop).toHaveAttribute('data-distro', 'opensuse');
+    // The axes are independent even here: openSUSE ships KDE, and this box is
+    // on Cinnamon and stays on Cinnamon, because there was a desktop to leave.
+    await expect(desktop).toHaveAttribute('data-skin', 'cinnamon');
+    await expect(page.getByTestId('display-package-manager')).toContainText('zypper');
+    await page.getByTestId('close-display').click();
+
+    await focusWindow(page, 'cmd');
+    await runCommand(page, 'ssh engineer@FC-DESK-07');
+
+    // The other families are missing binaries here, in both directions - the
+    // sharpest thing this axis has, and the box names the verb it does have.
+    await runCommand(page, 'sudo dnf upgrade');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('This box speaks zypper');
+
+    await runCommand(page, 'sudo zypper refresh');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('All repositories have been refreshed.');
+    // Patched by dnf three steps ago, and zypper reads the same one truth -
+    // in zypper's words rather than dnf's silence, which is what the real one
+    // does.
+    await runCommand(page, 'zypper list-updates');
+    await expect(page.getByTestId('cmd-output')).toContainText('No updates found.');
+
+    // A real transaction, in zypper's own Continue?/[done] shape, writing the
+    // same field every other dialect reads.
+    await runCommand(page, 'sudo zypper install net-tools');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('The following NEW package is going to be installed:');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Installing: net-tools-2.10-150600.3.2.x86_64');
+    await runCommand(page, 'exit');
+  });
+
+  await step('display.distro-pick', async () => {
+    // Arch, and the one thing in this whole shell where a choice opens another
+    // choice. It has to start from the ISSUED box, because a machine that
+    // already has a desktop has one to leave alone and is asked nothing.
+    await openFromStartMenu(page, 'display');
+    await page.getByTestId('display-desktop-deskpro').click();
+    await expect(desktop).toHaveAttribute('data-distro', 'none');
+    await expect(page.getByTestId('display-desktop-pick')).toBeHidden();
+
+    await page.getByTestId('display-distro-arch').click();
+    await expect(page.getByTestId('display-desktop-pick')).toBeVisible();
+    await expect(page.getByTestId('display-pick-prompt'))
+      .toContainText('Arch Linux');
+    // And the press itself installed NOTHING: the machine is exactly the box
+    // IT issued until the second question has an answer.
+    await expect(desktop).toHaveAttribute('data-skin', 'deskpro');
+    await expect(desktop).toHaveAttribute('data-distro', 'none');
+
+    // The answer sets both axes at once, so the machine is never briefly on a
+    // distribution nobody chose.
+    await page.getByTestId('display-pick-xfce').click();
+    await expect(desktop).toHaveAttribute('data-skin', 'xfce');
+    await expect(desktop).toHaveAttribute('data-distro', 'arch');
+    await expect(page.getByTestId('display-desktop-pick')).toBeHidden();
+    await expect(page.getByTestId('display-package-manager'))
+      .toContainText('pacman');
+
+    // And the same distro on a box that now HAS a desktop asks nothing at all,
+    // which is the independence rule rather than an exemption for Arch.
+    await page.getByTestId('display-distro-arch').click();
+    await expect(page.getByTestId('display-desktop-pick')).toBeHidden();
+    await expect(desktop).toHaveAttribute('data-skin', 'xfce');
+    await page.getByTestId('close-display').click();
+  });
+
+  await step('cmd.pacman', async () => {
+    await focusWindow(page, 'cmd');
+    await runCommand(page, 'ssh engineer@FC-DESK-07');
+
+    // The payoff of the whole axis, in one read: apt put nothing here, dnf put
+    // htop here, yum put traceroute here and zypper put net-tools here - and
+    // pacman, the fourth family, lists all three off the ONE field, in Arch's
+    // own version spelling.
+    await runCommand(page, 'pacman -Q');
+    await expect(page.getByTestId('cmd-output')).toContainText('htop 3.3.0-1');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('traceroute 2.1.5-1');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('net-tools 2.10-3');
+
+    // pacman has no "already the newest version": it warns and reinstalls.
+    await runCommand(page, 'sudo pacman -S htop');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('is up to date -- reinstalling');
+
+    // The eternal -Syu: the SYNC runs whether or not there is anything to
+    // upgrade, because the repositories moved this morning the way they move
+    // every morning - today this box happens to be level with them.
+    await runCommand(page, 'sudo pacman -Syu');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText(':: Synchronising package databases...');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('there is nothing to do');
+
+    // The capitals matter, and getting them wrong does not install anything.
+    await runCommand(page, 'sudo pacman -s htop');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('The capitals matter.');
+
+    await runCommand(page, 'sudo apt update');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('This box speaks pacman');
+    await runCommand(page, 'exit');
     await expect(page.locator('.cmd-prompt').first()).toHaveText(/^C:\\/u);
   });
 });

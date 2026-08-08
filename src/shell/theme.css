@@ -5468,6 +5468,21 @@ input {
   color: var(--color-accent);
 }
 
+/* The desktop pick a desktopless distribution opens (0.28.0). It is set into
+   the window rather than floating over it, because it is not an alert - it is
+   the rest of a choice the player is in the middle of making, and the list
+   underneath it is the same one the Desktop heading offers. */
+.display-pick {
+  padding: var(--space-4) var(--space-4) var(--space-1);
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+}
+
+.display-pick-prompt {
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+}
+
 /* The refused choice, said in place against the controls it is about - the
    same shape the taskbar's refused status uses, and for the same reason. */
 .display-refusal {

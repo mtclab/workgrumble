@@ -21,6 +21,12 @@ import {
   type WorldSession,
 } from '../../world/session';
 import { AppStateStore } from '../app-state';
+import {
+  DISTROS,
+  distroById,
+  type DistroId,
+  type PackageManager,
+} from '../skins';
 import { DayDriver } from '../day-driver';
 import { parseCommand } from './cmd-parse';
 import { executeCommand, type CommandResult } from './cmd-run';
@@ -1316,13 +1322,16 @@ describe('identity and permissions (E6, 0.21.0)', () => {
  * it as the Windows workstation it was seeded as, because a desktop and a
  * distro are shell state and no golden may move for chrome.
  */
-function onOwnBox(distro: 'ubuntu' | 'mint' | 'fedora'): OnMsp {
+function onOwnBox(distro: DistroId): OnMsp {
   const world = createWorldSession(MSP_CARRY);
   const api = apiFor(world);
   earnPromotion(world);
   win(api, 'promotion accept');
+  // The desktop the distro ships, or - for the one that ships none - the
+  // desktop the player was made to pick. Which one is irrelevant to every
+  // assertion below: a skin is chrome and the dialect is the distro's.
   api.appState.patch('desktop', {
-    skin: distro === 'fedora' ? 'kde' : distro === 'mint' ? 'cinnamon' : 'gnome',
+    skin: distroById(distro).defaultDesktop ?? 'xfce',
     distro,
   });
   const ssh = connect(api, 'ssh engineer@FC-DESK-07');
@@ -1448,5 +1457,404 @@ describe('the distro axis: apt, dnf, and the box that speaks one (0.27.0)', () =
     const second = unix(api, ssh, 'dnf check-update').lines.join('\n');
 
     expect(first).toBe(second);
+  });
+});
+
+/* ========================================================================= *
+ * 0.28.0: four more distros - zypper, pacman, the yum alias, and Debian's
+ * temperament. Dialect as DATA over the one package engine.
+ * ========================================================================= */
+
+/** The verb each family's box speaks, keyed by the binary a player might type. */
+const FAMILY_VERBS: Readonly<Record<PackageManager, string>> = {
+  apt: 'apt list --upgradable',
+  dnf: 'dnf check-update',
+  zypper: 'zypper list-updates',
+  pacman: 'pacman -Qu',
+};
+
+describe('the refusal matrix: one family per box, in both directions', () => {
+  it('answers exactly one package manager and misses every other one', () => {
+    // The sharpest thing the axis has, asserted as a MATRIX rather than as
+    // four hand-written pairs: for every distro, the box runs its own verb and
+    // does not have anybody else's - and the miss names the verb it DOES have,
+    // so an engineer who typed the wrong one is told which is right. Adding a
+    // fifth family with no wiring at the seam fails here rather than shipping
+    // a binary that silently answers on every box.
+    for (const distro of DISTROS) {
+      const { api, ssh } = onOwnBox(distro.id);
+      const mine = distro.packageManager;
+
+      expect(
+        unix(api, ssh, FAMILY_VERBS[mine]).lines.join('\n'),
+        `${distro.id} runs ${mine}`,
+      ).not.toContain('command not found');
+
+      for (const other of Object.keys(FAMILY_VERBS) as PackageManager[]) {
+        if (other === mine) {
+          continue;
+        }
+
+        const out = unix(api, ssh, FAMILY_VERBS[other]).lines.join('\n');
+        expect(out, `${distro.id} has no ${other}`)
+          .toContain(`${other}: command not found`);
+        expect(out, `${distro.id} points at ${mine}`)
+          .toContain(`This box speaks ${mine}`);
+      }
+
+      // dpkg rides with apt: it is the Debian family's inventory tool and
+      // nobody else's, which is why it is in the matrix rather than beside it.
+      const dpkg = unix(api, ssh, 'dpkg -l').lines.join('\n');
+      expect(dpkg.includes('command not found'), `${distro.id} dpkg`)
+        .toBe(mine !== 'apt');
+    }
+  });
+
+  it('leaves every server on the estate on apt, whatever the desk runs', () => {
+    // The axis reaches the player's OWN box and nothing else. A customer's
+    // server is the Ubuntu the world seeds it as even when the player is
+    // sitting on Arch, because the world was never touched.
+    const own = onOwnBox('arch');
+    expect(unix(own.api, own.ssh, 'pacman -Qu').lines.join('\n'))
+      .not.toContain('command not found');
+
+    const { api, ssh } = onMsp();
+    expect(unix(api, ssh, 'apt list --upgradable').lines[0])
+      .toBe('Listing... Done');
+    for (const verb of ['zypper list-updates', 'pacman -Qu', 'yum check-update']) {
+      expect(unix(api, ssh, verb).lines.join('\n'), verb)
+        .toContain('command not found');
+    }
+  });
+
+  it('hints the gagged tools in each box\'s own install verb', () => {
+    // The teaching half of the not-installed gag, per family. Arch is the one
+    // that is not `<manager> install`: a hint offering "pacman install htop"
+    // would be teaching a line that does not work.
+    const hints: Readonly<Record<PackageManager, string>> = {
+      apt: 'sudo apt install htop',
+      dnf: 'sudo dnf install htop',
+      zypper: 'sudo zypper install htop',
+      pacman: 'sudo pacman -S htop',
+    };
+
+    for (const distro of DISTROS) {
+      const { api, ssh } = onOwnBox(distro.id);
+      expect(unix(api, ssh, 'htop').lines[1], distro.id)
+        .toBe(hints[distro.packageManager]);
+    }
+  });
+});
+
+describe('Debian: the same apt, and temperament for the difference', () => {
+  it('answers byte-identically to the Ubuntu box beside it', () => {
+    // The spec's own words: mechanics unchanged, the trait is temperament. So
+    // this asserts SAMENESS - a Debian row that quietly grew its own strings
+    // would be a second apt to keep in step, which is the thing the dialect
+    // model exists to avoid. Its difference is the blurb and the pairing.
+    const debian = onOwnBox('debian');
+    const ubuntu = onOwnBox('ubuntu');
+
+    for (const line of [
+      'apt list --upgradable',
+      'sudo apt update',
+      'dpkg -l',
+      'sudo apt install htop',
+      'sudo apt upgrade',
+    ]) {
+      expect(
+        unix(debian.api, debian.ssh, line).lines,
+        line,
+      ).toEqual(unix(ubuntu.api, ubuntu.ssh, line).lines);
+    }
+
+    // And the box really is on Debian rather than relabelled: it is the pairing
+    // and the manager that the axis carries, and both read Debian's.
+    expect(debian.api.appState.get().desktop.distro).toBe('debian');
+    expect(distroById('debian').packageManager).toBe('apt');
+  });
+});
+
+describe('zypper: openSUSE\'s words over the same engine', () => {
+  it('installs in zypper\'s own shape, and closes the same gag', () => {
+    const { api, ssh } = onOwnBox('opensuse');
+
+    // Privileged, in zypper's own sentence - which names what it wanted the
+    // privilege FOR, unlike apt's dpkg lock and dnf's flat refusal.
+    expect(unix(api, ssh, 'zypper install htop').lines.join('\n'))
+      .toContain('Root privileges are required for installing');
+
+    const install = unix(api, ssh, 'sudo zypper install htop').lines.join('\n');
+    expect(install).toContain('The following NEW package is going to be installed:');
+    expect(install).toContain('Continue? [y/n/v/...? shows all options] (y): y');
+    expect(install).toContain('htop-3.3.0-150600.1.4.x86_64');
+    expect(install).toContain('[done]');
+
+    // The SAME field on the SAME box, and the gag closed by it.
+    expect(readInstalledPackages(
+      api.graph.getField(ssh.hostId, FIELDS.installedPackages),
+    )).toEqual(['htop']);
+    expect(unix(api, ssh, 'htop').lines.join('\n')).toContain('Tasks:');
+
+    // Already installed, and a name the repos do not have - both in zypper's
+    // own two-step miss rather than apt's or dnf's.
+    expect(unix(api, ssh, 'sudo zypper install htop').lines.join('\n'))
+      .toContain("'htop' is already installed.");
+    const miss = unix(api, ssh, 'sudo zypper install cowsay').lines.join('\n');
+    expect(miss).toContain("'cowsay' not found in package names.");
+    expect(miss).toContain("No provider of 'cowsay' found.");
+  });
+
+  it('refreshes, lists and updates off the one derived pending set', () => {
+    const { api, ssh } = onOwnBox('opensuse');
+
+    expect(unix(api, ssh, 'zypper refresh').lines.join('\n'))
+      .toContain('Root privileges are required for refreshing');
+    const refresh = unix(api, ssh, 'sudo zypper refresh').lines.join('\n');
+    expect(refresh).toContain('All repositories have been refreshed.');
+    expect(refresh).toContain("Run 'zypper list-updates' to see them.");
+
+    // The list, with SUSE's own names in it: libopenssl3 rather than Debian's
+    // libssl3t64, and `timezone` rather than tzdata, which is the tell anybody
+    // who has run one of these boxes knows.
+    const list = unix(api, ssh, 'zypper list-updates').lines.join('\n');
+    expect(list).toContain('Available Version');
+    expect(list).toContain('libopenssl3');
+    expect(list).not.toContain('libssl3t64');
+
+    // TEETH (`zypperFromIsNotTo`): every row's CURRENT version differs from its
+    // AVAILABLE one. Found as a real defect while writing this file - the
+    // first cut rolled back the last component of a Leap version, which is the
+    // build number and is `.1` on every string in the table, so the whole
+    // column silently printed the version it was upgrading TO. A table that
+    // says a package is upgrading from itself is a lie that looks entirely
+    // plausible, and no other assertion here would have caught it.
+    const rows = unix(api, ssh, 'zypper list-updates').lines
+      .filter((line) => line.startsWith('v |'));
+
+    expect(rows.length).toBeGreaterThan(0);
+
+    for (const row of rows) {
+      const [, , , from, available] = row
+        .split('|')
+        .map((cell) => cell.trim());
+
+      expect(from, row).toBeTruthy();
+      expect(from, row).not.toBe(available);
+    }
+
+    // Privileged, and it writes the SAME flag apt upgrade and dnf upgrade write.
+    expect(unix(api, ssh, 'zypper update').lines.join('\n'))
+      .toContain('Root privileges are required');
+    const update = unix(api, ssh, 'sudo zypper update').lines.join('\n');
+    expect(update).toContain('going to be upgraded:');
+    expect(update).toContain('[done]');
+    expect(api.graph.getField(ssh.hostId, FIELDS.updatesApplied)).toBe(true);
+
+    // And afterwards both halves read clean, in zypper's words rather than
+    // dnf's silence - which is what the real one does.
+    expect(unix(api, ssh, 'zypper list-updates').lines.join('\n'))
+      .toContain('No updates found.');
+    expect(unix(api, ssh, 'sudo zypper update').lines.join('\n'))
+      .toContain('Nothing to do.');
+    expect(unix(api, ssh, 'sudo zypper refresh').lines.join('\n'))
+      .toContain('No updates found.');
+  });
+
+  it('answers its real two-letter aliases and names its verbs otherwise', () => {
+    const { api, ssh } = onOwnBox('opensuse');
+
+    expect(unix(api, ssh, 'zypper lu').lines.join('\n'))
+      .toBe(unix(api, ssh, 'zypper list-updates').lines.join('\n'));
+    expect(unix(api, ssh, 'sudo zypper ref').lines.join('\n'))
+      .toBe(unix(api, ssh, 'sudo zypper refresh').lines.join('\n'));
+    expect(unix(api, ssh, 'zypper dup').lines.join('\n'))
+      .toContain('is not something this terminal does');
+  });
+});
+
+describe('pacman: Arch, spelled in flags', () => {
+  it('installs with -S, and reinstalls rather than shrugging', () => {
+    const { api, ssh } = onOwnBox('arch');
+
+    expect(unix(api, ssh, 'pacman -S htop').lines.join('\n'))
+      .toContain('you cannot perform this operation unless you are root');
+    expect(unix(api, ssh, 'sudo pacman -S cowsay').lines.join('\n'))
+      .toBe('error: target not found: cowsay');
+
+    const install = unix(api, ssh, 'sudo pacman -S htop').lines.join('\n');
+    expect(install).toContain('resolving dependencies...');
+    expect(install).toContain('Packages (1) htop-3.3.0-1');
+    expect(install).toContain('installing htop...');
+    expect(readInstalledPackages(
+      api.graph.getField(ssh.hostId, FIELDS.installedPackages),
+    )).toEqual(['htop']);
+    expect(unix(api, ssh, 'htop').lines.join('\n')).toContain('Tasks:');
+
+    // pacman has no "already the newest version": it warns and reinstalls, so
+    // that is what this says rather than an apt sentence in Arch's mouth.
+    const again = unix(api, ssh, 'sudo pacman -S htop').lines.join('\n');
+    expect(again).toContain('warning: htop-3.3.0-1 is up to date -- reinstalling');
+    expect(again).toContain('reinstalling htop...');
+  });
+
+  it('TEETH: the flags are case-sensitive, so -s is not -S', () => {
+    // The one place the unix grammar is not case-insensitive, and the reason
+    // it is read off the raw argument rather than the parser's lower-cased
+    // sub-command. `-s` is pacman's SEARCH; an install here would be the worst
+    // answer a package manager can give. Read the raw flag through the real
+    // parse rather than calling the dialect directly - the lower-casing this
+    // forbids happens IN the parse.
+    const { api, ssh } = onOwnBox('arch');
+    const wrong = unix(api, ssh, 'sudo pacman -s htop').lines.join('\n');
+
+    expect(wrong).toContain('is not something this terminal does');
+    expect(wrong).toContain('The capitals matter.');
+    expect(readInstalledPackages(
+      api.graph.getField(ssh.hostId, FIELDS.installedPackages),
+    )).toEqual([]);
+  });
+
+  it('syncs on every -Syu, and upgrades through the shared verb', () => {
+    const { api, ssh } = onOwnBox('arch');
+
+    expect(unix(api, ssh, 'pacman -Syu').lines.join('\n'))
+      .toContain('you cannot perform this operation unless you are root');
+
+    const upgrade = unix(api, ssh, 'sudo pacman -Syu').lines.join('\n');
+    expect(upgrade).toContain(':: Synchronising package databases...');
+    expect(upgrade).toContain(':: Starting full system upgrade...');
+    expect(upgrade).toContain('upgrading openssl...');
+    expect(api.graph.getField(ssh.hostId, FIELDS.updatesApplied)).toBe(true);
+
+    // The rolling beat, and the honest one: the SYNC still runs on a box with
+    // nothing to do, because the repositories moved this morning the way they
+    // move every morning - you just happen to be level with them today.
+    const clean = unix(api, ssh, 'sudo pacman -Syu').lines;
+    expect(clean[0]).toBe(':: Synchronising package databases...');
+    expect(clean.join('\n')).toContain(':: Starting full system upgrade...');
+    expect(clean.at(-1)).toBe(' there is nothing to do');
+  });
+
+  it('-Q reads the box, and -Qu reads what it is behind on', () => {
+    const { api, ssh } = onOwnBox('arch');
+
+    // -Qu is the read half, in pacman's own `name old -> new` shape.
+    const behind = unix(api, ssh, 'pacman -Qu').lines;
+    expect(behind.length).toBeGreaterThan(0);
+    expect(behind[0]).toBe('openssl 3.3.1-1 -> 3.3.2-1');
+
+    // -Q is the inventory: name and version, no legend, nothing else - and the
+    // packages it is BEHIND on list at the version it is behind AT.
+    const before = unix(api, ssh, 'pacman -Q').lines;
+    expect(before).toContain('linux 6.11.5-1');
+    expect(before).toContain('openssl 3.3.1-1');
+    expect(before).not.toContain('htop 3.3.0-1');
+    expect(before.every((line) => /^[a-z0-9-]+ \S+$/u.test(line))).toBe(true);
+
+    // The two surfaces agree off the one field, both ways round: an install
+    // shows up here, and an upgrade moves the version.
+    unix(api, ssh, 'sudo pacman -S htop');
+    unix(api, ssh, 'sudo pacman -Syu');
+    const after = unix(api, ssh, 'pacman -Q').lines;
+    expect(after).toContain('htop 3.3.0-1');
+    expect(after).toContain('openssl 3.3.2-1');
+    expect(after).not.toContain('openssl 3.3.1-1');
+    // And a box with nothing behind prints NOTHING for -Qu, as the real one does.
+    expect(unix(api, ssh, 'pacman -Qu').lines).toEqual([]);
+  });
+
+  it('sorts -Q, so the inventory is a list and not an accident', () => {
+    const { api, ssh } = onOwnBox('arch');
+    const listed = unix(api, ssh, 'pacman -Q').lines;
+
+    expect(listed).toEqual([...listed].sort((left, right) => (
+      left.localeCompare(right)
+    )));
+  });
+});
+
+describe('yum: the muscle memory, redirected', () => {
+  it('answers as dnf, on the same box and the same field', () => {
+    const { api, ssh } = onOwnBox('rhel');
+
+    const check = unix(api, ssh, 'yum check-update').lines;
+    expect(check[0]).toBe("Redirecting to '/usr/bin/dnf check-update'");
+    // Everything after the redirect is dnf's answer, byte for byte.
+    expect(check.slice(1))
+      .toEqual(unix(api, ssh, 'dnf check-update').lines);
+
+    // And it is not a read-only impersonation: it installs through the same
+    // action, into the same set, closing the same gag.
+    expect(unix(api, ssh, 'yum install htop').lines.join('\n'))
+      .toContain('superuser privileges');
+    const install = unix(api, ssh, 'sudo yum install htop').lines;
+    expect(install[0]).toBe("Redirecting to '/usr/bin/dnf install htop'");
+    expect(install.join('\n')).toContain('Complete!');
+    expect(readInstalledPackages(
+      api.graph.getField(ssh.hostId, FIELDS.installedPackages),
+    )).toEqual(['htop']);
+
+    expect(unix(api, ssh, 'sudo yum upgrade').lines.join('\n'))
+      .toContain('Upgrading:');
+    expect(api.graph.getField(ssh.hostId, FIELDS.updatesApplied)).toBe(true);
+  });
+
+  it('is on every dnf box and on no other family\'s', () => {
+    const fedora = onOwnBox('fedora');
+    expect(unix(fedora.api, fedora.ssh, 'yum check-update').lines[0])
+      .toBe("Redirecting to '/usr/bin/dnf check-update'");
+
+    for (const distro of ['ubuntu', 'opensuse', 'arch'] as const) {
+      const { api, ssh } = onOwnBox(distro);
+      expect(unix(api, ssh, 'yum check-update').lines.join('\n'), distro)
+        .toContain('yum: command not found');
+    }
+  });
+});
+
+describe('subscription-manager: the register beat that gates nothing', () => {
+  it('is a Red Hat binary, so only the Red Hat box has it', () => {
+    const { api, ssh } = onOwnBox('rhel');
+    expect(unix(api, ssh, 'subscription-manager status').lines.join('\n'))
+      .toContain('Overall Status: Disabled');
+
+    // Fedora speaks dnf and has never shipped this, which is the one place the
+    // distro and the package manager genuinely come apart - so the check is on
+    // the DISTRO, and this is the assertion that keeps it there.
+    for (const distro of ['fedora', 'ubuntu', 'opensuse', 'arch'] as const) {
+      const other = onOwnBox(distro);
+      expect(
+        unix(other.api, other.ssh, 'subscription-manager status').lines.join('\n'),
+        distro,
+      ).toContain('subscription-manager: command not found');
+    }
+  });
+
+  it('TEETH: registering fails and NOTHING on the box depends on it', () => {
+    const { api, ssh } = onOwnBox('rhel');
+
+    const register = unix(api, ssh, 'subscription-manager register').lines.join('\n');
+    expect(register).toContain('Registering to: subscription.rhsm.redhat.com');
+    expect(register).toContain('Unable to register');
+
+    // The whole point: dnf works exactly as well after the failure as before
+    // it. If this ever became a gate, the install below would stop working and
+    // this is the assertion that would say so.
+    const install = unix(api, ssh, 'sudo dnf install htop').lines.join('\n');
+    expect(install).toContain('Complete!');
+    expect(unix(api, ssh, 'htop').lines.join('\n')).toContain('Tasks:');
+    expect(unix(api, ssh, 'sudo dnf upgrade').lines.join('\n'))
+      .toContain('Upgrading:');
+
+    // And nothing was written by the register itself.
+    expect(unix(api, ssh, 'subscription-manager list').lines.join('\n'))
+      .toContain('Status:         Not Subscribed');
+  });
+
+  it('names its three verbs for anything else', () => {
+    const { api, ssh } = onOwnBox('rhel');
+    expect(unix(api, ssh, 'subscription-manager attach').lines.join('\n'))
+      .toContain('is not something this terminal does');
   });
 });

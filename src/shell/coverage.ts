@@ -2515,6 +2515,86 @@ const ENTRIES = [
       + 'over: to choose a desktop at all, and to ssh onto the result.',
   },
   {
+    id: 'cmd.yum',
+    surface: 'cmd',
+    control: 'yum <install <pkg> | check-update | upgrade>',
+    does: 'The muscle memory, answered (0.28.0): on a box that speaks dnf, yum '
+      + 'prints the real wrapper\'s redirect line and then dnf answers - the '
+      + 'same transaction, the same installed_packages field, the same pending '
+      + 'set, because on every release anybody still runs /usr/bin/yum IS dnf. '
+      + 'It is not a fifth dialect and it is not a stub: the name changed and '
+      + 'the box did not care, which is the whole joke and the whole teaching. '
+      + 'On an apt, zypper or pacman box it is a missing binary like any other '
+      + 'family\'s verb.',
+    command: 'yum',
+    actions: [APT_ACTIONS.aptInstall, APT_ACTIONS.aptUpgrade],
+    run: 'sysadmin',
+    why: 'A unix-dialect verb on a box the player has put a RHEL-family distro '
+      + 'on, which needs the promotion twice over: to choose a distribution at '
+      + 'all, and to ssh onto the result.',
+  },
+  {
+    id: 'cmd.zypper',
+    surface: 'cmd',
+    control: 'zypper <install <pkg> | refresh | list-updates | update>',
+    does: 'openSUSE\'s package manager (0.28.0), the third family\'s words over '
+      + 'the same engine: "sudo zypper install" prints zypper\'s own '
+      + 'Continue?/[done] transaction and records the package in the SAME '
+      + 'installed_packages set - closing the SAME not-installed gag, hinted in '
+      + 'zypper\'s words - "sudo zypper refresh" refreshes the repos and says '
+      + 'how far behind the box is, "zypper list-updates" prints the pipe-ruled '
+      + 'table (with SUSE\'s own names: libopenssl3, timezone), and "sudo zypper '
+      + 'update" applies them through the same verb apt and dnf dispatch. Every '
+      + 'other family\'s manager is command-not-found on it, and it is on every '
+      + 'one of theirs.',
+    command: 'zypper',
+    actions: [APT_ACTIONS.aptInstall, APT_ACTIONS.aptUpgrade],
+    run: 'sysadmin',
+    why: 'A unix-dialect verb on a box that speaks zypper, and the only box '
+      + 'that can is one the player has reinstalled - which needs the promotion '
+      + 'twice over: to choose a distribution at all, and to ssh onto the result.',
+  },
+  {
+    id: 'cmd.pacman',
+    surface: 'cmd',
+    control: 'pacman <-S <pkg> | -Syu | -Q | -Qu>',
+    does: 'Arch\'s package manager (0.28.0), and the one whose verbs are '
+      + 'CASE-SENSITIVE FLAGS rather than words: "sudo pacman -S <pkg>" installs '
+      + 'into the same installed_packages set (and reinstalls with pacman\'s own '
+      + 'warning when it is already there, because pacman has no no-op), "sudo '
+      + 'pacman -Syu" syncs the databases AND upgrades in one operation through '
+      + 'the same verb the other three dispatch, "pacman -Q" lists what is on '
+      + 'the box at the versions the box is actually at, and "pacman -Qu" lists '
+      + 'what is behind in the name old -> new shape. The sync half of -Syu runs '
+      + 'even when there is nothing to upgrade, which is the honest shape of the '
+      + 'eternal -Syu on a rolling release.',
+    command: 'pacman',
+    actions: [APT_ACTIONS.aptInstall, APT_ACTIONS.aptUpgrade],
+    run: 'sysadmin',
+    why: 'A unix-dialect verb on a box that speaks pacman, which only exists '
+      + 'once the player has chosen Arch AND chosen a desktop to go with it - '
+      + 'both behind the promotion, as is the ssh onto the result.',
+  },
+  {
+    id: 'cmd.subscription-manager',
+    surface: 'cmd',
+    control: 'subscription-manager <status | register | list>',
+    does: 'The RHEL register beat (0.28.0), and it GATES NOTHING: "status" '
+      + 'reads Disabled, "list" reads Not Subscribed, and "register" fails for '
+      + 'want of credentials that live in a spreadsheet the previous engineer '
+      + 'owned - after which dnf carries on working exactly as it did, because '
+      + 'the repositories on a rebuild are not Red Hat\'s and nothing here ever '
+      + 'asked. It is comedy rather than a paywall mechanic: no field is '
+      + 'written, no verb is dispatched, and nothing on the box waits on it. On '
+      + 'any distro but RHEL it is not a binary at all, Fedora included, which '
+      + 'is the one place the distro and the package manager come apart.',
+    command: 'subscription-manager',
+    run: 'sysadmin',
+    why: 'A Red Hat binary, on a box the player has put RHEL on - behind the '
+      + 'promotion that lets them install a distribution and the ssh that '
+      + 'reaches the result.',
+  },
+  {
     id: 'cmd.dpkg',
     surface: 'cmd',
     control: 'dpkg -l',
@@ -2911,14 +2991,32 @@ const ENTRIES = [
   {
     id: 'display.distro',
     surface: 'display',
-    control: 'display-distro-ubuntu, display-distro-mint, display-distro-fedora',
+    control: 'display-distro-ubuntu, display-distro-mint, display-distro-debian, '
+      + 'display-distro-fedora, display-distro-rhel, display-distro-opensuse',
     does: 'Changes the distribution under the desktop without touching the '
       + 'desktop - the second axis, and the proof they are independent: a Fedora '
       + 'box running KDE is a real machine. It decides which package-manager verb '
-      + 'the box speaks, which is the difference the terminal then answers in.',
+      + 'the box speaks (apt, dnf, zypper, pacman), which is the difference the '
+      + 'terminal then answers in - and Debian is the row that proves a distro '
+      + 'may be temperament alone, speaking the same apt Ubuntu does.',
     run: 'sysadmin',
     why: 'Behind the same promotion gate as the desktop it sits under, and only '
       + 'legible on a box that has a distro at all.',
+  },
+  {
+    id: 'display.distro-pick',
+    surface: 'display',
+    control: 'display-distro-arch, display-desktop-pick, display-pick-*',
+    does: 'The one distribution that ships NO desktop, chosen on a machine that '
+      + 'has none either (0.28.0): instead of installing something nobody asked '
+      + 'for, the window opens a pick and makes the player choose a desktop, '
+      + 'which is the truest single thing this version says about Arch. The pick '
+      + 'sets both axes in ONE call, so the machine is never briefly running a '
+      + 'distribution nobody chose; picking Arch on a box that is ALREADY on '
+      + 'Linux asks nothing, because there is a desktop there to leave alone.',
+    run: 'sysadmin',
+    why: 'Behind the same promotion gate as every other desktop and '
+      + 'distribution: the desk is issued a Windows box and IT keeps the image.',
   },
 
   /* -- Update History ----------------------------------------------------- */
@@ -3683,9 +3781,13 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'minesweeper-new-game',
   'minesweeper-cell-*',
   // Display Properties (0.27.0): one family per axis - the desktops the box can
-  // wear, and the distributions it can be on.
+  // wear, and the distributions it can be on. `display-desktop-pick` is the
+  // panel the third family sits in, and it matches the first of these; the
+  // buttons inside it are their own family (0.28.0), because "change my
+  // desktop" and "this distribution ships none, pick one" are two questions.
   'display-desktop-*',
   'display-distro-*',
+  'display-pick-*',
   'about-run-diagnostics',
   'about-reseat-fan',
   'about-refresh',

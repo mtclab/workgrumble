@@ -46,6 +46,8 @@ import {
 import {
   canChooseDesktop,
   type DesktopChoice,
+  DESKTOP_TIER_REFUSAL,
+  needsDesktopReason,
   resolveDesktopChoice,
   type SecondPanelSpec,
   type Skin,
@@ -796,13 +798,29 @@ export class Desktop {
    */
   private setDesktop(choice: Readonly<DesktopChoice>): DispatchResult {
     const current = this.context.appState.get().desktop;
-    const next = resolveDesktopChoice(current, choice);
-    const legal = canChooseDesktop(
-      next,
-      isSystemsEngineer(
-        this.context.graph.getField(this.context.user.node, FIELDS.playerTier),
-      ),
+    const resolution = resolveDesktopChoice(current, choice);
+    const engineer = isSystemsEngineer(
+      this.context.graph.getField(this.context.user.node, FIELDS.playerTier),
     );
+
+    // The distro that ships no desktop, asked for on a machine that has none
+    // either (0.28.0). There is nothing to put on the screen until the player
+    // says what, so this refuses and NAMES the pick - the window opens its
+    // chooser off the same pure resolution rather than off this sentence, and
+    // this is the backstop for anything that asks the shell directly. The tier
+    // still comes first: somebody who may not run Linux at all is told THAT,
+    // not sent shopping for a desktop they cannot have.
+    if (resolution.kind === 'needs-desktop') {
+      return {
+        ok: false,
+        reason: engineer
+          ? needsDesktopReason(resolution.distro)
+          : DESKTOP_TIER_REFUSAL,
+      };
+    }
+
+    const next = resolution.next;
+    const legal = canChooseDesktop(next, engineer);
 
     if (!legal.ok) {
       return legal;

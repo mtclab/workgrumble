@@ -181,11 +181,19 @@ export interface Skin {
 
 /* -- the distro axis: the dialect, not the look --------------------------- */
 
-export const DISTRO_IDS = ['ubuntu', 'mint', 'fedora'] as const;
+export const DISTRO_IDS = [
+  'ubuntu',
+  'mint',
+  'debian',
+  'fedora',
+  'rhel',
+  'opensuse',
+  'arch',
+] as const;
 
 export type DistroId = (typeof DISTRO_IDS)[number];
 
-export const PACKAGE_MANAGERS = ['apt', 'dnf'] as const;
+export const PACKAGE_MANAGERS = ['apt', 'dnf', 'zypper', 'pacman'] as const;
 
 export type PackageManager = (typeof PACKAGE_MANAGERS)[number];
 
@@ -194,18 +202,34 @@ export interface Distro {
   readonly label: string;
   /** The verb the box speaks. The whole of the dialect axis, wired thin. */
   readonly packageManager: PackageManager;
-  /** The DE this distro ships by default - the distro half of the pairing. */
-  readonly defaultDesktop: SkinId;
+  /**
+   * The DE this distro ships by default - the distro half of the pairing, and
+   * NULL for the one distro that genuinely ships none.
+   *
+   * Arch is the null, and it is not a gap in the table: a distribution that
+   * hands you a base system and no desktop is the truest single fact this axis
+   * has to say, so the type says it rather than a default nobody chose being
+   * quietly filled in. What the shell does with a null is
+   * `resolveDesktopChoice`'s `needs-desktop` answer: the player is made to pick.
+   */
+  readonly defaultDesktop: SkinId | null;
   readonly blurb: string;
 }
 
 /**
- * The three distros the first cut ships, one per package-manager verb plus the
- * one whose whole identity is the desktop.
+ * The distros, one row per dialect the boxes in this game can speak plus the
+ * ones whose difference is temperament rather than a verb.
  *
- * openSUSE (zypper), Arch (pacman), Debian and the RHEL rebuilds are backlog
- * with SELinux and the snap controversy: a fourth distro is another dialect to
- * write honestly, and a dialect written badly is worse than one not shipped.
+ * The whole of a distro is DATA over the ONE package engine: the same derived
+ * pending set, the same `installed_packages` field, the same two registered
+ * actions. What a row changes is the WORDS (and, for Arch, whether there is a
+ * desktop at all) - which is exactly what changes when a real engineer walks
+ * onto an unfamiliar box at two in the morning.
+ *
+ * Debian is deliberately mechanically identical to Ubuntu: it is the same apt,
+ * and its trait is temperament, which is flavour and not a second engine. A
+ * dialect written badly is worse than one not shipped, so a distro only grows a
+ * verb table when it really has other verbs.
  */
 export const DISTROS: readonly Distro[] = Object.freeze([
   Object.freeze({
@@ -225,12 +249,49 @@ export const DISTROS: readonly Distro[] = Object.freeze([
       + 'point of it.',
   }),
   Object.freeze({
+    id: 'debian',
+    label: 'Debian 12 (bookworm)',
+    packageManager: 'apt',
+    defaultDesktop: 'gnome',
+    blurb: 'The thing the other two are built out of, and the one that will '
+      + 'still boot in nine years. The same apt, none of the enthusiasm, and '
+      + 'nobody here is going to push a snap at you.',
+  }),
+  Object.freeze({
     id: 'fedora',
     label: 'Fedora 41',
     packageManager: 'dnf',
     defaultDesktop: 'gnome',
     blurb: 'The upstream of the enterprise one, six months ahead of everybody. '
       + 'Ships GNOME; speaks dnf.',
+  }),
+  Object.freeze({
+    id: 'rhel',
+    label: 'RHEL 9 (or Rocky, or Alma)',
+    packageManager: 'dnf',
+    defaultDesktop: 'gnome',
+    blurb: 'The one the auditor has heard of. dnf, with yum still answering '
+      + 'because thirty years of fingers do, and a subscription somebody was '
+      + 'supposed to renew.',
+  }),
+  Object.freeze({
+    id: 'opensuse',
+    label: 'openSUSE Leap 15.6',
+    packageManager: 'zypper',
+    defaultDesktop: 'kde',
+    blurb: 'The green one, with a chameleon on the wallpaper and YaST for '
+      + 'absolutely everything. Ships KDE; speaks zypper, which is neither of '
+      + 'the two verbs you already know.',
+  }),
+  Object.freeze({
+    id: 'arch',
+    label: 'Arch Linux',
+    packageManager: 'pacman',
+    // No default desktop, on purpose and by the distribution's own design.
+    defaultDesktop: null,
+    blurb: 'You install a base system and then you decide what a desktop even '
+      + 'is, because it does not come with one. Rolling: "current" is a tense '
+      + 'here, not a state.',
   }),
 ]);
 
@@ -721,6 +782,19 @@ export interface DesktopChoice {
 }
 
 /**
+ * What a request resolves to: a machine to put on the screen, or the one
+ * question that has to be answered before there is one.
+ *
+ * It is a union rather than a state plus a boolean because the second case has
+ * no state to hand back - a distro that ships no desktop leaves the resolution
+ * genuinely incomplete, and a shape that returned some desktop anyway would be
+ * the table quietly inventing the answer Arch exists to refuse to give.
+ */
+export type DesktopResolution =
+  | { readonly kind: 'choice'; readonly next: DesktopChoiceState }
+  | { readonly kind: 'needs-desktop'; readonly distro: DistroId };
+
+/**
  * The choice a request resolves to, before the gate sees it - the pairing,
  * used in both directions.
  *
@@ -735,6 +809,10 @@ export interface DesktopChoice {
  *   desktop that distro SHIPS (the distro half of the pairing). This is not a
  *   convenience: there is no desktop to leave alone on a machine that is not on
  *   Linux yet, and a press that resolved to nothing would be a dead click.
+ * - Except on the one distro that ships NO desktop. Arch on a machine with no
+ *   desktop yet resolves to `needs-desktop`, and the chooser makes the player
+ *   pick - which is not a limitation being worked around, it is the truest
+ *   single thing this axis says about Arch, so the resolution says it out loud.
  *
  * Going back to the issued Windows box drops the distro, because a Windows box
  * is not on one.
@@ -742,25 +820,52 @@ export interface DesktopChoice {
 export function resolveDesktopChoice(
   current: Readonly<DesktopChoiceState>,
   choice: Readonly<DesktopChoice>,
-): DesktopChoiceState {
+): DesktopResolution {
   if (choice.skin !== undefined) {
     const skin = skinById(choice.skin);
 
     return skin.family === 'windows'
-      ? { skin: skin.id, distro: null }
-      : { skin: skin.id, distro: choice.distro ?? skin.distro };
+      ? { kind: 'choice', next: { skin: skin.id, distro: null } }
+      : {
+        kind: 'choice',
+        next: { skin: skin.id, distro: choice.distro ?? skin.distro },
+      };
   }
 
   if (choice.distro === undefined) {
-    return { skin: current.skin, distro: current.distro };
+    return {
+      kind: 'choice',
+      next: { skin: current.skin, distro: current.distro },
+    };
   }
 
-  return skinById(current.skin).family === 'windows'
-    ? {
-      skin: distroById(choice.distro).defaultDesktop,
-      distro: choice.distro,
-    }
-    : { skin: current.skin, distro: choice.distro };
+  if (skinById(current.skin).family !== 'windows') {
+    return {
+      kind: 'choice',
+      next: { skin: current.skin, distro: choice.distro },
+    };
+  }
+
+  const shipped = distroById(choice.distro).defaultDesktop;
+
+  return shipped === null
+    ? { kind: 'needs-desktop', distro: choice.distro }
+    : { kind: 'choice', next: { skin: shipped, distro: choice.distro } };
+}
+
+/**
+ * What the shell says to a distro that was chosen blind and ships no desktop.
+ *
+ * It lives beside the table because it is a fact ABOUT the table, and because
+ * the chooser and the shell both have to say the same thing: the window opens
+ * the pick with it, and a `setDesktop` that reaches the same case without one
+ * refuses with it.
+ */
+export function needsDesktopReason(distro: DistroId): string {
+  return `${distroById(distro).label} does not ship a desktop. That is not an `
+    + 'oversight and it is not this window being awkward - it is the whole '
+    + 'position of the distribution: you install a base system, and then you '
+    + 'decide what a desktop even is. Pick one and it goes on with it.';
 }
 
 /**
@@ -782,11 +887,16 @@ export function canChooseDesktop(
     return { ok: true };
   }
 
-  return {
-    ok: false,
-    reason: 'IT issues the desk a Windows box and IT keeps the image. Putting '
-      + 'your own desktop on it is the engineers\' tier, not the desk\'s - it '
-      + 'arrives with the promotion, along with the ssh that makes it worth '
-      + 'having.',
-  };
+  return { ok: false, reason: DESKTOP_TIER_REFUSAL };
 }
+
+/**
+ * The tier refusal itself, named because two callers need the same sentence:
+ * the gate above, and the `needs-desktop` branch of `setDesktop`, which has no
+ * resolved state to hand the gate and must not answer "pick a desktop" to
+ * somebody who is not allowed one either way.
+ */
+export const DESKTOP_TIER_REFUSAL = 'IT issues the desk a Windows box and IT '
+  + 'keeps the image. Putting your own desktop on it is the engineers\' tier, '
+  + 'not the desk\'s - it arrives with the promotion, along with the ssh that '
+  + 'makes it worth having.';

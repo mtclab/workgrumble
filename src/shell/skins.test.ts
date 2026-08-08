@@ -5,8 +5,11 @@ import {
   DEFAULT_DESKTOP_CHOICE,
   DEFAULT_SKIN_ID,
   DISTROS,
+  type DesktopChoiceState,
   distroById,
   hasWindowButton,
+  needsDesktopReason,
+  PACKAGE_MANAGERS,
   packageManagerFor,
   resolveDesktopChoice,
   SKINS,
@@ -372,17 +375,49 @@ describe('the distro axis', () => {
     expect(skinById('lxqt').distro).toBe('ubuntu');
   });
 
-  it('speaks apt on the Debian family and dnf on the RHEL one', () => {
+  it('speaks one verb per family, and all four are reachable', () => {
     expect(packageManagerFor('ubuntu')).toBe('apt');
     expect(packageManagerFor('mint')).toBe('apt');
     expect(packageManagerFor('fedora')).toBe('dnf');
+    // 0.28.0's four. Debian is the row whose difference is TEMPERAMENT and not
+    // a verb - it speaks the same apt Ubuntu does, on purpose - and RHEL shares
+    // Fedora's dnf, which is what makes subscription-manager the one fact that
+    // has to ask which DISTRO a box is rather than which verb it speaks.
+    expect(packageManagerFor('debian')).toBe('apt');
+    expect(packageManagerFor('rhel')).toBe('dnf');
+    expect(packageManagerFor('opensuse')).toBe('zypper');
+    expect(packageManagerFor('arch')).toBe('pacman');
     // A box that is not on a distro has no package manager at all, which is
     // the honest answer for the Windows one.
     expect(packageManagerFor(null)).toBeNull();
-    // Both verbs are actually reachable: a table where every distro spoke apt
-    // would be an axis with one value in it.
+    // Every verb is actually reachable: a table where a manager was declared
+    // and no distro shipped it would be a dialect nobody can get to.
     expect(new Set(DISTROS.map((distro) => distro.packageManager)))
-      .toEqual(new Set(['apt', 'dnf']));
+      .toEqual(new Set(PACKAGE_MANAGERS));
+  });
+
+  it('ships a desktop with every distro except the one that does not', () => {
+    // The pairing's distro half, and the single null in it. Arch is the null
+    // BY DESIGN - it is the truest thing this axis says about Arch - so the
+    // test names it rather than letting a future row quietly join it.
+    for (const distro of DISTROS) {
+      if (distro.id === 'arch') {
+        expect(distro.defaultDesktop, distro.id).toBeNull();
+        continue;
+      }
+
+      expect(distro.defaultDesktop, distro.id).not.toBeNull();
+      expect(
+        skinById(distro.defaultDesktop ?? 'gnome').family,
+        distro.id,
+      ).toBe('linux');
+    }
+
+    // The researched defaults for 0.28.0's rows: Debian's netinst default and
+    // RHEL's workstation are GNOME, and openSUSE is the KDE one.
+    expect(distroById('debian').defaultDesktop).toBe('gnome');
+    expect(distroById('rhel').defaultDesktop).toBe('gnome');
+    expect(distroById('opensuse').defaultDesktop).toBe('kde');
   });
 
   it('refuses a distro nobody ships', () => {
@@ -392,10 +427,31 @@ describe('the distro axis', () => {
 });
 
 describe('choosing a desktop', () => {
+  /**
+   * The machine a request resolves to, for the cases that HAVE one.
+   *
+   * It fails rather than returning a default when the resolution is the
+   * `needs-desktop` one, because a test that quietly read a missing desktop as
+   * some fallback would be doing exactly what the union exists to stop the
+   * product doing.
+   */
+  function resolved(
+    current: DesktopChoiceState,
+    choice: Parameters<typeof resolveDesktopChoice>[1],
+  ): DesktopChoiceState {
+    const resolution = resolveDesktopChoice(current, choice);
+
+    if (resolution.kind !== 'choice') {
+      throw new Error(`expected a machine, got "${resolution.kind}"`);
+    }
+
+    return resolution.next;
+  }
+
   it('brings the paired distro along with the desktop', () => {
-    expect(resolveDesktopChoice(DEFAULT_DESKTOP_CHOICE, { skin: 'cinnamon' }))
+    expect(resolved(DEFAULT_DESKTOP_CHOICE, { skin: 'cinnamon' }))
       .toEqual({ skin: 'cinnamon', distro: 'mint' });
-    expect(resolveDesktopChoice(DEFAULT_DESKTOP_CHOICE, { skin: 'kde' }))
+    expect(resolved(DEFAULT_DESKTOP_CHOICE, { skin: 'kde' }))
       .toEqual({ skin: 'kde', distro: 'fedora' });
   });
 
@@ -403,23 +459,67 @@ describe('choosing a desktop', () => {
     // There is no desktop to leave alone on the issued Windows box, so the
     // distro half of the pairing decides: Ubuntu ships GNOME, Mint ships
     // Cinnamon. A press that resolved to nothing here would be a dead click.
-    expect(resolveDesktopChoice(DEFAULT_DESKTOP_CHOICE, { distro: 'ubuntu' }))
+    expect(resolved(DEFAULT_DESKTOP_CHOICE, { distro: 'ubuntu' }))
       .toEqual({ skin: 'gnome', distro: 'ubuntu' });
-    expect(resolveDesktopChoice(DEFAULT_DESKTOP_CHOICE, { distro: 'mint' }))
+    expect(resolved(DEFAULT_DESKTOP_CHOICE, { distro: 'mint' }))
       .toEqual({ skin: 'cinnamon', distro: 'mint' });
+    // And 0.28.0's rows, which are the same rule and not a special case.
+    expect(resolved(DEFAULT_DESKTOP_CHOICE, { distro: 'debian' }))
+      .toEqual({ skin: 'gnome', distro: 'debian' });
+    expect(resolved(DEFAULT_DESKTOP_CHOICE, { distro: 'opensuse' }))
+      .toEqual({ skin: 'kde', distro: 'opensuse' });
+  });
+
+  it('makes the player pick a desktop for the distro that ships none', () => {
+    // Arch on a machine with no desktop cannot resolve to one, and the
+    // resolution SAYS SO rather than filling in a default nobody chose. This
+    // is the version's sharpest single statement about Arch, so it is asserted
+    // as the shape of the answer and not as a string.
+    expect(resolveDesktopChoice(DEFAULT_DESKTOP_CHOICE, { distro: 'arch' }))
+      .toEqual({ kind: 'needs-desktop', distro: 'arch' });
+
+    // TEETH: give the row a default desktop and this stops being reachable.
+    // Every OTHER distro resolves to a machine from the same starting point,
+    // so a table that quietly grew a default for Arch would fail here rather
+    // than silently skipping the only pick flow in the shell.
+    for (const distro of DISTROS) {
+      const resolution = resolveDesktopChoice(
+        DEFAULT_DESKTOP_CHOICE,
+        { distro: distro.id },
+      );
+
+      expect(resolution.kind, distro.id)
+        .toBe(distro.id === 'arch' ? 'needs-desktop' : 'choice');
+    }
+
+    // The answer to the pick sets BOTH axes in one call, which is what keeps
+    // the machine from ever being briefly on a distro nobody chose.
+    expect(resolved(DEFAULT_DESKTOP_CHOICE, { skin: 'xfce', distro: 'arch' }))
+      .toEqual({ skin: 'xfce', distro: 'arch' });
+
+    // And nothing is asked on a box that ALREADY has a desktop: there is one
+    // there to leave alone, which is the same independence rule as everywhere
+    // else on this axis rather than an exemption for Arch.
+    expect(resolved({ skin: 'mate', distro: 'ubuntu' }, { distro: 'arch' }))
+      .toEqual({ skin: 'mate', distro: 'arch' });
+
+    // The sentence the window opens the pick with names the distribution and
+    // says what is being asked, rather than reading as a refusal.
+    expect(needsDesktopReason('arch')).toContain('Arch Linux');
+    expect(needsDesktopReason('arch')).toContain('Pick one');
   });
 
   it('leaves the desktop alone when only the distro is chosen', () => {
     // The axes are independent, and this is where that is true rather than
     // merely said: KDE on Fedora is a real machine, and so is KDE on Ubuntu.
-    expect(resolveDesktopChoice(
+    expect(resolved(
       { skin: 'kde', distro: 'fedora' },
       { distro: 'ubuntu' },
     )).toEqual({ skin: 'kde', distro: 'ubuntu' });
   });
 
   it('drops the distro when the issued Windows box comes back', () => {
-    expect(resolveDesktopChoice(
+    expect(resolved(
       { skin: 'gnome', distro: 'ubuntu' },
       { skin: 'deskpro' },
     )).toEqual({ skin: 'deskpro', distro: null });

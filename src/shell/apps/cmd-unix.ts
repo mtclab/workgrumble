@@ -163,6 +163,57 @@ export const UNIX_COMMANDS: readonly CommandSpec[] = [
     subcommand: true,
   },
   {
+    // The muscle memory (0.28.0). `yum` is not a fifth dialect: on every box in
+    // this game that has it, it IS dnf, and it says so in the one line the real
+    // wrapper prints before handing over. It is in the registry for the same
+    // reason dnf is - a box that has the binary must parse it.
+    name: 'yum',
+    usage: 'yum <install <pkg> | check-update | upgrade>',
+    summary: 'What thirty years of fingers still type. It is dnf, and it '
+      + 'redirects to dnf.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+    subcommand: true,
+  },
+  {
+    // openSUSE's (0.28.0), and the third family's verb.
+    name: 'zypper',
+    usage: 'zypper <install <pkg> | refresh | list-updates | update>',
+    summary: 'openSUSE\'s package manager: install, refresh the repos, read '
+      + 'pending updates, apply them.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+    subcommand: true,
+  },
+  {
+    // Arch's (0.28.0), and the one whose verbs are FLAGS rather than words -
+    // which is most of what it feels like to walk onto an Arch box.
+    name: 'pacman',
+    usage: 'pacman <-S <pkg> | -Syu | -Q | -Qu>',
+    summary: 'Arch\'s package manager, spelled in flags: -S installs, -Syu '
+      + 'syncs and upgrades, -Q lists, -Qu lists what is behind.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+    subcommand: true,
+  },
+  {
+    // The RHEL gag (0.28.0). It is a real binary on a real RHEL box and it
+    // gates NOTHING here: the repositories a rebuild uses are not Red Hat's,
+    // dnf has never once asked, and the comedy is that somebody still has to
+    // explain that to an auditor once a year.
+    name: 'subscription-manager',
+    usage: 'subscription-manager <status | register | list>',
+    summary: 'Red Hat\'s entitlement tool: what this box is subscribed to, '
+      + 'which is nothing, which changes nothing.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+    subcommand: true,
+  },
+  {
     name: 'dpkg',
     usage: 'dpkg -l',
     summary: 'List the packages installed on the box: ii name version arch desc.',
@@ -1855,9 +1906,10 @@ function systemNoteFor(name: string): CommandResult | null {
  * dialect (0.27.0).
  *
  * Ubuntu's handler offers `sudo apt install <pkg>`; a Fedora box's offers
- * `sudo dnf install <pkg>`, because that is the verb it has. The hint is the
- * teaching half of the gag, so a hint in the wrong dialect would teach the
- * wrong thing on the one box that speaks the other one.
+ * `sudo dnf install <pkg>`, an openSUSE one `sudo zypper install <pkg>` and an
+ * Arch one `sudo pacman -S <pkg>`, because that is the verb each of them has.
+ * The hint is the teaching half of the gag, so a hint in the wrong dialect
+ * would teach the wrong thing on the one box that speaks another one.
  */
 function notInstalledHint(
   name: string,
@@ -1866,7 +1918,7 @@ function notInstalledHint(
 ): CommandResult {
   return lines(
     `Command '${name}' not found, but can be installed with:`,
-    `sudo ${manager} install ${pkg}`,
+    `sudo ${installVerb(manager)} ${pkg}`,
   );
 }
 
@@ -2125,18 +2177,47 @@ function packageManagerOn(
   api: GameApi,
   session: Readonly<SshSession>,
 ): PackageManager {
-  const distro = isOwnBox(api, session.hostId) ? ownBoxDistro(api) : null;
-
-  return packageManagerFor(distro) ?? 'apt';
+  return packageManagerFor(boxDistroOn(api, session)) ?? 'apt';
 }
 
 /**
- * What a box says when you use the OTHER family's package manager on it.
+ * Which distro a box is actually on, for the handful of facts that are about
+ * the DISTRIBUTION rather than about its package manager (0.28.0).
  *
- * `apt` on a Fedora box and `dnf` on an Ubuntu one are both just missing
- * binaries, and bash says so in one line. It is the sharpest thing the dialect
- * axis has: the mechanics are identical and the words are not, which is exactly
- * what walking onto an unfamiliar box feels like.
+ * There is exactly one of those so far - `subscription-manager` is a Red Hat
+ * binary and Fedora has never shipped it, though both speak dnf - and it is
+ * worth its own reader rather than being inferred off the verb, because "which
+ * words does this box use" and "which distribution is this" are two different
+ * questions and the RHEL family is the place they come apart.
+ */
+function boxDistroOn(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): DistroId | null {
+  return isOwnBox(api, session.hostId) ? ownBoxDistro(api) : null;
+}
+
+/**
+ * How a manager spells "install this", for the one place the shell has to put
+ * the verb in the player's mouth: the command-not-found hint.
+ *
+ * Three of the four say `install`; Arch says `-S`, because Arch says everything
+ * in flags. A hint that offered `pacman install htop` would be teaching a line
+ * that does not work, which is worse than no hint at all.
+ */
+function installVerb(manager: PackageManager): string {
+  return manager === 'pacman' ? 'pacman -S' : `${manager} install`;
+}
+
+/**
+ * What a box says when you use ANOTHER family's package manager on it.
+ *
+ * `apt` on a Fedora box, `dnf` on an Ubuntu one, `zypper` or `pacman` on either
+ * are all just missing binaries, and bash says so in one line. It is the
+ * sharpest thing the dialect axis has: the mechanics are identical and the
+ * words are not, which is exactly what walking onto an unfamiliar box feels
+ * like - so the second line names the verb this box DOES have, because a
+ * refusal that leaves somebody guessing at two in the morning is a dead end.
  */
 function wrongPackageManager(
   name: string,
@@ -2144,8 +2225,8 @@ function wrongPackageManager(
 ): CommandResult {
   return lines(
     `${name}: command not found`,
-    `This box speaks ${manager}. ${name} is the other family's package `
-      + 'manager; the mechanics are the same, the words are not.',
+    `This box speaks ${manager}. ${name} is another family's package manager; `
+      + 'the mechanics are the same, the words are not.',
   );
 }
 
@@ -2818,6 +2899,821 @@ function dnfLines(
       return lines(
         `"dnf ${sub}" is not something this terminal does.`,
         'It does "dnf install <pkg>", "dnf check-update" and "dnf upgrade".',
+      );
+  }
+}
+
+/**
+ * `yum` - the muscle memory, and the redirect it gets (0.28.0).
+ *
+ * On every RHEL-family release anybody still runs, `/usr/bin/yum` is dnf: the
+ * wrapper prints one line saying where it went and then dnf answers. So this is
+ * not a fifth dialect and it is deliberately not a copy of one - it is the
+ * redirect line and then `dnfLines`, on the same box, reading the same field.
+ * The joke is that it still works, and the teaching is that the name changed
+ * and the box did not care.
+ */
+function yumLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sub: string,
+  query: string,
+  args: readonly string[],
+  sudo: boolean,
+): CommandResult {
+  const dnf = dnfLines(api, session, sub, query, sudo);
+
+  return {
+    ...dnf,
+    lines: [
+      // The whole line, as the real wrapper echoes it - `sudo` is not part of
+      // it, because `sudo` is not part of the command on a real box either.
+      `Redirecting to '/usr/bin/dnf ${args.join(' ')}'`,
+      ...dnf.lines,
+    ],
+  };
+}
+
+/* -- subscription-manager: the gag that gates nothing (0.28.0) ------------ */
+
+/**
+ * Red Hat's entitlement tool, on the one distro that has it.
+ *
+ * It is a REGISTER BEAT and not a paywall: nothing on this box waits on it,
+ * nothing dnf does checks it, and the whole of its effect on the game is that
+ * an engineer types it once, finds out the account is somebody's leaver's, and
+ * carries on. Fedora does not ship it at all, which is why the box is asked
+ * which DISTRO it is rather than which package manager it speaks.
+ *
+ * Every line here is a read. Nothing dispatches, nothing is written, and a
+ * `register` that appeared to succeed would be the one thing this beat must not
+ * do - the comedy is precisely that it fails and it does not matter.
+ */
+function subscriptionManagerLines(sub: string): CommandResult {
+  const rule = `+${'-'.repeat(43)}+`;
+
+  switch (sub) {
+    case 'status':
+      return lines(
+        rule,
+        '   System Status Details',
+        rule,
+        'Overall Status: Disabled',
+        '',
+        'System Purpose Status: Disabled',
+      );
+    case 'list':
+      return lines(
+        rule,
+        '    Installed Product Status',
+        rule,
+        'Product Name:   Red Hat Enterprise Linux for x86_64',
+        'Product ID:     479',
+        'Version:        9.4',
+        'Arch:           x86_64',
+        'Status:         Not Subscribed',
+      );
+    case 'register':
+      return lines(
+        'Registering to: subscription.rhsm.redhat.com:443/subscription',
+        'Error: Unable to register: no credentials were supplied.',
+        'The account is in a spreadsheet your predecessor owned. Nothing on this',
+        'box is waiting on it - the repositories here are the rebuild\'s, and dnf',
+        'has never once asked.',
+      );
+    default:
+      return lines(
+        `"subscription-manager ${sub}" is not something this terminal does.`,
+        'It does "subscription-manager status", "subscription-manager register" '
+          + 'and "subscription-manager list".',
+      );
+  }
+}
+
+/* -- zypper: the third family's words, the same mechanics (0.28.0) -------- */
+
+/**
+ * The SUSE face of the same packages, and the same overlay shape `dnf` uses.
+ *
+ * The pending set is the SAME derived one, the guard is the SAME
+ * `installed_packages` field and the dispatch is the SAME two registered
+ * actions. What openSUSE genuinely changes is the NAMES - `libopenssl3` for
+ * Debian's `libssl3t64`, and `timezone` for `tzdata`, which is the tell anybody
+ * who has run one of these boxes recognises instantly - and the shape of the
+ * output, which is zypper's own table-and-`[done]` idiom rather than apt's
+ * prose or dnf's ruled transaction.
+ */
+interface SuseName {
+  readonly pkg: string;
+  readonly version: string;
+  readonly repo: string;
+}
+
+/** The pending pool's Debian names, as the RPM openSUSE ships them under. */
+const SUSE_UPDATES: Readonly<Record<string, SuseName>> = {
+  libssl3t64: {
+    pkg: 'libopenssl3',
+    version: '3.1.4-150600.5.9.1',
+    repo: 'Main Update Repository',
+  },
+  'openssh-server': {
+    pkg: 'openssh-server',
+    version: '9.6p1-150600.3.6.1',
+    repo: 'Main Update Repository',
+  },
+  curl: {
+    pkg: 'curl',
+    version: '8.6.0-150600.4.9.1',
+    repo: 'Main Update Repository',
+  },
+  // SUSE has never called it tzdata, and the day you need it is the day that
+  // matters.
+  tzdata: {
+    pkg: 'timezone',
+    version: '2024b-150000.75.30.1',
+    repo: 'Main Update Repository',
+  },
+  'vim-common': {
+    pkg: 'vim-data-common',
+    version: '9.1.0764-150500.20.15.1',
+    repo: 'Main Update Repository',
+  },
+};
+
+/** And the installables, under the names openSUSE has them under. */
+const SUSE_PACKAGES: Readonly<Record<string, SuseName>> = {
+  htop: { pkg: 'htop', version: '3.3.0-150600.1.4', repo: 'Main Repository' },
+  traceroute: {
+    pkg: 'traceroute',
+    version: '2.1.5-150600.1.7',
+    repo: 'Main Repository',
+  },
+  'net-tools': {
+    pkg: 'net-tools',
+    version: '2.10-150600.3.2',
+    repo: 'Main Repository',
+  },
+};
+
+const SUSE_ARCH = 'x86_64';
+
+/** A byte count as zypper prints one: `176.1 KiB`, `1.8 MiB`. */
+function suseSize(bytes: number): string {
+  return bytes >= 1_048_576
+    ? `${(bytes / 1_048_576).toFixed(1)} MiB`
+    : `${(bytes / 1024).toFixed(1)} KiB`;
+}
+
+/** The two lines zypper opens nearly every run with. */
+const ZYPPER_PREAMBLE: readonly string[] = [
+  'Loading repository data...',
+  'Reading installed packages...',
+];
+
+/** zypper's own refusal when a privileged subcommand is run without root. */
+function zypperNeedsRoot(what: string): CommandResult {
+  return lines(`Root privileges are required for ${what}.`);
+}
+
+/**
+ * `zypper install <pkg>` - the same key, cut for the third lock.
+ *
+ * Privileged (no sudo -> zypper's own root sentence, which names what it wanted
+ * the privilege FOR rather than apt's dpkg lock or dnf's flat refusal); a
+ * package outside the catalogue is zypper's two-step miss ("not found in
+ * package names. Trying capabilities." then "No provider of ... found."), which
+ * is one of the most recognisable strings this family has; one already
+ * installed is its "'x' is already installed." A real install dispatches
+ * `apt.install`, the SAME registered action, because what changes on the box is
+ * the same fact.
+ */
+function zypperInstallLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  pkg: string,
+  sudo: boolean,
+): CommandResult {
+  if (pkg.length === 0) {
+    return lines('zypper install: a package name is required.');
+  }
+
+  if (!sudo) {
+    return zypperNeedsRoot('installing or uninstalling packages');
+  }
+
+  const spec = INSTALLABLE_PACKAGES[pkg];
+  const name = SUSE_PACKAGES[pkg];
+
+  if (spec === undefined || name === undefined) {
+    return lines(
+      ...ZYPPER_PREAMBLE,
+      `'${pkg}' not found in package names. Trying capabilities.`,
+      `No provider of '${pkg}' found.`,
+      'Resolving package dependencies...',
+      '',
+      'Nothing to do.',
+    );
+  }
+
+  if (isPackageInstalled(api, session, pkg)) {
+    return lines(
+      ...ZYPPER_PREAMBLE,
+      `'${pkg}' is already installed.`,
+      `No update candidate for '${name.pkg}-${name.version}.${SUSE_ARCH}'. The `
+        + 'highest available version is already installed.',
+      'Resolving package dependencies...',
+      '',
+      'Nothing to do.',
+    );
+  }
+
+  const result = api.dispatch(
+    APT_ACTIONS.aptInstall,
+    api.actor,
+    session.hostId,
+    { [APT_PACKAGE_PARAM]: pkg },
+  );
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  const full = `${name.pkg}-${name.version}.${SUSE_ARCH}`;
+
+  return lines(
+    ...ZYPPER_PREAMBLE,
+    'Resolving package dependencies...',
+    '',
+    'The following NEW package is going to be installed:',
+    `  ${name.pkg}`,
+    '',
+    '1 new package to install.',
+    `Overall download size: ${suseSize(spec.downloadBytes)}. Already cached: `
+      + `0 B. After the operation, additional ${
+        suseSize(spec.installBytes)
+      } will be used.`,
+    'Continue? [y/n/v/...? shows all options] (y): y',
+    `Retrieving: ${full} (${name.repo})`,
+    `Retrieving: ${full}.rpm ${'.'.repeat(24)}[done]`,
+    `Checking for file conflicts: ${'.'.repeat(24)}[done]`,
+    `(1/1) Installing: ${full} ${'.'.repeat(24)}[done]`,
+  );
+}
+
+/**
+ * `zypper refresh` - the half apt spells `update`, and the reason the two
+ * families argue about the word.
+ *
+ * Privileged, because it writes the repository caches. It refreshes and then
+ * says how far behind the box is, which is the summary a real `zypper ref`
+ * leaves you to get from `zypper lu` - said here because the terminal has one
+ * screen and a refresh that tells you nothing is a command the player runs once
+ * and never again.
+ */
+function zypperRefreshLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sudo: boolean,
+): CommandResult {
+  if (!sudo) {
+    return zypperNeedsRoot('refreshing system repositories');
+  }
+
+  const pending = boxPending(api, session);
+
+  return lines(
+    `Retrieving repository 'Main Repository' metadata ${'.'.repeat(20)}[done]`,
+    `Building repository 'Main Repository' cache ${'.'.repeat(24)}[done]`,
+    `Retrieving repository 'Main Update Repository' metadata ${
+      '.'.repeat(13)
+    }[done]`,
+    `Building repository 'Main Update Repository' cache ${'.'.repeat(17)}[done]`,
+    'All repositories have been refreshed.',
+    ...(pending.length === 0
+      ? ['No updates found.']
+      : [`${String(pending.length)} package update${
+        pending.length === 1 ? '' : 's'
+      } available. Run 'zypper list-updates' to see them.`]),
+  );
+}
+
+/**
+ * `zypper list-updates` - the read half, in zypper's pipe-ruled table.
+ *
+ * Read-only, so no sudo, exactly like `apt list --upgradable` and `dnf
+ * check-update`. A patched box prints the header and zypper's own "No updates
+ * found." rather than nothing at all, which is the family difference from dnf's
+ * silence and is what zypper really does.
+ */
+function zypperListUpdatesLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): CommandResult {
+  const rows = suseRows(api, session);
+
+  if (rows.length === 0) {
+    return lines(...ZYPPER_PREAMBLE, '', 'No updates found.');
+  }
+
+  return lines(
+    ...ZYPPER_PREAMBLE,
+    '',
+    `S | ${pad('Repository', 23)}| ${pad('Name', 17)}| ${
+      pad('Current Version', 24)
+    }| ${pad('Available Version', 24)}| Arch`,
+    `--+-${'-'.repeat(23)}+-${'-'.repeat(17)}+-${'-'.repeat(24)}+-${
+      '-'.repeat(24)
+    }+-------`,
+    ...rows.map((row) => `v | ${pad(row.name.repo, 23)}| ${
+      pad(row.name.pkg, 17)
+    }| ${pad(row.from, 24)}| ${pad(row.name.version, 24)}| ${SUSE_ARCH}`),
+  );
+}
+
+/**
+ * The box's pending updates with their SUSE names beside them - the one
+ * translation both zypper surfaces read, so the table and the transaction
+ * cannot disagree about what is behind.
+ *
+ * The `from` version is invented nowhere: it is the pool's own Debian "from"
+ * bumped into SUSE's release suffix, which is the same trick the RPM table
+ * makes, and it keeps `list-updates` and `update` naming one version pair.
+ */
+function suseRows(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): readonly { readonly name: SuseName; readonly from: string; readonly bytes: number }[] {
+  return boxPending(api, session).flatMap((row) => {
+    const name = SUSE_UPDATES[row.pkg];
+
+    return name === undefined
+      ? []
+      : [{ name, from: suseFrom(name.version), bytes: row.bytes }];
+  });
+}
+
+/**
+ * The version a SUSE package is coming FROM: the same string with its MAINTENANCE
+ * counter rolled back one.
+ *
+ * A Leap update version is `<upstream>-<codestream>.<n>.<m>.<build>`, and the
+ * component that moves between two maintenance updates is `<m>` - the
+ * second-to-last - because the last one is the build and is almost always `.1`.
+ * Rolling back the LAST component instead is a no-op on every string in the
+ * table above, which is exactly the bug this comment exists to stop coming
+ * back: `list-updates` would print a row whose "current" and "available"
+ * columns were the same version, and it would look completely plausible.
+ * `zypperFromIsNotTo` in the tests is the standing gate on it.
+ */
+function suseFrom(version: string): string {
+  const parts = version.split('.');
+  const at = parts.length - 2;
+  const counter = Number(parts[at]);
+
+  if (at < 0 || !Number.isInteger(counter) || counter < 1) {
+    return version;
+  }
+
+  return parts
+    .map((part, index) => (index === at ? String(counter - 1) : part))
+    .join('.');
+}
+
+/**
+ * `zypper update` - applying the pending updates, through the same verb `apt
+ * upgrade` and `dnf upgrade` dispatch.
+ *
+ * Privileged. On a clean box it is zypper's own "Nothing to do."; on one behind
+ * on patches it prints the transaction and sets `updates_applied`, after which
+ * every one of the four dialects reads the box clean, because there is one
+ * truth on the machine and all of them read it.
+ */
+function zypperUpdateLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sudo: boolean,
+): CommandResult {
+  if (!sudo) {
+    return zypperNeedsRoot('installing or uninstalling packages');
+  }
+
+  const rows = suseRows(api, session);
+
+  if (rows.length === 0) {
+    return lines(...ZYPPER_PREAMBLE, '', 'Nothing to do.');
+  }
+
+  const result = api.dispatch(
+    APT_ACTIONS.aptUpgrade,
+    api.actor,
+    session.hostId,
+    {},
+  );
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  const totalBytes = rows.reduce((sum, row) => sum + row.bytes, 0);
+
+  return lines(
+    ...ZYPPER_PREAMBLE,
+    'Resolving package dependencies...',
+    '',
+    `The following ${String(rows.length)} package${
+      rows.length === 1 ? ' is' : 's are'
+    } going to be upgraded:`,
+    `  ${rows.map((row) => row.name.pkg).join(' ')}`,
+    '',
+    `${String(rows.length)} package${
+      rows.length === 1 ? '' : 's'
+    } to upgrade.`,
+    `Overall download size: ${suseSize(totalBytes)}. Already cached: 0 B. `
+      + 'After the operation, additional 0 B will be used.',
+    'Continue? [y/n/v/...? shows all options] (y): y',
+    ...rows.map((row, index) => `(${String(index + 1)}/${
+      String(rows.length)
+    }) Installing: ${row.name.pkg}-${row.name.version}.${SUSE_ARCH} ${
+      '.'.repeat(18)
+    }[done]`),
+  );
+}
+
+/** Dispatches a `zypper <sub>`, or names the four subcommands it does. */
+function zypperLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sub: string,
+  query: string,
+  sudo: boolean,
+): CommandResult {
+  switch (sub) {
+    // zypper's real two-letter aliases, which is how anybody who lives on one
+    // of these boxes actually types them.
+    case 'install':
+    case 'in':
+      return zypperInstallLines(api, session, query.trim(), sudo);
+    case 'refresh':
+    case 'ref':
+      return zypperRefreshLines(api, session, sudo);
+    case 'list-updates':
+    case 'lu':
+      return zypperListUpdatesLines(api, session);
+    case 'update':
+    case 'up':
+      return zypperUpdateLines(api, session, sudo);
+    default:
+      return lines(
+        `"zypper ${sub}" is not something this terminal does.`,
+        'It does "zypper install <pkg>", "zypper refresh", "zypper '
+          + 'list-updates" and "zypper update".',
+      );
+  }
+}
+
+/* -- pacman: the fourth family, spelled in flags (0.28.0) ----------------- */
+
+/**
+ * The Arch face of the same packages.
+ *
+ * Same overlay, same derived pending set, same field, same two actions - and
+ * the loudest surface difference in the whole axis, because Arch does not have
+ * subcommands at all. `-S` installs, `-Syu` syncs the databases and upgrades
+ * the system, `-Q` queries what is on the box, `-Qu` queries what is behind.
+ * Walking onto an Arch box and having to remember which capital letter you
+ * wanted is the actual experience, and the grammar here is the one that says
+ * it.
+ *
+ * The versions are Arch's: an upstream number and a `-1` pkgrel, with none of
+ * the distributor suffixes the other three carry, which is what a rolling
+ * release's package list genuinely looks like.
+ */
+interface ArchName {
+  readonly pkg: string;
+  readonly from: string;
+  readonly to: string;
+  readonly repo: string;
+}
+
+/** The pending pool's Debian names, as Arch has them. */
+const ARCH_UPDATES: Readonly<Record<string, ArchName>> = {
+  libssl3t64: {
+    pkg: 'openssl',
+    from: '3.3.1-1',
+    to: '3.3.2-1',
+    repo: 'core',
+  },
+  'openssh-server': {
+    pkg: 'openssh',
+    from: '9.8p1-3',
+    to: '9.9p1-1',
+    repo: 'core',
+  },
+  curl: { pkg: 'curl', from: '8.10.0-1', to: '8.10.1-1', repo: 'core' },
+  tzdata: { pkg: 'tzdata', from: '2024a-1', to: '2024b-1', repo: 'core' },
+  'vim-common': {
+    pkg: 'vim-runtime',
+    from: '9.1.0698-1',
+    to: '9.1.0764-1',
+    repo: 'extra',
+  },
+};
+
+/** And the installables, as Arch has them. */
+const ARCH_PACKAGES: Readonly<Record<string, string>> = {
+  htop: '3.3.0-1',
+  traceroute: '2.1.5-1',
+  'net-tools': '2.10-3',
+};
+
+/**
+ * The base packages an Arch box carries, for `pacman -Q`: name and version, one
+ * per line, no header and no legend, which is exactly what the real one prints.
+ *
+ * The five that are also in the update pool are NOT listed here - `-Q` reads
+ * their version off the box's pending state instead, so a package that is
+ * behind lists at the version it is behind AT and lists at the new one the
+ * moment `-Syu` has been run. That is the same "two surfaces, one field"
+ * agreement `dpkg -l` keeps with `apt install`, applied to the axis Arch is
+ * actually about.
+ */
+const PACMAN_BASE: readonly (readonly [string, string])[] = [
+  ['bash', '5.2.037-1'],
+  ['coreutils', '9.5-1'],
+  ['filesystem', '2024.04.07-1'],
+  ['glibc', '2.40-3'],
+  ['linux', '6.11.5-1'],
+  ['nginx', '1.27.2-1'],
+  ['pacman', '6.1.0-3'],
+  ['systemd', '256.7-1'],
+];
+
+/** A byte count as pacman prints one: `0.17 MiB`. */
+function pacmanSize(bytes: number): string {
+  return `${(bytes / 1_048_576).toFixed(2)} MiB`;
+}
+
+/** pacman's own refusal when a privileged flag is run without root. */
+function pacmanNeedsRoot(): CommandResult {
+  return lines(
+    'error: you cannot perform this operation unless you are root.',
+  );
+}
+
+/** The pending updates with their Arch names, the one translation -Syu/-Qu read. */
+function archRows(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): readonly { readonly name: ArchName; readonly bytes: number }[] {
+  return boxPending(api, session).flatMap((row) => {
+    const name = ARCH_UPDATES[row.pkg];
+
+    return name === undefined ? [] : [{ name, bytes: row.bytes }];
+  });
+}
+
+/**
+ * `pacman -S <pkg>` - install, and the one dialect that REINSTALLS rather than
+ * shrugging.
+ *
+ * Privileged. A name outside the catalogue is pacman's flat `error: target not
+ * found`. A package already on the box is the real Arch answer - a warning that
+ * it is up to date and a reinstall - rather than apt's "already the newest
+ * version": pacman does not have a no-op there, so the shell does not invent
+ * one, and it dispatches nothing, because reinstalling a package the box
+ * already has changes nothing about the box.
+ */
+function pacmanInstallLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  pkg: string,
+  sudo: boolean,
+): CommandResult {
+  if (pkg.length === 0) {
+    return lines('error: no targets specified (use -h for help)');
+  }
+
+  if (!sudo) {
+    return pacmanNeedsRoot();
+  }
+
+  const spec = INSTALLABLE_PACKAGES[pkg];
+  const version = ARCH_PACKAGES[pkg];
+
+  if (spec === undefined || version === undefined) {
+    return lines(`error: target not found: ${pkg}`);
+  }
+
+  if (isPackageInstalled(api, session, pkg)) {
+    return lines(
+      `warning: ${pkg}-${version} is up to date -- reinstalling`,
+      'resolving dependencies...',
+      'looking for conflicting packages...',
+      '',
+      `Packages (1) ${pkg}-${version}`,
+      '',
+      `Total Installed Size:  ${pacmanSize(spec.installBytes)}`,
+      `Net Upgrade Size:      ${pacmanSize(0)}`,
+      '',
+      ':: Proceed with installation? [Y/n]',
+      ':: Processing package changes...',
+      `reinstalling ${pkg}...`,
+    );
+  }
+
+  const result = api.dispatch(
+    APT_ACTIONS.aptInstall,
+    api.actor,
+    session.hostId,
+    { [APT_PACKAGE_PARAM]: pkg },
+  );
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  return lines(
+    'resolving dependencies...',
+    'looking for conflicting packages...',
+    '',
+    `Packages (1) ${pkg}-${version}`,
+    '',
+    `Total Download Size:   ${pacmanSize(spec.downloadBytes)}`,
+    `Total Installed Size:  ${pacmanSize(spec.installBytes)}`,
+    '',
+    ':: Proceed with installation? [Y/n]',
+    ':: Retrieving packages...',
+    'checking keyring...',
+    'checking package integrity...',
+    'loading package files...',
+    'checking for file conflicts...',
+    'checking available disk space...',
+    ':: Processing package changes...',
+    `installing ${pkg}...`,
+    ':: Running post-transaction hooks...',
+    '(1/1) Arming ConditionNeedsUpdate...',
+  );
+}
+
+/**
+ * `pacman -Syu` - sync the databases AND upgrade the system, which on Arch is
+ * one operation and is never two.
+ *
+ * Privileged, and it dispatches the same `apt.upgrade` verb the other three do,
+ * so a box patched here reads patched from every dialect.
+ *
+ * THE SYNC ALWAYS RUNS. On a box with nothing to upgrade this still prints the
+ * databases coming down and then pacman's own ` there is nothing to do`, which
+ * is the honest shape of the eternal `-Syu`: the repositories moved this
+ * morning the way they move every morning, and today you happen to be level
+ * with them. See the note on the Arch entry in `skins.ts` - a pending set that
+ * genuinely refilled would need the box to remember WHEN it was last patched,
+ * and the box has one boolean.
+ */
+function pacmanUpgradeLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sudo: boolean,
+): CommandResult {
+  if (!sudo) {
+    return pacmanNeedsRoot();
+  }
+
+  const sync: readonly string[] = [
+    ':: Synchronising package databases...',
+    ' core                     132.2 KiB   1120 KiB/s 00:00 [######] 100%',
+    ' extra                      8.4 MiB   9.90 MiB/s 00:01 [######] 100%',
+    ':: Starting full system upgrade...',
+  ];
+  const rows = archRows(api, session);
+
+  if (rows.length === 0) {
+    return lines(...sync, ' there is nothing to do');
+  }
+
+  const result = api.dispatch(
+    APT_ACTIONS.aptUpgrade,
+    api.actor,
+    session.hostId,
+    {},
+  );
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  const totalBytes = rows.reduce((sum, row) => sum + row.bytes, 0);
+
+  return lines(
+    ...sync,
+    'resolving dependencies...',
+    'looking for conflicting packages...',
+    '',
+    `Packages (${String(rows.length)}) ${
+      rows.map((row) => `${row.name.pkg}-${row.name.to}`).join('  ')
+    }`,
+    '',
+    `Total Download Size:   ${pacmanSize(totalBytes)}`,
+    `Net Upgrade Size:      ${pacmanSize(0)}`,
+    '',
+    ':: Proceed with installation? [Y/n]',
+    ':: Retrieving packages...',
+    'checking keyring...',
+    'checking package integrity...',
+    'loading package files...',
+    'checking for file conflicts...',
+    'checking available disk space...',
+    ':: Processing package changes...',
+    ...rows.map((row) => `upgrading ${row.name.pkg}...`),
+    ':: Running post-transaction hooks...',
+    '(1/1) Arming ConditionNeedsUpdate...',
+  );
+}
+
+/**
+ * `pacman -Q` - what is on the box, and `pacman -Qu` - what is behind.
+ *
+ * `-Q` is the `dpkg -l` of this family and prints far less: `name version`,
+ * one per line, and not a legend anywhere. It reads the SAME
+ * `installed_packages` field the installs write, so a package installed a
+ * moment ago is in the list - and it reads the box's pending state for the
+ * versions, so the five packages in the pool list at their old numbers while
+ * the box is behind and at their new ones the moment `-Syu` has run.
+ *
+ * `-Qu` is the read half, in pacman's `name old -> new` shape, and it is silent
+ * on a box with nothing behind, exactly as the real one is.
+ */
+function pacmanQueryLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  upgradable: boolean,
+): CommandResult {
+  const behind = new Map(
+    archRows(api, session).map((row) => [row.name.pkg, row.name] as const),
+  );
+
+  if (upgradable) {
+    return lines(
+      ...[...behind.values()].map(
+        (name) => `${name.pkg} ${name.from} -> ${name.to}`,
+      ),
+    );
+  }
+
+  const pool = Object.values(ARCH_UPDATES).map(
+    (name): readonly [string, string] => [
+      name.pkg,
+      behind.has(name.pkg) ? name.from : name.to,
+    ],
+  );
+  const extras = readInstalledPackages(
+    api.graph.getField(session.hostId, FIELDS.installedPackages),
+  ).flatMap((pkg): readonly (readonly [string, string])[] => {
+    const version = ARCH_PACKAGES[pkg];
+
+    return version === undefined ? [] : [[pkg, version]];
+  });
+
+  return lines(
+    ...[...PACMAN_BASE, ...pool, ...extras]
+      .slice()
+      .sort((left, right) => left[0].localeCompare(right[0]))
+      .map(([name, version]) => `${name} ${version}`),
+  );
+}
+
+/**
+ * Dispatches a `pacman <flag>`, off the RAW argument rather than the parser's
+ * lower-cased sub-command.
+ *
+ * That is not fussiness: pacman's operations are CASE-SENSITIVE - `-S` installs
+ * and `-s` searches - so reading a lower-cased verb here would make `pacman -s`
+ * install things, which is the one wrong answer a package manager must never
+ * give. Everything else in the unix grammar is genuinely case-insensitive;
+ * pacman is the exception, so pacman reads the raw flag.
+ */
+function pacmanLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  flag: string,
+  query: string,
+  sudo: boolean,
+): CommandResult {
+  switch (flag) {
+    case '-S':
+      return pacmanInstallLines(api, session, query.trim(), sudo);
+    case '-Syu':
+    case '-Syyu':
+      return pacmanUpgradeLines(api, session, sudo);
+    case '-Q':
+      return pacmanQueryLines(api, session, false);
+    case '-Qu':
+      return pacmanQueryLines(api, session, true);
+    default:
+      return lines(
+        `"pacman ${flag}" is not something this terminal does.`,
+        'It does "pacman -S <pkg>", "pacman -Syu", "pacman -Q" and '
+          + '"pacman -Qu". The capitals matter.',
       );
   }
 }
@@ -3895,12 +4791,17 @@ export function executeUnix(
       return dfLines(api, session);
     case 'du':
       return duLines(api, session, parsed.args);
-    // The dialect seam (0.27.0): a box has ONE package manager, so the other
-    // family's verb is a missing binary here exactly as it is on a real box.
-    // Every server on the estate speaks apt, so this changes nothing anywhere
-    // except on a machine the player has reinstalled themselves.
-    case 'apt':
-      return packageManagerOn(api, session) === 'apt'
+    // The dialect seam (0.27.0, widened to four families in 0.28.0): a box has
+    // ONE package manager, so every other family's verb is a missing binary
+    // here exactly as it is on a real box - and the refusal names the verb this
+    // box DOES speak, read off the box rather than hard-coded, so the matrix
+    // cannot drift as families are added. Every server on the estate speaks
+    // apt, so this changes nothing anywhere except on a machine the player has
+    // reinstalled themselves.
+    case 'apt': {
+      const manager = packageManagerOn(api, session);
+
+      return manager === 'apt'
         ? aptLines(
           api,
           session,
@@ -3909,9 +4810,12 @@ export function executeUnix(
           parsed.args,
           parsed.sudo === true,
         )
-        : wrongPackageManager('apt', 'dnf');
-    case 'dnf':
-      return packageManagerOn(api, session) === 'dnf'
+        : wrongPackageManager('apt', manager);
+    }
+    case 'dnf': {
+      const manager = packageManagerOn(api, session);
+
+      return manager === 'dnf'
         ? dnfLines(
           api,
           session,
@@ -3919,11 +4823,68 @@ export function executeUnix(
           parsed.query,
           parsed.sudo === true,
         )
-        : wrongPackageManager('dnf', 'apt');
-    case 'dpkg':
-      return packageManagerOn(api, session) === 'apt'
+        : wrongPackageManager('dnf', manager);
+    }
+    case 'yum': {
+      const manager = packageManagerOn(api, session);
+
+      return manager === 'dnf'
+        ? yumLines(
+          api,
+          session,
+          parsed.sub,
+          parsed.query,
+          parsed.args,
+          parsed.sudo === true,
+        )
+        : wrongPackageManager('yum', manager);
+    }
+    case 'zypper': {
+      const manager = packageManagerOn(api, session);
+
+      return manager === 'zypper'
+        ? zypperLines(
+          api,
+          session,
+          parsed.sub,
+          parsed.query,
+          parsed.sudo === true,
+        )
+        : wrongPackageManager('zypper', manager);
+    }
+    case 'pacman': {
+      const manager = packageManagerOn(api, session);
+
+      return manager === 'pacman'
+        ? pacmanLines(
+          api,
+          session,
+          // The RAW flag, because pacman's operations are case-sensitive and
+          // the parser's sub-command is not.
+          parsed.args[0] ?? '',
+          parsed.query,
+          parsed.sudo === true,
+        )
+        : wrongPackageManager('pacman', manager);
+    }
+    case 'subscription-manager':
+      // Not a package manager: a Red Hat binary, on the one distro that has it.
+      // Fedora speaks dnf and has never shipped this, which is why the box is
+      // asked which DISTRIBUTION it is rather than which verb it speaks.
+      return boxDistroOn(api, session) === 'rhel'
+        ? subscriptionManagerLines(parsed.sub)
+        : lines(
+          'subscription-manager: command not found',
+          'That is Red Hat\'s entitlement tool. This box is not a Red Hat one, '
+            + 'and nothing here is waiting on a subscription.',
+        );
+    case 'dpkg': {
+      const manager = packageManagerOn(api, session);
+
+      return manager === 'apt'
         ? dpkgLines(api, session)
-        : wrongPackageManager('dpkg', 'dnf');
+        : wrongPackageManager('dpkg', manager);
+    }
     case 'ps':
       return psLines(api, session);
     case 'ip':

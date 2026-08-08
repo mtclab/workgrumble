@@ -301,3 +301,66 @@ test('the desktop the player chose survives a save and a load', async ({
     .toHaveAttribute('data-panel', 'top');
   await expect(page.getByTestId('start-button')).toContainText('Activities');
 });
+
+/**
+ * 0.28.0: the distro that ships no desktop, and the one place in this shell
+ * where a choice opens another choice.
+ *
+ * `skins.test.ts` proves the RESOLUTION - that Arch on a machine with no
+ * desktop answers "needs-desktop" rather than inventing one - but a resolution
+ * is not a dialog. This is the half only a browser can answer: the pick is
+ * really on the screen, the machine has really not moved while it is up, and
+ * the answer really lands on both axes at once.
+ */
+test('Arch ships no desktop, so the player is made to pick one', async ({
+  page,
+}) => {
+  await arrive(page);
+  await promote(page);
+
+  const desktop = page.getByTestId('desktop');
+  const pick = page.getByTestId('display-desktop-pick');
+
+  await openFromStartMenu(page, 'display');
+  await expect(pick).toBeHidden();
+
+  // Every other distribution installs straight from this list, because every
+  // other distribution ships a desktop. This one asks.
+  await page.getByTestId('display-distro-arch').click();
+  await expect(pick).toBeVisible();
+  await expect(page.getByTestId('display-pick-prompt'))
+    .toContainText('Arch Linux');
+
+  // TEETH: the press itself installed NOTHING. A pick that had already put a
+  // desktop on the machine and then asked which one would be this window
+  // choosing for the player and calling it a question.
+  await expect(desktop).toHaveAttribute('data-skin', 'deskpro');
+  await expect(desktop).toHaveAttribute('data-distro', 'none');
+  await expect(page.getByTestId('start-button')).toContainText('Start');
+
+  // The list is the rich one - all six Linux desktops, and not the beige box
+  // the player is trying to leave.
+  await expect(page.getByTestId('display-pick-lxqt')).toBeVisible();
+  await expect(page.getByTestId('display-pick-mate')).toBeVisible();
+  await expect(page.getByTestId('display-pick-deskpro')).toHaveCount(0);
+
+  // The answer sets both axes in ONE go: chrome, distro and dialect together.
+  await page.getByTestId('display-pick-xfce').click();
+  await expect(pick).toBeHidden();
+  await expect(desktop).toHaveAttribute('data-skin', 'xfce');
+  await expect(desktop).toHaveAttribute('data-distro', 'arch');
+  await expect(desktop).toHaveAttribute('data-launcher', 'applications');
+  await expect(page.getByTestId('start-button')).toHaveText('Applications');
+  await expect(page.getByTestId('display-package-manager'))
+    .toContainText('pacman');
+
+  // And on a machine that HAS a desktop, the same distro asks nothing at all -
+  // there is one there to leave alone, which is the independence rule this axis
+  // has kept since 0.27.0 rather than an exemption written for Arch.
+  await page.getByTestId('display-desktop-lxqt').click();
+  await expect(desktop).toHaveAttribute('data-skin', 'lxqt');
+  await page.getByTestId('display-distro-arch').click();
+  await expect(pick).toBeHidden();
+  await expect(desktop).toHaveAttribute('data-skin', 'lxqt');
+  await expect(desktop).toHaveAttribute('data-distro', 'arch');
+});
