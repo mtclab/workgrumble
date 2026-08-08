@@ -15,6 +15,13 @@
  */
 
 import { isInstallableId } from './apps/installable';
+import {
+  DEFAULT_DESKTOP_CHOICE,
+  type DesktopChoiceState,
+  isDistroId,
+  isSkinId,
+  skinById,
+} from './skins';
 
 export type ChatSpeaker = 'them' | 'you' | 'system';
 
@@ -235,6 +242,21 @@ export interface MonitorState {
   readonly acknowledged: readonly string[];
 }
 
+/**
+ * Which desktop the box is running, and the distro underneath it (0.27.0).
+ *
+ * It is here for the same reason the install set and the open windows are: it
+ * changes what is ON SCREEN - the panel, the launcher, the window buttons - and
+ * which package-manager verb the player's own box speaks, rather than what is
+ * TRUE about the estate. Nothing in the graph moves when somebody switches
+ * desktop, which is what keeps every golden world byte-identical: a skin is
+ * chrome, and chrome is not history.
+ *
+ * Every scripted walk leaves it at the issued Windows box, and the goldens are
+ * asserted byte-identical on that fact.
+ */
+export type DesktopState = DesktopChoiceState;
+
 export interface AppState {
   readonly chat: ChatState;
   readonly mail: MailState;
@@ -247,6 +269,7 @@ export interface AppState {
   readonly assistant: AssistantState;
   readonly installed: InstalledState;
   readonly monitor: MonitorState;
+  readonly desktop: DesktopState;
 }
 
 export function createAppState(): AppState {
@@ -262,6 +285,7 @@ export function createAppState(): AppState {
     assistant: { dismissals: 0, closedOnDay: null },
     installed: { apps: [] },
     monitor: { acknowledged: [] },
+    desktop: { ...DEFAULT_DESKTOP_CHOICE },
   };
 }
 
@@ -474,6 +498,41 @@ function readMonitor(value: unknown): MonitorState | undefined {
   return acknowledged === undefined ? undefined : { acknowledged };
 }
 
+/**
+ * The desktop the box is running, read out of a file that may predate skins.
+ *
+ * An absent slice reads as the issued Windows box rather than a refusal, the
+ * same courtesy the install set and the board's ack list get: a save written
+ * before anybody could change their desktop is a save about a machine running
+ * the one desktop there was. Anything PRESENT is read strictly - an id neither
+ * registry holds is a hand-edited file, and so is a Windows box carrying a
+ * distro, which is a combination this shell never writes and which would put a
+ * package manager on a machine that has none.
+ */
+function readDesktop(value: unknown): DesktopState | undefined {
+  if (value === undefined) {
+    return { ...DEFAULT_DESKTOP_CHOICE };
+  }
+
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const { skin, distro } = value;
+
+  if (!isSkinId(skin)) {
+    return undefined;
+  }
+
+  if (distro === undefined || distro === null) {
+    return { skin, distro: null };
+  }
+
+  return isDistroId(distro) && skinById(skin).family !== 'windows'
+    ? { skin, distro }
+    : undefined;
+}
+
 function isSpeaker(value: unknown): value is ChatSpeaker {
   return value === 'them' || value === 'you' || value === 'system';
 }
@@ -550,7 +609,7 @@ export function parseAppState(value: unknown): AppState | null {
 
   const {
     chat, mail, hubbub, kb, day, browser, caught, windows, assistant, installed,
-    monitor,
+    monitor, desktop,
   } = value;
 
   if (
@@ -591,9 +650,11 @@ export function parseAppState(value: unknown): AppState | null {
   const installedApps = readInstalled(installed);
   const rooms = readHubbub(hubbub);
   const board = readMonitor(monitor);
+  const chrome = readDesktop(desktop);
 
   if (
-    board === undefined
+    chrome === undefined
+    || board === undefined
     || installedApps === undefined
     || helper === undefined
     || rooms === undefined
@@ -631,6 +692,7 @@ export function parseAppState(value: unknown): AppState | null {
     assistant: helper,
     installed: installedApps,
     monitor: board,
+    desktop: chrome,
   };
 }
 

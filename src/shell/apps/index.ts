@@ -9,6 +9,7 @@ import { CAUGHT_APP } from './caught';
 import { CHAT_APP } from './chat';
 import { CMD_APP } from './cmd';
 import { DIRECTORY_APP } from './directory';
+import { DISPLAY_APP } from './display';
 import { EVENTS_APP } from './events';
 import { FEEDBACK_APP } from './feedback';
 import { HUBBUB_APP } from './hubbub';
@@ -64,6 +65,11 @@ export const APP_MANIFEST = assertCaughtScenes(loadManifest([
   CMD_APP,
   KB_APP,
   ABOUT_APP,
+  // Where the box's own look is chosen (0.27.0). Beside About This Workstation
+  // because it is the other window that is about the machine rather than about
+  // the job - and because on the caricature this game is set in, Display
+  // Properties was two clicks from System Properties.
+  DISPLAY_APP,
   // The two that are about the product rather than about the job. They sit at
   // the end of the roster on purpose: a tester needs them at any moment and a
   // player needs them never, so they are last in the menu and last on the

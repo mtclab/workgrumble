@@ -237,6 +237,34 @@ describe('the save file', () => {
   });
 
   /**
+   * The desktop the box is running, carried by the save (0.27.0).
+   *
+   * A skin is chrome, so it changes nothing in the world - which is exactly why
+   * it has to be carried HERE: nothing in the engine's snapshot remembers it, so
+   * a session that came back on the machine IT issued would be a reinstall the
+   * player did and the game forgot. The world hash is asserted UNMOVED by the
+   * choice on the way past, because that is the other half of the claim.
+   */
+  it('comes back on the desktop the player installed, world untouched', () => {
+    const live = session();
+    live.driver.startShift();
+    const hash = live.engine.snapshotHash();
+
+    live.appState.patch('desktop', { skin: 'gnome', distro: 'fedora' });
+    // Chrome, and nothing else: the same world, to the byte.
+    expect(live.engine.snapshotHash()).toBe(hash);
+    expect(live.session.save()).toEqual({ ok: true, value: undefined });
+
+    const loaded = session(live.storage);
+    expect(loaded.appState.get().desktop)
+      .toEqual({ skin: 'deskpro', distro: null });
+    expect(loaded.session.load()).toEqual({ ok: true, value: undefined });
+    expect(loaded.appState.get().desktop)
+      .toEqual({ skin: 'gnome', distro: 'fedora' });
+    expect(loaded.engine.snapshotHash()).toBe(hash);
+  });
+
+  /**
    * A save taken while somebody is still typing, and a load that comes back
    * into the middle of it.
    *

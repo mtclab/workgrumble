@@ -50,6 +50,7 @@ function apiFor(
     hasApp: () => false,
     installApp: () => ({ ok: true }),
     uninstallApp: () => ({ ok: true }),
+    setDesktop: () => ({ ok: true }),
     restartWeek: () => {},
     acceptOffer: () => {},
     employer: 'workgrumble',

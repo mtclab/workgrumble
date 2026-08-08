@@ -120,6 +120,7 @@ function apiFor(world: Week): GameApi {
     hasApp: () => false,
     installApp: () => ({ ok: true }),
     uninstallApp: () => ({ ok: true }),
+    setDesktop: () => ({ ok: true }),
     restartWeek: () => {},
     acceptOffer: () => {},
     employer: 'msp',

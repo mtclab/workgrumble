@@ -89,6 +89,7 @@ describe('shipped manifest', () => {
       'cmd',
       'kb',
       'about',
+      'display',
       'updates',
       'feedback',
       'bubbles',
@@ -108,15 +109,22 @@ describe('shipped manifest', () => {
   });
 
   /**
-   * Tier zero is the bare workstation, and the three things on it are the
-   * three that are about the MACHINE rather than about the job: what this is,
-   * what it just installed, and how to say it is broken. A tester whose build
-   * fails before it can hand out a helpdesk still has to be able to report
-   * that, so neither of the two new ones is gated behind a promotion.
+   * Tier zero is the bare workstation, and the four things on it are the four
+   * that are about the MACHINE rather than about the job: what this is, what it
+   * LOOKS like, what it just installed, and how to say it is broken. A tester
+   * whose build fails before it can hand out a helpdesk still has to be able to
+   * report that, so none of them is gated behind a promotion.
+   *
+   * Display Properties (0.27.0) is on this list rather than with the tools for
+   * the same reason About is: it is a window about the box. What it can DO is
+   * gated - a service-desk player is refused a Linux desktop, in a sentence -
+   * but the gate belongs on the choice, not on the window: a control somebody
+   * cannot even find is a control that teaches nobody why.
    */
   it('hides tier-gated apps from a tier-zero desktop', () => {
     expect(appsForTier(APP_MANIFEST, 0).map(({ id }) => id)).toEqual([
       'about',
+      'display',
       'updates',
       'feedback',
     ]);
@@ -141,6 +149,7 @@ describe('shipped manifest', () => {
       'cmd',
       'kb',
       'about',
+      'display',
       'updates',
       'feedback',
       'bubbles',

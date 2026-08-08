@@ -355,3 +355,55 @@ describe('the installed-app set', () => {
     }
   });
 });
+
+describe('the desktop the box is running', () => {
+  it('starts on the box IT issued, so a scripted week never carries a skin', () => {
+    // The determinism guarantee, the same one the install set gives: every
+    // session starts on the Windows caricature and the scripted walks never
+    // change desktop, so the goldens do not move and the default chrome is the
+    // chrome the whole existing suite is written against.
+    expect(createAppState().desktop).toEqual({ skin: 'deskpro', distro: null });
+  });
+
+  it('carries a chosen desktop through storage, and reads a file from before it', () => {
+    const store = new AppStateStore();
+    store.patch('desktop', { skin: 'gnome', distro: 'ubuntu' });
+
+    const wire: unknown = JSON.parse(JSON.stringify(store.snapshot()));
+    expect(parseAppState(wire)?.desktop)
+      .toEqual({ skin: 'gnome', distro: 'ubuntu' });
+
+    // And it comes back through a real hydrate, which is what a load is: the
+    // shell that reopens on GNOME is the one that saved on GNOME.
+    const loaded = new AppStateStore();
+    expect(loaded.hydrate(wire)).toBe(true);
+    expect(loaded.get().desktop).toEqual({ skin: 'gnome', distro: 'ubuntu' });
+
+    // A save written before anybody could change their desktop loads as the
+    // issued box rather than as a refusal - the same grace the install set gets.
+    const older = { ...(wire as Record<string, unknown>) };
+    delete older.desktop;
+    expect(parseAppState(older)?.desktop)
+      .toEqual({ skin: 'deskpro', distro: null });
+  });
+
+  it('refuses a desktop or a distro this build cannot draw', () => {
+    const store = new AppStateStore();
+    const good: unknown = JSON.parse(JSON.stringify(store.snapshot()));
+
+    for (const desktop of [
+      { skin: 'xfce', distro: null },
+      { skin: 'gnome', distro: 'slackware' },
+      // A Windows box on a distro: a combination this shell never writes, and
+      // one that would put a package manager on a machine that has none.
+      { skin: 'deskpro', distro: 'ubuntu' },
+      { skin: 7, distro: null },
+      'gnome',
+    ]) {
+      expect(
+        parseAppState({ ...(good as object), desktop }),
+        JSON.stringify(desktop),
+      ).toBeNull();
+    }
+  });
+});

@@ -9,6 +9,7 @@ import { MSP_IDS } from '../../world/msp-company';
 import { WasmEngine } from '../../engine-api';
 import {
   FIELDS,
+  MACHINE_OS,
   PLAYER_TIERS,
   type PlayerTier,
   SYSTEMD_STATES,
@@ -64,6 +65,7 @@ function apiFor(session: WorldSession): GameApi {
     hasApp: () => false,
     installApp: () => ({ ok: true }),
     uninstallApp: () => ({ ok: true }),
+    setDesktop: () => ({ ok: true }),
     restartWeek: () => {},
     acceptOffer: () => {},
     employer: 'workgrumble',
@@ -1299,5 +1301,152 @@ describe('identity and permissions (E6, 0.21.0)', () => {
       expect(world.engine.graph.getField(MSP_IDS.mspInfraAuthUnit, FIELDS.unitState))
         .toBe(SYSTEMD_STATES.activeRunning);
     });
+  });
+});
+
+/* ========================================================================= *
+ * 0.27.0: the distro as dialect - the same mechanics, the other verb.
+ * ========================================================================= */
+
+/**
+ * A promoted engineer who has put a distro on their OWN box, standing on it.
+ *
+ * The box is the machine the player's account owns (FC-DESK-07 at the MSP), and
+ * the ONLY thing that makes it reachable is the install: the world still holds
+ * it as the Windows workstation it was seeded as, because a desktop and a
+ * distro are shell state and no golden may move for chrome.
+ */
+function onOwnBox(distro: 'ubuntu' | 'mint' | 'fedora'): OnMsp {
+  const world = createWorldSession(MSP_CARRY);
+  const api = apiFor(world);
+  earnPromotion(world);
+  win(api, 'promotion accept');
+  api.appState.patch('desktop', {
+    skin: distro === 'fedora' ? 'kde' : distro === 'mint' ? 'cinnamon' : 'gnome',
+    distro,
+  });
+  const ssh = connect(api, 'ssh engineer@FC-DESK-07');
+
+  if (ssh === null) {
+    throw new Error('ssh did not open a session on the player\'s own box');
+  }
+
+  return { world, api, ssh };
+}
+
+describe('the distro axis: apt, dnf, and the box that speaks one (0.27.0)', () => {
+  it('TEETH: the box is only ssh-able once Linux is actually on it', () => {
+    const world = createWorldSession(MSP_CARRY);
+    const api = apiFor(world);
+    earnPromotion(world);
+    win(api, 'promotion accept');
+
+    // Before the install: the issued box is a Windows workstation and says so
+    // in openssh's own words. Revert the shell's half of `isLinuxHost` and this
+    // is the assertion that stops passing.
+    const refused = win(api, 'ssh engineer@FC-DESK-07').lines.join('\n');
+    expect(refused).toContain('Connection refused');
+    expect(refused).toContain('does not run sshd');
+    expect(win(api, 'ssh engineer@FC-DESK-07').enterSession).toBeUndefined();
+
+    // After it: the same box, the same world, a machine that answers on 22.
+    api.appState.patch('desktop', { skin: 'gnome', distro: 'ubuntu' });
+    expect(connect(api, 'ssh engineer@FC-DESK-07')).not.toBeNull();
+
+    // And the world is untouched by any of it: the machine is still seeded
+    // exactly as it was, which is what keeps every golden byte-identical.
+    expect(api.graph.getField(MSP_IDS.playerMachine, FIELDS.machineOs))
+      .toBe(MACHINE_OS.windows);
+  });
+
+  it('speaks apt on the Debian family, and dnf is simply not there', () => {
+    const { api, ssh } = onOwnBox('mint');
+
+    expect(unix(api, ssh, 'apt list --upgradable').lines[0])
+      .toBe('Listing... Done');
+    const wrong = unix(api, ssh, 'sudo dnf check-update').lines.join('\n');
+    expect(wrong).toContain('dnf: command not found');
+    expect(wrong).toContain('This box speaks apt');
+  });
+
+  it('speaks dnf on Fedora, and apt and dpkg are simply not there', () => {
+    const { api, ssh } = onOwnBox('fedora');
+
+    for (const line of ['sudo apt update', 'apt list --upgradable', 'dpkg -l']) {
+      const out = unix(api, ssh, line).lines.join('\n');
+      expect(out, line).toContain('command not found');
+      expect(out, line).toContain('This box speaks dnf');
+    }
+  });
+
+  it('every server on the estate still speaks apt, exactly as it did', () => {
+    // The axis reaches the player's OWN box and nothing else: a customer's
+    // server is the Ubuntu the world seeds it as, whatever the player has
+    // installed on their desk.
+    const { api, ssh } = onMsp();
+    expect(unix(api, ssh, 'apt list --upgradable').lines[0])
+      .toBe('Listing... Done');
+    expect(unix(api, ssh, 'dnf check-update').lines.join('\n'))
+      .toContain('dnf: command not found');
+  });
+
+  it('dnf install closes the same gag apt closes, in dnf\'s own words', () => {
+    const { api, ssh } = onOwnBox('fedora');
+
+    // The gag, hinted in the box's dialect rather than Ubuntu's.
+    const gagged = unix(api, ssh, 'htop').lines;
+    expect(gagged[0]).toBe('Command \'htop\' not found, but can be installed with:');
+    expect(gagged[1]).toBe('sudo dnf install htop');
+
+    // Privileged, in dnf's own refusal rather than apt's dpkg lock.
+    expect(unix(api, ssh, 'dnf install htop').lines.join('\n'))
+      .toContain('superuser privileges');
+
+    const install = unix(api, ssh, 'sudo dnf install htop').lines.join('\n');
+    expect(install).toContain('Dependencies resolved.');
+    expect(install).toContain('Installing:');
+    expect(install).toContain('htop-3.3.0-4.fc41.x86_64');
+    expect(install).toContain('Complete!');
+
+    // The SAME field on the SAME box: one truth, two dialects reading it.
+    expect(readInstalledPackages(
+      api.graph.getField(ssh.hostId, FIELDS.installedPackages),
+    )).toEqual(['htop']);
+    // And the gag is closed - htop runs now.
+    expect(unix(api, ssh, 'htop').lines.join('\n')).toContain('Tasks:');
+    expect(unix(api, ssh, 'sudo dnf install htop').lines.join('\n'))
+      .toContain('is already installed');
+    expect(unix(api, ssh, 'sudo dnf install cowsay').lines.join('\n'))
+      .toContain('No match for argument: cowsay');
+  });
+
+  it('dnf check-update lists what is pending, and goes SILENT once it is not', () => {
+    const { api, ssh } = onOwnBox('fedora');
+
+    const pending = unix(api, ssh, 'dnf check-update').lines;
+    expect(pending.length).toBeGreaterThan(0);
+    expect(pending.join('\n')).toContain('openssl-libs.x86_64');
+
+    // Privileged, and it writes the same flag apt upgrade writes.
+    expect(unix(api, ssh, 'dnf upgrade').lines.join('\n'))
+      .toContain('superuser privileges');
+    const upgrade = unix(api, ssh, 'sudo dnf upgrade').lines.join('\n');
+    expect(upgrade).toContain('Upgrading:');
+    expect(upgrade).toContain('Complete!');
+    expect(api.graph.getField(ssh.hostId, FIELDS.updatesApplied)).toBe(true);
+
+    // A patched box's `dnf check-update` prints NOTHING, which is what a real
+    // one does - the same family beat `systemctl restart` teaches.
+    expect(unix(api, ssh, 'dnf check-update').lines).toEqual([]);
+    expect(unix(api, ssh, 'sudo dnf upgrade').lines.join('\n'))
+      .toContain('Nothing to do.');
+  });
+
+  it('is deterministic: the same box answers the same way every time', () => {
+    const { api, ssh } = onOwnBox('fedora');
+    const first = unix(api, ssh, 'dnf check-update').lines.join('\n');
+    const second = unix(api, ssh, 'dnf check-update').lines.join('\n');
+
+    expect(first).toBe(second);
   });
 });

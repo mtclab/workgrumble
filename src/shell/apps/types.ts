@@ -9,6 +9,7 @@ import type {
 import type { ApiResult, FeedbackSubmission } from '../api';
 import type { AppStateStore } from '../app-state';
 import type { DayApi } from '../day-driver';
+import type { DesktopChoice } from '../skins';
 
 /**
  * What one app asks another to show when it opens it.
@@ -99,6 +100,18 @@ export interface GameApi {
    */
   installApp(id: string): DispatchResult;
   uninstallApp(id: string): DispatchResult;
+  /**
+   * Puts a different desktop on the machine (0.27.0) - the other runtime change
+   * to the shell an app can ask for, and the mirror of `installApp`.
+   *
+   * A desktop and the distro under it are two independent axes, so a request
+   * may name either or both; whatever is left out is left alone, except that
+   * choosing a desktop brings its paired distro along. It answers rather than
+   * throwing, exactly as the store's calls do: the promotion gates it, a
+   * service-desk player is refused in the shell's own sentence, and the window
+   * reads that answer back to the player beside the button they pressed.
+   */
+  setDesktop(choice: Readonly<DesktopChoice>): DispatchResult;
   /**
    * Plays the probation week again after a firing.
    *

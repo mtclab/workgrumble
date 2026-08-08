@@ -6,6 +6,7 @@ import type {
 } from './apps/types';
 import { createIcon } from './icons';
 import { createReentrantPass } from './reentrant';
+import type { Skin } from './skins';
 import {
   closeWindow,
   focusWindow,
@@ -129,7 +130,16 @@ export class GestureBook {
 
 interface RenderedWindow {
   readonly element: HTMLElement;
-  readonly maximizeButton: HTMLButtonElement;
+  /** The titlebar's button row, rebuilt when the desktop skin changes. */
+  readonly controls: HTMLElement;
+  /**
+   * The maximize button, or NULL under a skin whose titlebars do not have one.
+   *
+   * Null rather than hidden: GNOME's close-only titlebar is the sharpest tell
+   * of the three desktops, so the button is not built at all - there is nothing
+   * in the DOM to un-hide - and every read of it here has to cope with that.
+   */
+  maximizeButton: HTMLButtonElement | null;
   readonly abortController: AbortController;
   readonly instance: AppInstance;
   /** Last painted maximize state; null until the first paint. */
@@ -138,6 +148,7 @@ interface RenderedWindow {
 
 type ReadState = () => Readonly<WindowManagerState>;
 type CommitState = (state: WindowManagerState) => void;
+type ReadSkin = () => Readonly<Skin>;
 
 function titlebarButton(
   className: string,
@@ -177,6 +188,12 @@ export class WindowRenderer {
     private readonly api: GameApi,
     private readonly readState: ReadState,
     private readonly commitState: CommitState,
+    /**
+     * The desktop the box is running (0.27.0). The renderer reads exactly one
+     * thing off it - which titlebar buttons exist and at which end - because
+     * that is the whole of a skin's reach into a window.
+     */
+    private readonly readSkin: ReadSkin,
   ) {
     for (const definition of manifest) {
       this.definitions.set(definition.id, definition);
@@ -383,24 +400,11 @@ export class WindowRenderer {
 
     const controls = document.createElement('div');
     controls.className = 'window-controls';
-    const minimizeButton = titlebarButton(
-      'window-minimize',
-      `Minimize ${windowState.title}`,
-      'icon-minimize',
+    const maximizeButton = this.fillTitlebarControls(
+      controls,
+      windowState,
+      signal,
     );
-    minimizeButton.dataset.testid = `minimize-${windowState.appId}`;
-    const maximizeButton = titlebarButton(
-      'window-maximize',
-      `Maximize ${windowState.title}`,
-      'icon-maximize',
-    );
-    const closeButton = titlebarButton(
-      'window-close',
-      `Close ${windowState.title}`,
-      'icon-close',
-    );
-    closeButton.dataset.testid = `close-${windowState.appId}`;
-    controls.append(minimizeButton, maximizeButton, closeButton);
     titlebar.append(title, controls);
 
     const content = document.createElement('div');
@@ -457,29 +461,6 @@ export class WindowRenderer {
       },
       { signal },
     );
-    minimizeButton.addEventListener(
-      'click',
-      () => {
-        this.commitState(minimizeWindow(this.readState(), windowState.id));
-      },
-      { signal },
-    );
-    maximizeButton.addEventListener(
-      'click',
-      () => {
-        this.commitState(
-          toggleMaximizedWindow(this.readState(), windowState.id),
-        );
-      },
-      { signal },
-    );
-    closeButton.addEventListener(
-      'click',
-      () => {
-        this.commitState(closeWindow(this.readState(), windowState.id));
-      },
-      { signal },
-    );
 
     this.layer.append(element);
     let instance: AppInstance;
@@ -508,11 +489,116 @@ export class WindowRenderer {
 
     return {
       element,
+      controls,
       maximizeButton,
       abortController,
       instance,
       maximizeIcon: null,
     };
+  }
+
+  /**
+   * Builds the titlebar's buttons - the ones the current skin says exist, in
+   * the order it says, at the end it says - and answers with the maximize
+   * button or null when this desktop has none.
+   *
+   * A button the skin does not name is NOT BUILT. It is not hidden and it is
+   * not disabled: GNOME's titlebars genuinely have one button on them, and a
+   * `display: none` fake would be the skin system claiming a tell it had not
+   * actually shipped. This is also why the row is filled rather than assembled
+   * from three fixed locals - the set is data now, and the same call rebuilds a
+   * live window's row when the player changes desktop mid-session.
+   */
+  private fillTitlebarControls(
+    controls: HTMLElement,
+    windowState: Readonly<ManagedWindow>,
+    signal: AbortSignal,
+  ): HTMLButtonElement | null {
+    const skin = this.readSkin();
+    controls.replaceChildren();
+    controls.dataset.side = skin.windowButtons.side;
+    let maximizeButton: HTMLButtonElement | null = null;
+
+    for (const button of skin.windowButtons.order) {
+      if (button === 'minimize') {
+        const minimize = titlebarButton(
+          'window-minimize',
+          `Minimize ${windowState.title}`,
+          'icon-minimize',
+        );
+        minimize.dataset.testid = `minimize-${windowState.appId}`;
+        minimize.addEventListener(
+          'click',
+          () => {
+            this.commitState(minimizeWindow(this.readState(), windowState.id));
+          },
+          { signal },
+        );
+        controls.append(minimize);
+        continue;
+      }
+
+      if (button === 'maximize') {
+        maximizeButton = titlebarButton(
+          'window-maximize',
+          `Maximize ${windowState.title}`,
+          'icon-maximize',
+        );
+        maximizeButton.addEventListener(
+          'click',
+          () => {
+            this.commitState(
+              toggleMaximizedWindow(this.readState(), windowState.id),
+            );
+          },
+          { signal },
+        );
+        controls.append(maximizeButton);
+        continue;
+      }
+
+      const close = titlebarButton(
+        'window-close',
+        `Close ${windowState.title}`,
+        'icon-close',
+      );
+      close.dataset.testid = `close-${windowState.appId}`;
+      close.addEventListener(
+        'click',
+        () => {
+          this.commitState(closeWindow(this.readState(), windowState.id));
+        },
+        { signal },
+      );
+      controls.append(close);
+    }
+
+    return maximizeButton;
+  }
+
+  /**
+   * Re-chromes every open window for a desktop the player has just chosen.
+   *
+   * The apps are NOT remounted: a skin is a look, so the terminal keeps its
+   * scrollback and the queue keeps its selection while the titlebars around
+   * them change. Only the button row is rebuilt, and the remembered maximize
+   * icon is forgotten with it so the next paint re-labels a fresh button.
+   */
+  public applySkin(state: Readonly<WindowManagerState>): void {
+    for (const windowState of state.windows) {
+      const rendered = this.rendered.get(windowState.id);
+
+      if (rendered === undefined) {
+        continue;
+      }
+
+      rendered.maximizeButton = this.fillTitlebarControls(
+        rendered.controls,
+        windowState,
+        rendered.abortController.signal,
+      );
+      rendered.maximizeIcon = null;
+    }
   }
 
   private updateRenderedWindow(
@@ -553,7 +639,13 @@ export class WindowRenderer {
 
     // Repainting the icon costs a new SVG node, and `sync` runs on every
     // pointer move of a drag - so only touch it when the state actually flips.
-    if (rendered.maximizeIcon === windowState.maximized) {
+    // A desktop with no maximize button has nothing to repaint at all, and a
+    // window can still BE maximized under one (the titlebar's double-click
+    // does it) - so the state is left alone rather than guarded against.
+    if (
+      maximizeButton === null
+      || rendered.maximizeIcon === windowState.maximized
+    ) {
       return;
     }
 

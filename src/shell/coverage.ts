@@ -2495,6 +2495,26 @@ const ENTRIES = [
       + 'a box.',
   },
   {
+    id: 'cmd.dnf',
+    surface: 'cmd',
+    control: 'dnf <install <pkg> | check-update | upgrade>',
+    does: 'The RHEL family\'s package manager (0.27.0), over exactly the same '
+      + 'mechanics apt runs on: on a box the player has put Fedora on, "sudo dnf '
+      + 'install htop" prints the real transaction table and records the package '
+      + 'in the SAME installed_packages set - closing the SAME not-installed gag, '
+      + 'whose hint is in dnf\'s words there - "dnf check-update" lists the '
+      + 'pending updates and is SILENT once there are none, and "sudo dnf '
+      + 'upgrade" applies them through the same verb. The other family\'s manager '
+      + 'is a missing binary on each: apt and dpkg are command-not-found on a dnf '
+      + 'box, and dnf is on every apt one, which is every server on the estate.',
+    command: 'dnf',
+    actions: [APT_ACTIONS.aptInstall, APT_ACTIONS.aptUpgrade],
+    run: 'sysadmin',
+    why: 'A unix-dialect verb on a box that speaks dnf, and the only box that '
+      + 'does is one the player has reinstalled - which needs the promotion twice '
+      + 'over: to choose a desktop at all, and to ssh onto the result.',
+  },
+  {
     id: 'cmd.dpkg',
     surface: 'cmd',
     control: 'dpkg -l',
@@ -2829,6 +2849,60 @@ const ENTRIES = [
     control: 'about-open-bubbles',
     does: 'Opens Bubble Break from inside a work app, exactly once.',
     run: 'week',
+  },
+
+  /* -- Display Properties: the desktop the box runs (0.27.0) --------------- */
+  {
+    id: 'display.window',
+    surface: 'display',
+    control: 'window-display',
+    does: 'Display Properties: what this machine is running - the desktop and '
+      + 'the distribution under it - and the two lists it is chosen from, read '
+      + 'live off the box rather than off what was last pressed.',
+    window: { routes: ['start-menu', 'desktop-icon'] },
+    run: 'week',
+  },
+  {
+    id: 'display.refused',
+    surface: 'display',
+    control: 'display-desktop-gnome (below the engineer tier)',
+    does: 'Refuses a service-desk player their own desktop and SAYS why - IT '
+      + 'issues the desk a Windows box and keeps the image, and putting your own '
+      + 'on it arrives with the promotion. The chrome does not move and the '
+      + 'sentence is beside the button that was pressed, rather than a control '
+      + 'that is greyed out and explains nothing.',
+    run: 'week',
+  },
+  {
+    id: 'display.desktop',
+    surface: 'display',
+    control: 'display-desktop-kde, display-desktop-gnome, '
+      + 'display-desktop-cinnamon, display-desktop-deskpro',
+    does: 'Installs a different desktop on the machine, live: the panel moves '
+      + 'to the edge that desktop puts it on, the launcher becomes that '
+      + 'desktop\'s (Start, Kickoff, Activities, Menu), the window list is there '
+      + 'or genuinely is not, and every open titlebar is re-chromed with the '
+      + 'buttons that desktop has - GNOME with the close button and NO minimize '
+      + 'or maximize anywhere in the document. The apps underneath are untouched: '
+      + 'a skin is a look, and the same ticket is worked the same way under all '
+      + 'four. The choice rides the save.',
+    run: 'sysadmin',
+    why: 'The desk is issued a Windows box and IT keeps the image: choosing a '
+      + 'desktop is gated on the promotion, which no probation week reaches. The '
+      + 'refusal below the tier is walked in the week run; this is the far side '
+      + 'of the same gate.',
+  },
+  {
+    id: 'display.distro',
+    surface: 'display',
+    control: 'display-distro-ubuntu, display-distro-mint, display-distro-fedora',
+    does: 'Changes the distribution under the desktop without touching the '
+      + 'desktop - the second axis, and the proof they are independent: a Fedora '
+      + 'box running KDE is a real machine. It decides which package-manager verb '
+      + 'the box speaks, which is the difference the terminal then answers in.',
+    run: 'sysadmin',
+    why: 'Behind the same promotion gate as the desktop it sits under, and only '
+      + 'legible on a box that has a distro at all.',
   },
 
   /* -- Update History ----------------------------------------------------- */
@@ -3592,6 +3666,10 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'minesweeper-flag-toggle',
   'minesweeper-new-game',
   'minesweeper-cell-*',
+  // Display Properties (0.27.0): one family per axis - the desktops the box can
+  // wear, and the distributions it can be on.
+  'display-desktop-*',
+  'display-distro-*',
   'about-run-diagnostics',
   'about-reseat-fan',
   'about-refresh',

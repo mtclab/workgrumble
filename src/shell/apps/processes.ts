@@ -64,6 +64,10 @@ export const PROGRAM_IMAGES: Readonly<Record<string, ProgramImage>> = {
   cmd: { image: 'CMD.EXE', title: 'Support Terminal' },
   kb: { image: 'KBASE.EXE', title: 'Knowledge Base' },
   about: { image: 'WINVER.EXE', title: 'About This Workstation' },
+  // The control-panel applet the desktop is chosen in, named the way the
+  // caricature named it: a .CPL wearing an .EXE, because that is what the
+  // process list of the era showed when you opened one.
+  display: { image: 'DESKCPL.EXE', title: 'Display Properties' },
   updates: { image: 'UPDHIST.EXE', title: 'Update History' },
   feedback: { image: 'REPORTIT.EXE', title: 'Report a Problem' },
   bubbles: { image: 'BUBBLES.EXE', title: 'Bubble Break' },

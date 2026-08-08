@@ -1371,6 +1371,36 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('browser-home')).toBeVisible();
   });
 
+  await step('display.window', async () => {
+    await openFromStartMenu(page, 'display');
+    await expect(page.getByTestId('window-display')).toBeVisible();
+    // The box as issued: the Windows caricature, on no distribution at all,
+    // and the window says so before anybody presses anything.
+    await expect(page.getByTestId('display-current')).toContainText('as issued');
+    await expect(page.getByTestId('display-package-manager'))
+      .toContainText('None');
+    await expect(page.getByTestId('display-desktop-deskpro'))
+      .toHaveAttribute('data-active', 'true');
+  });
+
+  await step('display.refused', async () => {
+    // The gate, from the desk's side. The refusal is SAID - beside the button,
+    // in the shell's own sentence - and the chrome does not move: the panel is
+    // still at the bottom with a Start button on it, and the titlebar in front
+    // still has all three of its buttons.
+    await page.getByTestId('display-desktop-gnome').click();
+    await expect(page.getByTestId('display-refusal'))
+      .toContainText('promotion');
+    await expect(page.getByTestId('desktop')).toHaveAttribute('data-skin', 'deskpro');
+    await expect(page.getByTestId('desktop')).toHaveAttribute('data-panel', 'bottom');
+    await expect(page.getByTestId('start-button')).toContainText('Start');
+    await expect(page.getByTestId('minimize-display')).toHaveCount(1);
+    await expect(page.getByTestId('display-desktop-deskpro'))
+      .toHaveAttribute('data-active', 'true');
+    await page.getByTestId('close-display').click();
+    await expect(page.getByTestId('window-display')).toHaveCount(0);
+  });
+
   await step('updates.window', async () => {
     await openFromStartMenu(page, 'updates');
     await expect(page.getByTestId('updates-installed'))
@@ -3767,6 +3797,108 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
       .toHaveText('pat@FC-RMM-01:~$');
     await runCommand(page, 'exit');
     await expect(page.locator('.cmd-prompt').first()).toHaveText(/C:\\/);
+  });
+
+  /* -- 0.27.0: the engineer's own desktop, and the distro under it -------- */
+
+  const desktop = page.getByTestId('desktop');
+
+  await step('display.desktop', async () => {
+    await openFromStartMenu(page, 'display');
+
+    // KDE: the comfortable landing. Bottom panel, Kickoff in the corner, and
+    // every window button where a Windows refugee left it.
+    await page.getByTestId('display-desktop-kde').click();
+    await expect(page.getByTestId('display-refusal')).toBeHidden();
+    await expect(desktop).toHaveAttribute('data-skin', 'kde');
+    await expect(desktop).toHaveAttribute('data-panel', 'bottom');
+    await expect(page.getByTestId('start-button')).toContainText('Kickoff');
+    await expect(page.getByTestId('taskbar-windows')).toBeVisible();
+    await expect(page.getByTestId('minimize-display')).toHaveCount(1);
+    // The distro came with it: KDE ships on the Fedora edition here.
+    await expect(page.getByTestId('display-current')).toContainText('Fedora');
+
+    // GNOME: the top bar, no window list, and the sharp tell. The minimize
+    // button is not hidden - it IS NOT IN THE DOCUMENT - and neither is the
+    // maximize; a CSS-hidden fake would pass a visibility check and fails this.
+    await page.getByTestId('display-desktop-gnome').click();
+    await expect(desktop).toHaveAttribute('data-skin', 'gnome');
+    await expect(desktop).toHaveAttribute('data-panel', 'top');
+    await expect(page.getByTestId('start-button')).toContainText('Activities');
+    await expect(page.getByTestId('taskbar-windows')).toHaveCount(0);
+    await expect(page.getByTestId('minimize-display')).toHaveCount(0);
+    await expect(page.getByTestId('close-display')).toHaveCount(1);
+    await expect(
+      page.getByTestId('window-display').locator('.window-maximize'),
+    ).toHaveCount(0);
+
+    // And the product still works underneath it, which is the bug this step
+    // forbids: a skin is a LOOK, so the queue opens and a ticket still reads
+    // the same on the desktop with no taskbar on it.
+    await openFromStartMenu(page, 'tickets');
+    await expect(page.getByTestId('window-tickets')).toBeVisible();
+    await expect(page.getByTestId('tickets-summary')).toContainText('open');
+    await expect(page.getByTestId('tickets-queue')).toBeVisible();
+    await page.getByTestId('close-tickets').click();
+
+    // Cinnamon: the joke. Back to a bottom panel and all three buttons - the
+    // Linux desktop that looks most like the one you left.
+    await openFromStartMenu(page, 'display');
+    await page.getByTestId('display-desktop-cinnamon').click();
+    await expect(desktop).toHaveAttribute('data-skin', 'cinnamon');
+    await expect(desktop).toHaveAttribute('data-panel', 'bottom');
+    await expect(page.getByTestId('start-button')).toContainText('Menu');
+    await expect(page.getByTestId('minimize-display')).toHaveCount(1);
+  });
+
+  await step('display.distro', async () => {
+    // The second axis, on its own: Mint came with Cinnamon, and moving to
+    // Fedora leaves the desktop exactly where it is. KDE-on-Fedora and
+    // Cinnamon-on-Fedora are both real machines, and this is the proof the two
+    // axes are independent rather than one dressed as two.
+    await expect(page.getByTestId('display-package-manager')).toContainText('apt');
+    await page.getByTestId('display-distro-fedora').click();
+    await expect(desktop).toHaveAttribute('data-skin', 'cinnamon');
+    await expect(desktop).toHaveAttribute('data-distro', 'fedora');
+    await expect(page.getByTestId('display-package-manager')).toContainText('dnf');
+    await expect(page.getByTestId('display-current')).toContainText('Fedora');
+    await page.getByTestId('close-display').click();
+  });
+
+  await step('cmd.dnf', async () => {
+    // The dialect, on the one box that speaks it: the player's own, which is
+    // reachable over ssh at all because they put Linux on it.
+    await focusWindow(page, 'cmd');
+    await runCommand(page, 'ssh engineer@FC-DESK-07');
+    await expect(page.locator('.cmd-prompt').first())
+      .toHaveText('engineer@FC-DESK-07:~$');
+
+    // The other family's package manager is a missing binary, which is the
+    // sharpest thing this axis has.
+    await runCommand(page, 'sudo apt update');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('apt: command not found');
+
+    await runCommand(page, 'dnf check-update');
+    await expect(page.getByTestId('cmd-output')).toContainText('openssl-libs');
+
+    // The same gag, the same field, the other words: htop is not on the box,
+    // the hint is dnf's, and the install closes it.
+    await runCommand(page, 'htop');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('sudo dnf install htop');
+    await runCommand(page, 'sudo dnf install htop');
+    await expect(page.getByTestId('cmd-output')).toContainText('Complete!');
+    await runCommand(page, 'htop');
+    await expect(page.getByTestId('cmd-output')).toContainText('Load average');
+
+    // And the patching half, through the same verb apt upgrade dispatches.
+    await runCommand(page, 'sudo dnf upgrade');
+    await expect(page.getByTestId('cmd-output')).toContainText('Upgrading:');
+    await runCommand(page, 'exit');
+    // Back on the desktop's own dialect - whichever directory this run left the
+    // Windows terminal standing in.
+    await expect(page.locator('.cmd-prompt').first()).toHaveText(/^C:\\/u);
   });
 });
 

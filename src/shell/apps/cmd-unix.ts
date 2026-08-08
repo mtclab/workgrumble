@@ -61,6 +61,11 @@ import {
   type UnitEnablement,
   unitEnablementOf,
 } from '../../world/fields';
+import {
+  type DistroId,
+  type PackageManager,
+  packageManagerFor,
+} from '../skins';
 import { addressOf, fqdn, GATEWAY, stableHash } from './cmd-net';
 import {
   type CommandSpec,
@@ -137,6 +142,21 @@ export const UNIX_COMMANDS: readonly CommandSpec[] = [
     name: 'apt',
     usage: 'apt <install <pkg> | update | list --upgradable | upgrade>',
     summary: 'Install a package, or read and apply the box\'s pending updates.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+    subcommand: true,
+  },
+  {
+    // The other family's package manager (0.27.0). It is in the registry
+    // because the grammar has to KNOW it - a box that speaks it must parse it -
+    // and which of the two a given box actually has is decided at the seam in
+    // `executeUnix`, off that box's distro, the way a real box decides it by
+    // having one binary and not the other.
+    name: 'dnf',
+    usage: 'dnf <install <pkg> | check-update | upgrade>',
+    summary: 'The RHEL family\'s package manager: install, read pending '
+      + 'updates, apply them.',
     minArgs: 1,
     maxArgs: 4,
     joined: true,
@@ -430,6 +450,25 @@ function machineByName(api: GameApi, query: string): ReadOnlyGraphNode | null {
 }
 
 /**
+ * Whether a host is a box ssh can actually reach.
+ *
+ * The world's answer first - a machine seeded `os: linux` runs sshd, and every
+ * Windows box on the estate does not. Then the one the player wrote themselves:
+ * their OWN machine, once they have installed Linux on it (0.27.0). Nothing in
+ * the graph says so, because a reinstall of your own workstation is chrome and
+ * a dialect rather than a fact about the estate - so this is the single place
+ * the two answers are joined, and it reads the same shell store the desktop
+ * paints itself from.
+ */
+function isLinuxHost(
+  api: GameApi,
+  machine: Readonly<ReadOnlyGraphNode>,
+): boolean {
+  return machineOsOf(machine.fields[FIELDS.machineOs]) === MACHINE_OS.linux
+    || (isOwnBox(api, machine.id) && ownBoxDistro(api) !== null);
+}
+
+/**
  * `ssh <user@host>` - the on-ramp to the server tier, and a mechanic in its own
  * right rather than a reskinned remote-desktop.
  *
@@ -472,7 +511,13 @@ export function sshLines(api: GameApi, query: string): CommandResult {
   // ssh reaches a unix box. A Windows host does not run sshd on this estate -
   // it is reached the way the rest of the game reaches one, over remote desktop
   // - and saying so is the honest refusal rather than a fabricated connection.
-  if (machineOsOf(machine.fields[FIELDS.machineOs]) !== MACHINE_OS.linux) {
+  //
+  // With ONE exception, and it is the player's own doing (0.27.0): a machine
+  // the player has put Linux on is a Linux machine, and it answers on 22 like
+  // any other. That is a SHELL fact rather than a world one - the estate's
+  // seeded boxes are untouched, and so is every golden - and it is the only way
+  // the distro the player chose is a thing they can actually stand on.
+  if (!isLinuxHost(api, machine)) {
     return lines(
       `ssh: connect to host ${labelOf(machine)} port 22: Connection refused.`,
       `${labelOf(machine)} is a Windows box; it does not run sshd. A Windows `
@@ -1805,11 +1850,23 @@ function systemNoteFor(name: string): CommandResult | null {
   );
 }
 
-/** Ubuntu's command-not-found hint for a known-but-absent tool. */
-function notInstalledHint(name: string, pkg: string): CommandResult {
+/**
+ * The command-not-found hint for a known-but-absent tool, in the box's own
+ * dialect (0.27.0).
+ *
+ * Ubuntu's handler offers `sudo apt install <pkg>`; a Fedora box's offers
+ * `sudo dnf install <pkg>`, because that is the verb it has. The hint is the
+ * teaching half of the gag, so a hint in the wrong dialect would teach the
+ * wrong thing on the one box that speaks the other one.
+ */
+function notInstalledHint(
+  name: string,
+  pkg: string,
+  manager: PackageManager,
+): CommandResult {
   return lines(
     `Command '${name}' not found, but can be installed with:`,
-    `sudo apt install ${pkg}`,
+    `sudo ${manager} install ${pkg}`,
   );
 }
 
@@ -1834,7 +1891,7 @@ function resolveGaggedTool(
   }
 
   if (!isPackageInstalled(api, session, pkg)) {
-    return notInstalledHint(name, pkg);
+    return notInstalledHint(name, pkg, packageManagerOn(api, session));
   }
 
   switch (name) {
@@ -2019,6 +2076,76 @@ function netstatLines(
     'Active Internet connections (only servers)',
     header,
     ...rows,
+  );
+}
+
+/* -- the distro axis: the dialect a box's package manager speaks (0.27.0) - */
+
+/**
+ * The box the player was issued: the machine their own account owns.
+ *
+ * The same walk `cmd-run` makes for `hostname`/`ipconfig`, because it is the
+ * same question - which of the estate's machines is THIS desk - and the answer
+ * has to agree across the two dialects.
+ */
+function ownBoxId(api: GameApi): string | null {
+  return api.graph
+    .neighbors(api.actor, { direction: 'out', edgeKind: 'owns' })
+    .find((node) => node.kind === 'machine')?.id ?? null;
+}
+
+/**
+ * Whether the player has put Linux on their own machine (0.27.0).
+ *
+ * It is a SHELL fact, not a world one: the desktop and the distro ride the
+ * save-carried screen store, so nothing in the graph moves when somebody
+ * reinstalls their own workstation, and every golden world stays identical.
+ * What it changes is what that one box will answer to - it runs sshd now, and
+ * it speaks its distro's package manager.
+ */
+function ownBoxDistro(api: GameApi): DistroId | null {
+  return api.appState.get().desktop.distro;
+}
+
+function isOwnBox(api: GameApi, hostId: string): boolean {
+  return ownBoxId(api) === hostId;
+}
+
+/**
+ * The package-manager verb a box speaks.
+ *
+ * Every server on the estate is the Ubuntu the world seeds, so every one of
+ * them speaks `apt` exactly as it always has. The one box that can speak
+ * anything else is the player's OWN, because the player is the only person who
+ * gets to reinstall it - which is the whole of the distro axis, wired thin:
+ * Ubuntu and Mint speak apt, Fedora and the RHEL family speak dnf, and the
+ * mechanics underneath the two verbs are the same mechanics.
+ */
+function packageManagerOn(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): PackageManager {
+  const distro = isOwnBox(api, session.hostId) ? ownBoxDistro(api) : null;
+
+  return packageManagerFor(distro) ?? 'apt';
+}
+
+/**
+ * What a box says when you use the OTHER family's package manager on it.
+ *
+ * `apt` on a Fedora box and `dnf` on an Ubuntu one are both just missing
+ * binaries, and bash says so in one line. It is the sharpest thing the dialect
+ * axis has: the mechanics are identical and the words are not, which is exactly
+ * what walking onto an unfamiliar box feels like.
+ */
+function wrongPackageManager(
+  name: string,
+  manager: PackageManager,
+): CommandResult {
+  return lines(
+    `${name}: command not found`,
+    `This box speaks ${manager}. ${name} is the other family's package `
+      + 'manager; the mechanics are the same, the words are not.',
   );
 }
 
@@ -2405,6 +2532,292 @@ function aptLines(
         `"apt ${sub}" is not something this terminal does.`,
         'It does "apt install <pkg>", "apt update", "apt list --upgradable" '
           + 'and "apt upgrade".',
+      );
+  }
+}
+
+/* -- dnf: the same mechanics, the other dialect (0.27.0) ------------------ */
+
+/**
+ * The RPM face of the same packages.
+ *
+ * The dnf overlay is exactly that - an OVERLAY. It reads the same derived
+ * pending set `apt` reads, guards on the same `installed_packages` field and
+ * dispatches the same two registered actions; what differs is the words, the
+ * table and the package strings, because a Fedora box genuinely names and
+ * versions its packages differently. Nothing about the mechanics is duplicated,
+ * which is the whole point of the axis being a dialect rather than a second
+ * system: `dnf upgrade` on a box that `apt upgrade` has already patched finds
+ * nothing to do, because there is one truth on the machine and both verbs read
+ * it.
+ */
+interface RpmName {
+  readonly pkg: string;
+  readonly version: string;
+  readonly repo: string;
+}
+
+/** The pending pool's Debian names, as the RPM the same software ships as. */
+const RPM_UPDATES: Readonly<Record<string, RpmName>> = {
+  libssl3t64: {
+    pkg: 'openssl-libs',
+    version: '1:3.2.2-3.fc41',
+    repo: 'updates',
+  },
+  'openssh-server': {
+    pkg: 'openssh-server',
+    version: '9.8p1-2.fc41',
+    repo: 'updates',
+  },
+  curl: { pkg: 'curl', version: '8.9.1-2.fc41', repo: 'updates' },
+  tzdata: { pkg: 'tzdata', version: '2024b-1.fc41', repo: 'updates' },
+  'vim-common': {
+    pkg: 'vim-common',
+    version: '2:9.1.802-1.fc41',
+    repo: 'updates',
+  },
+};
+
+/** And the installables, as the RPM `dnf install` would put on the box. */
+const RPM_PACKAGES: Readonly<Record<string, RpmName>> = {
+  htop: { pkg: 'htop', version: '3.3.0-4.fc41', repo: 'fedora' },
+  traceroute: { pkg: 'traceroute', version: '3:2.1.5-2.fc41', repo: 'fedora' },
+  'net-tools': { pkg: 'net-tools', version: '2.10-9.fc41', repo: 'fedora' },
+};
+
+/** The architecture every box in this estate is on. */
+const RPM_ARCH = 'x86_64';
+
+/** A byte count as dnf prints one: `190 k`, `1.9 M`. */
+function rpmSize(bytes: number): string {
+  return bytes >= 1_000_000
+    ? `${(bytes / 1_000_000).toFixed(1)} M`
+    : `${String(Math.round(bytes / 1000))} k`;
+}
+
+/** The rule dnf draws its transaction table between. */
+const DNF_RULE = '='.repeat(80);
+
+const DNF_TABLE_HEAD = ` ${pad('Package', 15)}${pad('Arch', 9)}${
+  pad('Version', 21)
+}${pad('Repository', 13)}Size`;
+
+function dnfRow(name: Readonly<RpmName>, bytes: number): string {
+  return ` ${pad(name.pkg, 15)}${pad(RPM_ARCH, 9)}${pad(name.version, 21)}${
+    pad(name.repo, 13)
+  }${rpmSize(bytes)}`;
+}
+
+/** dnf's own refusal when a privileged subcommand is run without root. */
+function dnfNeedsRoot(): CommandResult {
+  return lines(
+    'Error: This command has to be run with superuser privileges (under the '
+      + 'root user on most systems).',
+  );
+}
+
+/**
+ * `dnf install <pkg>` - the same key that closes the not-installed gag, cut for
+ * the other lock.
+ *
+ * Privileged (no sudo -> dnf's superuser error rather than apt's dpkg lock, and
+ * the difference is the dialect); a package outside the catalogue is dnf's own
+ * `No match for argument`; one already installed is its `Package ... is already
+ * installed`. A real install dispatches `apt.install` - the SAME registered
+ * action, because what changes on the box is the same fact.
+ */
+function dnfInstallLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  pkg: string,
+  sudo: boolean,
+): CommandResult {
+  if (pkg.length === 0) {
+    return lines('dnf install: a package name is required.');
+  }
+
+  if (!sudo) {
+    return dnfNeedsRoot();
+  }
+
+  const spec = INSTALLABLE_PACKAGES[pkg];
+  const name = RPM_PACKAGES[pkg];
+
+  if (spec === undefined || name === undefined) {
+    return lines(
+      `No match for argument: ${pkg}`,
+      'Error: Unable to find a match: ' + pkg,
+    );
+  }
+
+  if (isPackageInstalled(api, session, pkg)) {
+    return lines(
+      `Package ${name.pkg}-${name.version}.${RPM_ARCH} is already installed.`,
+      'Dependencies resolved.',
+      'Nothing to do.',
+      'Complete!',
+    );
+  }
+
+  const result = api.dispatch(
+    APT_ACTIONS.aptInstall,
+    api.actor,
+    session.hostId,
+    { [APT_PACKAGE_PARAM]: pkg },
+  );
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  return lines(
+    'Dependencies resolved.',
+    DNF_RULE,
+    DNF_TABLE_HEAD,
+    DNF_RULE,
+    'Installing:',
+    dnfRow(name, spec.downloadBytes),
+    '',
+    'Transaction Summary',
+    DNF_RULE,
+    'Install  1 Package',
+    '',
+    `Total download size: ${rpmSize(spec.downloadBytes)}`,
+    `Installed size: ${rpmSize(spec.installBytes)}`,
+    'Downloading Packages:',
+    'Running transaction check',
+    'Transaction check succeeded.',
+    'Running transaction test',
+    'Transaction test succeeded.',
+    'Running transaction',
+    `  Installing       : ${name.pkg}-${name.version}.${RPM_ARCH}`,
+    `  Verifying        : ${name.pkg}-${name.version}.${RPM_ARCH}`,
+    '',
+    'Installed:',
+    `  ${name.pkg}-${name.version}.${RPM_ARCH}`,
+    '',
+    'Complete!',
+  );
+}
+
+/**
+ * `dnf check-update` - the read half, and the one that is SILENT when there is
+ * nothing to say.
+ *
+ * A real `dnf check-update` on a patched box prints nothing at all and exits
+ * zero, and this prints nothing at all too - the same family beat `systemctl
+ * restart` teaches, where the answer to "it worked" is silence. On a box behind
+ * on patches it prints the `name.arch version repo` rows, which is the shape it
+ * actually has. Read-only, so no sudo.
+ */
+function dnfCheckUpdateLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): CommandResult {
+  return lines(
+    ...boxPending(api, session).flatMap((row) => {
+      const name = RPM_UPDATES[row.pkg];
+
+      return name === undefined
+        ? []
+        : [`${pad(`${name.pkg}.${RPM_ARCH}`, 30)}${
+          pad(name.version, 24)
+        }${name.repo}`];
+    }),
+  );
+}
+
+/**
+ * `dnf upgrade` - applying the pending updates, through the same verb `apt
+ * upgrade` dispatches.
+ *
+ * Privileged. On a clean box it is dnf's honest two words ("Nothing to do."),
+ * and on one behind on patches it prints the upgrade transaction and sets the
+ * box's `updates_applied` flag - after which `dnf check-update` and `apt list
+ * --upgradable` both read clean, because they are reading the same box.
+ */
+function dnfUpgradeLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sudo: boolean,
+): CommandResult {
+  if (!sudo) {
+    return dnfNeedsRoot();
+  }
+
+  const pending = boxPending(api, session);
+
+  if (pending.length === 0) {
+    return lines('Dependencies resolved.', 'Nothing to do.', 'Complete!');
+  }
+
+  const result = api.dispatch(
+    APT_ACTIONS.aptUpgrade,
+    api.actor,
+    session.hostId,
+    {},
+  );
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  const rows = pending.flatMap((row) => {
+    const name = RPM_UPDATES[row.pkg];
+
+    return name === undefined ? [] : [{ name, bytes: row.bytes }];
+  });
+  const totalBytes = rows.reduce((sum, row) => sum + row.bytes, 0);
+
+  return lines(
+    'Dependencies resolved.',
+    DNF_RULE,
+    DNF_TABLE_HEAD,
+    DNF_RULE,
+    'Upgrading:',
+    ...rows.map((row) => dnfRow(row.name, row.bytes)),
+    '',
+    'Transaction Summary',
+    DNF_RULE,
+    `Upgrade  ${String(rows.length)} Package${rows.length === 1 ? '' : 's'}`,
+    '',
+    `Total download size: ${rpmSize(totalBytes)}`,
+    'Running transaction check',
+    'Transaction check succeeded.',
+    'Running transaction test',
+    'Transaction test succeeded.',
+    'Running transaction',
+    ...rows.map(
+      (row) => `  Upgrading        : ${row.name.pkg}-${row.name.version}.${
+        RPM_ARCH
+      }`,
+    ),
+    '',
+    'Complete!',
+  );
+}
+
+/** Dispatches a `dnf <sub>`, or names the three subcommands it does. */
+function dnfLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sub: string,
+  query: string,
+  sudo: boolean,
+): CommandResult {
+  switch (sub) {
+    case 'install':
+      return dnfInstallLines(api, session, query.trim(), sudo);
+    case 'check-update':
+      return dnfCheckUpdateLines(api, session);
+    case 'upgrade':
+    case 'update':
+      // `dnf update` is the alias every RHEL-era finger types; dnf keeps it.
+      return dnfUpgradeLines(api, session, sudo);
+    default:
+      return lines(
+        `"dnf ${sub}" is not something this terminal does.`,
+        'It does "dnf install <pkg>", "dnf check-update" and "dnf upgrade".',
       );
   }
 }
@@ -3482,17 +3895,35 @@ export function executeUnix(
       return dfLines(api, session);
     case 'du':
       return duLines(api, session, parsed.args);
+    // The dialect seam (0.27.0): a box has ONE package manager, so the other
+    // family's verb is a missing binary here exactly as it is on a real box.
+    // Every server on the estate speaks apt, so this changes nothing anywhere
+    // except on a machine the player has reinstalled themselves.
     case 'apt':
-      return aptLines(
-        api,
-        session,
-        parsed.sub,
-        parsed.query,
-        parsed.args,
-        parsed.sudo === true,
-      );
+      return packageManagerOn(api, session) === 'apt'
+        ? aptLines(
+          api,
+          session,
+          parsed.sub,
+          parsed.query,
+          parsed.args,
+          parsed.sudo === true,
+        )
+        : wrongPackageManager('apt', 'dnf');
+    case 'dnf':
+      return packageManagerOn(api, session) === 'dnf'
+        ? dnfLines(
+          api,
+          session,
+          parsed.sub,
+          parsed.query,
+          parsed.sudo === true,
+        )
+        : wrongPackageManager('dnf', 'apt');
     case 'dpkg':
-      return dpkgLines(api, session);
+      return packageManagerOn(api, session) === 'apt'
+        ? dpkgLines(api, session)
+        : wrongPackageManager('dpkg', 'dnf');
     case 'ps':
       return psLines(api, session);
     case 'ip':

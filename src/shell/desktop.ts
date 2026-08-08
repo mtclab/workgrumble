@@ -33,7 +33,7 @@ import {
 import { remarkInThread } from './boss-thread';
 import { buffTicks } from '../world/consumables';
 import { isLunchtime, shiftEndTick } from '../world/day';
-import { FIELDS } from '../world/fields';
+import { FIELDS, isSystemsEngineer } from '../world/fields';
 import { isFumblingWith } from '../world/consumables';
 import { isRefocusing } from '../world/meters';
 import { presenceChatter } from '../world/dialogue';
@@ -43,6 +43,13 @@ import {
   PRESENCE_TOOLTIPS,
   PRESENCE_VALUES,
 } from '../world/presence';
+import {
+  canChooseDesktop,
+  type DesktopChoice,
+  resolveDesktopChoice,
+  type Skin,
+  skinById,
+} from './skins';
 import { Desk, deskState } from './desk';
 import { Assistant, type AssistantWorld, AssistantVoice } from './assistant';
 import { holdsTheDesk, SPEEDS, type Speed } from './day-driver';
@@ -112,6 +119,9 @@ export class Desktop {
   private startMenuList: HTMLElement | null = null;
   private readonly windowLayer: HTMLElement;
   private readonly toastStack: HTMLElement;
+  private readonly taskbar: HTMLElement;
+  private readonly taskbarDivider: HTMLElement;
+  private readonly taskbarTray: HTMLElement;
   private readonly taskbarWindows: HTMLElement;
   private readonly taskbarEmpty: HTMLElement;
   private readonly startButton: HTMLButtonElement;
@@ -139,6 +149,9 @@ export class Desktop {
   private readonly voice = new AssistantVoice();
   private readonly speedButtons = new Map<Speed, HTMLButtonElement>();
   private readonly presenceButtons = new Map<Presence, HTMLButtonElement>();
+
+  /** The custom properties this skin set on the desktop, to take back off. */
+  private skinTokens: readonly string[] = [];
 
   private readonly taskbarButtons = new Map<string, TaskbarButton>();
   private readonly toastElements = new Map<string, HTMLElement>();
@@ -240,18 +253,18 @@ export class Desktop {
     taskbar.className = 'taskbar';
     taskbar.dataset.testid = 'taskbar';
 
+    // The launcher. Its glyph, its word and its style are the skin's to say -
+    // Start, Kickoff, Activities, Menu - so the element is built empty here and
+    // filled by `renderLauncher` off whichever desktop the box is running. On
+    // the issued Windows box that fills it with exactly what it always was.
     this.startButton = document.createElement('button');
     this.startButton.type = 'button';
     this.startButton.className = 'start-button';
     this.startButton.dataset.testid = 'start-button';
     this.startButton.setAttribute('aria-expanded', 'false');
-    this.startButton.append(createIcon('icon-start'));
-    const startLabel = document.createElement('span');
-    startLabel.textContent = 'Start';
-    this.startButton.append(startLabel);
 
-    const divider = document.createElement('div');
-    divider.className = 'taskbar-divider';
+    this.taskbarDivider = document.createElement('div');
+    this.taskbarDivider.className = 'taskbar-divider';
 
     this.taskbarWindows = document.createElement('div');
     this.taskbarWindows.className = 'taskbar-windows';
@@ -476,6 +489,7 @@ export class Desktop {
       { signal: this.abort.signal },
     );
 
+    this.taskbarTray = tray;
     tray.append(
       this.bossChip,
       this.saveChip,
@@ -489,7 +503,12 @@ export class Desktop {
       clock,
     );
 
-    taskbar.append(this.startButton, divider, this.taskbarWindows, tray);
+    this.taskbar = taskbar;
+    // What the panel holds is the skin's second decision, so the row is filled
+    // by `renderPanel` rather than appended here - and on the default skin it
+    // fills it with the launcher, the divider, the window list and the tray, in
+    // that order, which is the row this shell has always had.
+    this.renderPanel();
 
     this.startMenu = this.createStartMenu();
     this.trayPanel = document.createElement('div');
@@ -560,6 +579,7 @@ export class Desktop {
       hasApp: (id) => this.apps.some((app) => app.id === id),
       installApp: (id) => this.installApp(id),
       uninstallApp: (id) => this.uninstallApp(id),
+      setDesktop: (choice) => this.setDesktop(choice),
       restartWeek: () => {
         this.restartWeek();
       },
@@ -579,6 +599,7 @@ export class Desktop {
       (next) => {
         this.commitWindows(next);
       },
+      () => this.skin(),
     );
 
     this.observer = new ResizeObserver(() => {
@@ -636,6 +657,11 @@ export class Desktop {
       // every external patch that is not a load.
       this.rebuildAppSurfaces();
       this.restoreWindows();
+      // The desktop the box is running rides the save too, so a session that
+      // comes back on GNOME comes back on GNOME - chrome and all. It is applied
+      // AFTER the windows are restored, because the titlebars it re-chromes are
+      // the ones that line just put back.
+      this.applySkin();
       this.syncDayScreens();
     });
     // The character's transient display resets ONLY on a real load or restart,
@@ -651,6 +677,7 @@ export class Desktop {
       this.renderSaveHealth();
     });
 
+    this.applySkin();
     this.renderSaveHealth();
     this.renderClock(this.context.clock.now());
     this.renderDay();
@@ -724,6 +751,119 @@ export class Desktop {
         body,
         this.context.clock.now(),
       ),
+    );
+  }
+
+  /* -- the skin: the chrome the box is wearing (0.27.0) ------------------- */
+
+  /** The desktop this box is running, off the save-carried choice. */
+  private skin(): Readonly<Skin> {
+    return skinById(this.context.appState.get().desktop.skin);
+  }
+
+  /**
+   * Installing a desktop on the machine, which is the whole of slice 2's
+   * control.
+   *
+   * Everything about the move is decided in one place and by pure functions:
+   * the choice is RESOLVED (a desktop brings its paired distro; going back to
+   * the issued box drops the distro, because a Windows box is not on one), then
+   * GATED on the promotion the same way ssh is, and only a legal choice reaches
+   * the store. The refusal is handed back in the world's own sentence for the
+   * window to say beside the button that was pressed - a control that does
+   * nothing and explains nothing is the dead end the house rules forbid.
+   *
+   * Nothing here dispatches. A desktop is chrome: no ticket moves, no meter
+   * moves, no field is written, and every golden world stays byte-identical
+   * because the choice rides in the screen store the save carries.
+   */
+  private setDesktop(choice: Readonly<DesktopChoice>): DispatchResult {
+    const current = this.context.appState.get().desktop;
+    const next = resolveDesktopChoice(current, choice);
+    const legal = canChooseDesktop(
+      next,
+      isSystemsEngineer(
+        this.context.graph.getField(this.context.user.node, FIELDS.playerTier),
+      ),
+    );
+
+    if (!legal.ok) {
+      return legal;
+    }
+
+    this.context.appState.patch('desktop', next);
+    this.applySkin();
+    return legal;
+  }
+
+  /**
+   * Puts the chosen desktop on the screen: the tokens, the panel, the window
+   * buttons.
+   *
+   * Called at mount, after a load (a save carries the desktop, so a session
+   * that comes back on GNOME comes back on GNOME) and on every switch. It is
+   * the only place the three halves of a skin are applied, so they cannot
+   * drift apart.
+   */
+  private applySkin(): void {
+    const skin = this.skin();
+    const choice = this.context.appState.get().desktop;
+
+    // The old skin's properties come OFF before the new one's go on: a token
+    // one desktop sets and the next does not must not survive the switch, or
+    // the chrome would be a pile of every desktop the player has ever tried.
+    for (const name of this.skinTokens) {
+      this.element.style.removeProperty(name);
+    }
+
+    for (const [name, value] of Object.entries(skin.tokens)) {
+      this.element.style.setProperty(name, value);
+    }
+
+    this.skinTokens = Object.keys(skin.tokens);
+    this.element.dataset.skin = skin.id;
+    this.element.dataset.panel = skin.panel.position;
+    this.element.dataset.launcher = skin.panel.launcher.style;
+    this.element.dataset.distro = choice.distro ?? 'none';
+    this.renderPanel();
+
+    if (this.wm !== null) {
+      this.renderer.applySkin(this.wm);
+    }
+  }
+
+  /**
+   * The panel, filled with what this desktop's panel holds.
+   *
+   * GNOME's window list is genuinely NOT IN THE PANEL - it is a desktop with no
+   * taskbar, and the overview is what replaces it - so the row is emptied and
+   * refilled rather than having things hidden in it. The window list keeps
+   * existing as an element either way, because the taskbar buttons are painted
+   * off the window manager whether or not this desktop shows them, and putting
+   * it back is then one append rather than a rebuild.
+   */
+  private renderPanel(): void {
+    const panel = this.skin().panel;
+    this.renderLauncher();
+    this.taskbar.replaceChildren(this.startButton);
+
+    if (panel.windowList) {
+      this.taskbar.append(this.taskbarDivider, this.taskbarWindows);
+    }
+
+    if (panel.tray) {
+      this.taskbar.append(this.taskbarTray);
+    }
+  }
+
+  /** The launcher's glyph and word, which are the corner's whole personality. */
+  private renderLauncher(): void {
+    const launcher = this.skin().panel.launcher;
+    const label = document.createElement('span');
+    label.textContent = launcher.label;
+    this.startButton.replaceChildren(
+      ...(launcher.icon === null ? [] : [createIcon(launcher.icon)]),
+      label,
     );
   }
 
@@ -1314,6 +1454,11 @@ export class Desktop {
    * Keyboard focus must never be left inside a window the paint just hid: the
    * window is `aria-hidden`, so a screen reader loses the cursor and Tab
    * resumes from nowhere. The taskbar button is where that window now lives.
+   *
+   * On a desktop with NO window list (0.27.0: GNOME, which has no taskbar at
+   * all) that button exists but is not in the document, and focusing a detached
+   * element does nothing - so the launcher takes the cursor instead. The rule is
+   * the rule whatever the chrome looks like: the keyboard never ends up nowhere.
    */
   private followFocusOutOfHiddenWindow(
     state: Readonly<WindowManagerState>,
@@ -1331,7 +1476,14 @@ export class Desktop {
       return;
     }
 
-    this.taskbarButtons.get(focusOwner)?.element.focus();
+    const button = this.taskbarButtons.get(focusOwner)?.element;
+
+    if (button !== undefined && button.isConnected) {
+      button.focus();
+      return;
+    }
+
+    this.startButton.focus();
   }
 
   private renderTaskbarWindows(state: Readonly<WindowManagerState>): void {

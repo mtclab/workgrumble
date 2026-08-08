@@ -106,6 +106,15 @@
 
   /* ---- radii: 9x is square; the only round thing is the bubble toy ---- */
   --radius-round: 50%;
+  /*
+   * The corner radius of the CHROME - windows, titlebar buttons, panel
+   * buttons. Zero here, because 9x is square and this is the 9x caricature: on
+   * the default skin this token changes nothing at all, which is the point of
+   * it existing. It is the seam the 0.27.0 desktops need - every desktop built
+   * after about 2005 has rounded chrome - and a token is how a skin says so
+   * (see `skins.ts`) without a rule of its own.
+   */
+  --radius-chrome: 0;
 
   /* ---- borders + bevels ---- */
   --border-hair: 1px;
@@ -819,6 +828,7 @@ input {
   width: var(--window-width);
   height: var(--window-height);
   padding: var(--space-2);
+  border-radius: var(--radius-chrome);
   background: var(--color-surface);
   box-shadow: var(--bevel-window), var(--shadow-float);
   pointer-events: auto;
@@ -873,6 +883,7 @@ input {
   height: var(--size-control);
   padding: var(--space-0);
   border: none;
+  border-radius: var(--radius-chrome);
   background: var(--color-surface);
   box-shadow: var(--bevel-raised);
   color: var(--color-ink);
@@ -983,6 +994,7 @@ input {
   height: calc(var(--size-taskbar) - var(--space-5));
   padding: var(--space-1) var(--space-4);
   border: none;
+  border-radius: var(--radius-chrome);
   background: var(--color-surface);
   box-shadow: var(--bevel-raised);
   font-size: var(--text-sm);
@@ -1040,6 +1052,7 @@ input {
   padding: var(--space-1) var(--space-4);
   overflow: hidden;
   border: none;
+  border-radius: var(--radius-chrome);
   background: var(--color-surface);
   box-shadow: var(--bevel-raised);
   font-size: var(--text-xs);
@@ -5272,4 +5285,130 @@ input {
     min-width: var(--size-touch-target);
     min-height: var(--size-touch-target);
   }
+}
+
+/* ------------------------------------------------- the desktop skins (0.27.0)
+
+   Three desktops, and the layout each one is recognisable BY. Everything about
+   the colours, the type, the panel height and the flatness of the chrome comes
+   through the tokens at the top of this file - a skin sets those on the desktop
+   element and the whole shell picks them up, which is why there are no
+   per-skin colour rules down here. What IS down here is the layout the tokens
+   cannot say: which edge the panel is on, and what shape the launcher in the
+   corner is.
+
+   Nothing in this section applies to the issued Windows box. Its skin declares
+   no token overrides at all, its panel is at the bottom and its launcher is a
+   Start button, so every selector below misses it and the default chrome is the
+   byte-identical one the rest of this file has always drawn. */
+
+/* GNOME: a TOP BAR and no taskbar. The desktop is a two-row grid (surface,
+   panel), so putting the panel first is the whole of the move - and the two
+   surfaces that hang off the panel have to come DOWN from it instead of up. */
+.screen-desktop[data-panel="top"] {
+  grid-template-rows: auto 1fr;
+}
+
+.screen-desktop[data-panel="top"] .taskbar {
+  grid-row: 1;
+}
+
+.screen-desktop[data-panel="top"] .desktop-surface {
+  grid-row: 2;
+}
+
+.screen-desktop[data-panel="top"] .start-menu,
+.screen-desktop[data-panel="top"] .tray-panel,
+.screen-desktop[data-panel="top"] .presence-refusal {
+  top: var(--size-taskbar);
+  bottom: auto;
+}
+
+.screen-desktop[data-panel="top"] .start-menu {
+  max-height: calc(100vh - var(--size-taskbar) - var(--space-3));
+}
+
+/* The launcher, per desktop. Kickoff is an icon-led button in the far corner;
+   Activities is a WORD with no glyph at all, which is exactly how the real one
+   reads; Cinnamon's Menu is the Start-menu clone it is, in the accent. */
+.screen-desktop[data-launcher="kickoff"] .start-button {
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface-raised);
+}
+
+.screen-desktop[data-launcher="kickoff"] .start-button .svg-icon {
+  color: var(--color-accent-bright);
+}
+
+.screen-desktop[data-launcher="activities"] .start-button {
+  padding: var(--space-0) var(--space-4);
+  background: var(--color-clear);
+  box-shadow: none;
+  font-weight: 400;
+}
+
+.screen-desktop[data-launcher="activities"] .start-button[aria-expanded="true"] {
+  background: var(--color-surface-sunken);
+  box-shadow: none;
+}
+
+.screen-desktop[data-launcher="menu"] .start-button {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.screen-desktop[data-launcher="menu"] .start-button .svg-icon {
+  color: var(--color-accent-ink);
+}
+
+/* Which end of the titlebar the buttons live at. Every desktop shipped in
+   0.27.0 says "right", which is what all three of them actually do; the rule
+   exists because "and where" is half of what a skin declares, and the Mac
+   family in the backlog is the case that needs the other value. */
+.window-controls[data-side="left"] {
+  order: -1;
+}
+
+/* ---- Display Properties: where the desktop is chosen -------------------- */
+
+.display-choices {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-0) var(--space-4);
+}
+
+.display-choice {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  text-align: left;
+}
+
+.display-choice strong {
+  font-size: var(--text-md);
+}
+
+.display-choice span {
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+}
+
+.display-choice[data-active="true"] {
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+}
+
+.display-choice[data-active="true"] strong::after {
+  content: " · running";
+  color: var(--color-accent);
+}
+
+/* The refused choice, said in place against the controls it is about - the
+   same shape the taskbar's refused status uses, and for the same reason. */
+.display-refusal {
+  padding: var(--space-4);
+  background: var(--color-alarm-soft);
+  box-shadow: var(--bevel-sunken);
+  color: var(--color-alarm);
+  font-size: var(--text-sm);
 }

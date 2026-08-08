@@ -612,6 +612,63 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { d: 'M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4' },
     },
   ],
+  /*
+   * The three glyphs the 0.27.0 skins wear.
+   *
+   * `icon-kickoff` is KDE's launcher: a disc with a wedge out of it, which is
+   * what a Kickoff button reads as in the corner of a Plasma panel. `icon-menu`
+   * is Cinnamon's: the stack of bars every Start-menu clone has settled on.
+   * GNOME has no launcher glyph at all - Activities is a WORD - which is why
+   * there is no third one here. `icon-display` is the window where all of this
+   * is chosen, and it is a monitor with a slider under it, because on the
+   * caricature this game is set in that is exactly what Display Properties was.
+   */
+  'icon-kickoff': [
+    {
+      element: 'circle',
+      attributes: { cx: '12', cy: '12', r: '8' },
+    },
+    {
+      element: 'path',
+      attributes: { d: 'M12 4v8h8' },
+    },
+  ],
+  'icon-menu': [
+    {
+      element: 'line',
+      attributes: { x1: '4', y1: '7', x2: '20', y2: '7' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '4', y1: '12', x2: '20', y2: '12' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '4', y1: '17', x2: '20', y2: '17' },
+    },
+  ],
+  'icon-display': [
+    {
+      element: 'rect',
+      attributes: { x: '3', y: '4', width: '18', height: '12', rx: '1' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '8', y1: '20', x2: '16', y2: '20' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '12', y1: '16', x2: '12', y2: '20' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '6', y1: '10', x2: '18', y2: '10' },
+    },
+    {
+      element: 'circle',
+      attributes: { cx: '14', cy: '10', r: '2' },
+    },
+  ],
   // A form with a fault on it. The one thing in this building that is not a
   // joke, so it looks like the paperwork it is.
   'icon-report': [

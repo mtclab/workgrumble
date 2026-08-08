@@ -98,6 +98,7 @@ function rig(): Rig {
     hasApp: () => false,
     installApp: () => ({ ok: true }),
     uninstallApp: () => ({ ok: true }),
+    setDesktop: () => ({ ok: true }),
     restartWeek: () => {},
     acceptOffer: () => {},
     employer: 'msp',
