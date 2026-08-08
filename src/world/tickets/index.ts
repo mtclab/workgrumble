@@ -10,16 +10,18 @@ import {
   SYSTEMD_ACTION_IDS,
 } from '../actions';
 import { companySetup } from '../company';
-import { FIELDS } from '../fields';
+import { FIELDS, slaTierOf } from '../fields';
 import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
 import {
   type Classification,
   classify,
   tierResolutionTicks,
+  tierTargetsFor,
   trueImpact,
   UNTRIAGED_SLA_TICKS,
 } from '../priority';
 import { slaTierForTicketNodes } from '../customers';
+import { vipForcedPriority } from '../vip';
 import { ACCESS_TICKETS } from './access';
 import { ARC_TICKETS } from './arc';
 import { BODGE_TICKETS } from './bodge';
@@ -419,7 +421,59 @@ export function spawnWorldTicket(
     throw new Error(`Nobody wrote a ticket called "${id}".`);
   }
 
-  engine.registerTicket(defForTier(entry, engine.graph));
+  engine.registerTicket(defForSpawn(entry, engine.graph));
+}
+
+/**
+ * The ticket def as it goes to the engine: the customer's tier folded in
+ * (0.12.0), and then the caller's VIP flag (E8, 0.26.0).
+ *
+ * Both are facts about WHO the ticket is for rather than about what broke, both
+ * are resolved once at spawn off a graph that already holds them, and both are
+ * stamped onto the ticket node so nothing downstream has to re-derive them. An
+ * ordinary in-house ticket from an ordinary reporter passes through untouched -
+ * same object, same `sla_ticks`, no `sla_tier`, no `vip` - which is why every
+ * ticket written before either existed spawns byte-identically.
+ */
+function defForSpawn(
+  entry: WorldTicket,
+  graph: ReadOnlyGraphView,
+): TicketDef {
+  return defForVip(defForTier(entry, graph), entry, graph);
+}
+
+/**
+ * The VIP flag folded into the def (E8, 0.26.0) - the queue-jump made mechanical.
+ *
+ * The flag lives on the PERSON who raised it, so this is the one place it becomes
+ * a property of the ticket, and it sets two things at once, which is the whole
+ * mechanic: the ticket is STAMPED `vip` (the engine writes the field, so the
+ * queue, the clock and the classify verb all read one fact), and the resolution
+ * budget it lands with is the FORCED priority's rather than the untriaged one's -
+ * so a trivial request from a flagged caller arrives on a tighter deadline than
+ * anything about it warrants, before anybody has looked at it.
+ *
+ * The budget is read through the same tier-aware table the tier fold uses, so a
+ * VIP caller at a customer would get that customer's tier crossed with the forced
+ * priority rather than a second ladder invented here. Nobody flagged sits at a
+ * customer today; the coherence is free and the alternative is two tables.
+ */
+function defForVip(
+  def: TicketDef,
+  entry: WorldTicket,
+  graph: ReadOnlyGraphView,
+): TicketDef {
+  const forced = vipForcedPriority(graph, entry.def.reporter);
+
+  if (forced === null) {
+    return def;
+  }
+
+  return {
+    ...def,
+    sla_ticks: tierTargetsFor(slaTierOf(def.sla_tier), forced).resolution,
+    vip: true,
+  };
 }
 
 /**

@@ -93,6 +93,16 @@ pub struct TicketDef {
     /// exactly as it was before 0.12.0, which is why the in-house probation and
     /// Bodgeworth tickets stay byte-identical.
     pub sla_tier: Option<String>,
+    /// Whether the caller behind this ticket is flagged VIP (E8, 0.26.0).
+    ///
+    /// The ServiceNow-family VIP checkbox: a ticket whose caller is on the VIP
+    /// list has its priority FORCED regardless of impact. Stamped onto the ticket
+    /// node at spawn - like `sla_tier`, and for the same reason - so the forced
+    /// priority, the clock it drives and the badge that says WHY are all reading
+    /// one fact of the ticket rather than re-deriving it from the reporter three
+    /// times. `false` stamps nothing, so every ticket that came before this
+    /// carries exactly the fields it always did.
+    pub vip: bool,
     /// The definition exactly as it arrived, for `serialize`.
     pub raw: Json,
 }
@@ -194,6 +204,15 @@ impl TicketDef {
             Some(_) => return refuse!("Ticket sla_tier must be bronze, silver, or gold."),
         };
 
+        // The VIP flag (E8, 0.26.0), optional and strictly boolean: it forces a
+        // priority, so a hand-edited save must not be able to say "vip": "yes"
+        // and have it read as true. Absent is the ordinary caller.
+        let vip = match object.get("vip") {
+            None | Some(Json::Null) => false,
+            Some(Json::Bool(flag)) => *flag,
+            Some(_) => return refuse!("Ticket vip must be a boolean."),
+        };
+
         Ok(Self {
             id: id.to_owned(),
             reporter: reporter.to_owned(),
@@ -201,6 +220,7 @@ impl TicketDef {
             resolved_when: Rc::new(resolved_when),
             sla_ticks,
             sla_tier,
+            vip,
             raw: value.clone(),
         })
     }
@@ -501,6 +521,30 @@ mod tests {
         assert_eq!(def.reporter, "person:pat");
         // Absent is the in-house case: no tier stamped, the node stays as it was.
         assert_eq!(def.sla_tier, None);
+        // And absent is the ordinary caller: no VIP flag, no forced priority.
+        assert!(!def.vip);
+    }
+
+    #[test]
+    fn parses_and_refuses_the_vip_flag() {
+        // A boolean rides through to the struct, so spawn can stamp it.
+        let mut flagged = valid_def();
+        flagged["vip"] = json!(true);
+        assert!(TicketDef::parse(&flagged).expect("valid").vip);
+
+        // Explicit false is the ordinary caller, and stamps nothing.
+        let mut plain = valid_def();
+        plain["vip"] = json!(false);
+        assert!(!TicketDef::parse(&plain).expect("valid").vip);
+
+        // Anything truthy-looking that is not a boolean is refused at load: a
+        // flag that forces a priority is not a string a save may invent.
+        let mut wrong = valid_def();
+        wrong["vip"] = json!("yes");
+        assert_eq!(
+            TicketDef::parse(&wrong).expect_err("refused").message(),
+            "Ticket vip must be a boolean.",
+        );
     }
 
     #[test]

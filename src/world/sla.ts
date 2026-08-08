@@ -22,6 +22,7 @@ import {
   type SlaTarget,
   tierTargetsFor,
 } from './priority';
+import { VIP_FORCED_PRIORITY } from './vip';
 
 export const HOLD_REASONS = ['awaiting_user', 'awaiting_vendor'] as const;
 
@@ -56,6 +57,12 @@ export interface TicketClocks {
    * priority - so the tier IS the clock, not a label beside it.
    */
   readonly tier: SlaTier | null;
+  /**
+   * Whether the priority above was FORCED by the caller's VIP flag (E8, 0.26.0)
+   * rather than earned by what broke. The queue and the detail pane both say so
+   * out loud: the injustice is only a mechanic if the player can see it.
+   */
+  readonly vip: boolean;
   /** The tier x priority targets the two clocks are measured against. */
   readonly target: SlaTarget;
   readonly response: ClockState;
@@ -86,9 +93,34 @@ function signedServiceMinutes(from: number, to: number): number {
     : -serviceMinutesBetween(to, from);
 }
 
+/**
+ * Whether the caller behind this ticket is flagged VIP (E8, 0.26.0).
+ *
+ * Stamped on the ticket at spawn, so this is a field lookup rather than a walk
+ * back to the reporter - the same reason the tier is read off the ticket.
+ */
+export function isVipTicket(node: Readonly<ReadOnlyGraphNode>): boolean {
+  return node.fields[FIELDS.vip] === true;
+}
+
+/**
+ * The priority this ticket actually runs at.
+ *
+ * For everybody it is the cell the triage assigned, and nothing until there is
+ * one. For a VIP caller it is `VIP_FORCED_PRIORITY`, full stop: the flag forces
+ * the priority regardless of impact, from the minute the ticket arrives and
+ * whatever anybody classifies it as afterwards. That is the mechanic, not a
+ * display trick - this is the number both clocks are measured against, so the
+ * forced priority IS the deadline the engine breaches on and the target the app
+ * prints, which is what "the flag drives the clock" has to mean.
+ */
 function ticketPriority(
   node: Readonly<ReadOnlyGraphNode>,
 ): Priority | null {
+  if (isVipTicket(node)) {
+    return VIP_FORCED_PRIORITY;
+  }
+
   const value = node.fields[FIELDS.priority];
   return isPriority(value) ? value : null;
 }
@@ -181,6 +213,7 @@ export function ticketClocks(
   return {
     priority,
     tier,
+    vip: isVipTicket(node),
     target,
     response: {
       dueAt: responseDueAt,

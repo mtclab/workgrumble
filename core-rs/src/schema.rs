@@ -360,6 +360,11 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
                 },
                 "a bronze, silver, or gold SLA tier",
             )?;
+            // The VIP flag (E8, 0.26.0), stamped at spawn from the caller behind
+            // the ticket. Strictly boolean for the same reason the tier is a
+            // closed enum: it forces a priority, so a hand-edited save must not
+            // be able to smuggle one in as a string.
+            assert_optional(fields, "vip", is_boolean, "a boolean")?;
 
             if !optional(fields, "state").is_some_and(is_ticket_state) {
                 return refuse!("Ticket nodes require a valid \"state\" field.");

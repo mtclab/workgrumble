@@ -254,6 +254,14 @@ export interface TicketDef {
    */
   sla_tier?: 'bronze' | 'silver' | 'gold';
   /**
+   * Whether the caller behind this ticket is flagged VIP (E8, 0.26.0), stamped
+   * onto the ticket node at spawn the way `sla_tier` is. A VIP ticket carries a
+   * FORCED priority regardless of what broke; absent leaves the node exactly as
+   * it was before the flag existed, which is every ticket from an ordinary
+   * reporter.
+   */
+  vip?: boolean;
+  /**
    * What closing it is worth, and it is worth REPUTATION only.
    *
    * There used to be a `money` beside it, from 5 to 30 per ticket, and nothing

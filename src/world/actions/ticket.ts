@@ -7,6 +7,7 @@ import {
   SLA_TARGETS,
 } from '../priority';
 import { HANDOFF_BOUNCE } from '../tickets/handoff';
+import { VIP_FORCED_PRIORITY } from '../vip';
 import {
   fieldIs,
   HELPDESK_TIER,
@@ -210,6 +211,37 @@ const MATRIX_GUARD: GuardData = {
 };
 
 /**
+ * The VIP flag putting the priority back (E8, 0.26.0).
+ *
+ * The player's impact and urgency are kept exactly as filed - they are the
+ * player's reading of the fault and the scorecard grades that reading - and the
+ * PRIORITY is overwritten with the one the flag forces. It is the business rule
+ * as it really works: the triage form takes what you type and the flag decides
+ * the number anyway, which is why a VIP ticket's cell does not add up to its
+ * priority and why arguing with the matrix gets nobody anywhere.
+ *
+ * It runs before `deadlineOps`, so the re-cut deadline is the FORCED priority's
+ * budget: classify the earbuds honestly as low/low and the ticket does not get
+ * P4's eight hours, it keeps P2's two. Take this out and the flag becomes a
+ * badge - one honest triage would drop the exec's ticket to the bottom of the
+ * queue with the loosest clock in the table, which is the mechanic gone.
+ */
+const VIP_FORCING_OPS: readonly OpData[] = [
+  {
+    op: 'when',
+    cond: fieldIs(TARGET, FIELDS.vip, true),
+    ops: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.priority,
+        value: { const: VIP_FORCED_PRIORITY },
+      },
+    ],
+  },
+];
+
+/**
  * Re-cutting the resolution deadline to the priority that was just assigned.
  *
  * One op per priority, guarded on the priority the ops above have already
@@ -401,6 +433,7 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
         field: FIELDS.classifiedAt,
         value: { now: true },
       },
+      ...VIP_FORCING_OPS,
       ...deadlineOps(),
     ],
   },

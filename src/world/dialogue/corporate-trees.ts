@@ -28,6 +28,11 @@ import { HALCYON_IDS } from '../corporate-company';
 import { LEGENDARY_MANDATE_TICKET, LEGENDARY_REVERT_TICKET } from '../legendary';
 import { OVERRIDE_RISK_ACCEPTANCE, OVERRIDE_TICKET } from '../override';
 import { RECERT_FOLLOWUP, RECERT_TICKET } from '../recert';
+import {
+  VIP_EARBUDS_TICKET,
+  VIP_LEDGER_TICKET,
+  VIP_TABLET_TICKET,
+} from '../vip';
 import type { DialogueTree } from './types';
 
 const DENISE: DialogueTree = {
@@ -301,9 +306,20 @@ const MIRIAM: DialogueTree = {
 const BRONWEN: DialogueTree = {
   id: 'dialogue/halcyon-bronwen',
   speaker: HALCYON_IDS.bronwen,
-  tickets: [RECERT_FOLLOWUP],
+  // And the ledger lockout (E8, 0.26.0): the ordinary reporter's half of the
+  // queue-jump collision. She is the right person for it - the office manager
+  // raises what the floor cannot raise for itself, and she is exactly the sort of
+  // caller nobody's checkbox is ticked for.
+  tickets: [RECERT_FOLLOWUP, VIP_LEDGER_TICKET],
   root: 'backup',
-  resolved_root: 'backup-done',
+  roots: {
+    [RECERT_FOLLOWUP]: 'backup',
+    [VIP_LEDGER_TICKET]: 'ledger',
+  },
+  resolved_roots: {
+    [RECERT_FOLLOWUP]: 'backup-done',
+    [VIP_LEDGER_TICKET]: 'ledger-done',
+  },
   nodes: [
     {
       id: 'backup',
@@ -344,6 +360,178 @@ const BRONWEN: DialogueTree = {
         + 'just make it a domain admin again to make it stop, which I am told is '
         + 'the thing not to do. Thank you.',
       options: [{ label: 'Close it out' }],
+    },
+    {
+      id: 'ledger',
+      npc_line: 'Nobody can get into the ledger. Miriam, Marguerite and Cass are '
+        + 'all sat there with a login page, and the supplier run has to be away '
+        + 'today or people do not get paid this week. It was fine when we left '
+        + 'last night and nobody has touched it. I know you are busy - I can see '
+        + 'Roland went down there.',
+      options: [
+        {
+          label: 'Ask whether it is refusing everybody or only some of them',
+          next: 'ledger-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Think about what stops a whole system letting anybody in '
+            + 'overnight',
+          effects: [
+            {
+              reveal: 'Nobody\'s own password is the problem: the ledger runs as '
+                + 'a service account, and that account locked itself out in the '
+                + 'night the way service accounts do - something retrying an old '
+                + 'credential until the directory shut the door. The service went '
+                + 'down with it. Unlock the account first and then start the '
+                + 'service; start it while the account is still locked and it '
+                + 'will simply lock out again.',
+            },
+          ],
+        },
+        { label: 'Tell her you are on it' },
+      ],
+    },
+    {
+      id: 'ledger-q',
+      npc_line: 'Everybody. All four of us, same message, same second. It is not '
+        + 'people forgetting passwords - the system itself is not there.',
+      options: [{ label: 'Go and look at the ledger' }],
+    },
+    {
+      id: 'ledger-done',
+      npc_line: 'It let us in about ten minutes ago and the run has gone. We were '
+        + 'close to the cut-off, and I will not pretend the floor was not '
+        + 'watching the clock. Thank you for getting to it.',
+      options: [{ label: 'Close it out' }],
+    },
+  ],
+};
+
+/**
+ * Roland Cushing-Vane, Chief Executive - the VIP himself (E8, 0.26.0).
+ *
+ * The first tree in this building where the exec speaks for himself rather than
+ * through Denise, and that is the point of the tier: white-glove support means
+ * the man walks down to the desk, and everything he raises is a P2 before anybody
+ * reads it. His register is unhurried, entirely pleasant, and completely without
+ * the idea that anybody else is waiting - he is not rude and he never pulls rank,
+ * because he has never once had to.
+ *
+ * Two beats, one per ticket he raises. The earbuds `reveal` is the queue-jump
+ * said plainly to the player and never to him: the flag has put a stale Bluetooth
+ * pairing above a system outage, and it is doing exactly what it was configured
+ * to do. The tablet `reveal` is the shadow-IT one: the device cannot be managed
+ * and cannot be refused, so it gets fixed by hand and written down. Both `asks`
+ * are ordinary scoping questions, which is what lets either be parked on him -
+ * and parking a P2 on the chief executive is its own kind of decision.
+ */
+const ROLAND: DialogueTree = {
+  id: 'dialogue/halcyon-roland',
+  speaker: HALCYON_IDS.ceo,
+  tickets: [VIP_EARBUDS_TICKET, VIP_TABLET_TICKET],
+  root: 'earbuds',
+  roots: {
+    [VIP_EARBUDS_TICKET]: 'earbuds',
+    [VIP_TABLET_TICKET]: 'devices',
+  },
+  resolved_roots: {
+    [VIP_EARBUDS_TICKET]: 'earbuds-done',
+    [VIP_TABLET_TICKET]: 'devices-done',
+  },
+  nodes: [
+    {
+      id: 'earbuds',
+      npc_line: 'Ah - you are the IT chap. My earbuds have stopped talking to the '
+        + 'laptop. They were perfectly happy yesterday. I have a call at eleven I '
+        + 'would rather take on my feet, so if you could just have a look now '
+        + 'that would be marvellous.',
+      options: [
+        {
+          label: 'Ask what the earbuds are doing when he tries to connect them',
+          next: 'earbuds-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Think about what this ticket is sitting on top of',
+          effects: [
+            {
+              reveal: 'The earbuds are holding a stale pairing; resetting them '
+                + 'clears it, and it affects exactly one person. It is on your '
+                + 'queue at P2 because his name is on the VIP list - the flag '
+                + 'sets the priority from WHO asked, not from what broke - so it '
+                + 'is sitting level with a system four people cannot get into. '
+                + 'Both clocks are running and you can only be at one desk. '
+                + 'Nothing here is broken except the ordering, and the ordering '
+                + 'is working as designed.',
+            },
+          ],
+        },
+        { label: 'Tell him you will take a look' },
+      ],
+    },
+    {
+      id: 'earbuds-q',
+      npc_line: 'They make the little noise and then nothing. The laptop lists '
+        + 'them and says "not connected", which strikes me as unhelpful. I have '
+        + 'not done anything differently, before you ask - I never do anything '
+        + 'differently.',
+      options: [{ label: 'Go and reset them' }],
+    },
+    {
+      id: 'earbuds-done',
+      npc_line: 'Marvellous - they are back. That was quick, and I shall say so. '
+        + 'You will let me know if it happens again? Actually, no - I shall just '
+        + 'come down.',
+      options: [{ label: 'Log it and get back to the queue' }],
+    },
+    {
+      id: 'devices',
+      npc_line: 'Now this one is more of a nuisance. Since the password business '
+        + 'my mail has stopped on the phone AND on my iPad. The iPad is my own, '
+        + 'yes - it is the one I actually read things on in the evening. I would '
+        + 'like both of them working, and I would rather not have the '
+        + 'conversation about which of them is yours.',
+      options: [
+        {
+          label: 'Ask which of the two devices the company issued him',
+          next: 'devices-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Think about what you can and cannot do to each of them',
+          effects: [
+            {
+              reveal: 'The phone is enrolled, so the mail profile can be pushed '
+                + 'to it from the console in one move. The tablet is not enrolled '
+                + 'in anything - it is his own device, so there is no channel to '
+                + 'it, no policy on it and no way to wipe the mailbox off it if '
+                + 'it walks - and no verb here will change that. You cannot '
+                + 'manage it and you cannot refuse it either, because the '
+                + 'company\'s mail is already on it. Fix it by hand with him, and '
+                + 'get the exception written down and signed by the person who '
+                + 'owns that risk, or an unmanaged device holding executive mail '
+                + 'stays nobody\'s for another two years.',
+            },
+          ],
+        },
+        { label: 'Tell him you will get both of them going' },
+      ],
+    },
+    {
+      id: 'devices-q',
+      npc_line: 'The phone, I imagine - it arrived with a case I did not choose. '
+        + 'The iPad I bought myself. I did have somebody put the work mail on it, '
+        + 'years ago now. Is that a problem? It has never been a problem before.',
+      options: [{ label: 'Explain what can be pushed and what has to be typed' }],
+    },
+    {
+      id: 'devices-done',
+      npc_line: 'Both away, thank you. And yes, I have signed the thing your '
+        + 'manager sent through about the iPad - I did read it, which will '
+        + 'disappoint you. If it is that much of a worry, buy me one that is '
+        + 'yours and I shall use that one instead.',
+      options: [{ label: 'File the exception with the ticket' }],
     },
   ],
 };
@@ -574,4 +762,4 @@ const COLM: DialogueTree = {
 };
 
 export const CORPORATE_TREES: readonly DialogueTree[] =
-  [DENISE, MIRIAM, BRONWEN, IVOR, TARQUIN, COLM];
+  [DENISE, MIRIAM, BRONWEN, IVOR, TARQUIN, COLM, ROLAND];

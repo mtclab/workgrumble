@@ -36,6 +36,7 @@ import { SOFTWARE_ACTION_DATA } from './software';
 import { SYSTEMD_ACTION_DATA } from './systemd';
 import { TICKET_ACTIONS } from './ticket';
 import { TONE_ACTION_DATA } from './tone';
+import { VIP_ACTIONS } from './vip';
 import { WORLD_ACTION_DATA } from './world';
 
 export {
@@ -208,6 +209,11 @@ export function helpdeskActions(): readonly ActionData[] {
     // that reads it back. All player verbs; the mandate arc is proven in
     // `legendary.test.ts`.
     ...LEGENDARY_ACTIONS,
+    // The VIP tier's verbs (E8, 0.26.0): the MDM push that refuses an unenrolled
+    // device and the manual walkthrough that does not - both player verbs - and
+    // the queue-jump's bill, a world verb the day loop settles when the clock on
+    // whichever ticket was left waiting runs out.
+    ...VIP_ACTIONS,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

@@ -766,6 +766,26 @@ export const FIELDS = {
    * a save can both read that the desk signed off without looking.
    */
   recertRubberStamped: 'recert_rubber_stamped',
+  /**
+   * The VIP flag (E8, 0.26.0) - the quietest injustice in the queue.
+   *
+   * On a PERSON, it is the ServiceNow-family VIP checkbox: this caller is on the
+   * executive-support list. On a TICKET it is the same fact stamped at spawn from
+   * the caller behind it (the engine writes it, like `sla_tier`), and it is what
+   * FORCES that ticket's priority regardless of what actually broke - the real
+   * mechanic, where the flag is not a bug and not an override anybody has to
+   * type. Absent is the ordinary caller and the ordinary ticket, which is
+   * everybody who came before it.
+   */
+  vip: 'vip',
+  /**
+   * When the queue-jump's cost landed (E8, 0.26.0): the latch that stops the
+   * collision's fallout charging twice, the same shape as `override_fallout_at`.
+   * Written on the ticket that was left waiting the minute its clock runs out -
+   * the exec who went over your head, or the team that sat blocked - so the cost
+   * of the choice lands once, on the one that waited.
+   */
+  queueJumpFalloutAt: 'queue_jump_fallout_at',
   /** machine */
   hostname: 'hostname',
   /**
@@ -995,6 +1015,27 @@ export const FIELDS = {
    * Viewer is where the two meet.
    */
   storedCredential: 'stored_credential',
+  /**
+   * The shadow-IT tail (E8, 0.26.0): whether this device is ENROLLED in mobile
+   * device management, and whether the corporate mailbox on it is working.
+   *
+   * `mdmEnrolled` is the whole of the honest tension. A company-issue phone is
+   * enrolled, so the desk can push a mail profile to it from a console in a
+   * second. The executive's PERSONAL tablet is not - nobody enrolled it, because
+   * it is not the company's device - and no amount of clicking makes it one, so
+   * the management verb refuses it and says why. It is also why the tablet cannot
+   * simply be refused: enrolment is what the desk lacks, not responsibility, and
+   * the company's mail is on it either way.
+   *
+   * `mailProfileOk` is whether the mailbox on the device is actually syncing. It
+   * is written by the two ways there are to fix one - the MDM push (managed) and
+   * the manual walkthrough with the person holding it (unmanaged) - so "the mail
+   * works again" is one readable state whichever route got there. Absent on every
+   * device that has no corporate mailbox on it at all, which is all of them until
+   * a ticket says otherwise.
+   */
+  mdmEnrolled: 'mdm_enrolled',
+  mailProfileOk: 'mail_profile_ok',
   /** service */
   status: 'status',
   /**
@@ -1524,6 +1565,18 @@ export const DEVICE_TYPES = {
    * connector - which is a power-cycle of the device in this world's terms.
    */
   sensor: 'sensor',
+  /**
+   * The executive's own kind (E8, 0.26.0). Wireless earbuds that will not pair
+   * are the smallest thing on this estate and, on a VIP ticket, the one with the
+   * tightest clock on it - which is the joke and the mechanic in one node.
+   */
+  earbuds: 'earbuds',
+  /**
+   * The company-issue phone: a MANAGED device, enrolled in MDM, and the contrast
+   * the shadow-IT ticket is built on - the same mailbox on two devices, one the
+   * desk can push a profile to and one it cannot touch.
+   */
+  phone: 'phone',
 } as const;
 
 /**

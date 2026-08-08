@@ -77,6 +77,9 @@ const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.serviceSetStartup]: 'Changed the service startup type',
   [HELPDESK_ACTIONS.captureRollback]: 'Captured the rollback first',
   [HELPDESK_ACTIONS.restoreFromRecord]: 'Restored the config from the rollback',
+  [HELPDESK_ACTIONS.mdmPushProfile]: 'Pushed the mail profile from the MDM console',
+  [HELPDESK_ACTIONS.deviceManualMailSetup]: 'Walked the owner through the mailbox '
+    + 'by hand',
 };
 
 export function actionSummary(id: string): string {

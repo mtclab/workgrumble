@@ -357,8 +357,16 @@ describe('helpdesk action registry', () => {
     // and restoring from it (`rollback.restore`, the clean one-step revert that
     // refuses an empty record). The mandate flattens real config and the revert
     // reads a real captured prior, so all three are genuinely new player verbs.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(50);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(50);
+    //
+    // Fifty-two from 0.26.0 (E8): the VIP tier's shadow-IT pair - pushing a mail
+    // profile from the MDM console (`mdm.push_profile`, the normal management
+    // verb, which REFUSES an unenrolled device by name) and the manual
+    // walkthrough that is the only way to fix one (`device.manual_mail_setup`).
+    // The queue-jump itself needs no player verb at all: the flag forces the
+    // priority at spawn and the wait is billed by a WORLD verb the day loop
+    // dispatches, so these two are the whole of what the mechanic adds here.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(52);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(52);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});

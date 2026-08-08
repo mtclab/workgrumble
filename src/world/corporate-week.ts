@@ -2,8 +2,9 @@
  * Halcyon Grange Holdings, week one (E8, 0.22.0) - the exec weak spot arc.
  *
  * The fourth employer's week, and, like Bodgeworth's, a shorter characterful
- * one: five days, the three VIP EXCEPTION tickets across the first three, quiet
- * on Thursday, and the conversation at three on the Friday. Where Bodgeworth's
+ * one: five days, the three VIP EXCEPTION tickets across the first three, the
+ * access review and the queue-jump collision on the Thursday, and the manager's
+ * override with the conversation at three on the Friday. Where Bodgeworth's
  * week is about a wild-west estate and the MSP's is about scope, this one is
  * about the POLITICS - each fault is an executive, through their assistant,
  * leaning on the desk to open a hole, and the whole week is the setup a later
@@ -19,6 +20,11 @@
 
 import { HALCYON_CHANNELS, HALCYON_IDS } from './corporate-company';
 import { OVERRIDE_TICKET } from './override';
+import {
+  VIP_EARBUDS_TICKET,
+  VIP_LEDGER_TICKET,
+  VIP_TABLET_TICKET,
+} from './vip';
 import { type DayScript, validateWeek } from './week';
 
 const HALCYON_ROOM_IDS = new Set(HALCYON_CHANNELS.map((room) => room.id));
@@ -86,7 +92,15 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
     label: 'Wednesday',
     inherited: [],
     // The filter exemption, late morning: take the CEO off the mail filter.
-    drip: [{ ticketId: 'ticket:halcyon-ceo-filter', minute: 11 * 60 }],
+    // And, after lunch, the shadow-IT tail (E8, 0.26.0): the CEO's mail has
+    // stopped on two devices, one of which is not the company's. It sits on the
+    // same day as the filter exemption because it is the same lesson from the
+    // other end - the exec's convenience is already outside the controls, and
+    // this is the device that was never inside them at all.
+    drip: [
+      { ticketId: 'ticket:halcyon-ceo-filter', minute: 11 * 60 },
+      { ticketId: VIP_TABLET_TICKET, minute: 14 * 60 + 15 },
+    ],
     channels: [
       {
         id: 'halcyon:filter-chat',
@@ -97,9 +111,20 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
         minute: 10 * 60 + 50,
         relatedTicket: 'ticket:halcyon-ceo-filter',
       },
+      {
+        id: 'halcyon:tablet-chat',
+        channel: EXEC,
+        author: HALCYON_IDS.ea,
+        body: 'heads up - Roland says his mail has stopped on his phone AND on '
+          + 'his own iPad. the iPad is his personal one, before you ask. he does '
+          + 'not see why that is a distinction.',
+        minute: 14 * 60 + 5,
+        relatedTicket: VIP_TABLET_TICKET,
+      },
     ],
     patrolSeed: 5_501,
-    load: 2,
+    // Two tickets now, and the second is three verbs and a signature.
+    load: 3,
   },
   {
     day: 4,
@@ -109,9 +134,42 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
     // in the morning pile because compliance sent the list overnight; the exec
     // exceptions from earlier in the week sit the way they were left.
     inherited: ['ticket:halcyon-recert'],
-    drip: [],
+    // And the collision (E8, 0.26.0), in one minute: the CEO's earbuds and the
+    // finance team locked out of the ledger, arriving together. The same minute
+    // on purpose - the version's whole beat is that both clocks start at once,
+    // the flagged one is P2 before anybody reads it, the real one is P2 once
+    // somebody does, and there is one desk. Whichever waits, it costs.
+    drip: [
+      { ticketId: VIP_EARBUDS_TICKET, minute: 10 * 60 },
+      { ticketId: VIP_LEDGER_TICKET, minute: 10 * 60 },
+    ],
+    channels: [
+      {
+        id: 'halcyon:ledger-chat',
+        channel: EXEC,
+        author: HALCYON_IDS.bronwen,
+        body: 'the ledger is not letting anyone in this morning - Miriam, '
+          + 'Marguerite and Cass are all stuck, and the supplier run has to go '
+          + 'today. raising it properly now.',
+        minute: 10 * 60 + 2,
+        relatedTicket: VIP_LEDGER_TICKET,
+      },
+      {
+        id: 'halcyon:earbuds-chat',
+        channel: EXEC,
+        author: HALCYON_IDS.ea,
+        body: '@you Roland is on his way down about his earbuds. I did say you '
+          + 'were busy. It is flagged as his, so I imagine it has gone to the '
+          + 'top of your list anyway.',
+        minute: 10 * 60 + 4,
+        mentionsPlayer: true,
+        relatedTicket: VIP_EARBUDS_TICKET,
+      },
+    ],
     patrolSeed: 7_919,
-    load: 2,
+    // The heaviest day of the week: the whole access review, and a collision on
+    // top of it that cannot be finished twice.
+    load: 4,
   },
   {
     day: 5,

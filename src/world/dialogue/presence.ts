@@ -162,6 +162,12 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
   [HALCYON_IDS.seagull]: 'Your status is away, and I need the standardisation done '
     + 'today for the Friday deck. I do not much mind how - I mind that "away" is '
     + 'not a slide I can present as an operational-excellence win.',
+  // The VIP himself (E8, 0.26.0). He does not threaten and he does not raise his
+  // voice; he simply mentions, pleasantly, that he has already found the person
+  // above you - which is what the flag is for and why the dot costs more here.
+  [HALCYON_IDS.ceo]: 'Your little dot says away. I did wonder. I have mentioned '
+    + 'it to Ivor - not a complaint, you understand, I just did not want to be '
+    + 'left standing about. He says he will look into it.',
   [HALCYON_IDS.successor]: 'You are showing away, and I have a security finding '
     + 'with my name on it now and the person who caused it three job titles away. '
     + 'Away, while the thing I inherited is still on fire, is not a status I have '

@@ -325,6 +325,27 @@ export const HELPDESK_ACTIONS = {
    * the player who kept the rollback the first time.
    */
   restoreFromRecord: 'rollback.restore',
+  /**
+   * Pushing the corporate mail profile to a device from the MDM console (E8,
+   * 0.26.0) - the normal way a managed device is fixed, and the verb that REFUSES
+   * an unmanaged one.
+   *
+   * It requires enrolment, honestly and by name: there is no channel to an
+   * unenrolled device, so a personal tablet holding the company's mail is refused
+   * here and has to be dealt with by hand. The same verb succeeds on the
+   * company-issue phone in the same ticket, which is the whole of the shadow-IT
+   * lesson said in two dispatches.
+   */
+  mdmPushProfile: 'mdm.push_profile',
+  /**
+   * Walking the person holding the device through setting the mailbox up by hand
+   * (E8, 0.26.0) - the honest way to fix what you cannot manage.
+   *
+   * Not a trick and not a workaround: it is what a desk actually does with an
+   * unenrolled device it is nonetheless responsible for, and it costs the thing it
+   * costs - the owner has to be there and do it themselves.
+   */
+  deviceManualMailSetup: 'device.manual_mail_setup',
 } as const;
 
 export type HelpdeskActionId =
@@ -589,6 +610,19 @@ export const WORLD_ACTIONS = {
    * count.
    */
   presenceNoticed: 'world.presence_noticed',
+  /**
+   * The bill for the queue-jump, arriving as the clock on whichever ticket was
+   * left waiting runs out (E8, 0.26.0).
+   *
+   * The collision has no free lunch and no third option: one desk, two tickets on
+   * the same deadline, and whichever waits costs something real. This is where
+   * that lands, and the two costs are deliberately different currencies - the
+   * flagged exec rings the Head of IT (suspicion: somebody senior is now looking
+   * at you), the ordinary team sits blocked through the payment run (reputation:
+   * the floor watched which one the desk did first). A world verb, because it is
+   * what happens TO you on somebody else's timetable off a choice you made.
+   */
+  queueJumpFallout: 'world.queue_jump_fallout',
 } as const;
 
 /**

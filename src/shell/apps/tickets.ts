@@ -240,6 +240,15 @@ export interface TicketRow {
   readonly picked: boolean;
   readonly priority: string;
   readonly priorityLabel: string;
+  /**
+   * Whether that priority was FORCED by the caller's VIP flag (E8, 0.26.0).
+   *
+   * The queue has to say it, or the injustice is invisible: two rows reading P2,
+   * one of them because four people cannot work and one because of whose name is
+   * on it. The label carries it in words and the flag carries it as an attribute,
+   * so the row can be styled and read either way.
+   */
+  readonly vip: boolean;
   readonly badge: string;
   /** The countdown, and the only part of a row a passing minute may move. */
   readonly sla: string;
@@ -248,6 +257,21 @@ export interface TicketRow {
 export interface QueueView {
   readonly selectedId: string | null;
   readonly picked: ReadonlySet<string>;
+}
+
+/**
+ * What the priority cell says (E8, 0.26.0).
+ *
+ * For everybody, the priority. For a VIP caller's ticket, the priority AND the
+ * reason, in the two letters the product itself uses - because "P2" on the exec's
+ * earbuds and "P2" on a system outage are the same number arrived at two
+ * completely different ways, and a queue that prints only the number is a queue
+ * that has hidden the whole mechanic.
+ */
+function priorityCellLabel(clocks: Readonly<TicketClocks>): string {
+  return clocks.vip
+    ? `${priorityLabel(clocks.priority)} (VIP)`
+    : priorityLabel(clocks.priority);
 }
 
 export function ticketRows(
@@ -275,7 +299,8 @@ export function ticketRows(
       selected: node.id === view.selectedId,
       picked: view.picked.has(node.id),
       priority: clocks.priority === null ? 'none' : String(clocks.priority),
-      priorityLabel: priorityLabel(clocks.priority),
+      priorityLabel: priorityCellLabel(clocks),
+      vip: clocks.vip,
       badge: ticketStateLabel(node),
       sla: clockSummary(clocks.resolution, 'Closed'),
     };
@@ -512,6 +537,7 @@ export const TICKETS_APP: AppDef = {
                   + `- ${next.reporter}`,
           );
           setFlag(priority, 'priority', next.priority);
+          setFlag(priority, 'vip', String(next.vip));
           setText(priority, next.priorityLabel);
           setFlag(badge, 'state', next.state);
           setFlag(badge, 'breached', String(next.breached));
@@ -1033,10 +1059,24 @@ export const TICKETS_APP: AppDef = {
       priorityBadge.dataset.priority = clocks.priority === null
         ? 'none'
         : String(clocks.priority);
+      priorityBadge.dataset.vip = String(clocks.vip);
       priorityBadge.textContent = clocks.priority === null
         ? 'Untriaged (treated as P3)'
-        : priorityLabel(clocks.priority);
+        : priorityCellLabel(clocks);
       priorityValue.append(priorityBadge);
+
+      // And WHY, when the answer is not "what broke" (E8, 0.26.0). A row of its
+      // own rather than a footnote on the priority, because it is a different
+      // fact about the ticket - the same shape the customer's SLA tier gets
+      // below - and because the player is entitled to read, in one line, that
+      // this deadline was set by the caller's name and not by the fault.
+      if (clocks.vip) {
+        const vipValue = definitionRow(facts, 'VIP flag', 'ticket-detail-vip');
+        vipValue.textContent = 'The caller is on the VIP list, so the priority '
+          + 'is forced to '
+          + `${priorityLabel(clocks.priority)} regardless of impact. Nobody `
+          + 'chose it and nobody can unpick it here.';
+      }
 
       // The customer's SLA tier (0.12.0), the thing the two clocks below are set
       // by. Only when there is one: an in-house ticket has no tier, so the row is

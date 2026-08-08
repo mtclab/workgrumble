@@ -41,6 +41,8 @@ import {
   CHANGE_REQUEST_KINDS,
   CHANGE_REQUEST_STATUSES,
   FIELDS,
+  LOCKOUT_THRESHOLD,
+  SERVICE_STATUS,
   STARTUP_TYPES,
 } from '../fields';
 import {
@@ -51,6 +53,12 @@ import {
 import { OVERRIDE_RISK_ACCEPTANCE, OVERRIDE_TICKET } from '../override';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import { RECERT_FOLLOWUP, RECERT_TICKET } from '../recert';
+import {
+  VIP_DEVICE_EXCEPTION,
+  VIP_EARBUDS_TICKET,
+  VIP_LEDGER_TICKET,
+  VIP_TABLET_TICKET,
+} from '../vip';
 import type { Expr } from '../../engine-api';
 import type { WorldTicket } from './types';
 
@@ -59,6 +67,8 @@ const KB_BEC_RESPONSE = 'kb/bec-incident-response';
 const KB_RECERT = 'kb/access-recertification';
 const KB_CYA = 'kb/manager-override-cya';
 const KB_LEGENDARY = 'kb/legendary-manager-rollback';
+const KB_VIP_TIER = 'kb/vip-queue-jump';
+const KB_SHADOW_IT = 'kb/unmanaged-personal-device';
 
 /** The one member_of edge check the recert reuses for every finding. */
 function memberOf(account: string, group: string) {
@@ -1111,6 +1121,353 @@ const LEGENDARY_REVERT: WorldTicket = {
   ],
 };
 
+/**
+ * The queue-jump, half one (E8, 0.26.0): the chief executive's earbuds.
+ *
+ * The most trivial thing in the building. One device, one owner, nobody else
+ * downstream of it - the impact walk reads a single person and the lowest band
+ * there is, and the honest triage of it is the bottom of the table. It arrives at
+ * P2 anyway, because Roland Cushing-Vane has the VIP checkbox ticked, and the
+ * clock it lands with is the forced priority's rather than the untriaged one's.
+ *
+ * Nothing here says "vip". The flag is a fact about the PERSON on the estate, the
+ * spawn seam stamps it onto the ticket from the reporter, and every consequence -
+ * the priority, the two clocks, the badge that says WHY, the cost if it waits -
+ * follows from that one field. Which is exactly how it works in the product: the
+ * ticket is not written differently, the caller is.
+ *
+ * It is legitimately closeable and it is not a trap: they really will not pair,
+ * a reset really does fix it, and closing it really is worth something. That is
+ * the point. Neither half of this collision is a wrong answer.
+ */
+const CEO_EARBUDS: WorldTicket = {
+  arrival: 'drip',
+  nodes: [HALCYON_IDS.ceoEarbuds],
+  // He says it is urgent because he has a call at eleven. It is a pair of
+  // earbuds: the truth is the bottom of the ladder, and the flag does not care.
+  claimed_urgency: 3,
+  true_urgency: 1,
+  def: {
+    id: VIP_EARBUDS_TICKET,
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Halcyon: "my earbuds won\'t connect" (Roland, CEO)',
+      body:
+        'Roland has come down to the desk himself, which he does not do. His '
+        + 'wireless earbuds will not pair with his laptop - they were fine '
+        + 'yesterday, they are showing a light, and he has a call at eleven he '
+        + 'would like to take walking. He would like it sorted now, and he has '
+        + 'not raised it with anybody else because "this is quicker".',
+    },
+    reporter: HALCYON_IDS.ceo,
+    // They are on and they are not talking to anything: the stale pairing, which
+    // a reset clears. The fault arrives with the ticket, like every other.
+    setup: [
+      {
+        op: 'setField',
+        id: HALCYON_IDS.ceoEarbuds,
+        field: FIELDS.wedged,
+        value: true,
+      },
+    ],
+    resolved_when: {
+      op: 'eq',
+      selector: { id: HALCYON_IDS.ceoEarbuds },
+      field: FIELDS.wedged,
+      value: false,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 1 },
+    kb_ref: KB_VIP_TIER,
+  },
+  cause: 'The earbuds are holding a stale pairing and will not hand it back. A '
+    + 'reset clears it, which is thirty seconds of work on a device that affects '
+    + 'exactly one person. What makes this ticket interesting is not the fault - '
+    + 'it is that the VIP flag on the caller has put it above a system outage, '
+    + 'and that the flag is working exactly as designed.',
+  dialogue_ref: 'dialogue/halcyon-roland',
+  paths: [
+    {
+      id: 'reset-the-earbuds',
+      app: 'directory',
+      label: 'Reset the earbuds and pair them again',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.devicePowerCycle,
+          target: HALCYON_IDS.ceoEarbuds,
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The queue-jump, half two (E8, 0.26.0): the finance team, locked out.
+ *
+ * The same minute, an ordinary reporter, and a genuinely worse problem. The
+ * ledger's service account locked itself out overnight - the textbook 2am failure
+ * - so the service is stopped and four people cannot get into the system on
+ * payment-run day. The impact walk finds all four, which is medium impact, and
+ * the reporter is not exaggerating for once: honestly triaged it is a P2.
+ *
+ * And that is the collision. Both tickets are P2. One of them earned it. The
+ * queue sorts them the same, both clocks run from the same minute, and there is
+ * one desk - so the player picks, and whichever is left waiting long enough for
+ * its clock to run out costs something real (`queueJumpFalloutDue`). There is no
+ * third option and no cheat: the flag is not removable, the tickets are not
+ * mergeable, and neither of them can be closed by talking about the other.
+ */
+const FINANCE_LEDGER_LOCKOUT: WorldTicket = {
+  arrival: 'drip',
+  nodes: [HALCYON_IDS.financeLedger, HALCYON_IDS.svcLedgerAccount],
+  // Urgent, and honestly so: the payment run is today and nobody can log in.
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: VIP_LEDGER_TICKET,
+    archetype: 'hidden_cause',
+    flavor: {
+      title: 'Halcyon: nobody in Finance can get into the ledger - payment run '
+        + 'is today',
+      body:
+        'Bronwen has raised it on behalf of the floor: the finance ledger is '
+        + 'refusing everybody. Miriam, Marguerite and Cass are all sitting '
+        + 'looking at a login page, the supplier payment run has to go today, '
+        + 'and it worked when they left last night. Nobody has touched it. She '
+        + 'has been asked three times already whether there is an update.',
+    },
+    reporter: HALCYON_IDS.bronwen,
+    // The overnight lockout, and the service that died with it: the account the
+    // ledger authenticates as hit the lockout threshold in the small hours, so
+    // the service stopped and stayed stopped.
+    setup: [
+      {
+        op: 'setField',
+        id: HALCYON_IDS.svcLedgerAccount,
+        field: FIELDS.locked,
+        value: true,
+      },
+      {
+        op: 'setField',
+        id: HALCYON_IDS.svcLedgerAccount,
+        field: FIELDS.badPwCount,
+        value: LOCKOUT_THRESHOLD,
+      },
+      {
+        op: 'setField',
+        id: HALCYON_IDS.financeLedger,
+        field: FIELDS.status,
+        value: SERVICE_STATUS.stopped,
+      },
+    ],
+    // Both clauses load-bearing, and in that order: restarting the service while
+    // the account it runs as is still locked out puts it straight back where it
+    // was, which is why the unlock is the fix and the restart is the finish.
+    resolved_when: {
+      op: 'and',
+      exprs: [
+        {
+          op: 'eq',
+          selector: { id: HALCYON_IDS.svcLedgerAccount },
+          field: FIELDS.locked,
+          value: false,
+        },
+        {
+          op: 'eq',
+          selector: { id: HALCYON_IDS.financeLedger },
+          field: FIELDS.status,
+          value: SERVICE_STATUS.running,
+        },
+      ],
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 5 },
+    kb_ref: KB_VIP_TIER,
+  },
+  cause: 'The ledger runs as a service account, and that account locked itself '
+    + 'out overnight the way service accounts do - a stale credential somewhere '
+    + 'retrying until the directory shut the door. The service died with it. '
+    + 'Unlock the account and start the service and the floor is working again; '
+    + 'restart it first and it locks straight back out. Nothing about it is '
+    + 'unusual, and it is worse by every measure than the ticket sitting above it '
+    + 'in the queue.',
+  dialogue_ref: 'dialogue/halcyon-bronwen',
+  paths: [
+    {
+      id: 'unlock-and-restart',
+      app: 'directory',
+      label: 'Unlock the ledger\'s service account, then start the service',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.accountUnlock,
+          target: HALCYON_IDS.svcLedgerAccount,
+        },
+        {
+          action: HELPDESK_ACTIONS.serviceRestart,
+          target: HALCYON_IDS.financeLedger,
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The shadow-IT tail (E8, 0.26.0): the executive's personal tablet, with the
+ * company's mail on it.
+ *
+ * The research's named trap, kept light. Roland's password changed, and every
+ * device holding the old one stopped syncing: the company-issue phone, which is
+ * enrolled, and his own tablet, which is not. The first is a console job - push
+ * the profile, done. The second cannot be managed at all, and the refusal says
+ * why in the honest words: there is no enrolment, so there is no channel, and
+ * enrolling somebody's personal hardware is their decision and a policy
+ * conversation rather than a button.
+ *
+ * The half that makes it a dilemma rather than a shrug is that you cannot refuse
+ * it either. The company's mail is on that tablet - the same mailbox, the same
+ * blast radius as the account itself, and none of the controls the 0.22.0
+ * incident showed matter (no wipe, no policy, no way to revoke the thing if it is
+ * lost). So the desk fixes it the only way it can, by hand, with the man holding
+ * it - and writes the exception down, on the risk acceptance the 0.24.0 CYA
+ * mechanic already ships, signed by the Head of IT who owns that risk. Fixing it
+ * quietly and saying nothing would leave an unmanaged device holding executive
+ * mail with nobody's name against it, which is how it stays that way for years.
+ */
+const CEO_PERSONAL_TABLET: WorldTicket = {
+  arrival: 'drip',
+  nodes: [HALCYON_IDS.ceoTablet, HALCYON_IDS.ceoPhone, HALCYON_IDS.ceoAccount],
+  claimed_urgency: 3,
+  true_urgency: 2,
+  def: {
+    id: VIP_TABLET_TICKET,
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Halcyon: "my mail has stopped on my phone and my iPad" (Roland, CEO)',
+      body:
+        'Roland again: since his password changed, mail has stopped arriving on '
+        + 'his company phone and on his own tablet - the one he reads everything '
+        + 'on at home. The phone is the company\'s and is enrolled. The tablet is '
+        + 'his, was never enrolled in anything, and has had the corporate mailbox '
+        + 'on it for two years. He would like both working before he leaves, and '
+        + 'he is not interested in a conversation about which of them IT is '
+        + 'supposed to support.',
+    },
+    reporter: HALCYON_IDS.ceo,
+    // The old credential, on both devices - and the risk acceptance the
+    // unmanaged one has to be written up on, seeded unsigned (the 0.10.0
+    // change_request reused as the risk_acceptance variant, exactly as the
+    // manager override seeds its own).
+    setup: [
+      {
+        op: 'setField',
+        id: HALCYON_IDS.ceoPhone,
+        field: FIELDS.mailProfileOk,
+        value: false,
+      },
+      {
+        op: 'setField',
+        id: HALCYON_IDS.ceoTablet,
+        field: FIELDS.mailProfileOk,
+        value: false,
+      },
+      {
+        op: 'addNode',
+        node: {
+          id: VIP_DEVICE_EXCEPTION,
+          kind: 'change_request',
+          fields: {
+            [FIELDS.name]: 'Risk acceptance: unmanaged personal device holding '
+              + 'corporate mail',
+            [FIELDS.crKind]: CHANGE_REQUEST_KINDS.riskAcceptance,
+            [FIELDS.crTarget]: HALCYON_IDS.ceoTablet,
+            [FIELDS.crVerb]: HELPDESK_ACTIONS.deviceManualMailSetup,
+            [FIELDS.crRisk]: 'The chief executive\'s mailbox is on a personal '
+              + 'tablet that is not enrolled in device management. There is no '
+              + 'passcode policy on it, no encryption anybody has verified, and '
+              + 'no way to wipe the mailbox off it if it is lost or sold - the '
+              + 'same blast radius as the account itself, with none of the '
+              + 'controls that account has.',
+            [FIELDS.crReason]: 'Enrolling a personal device is the owner\'s '
+              + 'decision and he declines it; removing the mailbox is a decision '
+              + 'above this desk. Accepted as a named exception, with the mailbox '
+              + 'supported manually until the device is enrolled or the mail is '
+              + 'taken off it.',
+            [FIELDS.crRequiredSigner]: HALCYON_IDS.managerAccount,
+            [FIELDS.crStatus]: CHANGE_REQUEST_STATUSES.submitted,
+          },
+        },
+      },
+    ],
+    // Both devices working - one pushed, one walked - and the exception on file
+    // with the accepting owner's name on it. Every clause load-bearing: skip the
+    // push and the phone is still dead, skip the walkthrough and the tablet is,
+    // and fix both while writing nothing down and the unmanaged device holding
+    // executive mail is still nobody's, which is the state it arrived in.
+    resolved_when: {
+      op: 'and',
+      exprs: [
+        {
+          op: 'eq',
+          selector: { id: HALCYON_IDS.ceoPhone },
+          field: FIELDS.mailProfileOk,
+          value: true,
+        },
+        {
+          op: 'eq',
+          selector: { id: HALCYON_IDS.ceoTablet },
+          field: FIELDS.mailProfileOk,
+          value: true,
+        },
+        {
+          op: 'exists',
+          kind: 'change_request',
+          where: [
+            { field: FIELDS.crKind, value: CHANGE_REQUEST_KINDS.riskAcceptance },
+            { field: FIELDS.crTarget, value: HALCYON_IDS.ceoTablet },
+            { field: FIELDS.crDecision, value: CHANGE_REQUEST_DECISIONS.approve },
+            { field: FIELDS.crAcceptedBy, value: HALCYON_IDS.managerAccount },
+          ],
+        },
+      ],
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 3 },
+    kb_ref: KB_SHADOW_IT,
+  },
+  cause: 'A password change breaks every saved mail profile behind it, which is '
+    + 'ordinary. What is not ordinary is that one of the two devices is not the '
+    + 'company\'s: the phone is enrolled and takes a pushed profile in a second, '
+    + 'and the tablet cannot be managed at all - no enrolment, no channel, no '
+    + 'policy, no remote wipe. It still has the CEO\'s mailbox on it, so refusing '
+    + 'it is not available either. The honest answer is to fix it by hand with '
+    + 'him and to write the exception down where somebody who owns the risk signs '
+    + 'it, because an unmanaged device holding executive mail is precisely the '
+    + 'surface the last incident was about.',
+  dialogue_ref: 'dialogue/halcyon-roland',
+  paths: [
+    {
+      id: 'push-what-you-can-walk-what-you-cannot',
+      app: 'directory',
+      label: 'Push the profile to the managed phone, walk him through the '
+        + 'tablet by hand, and get the exception signed',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.mdmPushProfile,
+          target: HALCYON_IDS.ceoPhone,
+        },
+        {
+          action: HELPDESK_ACTIONS.deviceManualMailSetup,
+          target: HALCYON_IDS.ceoTablet,
+        },
+        {
+          action: HELPDESK_ACTIONS.riskAcceptanceSign,
+          target: VIP_DEVICE_EXCEPTION,
+        },
+      ],
+    },
+  ],
+};
+
 export const CORPORATE_TICKETS: readonly WorldTicket[] = [
   CEO_MFA_OFF,
   EA_MAILBOX_DELEGATE,
@@ -1121,4 +1478,10 @@ export const CORPORATE_TICKETS: readonly WorldTicket[] = [
   MANAGER_OVERRIDE,
   LEGENDARY_MANDATE,
   LEGENDARY_REVERT,
+  // The VIP tier (E8, 0.26.0): the collision - a flagged caller's trivial
+  // request beside an ordinary user's real one, on the same clock - and the
+  // shadow-IT tail behind it.
+  CEO_EARBUDS,
+  FINANCE_LEDGER_LOCKOUT,
+  CEO_PERSONAL_TABLET,
 ];

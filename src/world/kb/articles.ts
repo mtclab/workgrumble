@@ -2089,4 +2089,132 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/manager-override-cya', 'kb/the-restart-nobody-does'],
   },
+  {
+    id: 'kb/vip-queue-jump',
+    title: 'The VIP flag: priority set by who asked, not by what broke',
+    summary: 'A flagged caller\'s ticket is forced up the queue regardless of '
+      + 'impact. It is a supported feature, not a fault, and it is not yours to '
+      + 'switch off. Work the queue you are given, triage everything else '
+      + 'honestly, and be able to say - in writing, on the ticket - what you did '
+      + 'first and why.',
+    state: 'published',
+    issue: 'A one-person nuisance from an executive is sitting at the same '
+      + 'priority as a system half a department cannot get into, and both clocks '
+      + 'are running. There is one of you.',
+    environment: 'Any service desk with a VIP or executive-support list on the '
+      + 'caller record. The flag is set on the PERSON, and the tool applies it to '
+      + 'everything they raise, before anybody has read the ticket.',
+    resolution: [
+      'Read WHY the priority is what it is. A ticket carrying a VIP flag says so '
+        + 'on the record: the number came from the caller, not from the impact, '
+        + 'and the impact may still be one desk. Knowing which of the two you are '
+        + 'looking at is the whole of the skill here.',
+      'Triage everything else honestly anyway. The flagged ticket is fixed at its '
+        + 'forced priority whatever you file, and filing an impact you do not '
+        + 'believe on the OTHER ticket - to make the ordering come out the way '
+        + 'you want - is how a queue stops meaning anything at all.',
+      'Then choose, and be able to defend it. Both tickets are legitimate, both '
+        + 'are closeable, and one of them is going to wait. Pick on impact if you '
+        + 'can carry the consequence of the exec waiting, pick the flag if you '
+        + 'cannot, and either way put a line on the ticket that waited saying '
+        + 'when you got to it and what you were doing instead.',
+      'Say something to whoever is waiting, early. The response clock is a '
+        + 'different clock from the resolution one and it is stopped by a '
+        + 'sentence: "I have this, I am on the ledger first, you are next" costs '
+        + 'thirty seconds and is the difference between a queue and a silence.',
+      'Do NOT try to fix it in the ticket. Un-flagging a caller, downgrading a '
+        + 'forced priority, merging the two, or quietly parking one on the user '
+        + 'to stop its clock are all ways of making the record lie about a choice '
+        + 'you made. Whether the list is right is a conversation with whoever '
+        + 'owns it, held on a day when nothing is on fire.',
+    ],
+    cause: [
+      'The VIP flag is a shipped feature of every enterprise service desk: a '
+        + 'checkbox on the caller record which, when it is true, forces the '
+        + 'priority of anything that caller raises - typically to P2, with impact '
+        + 'and urgency set high automatically. It is not an override anybody '
+        + 'types and it is not a bug. It is doing exactly what it was configured '
+        + 'to do, which is why arguing with it is arguing with the person who '
+        + 'configured it.',
+      'What it does to the queue is take priority - a measure of how many people '
+        + 'a fault reaches and how fast it is spreading - and quietly replace it '
+        + 'with seniority. Two tickets read P2 and only one of them earned it, '
+        + 'and the desk is the only place in the building where anybody can see '
+        + 'both numbers at once. That asymmetry is the entire mechanic: the tool '
+        + 'has already made the decision, and you are the one who has to live in '
+        + 'it.',
+      'There is no clean answer and anybody who offers you one is selling '
+        + 'something. Work the exec first and a team sits blocked while you pair '
+        + 'earbuds; work the outage first and the exec rings your manager rather '
+        + 'than you. What you can control is that neither of them is a surprise: '
+        + 'a first response on both, a note on the record of what you did and in '
+        + 'what order, and - later, calmly - a conversation about what the list '
+        + 'is for.',
+    ],
+    see_also: ['kb/exec-exception-risk', 'kb/manager-override-cya'],
+  },
+  {
+    id: 'kb/unmanaged-personal-device',
+    title: 'The personal device with the company\'s mail on it',
+    summary: 'You cannot manage an unenrolled device and you cannot refuse it '
+      + 'either, because the corporate mailbox is already on it. Fix it by hand '
+      + 'with the person holding it, and write the exception down where somebody '
+      + 'who owns the risk signs it.',
+    state: 'published',
+    issue: 'Mail has stopped on somebody\'s own phone or tablet - a device the '
+      + 'company never issued, never enrolled and cannot see - and the mailbox on '
+      + 'it is the company\'s.',
+    environment: 'Any estate with mobile mail and no enforced enrolment. Most '
+      + 'often an executive, because they are the people nobody made go through '
+      + 'the onboarding, and the device has usually been like that for years.',
+    resolution: [
+      'Check enrolment first, before you promise anything. A managed device takes '
+        + 'a pushed mail profile from the console in one move; an unenrolled one '
+        + 'has no channel to push down at all, and knowing which you are looking '
+        + 'at decides the whole call.',
+      'Fix the managed devices the managed way. If the same person has a company '
+        + 'phone with the same problem, push the profile to it and get that half '
+        + 'out of the way - it takes a second, and it shows the difference in the '
+        + 'clearest possible terms.',
+      'For the unmanaged one, walk the owner through it by hand. Their device, '
+        + 'their hands, your instructions: remove the account, add it again with '
+        + 'the new credential. It is slower and it needs them present, and that '
+        + 'is what supporting something you were never given the keys to costs.',
+      'Do not enrol somebody\'s personal device to make the problem go away. '
+        + 'Enrolment gives the company remote wipe over property that is not the '
+        + 'company\'s; it is the owner\'s informed decision and a policy '
+        + 'conversation, not a checkbox you tick while you are in there.',
+      'Write the exception down and get it signed. Name the risk (a corporate '
+        + 'mailbox on a device with no passcode policy, no verified encryption '
+        + 'and no way to wipe it if it is lost), name why it is not being '
+        + 'remediated today, and get the owner of that risk to accept it in '
+        + 'writing - the same risk-acceptance form any other documented exception '
+        + 'uses. Fixing it silently is what leaves it exactly as it is for '
+        + 'another two years.',
+    ],
+    cause: [
+      'Shadow IT is not usually somebody being reckless; it is somebody solving a '
+        + 'problem with what they had. Mail was put on a personal tablet years '
+        + 'ago because it was convenient, nobody wrote it down, and it has worked '
+        + 'ever since - so the first time anybody in IT hears about the device is '
+        + 'the day it breaks, which is also the first time anybody could have '
+        + 'said no.',
+      'The uncomfortable part is that the mailbox on an unmanaged device has the '
+        + 'same blast radius as the account itself - every thread, every '
+        + 'attachment, every wire request - with none of the controls the account '
+        + 'has. No enforced passcode, no encryption anybody has verified, no '
+        + 'conditional access, and no remote wipe when it is sold on a marketplace '
+        + 'with the mail app still signed in. It is precisely the surface a '
+        + 'business email compromise is looking for.',
+      'And the desk cannot resolve that tension, only record it. You do not have '
+        + 'the authority to enrol it, remove the mail from it or refuse to support '
+        + 'it, and all three of those are somebody else\'s decision - so the '
+        + 'professional move is the documented exception: fix what is in front of '
+        + 'you, state the risk plainly, and put it in front of the person whose '
+        + 'signature makes it theirs. An unmanaged device that somebody senior has '
+        + 'signed for is a known risk; the same device with nothing on file is a '
+        + 'surprise waiting for an incident report.',
+    ],
+    see_also: ['kb/exec-exception-risk', 'kb/bec-incident-response'],
+  },
 ];

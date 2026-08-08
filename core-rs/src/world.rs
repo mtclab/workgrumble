@@ -906,6 +906,14 @@ impl World {
             fields.insert("sla_tier".to_owned(), serde_json::json!(tier));
         }
 
+        // And the VIP flag (E8, 0.26.0), stamped only when the caller behind the
+        // ticket is on the list - so a ticket from an ordinary reporter carries
+        // exactly the fields it carried before the flag existed, and the queue
+        // can say "P2 because of WHO asked" by reading the ticket itself.
+        if definition.vip {
+            fields.insert("vip".to_owned(), serde_json::json!(true));
+        }
+
         let node = serde_json::json!({
             "id": id,
             "kind": "ticket",

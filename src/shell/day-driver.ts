@@ -94,6 +94,7 @@ import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
 import { legendaryRevertDue } from '../world/legendary';
 import { OVERRIDE_RISK_ACCEPTANCE, overrideFalloutDue } from '../world/override';
 import { recertFollowUpDue } from '../world/recert';
+import { queueJumpFalloutDue } from '../world/vip';
 import { findIncident } from '../world/incidents';
 import { findOnboarding } from '../world/onboarding';
 import { postmortemFor } from '../world/postmortem';
@@ -2258,6 +2259,12 @@ export class DayDriver implements DayApi {
     this.settleFollowUps();
     this.settleRecertFollowUp();
     this.settleOverrideFallout();
+    // And the queue-jump's bill (E8, 0.26.0), which is a CLOCK event rather than
+    // a dispatch one: it comes due the minute the deadline on whichever ticket
+    // was left waiting runs out, so it is settled here beside the other things
+    // the passing minute causes, and not in `dispatch` where the fallouts that
+    // follow an action live.
+    this.settleQueueJumpFallout();
     this.walkTheFloor(before, now);
     // After the corridor, in the same minute: the lead arriving is a takeover
     // too, and the assert inside this one is entitled to see it. Before the
@@ -3401,6 +3408,51 @@ export class DayDriver implements DayApi {
         + 'and there is no risk acceptance on file. You granted it, so the '
         + 'finding is yours - with nobody\'s signature to point at.',
     );
+  }
+
+  /**
+   * The queue-jump's cost landing (E8, 0.26.0) - the half of the collision that
+   * makes the choice a choice.
+   *
+   * Two tickets arrive in the same minute, both legitimately closeable, one at P2
+   * because the caller is flagged and one at P2 because four people cannot work.
+   * There is one desk. This is what the OTHER one costs, and it is not the same
+   * cost twice: the flagged caller rings the Head of IT (suspicion), the ordinary
+   * reporter's team sits blocked through the payment run (reputation, on top of
+   * the plain breach every missed deadline already carries). Both branches charge
+   * - the verb has no third one - which is what "no free lunch" has to mean if
+   * the choice is to be real.
+   *
+   * `queueJumpFalloutDue` is a pure read of Halcyon-only nodes, so this is inert
+   * in every other world, exactly like the recert follow-up and the override
+   * finding. The charge and the latch are the verb's, so a save and a replay
+   * rebuild them the same; the NOTICE is read from the same flag afterwards.
+   */
+  private settleQueueJumpFallout(): void {
+    for (const ticket of queueJumpFalloutDue(this.engine.graph)) {
+      const vip = this.engine.graph.getField(ticket, FIELDS.vip) === true;
+      const result = this.engine.dispatch(
+        WORLD_ACTIONS.queueJumpFallout,
+        this.actor,
+        ticket,
+        {},
+      );
+
+      if (!result.ok) {
+        continue;
+      }
+
+      this.handlers.onNotice?.(
+        vip ? 'The exec has gone over your head' : 'The floor noticed',
+        vip
+          ? `${ticketTitle(ticket)} - the clock on it has run out, and Roland `
+          + 'has rung the Head of IT rather than you. It was a P2 because his '
+          + 'name is on the VIP list, and that is exactly the sentence he used.'
+          : `${ticketTitle(ticket)} - the clock on it has run out with the team `
+          + 'still locked out, and the payment run missed its cut-off. Nobody '
+          + 'has complained. They all saw which ticket got done first.',
+      );
+    }
   }
 
   /**

@@ -230,6 +230,42 @@ export const HALCYON_IDS = {
   telnet: 'service:halcyon-telnet',
   remoteRegistry: 'service:halcyon-remote-registry',
   modulesInstaller: 'service:halcyon-modules-installer',
+
+  /* -- the VIP tier / the queue-jump (E8, 0.26.0) ------------------------- */
+  /**
+   * The chief executive's wireless earbuds. The smallest node on the estate -
+   * one device, one owner, nobody else affected - and the one that arrives at P2
+   * because the man who owns them is on the VIP list. They are the trivial half
+   * of the collision, and they are deliberately trivial: the mechanic is not that
+   * the exec's problem is hard, it is that it is not, and it still goes first.
+   */
+  ceoEarbuds: 'device:halcyon-ceo-earbuds',
+  /**
+   * The company-issue phone: MANAGED, enrolled in MDM, and the contrast the
+   * shadow-IT ticket is built on. The desk can push a mail profile to this in one
+   * dispatch, which is what makes the tablet beside it legible as a problem.
+   */
+  ceoPhone: 'device:halcyon-ceo-phone',
+  /**
+   * And the executive's PERSONAL tablet, with the corporate mailbox on it and no
+   * enrolment behind it. Not the company's device, not manageable, and not
+   * refusable either - it holds the company's mail, so it is the desk's problem
+   * the moment it stops working. The named trap, and the same blast radius as the
+   * mailbox itself with none of the controls.
+   */
+  ceoTablet: 'device:halcyon-ceo-tablet',
+  /**
+   * The finance ledger, and the service account it runs as - the ordinary user's
+   * REAL problem in the collision.
+   *
+   * The classic overnight failure: the account the ledger service authenticates
+   * as locked itself out, so the service is stopped and the whole finance team is
+   * looking at a login page on payment-run day. It is worse than the earbuds by
+   * every measure that is supposed to matter, and it arrives untriaged while the
+   * earbuds arrive at P2.
+   */
+  financeLedger: 'service:halcyon-finance-ledger',
+  svcLedgerAccount: 'account:halcyon-svc-ledger',
 } as const;
 
 export type HalcyonNodeId = (typeof HALCYON_IDS)[keyof typeof HALCYON_IDS];
@@ -241,6 +277,18 @@ interface StaffSeed {
   readonly title: string;
   readonly username: string;
   readonly desk: string;
+  /**
+   * Whether this person is on the VIP list (E8, 0.26.0) - the checkbox that
+   * forces the priority of anything they raise.
+   *
+   * Exactly ONE name carries it, and that is not a shortcut: a VIP list starts
+   * as the person who complained loudest and grows from there, and here it is
+   * the chief executive and nobody else - not the CFO who signs the wires, not
+   * the EA who does his job for him. It also means no ticket written before this
+   * moves: none of them is raised by Roland, so nothing that shipped at P3 or P4
+   * is quietly a P2 now.
+   */
+  readonly vip?: boolean;
 }
 
 const STAFF: readonly StaffSeed[] = [
@@ -261,6 +309,9 @@ const STAFF: readonly StaffSeed[] = [
     username: 'rcushingvane',
     desk: 'The corner office on the top floor, and a laptop he takes everywhere '
       + 'and reads nothing on',
+    // The VIP checkbox, ticked (E8, 0.26.0). Everything he raises is a P2 before
+    // anybody has read it.
+    vip: true,
   },
   {
     person: HALCYON_IDS.cfo,
@@ -517,6 +568,9 @@ export function halcyonSetup(): readonly SetupOp[] {
         [FIELDS.name]: member.name,
         [FIELDS.title]: member.title,
         [FIELDS.desk]: member.desk,
+        // The VIP flag, written only where it is ticked (E8, 0.26.0): every
+        // other person node carries exactly the fields it always carried.
+        ...(member.vip === true ? { [FIELDS.vip]: true } : {}),
         ...(member.person === HALCYON_IDS.player
           ? {
             // The player's opening position, seeded exactly as the other three
@@ -641,8 +695,120 @@ export function halcyonSetup(): readonly SetupOp[] {
 
   seedRecertEstate(ops);
   seedLegendaryEstate(ops);
+  seedVipEstate(ops);
 
   return ops;
+}
+
+/**
+ * The VIP tier's estate (E8, 0.26.0) - the exec's three devices and the ledger
+ * four people cannot get into.
+ *
+ * STANDING, like the recert and legendary estates: the earbuds are paired and
+ * behaving, both mail profiles are working, the ledger is running and its service
+ * account is unlocked. Every fault arrives with the ticket about it, so a player
+ * cannot tidy one away before the ticket exists and the estate is byte-clean
+ * until the week deals them.
+ *
+ * The one thing seeded that is not scenery is ENROLMENT: the company-issue phone
+ * carries `mdmEnrolled`, the personal tablet does not, and that difference - a
+ * standing fact of the estate, not something a ticket sets up - is the whole of
+ * why one of them can be fixed from a console and the other cannot. The earbuds
+ * hang off the CEO's laptop and every one of the three is OWNED by him, which is
+ * what the impact walk reads: one man, one desk, no blast radius at all.
+ *
+ * The ledger is the other side of the collision. Four ACCOUNTS are wired to it -
+ * the CFO, the finance business partner, the AP clerk and the office manager -
+ * so the impact walk finds four people downstream of it and reads medium impact,
+ * where the earbuds read one person and the lowest there is.
+ */
+function seedVipEstate(ops: SetupOp[]): void {
+  const DEVICES: readonly Readonly<{
+    id: string;
+    name: string;
+    type: string;
+    managed?: boolean;
+    wiredTo?: string;
+  }>[] = [
+    {
+      id: HALCYON_IDS.ceoEarbuds,
+      name: 'Roland\'s wireless earbuds',
+      type: DEVICE_TYPES.earbuds,
+      wiredTo: HALCYON_IDS.ceoLaptop,
+    },
+    {
+      id: HALCYON_IDS.ceoPhone,
+      name: 'Roland\'s company phone (managed)',
+      type: DEVICE_TYPES.phone,
+      managed: true,
+    },
+    {
+      id: HALCYON_IDS.ceoTablet,
+      name: 'Roland\'s personal tablet (not the company\'s)',
+      type: DEVICE_TYPES.tablet,
+    },
+  ];
+
+  for (const device of DEVICES) {
+    addNode(ops, {
+      id: device.id,
+      kind: 'device',
+      fields: {
+        [FIELDS.name]: device.name,
+        [FIELDS.type]: device.type,
+        [FIELDS.powered]: true,
+        // Enrolment is a standing fact about the device, and its absence is the
+        // honest one: nobody enrolled the tablet because it is not the
+        // company's, and the field is simply not there on it.
+        ...(device.managed === true ? { [FIELDS.mdmEnrolled]: true } : {}),
+      },
+    });
+    addEdge(ops, { from: HALCYON_IDS.ceo, to: device.id, kind: 'owns' });
+
+    if (device.wiredTo !== undefined) {
+      addEdge(ops, {
+        from: device.id,
+        to: device.wiredTo,
+        kind: 'connected_to',
+      });
+    }
+  }
+
+  // The ledger, and the login it runs as. Both healthy: the overnight lockout
+  // that stops it is the ticket's own setup.
+  addNode(ops, {
+    id: HALCYON_IDS.financeLedger,
+    kind: 'service',
+    fields: {
+      [FIELDS.name]: 'Halcyon Finance Ledger',
+      [FIELDS.serviceName]: 'HalcyonLedgerSvc',
+      [FIELDS.status]: SERVICE_STATUS.running,
+      [FIELDS.startupType]: STARTUP_TYPES.automatic,
+    },
+  });
+  addEdge(ops, {
+    from: HALCYON_IDS.financeLedger,
+    to: HALCYON_IDS.fileServer,
+    kind: 'runs_on',
+  });
+  addNode(ops, accountNode(HALCYON_IDS.svcLedgerAccount, 'svc-halcyonledger'));
+
+  // Who is downstream of it: the four people who cannot do their jobs while it
+  // is down. The edge runs from the ACCOUNT to the system it has access to,
+  // which is what an access model actually holds, and the impact walk gets from
+  // there to the person who owns the account.
+  for (const account of [
+    HALCYON_IDS.cfoAccount,
+    HALCYON_IDS.margueriteAccount,
+    HALCYON_IDS.cassAccount,
+    HALCYON_IDS.bronwenAccount,
+  ]) {
+    addEdge(ops, {
+      from: account,
+      to: HALCYON_IDS.financeLedger,
+      kind: 'connected_to',
+    });
+  }
 }
 
 /**

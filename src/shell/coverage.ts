@@ -3395,6 +3395,32 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'sets it, and refuses an empty record (which is the whole mechanic). Closes '
     + 'the revert ticket\'s clean path at the corporate employer; driven in '
     + '`legendary.test.ts`, out of the browser walk\'s reach.',
+  // The VIP tier / shadow IT (E8, 0.26.0): the two device verbs the last E8
+  // mechanic turns on. Both are player verbs with real effects - one refuses an
+  // unenrolled device by name, the other is the only way to fix one - offered at
+  // the FOURTH employer, which the browser total-walk does not reach (it stops at
+  // the second), exactly as the four E8 mechanics before them. Driven end to end
+  // through the real dispatch path in `vip.test.ts`.
+  [HELPDESK_ACTIONS.mdmPushProfile]: 'Pushing the corporate mail profile to a '
+    + 'device from the MDM console - the normal management verb, and the one that '
+    + 'REFUSES an unenrolled device by name (which is the whole shadow-IT lesson: '
+    + 'the desk lacks a channel, not authority). Closes half of the personal-device '
+    + 'ticket at the corporate employer; driven in `vip.test.ts`, out of the '
+    + 'browser walk\'s reach.',
+  [HELPDESK_ACTIONS.deviceManualMailSetup]: 'Walking the owner through setting the '
+    + 'mailbox up by hand - what a desk actually does about a device it cannot '
+    + 'manage and cannot refuse. The only route to the unmanaged half of the '
+    + 'personal-device ticket at the corporate employer; driven in `vip.test.ts`, '
+    + 'out of the browser walk\'s reach.',
+  // And the queue-jump's bill (E8, 0.26.0): the consequence the day loop settles
+  // off the clock, the same shape as the override finding. Nobody presses it - it
+  // is what happens when the deadline on whichever ticket was left waiting runs
+  // out, and the two branches charge in two different currencies.
+  [WORLD_ACTIONS.queueJumpFallout]: 'The cost of the queue-jump landing on '
+    + 'whichever colliding ticket was left waiting: suspicion when the flagged '
+    + 'caller goes over your head, reputation when the ordinary team sits blocked '
+    + 'through the payment run. Dispatched by the day loop off a pure read when '
+    + 'the clock runs out, never by a control; driven in `vip.test.ts`.',
 };
 
 /**

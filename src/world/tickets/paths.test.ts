@@ -6,7 +6,8 @@ import { COMPANY_IDS } from '../company';
 import { FIELDS } from '../fields';
 import { createWorldSession, type WorldSession } from '../session';
 import { slaTierForTicketNodes } from '../customers';
-import { tierResolutionTicks } from '../priority';
+import { tierResolutionTicks, tierTargetsFor } from '../priority';
+import { vipForcedPriority } from '../vip';
 import { inheritedTicketIds } from '../week';
 import { mspInheritedTicketIds } from '../msp-week';
 import { corporateInheritedTicketIds } from '../corporate-week';
@@ -184,10 +185,21 @@ describe('shipped tickets', () => {
       // `tierResolutionTicks(null) === UNTRIAGED_SLA_TICKS` and the probation and
       // Bodgeworth deadlines do not move.
       const tier = slaTierForTicketNodes(session.engine.graph, entry.nodes);
+      // And since 0.26.0 a VIP caller's ticket lands on the FORCED priority's
+      // budget instead - tighter than the untriaged one, before anybody has read
+      // it, which is the queue-jump's whole mechanic said as a number. It is
+      // asserted here, across the WHOLE roster, so it is also the proof that no
+      // other ticket moved: every reporter but one is off the list, and every one
+      // of their deadlines is the number it was.
+      const forced = vipForcedPriority(session.engine.graph, entry.def.reporter);
       expect(
         session.engine.graph.getField(entry.def.id, FIELDS.slaDeadline),
         entry.def.id,
-      ).toBe(tier === null ? entry.def.sla_ticks : tierResolutionTicks(tier));
+      ).toBe(
+        forced !== null
+          ? tierTargetsFor(tier, forced).resolution
+          : tier === null ? entry.def.sla_ticks : tierResolutionTicks(tier),
+      );
     }
 
     // The roster, in spawn order, written out so that adding or losing a
@@ -313,6 +325,12 @@ describe('shipped tickets', () => {
       // painful reconstruct if not.
       'ticket:halcyon-mandate',
       'ticket:halcyon-revert',
+      // And the VIP tier (E8, 0.26.0): the collision - the flagged caller's
+      // trivial request and the ordinary user's real one, dealt in the same
+      // minute - and the shadow-IT tail behind them.
+      'ticket:halcyon-ceo-earbuds',
+      'ticket:halcyon-finance-ledger',
+      'ticket:halcyon-ceo-tablet',
     ]);
   });
 
