@@ -31,6 +31,38 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.27.0',
+    date: '2026-08-08',
+    summary: 'This update permits certain personnel to change their operating '
+      + 'system, after which the operating system has opinions about how many '
+      + 'buttons a window needs.',
+    lines: Object.freeze([
+      'Display Properties has appeared under the Start menu, for systems '
+        + 'engineers only. Juniors keep the standard corporate image, because '
+        + 'it is standard, and corporate, and an image, and all three of those '
+        + 'words were chosen by somebody senior. Engineers may now put Linux '
+        + 'on their own workstation. Their own workstation. The estate has not '
+        + 'moved, the servers have not moved, and the tickets certainly have '
+        + 'not moved. The choice survives logging off, which is more than can '
+        + 'be said for some settings we could mention.',
+      'Three desktops are on offer. One gives you a panel at the bottom, a '
+        + 'menu that does everything, three buttons on every window and a '
+        + 'setting for anything you can name. One gives you a bar at the top, '
+        + 'no list of your open windows, and a single close button - the other '
+        + 'two have not been hidden, they are not there, and the people who '
+        + 'removed them consider this a favour. The third looks remarkably '
+        + 'like what you already had, and its users will explain at length '
+        + 'that this is not the point.',
+      'A workstation that runs Linux gets a package manager instead of the '
+        + 'web store, and it speaks either apt or dnf depending on which '
+        + 'flavour you picked - the machine that installs your software now '
+        + 'has a dialect, and it will not be corrected. The ssh command has '
+        + 'also noticed the change and will now connect to your own machine. '
+        + 'You are sitting at it. It will let you in anyway. Some people need '
+        + 'this, and it is kinder not to ask them why.',
+    ]),
+  },
+  {
     version: '0.26.0',
     date: '2026-08-08',
     summary: 'This update puts a tick in a box next to one man\'s name, and '
