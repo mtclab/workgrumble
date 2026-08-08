@@ -1783,3 +1783,53 @@ box (workers=1, fresh-port) + a legendary-manager e2e touch.
 
 the VIP support-tier queue-jump; deeper politics (shadow IT, the personal device with corporate mail);
 the Linux desktop skins; E7 cloud.
+
+# Version 0.26.0 - the VIP tier (the queue-jump) (E8 #40)
+
+The org-dysfunction epic's LAST mechanic, and its quietest injustice: the VIP flag. A trivial request
+from an executive auto-jumps the queue ahead of a real, worse problem from an ordinary user - and the
+player has to live with which one waits. Content on the 0.22.0 corporate employer + the ticket/SLA
+model. Research base: docs/design/org-dysfunction.md #5-VIP (the ServiceNow VIP checkbox that forces
+priority; white-glove exec support; the personal device IT supports anyway).
+
+## Slice 1 - the VIP flag on the queue
+
+A VIP flag on a ticket's reporter (the execs at Halcyon), which forces the ticket's PRIORITY up
+regardless of actual impact - the real mechanic (the research: "if the caller's VIP checkbox is true,
+priority is set to P2... impact and urgency automatically High"). It shows on the queue (the player
+can SEE that this is priority-because-of-who-asked, not because-of-what-broke), and it drives the SLA
+clock (reuse the 0.12.0 tier/severity clock).
+
+## Slice 2 - the collision (the choice that has no right answer)
+
+The version's beat: a TRIVIAL VIP request (the CEO's wireless earbuds won't pair / his personal
+tablet won't get the wifi / a font in his slide deck) arrives at the same time as a REAL problem from
+an ordinary user (a whole team locked out / a finance run blocked). The VIP one is P2-by-flag; the
+real one is worse by impact. Both clocks run. The player can only work one first. Model it truthfully:
+BOTH are legitimately closeable, the flag is not a bug, and whichever waits, something is lost -
+either the SLA/standing on the VIP ticket (and the exec notices, loudly) or the ordinary user's team
+sits blocked while you pair earbuds. No cheat path; the cost is real either way.
+
+## Slice 3 - the shadow-IT tail (the exec's personal device)
+
+The research's named trap: the exec's PERSONAL device with corporate mail on it, which IT ends up
+supporting anyway (unenrolled, unmanaged, not really yours - but it has the company's mail on it, so
+it is your problem when it breaks). A light ticket: the CEO's personal tablet, not on MDM, with the
+mailbox on it. The honest tension: you cannot manage it (no enrolment) but you cannot refuse it
+either. Composes with 0.22.0 (an unmanaged device holding exec mail is exactly the BEC surface). Keep
+it light - the full shadow-IT story stays backlog.
+
+## Gates (once, at the version)
+
+Goldens: additive at the corporate employer; existing + pre-switch BYTE-IDENTICAL. Journeys through
+the REAL path: a VIP-flagged ticket carries the forced priority + a tighter clock than its impact
+warrants; the collision presents both tickets with both clocks running; working either first is
+possible and the OTHER pays a real cost (a breach / a standing hit); the personal-device ticket is
+workable but cannot be managed the normal way. Teeth: the VIP flag actually forces the priority
+(remove the flag -> the trivial ticket drops to its true low priority); the collision has no free
+lunch (whichever waits, a real cost lands - revert -> waiting costs nothing). Determinism. One codex
+(if it completes; else self-review), one box (workers=1, fresh-port) + an e2e touch.
+
+## Not in scope (backlog)
+
+deeper shadow-IT / MDM enrolment mechanics; the Linux desktop skins; E7 cloud.
