@@ -31,6 +31,41 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.28.0',
+    date: '2026-08-08',
+    summary: 'This update adds three more desktops, four more distributions, '
+      + 'and a security subsystem that is working correctly, which is the '
+      + 'complaint.',
+    lines: Object.freeze([
+      'Display Properties has grown. Three more desktops: one puts a bar at '
+        + 'the top AND a bar at the bottom and considers this a heritage, one '
+        + 'is plain in a way its users describe as fast, and one is lighter '
+        + 'than that. Four more distributions: the old solid one, the one with '
+        + 'a chameleon, the enterprise one that asks you to register your '
+        + 'subscription in a tone suggesting it has asked before, and a '
+        + 'rolling one. The rolling one does not come with a desktop. You '
+        + 'will be asked to choose. The people who choose it consider being '
+        + 'asked the entire point.',
+      'The package managers have dialects now. The enterprise family answers '
+        + 'yum by explaining it is actually dnf, every time, patiently, like a '
+        + 'colleague correcting their new surname. The chameleon says zypper. '
+        + 'The rolling one synchronises its databases at every opportunity, '
+        + 'including when there is nothing to do, and tells you there is '
+        + 'nothing to do in a tone that implies you should check again soon. '
+        + 'Debian, it turns out, was printing another distribution\'s mirror '
+        + 'addresses. It no longer does. Nobody had complained, which says '
+        + 'something about how carefully anyone reads a mirror address.',
+      'On the enterprise family a service can now be up, healthy, and '
+        + 'refusing to serve a file whose permissions are, and we must stress '
+        + 'this, completely correct. The reason is in the journal, where it '
+        + 'has been the whole time, next to the word denied. There is a '
+        + 'command that fixes the label and a command that turns the guard '
+        + 'off. Both work. Only one of them is still a good idea the next '
+        + 'morning, when it turns out somebody reads the setting you changed, '
+        + 'and writes it down.',
+    ]),
+  },
+  {
     version: '0.27.0',
     date: '2026-08-08',
     summary: 'This update permits certain personnel to change their operating '
