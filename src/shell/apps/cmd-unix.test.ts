@@ -14,6 +14,11 @@ import {
   type PlayerTier,
   SYSTEMD_STATES,
 } from '../../world/fields';
+import {
+  SELINUX_RESTORED_CONTEXT,
+  SELINUX_WEB_CONTEXT,
+  selinuxNodeIds,
+} from '../../world/selinux';
 import { linuxUnitId } from '../../world/services';
 import {
   createWorldSession,
@@ -1546,32 +1551,125 @@ describe('the refusal matrix: one family per box, in both directions', () => {
   });
 });
 
-describe('Debian: the same apt, and temperament for the difference', () => {
-  it('answers byte-identically to the Ubuntu box beside it', () => {
-    // The spec's own words: mechanics unchanged, the trait is temperament. So
-    // this asserts SAMENESS - a Debian row that quietly grew its own strings
-    // would be a second apt to keep in step, which is the thing the dialect
-    // model exists to avoid. Its difference is the blurb and the pairing.
+/**
+ * Debian and Ubuntu speak the same apt and are not the same machine (0.28.0).
+ *
+ * The first cut of this row shipped SAMENESS - a Debian box printing
+ * `archive.ubuntu.com`, the suite `noble` and `-0ubuntu3.4` version strings -
+ * gated by a test that asserted the two boxes answered byte-identically. The
+ * mechanics being identical was right; the OUTPUT being identical was a
+ * factually wrong box, and a byte-identical gate is the one shape that could
+ * never notice.
+ *
+ * So the gate is now per-dialect SHAPE, and it is two-sided on purpose: each box
+ * must print its own archives, suites and versions, and must print NONE of the
+ * other's. Either dialect drifting into the other reds here - which is exactly
+ * the failure the old test was written to prevent, caught in the direction it
+ * actually happened.
+ */
+describe('Debian and Ubuntu: one apt, two sets of words', () => {
+  /** Every string that only a box on this distribution should ever print. */
+  const DIALECT_TELLS: Readonly<Record<'ubuntu' | 'debian', readonly string[]>> = {
+    ubuntu: [
+      'archive.ubuntu.com',
+      'security.ubuntu.com',
+      'noble',
+      'libssl3t64',
+      '0ubuntu',
+      'universe',
+    ],
+    debian: [
+      'deb.debian.org',
+      'security.debian.org',
+      'bookworm',
+      'deb12u',
+    ],
+  };
+
+  const APT_SURFACE: readonly string[] = [
+    'apt list --upgradable',
+    'sudo apt update',
+    'dpkg -l',
+    'sudo apt install htop',
+    'sudo apt upgrade',
+  ];
+
+  function transcript(distro: 'ubuntu' | 'debian'): string {
+    const box = onOwnBox(distro);
+
+    return APT_SURFACE
+      .map((line) => unix(box.api, box.ssh, line).lines.join('\n'))
+      .join('\n');
+  }
+
+  it('prints its own archives, suites and versions, and never the other\'s', () => {
+    for (const distro of ['ubuntu', 'debian'] as const) {
+      const other = distro === 'ubuntu' ? 'debian' : 'ubuntu';
+      const said = transcript(distro);
+
+      for (const tell of DIALECT_TELLS[distro]) {
+        expect(said, `${distro} says ${tell}`).toContain(tell);
+      }
+
+      for (const tell of DIALECT_TELLS[other]) {
+        expect(said, `${distro} must not say ${tell}`).not.toContain(tell);
+      }
+    }
+  });
+
+  it('keeps the MECHANICS one engine under the two vocabularies', () => {
+    // The half the old sameness test was right about, asserted where it is
+    // actually true: the same derived pending SET (same count, same security
+    // row at the front), the same install writing the same field, the same
+    // patched-clean answer afterwards. A second apt engine reds here.
     const debian = onOwnBox('debian');
     const ubuntu = onOwnBox('ubuntu');
-
-    for (const line of [
+    const rows = (box: typeof debian): readonly string[] => unix(
+      box.api,
+      box.ssh,
       'apt list --upgradable',
-      'sudo apt update',
-      'dpkg -l',
-      'sudo apt install htop',
-      'sudo apt upgrade',
-    ]) {
-      expect(
-        unix(debian.api, debian.ssh, line).lines,
-        line,
-      ).toEqual(unix(ubuntu.api, ubuntu.ssh, line).lines);
+    ).lines.slice(1);
+
+    expect(rows(debian)).toHaveLength(rows(ubuntu).length);
+    expect(rows(debian)[0]).toContain('security');
+    expect(rows(ubuntu)[0]).toContain('security');
+
+    for (const box of [debian, ubuntu]) {
+      expect(unix(box.api, box.ssh, 'sudo apt install htop').lines.join('\n'))
+        .toContain('The following NEW packages will be installed:');
+      expect(readInstalledPackages(
+        box.api.graph.getField(box.ssh.hostId, FIELDS.installedPackages),
+      )).toEqual(['htop']);
+
+      unix(box.api, box.ssh, 'sudo apt upgrade');
+      expect(unix(box.api, box.ssh, 'apt list --upgradable').lines)
+        .toEqual(['Listing... Done']);
     }
 
     // And the box really is on Debian rather than relabelled: it is the pairing
     // and the manager that the axis carries, and both read Debian's.
     expect(debian.api.appState.get().desktop.distro).toBe('debian');
     expect(distroById('debian').packageManager).toBe('apt');
+  });
+
+  it('says the same thing about one package on both of its surfaces', () => {
+    // The contradiction a per-dialect table can produce and a sameness test
+    // never could: `apt install` printing bookworm's htop while `dpkg -l` lists
+    // Ubuntu's, on the same box, four lines apart.
+    const { api, ssh } = onOwnBox('debian');
+    const install = unix(api, ssh, 'sudo apt install htop').lines.join('\n');
+    const listed = unix(api, ssh, 'dpkg -l').lines
+      .find((line) => line.includes('htop')) ?? '';
+
+    expect(install).toContain('3.2.2-2');
+    expect(listed).toContain('3.2.2-2');
+  });
+
+  it('leaves Mint on Ubuntu\'s archives, because Mint IS Ubuntu\'s', () => {
+    const { api, ssh } = onOwnBox('mint');
+
+    expect(unix(api, ssh, 'sudo apt update').lines.join('\n'))
+      .toContain('archive.ubuntu.com');
   });
 });
 
@@ -1856,5 +1954,382 @@ describe('subscription-manager: the register beat that gates nothing', () => {
     const { api, ssh } = onOwnBox('rhel');
     expect(unix(api, ssh, 'subscription-manager attach').lines.join('\n'))
       .toContain('is not something this terminal does');
+  });
+});
+
+/* ========================================================================= *
+ * 0.28.0 slice 3: SELinux enforcing on the RHEL family - one denial, on the
+ * one box that can have it, and two fixes that both work and are not the same.
+ * ========================================================================= */
+
+/** The ids the beat's two nodes take on the player's own box at the MSP. */
+const DESK_SELINUX = selinuxNodeIds('FC-DESK-07');
+
+/** What the box answers a request for the mislabelled page with, in one line. */
+function curlStatus(api: GameApi, ssh: SshSession): string {
+  return unix(api, ssh, 'curl -I http://localhost/').lines[0] ?? '';
+}
+
+describe('SELinux: the mode a RHEL-family box is in (0.28.0)', () => {
+  it('answers Enforcing on both RHEL-family distros, off the box\'s own field', () => {
+    for (const distro of ['fedora', 'rhel'] as const) {
+      const { api, ssh } = onOwnBox(distro);
+
+      expect(unix(api, ssh, 'getenforce').lines, distro).toEqual(['Enforcing']);
+      // A field on the machine and not a constant in the shell: the same read
+      // `setenforce` writes, which is what makes the two verbs agree.
+      expect(api.graph.getField(ssh.hostId, FIELDS.selinuxMode), distro)
+        .toBe('enforcing');
+    }
+  });
+
+  it('gives sestatus the fuller shape, and both mode lines', () => {
+    const { api, ssh } = onOwnBox('rhel');
+    const out = unix(api, ssh, 'sestatus').lines;
+
+    expect(out[0]).toContain('SELinux status:');
+    expect(out[0]).toContain('enabled');
+    expect(out.join('\n')).toContain('Loaded policy name:');
+    expect(out.join('\n')).toContain('targeted');
+    expect(out.join('\n')).toContain('/sys/fs/selinux');
+    // The two that are the point: what it is doing now, and what the config
+    // file will make it do at the next boot.
+    expect(out.some((line) => line.startsWith('Current mode:'))).toBe(true);
+    expect(out.some((line) => line.startsWith('Mode from config file:')))
+      .toBe(true);
+  });
+
+  it('is simply not there on any distro that does not ship it', () => {
+    // The refusal matrix's sibling, and read off the DISTRO table rather than a
+    // list here: exactly the rows whose security module is SELinux answer these
+    // verbs, and every other box is a missing binary that names what it does
+    // have instead. A new distro row wired wrong reds here.
+    for (const distro of DISTROS) {
+      const { api, ssh } = onOwnBox(distro.id);
+      const mine = distro.securityModule === 'selinux';
+
+      for (const verb of ['getenforce', 'sestatus', 'restorecon /etc/hosts',
+        'sudo setenforce 0']) {
+        const out = unix(api, ssh, verb).lines.join('\n');
+        const name = verb.replace(/^sudo /u, '').split(' ')[0] ?? '';
+
+        expect(out.includes(`${name}: command not found`), `${distro.id} ${verb}`)
+          .toBe(!mine);
+
+        if (mine) {
+          continue;
+        }
+
+        expect(out, `${distro.id} ${verb} names what it has`).toContain(
+          distro.securityModule === 'apparmor' ? 'AppArmor' : 'nothing else',
+        );
+      }
+    }
+  });
+
+  it('is not on the estate\'s servers either, whatever the desk is running', () => {
+    // The player on Fedora does not put SELinux on a customer's Ubuntu box:
+    // the axis reaches the machine the player owns and no other.
+    const own = onOwnBox('fedora');
+    expect(unix(own.api, own.ssh, 'getenforce').lines).toEqual(['Enforcing']);
+
+    const { api, ssh } = onMsp();
+    const out = unix(api, ssh, 'getenforce').lines.join('\n');
+    expect(out).toContain('getenforce: command not found');
+    expect(out).toContain('AppArmor');
+  });
+});
+
+describe('SELinux: the denial the rebuild left behind (0.28.0)', () => {
+  it('builds the beat on the box the first time somebody logs into it', () => {
+    // Nothing is seeded: the world holds the player's machine exactly as it
+    // always did until an engineer stands on a RHEL-family install of it.
+    const world = createWorldSession(MSP_CARRY);
+    const api = apiFor(world);
+    earnPromotion(world);
+    win(api, 'promotion accept');
+
+    expect(world.engine.graph.getNode(DESK_SELINUX.unit)).toBeUndefined();
+    expect(world.engine.graph.getNode(DESK_SELINUX.file)).toBeUndefined();
+
+    api.appState.patch('desktop', { skin: 'gnome', distro: 'fedora' });
+    const ssh = connect(api, 'ssh engineer@FC-DESK-07');
+
+    expect(ssh).not.toBeNull();
+    expect(world.engine.graph.getNode(DESK_SELINUX.unit)?.kind).toBe('unit');
+    expect(world.engine.graph.getNode(DESK_SELINUX.file)?.kind).toBe('file');
+    // Up, not failed: nothing has crashed, and a failed unit on a box is an
+    // active incident to everything that reads the estate.
+    expect(world.engine.graph.getField(DESK_SELINUX.unit, FIELDS.unitState))
+      .toBe(SYSTEMD_STATES.activeRunning);
+  });
+
+  it('is built once, however many times the box is logged into', () => {
+    const { api, world } = onOwnBox('rhel');
+    const before = world.engine.graph.getField(
+      DESK_SELINUX.file,
+      FIELDS.selinuxContext,
+    );
+
+    connect(api, 'ssh engineer@FC-DESK-07');
+    connect(api, 'ssh engineer@FC-DESK-07');
+
+    expect(world.engine.graph
+      .neighbors(MSP_IDS.playerMachine, { direction: 'in', edgeKind: 'runs_on' })
+      .filter((node) => node.kind === 'unit')).toHaveLength(1);
+    expect(world.engine.graph.getField(DESK_SELINUX.file, FIELDS.selinuxContext))
+      .toBe(before);
+  });
+
+  it('refuses the page while the permissions are visibly perfect', () => {
+    const { api, ssh } = onOwnBox('fedora');
+
+    // The refusal itself: up, answering, and answering 403 - not a 502 (nothing
+    // is down behind it) and not a connection refused (nothing is off).
+    const answer = unix(api, ssh, 'curl -I http://localhost/').lines;
+    expect(answer[0]).toBe('HTTP/1.1 403 Forbidden');
+    expect(answer[1]).toContain('Apache');
+    expect(unix(api, ssh, 'systemctl status httpd').lines.join('\n'))
+      .toContain('Active: active (running)');
+
+    // And the trap: the permission columns are exactly right. Owner, group and
+    // mode are all the ones that WOULD serve this file, which is why ls -la is
+    // the wrong tool for this fault and why it is the first one everybody uses.
+    const listed = unix(api, ssh, 'ls -la /var/www/html/index.html').lines[0]
+      ?? '';
+    expect(listed).toContain('-rw-r--r--');
+    expect(listed).toContain('apache');
+    expect(listed).not.toContain('user_home_t');
+  });
+
+  it('puts the diagnosis in the journal, in the kernel\'s own words', () => {
+    const { api, ssh } = onOwnBox('fedora');
+    const journal = unix(api, ssh, 'journalctl -u httpd').lines.join('\n');
+
+    // The whole answer, already written down: the denial, both contexts, and
+    // the enforcing flag that says it was refused rather than merely logged.
+    expect(journal).toContain('avc:  denied  { read }');
+    expect(journal).toContain('scontext=system_u:system_r:httpd_t:s0');
+    expect(journal).toContain('tcontext=unconfined_u:object_r:user_home_t:s0');
+    expect(journal).toContain('permissive=0');
+    // And Apache's own line above it, which reads like a permission problem
+    // and is the red herring this fault is famous for.
+    expect(journal).toContain('AH00132: file permissions deny server access');
+  });
+
+  it('shows the label only when it is asked for it, which is ls -Z', () => {
+    const { api, ssh } = onOwnBox('fedora');
+    const plain = unix(api, ssh, 'ls -la /var/www/html').lines.join('\n');
+    const labelled = unix(api, ssh, 'ls -laZ /var/www/html').lines.join('\n');
+
+    expect(plain).not.toContain('user_home_t');
+    expect(labelled).toContain('unconfined_u:object_r:user_home_t:s0');
+    // Same row, same permissions: the label is a COLUMN beside them, not a
+    // different reading of them.
+    expect(labelled).toContain('-rw-r--r--');
+  });
+
+  it('TEETH: the fault IS the label field, and nothing else', () => {
+    // Revert the denial - the file labelled what the policy says from the start
+    // - and every assertion above has nothing to find: the page is served, and
+    // the box is still enforcing while it serves it. If a 403 survived this, it
+    // would be coming from somewhere other than the state the beat is about.
+    const { api, ssh, world } = onOwnBox('fedora');
+
+    world.engine.applySetup([{
+      op: 'setField',
+      id: DESK_SELINUX.file,
+      field: FIELDS.selinuxContext,
+      value: SELINUX_WEB_CONTEXT,
+    }]);
+
+    expect(curlStatus(api, ssh)).toBe('HTTP/2 200 ');
+    expect(unix(api, ssh, 'getenforce').lines).toEqual(['Enforcing']);
+  });
+
+  it('TEETH: it is the ENFORCING half too - both gates, or no denial', () => {
+    const { api, ssh, world } = onOwnBox('fedora');
+
+    world.engine.applySetup([{
+      op: 'setField',
+      id: MSP_IDS.playerMachine,
+      field: FIELDS.selinuxMode,
+      value: 'permissive',
+    }]);
+
+    expect(curlStatus(api, ssh)).toBe('HTTP/2 200 ');
+    // And the label is still wrong, which is the difference between the two
+    // fixes made visible in one assertion.
+    expect(world.engine.graph.getField(DESK_SELINUX.file, FIELDS.selinuxContext))
+      .toBe(SELINUX_RESTORED_CONTEXT);
+  });
+});
+
+describe('SELinux: restorecon, the fix that changes one file (0.28.0)', () => {
+  it('relabels to the POLICY\'s answer, and the page is served', () => {
+    const { api, ssh, world } = onOwnBox('fedora');
+
+    const out = unix(api, ssh, 'sudo restorecon -v /var/www/html/index.html')
+      .lines.join('\n');
+
+    expect(out).toContain('Relabeled /var/www/html/index.html');
+    expect(out).toContain(`from ${SELINUX_RESTORED_CONTEXT}`);
+    expect(out).toContain(`to ${SELINUX_WEB_CONTEXT}`);
+    expect(world.engine.graph.getField(DESK_SELINUX.file, FIELDS.selinuxContext))
+      .toBe(SELINUX_WEB_CONTEXT);
+
+    // The goal, not the call: the thing the player wanted is now happening.
+    expect(curlStatus(api, ssh)).toBe('HTTP/2 200 ');
+    // Nothing was restarted and nothing was switched off: the box is still
+    // enforcing, which is the whole difference between this fix and the other.
+    expect(unix(api, ssh, 'getenforce').lines).toEqual(['Enforcing']);
+    expect(api.graph.getField(MSP_IDS.playerMachine, FIELDS.selinuxPermissiveAt))
+      .toBeUndefined();
+  });
+
+  it('needs root, and changes nothing without it', () => {
+    // Setting a context is a root operation on a real box, and this is the real
+    // tool's own sentence for being asked to do it without one.
+    const { api, ssh } = onOwnBox('fedora');
+
+    expect(unix(api, ssh, 'restorecon -v /var/www/html/index.html').lines
+      .join('\n')).toContain('Could not set context');
+    expect(api.graph.getField(DESK_SELINUX.file, FIELDS.selinuxContext))
+      .toBe(SELINUX_RESTORED_CONTEXT);
+    expect(curlStatus(api, ssh)).toBe('HTTP/1.1 403 Forbidden');
+  });
+
+  it('is silent without -v, exactly as the real one is', () => {
+    const { api, ssh } = onOwnBox('fedora');
+
+    expect(unix(api, ssh, 'sudo restorecon /var/www/html/index.html').lines)
+      .toEqual([]);
+    expect(curlStatus(api, ssh)).toBe('HTTP/2 200 ');
+  });
+
+  it('claims nothing when the label was already right', () => {
+    // Run it twice. The second run changed nothing, so -v prints nothing - the
+    // real tool reports files it RELABELLED, and a line claiming to have fixed
+    // an already-correct file would be the terminal lying about its own work.
+    const { api, ssh } = onOwnBox('fedora');
+    unix(api, ssh, 'sudo restorecon -v /var/www/html/index.html');
+
+    expect(unix(api, ssh, 'sudo restorecon -v /var/www/html/index.html').lines)
+      .toEqual([]);
+    expect(curlStatus(api, ssh)).toBe('HTTP/2 200 ');
+  });
+
+  it('refuses a path the box does not hold, in lstat\'s own words', () => {
+    const { api, ssh } = onOwnBox('fedora');
+
+    expect(unix(api, ssh, 'sudo restorecon -v /srv/nothing/here').lines
+      .join('\n')).toContain('No such file or directory');
+  });
+});
+
+describe('SELinux: setenforce, the fix that changes the box (0.28.0)', () => {
+  it('needs root, and changes nothing without it', () => {
+    const { api, ssh } = onOwnBox('rhel');
+
+    expect(unix(api, ssh, 'setenforce 0').lines)
+      .toEqual(['setenforce: setenforce() failed']);
+    expect(unix(api, ssh, 'getenforce').lines).toEqual(['Enforcing']);
+    expect(api.graph.getField(MSP_IDS.playerMachine, FIELDS.selinuxPermissiveAt))
+      .toBeUndefined();
+  });
+
+  it('works instantly, silently, and on the whole machine', () => {
+    const { api, ssh } = onOwnBox('rhel');
+
+    expect(unix(api, ssh, 'sudo setenforce 0').lines).toEqual([]);
+    expect(unix(api, ssh, 'getenforce').lines).toEqual(['Permissive']);
+    expect(curlStatus(api, ssh)).toBe('HTTP/2 200 ');
+
+    // And the file is exactly as mislabelled as it was: nothing about the fault
+    // was fixed, the box has stopped acting on labels.
+    expect(api.graph.getField(DESK_SELINUX.file, FIELDS.selinuxContext))
+      .toBe(SELINUX_RESTORED_CONTEXT);
+    // sestatus says both halves: what it is doing, and what the config file
+    // still says it should be doing at the next boot.
+    const status = unix(api, ssh, 'sestatus').lines;
+    expect(status.find((line) => line.startsWith('Current mode:')))
+      .toContain('permissive');
+    expect(status.find((line) => line.startsWith('Mode from config file:')))
+      .toContain('enforcing');
+  });
+
+  it('is REMEMBERED - the minute it happened is on the box', () => {
+    const { api, ssh, world } = onOwnBox('rhel');
+    unix(api, ssh, 'sudo setenforce 0');
+
+    expect(api.graph.getField(MSP_IDS.playerMachine, FIELDS.selinuxPermissiveAt))
+      .toBe(world.engine.now());
+
+    // Putting it back does not unhappen it. The report is about a control that
+    // was off, and it was off.
+    unix(api, ssh, 'sudo setenforce 1');
+    expect(unix(api, ssh, 'getenforce').lines).toEqual(['Enforcing']);
+    expect(api.graph.getField(MSP_IDS.playerMachine, FIELDS.selinuxPermissiveAt))
+      .toBeTypeOf('number');
+    // And the denial is back, because the label was never dealt with.
+    expect(curlStatus(api, ssh)).toBe('HTTP/1.1 403 Forbidden');
+  });
+
+  it('takes the words too, and refuses anything that is neither', () => {
+    const { api, ssh } = onOwnBox('rhel');
+
+    expect(unix(api, ssh, 'sudo setenforce Permissive').lines).toEqual([]);
+    expect(unix(api, ssh, 'getenforce').lines).toEqual(['Permissive']);
+    expect(unix(api, ssh, 'sudo setenforce Enforcing').lines).toEqual([]);
+    expect(unix(api, ssh, 'getenforce').lines).toEqual(['Enforcing']);
+
+    const bad = unix(api, ssh, 'sudo setenforce maybe').lines.join('\n');
+    expect(bad).toContain('invalid argument');
+    expect(bad).toContain('[ Enforcing | Permissive | 1 | 0 ]');
+    expect(unix(api, ssh, 'getenforce').lines).toEqual(['Enforcing']);
+  });
+
+  it('cannot be run on a box the player does not own', () => {
+    // A customer's server is the Ubuntu the world seeds: there is no SELinux on
+    // it to turn off, so the refusal is the missing binary rather than a
+    // permission - and nothing is written to a machine somebody else owns.
+    const { api, ssh } = onMsp();
+    const out = unix(api, ssh, 'sudo setenforce 0').lines.join('\n');
+
+    expect(out).toContain('setenforce: command not found');
+    expect(out).toContain('AppArmor');
+    expect(api.graph.getField(ssh.hostId, FIELDS.selinuxMode)).toBeUndefined();
+    expect(api.graph.getField(ssh.hostId, FIELDS.selinuxPermissiveAt))
+      .toBeUndefined();
+  });
+});
+
+describe('SELinux: the box says so on the way in (0.28.0)', () => {
+  it('prints the note-to-self while the mirror is refusing, and not after', () => {
+    const { api, ssh } = onOwnBox('fedora');
+    const banner = win(api, 'ssh engineer@FC-DESK-07').lines.join('\n');
+
+    expect(banner).toContain('NOTE TO SELF');
+    expect(banner).toContain('403');
+    // It says the permissions look fine - which they do - and does not name the
+    // answer. A banner that said "run restorecon" would be the game solving its
+    // own puzzle in the greeting.
+    expect(banner).toContain('permissions');
+    expect(banner).not.toContain('restorecon');
+    expect(banner).not.toContain('context');
+
+    unix(api, ssh, 'sudo restorecon /var/www/html/index.html');
+    expect(win(api, 'ssh engineer@FC-DESK-07').lines.join('\n'))
+      .not.toContain('NOTE TO SELF');
+  });
+
+  it('says nothing at all on a box with no denial on it', () => {
+    const ubuntu = onOwnBox('ubuntu');
+    expect(win(ubuntu.api, 'ssh engineer@FC-DESK-07').lines.join('\n'))
+      .not.toContain('NOTE TO SELF');
+
+    const msp = onMsp();
+    expect(win(msp.api, 'ssh pat@FC-RMM-01').lines.join('\n'))
+      .not.toContain('NOTE TO SELF');
   });
 });

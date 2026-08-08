@@ -12,6 +12,8 @@ import {
   PACKAGE_MANAGERS,
   packageManagerFor,
   resolveDesktopChoice,
+  type SecurityModule,
+  securityModuleFor,
   SKINS,
   skinById,
   type DistroId,
@@ -418,6 +420,32 @@ describe('the distro axis', () => {
     expect(distroById('debian').defaultDesktop).toBe('gnome');
     expect(distroById('rhel').defaultDesktop).toBe('gnome');
     expect(distroById('opensuse').defaultDesktop).toBe('kde');
+  });
+
+  it('puts SELinux on the RHEL family and on nothing else', () => {
+    // The one row on this table that is a MECHANIC rather than a vocabulary
+    // (0.28.0), and the reason it is asserted as an exact SET rather than
+    // per-row: the denial, the four verbs and their refusals are all read off
+    // this column, so a future distro row that quietly claimed SELinux would
+    // grow a beat nobody wrote, and one that dropped it would silently take
+    // the beat away. Both are the same mistake and this catches either.
+    const shipping = (module: SecurityModule): readonly string[] => DISTROS
+      .filter((distro) => distro.securityModule === module)
+      .map((distro) => distro.id)
+      .sort((left, right) => left.localeCompare(right));
+
+    expect(shipping('selinux')).toEqual(['fedora', 'rhel']);
+    // The Debian family and openSUSE ship AppArmor, which is a real answer and
+    // not the same as nothing - it is what the refusal names.
+    expect(shipping('apparmor')).toEqual(['debian', 'mint', 'opensuse', 'ubuntu']);
+    // And Arch ships neither until you set one up.
+    expect(shipping(null)).toEqual(['arch']);
+
+    expect(securityModuleFor('rhel')).toBe('selinux');
+    expect(securityModuleFor('ubuntu')).toBe('apparmor');
+    // A box that is not on a distro at all has as much SELinux on it as Arch
+    // does, which is none - the same null, and the same answer to every caller.
+    expect(securityModuleFor(null)).toBeNull();
   });
 
   it('refuses a distro nobody ships', () => {

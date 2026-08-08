@@ -131,12 +131,43 @@ describe('shipped inbox', () => {
     expect(taught[0]?.tick).toBeLessThan(shiftStartTick(1));
   });
 
-  it('is sent by people who exist in the company', () => {
-    const session = createWorldSession();
+  /**
+   * A thread is sent by somebody who exists WHERE THE THREAD CAN APPEAR.
+   *
+   * That used to be one world, because every thread hung off the probation
+   * shop. A gated thread hangs off a NODE, and a node belongs to an employer -
+   * the SELinux compliance sweep (0.28.0) is about the MSP's desk box and is
+   * sent by the MSP's own infra lead, and neither of them is in the shop this
+   * career starts at. So the gate follows the gate: whichever world holds the
+   * arrival node is the world the sender has to be a person in, and an ungated
+   * thread is still held to the first one, where it is in the inbox from the
+   * Monday.
+   */
+  it('is sent by people who exist where the thread can appear', () => {
+    const worlds = [
+      createWorldSession(),
+      createWorldSession({
+        farmFund: 0,
+        attempt: 1,
+        arcWeek: 1,
+        employer: 'msp',
+      }),
+    ];
 
     for (const entry of WORLD_MAIL) {
+      // The world the gate points at, when one of them holds it. A thread gated
+      // on a node nobody SEEDS - the handoff bounce hangs off a ticket the queue
+      // spawns - names no employer, so it falls back to the first, which is
+      // where a thread with no better answer has always belonged.
+      const gated = worlds.find(
+        (world) => entry.arrival !== undefined
+          && world.engine.graph.getNode(entry.arrival.node) !== undefined,
+      );
+      const home = gated ?? worlds[0];
+
       for (const message of entry.messages) {
-        expect(session.engine.graph.getNode(message.from)?.kind).toBe('person');
+        expect(home?.engine.graph.getNode(message.from)?.kind, message.id)
+          .toBe('person');
       }
     }
   });

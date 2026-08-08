@@ -33,6 +33,7 @@ import {
   HELPDESK_ACTIONS,
   INCIDENT_ACTIONS,
   REQUEST_ACTIONS,
+  SELINUX_ACTIONS,
   SOFTWARE_ACTIONS,
   SYSTEMD_ACTIONS,
   WORLD_ACTIONS,
@@ -86,6 +87,12 @@ export const WALK_RUNS = {
     + 'week cannot hold the engineer tier: ssh is refused until the promotion '
     + 'fires, so the whole server surface lives on the far side of a threshold no '
     + 'probation week reaches.',
+  selinux: 'The other way out of the SELinux denial (0.28.0): the same box, and '
+    + 'setenforce 0 instead of the relabel. Its own run for the reason the '
+    + 'shortcut/checked pair is two runs - one box cannot be fixed both ways, '
+    + 'and the consequence of this one is a night away: the page is served in a '
+    + 'keystroke, the machine stops enforcing anything, and the compliance sweep '
+    + 'puts it in the inbox the next morning.',
 } as const;
 
 export type WalkRunId = keyof typeof WALK_RUNS;
@@ -1934,6 +1941,17 @@ const ENTRIES = [
     run: 'shortcut',
     why: 'It only exists in a week where nobody checked.',
   },
+  {
+    id: 'mail.selinux',
+    surface: 'mail',
+    control: 'mail-row-selinux-permissive',
+    does: 'The overnight compliance sweep, in the morning post (0.28.0): the '
+      + 'box named, the control named, and no telling-off - the whole cost of '
+      + 'having switched enforcement off instead of relabelling the file.',
+    run: 'selinux',
+    why: 'It only exists in a week where somebody reached for setenforce 0, '
+      + 'and it only arrives the morning after they did.',
+  },
 
   /* -- the Support Terminal ----------------------------------------------- */
   {
@@ -2593,6 +2611,77 @@ const ENTRIES = [
     why: 'A Red Hat binary, on a box the player has put RHEL on - behind the '
       + 'promotion that lets them install a distribution and the ssh that '
       + 'reaches the result.',
+  },
+  {
+    id: 'cmd.getenforce',
+    surface: 'cmd',
+    control: 'getenforce',
+    does: 'Reads SELinux\'s mode off the box in the one word the real tool '
+      + 'prints (0.28.0): Enforcing on a RHEL-family install, Permissive after '
+      + 'somebody has reached for setenforce. It is a FIELD on the machine, not '
+      + 'a constant - the same one setenforce writes and the same one the denial '
+      + 'is decided by - so the answer cannot disagree with what the box '
+      + 'actually does. On every other distribution it is not a binary at all, '
+      + 'and the miss names what that family ships instead (AppArmor, or '
+      + 'nothing), exactly as the wrong package manager does.',
+    command: 'getenforce',
+    run: 'sysadmin',
+    why: 'An SELinux verb, and the only box in the game with SELinux on it is '
+      + 'one the player has reinstalled onto the RHEL family - which needs the '
+      + 'promotion twice over: to choose a distribution, and to ssh to it.',
+  },
+  {
+    id: 'cmd.sestatus',
+    surface: 'cmd',
+    control: 'sestatus',
+    does: 'The fuller shape of the same fact (0.28.0): status, SELinuxfs mount, '
+      + 'policy root, loaded policy name, the MLS and deny_unknown lines - and '
+      + 'the pair that earns the verb its place, Current mode beside Mode from '
+      + 'config file. setenforce moves the first and never the second, which is '
+      + 'how a player finds out that switching enforcement off is a runtime '
+      + 'change on a box that will go back to refusing at the next boot.',
+    command: 'sestatus',
+    run: 'sysadmin',
+    why: 'The same box behind the same two gates as getenforce above.',
+  },
+  {
+    id: 'cmd.restorecon',
+    surface: 'cmd',
+    control: 'sudo restorecon [-v] <path>',
+    does: 'The advertised fix for a label denial (0.28.0), and the one that '
+      + 'changes a FILE: it writes the context the policy holds for that path '
+      + 'back onto the file - the value comes off the file\'s own default, so '
+      + 'neither the shell nor the player names a label - and the service that '
+      + 'was refusing serves the page on the very next request, with nothing '
+      + 'restarted and the box still enforcing. Privileged, like every other '
+      + 'verb that writes to a box. Silent without -v, and -v '
+      + 'reports only a file it ACTUALLY relabelled, so running it on a correct '
+      + 'file claims nothing.',
+    command: 'restorecon',
+    actions: [SELINUX_ACTIONS.restorecon],
+    run: 'sysadmin',
+    why: 'The fix half of a denial that only exists on a RHEL-family box the '
+      + 'player owns, which is the far side of the promotion.',
+  },
+  {
+    id: 'cmd.setenforce',
+    surface: 'cmd',
+    control: 'setenforce <0|1>',
+    does: 'The other fix (0.28.0), and the one that changes the BOX: setenforce '
+      + '0 puts the whole machine in permissive mode, the denied page is served '
+      + 'instantly, and nothing about the wrong label has been touched. It needs '
+      + 'root, it is silent on success like the real one, and it is REMEMBERED - '
+      + 'the minute is stamped on the machine and the overnight compliance sweep '
+      + 'reads it, so a mail lands the next morning naming the box. Putting it '
+      + 'back with setenforce 1 restores enforcement and the denial with it, and '
+      + 'does not unwrite the record.',
+    command: 'setenforce',
+    actions: [SELINUX_ACTIONS.setenforce],
+    run: 'selinux',
+    why: 'One box cannot be fixed both ways: relabelling the file and switching '
+      + 'the enforcement off are alternatives, and the sysadmin run takes the '
+      + 'first. This run takes the second and sleeps on it, which is the only '
+      + 'way to reach the morning the sweep lands.',
   },
   {
     id: 'cmd.dpkg',
@@ -3437,6 +3526,12 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'top of a service somebody was using.',
   [WORLD_ACTIONS.staleLogon]: 'A tablet in a cupboard offering a password '
     + 'that was changed in the spring, every five minutes.',
+  [SELINUX_ACTIONS.selinuxNoticed]: 'The overnight compliance sweep reading a '
+    + 'box that was left in permissive mode, dispatched by the day loop at the '
+    + 'next start of shift - the same rail the unverified enrolment\'s bill '
+    + 'arrives on. Nobody presses it and nobody can: it is somebody upstream '
+    + 'reading a report, and what the player meets is the notice and the mail '
+    + 'it puts in their inbox (walked as cmd.setenforce).',
   [DAY_ACTIONS.reviewMatrixRead]: 'Somebody scoring the selection pool in the '
     + 'minute before the conversation, in a week where a round is being '
     + 'decided. The day loop dispatches it; the player has been reading the '

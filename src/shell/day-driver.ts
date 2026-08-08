@@ -24,6 +24,7 @@ import {
   HELPDESK_ACTIONS,
   INCIDENT_ACTIONS,
   REQUEST_ACTIONS,
+  SELINUX_ACTIONS,
   SOFTWARE_ACTIONS,
   SYSTEMD_ACTIONS,
   WORLD_ACTIONS,
@@ -94,6 +95,12 @@ import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
 import { legendaryRevertDue } from '../world/legendary';
 import { OVERRIDE_RISK_ACCEPTANCE, overrideFalloutDue } from '../world/override';
 import { recertFollowUpDue } from '../world/recert';
+import {
+  selinuxAuditDue,
+  selinuxDenying,
+  selinuxNodeIds,
+  selinuxRelabelSetup,
+} from '../world/selinux';
 import { queueJumpFalloutDue } from '../world/vip';
 import { findIncident } from '../world/incidents';
 import { findOnboarding } from '../world/onboarding';
@@ -669,6 +676,23 @@ export interface DayApi {
    * a ticket is registering a def with the engine, a shell/driver job, not an op.
    */
   raiseFirstIncident(): void;
+  /**
+   * Materialises the SELinux beat on a box the player has just reinstalled onto
+   * the RHEL family (E6, 0.28.0), the first time they actually stand on it.
+   *
+   * The same shape as `raiseFirstIncident` and for the same reason: building
+   * nodes is registering state with the engine, a driver job rather than an op,
+   * and the shell asks for it at the moment the fiction says it happened. That
+   * moment is the ssh, not the reinstall - `setDesktop` is chrome and stays
+   * dispatch-free, and the honest reading is that the restore mislabelled the
+   * web root when the box was rebuilt and nobody has looked at it since.
+   *
+   * Idempotent by the unit node and world-guarded, so a second ssh, a reload, or
+   * a distro switched away and back does not stand a second web server up. It
+   * answers whether the box is currently REFUSING, which is what the connect
+   * banner prints - a real box tells you on the way in.
+   */
+  raiseSelinuxRelabel(boxId: string, hostname: string): boolean;
   /**
    * Files the blameless postmortem for an incident (E6, 0.19.0): the append-only
    * post-incident record that CLOSES the failed-deploy incident once the fire is
@@ -1462,6 +1486,29 @@ export class DayDriver implements DayApi {
     if (raised) {
       this.announce();
     }
+  }
+
+  /**
+   * The SELinux beat, built on the box the moment somebody logs into it (E6,
+   * 0.28.0). See `DayApi.raiseSelinuxRelabel` for why it is here and why it is
+   * the ssh rather than the reinstall that asks.
+   */
+  public raiseSelinuxRelabel(boxId: string, hostname: string): boolean {
+    const ids = selinuxNodeIds(hostname);
+
+    if (this.engine.graph.getNode(boxId) === undefined) {
+      return false;
+    }
+
+    if (this.engine.graph.getNode(ids.unit) === undefined) {
+      this.engine.applySetup(selinuxRelabelSetup(boxId, hostname));
+      this.announce();
+    }
+
+    // Whether the box is refusing THIS minute, which is a live read of the two
+    // facts that decide it - the mode and the label - rather than a memory of
+    // having built it. Either fix flips it, and the banner stops.
+    return selinuxDenying(this.engine.graph, boxId, hostname);
   }
 
   public filePostmortem(unitId: string): readonly string[] {
@@ -2336,6 +2383,10 @@ export class DayDriver implements DayApi {
     // consequence that landed in the same evening would read as a punishment
     // for the click rather than as the cost of the omission.
     this.settleSecurityFallout();
+    // And the other overnight read of yesterday's shortcuts (0.28.0): the sweep
+    // that notices a box somebody left in permissive mode. Same rail, same
+    // reason it is here and not at last night's clock-off.
+    this.settleSelinuxAudit();
     this.dispatchDay(DAY_ACTIONS.startShift, {});
     this.syncSlaClock();
     this.carriedMs = 0;
@@ -3479,6 +3530,42 @@ export class DayDriver implements DayApi {
           + 'timeline. An authenticator was enrolled yesterday for a person '
           + 'nobody checked the identity of, and it was not the person whose '
           + 'account it was.',
+        );
+      }
+    }
+  }
+
+  /**
+   * The compliance sweep noticing a box left in permissive mode (E6, 0.28.0).
+   *
+   * The twin of `settleSecurityFallout`, deliberately: the world decides whether
+   * there is a consequence (`selinuxAuditDue` - permissive since yesterday, not
+   * yet reported), and this dispatches the verb that writes the record the mail
+   * hangs off. It charges nothing. The cost of `setenforce 0` is that it is
+   * WRITTEN DOWN, with a hostname on it, by somebody who was not asked - which
+   * is what makes it a different fix from the relabel rather than a worse one.
+   *
+   * Inert everywhere it does not apply, and that is most places: no box on the
+   * seeded estate has SELinux on it at all, so the read returns nothing until a
+   * player has put the RHEL family on their own machine and reached for the
+   * switch.
+   */
+  private settleSelinuxAudit(): void {
+    for (const box of selinuxAuditDue(this.engine.graph, this.engine.now())) {
+      const result = this.engine.dispatch(
+        SELINUX_ACTIONS.selinuxNoticed,
+        this.actor,
+        box,
+        {},
+      );
+
+      if (result.ok) {
+        this.handlers.onNotice?.(
+          'Compliance sweep',
+          `The overnight sweep has ${this.hostnameOf(box)} down as not `
+          + 'enforcing. It is not a telling-off and nothing is being taken off '
+          + 'you - it is a line on a list with a date beside it, and it is in '
+          + 'your inbox.',
         );
       }
     }

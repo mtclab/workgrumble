@@ -197,11 +197,28 @@ export const PACKAGE_MANAGERS = ['apt', 'dnf', 'zypper', 'pacman'] as const;
 
 export type PackageManager = (typeof PACKAGE_MANAGERS)[number];
 
+/** What a distribution has watching its processes, and null for neither. */
+export type SecurityModule = 'selinux' | 'apparmor' | null;
+
 export interface Distro {
   readonly id: DistroId;
   readonly label: string;
   /** The verb the box speaks. The whole of the dialect axis, wired thin. */
   readonly packageManager: PackageManager;
+  /**
+   * The mandatory-access-control layer this distribution ships ON by default
+   * (0.28.0), and the one row on this table that is a MECHANIC rather than a
+   * vocabulary.
+   *
+   * The RHEL family ships SELinux enforcing out of the box; the Debian family
+   * and openSUSE ship AppArmor; Arch ships neither until you set one up. Only
+   * the first of those does anything in this game - it is the one authored
+   * denial - but the other two are here rather than as a `selinux: boolean`
+   * because "this box has no SELinux" and "this box has nothing" are different
+   * sentences, and the refusal a player gets for typing `getenforce` on the
+   * wrong box is only useful if it says which.
+   */
+  readonly securityModule: SecurityModule;
   /**
    * The DE this distro ships by default - the distro half of the pairing, and
    * NULL for the one distro that genuinely ships none.
@@ -236,6 +253,7 @@ export const DISTROS: readonly Distro[] = Object.freeze([
     id: 'ubuntu',
     label: 'Ubuntu 24.04 LTS',
     packageManager: 'apt',
+    securityModule: 'apparmor',
     defaultDesktop: 'gnome',
     blurb: 'The one everything else is written for. Ships GNOME, and has '
       + 'opinions about how you install Firefox.',
@@ -244,6 +262,7 @@ export const DISTROS: readonly Distro[] = Object.freeze([
     id: 'mint',
     label: 'Linux Mint 22',
     packageManager: 'apt',
+    securityModule: 'apparmor',
     defaultDesktop: 'cinnamon',
     blurb: 'Ubuntu with the corners sanded off. Ships Cinnamon, which is the '
       + 'point of it.',
@@ -252,6 +271,7 @@ export const DISTROS: readonly Distro[] = Object.freeze([
     id: 'debian',
     label: 'Debian 12 (bookworm)',
     packageManager: 'apt',
+    securityModule: 'apparmor',
     defaultDesktop: 'gnome',
     blurb: 'The thing the other two are built out of, and the one that will '
       + 'still boot in nine years. The same apt, none of the enthusiasm, and '
@@ -261,6 +281,7 @@ export const DISTROS: readonly Distro[] = Object.freeze([
     id: 'fedora',
     label: 'Fedora 41',
     packageManager: 'dnf',
+    securityModule: 'selinux',
     defaultDesktop: 'gnome',
     blurb: 'The upstream of the enterprise one, six months ahead of everybody. '
       + 'Ships GNOME; speaks dnf.',
@@ -269,6 +290,7 @@ export const DISTROS: readonly Distro[] = Object.freeze([
     id: 'rhel',
     label: 'RHEL 9 (or Rocky, or Alma)',
     packageManager: 'dnf',
+    securityModule: 'selinux',
     defaultDesktop: 'gnome',
     blurb: 'The one the auditor has heard of. dnf, with yum still answering '
       + 'because thirty years of fingers do, and a subscription somebody was '
@@ -278,6 +300,7 @@ export const DISTROS: readonly Distro[] = Object.freeze([
     id: 'opensuse',
     label: 'openSUSE Leap 15.6',
     packageManager: 'zypper',
+    securityModule: 'apparmor',
     defaultDesktop: 'kde',
     blurb: 'The green one, with a chameleon on the wallpaper and YaST for '
       + 'absolutely everything. Ships KDE; speaks zypper, which is neither of '
@@ -287,6 +310,7 @@ export const DISTROS: readonly Distro[] = Object.freeze([
     id: 'arch',
     label: 'Arch Linux',
     packageManager: 'pacman',
+    securityModule: null,
     // No default desktop, on purpose and by the distribution's own design.
     defaultDesktop: null,
     blurb: 'You install a base system and then you decide what a desktop even '
@@ -315,6 +339,18 @@ export function packageManagerFor(
   distro: DistroId | null,
 ): PackageManager | null {
   return distro === null ? null : distroById(distro).packageManager;
+}
+
+/**
+ * What is watching the processes on a box on this distro - and null both for a
+ * distro that ships nothing and for a machine that is not on Linux at all.
+ *
+ * The two nulls mean the same thing to every caller (`getenforce` is not a
+ * binary here), which is why they are not distinguished: a Windows box and an
+ * Arch install have exactly as much SELinux on them as each other.
+ */
+export function securityModuleFor(distro: DistroId | null): SecurityModule {
+  return distro === null ? null : distroById(distro).securityModule;
 }
 
 /* -- the registry --------------------------------------------------------- */

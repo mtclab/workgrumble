@@ -1126,6 +1126,58 @@ export const FIELDS = {
    */
   certExpired: 'cert_expired',
   /**
+   * Whether SELinux is ENFORCING on this box, in SELinux's own two words:
+   * `enforcing` or `permissive` (E6, 0.28.0).
+   *
+   * A field on the MACHINE and not a simulator, exactly like `cert_expired` is a
+   * field on the unit: the whole of the mode is what `getenforce` prints, what
+   * `sestatus` says twice, and whether a denial is refused or merely logged.
+   * `setenforce` is the one thing that writes it. Absent means the box has no
+   * SELinux on it at all - which is every box on this estate except a player's
+   * own machine reinstalled onto the RHEL family - so every seeded world is
+   * byte-identical until somebody puts Fedora on their workstation.
+   */
+  selinuxMode: 'selinux_mode',
+  /**
+   * The SELinux security context a file is LABELLED with, in the real four-part
+   * `user:role:type:level` shape (E6, 0.28.0) - the label the kernel checks,
+   * which is not the same question as the rwx bits and is the whole of why a
+   * denial can happen on a file whose `ls -la` row is perfect.
+   *
+   * The one the estate cares about is the TYPE in the middle: content restored
+   * out of somebody's home directory carries `user_home_t`, the web server runs
+   * as `httpd_t`, and the policy does not let the second read the first. Written
+   * by `restorecon`, which does not invent a label - it copies
+   * `selinux_context_default` back, because that is precisely what a relabel is.
+   */
+  selinuxContext: 'selinux_context',
+  /**
+   * What the POLICY says this path should be labelled (E6, 0.28.0): the context
+   * `restorecon` restores to, held on the file beside the label it currently
+   * carries.
+   *
+   * Two fields rather than one because the two are genuinely different facts - a
+   * file's label is state, the policy's answer for its path is not - and because
+   * a relabel that took its target from anywhere else would be the shell
+   * inventing the policy. Restoring a file that is already correct writes the
+   * same value, which is why `restorecon` on a correct file is honest rather
+   * than a lie about having fixed something.
+   */
+  selinuxContextDefault: 'selinux_context_default',
+  /**
+   * The minute SELinux was put in permissive mode on the player's own box (E6,
+   * 0.28.0), stamped on the machine the moment `setenforce 0` runs.
+   *
+   * The same shape as `mfa_enrolled_at`: the record that it HAPPENED, which is
+   * what makes the shortcut a thing the world remembers rather than a thing that
+   * merely worked. `selinux_noticed_at` is the watermark beside it, and the two
+   * together are the delayed-consequence rail the enrolment beat already runs
+   * on - the mail hangs its arrival off the second one.
+   */
+  selinuxPermissiveAt: 'selinux_permissive_at',
+  /** When somebody upstream noticed the enforcement was off (E6, 0.28.0). */
+  selinuxNoticedAt: 'selinux_noticed_at',
+  /**
    * Whether the last backup this service ran actually produced a RESTORABLE
    * backup, as opposed to a job that merely reported success (0.13.0).
    *

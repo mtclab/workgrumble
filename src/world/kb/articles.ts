@@ -1784,6 +1784,73 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     see_also: ['kb/systemd-start-limit', 'kb/reading-the-error'],
   },
   {
+    id: 'kb/selinux-context',
+    title: 'A file the permissions say is readable, and the server still will not '
+      + 'serve it',
+    summary: 'On the RHEL family there are two gates on every file: the rwx bits '
+      + 'and the SELinux label. ls -la only shows you one of them, and the '
+      + 'journal tells you which one said no.',
+    state: 'published',
+    issue: 'A service on a Red Hat, Rocky, Alma or Fedora box refuses to read a '
+      + 'file - a 403, or a "permission denied" in its own log - and ls -la shows '
+      + 'the permissions are perfectly correct: the right owner, the right group, '
+      + 'the right mode. Nothing has crashed; the service is up and refusing.',
+    environment: 'A box on the RHEL family with SELinux enforcing (which is the '
+      + 'default, and getenforce will tell you). Typically content that was '
+      + 'MOVED or RESTORED into place - out of a home directory, off a backup, '
+      + 'with cp or tar - rather than created where it now lives.',
+    resolution: [
+      'Establish which gate you are arguing with. "getenforce" answers Enforcing '
+        + 'or Permissive in one word, and "sestatus" gives the fuller picture: '
+        + 'whether SELinux is on, which policy is loaded, and the mode both as it '
+        + 'is now and as the config file will set it at the next boot.',
+      'Read the journal for the box, not just the service: "journalctl -u <unit>". '
+        + 'A label denial writes an AVC line - "avc:  denied  { read }" - and that '
+        + 'line names both sides of the argument. The scontext is what the process '
+        + 'is running as; the tcontext is what the file is labelled; permissive=0 '
+        + 'means it was actually refused rather than merely logged.',
+      'Look at the label, which ls -la does not show you: the -Z flag adds it '
+        + '("ls -laZ <path>"). A context reads user:role:TYPE:level, and it is the '
+        + 'type in the middle that decides. Content that arrived from somebody\'s '
+        + 'home directory is typed as home-directory content, whatever its mode '
+        + 'says, and the web server is not permitted to read that type from '
+        + 'anywhere.',
+      'Put the label back to what the policy says that path should have. The '
+        + 'policy already holds an answer for every path on the system - that is '
+        + 'what it is - and "restorecon -v <path>" applies it and prints what it '
+        + 'changed. Then ask the service again. Nothing needs restarting: the '
+        + 'label is checked per access, so the next request is a new argument.',
+    ],
+    cause: [
+      'SELinux is a second, independent gate. The rwx bits answer "may this USER '
+        + 'read this file"; the policy answers "may a process running in THIS '
+        + 'domain read a file with THAT type". Both have to say yes. A file can '
+        + 'therefore be 644, owned by exactly the account that wants it, and still '
+        + 'be refused - which is why the permission columns being obviously fine is '
+        + 'a symptom of this fault rather than evidence against it.',
+      'The label travels with the file. Creating a file somewhere inherits the '
+        + 'label of where it is; moving or restoring one CARRIES the old label in, '
+        + 'which is why this turns up after a restore, a tar extract, or a copy out '
+        + 'of a home directory, and why the fix is called a RELABEL - the file is '
+        + 'in the right place with the wrong name on it, and the policy already '
+        + 'knows the right one.',
+      'There is a second thing that makes the symptom go away, and it is worth '
+        + 'understanding rather than reaching for: putting the whole box in '
+        + 'permissive mode. Permissive does not fix a label - it stops the box '
+        + 'acting on labels at all, everywhere, for everything, and logs what it '
+        + 'would have refused. It works instantly, which is exactly the danger: '
+        + 'the one file is served, and a machine that was enforcing an entire '
+        + 'policy is now enforcing nothing, indefinitely, because nobody puts it '
+        + 'back. On a managed estate it is also the sort of thing that turns up on '
+        + 'somebody else\'s compliance report with your hostname on it.',
+      'So the honest reading of "SELinux is a nightmare, just turn it off" is that '
+        + 'the denial was in the journal the whole time and the permissions were '
+        + 'never the problem. The AVC line is not noise - it is the diagnosis, '
+        + 'already written down, naming the two contexts that disagreed.',
+    ],
+    see_also: ['kb/permission-denied', 'kb/reading-the-error'],
+  },
+  {
     id: 'kb/exec-exception-risk',
     title: 'The executive who wants the exception',
     summary: 'A senior person asks the desk to open a hole - MFA off, a mailbox '

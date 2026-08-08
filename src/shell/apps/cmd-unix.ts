@@ -36,6 +36,8 @@ import {
   FS_OWNER_PARAM,
   INCIDENT_ACTIONS,
   PROMOTION_REPUTATION,
+  SELINUX_ACTIONS,
+  SELINUX_MODE_PARAM,
   SSH_HOST_PARAM,
   SYSTEMD_ACTIONS,
 } from '../../world/actions';
@@ -62,9 +64,17 @@ import {
   unitEnablementOf,
 } from '../../world/fields';
 import {
+  isSelinuxMode,
+  SELINUX_MODES,
+  type SelinuxMode,
+  selinuxDeniesFile,
+} from '../../world/selinux';
+import {
   type DistroId,
   type PackageManager,
   packageManagerFor,
+  type SecurityModule,
+  securityModuleFor,
 } from '../skins';
 import { addressOf, fqdn, GATEWAY, stableHash } from './cmd-net';
 import {
@@ -212,6 +222,46 @@ export const UNIX_COMMANDS: readonly CommandSpec[] = [
     maxArgs: 4,
     joined: true,
     subcommand: true,
+  },
+  {
+    // The SELinux verbs (0.28.0). They are in the grammar for the same reason
+    // the four package managers are - a box that HAS the binary has to parse it
+    // - and which boxes have it is decided at the seam in `executeUnix`, off the
+    // distro's own security module. On this estate that is exactly one machine:
+    // the player's own, reinstalled onto the RHEL family.
+    name: 'getenforce',
+    usage: 'getenforce',
+    summary: 'Print SELinux\'s mode in one word: Enforcing, or Permissive.',
+    minArgs: 0,
+    maxArgs: 0,
+    joined: false,
+  },
+  {
+    name: 'sestatus',
+    usage: 'sestatus',
+    summary: 'The fuller picture: whether SELinux is on, which policy is '
+      + 'loaded, and the mode now and at the next boot.',
+    minArgs: 0,
+    maxArgs: 1,
+    joined: false,
+  },
+  {
+    name: 'restorecon',
+    usage: 'restorecon [-v] <path>',
+    summary: 'Put a file\'s security label back to the one the policy gives '
+      + 'its path - the relabel, and the fix that only touches the file.',
+    minArgs: 1,
+    maxArgs: 3,
+    joined: false,
+  },
+  {
+    name: 'setenforce',
+    usage: 'setenforce <0|1>',
+    summary: 'Switch the whole box between Permissive and Enforcing. Instant, '
+      + 'total, and not a thing about the file that was denied.',
+    minArgs: 1,
+    maxArgs: 2,
+    joined: false,
   },
   {
     name: 'dpkg',
@@ -520,6 +570,47 @@ function isLinuxHost(
 }
 
 /**
+ * The message of the day a box prints as you land on it - and, on the player's
+ * own RHEL-family machine, the moment the SELinux beat becomes real (0.28.0).
+ *
+ * Two things happen here and they are one thing. The box's state is MATERIALISED
+ * on first login rather than at the reinstall, because `setDesktop` is chrome
+ * and writes nothing to the world (the 0.27.0 invariant), and because the
+ * fiction agrees: the rebuild restored the web root out of a backup hours ago,
+ * nobody has been on the box since, and finding out is what logging in is for.
+ * Then the banner: a note the engineer left themselves, printed every login the
+ * way a real `/etc/motd` is, and gone the minute either fix lands - so it is a
+ * live read of the box rather than a message that has to be cleared.
+ *
+ * It says the permissions look fine, because they do. That is the trap the whole
+ * beat is about, and a banner that named the answer would be the game solving
+ * its own puzzle in the login greeting.
+ */
+function motdLines(
+  api: GameApi,
+  machine: Readonly<ReadOnlyGraphNode>,
+  hostname: string,
+): readonly string[] {
+  if (!isOwnBox(api, machine.id)
+    || securityModuleFor(ownBoxDistro(api)) !== 'selinux') {
+    return [];
+  }
+
+  return api.day.raiseSelinuxRelabel(machine.id, hostname)
+    ? [
+      '*** NOTE TO SELF, so you cannot miss it ***',
+      'The local portal mirror on http://localhost/ has been throwing 403 at '
+        + 'everything',
+      'since the rebuild. Nothing is down - httpd is up and answering. The '
+        + 'permissions',
+      'on the files are exactly what they have always been. Look at it when '
+        + 'there is time.',
+      '',
+    ]
+    : [];
+}
+
+/**
  * `ssh <user@host>` - the on-ramp to the server tier, and a mechanic in its own
  * right rather than a reskinned remote-desktop.
  *
@@ -582,12 +673,16 @@ export function sshLines(api: GameApi, query: string): CommandResult {
   const session: SshSession = { hostId: machine.id, hostname, username: user };
   const connected = `Connected to ${hostname}. The terminal is on the server `
     + 'now; its dialect is unix. "exit" comes back to the desktop.';
+  // The message of the day, on the one box that has one (0.28.0). This is also
+  // where the SELinux beat is BUILT - see `motdLines` - because standing on the
+  // box is the first moment anybody could have found what the rebuild did to it.
+  const motd = motdLines(api, machine, hostname);
 
   // Trust-on-first-use. A host already in known_hosts connects straight
   // through; a new one shows its fingerprint and is recorded, which is what
   // makes the SECOND ssh skip this block.
   if (isKnownHost(api, machine.id)) {
-    return { ...lines(connected), enterSession: session };
+    return { ...lines(...motd, connected), enterSession: session };
   }
 
   const trust = api.dispatch(
@@ -607,6 +702,7 @@ export function sshLines(api: GameApi, query: string): CommandResult {
       `ED25519 key fingerprint is ${ed25519Fingerprint(machine.id)}.`,
       `Warning: Permanently added '${hostname}' (ED25519) to the list of known `
         + 'hosts.',
+      ...motd,
       connected,
     ),
     enterSession: session,
@@ -887,6 +983,10 @@ function lsLines(
   const flags = args.filter((arg) => arg.startsWith('-')).join('');
   const all = flags.includes('a');
   const long = flags.includes('l');
+  // -Z adds the SELinux label column (0.28.0). It is the only way to SEE the
+  // thing a label denial is about, which is why it is here and why the plain
+  // listing is deliberately left byte-identical without it.
+  const context = flags.includes('Z');
   const user = session.username;
   const when = lsDate(api.clock.now());
 
@@ -897,7 +997,7 @@ function lsLines(
   const pathArg = args.find((arg) => !arg.startsWith('-'));
 
   if (pathArg !== undefined) {
-    const listed = lsPathLines(api, session, pathArg, all, when);
+    const listed = lsPathLines(api, session, pathArg, all, when, context);
 
     if (listed !== null) {
       return listed;
@@ -1485,6 +1585,15 @@ function listenersOf(node: Readonly<ReadOnlyGraphNode>): readonly Listener[] {
     ];
   }
 
+  // The same door, the other family's server (0.28.0). It binds what nginx
+  // binds because it is doing the same job; the backlog is Apache's own default.
+  if (base === 'httpd') {
+    return [
+      { proc: 'httpd', addr: '*', port: 80, backlog: 511 },
+      { proc: 'httpd', addr: '*', port: 443, backlog: 511 },
+    ];
+  }
+
   if (base === 'postgresql' || base.startsWith('postgresql@')) {
     return [{ proc: 'postgres', addr: '127.0.0.1', port: 5432, backlog: 244 }];
   }
@@ -1739,6 +1848,22 @@ function hostFromUrl(url: string): string {
   return (authority.split(':')[0] ?? '').trim().toLowerCase();
 }
 
+/**
+ * The unit names that mean "the web server on this box".
+ *
+ * Two, because the two families genuinely disagree: the Debian family runs
+ * nginx here and the RHEL family runs httpd, which is also why every SELinux
+ * boolean an engineer ever reads is named `httpd_*`. A box has one of them.
+ */
+const WEB_FRONT_DOORS: ReadonlySet<string> = new Set(['nginx', 'httpd']);
+
+/** The `server:` header the front door on this box actually sends. */
+function webServerHeader(unit: Readonly<ReadOnlyGraphNode> | undefined): string {
+  return unit !== undefined && unitBase(unit) === 'httpd'
+    ? 'Apache/2.4.62 (Red Hat Enterprise Linux)'
+    : 'nginx';
+}
+
 /** The names that mean "this box" to a curl running on it. */
 const LOCALHOST_NAMES: ReadonlySet<string> = new Set([
   '', 'localhost', '127.0.0.1', '::1',
@@ -1778,7 +1903,10 @@ function curlLines(
   const units = api.graph
     .neighbors(box.id, { direction: 'in', edgeKind: 'runs_on' })
     .filter((node) => node.kind === 'unit');
-  const nginx = units.find((node) => unitBase(node) === 'nginx');
+  // The front door, by what the unit IS rather than by one name: on the Debian
+  // family the web server is nginx and on the RHEL family it is httpd, and a
+  // box that is answering on 80 is answering whichever one it has.
+  const nginx = units.find((node) => WEB_FRONT_DOORS.has(unitBase(node)));
   const nginxUp = nginx !== undefined
     && textValue(nginx.fields[FIELDS.unitState], '') === SYSTEMD_STATES.activeRunning;
 
@@ -1809,9 +1937,27 @@ function curlLines(
     );
   }
 
-  // nginx is up. Whether it can serve the app or must 502 is the app's own
-  // state: the product unit behind it (an *app/*portal unit) being down is the
-  // upstream failure nginx reports as 502.
+  // The server is up, the handshake is fine, and the KERNEL will not let it
+  // read the file it is being asked for (0.28.0): SELinux enforcing, over a
+  // document root labelled as something httpd may not touch. It is a 403 rather
+  // than a 502 or a 500 because nothing is broken and nothing is down - the
+  // request was refused, which is what an access-control system does, and the
+  // reason is in the journal rather than in this response. Off the SAME
+  // `requires_file` the permission gate reads, so the two gates on that file
+  // cannot disagree about which file it is.
+  const served = textValue(nginx?.fields[FIELDS.requiresFile], '');
+
+  if (served.length > 0 && selinuxDeniesFile(api.graph, box.id, served)) {
+    return lines(
+      'HTTP/1.1 403 Forbidden',
+      `server: ${webServerHeader(nginx)}`,
+      'content-type: text/html; charset=iso-8859-1',
+    );
+  }
+
+  // Otherwise: whether it can serve the app or must 502 is the app's own state -
+  // the product unit behind it (an *app/*portal unit) being down is the upstream
+  // failure nginx reports as 502.
   const app = units.find((node) => {
     const base = unitBase(node);
 
@@ -1823,12 +1969,12 @@ function curlLines(
   return appDown
     ? lines(
       'HTTP/2 502 ',
-      'server: nginx',
+      `server: ${webServerHeader(nginx)}`,
       'content-type: text/html',
     )
     : lines(
       'HTTP/2 200 ',
-      'server: nginx',
+      `server: ${webServerHeader(nginx)}`,
       'content-type: text/html',
     );
 }
@@ -2235,8 +2381,16 @@ function wrongPackageManager(
 /** One upgradable package as `apt list --upgradable` prints one. */
 interface Upgradable {
   readonly pkg: string;
-  /** The apt pocket(s) the update is in - `noble-security` is a security one. */
-  readonly pocket: string;
+  /**
+   * The pocket(s) the update is in, as the SUFFIXES apt appends to the suite -
+   * `updates`, and `security` for a security one.
+   *
+   * The suffixes rather than the whole `noble-security` string, because the
+   * suite in front of them is the DISTRIBUTION's (0.28.0): the same update is in
+   * `noble-security` on Ubuntu and `bookworm-security` on Debian, and a literal
+   * would have been one more place for the two dialects to drift apart.
+   */
+  readonly pockets: readonly ('updates' | 'security')[];
   readonly arch: string;
   readonly from: string;
   readonly to: string;
@@ -2247,13 +2401,19 @@ interface Upgradable {
  * The pool of real Ubuntu 24.04 (noble) upgradable packages a box can be behind
  * on, security update FIRST so it is always in a box's pending set. Real package
  * names, pockets and version bumps - nothing invented - so `apt list --upgradable`
- * reads like a real one. A `noble-security` pocket is what marks the security
+ * reads like a real one, and the `security` pocket is what marks the security
  * update, exactly as apt does.
+ *
+ * It is the UBUNTU pool, and it is also the shape of the pending set on every
+ * apt box: a Debian one is the same five packages, the same order and the same
+ * sizes, under Debian's names and versions (`DEBIAN_UPDATES`, 0.28.0). One pool,
+ * because being behind on patches is a fact about the box rather than about the
+ * distribution it is running.
  */
 const UPGRADABLE_POOL: readonly Upgradable[] = [
   {
     pkg: 'libssl3t64',
-    pocket: 'noble-updates,noble-security',
+    pockets: ['updates', 'security'],
     arch: 'amd64',
     from: '3.0.13-0ubuntu3.1',
     to: '3.0.13-0ubuntu3.4',
@@ -2261,7 +2421,7 @@ const UPGRADABLE_POOL: readonly Upgradable[] = [
   },
   {
     pkg: 'openssh-server',
-    pocket: 'noble-updates',
+    pockets: ['updates'],
     arch: 'amd64',
     from: '1:9.6p1-3ubuntu13.4',
     to: '1:9.6p1-3ubuntu13.5',
@@ -2269,7 +2429,7 @@ const UPGRADABLE_POOL: readonly Upgradable[] = [
   },
   {
     pkg: 'curl',
-    pocket: 'noble-updates',
+    pockets: ['updates'],
     arch: 'amd64',
     from: '8.5.0-2ubuntu10.5',
     to: '8.5.0-2ubuntu10.6',
@@ -2277,7 +2437,7 @@ const UPGRADABLE_POOL: readonly Upgradable[] = [
   },
   {
     pkg: 'tzdata',
-    pocket: 'noble-updates',
+    pockets: ['updates'],
     arch: 'all',
     from: '2024a-0ubuntu0.24.04.1',
     to: '2024b-0ubuntu0.24.04.1',
@@ -2285,7 +2445,7 @@ const UPGRADABLE_POOL: readonly Upgradable[] = [
   },
   {
     pkg: 'vim-common',
-    pocket: 'noble-updates',
+    pockets: ['updates'],
     arch: 'all',
     from: '2:9.1.0016-1ubuntu7.7',
     to: '2:9.1.0016-1ubuntu7.8',
@@ -2293,9 +2453,9 @@ const UPGRADABLE_POOL: readonly Upgradable[] = [
   },
 ];
 
-/** Whether an upgradable row is a security update, off its pocket. */
+/** Whether an upgradable row is a security update, off its pockets. */
 function isSecurity(row: Readonly<Upgradable>): boolean {
-  return row.pocket.includes('security');
+  return row.pockets.includes('security');
 }
 
 /**
@@ -2362,6 +2522,150 @@ const INSTALLABLE_PACKAGES: Readonly<Record<string, Installable>> = {
   },
 };
 
+/* -- the two apt dialects: Ubuntu's archives, and Debian's (0.28.0) -------- */
+
+/**
+ * The two boxes `apt` runs on, and everything that differs between them.
+ *
+ * 0.28.0 shipped Debian as mechanically identical to Ubuntu, which was the right
+ * call about MECHANICS and the wrong output: a Debian box printed
+ * `archive.ubuntu.com`, the suite `noble`, and Ubuntu's `-0ubuntu3.4` version
+ * strings, which is not a temperament difference, it is a factually wrong
+ * machine. So the words are a table and the mechanics are still one engine - the
+ * same derived pending set, the same `installed_packages` field, the same two
+ * dispatched actions - which is exactly the split the dialect axis is for.
+ *
+ * There is no third pool and no second install path. A row here is a NAME, a
+ * URL and a suite; everything that decides anything is still shared.
+ */
+interface AptFlavor {
+  readonly id: 'ubuntu' | 'debian';
+  /** The suite the pockets hang off: `noble`, `bookworm`. */
+  readonly suite: string;
+  readonly archive: string;
+  readonly securityArchive: string;
+  /** The suite the security pocket is published under. */
+  readonly securitySuite: string;
+  /** What the security InRelease weighs, as apt prints it while fetching it. */
+  readonly securitySize: string;
+  /** The dpkg database line's file count - a different install, a different one. */
+  readonly databaseFiles: string;
+  /** The two trigger lines every transaction ends with, at this release. */
+  readonly manDb: string;
+  readonly libcBin: string;
+}
+
+const UBUNTU_FLAVOR: AptFlavor = {
+  id: 'ubuntu',
+  suite: 'noble',
+  archive: 'http://archive.ubuntu.com/ubuntu',
+  securityArchive: 'http://security.ubuntu.com/ubuntu',
+  securitySuite: 'noble-security',
+  securitySize: '126 kB',
+  databaseFiles: '41234',
+  manDb: '2.12.0-4build2',
+  libcBin: '2.39-0ubuntu8.3',
+};
+
+const DEBIAN_FLAVOR: AptFlavor = {
+  id: 'debian',
+  suite: 'bookworm',
+  // One host for everything, and a separate one for security, which is the
+  // arrangement Debian has and Ubuntu also has - with entirely different names.
+  archive: 'http://deb.debian.org/debian',
+  securityArchive: 'http://security.debian.org/debian-security',
+  securitySuite: 'bookworm-security',
+  securitySize: '48.0 kB',
+  databaseFiles: '37519',
+  manDb: '2.11.2-2',
+  libcBin: '2.36-9+deb12u7',
+};
+
+/**
+ * Which of the two a box speaks. Mint rides Ubuntu's, because it IS Ubuntu's -
+ * the archives a Mint box pulls from are Ubuntu's - and every box on the estate
+ * that is not the player's own is the Ubuntu the world seeds.
+ */
+function aptFlavorOn(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): AptFlavor {
+  return boxDistroOn(api, session) === 'debian' ? DEBIAN_FLAVOR : UBUNTU_FLAVOR;
+}
+
+/** The Debian names and versions for the pool, keyed by the Ubuntu row. */
+const DEBIAN_UPDATES: Readonly<Record<string, {
+  readonly pkg: string;
+  readonly from: string;
+  readonly to: string;
+}>> = {
+  // Not a rename for flavour: bookworm has never had Ubuntu 24.04's `t64`
+  // suffix, which is the 64-bit-time_t transition and is Ubuntu's alone.
+  libssl3t64: {
+    pkg: 'libssl3',
+    from: '3.0.11-1~deb12u2',
+    to: '3.0.15-1~deb12u1',
+  },
+  'openssh-server': {
+    pkg: 'openssh-server',
+    from: '1:9.2p1-2+deb12u2',
+    to: '1:9.2p1-2+deb12u3',
+  },
+  curl: { pkg: 'curl', from: '7.88.1-10+deb12u5', to: '7.88.1-10+deb12u7' },
+  tzdata: { pkg: 'tzdata', from: '2024a-0+deb12u1', to: '2024b-0+deb12u1' },
+  'vim-common': {
+    pkg: 'vim-common',
+    from: '2:9.0.1378-2',
+    to: '2:9.0.1378-2+deb12u1',
+  },
+};
+
+/** And the installables, at bookworm's versions and in bookworm's components. */
+const DEBIAN_PACKAGES: Readonly<Record<string, {
+  readonly version: string;
+  readonly component: string;
+}>> = {
+  // Debian has no `universe`: the split is main/contrib/non-free, and htop is
+  // in main. An Ubuntu component name on a Debian box is a wrong machine.
+  htop: { version: '3.2.2-2', component: 'main' },
+  traceroute: { version: '1:2.1.0-2', component: 'main' },
+  'net-tools': { version: '2.10-0.1', component: 'main' },
+};
+
+/** One pending row as THIS box would print it: its names, its versions. */
+function aptRow(
+  row: Readonly<Upgradable>,
+  flavor: Readonly<AptFlavor>,
+): { readonly pkg: string; readonly pocket: string; readonly arch: string;
+  readonly from: string; readonly to: string; readonly bytes: number } {
+  const named = flavor.id === 'debian' ? DEBIAN_UPDATES[row.pkg] : undefined;
+  const pocket = row.pockets
+    .map((suffix) => `${flavor.suite}-${suffix}`)
+    .join(',');
+
+  return {
+    pkg: named?.pkg ?? row.pkg,
+    pocket,
+    arch: row.arch,
+    from: named?.from ?? row.from,
+    to: named?.to ?? row.to,
+    bytes: row.bytes,
+  };
+}
+
+/** And one installable as this box would: its version, and its component. */
+function aptInstallable(
+  pkg: string,
+  spec: Readonly<Installable>,
+  flavor: Readonly<AptFlavor>,
+): Installable {
+  const named = flavor.id === 'debian' ? DEBIAN_PACKAGES[pkg] : undefined;
+
+  return named === undefined
+    ? spec
+    : { ...spec, version: named.version, component: named.component };
+}
+
 /** A byte count as apt prints an archive size (`176 kB`, `1,938 kB`). */
 function aptSize(bytes: number): string {
   return bytes >= 1_000_000
@@ -2412,15 +2716,17 @@ function aptInstallLines(
     return aptNeedsRoot();
   }
 
-  const spec = INSTALLABLE_PACKAGES[pkg];
+  const catalogued = INSTALLABLE_PACKAGES[pkg];
 
-  if (spec === undefined) {
+  if (catalogued === undefined) {
     return lines(
       ...APT_PREAMBLE,
       `E: Unable to locate package ${pkg}`,
     );
   }
 
+  const flavor = aptFlavorOn(api, session);
+  const spec = aptInstallable(pkg, catalogued, flavor);
   const notUpgraded = boxPending(api, session).length;
 
   if (isPackageInstalled(api, session, pkg)) {
@@ -2455,16 +2761,18 @@ function aptInstallLines(
     `After this operation, ${
       aptSize(spec.installBytes)
     } of additional disk space will be used.`,
-    `Get:1 http://archive.ubuntu.com/ubuntu noble/${spec.component} ${
+    `Get:1 ${flavor.archive} ${flavor.suite}/${spec.component} ${
       spec.arch
     } ${pkg} ${spec.arch} ${spec.version} [${aptSize(spec.downloadBytes)}]`,
     `Fetched ${aptSize(spec.downloadBytes)} in 0s (0 B/s)`,
     `Selecting previously unselected package ${pkg}.`,
-    '(Reading database ... 41234 files and directories currently installed.)',
+    `(Reading database ... ${
+      flavor.databaseFiles
+    } files and directories currently installed.)`,
     `Preparing to unpack .../${pkg}_${spec.version}_${spec.arch}.deb ...`,
     `Unpacking ${pkg} (${spec.version}) ...`,
     `Setting up ${pkg} (${spec.version}) ...`,
-    'Processing triggers for man-db (2.12.0-4build2) ...',
+    `Processing triggers for man-db (${flavor.manDb}) ...`,
   );
 }
 
@@ -2485,12 +2793,15 @@ function aptUpdateLines(
 
   const pending = boxPending(api, session);
   const security = pending.filter(isSecurity).length;
+  const flavor = aptFlavorOn(api, session);
 
   return lines(
-    'Hit:1 http://archive.ubuntu.com/ubuntu noble InRelease',
-    'Hit:2 http://archive.ubuntu.com/ubuntu noble-updates InRelease',
-    'Get:3 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]',
-    `Fetched 126 kB in 0s (0 B/s)`,
+    `Hit:1 ${flavor.archive} ${flavor.suite} InRelease`,
+    `Hit:2 ${flavor.archive} ${flavor.suite}-updates InRelease`,
+    `Get:3 ${flavor.securityArchive} ${flavor.securitySuite} InRelease [${
+      flavor.securitySize
+    }]`,
+    `Fetched ${flavor.securitySize} in 0s (0 B/s)`,
     'Reading package lists... Done',
     'Building dependency tree... Done',
     'Reading state information... Done',
@@ -2518,7 +2829,9 @@ function aptListLines(
   api: GameApi,
   session: Readonly<SshSession>,
 ): CommandResult {
-  const pending = boxPending(api, session);
+  const flavor = aptFlavorOn(api, session);
+  const pending = boxPending(api, session)
+    .map((row) => aptRow(row, flavor));
 
   return lines(
     'Listing... Done',
@@ -2564,22 +2877,24 @@ function aptUpgradeLines(
     return lines(result.reason);
   }
 
-  const totalBytes = pending.reduce((sum, row) => sum + row.bytes, 0);
+  const flavor = aptFlavorOn(api, session);
+  const rows = pending.map((row) => aptRow(row, flavor));
+  const totalBytes = rows.reduce((sum, row) => sum + row.bytes, 0);
 
   return lines(
     ...APT_PREAMBLE,
     'Calculating upgrade... Done',
     'The following packages will be upgraded:',
-    `  ${pending.map((row) => row.pkg).join(' ')}`,
-    `${String(pending.length)} upgraded, 0 newly installed, 0 to remove and `
+    `  ${rows.map((row) => row.pkg).join(' ')}`,
+    `${String(rows.length)} upgraded, 0 newly installed, 0 to remove and `
       + '0 not upgraded.',
     `Need to get ${aptSize(totalBytes)} of archives.`,
     'After this operation, 0 B of additional disk space will be used.',
-    ...pending.map(
+    ...rows.map(
       (row) => `Setting up ${row.pkg} (${row.to}) ...`,
     ),
-    'Processing triggers for man-db (2.12.0-4build2) ...',
-    'Processing triggers for libc-bin (2.39-0ubuntu8.3) ...',
+    `Processing triggers for man-db (${flavor.manDb}) ...`,
+    `Processing triggers for libc-bin (${flavor.libcBin}) ...`,
   );
 }
 
@@ -3735,6 +4050,27 @@ const DPKG_BASE: readonly (readonly [string, string, string, string])[] = [
   ['systemd', '255.4-1ubuntu8', 'amd64', 'system and service manager'],
 ];
 
+/**
+ * And the same base set at bookworm's versions (0.28.0).
+ *
+ * `dpkg -l` is part of the apt family's output, so it is part of the same fix:
+ * a Debian box that listed Ubuntu's `5.2.21-2ubuntu4` bash would be a wrong
+ * machine, and - worse - it would CONTRADICT the `apt upgrade` two lines above
+ * it, which now prints Debian's libc6 version. One box, one set of versions.
+ * Keyed by package name, so a base package with no Debian row keeps the one it
+ * has rather than silently going missing.
+ */
+const DEBIAN_BASE_VERSIONS: Readonly<Record<string, string>> = {
+  apt: '2.6.1',
+  bash: '5.2.15-2+b7',
+  coreutils: '9.1-1',
+  dpkg: '1.21.22',
+  libc6: '2.36-9+deb12u7',
+  nginx: '1.22.1-9',
+  'openssh-server': '1:9.2p1-2+deb12u2',
+  systemd: '252.30-1~deb12u2',
+};
+
 /** The descriptions for the packages apt can install, for their dpkg -l rows. */
 const DPKG_INSTALLED_DESC: Readonly<Record<string, string>> = {
   htop: 'interactive processes viewer',
@@ -3753,20 +4089,36 @@ function dpkgLines(
   api: GameApi,
   session: Readonly<SshSession>,
 ): CommandResult {
+  const flavor = aptFlavorOn(api, session);
   const installed = readInstalledPackages(
     api.graph.getField(session.hostId, FIELDS.installedPackages),
   );
   const extras = installed
     .map((pkg): readonly [string, string, string, string] | null => {
-      const spec = INSTALLABLE_PACKAGES[pkg];
+      const catalogued = INSTALLABLE_PACKAGES[pkg];
 
-      return spec === undefined
-        ? null
-        : [pkg, spec.version, spec.arch, DPKG_INSTALLED_DESC[pkg] ?? pkg];
+      if (catalogued === undefined) {
+        return null;
+      }
+
+      // The SAME resolver `apt install` printed its version off, so the two
+      // surfaces on one box cannot say different things about one package.
+      const spec = aptInstallable(pkg, catalogued, flavor);
+
+      return [pkg, spec.version, spec.arch, DPKG_INSTALLED_DESC[pkg] ?? pkg];
     })
     .filter((row): row is readonly [string, string, string, string] => row !== null);
 
-  const rows = [...DPKG_BASE, ...extras]
+  const base = DPKG_BASE.map(
+    ([name, version, arch, desc]): readonly [string, string, string, string] => [
+      name,
+      flavor.id === 'debian' ? DEBIAN_BASE_VERSIONS[name] ?? version : version,
+      arch,
+      desc,
+    ],
+  );
+
+  const rows = [...base, ...extras]
     .slice()
     .sort((left, right) => left[0].localeCompare(right[0]))
     .map(([name, version, arch, desc]) => `ii  ${pad(name, 22)}${
@@ -4059,6 +4411,9 @@ interface PasswdEntry {
  */
 const DAEMON_USERS: Readonly<Record<string, string>> = {
   nginx: 'www-data',
+  // The RHEL family's web server, and its own account: not www-data, which is a
+  // Debian name, and the one every httpd_* rule in the policy is written about.
+  httpd: 'apache',
   cron: 'root',
   ssh: 'root',
   sshd: 'root',
@@ -4486,16 +4841,38 @@ function fsNodeAt(
   ) ?? null;
 }
 
-/** One `ls -la` row for a seeded file/dir node, in the real column shape. */
-function fsRow(node: Readonly<ReadOnlyGraphNode>, when: string): string {
+/**
+ * The security label `ls -Z` prints in its own column (0.28.0), and the `?` the
+ * real one prints for a file it cannot get a context for - which, on a box with
+ * no SELinux, is every file on it.
+ */
+function contextColumn(node: Readonly<ReadOnlyGraphNode>): string {
+  return pad(textValue(node.fields[FIELDS.selinuxContext], '?'), 38);
+}
+
+/**
+ * One `ls -la` row for a seeded file/dir node, in the real column shape - and
+ * with `-Z`, the context column between the group and the size, exactly where
+ * the real one puts it.
+ *
+ * The label is genuinely a separate column rather than part of the mode, which
+ * is the whole reason this flag matters here: a plain `ls -la` on the denied
+ * file shows nothing wrong, because the thing that is wrong is not in any of
+ * the columns it prints.
+ */
+function fsRow(
+  node: Readonly<ReadOnlyGraphNode>,
+  when: string,
+  context = false,
+): string {
   const isDir = node.kind === 'directory';
   const path = textValue(node.fields[FIELDS.path], node.id);
 
   return `${octalToSymbolic(modeOf(node), isDir)} ${isDir ? '2' : '1'} ${
     pad(ownerOf(node), 8)
-  } ${pad(groupOf(node), 8)} ${String(fileSize(node)).padStart(6, ' ')} ${
-    when
-  } ${basename(path)}`;
+  } ${pad(groupOf(node), 8)} ${context ? contextColumn(node) : ''}${
+    String(fileSize(node)).padStart(6, ' ')
+  } ${when} ${basename(path)}`;
 }
 
 /**
@@ -4513,6 +4890,7 @@ function lsPathLines(
   target: string,
   all: boolean,
   when: string,
+  context: boolean,
 ): CommandResult | null {
   const path = normalizeFsPath(target);
   const node = fsNodeAt(api, session, path);
@@ -4534,7 +4912,7 @@ function lsPathLines(
 
   // A named file, with nothing under it: `ls -la <file>` prints just its row.
   if (node !== null && node.kind === 'file' && children.length === 0) {
-    return lines(fsRow(node, when));
+    return lines(fsRow(node, when, context));
   }
 
   // A directory (a seeded dir node, or a path the box holds files directly
@@ -4545,14 +4923,22 @@ function lsPathLines(
       : HOME_MODE;
     const owner = node !== null ? ownerOf(node) : 'root';
     const group = node !== null ? groupOf(node) : 'root';
+    // The dot-entries carry the directory's own label, and `?` where the box
+    // holds no directory node to read one off - the same thing the real ls says
+    // when it cannot get a context.
+    const dotContext = context
+      ? pad(node === null
+        ? '?'
+        : textValue(node.fields[FIELDS.selinuxContext], '?'), 38)
+      : '';
     const dot = (name: string): string => `${dotMode} 2 ${pad(owner, 8)} ${
       pad(group, 8)
-    } ${DIR_SIZE.padStart(6, ' ')} ${when} ${name}`;
+    } ${dotContext}${DIR_SIZE.padStart(6, ' ')} ${when} ${name}`;
 
     return lines(
       'total 8',
       ...(all ? [dot('.'), dot('..')] : []),
-      ...children.map((child) => fsRow(child, when)),
+      ...children.map((child) => fsRow(child, when, context)),
     );
   }
 
@@ -4700,6 +5086,234 @@ function chownLines(
     api.actor,
     file.id,
     { [FS_OWNER_PARAM]: owner, [FS_GROUP_PARAM]: group },
+  );
+
+  return result.ok ? { lines: [], clear: false } : lines(result.reason);
+}
+
+/* -- SELinux: the one distro behaviour that refuses things (0.28.0) -------- */
+
+/**
+ * Whether the box the session stands on runs SELinux at all.
+ *
+ * Read off the DISTRO's own row rather than off a list of ids here, so the
+ * question "which distributions ship it" has exactly one answer in the codebase
+ * and a new row cannot quietly disagree with it. Every server on this estate is
+ * the Ubuntu the world seeds, so this is false everywhere except the player's
+ * own machine after they have put the RHEL family on it.
+ */
+function selinuxBox(api: GameApi, session: Readonly<SshSession>): boolean {
+  return securityModuleOn(api, session) === 'selinux';
+}
+
+/**
+ * What is watching the processes on the box the session stands on.
+ *
+ * The same shape as `packageManagerOn`, and the same default for the same
+ * reason: a box that is not the player's own is the Ubuntu the world seeds it
+ * as, and Ubuntu ships AppArmor. Only the machine the player reinstalled can
+ * answer anything else - including the honest `null` of a distribution that
+ * ships neither.
+ */
+function securityModuleOn(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): SecurityModule {
+  const distro = boxDistroOn(api, session);
+
+  return distro === null ? 'apparmor' : securityModuleFor(distro);
+}
+
+/**
+ * What a box with no SELinux says to an SELinux verb.
+ *
+ * A missing binary, exactly like the wrong package manager - and, like that
+ * refusal, the second line says what the box DOES have, because "not found" on
+ * its own leaves somebody guessing whether they typed it wrong. The Debian
+ * family and openSUSE genuinely ship AppArmor; Arch genuinely ships neither;
+ * and the estate's servers are Ubuntu, so that is the answer they give.
+ */
+function noSelinuxHere(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  name: string,
+): CommandResult {
+  const module = securityModuleOn(api, session);
+
+  return lines(
+    `${name}: command not found`,
+    module === 'apparmor'
+      ? 'This box does not run SELinux. This family ships AppArmor instead - a '
+        + 'different mandatory-access-control system, with different tools and '
+        + 'no contexts on files.'
+      : 'This box does not run SELinux, and nothing else is watching either. '
+        + 'That is a fact about the distribution rather than a permission.',
+  );
+}
+
+/** The mode the box is in, defaulting to enforcing the way a fresh install is. */
+function selinuxModeOn(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): SelinuxMode {
+  const held = api.graph.getField(session.hostId, FIELDS.selinuxMode);
+
+  return isSelinuxMode(held) ? held : SELINUX_MODES.enforcing;
+}
+
+/** `getenforce` - one word, capitalised the way the real one prints it. */
+function getenforceLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): CommandResult {
+  const mode = selinuxModeOn(api, session);
+
+  return lines(
+    mode === SELINUX_MODES.enforcing ? 'Enforcing' : 'Permissive',
+  );
+}
+
+/** The label column of `sestatus`, padded the way the real tool pads it. */
+function sestatusRow(label: string, value: string): string {
+  return `${pad(`${label}:`, 32)}${value}`;
+}
+
+/**
+ * `sestatus` - the same fact as `getenforce` and five more beside it.
+ *
+ * The one that earns its place is the pair of mode lines: the CURRENT mode and
+ * the mode the CONFIG FILE will set at the next boot. `setenforce` moves the
+ * first and never the second, which is the truth about it that matters - it is
+ * a runtime switch, so a box somebody "fixed" that way is one reboot from
+ * refusing again, and until then it is a machine enforcing nothing.
+ */
+function sestatusLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): CommandResult {
+  const mode = selinuxModeOn(api, session);
+
+  return lines(
+    sestatusRow('SELinux status', 'enabled'),
+    sestatusRow('SELinuxfs mount', '/sys/fs/selinux'),
+    sestatusRow('SELinux root directory', '/etc/selinux'),
+    sestatusRow('Loaded policy name', 'targeted'),
+    sestatusRow('Current mode', mode),
+    // Never moved by setenforce, because the real one does not move it.
+    sestatusRow('Mode from config file', SELINUX_MODES.enforcing),
+    sestatusRow('Policy MLS status', 'enabled'),
+    sestatusRow('Policy deny_unknown status', 'allowed'),
+    sestatusRow('Memory protection checking', 'actual (secure)'),
+    sestatusRow('Max kernel policy version', '33'),
+  );
+}
+
+/**
+ * `restorecon [-v] <path>` - the relabel, and the fix that changes one file.
+ *
+ * The shell resolves the PATH to the file on this box and dispatches; the label
+ * it is restored TO comes off the file's own `selinux_context_default`, because
+ * that is what the policy's answer for a path is and neither this function nor
+ * the player gets to name it. Privileged, like every other verb that writes to a
+ * box: setting a context is a root operation on a real machine, and the refusal
+ * is the real one's own sentence. Silent on success like `chmod`, and like the
+ * real one - `-v` prints a line only for a file it ACTUALLY relabelled, so
+ * running it on a file that was already correct prints nothing at all rather
+ * than claiming to have fixed something.
+ */
+function restoreconLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  args: readonly string[],
+  sudo: boolean,
+): CommandResult {
+  const verbose = args.some((arg) => arg.startsWith('-') && arg.includes('v'));
+  const rawPath = args.find((arg) => !arg.startsWith('-')) ?? '';
+
+  if (rawPath.trim().length === 0) {
+    return lines('usage: restorecon [-v] <path>');
+  }
+
+  const file = fsNodeAt(api, session, rawPath);
+
+  if (file === null) {
+    return lines(
+      `restorecon: lstat(${normalizeFsPath(rawPath)}) failed: No such file or `
+        + 'directory',
+    );
+  }
+
+  if (!sudo) {
+    return lines(
+      `restorecon: Could not set context for ${
+        normalizeFsPath(rawPath)
+      }:  Permission denied`,
+    );
+  }
+
+  const before = textValue(file.fields[FIELDS.selinuxContext], '');
+  const result = api.dispatch(
+    SELINUX_ACTIONS.restorecon,
+    api.actor,
+    file.id,
+    {},
+  );
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  const after = textValue(
+    api.graph.getField(file.id, FIELDS.selinuxContext),
+    '',
+  );
+
+  return verbose && after !== before
+    ? lines(
+      `Relabeled ${textValue(file.fields[FIELDS.path], file.id)} from ${
+        before
+      } to ${after}`,
+    )
+    : { lines: [], clear: false };
+}
+
+/**
+ * `setenforce <0|1>` - the other fix, and the one that is about the box.
+ *
+ * It takes what the real one takes: `0`/`Permissive` and `1`/`Enforcing`.
+ * Privileged, so without `sudo` it is the real binary's own terse failure
+ * rather than a lecture. Silent on success - which is exactly how it feels: you
+ * type it, nothing happens, the thing that was refused works, and nothing on
+ * the screen mentions that the machine has stopped enforcing a policy.
+ */
+function setenforceLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  args: readonly string[],
+  sudo: boolean,
+): CommandResult {
+  const raw = (args.find((arg) => !arg.startsWith('-')) ?? '').trim()
+    .toLowerCase();
+  const mode = raw === '0' || raw === 'permissive'
+    ? 0
+    : raw === '1' || raw === 'enforcing' ? 1 : null;
+
+  if (mode === null) {
+    return lines(
+      `setenforce: invalid argument '${raw}'`,
+      'usage:  setenforce [ Enforcing | Permissive | 1 | 0 ]',
+    );
+  }
+
+  if (!sudo) {
+    return lines('setenforce: setenforce() failed');
+  }
+
+  const result = api.dispatch(
+    SELINUX_ACTIONS.setenforce,
+    api.actor,
+    session.hostId,
+    { [SELINUX_MODE_PARAM]: mode },
   );
 
   return result.ok ? { lines: [], clear: false } : lines(result.reason);
@@ -4885,6 +5499,27 @@ export function executeUnix(
         ? dpkgLines(api, session)
         : wrongPackageManager('dpkg', manager);
     }
+    // The SELinux seam (0.28.0), and the same shape as the dialect one above: a
+    // box either HAS these binaries or it does not, the answer is read off the
+    // distribution rather than hard-coded, and every box on the seeded estate
+    // is one that does not - so nothing anywhere changes except on a machine
+    // the player has reinstalled onto the RHEL family themselves.
+    case 'getenforce':
+      return selinuxBox(api, session)
+        ? getenforceLines(api, session)
+        : noSelinuxHere(api, session, 'getenforce');
+    case 'sestatus':
+      return selinuxBox(api, session)
+        ? sestatusLines(api, session)
+        : noSelinuxHere(api, session, 'sestatus');
+    case 'restorecon':
+      return selinuxBox(api, session)
+        ? restoreconLines(api, session, parsed.args, parsed.sudo === true)
+        : noSelinuxHere(api, session, 'restorecon');
+    case 'setenforce':
+      return selinuxBox(api, session)
+        ? setenforceLines(api, session, parsed.args, parsed.sudo === true)
+        : noSelinuxHere(api, session, 'setenforce');
     case 'ps':
       return psLines(api, session);
     case 'ip':

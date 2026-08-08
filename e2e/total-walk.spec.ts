@@ -4296,6 +4296,87 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await runCommand(page, 'exit');
   });
 
+  /*
+   * 0.28.0 slice 3: SELinux, on the one box in the game that has it.
+   *
+   * It sits HERE, on the RHEL box `cmd.yum` put the machine on, because RHEL is
+   * where a player would actually meet this - and because everything below has
+   * to happen before `cmd.zypper` moves the box to openSUSE, which has no
+   * SELinux on it at all.
+   *
+   * The scrollback rule this block is written under is the one the whole
+   * section is: `cmd-output` is the entire session and is never cleared, so
+   * every assertion here is a string this run has printed NOWHERE else - the
+   * AVC line, the label, the relabel, and the 403's own content-type. The two
+   * that could not be made unique - "Enforcing" and a 200 response - are read
+   * off the LAST line of the output instead of by containment, so a stale line
+   * higher up the scrollback cannot satisfy them.
+   */
+  const cmdOut = page.getByTestId('cmd-output');
+  const lastOut = cmdOut.locator('.cmd-line-out').last();
+
+  await step('cmd.getenforce', async () => {
+    // Back onto the desk box - a known host by now, so it connects straight
+    // through - and the box says on the way in that something is refusing.
+    // That banner is the only thing that points at this at all, and it names
+    // no answer: it says the permissions look fine, which they do.
+    await runCommand(page, 'ssh engineer@FC-DESK-07');
+    await expect(cmdOut).toContainText('NOTE TO SELF');
+    await expect(page.locator('.cmd-prompt').first())
+      .toHaveText('engineer@FC-DESK-07:~$');
+
+    await runCommand(page, 'getenforce');
+    await expect(lastOut).toHaveText('Enforcing');
+  });
+
+  await step('cmd.sestatus', async () => {
+    // The fuller read, and the pair that matters: what it is doing now, and
+    // what the config file says it should be doing at the next boot.
+    await runCommand(page, 'sestatus');
+    await expect(cmdOut).toContainText('Loaded policy name:');
+    await expect(cmdOut).toContainText('Mode from config file:');
+    await expect(cmdOut).toContainText('/sys/fs/selinux');
+  });
+
+  await step('cmd.restorecon', async () => {
+    // The denial, met the way a player meets it: a service that is UP, and
+    // refusing. Read off the last line, because the response line itself
+    // ("HTTP/1.1 403 Forbidden") is the only unique half and the content-type
+    // is what tells a served page apart from Apache's error page.
+    await runCommand(page, 'curl -I http://localhost/');
+    await expect(cmdOut).toContainText('HTTP/1.1 403 Forbidden');
+    await expect(lastOut).toHaveText('content-type: text/html; charset=iso-8859-1');
+
+    // The trap: the permissions are perfect. Asserted as the whole row, so a
+    // mode or an owner drifting would be caught rather than contained.
+    await runCommand(page, 'ls -la /var/www/html/index.html');
+    await expect(lastOut).toHaveText(/^-rw-r--r--\s+1\s+apache\s+apache\s/u);
+
+    // And the diagnosis, already written down, in the kernel's own words.
+    await runCommand(page, 'journalctl -u httpd');
+    await expect(cmdOut).toContainText('avc:  denied  { read }');
+    await expect(cmdOut).toContainText('permissive=0');
+
+    // The one column ls -la does not print, which is the whole fault.
+    await runCommand(page, 'ls -laZ /var/www/html/index.html');
+    await expect(cmdOut).toContainText('unconfined_u:object_r:user_home_t:s0');
+
+    // The fix that changes the FILE, and prints what it changed.
+    await runCommand(page, 'sudo restorecon -v /var/www/html/index.html');
+    await expect(cmdOut).toContainText('Relabeled /var/www/html/index.html');
+    await expect(cmdOut).toContainText('system_u:object_r:httpd_sys_content_t:s0');
+
+    // The goal, not the call: the page the box was refusing is served. Nothing
+    // was restarted, and the box is STILL enforcing while it serves it - which
+    // is the whole difference between this fix and the other one.
+    await runCommand(page, 'curl -I http://localhost/');
+    await expect(lastOut).toHaveText('content-type: text/html');
+    await runCommand(page, 'getenforce');
+    await expect(lastOut).toHaveText('Enforcing');
+
+    await runCommand(page, 'exit');
+  });
+
   await step('cmd.zypper', async () => {
     await openFromStartMenu(page, 'display');
     await page.getByTestId('display-distro-opensuse').click();
@@ -4408,6 +4489,115 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
       .toContainText('This box speaks pacman');
     await runCommand(page, 'exit');
     await expect(page.locator('.cmd-prompt').first()).toHaveText(/^C:\\/u);
+  });
+});
+
+/* ========================================================================= *
+ * The other way out of the denial: the switch instead of the relabel, and the
+ * morning after it. Its own session for the reason the shortcut/checked pair
+ * is two: one box cannot be fixed both ways, and the consequence of this one
+ * is a night away.
+ * ========================================================================= */
+
+test('walks setenforce 0, and the sweep that puts it in the inbox', async ({
+  page,
+}) => {
+  await recordControls(page);
+  // A full day is run out inside this one, so it gets the room the other
+  // multi-day runs get rather than a cliff.
+  test.setTimeout(1_800_000);
+  await page.addInitScript(
+    ([key, record]) => {
+      window.localStorage.setItem(key, JSON.stringify(record));
+    },
+    [E6_SWITCH_KEY, E6_ARRIVAL] as [string, typeof E6_ARRIVAL],
+  );
+  await page.clock.install();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await completeLogin(page, { brief: 'keep' });
+
+  const arrival = page.getByTestId('window-updates');
+
+  if (await arrival.count()) {
+    const close = arrival.getByTestId('window-close');
+
+    if (await close.count()) {
+      await close.first().click();
+    }
+  }
+
+  // The shift is genuinely started here, unlike the sysadmin run: this beat is
+  // settled at the START of a shift, so there has to be a day to end.
+  await beginShift(page);
+
+  await openFromStartMenu(page, 'cmd');
+  await runCommand(page, 'promotion accept');
+  await expect(page.getByTestId('cmd-output'))
+    .toContainText('Systems Engineer now');
+
+  // Linux on the issued box, and then Fedora under it. The desktop is chosen
+  // FIRST and it is Cinnamon rather than the one Fedora ships, for a reason
+  // this run cares about and the sysadmin run also settled on: GNOME has no
+  // window list, and everything below wants to click its way back to a
+  // terminal. The distro is the axis under test either way.
+  await openFromStartMenu(page, 'display');
+  await page.getByTestId('display-desktop-cinnamon').click();
+  await page.getByTestId('display-distro-fedora').click();
+  await expect(page.getByTestId('desktop'))
+    .toHaveAttribute('data-distro', 'fedora');
+  await expect(page.getByTestId('desktop'))
+    .toHaveAttribute('data-skin', 'cinnamon');
+  await page.getByTestId('close-display').click();
+  await focusWindow(page, 'cmd');
+
+  const out = page.getByTestId('cmd-output');
+  const lastLine = out.locator('.cmd-line-out').last();
+
+  await step('cmd.setenforce', async () => {
+    await runCommand(page, 'ssh engineer@FC-DESK-07');
+    await expect(out).toContainText('NOTE TO SELF');
+
+    // The same denial the other run relabels its way out of.
+    await runCommand(page, 'curl -I http://localhost/');
+    await expect(out).toContainText('HTTP/1.1 403 Forbidden');
+
+    // One keystroke, no output at all, and the page is served - which is
+    // exactly why this is the fix everybody reaches for.
+    await runCommand(page, 'sudo setenforce 0');
+    await runCommand(page, 'getenforce');
+    await expect(lastLine).toHaveText('Permissive');
+    await runCommand(page, 'curl -I http://localhost/');
+    await expect(lastLine).toHaveText('content-type: text/html');
+
+    // And the file is exactly as mislabelled as it was: nothing about the
+    // fault was fixed. The box has stopped acting on labels.
+    await runCommand(page, 'ls -laZ /var/www/html/index.html');
+    await expect(out).toContainText('unconfined_u:object_r:user_home_t:s0');
+    await runCommand(page, 'exit');
+
+    // Nothing has landed this afternoon. A consequence in the same hour would
+    // read as a punishment for the keystroke rather than as its cost.
+    await openFromStartMenu(page, 'mail');
+    await expect(page.getByTestId('mail-row-selinux-permissive')).toHaveCount(0);
+    await page.getByTestId('close-mail').click();
+  });
+
+  // The night, and the sweep that reads the estate across it. Outside the step
+  // above for the same reason the enrolment run puts it outside its own: it is
+  // the game's clock doing the work, not a control being driven.
+  await clockOffFor(page, 1);
+  await beginShift(page);
+
+  await step('mail.selinux', async () => {
+    // A day later, on a list with a date beside it, in somebody else's report -
+    // which is exactly how long it takes and exactly where it turns up.
+    await openFromStartMenu(page, 'mail');
+    await page.getByTestId('mail-row-selinux-permissive').click();
+    await expect(page.getByTestId('mail-subject')).toContainText('SELinux');
+    await expect(page.getByTestId('mail-subject')).toContainText('FC-DESK-07');
+    await expect(page.getByTestId('mail-message-selinux-permissive-1'))
+      .toContainText('setenforce 0');
   });
 });
 

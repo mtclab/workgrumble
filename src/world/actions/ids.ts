@@ -856,6 +856,37 @@ export const FS_ACTION_IDS: readonly FsActionId[] = Object.freeze(
   Object.values(FS_ACTIONS),
 );
 
+/**
+ * The SELinux verbs (E6, 0.28.0): the two fixes that both work and are not the
+ * same, plus the audit that remembers which one was taken.
+ *
+ * `restorecon` puts a file's label back to what the policy says the path should
+ * carry - it copies `selinux_context_default` onto `selinux_context` rather than
+ * taking a label from the caller, because a relabel that let the shell name the
+ * answer would be the shell writing the policy. `setenforce` writes the box's
+ * mode and, on the way down to permissive, stamps the minute it happened - the
+ * two writes are one verb because they are one act, and separating them would
+ * let a save exist in which enforcement is off and nothing remembers turning it
+ * off. `selinuxNoticed` is the world's own: nobody presses it, the day driver
+ * settles it the next morning off `selinuxAuditDue`, and it is what the mail
+ * hangs its arrival on.
+ */
+export const SELINUX_ACTIONS = {
+  /** `restorecon <path>`: relabel the file to the policy's own answer. */
+  restorecon: 'selinux.restorecon',
+  /** `setenforce 0|1`: write the box's mode, and remember a 0. */
+  setenforce: 'selinux.setenforce',
+  /** The compliance report landing, a day later. Not a player verb. */
+  selinuxNoticed: 'selinux.noticed',
+} as const;
+
+export type SelinuxActionId =
+  (typeof SELINUX_ACTIONS)[keyof typeof SELINUX_ACTIONS];
+
+export const SELINUX_ACTION_IDS: readonly SelinuxActionId[] = Object.freeze(
+  Object.values(SELINUX_ACTIONS),
+);
+
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
 
 export const DAY_ACTION_IDS: readonly DayActionId[] = Object.freeze(

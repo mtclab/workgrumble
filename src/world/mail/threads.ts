@@ -1,6 +1,7 @@
 import { COMPANY_IDS, staffName } from '../company';
 import { WORLD_IDS } from '../demo-world';
 import { FIELDS } from '../fields';
+import { MSP_IDS } from '../msp-company';
 import {
   decisionDate,
   noticeDays,
@@ -380,6 +381,54 @@ export const MAIL_THREADS: readonly MailThread[] = [
           TICKET_HYGIENE_SYNC.recapOpener,
           ...minutedInFull(),
           'Actions: none. Next one in a fortnight.',
+        ],
+      },
+    ],
+  },
+  /**
+   * The compliance report that read the estate overnight (E6, 0.28.0).
+   *
+   * The other half of `setenforce 0`: it worked, it worked instantly, and it is
+   * in a report. Gated on the box's own `selinux_noticed_at`, so it exists
+   * exactly when somebody upstream has actually looked - and never at all for a
+   * player who relabelled the file, because nothing stamped the minute.
+   *
+   * It is written against the MSP's desk box because that is the one world where
+   * the engineer tier and a machine the player may reinstall exist together; a
+   * second employer that grows the tier grows a row here beside it. Morgan sends
+   * it because Morgan runs Fettle & Crane's own estate, and it is deliberately
+   * not a telling-off: the beat is that a shortcut is a thing that is written
+   * down, not a thing you are shouted at for.
+   */
+  {
+    id: 'mail/selinux-permissive',
+    subject: 'Compliance sweep - SELinux not enforcing on FC-DESK-07',
+    arrival: {
+      node: MSP_IDS.playerMachine,
+      field: FIELDS.selinuxNoticedAt,
+    },
+    messages: [
+      {
+        id: 'mail/selinux-permissive#1',
+        from: MSP_IDS.mspLead,
+        tick: 0,
+        body: [
+          'Not a telling off, and I am not asking you to justify it. The '
+          + 'overnight sweep flags any box on the estate where SELinux is not '
+          + 'enforcing, and it flagged yours, so it is on a list with a date '
+          + 'next to it and I have to send this.',
+          'I know exactly what happened, because I have done it. Something was '
+          + 'denied, the permissions were obviously fine, you had eleven other '
+          + 'things on, and setenforce 0 made it go away in one keystroke. It '
+          + 'does. That is the problem with it.',
+          'What is left behind is a machine where the label on a file no '
+          + 'longer decides anything - and the label was never wrong about '
+          + 'that one file, it was wrong about where the file had been. '
+          + 'Relabel it and the box can go back to enforcing.',
+          'Put it back once the file is right and the next sweep will not '
+          + 'flag you. This one already has, and that does not come off - it '
+          + 'is not held against you, it is just a thing that got written '
+          + 'down, which is most of what compliance is.',
         ],
       },
     ],

@@ -9,6 +9,7 @@ import { CONSUMABLE_ACTION_DATA } from './consumables';
 export { BEER_TOO_EARLY_REASON, LATE_CAN_REASON } from './consumables';
 export { APT_PACKAGE_PARAM } from './apt';
 export { FS_GROUP_PARAM, FS_MODE_PARAM, FS_OWNER_PARAM } from './fs';
+export { SELINUX_MODE_PARAM } from './selinux';
 export {
   PROMOTION_REPUTATION,
   SSH_HOST_PARAM,
@@ -30,6 +31,7 @@ import { OVERRIDE_ACTIONS } from './override';
 import { PRESENCE_ACTION_DATA } from './presence';
 import { REQUEST_ACTION_DATA } from './request';
 import { SECURITY_ACTIONS } from './security';
+import { SELINUX_ACTION_DATA } from './selinux';
 import { SERVICE_ACTIONS } from './service';
 import { SHARE_ACTIONS } from './share';
 import { SOFTWARE_ACTION_DATA } from './software';
@@ -123,6 +125,9 @@ export {
   REQUEST_ACTION_IDS,
   REQUEST_ACTIONS,
   type RequestActionId,
+  SELINUX_ACTION_IDS,
+  SELINUX_ACTIONS,
+  type SelinuxActionId,
   SOFTWARE_ACTION_IDS,
   SOFTWARE_ACTIONS,
   type SoftwareActionId,
@@ -198,6 +203,11 @@ export function helpdeskActions(): readonly ActionData[] {
     // Linux file's rwx state the way ls -la reads it - the fix half of the
     // permission-denied incident.
     ...FS_ACTION_DATA,
+    // The SELinux verbs (E6, 0.28.0): the relabel and the enforcement switch -
+    // two player verbs that both fix the denial and are not the same thing - and
+    // the compliance report that notices the second one a day later, which is a
+    // world verb the day driver settles at the next start of shift.
+    ...SELINUX_ACTION_DATA,
     // The manager override / CYA verbs (E8, 0.24.0): the risk-acceptance
     // signature (a player verb, the getting-it-in-writing) and the audit-finding
     // fallout (a world verb the day driver settles, below the line with the rest
