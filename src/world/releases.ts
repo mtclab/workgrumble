@@ -31,6 +31,34 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.23.0',
+    date: '2026-08-08',
+    summary: 'This update makes you clean up who can do what, and it is nobody\'s '
+      + 'favourite job.',
+    lines: Object.freeze([
+      'Once a quarter somebody has to certify that everyone still needs the '
+        + 'access they have, and this quarter it is you. The list is a mess, '
+        + 'because lists always are: a man who left in the spring whose account '
+        + 'is still on and still in the finance-admin group; a woman who has '
+        + 'changed teams twice and kept every old team\'s keys; a backup service '
+        + 'account sitting in Domain Admins for no reason anyone remembers; and '
+        + 'one person who can both add a supplier and approve paying them, which '
+        + 'is the oldest trick there is.',
+      'The lazy way out is right there and it is a trap. The CFO will tell you '
+        + 'to just approve the lot and go to lunch - and if you do, you have '
+        + 'passed the audit and fixed nothing, which is worse than failing it. '
+        + 'But do not swing the other way and rip out everything either: strip '
+        + 'the wrong line and you will find out on Thursday which quiet job '
+        + 'depended on it, when it stops running and someone files a ticket.',
+      'That backup account is the whole lesson in one line. It has far too much '
+        + 'power AND something real leans on it. Kill it and the nightly backup '
+        + 'dies; leave it and the hole stays open. The answer is neither - take '
+        + 'away what it does not need, leave exactly what it does. Least '
+        + 'privilege is not "less", it is "exactly enough", and finding "exactly '
+        + 'enough" is the entire craft.',
+    ]),
+  },
+  {
     version: '0.22.0',
     date: '2026-08-07',
     summary: 'This update is about the people, not the machines.',
