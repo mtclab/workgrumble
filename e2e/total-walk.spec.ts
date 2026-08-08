@@ -3783,6 +3783,239 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
       .toContainText('CONTRACT still governs');
   });
 
+  /* -- 0.19.0/0.21.0: the other three incidents the promotion raised ------ */
+
+  /*
+   * These sit AFTER cmd.systemctl on purpose, and it is not narrative taste.
+   * That step's payoff is a bare "Active: active (running)" asserted against
+   * `cmd-output`, which is the whole scrollback and is never cleared - so ANY
+   * other unit coming up above it would have satisfied that line before the
+   * portal restart it is about ever ran, and the step would go green on a
+   * portal still down. Three units come up below, so they come up after it.
+   * Leaving MERI-APP-01 and ssh-ing home is the price; FC-RMM-01 is a known
+   * host by now, so it connects straight through.
+   */
+  await runCommand(page, 'exit');
+  await runCommand(page, 'ssh pat@FC-RMM-01');
+  await expect(page.locator('.cmd-prompt').first())
+    .toHaveText('pat@FC-RMM-01:~$');
+
+  await step('cmd.whoami.unix', async () => {
+    // The family difference IS the whole command: a Linux box answers the bare
+    // login, where the desktop whoami answers a domain\user. Read off the last
+    // line rather than as a substring - "pat" is in the prompt of every line
+    // above it, so containment would pass on a whoami that printed nothing.
+    // Safe anywhere on the box: it reads the session and writes nothing.
+    await runCommand(page, 'whoami');
+    await expect(page.getByTestId('cmd-output').locator('.cmd-line-out').last())
+      .toHaveText('pat');
+  });
+
+  await step('cmd.id', async () => {
+    // Identity at fidelity: the login is a sudoer carrying adm, root really is
+    // uid 0, and a name the box does not have is refused rather than invented.
+    // Safe here for the same reason as whoami - three reads, no writes.
+    await runCommand(page, 'id');
+    await expect(page.getByTestId('cmd-output')).toContainText(
+      'uid=1000(pat) gid=1000(pat) groups=1000(pat),4(adm),27(sudo)',
+    );
+
+    await runCommand(page, 'id root');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('uid=0(root) gid=0(root) groups=0(root)');
+
+    await runCommand(page, 'id nobodyhere');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText("id: 'nobodyhere': no such user");
+  });
+
+  await step('cmd.getent', async () => {
+    // /etc/passwd's own seven colon-fields, off a user set DERIVED from the
+    // box: www-data is here because nginx is, and fcauth is here because the
+    // permission incident put that unit on this machine. The single-user query
+    // runs FIRST - the scrollback is never cleared and the full listing holds
+    // every line the one-user answer would, so the order is the only thing
+    // keeping the two apart.
+    // Safe here: reads only, and it wants the incident units already present,
+    // which they have been since cmd.promotion.
+    await runCommand(page, 'getent passwd root');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('root:x:0:0:root:/root:/bin/bash');
+
+    await runCommand(page, 'getent passwd');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('pat:x:1000:1000::/home/pat:/bin/bash');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText(/fcauth:x:9\d\d:9\d\d::\/nonexistent:\/usr\/sbin\/nologin/u);
+
+    // And only the database it models: the honest refusal, not a faked group.
+    await runCommand(page, 'getent group root');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('is a database it does not model here');
+  });
+
+  await step('cmd.du', async () => {
+    // The disk-full drill, whole. df says 40G of 40G is gone with 188M left,
+    // du -sh names the journal as where it went, du -h /var/log puts nginx's
+    // ordinary logs beside it as the size the runaway is measured against, and
+    // the vacuum hands the bytes back. du reads the box's journal_bytes field,
+    // so the second read CHANGING to the vacuum target is what proves it is a
+    // fact rather than a printed constant - and df agrees, off the same fix.
+    // Safe here: nothing later reads the disk. cmd.df asserted the column
+    // shape, not a number, and it has already run.
+    await runCommand(page, 'df -h');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('/dev/root 40G 40G 188M 100% /');
+
+    await runCommand(page, 'du -sh /var/log/journal');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('26G /var/log/journal');
+    await runCommand(page, 'du -h /var/log');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('12M /var/log/nginx');
+
+    await runCommand(page, 'journalctl --vacuum-size=200M');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Vacuuming done, freed 26G');
+
+    // The same command, a different answer, because the world moved.
+    await runCommand(page, 'du -sh /var/log/journal');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('200M /var/log/journal');
+    await runCommand(page, 'df -h');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('/dev/root 40G 14G 26G 35% /');
+  });
+
+  await step('cmd.certbot', async () => {
+    // The cert-expiry incident, which is a PROCESS failure: nginx never went
+    // down, the certificate simply ran out, and curl is what shows a box
+    // running and refusing. "certbot certificates" reads the state on either
+    // side of the renew, and that read-back is the flip - the scrollback is
+    // cumulative, so "curl no longer says expired" is not a sentence this
+    // terminal can be asked. Then the renew against the now-good cert refuses
+    // in certbot's own words instead of churning a fresh one.
+    // Safe here: cmd.curl's 502 was plain http off the downed portal, which
+    // nothing below touches, and no later step reads the certificate.
+    await runCommand(page, 'curl -I https://fc-rmm-01');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('certificate has expired');
+    await runCommand(page, 'certbot certificates');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Expiry Date: EXPIRED (renew now: certbot renew)');
+
+    await runCommand(page, 'certbot renew');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Congratulations, all renewals succeeded');
+    await runCommand(page, 'certbot certificates');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Expiry Date: valid (not yet due for renewal)');
+
+    await runCommand(page, 'certbot renew');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Certificate not yet due for renewal; no action taken');
+  });
+
+  await step('cmd.chown', async () => {
+    // The permission-denied incident, first half. The deploy left the secret
+    // env file root:root at 600, so the service account cannot read it: ls -la
+    // is the diagnosis, chown is half the fix, and the listing after it is the
+    // read-back - chown writes the SAME fs_owner/fs_group fields ls -la
+    // renders, so the group column moving to fcauth while the mode stays 600
+    // is the no-drift proof. The owner is validated against the box's real
+    // user set, which is why a name it does not have is refused.
+    // Safe here: fcauth is a unit no other step in this run reads.
+    await runCommand(page, 'ls -la /etc/fcauth/auth.env');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('-rw------- 1 root root');
+
+    await runCommand(page, 'chown nobodyhere /etc/fcauth/auth.env');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText("chown: invalid user: 'nobodyhere'");
+
+    // Silent on success, the way a real chown is - the listing is the answer.
+    await runCommand(page, 'chown root:fcauth /etc/fcauth/auth.env');
+    await runCommand(page, 'ls -la /etc/fcauth/auth.env');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('-rw------- 1 root fcauth');
+  });
+
+  await step('cmd.chmod', async () => {
+    // The other half, and the payoff. With the bits still 600 the group cannot
+    // read the file, so systemd refuses the start and leaves the unit down -
+    // the fix is not a retry. chmod 640 is least privilege (the group reads,
+    // the world does not), ls -la reads the new column straight back off the
+    // same fs_mode field, and only THEN does the restart take. The Main PID
+    // line is the assertion because it exists solely on a unit that is really
+    // running, where a bare "Active: active (running)" is true of half the box.
+    // Safe here: fcauth coming up is invisible to every later step, and
+    // cmd.systemctl's own running-read was already made above this block.
+    await runCommand(page, 'systemctl restart fcauth');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Job for fcauth.service failed');
+
+    await runCommand(page, 'chmod 640 /etc/fcauth/auth.env');
+    await runCommand(page, 'ls -la /etc/fcauth/auth.env');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('-rw-r----- 1 root fcauth');
+
+    await runCommand(page, 'systemctl restart fcauth');
+    await runCommand(page, 'systemctl status fcauth');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText(/Main PID: \d+ \(fcauth\)/u);
+  });
+
+  await step('cmd.postmortem', async () => {
+    // The failed-deploy incident, which does NOT close on the restart - that
+    // is the whole of what the tier is. The trail starts empty, the write-up
+    // is refused while the fire is still burning, the rollback brings the
+    // worker up, and only then does the postmortem take. Then the trail reads
+    // back, and the TICKET is checked off the queue rather than off the
+    // terminal's own "the incident is closed": that line prints on a
+    // successful dispatch, so believing it would be believing the call
+    // instead of the goal.
+    // Safe here: last thing done on the box, and the queue excursion puts the
+    // terminal back exactly as it found it for cmd.logout below.
+    await runCommand(page, 'postmortem list');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('No postmortems on the record yet.');
+
+    await runCommand(page, 'journalctl -u fcworker');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('it worked in staging because staging sets it');
+    await runCommand(page, 'postmortem file fcworker');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('The service is still down');
+
+    await runCommand(page, 'systemctl restart fcworker');
+    await runCommand(page, 'systemctl status fcworker');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText(/Main PID: \d+ \(fcworker\)/u);
+
+    await runCommand(page, 'postmortem file fcworker');
+    await expect(page.getByTestId('cmd-output')).toContainText(
+      'Postmortem filed for fcworker.service. The incident is closed.',
+    );
+    // Blameless: the write-up analyses the system, and the section that says
+    // so by name is the one the authored prose is gated on.
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('WHAT THE SYSTEM LET HAPPEN');
+
+    await runCommand(page, 'postmortem list');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('1 postmortem(s) on the record:');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('unit:fc-rmm-01/fcworker.service@');
+
+    // The goal, off the queue: the restart alone left this open, and this is
+    // the only read that can tell the difference.
+    await expectClosed(page, 'syseng-failed-deploy');
+    await page.getByTestId('close-tickets').click();
+    await focusWindow(page, 'cmd');
+  });
+
   await step('cmd.logout', async () => {
     // Leaves the session, back to the desktop terminal and its Windows prompt.
     await runCommand(page, 'logout');
