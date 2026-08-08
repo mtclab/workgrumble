@@ -31,6 +31,34 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.24.0',
+    date: '2026-08-08',
+    summary: 'This update teaches you the most important email you will ever '
+      + 'send.',
+    lines: Object.freeze([
+      'Your own manager gives you an order tonight, and it is a bad one: put the '
+        + 'contractor in Domain Admins so the finance job finishes, and we will '
+        + 'tighten it up later. You know later never comes. But he is your boss, '
+        + 'and the job is real, and the two obvious answers are both wrong. Do it '
+        + 'quietly and it is your name on the breach when the contractor\'s '
+        + 'laptop turns out to be full of holes. Refuse flat and you are the '
+        + 'junior who would not do what the Head of IT asked - that ticket does '
+        + 'not end well either.',
+      'There is a third door, and it is the whole lesson of the tier: get it in '
+        + 'writing. Write down exactly what the risk is, why it cannot wait, and '
+        + 'what you would do to limit it - and then make the person who gave the '
+        + 'order SIGN it. Not ask for it. Sign it. Now the access gets granted, '
+        + 'the job gets done, and when it goes wrong - and it will - the '
+        + 'signature says whose call it was. It was not yours. You said so, in '
+        + 'writing, before you touched anything.',
+      'This is not you covering yourself out of cowardice. It is the only way '
+        + 'accountability lands where the decision was actually made. The person '
+        + 'who accepts the risk owns it. Your job is to make sure the risk gets '
+        + 'accepted out loud, by name, and not just quietly dumped on the person '
+        + 'who happened to be holding the keyboard.',
+    ]),
+  },
+  {
     version: '0.23.0',
     date: '2026-08-08',
     summary: 'This update makes you clean up who can do what, and it is nobody\'s '
