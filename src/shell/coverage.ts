@@ -3373,6 +3373,28 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'signed the risk acceptance, or on the desk that granted it with nothing on '
     + 'file. Settled by the day driver at the corporate employer; driven in '
     + '`cya.test.ts`, out of the browser walk\'s reach.',
+  // The legendary manager / implement-then-revert (E8, 0.25.0): the three verbs
+  // the marquee scenario turns on. All player verbs with real effects (a real
+  // config state change, a real captured-state difference, a real one-step
+  // restore) offered at the FOURTH employer, which the browser total-walk does
+  // not reach (it stops at the second) - the same reason the exec-exception, BEC,
+  // recert and CYA verbs are proven in unit tests. Driven end to end through the
+  // real dispatch path in `legendary.test.ts`.
+  [HELPDESK_ACTIONS.serviceSetStartup]: 'Setting a service\'s startup type - the '
+    + 'config change the seagull manager\'s mandate makes (flatten every service to '
+    + 'Automatic) and the painful revert reconstructs by hand. Closes the mandate '
+    + 'ticket and, by reconstruction, the revert ticket at the corporate employer; '
+    + 'driven in `legendary.test.ts`, out of the browser walk\'s reach.',
+  [HELPDESK_ACTIONS.captureRollback]: 'Capturing the rollback before a mandated '
+    + 'change - the diligent step that copies a service\'s prior startup type onto '
+    + 'the rollback record (the reused change_request), and the whole of what makes '
+    + 'the later revert clean. Its effect is a real captured-state difference; '
+    + 'driven in `legendary.test.ts`, out of the browser walk\'s reach.',
+  [HELPDESK_ACTIONS.restoreFromRecord]: 'Restoring a service from its rollback '
+    + 'record - the clean, one-step revert that reads the captured prior back and '
+    + 'sets it, and refuses an empty record (which is the whole mechanic). Closes '
+    + 'the revert ticket\'s clean path at the corporate employer; driven in '
+    + '`legendary.test.ts`, out of the browser walk\'s reach.',
 };
 
 /**

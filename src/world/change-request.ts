@@ -356,6 +356,21 @@ export function isRiskAcceptance(
 }
 
 /**
+ * Whether this node is the ROLLBACK RECORD variant (E8, 0.25.0) rather than the
+ * 0.10.0 SCOPE change request. Same reuse as `isRiskAcceptance`, same reason: the
+ * rollback record is a `change_request` node so it shares the append-only storage
+ * and the node kind, but it is not the maintenance-window mechanic - it
+ * authorises no terminal verb and books no window - so the scope pre-flight and
+ * the change-request listing skip it by this marker, exactly as they skip the
+ * sign-off.
+ */
+export function isRollbackRecord(
+  node: Readonly<ReadOnlyGraphNode>,
+): boolean {
+  return node.fields[FIELDS.crKind] === CHANGE_REQUEST_KINDS.rollbackRecord;
+}
+
+/**
  * Whether a risk acceptance is SIGNED for the given target (E8, 0.24.0): a
  * risk-acceptance change_request aimed at exactly this account whose approval
  * decision - the ordering manager's signature - is on it. Composes the 0.10.0
@@ -401,6 +416,7 @@ function requestsFor(
   return graph
     .nodesOfKind('change_request')
     .filter((node) => !isRiskAcceptance(node)
+      && !isRollbackRecord(node)
       && node.fields[FIELDS.crTarget] === targetId
       && node.fields[FIELDS.crVerb] === verb)
     .sort((left, right) =>
@@ -675,7 +691,7 @@ export function changeRequestListing(
   now: number,
 ): readonly string[] {
   const requests = [...graph.nodesOfKind('change_request')]
-    .filter((node) => !isRiskAcceptance(node))
+    .filter((node) => !isRiskAcceptance(node) && !isRollbackRecord(node))
     .sort(
       (left, right) => (numberField(right, FIELDS.crSubmittedAt) ?? 0)
         - (numberField(left, FIELDS.crSubmittedAt) ?? 0),

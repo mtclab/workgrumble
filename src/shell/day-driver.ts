@@ -91,6 +91,7 @@ import {
   readConductFile,
 } from '../world/conduct';
 import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
+import { legendaryRevertDue } from '../world/legendary';
 import { OVERRIDE_RISK_ACCEPTANCE, overrideFalloutDue } from '../world/override';
 import { recertFollowUpDue } from '../world/recert';
 import { findIncident } from '../world/incidents';
@@ -2082,6 +2083,11 @@ export class DayDriver implements DayApi {
     // well, and they should hear about it in the minute it happened rather
     // than at the top of the next one.
     this.settleParentCascade();
+    // And a mandate implemented is a manager gone and a mess revealed: the
+    // legendary-manager revert, raised the minute the mandate closes. Before the
+    // generic follow-up so it lands the manager-leaves notice rather than the
+    // "same person, forty minutes later" one the plain chain carries.
+    this.settleLegendaryRevert();
     // And a fix that finished one half of a chain has just raised the other
     // half. The new starter is back before the window has repainted, which is
     // both the joke and, in every shop this is drawn from, the truth.
@@ -2248,6 +2254,7 @@ export class DayDriver implements DayApi {
     this.settleDirectMessages(before, now);
     this.settleNoHello(before, now);
     this.settleStaleAuth(now);
+    this.settleLegendaryRevert();
     this.settleFollowUps();
     this.settleRecertFollowUp();
     this.settleOverrideFallout();
@@ -3279,6 +3286,38 @@ export class DayDriver implements DayApi {
         + 'request, forty minutes after you closed it.',
       );
     }
+  }
+
+  /**
+   * The legendary manager's churn turning (E8, 0.25.0): the manager leaves and
+   * the mandate becomes the mess it always was, so the org reverts.
+   *
+   * The same conditional-summon shape as `settleRecertFollowUp` and
+   * `settleOverrideFallout`: the world decides whether the mandate has been
+   * implemented and not yet reverted (`legendaryRevertDue`, a pure read that
+   * returns nothing in every world but Halcyon), and this raises the revert when
+   * it has - with the manager-leaves notice, which is why it runs BEFORE the
+   * generic `settleFollowUps` that would otherwise raise this same chain with the
+   * "same person, forty minutes later" line. It keys only on the mandate being
+   * implemented, not on whether the rollback was kept: the manager is gone and the
+   * finding is raised either way, and the rollback decides only whether the revert
+   * is clean or painful - which is the revert ticket's own two paths.
+   */
+  private settleLegendaryRevert(): void {
+    const due = legendaryRevertDue(this.engine.graph);
+
+    if (due === undefined) {
+      return;
+    }
+
+    this.raiseSummonedTicket(due);
+    this.handlers.onNotice?.(
+      'The mandate is being reversed',
+      `${ticketTitle(due)} - the director who ordered the "everything Automatic" `
+      + 'change has moved on to an exciting new opportunity, and a security '
+      + 'finding has landed on the change itself. The org wants the prior config '
+      + 'back.',
+    );
   }
 
   /**

@@ -300,6 +300,31 @@ export const HELPDESK_ACTIONS = {
    * stopped existing - which is the same rule every other ticket closes by.
    */
   ticketResolveWithParent: 'ticket.resolve_with_parent',
+  /**
+   * Setting a Windows service's STARTUP TYPE (E8, 0.25.0) - Automatic, Manual or
+   * Disabled. A real config change and an ordinary first-line one: it is the verb
+   * the legendary manager's mandate uses to flatten the estate to Automatic, and
+   * the same verb the painful revert uses to reconstruct each service's correct
+   * startup discipline by hand when the rollback was never captured.
+   */
+  serviceSetStartup: 'service.set_startup',
+  /**
+   * Capturing the ROLLBACK RECORD before a mandated change (E8, 0.25.0): the
+   * diligent step. It reads a service's CURRENT startup type off the graph and
+   * writes it into the rollback record (a change_request node, the 0.10.0 artifact
+   * reused as the `rollback_record` variant, `cr_rollback`) - so the record holds
+   * the real prior config, and only if this was actually done. Costs nothing now;
+   * it is the whole of what makes the later revert clean instead of painful.
+   */
+  captureRollback: 'rollback.capture',
+  /**
+   * Restoring a service from its ROLLBACK RECORD (E8, 0.25.0): the clean revert.
+   * It reads the prior startup type back off the record and sets it on the
+   * service in one step. It REQUIRES the record to hold a captured value - a
+   * record nobody filled is refused - which is why the clean path exists only for
+   * the player who kept the rollback the first time.
+   */
+  restoreFromRecord: 'rollback.restore',
 } as const;
 
 export type HelpdeskActionId =

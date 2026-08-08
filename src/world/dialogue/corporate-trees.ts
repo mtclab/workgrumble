@@ -25,6 +25,7 @@
 
 import { HELPDESK_ACTIONS } from '../actions';
 import { HALCYON_IDS } from '../corporate-company';
+import { LEGENDARY_MANDATE_TICKET, LEGENDARY_REVERT_TICKET } from '../legendary';
 import { OVERRIDE_RISK_ACCEPTANCE, OVERRIDE_TICKET } from '../override';
 import { RECERT_FOLLOWUP, RECERT_TICKET } from '../recert';
 import type { DialogueTree } from './types';
@@ -440,5 +441,137 @@ const IVOR: DialogueTree = {
   ],
 };
 
+/**
+ * Tarquin Vosper, the interim Transformation director who issues the mandate (E8,
+ * 0.25.0) - the seagull.
+ *
+ * His register is the confident management-consultant who has never run the thing
+ * he is standardising: reasonable-sounding, metric-driven, and wrong. He wants
+ * every service Automatic so his tenure reports no service-down tickets. The
+ * `reveal` is the risk the desk can see - the hardening this undoes, and that the
+ * change will be reversed the moment somebody with security in their title looks -
+ * said to the player and written to the ticket, never preached at Tarquin. The
+ * `asks` is the scope question that lets the mandate be parked on him.
+ */
+const TARQUIN: DialogueTree = {
+  id: 'dialogue/halcyon-tarquin',
+  speaker: HALCYON_IDS.seagull,
+  tickets: [LEGENDARY_MANDATE_TICKET],
+  root: 'mandate',
+  resolved_root: 'mandate-done',
+  nodes: [
+    {
+      id: 'mandate',
+      npc_line: 'Right, quick win for the transformation programme: I want every '
+        + 'service set to Automatic start, estate-wide. No more "the service '
+        + 'wasn\'t running" tickets - we standardise, we simplify, we report a '
+        + 'clean number to the board on Friday. Get it done today, would you?',
+      options: [
+        {
+          label: 'Ask why those services are Manual or Disabled in the first place',
+          next: 'mandate-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Think about what flattening the startup config actually does',
+          effects: [
+            {
+              reveal: 'Those services are Manual or Disabled on purpose: Telnet '
+                + 'and Remote Registry are legacy remote-access and a '
+                + 'lateral-movement surface, hardened off, and the modules '
+                + 'installer runs on demand. Forcing them all Automatic is a '
+                + 'security regression a scan will flag within the week - and the '
+                + 'director who ordered it will be gone by then. Capture the '
+                + 'rollback before you touch them, because you will be the one '
+                + 'putting it back.',
+            },
+          ],
+        },
+        { label: 'Tell him you will get it sorted' },
+      ],
+    },
+    {
+      id: 'mandate-q',
+      npc_line: 'Honestly? I did not get into the detail - that is rather below my '
+        + 'altitude. The point is the metric. If something was off, it can go back '
+        + 'on; nothing is ever really "disabled for a reason", that is just people '
+        + 'being precious. Just Automatic, all of them, please.',
+      options: [{ label: 'Go and apply the mandate' }],
+    },
+    {
+      id: 'mandate-done',
+      npc_line: 'Excellent - that is going straight in the Friday deck as an '
+        + 'operational-excellence win. Great initiative. I may not be here to see '
+        + 'the fruits of it, between us, but the slide is the thing.',
+      options: [{ label: 'Log the change' }],
+    },
+  ],
+};
+
+/**
+ * Colm Reddaway, who inherits the mess and reports the revert (E8, 0.25.0).
+ *
+ * The successor: acting in the role Tarquin vacated, holding a mandate he did not
+ * write and an audit finding he did. His register is the weary realist doing the
+ * unglamorous half of somebody else's initiative. The `reveal` is the diagnosis
+ * the player can see - the estate is Automatic where it should be hardened, and
+ * the way back is clean or painful depending on the rollback - and the `asks` is
+ * what lets the revert be parked on him.
+ */
+const COLM: DialogueTree = {
+  id: 'dialogue/halcyon-colm',
+  speaker: HALCYON_IDS.successor,
+  tickets: [LEGENDARY_REVERT_TICKET],
+  root: 'revert',
+  resolved_root: 'revert-done',
+  nodes: [
+    {
+      id: 'revert',
+      npc_line: 'You will have seen Tarquin has moved on - onwards and upwards, '
+        + 'apparently. I have got his chair and his audit finding. Security have '
+        + 'flagged the "everything Automatic" change: Telnet, Remote Registry, the '
+        + 'lot, set to auto-start. We need it put back the way it was. Can you sort '
+        + 'it?',
+      options: [
+        {
+          label: 'Ask whether the rollback from the original change is on file',
+          next: 'revert-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Think about what putting it back actually takes',
+          effects: [
+            {
+              reveal: 'The estate is Automatic where it should be hardened, so the '
+                + 'job is to restore the prior startup type on each service. If the '
+                + 'rollback was captured when the change was made, it is one '
+                + 'restore per service off the record. If it was not, you have to '
+                + 'reconstruct each one by hand - and remember which of them was '
+                + 'Manual rather than Disabled, because the record that knew is not '
+                + 'there.',
+            },
+          ],
+        },
+        { label: 'Tell him you will get it reverted' },
+      ],
+    },
+    {
+      id: 'revert-q',
+      npc_line: 'That is rather the question, is it not. If whoever made the change '
+        + 'captured the config first, this is quick. If they just did what Tarquin '
+        + 'said and moved on, someone gets to work out the right settings from '
+        + 'memory. I would love it to be the first one.',
+      options: [{ label: 'Go and revert the change' }],
+    },
+    {
+      id: 'revert-done',
+      npc_line: 'That is the finding closed - hardened again, and nobody had to '
+        + 'guess. I will not pretend the whole exercise was not a waste of two '
+        + 'days, but at least it is a waste with a clean end. Thank you.',
+      options: [{ label: 'Write it up' }],
+    },
+  ],
+};
+
 export const CORPORATE_TREES: readonly DialogueTree[] =
-  [DENISE, MIRIAM, BRONWEN, IVOR];
+  [DENISE, MIRIAM, BRONWEN, IVOR, TARQUIN, COLM];

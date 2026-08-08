@@ -74,6 +74,9 @@ const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.ticketClassify]: 'Triaged it',
   [HELPDESK_ACTIONS.ticketLinkArticle]: 'Linked the knowledge article',
   [HELPDESK_ACTIONS.ticketLinkToParent]: 'Attached it to a parent incident',
+  [HELPDESK_ACTIONS.serviceSetStartup]: 'Changed the service startup type',
+  [HELPDESK_ACTIONS.captureRollback]: 'Captured the rollback first',
+  [HELPDESK_ACTIONS.restoreFromRecord]: 'Restored the config from the rollback',
 };
 
 export function actionSummary(id: string): string {

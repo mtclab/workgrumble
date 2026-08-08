@@ -307,6 +307,12 @@ describe('shipped tickets', () => {
       // contractor given Domain Admin, and the only path that is neither
       // insubordination nor owning-the-incident is the signed risk acceptance.
       'ticket:halcyon-override',
+      // The legendary manager / implement-then-revert (E8, 0.25.0): the seagull's
+      // mandate to flatten every service to Automatic, and the revert it summons
+      // when he leaves and the audit flags it - clean if the rollback was kept,
+      // painful reconstruct if not.
+      'ticket:halcyon-mandate',
+      'ticket:halcyon-revert',
     ]);
   });
 

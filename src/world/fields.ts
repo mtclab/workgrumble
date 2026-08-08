@@ -1915,6 +1915,15 @@ export type ChangeRequestDecision =
  */
 export const CHANGE_REQUEST_KINDS = {
   riskAcceptance: 'risk_acceptance',
+  /**
+   * The ROLLBACK RECORD (E8, 0.25.0): the change_request node reused a third way,
+   * as the captured prior configuration a mandated change is reverted from. It
+   * carries `cr_target` (the service it is about) and `cr_rollback` (the prior
+   * startup type, copied off the live service before the mandate overwrote it) -
+   * the same append-only-record discipline as the risk acceptance, told apart by
+   * this marker so the scope machinery skips it exactly as it skips the sign-off.
+   */
+  rollbackRecord: 'rollback_record',
 } as const;
 
 export type ChangeRequestKind =

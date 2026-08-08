@@ -2036,4 +2036,57 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/access-recertification', 'kb/exec-exception-risk'],
   },
+  {
+    id: 'kb/legendary-manager-rollback',
+    title: 'The implement-then-revert: keep the rollback the first time',
+    summary: 'A new manager arrives with a sweeping mandate, you implement it, the '
+      + 'manager leaves before the cost lands, and you revert to the better prior '
+      + 'state. Capture the rollback BEFORE you make the change - the prior config, '
+      + 'on the record - because the revert is clean if you did and painful if you '
+      + 'did not, and you will be the one doing it.',
+    state: 'published',
+    issue: 'You have been ordered to make a change you already suspect is wrong and '
+      + 'will be reversed: a forced migration, a permission reorg, a mandated '
+      + '"standardisation" that flattens a deliberate configuration. The person '
+      + 'ordering it owns a metric or a deadline, not the consequence, and they '
+      + 'will very likely have moved on by the time the consequence arrives.',
+    environment: 'The org, not the machine. A change that is technically trivial to '
+      + 'make and to unmake, a manager with the authority to insist, and a prior '
+      + 'state that was the way it was for reasons the mandate does not account '
+      + 'for.',
+    resolution: [
+      'Capture the rollback FIRST. Before you make the change, record the prior '
+        + 'config - the exact state you are moving away from, per item, on a '
+        + 'rollback record. It costs a minute now and it is the whole of what makes '
+        + 'the reversal a one-step restore later. This is the diligent move, and it '
+        + 'is never the punished one.',
+      'Then make the change. It is a real state change and you are made to make '
+        + 'it; the discipline is not refusing it, it is keeping a way back from it.',
+      'When it is reverted - and a change made to serve a metric usually is, the '
+        + 'moment somebody with the right title looks - restore from the record. '
+        + 'One restore per item, back to exactly the prior state, done.',
+      'If you skipped the rollback, you now reconstruct the prior state by hand: '
+        + 'more steps, and you have to KNOW the right value for each item because '
+        + 'the record that held it was never written. This is the cost, and it is '
+        + 'the only cost - it falls on the shortcut, never on the diligence.',
+    ],
+    cause: [
+      'This is the churn eaten twice: the work to make the change, and the work to '
+        + 'unmake it. The first is ordered and unavoidable; the second is where the '
+        + 'rollback you kept - or did not - decides whether it is a minute or an '
+        + 'afternoon.',
+      'Seagull management and resume-driven development are the named shapes of it: '
+        + 'a manager flies in, makes a lot of noise, drops a mandate chosen for how '
+        + 'it reads on a CV rather than what it does to the estate, and flies out '
+        + 'before the mess lands - percussive sublimation, the Peter principle\'s '
+        + 'kinder-sounding cousin, kicking the problem upstairs. The manager faces '
+        + 'no consequence; the desk writes the rollback.',
+      'The lesson is not cynicism, it is the rollback. You cannot stop the mandate '
+        + 'and you cannot make the person who ordered it accountable. What you can '
+        + 'do - the one thing entirely within the desk\'s control - is make the '
+        + 'inevitable reversal cheap, by capturing the prior config the first time, '
+        + 'every time, before you touch it.',
+    ],
+    see_also: ['kb/manager-override-cya', 'kb/the-restart-nobody-does'],
+  },
 ];

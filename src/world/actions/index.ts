@@ -22,6 +22,7 @@ import { FS_ACTION_DATA } from './fs';
 import { KIND_LABELS } from './helpers';
 import { INCIDENT_ACTION_DATA } from './incidents';
 import { INTERRUPTION_ACTION_DATA } from './interruptions';
+import { LEGENDARY_ACTIONS } from './legendary';
 import { MACHINE_ACTIONS } from './machine';
 import { MAIL_RULE_ACTIONS } from './mail-rule';
 import { METER_ACTION_DATA } from './meters';
@@ -201,6 +202,12 @@ export function helpdeskActions(): readonly ActionData[] {
     // fallout (a world verb the day driver settles, below the line with the rest
     // of the world's own timetable).
     ...OVERRIDE_ACTIONS,
+    // The legendary manager / implement-then-revert verbs (E8, 0.25.0): the
+    // startup-type config change the mandate makes, the rollback capture (the
+    // diligent step onto the reused change_request record), and the clean restore
+    // that reads it back. All player verbs; the mandate arc is proven in
+    // `legendary.test.ts`.
+    ...LEGENDARY_ACTIONS,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

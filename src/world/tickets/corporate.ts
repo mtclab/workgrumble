@@ -34,22 +34,31 @@
  */
 
 import { DELEGATE_PARAM, HELPDESK_ACTIONS, RULE_PARAM } from '../actions';
+import { RECORD_PARAM, STARTUP_PARAM } from '../actions/legendary';
 import { HALCYON_IDS } from '../corporate-company';
 import {
   CHANGE_REQUEST_DECISIONS,
   CHANGE_REQUEST_KINDS,
   CHANGE_REQUEST_STATUSES,
   FIELDS,
+  STARTUP_TYPES,
 } from '../fields';
+import {
+  LEGENDARY_MANDATE_TICKET,
+  LEGENDARY_REVERT_TICKET,
+  LEGENDARY_SERVICES,
+} from '../legendary';
 import { OVERRIDE_RISK_ACCEPTANCE, OVERRIDE_TICKET } from '../override';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import { RECERT_FOLLOWUP, RECERT_TICKET } from '../recert';
+import type { Expr } from '../../engine-api';
 import type { WorldTicket } from './types';
 
 const KB_EXEC_EXCEPTION = 'kb/exec-exception-risk';
 const KB_BEC_RESPONSE = 'kb/bec-incident-response';
 const KB_RECERT = 'kb/access-recertification';
 const KB_CYA = 'kb/manager-override-cya';
+const KB_LEGENDARY = 'kb/legendary-manager-rollback';
 
 /** The one member_of edge check the recert reuses for every finding. */
 function memberOf(account: string, group: string) {
@@ -870,6 +879,238 @@ const MANAGER_OVERRIDE: WorldTicket = {
   ],
 };
 
+/**
+ * The legendary manager's mandate (E8, 0.25.0) - the implement half of the
+ * implement-then-revert arc, and the epic's marquee scenario.
+ *
+ * Tarquin Vosper, an interim "Group Director of Digital Transformation", has
+ * arrived with a sweeping, CV-shaped mandate: every service on the estate set to
+ * Automatic start, so his tenure can report "not one service-down ticket". It is
+ * resume-driven development in one line - it ignores that services are Manual or
+ * Disabled deliberately (Telnet and Remote Registry are hardened off; the modules
+ * installer runs on demand) and turns a security posture into a slogan. The desk
+ * is made to implement it, and it is a real state change: the three services go
+ * Automatic.
+ *
+ * THE KEY MECHANIC is the two ways to implement it. The DILIGENT path captures the
+ * rollback first - one `captureRollback` per service onto the record the mandate
+ * seeds, copying the prior startup type off the live service before the mandate
+ * overwrites it - then makes the change. The PATH OF LEAST RESISTANCE just makes
+ * the change. Both close this ticket (its resolution is only the bad config); the
+ * capture costs nothing now and decides whether slice three is clean or painful.
+ * The capture steps are `optional_for_closure` because they are exactly that: they
+ * do not affect THIS close, they affect the one two days later - which is the
+ * whole of the lesson.
+ */
+const mandateBadState: Expr = {
+  op: 'and',
+  exprs: LEGENDARY_SERVICES.map((entry) => ({
+    op: 'eq' as const,
+    selector: { id: entry.service },
+    field: FIELDS.startupType,
+    value: STARTUP_TYPES.automatic,
+  })),
+};
+
+const LEGENDARY_MANDATE: WorldTicket = {
+  arrival: 'summoned',
+  nodes: LEGENDARY_SERVICES.map((entry) => entry.service),
+  // Urgent because a director says so; the TRUE urgency is a want dressed as
+  // transformation - nothing is broken, and the RIGHT move (keep the rollback)
+  // is the unglamorous one the deadline is meant to stampede past.
+  claimed_urgency: 3,
+  true_urgency: 2,
+  def: {
+    id: LEGENDARY_MANDATE_TICKET,
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Halcyon: "standardise every service to Automatic start" (Vosper)',
+      body:
+        'Tarquin Vosper, the new interim Transformation director, has issued a '
+        + 'mandate: every Windows service across the estate is to be set to '
+        + 'Automatic start, "so we never take another service-down ticket on my '
+        + 'watch." He wants it done today and reported up as a win by Friday. '
+        + 'Several of these services are Manual or Disabled on purpose - Telnet '
+        + 'and Remote Registry are hardened off, the modules installer runs on '
+        + 'demand - but the mandate is estate-wide and it is not a request. Before '
+        + 'you flatten them, you can capture the rollback: the current config, '
+        + 'onto the record, so there is a way back. Or you can just do it.',
+    },
+    reporter: HALCYON_IDS.seagull,
+    // The rollback records arrive WITH the mandate, empty - the 0.10.0
+    // change_request reused as the rollback_record variant, one per service,
+    // naming the service it is a way back FOR. `captureRollback` fills them; skip
+    // it and they stay empty, which is what slice three reads.
+    setup: LEGENDARY_SERVICES.map((entry) => ({
+      op: 'addNode' as const,
+      node: {
+        id: entry.record,
+        kind: 'change_request' as const,
+        fields: {
+          [FIELDS.name]: `Rollback record: ${entry.service}`,
+          [FIELDS.crKind]: CHANGE_REQUEST_KINDS.rollbackRecord,
+          [FIELDS.crTarget]: entry.service,
+          [FIELDS.crStatus]: CHANGE_REQUEST_STATUSES.draft,
+        },
+      },
+    })),
+    // Closed when the estate is in the mandated state: all three services
+    // Automatic. There is no "keep the rollback" clause here on purpose - keeping
+    // it is free and un-scored NOW, and its whole payoff is the later revert.
+    resolved_when: mandateBadState,
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 2 },
+    kb_ref: KB_LEGENDARY,
+  },
+  cause: 'A manager measured on a metric has ordered a change that improves the '
+    + 'metric and degrades the estate: services set Manual or Disabled for real '
+    + 'reasons, flattened to Automatic so a slide can say "zero service-down '
+    + 'tickets". The technical act is trivial; the discipline is capturing the '
+    + 'rollback before you make a change you already suspect will be reversed, '
+    + 'because the person who ordered it will not be here when it is.',
+  dialogue_ref: 'dialogue/halcyon-tarquin',
+  paths: [
+    {
+      id: 'implement-with-rollback',
+      app: 'directory',
+      label: 'Capture the rollback for each service, then apply the mandate',
+      steps: [
+        ...LEGENDARY_SERVICES.map((entry) => ({
+          action: HELPDESK_ACTIONS.captureRollback,
+          target: entry.service,
+          params: { [RECORD_PARAM]: entry.record },
+          // The rollback does not close THIS ticket - the mandate does - so the
+          // solvability gate is told the truth about it: leave it out and the
+          // ticket still closes. Its cost lands two days later, not here.
+          optional_for_closure: true,
+        })),
+        ...LEGENDARY_SERVICES.map((entry) => ({
+          action: HELPDESK_ACTIONS.serviceSetStartup,
+          target: entry.service,
+          params: { [STARTUP_PARAM]: STARTUP_TYPES.automatic },
+        })),
+      ],
+    },
+    {
+      id: 'implement-and-skip-rollback',
+      app: 'directory',
+      label: 'Just apply the mandate - the path of least resistance',
+      steps: LEGENDARY_SERVICES.map((entry) => ({
+        action: HELPDESK_ACTIONS.serviceSetStartup,
+        target: entry.service,
+        params: { [STARTUP_PARAM]: STARTUP_TYPES.automatic },
+      })),
+    },
+  ],
+};
+
+/**
+ * The revert (E8, 0.25.0) - the churn eaten twice, and where keeping the rollback
+ * pays off or does not.
+ *
+ * Summoned, and `follows` the mandate: it turns up the moment the mandate is
+ * implemented, because that is when the manager is gone (percussive-sublimated to
+ * "an exciting new opportunity") and the flattened config is a security-audit
+ * finding. Colm Reddaway, who inherited the role, reports it: put it back. Its
+ * setup normalises the estate to the mandated bad state, so however the player got
+ * here the fault is unambiguous and the ticket cannot arrive already solved.
+ *
+ * Two paths, and the score was set in slice one. The CLEAN path is a single
+ * `restoreFromRecord` per service: read the captured prior back off the record and
+ * set it. It works ONLY if the rollback was captured - `restoreFromRecord` refuses
+ * an empty record - which is the whole mechanic. The PAINFUL path is the
+ * reconstruct: set each service's startup type back BY HAND, to the specific prior
+ * it should have (Disabled, Disabled, Manual), which the player must know rather
+ * than read off a record they never filled. Both reach the same end state; the
+ * diligent player just gets there in one move per service instead of having to
+ * remember which was Manual. Never a punishment for diligence - only the skipped
+ * rollback costs, and it costs exactly the reconstruction.
+ */
+const revertGoodState: Expr = {
+  op: 'and',
+  exprs: LEGENDARY_SERVICES.map((entry) => ({
+    op: 'eq' as const,
+    selector: { id: entry.service },
+    field: FIELDS.startupType,
+    value: entry.prior,
+  })),
+};
+
+const LEGENDARY_REVERT: WorldTicket = {
+  arrival: 'summoned',
+  follows: LEGENDARY_MANDATE_TICKET,
+  nodes: LEGENDARY_SERVICES.map((entry) => entry.service),
+  // A real audit finding on a real security regression: reasonably urgent, and
+  // honestly so - the claim and the truth agree.
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: LEGENDARY_REVERT_TICKET,
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Halcyon: revert the "everything Automatic" change - security '
+        + 'finding',
+      body:
+        'The security audit has flagged it: Telnet and Remote Registry set to '
+        + 'start automatically on the file server, and the modules installer '
+        + 'forced on too - exactly the hardening the estate used to have, undone '
+        + 'estate-wide. Tarquin Vosper, who ordered it, has "moved on to an '
+        + 'exciting new opportunity" and is not here to explain it. Colm Reddaway, '
+        + 'who inherited the role, has asked the desk to put it back the way it '
+        + 'was. If you captured the rollback when you made the change, this is one '
+        + 'restore per service; if you did not, you will have to reconstruct the '
+        + 'right startup type for each by hand.',
+    },
+    reporter: HALCYON_IDS.successor,
+    // Normalise to the mandated bad state, so the fault is the same however the
+    // player arrived and the ticket never spawns already solved.
+    setup: LEGENDARY_SERVICES.map((entry) => ({
+      op: 'setField' as const,
+      id: entry.service,
+      field: FIELDS.startupType,
+      value: STARTUP_TYPES.automatic,
+    })),
+    // Restored to the prior, per service: Telnet and Remote Registry back to
+    // Disabled, the modules installer back to Manual. Every clause load-bearing -
+    // leave one service Automatic and it stays false, and restoring the modules
+    // installer to Disabled (the wrong prior) leaves it false too, which is why
+    // the per-service captured record is worth keeping.
+    resolved_when: revertGoodState,
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: KB_LEGENDARY,
+  },
+  cause: 'The mandate was reversed the moment somebody looked at it, and the '
+    + 'manager who ordered it was gone before the bill arrived - the textbook '
+    + 'implement-then-revert. The estate is now Automatic where it should be '
+    + 'hardened, and the job is to restore the prior config. Whether that is one '
+    + 'clean restore per service or a hand reconstruction was decided two days '
+    + 'ago, by whether the rollback was captured before the change was made.',
+  dialogue_ref: 'dialogue/halcyon-colm',
+  paths: [
+    {
+      id: 'revert-from-rollback',
+      app: 'directory',
+      label: 'Restore each service from the rollback record - the clean revert',
+      steps: LEGENDARY_SERVICES.map((entry) => ({
+        action: HELPDESK_ACTIONS.restoreFromRecord,
+        target: entry.service,
+        params: { [RECORD_PARAM]: entry.record },
+      })),
+    },
+    {
+      id: 'revert-by-reconstruction',
+      app: 'directory',
+      label: 'Reconstruct the correct startup type for each service by hand',
+      steps: LEGENDARY_SERVICES.map((entry) => ({
+        action: HELPDESK_ACTIONS.serviceSetStartup,
+        target: entry.service,
+        params: { [STARTUP_PARAM]: entry.prior },
+      })),
+    },
+  ],
+};
+
 export const CORPORATE_TICKETS: readonly WorldTicket[] = [
   CEO_MFA_OFF,
   EA_MAILBOX_DELEGATE,
@@ -878,4 +1119,6 @@ export const CORPORATE_TICKETS: readonly WorldTicket[] = [
   ACCESS_RECERT,
   RECERT_BROKEN_JOB,
   MANAGER_OVERRIDE,
+  LEGENDARY_MANDATE,
+  LEGENDARY_REVERT,
 ];

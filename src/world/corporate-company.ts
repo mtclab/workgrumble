@@ -198,6 +198,38 @@ export const HALCYON_IDS = {
    */
   contractor: 'person:halcyon-wystan',
   contractorAccount: 'account:halcyon-wystan',
+
+  /* -- the legendary manager / implement-then-revert (E8, 0.25.0) --------- */
+  /**
+   * Tarquin Vosper, "Group Director of Digital Transformation (interim)" - the
+   * seagull. He arrives with a splashy, CV-shaped mandate (every service set to
+   * Automatic, so his tenure can boast "zero service-down tickets"), the desk
+   * implements it, and he is percussive-sublimated away before the cost lands.
+   * The reporter of the mandate ticket, and the manager who faces no consequence.
+   */
+  seagull: 'person:halcyon-tarquin',
+  seagullAccount: 'account:halcyon-tarquin',
+  /**
+   * Colm Reddaway, "Digital Transformation Lead (acting)" - the one who inherits
+   * the mess. He reports the revert: the security audit has flagged Tarquin's
+   * flattened startup config, Tarquin has "moved on to an exciting opportunity",
+   * and Colm is left to put it back. The reporter of the revert ticket.
+   */
+  successor: 'person:halcyon-colm',
+  successorAccount: 'account:halcyon-colm',
+
+  /**
+   * Three services on the file server whose startup types are set DELIBERATELY
+   * and for good reasons - the estate the mandate flattens. Telnet and Remote
+   * Registry are DISABLED as a security hardening (legacy remote-access and a
+   * lateral-movement surface, kept off on purpose); Windows Modules Installer is
+   * MANUAL (it runs on demand for updates, and forcing it Automatic is pointless).
+   * The mandate sets all three Automatic; the revert restores each to its own
+   * prior, which is why the record that captured them per-service is load-bearing.
+   */
+  telnet: 'service:halcyon-telnet',
+  remoteRegistry: 'service:halcyon-remote-registry',
+  modulesInstaller: 'service:halcyon-modules-installer',
 } as const;
 
 export type HalcyonNodeId = (typeof HALCYON_IDS)[keyof typeof HALCYON_IDS];
@@ -304,6 +336,25 @@ const STAFF: readonly StaffSeed[] = [
     username: 'wpryce-ext',
     desk: 'A hot desk near Finance for the length of the cutover, and a laptop '
       + 'that is not the company\'s',
+  },
+  {
+    person: HALCYON_IDS.seagull,
+    account: HALCYON_IDS.seagullAccount,
+    name: 'Tarquin Vosper',
+    title: 'Group Director of Digital Transformation (interim)',
+    username: 'tvosper',
+    desk: 'A borrowed office he is rarely in, a deck of slides about '
+      + '"operational excellence", and a start date and an end date nobody has '
+      + 'quite been told',
+  },
+  {
+    person: HALCYON_IDS.successor,
+    account: HALCYON_IDS.successorAccount,
+    name: 'Colm Reddaway',
+    title: 'Digital Transformation Lead (acting)',
+    username: 'creddaway',
+    desk: 'The same borrowed office, inherited along with a mandate he did not '
+      + 'write and an audit finding he did',
   },
 ];
 
@@ -589,8 +640,65 @@ export function halcyonSetup(): readonly SetupOp[] {
   }
 
   seedRecertEstate(ops);
+  seedLegendaryEstate(ops);
 
   return ops;
+}
+
+/**
+ * The legendary-manager estate (E8, 0.25.0) - the three services the seagull's
+ * mandate flattens, standing on the file server with the startup discipline the
+ * mandate ignores.
+ *
+ * They are STANDING, the same as the recert estate above: the world has them at
+ * their deliberate defaults (Telnet and Remote Registry Disabled for security,
+ * Windows Modules Installer Manual because it runs on demand) so the mandate is a
+ * real state change removed from a real prior, and the revert has a real prior
+ * to restore. The ROLLBACK RECORDS are not here - like the risk-acceptance draft,
+ * they arrive with the mandate ticket's own setup, empty, and are filled only if
+ * the player captures. Nothing here is running: a stopped service with a hardened
+ * startup type is the ordinary, correct state, and the noise the mandate hides in.
+ */
+function seedLegendaryEstate(ops: SetupOp[]): void {
+  const SERVICES: readonly Readonly<{
+    id: string;
+    name: string;
+    service: string;
+    startup: string;
+  }>[] = [
+    {
+      id: HALCYON_IDS.telnet,
+      name: 'Telnet Server',
+      service: 'TlntSvr',
+      startup: STARTUP_TYPES.disabled,
+    },
+    {
+      id: HALCYON_IDS.remoteRegistry,
+      name: 'Remote Registry',
+      service: 'RemoteRegistry',
+      startup: STARTUP_TYPES.disabled,
+    },
+    {
+      id: HALCYON_IDS.modulesInstaller,
+      name: 'Windows Modules Installer',
+      service: 'TrustedInstaller',
+      startup: STARTUP_TYPES.manual,
+    },
+  ];
+
+  for (const service of SERVICES) {
+    addNode(ops, {
+      id: service.id,
+      kind: 'service',
+      fields: {
+        [FIELDS.name]: service.name,
+        [FIELDS.serviceName]: service.service,
+        [FIELDS.status]: SERVICE_STATUS.stopped,
+        [FIELDS.startupType]: service.startup,
+      },
+    });
+    addEdge(ops, { from: service.id, to: HALCYON_IDS.fileServer, kind: 'runs_on' });
+  }
 }
 
 /**

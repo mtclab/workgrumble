@@ -157,6 +157,15 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
     + 'his hands and a board deadline on Monday. I am the one who asked you for '
     + 'this - I would rather you told me no to my face than went quiet on it. Away '
     + 'is the one answer I cannot take upstairs.',
+  // The legendary-manager reporters (E8, 0.25.0): the seagull who wants his win by
+  // Friday, and the successor left holding the audit finding.
+  [HALCYON_IDS.seagull]: 'Your status is away, and I need the standardisation done '
+    + 'today for the Friday deck. I do not much mind how - I mind that "away" is '
+    + 'not a slide I can present as an operational-excellence win.',
+  [HALCYON_IDS.successor]: 'You are showing away, and I have a security finding '
+    + 'with my name on it now and the person who caused it three job titles away. '
+    + 'Away, while the thing I inherited is still on fire, is not a status I have '
+    + 'anyone left to escalate to.',
 });
 
 /**

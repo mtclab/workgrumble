@@ -349,8 +349,16 @@ describe('helpdesk action registry', () => {
     // the ordinary `accountAddToGroup` grant). The risky action reuses
     // add-to-group, so the signature is the one new player verb the mechanic
     // needs.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(47);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(47);
+    //
+    // Fifty from 0.25.0 (E8): the legendary-manager / implement-then-revert arc's
+    // three verbs - setting a service's startup type (`service.set_startup`, the
+    // mandated config change and the painful reconstruct), capturing the rollback
+    // (`rollback.capture`, the diligent step onto the reused change_request record),
+    // and restoring from it (`rollback.restore`, the clean one-step revert that
+    // refuses an empty record). The mandate flattens real config and the revert
+    // reads a real captured prior, so all three are genuinely new player verbs.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(50);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(50);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});
