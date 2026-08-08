@@ -31,6 +31,33 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.25.0',
+    date: '2026-08-08',
+    summary: 'This update introduces a man who will change everything and then '
+      + 'leave.',
+    lines: Object.freeze([
+      'Meet Tarquin Vosper, Group Director of Digital Transformation (interim). '
+        + 'He has been here nine days and he has A Mandate: every service on the '
+        + 'estate set to start automatically, so that his tenure can report zero '
+        + 'service-down tickets. It does not matter that two of those services '
+        + 'are switched off on purpose, for security, by someone who thought '
+        + 'about it. The slide deck says Automatic. You are going to do it, '
+        + 'because that is the job.',
+      'The only real decision you get is whether you write down what it was '
+        + 'before you break it. Nobody is watching, it takes an extra minute, and '
+        + 'skipping it costs you exactly nothing today.',
+      'Six weeks later Tarquin has moved on to an exciting new opportunity, '
+        + 'security has noticed that Telnet is running on a file server, and the '
+        + 'ticket on your queue says put it all back the way it was. If you wrote '
+        + 'it down, that is one command per service and a cup of tea. If you did '
+        + 'not, you are now reconstructing, from memory and guesswork, a '
+        + 'configuration that three different people set deliberately over four '
+        + 'years - and every one of them had a reason you no longer have. The '
+        + 'work gets done twice either way. Whether it hurts the second time was '
+        + 'decided by you, on a Tuesday, when nobody was looking.',
+    ]),
+  },
+  {
     version: '0.24.0',
     date: '2026-08-08',
     summary: 'This update teaches you the most important email you will ever '
