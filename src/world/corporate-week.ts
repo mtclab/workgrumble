@@ -19,6 +19,7 @@
  */
 
 import { HALCYON_CHANNELS, HALCYON_IDS } from './corporate-company';
+import { LEGENDARY_MANDATE_TICKET } from './legendary';
 import { OVERRIDE_TICKET } from './override';
 import {
   VIP_EARBUDS_TICKET,
@@ -99,6 +100,11 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
     // this is the device that was never inside them at all.
     drip: [
       { ticketId: 'ticket:halcyon-ceo-filter', minute: 11 * 60 },
+      // The interim director's mandate (E8, 0.25.0), after lunch: a memo with a
+      // time on it, which is why it is a drip and not something the world has to
+      // be asked for. The revert FOLLOWS it, so it has to land early enough in
+      // the week for the man who sent it to have moved on by the time it does.
+      { ticketId: LEGENDARY_MANDATE_TICKET, minute: 13 * 60 + 30 },
       { ticketId: VIP_TABLET_TICKET, minute: 14 * 60 + 15 },
     ],
     channels: [
@@ -112,6 +118,16 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
         relatedTicket: 'ticket:halcyon-ceo-filter',
       },
       {
+        id: 'halcyon:mandate-chat',
+        channel: EXEC,
+        author: HALCYON_IDS.ea,
+        body: 'fyi the new interim director (Vosper) has sent something round '
+          + 'about every service being set to start automatically. he has cc\'d '
+          + 'the board. I would not argue with it today.',
+        minute: 13 * 60 + 25,
+        relatedTicket: LEGENDARY_MANDATE_TICKET,
+      },
+      {
         id: 'halcyon:tablet-chat',
         channel: EXEC,
         author: HALCYON_IDS.ea,
@@ -123,8 +139,9 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
       },
     ],
     patrolSeed: 5_501,
-    // Two tickets now, and the second is three verbs and a signature.
-    load: 3,
+    // Three now: the exemption, the director's mandate across three services,
+    // and the tablet that is three verbs and a signature.
+    load: 4,
   },
   {
     day: 4,

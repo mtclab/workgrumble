@@ -923,7 +923,12 @@ const mandateBadState: Expr = {
 };
 
 const LEGENDARY_MANDATE: WorldTicket = {
-  arrival: 'summoned',
+  // A DRIP, not summoned: the mandate is a memo with a time on it, and the
+  // week is where it lands. It shipped summoned in 0.25.0, which meant nothing
+  // in the world ever raised it - the mandate, the whole revert that FOLLOWS it,
+  // and the director's exit were reachable only from a test. A ticket the player
+  // cannot meet is content that does not exist.
+  arrival: 'drip',
   nodes: LEGENDARY_SERVICES.map((entry) => entry.service),
   // Urgent because a director says so; the TRUE urgency is a want dressed as
   // transformation - nothing is broken, and the RIGHT move (keep the rollback)
