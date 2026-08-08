@@ -31,6 +31,35 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.22.0',
+    date: '2026-08-07',
+    summary: 'This update is about the people, not the machines.',
+    lines: Object.freeze([
+      'There is a new job going - in-house at Halcyon Grange, where you support '
+        + 'the executives themselves, and the hardest problems have no error '
+        + 'message. It starts small and reasonable: the CEO does not like the '
+        + 'two-factor prompt, so his assistant asks you, nicely, to take it off. '
+        + 'And give her full access to his mailbox while you are at it. And stop '
+        + 'the spam filter touching his mail. Each one is a five-minute job and '
+        + 'each one is a door you are unlocking, and the only cost of saying yes '
+        + 'is that saying no annoys the most important person in the building.',
+      'So you say yes. And a week later the CEO\'s account is sending wire '
+        + 'requests he did not write, and now it is a real incident with your '
+        + 'name on it. You disable the account. You revoke the sessions - '
+        + 'because a stolen login lives on after a password change, and a reset '
+        + 'alone is a checkbox that fixes nothing. And then you go looking in '
+        + 'the mailbox, and there it is: a rule the attacker left behind, '
+        + 'quietly forwarding every invoice to an address that is not yours, '
+        + 'surviving every password you reset, because it is a permission, not a '
+        + 'password. Pull the rule. Pull the delegate - the assistant\'s access, '
+        + 'the one you granted, the way they stayed in.',
+      'Nobody made the machine fail. Every control worked exactly as designed. '
+        + 'The hole was the exception, the exception was an order, and the person '
+        + 'who gave it will not be the one writing this up. That is the job too - '
+        + 'the part they do not put in the brochure.',
+    ]),
+  },
+  {
     version: '0.21.0',
     date: '2026-08-07',
     summary: 'This update is about who is allowed to read what.',
