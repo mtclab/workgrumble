@@ -18,6 +18,7 @@
  */
 
 import { HALCYON_CHANNELS, HALCYON_IDS } from './corporate-company';
+import { OVERRIDE_TICKET } from './override';
 import { type DayScript, validateWeek } from './week';
 
 const HALCYON_ROOM_IDS = new Set(HALCYON_CHANNELS.map((room) => room.id));
@@ -115,11 +116,28 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
   {
     day: 5,
     label: 'Friday',
-    inherited: [],
-    // Friday brings nothing new. Friday is the conversation at three, run by the
-    // driver on the review day exactly as it runs the other employers', against
-    // the same bar.
+    // Friday is the manager override (E8, 0.24.0): the Head of IT orders the
+    // Meridian contractor given Domain Admin to finish the cutover tonight - the
+    // order a good tech knows is wrong, where refusing and silently complying both
+    // fail and the win is the risk acceptance signed. In the morning pile because
+    // he raised it himself before nine; the review at three still runs the way it
+    // runs every employer's, and the audit finding lands the same day.
+    inherited: [OVERRIDE_TICKET],
     drip: [],
+    channels: [
+      {
+        id: 'halcyon:override-push',
+        channel: EXEC,
+        author: HALCYON_IDS.manager,
+        body: '@you raising one and I need it today: put the Meridian contractor '
+          + '(Wystan) into Domain Admins so he can finish the finance cutover '
+          + 'tonight. board wants it live Monday. we narrow it back down after, I '
+          + 'promise.',
+        minute: 9 * 60 + 10,
+        mentionsPlayer: true,
+        relatedTicket: OVERRIDE_TICKET,
+      },
+    ],
     patrolSeed: 2_357,
     load: 1,
   },

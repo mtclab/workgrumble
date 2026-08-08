@@ -179,6 +179,25 @@ export const HALCYON_IDS = {
   vendorCreate: 'group:halcyon-vendor-create',
   /** AP - Payment Approval: approve a payment. The other half of the conflict. */
   paymentApprove: 'group:halcyon-payment-approve',
+
+  /* -- the manager override / CYA (E8, 0.24.0) --------------------------- */
+  /**
+   * Ivor Brace, Head of IT - the player's own manager, and the one who ORDERS
+   * the thing a good tech knows is wrong: give the migration contractor Domain
+   * Admin tonight, we will narrow it later. He is the ordering manager, so he is
+   * also the ACCEPTING OWNER whose signature the risk acceptance needs - the CYA
+   * is getting his name onto the risk in writing before the grant is made.
+   */
+  manager: 'person:halcyon-ivor',
+  managerAccount: 'account:halcyon-ivor',
+  /**
+   * Wystan Pryce, the Meridian Migrations contractor doing the finance-system
+   * cutover. An external account with a real login, and the one the order wants
+   * made a domain admin - the standing privileged access far beyond the task
+   * that is the whole of why a good tech gets the risk accepted in writing first.
+   */
+  contractor: 'person:halcyon-wystan',
+  contractorAccount: 'account:halcyon-wystan',
 } as const;
 
 export type HalcyonNodeId = (typeof HALCYON_IDS)[keyof typeof HALCYON_IDS];
@@ -267,6 +286,24 @@ const STAFF: readonly StaffSeed[] = [
     title: 'Financial Analyst (left in the spring)',
     username: 'gfrey',
     desk: 'A desk somebody else has now, and a login nobody switched off',
+  },
+  {
+    person: HALCYON_IDS.manager,
+    account: HALCYON_IDS.managerAccount,
+    name: 'Ivor Brace',
+    title: 'Head of IT',
+    username: 'ibrace',
+    desk: 'The office at the end of the IT corridor, and the deadline nobody '
+      + 'else has to explain to the board',
+  },
+  {
+    person: HALCYON_IDS.contractor,
+    account: HALCYON_IDS.contractorAccount,
+    name: 'Wystan Pryce',
+    title: 'Migration Engineer, Meridian Migrations (contractor)',
+    username: 'wpryce-ext',
+    desk: 'A hot desk near Finance for the length of the cutover, and a laptop '
+      + 'that is not the company\'s',
   },
 ];
 

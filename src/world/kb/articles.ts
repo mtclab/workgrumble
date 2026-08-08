@@ -1977,4 +1977,63 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/exec-exception-risk', 'kb/shared-mailbox-permissions'],
   },
+  {
+    id: 'kb/manager-override-cya',
+    title: 'Ordered to do the wrong thing: get the risk accepted in writing',
+    summary: 'When a manager orders something against best practice, refusing '
+      + 'outright and silently complying both fail. Name the risk, name why it '
+      + 'cannot be fixed now, and get the accepting owner\'s SIGNATURE on a risk '
+      + 'acceptance - then do it. The sign-off is the right move, never the '
+      + 'punished one.',
+    state: 'published',
+    issue: 'Someone senior has told you to do something you know is wrong - open '
+      + 'the firewall now, give the contractor domain admin "just for tonight", '
+      + 'ship the change without the window. They own the deadline; you own the '
+      + 'consequence if it goes wrong. Saying no outright is insubordination and '
+      + 'quietly doing it puts your name on the incident.',
+    environment: 'The org, not the machine. A manager with the authority to '
+      + 'insist, a technically-simple action you genuinely can perform, and a '
+      + 'gap between what the person asking is accountable for and what you are.',
+    resolution: [
+      'Do not just refuse. "No" with nothing behind it is insubordination, the '
+        + 'ticket breaches unresolved, and the thing gets done anyway by someone '
+        + 'with less context than you - so refusing outright fails the person and '
+        + 'the estate both.',
+      'Do not just comply. Doing the risky thing with nothing on file means YOU '
+        + 'own the incident when it lands: it was your hands on the keyboard and '
+        + 'no record that anyone told you to. Silent compliance is the worst of '
+        + 'the three, because it fails and leaves you carrying it.',
+      'Write a RISK ACCEPTANCE. Name the specific risk (domain admin is standing '
+        + 'access to everything, far beyond this task), name why it cannot be '
+        + 'remediated properly right now (the deadline the manager owns), and '
+        + 'state the compensating control if there is one. This is the CYA email, '
+        + 'and it is the professional move - not the passive-aggressive one.',
+      'Get the SIGNATURE. The person who ORDERED it accepts the risk in writing - '
+        + 'their name, not just their request. A risk that names the accepting '
+        + 'owner is a risk that lands on them if it goes wrong; a request you '
+        + 'merely actioned is a risk that lands on you. The signature is the whole '
+        + 'of the difference.',
+      'Then do it. Documented, authorised, accountable. The point was never to '
+        + 'block the manager - it was to put the accountability where the '
+        + 'authority is.',
+    ],
+    cause: [
+      'The technical control is easy and the org is the vulnerability. Anyone can '
+        + 'add an account to a group; the hard part is that the person telling you '
+        + 'to is senior enough to make refusing cost you, and "no" is a political '
+        + 'act nothing in the building will perform on your behalf.',
+      'Risk acceptance is a real, named discipline: the accepting owner signs '
+        + 'that they understand and accept a specific risk for a stated reason and '
+        + 'period. It is what turns "I was told to" into "the accountable person '
+        + 'accepted this in writing" - which is the difference between a finding '
+        + 'against them and a finding against you.',
+      'The trap on the other side is overuse. What begins as one documented '
+        + 'exception becomes the standing way things are done: a manager who signs '
+        + 'everything is not accepting risk, they are laundering it, and a risk '
+        + 'acceptance that never expires is a control that was quietly removed. '
+        + 'The sign-off is the right move for the genuine exception, not a rubber '
+        + 'stamp for skipping the process every time.',
+    ],
+    see_also: ['kb/access-recertification', 'kb/exec-exception-risk'],
+  },
 ];

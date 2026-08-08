@@ -121,6 +121,22 @@ export const HELPDESK_ACTIONS = {
    * guardrail has to be the player choosing to work each line instead.
    */
   recertApproveAll: 'recert.approve_all',
+  /**
+   * Getting the ordering manager to SIGN a risk acceptance (E8, 0.24.0) - the
+   * CYA / manager-override mechanic's whole point made a real, dispatchable act.
+   *
+   * When a manager orders something against best practice, the professional path
+   * is neither to refuse (insubordination) nor to silently comply (you own the
+   * incident) but to GET IT IN WRITING: name the risk, name why it cannot be
+   * remediated now, and get the accepting owner's SIGNATURE. This verb is that
+   * signature - it takes the risk-acceptance draft (a change_request node, the
+   * 0.10.0 artifact reused as a variant) the order arrives with and records the
+   * ordering manager's approval on it: `cr_decision = approve`, `cr_accepted_by`
+   * = the required signer. It is its own verb because the signature is the move,
+   * and because "who accepted this risk" is a question a later audit asks and a
+   * request without an answer has never survived.
+   */
+  riskAcceptanceSign: 'risk_acceptance.sign',
   /** Giving an account one of the seats the company actually bought. */
   accountAssignLicence: 'account.assign_licence',
   /** And taking one back off somebody who has not needed it since April. */
@@ -523,6 +539,19 @@ export const WORLD_ACTIONS = {
    * else's incident report - which is exactly how long it takes in real life.
    */
   securityFallout: 'world.security_fallout',
+  /**
+   * The bill for a manager override, arriving as an audit finding (E8, 0.24.0).
+   *
+   * The privileged grant a manager ordered gets flagged - a Domain Admin change
+   * on an external contractor is exactly the kind of event a SIEM alerts on - and
+   * this is where the sign-off's teeth land BOTH ways: on the path where a signed
+   * risk acceptance named an accepting owner, the finding is theirs and the desk
+   * is charged nothing; on the path where the grant was made with nothing on
+   * file, it is the desk's, and the suspicion is charged to the person who did it
+   * on their own authority. A world verb, not a day one, because it is what
+   * happens TO you on somebody else's timetable off a decision you made.
+   */
+  overrideFallout: 'world.override_fallout',
   /**
    * Somebody who has been waiting for a first word noticing that the desk they
    * are waiting on is marked Away and is demonstrably working on something

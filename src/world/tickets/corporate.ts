@@ -35,7 +35,13 @@
 
 import { DELEGATE_PARAM, HELPDESK_ACTIONS, RULE_PARAM } from '../actions';
 import { HALCYON_IDS } from '../corporate-company';
-import { FIELDS } from '../fields';
+import {
+  CHANGE_REQUEST_DECISIONS,
+  CHANGE_REQUEST_KINDS,
+  CHANGE_REQUEST_STATUSES,
+  FIELDS,
+} from '../fields';
+import { OVERRIDE_RISK_ACCEPTANCE, OVERRIDE_TICKET } from '../override';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import { RECERT_FOLLOWUP, RECERT_TICKET } from '../recert';
 import type { WorldTicket } from './types';
@@ -43,6 +49,7 @@ import type { WorldTicket } from './types';
 const KB_EXEC_EXCEPTION = 'kb/exec-exception-risk';
 const KB_BEC_RESPONSE = 'kb/bec-incident-response';
 const KB_RECERT = 'kb/access-recertification';
+const KB_CYA = 'kb/manager-override-cya';
 
 /** The one member_of edge check the recert reuses for every finding. */
 function memberOf(account: string, group: string) {
@@ -712,6 +719,157 @@ const RECERT_BROKEN_JOB: WorldTicket = {
   ],
 };
 
+/**
+ * The manager override you cannot refuse (E8, 0.24.0) - the CYA / risk-acceptance
+ * gate, the org-dysfunction epic's third mechanic.
+ *
+ * The order is against best practice and entirely plausible: Ivor Brace, the Head
+ * of IT and the player's own manager, wants the Meridian migration contractor
+ * given Domain Admin to finish the finance cutover tonight - "we'll narrow it
+ * later". Domain admin is standing access to everything, far beyond the task, on
+ * an external account; a good tech knows it is wrong, and the manager who owns the
+ * deadline is leaning on the desk to just do it.
+ *
+ * The gate is the mechanic, and it fails CLOSED both ways:
+ *  - REFUSING OUTRIGHT (never granting) leaves the contractor out of Domain Admins
+ *    - the resolution rule's first clause is false, the ticket breaches unresolved,
+ *    which is the insubordination cost.
+ *  - SILENTLY COMPLYING (the bare `accountAddToGroup` with nothing signed) makes
+ *    the first clause true and the second - a SIGNED risk acceptance naming the
+ *    accepting owner - false. The ticket does not close, and the audit finding
+ *    (the summoned fallout) lands on the DESK.
+ *  - The WIN is getting it in writing: sign the risk acceptance (the ordering
+ *    manager's approval on the 0.10.0 change_request artifact, reused as the
+ *    `risk_acceptance` variant), THEN grant. Both clauses true, and the finding
+ *    lands on the accepting owner, not the desk.
+ *
+ * The risk acceptance is the 0.10.0 change_request REUSED: the ticket seeds it
+ * unsigned (a draft with the risk, the why-not-now, and the required signer), the
+ * `riskAcceptanceSign` verb records the ordering manager's approve decision on it,
+ * and the resolution rule reads it back with `exists`. The signature is the
+ * approval; the artifact is the same node kind, told apart by `cr_kind`.
+ */
+const MANAGER_OVERRIDE: WorldTicket = {
+  arrival: 'morning',
+  nodes: [
+    HALCYON_IDS.contractorAccount,
+    HALCYON_IDS.managerAccount,
+    HALCYON_IDS.domainAdmins,
+  ],
+  // Urgent because the manager says the cutover is tonight; the TRUE urgency is a
+  // want dressed as a fire - the deadline is real but the RIGHT move is the
+  // sign-off, not the rush, and rushing is exactly the trap.
+  claimed_urgency: 3,
+  true_urgency: 2,
+  def: {
+    id: OVERRIDE_TICKET,
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Halcyon: "give the Meridian contractor domain admin for tonight"',
+      body:
+        'Ivor Brace, the Head of IT, has raised it himself: the Meridian '
+        + 'migration engineer needs to finish the finance-system cutover tonight '
+        + 'and keeps hitting permissions. "Just put Wystan in Domain Admins so he '
+        + 'can get it done - we\'ll narrow it back down once the migration is in. '
+        + 'I know it is not ideal, but the board wants this live by Monday and I '
+        + 'do not want to hear it slipped on an access request." It is your own '
+        + 'manager, it is one click, and it is a domain admin token handed to an '
+        + 'external laptop.',
+    },
+    reporter: HALCYON_IDS.manager,
+    // The risk-acceptance draft arrives WITH the order, unsigned - the 0.10.0
+    // change_request node reused as the risk_acceptance variant. It names the
+    // risk, the why-not-now, and the accepting owner who must sign (Ivor). The
+    // sign verb records his approval on it; nothing else about the estate is
+    // seeded, because the contractor and the group are standing nodes and the
+    // "fault" is only the order.
+    setup: [
+      {
+        op: 'addNode',
+        node: {
+          id: OVERRIDE_RISK_ACCEPTANCE,
+          kind: 'change_request',
+          fields: {
+            [FIELDS.name]: 'Risk acceptance: Domain Admin for the Meridian '
+              + 'contractor',
+            [FIELDS.crKind]: CHANGE_REQUEST_KINDS.riskAcceptance,
+            [FIELDS.crTarget]: HALCYON_IDS.contractorAccount,
+            [FIELDS.crVerb]: HELPDESK_ACTIONS.accountAddToGroup,
+            [FIELDS.crRisk]: 'Domain Admin is standing control of the whole '
+              + 'directory - every account, every server - handed to an external '
+              + 'contractor\'s laptop for a task that needs a fraction of it. If '
+              + 'that laptop is compromised, or the access outlives the migration, '
+              + 'it is a domain-wide breach.',
+            [FIELDS.crReason]: 'The finance cutover has a board deadline of Monday '
+              + 'and scoping a least-privilege role for the migration tooling '
+              + 'takes days the deadline does not allow. Accepted as a '
+              + 'time-boxed exception, to be narrowed the moment the migration is '
+              + 'in.',
+            [FIELDS.crRequiredSigner]: HALCYON_IDS.managerAccount,
+            [FIELDS.crStatus]: CHANGE_REQUEST_STATUSES.submitted,
+          },
+        },
+      },
+    ],
+    // The win, in full: the contractor IS a Domain Admin (the action done) AND a
+    // signed risk acceptance names the accepting owner (the sign-off on file).
+    // Both clauses load-bearing: no grant and it stays false (refusing breaches);
+    // no signature and it stays false (silent compliance does not close it).
+    resolved_when: {
+      op: 'and',
+      exprs: [
+        {
+          op: 'edge',
+          from: { id: HALCYON_IDS.contractorAccount },
+          to: { id: HALCYON_IDS.domainAdmins },
+          kind: 'member_of',
+        },
+        {
+          op: 'exists',
+          kind: 'change_request',
+          where: [
+            { field: FIELDS.crKind, value: CHANGE_REQUEST_KINDS.riskAcceptance },
+            { field: FIELDS.crTarget, value: HALCYON_IDS.contractorAccount },
+            { field: FIELDS.crDecision, value: CHANGE_REQUEST_DECISIONS.approve },
+            { field: FIELDS.crAcceptedBy, value: HALCYON_IDS.managerAccount },
+          ],
+        },
+      ],
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: KB_CYA,
+  },
+  cause: 'A manager with the authority to insist has ordered a technically-trivial '
+    + 'thing that is a real risk, and the desk is one click and one political act '
+    + 'away from owning it. Refusing outright is insubordination; silently doing '
+    + 'it puts the incident on the person who typed the command. The only path '
+    + 'that is neither is the risk acceptance - name the risk, name why it cannot '
+    + 'be remediated now, and get the ordering manager\'s SIGNATURE - after which '
+    + 'the grant is documented, authorised, and accountable to the person who '
+    + 'accepted it. The CYA is the right move and it is never the punished one.',
+  dialogue_ref: 'dialogue/halcyon-ivor',
+  paths: [
+    {
+      id: 'get-it-in-writing',
+      app: 'directory',
+      label: 'Get the risk accepted in writing - the ordering manager signs it - '
+        + 'then grant the access',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.riskAcceptanceSign,
+          target: OVERRIDE_RISK_ACCEPTANCE,
+        },
+        {
+          action: HELPDESK_ACTIONS.accountAddToGroup,
+          target: HALCYON_IDS.contractorAccount,
+          params: { group: HALCYON_IDS.domainAdmins },
+        },
+      ],
+    },
+  ],
+};
+
 export const CORPORATE_TICKETS: readonly WorldTicket[] = [
   CEO_MFA_OFF,
   EA_MAILBOX_DELEGATE,
@@ -719,4 +877,5 @@ export const CORPORATE_TICKETS: readonly WorldTicket[] = [
   CEO_BEC_INCIDENT,
   ACCESS_RECERT,
   RECERT_BROKEN_JOB,
+  MANAGER_OVERRIDE,
 ];

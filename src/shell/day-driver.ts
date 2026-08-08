@@ -91,6 +91,7 @@ import {
   readConductFile,
 } from '../world/conduct';
 import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
+import { OVERRIDE_RISK_ACCEPTANCE, overrideFalloutDue } from '../world/override';
 import { recertFollowUpDue } from '../world/recert';
 import { findIncident } from '../world/incidents';
 import { findOnboarding } from '../world/onboarding';
@@ -2088,6 +2089,10 @@ export class DayDriver implements DayApi {
     // And a careless revoke that closed the access review has just broken a
     // production job - a follow-up the world raises off the state it was left in.
     this.settleRecertFollowUp();
+    // And a Domain Admin grant a manager ordered has just been flagged by the
+    // audit - the finding lands on the accepting owner who signed, or on the desk
+    // that granted it with nothing on file.
+    this.settleOverrideFallout();
     return result;
   }
 
@@ -2245,6 +2250,7 @@ export class DayDriver implements DayApi {
     this.settleStaleAuth(now);
     this.settleFollowUps();
     this.settleRecertFollowUp();
+    this.settleOverrideFallout();
     this.walkTheFloor(before, now);
     // After the corridor, in the same minute: the lead arriving is a takeover
     // too, and the assert inside this one is entitled to see it. Before the
@@ -3303,6 +3309,58 @@ export class DayDriver implements DayApi {
       'A scheduled job has failed',
       `${ticketTitle(due)} - the access review took a permission a production `
       + 'job actually depended on. It needs restoring, right-sized.',
+    );
+  }
+
+  /**
+   * The manager override's audit finding landing (E8, 0.24.0) - and where the
+   * sign-off's teeth bite BOTH ways.
+   *
+   * The same conditional-summon shape as `settleRecertFollowUp` and
+   * `settleSecurityFallout`: the world decides whether the privileged grant has
+   * been made and not yet flagged (`overrideFalloutDue`, a pure read that returns
+   * nothing in every world but Halcyon), and this dispatches the finding when it
+   * has. The finding lands whichever way the grant was made - a Domain Admin
+   * change on an external contractor is what an audit flags, signed off or not -
+   * and the `overrideFallout` verb reads the risk acceptance to land the risk on
+   * the accepting owner (charging the desk nothing) or on the desk (charging
+   * suspicion) when nothing was signed. Reading the sign-off's state here for the
+   * NOTICE only; the charge and the attribution are the verb's, so a save and
+   * replay rebuild them the same.
+   */
+  private settleOverrideFallout(): void {
+    const due = overrideFalloutDue(this.engine.graph);
+
+    if (due === undefined) {
+      return;
+    }
+
+    const signed = this.engine.graph.getField(
+      OVERRIDE_RISK_ACCEPTANCE,
+      FIELDS.crDecision,
+    ) === 'approve';
+
+    const result = this.engine.dispatch(
+      WORLD_ACTIONS.overrideFallout,
+      this.actor,
+      due,
+      { risk_acceptance: OVERRIDE_RISK_ACCEPTANCE },
+    );
+
+    if (!result.ok) {
+      return;
+    }
+
+    this.handlers.onNotice?.(
+      'Privileged-access audit finding',
+      signed
+        ? 'The Domain Admin grant to the Meridian contractor has been flagged. '
+        + 'The risk acceptance on file names the Head of IT as the accepting '
+        + 'owner - the finding is his, not yours. This is what getting it in '
+        + 'writing bought.'
+        : 'The Domain Admin grant to the Meridian contractor has been flagged, '
+        + 'and there is no risk acceptance on file. You granted it, so the '
+        + 'finding is yours - with nobody\'s signature to point at.',
     );
   }
 

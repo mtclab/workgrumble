@@ -151,6 +151,12 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
     + 'the door and the diary, not the servers - so if the desk that does the '
     + 'servers is away while a production job is broken, I have run out of people '
     + 'to ask.',
+  // The manager override reporter (E8, 0.24.0): the Head of IT with the cutover
+  // deadline, who reads the Away dot as the desk dodging his order.
+  [HALCYON_IDS.manager]: 'You are marked away, and I have a contractor sitting on '
+    + 'his hands and a board deadline on Monday. I am the one who asked you for '
+    + 'this - I would rather you told me no to my face than went quiet on it. Away '
+    + 'is the one answer I cannot take upstairs.',
 });
 
 /**

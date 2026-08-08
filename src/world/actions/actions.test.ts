@@ -342,8 +342,15 @@ describe('helpdesk action registry', () => {
     // made a real, dispatchable action that fails the review closed. The rest of
     // the recert is the ordinary disable / remove-from-group verbs, so this is the
     // one new verb the mechanic needs.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(46);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(46);
+    //
+    // Forty-seven from 0.24.0 (E8): the manager-override / CYA sign-off
+    // (`risk_acceptance.sign`) - getting the ordering manager to accept the risk
+    // in writing, made a real, dispatchable action that is the win condition (with
+    // the ordinary `accountAddToGroup` grant). The risky action reuses
+    // add-to-group, so the signature is the one new player verb the mechanic
+    // needs.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(47);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(47);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});

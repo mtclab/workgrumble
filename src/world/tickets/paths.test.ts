@@ -303,6 +303,10 @@ describe('shipped tickets', () => {
       // service account is killed rather than right-sized.
       'ticket:halcyon-recert',
       'ticket:halcyon-recert-followup',
+      // The manager override / CYA (E8, 0.24.0): the Head of IT orders the
+      // contractor given Domain Admin, and the only path that is neither
+      // insubordination nor owning-the-incident is the signed risk acceptance.
+      'ticket:halcyon-override',
     ]);
   });
 

@@ -672,6 +672,21 @@ export const FIELDS = {
   mfaEnrolmentVerified: 'mfa_enrolment_verified',
   securityFalloutAt: 'security_fallout_at',
   /**
+   * When the manager-override audit finding landed (E8, 0.24.0) - the latch that
+   * stops the CYA consequence charging twice, the same shape as
+   * `security_fallout_at`. Written on the over-privileged account the moment the
+   * audit flags the Domain Admin grant, whichever way it was granted.
+   */
+  overrideFalloutAt: 'override_fallout_at',
+  /**
+   * WHO owns the risk when the over-privileged grant is flagged (E8, 0.24.0):
+   * the accepting owner's id when a signed risk acceptance named one, or the
+   * `unauthorised` marker when the grant was made with nothing on file. The
+   * whole of the sign-off's teeth is that this field - and the suspicion the
+   * desk is or is not charged beside it - reads differently on the two paths.
+   */
+  incidentOwner: 'incident_owner',
+  /**
    * When every device this account was signed in on was signed out again.
    *
    * The right fix for a session somebody else is holding, and the wrong fix for
@@ -864,6 +879,32 @@ export const FIELDS = {
   crWindowClose: 'cr_window_close',
   /** Which customer the request is for, by id, for the queue and the listing. */
   crCustomer: 'cr_customer',
+  /**
+   * Which VARIANT of change request this node is (E8, 0.24.0). Absent on the
+   * 0.10.0 scope change request (the default, the maintenance-window kind);
+   * `risk_acceptance` on the CYA / manager-override variant, where the artifact
+   * is the SAME change_request node but the "approval" is not a scope decision
+   * with a window - it is the ACCEPTING OWNER's signature. The scope pre-flight
+   * and the change-request listing skip the risk-acceptance kind, because it is
+   * not the maintenance-window mechanic and does not authorise a terminal verb.
+   */
+  crKind: 'cr_kind',
+  /**
+   * Who must SIGN a risk acceptance for it to mean anything (E8, 0.24.0): the id
+   * of the ordering manager, the accepting owner. Seeded on the draft with the
+   * order; the sign verb copies it into `cr_accepted_by`, which is the signature
+   * landing. It is a distinct field from the accepted-by so that a draft carries
+   * WHO is on the hook before anybody has actually put their name to it.
+   */
+  crRequiredSigner: 'cr_required_signer',
+  /**
+   * Whose signature is ON the risk acceptance (E8, 0.24.0) - the accepting owner
+   * who signed, by id. Absent until the manager signs; written by the sign verb
+   * from `cr_required_signer` alongside `cr_decision = approve`. This is the
+   * field that records WHO signed, and the one a later consequence reads to land
+   * the risk on the accepting owner rather than on the desk that did the work.
+   */
+  crAcceptedBy: 'cr_accepted_by',
   /**
    * The coordination notice a co-managed action is cleared by (0.11.0). The
    * target it clears (the id of the box or service the MSP told the customer's
@@ -1863,6 +1904,21 @@ export const CHANGE_REQUEST_DECISIONS = {
 
 export type ChangeRequestDecision =
   (typeof CHANGE_REQUEST_DECISIONS)[keyof typeof CHANGE_REQUEST_DECISIONS];
+
+/**
+ * The VARIANT a change_request node is (E8, 0.24.0). The scope change request
+ * (0.10.0) carries no `cr_kind` - it is the default, the maintenance-window
+ * gate - so only the CYA / manager-override variant is named here:
+ * `risk_acceptance`, the artifact the accepting owner signs. Keeping it a field
+ * on the SAME node kind is the reuse: one node, two variants, told apart by this
+ * marker rather than forked into a second kind the engine would have to learn.
+ */
+export const CHANGE_REQUEST_KINDS = {
+  riskAcceptance: 'risk_acceptance',
+} as const;
+
+export type ChangeRequestKind =
+  (typeof CHANGE_REQUEST_KINDS)[keyof typeof CHANGE_REQUEST_KINDS];
 
 export function changeRequestDecisionOf(
   value: unknown,

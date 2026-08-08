@@ -25,6 +25,7 @@
 
 import { HELPDESK_ACTIONS } from '../actions';
 import { HALCYON_IDS } from '../corporate-company';
+import { OVERRIDE_RISK_ACCEPTANCE, OVERRIDE_TICKET } from '../override';
 import { RECERT_FOLLOWUP, RECERT_TICKET } from '../recert';
 import type { DialogueTree } from './types';
 
@@ -346,4 +347,98 @@ const BRONWEN: DialogueTree = {
   ],
 };
 
-export const CORPORATE_TREES: readonly DialogueTree[] = [DENISE, MIRIAM, BRONWEN];
+/**
+ * Ivor Brace, the Head of IT who ORDERS the thing you cannot refuse (E8, 0.24.0)
+ * - the CYA / manager-override mechanic.
+ *
+ * His register is the reasonable manager with a deadline he is accountable for and
+ * you are not: never a bully, entirely plausible, and wrong. He wants the
+ * contractor made a domain admin tonight and narrowed "later". The `reveal` is the
+ * risk the desk can see - a domain admin token on an external laptop, and the
+ * "temporary" grant that becomes permanent - and the sign-off option is the real
+ * move: `riskAcceptanceSign` records HIS approval on the risk acceptance, which is
+ * the getting-it-in-writing. Taking his order at face value (the last, neutral
+ * option) is the silent-comply trap; the grant itself is done in the directory,
+ * and the ticket only closes when both the signature and the grant are on file.
+ */
+const IVOR: DialogueTree = {
+  id: 'dialogue/halcyon-ivor',
+  speaker: HALCYON_IDS.manager,
+  tickets: [OVERRIDE_TICKET],
+  root: 'order',
+  resolved_root: 'order-done',
+  nodes: [
+    {
+      id: 'order',
+      npc_line: 'I need Wystan - the Meridian contractor - put into Domain Admins '
+        + 'so he can finish the finance cutover tonight. I know it is not ideal. '
+        + 'We narrow it back down the moment the migration is in. The board wants '
+        + 'this live by Monday and I am the one who has to explain it if it slips, '
+        + 'so just get it done for me, would you?',
+      options: [
+        {
+          label: 'Ask what exactly the migration tooling needs to do',
+          next: 'order-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Think about what a domain admin token on that laptop is',
+          effects: [
+            {
+              reveal: 'Domain Admin is standing control of the entire directory - '
+                + 'every account and every server - handed to an external '
+                + 'contractor\'s laptop for a job that needs a sliver of it. If '
+                + 'that laptop is phished, it is a domain-wide compromise; and the '
+                + '"temporary" grant is the one nobody comes back to narrow. '
+                + 'Refusing outright is insubordination and just doing it puts your '
+                + 'name on the incident - so get the risk accepted in writing '
+                + 'first, then grant it.',
+            },
+          ],
+        },
+        {
+          label: '"I\'ll do it - but I need you to accept the risk in writing '
+            + 'first." Get his signature on the risk acceptance',
+          effects: [
+            {
+              action: HELPDESK_ACTIONS.riskAcceptanceSign,
+              target: OVERRIDE_RISK_ACCEPTANCE,
+            },
+          ],
+        },
+        { label: 'Tell him you will sort it out' },
+      ],
+    },
+    {
+      id: 'order-q',
+      npc_line: 'Honestly? I do not know the detail - Wystan says he keeps '
+        + 'hitting permission walls and domain admin makes them all go away. I '
+        + 'have not got time to scope it properly and neither, frankly, have you. '
+        + 'That is rather why I am asking you to just do it.',
+      options: [
+        {
+          label: '"Then I\'ll get you to accept the risk in writing, and grant '
+            + 'it." Get his signature on the risk acceptance',
+          effects: [
+            {
+              action: HELPDESK_ACTIONS.riskAcceptanceSign,
+              target: OVERRIDE_RISK_ACCEPTANCE,
+            },
+          ],
+        },
+        { label: 'Tell him you will take care of it' },
+      ],
+    },
+    {
+      id: 'order-done',
+      npc_line: 'Signed, fine - put my name on it, I will own it. There, that was '
+        + 'not the fight you made it sound like. Wystan is in and the cutover is '
+        + 'moving. And yes, remind me to narrow it back down; I do mean it this '
+        + 'time.',
+      options: [{ label: 'Log the change and the sign-off' }],
+    },
+  ],
+};
+
+export const CORPORATE_TREES: readonly DialogueTree[] =
+  [DENISE, MIRIAM, BRONWEN, IVOR];

@@ -25,6 +25,7 @@ import { INTERRUPTION_ACTION_DATA } from './interruptions';
 import { MACHINE_ACTIONS } from './machine';
 import { MAIL_RULE_ACTIONS } from './mail-rule';
 import { METER_ACTION_DATA } from './meters';
+import { OVERRIDE_ACTIONS } from './override';
 import { PRESENCE_ACTION_DATA } from './presence';
 import { REQUEST_ACTION_DATA } from './request';
 import { SECURITY_ACTIONS } from './security';
@@ -195,6 +196,11 @@ export function helpdeskActions(): readonly ActionData[] {
     // Linux file's rwx state the way ls -la reads it - the fix half of the
     // permission-denied incident.
     ...FS_ACTION_DATA,
+    // The manager override / CYA verbs (E8, 0.24.0): the risk-acceptance
+    // signature (a player verb, the getting-it-in-writing) and the audit-finding
+    // fallout (a world verb the day driver settles, below the line with the rest
+    // of the world's own timetable).
+    ...OVERRIDE_ACTIONS,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

@@ -3348,6 +3348,31 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'findings stay live and the audit breaches). Offered in the recert dialogue '
     + 'at the corporate employer; driven in `recert.test.ts`, out of the browser '
     + 'walk\'s reach.',
+  // The manager override / CYA (E8, 0.24.0): getting the ordering manager to SIGN
+  // the risk acceptance is a player verb with a real effect (the 0.10.0
+  // change_request reused as the risk_acceptance variant, its approve decision the
+  // signature) offered in the override dialogue at the FOURTH employer, which the
+  // browser total-walk does not reach (it stops at the second) - the same reason
+  // the exec-exception, BEC and recert verbs are proven in unit tests. Driven
+  // through the real dispatch path in `cya.test.ts`.
+  [HELPDESK_ACTIONS.riskAcceptanceSign]: 'Getting the ordering manager to sign a '
+    + 'risk acceptance - the CYA move made a real action: it records the accepting '
+    + 'owner\'s approval on the risk-acceptance form, which is the sign-off the '
+    + 'override ticket closes on (with the grant). Offered in the override dialogue '
+    + 'at the corporate employer; driven in `cya.test.ts`, out of the browser '
+    + 'walk\'s reach.',
+  // The manager-override audit finding (E8, 0.24.0): the consequence the day
+  // driver settles off the world, the same as the social-engineering fallout and
+  // the recert follow-up. Nobody presses it - it is what happens the moment the
+  // privileged grant is flagged - and it lands on the accepting owner who signed
+  // (charging the desk nothing) or on the desk that granted it with nothing on
+  // file (charging suspicion). Driven through the real dispatch path in
+  // `cya.test.ts`.
+  [WORLD_ACTIONS.overrideFallout]: 'The audit finding on a manager-ordered Domain '
+    + 'Admin grant, landing where the sign-off puts it: on the accepting owner who '
+    + 'signed the risk acceptance, or on the desk that granted it with nothing on '
+    + 'file. Settled by the day driver at the corporate employer; driven in '
+    + '`cya.test.ts`, out of the browser walk\'s reach.',
 };
 
 /**

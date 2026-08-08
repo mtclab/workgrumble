@@ -38,6 +38,7 @@ import { HELPDESK_ACTIONS, SYSTEMD_ACTIONS } from './actions';
 import { isRiskyProductionChange } from './change-control';
 import {
   CHANGE_REQUEST_DECISIONS,
+  CHANGE_REQUEST_KINDS,
   CHANGE_REQUEST_STATUSES,
   type ChangeRequestDecision,
   changeRequestDecisionOf,
@@ -341,6 +342,39 @@ export function isChangeRequest(
 }
 
 /**
+ * Whether this node is the CYA / manager-override RISK ACCEPTANCE variant (E8,
+ * 0.24.0) rather than the 0.10.0 SCOPE change request. Both are `change_request`
+ * nodes - that is the reuse - so the scope machinery below (the pre-flight, the
+ * window lifecycle, the listing) tells them apart by `cr_kind` and skips the
+ * risk-acceptance kind: it is not the maintenance-window mechanic, it authorises
+ * no terminal verb, and it is signed rather than reviewed.
+ */
+export function isRiskAcceptance(
+  node: Readonly<ReadOnlyGraphNode>,
+): boolean {
+  return node.fields[FIELDS.crKind] === CHANGE_REQUEST_KINDS.riskAcceptance;
+}
+
+/**
+ * Whether a risk acceptance is SIGNED for the given target (E8, 0.24.0): a
+ * risk-acceptance change_request aimed at exactly this account whose approval
+ * decision - the ordering manager's signature - is on it. Composes the 0.10.0
+ * `changeRequestDecisionOf` (the approval is the SAME decision) rather than
+ * re-deciding what "approved" means; the CYA test reads it to assert the artifact
+ * is a genuinely-signed change request and not a bespoke flag.
+ */
+export function riskAcceptanceSignedFor(
+  node: Readonly<ReadOnlyGraphNode>,
+  targetId: string,
+): boolean {
+  return isChangeRequest(node)
+    && isRiskAcceptance(node)
+    && node.fields[FIELDS.crTarget] === targetId
+    && changeRequestDecisionOf(node.fields[FIELDS.crDecision])
+      === CHANGE_REQUEST_DECISIONS.approve;
+}
+
+/**
  * Whether this request AUTHORISES the given action right now: it is for exactly
  * this (target, verb) and it is approved and inside its window. The single
  * question the scope pre-flight asks before it lets an out-of-scope action
@@ -366,7 +400,8 @@ function requestsFor(
 ): readonly Readonly<ReadOnlyGraphNode>[] {
   return graph
     .nodesOfKind('change_request')
-    .filter((node) => node.fields[FIELDS.crTarget] === targetId
+    .filter((node) => !isRiskAcceptance(node)
+      && node.fields[FIELDS.crTarget] === targetId
       && node.fields[FIELDS.crVerb] === verb)
     .sort((left, right) =>
       (numberField(right, FIELDS.crSubmittedAt) ?? 0)
@@ -639,10 +674,12 @@ export function changeRequestListing(
   graph: ReadOnlyGraphView,
   now: number,
 ): readonly string[] {
-  const requests = [...graph.nodesOfKind('change_request')].sort(
-    (left, right) => (numberField(right, FIELDS.crSubmittedAt) ?? 0)
-      - (numberField(left, FIELDS.crSubmittedAt) ?? 0),
-  );
+  const requests = [...graph.nodesOfKind('change_request')]
+    .filter((node) => !isRiskAcceptance(node))
+    .sort(
+      (left, right) => (numberField(right, FIELDS.crSubmittedAt) ?? 0)
+        - (numberField(left, FIELDS.crSubmittedAt) ?? 0),
+    );
 
   if (requests.length === 0) {
     return [
