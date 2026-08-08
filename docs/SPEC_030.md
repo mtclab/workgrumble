@@ -1890,3 +1890,72 @@ asserts the layout tells.
 
 more DEs (Xfce/MATE/LXQt); deeper distro behaviour (SELinux, zypper/pacman, snap, subscription-
 manager); the Windows ERA axis (95/98/XP); the Mac family; E7 cloud.
+
+# Version 0.28.0 - the rest of the desktops and the distros (E6/E5 capstone) (#47)
+
+The 0.27.0 backlog cut, shipped while the seam is warm: three more desktops, four more distros, and
+the one distro behaviour that is a real MECHANIC rather than a dialect (SELinux enforcing). Owner
+mandate 2026-08-08: "go on those are also needed". Everything here is data over the 0.27.0
+registries except two bounded extensions, named below. World, tickets, mechanics identical under
+every skin - the 0.27.0 gate philosophy carries: chrome is a LOOK, the dialect is a TABLE.
+
+## Slice 1 - three more desktops (one system extension: the second panel)
+
+- **MATE** - TWO panels: a menu bar along the top, a taskbar along the bottom (the GNOME-2
+  continuation, and the reason this slice exists first). The `Skin` registry today declares ONE
+  `PanelSpec`; extend it so a skin declares one panel or two. Every shipped skin keeps declaring
+  one - the extension is proven by the one skin that needs it, and the default stays byte-identical.
+- **Xfce** - single bottom panel, a classic Applications menu, min/max/close. The no-frills one.
+- **LXQt** - single slim bottom panel, a plain launcher, min/max/close. The lightest.
+The three bottom-panel desktops (Xfce, LXQt, Cinnamon) must still be tellable apart from their
+layout and launcher alone (menu label, panel composition, tokens) - if two of them render the same
+chrome, the skins test that already forbids twin chrome catches it.
+
+## Slice 2 - four more distros (dialect as data over the package engine)
+
+- **Debian** - apt, unchanged mechanics; the trait is temperament (old, solid, no snap push). Its
+  honest default DE is GNOME (the netinst default when a player just clicks through).
+- **openSUSE** - `zypper` verbs (`zypper install`, `zypper refresh`, `zypper update`) over the SAME
+  derived pending set and installed_packages field apt/dnf read; the YaST name appears as flavor,
+  not a built surface. Default DE: KDE.
+- **Arch** - `pacman` in its real shapes (`-S`, `-Syu`, `-Q`), rolling temperament (its pending set
+  never reads empty for long - the eternal `-Syu`). Arch ships NO default DE: choosing it is the one
+  path where Display Properties makes the player pick a desktop explicitly, which is the truest
+  thing this version says about Arch.
+- **RHEL/Rocky/Alma** - dnf with the `yum` alias answering as dnf (the muscle-memory truth), the
+  subscription-manager gag on RHEL proper (a register beat that gates nothing - comedy, not a
+  paywall mechanic), and SELinux ON (slice 3).
+Cross-family refusals carry: every box speaks exactly one family's manager and the others are
+missing binaries with the right not-found hint. Pairings ride the 0.27.0 pairing table.
+
+## Slice 3 - SELinux enforcing on the RHEL family (one incident, three verbs, bounded)
+
+The one mechanically TRUE distro behaviour, kept to a single authored beat so it teaches without
+becoming a simulator. On a RHEL-family box only: `getenforce`/`sestatus` read Enforcing (data on
+the box, like cert_expired); ONE authored denial scenario on the player's own box - a file restored
+with the wrong security context, the service refusing although `ls -la` shows permissions are
+RIGHT, the `avc: denied` line sitting in the journal - and two fixes that both work but are not the
+same: `restorecon <path>` (the advertised, correct fix) and `setenforce 0` (works instantly,
+teaches the wrong lesson, and is REMEMBERED - a security-noticed mail beat lands later, the same
+rail the Telnet notice used). The lesson under the comedy: the denial is in the journal and the
+permissions were never the problem - which is precisely the day SELinux actually costs a real
+engineer. Frustration sets diverge; no OS escapes.
+
+## Gates (once, at the version)
+
+Everything 0.27.0's gate said, still: default skin byte-identical, no golden world hash moves,
+mechanics work under every skin. New: the two-panel extension leaves every one-panel skin untouched
+(revert MATE and nothing else moves); Arch's no-default-DE path walked (pick Arch, be made to
+choose); each new dialect proves install/update/list AND its cross-family refusal; the SELinux
+denial walked end to end BOTH ways (restorecon path, setenforce path + the mail landing). Every new
+coverage-manifest entry ships its walk step IN THIS VERSION - 0.19.0/0.21.0's debt sat invisible
+until the first completed full run, and that class is now forbidden by practice. Full local gate
+(serial vitest) + full box suite (workers=1, fresh port). Codex if it completes; else overseer
+self-review.
+
+## Not in scope (backlog)
+
+The Windows ERA axis (95/98/XP); the Mac family; snap-controversy content beyond a line of chatter;
+YaST as a surface; SELinux beyond the one authored denial; Tumbleweed; E7 cloud. Proposal at
+release: E6 (#7) closes with this version - the sysadmin tier is complete with its capstone; E5
+(#6) stays open for eras/Mac/employer-era switching.
