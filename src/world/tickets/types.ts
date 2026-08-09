@@ -107,6 +107,33 @@ export interface WorldTicket {
    * it.
    */
   readonly follows?: string;
+  /**
+   * The PROJECT PHASE this task belongs to (E10, 0.29.0), when it is a project
+   * task rather than a service ticket.
+   *
+   * It changes exactly one thing and the reason is the whole distinction the
+   * epic is about: a project task is PLANNED work, so its clock is the phase's
+   * BAKED DATE rather than a duration measured from whenever it happened to
+   * arrive. A task raised at eleven because the phase before it finished early
+   * is still due at three; a duration from spawn would quietly reward finishing
+   * late, which is the exact opposite of what a deadline is for. It is also kept
+   * off the customer's SLA ladder, which answers a different question - how fast
+   * is a FAULT of theirs answered - that nobody asked about a scheduled job.
+   *
+   * Everything else about it is an ordinary ticket, deliberately: the queue row,
+   * the touch evidence, the handoff form and the graph-matched resolution rule
+   * all come free, which is the entire reason project tasks ARE tickets here.
+   *
+   * A reactive ticket the project causes - a factory ringing up because
+   * something stopped working - is NOT one of these. That is a customer with a
+   * fault, on the customer's clock, like every other fault in the queue.
+   */
+  readonly project?: {
+    /** The project node whose schedule this task is measured against. */
+    readonly of: string;
+    /** Which baked date on it this task is due by. */
+    readonly due: string;
+  };
   /** The real cause, for KB articles and chat reveals (lane B). */
   readonly cause: string;
   /** Dialogue tree id the reporter answers with. Lane B renders it. */

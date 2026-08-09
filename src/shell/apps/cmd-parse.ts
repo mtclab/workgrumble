@@ -233,6 +233,16 @@ export const COMMANDS: readonly CommandSpec[] = [
     subcommand: true,
   },
   {
+    name: 'fw',
+    usage: 'fw <status | rules <box> | audit <box> | pack <box> '
+      + '| migrate <rule> | cutover <box> | rollback <box>>',
+    summary: 'Work an edge replacement: the plan, the rule set, and the cable.',
+    minArgs: 1,
+    maxArgs: 5,
+    joined: true,
+    subcommand: true,
+  },
+  {
     name: 'notify',
     usage: 'notify <service>',
     summary: 'Tell a co-managed customer\'s own IT before you act, then act.',

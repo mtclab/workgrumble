@@ -469,6 +469,7 @@ const ROLE_TREES: Readonly<Record<MachineRole, readonly TreeSeed[]>> = {
   // this map exhaustive over every role; their trees are never read.
   [MACHINE_ROLES.appServer]: [],
   [MACHINE_ROLES.dbServer]: [],
+  [MACHINE_ROLES.firewall]: [],
 };
 
 /* -- what is INSTALLED on a box, as opposed to what it is ----------------- */

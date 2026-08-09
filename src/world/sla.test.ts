@@ -257,7 +257,18 @@ describe('the resolution clock', () => {
 
     // Every shipped ticket, not just this one: content carrying its own
     // deadline is content whose two clocks disagree about what it is.
+    //
+    // Except a PROJECT TASK (E10, 0.29.0), which is the one kind of work in this
+    // game nobody triaged because nobody had to: it was PLANNED, and it arrives
+    // with the date it was planned for. That is the whole line between proactive
+    // and reactive work, and the badge does not say "treated as P3" on it.
     for (const entry of WORLD_TICKETS) {
+      if (entry.project !== undefined) {
+        expect(entry.def.sla_ticks, entry.def.id)
+          .not.toBe(untriaged.resolution);
+        continue;
+      }
+
       expect(entry.def.sla_ticks).toBe(untriaged.resolution);
     }
   });

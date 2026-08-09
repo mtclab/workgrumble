@@ -107,6 +107,11 @@ describe('company world', () => {
       // (0.11.0) is filed by the player against a co-managed customer's box, of
       // which the in-house estate has none - 0 here for the same additive reason.
       coordination: 0,
+      // And no projects (E10, 0.29.0): a project is stood up at kickoff for an
+      // engineer at the MSP, and the probation shop has neither the tier nor the
+      // customer. 0 here for the same additive reason as the three above - the
+      // kind exists, this world has none of it, and no probation golden moves.
+      project: 0,
       share: 2,
       group: 3,
       mail_rule: 2,

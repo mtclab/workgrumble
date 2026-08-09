@@ -939,6 +939,56 @@ export const FIELDS = {
   coordCustomer: 'coord_customer',
   coordNotifiedAt: 'coord_notified_at',
   /**
+   * The PROJECT's schedule and its facts (0.29.0), on the `project` node.
+   *
+   * Two families and no third. The SCHEDULE - started, and the tick each phase
+   * is due by - is baked ONCE at kickoff out of the business-hours calendar
+   * (`serviceDeadline`), which is what makes a plan three days out survive a
+   * save: reload at any minute and the dates the board draws are the dates it
+   * always drew. The FACTS are the two one-off minutes a phase turns on: when
+   * the cable actually moved, and when somebody moved it back.
+   *
+   * There is deliberately no `phase` here. The live phase is DERIVED from these
+   * ticks, the clock and the state of the estate every time anybody asks
+   * (`world/project.ts`), the same read-never-copy discipline a change request's
+   * status keeps - so no surface can be showing a phase the world has left.
+   */
+  projectCustomer: 'project_customer',
+  projectStartedAt: 'project_started_at',
+  projectAuditDue: 'project_audit_due',
+  projectStagingDue: 'project_staging_due',
+  projectCutoverDue: 'project_cutover_due',
+  projectHandoverDue: 'project_handover_due',
+  projectCutoverAt: 'project_cutover_at',
+  projectRolledBackAt: 'project_rolled_back_at',
+  /**
+   * The edge-replacement project's own estate fields (0.29.0).
+   *
+   * On the OLD edge box: whether anybody has established what is actually on it,
+   * and - the field the whole beat turns on - WHERE that answer came from. A
+   * handover pack is what somebody wrote down; the live config is what the box
+   * is doing. Both count as an audit, both pass the audit gate, and only one of
+   * them knows about the rules nobody wrote down.
+   */
+  fwAudited: 'fw_audited',
+  fwAuditSource: 'fw_audit_source',
+  fwAuditedAt: 'fw_audited_at',
+  /**
+   * On each RULE - a named thing the edge does, `runs_on` the box that does it.
+   * The project it belongs to (so a gate can ask about this project's rules and
+   * not every rule in the world), the order canon migrates in (routing, NAT,
+   * policies, VPNs), whether the handover pack lists it, whether it has been
+   * carried onto the new box, and - for the two that can be missed - the ticket
+   * the morning after cutover raises about it, and the minute it did.
+   */
+  fwRuleProject: 'fw_rule_project',
+  fwRuleClass: 'fw_rule_class',
+  fwRuleOrder: 'fw_rule_order',
+  fwRuleDocumented: 'fw_rule_documented',
+  fwRuleMigrated: 'fw_rule_migrated',
+  fwRuleScreamTicket: 'fw_rule_scream_ticket',
+  fwRuleScreamedAt: 'fw_rule_screamed_at',
+  /**
    * What is inside the case, as two lines a support call reads out.
    *
    * They are fields rather than strings in the About dialog because two
@@ -1629,6 +1679,15 @@ export const DEVICE_TYPES = {
    * desk can push a profile to and one it cannot touch.
    */
   phone: 'phone',
+  /**
+   * The one at the bottom of the comms cabinet (0.29.0): the ISP's fibre
+   * handoff, the network terminating equipment the whole site's internet
+   * arrives on. It is a device rather than a machine because nobody logs into
+   * it and nobody may configure it - it has one cable out of it, and which box
+   * that cable is in IS the cutover. Moving it is a real edge in the graph,
+   * which is why the rollback can be a verb rather than an apology.
+   */
+  circuit: 'circuit',
 } as const;
 
 /**
@@ -1738,6 +1797,14 @@ export const MACHINE_ROLES = {
   appServer: 'app_server',
   /** A Linux box running the product's database. */
   dbServer: 'db_server',
+  /**
+   * The edge (0.29.0): the box the site's internet arrives through, and the
+   * only one on an estate whose failure is everybody's at once. Its own role
+   * rather than a server with a firewall on it, because what it IS decides
+   * everything about it - nothing it runs is a service anybody logs into, and
+   * the work it takes is rules rather than restarts.
+   */
+  firewall: 'firewall',
 } as const;
 
 export type MachineRole = (typeof MACHINE_ROLES)[keyof typeof MACHINE_ROLES];
@@ -1750,6 +1817,7 @@ export const MACHINE_ROLE_LABELS: Readonly<Record<MachineRole, string>> = {
   [MACHINE_ROLES.iisServer]: 'IIS server',
   [MACHINE_ROLES.appServer]: 'Application server',
   [MACHINE_ROLES.dbServer]: 'Database server',
+  [MACHINE_ROLES.firewall]: 'Edge firewall',
 };
 
 export function machineRoleOf(value: unknown): MachineRole {
@@ -1759,6 +1827,7 @@ export function machineRoleOf(value: unknown): MachineRole {
     || value === MACHINE_ROLES.iisServer
     || value === MACHINE_ROLES.appServer
     || value === MACHINE_ROLES.dbServer
+    || value === MACHINE_ROLES.firewall
     ? value
     : MACHINE_ROLES.workstation;
 }
@@ -2050,6 +2119,29 @@ export function changeRequestDecisionOf(
  * contract. A pure function of the role so the queue, the refusal and any test
  * read the same answer.
  */
+/**
+ * Where an edge box's rule set came from (0.29.0), and the hinge of the first
+ * project: a handover pack is what somebody wrote down and a live configuration
+ * is what the box is doing, and the difference between them is two rules and a
+ * phone call from a factory. A closed pair, beside every other closed enum this
+ * world keeps, so the verb that writes it and the gate that reads it cannot
+ * spell it differently.
+ */
+export const AUDIT_SOURCES = {
+  /** Somebody read the live configuration off the box. */
+  config: 'config',
+  /** Somebody took the handover pack's rule list as read. */
+  pack: 'pack',
+} as const;
+
+export type AuditSource = (typeof AUDIT_SOURCES)[keyof typeof AUDIT_SOURCES];
+
+export function auditSourceOf(value: unknown): AuditSource | null {
+  return value === AUDIT_SOURCES.config || value === AUDIT_SOURCES.pack
+    ? value
+    : null;
+}
+
 export function isServerRole(role: MachineRole): boolean {
   return role !== MACHINE_ROLES.workstation;
 }

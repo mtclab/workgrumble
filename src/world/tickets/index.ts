@@ -7,10 +7,12 @@ import {
   FS_ACTION_IDS,
   HELPDESK_ACTION_IDS,
   INCIDENT_ACTION_IDS,
+  PROJECT_ACTION_IDS,
   SYSTEMD_ACTION_IDS,
 } from '../actions';
 import { companySetup } from '../company';
 import { FIELDS, slaTierOf } from '../fields';
+import { serviceMinutesBetween } from '../hours';
 import { DEMO_ACTIONS, DEMO_TICKET, WORLD_IDS } from '../demo-world';
 import {
   type Classification,
@@ -41,6 +43,7 @@ import { MSP_TICKETS } from './msp';
 import { assertPathsAimAtRealNodes, seededNodeIds } from './solvable';
 import type { WorldTicket } from './types';
 import { mspSetup } from '../msp-company';
+import { ardenEdgeKickoffSetup } from '../project';
 import { MSP_WEEK } from '../msp-week';
 import { bodgeSetup } from '../second-company';
 import { SECOND_WEEK } from '../second-week';
@@ -141,6 +144,9 @@ const KNOWN_ACTION_IDS: ReadonlySet<string> = new Set<string>([
   // The filesystem-permission verbs (E6, 0.21.0): the permission-denied fix path
   // chowns/chmods a config file readable before it restarts the unit.
   ...FS_ACTION_IDS,
+  // The project verbs (E10, 0.29.0): a phase task's path audits a box, carries
+  // a rule, moves a circuit, or writes the as-built down.
+  ...PROJECT_ACTION_IDS,
   ...Object.values(DEMO_ACTIONS),
 ]);
 
@@ -176,7 +182,20 @@ function validateWorldTickets(
     // app says out loud which place that is. A ticket carrying its own
     // deadline is a ticket whose badge reads "treated as P3" next to a
     // resolution target from a tier the player was never shown.
-    if (def.sla_ticks !== UNTRIAGED_SLA_TICKS) {
+    // A PROJECT TASK is the one exception, and it is the distinction the whole
+    // epic turns on: planned work arrives with a DATE on it. Everything else
+    // arrives untriaged and is graded against the ladder, because a fault has
+    // not been planned by anybody. A project task on a four-hour Silver clock
+    // would breach on the afternoon it was issued, which is not difficulty - it
+    // is a ticket nobody could ever have closed in time.
+    if (entry.project !== undefined) {
+      if (!Number.isSafeInteger(def.sla_ticks) || def.sla_ticks <= 0) {
+        throw new Error(
+          `Project task "${def.id}" needs a planned budget in whole minutes; a `
+          + 'task with no date on it is a ticket, and it should say so.',
+        );
+      }
+    } else if (def.sla_ticks !== UNTRIAGED_SLA_TICKS) {
       throw new Error(
         `Ticket "${def.id}" arrives with ${String(def.sla_ticks)} minutes to `
         + `resolve; an untriaged ticket gets ${String(UNTRIAGED_SLA_TICKS)}, `
@@ -266,6 +285,13 @@ function validateWorldTickets(
       ...seededNodeIds(companySetup()),
       ...seededNodeIds(bodgeSetup()),
       ...seededNodeIds(mspSetup()),
+      // And the project node the kickoff stands up (E10, 0.29.0). Its ESTATE is
+      // in `mspSetup` with the rest of the customer's - the boxes were procured
+      // before anybody scheduled anything - but the project itself arrives at
+      // kickoff with its dates baked against that minute, so the id a cutover
+      // step names is real without being seeded. The tick handed in here is
+      // irrelevant: this asks which node ids exist, not when.
+      ...seededNodeIds(ardenEdgeKickoffSetup(0)),
       ...seededNodeIds(halcyonSetup()),
     ]),
   );
@@ -367,7 +393,9 @@ export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekTickets(
     // because the roster is what the solvability, path and dialogue gates read;
     // its tickets are proven against the second employer's week below.
     ...BODGE_TICKETS,
-    // The MSP's skeleton queue (0.8.0), proven against the MSP's week below.
+    // The MSP's queue (0.8.0), and the first project's tasks with it (E10,
+    // 0.29.0) - all summoned, none dealt by a day, which is what makes a project
+    // something the player is handed rather than something the calendar deals.
     ...MSP_TICKETS,
     // The corporate employer's VIP-exception queue (E8, 0.22.0), proven against
     // the corporate week below.
@@ -412,6 +440,10 @@ export function spawnWorldTicket(
   engine: {
     registerTicket(def: TicketDef): void;
     readonly graph: ReadOnlyGraphView;
+    // The clock, because a PROJECT TASK's deadline is a DATE the project baked
+    // rather than a duration from now (E10, 0.29.0), and turning a date into
+    // the budget the engine takes needs to know what minute it is.
+    now(): number;
   },
   id: string,
 ): void {
@@ -421,7 +453,7 @@ export function spawnWorldTicket(
     throw new Error(`Nobody wrote a ticket called "${id}".`);
   }
 
-  engine.registerTicket(defForSpawn(entry, engine.graph));
+  engine.registerTicket(defForSpawn(entry, engine.graph, engine.now()));
 }
 
 /**
@@ -438,8 +470,9 @@ export function spawnWorldTicket(
 function defForSpawn(
   entry: WorldTicket,
   graph: ReadOnlyGraphView,
+  now: number,
 ): TicketDef {
-  return defForVip(defForTier(entry, graph), entry, graph);
+  return defForVip(defForTier(entry, graph, now), entry, graph);
 }
 
 /**
@@ -494,7 +527,25 @@ function defForVip(
 function defForTier(
   entry: WorldTicket,
   graph: ReadOnlyGraphView,
+  now: number,
 ): TicketDef {
+  // A project task is due on its PHASE's baked date (E10, 0.29.0), whenever it
+  // arrives, so the budget the engine gets is the working minutes between this
+  // minute and that date. The ladder is for reactive work: a customer's tier
+  // says how fast a FAULT of theirs is answered, and it has nothing to say
+  // about a job somebody scheduled on Monday.
+  //
+  // With no project in the world - a bare estate, a test standing one task up
+  // to look at it - the authored budget stands, which is the honest fallback: a
+  // date that does not exist cannot be the deadline.
+  if (entry.project !== undefined) {
+    const due = graph.getField(entry.project.of, entry.project.due);
+
+    return typeof due === 'number'
+      ? { ...entry.def, sla_ticks: serviceMinutesBetween(now, due) }
+      : entry.def;
+  }
+
   const tier = slaTierForTicketNodes(graph, entry.nodes);
 
   if (tier === null) {

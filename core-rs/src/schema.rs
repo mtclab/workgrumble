@@ -12,7 +12,7 @@ use crate::error::{EngineError, EngineResult};
 use crate::refuse;
 use crate::value::FieldValue;
 
-pub const NODE_KINDS: [&str; 15] = [
+pub const NODE_KINDS: [&str; 16] = [
     "person",
     "account",
     "machine",
@@ -48,6 +48,18 @@ pub const NODE_KINDS: [&str; 15] = [
     // rather than being a field on the thing it clears, and it serialises whole
     // so a notice given mid-day round-trips a reload.
     "coordination",
+    // A PROJECT (0.29.0). Work that is not a ticket: a phased piece of delivery
+    // with an ordered set of gates, its own baked schedule, and tasks that ride
+    // the ordinary ticket lifecycle. Its own kind for the same reason a change
+    // request is one - it is a first-class world artifact rather than a field on
+    // anything, and a save serialises it whole so a reload lands mid-phase on the
+    // same minute the phase was always going to gate on. What it CARRIES is the
+    // schedule (the ticks its phases are due by, computed once at kickoff from
+    // the business-hours calendar) and the facts a phase turns on (the minute the
+    // cutover happened, the minute it was rolled back). What it never carries is
+    // the phase itself: that is derived from those ticks, the clock and the state
+    // of the estate, so nothing stored can drift from what the world looks like.
+    "project",
     "share",
     "group",
     "mail_rule",
@@ -303,6 +315,30 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
             assert_optional(fields, "coord_customer", is_string, "a string")?;
             assert_optional(fields, "coord_notified_at", is_number, "a number")
         }
+        "project" => {
+            // A project (0.29.0). Two families of field and no third: the
+            // SCHEDULE, baked once at kickoff (the tick each phase is due by,
+            // computed from the business-hours calendar, so a save mid-phase
+            // reloads onto the minute it was always going to gate on), and the
+            // FACTS a phase turns on (the minute the cutover happened, the
+            // minute it was reversed). Every one of them a number, validated at
+            // load like a change request's window, because a hand-edited save
+            // that put a word where a tick goes would produce a project whose
+            // phase could not be derived at all.
+            //
+            // There is deliberately no "phase" field to validate. The phase is
+            // read off these ticks, the clock and the estate every time anybody
+            // asks, so there is nothing stored for a save to disagree with.
+            assert_optional(fields, "name", is_string, "a string")?;
+            assert_optional(fields, "project_customer", is_string, "a string")?;
+            assert_optional(fields, "project_started_at", is_number, "a number")?;
+            assert_optional(fields, "project_audit_due", is_number, "a number")?;
+            assert_optional(fields, "project_staging_due", is_number, "a number")?;
+            assert_optional(fields, "project_cutover_due", is_number, "a number")?;
+            assert_optional(fields, "project_handover_due", is_number, "a number")?;
+            assert_optional(fields, "project_cutover_at", is_number, "a number")?;
+            assert_optional(fields, "project_rolled_back_at", is_number, "a number")
+        }
         "share" => {
             assert_optional(fields, "name", is_string, "a string")?;
             assert_optional(fields, "path", is_string, "a string")
@@ -544,6 +580,43 @@ mod tests {
             "kind": "contains",
         }))
         .is_ok());
+    }
+
+    /// The project kind (0.29.0), and the one thing its validation is FOR: the
+    /// schedule is ticks. A phase is derived from these numbers against the
+    /// clock, so a word where a tick goes is a project with no phase at all -
+    /// which is a refusal at load rather than a board that renders nothing.
+    #[test]
+    fn accepts_a_project_and_refuses_a_schedule_that_is_not_ticks() {
+        let project = validate_node(&json!({
+            "id": "project:arden-edge",
+            "kind": "project",
+            "fields": {
+                "name": "ARDEN-MFG edge firewall replacement",
+                "project_customer": "customer:arden",
+                "project_started_at": 2_880,
+                "project_audit_due": 3_120,
+                "project_staging_due": 3_420,
+                "project_cutover_due": 4_740,
+                "project_handover_due": 6_120,
+            },
+        }))
+        .expect("valid project");
+
+        assert_eq!(project.kind, "project");
+        assert_eq!(project.fields.len(), 7);
+
+        let error = validate_node(&json!({
+            "id": "project:arden-edge",
+            "kind": "project",
+            "fields": { "project_cutover_due": "Thursday afternoon" },
+        }))
+        .expect_err("a phase deadline is a tick");
+
+        assert_eq!(
+            error.message(),
+            "Field \"project_cutover_due\" must be a number."
+        );
     }
 
     #[test]

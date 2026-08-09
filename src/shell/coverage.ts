@@ -32,6 +32,7 @@ import {
   FS_ACTIONS,
   HELPDESK_ACTIONS,
   INCIDENT_ACTIONS,
+  PROJECT_ACTIONS,
   REQUEST_ACTIONS,
   SELINUX_ACTIONS,
   SOFTWARE_ACTIONS,
@@ -2684,6 +2685,39 @@ const ENTRIES = [
       + 'way to reach the morning the sweep lands.',
   },
   {
+    id: 'cmd.fw',
+    surface: 'cmd',
+    control: 'fw <status | rules <box> | audit <box> | pack <box> '
+      + '| migrate <rule> | cutover <box> | rollback <box>>',
+    does: 'The whole of the first PROJECT (E10, 0.29.0), as the seven things an '
+      + 'edge replacement comes down to. "fw status" is the plan against the '
+      + 'clock - every phase, its date, and the working minutes left, negative '
+      + 'while there is still a project to save. "fw rules" reads what a box is '
+      + 'carrying, and reads it from whatever source the world has: the handover '
+      + 'pack until somebody reads the box. "fw audit" reads the live '
+      + 'configuration and "fw pack" takes the pack as read - two verbs because '
+      + 'they are two different acts, both of which close the audit task, and '
+      + 'only one of which knows about the rules nobody wrote down. "fw migrate" '
+      + 'carries one rule onto the new box. "fw cutover" moves the site\'s '
+      + 'circuit, and is REFUSED outside the change window the ordinary '
+      + 'changereq flow opened - the project gets no private calendar. "fw '
+      + 'rollback" moves it back, which costs the window and undoes nothing '
+      + 'else. Gated on the promotion, like ssh: a project is not service-desk '
+      + 'work.',
+    command: 'fw',
+    actions: [
+      PROJECT_ACTIONS.auditConfig,
+      PROJECT_ACTIONS.auditPack,
+      PROJECT_ACTIONS.migrateRule,
+      PROJECT_ACTIONS.cutover,
+      PROJECT_ACTIONS.rollback,
+    ],
+    run: 'sysadmin',
+    why: 'A project arrives with the promotion and needs the engineer tier for '
+      + 'every verb in it, so no service-desk week can reach a single one of '
+      + 'them - the same threshold ssh lives behind, walked in the same run.',
+  },
+  {
     id: 'cmd.dpkg',
     surface: 'cmd',
     control: 'dpkg -l',
@@ -3526,6 +3560,13 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'top of a service somebody was using.',
   [WORLD_ACTIONS.staleLogon]: 'A tablet in a cupboard offering a password '
     + 'that was changed in the spring, every five minutes.',
+  [PROJECT_ACTIONS.screamNoticed]: 'Somebody at a factory noticing that the '
+    + 'thing they used yesterday has stopped working, on the morning after a '
+    + 'cutover that left their rule behind. Nobody presses it and nobody can: '
+    + 'the day loop settles it at the next start of shift off `screamTestDue`, '
+    + 'the same rail the compliance sweep and the unverified enrolment arrive '
+    + 'on, and it charges nothing - what the player meets is the ticket it '
+    + 'raises beside it, with the rule named on it (walked as cmd.fw).',
   [SELINUX_ACTIONS.selinuxNoticed]: 'The overnight compliance sweep reading a '
     + 'box that was left in permissive mode, dispatched by the day loop at the '
     + 'next start of shift - the same rail the unverified enrolment\'s bill '

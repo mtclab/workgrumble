@@ -56,6 +56,7 @@ import {
 import { mspMachineHostname, MSP_IDS } from '../msp-company';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import { baselineServiceId } from '../services';
+import { PROJECT_TICKETS } from './project';
 import type { WorldTicket } from './types';
 
 /* -- FONTAINE-LAW: a Windows-only law firm on a helpdesk contract --------- */
@@ -2155,4 +2156,11 @@ export const MSP_TICKETS: readonly WorldTicket[] = [
   // The permission-denied incident (E6, 0.21.0): a service down because its
   // config file is owned wrong - the fix is chown/chmod + restart, not a retry.
   SYSENG_PERMISSION_DENIED,
+  // ARDEN-MFG's edge firewall replacement (E10, 0.29.0): the first PROJECT, as
+  // four phase tasks, their parent delivery row, and the two tickets a cutover
+  // done off the handover pack raises the next morning. They are in the MSP
+  // roster because they are Fettle & Crane's work on a Fettle & Crane customer -
+  // every gate that stands a world up per employer therefore stands the right
+  // one up for them, without a fourth list of exceptions to keep in step.
+  ...PROJECT_TICKETS,
 ];

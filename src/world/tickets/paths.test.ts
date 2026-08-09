@@ -145,6 +145,18 @@ function sessionWithEveryTicket(): WorldSession {
   );
 }
 
+/**
+ * How long a per-ticket sweep is allowed to take.
+ *
+ * The three tests below stand up a WHOLE EMPLOYER WORLD for every row in the
+ * roster - four estates, seventy-odd tickets - and the roster grows with every
+ * version. Five seconds was the default and the roster crossed it, which is a
+ * fact about how much content this game now has rather than about anything
+ * being slow; a sweep that started skipping rows to fit inside a default would
+ * be a gate quietly covering less than it says it does.
+ */
+const ROSTER_SWEEP_MS = 30_000;
+
 describe('shipped tickets', () => {
   it('spawns every shipped ticket open, with a live SLA', () => {
     for (const entry of WORLD_TICKETS) {
@@ -192,13 +204,22 @@ describe('shipped tickets', () => {
       // other ticket moved: every reporter but one is off the list, and every one
       // of their deadlines is the number it was.
       const forced = vipForcedPriority(session.engine.graph, entry.def.reporter);
+      // And a PROJECT TASK (E10, 0.29.0) keeps the date it was PLANNED with,
+      // whichever customer it is for: the tier ladder answers "how fast is a
+      // fault of theirs answered", which is not a question anybody asked about
+      // a job scheduled three days ago. It is asserted in the same line as the
+      // other two so the exemption is visible beside what it is an exemption
+      // from - a project task on a four-hour Silver clock breaches on the
+      // afternoon it is issued, and the queue would be right to say so.
       expect(
         session.engine.graph.getField(entry.def.id, FIELDS.slaDeadline),
         entry.def.id,
       ).toBe(
-        forced !== null
-          ? tierTargetsFor(tier, forced).resolution
-          : tier === null ? entry.def.sla_ticks : tierResolutionTicks(tier),
+        entry.project !== undefined
+          ? entry.def.sla_ticks
+          : forced !== null
+            ? tierTargetsFor(tier, forced).resolution
+            : tier === null ? entry.def.sla_ticks : tierResolutionTicks(tier),
       );
     }
 
@@ -300,6 +321,17 @@ describe('shipped tickets', () => {
       // The permission-denied incident (E6, 0.21.0): a service down on a
       // wrong-owned config file - chown/chmod it readable, then restart.
       'ticket:syseng-permission-denied',
+      // ARDEN-MFG's edge firewall replacement (E10, 0.29.0): the first PROJECT.
+      // The delivery row and its four phase tasks - which arrive with the
+      // project rather than on any day - then the two tickets a factory raises
+      // the morning after a cutover that left a rule behind.
+      'ticket:arden-fw-project',
+      'ticket:arden-fw-audit',
+      'ticket:arden-fw-staging',
+      'ticket:arden-fw-cutover',
+      'ticket:arden-fw-handover',
+      'ticket:arden-fw-scream-brenmark',
+      'ticket:arden-fw-scream-scanners',
       // And the corporate employer's three VIP exceptions (E8, 0.22.0), spawned
       // into the Halcyon world: the CEO's MFA off, the EA's mailbox delegate, and
       // the CEO taken off the mail filter - the setup a later BEC incident reads.
@@ -332,7 +364,7 @@ describe('shipped tickets', () => {
       'ticket:halcyon-finance-ledger',
       'ticket:halcyon-ceo-tablet',
     ]);
-  });
+  }, ROSTER_SWEEP_MS);
 
   it('leaves the reported symptom in the world it spawns into', () => {
     const session = sessionWithEveryTicket();
@@ -547,7 +579,7 @@ describe('escalation policy', () => {
         expect(session.engine.ticketState(entry.def.id)).toBe('resolved');
       }
     }
-  });
+  }, ROSTER_SWEEP_MS);
 
   it('refuses to escalate a ticket that is fixable from the desk', () => {
     const session = sessionWith('ticket:locked-account');

@@ -11,6 +11,13 @@ export { APT_PACKAGE_PARAM } from './apt';
 export { FS_GROUP_PARAM, FS_MODE_PARAM, FS_OWNER_PARAM } from './fs';
 export { SELINUX_MODE_PARAM } from './selinux';
 export {
+  CUTOVER_INCOMPLETE_REASON,
+  PROJECT_CIRCUIT_PARAM,
+  PROJECT_FROM_PARAM,
+  PROJECT_PARAM,
+  RULE_BEFORE_AUDIT_REASON,
+} from './project';
+export {
   PROMOTION_REPUTATION,
   SSH_HOST_PARAM,
   SYSTEMS_ENGINEER_TITLE,
@@ -29,6 +36,7 @@ import { MAIL_RULE_ACTIONS } from './mail-rule';
 import { METER_ACTION_DATA } from './meters';
 import { OVERRIDE_ACTIONS } from './override';
 import { PRESENCE_ACTION_DATA } from './presence';
+import { PROJECT_ACTION_DATA } from './project';
 import { REQUEST_ACTION_DATA } from './request';
 import { SECURITY_ACTIONS } from './security';
 import { SELINUX_ACTION_DATA } from './selinux';
@@ -122,6 +130,9 @@ export {
   INCIDENT_ACTION_IDS,
   INCIDENT_ACTIONS,
   type IncidentActionId,
+  PROJECT_ACTION_IDS,
+  PROJECT_ACTIONS,
+  type ProjectActionId,
   REQUEST_ACTION_IDS,
   REQUEST_ACTIONS,
   type RequestActionId,
@@ -224,6 +235,12 @@ export function helpdeskActions(): readonly ActionData[] {
     // the queue-jump's bill, a world verb the day loop settles when the clock on
     // whichever ticket was left waiting runs out.
     ...VIP_ACTIONS,
+    // The project verbs (E10, 0.29.0): the audit (two of them, and they are not
+    // the same act), the per-rule migration, and the cutover and its rollback -
+    // the cable, moved and moved back. All player verbs bar the last, which is
+    // the world noticing a rule nobody carried, settled the next morning by the
+    // day loop on the same rail the compliance sweep runs on.
+    ...PROJECT_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

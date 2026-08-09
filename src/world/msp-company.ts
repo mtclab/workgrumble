@@ -311,6 +311,30 @@ export const MSP_IDS = {
   ardenServer: 'machine:arden-srv-01',
 
   /**
+   * ARDEN-MFG's edge, and the estate the first PROJECT is about (0.29.0, E10).
+   *
+   * All of it is seeded on the Monday, because all of it is genuinely there on
+   * the Monday: the old box has been running the plant since 2014, the new one
+   * was procured six weeks ago and has been sitting in the comms cabinet in its
+   * packaging ever since (procurement is the invisible wall every source in the
+   * research names, and the honest way to ship it inside one week is to have it
+   * already over), and the circuit is the ISP's handoff both of them are cabled
+   * near. What ARRIVES at kickoff is the project - a schedule - and nothing else.
+   *
+   * `ARD-FW-01` carries the rule set as `service` nodes `runs_on` it: a named
+   * thing the edge does, with a state, which is what a `service` is in this
+   * world. Two of the six are in nobody's documentation.
+   */
+  ardenEdgeOld: 'machine:ard-fw-01',
+  ardenEdgeNew: 'machine:ard-fw-02',
+  /**
+   * The ISP's fibre handoff at the bottom of the cabinet. One cable comes out
+   * of it, and which box that cable is in IS the cutover - an edge in the graph,
+   * moved by a verb and moved back by another.
+   */
+  ardenCircuit: 'device:ard-circuit-01',
+
+  /**
    * TILLMAN-FREIGHT, the small trades business the MSP signs mid-week (0.13.0).
    * None of these is in `mspSetup()`: they are stood up by the onboarding event
    * (`mspOnboardingSetup`), so at Monday boot the customer does not exist and the
@@ -671,6 +695,33 @@ const MACHINES: readonly MachineSeed[] = [
     memory: '32 GB',
     diskFree: 171_798_691_840,
   },
+  // The edge, old and new (0.29.0). Both Linux, because a small-business
+  // firewall is: a packet filter and a VPN daemon on a box, which is what the
+  // firewall unit baseline gives each of them. Neither has anything wrong with
+  // it - the old one works and the new one boots clean with no rules on it at
+  // all, and that gap is the entire project.
+  {
+    id: MSP_IDS.ardenEdgeOld,
+    hostname: 'ARD-FW-01',
+    role: MACHINE_ROLES.firewall,
+    os: MACHINE_OS.linux,
+    customer: MSP_CUSTOMERS.arden,
+    processor: 'The edge box the plant has run behind since 2014, last touched '
+      + 'by a contractor nobody can name',
+    memory: '2 GB',
+    diskFree: 3_221_225_472,
+  },
+  {
+    id: MSP_IDS.ardenEdgeNew,
+    hostname: 'ARD-FW-02',
+    role: MACHINE_ROLES.firewall,
+    os: MACHINE_OS.linux,
+    customer: MSP_CUSTOMERS.arden,
+    processor: 'The replacement, racked six weeks ago and still on its factory '
+      + 'configuration',
+    memory: '8 GB',
+    diskFree: 51_539_607_552,
+  },
 
   // ELMWOOD-DENTAL: fully-managed, Windows-only and locked down. An operatory
   // (chair-side) workstation the X-ray sensor plugs into, a reception desktop,
@@ -710,6 +761,105 @@ const MACHINES: readonly MachineSeed[] = [
       + 'imaging bridge, in a cupboard behind the sterilisation room',
     memory: '32 GB',
     diskFree: 214_748_364_800,
+  },
+];
+
+/* -- ARDEN-MFG's edge rule set (0.29.0, E10) ------------------------------ */
+
+/** The project the edge replacement is, by id. Its node arrives at kickoff. */
+export const ARDEN_EDGE_PROJECT = 'project:arden-edge';
+
+export const ARDEN_EDGE_PROJECT_NAME =
+  'ARDEN-MFG: edge firewall replacement (ARD-FW-01 -> ARD-FW-02)';
+
+/** The two tickets a cutover that missed something raises the next morning. */
+export const ARDEN_SCREAM_TICKETS = {
+  vendorTunnel: 'ticket:arden-fw-scream-brenmark',
+  scanners: 'ticket:arden-fw-scream-scanners',
+} as const;
+
+interface EdgeRuleSeed {
+  readonly id: string;
+  /** What a listing prints. */
+  readonly name: string;
+  /** What a player types. */
+  readonly short: string;
+  readonly ruleClass: 'route' | 'nat' | 'policy' | 'vpn';
+  readonly order: number;
+  /** Whether the handover pack lists it. Two of these do not. */
+  readonly documented: boolean;
+  /** The ticket it becomes the morning after a cutover that left it behind. */
+  readonly screamTicket?: string;
+}
+
+/**
+ * The rule set on ARD-FW-01, in the order canon migrates a firewall in: routing
+ * first, then NAT, then policies, then VPNs (FireMon's checklist, and every
+ * engineer who has done one). Six rules, four of them in the handover pack.
+ *
+ * The two that are not in the pack are the two every real migration finds the
+ * hard way, and both are documented failures rather than invented ones: a hole
+ * a machine vendor asked for years ago and nobody wrote down, and an inbound
+ * port a cloud service calls back on that was opened for a pilot and kept. They
+ * are not hidden - the box will tell anybody who reads its live configuration -
+ * they are simply not on the piece of paper.
+ */
+const ARDEN_EDGE_RULES: readonly EdgeRuleSeed[] = [
+  {
+    id: 'service:ard-fw-01/wan-default',
+    name: 'WAN default route - Vector Broadband handoff',
+    short: 'wan-default',
+    ruleClass: 'route',
+    order: 1,
+    documented: true,
+  },
+  {
+    id: 'service:ard-fw-01/nat-portal',
+    name: 'NAT 443 inbound -> ARDEN-SRV-01 (shop-floor scheduling portal)',
+    short: 'nat-portal',
+    ruleClass: 'nat',
+    order: 2,
+    documented: true,
+  },
+  {
+    id: 'service:ard-fw-01/policy-plant',
+    name: 'Policy: office VLAN -> plant VLAN, print and file only',
+    short: 'policy-plant',
+    ruleClass: 'policy',
+    order: 3,
+    documented: true,
+  },
+  {
+    id: 'service:ard-fw-01/vpn-coalport',
+    name: 'Site-to-site VPN: Coalport yard',
+    short: 'vpn-coalport',
+    ruleClass: 'vpn',
+    order: 4,
+    documented: true,
+  },
+  {
+    // The vendor hole. Brenmark's engineers dial into the press line's PLC to
+    // read fault codes, and it has been open since the line was commissioned.
+    // It is on nobody's list because the person who agreed it left in 2019.
+    id: 'service:ard-fw-01/vpn-brenmark',
+    name: 'Vendor tunnel: Brenmark press line PLC support (IPsec, 2019)',
+    short: 'vpn-brenmark',
+    ruleClass: 'vpn',
+    order: 5,
+    documented: false,
+    screamTicket: ARDEN_SCREAM_TICKETS.vendorTunnel,
+  },
+  {
+    // The pilot that never ended. The goods-in scanners were trialled on a
+    // hosted service that calls back inbound; the trial finished, the scanners
+    // stayed, and the rule stayed with them.
+    id: 'service:ard-fw-01/nat-scanners',
+    name: 'NAT 5601 inbound -> goods-in scanner callback (pilot, never removed)',
+    short: 'nat-scanners',
+    ruleClass: 'nat',
+    order: 6,
+    documented: false,
+    screamTicket: ARDEN_SCREAM_TICKETS.scanners,
   },
 ];
 
@@ -989,6 +1139,51 @@ export function mspSetup(): readonly SetupOp[] {
     to: MSP_IDS.elmwoodServer,
     kind: 'runs_on',
   });
+
+  // ARDEN-MFG's edge (0.29.0): the ISP handoff, cabled into the OLD box, and
+  // the rule set that box is enforcing. Seeded whole and seeded HEALTHY - there
+  // is no fault here and there never was. The project is not a repair.
+  addNode(ops, {
+    id: MSP_IDS.ardenCircuit,
+    kind: 'device',
+    fields: {
+      [FIELDS.name]: 'Vector Broadband fibre handoff (NTE), comms cabinet',
+      [FIELDS.type]: DEVICE_TYPES.circuit,
+      [FIELDS.powered]: true,
+    },
+  });
+  addEdge(ops, {
+    from: MSP_IDS.ardenCircuit,
+    to: MSP_IDS.ardenEdgeOld,
+    kind: 'connected_to',
+  });
+
+  for (const rule of ARDEN_EDGE_RULES) {
+    addNode(ops, {
+      id: rule.id,
+      kind: 'service',
+      fields: {
+        [FIELDS.name]: rule.name,
+        [FIELDS.serviceName]: rule.short,
+        [FIELDS.status]: SERVICE_STATUS.running,
+        [FIELDS.startupType]: STARTUP_TYPES.automatic,
+        [FIELDS.fwRuleProject]: ARDEN_EDGE_PROJECT,
+        [FIELDS.fwRuleClass]: rule.ruleClass,
+        [FIELDS.fwRuleOrder]: rule.order,
+        [FIELDS.fwRuleDocumented]: rule.documented,
+        // False rather than absent, and it matters: the staging gate asks the
+        // engine for rules whose `fw_rule_migrated` EQUALS false, and equality
+        // is the only match the assertion language has. A rule that carried the
+        // field only once somebody had migrated it would be invisible to the
+        // gate that is supposed to be waiting for it.
+        [FIELDS.fwRuleMigrated]: false,
+        ...(rule.screamTicket === undefined
+          ? {}
+          : { [FIELDS.fwRuleScreamTicket]: rule.screamTicket }),
+      },
+    });
+    addEdge(ops, { from: rule.id, to: MSP_IDS.ardenEdgeOld, kind: 'runs_on' });
+  }
 
   // The identity furniture the helpdesk-scope tickets hang off: the iManage
   // exclusive-lock the partner is still holding (its membership IS who has the

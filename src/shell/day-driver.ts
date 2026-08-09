@@ -23,6 +23,10 @@ import {
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
   INCIDENT_ACTIONS,
+  PROJECT_ACTIONS,
+  PROJECT_CIRCUIT_PARAM,
+  PROJECT_FROM_PARAM,
+  PROJECT_PARAM,
   REQUEST_ACTIONS,
   SELINUX_ACTIONS,
   SOFTWARE_ACTIONS,
@@ -170,6 +174,7 @@ import {
   interruptionPlanFor,
   isReviewDay,
   onCallOn,
+  WEEK_DAYS,
   onboardingsOn,
   isReviewOutcome,
   isWeekDay,
@@ -203,17 +208,39 @@ import {
   typingLine,
   typingMinutesLeft,
 } from '../world/no-hello';
-import { FIELDS, slaTierOf, SYSTEMD_STATES } from '../world/fields';
+import {
+  FIELDS,
+  isSystemsEngineer,
+  slaTierOf,
+  SYSTEMD_STATES,
+} from '../world/fields';
 import {
   boxOfUnit,
   breakGlassAbuseLines,
   breakGlassLegitLines,
   hasActiveIncident,
 } from '../world/change-control';
-import { planChangeRequestFiling } from '../world/change-request';
+import {
+  changeRequestAuthorises,
+  changeRequestConsult,
+  planChangeRequestFiling,
+} from '../world/change-request';
 import { planCoordination } from '../world/coordination';
 import { seedForAttempt } from '../world/session';
-import { MSP_IDS } from '../world/msp-company';
+import { ARDEN_EDGE_PROJECT, MSP_IDS } from '../world/msp-company';
+import {
+  ARDEN_EDGE_ESTATE,
+  ardenEdgeKickoffSetup,
+  PROJECT_DAYS,
+  projectBoardLines,
+  projectClockLabel,
+  projectStatus,
+  type ProjectStatus,
+  screamTestDue,
+} from '../world/project';
+import {
+  PROJECT_KICKOFF_TICKETS,
+} from '../world/tickets/project';
 import {
   breachCostOf,
   isMeterTick,
@@ -693,6 +720,31 @@ export interface DayApi {
    * banner prints - a real box tells you on the way in.
    */
   raiseSelinuxRelabel(boxId: string, hostname: string): boolean;
+  /**
+   * The project's plan against the clock (E10, 0.29.0), as the lines a surface
+   * prints and as the derived status behind them.
+   *
+   * Free to read and changes nothing, like `boss()` and `interruption()`: the
+   * phase is a function of the baked schedule, the clock and the estate, so the
+   * terminal, a board and a test all get the same answer and none of them can be
+   * showing a phase the world has left. Empty when there is no project - which
+   * is every world but an engineer's week at the MSP.
+   */
+  projectBoard(): readonly string[];
+  projectView(): ProjectStatus | null;
+  /**
+   * Moving the site's circuit into the new edge box, and moving it back.
+   *
+   * The cutover consults the change window FIRST (`changeRequestAuthorises`,
+   * the same one the systemctl gate runs) and refuses outside it, naming where
+   * the paperwork has got to - the project gets its slot from the ordinary
+   * change-request flow rather than from a calendar of its own. The rollback
+   * needs no window: putting a site back on the box it was on an hour ago is
+   * not a change anybody has to approve, and hesitating over it is the actual
+   * risk. Both answer with the lines the terminal prints.
+   */
+  cutover(newBoxId: string): readonly string[];
+  rollback(oldBoxId: string): readonly string[];
   /**
    * Files the blameless postmortem for an incident (E6, 0.19.0): the append-only
    * post-incident record that CLOSES the failed-deploy incident once the fire is
@@ -1486,6 +1538,15 @@ export class DayDriver implements DayApi {
     if (raised) {
       this.announce();
     }
+
+    // And the project, if the week still has room for one (E10, 0.29.0). It is
+    // here as well as at the start of shift because the promotion IS the moment
+    // an engineer's work arrives - the incidents above are the same claim - and
+    // a project that waited for tomorrow morning would be a mechanic a player
+    // could be promoted on a Wednesday and never meet. Idempotent by the project
+    // node, so whichever of the two moments comes first is the only one that
+    // bakes anything.
+    this.settleProjectKickoff();
   }
 
   /**
@@ -2387,6 +2448,12 @@ export class DayDriver implements DayApi {
     // that notices a box somebody left in permissive mode. Same rail, same
     // reason it is here and not at last night's clock-off.
     this.settleSelinuxAudit();
+    // The project's two morning beats (E10, 0.29.0), in this order. The scream
+    // test FIRST, because it is a consequence of yesterday and the kickoff is a
+    // thing that happens today - and because a morning that is quiet has to be
+    // quiet before anything else is put on the desk.
+    this.settleScreamTest();
+    this.settleProjectKickoff();
     this.dispatchDay(DAY_ACTIONS.startShift, {});
     this.syncSlaClock();
     this.carriedMs = 0;
@@ -3569,6 +3636,241 @@ export class DayDriver implements DayApi {
         );
       }
     }
+  }
+
+  /* -- the project (E10, 0.29.0) ------------------------------------------ */
+
+  /**
+   * The kickoff: the morning an engineer at the MSP is handed the edge job.
+   *
+   * It is a "what is due right now" read like every other settler on this rail -
+   * the world decides, the driver acts - and the four conditions it reads are
+   * the four honest ones. There has to be an estate to work on (the ARDEN boxes,
+   * which exist only in the MSP world). The player has to be a Systems Engineer,
+   * because a project is not service-desk work and the tier IS the line. The
+   * project must not already exist, which is what makes a reload, a replay or a
+   * second start of shift a no-op rather than a second set of dates. And there
+   * has to be room in the WEEK: three working days, so a project handed out on a
+   * Thursday is a project the week has nowhere to put, and it waits.
+   *
+   * The dates are baked HERE, against this minute, and never again - which is
+   * the whole of why the phase machine survives a save. Standing the same
+   * project up twice would re-bake them against a later clock and quietly move
+   * every deadline the player had been planning against.
+   */
+  private settleProjectKickoff(): void {
+    if (this.engine.graph.getNode(MSP_IDS.ardenEdgeOld) === undefined
+      || this.engine.graph.getNode(ARDEN_EDGE_PROJECT) !== undefined
+      || !isSystemsEngineer(
+        this.engine.graph.getField(this.actor, FIELDS.playerTier),
+      )) {
+      return;
+    }
+
+    const day = this.day();
+
+    if (day + PROJECT_DAYS - 1 > WEEK_DAYS) {
+      return;
+    }
+
+    const now = this.engine.now();
+    this.engine.applySetup(ardenEdgeKickoffSetup(now));
+
+    for (const id of PROJECT_KICKOFF_TICKETS) {
+      this.raiseSummonedTicket(id);
+    }
+
+    const status = projectStatus(this.engine.graph, ARDEN_EDGE_ESTATE, now);
+    this.announce();
+    this.handlers.onNotice?.(
+      'Project assigned: ARDEN-MFG edge replacement',
+      'Dev Sharma has signed off the swap of ARD-FW-01 for the box that has '
+      + 'been in their comms cabinet since July. Three working days, four '
+      + 'tasks, and a change window for the cutover. The audit is due by '
+      + `${
+        status === null || status.due === null
+          ? 'lunchtime'
+          : projectClockLabel(status.due)
+      } - "fw status" has the whole plan against the clock.`,
+    );
+  }
+
+  /**
+   * The morning after, and the only phase of a project that makes work.
+   *
+   * `screamTestDue` decides - a night has gone by since the cable moved and a
+   * rule is still only on the old box - and this raises the ticket that rule
+   * names, one per rule, each about that rule and nothing else. Same rail and
+   * same latency as the compliance sweep and the unverified enrolment, for the
+   * reason written down there: a day is how long it takes somebody else to
+   * notice, and a consequence that landed in the same afternoon would read as a
+   * punishment for the keystroke rather than as the cost of the omission.
+   *
+   * A project that carried everything makes no work here at all. That morning is
+   * meant to be quiet, it is reachable by doing the job properly, and nothing
+   * below fires on it - which is the reward, and the only one this mechanic has.
+   */
+  private settleScreamTest(): void {
+    for (const finding of screamTestDue(
+      this.engine.graph,
+      ARDEN_EDGE_PROJECT,
+      this.engine.now(),
+    )) {
+      const result = this.engine.dispatch(
+        PROJECT_ACTIONS.screamNoticed,
+        this.actor,
+        finding.rule,
+        {},
+      );
+
+      if (!result.ok) {
+        continue;
+      }
+
+      this.raiseSummonedTicket(finding.ticket);
+      this.handlers.onNotice?.(
+        'Arden are on the phone',
+        `${ticketTitle(finding.ticket)} - it worked on the old box and it is `
+        + 'not on the new one. Nobody at the plant knows a firewall was '
+        + 'replaced; they know their line has stopped.',
+      );
+    }
+  }
+
+  /** The plan against the clock, for whatever surface is asking. */
+  public projectBoard(): readonly string[] {
+    return projectBoardLines(
+      this.engine.graph,
+      ARDEN_EDGE_ESTATE,
+      this.engine.now(),
+    );
+  }
+
+  public projectView(): ProjectStatus | null {
+    return projectStatus(
+      this.engine.graph,
+      ARDEN_EDGE_ESTATE,
+      this.engine.now(),
+    );
+  }
+
+  /**
+   * The cutover, and the one gate that is not in the verb.
+   *
+   * The window is consulted HERE, before the dispatch, with the same
+   * `changeRequestAuthorises` the systemctl gate has used since 0.18.0 - one
+   * question, one answer, one implementation. Without an approved request for
+   * exactly this (box, verb), inside its window, the move is refused and the
+   * refusal names where the paperwork has got to, because a dead end is not a
+   * mechanic. The project does not get a private calendar: the slot comes from
+   * the ordinary change-request flow, signed off by the customer's own IT.
+   *
+   * Fails CLOSED. Take the consult out and an unapproved cutover dispatches at
+   * two in the afternoon, which is what the teeth test proves goes red.
+   */
+  public cutover(newBoxId: string): readonly string[] {
+    const now = this.engine.now();
+    const box = this.engine.graph.getNode(newBoxId);
+
+    if (box === undefined || box.kind !== 'machine') {
+      return [`${newBoxId} is not a box this estate knows about.`];
+    }
+
+    const authorised = this.engine.graph
+      .nodesOfKind('change_request')
+      .some((node) => changeRequestAuthorises(
+        node,
+        newBoxId,
+        PROJECT_ACTIONS.cutover,
+        now,
+      ));
+
+    if (!authorised) {
+      const consult = changeRequestConsult({
+        graph: this.engine.graph,
+        now,
+        targetId: newBoxId,
+        verb: PROJECT_ACTIONS.cutover,
+        verdict: 'co_managed',
+      });
+
+      return consult.allowed
+        ? [
+          'That change is approved, but not for this minute. A window is a '
+            + 'window.',
+        ]
+        : [
+          `Moving ${this.hostnameOf(newBoxId)} into the live path is an outage `
+          + 'on somebody\'s whole site.',
+          ...consult.lines,
+        ];
+    }
+
+    // Through the driver's own dispatch rather than the engine's, because
+    // closing a phase task RAISES the next one: the follow-up settler is what
+    // turns the milestone lock from a comment into a mechanic, and it runs here.
+    const result = this.dispatch(
+      PROJECT_ACTIONS.cutover,
+      this.actor,
+      newBoxId,
+      {
+        [PROJECT_CIRCUIT_PARAM]: ARDEN_EDGE_ESTATE.circuitId,
+        [PROJECT_FROM_PARAM]: ARDEN_EDGE_ESTATE.edgeBoxId,
+        [PROJECT_PARAM]: ARDEN_EDGE_PROJECT,
+      },
+    );
+
+    if (!result.ok) {
+      return [result.reason];
+    }
+
+    this.announced(result);
+
+    return [
+      `Circuit moved: ${this.hostnameOf(ARDEN_EDGE_ESTATE.edgeBoxId)} -> `
+      + `${this.hostnameOf(newBoxId)}. The site is behind the new box.`,
+      'Two minutes of nothing, and then everything that is configured comes '
+        + 'back. The old box stays racked until this is proven.',
+      'What is NOT configured will not announce itself. You find that out from '
+        + 'somebody who rings up, and it will not be today.',
+    ];
+  }
+
+  /**
+   * And back. A real verb with an honest price and no punishment in it.
+   *
+   * It undoes exactly one thing - the cable - and deliberately nothing else. The
+   * cutover minute stays stamped, so the scream test still runs on the morning
+   * after; anything the outage raised stands, because it happened. What it buys
+   * is the site back on a box that was working an hour ago, which is what a
+   * rollback is for, and the reason the old one was left in the rack.
+   */
+  public rollback(oldBoxId: string): readonly string[] {
+    const result = this.dispatch(
+      PROJECT_ACTIONS.rollback,
+      this.actor,
+      oldBoxId,
+      {
+        [PROJECT_CIRCUIT_PARAM]: ARDEN_EDGE_ESTATE.circuitId,
+        [PROJECT_FROM_PARAM]: ARDEN_EDGE_ESTATE.newBoxId,
+        [PROJECT_PARAM]: ARDEN_EDGE_PROJECT,
+      },
+    );
+
+    if (!result.ok) {
+      return [result.reason];
+    }
+
+    this.announced(result);
+
+    return [
+      `Circuit moved back: ${this.hostnameOf(ARDEN_EDGE_ESTATE.newBoxId)} -> `
+      + `${this.hostnameOf(oldBoxId)}. The site is on the old edge again.`,
+      'That is what the old box was left racked for, and using it is not a '
+        + 'failure - deciding late is.',
+      'The window is spent, though, and anything the last few minutes broke is '
+        + 'still broken for the people who noticed. Book another one.',
+    ];
   }
 
   /* -- the lead, doing his rounds ---------------------------------------- */

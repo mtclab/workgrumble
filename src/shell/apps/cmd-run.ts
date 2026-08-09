@@ -11,15 +11,19 @@ import {
   type VerificationMethod,
 } from '../../world/fallout';
 import {
+  AUDIT_SOURCES,
+  auditSourceOf,
   type BusinessType,
   BUSINESS_TYPE_LABELS,
   DEVICE_TYPES,
   FIELDS,
   isRotation,
+  isSystemsEngineer,
   isService,
   MACHINE_OS,
   MACHINE_OS_LABELS,
   MACHINE_ROLE_LABELS,
+  MACHINE_ROLES,
   machineRoleOf,
   machineOsOf,
   SERVICE_CLASSES,
@@ -46,6 +50,13 @@ import {
   changeRequestListing,
 } from '../../world/change-request';
 import { isCoordinated } from '../../world/coordination';
+import {
+  ARDEN_EDGE_ESTATE,
+  projectRules,
+  ruleIsKnown,
+  ruleIsMigrated,
+} from '../../world/project';
+import { PROJECT_ACTIONS } from '../../world/actions';
 import type { MachineRole } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { DEFAULT_CWD } from '../../world/filesystem';
@@ -1253,6 +1264,20 @@ function changeRequestCommandLines(
     );
   }
 
+  // An EDGE BOX is the one machine you can file against (E10, 0.29.0), and the
+  // verb it authorises is the cutover rather than a restart: moving a site's
+  // circuit is the change, and it is a change on a box rather than on anything
+  // running on one. Everything else still resolves a service, so no existing
+  // filing moves - a query that names no firewall never reaches this branch.
+  const box = machineOf(api, query);
+
+  if (box.ok
+    && machineRoleOf(box.node.fields[FIELDS.machineRole]) === MACHINE_ROLES.firewall) {
+    return lines(
+      ...api.day.fileChangeRequest(box.node.id, PROJECT_ACTIONS.cutover),
+    );
+  }
+
   const found = serviceOf(api, query);
 
   if (!found.ok) {
@@ -1261,6 +1286,242 @@ function changeRequestCommandLines(
 
   return lines(
     ...api.day.fileChangeRequest(found.node.id, HELPDESK_ACTIONS.serviceRestart),
+  );
+}
+
+/* -- the edge replacement (E10, 0.29.0) ----------------------------------- */
+
+/**
+ * `fw` - the project's verbs, and the only surface slice 1 gives them.
+ *
+ * Seven sub-commands, and the split between them is the split in the job: two
+ * READS that change nothing (`status`, the plan against the clock; `rules`, what
+ * the box is carrying), two AUDITS that are the same task done two different
+ * ways, one per-rule migration, and the cable, out and back.
+ *
+ * It is gated on the PROMOTION, like ssh and for the same reason: a project is
+ * not service-desk work. A Tier-2 player typing this gets told so rather than
+ * finding a verb that half works.
+ */
+function fwLines(
+  api: GameApi,
+  sub: string,
+  query: string,
+): CommandResult {
+  if (!isSystemsEngineer(api.graph.getField(api.actor, FIELDS.playerTier))) {
+    return lines(
+      'fw: this is not service-desk work.',
+      'Projects are the engineers\' tier - planned work, with dates on it and a '
+        + 'change',
+      'window in the middle. It arrives with the promotion, along with ssh.',
+    );
+  }
+
+  if (sub === 'status') {
+    const board = api.day.projectBoard();
+
+    return board.length === 0
+      ? lines(
+        'No project is running.',
+        'A project is assigned, not picked up: when there is one, this is the '
+          + 'plan against the clock.',
+      )
+      : lines(...board);
+  }
+
+  if (sub === 'rules') {
+    return fwRuleLines(api, query);
+  }
+
+  if (sub === 'audit' || sub === 'pack') {
+    const found = machineOf(api, query);
+
+    if (!found.ok) {
+      return lines(found.reason);
+    }
+
+    return sub === 'audit'
+      ? fwAuditLines(api, found.node.id)
+      : fwPackLines(api, found.node.id);
+  }
+
+  if (sub === 'migrate') {
+    const found = serviceOf(api, query);
+
+    if (!found.ok) {
+      return lines(found.reason);
+    }
+
+    const result = api.dispatch(
+      PROJECT_ACTIONS.migrateRule,
+      api.actor,
+      found.node.id,
+      {},
+    );
+
+    return result.ok
+      ? lines(
+        `Carried onto ${
+          labelOf(api.graph.getNode(ARDEN_EDGE_ESTATE.newBoxId)
+            ?? found.node)
+        }: ${labelOf(found.node)}`,
+        'One rule. It does not take effect for anybody until the circuit moves.',
+      )
+      : lines(result.reason);
+  }
+
+  if (sub === 'cutover') {
+    const found = machineOf(api, query);
+    return found.ok ? lines(...api.day.cutover(found.node.id)) : lines(found.reason);
+  }
+
+  if (sub === 'rollback') {
+    const found = machineOf(api, query);
+    return found.ok ? lines(...api.day.rollback(found.node.id)) : lines(found.reason);
+  }
+
+  return lines(
+    `"fw ${sub}" is not something this terminal does.`,
+    'It does "fw status" (the plan against the clock), "fw rules <box>" (what a '
+      + 'box',
+    'is carrying), "fw audit <box>" (read the live configuration) and "fw pack '
+      + '<box>"',
+    '(take the handover pack as the audit), "fw migrate <rule>", and "fw '
+      + 'cutover <box>"',
+    'with "fw rollback <box>" behind it.',
+  );
+}
+
+/** One rule as a listing row: what it is, and where it has got to. */
+function fwRuleRow(
+  rule: Readonly<ReadOnlyGraphNode>,
+  migrated: boolean,
+): string {
+  const short = textValue(rule.fields[FIELDS.serviceName], rule.id);
+  const kind = textValue(rule.fields[FIELDS.fwRuleClass], 'rule');
+
+  return `  ${pad(short, 16)}${pad(kind, 9)}${
+    migrated ? 'carried' : 'on the old box only'
+  }  ${labelOf(rule)}`;
+}
+
+/**
+ * `fw rules <box>` - what this box is carrying, AS FAR AS ANYBODY KNOWS.
+ *
+ * The qualification is the mechanic. Before anybody has read the box, the only
+ * list that exists is the handover pack's, so that is the list this prints - and
+ * it says so, in the line underneath, without saying what is missing from it.
+ * After a live-config read it prints everything, and flags what the pack never
+ * had. The terminal is not allowed to know more than the world does.
+ */
+function fwRuleLines(api: GameApi, query: string): CommandResult {
+  const found = machineOf(api, query);
+
+  if (!found.ok) {
+    return lines(found.reason);
+  }
+
+  const box = found.node;
+  const source = auditSourceOf(box.fields[FIELDS.fwAuditSource]);
+  const rules = projectRules(api.graph, ARDEN_EDGE_ESTATE.projectId)
+    .filter((rule) => api.graph
+      .neighbors(rule.id, { direction: 'out', edgeKind: 'runs_on' })
+      .some((owner) => owner.id === box.id));
+
+  if (rules.length === 0) {
+    return lines(
+      `${labelOf(box)} is not carrying a rule set this desk has a copy of.`,
+      'The box a replacement is FROM carries the rules; the one it is to '
+        + 'carries what you have put on it.',
+    );
+  }
+
+  const known = rules.filter((rule) => ruleIsKnown(rule, source));
+  const unknown = rules.length - known.length;
+
+  return lines(
+    `Rule set - ${labelOf(box)}`,
+    ...known.map((rule) => fwRuleRow(rule, ruleIsMigrated(rule))),
+    '',
+    source === AUDIT_SOURCES.config
+      ? `Read off the box. ${String(rules.length)} rule(s), which is what is `
+        + 'actually running on it.'
+      : `From the handover pack: ${String(known.length)} rule(s), as written `
+        + 'down in 2019.',
+    ...(source === AUDIT_SOURCES.config
+      ? []
+      : [
+        'A pack is a record of what somebody meant to configure on the day they '
+          + 'wrote it.',
+        `"fw audit ${labelOf(box)}" reads the live configuration instead, which `
+          + 'is the',
+        'only source that knows what the box is doing this morning.',
+      ]),
+    ...(unknown > 0 && source === AUDIT_SOURCES.config
+      ? [
+        `${String(unknown)} of those were not in the pack.`,
+      ]
+      : []),
+  );
+}
+
+/** `fw audit <box>` - the live-config read, and what it turns up. */
+function fwAuditLines(api: GameApi, boxId: string): CommandResult {
+  const result = api.dispatch(PROJECT_ACTIONS.auditConfig, api.actor, boxId, {});
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  const rules = projectRules(api.graph, ARDEN_EDGE_ESTATE.projectId)
+    .filter((rule) => api.graph
+      .neighbors(rule.id, { direction: 'out', edgeKind: 'runs_on' })
+      .some((owner) => owner.id === boxId));
+  const undocumented = rules.filter(
+    (rule) => rule.fields[FIELDS.fwRuleDocumented] !== true,
+  );
+  const box = api.graph.getNode(boxId);
+
+  return lines(
+    `Live configuration read off ${box === undefined ? boxId : labelOf(box)}.`,
+    ...rules.map((rule) => fwRuleRow(rule, ruleIsMigrated(rule))),
+    '',
+    `${String(rules.length)} rule(s) on the box.`,
+    ...(undocumented.length === 0
+      ? ['Every one of them is in the handover pack, which is rarer than it '
+        + 'sounds.']
+      : [
+        `${String(undocumented.length)} of them are not in the handover pack. `
+        + 'They are',
+        'running anyway, and something on that site is depending on each one.',
+      ]),
+    'The audit is signed off. What is on this list is what has to be on the new '
+      + 'box.',
+  );
+}
+
+/** `fw pack <box>` - signing the audit off on somebody else's paperwork. */
+function fwPackLines(api: GameApi, boxId: string): CommandResult {
+  const result = api.dispatch(PROJECT_ACTIONS.auditPack, api.actor, boxId, {});
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  const box = api.graph.getNode(boxId);
+  const known = projectRules(api.graph, ARDEN_EDGE_ESTATE.projectId)
+    .filter((rule) => rule.fields[FIELDS.fwRuleDocumented] === true);
+
+  return lines(
+    `Handover pack accepted as the audit of ${
+      box === undefined ? boxId : labelOf(box)
+    }.`,
+    ...known.map((rule) => fwRuleRow(rule, ruleIsMigrated(rule))),
+    '',
+    `${String(known.length)} rule(s), per the pack. The audit is signed off and `
+      + 'the',
+    'staging config is the list above - which is a bet that the pack is '
+      + 'current.',
   );
 }
 
@@ -2035,6 +2296,10 @@ export function executeCommand(
 
   if (parsed.spec.name === 'changereq') {
     return changeRequestCommandLines(api, parsed.sub, parsed.query);
+  }
+
+  if (parsed.spec.name === 'fw') {
+    return fwLines(api, parsed.sub, parsed.query);
   }
 
   if (parsed.spec.name === 'notify') {

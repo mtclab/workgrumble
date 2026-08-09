@@ -34,7 +34,7 @@ import type {
   ReadOnlyGraphView,
   SetupOp,
 } from '../engine-api';
-import { HELPDESK_ACTIONS, SYSTEMD_ACTIONS } from './actions';
+import { HELPDESK_ACTIONS, PROJECT_ACTIONS, SYSTEMD_ACTIONS } from './actions';
 import { isRiskyProductionChange } from './change-control';
 import {
   CHANGE_REQUEST_DECISIONS,
@@ -269,6 +269,20 @@ function paperworkFor(
       rollback: 'systemctl start the unit; it comes back on its last-good '
         + 'config. If it does not come back active(running), read journalctl for '
         + 'the why and escalate before the window closes.',
+    };
+  }
+
+  if (verb === PROJECT_ACTIONS.cutover) {
+    return {
+      risk: 'Moving the site\'s circuit into the new edge box drops every '
+        + 'connection through it for as long as the cable is out - a minute or '
+        + 'two if it goes well - and then the site is behind a box that has '
+        + 'never carried live traffic. Anything the new rule set does not have '
+        + 'stops working at that moment and stays stopped.',
+      rollback: 'Move the circuit back to the old box, which stays racked and '
+        + 'configured throughout ("fw rollback <old box>"). It is one cable and '
+        + 'the same two minutes. Nothing raised while the new box was live is '
+        + 'undone by it - the window was spent, and what it found is real.',
     };
   }
 

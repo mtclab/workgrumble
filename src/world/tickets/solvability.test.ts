@@ -79,7 +79,13 @@ import { dayPlan, interruptionPlanFor } from '../week';
 import { BODGE_TICKETS } from './bodge';
 import { CORPORATE_TICKETS } from './corporate';
 import { mspOnboardingSetup } from '../msp-company';
+import { ardenEdgeKickoffSetup } from '../project';
 import { MSP_TICKETS } from './msp';
+import {
+  ARDEN_EDGE_TASKS,
+  PROJECT_TASK_TICKETS,
+  PROJECT_TICKETS,
+} from './project';
 import {
   findWorldTicket,
   ticketsNeededFor,
@@ -91,6 +97,17 @@ import type { TicketActionStep, WorldTicket } from './types';
 beforeAll(() => {
   loadEngineForTests();
 });
+
+/**
+ * How long a sweep that stands up a world PER TICKET is allowed to take.
+ *
+ * The roster is four employers deep now and every row below gets its own fresh
+ * estate. Five seconds was the default and the content crossed it, which is a
+ * fact about how much of this game there is rather than about anything being
+ * slow - and a gate that fitted inside a default by covering fewer rows would
+ * be worse than a slow one.
+ */
+const ROSTER_SWEEP_MS = 30_000;
 
 /** A driver over a session, wired to nothing: this gate watches the graph. */
 function driverFor(session: WorldSession): DayDriver {
@@ -147,7 +164,48 @@ const CORPORATE_CARRY = Object.freeze({
   employer: 'corporate',
 });
 
+const PROJECT_TICKET_IDS = new Set(
+  PROJECT_TICKETS.map((entry) => entry.def.id),
+);
+
+/**
+ * The project's world (E10, 0.29.0): the MSP, plus the project itself stood up.
+ *
+ * The ESTATE a project task touches is seeded with the customer, so the boxes,
+ * the circuit and the rule set are already there - but the PROJECT node is not,
+ * because its dates are baked against the minute somebody was handed the job.
+ * The gate stands it up the way the day driver does, at the world's own clock,
+ * for the same reason it stands the signed-up onboarding client up: a task is
+ * proven solvable against the world it is actually met in, and a cutover with no
+ * project to stamp is a state the game cannot be in.
+ *
+ * The PARENT delivery ticket gets one thing more: its four tasks, in the world
+ * with it. Its rule is an enumeration over them by name (the assertion language
+ * cannot quantify), so a world without them is a world where the parent could
+ * never close - and the ARRIVAL of those tasks is proven separately and
+ * properly, by the chain gate below, which closes each one's predecessor through
+ * the shipped driver and requires the next to turn up.
+ */
+function projectWorld(entry: Readonly<WorldTicket>): WorldSession {
+  const session = createWorldSession(MSP_CARRY);
+  session.engine.applySetup(ardenEdgeKickoffSetup(session.engine.now()));
+
+  if (entry.def.id === ARDEN_EDGE_TASKS.parent) {
+    for (const id of PROJECT_TASK_TICKETS) {
+      if (id !== entry.def.id) {
+        spawnWorldTicket(session.engine, id);
+      }
+    }
+  }
+
+  return session;
+}
+
 function carryFor(entry: Readonly<WorldTicket>): WorldSession {
+  if (PROJECT_TICKET_IDS.has(entry.def.id)) {
+    return projectWorld(entry);
+  }
+
   if (BODGE_TICKET_IDS.has(entry.def.id)) {
     return createWorldSession(BODGE_CARRY);
   }
@@ -204,7 +262,22 @@ function raiseByFixing(
   }
 
   const driver = driverFor(session);
-  spawnWorldTicket(session.engine, predecessorId);
+
+  // A chain longer than two, walked from its own beginning (E10, 0.29.0). A
+  // project's phases are a four-link chain - audit raises staging raises cutover
+  // raises handover - and driving only the immediate predecessor tested the
+  // staging config in a world where nobody had ever audited the box, which is
+  // not a state the game can be in and which the staging verbs correctly refuse.
+  // So the predecessor is itself raised the way IT is raised, all the way back
+  // to the link nobody follows, and each is spawned only if the fix before it
+  // has not already put it there.
+  if (predecessor.follows !== undefined) {
+    raiseByFixing(session, predecessor.follows, predecessorId);
+  }
+
+  if (session.engine.graph.getNode(predecessorId) === undefined) {
+    spawnWorldTicket(session.engine, predecessorId);
+  }
 
   const first = predecessor.paths[0];
 
@@ -456,7 +529,7 @@ describe('every shipped ticket is solvable', () => {
     }
 
     expect(solvedOnArrival).toEqual([]);
-  });
+  }, ROSTER_SWEEP_MS);
 
   /**
    * Every ticket in the roster gets driven by the block above. Asserted rather

@@ -887,6 +887,47 @@ export const SELINUX_ACTION_IDS: readonly SelinuxActionId[] = Object.freeze(
   Object.values(SELINUX_ACTIONS),
 );
 
+/**
+ * The project verbs (E10, 0.29.0): the four acts an edge replacement comes down
+ * to, plus the world's own note that a factory has rung about a rule.
+ *
+ * They are separated the way the JOB is separated, not the way a form is. The
+ * two audits are two verbs rather than one with a flag because they are two
+ * different acts with two different amounts of honesty in them: reading the box
+ * finds what is on the box, and accepting the pack accepts what somebody wrote
+ * down. Both pass the audit gate - that is the trap, and a world that refused
+ * the second would be a world doing the engineer's thinking. `migrate` moves one
+ * rule, because a firewall migration is one rule at a time and a verb that
+ * carried the set in one keystroke would be a verb that could not miss anything.
+ * `cutover` and `rollback` are the same act in two directions, and both of them
+ * are an EDGE moving: the circuit's cable, out of one box and into the other.
+ *
+ * `screamNoticed` is the world's: nobody presses it, the day driver settles it
+ * at the next start of shift off `screamTestDue`, and it is the latch that stops
+ * the same factory ringing twice about the same rule.
+ */
+export const PROJECT_ACTIONS = {
+  /** Read the live configuration off the box being replaced. */
+  auditConfig: 'project.audit_config',
+  /** Take the handover pack's rule list as the audit. */
+  auditPack: 'project.audit_pack',
+  /** Carry one rule onto the new box. */
+  migrateRule: 'project.migrate_rule',
+  /** Move the circuit into the new box, inside the window. */
+  cutover: 'project.cutover',
+  /** Move it back. A real verb, with the honest cost of having used it. */
+  rollback: 'project.rollback',
+  /** The phone call about a rule nobody carried. Not a player verb. */
+  screamNoticed: 'project.scream_noticed',
+} as const;
+
+export type ProjectActionId =
+  (typeof PROJECT_ACTIONS)[keyof typeof PROJECT_ACTIONS];
+
+export const PROJECT_ACTION_IDS: readonly ProjectActionId[] = Object.freeze(
+  Object.values(PROJECT_ACTIONS),
+);
+
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
 
 export const DAY_ACTION_IDS: readonly DayActionId[] = Object.freeze(

@@ -315,12 +315,21 @@ describe('shipped conversations', () => {
    * cause is the parent's, and inventing a second explanation for the same
    * outage would be a conversation that lies to forty people in four different
    * ways.
+   *
+   * A PROJECT TASK is exempt for the same reason and it is the sharper one
+   * (E10, 0.29.0): planned work has no hidden cause because nothing is broken.
+   * "Build the new box to match" is not a fault anybody is concealing - the
+   * conversation about it is a conversation about a plan - and a `reveal`
+   * invented for one would be the game pretending a scheduled task is a mystery.
+   * The tickets a project CAUSES are not exempt: a factory that cannot reach its
+   * press line is a fault, it has a cause, and that cause is the whole lesson.
    */
   it('hides one cause behind a question for every fault of its own', () => {
     for (const conversation of WORLD_DIALOGUE) {
-      const own = conversation.tickets.filter(
-        (id) => findWorldTicket(id)?.duplicate !== true,
-      );
+      const own = conversation.tickets.filter((id) => {
+        const entry = findWorldTicket(id);
+        return entry?.duplicate !== true && entry?.project === undefined;
+      });
       const reveals = new Set(
         conversation.nodes.flatMap((node) => node.options
           .flatMap((option) => option.effects ?? [])

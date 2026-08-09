@@ -43,6 +43,15 @@ export const NODE_KINDS = [
    * and a save serialises it whole so a notice given mid-day survives a reload.
    */
   'coordination',
+  /**
+   * A PROJECT (0.29.0) - work that is not a ticket: a phased delivery with an
+   * ordered set of gates and its own baked schedule. First-class for the same
+   * reason a change request is: a world artifact rather than a field on
+   * anything, serialised whole so a save taken mid-phase reloads onto the same
+   * minute. It holds the SCHEDULE (the ticks its phases are due by) and the
+   * FACTS a phase turns on; the phase itself is derived and never stored.
+   */
+  'project',
   'share',
   'group',
   'mail_rule',

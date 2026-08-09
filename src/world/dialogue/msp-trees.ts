@@ -598,15 +598,44 @@ const DEV: DialogueTree = {
   tickets: [
     'ticket:arden-lockout-handback',
     'ticket:arden-portal-afterhours',
+    // The edge replacement (E10, 0.29.0). Dev is the counterpart on all of it -
+    // the co-managed contract is the reason a project on their estate is a
+    // conversation rather than a work order - so the four phase tasks, the
+    // delivery row and the two tickets a missed rule raises all speak with his
+    // voice. The tasks hide no cause, which is what makes them planned work:
+    // nothing is broken, so there is nothing to be wrong about. The two screams
+    // do, and it is the same cause twice, said by two different parts of a
+    // factory.
+    'ticket:arden-fw-project',
+    'ticket:arden-fw-audit',
+    'ticket:arden-fw-staging',
+    'ticket:arden-fw-cutover',
+    'ticket:arden-fw-handover',
+    'ticket:arden-fw-scream-brenmark',
+    'ticket:arden-fw-scream-scanners',
   ],
   root: 'handback',
   roots: {
     'ticket:arden-lockout-handback': 'handback',
     'ticket:arden-portal-afterhours': 'portal',
+    'ticket:arden-fw-project': 'edge-project',
+    'ticket:arden-fw-audit': 'edge-audit',
+    'ticket:arden-fw-staging': 'edge-staging',
+    'ticket:arden-fw-cutover': 'edge-cutover',
+    'ticket:arden-fw-handover': 'edge-handover',
+    'ticket:arden-fw-scream-brenmark': 'edge-brenmark',
+    'ticket:arden-fw-scream-scanners': 'edge-scanners',
   },
   resolved_roots: {
     'ticket:arden-lockout-handback': 'handback-done',
     'ticket:arden-portal-afterhours': 'portal-done',
+    'ticket:arden-fw-project': 'edge-project-done',
+    'ticket:arden-fw-audit': 'edge-audit-done',
+    'ticket:arden-fw-staging': 'edge-staging-done',
+    'ticket:arden-fw-cutover': 'edge-cutover-done',
+    'ticket:arden-fw-handover': 'edge-handover-done',
+    'ticket:arden-fw-scream-brenmark': 'edge-brenmark-done',
+    'ticket:arden-fw-scream-scanners': 'edge-scanners-done',
   },
   nodes: [
     {
@@ -683,6 +712,222 @@ const DEV: DialogueTree = {
       id: 'portal-done',
       npc_line: 'Portal is back - the night shift can schedule again. Thanks for '
         + 'flagging it to me first; that is the bit the last outfit never did.',
+      options: [{ label: 'Log the fix' }],
+    },
+
+    /* -- the edge replacement (E10, 0.29.0) ------------------------------- */
+
+    {
+      id: 'edge-project',
+      npc_line: 'So - the firewall. ARD-FW-01 went end-of-support in the spring '
+        + 'and the replacement has been in the cabinet since July, which is '
+        + 'entirely my fault. Three days, you said. What do you need from us?',
+      options: [
+        {
+          label: 'Ask what the plant cannot afford to have down, and when',
+          next: 'edge-project-q',
+          effects: [{ asks: true }],
+        },
+        { label: 'Walk him through the four tasks and the window' },
+      ],
+    },
+    {
+      id: 'edge-project-q',
+      npc_line: 'The press line and goods-in. Everything else can blink. The line '
+        + 'runs to six, so anything you do to the edge happens after that or in a '
+        + 'window I have signed - and I will sign one, just ask.',
+      options: [{ label: 'Book it round the line' }],
+    },
+    {
+      id: 'edge-project-done',
+      npc_line: 'That is the first project on this account that finished in the '
+        + 'week it said it would. I have told the plant manager, who did not know '
+        + 'there was a firewall, which I think is the highest praise available.',
+      options: [{ label: 'Close the project' }],
+    },
+    {
+      id: 'edge-audit',
+      npc_line: 'Here is the pack the contractor left when he did the install. '
+        + 'Four rules on one page. I will be honest with you, I have never opened '
+        + 'it before today.',
+      options: [
+        {
+          label: 'Ask when it was last revised, and by whom',
+          next: 'edge-audit-q',
+          effects: [{ asks: true }],
+        },
+        { label: 'Take the pack and get started' },
+      ],
+    },
+    {
+      id: 'edge-audit-q',
+      npc_line: '2019, and by him, and he has not been near the place since. '
+        + 'Whether anything has changed on that box since 2019 is a question I '
+        + 'genuinely cannot answer. You have the login; I would rather you looked.',
+      options: [{ label: 'Read the box rather than the paperwork' }],
+    },
+    {
+      id: 'edge-audit-done',
+      npc_line: 'Right - so that is what it is doing. It is oddly reassuring to '
+        + 'have a list that came off the actual machine.',
+      options: [{ label: 'Log the audit' }],
+    },
+    {
+      id: 'edge-staging',
+      npc_line: 'The new box is racked and powered and doing absolutely nothing, '
+        + 'which I gather is correct. How long to build it up?',
+      options: [
+        {
+          label: 'Ask whether anything on the edge changed since the pack',
+          next: 'edge-staging-q',
+          effects: [{ asks: true }],
+        },
+        { label: 'Start carrying the rules over' },
+      ],
+    },
+    {
+      id: 'edge-staging-q',
+      npc_line: 'Not that I know of. Although "not that I know of" is doing a lot '
+        + 'of work in that sentence - people have rung the contractor directly '
+        + 'over the years and I only heard about it afterwards.',
+      options: [{ label: 'Carry over whatever the audit actually found' }],
+    },
+    {
+      id: 'edge-staging-done',
+      npc_line: 'So it is a copy of the old one, on hardware that is still '
+        + 'supported. That is all I wanted.',
+      options: [{ label: 'Log the build' }],
+    },
+    {
+      id: 'edge-cutover',
+      npc_line: 'You want to move the circuit. I can sign that off - raise the '
+        + 'change and I will approve it - but tell me straight: how long is the '
+        + 'site dark, and what happens if it does not come up?',
+      options: [
+        {
+          label: 'Ask who makes the call to go back if it does not hold',
+          next: 'edge-cutover-q',
+          effects: [{ asks: true }],
+        },
+        { label: 'File the change and wait for the window' },
+      ],
+    },
+    {
+      id: 'edge-cutover-q',
+      npc_line: 'Me. I make that call, and I will make it fast - I would rather '
+        + 'be back on the old box in five minutes than clever for an hour. Leave '
+        + 'it in the rack until we are sure.',
+      options: [{ label: 'Agree the trigger, and leave ARD-FW-01 racked' }],
+    },
+    {
+      id: 'edge-cutover-done',
+      npc_line: 'Two minutes and the phones came back. Nobody on the floor '
+        + 'noticed, which is the correct amount of noticing.',
+      options: [{ label: 'Log the cutover' }],
+    },
+    {
+      id: 'edge-handover',
+      npc_line: 'Are we done? I only ask because the last outfit said "done" and '
+        + 'what we got was a box and no paperwork, which is how we ended up here.',
+      options: [
+        {
+          label: 'Ask what he needs on file for the next person who touches it',
+          next: 'edge-handover-q',
+          effects: [{ asks: true }],
+        },
+        { label: 'Record the as-built and hand it over' },
+      ],
+    },
+    {
+      id: 'edge-handover-q',
+      npc_line: 'What is actually on it. Not what we meant to put on it - what is '
+        + 'on it, this week, read off the machine. If somebody has to do this '
+        + 'again in six years I would like them to start further along than we '
+        + 'did.',
+      options: [{ label: 'Write the as-built off the new box' }],
+    },
+    {
+      id: 'edge-handover-done',
+      npc_line: 'Filed, and I have put a copy where I will find it. Pleasure '
+        + 'doing business - genuinely, and I do not say that to suppliers.',
+      options: [{ label: 'Sign it off' }],
+    },
+    {
+      id: 'edge-brenmark',
+      npc_line: 'Brenmark rang the plant manager, not me. Their engineers cannot '
+        + 'get into the press line to read the fault codes and the line is on a '
+        + 'manual reset every twenty minutes. It worked on Tuesday.',
+      options: [
+        {
+          label: 'Ask what Brenmark connect to, and how long they have had it',
+          next: 'edge-brenmark-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Compare the old edge\'s rule set against the new one',
+          effects: [
+            {
+              reveal: 'There is a tunnel on ARD-FW-01 - vpn-brenmark, IPsec, put '
+                + 'in when the line was commissioned - that is not on ARD-FW-02. '
+                + 'It is not in the handover pack either, which is why an audit '
+                + 'that read the pack never saw it. Carry it over and the line '
+                + 'comes back.',
+            },
+          ],
+        },
+        { label: 'Tell him you are on it' },
+      ],
+    },
+    {
+      id: 'edge-brenmark-q',
+      npc_line: 'A tunnel of some sort, straight to the press controller. Since '
+        + '2019. The man who agreed it left the year after and I could not tell '
+        + 'you where it is written down, if it ever was.',
+      options: [{ label: 'Go and look at what the old box was carrying' }],
+    },
+    {
+      id: 'edge-brenmark-done',
+      npc_line: 'They are in, and the line is off manual. I am not going to '
+        + 'pretend I enjoyed the phone call, but you had it back inside the hour.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'edge-scanners',
+      npc_line: 'Goods-in have been scanning all morning and nothing is landing '
+        + 'in the system. There is a pallet queue out to the yard and the yard is '
+        + 'in the rain.',
+      options: [
+        {
+          label: 'Ask how the scanners get their data back into the system',
+          next: 'edge-scanners-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Compare the old edge\'s rule set against the new one',
+          effects: [
+            {
+              reveal: 'The scanners talk to a hosted service that calls BACK in '
+                + 'on 5601 - nat-scanners on ARD-FW-01, opened for a trial in the '
+                + 'spring and never removed, because by then it was load-bearing. '
+                + 'It is not on the new box and it is not in the pack.',
+            },
+          ],
+        },
+        { label: 'Tell him you are on it' },
+      ],
+    },
+    {
+      id: 'edge-scanners-q',
+      npc_line: 'They go out to some hosted thing and it comes back in. That is '
+        + 'the whole of what I know - it was set up as a trial and then we just '
+        + 'kept using it, the way everything here happens.',
+      options: [{ label: 'Go and look at what the old box was carrying' }],
+    },
+    {
+      id: 'edge-scanners-done',
+      npc_line: 'Stock is going in again and the yard has stopped ringing me. '
+        + 'Two of those in one morning, mind. Both from before my time, both '
+        + 'undocumented - I am starting to see the pattern.',
       options: [{ label: 'Log the fix' }],
     },
   ],

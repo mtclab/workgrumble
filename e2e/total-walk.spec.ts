@@ -3601,6 +3601,93 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
       .toContainText('the client portal is down');
   });
 
+  /*
+   * The first PROJECT (E10, 0.29.0), walked on the desktop terminal BEFORE the
+   * ssh below, because that is where it lives: `fw` is a desk verb about a
+   * customer's edge, and after `cmd.ssh` the terminal is standing on a server
+   * and speaking unix.
+   *
+   * The project is assigned by the promotion two steps up, which is also what
+   * makes this reachable at all: every `fw` verb is engineer-tier, so no
+   * service-desk run can drive a single one of them.
+   *
+   * The scrollback rule this whole file is written under applies: `cmd-output`
+   * is the entire session and is never cleared, so every assertion below is a
+   * string this run has printed NOWHERE else - the pack line, the AVC-free
+   * rule names, the two window sentences, and the cable moving each way.
+   */
+  await step('cmd.fw', async () => {
+    // The plan, first: four phases with dates on them, and the one you are in.
+    await runCommand(page, 'fw status');
+    await expect(page.getByTestId('cmd-output')).toContainText('[NOW ] Audit');
+    await expect(page.getByTestId('cmd-output')).toContainText('working min');
+
+    // The pack, which is what exists before anybody reads the box - and it says
+    // so without saying what is missing from it.
+    await runCommand(page, 'fw rules ARD-FW-01');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('From the handover pack:');
+
+    // And the box, which knows two things the pack does not.
+    await runCommand(page, 'fw audit ARD-FW-01');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Live configuration read off ARD-FW-01');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('are not in the handover pack');
+    await expect(page.getByTestId('cmd-output')).toContainText('vpn-brenmark');
+
+    // The staging config: six rules, one command each, in canon's order.
+    for (const rule of [
+      'wan-default',
+      'nat-portal',
+      'policy-plant',
+      'vpn-coalport',
+      'vpn-brenmark',
+      'nat-scanners',
+    ]) {
+      await runCommand(page, `fw migrate ${rule}`);
+    }
+
+    await expect(page.getByTestId('cmd-output')).toContainText('Carried onto');
+
+    // The window, and the half that makes it a mechanic: the cutover is
+    // REFUSED before the slot opens, and the refusal names where the paperwork
+    // has got to rather than dead-ending.
+    await runCommand(page, 'changereq file ARD-FW-02');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Change request filed with ARDEN-MFG');
+    await runCommand(page, 'fw cutover ARD-FW-02');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('is an outage on somebody\'s whole site');
+
+    // Then the hour nobody wanted, bought a quarter at a time. The loop is
+    // bounded rather than open: a window that never opens is a bug, and a walk
+    // that waited for ever would report it as a timeout an hour later.
+    const output = page.getByTestId('cmd-output');
+    let moved = false;
+
+    for (let pass = 0; pass < 10 && !moved; pass += 1) {
+      await runSimMinutes(page, 15);
+      await runCommand(page, 'fw cutover ARD-FW-02');
+      moved = ((await output.textContent()) ?? '').includes('Circuit moved:');
+    }
+
+    expect(moved, 'the change window opened and the cutover was taken').toBe(true);
+    await expect(output).toContainText('The site is behind the new box.');
+
+    // The phase followed the cable, with nothing stored to follow it.
+    await runCommand(page, 'fw status');
+    await expect(output).toContainText('[NOW ] Scream test');
+
+    // And back again, which is a real verb: the site returns to the box that
+    // was working an hour ago, the derivation follows, and the window is spent.
+    await runCommand(page, 'fw rollback ARD-FW-01');
+    await expect(output).toContainText('Circuit moved back:');
+    await expect(output).toContainText('The window is spent');
+    await runCommand(page, 'fw status');
+    await expect(output).toContainText('[NOW ] Cutover');
+  });
+
   await step('cmd.ssh', async () => {
     // Past the promotion ssh connects to the MSP's OWN box - FC-RMM-01, where
     // the portal is down: trust-on-first-use shows the fingerprint, records the

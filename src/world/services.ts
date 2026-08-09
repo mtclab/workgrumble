@@ -472,6 +472,33 @@ const DB_SERVER_UNITS: readonly LinuxUnit[] = orderedUnits([
 ]);
 
 /**
+ * The edge (0.29.0). A modern small-business firewall is a Linux box with a
+ * packet filter and a VPN daemon on it, and those are the two units on it worth
+ * naming: `nftables.service` loads the rule set at boot, `strongswan.service` is
+ * what the site-to-site tunnels actually run on. Everything else it does is
+ * rules, which are not units - they are the rule nodes the project migrates.
+ *
+ * Both boxes in a replacement carry this list, old and new, and neither of them
+ * has anything wrong with it: the NEW box boots with its daemons running and no
+ * rules at all, which is exactly what makes it a project rather than a restart.
+ */
+const FIREWALL_UNITS: readonly LinuxUnit[] = orderedUnits([
+  {
+    unit: 'nftables.service',
+    name: 'nftables-based firewall',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'strongswan.service',
+    name: 'strongSwan IPsec IKEv1/IKEv2 daemon',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  ...UBUNTU_BASE_UNITS,
+]);
+
+/**
  * Fettle & Crane's OWN infrastructure box (E6, Pass B): the MSP's internal
  * Linux server, running the client portal customers log into behind nginx, on
  * the same Ubuntu base every other Linux box carries.
@@ -520,6 +547,7 @@ export const BASELINE_UNITS: Readonly<
 > = {
   [MACHINE_ROLES.appServer]: APP_SERVER_UNITS,
   [MACHINE_ROLES.dbServer]: DB_SERVER_UNITS,
+  [MACHINE_ROLES.firewall]: FIREWALL_UNITS,
 };
 
 /**

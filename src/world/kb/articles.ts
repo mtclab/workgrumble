@@ -2284,4 +2284,64 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/exec-exception-risk', 'kb/bec-incident-response'],
   },
+  {
+    id: 'kb/edge-replacement-project',
+    title: 'Replacing an edge firewall: the four phases, and the one that bites',
+    summary: 'A firewall swap is a project, not a ticket: establish the rule '
+      + 'set, build the new box to match, move the circuit inside a window, and '
+      + 'hand it over documented. The old box stays racked throughout.',
+    state: 'published',
+    issue: 'A customer\'s edge firewall is out of support and a replacement has '
+      + 'been bought. The cutover itself takes minutes; everything that goes '
+      + 'wrong with one of these went wrong before the cable moved.',
+    environment: 'A single-site customer edge: one box between the site and the '
+      + 'ISP handoff, carrying routing, address translation, inter-VLAN policy '
+      + 'and whatever tunnels have accumulated. The replacement is racked and on '
+      + 'its factory configuration.',
+    resolution: [
+      'PHASE 1, establish the rule set. Two sources will answer the question and '
+        + 'they are not the same source. The handover pack is what somebody wrote '
+        + 'down, on the day they wrote it. The live configuration is what the box '
+        + 'is doing this morning. "fw rules <box>" reads the pack; "fw audit '
+        + '<box>" reads the box. Either closes the task; only one of them is an '
+        + 'audit.',
+      'PHASE 2, build the new box to match. Carry the rules across in the order '
+        + 'they take effect - routing first, then address translation, then the '
+        + 'policies between segments, then the tunnels - with "fw migrate '
+        + '<rule>". Order matters because a policy that references an interface '
+        + 'that has no route yet is a policy that silently does nothing.',
+      'PHASE 3, the window. Moving a site\'s circuit is a change with an outage '
+        + 'in it, so it is booked, not decided at the desk: file it ("changereq '
+        + 'file <new box>"), let the sign-off happen, and act inside the slot. '
+        + '"fw cutover <new box>" outside the window is refused. Do not unrack '
+        + 'the old box: it is the rollback, and "fw rollback <old box>" is one '
+        + 'command as long as it is still there.',
+      'PHASE 4, watch it and write it down. Successful pings do not confirm that '
+        + 'anything works - a site can route perfectly while one application is '
+        + 'dark. Watch the morning after, carry over anything that turns up, and '
+        + 'record the as-built ("fw audit <new box>"), which is what closes the '
+        + 'project. A sign-off with no as-built behind it means the next engineer '
+        + 'here pays for the discovery you already paid for.',
+    ],
+    cause: [
+      'A migration fails on what was not carried, and what is not carried is '
+        + 'almost never a rule somebody looked at and decided against. It is a '
+        + 'rule that was not on the list, because the list was written by a '
+        + 'person, on a day, and the box has been running ever since. Documented '
+        + 'and live drift apart from the moment a pack is signed: an emergency '
+        + 'gets fixed at the console, a supplier asks for access, a pilot is set '
+        + 'up and never taken down, and none of that reaches the pack.',
+      'That is why an audit means reading the box. Taking the pack as read is '
+        + 'not forbidden and it is not stupid - it is faster, it passes the same '
+        + 'gate, and on a well-kept estate it is right. It is a bet that the '
+        + 'paperwork is current, and the whole cost of losing that bet arrives '
+        + 'the next morning, from somebody who does not know a project happened.',
+      'The scream test is the name for that morning, and it is a real technique '
+        + 'rather than a joke: you cannot enumerate what depends on a rule, so '
+        + 'you change the rule and find out who shouts. It works. What decides '
+        + 'whether it is a technique or an incident is whether you chose it - and '
+        + 'whether the old box is still racked when the phone goes.',
+    ],
+    see_also: ['kb/co-managed-coordination', 'kb/msp-scope-escalation'],
+  },
 ];
