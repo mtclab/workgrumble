@@ -131,11 +131,9 @@ interleaved with the standing human play-test recommendation -> E10 -> E7.
 - **D1** - Start-title = difficulty select at new game (the July sketch)? Confirm.
 - **D2** - After promotion, does lower-tier work BLEND into the queue (research truth:
   seniors stay the safety net) or get replaced? Recommendation: blend, ratio per title.
-- **D3** - The thread-C tiebreaker: does a Systems Engineer (shipped tier) do
-  projects, or only the cloud rung? Recommendation: yes at syseng (the firewall
-  replacement IS a syseng project at an MSP, truthfully) - which is what makes E10
-  buildable before E7. If owner says "projects are what the cloud rung IS", E10 folds
-  into E7 instead and gets more expensive.
+- **D3 - DECIDED (owner, 2026-08-09): yes, Systems Engineers do projects too.**
+  E10 builds standalone, sequenced before E7; E7 ships as a content pack over it.
+  First content: the firewall replacement at the MSP.
 - **D4** - External/vendor-tier arrivals: bind acknowledgment + update-cadence clocks
   instead of resolution (the honesty flag above)? Internal keeps tool-target
   resolution clocks either way.
