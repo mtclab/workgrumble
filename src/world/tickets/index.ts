@@ -466,8 +466,15 @@ export function spawnWorldTicket(
  * ordinary in-house ticket from an ordinary reporter passes through untouched -
  * same object, same `sla_ticks`, no `sla_tier`, no `vip` - which is why every
  * ticket written before either existed spawns byte-identically.
+ *
+ * Exported because the CLOCK a ticket lands with is settled here and nowhere
+ * else, and anything reasoning about deadlines off the authored `sla_ticks` is
+ * reasoning about a number the player is never held to: a Gold customer's fault
+ * arrives on three hours rather than four, and a flagged caller's on two. The
+ * week-feasibility gate used to do exactly that, and passed the MSP week by
+ * giving it sixty minutes it does not have.
  */
-function defForSpawn(
+export function defForSpawn(
   entry: WorldTicket,
   graph: ReadOnlyGraphView,
   now: number,

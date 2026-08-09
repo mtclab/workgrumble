@@ -46,7 +46,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadEngineForTests } from '../../engine-api/load-node';
-import type { TicketDef } from '../../engine-api';
+import type { ReadOnlyGraphView, TicketDef } from '../../engine-api';
 import { DayDriver } from '../../shell/day-driver';
 import { HELPDESK_ACTIONS } from '../actions';
 import { CAUGHT_MINUTES } from '../boss';
@@ -75,7 +75,8 @@ import {
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import { TICKET_HYGIENE_SYNC } from '../scenes/meeting';
 import { createWorldSession, seedForAttempt, type WorldSession } from '../session';
-import { dayPlan, interruptionPlanFor } from '../week';
+import { type Employer, EMPLOYER_IDS, employerFor } from '../employers';
+import { dayPlan, interruptionPlanFor, WEEK_DAYS } from '../week';
 import { BODGE_TICKETS } from './bodge';
 import { CORPORATE_TICKETS } from './corporate';
 import { mspOnboardingSetup } from '../msp-company';
@@ -87,6 +88,7 @@ import {
   PROJECT_TICKETS,
 } from './project';
 import {
+  defForSpawn,
   findWorldTicket,
   ticketsNeededFor,
   WORLD_TICKETS,
@@ -608,35 +610,114 @@ interface Dealt {
   readonly due: number;
 }
 
-function dealtOn(day: number, seed: number): readonly Dealt[] {
-  return buildDaySchedule(day, seed, dayPlan(day)).arrivals.map((arrival) => {
-    const entry = findWorldTicket(arrival.ticketId);
+/**
+ * A shop's world, stood up once and read for its clocks.
+ *
+ * The deadline a ticket actually lands with is settled at SPAWN, against the
+ * estate it is about: a Gold customer's fault gets three hours where the
+ * authored line says four, a flagged caller's gets two. So the feasibility
+ * arithmetic cannot be done off `def.sla_ticks` - that is the number for an
+ * in-house ticket in an in-house shop, and two of the four shipped weeks are
+ * neither. It reads the world the shop opens with, plus whatever signs during
+ * the week, because a customer taken on on Wednesday is on a real contract by
+ * Wednesday afternoon and their tickets are on its clock.
+ *
+ * Cached per employer: four worlds for the whole gate rather than one per day
+ * per dot, which would be sixty.
+ */
+const ESTATES = new Map<string, ReadOnlyGraphView>();
 
-    if (entry === undefined) {
-      throw new Error(
-        `Day ${String(day)} deals "${arrival.ticketId}", which nobody wrote.`,
-      );
-    }
+function estateOf(employer: Employer): ReadOnlyGraphView {
+  const cached = ESTATES.get(employer.id);
 
-    return {
-      id: arrival.ticketId,
-      // A ticket inherited at eight o'clock is a ticket nobody is paid to
-      // look at until nine, so the window it can be WORKED in starts at the
-      // shift even though the clock on it started earlier.
-      workableFrom: Math.max(arrival.tick, shiftStartTick(day)),
-      due: serviceDeadline(arrival.tick, entry.def.sla_ticks),
-    };
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const session = createWorldSession({
+    farmFund: 0,
+    attempt: 1,
+    arcWeek: 1,
+    employer: employer.id,
   });
+
+  if (employer.id === MSP_CARRY.employer) {
+    session.engine.applySetup(mspOnboardingSetup());
+  }
+
+  ESTATES.set(employer.id, session.engine.graph);
+
+  return session.engine.graph;
+}
+
+function dealtOn(
+  day: number,
+  seed: number,
+  employer: Employer = employerFor(),
+): readonly Dealt[] {
+  const graph = estateOf(employer);
+
+  return buildDaySchedule(day, seed, dayPlan(day, employer.week)).arrivals
+    .map((arrival) => {
+      const entry = findWorldTicket(arrival.ticketId);
+
+      if (entry === undefined) {
+        throw new Error(
+          `Day ${String(day)} deals "${arrival.ticketId}", which nobody wrote.`,
+        );
+      }
+
+      return {
+        id: arrival.ticketId,
+        // A ticket inherited at eight o'clock is a ticket nobody is paid to
+        // look at until nine, so the window it can be WORKED in starts at the
+        // shift even though the clock on it started earlier.
+        workableFrom: Math.max(arrival.tick, shiftStartTick(day)),
+        // Through the same function the spawner uses, so the gate and the game
+        // cannot hold two opinions about when this ticket goes red.
+        due: serviceDeadline(
+          arrival.tick,
+          defForSpawn(entry, graph, arrival.tick).sla_ticks,
+        ),
+      };
+    });
+}
+
+/** A ticket the day dealt, and how many minutes of it nobody else had. */
+interface ClearAir {
+  readonly id: string;
+  readonly clear: number;
 }
 
 /**
- * The complaint a day earns, or nothing. A list rather than an assertion for
- * the same reason `auditPath` is: it is the only way to point the gate at a
- * day that is MEANT to fail and watch it say so.
+ * The arithmetic, before it is turned into a complaint.
+ *
+ * Separated from `auditDayTiming` so the numbers can be asserted on directly.
+ * A gate that only ever sees "complaint or no complaint" cannot tell the
+ * difference between a ticket with eleven clear minutes and one with two
+ * hundred, and one of the two bugs in this file's history was exactly that
+ * distinction: minutes counted on a day the week does not have still cleared
+ * the bar, so the miscount was invisible from the outside.
  */
-export function auditDayTiming(
+export function clearAirOn(
   day: number,
   seed: number,
+  /**
+   * WHOSE five days are being audited.
+   *
+   * It used to be nobody's and therefore the probation shop's: `dayPlan` and
+   * `interruptionPlanFor` both default to `WEEK`, so a gate that never named a
+   * week was asking about the first employer's Monday four times and calling it
+   * coverage. Three shipped weeks - Bodgeworth, the MSP, Halcyon Grange - had
+   * never been through this arithmetic once, and a shop whose calendar swallows
+   * a ticket is exactly as broken as the probation shop would be, with the
+   * additional problem that nobody was looking.
+   *
+   * The whole employer rather than its `week` table, because a week is only
+   * half of what decides whether a ticket is reachable: the other half is the
+   * estate it is about and the clock that estate buys.
+   */
+  employer: Employer = employerFor(),
   extra: readonly InterruptionSlot[] = [],
   // The lead's rounds, overridable ONLY so the meta-test below can construct
   // a day whose bookings it chose. Every real caller takes the day's own.
@@ -662,7 +743,7 @@ export function auditDayTiming(
    * that the gate has not simply been widened until everything passes.
    */
   daysAhead = 2,
-): readonly string[] {
+): readonly ClearAir[] {
   /**
    * The minutes somebody else has already spoken for on a given day.
    *
@@ -672,7 +753,7 @@ export function auditDayTiming(
    * is competing with whatever that day actually holds.
    */
   const bookedOn = (on: number): readonly TickWindow[] => {
-    const dayPlanned = interruptionPlanFor(on, seed);
+    const dayPlanned = interruptionPlanFor(on, seed, employer.week);
     const dayBlocked = on === day ? rounds ?? dayPlanned.blocked : dayPlanned.blocked;
     const schedule = buildInterruptionSchedule(seed, on, {
       slots: on === day ? [...dayPlanned.slots, ...extra] : dayPlanned.slots,
@@ -685,7 +766,7 @@ export function auditDayTiming(
     ];
   };
 
-  return dealtOn(day, seed).flatMap((ticket) => {
+  return dealtOn(day, seed, employer).map((ticket) => {
     // The window a player could work it in: from the minute it lands to the
     // minute the deadline runs out - counted a SHIFT AT A TIME, because both
     // clocks on a ticket are counted in working minutes and a night is not a
@@ -707,7 +788,20 @@ export function auditDayTiming(
     // ladder is eight working hours, so nothing in this world can span more
     // than two nights, and a loop whose only bound is a deadline is a loop
     // bounded by a number somebody else can change.
-    for (let on = day; on <= day + daysAhead; on += 1) {
+    //
+    // And bounded at the END OF THE WEEK, which is the bound it was missing.
+    // `shiftWindow` will hand back a sixth and a seventh shift quite happily
+    // and `interruptionPlanFor` reports them empty, so a Friday-afternoon
+    // ticket whose clock runs past five was being credited with a clear
+    // Saturday - a hundred-odd minutes of a day this game does not have, on
+    // the one day of the week where "there is always tomorrow" is false. The
+    // MSP's Friday portal request is exactly that shape. It passes on the
+    // Friday alone; it was passing partly on a weekend, and a gate that
+    // measures work in minutes nobody could ever sit at the desk for is not
+    // measuring anything.
+    const last = Math.min(day + daysAhead, WEEK_DAYS);
+
+    for (let on = day; on <= last; on += 1) {
       const shift = shiftWindow(on);
       const from = Math.max(ticket.workableFrom, shift.from);
       const to = Math.min(ticket.due, shift.to);
@@ -721,52 +815,198 @@ export function auditDayTiming(
       }
     }
 
-    return clear >= CLEAR_MINUTES_NEEDED
-      ? []
-      : [
-        `${ticket.id} has ${String(clear)} clear minute(s) between arriving `
-        + `and going red, against the ${String(CLEAR_MINUTES_NEEDED)} it `
-        + 'needs. The day is spoken for and the ticket is not reachable.',
-      ];
+    return { id: ticket.id, clear };
   });
 }
 
-describe('every advertised path is reachable under the worst schedule', () => {
+/**
+ * The complaint a day earns, or nothing. A list rather than an assertion for
+ * the same reason `auditPath` is: it is the only way to point the gate at a
+ * day that is MEANT to fail and watch it say so.
+ */
+export function auditDayTiming(
+  day: number,
+  seed: number,
+  employer: Employer = employerFor(),
+  extra: readonly InterruptionSlot[] = [],
+  rounds?: readonly TickWindow[],
+  presence: Presence = DEFAULT_PRESENCE,
+  daysAhead = 2,
+): readonly string[] {
+  return clearAirOn(day, seed, employer, extra, rounds, presence, daysAhead)
+    .filter((air) => air.clear < CLEAR_MINUTES_NEEDED)
+    .map(
+      (air) => `${air.id} has ${String(air.clear)} clear minute(s) between `
+        + `arriving and going red, against the ${String(CLEAR_MINUTES_NEEDED)} `
+        + 'it needs. The day is spoken for and the ticket is not reachable.',
+    );
+}
+
+/**
+ * Every week this build ships, read off the employer registry rather than
+ * listed here.
+ *
+ * Listed here it would be a second table, and a second table is how the third
+ * employer's week went two versions without an audit: the gate named no week,
+ * the readers default to the probation shop's, and "days 1 to 5" looked like
+ * coverage while it was one shop asked five times. Registered employers are
+ * the closed set of shops a career can be at, so a fifth one arrives inside
+ * this gate on the commit that registers it.
+ */
+const SHIPPED_WEEKS = EMPLOYER_IDS.map((id) => {
+  const employer = employerFor(id);
+
+  return { id, name: employer.name, employer };
+});
+
+/**
+ * The days a shipped week deliberately deals nothing at all.
+ *
+ * Bodgeworth's Friday is five tickets' worth of week running out on the
+ * Thursday, and that is authored - the shop's whole contrast with probation is
+ * that there is not enough work in it. It is named here rather than tolerated
+ * by a weaker assertion, so a day that goes empty by ACCIDENT - a drip moved, a
+ * pool that drew nothing - is still a failure, and making a day empty on
+ * purpose costs a line in this map and the sentence that justifies it.
+ */
+const DEALS_NOTHING: Readonly<Record<string, readonly number[]>> = {
+  bodgeworth: [5],
+};
+
+describe.each(SHIPPED_WEEKS)(
+  '$name: every advertised path is reachable under the worst schedule',
+  ({ id, employer }) => {
+    const seed = seedForAttempt(1);
+
+    it.each([1, 2, 3, 4, 5])('day %i leaves clear air on everything it deals', (day) => {
+      expect(auditDayTiming(day, seed, employer)).toEqual([]);
+    });
+
+    /**
+     * And the same five days under each of the three dots.
+     *
+     * The status is a thing the player can hold all week, so "solvable under
+     * the worst schedule" is three questions rather than one. Two of them are
+     * the same question - Away changes nothing about what arrives, which is the
+     * whole of what makes it a lie rather than a filter - and do not disturb is
+     * the one that moves the calendar: a declinable call slides instead of
+     * ringing, which frees the minutes it would have taken and books later ones
+     * instead, and either half of that can be what makes a ticket unreachable.
+     *
+     * The dnd model is deliberately WORSE than any day a player can produce.
+     * Every minute a slid call could ever land on is booked at once, because
+     * nothing can enumerate which of them the player's dot happened to allow -
+     * so clear air found under it is clear air that is genuinely there, on every
+     * day the presence machinery can create.
+     */
+    it.each(
+      [1, 2, 3, 4, 5].flatMap(
+        (day) => PRESENCE_VALUES.map((presence) => [day, presence] as const),
+      ),
+    )('day %i is still solvable on %s', (day, presence) => {
+      expect(auditDayTiming(day, seed, employer, [], undefined, presence))
+        .toEqual([]);
+    });
+
+    /**
+     * And this week has tickets in it, on the days it claims to.
+     *
+     * `it.each` over five empty lists passes in silence, and so does a week
+     * whose queue went missing. The days a shop deliberately leaves empty are
+     * named above; everything else has to deal something.
+     */
+    it('deals something on every day it does not deliberately leave empty', () => {
+      const empty = DEALS_NOTHING[id] ?? [];
+      const dealtNothing = [1, 2, 3, 4, 5].filter(
+        (day) => dealtOn(day, seed, employer).length === 0,
+      );
+
+      // Both directions, because the map is a claim rather than a waiver: a
+      // day that stops being empty has to lose its line here too, or the next
+      // reader is told a lie about the shop.
+      expect(dealtNothing).toEqual([...empty]);
+    });
+
+    /**
+     * And Friday is the end of the week, so the audit may not spend a minute
+     * of a day this game does not have.
+     *
+     * `shiftWindow(6)` answers, cheerfully and wrongly, and `interruptionPlanFor`
+     * calls that day completely free - so a Friday-afternoon ticket whose clock
+     * runs past five o'clock was being credited with a clear Saturday morning.
+     * The MSP's portal request at a quarter to three is exactly that shape and
+     * was being handed a hundred and five minutes of weekend.
+     *
+     * Asserted on the NUMBERS rather than on the complaint, because both
+     * readings clear the ten-minute bar today and a pass/fail assertion could
+     * not tell them apart - which is precisely how the miscount survived. Every
+     * week is asked, because "does this shop have a Friday ticket that spans"
+     * is content that moves.
+     */
+    it('counts no minute past the end of the week', () => {
+      expect(
+        clearAirOn(WEEK_DAYS, seed, employer, [], undefined, DEFAULT_PRESENCE, 2),
+      ).toEqual(
+        clearAirOn(WEEK_DAYS, seed, employer, [], undefined, DEFAULT_PRESENCE, 0),
+      );
+    });
+
+    /**
+     * The teeth, per week, and computed rather than typed.
+     *
+     * A gate nobody has watched fail on THIS week is a gate nobody knows covers
+     * it - and "the probation week's fixture complains" says nothing about
+     * whether the Halcyon table is being read at all. So: the tightest window
+     * this shop's five days contain, booked end to end by the lead's rounds,
+     * and the audit has to name that exact ticket. The rounds are the lever
+     * because they go in as blocked minutes without going through the
+     * interruption builder - a fixture takeover would have to be placed around
+     * whatever the day already holds, which is a different week's problem on
+     * every week.
+     */
+    it('says so when this week\'s calendar swallows one of its own tickets', () => {
+      const tightest = [1, 2, 3, 4, 5]
+        .flatMap(
+          (day) => dealtOn(day, seed, employer).map((ticket) => ({ day, ticket })),
+        )
+        // Same-day deadlines only: a ticket that carries into tomorrow is
+        // measured against tomorrow's calendar too, and one day's rounds
+        // cannot swallow it.
+        .filter(({ day, ticket }) => ticket.due <= shiftWindow(day).to)
+        .sort(
+          (left, right) => (left.ticket.due - left.ticket.workableFrom)
+            - (right.ticket.due - right.ticket.workableFrom),
+        )[0];
+
+      expect(tightest).toBeDefined();
+
+      const day = tightest?.day ?? 1;
+      const complaints = auditDayTiming(day, seed, employer, [], [{
+        from: tightest?.ticket.workableFrom ?? 0,
+        to: tightest?.ticket.due ?? 0,
+      }]);
+
+      expect(complaints.join('\n')).toContain('not reachable');
+      // And it names the ticket, because "something is unreachable" is not a
+      // sentence anybody can act on at four in the afternoon.
+      expect(complaints.some(
+        (line) => line.startsWith(tightest?.ticket.id ?? ''),
+      )).toBe(true);
+    });
+  },
+);
+
+describe('the probation week, under the worst schedule it can deal', () => {
   const seed = seedForAttempt(1);
 
-  it.each([1, 2, 3, 4, 5])('day %i leaves clear air on everything it deals', (day) => {
-    expect(auditDayTiming(day, seed)).toEqual([]);
-  });
-
   /**
-   * And the same five days under each of the three dots.
+   * The dnd walk is genuinely walking something: the two shipped calls are the
+   * only entries in the week a dot can touch, so a model that quietly stopped
+   * booking their slides would pass the presence block above in silence.
    *
-   * The status is a thing the player can hold all week, so "solvable under the
-   * worst schedule" is three questions rather than one. Two of them are the
-   * same question - Away changes nothing about what arrives, which is the
-   * whole of what makes it a lie rather than a filter - and do not disturb is
-   * the one that moves the calendar: a declinable call slides instead of
-   * ringing, which frees the minutes it would have taken and books later ones
-   * instead, and either half of that can be what makes a ticket unreachable.
-   *
-   * The dnd model is deliberately WORSE than any day a player can produce.
-   * Every minute a slid call could ever land on is booked at once, because
-   * nothing can enumerate which of them the player's dot happened to allow -
-   * so clear air found under it is clear air that is genuinely there, on every
-   * day the presence machinery can create.
-   */
-  it.each(
-    [1, 2, 3, 4, 5].flatMap(
-      (day) => PRESENCE_VALUES.map((presence) => [day, presence] as const),
-    ),
-  )('day %i is still solvable on %s', (day, presence) => {
-    expect(auditDayTiming(day, seed, [], undefined, presence)).toEqual([]);
-  });
-
-  /**
-   * And the dnd walk is genuinely walking something: the two shipped calls are
-   * the only entries in the week a dot can touch, so a model that quietly
-   * stopped booking their slides would pass the block above in silence.
+   * It stays a probation-week claim because the probation week is the only one
+   * that ships a declinable call - the other three would assert nothing by
+   * asserting the same number twice, which is a passing test about nothing.
    */
   it('books more of the week under a dot than without one', () => {
     const days = [1, 2, 3, 4, 5];
@@ -793,38 +1033,6 @@ describe('every advertised path is reachable under the worst schedule', () => {
   });
 
   /**
-   * And the week deals something on every one of its days, so the block above
-   * is not five assertions about empty lists. `describe.each` over nothing
-   * passes in silence, and so does a day whose queue went missing.
-   */
-  it('is asking about a week that has tickets in it', () => {
-    for (const day of [1, 2, 3, 4, 5]) {
-      expect(dealtOn(day, seed).length, `day ${String(day)}`)
-        .toBeGreaterThan(0);
-    }
-  });
-
-  /**
-   * The teeth, and the no-op discipline applied: the same function, pointed
-   * at a day with an interruption on it that is meant to swallow a ticket.
-   *
-   * A four-hour block starting the minute the shift does takes every minute
-   * a morning ticket could have been worked in. If this gate ever stops
-   * saying so, it has stopped being a gate - and the two assertions are both
-   * needed, because "returns a complaint" and "names the ticket that caused
-   * it" are different claims and only the second is useful at four in the
-   * afternoon.
-   */
-  /**
-   * The teeth, and the no-op discipline applied: the same function, pointed at
-   * a day whose blocks are built to swallow one ticket whole.
-   *
-   * The two fixture blocks are computed FROM the ticket rather than typed, so
-   * the meta-test cannot quietly stop covering anything when the seed moves
-   * the drip by a minute - and the lead's rounds are handed in empty, because
-   * this is a claim about the arithmetic rather than about Monday.
-   */
-  /**
    * The 4:55 class, held to the older and narrower question.
    *
    * The audit above now counts clear air across the days a deadline actually
@@ -839,7 +1047,15 @@ describe('every advertised path is reachable under the worst schedule', () => {
    * the ticket it was made for is genuinely the shape it says it is.
    */
   it('would call the five-to-five request unreachable inside its own day', () => {
-    const today = auditDayTiming(3, seed, [], undefined, DEFAULT_PRESENCE, 0);
+    const today = auditDayTiming(
+      3,
+      seed,
+      employerFor(),
+      [],
+      undefined,
+      DEFAULT_PRESENCE,
+      0,
+    );
 
     expect(today.some(
       (line) => line.startsWith('ticket:vpn-month-end'),
@@ -850,6 +1066,17 @@ describe('every advertised path is reachable under the worst schedule', () => {
     expect(auditDayTiming(3, seed)).toEqual([]);
   });
 
+  /**
+   * The teeth, and the no-op discipline applied: the same function, pointed at
+   * a day whose blocks are built to swallow one ticket whole.
+   *
+   * The two fixture blocks are computed FROM the ticket rather than typed, so
+   * the meta-test cannot quietly stop covering anything when the seed moves the
+   * drip by a minute - and the lead's rounds are handed in empty, because this
+   * is a claim about the arithmetic rather than about Monday. The per-week
+   * teeth above make the same claim through the rounds; this one makes it
+   * through a TAKEOVER, which is the other half of what books a day.
+   */
   it('says so when a ticket has nowhere left in the day to be worked', () => {
     const swallowed = dealtOn(1, seed).find(
       (ticket) => ticket.workableFrom > shiftStartTick(1),
@@ -878,6 +1105,7 @@ describe('every advertised path is reachable under the worst schedule', () => {
     const complaints = auditDayTiming(
       1,
       seed,
+      employerFor(),
       [
         block('meeting:gate-fixture-before-lunch', from, lunch.from),
         block('meeting:gate-fixture-after-lunch', lunch.to, to),

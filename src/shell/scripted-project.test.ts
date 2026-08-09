@@ -32,13 +32,18 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadEngineForTests } from '../engine-api/load-node';
-import { CAREER_ACTIONS, PROMOTION_REPUTATION } from '../world/actions';
+import {
+  CAREER_ACTIONS,
+  PROJECT_ACTIONS,
+  PROMOTION_REPUTATION,
+} from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS } from '../world/fields';
 import { shiftEndTick, shiftStartTick } from '../world/hours';
 import { MSP_CHANNELS } from '../world/msp-company';
 import { MSP_WEEK } from '../world/msp-week';
 import { ARDEN_EDGE_ESTATE, projectRules, projectStatus } from '../world/project';
+import { actionSummary, triedFromTouches } from '../world/tickets';
 import { ARDEN_EDGE_TASKS } from '../world/tickets/project';
 import { createWorldSession, WORLD_SEED, type WorldSession } from '../world/session';
 import { AppStateStore } from './app-state';
@@ -178,6 +183,17 @@ function nextDay(rigged: Rig): void {
 
 function state(rigged: Rig, ticketId: string): string | undefined {
   return rigged.session.engine.ticketState(ticketId);
+}
+
+/**
+ * The "what I tried" list off a ticket's own evidence, in the words the handoff
+ * form would print - which is the surface the evidence exists FOR, so reading
+ * it any other way would be reading a field rather than the claim.
+ */
+function tried(rigged: Rig, ticketId: string): readonly string[] {
+  return triedFromTouches(
+    rigged.session.engine.graph.getField(ticketId, FIELDS.touchLog),
+  ).map((entry) => entry.text);
 }
 
 function phase(rigged: Rig): string | undefined {
@@ -396,6 +412,102 @@ describe('the edge replacement, played at x1 on the authored week', () => {
     expect(state(rigged, 'ticket:arden-fw-scream-scanners')).toBe('resolved');
     expect(state(rigged, ARDEN_EDGE_TASKS.handover)).toBe('resolved');
     expect(state(rigged, ARDEN_EDGE_TASKS.parent)).toBe('resolved');
+  }, WALK_TIMEOUT_MS);
+
+  /**
+   * Every phase task, and whether the work that closes it leaves a mark ON it.
+   *
+   * This is the gate for a defect 0.29.0 shipped and nothing could see. A touch
+   * is recorded against the unresolved tickets whose authored `nodes` contain
+   * the node the verb was AIMED AT (`ticketsAbout`), and `fw migrate` is aimed
+   * at a RULE - `service:ard-fw-01/vpn-coalport` - while the staging task
+   * listed the two boxes and no rules. So an engineer could spend a whole
+   * afternoon carrying a rule set across, close the task on it, and the task's
+   * own evidence would be empty: a handoff form raised on it at four o'clock
+   * would tell second line, in writing, that nobody had tried anything.
+   *
+   * It is asserted per PHASE rather than for the one ticket that was reported,
+   * because "the ticket's nodes name what the work touches" is the class and
+   * the staging task was one instance of it - the handover carries rules too.
+   * The walk is the shipped terminal, the shipped parser and the shipped
+   * driver: touch evidence is written by `DayDriver.dispatch`, so a test that
+   * dispatched at the engine would prove nothing about the thing that broke.
+   */
+  it('writes touch evidence onto every phase task the work goes through', () => {
+    const rigged = rig();
+    rigged.driver.startShift();
+    runTo(rigged, shiftStartTick(1) + 30);
+    waitOutMeetings(rigged);
+
+    // Phase one: reading the old box is aimed at the old box, which the audit
+    // task names. This half always worked, and it is here so the assertion
+    // below is a comparison rather than a lone claim.
+    run(rigged, 'fw audit ARD-FW-01');
+
+    expect(tried(rigged, ARDEN_EDGE_TASKS.audit)).not.toEqual([]);
+    expect(state(rigged, ARDEN_EDGE_TASKS.staging)).toBe('open');
+
+    // Phase two: ONE rule carried across, with the task still open, so this is
+    // about the evidence rather than about the close.
+    const first = projectRules(
+      rigged.session.engine.graph,
+      ARDEN_EDGE_ESTATE.projectId,
+    )[0];
+
+    expect(first).toBeDefined();
+    run(rigged, `fw migrate ${String(first?.fields[FIELDS.serviceName])}`);
+
+    expect(state(rigged, ARDEN_EDGE_TASKS.staging)).toBe('open');
+    expect(tried(rigged, ARDEN_EDGE_TASKS.staging)).toContain(
+      actionSummary(PROJECT_ACTIONS.migrateRule),
+    );
+
+    // And the rest of the project, so the two later phases are asked the same
+    // question in the state a player actually reaches them in.
+    carry(rigged, 'all');
+    nextDay(rigged);
+    expect(cutoverInsideTheWindow(rigged).done).toBe(true);
+    expect(tried(rigged, ARDEN_EDGE_TASKS.cutover)).not.toEqual([]);
+
+    nextDay(rigged);
+    waitOutMeetings(rigged);
+    run(rigged, 'fw audit ARD-FW-02');
+
+    expect(state(rigged, ARDEN_EDGE_TASKS.handover)).toBe('resolved');
+    expect(tried(rigged, ARDEN_EDGE_TASKS.handover)).not.toEqual([]);
+  }, WALK_TIMEOUT_MS);
+
+  /**
+   * And the handover, whose work is ALSO a migrate - the same class, the other
+   * instance, and the one a pack-read journey actually meets.
+   *
+   * "Carry over anything the morning finds" is the phase's own description of
+   * itself, and what the morning finds is two rules nobody migrated. Those are
+   * carried with `fw migrate`, aimed at a rule, on a task that had better name
+   * the rules it is about.
+   */
+  it('writes the missed rules onto the handover that is waiting on them', () => {
+    const rigged = rig();
+    rigged.driver.startShift();
+    runTo(rigged, shiftStartTick(1) + 30);
+    waitOutMeetings(rigged);
+    run(rigged, 'fw pack ARD-FW-01');
+    carry(rigged, 'documented');
+    nextDay(rigged);
+    expect(cutoverInsideTheWindow(rigged).done).toBe(true);
+    nextDay(rigged);
+
+    waitOutMeetings(rigged);
+    run(rigged, 'fw audit ARD-FW-02');
+    expect(state(rigged, ARDEN_EDGE_TASKS.handover)).toBe('open');
+
+    // The evidence so far is the as-built read, aimed at the new box. Now the
+    // rule the plant rang about, aimed at the rule.
+    run(rigged, 'fw migrate vpn-brenmark');
+
+    expect(tried(rigged, ARDEN_EDGE_TASKS.handover)).toContain(
+      actionSummary(PROJECT_ACTIONS.migrateRule),
+    );
   }, WALK_TIMEOUT_MS);
 
   /**

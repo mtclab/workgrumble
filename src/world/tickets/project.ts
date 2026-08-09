@@ -80,6 +80,28 @@ function carry(ruleId: string): TicketActionStep {
   return { action: PROJECT_ACTIONS.migrateRule, target: ruleId };
 }
 
+/**
+ * A phase task's estate: the boxes it is about, and every rule the work of it
+ * is aimed AT.
+ *
+ * `nodes` is not decoration. It is what `ticketsAbout` matches a dispatch
+ * against, so it decides which open tickets a verb writes touch evidence onto -
+ * and `fw migrate` is aimed at a RULE, not at a box. The staging task shipped
+ * in 0.29.0 naming the two boxes only, which meant an engineer could carry six
+ * rules across, close the task on them, and leave a task whose own record of
+ * what anybody had tried was EMPTY: a handoff raised on it would tell second
+ * line in writing that nobody had looked at it, and the response clock would
+ * still be running on a ticket somebody had spent the afternoon inside.
+ *
+ * So every task whose work includes carrying a rule names the rules. The list
+ * is the same `RULES` the paths are built from, which is the point - the estate
+ * a ticket declares and the targets its steps aim at are one fact, and writing
+ * them twice is how they came apart.
+ */
+function withRules(...boxes: readonly string[]): readonly string[] {
+  return [...boxes, ...RULES];
+}
+
 /** The cable, into the new box - the three ids the verb needs named. */
 const CUTOVER_STEP: TicketActionStep = {
   action: PROJECT_ACTIONS.cutover,
@@ -245,7 +267,7 @@ const EDGE_STAGING: WorldTicket = {
   arrival: 'summoned',
   project: { of: ARDEN_EDGE_PROJECT, due: FIELDS.projectStagingDue },
   follows: ARDEN_EDGE_TASKS.audit,
-  nodes: [MSP_IDS.ardenEdgeOld, MSP_IDS.ardenEdgeNew],
+  nodes: withRules(MSP_IDS.ardenEdgeOld, MSP_IDS.ardenEdgeNew),
   claimed_urgency: 2,
   true_urgency: 3,
   def: {
@@ -330,7 +352,11 @@ const EDGE_HANDOVER: WorldTicket = {
   arrival: 'summoned',
   project: { of: ARDEN_EDGE_PROJECT, due: FIELDS.projectHandoverDue },
   follows: ARDEN_EDGE_TASKS.cutover,
-  nodes: [MSP_IDS.ardenEdgeNew, MSP_IDS.ardenEdgeOld],
+  // The rules for the same reason staging names them, and this is the instance
+  // a pack-read journey actually meets: "carry over anything the morning finds"
+  // is the phase's own description of itself, and what it finds is two rules
+  // nobody migrated, carried with the verb that is aimed at a rule.
+  nodes: withRules(MSP_IDS.ardenEdgeNew, MSP_IDS.ardenEdgeOld),
   claimed_urgency: 2,
   true_urgency: 2,
   def: {
