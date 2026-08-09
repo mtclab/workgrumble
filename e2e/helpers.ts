@@ -450,21 +450,89 @@ export async function openFromDesktopIcon(
   await expect(page.getByTestId(`window-${appId}`)).toBeVisible();
 }
 
-/** Brings an already-open window to the front from the taskbar. */
-export async function focusWindow(page: Page, appId: string): Promise<void> {
-  // The taskbar button TOGGLES: clicking it on an already-focused window
-  // minimizes it. Focus can land on this window by itself (e.g. after the
-  // boss key minimizes the slack window above it), so only click when the
-  // window actually needs focusing.
-  const window = page.getByTestId(`window-${appId}`);
-  const focused = await window.getAttribute('data-focused');
-  const minimized = await window.getAttribute('data-minimized');
+/**
+ * How many times a raise may be re-asserted before it stops being a busy
+ * morning and starts being a bug.
+ *
+ * Bounded on purpose, and bounded low: a desk that has taken six raises off
+ * the player in a row is a desk they do not have, which is a fact about the
+ * day rather than a slow window, and a helper that quietly kept clicking would
+ * turn that into a hanging test instead of a red one.
+ */
+const RAISE_PASSES = 6;
 
-  if (focused !== 'true' || minimized === 'true') {
-    await page.getByTestId(`taskbar-button-${appId}`).click();
+/** How long one raise is given to land before it is asserted again. */
+const RAISE_MS = 1_000;
+
+/**
+ * Brings an already-open window to the front from the taskbar, re-asserting
+ * the raise for as long as the day keeps taking it away, and ANSWERS whether
+ * the window is there at the end of it.
+ *
+ * THE CONTRACT, and the reason it is a loop rather than a click:
+ * `page.clock.install()` does NOT stop the clock. Playwright installs fake
+ * time-functions and leaves them SYNCING WITH REAL TIME - `runFor` pauses that
+ * sync for the jump and resumes it on the way out, and only `pauseAt` stops it
+ * - so the simulated day keeps running through every wait this suite does,
+ * including the five seconds an `expect` spends polling. A raise is therefore
+ * a thing the world can undo between the click and the read: the day puts its
+ * own screens on the desk (`main.ts` opens the caught scene, a call, a
+ * meeting) and every one of them takes focus, because `openApp` -> `launchApp`
+ * -> `openWindow`/`restoreWindow` makes the new window the focused one.
+ *
+ * A helper that clicked once and then waited could not survive that. It spent
+ * the whole timeout asserting a focus the world had legitimately taken, and
+ * the window it was asking about sat there un-minimised, un-hidden and one
+ * z-index below whatever had just arrived - which is exactly how this reads in
+ * a trace, and exactly what a player would see. Re-asserting is the same
+ * answer `runSimMinutes` gives to the same problem one floor down.
+ *
+ * The read comes before every click because the taskbar button TOGGLES:
+ * clicking it on an already-focused window minimises it. That also makes the
+ * loop self-healing - a click that raced a raise and minimised the window is
+ * seen as minimised on the next pass and clicked back up.
+ */
+export async function raiseWindow(
+  page: Page,
+  appId: string,
+): Promise<boolean> {
+  const window = page.getByTestId(`window-${appId}`);
+  const button = page.getByTestId(`taskbar-button-${appId}`);
+
+  for (let pass = 0; pass < RAISE_PASSES; pass += 1) {
+    const focused = await window.getAttribute('data-focused');
+    const minimized = await window.getAttribute('data-minimized');
+
+    if (focused === 'true' && minimized !== 'true') {
+      return true;
+    }
+
+    await button.click();
+
+    // Bounded, and its failure is an ANSWER rather than a red: the whole point
+    // is that a raise which did not land is a thing to try again, not a thing
+    // to end the journey on.
+    const landed = await expect(window)
+      .toHaveAttribute('data-focused', 'true', { timeout: RAISE_MS })
+      .then(() => true, () => false);
+
+    if (landed) {
+      return true;
+    }
   }
 
-  await expect(window).toHaveAttribute('data-focused', 'true');
+  return false;
+}
+
+/** The same raise, for the callers that have no answer to "it would not". */
+export async function focusWindow(page: Page, appId: string): Promise<void> {
+  const raised = await raiseWindow(page, appId);
+
+  expect(
+    raised,
+    `"${appId}" would not stay at the front: the day kept its own screen there `
+    + `through ${String(RAISE_PASSES)} raises.`,
+  ).toBe(true);
 }
 
 /**

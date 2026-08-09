@@ -8,6 +8,7 @@ import {
   logIn,
   logInOnDay,
   openFromStartMenu,
+  raiseWindow,
   runSimMinutes,
   workUntilMinute,
 } from './helpers';
@@ -96,6 +97,16 @@ async function doSomeWork(page: Page): Promise<void> {
  * when a takeover owns the desk because there is nothing to dispatch to then -
  * which the caller's loop is watching for anyway. Answers whether it managed to
  * work, so a loop can tell a blocked minute from a worked one.
+ *
+ * AND IT YIELDS ON A RAISE THAT WILL NOT STICK, which is the same yield rather
+ * than a tolerance added to it. Both guards above are read at the TOP of a
+ * round and the clock does not stop while the round runs - `page.clock.install`
+ * leaves the fake clock syncing with real time, so the day keeps arriving
+ * through every wait (see `raiseWindow`). The scene this journey is driving
+ * TOWARDS can therefore land in the middle of the raise, and when it does the
+ * desk belongs to the lead: there is nothing to dispatch, and the caller's next
+ * pass reads the scene and stops. Insisting on the focus instead is a walk
+ * failing on the arrival of the exact thing it is waiting for.
  */
 async function workBehindTheDot(page: Page): Promise<boolean> {
   // A takeover (the caught scene, chiefly) owns the whole desk: no window to
@@ -119,9 +130,9 @@ async function workBehindTheDot(page: Page): Promise<boolean> {
 
   if (await remote.count() === 0) {
     await openFromStartMenu(page, 'remote');
-  } else {
+  } else if (!await raiseWindow(page, 'remote')) {
     // Raise it to the front and WAIT until it is there before dispatching.
-    // `focusWindow` clicks the taskbar toggle only when the window needs it (so
+    // `raiseWindow` clicks the taskbar toggle only when the window needs it (so
     // a window that is already up is not minimised) and then blocks on
     // data-focused='true'. That block is the fix: the window manager keeps the
     // focused window the TOP visible one, so a confirmed focus is a guarantee
@@ -129,7 +140,10 @@ async function workBehindTheDot(page: Page): Promise<boolean> {
     // not promise that - it clicked the toggle and dispatched in the same beat,
     // and a raise that had not landed yet left the machine-select click retrying
     // against a button still under another window until the whole test timed out.
-    await focusWindow(page, 'remote');
+    //
+    // And a raise the day keeps taking back is a desk the player does not have,
+    // which is a yield rather than a failure - see the note above.
+    return false;
   }
 
   await page.getByTestId('remote-machine-ada').click();

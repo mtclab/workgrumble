@@ -48,17 +48,32 @@ const ARRIVAL = {
   },
 };
 
+/**
+ * Arriving at the MSP, seeded ONCE and by hand.
+ *
+ * Not `addInitScript`, which is how the other arrival specs do it and which
+ * would be wrong here: an init script re-runs on EVERY navigation, and this
+ * journey reloads. The switch record would be back in storage at the second
+ * boot, the shell would stand a fresh first day at the MSP up over the week
+ * that was just saved, and the sheet the reload is asking about would be a
+ * sheet nobody had filed. The product refuses to write that fresh Monday over
+ * an occupied slot (`acknowledgeCarry`, 0.30.0), so the save survives - but the
+ * boot still puts a "this move is not saved" notice on the desk about an
+ * arrival nobody asked for twice, and the record stays armed for the next
+ * navigation. The arrival has to happen once and stay happened, which is what
+ * `skins.spec.ts` does for the same reason.
+ */
 async function arriveAtMsp(page: Page): Promise<void> {
-  await page.addInitScript(
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.install();
+  await page.goto('/');
+  await page.evaluate(
     ([key, record]) => {
       window.localStorage.setItem(key, JSON.stringify(record));
     },
     [SWITCH_KEY, ARRIVAL] as [string, typeof ARRIVAL],
   );
-
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.clock.install();
-  await page.goto('/');
+  await page.reload();
   await completeLogin(page, { brief: 'keep' });
 
   const arrival = page.getByTestId('window-updates');
