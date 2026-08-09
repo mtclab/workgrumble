@@ -153,6 +153,18 @@
   --size-toast: 288px;
   --size-dialog: 340px;
   --size-badge: 17px;
+  /*
+   * The timesheet's three fixed columns (0.30.0).
+   *
+   * A sheet is a COMPARISON - what the records say against what you say - and
+   * a comparison whose two numbers move sideways with the length of a
+   * customer's name is not one. The hours columns are therefore a fixed track
+   * rather than `auto`, and the handle column is the width of the address the
+   * terminal knows the same line by.
+   */
+  --size-sheet-handle: 30px;
+  --size-sheet-hours: 62px;
+  --size-sheet-field: 76px;
   --size-bubble: 54px;
   --size-initials: 44px;
   --size-rail: 30px;
@@ -4694,6 +4706,252 @@ input {
   margin: var(--space-0);
   font-family: var(--font-read);
   font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+}
+
+/* ----------------------------------------------------------- the timesheet */
+
+.timesheet-app {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  height: 100%;
+  min-height: 0;
+}
+
+.timesheet-toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-raised);
+}
+
+.timesheet-heading {
+  font-family: var(--font-ui);
+  font-weight: 700;
+}
+
+.timesheet-stance {
+  flex: 1 1 0;
+  color: var(--color-ink-soft);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.timesheet-masthead {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3) var(--space-4);
+  align-items: center;
+  padding: var(--space-4);
+}
+
+.timesheet-mark {
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.timesheet-week {
+  margin: var(--space-0);
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+
+.timesheet-stamp {
+  margin: var(--space-0);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+}
+
+/* A filed sheet is not an error and not a warning - it is a fact with a
+   minute on it - so the stamp goes bold and dark rather than red. */
+.timesheet-masthead[data-state='submitted'] .timesheet-stamp,
+.timesheet-masthead[data-state='auto-submitted'] .timesheet-stamp {
+  color: var(--color-ink);
+  font-weight: 700;
+}
+
+.timesheet-masthead[data-state='due-today'] .timesheet-stamp {
+  color: var(--color-alarm);
+}
+
+.timesheet-masthead .app-outcome,
+.timesheet-masthead .app-refusal {
+  grid-column: 1 / -1;
+  margin: var(--space-0);
+}
+
+.timesheet-viewport {
+  overflow-y: auto;
+  padding: var(--space-0) var(--space-4) var(--space-4);
+}
+
+/* The one shared track list, and the reason it is written out twice: the
+   column heading and every row are separate grids, so a comparison the whole
+   window is about would go ragged the moment a customer had a long name. */
+.timesheet-columns,
+.timesheet-line,
+.timesheet-gap {
+  display: grid;
+  grid-template-columns:
+    var(--size-sheet-handle) 1fr auto
+    var(--size-sheet-hours) var(--size-sheet-hours);
+  gap: var(--space-2) var(--space-3);
+  align-items: baseline;
+}
+
+.timesheet-columns {
+  position: sticky;
+  top: var(--space-0);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  color: var(--color-ink-soft);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  text-align: right;
+}
+
+.timesheet-rows {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.timesheet-day {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface-sunken);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.timesheet-day[data-today='true'] {
+  box-shadow: var(--bevel-raised);
+}
+
+.timesheet-day-totals {
+  font-weight: 400;
+  color: var(--color-ink-soft);
+}
+
+.timesheet-line {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-raised);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+
+.timesheet-line-handle {
+  color: var(--color-ink-disabled);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.timesheet-line-label {
+  font-weight: 700;
+}
+
+.timesheet-line-flag {
+  color: var(--color-ink-soft);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+}
+
+.timesheet-line[data-billable='false'] .timesheet-line-flag {
+  color: var(--color-ink-disabled);
+}
+
+.timesheet-line-worked,
+.timesheet-line-claimed,
+.timesheet-gap-hours {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+/* The record is the thing being disagreed with, so it goes quiet the moment
+   there is a claim beside it - and stays exactly where it was, which is the
+   whole point of the two columns. */
+.timesheet-line[data-gap='over'] .timesheet-line-worked,
+.timesheet-line[data-gap='under'] .timesheet-line-worked,
+.timesheet-line[data-gap='level'] .timesheet-line-worked {
+  color: var(--color-ink-soft);
+}
+
+.timesheet-line-claimed {
+  font-weight: 700;
+}
+
+.timesheet-line[data-gap='over'] .timesheet-line-claimed {
+  color: var(--color-alarm);
+}
+
+.timesheet-line-reads {
+  grid-column: 2 / -1;
+  margin: var(--space-0);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+}
+
+/* A vague line has to LOOK vague, and the shortest honest way to say that is
+   to let it be the short, thin, unpunctuated thing it is. */
+.timesheet-line[data-detail='vague'] .timesheet-line-reads {
+  color: var(--color-ink-disabled);
+  font-style: italic;
+}
+
+.timesheet-line-edit {
+  grid-column: 2 / -1;
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.timesheet-minutes {
+  width: var(--size-sheet-field);
+  text-align: right;
+}
+
+.timesheet-gap {
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+}
+
+.timesheet-gap-label {
+  grid-column: 2;
+  color: var(--color-ink-soft);
+  font-style: italic;
+}
+
+.timesheet-gap-hours {
+  grid-column: 4;
+  color: var(--color-ink-soft);
+}
+
+.timesheet-gap-note {
+  grid-column: 2 / -1;
+  margin: var(--space-0);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+}
+
+.timesheet-empty {
+  padding: var(--space-4);
+  font-family: var(--font-read);
   color: var(--color-ink-soft);
 }
 

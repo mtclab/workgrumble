@@ -24,6 +24,7 @@ import { REMOTE_APP } from './remote';
 import { REVIEW_APP } from './review';
 import { SCORECARD_APP } from './scorecard';
 import { TICKETS_APP } from './tickets';
+import { TIMESHEET_APP } from './timesheet';
 import { UPDATES_APP } from './updates';
 import { WEEKEND_APP } from './weekend';
 
@@ -55,6 +56,12 @@ export const APP_MANIFEST = assertCaughtScenes(loadManifest([
   // is what it is next to in the job - the board is the plan and every task on
   // it is a row in the window above.
   PROJECTS_APP,
+  // The third thing the work is written down in (0.30.0), and the one that
+  // reads the other two back: the queue says what was wrong, the plan says
+  // when it is due, and the sheet says whose afternoon it was. It sits with
+  // them rather than among the tools because it is not a tool - it is the
+  // paperwork the week is billed on.
+  TIMESHEET_APP,
   DIRECTORY_APP,
   REMOTE_APP,
   // The RMM board (0.9.0): the monitoring-only contract's own surface. A base

@@ -166,6 +166,29 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { x: '11', y: '15', width: '10', height: '3', rx: '1' },
     },
   ],
+  // A ruled sheet with a column ruled off down the right of it: rows of work
+  // and a column of hours beside them, which is what a timesheet has looked
+  // like since it was a piece of paper on a clipboard. Deliberately NOT a
+  // clock - a clock says "what time is it" and this window is about what the
+  // hours were SPENT on - and deliberately not the plan surface's bars.
+  'icon-timesheet': [
+    {
+      element: 'rect',
+      attributes: { x: '3', y: '4', width: '18', height: '16', rx: '1' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '15', y1: '4', x2: '15', y2: '20' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '3', y1: '9', x2: '21', y2: '9' },
+    },
+    {
+      element: 'line',
+      attributes: { x1: '3', y1: '14', x2: '21', y2: '14' },
+    },
+  ],
   'icon-directory': [
     {
       element: 'rect',

@@ -2945,6 +2945,30 @@ test('walks every function of a probation week that goes well', async ({
    * player's own - the week ending files it for you, honestly labelled, and
    * that path is proven in the unit suite where a whole week can be driven.
    */
+  await step('timesheet.window', async () => {
+    await openFromStartMenu(page, 'timesheet');
+
+    await expect(page.getByTestId('timesheet-app')).toBeVisible();
+    await expect(page.getByTestId('timesheet-stance'))
+      .toContainText('nothing on it to decide');
+    await expect(page.getByTestId('timesheet-stamp'))
+      .toContainText('end of today');
+
+    // Five days of the week, one line each, seven and a half hours a line,
+    // attributed to nobody - and not one control on any of them, because a
+    // desk sheet has nothing on it anybody would ever be asked about.
+    const rows = page.locator('[data-testid^="timesheet-line-"]');
+
+    await expect(rows).toHaveCount(5);
+    await expect(rows.first()).toContainText('Service Desk');
+    await expect(rows.first()).toHaveAttribute('data-gap', 'unedited');
+    await expect(rows.first()).toHaveAttribute('data-billable', 'false');
+    await expect(page.locator('[data-testid^="timesheet-minutes-"]'))
+      .toHaveCount(0);
+    await expect(page.locator('[data-testid^="timesheet-unattributed-"]'))
+      .toHaveCount(0);
+  });
+
   await step('cmd.timesheet', async () => {
     await openFromStartMenu(page, 'cmd');
     await runCommand(page, 'timesheet');
@@ -2962,6 +2986,14 @@ test('walks every function of a probation week that goes well', async ({
     // thing anybody is looking at.
     await runCommand(page, 'timesheet claim 1.1 420');
     await expect(sheet).toContainText('That sheet has gone in');
+
+    // The window that was open behind all that is a READ of the same sheet
+    // rather than a second copy of it: nobody told it anything, and it is
+    // stamped and frozen. Filing from one door freezes the other.
+    await focusWindow(page, 'timesheet');
+    await expect(page.getByTestId('timesheet-stamp'))
+      .toContainText('Submitted at');
+    await expect(page.getByTestId('timesheet-submit')).toBeDisabled();
   });
 
   await workUntilMinute(page, 425);
@@ -3819,6 +3851,80 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await expect(sheet).toContainText('now reads "consulting"');
     await runCommand(page, 'timesheet');
     await expect(sheet).toContainText('(vague)');
+  });
+
+  /*
+   * THE SAME SHEET, THROUGH THE WINDOW (0.30.0). The terminal has just moved
+   * two things on it; this opens the other door onto the same state and does
+   * the engineer's half of the mechanic with the two numbers on the screen
+   * beside each other, which is the whole reason the window exists.
+   */
+  await openFromStartMenu(page, 'timesheet');
+
+  const sheetRows = page.locator('[data-testid^="timesheet-line-"]');
+
+  await step('timesheet.claim', async () => {
+    await expect(page.getByTestId('timesheet-stance'))
+      .toContainText('A line per customer');
+    await expect(sheetRows.first()).toBeVisible();
+
+    // The pad is driven from what the ENGINE says the line was worth, read off
+    // the row: a walk that typed a figure of its own would be a walk that
+    // quietly claimed less than the truth on a slow morning.
+    const handle = await sheetRows.first().getAttribute('data-handle') ?? '';
+    const worked = Number(
+      await sheetRows.first().getAttribute('data-worked'),
+    );
+    const record = await page.getByTestId(`timesheet-worked-${handle}`)
+      .innerText();
+
+    expect(worked).toBeGreaterThan(0);
+
+    await page.getByTestId(`timesheet-minutes-${handle}`)
+      .fill(String(worked + 60));
+    await page.getByTestId(`timesheet-put-${handle}`).click();
+
+    // Both figures now, and the left one exactly where it was: the record and
+    // the claim are two pieces of paper from here on.
+    await expect(sheetRows.first()).toHaveAttribute('data-gap', 'over');
+    await expect(page.getByTestId(`timesheet-claimed-${handle}`)).toBeVisible();
+    await expect(page.getByTestId(`timesheet-worked-${handle}`))
+      .toHaveText(record);
+    await expect(page.getByTestId('timesheet-outcome'))
+      .toContainText('The records still say what they said');
+  });
+
+  await step('timesheet.detail', async () => {
+    const row = sheetRows.last();
+    const handle = await row.getAttribute('data-handle') ?? '';
+    const detail = page.getByTestId(`timesheet-detail-${handle}`);
+    const reads = page.getByTestId(`timesheet-reads-${handle}`);
+
+    // Both directions, from whichever way round the terminal left it. Written
+    // out in full is a date, an estate and a number of hours; the other one is
+    // a word, which is exactly what makes it look like one.
+    await detail.selectOption('detailed');
+    await expect(row).toHaveAttribute('data-detail', 'detailed');
+    await expect(reads).toContainText('/1998');
+
+    await detail.selectOption('vague');
+    await expect(row).toHaveAttribute('data-detail', 'vague');
+    await expect(reads).toHaveText('consulting');
+  });
+
+  await step('timesheet.submit', async () => {
+    await page.getByTestId('timesheet-submit').click();
+
+    await expect(page.getByTestId('timesheet-stamp'))
+      .toContainText('Submitted at');
+    await expect(page.getByTestId('timesheet-submit')).toBeDisabled();
+    // Frozen, line by line: not one row still offers an edit, and the claims
+    // that were made are standing on it.
+    await expect(page.locator('[data-testid^="timesheet-minutes-"]'))
+      .toHaveCount(0);
+    await expect(page.locator('[data-testid^="timesheet-detail-"]'))
+      .toHaveCount(0);
+    await expect(sheetRows.first()).toHaveAttribute('data-gap', 'over');
   });
 
   await step('projects.phase', async () => {

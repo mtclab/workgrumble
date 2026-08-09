@@ -59,6 +59,9 @@ export const PROGRAM_IMAGES: Readonly<Record<string, ProgramImage>> = {
   // that carries the projects, and the process list is where a workstation of
   // this era told you what a friendly window was really called.
   projects: { image: 'PSAPLAN.EXE', title: 'Projects' },
+  // The sheet (0.30.0). A time card is what the thing was called before it was
+  // a window, and this workstation has never stopped calling it that.
+  timesheet: { image: 'TIMECARD.EXE', title: 'Timesheet' },
   directory: { image: 'ACTDICT.EXE', title: 'Active Dictionary' },
   remote: { image: 'RASSIST.EXE', title: 'Remote Assist' },
   monitor: { image: 'RMMBOARD.EXE', title: 'Monitoring board' },

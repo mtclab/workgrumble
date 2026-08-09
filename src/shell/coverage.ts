@@ -3353,6 +3353,70 @@ const ENTRIES = [
       + 'them before the promotion at the MSP.',
   },
 
+  /* -- the sheet (0.30.0) -------------------------------------------------- */
+  {
+    id: 'timesheet.window',
+    surface: 'timesheet',
+    control: 'window-timesheet',
+    does: 'The sheet as a window: the week per day, what the records say each '
+      + 'line was worth, what the player says it was where those differ, the '
+      + 'sentence each line goes out as, and the rest of the day underneath as '
+      + 'time on nobody\'s invoice. It is the SERVICE DESK shape here, which is '
+      + 'the joke the mechanic opens with - one bucket a day at seven and a '
+      + 'half hours, attributed to nobody, with nothing on it to decide and one '
+      + 'thing to do with it - and it is a read of the same state the terminal '
+      + 'prints, so filing it from the terminal freezes this window behind it.',
+    window: { routes: ['start-menu', 'desktop-icon'] },
+    run: 'week',
+  },
+  {
+    id: 'timesheet.claim',
+    surface: 'timesheet',
+    control: 'timesheet-minutes-<line>, timesheet-put-<line>',
+    does: 'The pad, done with the truth on the screen beside it: type a number '
+      + 'of minutes against a line and put it in. The claimed figure appears '
+      + 'next to the worked one and the worked one does not move - the record '
+      + 'and the claim are two pieces of paper from that moment on - and the '
+      + 'window says out loud that the records still say what they said.',
+    actions: [TIMESHEET_ACTIONS.claim],
+    run: 'sysadmin',
+    why: 'The edit only exists on the ENGINEER\'s shape: a service-desk sheet '
+      + 'is one unattributed bucket with nothing on it to argue with, so there '
+      + 'is no line to pad until the promotion at the MSP, which no probation '
+      + 'week reaches.',
+  },
+  {
+    id: 'timesheet.detail',
+    surface: 'timesheet',
+    control: 'timesheet-detail-<line>',
+    does: 'The other axis, and the one the research says actually decides a '
+      + 'challenge: how much of a sentence goes beside the number. A line '
+      + 'written out in full carries the date, the estate and the hours; the '
+      + 'other option is the word "consulting", and the window shows the line '
+      + 'as it will read either way - so a vague line LOOKS vague, next to a '
+      + 'full one, without a word of advice about which to pick.',
+    actions: [TIMESHEET_ACTIONS.claim],
+    run: 'sysadmin',
+    why: 'The same threshold the pad lives behind: a desk sheet has no line '
+      + 'whose wording anybody would ever read, so the detail choice exists '
+      + 'only on the per-customer shape past the promotion.',
+  },
+  {
+    id: 'timesheet.submit',
+    surface: 'timesheet',
+    control: 'timesheet-submit',
+    does: 'Sends the sheet in from the window: the stamp changes to the minute '
+      + 'it went, every edit affordance on every line goes away, and the button '
+      + 'itself is refused in the world\'s own sentence if it is pressed again. '
+      + 'A filed piece of paper, said plainly.',
+    actions: [TIMESHEET_ACTIONS.submit],
+    run: 'sysadmin',
+    why: 'A sheet can be filed exactly once a week, and the week run files the '
+      + 'desk one from the terminal. So the button is walked in the run whose '
+      + 'sheet is still open - which is also the only one where filing it means '
+      + 'anything, because it is the one with a padded line on it.',
+  },
+
   {
     id: 'browser.window',
     surface: 'browser',
@@ -3981,6 +4045,16 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   // past the promotion at the MSP, walked in the sysadmin run.
   'projects-phase-*',
   'projects-open-task-*',
+  // The sheet's three per-line controls (0.30.0), keyed by the line HANDLE -
+  // `3.2`, day and position, the same address the terminal knows the line by,
+  // and deliberately not the bucket, which has a bar and a colon in it. They
+  // exist only on the engineer's shape, past the promotion at the MSP; the
+  // desk sheet has nothing on it to decide, so its rows carry no controls at
+  // all. The fourth is the whole of what a desk sheet CAN do.
+  'timesheet-minutes-*',
+  'timesheet-put-*',
+  'timesheet-detail-*',
+  'timesheet-submit',
   'browser-site-*',
   'browser-home-button',
   // The web store's live buttons, one per shipped installable, per direction.

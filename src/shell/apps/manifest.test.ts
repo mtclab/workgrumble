@@ -80,6 +80,7 @@ describe('shipped manifest', () => {
       'beer',
       'tickets',
       'projects',
+      'timesheet',
       'directory',
       'remote',
       'monitor',
@@ -141,6 +142,7 @@ describe('shipped manifest', () => {
       'beer',
       'tickets',
       'projects',
+      'timesheet',
       'directory',
       'remote',
       'monitor',
@@ -210,6 +212,10 @@ describe('shipped manifest', () => {
       // window says so itself - the Display Properties pattern, for the same
       // reason: a tool nobody can find teaches nobody why they cannot have it.
       'projects',
+      // The sheet (0.30.0). Helpdesk tier and no gate inside the window
+      // either: EVERY tier fills one in, and the promotion changes its shape
+      // rather than whether the player has to.
+      'timesheet',
       'directory',
       'remote',
       'monitor',
