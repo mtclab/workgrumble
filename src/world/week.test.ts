@@ -662,6 +662,7 @@ describe('the week, scored', () => {
       bar: REVIEW_PASS_PERFORMANCE,
       conduct: 'Nobody has a reason to open your file.',
       criteria: '',
+      utilisation: '',
       outcome: 'passed',
     });
 
@@ -698,6 +699,7 @@ describe('the week, scored', () => {
       bar: REVIEW_PASS_PERFORMANCE,
       conduct: 'Nobody has a reason to open your file.',
       criteria: '',
+      utilisation: '',
       outcome: 'passed',
     });
 
@@ -717,6 +719,7 @@ describe('the week, scored', () => {
       bar: REVIEW_PASS_PERFORMANCE,
       conduct: 'Somebody has a reason to open your file.',
       criteria: '',
+      utilisation: '',
       outcome: 'fired',
     }).earnedPence).toBe(0);
   });

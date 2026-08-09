@@ -631,6 +631,13 @@ export interface SheetDay {
   readonly derived: number;
   readonly claimed: number;
   readonly unattributed: number;
+  /**
+   * Working minutes of this day that have gone by - the denominator the
+   * utilisation reading is against, carried through from the derivation rather
+   * than recomputed by whoever is asking. A day is 450 of these once it is
+   * over and fewer while it is running.
+   */
+  readonly elapsed: number;
 }
 
 export interface Timesheet {
@@ -731,6 +738,7 @@ export function timesheetSheet(
       derived,
       claimed,
       unattributed: shape === 'single_bucket' ? 0 : day.unattributed,
+      elapsed: day.elapsed,
     };
   });
 
@@ -745,12 +753,172 @@ export function timesheetSheet(
   };
 }
 
-function labelForBucket(bucket: string, state: Readonly<SheetState>): string {
+/**
+ * The `${kind}|${id}` a bucket is, taken back apart - or null for the desk's
+ * one bucket, which is not a segment kind and never was.
+ *
+ * Exported because the customer's reading of the sheet (`invoice.ts`) has to
+ * know WHOSE line it is looking at, and the bucket is where that is written. It
+ * splits on the FIRST separator for the reason `decodeClaim` does not split at
+ * all: an id may carry a bar, and a reader that rejoined the middle would be a
+ * reader that quietly ate one.
+ */
+export function bucketParts(bucket: string): Readonly<SegmentRef> | null {
   const at = bucket.indexOf(SEPARATOR);
+
+  if (at <= 0) {
+    return null;
+  }
+
   const kind = bucket.slice(0, at);
   const id = bucket.slice(at + 1);
 
-  return isSegmentKind(kind) ? state.labelOf(kind, id) : bucket;
+  return isSegmentKind(kind) && id.length > 0 ? { kind, id } : null;
+}
+
+function labelForBucket(bucket: string, state: Readonly<SheetState>): string {
+  const parts = bucketParts(bucket);
+
+  return parts === null ? bucket : state.labelOf(parts.kind, parts.id);
+}
+
+/* -- what the ORG reads off it (0.30.0, slice 2) -------------------------- */
+
+/**
+ * Which number a tier's target is against, and the whole reason there are two.
+ *
+ * They are two different JOBS being measured, exactly as the two sheet shapes
+ * are two different jobs being filled in:
+ *
+ *  - `recorded` is "is the sheet filled in" - every minute the sheet accounts
+ *    for at all, billable or not. It is what a service desk is actually held
+ *    to, and on a one-bucket sheet it is a hundred per cent by construction.
+ *  - `billable` is utilisation in the trade's own sense - the minutes that are
+ *    on somebody's invoice, over the minutes of the day. It is the engineer's
+ *    number and it is the one padding moves.
+ */
+export type UtilisationBasis = 'recorded' | 'billable';
+
+export interface UtilisationTarget {
+  readonly basis: UtilisationBasis;
+  readonly percent: number;
+}
+
+/**
+ * What the business asks of each tier.
+ *
+ * OVERSEER TUNING KNOBS, both, and the second one is the design.
+ *
+ * The DESK's is a hundred against `recorded`, and it is the joke: the sheet is
+ * one bucket a day at seven and a half hours, so it hits the target exactly,
+ * every week, without anybody deciding anything. Nobody at a service desk
+ * attributes anything and the number that measures them says so.
+ *
+ * The ENGINEER's is seventy-five against `billable`, which is the sourced
+ * industry ask - "service executives aim for 75% billable ... and end up with
+ * yearly averages in the mid-60s" (Promys, via `docs/research/
+ * titles-projects-engine.md` 5.4). The honest week does not reach it, and that
+ * is the whole of the mechanic: MEASURED on the shipped MSP week played
+ * properly at x1, a week that closes its queue and carries its project lands
+ * between about 35% and 50% billable depending on how the acts fall - the
+ * engine only credits a minute somebody was demonstrably working, and the
+ * authored week runs out of arrivals before Friday afternoon does. So the
+ * target is not reachable honestly, missing it costs exactly nothing (that is
+ * the house rule, asserted in `timesheet.test.ts`), and the only way to hit it
+ * is to claim time nobody worked - which is what the customer reads.
+ */
+export const UTILISATION_TARGETS: Readonly<Record<PlayerTier, UtilisationTarget>> = {
+  [PLAYER_TIERS.serviceDesk]: { basis: 'recorded', percent: 100 },
+  [PLAYER_TIERS.systemsEngineer]: { basis: 'billable', percent: 75 },
+};
+
+export interface UtilisationReading {
+  readonly basis: UtilisationBasis;
+  /** The number the target is against, as a whole percentage. */
+  readonly percent: number;
+  /** Every minute the sheet accounts for, as a whole percentage. */
+  readonly recorded: number;
+  /** The minutes on somebody's invoice, as a whole percentage. */
+  readonly billable: number;
+  readonly target: number;
+  readonly met: boolean;
+  /** The minutes behind the ratio, so a surface can print the arithmetic. */
+  readonly claimedMinutes: number;
+  readonly billableMinutes: number;
+  readonly availableMinutes: number;
+}
+
+function share(part: number, whole: number): number {
+  return whole <= 0 ? 0 : Math.min(100, Math.round(100 * part / whole));
+}
+
+/**
+ * The week as the ORG reads it: what you SAID, over the hours you were here.
+ *
+ * The claim rather than the record, deliberately and on both bases. A timesheet
+ * is what the business has; nobody at the review is holding the dispatch log.
+ * That is what makes padding move this number and what makes the customer's
+ * reading of the same sheet the counterweight - one sheet, two readers, and the
+ * gap between what each of them can check is the mechanic.
+ *
+ * One call over the SHEET, which is already the derivation and the claim side
+ * by side, so there is no second arithmetic here to drift from it.
+ */
+export function utilisationOf(
+  sheet: Readonly<Timesheet>,
+  tier: PlayerTier,
+): UtilisationReading {
+  const target = UTILISATION_TARGETS[tier];
+  const claimedMinutes = sheet.days.reduce((total, day) => total + day.claimed, 0);
+  const billableMinutes = sheet.days.reduce(
+    (total, day) => total + day.lines.reduce(
+      (sum, line) => sum + (line.billable ? line.claimed : 0),
+      0,
+    ),
+    0,
+  );
+  const availableMinutes = sheet.days.reduce(
+    (total, day) => total + day.elapsed,
+    0,
+  );
+  const recorded = share(claimedMinutes, availableMinutes);
+  const billable = share(billableMinutes, availableMinutes);
+  const percent = target.basis === 'recorded' ? recorded : billable;
+
+  return {
+    basis: target.basis,
+    percent,
+    recorded,
+    billable,
+    target: target.percent,
+    met: percent >= target.percent,
+    claimedMinutes,
+    billableMinutes,
+    availableMinutes,
+  };
+}
+
+/**
+ * The utilisation row, in the words the review uses.
+ *
+ * It says the number, the target, and NOTHING ELSE. There is no "should", no
+ * "needs to improve" and no consequence attached anywhere in this game: being
+ * under target reads at the review as being under target, because the one thing
+ * this mechanic must never do is make honesty the losing move. The sentence
+ * that follows the number is arithmetic, not advice.
+ */
+export function utilisationLine(reading: Readonly<UtilisationReading>): string {
+  const what = reading.basis === 'billable'
+    ? 'billable'
+    : 'of the day accounted for';
+
+  return `${String(reading.percent)}% ${what}, against the ${
+    String(reading.target)
+  }% the business asks for. ${hoursLabel(
+    reading.basis === 'billable'
+      ? reading.billableMinutes
+      : reading.claimedMinutes,
+  )} of ${hoursLabel(reading.availableMinutes)} on the clock.`;
 }
 
 /* -- how it reads --------------------------------------------------------- */
@@ -831,6 +999,17 @@ function column(text: string): string {
 export function timesheetLines(
   sheet: Readonly<Timesheet>,
   today: number,
+  /**
+   * The two things ANOTHER reader has to say about the same week (0.30.0,
+   * slice 2): the org's utilisation row, and any account that has a question
+   * about a line. Optional because the sheet is complete without them - a
+   * fixture printing the model needs no readers - and appended rather than
+   * woven in, because the sheet is the sheet and this is the post.
+   */
+  extras: Readonly<{
+    readonly utilisation?: string;
+    readonly accounts?: readonly string[];
+  }> = {},
 ): readonly string[] {
   const head = sheet.submittedAt === null
     ? [
@@ -873,5 +1052,11 @@ export function timesheetLines(
     `  Week: ${hoursLabel(sheet.derived)} worked, ${
       hoursLabel(sheet.claimed)
     } claimed.`,
+    ...(extras.utilisation === undefined
+      ? []
+      : [`  Utilisation: ${extras.utilisation}`]),
+    ...(extras.accounts === undefined || extras.accounts.length === 0
+      ? []
+      : ['  Accounts with a question about a line:', ...extras.accounts]),
   ];
 }

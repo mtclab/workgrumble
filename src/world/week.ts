@@ -2144,6 +2144,18 @@ export interface WeekScorecard {
    * Empty in a quiet week, which is every week the probation has.
    */
   readonly criteria: string;
+  /**
+   * And what the timesheet says the week was worth (0.30.0): the tier's own
+   * utilisation reading, in the sentence `world/timesheet.ts` writes for it.
+   *
+   * It is on the card because the review is where the business reads it, and
+   * it is a STRING rather than a number because the row is a reading and not a
+   * term in the mark: nothing on this card is computed from it, no outcome
+   * consults it, and being under target is exactly as survivable as being over
+   * it. That is the house rule this mechanic inherits, and this field's type is
+   * the cheapest place to make it structurally true.
+   */
+  readonly utilisation: string;
   readonly outcome: ReviewOutcome;
 }
 
@@ -2156,6 +2168,7 @@ export interface WeekTotals {
   readonly bar: number;
   readonly conduct: string;
   readonly criteria: string;
+  readonly utilisation: string;
   readonly outcome: ReviewOutcome;
 }
 
@@ -2230,6 +2243,7 @@ export function weekScorecard(
     bar: totals.bar,
     conduct: totals.conduct,
     criteria: totals.criteria,
+    utilisation: totals.utilisation,
     outcome: totals.outcome,
   };
 }

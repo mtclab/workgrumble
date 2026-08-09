@@ -237,6 +237,42 @@ export const FIELDS = {
   timesheetSubmittedAt: 'timesheet_submitted_at',
   timesheetSubmittedAuto: 'timesheet_submitted_auto',
   /**
+   * WHICH RUNG OF THE INVOICE LADDER HAS ALREADY BEEN HANDED OVER, per customer
+   * - `customer|rung|tick`, one line per beat that actually happened.
+   *
+   * It is emphatically NOT a scrutiny meter. Where an account stands is derived
+   * from the claim, the customer's own estate log and the conduct file every
+   * time anybody asks (`world/invoice.ts`), so a padded line put back before
+   * Friday takes the pressure off by arithmetic rather than by a counter
+   * somebody has to remember to decrement. The one thing that cannot be
+   * derived is what has already been SAID to the player, because that is a fact
+   * about the past - so that, and only that, is written down.
+   *
+   * On the player rather than on the customer node, for two reasons: a customer
+   * node's fields are a closed schema in `core-rs`, and this is a fact about
+   * the player's invoices rather than about the client's business.
+   */
+  invoiceLadder: 'invoice_ladder',
+  /**
+   * WHAT THE PLAYER SAID THE PROJECT WAS DOING - `day|rag|tick`, one line per
+   * report filed, the latest for a day winning.
+   *
+   * The watermelon (0.30.0, slice 3), and it is the timesheet's claim/record
+   * split said again about a project: the phase, the dates and whether anything
+   * has slipped are DERIVED in `world/project.ts` and never stored, and this is
+   * the colour the player told the business. Nothing reads this to decide where
+   * the project is. The only thing it is ever used for is the question that
+   * comes the morning a slip goes public, which is answered out of BOTH - the
+   * green on the report and the date on the plan - and never out of a second
+   * copy of the truth, because there is not one.
+   */
+  projectReport: 'project_report',
+  /**
+   * The reports the org has already answered - `day|rag|tick` for the manager
+   * beat, so a red said once is a meeting about it once.
+   */
+  projectReportAnswered: 'project_report_answered',
+  /**
    * How many suspicious minutes the day has had: intervals in which something
    * the boss would rather not see was open on the screen. The scorecard counts
    * these rather than the meter, because a meter that drained back to zero

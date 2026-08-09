@@ -6,6 +6,7 @@ import {
   type SheetDay,
   type SheetLine,
   type Timesheet,
+  utilisationLine,
 } from '../../world/timesheet';
 import { formatSimTime } from '../clock-format';
 import { createIcon } from '../icons';
@@ -338,7 +339,20 @@ export const TIMESHEET_APP: AppDef = {
     const copy = element('div', 'timesheet-masthead-copy');
     const title = element('h2', 'timesheet-week', 'timesheet-week');
     const stamp = element('p', 'timesheet-stamp', 'timesheet-stamp');
-    copy.append(title, stamp);
+    /**
+     * What the business makes of the total (0.30.0, slice 2).
+     *
+     * A row and not a verdict, and it says so by carrying no colour, no icon
+     * and no second sentence: the number, the target, and the arithmetic
+     * behind it. Under target is not a state this window has a style for,
+     * because being under target is not a state the game does anything about.
+     */
+    const utilisation = element(
+      'p',
+      'timesheet-utilisation',
+      'timesheet-utilisation',
+    );
+    copy.append(title, stamp, utilisation);
 
     const actions = element('div', 'app-action-row timesheet-actions');
     const submit = osButton('Send the sheet in', 'timesheet-submit', {
@@ -666,6 +680,10 @@ export const TIMESHEET_APP: AppDef = {
       columns.hidden = sheet.days.length === 0;
       setFlag(masthead, 'state', state.state);
       setText(stamp, state.line);
+      const reading = api.day.timesheetUtilisation();
+
+      setText(utilisation, utilisationLine(reading));
+      setFlag(masthead, 'utilisation', reading.met ? 'met' : 'under');
       setAvailability(submit, submitRefusal(sheet));
       setText(submit, sheet.submittedAt === null
         ? 'Send the sheet in'

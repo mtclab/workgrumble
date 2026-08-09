@@ -3851,6 +3851,46 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await expect(sheet).toContainText('now reads "consulting"');
     await runCommand(page, 'timesheet');
     await expect(sheet).toContainText('(vague)');
+
+    // And the OTHER reader of the same week (0.30.0, slice 2): what the
+    // business makes of the total. It is a row and not a verdict - the number,
+    // the target, and the arithmetic behind it - and the honest engineer's
+    // week does not reach the seventy-five the trade asks for, which costs
+    // exactly nothing anywhere in this game.
+    await expect(sheet).toContainText('Utilisation:');
+    await expect(sheet).toContainText('% billable, against the 75%');
+    await expect(sheet).toContainText('the business asks for');
+  });
+
+  /*
+   * THE WATERMELON (0.30.0, slice 3): green on the outside, red in the middle.
+   *
+   * A colour, filed - and the only verb in the `fw` family that changes nothing
+   * at all about the estate. The terminal prints the plan's OWN colour in the
+   * same breath, which is what makes the mechanic something the player can see
+   * the shape of rather than a trap: the two readings are side by side, one of
+   * them derived from the work and one of them typed.
+   */
+  await step('cmd.fw-report', async () => {
+    const out = page.getByTestId('cmd-output');
+
+    await runCommand(page, 'fw report puce');
+    await expect(out).toContainText('It is green, amber or red');
+
+    await runCommand(page, 'fw report green');
+    await expect(out).toContainText('Status filed: GREEN.');
+    await expect(out).toContainText('Reported today: GREEN');
+    await expect(out).toContainText('The plan says:');
+
+    // Filed again, and the last thing said on a day is what the business has.
+    await runCommand(page, 'fw report amber');
+    await expect(out).toContainText('Status filed: AMBER.');
+    await expect(out).toContainText('Reported today: AMBER');
+
+    // It moved a colour and nothing else: the board still reads the phase off
+    // the work, which is the whole architecture of the slice.
+    await runCommand(page, 'fw status');
+    await expect(out).toContainText('Reported today: AMBER');
   });
 
   /*
@@ -3955,6 +3995,17 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await page.getByTestId('projects-phase-scream_test').click();
     await expect(page.getByTestId('projects-detail-when'))
       .toContainText(/^Due Day \d+ \d\d:\d\d - /);
+
+    // The watermelon, on the one screen it has to be legible on (0.30.0): what
+    // was reported today, beside what the plan says. The terminal filed AMBER
+    // a few steps up and nothing about the work moved when it did, so the two
+    // halves of this row come from two different places by construction.
+    await expect(page.getByTestId('projects-report'))
+      .toHaveAttribute('data-reported', 'amber');
+    await expect(page.getByTestId('projects-report'))
+      .toContainText('Status report: AMBER.');
+    await expect(page.getByTestId('projects-report'))
+      .toContainText('The plan says');
 
     // And the rule list is the box's now, not the pack's - the audit two steps
     // up found the tunnel nobody wrote down, and the board shows it carried.

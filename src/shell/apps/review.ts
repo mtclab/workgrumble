@@ -42,6 +42,17 @@ export const REVIEW_APP: AppDef = {
 
     const conduct = element('p', 'caught-narration', 'review-conduct');
     /**
+     * The hours, as the business reads them (0.30.0, slice 2).
+     *
+     * On this window because this is where the number is read out, and phrased
+     * as a reading rather than as a finding because that is exactly what it is:
+     * nothing on this screen is decided by it, the pass mark above does not
+     * move for it, and a week under target is a week under target and nothing
+     * else. Making that structurally true - a string on a card, consulted by no
+     * verdict - is the whole of how this mechanic keeps honesty safe.
+     */
+    const utilisation = element('p', 'caught-narration', 'review-utilisation');
+    /**
      * The weather, and the matrix if there is one.
      *
      * It is on this window rather than on a screen of its own because this is
@@ -62,7 +73,16 @@ export const REVIEW_APP: AppDef = {
     const note = element('p', 'caught-note', 'review-note');
     footer.append(dismiss, note);
 
-    root.append(head, line, narration, reply, conduct, pressure, footer);
+    root.append(
+      head,
+      line,
+      narration,
+      reply,
+      conduct,
+      utilisation,
+      pressure,
+      footer,
+    );
 
     dismiss.addEventListener('click', () => {
       api.closeApp('review');
@@ -121,6 +141,7 @@ export const REVIEW_APP: AppDef = {
       // after three o'clock would print a position that had moved since it
       // decided anything, because the queue does not stop.
       pressure.textContent = card.criteria;
+      utilisation.textContent = `The hours: ${card.utilisation}`;
       heading.textContent = scene.title;
       stamp.textContent = outcome === 'pending'
         ? 'Friday, three o\'clock. It has not happened yet.'

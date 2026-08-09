@@ -24,10 +24,14 @@ import {
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
   INCIDENT_ACTIONS,
+  INVOICE_ACTIONS,
+  INVOICE_LADDER_PARAM,
   PROJECT_ACTIONS,
+  PROJECT_ANSWERED_PARAM,
   PROJECT_CIRCUIT_PARAM,
   PROJECT_FROM_PARAM,
   PROJECT_PARAM,
+  PROJECT_REPORT_PARAM,
   REQUEST_ACTIONS,
   SELINUX_ACTIONS,
   SOFTWARE_ACTIONS,
@@ -279,7 +283,40 @@ import {
   triedFromTouches,
   withTouch,
 } from '../world/tickets';
-import { customerName } from '../world/customers';
+import { customerIdForTicketNodes, customerName } from '../world/customers';
+import {
+  breakdownLines,
+  type DeliveredRung,
+  deliveredRungs,
+  formerClients,
+  INVOICE_RUNG_LABELS,
+  type InvoiceRung,
+  invoiceContact,
+  invoiceLadderDue,
+  type InvoiceRecords,
+  invoiceRecords,
+  type InvoiceThread,
+  invoiceThreads,
+  type LadderStep,
+  rungDelivered,
+  rungForScrutiny,
+  scrutinyByCustomer,
+  withDeliveredRung,
+} from '../world/invoice';
+import {
+  answeredBeats,
+  beatKey,
+  honestRagFor,
+  type ProjectRag,
+  type StatusReport,
+  reportsFrom,
+  watermelonDue,
+  type WatermelonDue,
+  watermelonLines,
+  watermelonReadout,
+  withAnsweredBeat,
+  withReport,
+} from '../world/watermelon';
 import {
   attributionFor,
   claimsFrom,
@@ -293,6 +330,9 @@ import {
   timesheetSheet,
   type TimesheetClaim,
   type TimesheetTruth,
+  utilisationOf,
+  type UtilisationReading,
+  utilisationLine,
   type WorkResolver,
   withClaim,
   withSegment,
@@ -960,6 +1000,32 @@ export interface DayApi {
   ): DispatchResult;
   submitTimesheet(auto?: boolean): DispatchResult;
   /**
+   * The two readings of the sheet (0.30.0, slice 2), and the status report the
+   * project learns to lie with (slice 3).
+   *
+   * `timesheetUtilisation()` is the ORG's - what you said, over the hours you
+   * were here, against what the tier is asked for, and it decides nothing.
+   * `invoiceStanding()` and `invoiceBreakdown()` are the CUSTOMER's, both
+   * derived off the sheet and the customer's own records with no stored meter
+   * between them; `invoiceMail()` is the ladder as the post it arrives as.
+   * `reportProject()` files a colour beside the derived phase, and
+   * `projectReportReadout()` prints the two of them side by side.
+   */
+  timesheetUtilisation(): UtilisationReading;
+  invoiceStanding(): readonly {
+    readonly customer: string;
+    readonly label: string;
+    readonly scrutiny: number;
+    readonly rung: InvoiceRung;
+    readonly delivered: InvoiceRung;
+  }[];
+  invoiceBreakdown(customer: string): readonly string[];
+  invoiceMail(): readonly InvoiceThread[];
+  projectReports(): readonly StatusReport[];
+  projectHonestRag(): ProjectRag | null;
+  projectReportReadout(): readonly string[];
+  reportProject(rag: ProjectRag): DispatchResult;
+  /**
    * Files the blameless postmortem for an incident (E6, 0.19.0): the append-only
    * post-incident record that CLOSES the failed-deploy incident once the fire is
    * out. It reads the authored, blameless prose for the unit (`world/postmortem.ts`,
@@ -1278,6 +1344,25 @@ export interface DayDriverHandlers {
    * conversation should be standing on rather than writing it itself.
    */
   onBossPing?(ping: Readonly<BossPing>): void;
+  /**
+   * One rung of the invoice ladder, handed over (0.30.0, slice 2).
+   *
+   * The world has already written down that the beat happened and has raised
+   * the notice; this is the half the SHELL owns, which is the one rung that is
+   * a conversation rather than a piece of post - the account manager, in the
+   * chat window, on the shop's own side of it.
+   */
+  onInvoiceEscalation?(
+    rung: InvoiceRung,
+    customer: NodeId,
+    label: string,
+    breakdown: readonly string[],
+  ): void;
+  /**
+   * And the org, answering a status report (0.30.0, slice 3): the meeting about
+   * the meeting, or the question about the green one.
+   */
+  onWatermelon?(entry: Readonly<WatermelonDue>, lines: readonly string[]): void;
   /**
    * Somebody who is not the lead has messaged you directly, asking for a
    * favour instead of raising a ticket. Same shape and the same reason: the
@@ -2687,6 +2772,14 @@ export class DayDriver implements DayApi {
     // quiet before anything else is put on the desk.
     this.settleScreamTest();
     this.settleProjectKickoff();
+    // And the two 0.30.0 readings of what was written down yesterday: the
+    // customer who has been through the invoice, and the org that has read the
+    // status report. Both are the same rail and both are here for the same
+    // reason as everything above them - a day is how long it takes somebody
+    // else to notice, and a consequence in the same afternoon would read as a
+    // punishment for the keystroke rather than as the cost of the claim.
+    this.settleInvoiceLadder();
+    this.settleWatermelon();
     this.dispatchDay(DAY_ACTIONS.startShift, {});
     this.syncSlaClock();
     this.carriedMs = 0;
@@ -2708,6 +2801,16 @@ export class DayDriver implements DayApi {
     }
 
     const day = this.day();
+
+    // The other half of the ladder's day (0.30.0, slice 2), and the reason
+    // this settler has two contacts where every other one in this game has a
+    // morning: the person reading your invoice does not work to your shift and
+    // is not in this building. Accounts payable send the query with the post
+    // and escalate at ten to five, which is when finance departments do that -
+    // so the ladder gets a morning and an evening, the beats still arrive one
+    // rung at a time, and a client can go from a question to a notice inside a
+    // week the way they actually do.
+    this.settleInvoiceLadder();
 
     if (isReviewDay(day)) {
       // A week that has already ended stays ended. The button is still on the
@@ -2833,6 +2936,13 @@ export class DayDriver implements DayApi {
       criteria: outcome === 'pending'
         ? this.pressureSummary()
         : this.playerText(FIELDS.reviewCriteria) || this.pressureSummary(),
+      // LIVE, unlike the two above it, and the difference is the point. Those
+      // two are inputs to a verdict, so they stop moving when the verdict is
+      // taken; this one is an output of a sheet that is still open until the
+      // week ends, and it decides nothing at all. A player who files a line at
+      // four o'clock has moved their utilisation and moved nothing else, which
+      // is the honest reading of what a timesheet is.
+      utilisation: utilisationLine(this.timesheetUtilisation()),
       // The mark the conversation was decided on, which stopped moving when
       // the conversation happened. Reading it live let the week screen print
       // "37 of 45 needed" directly above "Probation: passed", because the week
@@ -3323,13 +3433,37 @@ export class DayDriver implements DayApi {
    * work would be a lie about the day rather than a busy one.
    */
   private spawnArrivals(after: number, upTo: number): void {
+    const gone = formerClients(this.playerText(FIELDS.invoiceLadder));
+
     for (const arrival of arrivalsBetween(this.schedule_, after, upTo)) {
       if (this.engine.graph.getNode(arrival.ticketId) !== undefined) {
         continue;
       }
 
+      // A client who has left does not raise any more tickets (0.30.0). This
+      // is the whole of what "their work leaves the world" means here, and it
+      // is deliberately the ONLY thing it means: the estate stays in the graph,
+      // the tickets already on the desk stay open, and the week they were part
+      // of still reads as the week it was. Deleting a customer's nodes would
+      // delete the record of what was done for them, which is the one thing an
+      // engine built around evidence must never do - and an invoice ladder that
+      // erased its own evidence would be the padding mechanic destroying the
+      // proof of itself.
+      //
+      // Costs nothing in every world where nobody has left: the ledger is
+      // absent, the set is empty, and the loop is the loop it always was.
+      if (gone.size > 0 && this.customerOfTicket(arrival.ticketId) !== null
+        && gone.has(this.customerOfTicket(arrival.ticketId) ?? '')) {
+        continue;
+      }
+
       spawnWorldTicket(this.engine, arrival.ticketId);
     }
+  }
+
+  /** Whose estate a ticket that has not spawned yet is about, off the roster. */
+  private customerOfTicket(ticketId: string): string | null {
+    return customerIdForTicketNodes(this.engine.graph, ticketNodes(ticketId));
   }
 
   /* -- what the world does to itself -------------------------------------- */
@@ -4431,6 +4565,245 @@ export class DayDriver implements DayApi {
       null,
       { auto: auto ? 1 : 0 },
     ));
+  }
+
+  /* -- the two readers of the sheet (0.30.0, slice 2) --------------------- */
+
+  /**
+   * The ORG's reading: what you SAID, over the hours you were here, against
+   * what your tier is asked for.
+   *
+   * Live rather than snapshotted, unlike the mark and the conduct line beside
+   * it on the same card - and that is the difference between a reading and a
+   * verdict. The mark decides whether the player still has a job, so it stops
+   * moving at three o'clock; this decides nothing at all, so it is honest for
+   * it to keep answering what the sheet currently says. Filing a line at four
+   * moves it, which is correct: the sheet is still open until the week ends.
+   */
+  public timesheetUtilisation(): UtilisationReading {
+    return utilisationOf(this.timesheet(), this.playerTier());
+  }
+
+  /** Which project a bucket's minutes belong to a customer through. */
+  private projectCustomerOf(projectId: string): string | null {
+    const value = this.engine.graph.getField(projectId, FIELDS.projectCustomer);
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
+  /**
+   * The three records the customer's side reads, wired to this world: the
+   * conduct file the shop keeps, the customer's own estate event log, and the
+   * bucket a line is filed against. All shipped, none new.
+   */
+  private invoiceRecordsView(): InvoiceRecords {
+    return invoiceRecords(
+      this.engine.graph,
+      this.playerText(FIELDS.conductFile),
+      (projectId: string) => this.projectCustomerOf(projectId),
+    );
+  }
+
+  private deliveredRungs(): readonly DeliveredRung[] {
+    return deliveredRungs(this.playerText(FIELDS.invoiceLadder));
+  }
+
+  /** Where each account stands, derived - and what has been said to it. */
+  public invoiceStanding(): readonly {
+    readonly customer: string;
+    readonly label: string;
+    readonly scrutiny: number;
+    readonly rung: InvoiceRung;
+    readonly delivered: InvoiceRung;
+  }[] {
+    const delivered = this.deliveredRungs();
+    const standing = scrutinyByCustomer(
+      this.timesheet(),
+      this.invoiceRecordsView(),
+      this.day(),
+    );
+    const rows = [...standing].map(([customer, scrutiny]) => ({
+      customer,
+      label: customerName(this.engine.graph, customer),
+      scrutiny,
+      rung: rungForScrutiny(scrutiny),
+      delivered: rungDelivered(delivered, customer),
+    }));
+
+    return Object.freeze(
+      rows.sort((left, right) => left.customer.localeCompare(right.customer)),
+    );
+  }
+
+  /**
+   * The ladder as the post it arrives as, derived off the delivered ledger and
+   * the sheet as it stands. The mail app draws it beside the authored inbox;
+   * nothing about it is stored, so a reload rebuilds the identical thread.
+   */
+  public invoiceMail(): readonly InvoiceThread[] {
+    return invoiceThreads({
+      sheet: this.timesheet(),
+      records: this.invoiceRecordsView(),
+      delivered: this.deliveredRungs(),
+      labelOf: (customer: string) => customerName(this.engine.graph, customer),
+      contactOf: (customer: string) => invoiceContact(this.engine.graph, customer),
+      accountManager: MSP_IDS.mspLead,
+    });
+  }
+
+  /**
+   * The itemised breakdown, answered out of the derivation - the rung whose
+   * whole cost is being read out loud beside the real log.
+   */
+  public invoiceBreakdown(customer: string): readonly string[] {
+    return breakdownLines(
+      this.timesheet(),
+      this.invoiceRecordsView(),
+      customer,
+      customerName(this.engine.graph, customer),
+    );
+  }
+
+  /**
+   * The morning's post from accounts payable: one rung, per account, in order.
+   *
+   * The ladder is DERIVED and only the delivery is written down, so this cannot
+   * skip a rung, cannot deliver one twice, and stops entirely the moment the
+   * sheet is put back - which is what makes every rung of it escapable.
+   */
+  private settleInvoiceLadder(): void {
+    const due = invoiceLadderDue(
+      this.timesheet(),
+      this.invoiceRecordsView(),
+      this.deliveredRungs(),
+      this.day(),
+    );
+
+    for (const step of due) {
+      const result = this.engine.dispatch(
+        INVOICE_ACTIONS.escalate,
+        this.actor,
+        null,
+        {
+          [INVOICE_LADDER_PARAM]: withDeliveredRung(
+            this.playerText(FIELDS.invoiceLadder),
+            {
+              customer: step.customer,
+              rung: step.rung,
+              tick: this.engine.now(),
+            },
+          ),
+        },
+      );
+
+      if (!result.ok) {
+        continue;
+      }
+
+      this.announceInvoiceStep(step);
+    }
+  }
+
+  /** What the player is told, in the minute the rung is handed over. */
+  private announceInvoiceStep(step: Readonly<LadderStep>): void {
+    const label = customerName(this.engine.graph, step.customer);
+
+    this.handlers.onInvoiceEscalation?.(
+      step.rung,
+      step.customer,
+      label,
+      step.rung === 'breakdown'
+        ? this.invoiceBreakdown(step.customer)
+        : [],
+    );
+    this.handlers.onNotice?.(
+      `${label}: ${INVOICE_RUNG_LABELS[step.rung]}`,
+      step.rung === 'left'
+        ? `${label} have given notice. Their work stops arriving; what is `
+          + 'already on your desk is still yours to finish, and the record of '
+          + 'everything done for them stays exactly where it is.'
+        : 'It is in the mail app, with the line they are asking about on it.',
+    );
+  }
+
+  /* -- the watermelon (0.30.0, slice 3) ----------------------------------- */
+
+  public projectReports(): readonly StatusReport[] {
+    return reportsFrom(this.playerText(FIELDS.projectReport));
+  }
+
+  /**
+   * The colour, filed. It changes nothing about the project and that is the
+   * whole design: the phase, the dates and the slip are still derived, and
+   * this is stored beside them as what the business was told.
+   */
+  public reportProject(rag: ProjectRag): DispatchResult {
+    return this.announced(this.engine.dispatch(
+      PROJECT_ACTIONS.report,
+      this.actor,
+      null,
+      {
+        [PROJECT_REPORT_PARAM]: withReport(
+          this.playerText(FIELDS.projectReport),
+          { day: this.day(), rag, tick: this.engine.now() },
+        ),
+      },
+    ));
+  }
+
+  /** What was reported today, beside what the plan says. Both derived reads. */
+  public projectReportReadout(): readonly string[] {
+    return watermelonReadout(
+      this.projectView(),
+      this.projectReports(),
+      this.day(),
+    );
+  }
+
+  /** The honest colour, off the derivation - never off the report. */
+  public projectHonestRag(): ProjectRag | null {
+    const status = this.projectView();
+    return status === null ? null : honestRagFor(status);
+  }
+
+  /**
+   * What the org owes an answer to this morning: the red it was told, and the
+   * green it was told about a date that has since gone past.
+   */
+  private settleWatermelon(): void {
+    const due = watermelonDue(
+      this.projectView(),
+      this.projectReports(),
+      answeredBeats(this.playerText(FIELDS.projectReportAnswered)),
+      this.engine.now(),
+    );
+
+    for (const entry of due) {
+      const result = this.engine.dispatch(
+        PROJECT_ACTIONS.reportAnswered,
+        this.actor,
+        null,
+        {
+          [PROJECT_ANSWERED_PARAM]: withAnsweredBeat(
+            this.playerText(FIELDS.projectReportAnswered),
+            beatKey(entry.beat, entry.report.day),
+          ),
+        },
+      );
+
+      if (!result.ok) {
+        continue;
+      }
+
+      const lines = watermelonLines(entry);
+
+      this.handlers.onWatermelon?.(entry, lines);
+      this.handlers.onNotice?.(
+        entry.beat === 'red_answered'
+          ? 'Delivery would like half an hour'
+          : 'A question about the status report',
+        lines.join(' '),
+      );
+    }
   }
 
   /* -- the lead, doing his rounds ---------------------------------------- */

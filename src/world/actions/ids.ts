@@ -919,6 +919,19 @@ export const PROJECT_ACTIONS = {
   rollback: 'project.rollback',
   /** The phone call about a rule nobody carried. Not a player verb. */
   screamNoticed: 'project.scream_noticed',
+  /**
+   * The weekly status report (0.30.0, slice 3): green, amber or red, said out
+   * loud and stored as a CLAIM beside the phase the world derives. It is a
+   * player verb and it is the only one in this family that changes nothing
+   * about the estate - which is the point of it.
+   */
+  report: 'project.report',
+  /**
+   * The org, answering a report. Not a player verb: it writes down that a
+   * colour has been responded to, so the meeting about the meeting happens
+   * once and the question about the green one is asked once.
+   */
+  reportAnswered: 'project.report_answered',
 } as const;
 
 export type ProjectActionId =
@@ -957,6 +970,30 @@ export type TimesheetActionId =
 
 export const TIMESHEET_ACTION_IDS: readonly TimesheetActionId[] = Object.freeze(
   Object.values(TIMESHEET_ACTIONS),
+);
+
+/**
+ * The invoice ladder's one verb (0.30.0, slice 2).
+ *
+ * ONE, and nobody presses it. Where an account stands is DERIVED off the sheet
+ * and the customer's own records every time anybody asks; the only thing that
+ * has to be written down is which rung has already been handed over, because a
+ * beat delivered twice is a beat that stops meaning anything. So the verb
+ * writes a ledger line and nothing else - it is the same shape as the
+ * timesheet's own record verb, and for the same reason: the caller owns the
+ * encoding, the engine insists it is a field, and a replay writes the identical
+ * string.
+ */
+export const INVOICE_ACTIONS = {
+  /** One rung of the ladder, handed over. Not a player verb. */
+  escalate: 'invoice.escalate',
+} as const;
+
+export type InvoiceActionId =
+  (typeof INVOICE_ACTIONS)[keyof typeof INVOICE_ACTIONS];
+
+export const INVOICE_ACTION_IDS: readonly InvoiceActionId[] = Object.freeze(
+  Object.values(INVOICE_ACTIONS),
 );
 
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];

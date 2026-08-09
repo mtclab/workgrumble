@@ -34,7 +34,24 @@ export const MAIL_APP: AppDef = {
     const state = (): { selectedId: string | null; read: readonly string[] } =>
       api.appState.get().mail;
     const isUnread = (id: string): boolean => !state().read.includes(id);
-    const unreadCount = (): number => visibleMail(api.graph).filter(
+    /**
+     * The inbox: the authored threads, plus the ones the invoice ladder DERIVES
+     * (0.30.0, slice 2).
+     *
+     * The second list is not stored anywhere. A customer's thread exists
+     * because a rung has been handed over, and its words are a function of the
+     * rung, the customer and the sheet as it currently stands - which is how
+     * the itemised breakdown in it can be the real derivation printed out loud
+     * rather than a copy of it written down at the time.
+     *
+     * Empty in every world where nobody padded anything, which is why the inbox
+     * is byte-identical for every week that has been played so far.
+     */
+    const inbox = (): readonly MailThread[] => [
+      ...visibleMail(api.graph),
+      ...api.day.invoiceMail(),
+    ];
+    const unreadCount = (): number => inbox().filter(
       (thread) => isUnread(thread.id),
     ).length;
 
@@ -82,7 +99,7 @@ export const MAIL_APP: AppDef = {
     root.append(toolbar, requests, columns);
 
     /** Newest traffic at the top, the way every inbox has always sorted. */
-    const threads = (): readonly MailThread[] => [...visibleMail(api.graph)]
+    const threads = (): readonly MailThread[] => [...inbox()]
       .sort(
         (left, right) => latestTick(right, api.graph)
           - latestTick(left, api.graph),
@@ -171,10 +188,15 @@ export const MAIL_APP: AppDef = {
     const render = (): void => {
       const { selectedId } = state();
       summary.textContent = `${String(unreadCount())} unread · `
-        + `${String(visibleMail(api.graph).length)} threads`;
+        + `${String(inbox().length)} threads`;
       renderRequests();
       renderList();
-      renderReader(selectedId === null ? undefined : findMailThread(selectedId));
+      renderReader(
+        selectedId === null
+          ? undefined
+          : findMailThread(selectedId)
+            ?? inbox().find((thread) => thread.id === selectedId),
+      );
     };
 
     host.replaceChildren(root);

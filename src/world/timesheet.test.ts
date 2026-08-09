@@ -51,6 +51,8 @@ import {
   type SegmentRef,
   timesheetLines,
   timesheetSheet,
+  utilisationLine,
+  utilisationOf,
   TIMESHEET_LOG_LIMIT,
   type TimesheetClaim,
   withClaim,
@@ -263,9 +265,11 @@ describe('attribution', () => {
       .find((node) => node.fields[FIELDS.fwRuleProject] === ARDEN_EDGE_PROJECT);
 
     expect(rule).toBeDefined();
-    // `fw migrate` is aimed at the rule, and the rule is not on the staging
-    // task's estate list - so an attribution that went through the ticket
-    // would put the whole staging phase on nobody's line.
+    // `fw migrate` is aimed at the rule, and a rule belongs to a PROJECT
+    // rather than to the estate its box sits in - so an attribution that went
+    // through the ticket would read the customer off the box and put the whole
+    // staging phase on the customer's loose line instead of on the project
+    // code the invoice is raised against.
     expect(attributionFor(engine.graph, rule?.id ?? '', RESOLVER)).toEqual({
       kind: 'project',
       id: ARDEN_EDGE_PROJECT,
@@ -616,5 +620,91 @@ describe('the tier shape', () => {
     // Ten minutes worked, four hours claimed, and the sheet says both.
     expect(printed).toContain(hoursLabel(10));
     expect(printed).toContain(hoursLabel(240));
+  });
+
+  /* -- what the org makes of the total (0.30.0, slice 2) ------------------ */
+
+  it('reads the ENGINEER against a billable target the honest week misses', () => {
+    const worked = sheetOf(
+      segmentsFrom(ledger([MONDAY, ARDEN], [MONDAY + 60, PROJECT])),
+      shiftEndTick(1),
+    );
+    const honest = utilisationOf(worked, PLAYER_TIERS.systemsEngineer);
+
+    expect(honest.basis).toBe('billable');
+    expect(honest.target).toBe(75);
+    expect(honest.availableMinutes).toBe(WORKING_MINUTES_PER_DAY);
+    // An unedited sheet claims what the records hold, so the number the
+    // business reads IS the derivation. It does not reach the target, and
+    // nothing in the game does anything about that.
+    expect(honest.billableMinutes).toBe(worked.derived);
+    expect(honest.met).toBe(false);
+  });
+
+  it('moves only when the CLAIM moves, which is the whole temptation', () => {
+    const segments = segmentsFrom(ledger([MONDAY, ARDEN]));
+    const honest = sheetOf(segments, shiftEndTick(1));
+    const padded = sheetOf(
+      segments,
+      shiftEndTick(1),
+      claimsFrom(withClaim('', {
+        day: 1,
+        bucket: bucketOf(ARDEN),
+        minutes: 400,
+        detail: 'detailed',
+      })),
+    );
+
+    expect(utilisationOf(padded, PLAYER_TIERS.systemsEngineer).percent)
+      .toBeGreaterThan(utilisationOf(honest, PLAYER_TIERS.systemsEngineer).percent);
+    // And the derivation did not move an inch under it.
+    expect(padded.derived).toBe(honest.derived);
+  });
+
+  it('leaves internal time out of the engineer\'s number and in the desk\'s', () => {
+    const internal = sheetOf(
+      segmentsFrom(ledger([MONDAY, { kind: 'internal', id: 'internal' }])),
+      shiftEndTick(1),
+    );
+    const reading = utilisationOf(internal, PLAYER_TIERS.systemsEngineer);
+
+    // A morning on the shop's own kit is recorded and is on nobody's invoice,
+    // and the two halves of the reading say exactly that.
+    expect(reading.recorded).toBeGreaterThan(0);
+    expect(reading.billable).toBe(0);
+    expect(reading.percent).toBe(0);
+  });
+
+  it('hits the SERVICE DESK\'s target exactly, which is the joke', () => {
+    const desk = sheetOf(
+      segmentsFrom(ledger([MONDAY, ARDEN])),
+      shiftEndTick(1),
+      [],
+      PLAYER_TIERS.serviceDesk,
+    );
+    const reading = utilisationOf(desk, PLAYER_TIERS.serviceDesk);
+
+    // One bucket a day at seven and a half hours, over a day of seven and a
+    // half hours. Nobody decided anything and the target is met to the minute.
+    expect(reading.basis).toBe('recorded');
+    expect(reading.target).toBe(100);
+    expect(reading.percent).toBe(100);
+    expect(reading.met).toBe(true);
+    expect(utilisationLine(reading)).toContain('the business asks for');
+  });
+
+  it('says the number and the target and stops', () => {
+    const said = utilisationLine(
+      utilisationOf(
+        sheetOf(segmentsFrom(ledger([MONDAY, ARDEN])), shiftEndTick(1)),
+        PLAYER_TIERS.systemsEngineer,
+      ),
+    );
+
+    // No advice, no verdict, no should. Being under target reads as being
+    // under target, because that is all it is.
+    expect(said).not.toContain('should');
+    expect(said).not.toContain('need');
+    expect(said).toContain('75%');
   });
 });

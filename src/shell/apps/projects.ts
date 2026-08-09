@@ -6,6 +6,7 @@ import type {
 } from '../day-driver';
 import { AUDIT_SOURCES, FIELDS, isSystemsEngineer } from '../../world/fields';
 import { type ProjectPhase, projectClockLabel } from '../../world/project';
+import { RAG_LABELS, slipFor } from '../../world/watermelon';
 import { createIcon } from '../icons';
 import type { AppDef, AppInstance, GameApi } from './types';
 import {
@@ -75,16 +76,6 @@ const STATE_LABELS: Readonly<Record<ProjectPhaseRow['state'], string>> = {
 };
 
 /**
- * An hour of working time: the point at which a phase stops being "later" and
- * starts being today's problem.
- *
- * One shift is eight of these, so an hour left is the last eighth of a day to
- * do something in - late enough to mean it, early enough to still be a warning
- * rather than a verdict.
- */
-const TIGHT_MINUTES = 60;
-
-/**
  * How much of somebody's afternoon a date is, said either side of it.
  *
  * The four mapping functions below are exported for the same reason the
@@ -107,17 +98,21 @@ export function slackLine(row: Readonly<ProjectPhaseRow>): string {
     : `${formatDuration(row.minutesLeft)} of working time`;
 }
 
-/** `ahead`, `tight` or `late`: what the row is styled and read by. */
+/**
+ * `ahead`, `tight` or `late`: what the row is styled and read by.
+ *
+ * The judgement itself moved into `world/watermelon.ts` at 0.30.0, and this is
+ * now the row-shaped call of it. That is not tidying: the status report's
+ * HONEST colour is derived from the same three facts, and a board that drew
+ * "tight" where the report's truth said "on track" would be a watermelon
+ * nobody could see, which is the one thing this mechanic cannot be.
+ */
 export function slipOf(row: Readonly<ProjectPhaseRow>): string {
-  if (row.state === 'done') {
-    return 'done';
-  }
-
-  if (row.late) {
-    return 'late';
-  }
-
-  return row.minutesLeft <= TIGHT_MINUTES ? 'tight' : 'ahead';
+  return slipFor({
+    done: row.state === 'done',
+    late: row.late,
+    minutesLeft: row.minutesLeft,
+  });
 }
 
 /** Where a task has got to, in words rather than in a state machine's. */
@@ -308,6 +303,35 @@ export const PROJECTS_APP: AppDef = {
       stamps.textContent = said.join(' ');
       stamps.hidden = said.length === 0;
       header.append(stamps);
+
+      /**
+       * And the watermelon, on the one screen it has to be legible on (0.30.0,
+       * slice 3): what was reported today, beside what the plan says.
+       *
+       * Both halves are READS - the reported colour off the claim, the honest
+       * one off the same derivation this whole board is drawn from - and the
+       * board is where they belong, because the mechanic is invisible unless
+       * the player can see the two of them disagreeing. Filing is the
+       * terminal's (`fw report`), like every other verb this window does not
+       * own: the board is the plan against the clock, not the paperwork.
+       */
+      const honest = api.day.projectHonestRag();
+      const filed = api.day.projectReports()
+        .find((report) => report.day === api.day.day()) ?? null;
+
+      if (honest !== null) {
+        const reported = element('p', 'projects-report', 'projects-report');
+
+        reported.dataset.reported = filed?.rag ?? 'none';
+        reported.dataset.honest = honest;
+        reported.textContent = filed === null
+          ? `Status report: nothing filed today. The plan says ${
+            RAG_LABELS[honest].toLowerCase()
+          }.`
+          : `Status report: ${RAG_LABELS[filed.rag].toUpperCase()}. The plan `
+            + `says ${RAG_LABELS[honest].toLowerCase()}.`;
+        header.append(reported);
+      }
 
       return header;
     };

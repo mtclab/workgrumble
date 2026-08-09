@@ -61,7 +61,10 @@ import {
   hoursLabel,
   lineAt,
   timesheetLines as renderTimesheet,
+  utilisationLine,
 } from '../../world/timesheet';
+import { INVOICE_RUNG_LABELS } from '../../world/invoice';
+import { isProjectRag, RAG_LABELS } from '../../world/watermelon';
 import type { MachineRole } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { DEFAULT_CWD } from '../../world/filesystem';
@@ -1331,7 +1334,55 @@ function fwLines(
         'A project is assigned, not picked up: when there is one, this is the '
           + 'plan against the clock.',
       )
-      : lines(...board);
+      // And the two colours side by side (0.30.0, slice 3): what was reported
+      // today, and what the plan says. Both are reads - the second is the same
+      // derivation the board above it is drawn from - and putting them on the
+      // same screen is the whole of the watermelon being legible.
+      : lines(...board, ...api.day.projectReportReadout());
+  }
+
+  /**
+   * `fw report <green|amber|red>` - the weekly status, filed.
+   *
+   * It lives in the `fw` family rather than on the Projects board because the
+   * board is read-mostly by design: the verbs live where the work does, and
+   * this is a verb. It is the only one in the family that changes nothing about
+   * the estate - what it writes is a COLOUR, beside the derivation, never over
+   * it - and the terminal says out loud what the plan says in the same breath,
+   * because a report filed without the truth beside it is a mechanic the player
+   * cannot see the shape of.
+   */
+  if (sub === 'report') {
+    const rag = query.trim().toLowerCase();
+
+    if (!isProjectRag(rag)) {
+      return lines(
+        `"${query}" is not a status. It is green, amber or red.`,
+        'Green is on track, amber is at risk, red is in trouble. What the plan '
+          + 'says is on "fw status"; what you file here is what the business '
+          + 'is told.',
+      );
+    }
+
+    if (api.day.projectView() === null) {
+      return lines('There is no project to report on.');
+    }
+
+    const honest = api.day.projectHonestRag();
+    const result = api.day.reportProject(rag);
+
+    return result.ok
+      ? lines(
+        `Status filed: ${RAG_LABELS[rag].toUpperCase()}.`,
+        ...api.day.projectReportReadout(),
+        rag === honest
+          ? 'Which is what the dates say. Nobody will ever ask you about it.'
+          : rag === 'red'
+            ? 'Which is worse than the dates say. Somebody will want half an '
+              + 'hour on it in the morning.'
+            : 'Which is better than the dates say. It costs nothing today.',
+      )
+      : lines(result.reason);
   }
 
   if (sub === 'rules') {
@@ -1391,9 +1442,9 @@ function fwLines(
       + 'box',
     'is carrying), "fw audit <box>" (read the live configuration) and "fw pack '
       + '<box>"',
-    '(take the handover pack as the audit), "fw migrate <rule>", and "fw '
-      + 'cutover <box>"',
-    'with "fw rollback <box>" behind it.',
+    '(take the handover pack as the audit), "fw migrate <rule>", "fw report '
+      + '<green|amber|red>",',
+    'and "fw cutover <box>" with "fw rollback <box>" behind it.',
   );
 }
 
@@ -1416,7 +1467,19 @@ function timesheetLines(
   const sheet = api.day.timesheet();
 
   if (sub === '' || sub === 'status') {
-    return lines(...renderTimesheet(sheet, api.day.day()));
+    // And the two OTHER readers of the same week (0.30.0, slice 2), under it
+    // rather than in it: what the business makes of the total, and any account
+    // that has got as far as asking about a line. Both are reads of the same
+    // sheet - nothing here recomputes a minute - and the accounts row is empty
+    // in every week nobody padded, which is most of them.
+    return lines(...renderTimesheet(sheet, api.day.day(), {
+      utilisation: utilisationLine(api.day.timesheetUtilisation()),
+      accounts: api.day.invoiceStanding()
+        .filter((row) => row.delivered !== 'none')
+        .map((row) => `    ${row.label}: ${
+          INVOICE_RUNG_LABELS[row.delivered].toLowerCase()
+        }. It is in the mail.`),
+    }));
   }
 
   if (sub === 'submit') {

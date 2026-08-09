@@ -12,11 +12,14 @@ export { FS_GROUP_PARAM, FS_MODE_PARAM, FS_OWNER_PARAM } from './fs';
 export { SELINUX_MODE_PARAM } from './selinux';
 export {
   CUTOVER_INCOMPLETE_REASON,
+  PROJECT_ANSWERED_PARAM,
   PROJECT_CIRCUIT_PARAM,
   PROJECT_FROM_PARAM,
   PROJECT_PARAM,
+  PROJECT_REPORT_PARAM,
   RULE_BEFORE_AUDIT_REASON,
 } from './project';
+export { INVOICE_LADDER_PARAM } from './invoice';
 export {
   TIMESHEET_AUTO_PARAM,
   TIMESHEET_CLAIMS_PARAM,
@@ -35,6 +38,7 @@ import { FACILITIES_ACTIONS } from './facilities';
 import { FS_ACTION_DATA } from './fs';
 import { KIND_LABELS } from './helpers';
 import { INCIDENT_ACTION_DATA } from './incidents';
+import { INVOICE_ACTION_DATA } from './invoice';
 import { INTERRUPTION_ACTION_DATA } from './interruptions';
 import { LEGENDARY_ACTIONS } from './legendary';
 import { MACHINE_ACTIONS } from './machine';
@@ -137,6 +141,9 @@ export {
   INCIDENT_ACTION_IDS,
   INCIDENT_ACTIONS,
   type IncidentActionId,
+  INVOICE_ACTION_IDS,
+  INVOICE_ACTIONS,
+  type InvoiceActionId,
   PROJECT_ACTION_IDS,
   PROJECT_ACTIONS,
   type ProjectActionId,
@@ -257,6 +264,12 @@ export function helpdeskActions(): readonly ActionData[] {
     // one verb here nobody presses, and it sits with the player's two because
     // all three write the player's own node.
     ...TIMESHEET_ACTION_DATA,
+    // The invoice ladder's one verb (0.30.0, slice 2), which nobody presses:
+    // the record of which rung a customer has already been taken to, settled
+    // by the day loop at the start of a shift. Where an account STANDS is
+    // derived off the sheet and the customer's own records every time anybody
+    // asks, so there is no scrutiny meter here to fall out of step with it.
+    ...INVOICE_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

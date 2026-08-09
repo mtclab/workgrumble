@@ -32,6 +32,7 @@ import {
   FS_ACTIONS,
   HELPDESK_ACTIONS,
   INCIDENT_ACTIONS,
+  INVOICE_ACTIONS,
   PROJECT_ACTIONS,
   REQUEST_ACTIONS,
   SELINUX_ACTIONS,
@@ -2719,6 +2720,25 @@ const ENTRIES = [
       + 'them - the same threshold ssh lives behind, walked in the same run.',
   },
   {
+    id: 'cmd.fw-report',
+    surface: 'cmd',
+    control: 'fw report <green|amber|red>',
+    does: 'THE WATERMELON (0.30.0): the weekly status report, filed - and it '
+      + 'is the only verb in the `fw` family that changes nothing at all about '
+      + 'the estate. The phase, the dates and the slip are still derived from '
+      + 'what the work left behind; this writes a COLOUR beside them, which is '
+      + 'what the business has. The terminal prints the plan\'s own colour in '
+      + 'the same breath, so a green filed over an amber phase is a thing done '
+      + 'with the truth on the screen next to it. Reporting red is answered in '
+      + 'the morning by three meetings; reporting green costs nothing today '
+      + 'and is asked about the morning a date goes past with it standing.',
+    command: 'fw',
+    actions: [PROJECT_ACTIONS.report],
+    run: 'sysadmin',
+    why: 'There is no project to report on before the promotion at the MSP, '
+      + 'and the rest of the `fw` family lives behind the same threshold.',
+  },
+  {
     id: 'cmd.timesheet-attributed',
     surface: 'cmd',
     control: 'timesheet | timesheet claim <line> <minutes> | timesheet vague '
@@ -2731,7 +2751,12 @@ const ENTRIES = [
       + 'one is a thing done with the truth on the screen beside it. "claim" '
       + 'moves the minutes, "vague" and "detail" move how much of a sentence '
       + 'goes with them, and neither touches the derived half: the record and '
-      + 'the claim are two pieces of paper from here on.',
+      + 'the claim are two pieces of paper from here on. Under it, the two '
+      + 'OTHER readers of the same week (slice 2): the org\'s utilisation row - '
+      + 'what you SAID over the hours you were here, against the 75% the '
+      + 'business asks an engineer for, which decides nothing and is under '
+      + 'target on every honest week - and any account that has got as far as '
+      + 'asking about a line, which is nobody on a sheet nobody edited.',
     command: 'timesheet',
     actions: [TIMESHEET_ACTIONS.record, TIMESHEET_ACTIONS.claim],
     run: 'sysadmin',
@@ -3713,6 +3738,25 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'the same rail the compliance sweep and the unverified enrolment arrive '
     + 'on, and it charges nothing - what the player meets is the ticket it '
     + 'raises beside it, with the rule named on it (walked as cmd.fw).',
+  [INVOICE_ACTIONS.escalate]: 'Somebody in a client\'s accounts payable '
+    + 'getting to your line. Nobody presses it and nobody can: the day loop '
+    + 'settles it at the next start of shift off `invoiceLadderDue` - the same '
+    + 'rail the scream test and the compliance sweep arrive on - and all it '
+    + 'writes down is WHICH rung has already been handed over, because where '
+    + 'an account actually stands is derived off the sheet and the customer\'s '
+    + 'own estate log every time anybody asks. What the player meets is the '
+    + 'thread in the mail app, the row under `timesheet`, and - at the fourth '
+    + 'rung - the lead in the chat window, all three of which are surfaces the '
+    + 'walk already drives. The ladder itself needs a week of padding and four '
+    + 'day boundaries to walk end to end, so the run that drives every rung, '
+    + 'the breakdown, the escape and the departure is `shell/invoice.test.ts` '
+    + 'rather than a browser - the same arrangement the redundancy ending has.',
+  [PROJECT_ACTIONS.reportAnswered]: 'The org having answered a status report: '
+    + 'the meeting about the meeting after a red, and the question after a '
+    + 'green that a date has since gone past. Nobody presses it - it is the '
+    + 'day loop writing down that a beat has happened so it happens once - and '
+    + 'what the player meets is the notice and the three lines in it (walked '
+    + 'as cmd.fw-report).',
   [SELINUX_ACTIONS.selinuxNoticed]: 'The overnight compliance sweep reading a '
     + 'box that was left in permissive mode, dispatched by the day loop at the '
     + 'next start of shift - the same rail the unverified enrolment\'s bill '

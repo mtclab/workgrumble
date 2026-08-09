@@ -235,7 +235,8 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     name: 'fw',
     usage: 'fw <status | rules <box> | audit <box> | pack <box> '
-      + '| migrate <rule> | cutover <box> | rollback <box>>',
+      + '| migrate <rule> | report <green|amber|red> | cutover <box> '
+      + '| rollback <box>>',
     summary: 'Work an edge replacement: the plan, the rule set, and the cable.',
     minArgs: 1,
     maxArgs: 5,

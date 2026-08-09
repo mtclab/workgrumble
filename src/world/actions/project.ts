@@ -1,4 +1,9 @@
-import type { ActionData, GuardData, PredData } from '../../engine-api';
+import type {
+  ActionData,
+  GuardData,
+  NodeRefData,
+  PredData,
+} from '../../engine-api';
 import { AUDIT_SOURCES, FIELDS } from '../fields';
 import {
   fieldIs,
@@ -43,6 +48,11 @@ export const PROJECT_CIRCUIT_PARAM = 'circuit';
 export const PROJECT_FROM_PARAM = 'from';
 /** The project node the one-off minutes are stamped on. */
 export const PROJECT_PARAM = 'project';
+/** The whole re-encoded report ledger, computed by the caller that owns it. */
+export const PROJECT_REPORT_PARAM = 'report';
+export const PROJECT_ANSWERED_PARAM = 'answered';
+
+const ACTOR: NodeRefData = { ref: 'actor' };
 
 export const AUDIT_TWICE_REASON = 'The rule set on "{target.label}" has already '
   + 'been established. Auditing it again would not find anything new - what '
@@ -362,6 +372,61 @@ export const PROJECT_ACTION_DATA: readonly ActionData[] = [
         node: TARGET,
         field: FIELDS.fwRuleScreamedAt,
         value: { now: true },
+      },
+    ],
+  },
+  {
+    /**
+     * THE STATUS REPORT (0.30.0, slice 3), and it is the only verb in this
+     * family that changes nothing at all about the estate.
+     *
+     * That is the entire design. A phase is derived from what the other five
+     * verbs left behind; this one writes a COLOUR onto the player's own node,
+     * beside the truth and never over it, exactly as a timesheet claim is
+     * written beside the ledger. Nothing in the game reads it to decide where
+     * the project is - the board, the terminal and the gates all still derive
+     * that - and the one thing it is ever used for is the question that arrives
+     * the morning a slip goes public, which is answered out of BOTH records.
+     *
+     * The whole field arrives already encoded, the way the timesheet's does,
+     * so the format lives in one module and a replay writes the same string.
+     */
+    id: PROJECT_ACTIONS.report,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: { pred: 'param_string_missing', param: PROJECT_REPORT_PARAM },
+        reason: 'A status report is a colour and a date, and this is neither.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.projectReport,
+        value: { param: PROJECT_REPORT_PARAM },
+      },
+    ],
+  },
+  {
+    // The org, having answered one. Not a player verb: it writes down which
+    // report has been responded to, so the meeting about the red one happens
+    // once and the question about the green one is asked once.
+    id: PROJECT_ACTIONS.reportAnswered,
+    tier: HELPDESK_TIER,
+    validate: [
+      {
+        when: { pred: 'param_string_missing', param: PROJECT_ANSWERED_PARAM },
+        reason: 'A record of what has been answered is a list of reports, and '
+          + 'this is not one.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: ACTOR,
+        field: FIELDS.projectReportAnswered,
+        value: { param: PROJECT_ANSWERED_PARAM },
       },
     ],
   },

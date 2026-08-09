@@ -31,6 +31,7 @@ import { type Employer, employerFor, employerName } from './world/employers';
 import { awayNoticedLine } from './world/dialogue';
 import { dayForTick } from './world/hours';
 import { FLAVOR, flavorText } from './world/interruptions';
+import { MSP_IDS } from './world/msp-company';
 import { createWorldSession, FIRST_WEEK } from './world/session';
 import { ticketTitle } from './world/tickets';
 import { channelFeedThrough } from './world/week';
@@ -298,6 +299,32 @@ async function boot(): Promise<void> {
           ? ping.line
           : `${ping.line} It is now a ticket, because you made it one.`,
       );
+    },
+    /**
+     * One rung of the invoice ladder (0.30.0, slice 2).
+     *
+     * The world has already written it down and raised the toast; four of the
+     * five rungs are POST and land in the mail app off a derived thread, which
+     * is a read and needs nothing here. The fifth is a conversation, and it is
+     * the one the research says actually stings - your own account side, in
+     * your own chat, about a client who cannot reconcile your hours. It lands
+     * in the lead's thread because at a shop this size the lead IS the account
+     * side, and it is a remark rather than a ping: there is nothing in it to
+     * answer, and a player halfway through another conversation should not
+     * have it yanked out from under them.
+     */
+    onInvoiceEscalation: (rung, _customer, label) => {
+      if (rung === 'account_manager') {
+        remarkInThread(
+          appState,
+          MSP_IDS.mspLead,
+          `Have you got five minutes about ${label}? Their finance side have `
+          + 'stopped the invoice. They are not accusing anybody of anything, '
+          + 'they just cannot tie the hours to anything they recognise, and I '
+          + 'have to answer that on Thursday.',
+          true,
+        );
+      }
     },
     // And somebody who is not the lead, asking for a favour. Both answers are
     // legitimate; the difference between them turns up on Friday's scorecard

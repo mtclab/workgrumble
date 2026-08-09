@@ -195,6 +195,14 @@ export const WEEKEND_APP: AppDef = {
       // somebody plays a week where there is.
       definitionRow(list, 'The pool', 'weekend-criteria')
         .textContent = card.criteria;
+      // And the row the timesheet put on this card (0.30.0): what the business
+      // makes of the hours. It is the ONLY row here that feeds into nothing -
+      // the mark above it is the whole verdict and this is not a term in it -
+      // and it says the number and the target and stops, because a week that
+      // was honest about its hours must not be a week that reads as a worse
+      // one.
+      definitionRow(list, 'Utilisation', 'weekend-utilisation')
+        .textContent = card.utilisation;
 
       const earned = definitionRow(list, 'Earned this week', 'weekend-earned');
       earned.textContent = `£${formatPence(card.earnedPence)}`;
