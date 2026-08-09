@@ -1435,6 +1435,26 @@ export const TICKETS_APP: AppDef = {
         unsubscribeWorld();
         root.remove();
       },
+      /**
+       * "Open the queue AT this ticket", from whichever window sent us here -
+       * the plan surface, for now (E10, 0.29.0).
+       *
+       * It selects and nothing else: an intent is a request to a VIEW, so a
+       * ticket that is not in the queue leaves the selection where it was
+       * rather than blanking the pane. `resolveSelection` on the next paint is
+       * the backstop for a row that goes away underneath it.
+       */
+      receiveIntent: (intent): void => {
+        if (intent.kind !== 'queue-ticket'
+          || api.graph.getNode(intent.id)?.kind !== 'ticket') {
+          return;
+        }
+
+        selectedId = intent.id;
+        refusal = null;
+        handoffOpen = false;
+        render();
+      },
     };
   },
 };

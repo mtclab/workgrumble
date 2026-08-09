@@ -79,6 +79,7 @@ describe('shipped manifest', () => {
       'review',
       'beer',
       'tickets',
+      'projects',
       'directory',
       'remote',
       'monitor',
@@ -139,6 +140,7 @@ describe('shipped manifest', () => {
       'review',
       'beer',
       'tickets',
+      'projects',
       'directory',
       'remote',
       'monitor',
@@ -202,6 +204,12 @@ describe('shipped manifest', () => {
       'review',
       'beer',
       'tickets',
+      // The plan surface (0.29.0). It is on the helpdesk tier like every other
+      // tool because the manifest's number is the hired/not-hired axis; the
+      // PROMOTION gate it actually keeps is a field on the player, and the
+      // window says so itself - the Display Properties pattern, for the same
+      // reason: a tool nobody can find teaches nobody why they cannot have it.
+      'projects',
       'directory',
       'remote',
       'monitor',

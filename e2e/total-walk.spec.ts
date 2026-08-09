@@ -3602,6 +3602,73 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
   });
 
   /*
+   * The PLAN SURFACE (E10, 0.29.0, slice 2), walked around the terminal steps
+   * below rather than in one block, because that is the only way to see it do
+   * its job: it is a read of the world, so it is worth looking at BEFORE the
+   * `fw` verbs move anything (the plan as it is handed over - four dates, one
+   * phase live, three tasks that have not arrived and a rule list that is only
+   * the pack) and AGAIN after them, where the same window has followed the
+   * cable out and back with nothing stored to follow it.
+   *
+   * Same threshold as the terminal verbs and the same reason: no service-desk
+   * week has a project to draw.
+   */
+  await step('projects.window', async () => {
+    await openFromStartMenu(page, 'projects');
+
+    await expect(page.getByTestId('projects-app')).toBeVisible();
+    await expect(page.getByTestId('projects-name'))
+      .toContainText('edge firewall replacement');
+    await expect(page.getByTestId('projects-now')).toContainText('Now: Audit');
+
+    // The four phases, each with the DATE it is due and the working time to
+    // it. Both halves in one row is the whole design job: a date three days
+    // out is not legible on its own.
+    for (const phase of ['audit', 'staging', 'cutover', 'scream_test']) {
+      await expect(page.getByTestId(`projects-phase-due-${phase}`))
+        .toHaveText(/^Day \d+ \d\d:\d\d$/);
+      await expect(page.getByTestId(`projects-phase-slack-${phase}`))
+        .toContainText('of working time');
+    }
+
+    await expect(page.getByTestId('projects-phase-state-audit'))
+      .toHaveText('NOW');
+    await expect(page.getByTestId('projects-phase-state-cutover'))
+      .toHaveText('TO DO');
+
+    // And the rule set as far as ANYBODY knows it, which is the pack: the two
+    // rules that exist only in the live configuration are not on this board,
+    // because nobody has read the box yet.
+    await expect(page.getByTestId('projects-rules-source'))
+      .toContainText('From the handover pack');
+    await expect(page.getByTestId('projects-rule-wan-default')).toBeVisible();
+    await expect(page.getByTestId('projects-rule-vpn-brenmark')).toHaveCount(0);
+  });
+
+  await step('projects.task', async () => {
+    // The task that HAS arrived goes to the queue, at itself.
+    await page.getByTestId('projects-open-task-arden-fw-audit').click();
+    await expect(page.getByTestId('ticket-detail-title'))
+      .toContainText('establish the rule set');
+
+    // The one that has not is a line on the plan rather than a dead row: it
+    // says so, and its button says why it cannot be pressed.
+    await focusWindow(page, 'projects');
+    await page.getByTestId('projects-phase-staging').click();
+    await expect(page.getByTestId('projects-task-state'))
+      .toContainText('arrives when the task before it closes');
+    await expect(page.getByTestId('projects-open-task-arden-fw-staging'))
+      .toBeDisabled();
+
+    // Shut it and go back to the terminal, which is where the next step does
+    // the work. The board repaints every minute it is open, and the rest of
+    // this run is measured in thousands of them.
+    await page.getByTestId('close-projects').click();
+    await expect(page.getByTestId('window-projects')).toHaveCount(0);
+    await focusWindow(page, 'cmd');
+  });
+
+  /*
    * The first PROJECT (E10, 0.29.0), walked on the desktop terminal BEFORE the
    * ssh below, because that is where it lives: `fw` is a desk verb about a
    * customer's edge, and after `cmd.ssh` the terminal is standing on a server
@@ -3686,6 +3753,46 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await expect(output).toContainText('The window is spent');
     await runCommand(page, 'fw status');
     await expect(output).toContainText('[NOW ] Cutover');
+  });
+
+  await step('projects.phase', async () => {
+    // The same window, opened again after the terminal moved the world twice.
+    // Nothing here was told what happened - the board is a read, so the audit
+    // and the staging config are behind it, the cable went out and came back,
+    // and the phase it is standing in came back with it. A window that had
+    // been sitting open would prove the same thing; a fresh one proves it
+    // without a single repaint's worth of memory to do it with.
+    await openFromStartMenu(page, 'projects');
+
+    await expect(page.getByTestId('projects-phase-state-audit'))
+      .toHaveText('DONE');
+    await expect(page.getByTestId('projects-phase-state-staging'))
+      .toHaveText('DONE');
+    await expect(page.getByTestId('projects-now')).toContainText('Now: Cutover');
+    await expect(page.getByTestId('projects-stamps'))
+      .toContainText('Rolled back at');
+
+    // The blocked state, in words: a project that is ready and may not move is
+    // not a project that has stopped, and the board says which of the two
+    // kinds of waiting this is.
+    await expect(page.getByTestId('projects-blocked'))
+      .toContainText('change window');
+
+    // Standing on a phase reads its own date against now, which is the thing
+    // the phase rows are for.
+    await page.getByTestId('projects-phase-scream_test').click();
+    await expect(page.getByTestId('projects-detail-when'))
+      .toContainText(/^Due Day \d+ \d\d:\d\d - /);
+
+    // And the rule list is the box's now, not the pack's - the audit two steps
+    // up found the tunnel nobody wrote down, and the board shows it carried.
+    await expect(page.getByTestId('projects-rules-source'))
+      .toContainText('Read off the box');
+    await expect(page.getByTestId('projects-rule-vpn-brenmark'))
+      .toContainText('carried');
+
+    await page.getByTestId('close-projects').click();
+    await focusWindow(page, 'cmd');
   });
 
   await step('cmd.ssh', async () => {

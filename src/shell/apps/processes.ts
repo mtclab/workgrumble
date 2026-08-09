@@ -54,6 +54,11 @@ export const PROGRAM_IMAGES: Readonly<Record<string, ProgramImage>> = {
   review: { image: 'REVIEW.EXE', title: 'Probation review' },
   beer: { image: 'FRIDGE.EXE', title: 'The fridge' },
   tickets: { image: 'HELPDESK.EXE', title: 'Ticket queue' },
+  // The plan surface (0.29.0). Named for the thing rather than for the window,
+  // the way the rest of this list is: a PSA is what the trade calls the tool
+  // that carries the projects, and the process list is where a workstation of
+  // this era told you what a friendly window was really called.
+  projects: { image: 'PSAPLAN.EXE', title: 'Projects' },
   directory: { image: 'ACTDICT.EXE', title: 'Active Dictionary' },
   remote: { image: 'RASSIST.EXE', title: 'Remote Assist' },
   monitor: { image: 'RMMBOARD.EXE', title: 'Monitoring board' },

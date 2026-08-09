@@ -3271,6 +3271,51 @@ const ENTRIES = [
     run: 'week',
   },
 
+  /* -- the plan surface (E10, 0.29.0) ------------------------------------- */
+  {
+    id: 'projects.window',
+    surface: 'projects',
+    control: 'window-projects',
+    does: 'The plan surface: the project a promoted engineer is handed, its '
+      + 'four phases with the DATE each one is due and the working time to it, '
+      + 'the task each phase is worked through, and the rule set as far as the '
+      + 'audit has established one. It is a base tool, so it opens on a '
+      + 'service-desk desk too - where it says, in the window, that projects '
+      + 'are the engineers\' tier, the same refusal ssh gives and the same '
+      + 'place Display Properties puts it.',
+    window: { routes: ['start-menu', 'desktop-icon'] },
+    run: 'sysadmin',
+    why: 'A project is assigned by the promotion and to a desk that has an '
+      + 'estate to do one on, so the lit board exists only in the run that '
+      + 'crosses the engineer tier at the MSP; no probation week can reach it.',
+  },
+  {
+    id: 'projects.phase',
+    surface: 'projects',
+    control: 'projects-phase-<phase>',
+    does: 'Standing on a phase of the plan: its date said against now ("Due '
+      + 'Day 2 15:00 - 4h 20m of working time", and the other way round once '
+      + 'the date has gone by), what the phase actually is, and - on the '
+      + 'cutover - whether the change window is still to come or open right '
+      + 'now, in words. This is the half of the mechanic that makes a date '
+      + 'three days out mean anything.',
+    run: 'sysadmin',
+    why: 'It draws a live project, which only exists past the promotion at the '
+      + 'MSP - the same threshold the board itself lives behind.',
+  },
+  {
+    id: 'projects.task',
+    surface: 'projects',
+    control: 'projects-open-task-<ticket>',
+    does: 'The plan\'s way into the work: a phase task that has arrived opens '
+      + 'in the queue at that ticket, and one that has not is visibly not yet '
+      + 'raised - the milestone lock, said as "it arrives when the task before '
+      + 'it closes" rather than as a row that does nothing.',
+    run: 'sysadmin',
+    why: 'The task rows are a project\'s tasks, and there is no project to have '
+      + 'them before the promotion at the MSP.',
+  },
+
   {
     id: 'browser.window',
     surface: 'browser',
@@ -3894,6 +3939,11 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   // seen-controls gate would flag if a later MSP walk ever met it.
   'monitor-ack-*',
   'monitor-escalate-*',
+  // The plan surface's two families (0.29.0): the phase rows, which are the
+  // board's only navigation, and the way into each phase's ticket. Both live
+  // past the promotion at the MSP, walked in the sysadmin run.
+  'projects-phase-*',
+  'projects-open-task-*',
   'browser-site-*',
   'browser-home-button',
   // The web store's live buttons, one per shipped installable, per direction.

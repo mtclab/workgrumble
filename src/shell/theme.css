@@ -4394,6 +4394,309 @@ input {
   color: var(--color-ink-soft);
 }
 
+/* ------------------------------------------------------- the plan surface */
+
+.projects-app {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  min-height: 0;
+}
+
+.projects-toolbar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-raised);
+}
+
+.projects-heading {
+  font-family: var(--font-ui);
+  font-weight: 700;
+}
+
+.projects-stance {
+  color: var(--color-ink-soft);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.projects-viewport {
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.projects-board {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.projects-empty {
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+}
+
+.projects-masthead {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-3) var(--space-4);
+  align-items: center;
+}
+
+.projects-mark {
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.projects-masthead h2 {
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+
+.projects-customer {
+  color: var(--color-ink-soft);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+
+.projects-now,
+.projects-blocked,
+.projects-stamps {
+  grid-column: 1 / -1;
+  margin: var(--space-0);
+}
+
+.projects-now {
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+
+.projects-now[data-late='true'] {
+  color: var(--color-alarm);
+}
+
+/* Waiting on a window is not an error and is not progress either, so it wears
+   the note colour rather than the alarm one - the board says it plainly and
+   leaves the red for a date that has gone by. */
+.projects-blocked {
+  display: flex;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-sunken);
+  border-left: var(--space-1) solid var(--color-note-edge);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.projects-blocked[data-blocked='in_change_window'] {
+  border-left-color: var(--color-presence-available);
+}
+
+.projects-stamps {
+  color: var(--color-ink-soft);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+}
+
+.projects-phases {
+  display: grid;
+  gap: var(--space-2);
+  list-style: none;
+  margin: var(--space-0);
+  padding: var(--space-0);
+}
+
+.projects-phase {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: var(--space-3);
+  align-items: baseline;
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-raised);
+  color: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.projects-phase[data-selected='true'] {
+  background: var(--color-surface);
+  box-shadow: var(--bevel-sunken);
+}
+
+/* The slip, as the one thing the eye should catch across the whole board:
+   nothing while a phase has a day in front of it, the note colour an hour
+   before its date, and the alarm once it has gone by. */
+.projects-phase[data-slip='tight'] {
+  border-left: var(--space-1) solid var(--color-note-edge);
+}
+
+.projects-phase[data-slip='late'] {
+  border-left: var(--space-1) solid var(--color-alarm);
+}
+
+.projects-phase-chip {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0 var(--space-2);
+  color: var(--color-ink-inverse);
+  background: var(--color-ink-disabled);
+}
+
+.projects-phase-chip[data-state='done'] {
+  background: var(--color-presence-available);
+}
+
+.projects-phase-chip[data-state='now'] {
+  color: var(--color-ink);
+  background: var(--color-note-edge);
+}
+
+.projects-phase-due {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-ink-soft);
+}
+
+.projects-phase-slack {
+  min-width: 11ch;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: right;
+  color: var(--color-ink-soft);
+}
+
+.projects-phase-slack[data-slip='late'] {
+  color: var(--color-alarm);
+  font-weight: 700;
+}
+
+.projects-detail,
+.projects-rules {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface-raised);
+  box-shadow: var(--bevel-sunken);
+}
+
+.projects-detail h3,
+.projects-rules h3 {
+  font-size: var(--text-md);
+}
+
+.projects-detail-when {
+  margin: var(--space-0);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-ink-soft);
+}
+
+.projects-detail-when[data-slip='late'] {
+  color: var(--color-alarm);
+}
+
+.projects-detail-blurb,
+.projects-rules-source {
+  margin: var(--space-0);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+}
+
+.projects-task {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  box-shadow: var(--bevel-sunken);
+}
+
+.projects-task[data-arrived='false'] {
+  background: var(--color-surface-sunken);
+  color: var(--color-ink-soft);
+}
+
+.projects-task-title {
+  margin: var(--space-0);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.projects-task-state {
+  margin: var(--space-0);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+}
+
+.projects-rules-list {
+  display: grid;
+  gap: var(--space-2);
+  list-style: none;
+  margin: var(--space-0);
+  padding: var(--space-0);
+}
+
+.projects-rule {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  box-shadow: var(--bevel-sunken);
+  border-left: var(--space-1) solid var(--color-ink-disabled);
+}
+
+.projects-rule[data-migrated='true'] {
+  border-left-color: var(--color-presence-available);
+}
+
+.projects-rule-head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.projects-rule-short {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.projects-rule-where,
+.projects-rule-source {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--color-ink-soft);
+}
+
+.projects-rule-source {
+  margin-left: auto;
+}
+
+.projects-rule-label {
+  margin: var(--space-0);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  color: var(--color-ink-soft);
+}
+
 /* ------------------------------------------------- the toys off the store */
 
 .arcade-app,

@@ -18,6 +18,7 @@ import { MAIL_APP } from './mail';
 import { MEETING_APP } from './meeting';
 import { loadManifest } from './manifest';
 import { MONITOR_APP } from './monitor';
+import { PROJECTS_APP } from './projects';
 import { REBOOT_APP } from './reboot';
 import { REMOTE_APP } from './remote';
 import { REVIEW_APP } from './review';
@@ -49,6 +50,11 @@ export const APP_MANIFEST = assertCaughtScenes(loadManifest([
   REVIEW_APP,
   BEER_APP,
   TICKETS_APP,
+  // The other queue (0.29.0): planned work, which is a queue with dates on it
+  // rather than a list of faults. Straight after the ticket queue because that
+  // is what it is next to in the job - the board is the plan and every task on
+  // it is a row in the window above.
+  PROJECTS_APP,
   DIRECTORY_APP,
   REMOTE_APP,
   // The RMM board (0.9.0): the monitoring-only contract's own surface. A base

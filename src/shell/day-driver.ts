@@ -17,6 +17,7 @@ import type {
   EngineApi,
   NodeId,
   ReadOnlyGraphNode,
+  TicketState,
 } from '../engine-api';
 import {
   CHANGE_ACTIONS,
@@ -89,6 +90,7 @@ import {
   shiftStartTick,
   type TickWindow,
 } from '../world/day';
+import { serviceMinutesBetween } from '../world/hours';
 import {
   type ConductReading,
   conductLine,
@@ -209,6 +211,8 @@ import {
   typingMinutesLeft,
 } from '../world/no-hello';
 import {
+  type AuditSource,
+  auditSourceOf,
   FIELDS,
   isSystemsEngineer,
   slaTierOf,
@@ -231,14 +235,21 @@ import { ARDEN_EDGE_PROJECT, MSP_IDS } from '../world/msp-company';
 import {
   ARDEN_EDGE_ESTATE,
   ardenEdgeKickoffSetup,
+  type ProjectPhase,
   PROJECT_DAYS,
+  PROJECT_PHASE_LABELS,
+  PROJECT_PHASES,
   projectBoardLines,
   projectClockLabel,
+  projectRules,
   projectStatus,
   type ProjectStatus,
+  ruleIsKnown,
+  ruleIsMigrated,
   screamTestDue,
 } from '../world/project';
 import {
+  ARDEN_EDGE_TASKS,
   PROJECT_KICKOFF_TICKETS,
 } from '../world/tickets/project';
 import {
@@ -570,6 +581,149 @@ export interface DodgedInterruption {
   readonly gaveUp: boolean;
 }
 
+/* -- the project, as a surface can draw it (E10, 0.29.0) ------------------ */
+
+/**
+ * Where a phase stands in the chain, which is the only thing a plan row can
+ * honestly say about itself.
+ *
+ * Three values and no fourth: the derivation defines the live phase as the
+ * first gate that has not passed, so everything before it HAS passed, the one
+ * you are in has not, and everything after it has not been established either
+ * way. A board that marked a later phase done while an earlier one was still
+ * standing would be lying about a rollback, which is the one thing this
+ * mechanic must not do.
+ */
+export type ProjectPhaseState = 'done' | 'now' | 'ahead';
+
+/**
+ * A phase task, as a row: the ticket it is, and whether it has ARRIVED.
+ *
+ * The milestone lock is arrival rather than refusal (`world/tickets/project.ts`),
+ * so "locked" here is `arrived: false` - a row that is on the plan and not yet
+ * on the desk. It carries its title anyway, because the four tasks ARE the
+ * plan and a player is told about them by the delivery ticket on day one; what
+ * they cannot do is work one early.
+ */
+export interface ProjectTaskRow {
+  readonly id: string;
+  readonly title: string;
+  readonly arrived: boolean;
+  /** The ticket's own state, or null while it is still a line on the plan. */
+  readonly state: TicketState | null;
+  readonly resolved: boolean;
+}
+
+/** One phase of the plan, against the clock. */
+export interface ProjectPhaseRow {
+  readonly phase: ProjectPhase;
+  readonly label: string;
+  readonly state: ProjectPhaseState;
+  /** The baked tick this phase was planned to be done by. */
+  readonly due: number | null;
+  /** That tick as a face - `Day 2 15:00` - or empty when there is none. */
+  readonly dueLabel: string;
+  /**
+   * Working minutes between now and that date, SIGNED: negative once the date
+   * has gone by. It is the number the whole surface is built around - a date
+   * three days out is not legible on its own, and a slip has to be readable
+   * while there is still a project to save.
+   */
+  readonly minutesLeft: number;
+  readonly late: boolean;
+  /** The ticket this phase is worked through, or null for the sign-off. */
+  readonly task: ProjectTaskRow | null;
+}
+
+/**
+ * One rule of the set being carried across - and ONLY one anybody knows about.
+ *
+ * The filter is `ruleIsKnown`, and it is the beat rather than a nicety: a rule
+ * that exists only in the live configuration is invisible until somebody reads
+ * the box, so a board that listed all six from the start would hand the player
+ * the answer the audit is the question about.
+ */
+export interface ProjectRuleRow {
+  readonly id: string;
+  readonly label: string;
+  readonly short: string;
+  /** Whether it is in the 2019 handover pack, or was found on the box. */
+  readonly documented: boolean;
+  readonly migrated: boolean;
+}
+
+/**
+ * Everything a plan surface draws, read in one go.
+ *
+ * It is assembled HERE rather than in the app for the reason every other view
+ * on this interface is: an app may not go rummaging in the graph. The phase,
+ * the gates and the dates are the world's own derivation (`projectStatus`,
+ * unchanged and shared with the terminal); what this adds is the shape a board
+ * needs - a row per phase, the task that works it, and the rule set as far as
+ * anybody knows it.
+ */
+export interface ProjectPlanView {
+  readonly status: ProjectStatus;
+  readonly name: string;
+  readonly customer: string;
+  readonly phases: readonly ProjectPhaseRow[];
+  /** The parent delivery row, which closes on its four children. */
+  readonly delivery: ProjectTaskRow;
+  readonly rules: readonly ProjectRuleRow[];
+  /** Where the rule list came from, or null while nobody has established one. */
+  readonly ruleSource: AuditSource | null;
+}
+
+/**
+ * The phases a PLAN has rows for: the four with a date of their own.
+ *
+ * `handover` is not one of them and that is the derivation's own shape - it is
+ * the terminal state, the project being finished rather than a fifth thing to
+ * do - so the board says so in the header instead of drawing a row that could
+ * never be anything but pending or done. The terminal's `fw status` omits it
+ * for the same reason and off the same list.
+ */
+const PLAN_PHASES: readonly ProjectPhase[] = PROJECT_PHASES.filter(
+  (phase) => phase !== 'handover',
+);
+
+/**
+ * Which of the baked dates each phase is measured against.
+ *
+ * The scream test shares the handover's date because it shares its deadline:
+ * the sign-off is what both are due by, and inventing a fifth date for the
+ * night in between would be a plan the kickoff never baked.
+ */
+const PHASE_DUE_FIELDS: Readonly<Record<ProjectPhase, string>> = {
+  audit: FIELDS.projectAuditDue,
+  staging: FIELDS.projectStagingDue,
+  cutover: FIELDS.projectCutoverDue,
+  scream_test: FIELDS.projectHandoverDue,
+  handover: FIELDS.projectHandoverDue,
+};
+
+/** Which task ticket a phase is worked through. */
+const PHASE_TASKS: Readonly<Record<ProjectPhase, string | null>> = {
+  audit: ARDEN_EDGE_TASKS.audit,
+  staging: ARDEN_EDGE_TASKS.staging,
+  cutover: ARDEN_EDGE_TASKS.cutover,
+  scream_test: ARDEN_EDGE_TASKS.handover,
+  handover: null,
+};
+
+/**
+ * Working minutes from here to there, signed.
+ *
+ * The difference of the two directions, which is how this codebase says
+ * "before or after" with a function that only counts forwards - the same
+ * expression `projectStatus` puts on its own `minutesLeft`, because a row of
+ * the plan and the phase you are standing in have to agree about how much
+ * afternoon is left.
+ */
+function signedServiceMinutes(now: number, due: number): number {
+  return serviceMinutesBetween(now, due) - serviceMinutesBetween(due, now);
+}
+
 /**
  * What the apps and the taskbar may ask of the day. Reading is free; the
  * things that MOVE it - starting the shift, clocking off, opening a can,
@@ -732,6 +886,19 @@ export interface DayApi {
    */
   projectBoard(): readonly string[];
   projectView(): ProjectStatus | null;
+  /**
+   * The same project, as the model a BOARD draws (E10, 0.29.0, slice 2).
+   *
+   * `projectBoard()` is the terminal's answer - lines, already formatted - and
+   * a window cannot render lines without pretending to be a terminal. This is
+   * the same reads, handed over as data: a row per phase with its date and the
+   * signed minutes to it, the task each phase is worked through and whether it
+   * has arrived yet, and the rule set as far as the audit has established one.
+   *
+   * Null when there is no project, which is every world but an engineer's week
+   * at the MSP - and the surface is expected to say which of those it is.
+   */
+  projectPlan(): ProjectPlanView | null;
   /**
    * Moving the site's circuit into the new edge box, and moving it back.
    *
@@ -3752,6 +3919,103 @@ export class DayDriver implements DayApi {
       ARDEN_EDGE_ESTATE,
       this.engine.now(),
     );
+  }
+
+  /** One task ticket, as a row: what it is, and whether it is on the desk. */
+  private projectTaskRow(id: string): ProjectTaskRow {
+    // `ticketState` answers undefined for a node that is not there, which is
+    // exactly the locked case: the milestone lock is arrival, so a task that
+    // has not been raised has no state to report and is not a dead row - it is
+    // a line on the plan that nothing has reached yet.
+    const state = this.engine.ticketState(id) ?? null;
+
+    return {
+      id,
+      title: ticketTitle(id),
+      arrived: state !== null,
+      state,
+      resolved: state === 'resolved',
+    };
+  }
+
+  /**
+   * The plan, as a board draws it.
+   *
+   * Every fact here is read, none is stored, and the phase each row is measured
+   * against comes from ONE derivation - `projectStatus` - rather than from four
+   * gate reads of its own. That is what keeps this surface and `fw status`
+   * incapable of disagreeing: the chain says the live phase is the first gate
+   * that has not passed, so a row's state is its position against that phase,
+   * and a rollback moves the whole board back with nothing to remember.
+   */
+  public projectPlan(): ProjectPlanView | null {
+    const now = this.engine.now();
+    const graph = this.engine.graph;
+    const status = projectStatus(graph, ARDEN_EDGE_ESTATE, now);
+
+    if (status === null) {
+      return null;
+    }
+
+    const projectId = ARDEN_EDGE_ESTATE.projectId;
+    const here = PROJECT_PHASES.indexOf(status.phase);
+    const name = graph.getField(projectId, FIELDS.name);
+    const customerId = graph.getField(projectId, FIELDS.projectCustomer);
+    const customer = typeof customerId === 'string'
+      ? graph.getField(customerId, FIELDS.name)
+      : null;
+    // What the audit established, and therefore what the board is allowed to
+    // know: null until somebody has read the box or taken the pack as read.
+    const source = auditSourceOf(
+      graph.getField(ARDEN_EDGE_ESTATE.edgeBoxId, FIELDS.fwAuditSource),
+    );
+
+    const phases = PLAN_PHASES.map((phase): ProjectPhaseRow => {
+      const index = PROJECT_PHASES.indexOf(phase);
+      const state: ProjectPhaseState = index < here
+        ? 'done'
+        : index === here ? 'now' : 'ahead';
+      const dueField = graph.getField(projectId, PHASE_DUE_FIELDS[phase]);
+      const due = typeof dueField === 'number' ? dueField : null;
+      const task = PHASE_TASKS[phase];
+
+      return {
+        phase,
+        label: PROJECT_PHASE_LABELS[phase],
+        state,
+        due,
+        dueLabel: due === null ? '' : projectClockLabel(due),
+        minutesLeft: due === null ? 0 : signedServiceMinutes(now, due),
+        // A phase that is done is not late whatever the clock says: it was
+        // finished, and a board that kept shouting about a date somebody
+        // already met is a board nobody reads the rest of.
+        late: state !== 'done' && due !== null && now > due,
+        task: task === null ? null : this.projectTaskRow(task),
+      };
+    });
+
+    return {
+      status,
+      name: typeof name === 'string' ? name : projectId,
+      customer: typeof customer === 'string' ? customer : '',
+      phases,
+      delivery: this.projectTaskRow(ARDEN_EDGE_TASKS.parent),
+      rules: projectRules(graph, projectId)
+        .filter((rule) => ruleIsKnown(rule, source))
+        .map((rule): ProjectRuleRow => {
+          const label = rule.fields[FIELDS.name];
+          const short = rule.fields[FIELDS.serviceName];
+
+          return {
+            id: rule.id,
+            label: typeof label === 'string' ? label : rule.id,
+            short: typeof short === 'string' ? short : rule.id,
+            documented: rule.fields[FIELDS.fwRuleDocumented] === true,
+            migrated: ruleIsMigrated(rule),
+          };
+        }),
+      ruleSource: source,
+    };
   }
 
   /**

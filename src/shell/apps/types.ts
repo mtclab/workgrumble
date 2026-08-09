@@ -23,7 +23,16 @@ import type { DesktopChoice } from '../skins';
 export type AppIntent =
   | { readonly kind: 'kb-article'; readonly ref: string }
   | { readonly kind: 'chat-person'; readonly id: string }
-  | { readonly kind: 'remote-machine'; readonly id: string };
+  | { readonly kind: 'remote-machine'; readonly id: string }
+  /**
+   * "Open the queue AT this ticket" (E10, 0.29.0). The plan surface needs it
+   * because a project task IS an ordinary ticket - the board says which four
+   * there are and what order they arrive in, and the work itself is where all
+   * work is. Carried by id, like the other two: an intent names a thing the
+   * receiving app already knows how to show, and the queue drops one it cannot
+   * find rather than inventing a row for it.
+   */
+  | { readonly kind: 'queue-ticket'; readonly id: string };
 
 export interface AppInstance {
   unmount(): void;

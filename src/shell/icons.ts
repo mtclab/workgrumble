@@ -148,6 +148,24 @@ const ICONS: Readonly<Record<string, readonly IconShape[]>> = {
       attributes: { x1: '9', y1: '16', x2: '13', y2: '16' },
     },
   ],
+  // Three bars stepping down a page: a plan, drawn the way every plan has been
+  // drawn since somebody put a ruler on a Gantt chart. Deliberately NOT a
+  // calendar - the thing this window is about is phases that follow each other,
+  // and a month grid would say the opposite.
+  'icon-projects': [
+    {
+      element: 'rect',
+      attributes: { x: '3', y: '5', width: '10', height: '3', rx: '1' },
+    },
+    {
+      element: 'rect',
+      attributes: { x: '7', y: '10', width: '10', height: '3', rx: '1' },
+    },
+    {
+      element: 'rect',
+      attributes: { x: '11', y: '15', width: '10', height: '3', rx: '1' },
+    },
+  ],
   'icon-directory': [
     {
       element: 'rect',
