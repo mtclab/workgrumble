@@ -30,6 +30,22 @@ export const LUNCH_END_MINUTE = 12 * 60 + 30;
 /** The minutes in a shift, which is the only stretch a service level counts. */
 export const SHIFT_MINUTES = SHIFT_END_MINUTE - SHIFT_START_MINUTE;
 
+/** The half hour in the middle of it that is nobody's working time. */
+export const LUNCH_MINUTES = LUNCH_END_MINUTE - LUNCH_START_MINUTE;
+
+/**
+ * The minutes of a day anybody could put on a timesheet: the shift, less lunch.
+ *
+ * Seven and a half hours, and it is a DIFFERENT number from `SHIFT_MINUTES` on
+ * purpose. A service level counts the whole eight - a printer does not start
+ * working because somebody went to eat, so a deadline keeps running through it
+ * - and a timesheet counts seven and a half, because half an hour in the
+ * canteen is not billable to anybody and never has been. Two questions, two
+ * numbers, and a single constant serving both would have to be wrong about one
+ * of them.
+ */
+export const WORKING_MINUTES_PER_DAY = SHIFT_MINUTES - LUNCH_MINUTES;
+
 /** A half-open span of ticks: `from` counts, `to` does not. */
 export interface TickWindow {
   readonly from: number;
@@ -201,6 +217,29 @@ export function serviceMinutesAt(tick: number): number {
 /** Service minutes between two ticks. Never negative; `to` before `from` is 0. */
 export function serviceMinutesBetween(from: number, to: number): number {
   return Math.max(0, serviceMinutesAt(to) - serviceMinutesAt(from));
+}
+
+/**
+ * WORKING minutes elapsed by the time the clock reads `tick`, counted from the
+ * beginning of the world - service minutes with the canteen taken out.
+ *
+ * Same closed form as `serviceMinutesAt` and deliberately built on top of it
+ * rather than beside it, so the two can never disagree about where a day
+ * starts or how many of them have gone by: this is that number minus the lunch
+ * that has already happened, and nothing else.
+ */
+export function workingMinutesAt(tick: number): number {
+  requireTick(tick, 'A simulation tick');
+  const days = Math.floor((DAY_OPENS_MINUTE + tick) / MINUTES_PER_DAY);
+  const lunched = days * LUNCH_MINUTES
+    + clamp(minuteOfDay(tick) - LUNCH_START_MINUTE, 0, LUNCH_MINUTES);
+
+  return serviceMinutesAt(tick) - lunched;
+}
+
+/** Working minutes between two ticks. Never negative; `to` before `from` is 0. */
+export function workingMinutesBetween(from: number, to: number): number {
+  return Math.max(0, workingMinutesAt(to) - workingMinutesAt(from));
 }
 
 /**

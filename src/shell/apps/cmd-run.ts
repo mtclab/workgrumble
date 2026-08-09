@@ -57,6 +57,11 @@ import {
   ruleIsMigrated,
 } from '../../world/project';
 import { PROJECT_ACTIONS } from '../../world/actions';
+import {
+  hoursLabel,
+  lineAt,
+  timesheetLines as renderTimesheet,
+} from '../../world/timesheet';
 import type { MachineRole } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { DEFAULT_CWD } from '../../world/filesystem';
@@ -1392,6 +1397,121 @@ function fwLines(
   );
 }
 
+/**
+ * `timesheet` - the week as the records have it, and what you say it was
+ * (0.30.0, slice 1).
+ *
+ * The terminal is the minimum surface, deliberately: the sheet is a READ of the
+ * derivation plus three edits, and the whole of what this file does is print
+ * the one and pass the other three through the driver's verbs. Nothing here
+ * computes an hour - it cannot, there is exactly one place that turns records
+ * into minutes and it is `deriveTimesheet` - so a sheet on a screen and a sheet
+ * a customer is sent are the same arithmetic by construction.
+ */
+function timesheetLines(
+  api: GameApi,
+  sub: string,
+  args: readonly string[],
+): CommandResult {
+  const sheet = api.day.timesheet();
+
+  if (sub === '' || sub === 'status') {
+    return lines(...renderTimesheet(sheet, api.day.day()));
+  }
+
+  if (sub === 'submit') {
+    const result = api.day.submitTimesheet();
+
+    return result.ok
+      ? lines(
+        'Timesheet submitted.',
+        sheet.shape === 'single_bucket'
+          ? 'One line a day, seven and a half hours each, and it was done before '
+            + 'the sigh finished.'
+          : 'It is on the invoice run now. What the records say is still on the '
+            + 'records, which is the half nobody edits.',
+      )
+      : lines(result.reason);
+  }
+
+  if (sub === 'claim' || sub === 'vague' || sub === 'detail') {
+    const handle = args[1] ?? '';
+
+    if (handle.length === 0) {
+      return lines(
+        `"timesheet ${sub}" needs a line to be about.`,
+        'The handles are day.line and they are printed down the left of the '
+          + 'sheet: "timesheet claim 3.2 120".',
+      );
+    }
+
+    if (sub !== 'claim') {
+      const result = api.day.claimTimesheet(
+        handle,
+        null,
+        sub === 'vague' ? 'vague' : 'detailed',
+      );
+
+      return result.ok
+        ? lines(
+          sub === 'vague'
+            ? `Line ${handle} now reads "consulting".`
+            : `Line ${handle} carries the date, the estate and the job again.`,
+          sub === 'vague'
+            ? 'It is quicker to write and it is the first thing a finance team '
+              + 'picks out of an invoice, whether or not it was true.'
+            : 'A line that says what was done survives being gone through, '
+              + 'which is what detail is actually for.',
+        )
+        : lines(result.reason);
+    }
+
+    const said = args[2] ?? '';
+    const minutes = Number(said);
+
+    if (
+      said.length === 0
+      || !Number.isSafeInteger(minutes)
+      || minutes < 0
+    ) {
+      return lines(
+        `"${said}" is not a number of minutes.`,
+        'Claim a line in whole minutes: "timesheet claim 3.2 120" is two hours '
+          + 'against line 3.2.',
+      );
+    }
+
+    const found = lineAt(sheet, handle);
+    const result = api.day.claimTimesheet(handle, minutes, null);
+
+    if (!result.ok) {
+      return lines(result.reason);
+    }
+
+    const derived = found?.line.derived ?? 0;
+
+    return lines(
+      `Line ${handle}: ${hoursLabel(minutes)} claimed against ${
+        hoursLabel(derived)
+      } worked.`,
+      minutes > derived
+        ? 'The records still say what they said. So will the breakdown, if '
+          + 'anybody asks for one.'
+        : 'Under what the records have. Nobody will ever query that.',
+    );
+  }
+
+  return lines(
+    `"timesheet ${sub}" is not something this terminal does.`,
+    'It does "timesheet" (the week so far, worked against claimed), "timesheet '
+      + 'claim',
+    '<line> <minutes>", "timesheet vague <line>" and "timesheet detail <line>", '
+      + 'and',
+    '"timesheet submit", which is due at the end of Friday whether you press it '
+      + 'or not.',
+  );
+}
+
 /** One rule as a listing row: what it is, and where it has got to. */
 function fwRuleRow(
   rule: Readonly<ReadOnlyGraphNode>,
@@ -2300,6 +2420,10 @@ export function executeCommand(
 
   if (parsed.spec.name === 'fw') {
     return fwLines(api, parsed.sub, parsed.query);
+  }
+
+  if (parsed.spec.name === 'timesheet') {
+    return timesheetLines(api, parsed.sub, parsed.args);
   }
 
   if (parsed.spec.name === 'notify') {

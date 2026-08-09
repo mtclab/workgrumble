@@ -32,6 +32,7 @@ import {
   SELINUX_ACTIONS,
   SOFTWARE_ACTIONS,
   SYSTEMD_ACTIONS,
+  TIMESHEET_ACTIONS,
   WORLD_ACTIONS,
 } from '../world/actions';
 import {
@@ -215,6 +216,8 @@ import {
   auditSourceOf,
   FIELDS,
   isSystemsEngineer,
+  type PlayerTier,
+  playerTierOf,
   slaTierOf,
   SYSTEMD_STATES,
 } from '../world/fields';
@@ -271,10 +274,29 @@ import {
   resolveCredit,
   spawnWorldTicket,
   ticketNodes,
+  ticketProjectOf,
   ticketTitle,
   triedFromTouches,
   withTouch,
 } from '../world/tickets';
+import { customerName } from '../world/customers';
+import {
+  attributionFor,
+  claimsFrom,
+  type ClaimDetail,
+  deriveTimesheet,
+  lineAt,
+  type SegmentKind,
+  type SegmentRef,
+  segmentsFrom,
+  type Timesheet,
+  timesheetSheet,
+  type TimesheetClaim,
+  type TimesheetTruth,
+  type WorkResolver,
+  withClaim,
+  withSegment,
+} from '../world/timesheet';
 
 /** Real milliseconds one simulated minute takes at normal speed. */
 export const TICK_INTERVAL_MS = 1_000;
@@ -912,6 +934,31 @@ export interface DayApi {
    */
   cutover(newBoxId: string): readonly string[];
   rollback(oldBoxId: string): readonly string[];
+  /**
+   * The timesheet (0.30.0, slice 1): the week as the records have it, the
+   * player's claim beside it, and the two edits that make them differ.
+   *
+   * `timesheet()` is the whole sheet as data - a surface that wanted lines can
+   * format it, and `world/timesheet.ts` ships the formatter the terminal uses -
+   * shaped by the player's tier: one bucket a day at the service desk, one line
+   * per customer plus the project code for an engineer. `timesheetTruth()` is
+   * the derivation on its own, for anything that needs what actually happened
+   * without the claim laid over it; both go through the same function, so a
+   * pre-fill and a later reading cannot disagree.
+   *
+   * The two verbs answer rather than throw: a claim on a submitted sheet is a
+   * sentence the player reads, and the refusal is the world's.
+   */
+  timesheet(): Timesheet;
+  timesheetTruth(): TimesheetTruth;
+  timesheetClaims(): readonly TimesheetClaim[];
+  playerTier(): PlayerTier;
+  claimTimesheet(
+    handle: string,
+    minutes: number | null,
+    detail: ClaimDetail | null,
+  ): DispatchResult;
+  submitTimesheet(auto?: boolean): DispatchResult;
   /**
    * Files the blameless postmortem for an incident (E6, 0.19.0): the append-only
    * post-incident record that CLOSES the failed-deploy incident once the fire is
@@ -2352,6 +2399,20 @@ export class DayDriver implements DayApi {
     const witnesses = target === null ? [] : this.ticketsAbout(target);
     const result = this.engine.dispatch(id, actor, target, params);
     this.recordTouches(id, witnesses, result.ok);
+
+    // And where the minute went (0.30.0). Only when the act actually landed: a
+    // refusal costs no time worth charging anybody for, and one aimed at the
+    // wrong customer's box would otherwise put a minute on an invoice for an
+    // estate that was never touched.
+    if (result.ok) {
+      // Through the TICKET when the act was witnessed by one, because a ticket
+      // knows something a box cannot: whether this is a project task, and so
+      // whether the minutes belong on the project code or loose against the
+      // customer. The last witness rather than the first, which is the one the
+      // touch records leave last in the engine's own log - the two readings
+      // have to land on the same bucket or the audit is arguing with itself.
+      this.noteWorkSegment(witnesses[witnesses.length - 1]?.id ?? target);
+    }
     // And, if the dot says Away while that was going on, the one person who
     // can see both halves of it.
     this.settleAwayNoticed(id, result.ok);
@@ -2562,6 +2623,11 @@ export class DayDriver implements DayApi {
     // meter tick out of date. In the one direction that is somebody fired for
     // work they had already done.
     this.applyPressure(now);
+    // After the meters, because it asks the same handler the same question and
+    // the answer has to be about a minute that is finished happening: a window
+    // the player is sitting in is a minute nobody can bill, and the sheet finds
+    // that out at the same moment the suspicion meter does.
+    this.trackSlackTime();
     this.settleReview(before, now);
 
     if (this.applyDueTransition()) {
@@ -2708,6 +2774,16 @@ export class DayDriver implements DayApi {
     const banked = this.farmFund() + this.slipFor(day).net;
 
     this.recordWeekReading();
+    // The sheet goes in whether or not anybody filled it in (0.30.0). Nothing
+    // is invented and nothing is tidied: whatever the claim says at this minute
+    // is what the customer is sent, labelled as having gone in on its own,
+    // because a week that ended with the sheet still open is a week the payroll
+    // deadline decided for you. The guard inside the verb makes a sheet the
+    // player already submitted a no-op rather than a second submission.
+    if (this.timesheetSubmittedAt() === null) {
+      this.submitTimesheet(true);
+    }
+
     this.dispatchDay(DAY_ACTIONS.endWeek, { banked });
     this.carriedMs = 0;
     this.engine.checkpoint();
@@ -4135,6 +4211,226 @@ export class DayDriver implements DayApi {
       'The window is spent, though, and anything the last few minutes broke is '
         + 'still broken for the people who noticed. Book another one.',
     ];
+  }
+
+  /* -- the timesheet (0.30.0, slice 1) ------------------------------------ */
+
+  /**
+   * The two authored facts about a ticket the graph does not carry, handed to
+   * the attribution as functions so the world module stays drivable from a
+   * fixture with three nodes in it.
+   */
+  private workResolver(): WorkResolver {
+    return { projectOfTicket: ticketProjectOf, nodesOfTicket: ticketNodes };
+  }
+
+  /**
+   * One line of where the minutes went, written the minute what the player was
+   * doing changed - and NOT written when it did not.
+   *
+   * It sits beside `recordTouches` because it answers the same question at a
+   * different grain: that one is "what was tried on this fault" and this is
+   * "whose afternoon was that". Both are written now rather than reconstructed
+   * later, and both live on a node rather than in the dispatch log, because the
+   * log is drained at every day boundary and a timesheet is a week long.
+   *
+   * Only during the shift. The morning brief is not paid, the evening is not
+   * billable, and a sheet that opened a line for reading the post would be a
+   * sheet inventing hours nobody worked.
+   */
+  private noteWorkSegment(target: NodeId | null): void {
+    if (this.state() !== 'shift') {
+      return;
+    }
+
+    const ref = attributionFor(
+      this.engine.graph,
+      target,
+      this.workResolver(),
+    );
+
+    if (ref !== null) {
+      this.recordSegment(ref);
+    }
+  }
+
+  /**
+   * The ledger, moved on - or left exactly where it was, which is what happens
+   * most minutes.
+   *
+   * The whole field is computed here and handed over as one parameter, the way
+   * a touch record and a conduct line are: the encoding lives in one module,
+   * the engine only insists it is a field, and a replay writes the identical
+   * string rather than rebuilding it against a clock nobody saved. An unchanged
+   * field dispatches nothing at all, so carrying on with what you were doing
+   * costs the log nothing.
+   */
+  private recordSegment(ref: Readonly<SegmentRef>): void {
+    const existing = this.playerText(FIELDS.timesheetLog);
+    const lines = withSegment(existing, this.engine.now(), ref);
+
+    if (lines === existing) {
+      return;
+    }
+
+    this.engine.dispatch(TIMESHEET_ACTIONS.record, this.actor, null, { lines });
+  }
+
+  /**
+   * The other half, and the one that gives slacking its second cost: a window
+   * the player is actually IN that is not work ends whatever segment was
+   * running.
+   *
+   * Nothing is charged for it and nothing is refused. The forum simply owns the
+   * minutes from here until the next thing the player does, and owning them is
+   * how they stop being on anybody's invoice - which is the honest cost the
+   * sheet was built to show, felt at the sheet rather than only when the lead
+   * comes round the corner.
+   *
+   * The FOCUSED app rather than every open one, for the same reason the calm
+   * meter reads that half: a browser behind the queue is a window, and the
+   * minute belongs to whatever the keyboard is in.
+   */
+  private trackSlackTime(): void {
+    if (this.state() !== 'shift') {
+      return;
+    }
+
+    const app = this.handlers.focusedSlackApp();
+
+    if (app !== null) {
+      this.recordSegment({ kind: 'slack', id: app });
+    }
+  }
+
+  /** The player's tier, which is the only thing that shapes the sheet. */
+  public playerTier(): PlayerTier {
+    return playerTierOf(this.engine.graph.getField(this.actor, FIELDS.playerTier));
+  }
+
+  /**
+   * What the week ACTUALLY was, read off the ledger and the clock.
+   *
+   * The single derivation. `timesheet()` below pre-fills from this and every
+   * later "what really happened" reading calls this same method - there is no
+   * second copy of the arithmetic and no stored summary for one to drift from.
+   */
+  public timesheetTruth(): TimesheetTruth {
+    return deriveTimesheet(
+      segmentsFrom(this.playerText(FIELDS.timesheetLog)),
+      this.engine.now(),
+    );
+  }
+
+  /** The claim as it stands: what the player says, line by line. */
+  public timesheetClaims(): readonly TimesheetClaim[] {
+    return claimsFrom(this.playerText(FIELDS.timesheetClaim));
+  }
+
+  /** The sheet: the truth and the claim side by side, in the tier's shape. */
+  public timesheet(): Timesheet {
+    return timesheetSheet(this.timesheetTruth(), this.timesheetClaims(), {
+      tier: this.playerTier(),
+      submittedAt: this.timesheetSubmittedAt(),
+      submittedAuto:
+        this.engine.graph.getField(this.actor, FIELDS.timesheetSubmittedAuto)
+          === true,
+      labelOf: (kind: SegmentKind, id: string) => this.workLabel(kind, id),
+    });
+  }
+
+  private timesheetSubmittedAt(): number | null {
+    const value = this.engine.graph.getField(
+      this.actor,
+      FIELDS.timesheetSubmittedAt,
+    );
+
+    return typeof value === 'number' ? value : null;
+  }
+
+  /** How a line of the sheet names what it is about. */
+  private workLabel(kind: SegmentKind, id: string): string {
+    if (kind === 'customer') {
+      return customerName(this.engine.graph, id);
+    }
+
+    if (kind === 'project') {
+      const name = this.engine.graph.getField(id, FIELDS.name);
+
+      if (typeof name === 'string' && name.length > 0) {
+        // The project's own name, up to the bracket: content writes it with the
+        // customer already on the front ("ARDEN-MFG: edge firewall replacement
+        // (ARD-FW-01 -> ARD-FW-02)"), and the two box names after it are the
+        // plan's business rather than the invoice's.
+        const bracket = name.indexOf(' (');
+        return bracket === -1 ? name : name.slice(0, bracket);
+      }
+
+      const customer = this.engine.graph.getField(id, FIELDS.projectCustomer);
+
+      return typeof customer === 'string'
+        ? `${customerName(this.engine.graph, customer)} / ${id}`
+        : id;
+    }
+
+    return 'Internal';
+  }
+
+  /**
+   * The player's edit: this line is worth this many minutes, written to this
+   * much detail.
+   *
+   * It writes the CLAIM field and nothing else. The derived minutes are still
+   * exactly where they were a moment ago, which is the whole architecture of
+   * the mechanic: what the customer is sent and what the engine recorded are
+   * two separate pieces of paper from here on.
+   */
+  public claimTimesheet(
+    handle: string,
+    minutes: number | null,
+    detail: ClaimDetail | null,
+  ): DispatchResult {
+    const sheet = this.timesheet();
+    const found = lineAt(sheet, handle);
+
+    if (found === null) {
+      return {
+        ok: false,
+        reason: `There is no line "${handle}" on the sheet. The handles are `
+          + 'day.line, and they are printed down the left of it.',
+      };
+    }
+
+    const claim: TimesheetClaim = {
+      day: found.day,
+      bucket: found.line.bucket,
+      minutes: minutes ?? found.line.claimed,
+      detail: detail ?? found.line.detail,
+    };
+
+    return this.announced(this.engine.dispatch(
+      TIMESHEET_ACTIONS.claim,
+      this.actor,
+      null,
+      { claims: withClaim(this.playerText(FIELDS.timesheetClaim), claim) },
+    ));
+  }
+
+  /**
+   * The sheet, in.
+   *
+   * `auto` is the week ending on a sheet nobody filled in, and it is the same
+   * verb because it is the same event: the customer is sent the same hours
+   * either way. The only thing that differs is the label on it, and the label
+   * is honest.
+   */
+  public submitTimesheet(auto = false): DispatchResult {
+    return this.announced(this.engine.dispatch(
+      TIMESHEET_ACTIONS.submit,
+      this.actor,
+      null,
+      { auto: auto ? 1 : 0 },
+    ));
   }
 
   /* -- the lead, doing his rounds ---------------------------------------- */

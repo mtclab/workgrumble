@@ -685,8 +685,16 @@ const GOLDEN_DAY = {
    * a Linux host are read-only and mutate nothing, so the day's numbers are
    * again every one of them the number it was. The estate got bigger; the
    * Monday did not change.
+   *
+   * ELEVENTH MOVE, 0.30.0 (`f20684717a994fd5` -> `a710c4cb8ed3de8f`): the
+   * TIMESHEET ledger. The day loop writes one line onto the player node each
+   * time what the player is doing changes - the customer, the project or the
+   * window they are actually sitting in - so a Monday that fixed things has a
+   * record of whose minutes they were. Nothing else in this day moved: not a
+   * meter, not a minute, not a breach, not a penny, not a timeline entry. The
+   * day now says where it went; it did not go anywhere different.
    */
-  hash: 'f20684717a994fd5',
+  hash: 'a710c4cb8ed3de8f',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */

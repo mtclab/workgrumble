@@ -195,6 +195,48 @@ export const FIELDS = {
    */
   knownHosts: 'known_hosts',
   /**
+   * WHERE THE WEEK'S MINUTES ACTUALLY WENT, as the world recorded them going.
+   *
+   * One line per change of what the player was doing - `tick|kind|id` - written
+   * in the minute it changed, exactly the way a ticket's `touch_log` is written
+   * in the minute the ticket was touched, and here for exactly the same reason
+   * that field exists: the dispatch log is drained at every day boundary, and a
+   * timesheet is a WEEK. A sheet built off the log alone would open on Friday
+   * afternoon claiming nobody had done anything before this morning.
+   *
+   * It is the TRUTH half of the timesheet and the only source the derivation
+   * has. It is not a summary and it holds no minutes: minutes are read off it
+   * by `deriveTimesheet`, which is the one piece of arithmetic in the game that
+   * turns records into hours, so the pre-fill and any later "what really
+   * happened" reading are the same function called twice.
+   */
+  timesheetLog: 'timesheet_log',
+  /**
+   * And what the player SAYS happened, which is a different thing and is kept
+   * as a different thing.
+   *
+   * One line per edited entry - `day|bucket|minutes|detail` - and it never
+   * touches `timesheet_log`. A line the player padded, moved or wrote vaguely
+   * is stored ALONGSIDE the derived truth rather than over it, because the
+   * whole mechanic is the gap between the two and a claim that overwrote the
+   * record would close the gap by destroying the evidence. A bucket with no
+   * line here is claimed exactly as derived, in full detail, which is what
+   * makes an untouched sheet an honest one.
+   */
+  timesheetClaim: 'timesheet_claim',
+  /**
+   * The minute the sheet went in, and whether anybody pressed anything.
+   *
+   * Submission FREEZES the claim - the world refuses an edit afterwards, the
+   * way a filed invoice refuses one - so the minute is the fact both the
+   * refusal and the reading turn on. `timesheetSubmittedAuto` is the honest
+   * label on a sheet that went in because the week ended rather than because
+   * the player filled it in: it is still submitted, it is still what the
+   * customer gets, and it says which of those two it was.
+   */
+  timesheetSubmittedAt: 'timesheet_submitted_at',
+  timesheetSubmittedAuto: 'timesheet_submitted_auto',
+  /**
    * How many suspicious minutes the day has had: intervals in which something
    * the boss would rather not see was open on the screen. The scorecard counts
    * these rather than the meter, because a meter that drained back to zero

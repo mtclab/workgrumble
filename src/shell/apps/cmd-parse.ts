@@ -243,6 +243,16 @@ export const COMMANDS: readonly CommandSpec[] = [
     subcommand: true,
   },
   {
+    name: 'timesheet',
+    usage: 'timesheet [claim <line> <minutes> | vague <line> | detail <line> '
+      + '| submit]',
+    summary: 'The week as the records have it, and what you say it was.',
+    minArgs: 0,
+    maxArgs: 3,
+    joined: false,
+    subcommand: true,
+  },
+  {
     name: 'notify',
     usage: 'notify <service>',
     summary: 'Tell a co-managed customer\'s own IT before you act, then act.',

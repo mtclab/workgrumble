@@ -957,7 +957,16 @@ const GOLDEN_WORKED: GoldenWeek = {
   // same queue, the same arrivals, the same closes - because nothing plays a
   // command against the new boxes and no field on them moves. A conscious diff,
   // read the way every golden here is: new nodes and one new field, nothing else.
-  hash: 'e32b73663e53a3ba',
+  //
+  // Moved again by 0.30.0 (`e32b73663e53a3ba` -> `3d76fd5cb76570fa`) for the
+  // TIMESHEET ledger and nothing else: the day loop now writes one line onto
+  // the player node each time what the player is doing changes, plus the sheet
+  // that goes in when the week ends. Every count below is untouched - the same
+  // twenty-eight tickets in, the same twenty-eight closed, the same pence, the
+  // same mark and the same conversation at three - because a record of where
+  // the minutes went is a record and moves nothing. It is a conscious diff:
+  // two new fields on one node, written by a verb nobody presses.
+  hash: '3d76fd5cb76570fa',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -1129,7 +1138,11 @@ const GOLDEN_IDLE: GoldenWeek = {
   // nothing else - the same three new boxes, the same `os` field on every
   // machine, the same ten systemd units - because this week, like the worked
   // one, never touches them; the queue and every meter are the numbers they were.
-  hash: '77813f87589dd468',
+  // And moved by 0.30.0 (`77813f87589dd468` -> `16736dec5e2a7d4b`) for the
+  // timesheet the same way the worked week moved for it - with rather less on
+  // it, because a week that touched nothing has a ledger to match and a sheet
+  // that goes in on Friday holding exactly that.
+  hash: '16736dec5e2a7d4b',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.

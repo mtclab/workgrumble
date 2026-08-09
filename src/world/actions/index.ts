@@ -18,6 +18,12 @@ export {
   RULE_BEFORE_AUDIT_REASON,
 } from './project';
 export {
+  TIMESHEET_AUTO_PARAM,
+  TIMESHEET_CLAIMS_PARAM,
+  TIMESHEET_LINES_PARAM,
+  TIMESHEET_SUBMITTED_REASON,
+} from './timesheet';
+export {
   PROMOTION_REPUTATION,
   SSH_HOST_PARAM,
   SYSTEMS_ENGINEER_TITLE,
@@ -45,6 +51,7 @@ import { SHARE_ACTIONS } from './share';
 import { SOFTWARE_ACTION_DATA } from './software';
 import { SYSTEMD_ACTION_DATA } from './systemd';
 import { TICKET_ACTIONS } from './ticket';
+import { TIMESHEET_ACTION_DATA } from './timesheet';
 import { TONE_ACTION_DATA } from './tone';
 import { VIP_ACTIONS } from './vip';
 import { WORLD_ACTION_DATA } from './world';
@@ -145,6 +152,9 @@ export {
   SYSTEMD_ACTION_IDS,
   SYSTEMD_ACTIONS,
   type SystemdActionId,
+  TIMESHEET_ACTION_IDS,
+  TIMESHEET_ACTIONS,
+  type TimesheetActionId,
   WORLD_ACTION_IDS,
   WORLD_ACTIONS,
   type WorldActionId,
@@ -241,6 +251,12 @@ export function helpdeskActions(): readonly ActionData[] {
     // the world noticing a rule nobody carried, settled the next morning by the
     // day loop on the same rail the compliance sweep runs on.
     ...PROJECT_ACTION_DATA,
+    // The timesheet verbs (0.30.0): the claim and the submit are the player's,
+    // and the record is the world's - written by the day loop in the minute
+    // what the player was doing changed, the way a touch record is. It is the
+    // one verb here nobody presses, and it sits with the player's two because
+    // all three write the player's own node.
+    ...TIMESHEET_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

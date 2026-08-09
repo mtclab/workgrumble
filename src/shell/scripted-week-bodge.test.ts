@@ -245,8 +245,15 @@ function walk(): Walked {
  * wild-west estate's version of the same lesson. The five-ticket week, the
  * storm and the thirteen room messages are untouched - nothing plays a command
  * against the corner box - so this moved for new nodes and one field, nothing else.
+ *
+ * It MOVED once more with 0.30.0 (`3ca933392632fc62` -> `6c6fcc7c0feb2344`) for
+ * the timesheet ledger, which the day loop now writes on every shop: two new
+ * fields on the player node holding where the minutes went and the sheet that
+ * went in when the week ended. The five-ticket week, the storm and the thirteen
+ * room messages are again untouched - a record of the week is not a change to
+ * it - so this moved for a record and nothing else.
  */
-const BODGE_GOLDEN_HASH = '3ca933392632fc62';
+const BODGE_GOLDEN_HASH = '6c6fcc7c0feb2344';
 
 describe('the second employer plays, and differs', () => {
   it('stands up as a genuinely different archetype', () => {

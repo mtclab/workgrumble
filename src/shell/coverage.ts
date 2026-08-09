@@ -37,6 +37,7 @@ import {
   SELINUX_ACTIONS,
   SOFTWARE_ACTIONS,
   SYSTEMD_ACTIONS,
+  TIMESHEET_ACTIONS,
   WORLD_ACTIONS,
 } from '../world/actions';
 import { DEMO_ACTIONS } from '../world/demo-world';
@@ -2716,6 +2717,42 @@ const ENTRIES = [
     why: 'A project arrives with the promotion and needs the engineer tier for '
       + 'every verb in it, so no service-desk week can reach a single one of '
       + 'them - the same threshold ssh lives behind, walked in the same run.',
+  },
+  {
+    id: 'cmd.timesheet-attributed',
+    surface: 'cmd',
+    control: 'timesheet | timesheet claim <line> <minutes> | timesheet vague '
+      + '<line> | timesheet detail <line>',
+    does: 'The ENGINEER\'s sheet (0.30.0): the week derived from what the '
+      + 'engine itself recorded, a line per customer with a billable flag, the '
+      + '0.29.0 project as an attributable line of its own carrying its code, '
+      + 'and the rest of the working day sitting underneath as time on nobody\'s '
+      + 'invoice. Both numbers on every row - worked and claimed - so padding '
+      + 'one is a thing done with the truth on the screen beside it. "claim" '
+      + 'moves the minutes, "vague" and "detail" move how much of a sentence '
+      + 'goes with them, and neither touches the derived half: the record and '
+      + 'the claim are two pieces of paper from here on.',
+    command: 'timesheet',
+    actions: [TIMESHEET_ACTIONS.record, TIMESHEET_ACTIONS.claim],
+    run: 'sysadmin',
+    why: 'Per-customer attribution needs customers and the engineer tier to be '
+      + 'asked for it, and the project line needs a project - none of which a '
+      + 'service-desk probation week has. The same threshold the projects '
+      + 'surface lives behind, walked in the same run.',
+  },
+  {
+    id: 'cmd.timesheet',
+    surface: 'cmd',
+    control: 'timesheet, timesheet submit',
+    does: 'The SERVICE DESK\'s sheet (0.30.0), which is the joke: one bucket a '
+      + 'day, seven and a half hours, and it is finished before the sigh is. '
+      + 'Nobody at a desk attributes anything, so there is nothing on it to '
+      + 'decide and one thing to do with it. It is due at the end of Friday, '
+      + 'submitting freezes it, and a second submission is refused the way a '
+      + 'filed piece of paper is.',
+    command: 'timesheet',
+    actions: [TIMESHEET_ACTIONS.submit],
+    run: 'week',
   },
   {
     id: 'cmd.dpkg',

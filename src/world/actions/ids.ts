@@ -928,6 +928,37 @@ export const PROJECT_ACTION_IDS: readonly ProjectActionId[] = Object.freeze(
   Object.values(PROJECT_ACTIONS),
 );
 
+/**
+ * The timesheet verbs (0.30.0): the record, the claim, and the sheet going in.
+ *
+ * Three, and the split between them is the whole of the mechanic. `record` is
+ * the WORLD's - nobody presses it, the day driver writes one line the minute
+ * what the player is doing changes, and it is the same shape as the touch
+ * record it sits beside: the caller computes the whole field and the engine
+ * insists it is a field. `claim` is the PLAYER's disagreement with that record,
+ * and it writes a different field, because a claim that overwrote the record
+ * would delete the only evidence the next slice's questions can be answered
+ * from. `submit` freezes the claim and stamps the minute; it takes an `auto`
+ * flag rather than being two verbs, because the week ending and the player
+ * pressing the button put the identical sheet in front of the identical
+ * customer - the only difference is which of those two is written down.
+ */
+export const TIMESHEET_ACTIONS = {
+  /** One line of where the minutes went. Not a player verb. */
+  record: 'timesheet.record',
+  /** What the player says a line was worth, and how much of it they wrote. */
+  claim: 'timesheet.claim',
+  /** The sheet, in. Refused twice, like any other filed piece of paper. */
+  submit: 'timesheet.submit',
+} as const;
+
+export type TimesheetActionId =
+  (typeof TIMESHEET_ACTIONS)[keyof typeof TIMESHEET_ACTIONS];
+
+export const TIMESHEET_ACTION_IDS: readonly TimesheetActionId[] = Object.freeze(
+  Object.values(TIMESHEET_ACTIONS),
+);
+
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
 
 export const DAY_ACTION_IDS: readonly DayActionId[] = Object.freeze(

@@ -2937,6 +2937,33 @@ test('walks every function of a probation week that goes well', async ({
   await page.getByTestId('handoff-send').click();
   await expect(page.getByTestId('ticket-detail-state')).toContainText('Closed');
 
+  /*
+   * THE TIMESHEET (0.30.0), on the Friday it is due, which is where the joke
+   * lives: a service-desk sheet is one bucket a day at seven and a half hours,
+   * there is nothing on it to decide, and the only thing to do with it is send
+   * it. Filed here rather than at the end of the week so the SUBMIT is the
+   * player's own - the week ending files it for you, honestly labelled, and
+   * that path is proven in the unit suite where a whole week can be driven.
+   */
+  await step('cmd.timesheet', async () => {
+    await openFromStartMenu(page, 'cmd');
+    await runCommand(page, 'timesheet');
+
+    const sheet = page.getByTestId('cmd-output');
+
+    await expect(sheet).toContainText('Service Desk');
+    await expect(sheet).toContainText('Due end of day 5, which is today.');
+
+    await runCommand(page, 'timesheet submit');
+    await expect(sheet).toContainText('before the sigh finished');
+
+    // And it is a filed piece of paper from here on, which is what the whole
+    // claim/record split is for: the copy on your machine is no longer the
+    // thing anybody is looking at.
+    await runCommand(page, 'timesheet claim 1.1 420');
+    await expect(sheet).toContainText('That sheet has gone in');
+  });
+
   await workUntilMinute(page, 425);
 
   await step('review.passed', async () => {
@@ -3753,6 +3780,45 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await expect(output).toContainText('The window is spent');
     await runCommand(page, 'fw status');
     await expect(output).toContainText('[NOW ] Cutover');
+  });
+
+  /*
+   * THE SHEET (0.30.0, slice 1), read the minute after a morning of real work -
+   * which is the only place it can be read, because it is derived from what the
+   * engine recorded and there is nothing on it until something has been done.
+   *
+   * The engineer's shape: a line per customer, the project as an attributable
+   * line of its own carrying its code, a billable flag, and the rest of the
+   * working day underneath as time on nobody's invoice. Both numbers on every
+   * row - worked and claimed - which is what makes padding one a thing done
+   * with the truth on the screen beside it.
+   */
+  await step('cmd.timesheet-attributed', async () => {
+    await focusWindow(page, 'cmd');
+    await runCommand(page, 'timesheet');
+
+    const sheet = page.getByTestId('cmd-output');
+
+    await expect(sheet).toContainText('Timesheet - week to date');
+    await expect(sheet).toContainText('ARDEN-MFG: edge firewall replacement');
+    await expect(sheet).toContainText('billable');
+    // The second cost of a morning that was not all billable: the rest of it,
+    // on nobody's invoice, said out loud rather than left to be inferred.
+    await expect(sheet).toContainText('unattributed');
+
+    // The pad, and the half that makes it a mechanic: the claim moves and the
+    // worked column does not. Line 1.1 is the first line of day one, printed
+    // down the left of the sheet a moment ago.
+    await runCommand(page, 'timesheet claim 1.1 420');
+    await expect(sheet).toContainText('7h claimed against');
+    await expect(sheet).toContainText('The records still say what they said');
+
+    // And the other axis, which the research says is the one that actually
+    // decides a challenge: how much of a sentence goes beside the number.
+    await runCommand(page, 'timesheet vague 1.1');
+    await expect(sheet).toContainText('now reads "consulting"');
+    await runCommand(page, 'timesheet');
+    await expect(sheet).toContainText('(vague)');
   });
 
   await step('projects.phase', async () => {

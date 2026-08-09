@@ -587,6 +587,21 @@ export function ticketNodes(ticketId: string): readonly string[] {
 }
 
 /**
+ * The PROJECT a ticket is a task of (E10), or null for the ordinary reactive
+ * ones, which is nearly all of them.
+ *
+ * It is authored content rather than a field on the node, exactly like the
+ * estate above: the link lives on the roster entry because that is where the
+ * phase's due date is read from, and stamping a second copy onto the ticket at
+ * spawn would be two answers to one question. The timesheet reads it for the
+ * one thing a ticket cannot say about itself - that an hour on it belongs on
+ * the project code rather than loose against the customer.
+ */
+export function ticketProjectOf(ticketId: string): string | null {
+  return findWorldTicket(ticketId)?.project?.of ?? null;
+}
+
+/**
  * The triage the world supports: impact read off the estate, urgency read off
  * the content. It is what the scorecard compares the player's cell against,
  * and it is deliberately not the reporter's opinion - theirs is the claim.
