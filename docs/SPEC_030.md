@@ -2019,3 +2019,68 @@ cross-week carry, counting grammar, the full scheduling-feasibility harness, the
 Everything the epic defers: G4c counting grammar, G5 fork B cross-week carry, G8
 utilisation/timesheets (NEXT version), G9 scheduling feasibility, the watermelon RAG report,
 week-2 content, E7 cloud content on this machine.
+
+# Version 0.30.0 - the timesheet: hours, padding, and the customer who reads the invoice (#52)
+
+The owner's 2026-08-01 design, built at last, exactly where the projects epic needs it: without a
+cost to the hour, a project is a second queue. The whole mechanic stands on one honest fact: THE
+GAME ALREADY KNOWS THE TRUTH - the dispatch log and per-ticket touch evidence record what the
+player actually did and when - so the sheet pre-fills honestly and the mechanic is the GAP between
+what you did and what you claim. Research: docs/research/titles-customer-types.md (scrutiny turns
+on granularity, not honesty; block-hours detects fastest; detail costs billable time to write),
+docs/research/titles-projects-engine.md section 5.4-5.5.
+
+## Slice 1 - the sheet
+
+A timesheet derived from the engine's own records, per day: buckets built from touch evidence and
+the dispatch log, pre-filled honestly, editable by the player - pad a line up, move an hour, write
+a vague line where a detailed one stood. The edit surface is the mechanic; the pre-fill is the
+truth it diverges from, and the two must share ONE source by construction. Tier shapes it: a
+service-desk player registers ONE bucket (Service Desk, 7.5h, submit - the joke is that it is
+done before the sigh finishes), an engineer attributes per CUSTOMER with a billable flag and the
+project code from 0.29.0. The sheet is due Friday; filling it at 16:55 from a week-old memory is
+the comedy the mechanic was born from. Slacking gets its second honest cost: an hour on the forum
+is an hour nobody can bill, felt at the sheet rather than only when the boss appears.
+
+## Slice 2 - the reading
+
+Two readers, two clocks. THE ORG reads utilisation at the Friday review: a per-tier target
+(engineer asked for more than the honest week yields - the sourced 75%-ask-mid-60s-reality gap is
+the design), under-target reads at review as under-target and NOTHING else - honesty is never
+punished, that is the house rule this mechanic inherits from fumbling. THE CUSTOMER reads the
+invoice: scrutiny accrues PER CUSTOMER on PATTERN, not on total - the same round number every
+Friday, hours booked while the event log says the machine was off, entries on a day the player
+was caught slacking - and decays over clean periods, so the rare small pad is invisible and the
+habitual pad on the quiet account is the one that gets caught. The consequence LADDER, not a
+verdict: a query on one line -> a demand for the itemised breakdown (the game answers it FROM THE
+REAL LOG, out loud, which is the exposure) -> a disputed invoice -> the account manager in your
+chat -> the client leaves, and their machines, tickets and hours LEAVE THE WORLD. A career event,
+not a scolding. Every check must be answerable from records the engine already keeps - the sheet
+invents no new surveillance for the plot.
+
+## Slice 3 - the watermelon
+
+The project learns to lie the way real projects lie: a weekly status report on the 0.29.0 project
+- green, amber, red - REPORTED separately from the true state the Projects app derives. Reporting
+red is answered by the org the way orgs answer red (a manager beat, pressure, the meeting about
+the meeting); reporting green over a phase you can see slipping is free today and comes due on
+the E8 delayed-consequence rails the morning the slip goes public - green on Tuesday, the phase
+misses on Thursday, and the question is not "why is it late" but "why did you say it wasn't". The
+single most recognisable thing in the research corpus, shipped on rails that already exist.
+
+## Gates (once, at the version)
+
+The pre-fill agrees with the dispatch log by construction (one source, asserted); the breakdown
+demand is answered from shipped records only; the honest week is never mechanically worse than
+the padded week ON THE SAME PLAY (asserted over the authored week - the padded week may be EASIER
+until the ladder arrives, that is the design); the ladder's every rung is reachable and every
+rung is escapable by cleaning up; the watermelon's green-lie lands its consequence on the derived
+truth, never on a second stored copy. Walk steps ship with coverage entries in the same commits.
+Full local gate (serial vitest) + full box suite (workers=1, fresh port).
+
+## Not in scope (backlog)
+
+Timesheet AUDIT events beyond the customer ladder (the org-side audit is E9 material with the
+utilisation-target-per-title table); billable-rate money surfacing (no liability tools - hours
+relate to work-time, never to priced advice); the E11 week generator; cross-week scrutiny decay
+tuning beyond the shipped constants.
