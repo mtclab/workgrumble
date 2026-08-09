@@ -31,6 +31,39 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.29.0',
+    date: '2026-08-09',
+    summary: 'This update introduces work that is not a ticket, takes three '
+      + 'days, and was scoped by somebody who will not be doing it.',
+    lines: Object.freeze([
+      'Systems engineers at the MSP now receive a PROJECT: the customer\'s '
+        + 'edge firewall is being replaced, the new unit is in the rack, and '
+        + 'the plan has four phases and a date on each one. There is a new '
+        + 'window that shows the plan. It shows each date next to how much '
+        + 'working time actually remains before it, because those are two '
+        + 'different numbers, and the difference between them is where '
+        + 'projects go to die. The window starts worrying an hour before the '
+        + 'date does. It has learned from the people it watches.',
+      'The phases unlock in order. You cannot cut over to a firewall you '
+        + 'have not configured, and you cannot configure rules you have not '
+        + 'audited - the audit is the phase where you find out what the old '
+        + 'box was actually doing, which is not the same as what anyone '
+        + 'remembers asking it to do. The cutover itself happens inside a '
+        + 'real change window, requested through the real paperwork, and '
+        + 'takes minutes. The other twenty-three and a half hours of that '
+        + 'day are also available, in the way that a diving board is '
+        + 'available.',
+      'The morning after the cutover, the phones tell you how the audit '
+        + 'went. Anything the old box was quietly doing that nobody wrote '
+        + 'down is now a ticket, and each ticket names the thing. If the '
+        + 'audit was thorough, the morning is quiet. Rolling back is one '
+        + 'cable and no shame, but the change window is spent and the '
+        + 'tickets stand - the world does not refund an afternoon. The old '
+        + 'box stays racked either way. Everyone agrees it will be '
+        + 'decommissioned at some point.',
+    ]),
+  },
+  {
     version: '0.28.0',
     date: '2026-08-08',
     summary: 'This update adds three more desktops, four more distributions, '
