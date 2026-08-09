@@ -1959,3 +1959,63 @@ The Windows ERA axis (95/98/XP); the Mac family; snap-controversy content beyond
 YaST as a surface; SELinux beyond the one authored denial; Tumbleweed; E7 cloud. Proposal at
 release: E6 (#7) closes with this version - the sysadmin tier is complete with its capstone; E5
 (#6) stays open for eras/Mac/employer-era switching.
+
+# Version 0.29.0 - the first project: the phase machine + the firewall replacement (E10 #49, #50)
+
+Work that is not a ticket. The owner decided (D3, 2026-08-09) that Systems Engineers do projects,
+so the phase machine builds standalone, before E7, and its first content is the project the
+research named the standout: the firewall/edge replacement at the MSP. Fork A per the gap list:
+ONE project, THREE working days, inside the shipped week - the carry across weeks is designed
+later, built later. Research: docs/research/titles-projects-engine.md (gap list section 4,
+substrate section 3, the real project section 5, the fun survey section 6).
+
+## Slice 1 - the project node and the phase machine (engine + world)
+
+A `project` is a NEW NODE KIND (the well-trodden schema path: customer, change_request,
+coordination and unit all arrived this way), NOT a ticket archetype - its states are not ticket
+states. Its live phase is DERIVED from baked ticks against the clock, never stored - the
+change-request.ts discipline at a longer scale: a save mid-phase reloads to the same minute the
+phase was always going to gate on. Phases for the firewall job: audit -> staging config -> cutover
+-> scream test/handover. The cutover phase is bounded by a REAL change window through the shipped
+change-control machinery - the project does not get a private calendar.
+
+Project TASKS are ordinary tickets (the HaloPSA truth: the task rides the ticket lifecycle, so
+touch evidence, SLA semantics and the handoff form all come free). A milestone LOCKS downstream
+tasks: the next phase's tickets are not workable until the gate passes. The parent advances on its
+children by ENUMERATION over the authored set - and(eq(t1, state, resolved), ...) - because the
+assertion language cannot quantify, and this version deliberately ships without new grammar. Phase
+gates use exactly two shapes: counter-field + eq, and universal-by-negation
+(not(exists(kind, where))) - "no rule left unmigrated" is the honest migration-complete shape.
+
+The scream test is the phase that makes the project generate WORK: whatever the audit missed
+becomes tickets the morning after cutover, raised by a delayed-consequence settler (the fallout.ts
+family - pure "what is due now" reads, replay-stable), each traceable to the actual rule the
+player did not carry over. The rollback is moving the cable back: a real verb, honest cost (the
+window is spent, the tickets it raised stand), never a punishment for trying.
+
+## Slice 2 - the Projects app and the plan surface (shell)
+
+A tier-gated AppDef (engineer, like ssh): a board in the monitor.ts read-mostly style - the
+project, its phases, each phase's due day and time AGAINST NOW, its tasks with their lock state -
+and a detail pane per phase. The one design job that decides whether this is fun: a date three
+days out must be legible, and slipping must be visible BEFORE it is fatal (the research's G6). No
+new chrome concepts: windows, testids, coverage entries, the walk.
+
+## Gates (once, at the version)
+
+An unwinnable project is the single worst failure this product has, so the solvability bar
+extends: every phase gate reachable from the phase's unlock state through registered actions,
+every advertised step left out once and the gate must not pass without it. The scripted-week
+golden proves the project completes inside its three days on the real clock with the authored
+interruption load. The cutover refuses outside its window; the rollback path is walked; the
+scream-test tickets appear the morning after and name their missed rule. Walk steps ship with
+their coverage entries in the same commits. Full local gate (serial vitest) + full box suite
+(workers=1, fresh port). Deferred CONSCIOUSLY: utilisation/timesheets (slice 2 of the epic, next
+version - one version as "a second queue" is the accepted cost of proving the machine),
+cross-week carry, counting grammar, the full scheduling-feasibility harness, the watermelon.
+
+## Not in scope (backlog)
+
+Everything the epic defers: G4c counting grammar, G5 fork B cross-week carry, G8
+utilisation/timesheets (NEXT version), G9 scheduling feasibility, the watermelon RAG report,
+week-2 content, E7 cloud content on this machine.
