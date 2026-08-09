@@ -254,19 +254,41 @@ export function hydrateFromRetry(
  * dropped once that write says it worked. A browser with no storage left keeps
  * its carry-over and gets asked again next boot, which is the honest failure.
  *
+ * AND IT NEVER MAKES THE NEW WEEK DURABLE BY WRITING OVER AN OLD ONE. That is
+ * the third answer and it used to be missing, which made this function the one
+ * place in the product that could destroy a saved week without anybody clicking
+ * anything. A carry-over is written by `retryWeek`/`switchEmployer`, and both of
+ * those CLEAR the slot on their way out, so at a normal boot the slot is empty
+ * and nothing here changes. The slot is not empty in exactly one shipped case:
+ * the arrival's own write failed (storage full - the honest failure above), the
+ * player was told, they carried on playing that week and saved it by hand, and
+ * the browser found room by the time they reloaded. Boot then reads the record
+ * that is still sitting there, stands a fresh Monday up, and - before this - put
+ * that Monday straight over the week they had saved. The record is worth one
+ * refused save; somebody's week is not.
+ *
+ * So a slot that already holds a save is left exactly as it is, and the record
+ * is kept rather than dropped, because a carry-over nobody has written down is
+ * still a carry-over. The player is told, and Load has their week in it.
+ *
  * Answers rather than throws, and says whether the record was let go of, so a
  * caller can be tested on the difference.
  */
 export function acknowledgeCarry(
-  slot: { clear(): void },
+  record: { clear(): void },
   save: () => SaveOutcome,
+  slot: { exists(): boolean },
 ): boolean {
+  if (slot.exists()) {
+    return false;
+  }
+
   const written = save();
 
   if (!written.ok) {
     return false;
   }
 
-  slot.clear();
+  record.clear();
   return true;
 }

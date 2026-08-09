@@ -3903,68 +3903,93 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
 
   const sheetRows = page.locator('[data-testid^="timesheet-line-"]');
 
-  await step('timesheet.claim', async () => {
-    await expect(page.getByTestId('timesheet-stance'))
-      .toContainText('A line per customer');
-    await expect(sheetRows.first()).toBeVisible();
+  /*
+   * All three under ONE pause, and that is the house rule rather than a
+   * convenience. The worked column of an open line GROWS every tick - the
+   * segment the player is standing in is still running - so at x4 a figure read
+   * off the row is a different number by the time an assertion has retried
+   * against it once, which is exactly how this step first went red on the box
+   * (6m expected, 26m by the fourth attempt). Everything below is about what
+   * the sheet DOES with a claim, and none of it needs the clock moving.
+   *
+   * The arithmetic of a line is not asserted here at all, in any of the three:
+   * that is `src/shell/apps/timesheet.test.ts` and `src/shell/timesheet.test.ts`,
+   * where a minute is a minute and nothing is racing a repaint. What a browser
+   * proves is the direction - the claim moved, the record did not follow it.
+   */
+  await underPause(page, async () => {
+    await step('timesheet.claim', async () => {
+      await expect(page.getByTestId('timesheet-stance'))
+        .toContainText('A line per customer');
+      await expect(sheetRows.first()).toBeVisible();
 
-    // The pad is driven from what the ENGINE says the line was worth, read off
-    // the row: a walk that typed a figure of its own would be a walk that
-    // quietly claimed less than the truth on a slow morning.
-    const handle = await sheetRows.first().getAttribute('data-handle') ?? '';
-    const worked = Number(
-      await sheetRows.first().getAttribute('data-worked'),
-    );
-    const record = await page.getByTestId(`timesheet-worked-${handle}`)
-      .innerText();
+      // The pad is driven from what the ENGINE says the line was worth, read
+      // off the row: a walk that typed a figure of its own would be a walk that
+      // quietly claimed less than the truth on a slow morning.
+      const handle = await sheetRows.first().getAttribute('data-handle') ?? '';
+      const worked = Number(
+        await sheetRows.first().getAttribute('data-worked'),
+      );
 
-    expect(worked).toBeGreaterThan(0);
+      expect(worked).toBeGreaterThan(0);
 
-    await page.getByTestId(`timesheet-minutes-${handle}`)
-      .fill(String(worked + 60));
-    await page.getByTestId(`timesheet-put-${handle}`).click();
+      const claim = worked + 60;
 
-    // Both figures now, and the left one exactly where it was: the record and
-    // the claim are two pieces of paper from here on.
-    await expect(sheetRows.first()).toHaveAttribute('data-gap', 'over');
-    await expect(page.getByTestId(`timesheet-claimed-${handle}`)).toBeVisible();
-    await expect(page.getByTestId(`timesheet-worked-${handle}`))
-      .toHaveText(record);
-    await expect(page.getByTestId('timesheet-outcome'))
-      .toContainText('The records still say what they said');
-  });
+      await page.getByTestId(`timesheet-minutes-${handle}`)
+        .fill(String(claim));
+      await page.getByTestId(`timesheet-put-${handle}`).click();
 
-  await step('timesheet.detail', async () => {
-    const row = sheetRows.last();
-    const handle = await row.getAttribute('data-handle') ?? '';
-    const detail = page.getByTestId(`timesheet-detail-${handle}`);
-    const reads = page.getByTestId(`timesheet-reads-${handle}`);
+      // Both figures now, and the record did not follow the claim: the row's
+      // own reading of the gap says the claim is OVER, the second figure is on
+      // screen, and what the engine recorded is still less than what was
+      // typed. Relative, not exact - the record is a live number and the claim
+      // is a piece of paper, which is the whole mechanic.
+      await expect(sheetRows.first()).toHaveAttribute('data-gap', 'over');
+      await expect(page.getByTestId(`timesheet-claimed-${handle}`))
+        .toBeVisible();
+      await expect(page.getByTestId('timesheet-outcome'))
+        .toContainText('The records still say what they said');
 
-    // Both directions, from whichever way round the terminal left it. Written
-    // out in full is a date, an estate and a number of hours; the other one is
-    // a word, which is exactly what makes it look like one.
-    await detail.selectOption('detailed');
-    await expect(row).toHaveAttribute('data-detail', 'detailed');
-    await expect(reads).toContainText('/1998');
+      const after = Number(
+        await sheetRows.first().getAttribute('data-worked'),
+      );
 
-    await detail.selectOption('vague');
-    await expect(row).toHaveAttribute('data-detail', 'vague');
-    await expect(reads).toHaveText('consulting');
-  });
+      expect(after).toBeGreaterThan(0);
+      expect(after).toBeLessThan(claim);
+    });
 
-  await step('timesheet.submit', async () => {
-    await page.getByTestId('timesheet-submit').click();
+    await step('timesheet.detail', async () => {
+      const row = sheetRows.last();
+      const handle = await row.getAttribute('data-handle') ?? '';
+      const detail = page.getByTestId(`timesheet-detail-${handle}`);
+      const reads = page.getByTestId(`timesheet-reads-${handle}`);
 
-    await expect(page.getByTestId('timesheet-stamp'))
-      .toContainText('Submitted at');
-    await expect(page.getByTestId('timesheet-submit')).toBeDisabled();
-    // Frozen, line by line: not one row still offers an edit, and the claims
-    // that were made are standing on it.
-    await expect(page.locator('[data-testid^="timesheet-minutes-"]'))
-      .toHaveCount(0);
-    await expect(page.locator('[data-testid^="timesheet-detail-"]'))
-      .toHaveCount(0);
-    await expect(sheetRows.first()).toHaveAttribute('data-gap', 'over');
+      // Both directions, from whichever way round the terminal left it. Written
+      // out in full is a date, an estate and a number of hours; the other one is
+      // a word, which is exactly what makes it look like one.
+      await detail.selectOption('detailed');
+      await expect(row).toHaveAttribute('data-detail', 'detailed');
+      await expect(reads).toContainText('/1998');
+
+      await detail.selectOption('vague');
+      await expect(row).toHaveAttribute('data-detail', 'vague');
+      await expect(reads).toHaveText('consulting');
+    });
+
+    await step('timesheet.submit', async () => {
+      await page.getByTestId('timesheet-submit').click();
+
+      await expect(page.getByTestId('timesheet-stamp'))
+        .toContainText('Submitted at');
+      await expect(page.getByTestId('timesheet-submit')).toBeDisabled();
+      // Frozen, line by line: not one row still offers an edit, and the claims
+      // that were made are standing on it.
+      await expect(page.locator('[data-testid^="timesheet-minutes-"]'))
+        .toHaveCount(0);
+      await expect(page.locator('[data-testid^="timesheet-detail-"]'))
+        .toHaveCount(0);
+      await expect(sheetRows.first()).toHaveAttribute('data-gap', 'over');
+    });
   });
 
   await step('projects.phase', async () => {

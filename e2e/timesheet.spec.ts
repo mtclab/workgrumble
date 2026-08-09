@@ -183,25 +183,27 @@ test('the engineer pads, blurs a line, and it survives a reload', async ({
   // pad is driven from what the engine says the line was worth, so this cannot
   // be a test that quietly claims less than the truth on a slow morning.
   const worked = Number(await rows.first().getAttribute('data-worked'));
-  const record = await page.getByTestId(`timesheet-worked-${first}`)
-    .innerText();
 
   expect(worked).toBeGreaterThan(0);
   await expect(rows.first()).toHaveAttribute('data-gap', 'unedited');
   await expect(page.getByTestId(`timesheet-claimed-${first}`)).toBeHidden();
 
-  await page.getByTestId(`timesheet-minutes-${first}`)
-    .fill(String(worked + 60));
+  const claim = worked + 60;
+
+  await page.getByTestId(`timesheet-minutes-${first}`).fill(String(claim));
   await page.getByTestId(`timesheet-put-${first}`).click();
 
-  // Both numbers, side by side, and the left one did not move: the record and
-  // the claim are two pieces of paper from here on. Compared against what the
-  // row SAID a moment ago rather than against a figure this file worked out -
-  // the arithmetic of a line is a unit test's business.
+  // Both numbers, side by side, and the record did not follow the claim: the
+  // row's own reading of the gap says OVER, the second figure is on screen, and
+  // what the engine recorded is still less than what was typed. RELATIVE, never
+  // the same string twice - the line the player is standing in is still running,
+  // so its worked figure grows between one assertion and the next, and pinning
+  // it to an earlier read is the lesson this project paid for in 0.4.3. The
+  // arithmetic of a line is a unit test's business.
   await expect(rows.first()).toHaveAttribute('data-gap', 'over');
-  await expect(page.getByTestId(`timesheet-worked-${first}`))
-    .toHaveText(record);
   await expect(page.getByTestId(`timesheet-claimed-${first}`)).toBeVisible();
+  expect(Number(await rows.first().getAttribute('data-worked')))
+    .toBeLessThan(claim);
   await expect(page.getByTestId('timesheet-outcome'))
     .toContainText('The records still say what they said');
 

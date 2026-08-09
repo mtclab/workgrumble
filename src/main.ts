@@ -625,6 +625,16 @@ async function boot(): Promise<void> {
     },
   });
 
+  // Whether there was already a saved week in this browser when this session
+  // booted, read BEFORE either acknowledgement - one of them is about to write
+  // a save into an empty slot, and afterwards the answer would be "yes" for a
+  // week nobody had played. It decides only which sentence the player gets: a
+  // carry-over that was not let go of is either a browser that would not keep
+  // the new week, or a week already in the slot that this boot refused to
+  // write over. Two different facts, and telling somebody the wrong one about
+  // their own save is how a working Load button goes unclicked.
+  const savedWeekAlreadyHere = slot.exists();
+
   // And here is where the carry-over is finally let go of, and not a line
   // earlier: the new week is saved first, and the record is dropped only if
   // that write worked. See `acknowledgeCarry` for what this is protecting.
@@ -633,7 +643,7 @@ async function boot(): Promise<void> {
   // is the honest failure, and which the player has to be told, because a
   // refresh from here starts this attempt again from the fund they carried in.
   const carryUnsaved = carried !== null
-    && !acknowledgeCarry(retry, () => session.save());
+    && !acknowledgeCarry(retry, () => session.save(), slot);
 
   // And the switch's carry is let go of the same way and for the same reason:
   // the arrival is saved FIRST, and the record of the career that crossed the
@@ -642,7 +652,7 @@ async function boot(): Promise<void> {
   // the honest failure - and the player is told, because a refresh from here
   // stands the new employer up again from the same carried career.
   const switchUnsaved = arriving !== null
-    && !acknowledgeCarry(switchSlot, () => session.save());
+    && !acknowledgeCarry(switchSlot, () => session.save(), slot);
 
   const context: ShellContext = {
     manifest: APP_MANIFEST,
@@ -855,9 +865,14 @@ async function boot(): Promise<void> {
   if (carryUnsaved) {
     shell.notify(
       'This attempt is not saved',
-      'The browser would not keep the new week. Everything works, and '
-      + 'refreshing the page will start this attempt again from the fund you '
-      + 'carried in.',
+      savedWeekAlreadyHere
+        ? 'There is already a saved week in this browser, and it has been left '
+          + 'exactly as it is rather than written over - open it from Load if it '
+          + 'is the one you want. Everything works, and refreshing the page will '
+          + 'start this attempt again from the fund you carried in.'
+        : 'The browser would not keep the new week. Everything works, and '
+          + 'refreshing the page will start this attempt again from the fund you '
+          + 'carried in.',
     );
   }
 
@@ -879,9 +894,14 @@ async function boot(): Promise<void> {
   if (switchUnsaved) {
     shell.notify(
       'This move is not saved',
-      'The browser would not keep the arrival. Everything works, and refreshing '
-      + 'the page will stand the new employer up again from the same career you '
-      + 'carried in.',
+      savedWeekAlreadyHere
+        ? 'There is already a saved week in this browser, and it has been left '
+          + 'exactly as it is rather than written over - open it from Load if it '
+          + 'is the one you want. Everything works, and refreshing the page will '
+          + 'stand the new employer up again from the same career you carried in.'
+        : 'The browser would not keep the arrival. Everything works, and '
+          + 'refreshing the page will stand the new employer up again from the '
+          + 'same career you carried in.',
     );
   }
 

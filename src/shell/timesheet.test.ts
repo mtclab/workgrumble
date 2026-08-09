@@ -22,13 +22,18 @@
  *    unattributed rather than punished.
  * 5. IT SURVIVES A SAVE, AND A RETRY THROWS IT AWAY. The claim and the record
  *    are world state, so they serialise; a retried week is built from nothing,
- *    so a week that is being played again has no hours on it.
+ *    so a week that is being played again has no hours on it. Asked twice, on
+ *    purpose: once of the engine alone, and once through the SHELL's own save
+ *    seam with a whole boot in the middle of it - Save, reload, Load - because
+ *    the trip a player takes has steps in it that a serialise/restore pair does
+ *    not, and the sheet came back blank off one of them.
  *
  * Nothing here touches the DOM.
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import { WasmEngine } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { CAREER_ACTIONS, PROMOTION_REPUTATION } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
@@ -49,15 +54,30 @@ import {
   segmentsFrom,
   segmentsFromLog,
   SERVICE_DESK_BUCKET,
+  type Timesheet,
   TIMESHEET_LOG_LIMIT,
   type WorkResolver,
 } from '../world/timesheet';
 import { REVIEW_DAY } from '../world/week';
 import { AppStateStore } from './app-state';
+import {
+  type ClaimGap,
+  editsOffered,
+  gapOf,
+  sheetStamp,
+} from './apps/timesheet';
 import { parseCommand } from './apps/cmd-parse';
 import { executeCommand } from './apps/cmd-run';
 import type { GameApi } from './apps/types';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
+import { acknowledgeCarry, RetrySlot } from './retry';
+import {
+  createShellSession,
+  SaveSlot,
+  type ShellSessionApi,
+} from './save';
+import { MemoryStorage } from './storage';
+import { switchRecord, SwitchSlot } from './switch';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -75,26 +95,69 @@ const RESOLVER: WorkResolver = {
   nodesOfTicket: ticketNodes,
 };
 
+/**
+ * The browser that was full when the arrival tried to write itself down.
+ *
+ * A real state with a shipped consequence rather than a convenience: it is how
+ * a switch record ends up still sitting in storage while a week gets played on
+ * top of it, which is the boot the reload test below is about.
+ */
+class RefusingStorage extends MemoryStorage {
+  public sealed = false;
+
+  public override setItem(key: string, value: string): void {
+    if (this.sealed) {
+      throw new DOMException('QuotaExceededError');
+    }
+
+    super.setItem(key, value);
+  }
+}
+
 interface Rig {
   readonly session: WorldSession;
   readonly driver: DayDriver;
   readonly api: GameApi;
+  /**
+   * The shipped save seam, wired to this rig the way `main.ts` wires it.
+   *
+   * Here rather than mocked because the question the reload test asks is about
+   * the SHELL's decision to write, not about whether the engine can serialise a
+   * field - `save()` on the engine alone is a different, easier question, and
+   * the one this file used to be able to answer.
+   */
+  readonly shell: ShellSessionApi;
+  /** Where the save, the retry and the switch records all live. */
+  readonly storage: Storage;
   /** What the shell says is on the screen, which is how slacking gets in. */
   focused: string | null;
 }
 
 /** The MSP desk, with the promotion taken through the real verb. */
-function rig(promoted = true): Rig {
+function rig(promoted = true, storage: Storage = new MemoryStorage()): Rig {
   const session = createWorldSession(MSP_CARRY);
   const state: { focused: string | null } = { focused: null };
+  const appState = new AppStateStore();
   const driver = new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
     onDayBoundary: () => {},
     openSlackApps: () => (state.focused === null ? [] : [state.focused]),
     focusedSlackApp: () => state.focused,
   }, undefined, MSP_WEEK, MSP_CHANNELS);
+  const shell = createShellSession({
+    engine: session.engine,
+    appState,
+    day: driver,
+    slot: new SaveSlot(storage),
+    retry: new RetrySlot(storage),
+    switch: new SwitchSlot(storage),
+    actor: COMPANY_IDS.player,
+    employer: 'msp',
+    probeEngine: () => new WasmEngine(WORLD_SEED),
+    restart: () => {},
+  });
   const api = {
     graph: session.engine.graph,
-    appState: new AppStateStore(),
+    appState,
     day: driver,
     dispatch: (
       id: string,
@@ -145,6 +208,8 @@ function rig(promoted = true): Rig {
     session,
     driver,
     api,
+    shell,
+    storage,
     get focused() {
       return state.focused;
     },
@@ -165,6 +230,13 @@ function runTo(rigged: Rig, tick: number): void {
     && rigged.driver.state() === 'shift') {
     rigged.driver.step(TICK_INTERVAL_MS);
   }
+}
+
+/** Where the first line's claim stands against its record, or null for none. */
+function firstGap(sheet: Readonly<Timesheet>): ClaimGap | null {
+  const line = sheet.days[0]?.lines[0];
+
+  return line === undefined ? null : gapOf(line);
 }
 
 function ledgerOf(rigged: Rig): string {
@@ -503,6 +575,91 @@ describe('a save, and a week played again', () => {
       .toBe(before.days[0]?.lines[0]?.derived);
     expect(after.days[0]?.lines[0]?.claimed).toBe(420);
     expect(after.days[0]?.lines[0]?.detail).toBe('vague');
+  });
+
+  /**
+   * THE SAME TRIP, THROUGH THE SHELL'S OWN DECISION TO WRITE - which is the
+   * half the test above cannot see.
+   *
+   * `engine.serialize()` straight into `engine.restore()` asks whether a field
+   * survives a round trip. It does, and it always did. What a player does is
+   * different in one respect that turned out to matter: they click Save, they
+   * RELOAD THE PAGE, and a whole boot happens - a new world stood up from
+   * whatever records storage is holding - before they ever click Load. Every
+   * one of those steps is a chance for the file to be replaced by something
+   * else, and none of them exists in a two-line serialise/restore.
+   *
+   * So this drives the shipped seam: the sheet is worked, padded, blurred and
+   * filed; `session.save()` writes the file the start menu writes; a SECOND
+   * session boots over the same storage and acknowledges the carry-over
+   * `main.ts` acknowledges at every boot; and only then is the save loaded. The
+   * sheet has to come back filed, frozen, with both claims standing on it.
+   *
+   * The arrival record is still in storage on purpose and not as a fixture
+   * convenience: that is the shipped state after a browser refuses the arrival
+   * write (the sentence the player gets says so), and it is the boot that used
+   * to put a fresh Monday straight over the week in the slot. The sheet was
+   * simply the surface it was noticed on - the whole save went, not the hours.
+   */
+  it('comes back off a reload through the shell, filed, with the claims on it', () => {
+    const storage = new RefusingStorage();
+    const arrival = new SwitchSlot(storage);
+    const slot = new SaveSlot(storage);
+
+    expect(arrival.write(switchRecord('msp', {
+      reputation: 60,
+      title: 'Systems Engineer',
+      farmFund: 41_000,
+      trail: null,
+      tier: PLAYER_TIERS.systemsEngineer,
+    }))).toEqual({ ok: true, value: undefined });
+
+    // The boot that stood this week up could not write the arrival down, so the
+    // record is still there and the player was told. They played anyway.
+    const live = rig(true, storage);
+
+    storage.sealed = true;
+    expect(acknowledgeCarry(arrival, () => live.shell.save(), slot)).toBe(false);
+    storage.sealed = false;
+
+    workTheMorning(live);
+    run(live, 'timesheet claim 1.1 420');
+    run(live, 'timesheet vague 1.1');
+    run(live, 'timesheet submit');
+
+    const before = live.driver.timesheet();
+
+    expect(before.submittedAt).not.toBeNull();
+    expect(firstGap(before)).toBe('over');
+    // Save game, from the start menu. Storage has room again by now.
+    expect(live.shell.save()).toEqual({ ok: true, value: undefined });
+
+    // The reload. Nothing of that session survives except what is in storage,
+    // and the boot on the other side does what boot does: stands a world up and
+    // acknowledges the carry-over before the player touches anything.
+    const reloaded = rig(true, storage);
+
+    // Boot's own acknowledgement, called exactly as `main.ts` calls it. What it
+    // ANSWERS is boot's business and `save.test.ts` asserts it; what this test
+    // is about is what the player gets when they click Load afterwards.
+    acknowledgeCarry(arrival, () => reloaded.shell.save(), slot);
+    expect(reloaded.shell.load()).toEqual({ ok: true, value: undefined });
+
+    const after = reloaded.driver.timesheet();
+    const line = after.days[0]?.lines[0];
+
+    // Filed, at the same minute, and saying so in the words the window prints.
+    expect(after.submittedAt).toBe(before.submittedAt);
+    expect(after.submittedAuto).toBe(false);
+    expect(sheetStamp(after, reloaded.driver.day()).state).toBe('submitted');
+    // Frozen: the window offers no edit on a sheet that has gone in.
+    expect(editsOffered(after)).toBe(false);
+    expect(reloaded.driver.claimTimesheet('1.1', 60, null).ok).toBe(false);
+    // And both claims are standing on it, against a record that did not move.
+    expect(line?.claimed).toBe(420);
+    expect(line?.detail).toBe('vague');
+    expect(line?.derived).toBe(before.days[0]?.lines[0]?.derived);
+    expect(firstGap(after)).toBe('over');
   });
 
   /**

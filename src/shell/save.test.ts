@@ -690,7 +690,9 @@ describe('the carry-over a firing leaves behind', () => {
       arcWeek: 1,
       employer: 'workgrumble',
     }));
-    expect(acknowledgeCarry(slot, () => booted.session.save())).toBe(true);
+    expect(
+      acknowledgeCarry(slot, () => booted.session.save(), new SaveSlot(storage)),
+    ).toBe(true);
 
     // The refresh: nothing of that session survives except what is in storage.
     expect(slot.peek()).toBeNull();
@@ -720,12 +722,76 @@ describe('the carry-over a firing leaves behind', () => {
     const booted = session(storage, { farmFund: 900, attempt: 3 });
     storage.sealed = true;
 
-    expect(acknowledgeCarry(slot, () => booted.session.save())).toBe(false);
+    expect(
+      acknowledgeCarry(slot, () => booted.session.save(), new SaveSlot(storage)),
+    ).toBe(false);
     storage.sealed = false;
     // Still there, so the next boot is asked the same question rather than
     // quietly starting a first week with an empty fund.
     expect(slot.peek()?.farmFund).toBe(900);
     expect(slot.peek()?.attempt).toBe(3);
+  });
+
+  /**
+   * THE ONE THING AN ACKNOWLEDGEMENT MAY NEVER DO: write over somebody's week.
+   *
+   * Reachable, and reachable through shipped behaviour rather than through a
+   * fixture: the arrival's own write was refused (storage full - the case the
+   * test above is about), so the record is still sitting in the slot and the
+   * player was told so. They carry on playing that week and save it by hand,
+   * which works, because the browser found room. The next boot reads the record
+   * that never went away, stands a fresh Monday up from it, and acknowledges it
+   * - and the acknowledgement is a SAVE, into the one slot this game has.
+   *
+   * Before the guard, that save landed on top of the week they had just written
+   * down and the load afterwards opened a Monday nobody had played. Nothing on
+   * screen said anything: the record was let go of, the write "worked", and the
+   * only copy of four days of work was gone.
+   */
+  it('never lets a carry-over write over a week already in the slot', () => {
+    const storage = new MemoryStorage();
+    const record = new RetrySlot(storage);
+    const slot = new SaveSlot(storage);
+
+    record.write({
+      attempt: 2,
+      farmFund: 41_000,
+      kbSelected: null,
+      arcWeek: 1,
+      employer: 'workgrumble',
+    });
+
+    // The boot whose write was refused: the record stays, nothing is saved.
+    const refused = session(storage, { farmFund: 41_000, attempt: 2 });
+    storage.sealed = true;
+    expect(acknowledgeCarry(record, () => refused.session.save(), slot))
+      .toBe(false);
+    storage.sealed = false;
+
+    // The week that was played anyway, and saved by hand once storage allowed.
+    refused.driver.startShift();
+    refused.driver.step(60_000 * 3);
+    expect(refused.session.save()).toEqual({ ok: true, value: undefined });
+
+    const kept = slot.readRaw();
+    const hash = refused.engine.snapshotHash();
+
+    // The next boot: the record is still there, so a fresh week is stood up and
+    // acknowledged exactly as `main.ts` acknowledges it.
+    const reboot = session(storage, { farmFund: 41_000, attempt: 2 });
+
+    expect(acknowledgeCarry(record, () => reboot.session.save(), slot))
+      .toBe(false);
+
+    // Byte for byte the file the player wrote, and the carry-over is still
+    // there to be asked about again - which is the honest state, because
+    // nothing has made this fresh Monday durable.
+    expect(slot.readRaw()).toBe(kept);
+    expect(record.peek()?.farmFund).toBe(41_000);
+
+    // And it is a load away, which is the whole point of not writing over it.
+    expect(reboot.session.load()).toEqual({ ok: true, value: undefined });
+    expect(reboot.engine.snapshotHash()).toBe(hash);
   });
 
   /**
