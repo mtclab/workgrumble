@@ -168,18 +168,96 @@ const DRIP_CLOSES_BEFORE = 90;
 const DRIP_JITTER = 12;
 
 /**
+ * The streams a schedule may be drawn from, one literal each.
+ *
+ * Domain separation, and it is not decoration. Every stream in this file is
+ * derived from the same small set of world seeds, and those seeds are
+ * ARITHMETICALLY related to each other: an attempt is the world seed plus a
+ * multiple of the golden ratio (`session.ts`), a day's patrol seed is the world
+ * seed plus an authored prime (`week.ts`). Feed related numbers to one hash and
+ * two systems that were meant to be independent share a sequence - knowing one
+ * answer narrows the other, which is a correlation table a player can learn.
+ * Slay the Spire 2 shipped exactly that in 2026 and had to replace its
+ * generator to get out of it.
+ *
+ * So every stream names itself, the name goes into the hash first, and two
+ * streams cannot line up however close their seeds are.
+ *
+ * `compose` and `place` are the week generator's (E11 slice 2): what the week
+ * draws, and where in the day it lands. They are declared here, with the rest,
+ * because the whole point of the list is that it is one list.
+ */
+export const SEED_DOMAINS = [
+  /** Which minute a dripped ticket actually lands on. */
+  'drip',
+  /** Where the lead's rounds fall. */
+  'patrol',
+  /** Where a takeover lands inside its window. */
+  'interrupt',
+  /** What a generated week draws from its pools. */
+  'compose',
+  /** Where a generated week puts what it drew. */
+  'place',
+] as const;
+
+export type SeedDomain = (typeof SEED_DOMAINS)[number];
+
+/**
+ * The separator between the parts of a stream key.
+ *
+ * A NUL, because no id, domain or number in this world contains one - and a
+ * separator that CAN appear in a part is not a separator: `a:b` + `c` and `a` +
+ * `b:c` would hash to the same thing, which is two schedules agreeing by
+ * accident about a minute neither of them chose.
+ */
+const PART = '\u0000';
+
+/**
+ * A 32-bit hash of the tuple that identifies one scheduled thing, avalanched.
+ *
+ * FNV-1a to fold the string in, then murmur3's `fmix32` finalizer before
+ * anybody reads it. The finalizer is the load-bearing half: FNV-1a's low bits
+ * barely move between neighbouring inputs, and every caller here ends in a
+ * modulo, which reads precisely those bits. Without it, `seed` and `seed + 1`
+ * hand two days the same nudge often enough to see.
+ *
+ * It is a spreader, not a source of randomness for the simulation: the engine's
+ * own generator is the only thing allowed to roll dice that the world
+ * remembers, and a schedule is decided before the day starts. Nothing here
+ * reads a clock, so the same tuple answers the same way three times running and
+ * again after a save.
+ */
+export function seedStream(
+  domain: SeedDomain,
+  seed: number,
+  day: number,
+  key: string,
+): number {
+  const text = `${domain}${PART}${String(seed)}${PART}${String(day)}${PART}${key}`;
+  let hash = 0x811c_9dc5;
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x0100_0193) >>> 0;
+  }
+
+  hash = (hash ^ (hash >>> 16)) >>> 0;
+  hash = Math.imul(hash, 0x85eb_ca6b) >>> 0;
+  hash = (hash ^ (hash >>> 13)) >>> 0;
+  hash = Math.imul(hash, 0xc2b2_ae35) >>> 0;
+
+  return (hash ^ (hash >>> 16)) >>> 0;
+}
+
+/**
  * A stable offset for one scheduled thing, in [-spread, +spread].
  *
- * FNV-1a over the things that identify it, which makes a schedule a function of
- * the world seed, the day and a key - the same three times running, and the
- * same again after a save. It is a spreader, not a source of randomness for the
- * simulation: the engine's own generator is the only thing allowed to roll dice
- * that the world remembers, and a schedule is decided before the day starts.
- *
- * Two schedules that want different answers pass different keys; the drip uses
- * the ticket id, the boss uses which round of the corridor he is on.
+ * The domain says which stream it comes out of, and the rest of the tuple says
+ * which thing in that stream: the drip uses the ticket id, the boss uses which
+ * round of the corridor he is on, a takeover uses its slot id.
  */
 export function seededOffset(
+  domain: SeedDomain,
   seed: number,
   day: number,
   key: string,
@@ -191,15 +269,7 @@ export function seededOffset(
     throw new TypeError('A jitter spread must be a whole number of minutes.');
   }
 
-  const text = `${String(seed)}:${String(day)}:${key}`;
-  let hash = 0x811c_9dc5;
-
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x0100_0193) >>> 0;
-  }
-
-  return (hash % (spread * 2 + 1)) - spread;
+  return (seedStream(domain, seed, day, key) % (spread * 2 + 1)) - spread;
 }
 
 function clamp(value: number, low: number, high: number): number {
@@ -251,7 +321,7 @@ export function buildDaySchedule(
         )
         : clamp(
           tickAtMinute(day, slot.minute)
-            + seededOffset(seed, day, slot.ticketId, DRIP_JITTER),
+            + seededOffset('drip', seed, day, slot.ticketId, DRIP_JITTER),
           window.from,
           window.to,
         ),

@@ -693,8 +693,27 @@ const GOLDEN_DAY = {
    * record of whose minutes they were. Nothing else in this day moved: not a
    * meter, not a minute, not a breach, not a penny, not a timeline entry. The
    * day now says where it went; it did not go anywhere different.
+   *
+   * TWELFTH MOVE, 0.31.0 slice 1 (`a710c4cb8ed3de8f` -> `33ae341e61ed1b82`):
+   * the seeded spreader grew a finalizer and its streams were domain-separated
+   * (`seededOffset`, `day.ts`) - the one change, and the reason it is made
+   * before the week generator rather than after is that it moves every seeded
+   * minute in the product exactly once. NO CONTENT MOVED. What this day is
+   * made of is unchanged: five tickets nobody closed, four deadlines missed,
+   * two cans, two rounds of the corridor that both found something, the same
+   * pay of 7,315 pence and the same suspicion pinned at its ceiling.
+   *
+   * What moved is WHEN the lead walks, and this script hangs four of its seven
+   * moves off exactly that: the bubbles window, one boss key and the second can
+   * are all written relative to a patrol or a ping. So the whole afternoon
+   * slides with the rounds - the second can is opened at 275 rather than 234
+   * and crashes forty-one minutes later, which is why stress at five reads 80
+   * where it read 91, and the meters read at eleven o'clock read a slack
+   * window that now starts half an hour earlier. Read the timeline below as
+   * the proof that the DAY is the same day: the same eleven announcements, the
+   * same two catches, the same two cans, the same three sets of footsteps.
    */
-  hash: 'a710c4cb8ed3de8f',
+  hash: '33ae341e61ed1b82',
   /** Midnight: the day was clocked off and the night slept through. */
   tick: 1_440,
   /** The meters partway through, where a changed rate is still legible. */
@@ -721,11 +740,16 @@ const GOLDEN_DAY = {
     // and the morning's arrival now in the queue beside the two inherited
     // ones - so the queue has started charging for itself, and the first
     // deadline of the day has gone past.
+    // Twelve and twenty-seven since 0.31.0, where they read seventeen and
+    // nineteen: the game of Bubble Break is written to start twelve minutes
+    // before the lead's first round, and that round moved half an hour earlier,
+    // so at eleven o'clock the screen has been dirty for longer and the queue
+    // has had less time to build.
     180: {
-      stress: 17,
-      suspicion: 19,
+      stress: 12,
+      suspicion: 27,
       reputation: 50,
-      suspicion_events: 7,
+      suspicion_events: 9,
       caught_events: 0,
       breaches_charged: 0,
       resolve_credit_paid: 0,
@@ -743,7 +767,11 @@ const GOLDEN_DAY = {
     // drips in after lunch - and one more ticket sitting in the queue all
     // afternoon is worth forty-two points of stress by five o'clock, which is
     // the queue rate doing exactly what it says it does.
-    stress: 91,
+    // Eighty since 0.31.0, where it read ninety-one: the second can is bought
+    // off the lead's first ping, the ping moved forty-one minutes later with
+    // the rounds, and a crash that lands at quarter to two instead of one has
+    // three quarters of an hour less of the afternoon to be paid for in.
+    stress: 80,
     suspicion: 100,
     reputation: 38,
     suspicion_events: 58,
@@ -757,10 +785,12 @@ const GOLDEN_DAY = {
     resolve_credit_paid: 0,
     consumable_spend: 240,
     desk_cans: 2,
-    // The second can of the run, and the crash it was billed for.
-    drink_started_at: 234,
+    // The second can of the run, and the crash it was billed for - both
+    // forty-one minutes later since 0.31.0, because the ping the script buys
+    // it after moved with the lead's rounds.
+    drink_started_at: 275,
     drink_tolerance: 2,
-    drink_crash_charged: 234,
+    drink_crash_charged: 275,
   } as Record<string, number>,
   banked: 7_315,
   /**
@@ -770,16 +800,16 @@ const GOLDEN_DAY = {
    */
   timeline: [
     'That is the can, then@165',
-    'Footsteps@216',
-    'ping:0@229',
-    'That is the can, then@270',
-    'Footsteps@307',
-    'caught:browser@311',
-    'That is 10 minutes@311',
-    'ping:1@381',
-    'Footsteps@386',
-    'caught:browser@390',
-    'That is 10 minutes@390',
+    'Footsteps@185',
+    'ping:0@270',
+    'Footsteps@309',
+    'That is the can, then@310',
+    'caught:browser@313',
+    'That is 10 minutes@313',
+    'ping:1@374',
+    'Footsteps@391',
+    'caught:browser@395',
+    'That is 10 minutes@395',
   ] as readonly string[],
 };
 

@@ -89,7 +89,11 @@ export const SECOND_WEEK: readonly DayScript[] = validateWeek([
       },
     ],
     patrolSeed: 1_699,
-    load: 2,
+    // One. Authored two, and the arithmetic says 70 minutes (0.31.0): one
+    // printer and the lead's rounds. Bodgeworth is a five-ticket week and its
+    // ramp was aspiration rather than measurement - the shop where nothing
+    // happens does not get heavier on a Tuesday because a column says so.
+    load: 1,
   },
   {
     day: 3,
@@ -199,7 +203,11 @@ export const SECOND_WEEK: readonly DayScript[] = validateWeek([
       },
     ],
     patrolSeed: 4_057,
-    load: 3,
+    // One, where the storm day was authored three (0.31.0). Sixty minutes: the
+    // reply-all is thirteen room messages and one real ticket buried in them,
+    // and a room message costs nothing but the reading. The day is a JOKE about
+    // volume rather than volume, and the number now says which.
+    load: 1,
   },
   {
     day: 4,
@@ -208,7 +216,8 @@ export const SECOND_WEEK: readonly DayScript[] = validateWeek([
     // The boss's dead laptop, which is a flat mouse, mid-morning, on a call day.
     drip: [{ ticketId: 'ticket:vernon-mouse', minute: 10 * 60 }],
     patrolSeed: 6_421,
-    load: 2,
+    // One, authored two (0.31.0): 60 minutes, one flat mouse.
+    load: 1,
   },
   {
     day: 5,

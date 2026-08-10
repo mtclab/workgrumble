@@ -418,13 +418,22 @@ describe('the week the round is decided in', () => {
    * asserted HERE is unchanged, which is the point of the file: the same five
    * weeks, the same bars, the same positions, and the same three endings.
    */
+  /**
+   * And the worked week's one line went in 0.31.0, with the seeded spreader's
+   * finalizer: the lead's first Wednesday round now passes before the browser
+   * goes up rather than during it, so nothing is seen and nothing is written
+   * down. Nothing this file is about moved with it - the same mark, the same
+   * bar, the same position and the same ending, which is exactly the claim,
+   * because a folder with a line in it was never what the ranking read. The
+   * move is enumerated as the NINETEENTH MOVE in `scripted-week.test.ts`.
+   */
   const PROFILES: readonly Profile[] = [
     {
       name: 'worked properly',
       play: PLAYS.worked!,
       mark: 99,
       bar: 45,
-      filed: 1,
+      filed: 0,
       position: 1,
       outcome: 'passed',
     },

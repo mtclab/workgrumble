@@ -21,6 +21,9 @@ import {
   isDayState,
   isLunchtime,
   lunchWindow,
+  SEED_DOMAINS,
+  seedStream,
+  seededOffset,
   shiftEndTick,
   shiftStartTick,
 } from './day';
@@ -174,6 +177,123 @@ describe('the day state machine', () => {
       .toBe(false);
     expect(engine.graph.getField(player, FIELDS.farmFund)).toBe(0);
     expect(engine.graph.getField(player, FIELDS.dayState)).toBe('day_end');
+  });
+});
+
+/* -- the seeded spreader -------------------------------------------------- */
+
+/**
+ * The streams a schedule is drawn from, and the two ways they used to be
+ * correlated.
+ *
+ * This is not a test about randomness quality for its own sake. The whole
+ * product's calendar - which minute a ticket lands on, which minute the lead
+ * walks past, which minute the phone goes - comes out of one function, fed by
+ * seeds that sit a fixed distance apart in a straight line: an attempt is
+ * `WORLD_SEED + (n - 1) * 0x9e3779b9`, a day's patrol seed is the world seed
+ * plus an authored prime. A hash whose bottom bits barely move between
+ * neighbouring inputs, read by a modulo that reads exactly those bits, turns
+ * that into a pattern a player can learn - the failure Slay the Spire 2 shipped
+ * in 2026 and replaced its generator to get out of.
+ *
+ * Both halves of the fix are gated below, and both gates are written so that
+ * taking the fix out turns them red.
+ */
+describe('the seeded spreader', () => {
+  const KEY = 'ticket:fan-noise';
+
+  it('gives every stream its own sequence, even on an identical key', () => {
+    // The same seed, the same day, the same key, in two different streams. The
+    // domain is the FIRST thing hashed, so the two cannot walk together; before
+    // 0.31.0 there was no domain at all and two schedules were kept apart only
+    // by the convention that they happened to write different key prefixes.
+    let differ = 0;
+
+    for (let index = 0; index < 500; index += 1) {
+      const key = `${KEY}:${String(index)}`;
+
+      if (
+        seededOffset('drip', WORLD_SEED, 1, key, 12)
+        !== seededOffset('patrol', WORLD_SEED, 1, key, 12)
+      ) {
+        differ += 1;
+      }
+    }
+
+    // A twenty-five-minute spread agrees by chance about one time in
+    // twenty-five, so four hundred and fifty is comfortably clear of "these
+    // are the same sequence" and comfortably under "these can never agree".
+    expect(differ).toBeGreaterThan(450);
+    // And every declared stream really is distinct, pairwise, on one key.
+    const answers = SEED_DOMAINS.map(
+      (domain) => seedStream(domain, WORLD_SEED, 1, KEY),
+    );
+    expect(new Set(answers).size).toBe(SEED_DOMAINS.length);
+  });
+
+  it('does not put two keys a fixed distance apart', () => {
+    /*
+     * The defect the finalizer closes, stated exactly.
+     *
+     * FNV-1a ends on a multiply, so two strings that differ only in their LAST
+     * character come out a CONSTANT apart: `(prefix ^ a) * K` and
+     * `(prefix ^ b) * K` differ by `((prefix ^ a) - (prefix ^ b)) * K`, and
+     * that factor does not depend on the prefix at all. Two hundred different
+     * prefixes therefore produced two distinct differences between their "0"
+     * and "1" keys - not two hundred, two - which is why the lead's three
+     * rounds, keyed `boss:patrol:0/1/2`, walked in the same few shapes on
+     * every seed the game could ever be played on.
+     */
+    const differences = new Set<number>();
+
+    for (let index = 0; index < 200; index += 1) {
+      const prefix = `boss:patrol:${String(index)}:`;
+
+      differences.add((
+        seedStream('patrol', WORLD_SEED, 1, `${prefix}0`)
+        - seedStream('patrol', WORLD_SEED, 1, `${prefix}1`)
+      ) >>> 0);
+    }
+
+    expect(differences.size).toBeGreaterThan(150);
+  });
+
+  it('walks the lead through more than a handful of shapes', () => {
+    // The same claim in the product's own units: the three rounds of a day are
+    // three offsets, and what a player would learn is the SPACING between
+    // them. Unfinalized, three hundred seeds produced fifteen distinct
+    // spacings; a schedule with fifteen shapes in it is a schedule with a
+    // lookup table behind it.
+    const shapes = new Set<string>();
+
+    for (let index = 0; index < 300; index += 1) {
+      const seed = (WORLD_SEED + index * 104_729) >>> 0;
+      const rounds = [0, 1, 2].map(
+        (round) => seededOffset('patrol', seed, 1, `boss:patrol:${String(round)}`, 18),
+      ) as [number, number, number];
+
+      shapes.add(`${String(rounds[1] - rounds[0])},${String(rounds[2] - rounds[1])}`);
+    }
+
+    expect(shapes.size).toBeGreaterThan(200);
+  });
+
+  it('answers the same tuple the same way, every time, forever', () => {
+    // The one property everything above is allowed to move as long as this
+    // holds: a schedule is decided before the day starts and replays after a
+    // save, so nothing here may read a clock or roll a die.
+    const once = seededOffset('drip', WORLD_SEED, 3, KEY, 12);
+
+    expect(seededOffset('drip', WORLD_SEED, 3, KEY, 12)).toBe(once);
+    expect(seedStream('drip', WORLD_SEED, 3, KEY))
+      .toBe(seedStream('drip', WORLD_SEED, 3, KEY));
+    // Inside its spread, and a spread of nought is a minute that does not move.
+    expect(Math.abs(once)).toBeLessThanOrEqual(12);
+    expect(seededOffset('drip', WORLD_SEED, 3, KEY, 0)).toBe(0);
+    // The day is part of the tuple, and a day number is a day number.
+    expect(seededOffset('drip', WORLD_SEED, 4, KEY, 12)).not.toBe(once);
+    expect(() => seededOffset('drip', WORLD_SEED, 0, KEY, 12)).toThrow(TypeError);
+    expect(() => seededOffset('drip', WORLD_SEED, 1, KEY, -1)).toThrow(TypeError);
   });
 });
 

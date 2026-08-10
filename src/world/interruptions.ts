@@ -730,7 +730,13 @@ export function buildInterruptionSchedule(
     .map((slot) => ({
       slot,
       at: tickAtMinute(day, slot.minute)
-        + seededOffset(seed, day, `interruption:${slot.id}`, slot.jitter ?? 0),
+        + seededOffset(
+          'interrupt',
+          seed,
+          day,
+          `interruption:${slot.id}`,
+          slot.jitter ?? 0,
+        ),
     }))
     .sort((left, right) => (
       left.at === right.at

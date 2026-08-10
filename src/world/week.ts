@@ -804,7 +804,11 @@ export const WEEK: readonly DayScript[] = validateWeek([
       },
     ],
     patrolSeed: 1_301,
-    load: 2,
+    // Three, corrected from an authored two when the column became arithmetic
+    // (0.31.0): 416 minutes of a 480-minute shift. Four tickets is only half of
+    // it - Terry and Bev both ask for a favour today, and either answer is
+    // work, so the heavier branch is what the day is priced at.
+    load: 3,
   },
   {
     day: 3,

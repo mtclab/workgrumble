@@ -947,6 +947,48 @@ interface GoldenWeek {
  *    to turn away. Both scripted weeks are Available anyway, but a DND week would
  *    bill the same four - the backlog is the cost the dot cannot buy off, which
  *    is the sprawl truth the resource is about.
+ *
+ * NINETEENTH MOVE (0.31.0 slice 1, the spreader grew a finalizer). Both hashes,
+ * both timelines, one meter in each week, and one line off the worked week's
+ * conduct file. No content moved: not a ticket, not a slot, not a rate. What
+ * moved is HOW A MINUTE IS CHOSEN.
+ *
+ *  - THE CHANGE is `seededOffset` (`day.ts`). It was FNV-1a over
+ *    `seed:day:key` read straight into a modulo, and the three schedules that
+ *    call it - the drip, the lead's rounds, the takeovers - shared that one
+ *    stream while their seeds sat a fixed distance apart in a straight line
+ *    (`WORLD_SEED + (attempt - 1) * 0x9e3779b9`, `worldSeed + patrolSeed`).
+ *    Weak low bits plus arithmetically related inputs is the shape Slay the
+ *    Spire 2 shipped in 2026 and had to replace its generator to get out of.
+ *    Now every stream names itself first (`drip`, `patrol`, `interrupt`) and
+ *    the hash is avalanched before anybody reads its bottom five bits. Every
+ *    minute in this file therefore moves once, deliberately, here - before the
+ *    week generator (E11) puts anything on top of it.
+ *  - THE MINUTES: the spooler call 1566 -> 1563, the annexe call 4522 -> 4523,
+ *    and Gary at the desk 5980 -> 5983 - the last of those authored with no
+ *    jitter at all, and it moves because the lead's round it used to fit
+ *    between moved and pushed it, which is the placer doing its job. The idle
+ *    week's twelve corridor conversations all shift by a few minutes each and
+ *    stay TWELVE, on the same days, at the same three a day.
+ *  - THE ONE LINE. The worked week's Wednesday browser is up from half ten to
+ *    half eleven and the lead's first Wednesday round used to land at 11:16,
+ *    inside it. It now lands outside it, so the week is not caught and its
+ *    file is EMPTY where it carried one line: `filed` 1 -> 0, `caught` 1 -> 0
+ *    in the five-profile table, and stress 59 -> 58 for the ten minutes not
+ *    lost in the corridor. The catch was always a coincidence of a plus-or-
+ *    minus eighteen wander against a sixty-minute window, and the design claim
+ *    it was texture for - that a file raises the bar only when somebody has a
+ *    reason to open it - is carried by the two profiles that ARE caught,
+ *    fifteen times each, at bar 45 and bar 70. Making the worked week's
+ *    browser cover the round deliberately is a content decision and is
+ *    deliberately NOT taken here: this move has one cause.
+ *  - THE IDLE WEEK'S SUSPICION 96 -> 90, from the same twelve conversations
+ *    landing on different meter ticks. Its mark, bar, file, breaches, pence
+ *    and ending are the numbers they were, and so are every one of the worked
+ *    week's counts: 28 in, 28 closed, nothing red, 77,775 pence, 99 against 45.
+ *  - NOTHING ELSE IS ALLOWED TO MOVE WITH IT. That is what makes this a move
+ *    rather than a drift: one function, one cause, and every number that
+ *    changed listed here with the reason beside it.
  */
 const GOLDEN_WORKED: GoldenWeek = {
   // Moved by 0.7.0 (`d7efbd1c6b7cfab7` -> `e32b73663e53a3ba`) for the estate
@@ -966,7 +1008,12 @@ const GOLDEN_WORKED: GoldenWeek = {
   // same mark and the same conversation at three - because a record of where
   // the minutes went is a record and moves nothing. It is a conscious diff:
   // two new fields on one node, written by a verb nobody presses.
-  hash: '3d76fd5cb76570fa',
+  //
+  // Moved a third time by 0.31.0 (`3d76fd5cb76570fa` -> `83b93d51647cad8f`) for
+  // the seeded spreader's finalizer and domain separation - the NINETEENTH MOVE
+  // above, where the three minutes that moved and the one line that went are
+  // listed with their cause.
+  hash: '83b93d51647cad8f',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',
@@ -1010,20 +1057,23 @@ const GOLDEN_WORKED: GoldenWeek = {
   // somebody has a reason to ask for it. Nobody did.
   reviewBar: 45,
   triggersAtTwo: [],
-  // And the line itself, which is the whole of what the Wednesday browser
-  // cost the world. It reads "Wednesday 11:16 - Screen observed to be
-  // non-work-related on passing (a discussion forum)." and it decides nothing.
-  filed: 1,
+  // And an empty folder, as of 0.31.0. The Wednesday browser is still up from
+  // half ten to half eleven; the lead's first Wednesday round now passes
+  // before it opens rather than at 11:16, so there is no conversation and no
+  // line. What the line used to witness - that a file decides nothing until
+  // somebody has a reason to open it - is proven by the two profiles below
+  // that ARE caught fifteen times each, one of which keeps the job and one of
+  // which does not.
+  filed: 0,
   meters: {
     // Twenty-six closed tickets carry the reputation from fifty to its
     // ceiling well before Friday, which is what a week worked properly looks
     // like - and which the review no longer reads. The converted cross-post is
     // the twenty-sixth, and its two points of credit land on a meter already
     // pinned at the hundred, so they are clamped away and the number does not
-    // move. One round of the corridor
-    // found the browser on the Wednesday, and the six points it cost were
-    // earned back inside the hour; the conversation on Friday never hears
-    // about either.
+    // move. No round of the corridor finds the browser any more (0.31.0), so
+    // the ten minutes it used to cost are worked instead; the conversation on
+    // Friday never heard about it either way.
     // Fifty-seven where it was twenty-one, and the THIRTY-SIX between them is
     // the number worth breaking down rather than the total - the total is a
     // running balance with lunch relief in it and does not decompose.
@@ -1044,7 +1094,10 @@ const GOLDEN_WORKED: GoldenWeek = {
     // week, so the message was not slid - it landed, rang out unanswered, and
     // cost its two points of being reachable. Still well below the fumble
     // threshold, and the review has never read stress.
-    stress: 59,
+    // Fifty-eight since 0.31.0, one point under the fifty-nine above: the
+    // Wednesday telling-off that is no longer had is ten minutes of queue
+    // worked instead of stood through.
+    stress: 58,
     suspicion: 0,
     reputation: 100,
     // The week as the review read it: a hundred percent of the work, every
@@ -1061,21 +1114,20 @@ const GOLDEN_WORKED: GoldenWeek = {
   // left out on purpose - the day golden pins those - so what is left is the
   // content: a chain coming back forty minutes after it was closed, somebody
   // asking for a favour instead of filing, a maintenance window opening at
-  // nine on the Wednesday, and one browser found on a screen.
+  // nine on the Wednesday. The browser left up on the Wednesday is no longer
+  // found on a screen (0.31.0): the round passes before it opens.
   timeline: [
     // Ten to eleven on the Monday, and one word. It costs the world nothing -
     // no meter, no dispatch, no hash - which is why it is here and nowhere
     // else in this file.
     'hello:person:owen@170',
-    'interrupted:call:spooler@1566',
-    'notice:You did not get to that one@1572',
+    'interrupted:call:spooler@1563',
+    'notice:You did not get to that one@1569',
     'notice:They are back@1740',
     'dm:person:terry@1810',
     'notice:Maintenance window@2940',
     'interrupted:meeting:hygiene-sync@3030',
     'notice:That could have been an email@3060',
-    'caught:browser@3076',
-    'notice:That is 10 minutes@3076',
     'hello:person:kwame@4415',
     // Ten to eleven, and the message from Marketing (0.4.3, F4). The dot was
     // Available, so it landed rather than sliding; neither profile looks up, so
@@ -1085,8 +1137,8 @@ const GOLDEN_WORKED: GoldenWeek = {
     // carries the arrival and the ring-out.
     'interrupted:chat:dennis-calendar@4490',
     'notice:You did not get to that one@4494',
-    'interrupted:call:annexe-printer@4522',
-    'notice:You did not get to that one@4527',
+    'interrupted:call:annexe-printer@4523',
+    'notice:You did not get to that one@4528',
     // Ten past two, and no notice beside it: a phone can ring out and a
     // workstation cannot, so this one is answered by the world at the far end
     // of its twelve minutes rather than missed.
@@ -1095,8 +1147,8 @@ const GOLDEN_WORKED: GoldenWeek = {
     // to your desk between two calls takes no jitter. Neither profile looks
     // up, so it rings out like the phones - and unlike them, somebody was
     // standing there.
-    'interrupted:walk_up:gary-restart@5980',
-    'notice:You did not get to that one@5986',
+    'interrupted:walk_up:gary-restart@5983',
+    'notice:You did not get to that one@5989',
     'review:passed@6180',
     'beer@6300',
     'week:passed@6300',
@@ -1142,7 +1194,11 @@ const GOLDEN_IDLE: GoldenWeek = {
   // timesheet the same way the worked week moved for it - with rather less on
   // it, because a week that touched nothing has a ledger to match and a sheet
   // that goes in on Friday holding exactly that.
-  hash: '16736dec5e2a7d4b',
+  // And moved by 0.31.0 (`16736dec5e2a7d4b` -> `32f2bfeebad9da58`) for the
+  // seeded spreader, exactly as the worked week moved: the same twelve rounds
+  // of the corridor, each a few minutes off where it was, and one meter with
+  // them. See the NINETEENTH MOVE above.
+  hash: '32f2bfeebad9da58',
   tick: 6_300,
   outcome: 'fired',
   // Two of these rows moved for the M5 close-out, and the move IS the fix.
@@ -1197,7 +1253,11 @@ const GOLDEN_IDLE: GoldenWeek = {
   filed: 12,
   meters: {
     stress: 98,
-    suspicion: 96,
+    // Ninety since 0.31.0, where it read ninety-six: the same twelve
+    // conversations, moved a few minutes each, land on different meter ticks
+    // and one of them now falls where the interval had already charged. The
+    // bar, the file, the mark and the ending are all the numbers they were.
+    suspicion: 90,
     reputation: 0,
     // Five at three o'clock, where it used to be four, and the point of
     // difference is a denominator rather than a better week: there are
@@ -1212,52 +1272,52 @@ const GOLDEN_IDLE: GoldenWeek = {
   },
   timeline: [
     'hello:person:owen@170',
-    'interrupted:call:spooler@1566',
-    'notice:You did not get to that one@1572',
-    'caught:bubbles@1632',
-    'notice:That is 10 minutes@1632',
-    'caught:bubbles@1723',
-    'notice:That is 10 minutes@1723',
+    'interrupted:call:spooler@1563',
+    'notice:You did not get to that one@1569',
+    'caught:bubbles@1627',
+    'notice:That is 10 minutes@1627',
+    'caught:bubbles@1728',
+    'notice:That is 10 minutes@1728',
     'dm:person:terry@1810',
-    'caught:bubbles@1839',
-    'notice:That is 10 minutes@1839',
+    'caught:bubbles@1843',
+    'notice:That is 10 minutes@1843',
     'notice:Maintenance window@2940',
     'interrupted:meeting:hygiene-sync@3030',
     'notice:That could have been an email@3060',
-    'caught:bubbles@3076',
-    'notice:That is 10 minutes@3076',
-    'caught:bubbles@3179',
-    'notice:That is 10 minutes@3179',
-    'caught:bubbles@3283',
-    'notice:That is 10 minutes@3283',
+    'caught:bubbles@3093',
+    'notice:That is 10 minutes@3093',
+    'caught:bubbles@3193',
+    'notice:That is 10 minutes@3193',
+    'caught:bubbles@3262',
+    'notice:That is 10 minutes@3262',
     'hello:person:kwame@4415',
     // The same message, on a week nobody worked, costing the same nothing a
     // meter can see: it rings out like everything else, and its two points of
     // stress land on a meter full since the Wednesday.
     'interrupted:chat:dennis-calendar@4490',
     'notice:You did not get to that one@4494',
-    'caught:bubbles@4512',
-    'notice:That is 10 minutes@4512',
-    'interrupted:call:annexe-printer@4522',
-    'notice:You did not get to that one@4527',
-    'caught:bubbles@4615',
-    'notice:That is 10 minutes@4615',
+    'interrupted:call:annexe-printer@4523',
+    'notice:You did not get to that one@4528',
+    'caught:bubbles@4532',
+    'notice:That is 10 minutes@4532',
+    'caught:bubbles@4604',
+    'notice:That is 10 minutes@4604',
     // The same twelve minutes, on a week nobody worked, costing the same
     // nothing: the meter it charges has been full since the Wednesday.
     'interrupted:machine:reboot@4690',
-    'caught:bubbles@4719',
-    'notice:That is 10 minutes@4719',
-    'caught:bubbles@5950',
-    'notice:That is 10 minutes@5950',
+    'caught:bubbles@4727',
+    'notice:That is 10 minutes@4727',
+    'caught:bubbles@5973',
+    'notice:That is 10 minutes@5973',
     // The same six minutes, on a week nobody worked, and the same outcome: a
     // person at the desk is not somebody a game of Bubble Break looks up from
     // either, and he files the ticket on his way back to Payroll.
-    'interrupted:walk_up:gary-restart@5980',
-    'notice:You did not get to that one@5986',
-    'caught:bubbles@6078',
-    'notice:That is 10 minutes@6078',
-    'caught:bubbles@6170',
-    'notice:That is 10 minutes@6170',
+    'interrupted:walk_up:gary-restart@5983',
+    'notice:You did not get to that one@5989',
+    'caught:bubbles@6064',
+    'notice:That is 10 minutes@6064',
+    'caught:bubbles@6176',
+    'notice:That is 10 minutes@6176',
     'review:fired@6180',
     'week:fired@6300',
   ],
@@ -1416,8 +1476,9 @@ describe('the probation week, twice', () => {
  *
  *  - THE FILE accumulates and does nothing. Every conversation in the corridor
  *    appends one dated line and costs no points at all. The slacking weeks
- *    carry fifteen of them; the worked week carries one, from the browser it
- *    left up on the Wednesday.
+ *    carry fifteen of them; the worked week carried one, from the browser it
+ *    left up on the Wednesday, until 0.31.0 moved the round that found it and
+ *    left that folder empty too.
  *  - SOMEBODY HAS TO HAVE A REASON TO OPEN IT. Three of them, all pure
  *    functions of the ticket nodes: a customer who went red and was never told
  *    anything, a colleague sent to the form and left on it, and the lead's own
@@ -1484,11 +1545,15 @@ describe('the week at five skill levels', () => {
       // reason to ask for the folder, so the line stays where it is published.
       reviewBar: 45,
       // One browser, on the Wednesday, hidden before the second round - and
-      // found once, which is the week's own texture rather than a profile.
-      // It is on the file forever and it decides nothing.
-      filed: 1,
+      // since 0.31.0 not found at all: the lead's first Wednesday round passes
+      // before half ten, which is where the seeded spreader now puts it. The
+      // catch was a coincidence of a wander against an hour-long window rather
+      // than a claim this row makes; the claim - that lines on a file cost
+      // nothing until somebody has a reason to read them - is the two rows
+      // below, at fifteen lines each.
+      filed: 0,
       outcome: 'passed',
-      caught: 1,
+      caught: 0,
     },
     {
       name: 'half the roster',

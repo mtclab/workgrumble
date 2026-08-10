@@ -284,8 +284,23 @@ describe('raising the finding resolves the discovery ticket the honest way', () 
   it('the ticket drips after the estate exists, and escalate closes it', () => {
     const world = startMspWeek();
     openOnboardingDay(world);
-    // Past the drip: the discovery ticket lands once there is a client to audit.
-    runTo(world, tickAtMinute(ONBOARDING_DAY, DISCOVERY_DRIP_MINUTE));
+    // Past the drip: the discovery ticket lands once there is a client to
+    // audit. Run to the minute the SCHEDULE puts it on rather than to the
+    // minute the week authors, because a drip wanders either side of its slot
+    // by up to twelve minutes and which way it wanders is a property of the
+    // seed - the claim here is that the ticket arrives AFTER the client does,
+    // which is asserted, and not that it arrives on any particular minute.
+    const dripped = world.driver.schedule().arrivals.find(
+      (arrival) => arrival.ticketId === 'ticket:tillman-backup-discovery',
+    );
+
+    expect(dripped?.tick).toBeGreaterThan(
+      tickAtMinute(ONBOARDING_DAY, ONBOARDING_MINUTE),
+    );
+    runTo(world, dripped?.tick ?? tickAtMinute(
+      ONBOARDING_DAY,
+      DISCOVERY_DRIP_MINUTE,
+    ));
 
     expect(world.session.engine.ticketState('ticket:tillman-backup-discovery'))
       .toBe('open');

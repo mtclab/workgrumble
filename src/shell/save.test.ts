@@ -16,8 +16,9 @@ import {
   type WeekCarry,
 } from '../world/session';
 import { spawnWorldTicket } from '../world/tickets';
-import { noHelloOn } from '../world/week';
-import { shiftStartTick } from '../world/day';
+import { type DayScript, noHelloOn, validateWeek } from '../world/week';
+import { shiftEndTick, shiftStartTick } from '../world/day';
+import { shippedWeek, type WeekSource } from '../world/week-source';
 import { acknowledgeCarry, carryFrom, RetrySlot } from './retry';
 import { SwitchSlot } from './switch';
 import { AppStateStore } from './app-state';
@@ -91,8 +92,19 @@ function session(
   carry: Readonly<WeekCarry> = FIRST_WEEK,
   /** The wall clock the save stamps itself with, when a test cares. */
   now?: () => number,
+  /**
+   * How this session decides which week it is in - the seam the generator will
+   * be plugged into. Defaults to the shipped table, so every case but the
+   * reload gate below is unchanged by its existence.
+   */
+  weekFor: WeekSource = shippedWeek,
 ): Session {
-  const { engine, seed } = createWorldSession(carry);
+  const { engine, seed, week } = createWorldSession(
+    carry,
+    undefined,
+    undefined,
+    weekFor,
+  );
   // The employer content threaded exactly as `main.ts` threads it off the
   // session - so this helper boots the driver at the shop the carry names, not
   // the probation default. For a FIRST_WEEK carry that IS probation; for a
@@ -103,7 +115,7 @@ function session(
     onDayBoundary: () => {},
     openSlackApps: () => [],
     focusedSlackApp: () => null,
-  }, undefined, employer.week, employer.channels, employer.runsBossPings);
+  }, undefined, week, employer.channels, employer.runsBossPings);
   const slot = new SaveSlot(storage);
   const retry = new RetrySlot(storage);
   const switchSlot = new SwitchSlot(storage);
@@ -135,6 +147,7 @@ function session(
       // The shipped preflight, not a copy of it: a save is tried in a session
       // nobody is playing before it replaces the one somebody is.
       probeEngine: () => new WasmEngine(seed),
+      weekFor,
       restart: () => {
         restarts += 1;
       },
@@ -882,6 +895,99 @@ describe('the carry-over a firing leaves behind', () => {
     // And the shell was told which shop it is now at, so the install policy the
     // audit reads and the name the offer prints follow the loaded save too.
     expect(reboot.loadedEmployer()).toBe('bodgeworth');
+  });
+
+  /**
+   * THE RELOAD GATE (E11, 0.31.0 slice 1): a save comes back into the week it
+   * was TAKEN in, not the week its shop happens to deal.
+   *
+   * Both load paths - the preflight and the commit - used to resolve the week
+   * with `employerFor(file.employer).week`, which is correct exactly as long as
+   * a shop has one week. The day weeks are sampled, that line hands a restored
+   * Wednesday morning a different Wednesday: same employer, same day number,
+   * different tickets. Nothing throws. The queue is simply somebody else's, and
+   * the only person who could ever notice is the player.
+   *
+   * So the week is resolved from the WORLD the file restored - the employer it
+   * names, plus the attempt and the arc position off the player node, which are
+   * inside the engine payload and are put back before the driver is re-pointed
+   * (`week-source.ts`). No new field, no schema bump: what the save carries is
+   * the world, and the world already knows which week it is in.
+   *
+   * It is proven with a double at the resolution seam rather than with a real
+   * generator, because the generator is the next slice and the defect is here
+   * now. The double answers "week two of this arc" with a different table -
+   * which is exactly what the sampler will do - and the assertion is that the
+   * load lands on THAT table while the session doing the loading is sitting in
+   * week one dealing the shipped one.
+   */
+  it('reloads into the week the save was taken in, not the one the shop deals', () => {
+    // A second week at the probation shop: quiet, except for one Wednesday
+    // arrival the shipped week deals on a Thursday and never on a Wednesday. It is put through the
+    // real loader, so the double is a week this game would accept rather than a
+    // shape that only has to satisfy a test.
+    const MARKER = 'ticket:vpn-cert-expired';
+    const ARC_WEEK_TWO: readonly DayScript[] = validateWeek([1, 2, 3, 4, 5].map(
+      (day) => ({
+        day,
+        label: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][day - 1]
+          ?? 'Monday',
+        inherited: [],
+        drip: day === 3 ? [{ ticketId: MARKER, minute: 11 * 60 }] : [],
+        patrolSeed: day === 1 ? 0 : day * 1_009,
+        load: 1,
+      }),
+    ));
+    const weekFor: WeekSource = (request) => (
+      request.arcWeek >= 2 ? ARC_WEEK_TWO : shippedWeek(request)
+    );
+    const storage = new MemoryStorage();
+
+    // The week the save is taken in: the same shop, one week further along the
+    // arc, walked to the middle of its Wednesday.
+    const taken = session(
+      storage,
+      { farmFund: 0, attempt: 1, arcWeek: 2, employer: FIRST_EMPLOYER },
+      undefined,
+      weekFor,
+    );
+
+    for (let day = 1; day < 3; day += 1) {
+      taken.driver.startShift();
+      runTo(taken, shiftEndTick(day));
+      taken.driver.clockOff();
+    }
+
+    taken.driver.startShift();
+    runTo(taken, shiftStartTick(3) + 180);
+    expect(taken.driver.day()).toBe(3);
+    expect(taken.driver.schedule().arrivals.map((arrival) => arrival.ticketId))
+      .toContain(MARKER);
+    expect(taken.session.save()).toEqual({ ok: true, value: undefined });
+
+    // And the session that loads it is at the same shop in week ONE, dealing
+    // the shipped Wednesday. Nothing about the employer differs - which is the
+    // whole point, because the employer is all the old code looked at.
+    const live = session(storage, FIRST_WEEK, undefined, weekFor);
+
+    expect(live.driver.schedule().arrivals.map((arrival) => arrival.ticketId))
+      .not.toContain(MARKER);
+
+    expect(live.session.load()).toEqual({ ok: true, value: undefined });
+
+    // The driver is on the save's Wednesday, dealing the save's week: the
+    // marker is there, and the shipped Wednesday's own pile is not.
+    expect(live.driver.day()).toBe(3);
+    expect(live.driver.schedule().arrivals.map((arrival) => arrival.ticketId))
+      .toEqual(taken.driver.schedule().arrivals.map((a) => a.ticketId));
+    expect(live.driver.schedule().arrivals.map((arrival) => arrival.ticketId))
+      .not.toContain('ticket:licence-exhausted');
+    // The three scalars the answer is a function of all came back with the
+    // world, which is why no field had to be added to the file.
+    expect(live.engine.graph.getField(COMPANY_IDS.player, FIELDS.arcWeek))
+      .toBe(2);
+    expect(live.engine.graph.getField(COMPANY_IDS.player, FIELDS.weekAttempt))
+      .toBe(1);
   });
 
   /**

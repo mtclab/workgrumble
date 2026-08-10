@@ -34,6 +34,11 @@ import {
 import { FIELDS, playerTierOf } from '../world/fields';
 import { exitForOutcome } from '../world/offer';
 import { isReviewOutcome } from '../world/week';
+import {
+  shippedWeek,
+  weekRequestFrom,
+  type WeekSource,
+} from '../world/week-source';
 
 /**
  * The shape written today. Bumped when the file's meaning changes.
@@ -431,6 +436,18 @@ export interface SessionParts {
    */
   onWrite?(outcome: SaveOutcome): void;
   /**
+   * Which week a loaded save's world is in.
+   *
+   * Injected for the same reason the probe engine is: this module has no
+   * business knowing how a week is decided, and the answer has to be the one
+   * the session that WROTE the file would have got. It is asked with the
+   * employer the file names and the attempt and arc position read off the
+   * restored graph, so a save taken in one week cannot reload into another.
+   * The default is the shipped table, which is what every caller wants until
+   * the generator lands.
+   */
+  weekFor?: WeekSource;
+  /**
    * Real time, injected.
    *
    * The save is the one file in this product that has to know what the clock
@@ -474,6 +491,7 @@ function preflight(
   file: Readonly<SaveFile>,
   actor: NodeId,
   probeEngine: (() => EngineApi) | undefined,
+  weekFor: WeekSource,
 ): SaveOutcome {
   if (probeEngine === undefined) {
     return { ok: true, value: undefined };
@@ -490,7 +508,17 @@ function preflight(
     // its week is adopted so the schedule this preflight reads is the one the
     // real load will deal, not the probation default the probe booted with.
     const employer = employerFor(file.employer);
-    driver.adoptEmployer(employer.week, employer.channels, employer.runsBossPings);
+    // And the WEEK the file's world is in, resolved from that world rather
+    // than from the employer record: the attempt and the arc position are
+    // fields on the player node, they were just restored, and the day the
+    // weeks are sampled they are what decides which week this is. The
+    // preflight has to read the same week the commit will, or it is a
+    // rehearsal of a different load.
+    driver.adoptEmployer(
+      weekFor(weekRequestFrom(probe.graph, actor, employer.id)),
+      employer.channels,
+      employer.runsBossPings,
+    );
     // The two reads every day screen makes on its first paint. A world that
     // cannot answer them is a world the shell cannot draw.
     driver.state();
@@ -598,7 +626,8 @@ export function createShellSession(
         return file;
       }
 
-      const tried = preflight(file.value, actor, parts.probeEngine);
+      const weekFor = parts.weekFor ?? shippedWeek;
+      const tried = preflight(file.value, actor, parts.probeEngine, weekFor);
 
       if (!tried.ok) {
         return tried;
@@ -622,8 +651,16 @@ export function createShellSession(
         // an unknown shop; it is inside the try regardless, so anything that
         // does still leaves the player in the session they were in.
         const restored = employerFor(file.value.employer);
+        // The week is resolved from the world that was just put back - the
+        // employer the file names, plus the attempt and the arc position off
+        // the restored player node - rather than from the employer record
+        // alone. With one week per shop those are the same table; with a
+        // sampled week they are not, and the difference is a player's
+        // Wednesday morning quietly becoming somebody else's week. Nothing
+        // throws when that happens, which is exactly why it is fixed before
+        // the sampler exists rather than after.
         day.adoptEmployer(
-          restored.week,
+          weekFor(weekRequestFrom(engine.graph, actor, restored.id)),
           restored.channels,
           restored.runsBossPings,
         );

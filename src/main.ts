@@ -154,7 +154,7 @@ async function boot(): Promise<void> {
   const switchSlot = new SwitchSlot(store.storage);
   const arriving = switchSlot.peek();
   const carried = arriving === null ? retry.peek() : null;
-  const { engine, tier, seed, employer } = createWorldSession(
+  const { engine, tier, seed, employer, week } = createWorldSession(
     arriving !== null
       ? carryForSwitch(arriving)
       : carried === null ? FIRST_WEEK : carryFrom(carried),
@@ -557,7 +557,11 @@ async function boot(): Promise<void> {
   // arrival at a second employer from driving the probation week over its estate
   // (0.6.0, P1-2/P1-4) - the `service:chassis-fan` crash the de-global exposed.
   undefined,
-  currentEmployer.week,
+  // The week off the SESSION rather than off the employer record: the session
+  // is what resolved it, from the employer AND the attempt AND where in the arc
+  // this week sits (`week-source.ts`), and a boot that went back to the
+  // employer record would be a second answer to a question with one answer.
+  week,
   currentEmployer.channels,
   currentEmployer.runsBossPings);
 

@@ -106,7 +106,17 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
       { ticketId: 'ticket:elmwood-imaging-bridge', minute: 13 * 60 + 30 },
     ],
     patrolSeed: 0,
-    load: 3,
+    // ONE, and all five days of this week are one, where every one of them was
+    // authored three (0.31.0, when the column became arithmetic). Four tickets
+    // a day at 270 committed minutes of a 480-minute shift is a busy-looking
+    // week that is not a heavy one: the MSP deals more ROWS than the probation
+    // shop and fewer MINUTES, because nothing here takes the screen away - no
+    // takeovers, no walk-ups, no meeting - and four tickets that each close in
+    // one dispatch is four tickets. The flat three was a claim about how the
+    // week FEELS; the flat one is what it costs. What that says about the MSP
+    // week is a content finding and it is written up in the commit, not fixed
+    // by moving the number back.
+    load: 1,
   },
   {
     day: 2,
@@ -129,7 +139,7 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     // fired only for an engineer - a desk player's Tuesday night is silent.
     onCall: [PAGE_FC_NGINX_DOWN],
     patrolSeed: 1_699,
-    load: 3,
+    load: 1,
   },
   {
     day: 3,
@@ -160,7 +170,7 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     // the page you learn not to scramble for.
     onCall: [PAGE_FC_BACKUP_FLAP],
     patrolSeed: 4_057,
-    load: 3,
+    load: 1,
   },
   {
     day: 4,
@@ -178,7 +188,7 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
       { ticketId: 'ticket:meridian-prod-down', minute: 14 * 60 },
     ],
     patrolSeed: 6_421,
-    load: 3,
+    load: 1,
   },
   {
     day: 5,
@@ -196,7 +206,7 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
       { ticketId: 'ticket:arden-portal-afterhours', minute: 14 * 60 + 45 },
     ],
     patrolSeed: 2_939,
-    load: 3,
+    load: 1,
   },
 ], MSP_ROOM_IDS);
 

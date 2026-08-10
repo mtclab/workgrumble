@@ -169,7 +169,7 @@ function spreadSlots(
 
   return Array.from({ length: count }, (_unused, index) => clamp(
     Math.round(first + step * (index + 1))
-      + seededOffset(seed, day, `${key}:${String(index)}`, jitter),
+      + seededOffset('patrol', seed, day, `${key}:${String(index)}`, jitter),
     first,
     last,
   )).sort((left, right) => left - right);

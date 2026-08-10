@@ -50,6 +50,7 @@ import { SECOND_WEEK } from '../second-week';
 import { halcyonSetup } from '../corporate-company';
 import { CORPORATE_WEEK } from '../corporate-week';
 import { assertWeekTickets, WEEK } from '../week';
+import { assertWeekLoads, type NamedWeek } from '../load';
 
 export { BOSS_PHONE } from './boss-trash';
 export { SHARE_PARENT, VPN_PARENT } from './flood';
@@ -367,6 +368,20 @@ function assertChainsAreChains(entries: readonly WorldTicket[]): void {
 }
 
 /**
+ * Every employer's week, with the name a refusal uses.
+ *
+ * One list rather than two, because the two gates below ask the same question
+ * of the same five days from opposite ends: does the roster hold what the week
+ * deals, and does the week's own difficulty column agree with what it deals.
+ */
+const EMPLOYER_WEEKS: readonly NamedWeek[] = [
+  { at: 'the probation shop', week: WEEK },
+  { at: 'Bodgeworth', week: SECOND_WEEK },
+  { at: 'the MSP', week: MSP_WEEK },
+  { at: 'Halcyon Grange', week: CORPORATE_WEEK },
+];
+
+/**
  * Everything the shipped world can put on the desk, in spawn order.
  *
  * The week is checked against it here, where the roster exists: every ticket
@@ -375,36 +390,44 @@ function assertChainsAreChains(entries: readonly WorldTicket[]): void {
  * content that ships dead, and a Thursday that schedules a ticket nobody wrote
  * is a Thursday with a hole in it - neither looks like a bug from the inside.
  */
-export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekTickets(
-  validateWorldTickets([
-    FAN_TICKET,
-    ...PILOT_TICKETS,
-    TIDIED_LIST,
-    BOSS_PHONE,
-    ...IDENTITY_TICKETS,
-    ...ACCESS_TICKETS,
-    ...FLOOD_TICKETS,
-    ...ARC_TICKETS,
-    ...DESK_TICKETS,
-    ...DRIVE_TICKETS,
-    ...COLLEAGUE_TICKETS,
-    ...CHANNEL_REQUEST_TICKETS,
-    // The second employer's queue (0.6.0 slice 3). It is in the one roster
-    // because the roster is what the solvability, path and dialogue gates read;
-    // its tickets are proven against the second employer's week below.
-    ...BODGE_TICKETS,
-    // The MSP's queue (0.8.0), and the first project's tasks with it (E10,
-    // 0.29.0) - all summoned, none dealt by a day, which is what makes a project
-    // something the player is handed rather than something the calendar deals.
-    ...MSP_TICKETS,
-    // The corporate employer's VIP-exception queue (E8, 0.22.0), proven against
-    // the corporate week below.
-    ...CORPORATE_TICKETS,
-  ]),
-  // Every employer's week, so every ticket in the shared roster is proven to
-  // arrive on SOME shop's day rather than shipping dead - the probation
-  // twenty-eight, Bodgeworth's five, and the MSP's three.
-  [WEEK, SECOND_WEEK, MSP_WEEK, CORPORATE_WEEK],
+export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekLoads(
+  assertWeekTickets(
+    validateWorldTickets([
+      FAN_TICKET,
+      ...PILOT_TICKETS,
+      TIDIED_LIST,
+      BOSS_PHONE,
+      ...IDENTITY_TICKETS,
+      ...ACCESS_TICKETS,
+      ...FLOOD_TICKETS,
+      ...ARC_TICKETS,
+      ...DESK_TICKETS,
+      ...DRIVE_TICKETS,
+      ...COLLEAGUE_TICKETS,
+      ...CHANNEL_REQUEST_TICKETS,
+      // The second employer's queue (0.6.0 slice 3). It is in the one roster
+      // because the roster is what the solvability, path and dialogue gates read;
+      // its tickets are proven against the second employer's week below.
+      ...BODGE_TICKETS,
+      // The MSP's queue (0.8.0), and the first project's tasks with it (E10,
+      // 0.29.0) - all summoned, none dealt by a day, which is what makes a project
+      // something the player is handed rather than something the calendar deals.
+      ...MSP_TICKETS,
+      // The corporate employer's VIP-exception queue (E8, 0.22.0), proven against
+      // the corporate week below.
+      ...CORPORATE_TICKETS,
+    ]),
+    // Every employer's week, so every ticket in the shared roster is proven to
+    // arrive on SOME shop's day rather than shipping dead - the probation
+    // twenty-eight, Bodgeworth's five, and the MSP's three.
+    EMPLOYER_WEEKS.map((named) => named.week),
+  ),
+  // And the other direction, in minutes: what each day PUTS ON THE DESK,
+  // against the difficulty its own column claims (E11, 0.31.0). It runs here
+  // rather than in `validateWeek` for the reason every roster-shaped check
+  // does - the week table is loaded before the roster exists, and a day's
+  // minutes are a fact about the tickets in it.
+  EMPLOYER_WEEKS,
 );
 
 /**

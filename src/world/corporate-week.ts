@@ -86,7 +86,11 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
       },
     ],
     patrolSeed: 3_137,
-    load: 2,
+    // One, authored two (0.31.0): sixty minutes, one delegate request and the
+    // lead's rounds. The dysfunction is in what the ticket ASKS for, and a
+    // question that is one dispatch to answer wrongly is a light day whichever
+    // way it is answered.
+    load: 1,
   },
   {
     day: 3,
@@ -139,9 +143,14 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
       },
     ],
     patrolSeed: 5_501,
-    // Three now: the exemption, the director's mandate across three services,
-    // and the tablet that is three verbs and a signature.
-    load: 4,
+    // Three tickets: the exemption, the director's mandate across three
+    // services, and the tablet that is three verbs and a signature. Authored
+    // four; the arithmetic makes it ONE at 290 minutes (0.31.0). Halcyon is a
+    // week about what you are ASKED to do rather than about how much of it
+    // there is, and the column now says so - nothing here takes the screen
+    // away, and three tickets in a shift is three tickets however bad an idea
+    // each of them is.
+    load: 1,
   },
   {
     day: 4,
@@ -184,9 +193,12 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
       },
     ],
     patrolSeed: 7_919,
-    // The heaviest day of the week: the whole access review, and a collision on
-    // top of it that cannot be finished twice.
-    load: 4,
+    // The heaviest day of the week: the whole access review - six dispatches on
+    // its own, the longest single ticket in the game - and a collision on top
+    // of it that cannot be finished twice. Two rather than the authored four
+    // (0.31.0), at 330 minutes: heaviest at this shop is not heavy against a
+    // shift, and it is still the only day here the arithmetic puts above one.
+    load: 2,
   },
   {
     day: 5,

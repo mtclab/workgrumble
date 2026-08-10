@@ -252,8 +252,19 @@ function walk(): Walked {
  * went in when the week ended. The five-ticket week, the storm and the thirteen
  * room messages are again untouched - a record of the week is not a change to
  * it - so this moved for a record and nothing else.
+ *
+ * And it MOVED with 0.31.0 slice 1 (`6c6fcc7c0feb2344` -> `8316c429d314a2da`)
+ * for the seeded spreader and nothing else: `seededOffset` now names its stream
+ * before it hashes and avalanches the result before the modulo reads its bottom
+ * bits, so every jittered minute in the product moved exactly once, here. This
+ * shop's five tickets, its storm, its thirteen room messages, its pass and the
+ * signal buried in the noise are every one of them what they were - the walk
+ * below asserts all of that beside the hash. What moved is which minute Vernon
+ * walks past on and which minute the yard printer lands on. The probation
+ * goldens moved for the same one cause on the same commit, enumerated as the
+ * NINETEENTH MOVE in `scripted-week.test.ts`.
  */
-const BODGE_GOLDEN_HASH = '6c6fcc7c0feb2344';
+const BODGE_GOLDEN_HASH = '8316c429d314a2da';
 
 describe('the second employer plays, and differs', () => {
   it('stands up as a genuinely different archetype', () => {

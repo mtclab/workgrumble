@@ -316,7 +316,17 @@ describe('the beat the dot arms', () => {
     // browser open on the second screen all afternoon.
     world.slack.push('browser');
 
-    for (let round = 0; round < 40; round += 1) {
+    // Run until the meter is over the mark rather than for a fixed count of
+    // intervals: how fast it climbs depends on what else the afternoon does -
+    // a round of the corridor that finds the browser is worth a jump - and a
+    // count that happened to be enough on one schedule is a test that goes red
+    // when a minute moves. The bound is the rest of the shift, so a meter that
+    // never got there fails on the assertion below rather than hanging.
+    for (
+      let round = 0;
+      round < 96 && number(world.session, FIELDS.suspicion) < DND_BEAT_SUSPICION;
+      round += 1
+    ) {
       runTo(
         world.driver,
         world.session,

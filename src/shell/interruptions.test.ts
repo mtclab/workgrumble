@@ -640,8 +640,14 @@ describe('the update that has been put off since March', () => {
     // Ten minutes, then five, then two - each measured from where the last one
     // left it, and each one AT LEAST that far out: a landing whose minutes the
     // day had already booked slides forward like any other arrival, which is
-    // what happens to the third of these on this seed. The exact arithmetic in
-    // clear air is asserted one floor down, where there is no day in the way.
+    // what happens to the second and third of these on this seed (the second
+    // joined them in 0.31.0, when the seeded spreader's finalizer moved the
+    // lead's rounds and one of them landed where this callback wanted to be).
+    // The exact arithmetic in clear air is asserted one floor down, in
+    // `world/interruptions.test.ts`, where there is no day in the way: a
+    // postpone buys its whole window from the minute the button was pressed.
+    // What is asserted here is the ORDER and the floor, which is what survives
+    // a day with a lead walking through it.
     const [ten, five, two] = REBOOT_POSTPONES as [number, number, number];
     const [firstBack, secondBack, thirdBack] = landings as [
       number,
@@ -650,7 +656,7 @@ describe('the update that has been put off since March', () => {
     ];
 
     expect(firstBack).toBe(entry.tick + ten);
-    expect(secondBack).toBe(firstBack + five);
+    expect(secondBack).toBeGreaterThanOrEqual(firstBack + five);
     expect(thirdBack).toBeGreaterThanOrEqual(secondBack + two);
     // Two, one, none - which is the number an arrival has to be able to say.
     expect(left).toEqual([2, 1, 0]);

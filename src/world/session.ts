@@ -28,6 +28,7 @@ import {
 } from './pressure';
 import { spawnWorldTicket } from './tickets';
 import { type DayScript } from './week';
+import { type WeekSource } from './week-source';
 
 /**
  * Where the first week is dealt from. The working day is replayable, so the
@@ -242,6 +243,21 @@ export function createWorldSession(
   carry: Readonly<WeekCarry> = FIRST_WEEK,
   engine: EngineApi = new WasmEngine(seedForAttempt(carry.attempt)),
   employer: Employer = employerFor(carry.employer),
+  /**
+   * Which week this employer deals on this attempt at this point in the arc.
+   *
+   * Through the seam rather than off `employer.week` directly, so that the day
+   * weeks are generated there is one place that answers the question and one
+   * place a load has to agree with (`week-source.ts`).
+   *
+   * The default is the week the employer HANDED IN is carrying, which is what
+   * this function has always used and is not the same thing as `shippedWeek`:
+   * that one resolves an id against the registry, and a test may stand up a
+   * fixture shop the registry has never heard of. Asking the registry for an
+   * employer somebody just gave us would be a second answer to a question that
+   * arrived with one.
+   */
+  weekSource: WeekSource = () => employer.week,
 ): WorldSession {
   const start = requireCarry(carry);
   const player = employer.playerId;
@@ -281,7 +297,11 @@ export function createWorldSession(
     employer: employer.id,
     // The content the driver and shell read off the session, so the world plays
     // as THIS employer without any module global to race.
-    week: employer.week,
+    week: weekSource({
+      employer: employer.id,
+      attempt: start.attempt,
+      arcWeek: start.arcWeek,
+    }),
     channels: employer.channels,
     installPolicy: employer.installPolicy,
     reviewBar: employer.reviewBar,
