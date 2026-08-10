@@ -2084,3 +2084,69 @@ Timesheet AUDIT events beyond the customer ladder (the org-side audit is E9 mate
 utilisation-target-per-title table); billable-rate money surfacing (no liability tools - hours
 relate to work-time, never to priced advice); the E11 week generator; cross-week scrutiny decay
 tuning beyond the shipped constants.
+
+# Version 0.31.0 - the week generator foundation + the clock contract (E11 #51, #53)
+
+The decision-free floor under E11, built while the seven owner decisions stay open: the substrate
+the spike named (docs/research/week-generation.md), the generator core proven by REPRODUCTION,
+and the e2e clock contract the 0.30.0 forensics demanded. Week-2 wiring - estate persistence, the
+already-shipped-and-unreachable 12-week arc - is deliberately absent; it waits on D-E11-1.
+
+## Slice 1 - the substrate (lane A)
+
+Three items from the spike, each standing alone:
+- **PRNG hygiene.** `seededOffset` is FNV-1a over additively-related seeds with no finalizer -
+  the correlated-streams shape. Move to domain-separated streams (hash the tuple, finalize) in
+  ONE deliberate golden move: every hash that moves is listed in the commit with its cause, and
+  nothing else may move with it. The spike's citation trail is in the research doc section on
+  determinism seams.
+- **`load` becomes real.** Today it is decorative - authored on every day, read only by a test.
+  It becomes committed-minutes arithmetic (the day's tickets' expected minutes against the shift,
+  with the count term the spike names - many small tickets cost more than their sum), asserted
+  against the four shipped weeks so the numbers are honest before the generator ever reads them.
+- **The reload defect.** Both save load paths resolve the week from `employerFor(file.employer)
+  .week` with no seed - correct today (one week per employer), silently wrong the day weeks are
+  sampled. Fix now via the shipped resync/seedFromWorld precedent: the save carries what the week
+  WAS, and a reload rebuilds exactly it. Gate: a save taken mid-week reloads onto the same week
+  under a generator that would have sampled a different one (provable with a test double).
+
+## Slice 2 - the generator core (lane B)
+
+`DayScript[]` out, same as the hand tables emit - the driver does not change (the spike proved
+the seam: four call sites, one field). Inside: day-SHAPE sampling (load budget + category quotas
++ slot layout, not a bag of tickets), draw constraints (the 3-week exclusion window; constrain
+the draw, not the pool), beat RELATIONS pinned (arc = incident D / ticket D+1 / incident D+2 at
+the authored minute; the project = three consecutive days; org beats at their authored positions).
+
+THE ACCEPTANCE GATE IS REPRODUCTION: from each employer's pinned seed, the generator must emit
+the four SHIPPED weeks byte-identically - the hand tables become one sample each, the rewrite
+becomes a refactor, and every existing week test keeps its teeth unchanged. Beside it, the
+property sweep: 100 seeds per employer through the generalized worst-schedule auditor (0.30.0's)
+in the committed suite; a 10k-seed deep sweep run once locally with its result recorded in the
+commit message. A sampled week that can breach a ticket before the shift opens, exceed the pile
+ceiling, or starve a beat is a generator bug the sweep must catch - the auditor is the property.
+
+## Slice 3 - the clock contract (lane C, e2e only, parallel)
+
+The 0.30.0 forensics proved `page.clock.install()` NEVER stops time - the fake clock re-syncs
+with real time between explicit jumps, so the simulated day keeps moving through every await.
+Audit every e2e spec against the house rule: exact values are read only under explicit pause
+(underPause / pauseAt); journeys assert direction and outcome; anything a screen-drop can steal
+mid-wait goes through the raise-loop helper. Fix by class using the shipped precedents; the
+deliverable includes a one-paragraph contract comment at the top of e2e/helpers.ts so the next
+spec author inherits the rule, not the flake.
+
+## Gates (once, at the version)
+
+Full local gate (serial vitest) + full box suite (workers=1, ONE wrangler instance per the
+runbook lesson - kill by cwd first, clean .wrangler/tmp). Lane A's golden move is singular and
+enumerated; lane B's reproduction gate + sweep are the version's teeth (revert the generator to
+the hand tables and the sweep still holds - the property does not depend on the sampler); lane
+C's audit ships with the contract written down. No world-content change: a player sees NOTHING
+new this version, and the release note says so in the house voice - this is the update where the
+update system got trustworthy, which is a thing IT would absolutely announce.
+
+## Not in scope (backlog)
+
+Week 2+ (D-E11-1 and friends), the arc unlock, pool CONTENT beyond what reproduction needs,
+per-day-aggregate feasibility (the auditor's known gap), response-clock auditing, E7.
