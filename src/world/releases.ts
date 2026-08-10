@@ -31,6 +31,43 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.30.0',
+    date: '2026-08-09',
+    summary: 'This update introduces the timesheet. The system already knew '
+      + 'what you did all week. Now it would like to hear your version.',
+    lines: Object.freeze([
+      'There is a Timesheet window now, and it arrives already filled in, '
+        + 'because the system was watching. Every ticket you touched, every '
+        + 'minute it can account for, attributed to the customer it belongs '
+        + 'to - and, on a separate line, the time it cannot account for, '
+        + 'which sits there labeled in a way that invites no follow-up '
+        + 'questions and will get them anyway. Service desk staff register '
+        + 'one bucket, seven and a half hours, done before the sigh '
+        + 'finishes. Engineers attribute. The sheet is due Friday. It has '
+        + 'always been due Friday. You will fill it in at 16:55 from memory '
+        + 'anyway.',
+      'You may edit the sheet. This is called professional judgment. You '
+        + 'can round an hour up, move it to a quieter account, or replace a '
+        + 'detailed line with the word "consulting". The management reads '
+        + 'your utilisation on Friday and would like it to be a number that '
+        + 'nobody who does the actual work has ever produced honestly. '
+        + 'Coming in under it costs you nothing except the conversation. '
+        + 'The customers, meanwhile, read their invoices. Customers who '
+        + 'receive the same round number every week develop questions. '
+        + 'Their first question is polite. The ones after it are itemised. '
+        + 'The system answers those from its own records, next to yours, '
+        + 'and then everyone in the room can see both columns. Customers '
+        + 'who stop asking questions have not lost interest. They are '
+        + 'shopping.',
+      'Projects now file a weekly status colour. The colour you report and '
+        + 'the state the plan shows are recorded separately, which is a '
+        + 'sentence worth reading twice. Reporting red gets you a meeting '
+        + 'about urgency. Reporting green gets you Thursday, when the phase '
+        + 'misses in public, and the question in your inbox is not why the '
+        + 'project is late. It is why you said it was not.',
+    ]),
+  },
+  {
     version: '0.29.0',
     date: '2026-08-09',
     summary: 'This update introduces work that is not a ticket, takes three '
