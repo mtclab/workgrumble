@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 
 import {
+  focusWindow,
   openFromStartMenu,
   realMs,
   runSimMinutes,
@@ -249,7 +250,10 @@ test('keeps the detail panes standing while the meters tick', async ({
     .toHaveText('180 degrees');
   await expect(rotationPicker).not.toHaveAttribute('data-probe', 'rotation-picker');
 
-  await page.getByTestId('taskbar-button-directory').click();
+  // Through the raise-loop, because the line under it reaches INSIDE the
+  // directory: the clock is running here by design and a raise the day takes
+  // back would leave that click hunting a covered button.
+  await focusWindow(page, 'directory');
   await page.getByTestId('directory-reset-password').click();
   await expect(page.getByTestId('directory-outcome'))
     .toContainText('Temporary password');

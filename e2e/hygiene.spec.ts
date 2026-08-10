@@ -75,7 +75,12 @@ test('completes a full session with no console errors and no runtime requests', 
   await page.getByTestId('bubbles-reset').click();
   await expect(page.getByTestId('bubbles-score')).toContainText('00');
 
-  await page.getByTestId('taskbar-button-about').click();
+  // Raised through the loop rather than with one click at the taskbar: this
+  // session is running on a real-time clock and the next line reaches INSIDE
+  // the window, so a raise the day takes back - one of its own screens landing
+  // on the desk - would leave that click hunting a covered button (the contract
+  // in `helpers.ts`).
+  await focusWindow(page, 'about');
   await page.getByTestId('about-run-diagnostics').click();
   await page.getByTestId('about-refresh').click();
   await page.getByTestId('about-open-bubbles').click();

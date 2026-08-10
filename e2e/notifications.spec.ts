@@ -92,8 +92,11 @@ test('freezes the day while nobody is logged on', async ({ page }) => {
   await page.getByTestId('login-submit').click();
   await expect(page.getByTestId('desktop')).toBeVisible();
 
-  // Eight o'clock, on the morning brief, with everything still to do.
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('08:00');
+  // Eight o'clock, on the morning brief, with everything still to do. The
+  // MINUTE is a band rather than a pin, and only because logging on is what
+  // starts the clock: four hours nobody was owed would read 12:10, and the
+  // eight o'clock hour is the whole of what this is claiming.
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:0\d$/);
   await expect(page.getByTestId('toast').filter({ hasText: 'SLA breached' }))
     .toHaveCount(0);
   await expect(page.getByTestId('notification-badge')).toHaveAttribute(
@@ -108,7 +111,7 @@ test('freezes the day while nobody is logged on', async ({ page }) => {
   await page.clock.runFor(FAN_BREACH_MS);
   await page.getByTestId('login-password').fill('hunter2');
   await page.getByTestId('login-submit').click();
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('08:00');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:0\d$/);
 });
 
 /**

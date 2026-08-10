@@ -20,6 +20,7 @@ import {
   runSimMinutes,
   runToDayEnd,
   runToTelegraph,
+  underPause,
   workUntil,
   workUntilMinute,
   workUntilTicket,
@@ -212,34 +213,6 @@ async function huntForTakeover(
  * bought while the queue carries on being workable underneath it. So "is it
  * happening" is `data-holding`, not "is there a window".
  */
-/**
- * Holds the day still for a read that has to be exact.
- *
- * The house lesson, learned again: an assertion retries in REAL time and the
- * clock is running in SIM time, so at x4 every half-second of retrying spends
- * two minutes of somebody's afternoon. Anything pinning an exact minute - a
- * countdown, a taskbar clock - reads it with the day stopped, which is a
- * control the player has and the one control every takeover leaves reachable.
- */
-async function underPause<T>(page: Page, read: () => Promise<T>): Promise<T> {
-  const pause = page.getByTestId('day-pause');
-  const already = await pause.getAttribute('aria-pressed') === 'true';
-
-  if (!already) {
-    await pause.click();
-    await expect(pause).toHaveAttribute('aria-pressed', 'true');
-  }
-
-  try {
-    return await read();
-  } finally {
-    if (!already) {
-      await pause.click();
-      await expect(pause).toHaveAttribute('aria-pressed', 'false');
-    }
-  }
-}
-
 async function huntForReboot(page: Page, limit = 30): Promise<Takeover> {
   const app = page.getByTestId('reboot-app');
 
@@ -480,7 +453,11 @@ test('walks every function of a probation week that goes well', async ({
 
   await step('brief.start-shift', async () => {
     await page.getByTestId('brief-start-shift').click();
-    await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
+    // The hour rather than the minute, here and in `desktop.clock` below: the
+    // shift's clock is running from the moment it opens (the contract in
+    // `helpers.ts`), so a read pinned to 09:00 races the first tick of it. A
+    // morning that was not skipped is at 08-something and stays there.
+    await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
     await expect(page.getByTestId('day-state')).toHaveText('Shift');
   });
 
@@ -498,7 +475,11 @@ test('walks every function of a probation week that goes well', async ({
   });
 
   await step('desktop.clock', async () => {
-    await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
+    // Four steps of clicking after the shift opened, all of them spending
+    // minutes: the taskbar carries the day and the hour the session is in,
+    // which is what the clock strip is FOR, and not the minute the shift
+    // started on.
+    await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
     await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 1');
   });
 

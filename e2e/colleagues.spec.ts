@@ -8,6 +8,7 @@ import {
   runRealMinutes,
   runSimMinutes,
   setSpeed,
+  underPause,
   workUntilMinute,
 } from './helpers';
 
@@ -87,36 +88,6 @@ async function huntForTheDesk(
   }
 
   throw new Error('Nobody came to the desk inside the hour.');
-}
-
-/**
- * Holds the day still for a read that has to be exact.
- *
- * The house pattern, and this file needs it for the same reason every other
- * one does: an assertion retries in REAL time while the clock runs in SIM
- * time, so anything pinning an exact minute reads it with the day stopped -
- * which is a control the player has and one nothing in this slice takes away.
- *
- * Idempotent, because a read taken inside another pause must not start the
- * clock again on its way out.
- */
-async function underPause<T>(page: Page, read: () => Promise<T>): Promise<T> {
-  const pause = page.getByTestId('day-pause');
-  const already = await pause.getAttribute('aria-pressed') === 'true';
-
-  if (!already) {
-    await pause.click();
-    await expect(pause).toHaveAttribute('aria-pressed', 'true');
-  }
-
-  try {
-    return await read();
-  } finally {
-    if (!already) {
-      await pause.click();
-      await expect(pause).toHaveAttribute('aria-pressed', 'false');
-    }
-  }
 }
 
 /* -- gate 1: the walk-up, both answers walked ------------------------------ */

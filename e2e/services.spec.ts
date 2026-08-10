@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 
 import {
+  focusWindow,
   logIn,
   openFromStartMenu,
   runCommand,
@@ -229,8 +230,11 @@ test('reports the browser and the toy as the processes they are', async ({
   await expect(page.getByTestId('remote-program-browser'))
     .toHaveAttribute('data-minimized', 'true');
 
-  // Closed is gone, which is the other half of the promise.
-  await page.getByTestId('taskbar-button-browser').click();
+  // Closed is gone, which is the other half of the promise. The browser is
+  // behind the panic key, so it is raised through the loop before the close
+  // button under it is reached for: a raise the day takes back would leave that
+  // click hunting a covered button (the contract in `helpers.ts`).
+  await focusWindow(page, 'browser');
   await page.getByTestId('close-browser').click();
   await openFromStartMenu(page, 'cmd');
   await runOnlyCommand(page, 'tasklist');

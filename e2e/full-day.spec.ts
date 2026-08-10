@@ -97,7 +97,10 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   await expect(page.getByTestId('brief-queue-list').getByRole('listitem'))
     .toHaveCount(2);
   await page.getByTestId('brief-start-shift').click();
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
+  // The hour, not the minute: the shift's clock is running from the moment it
+  // opens (the contract in `helpers.ts`), so a read pinned to 09:00 races the
+  // first tick of it. Nine o'clock is the claim - the morning was skipped.
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
   await page.getByTestId('close-brief').click();
 
   await page.getByTestId('day-speed-4').click();
@@ -210,7 +213,11 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
 
   await runTo(page, LUNCH_START + 5);
   await expect(page.getByTestId('day-state')).toHaveText('Lunch');
-  await page.getByTestId('taskbar-button-browser').click();
+  // The browser is behind the panic key from the corridor above, and the line
+  // under this one reaches inside it: raised through the loop, because a raise
+  // the day takes back - it is still putting its own screens on the desk - is a
+  // click hunting a covered button (the contract in `helpers.ts`).
+  await focusWindow(page, 'browser');
   await page.getByTestId('browser-site-cats').click();
   await expect(page.getByTestId('browser-grid').getByRole('listitem'))
     .toHaveCount(6);

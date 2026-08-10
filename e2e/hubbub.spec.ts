@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 import {
   beginShift,
@@ -6,6 +6,7 @@ import {
   openFromDesktopIcon,
   openFromStartMenu,
   runSimMinutes,
+  underPause,
 } from './helpers';
 
 /**
@@ -31,13 +32,6 @@ import {
  * threaded under it at 09:48, and #water-cooler shipped empty on purpose.
  */
 
-/** Holds the day still so an assertion about a minute is about that minute. */
-async function paused(page: Page, check: () => Promise<void>): Promise<void> {
-  await page.getByTestId('day-pause').click();
-  await check();
-  await page.getByTestId('day-pause').click();
-}
-
 test('fills the rooms at the authored minutes, badges them, and reads on sight', async ({
   page,
 }) => {
@@ -47,7 +41,7 @@ test('fills the rooms at the authored minutes, badges them, and reads on sight',
   // Nine o'clock, held still: the rollout has landed and nothing has been
   // said in it yet. The window opens on the first room, honestly empty, and
   // no badge anywhere claims otherwise.
-  await paused(page, async () => {
+  await underPause(page, async () => {
     await openFromStartMenu(page, 'hubbub');
     await expect(page.getByTestId('hubbub-summary')).toContainText('0 unread');
     await expect(page.getByTestId('hubbub-empty')).toBeVisible();
@@ -59,7 +53,7 @@ test('fills the rooms at the authored minutes, badges them, and reads on sight',
   // is readable, and BECAUSE it was on screen its badge never lights. The
   // topic register is the product's own: very excited about itself.
   await runSimMinutes(page, 10);
-  await paused(page, async () => {
+  await underPause(page, async () => {
     await expect(page.getByTestId('hubbub-message-welcome'))
       .toContainText('Welcome to Hubbub');
     await expect(page.getByTestId('hubbub-topic'))
@@ -71,7 +65,7 @@ test('fills the rooms at the authored minutes, badges them, and reads on sight',
   // on screen. Two unread, and the badge flies the @ because one of them
   // names the player.
   await runSimMinutes(page, 40);
-  await paused(page, async () => {
+  await underPause(page, async () => {
     await expect(page.getByTestId('hubbub-badge-helpdesk')).toHaveText('2 @');
     await expect(page.getByTestId('hubbub-channel-helpdesk'))
       .toHaveAttribute('data-mention', 'true');
@@ -117,7 +111,7 @@ test('opens the queue from a message that is about a ticket', async ({
   await beginShift(page);
   await runSimMinutes(page, 45);
 
-  await paused(page, async () => {
+  await underPause(page, async () => {
     await openFromStartMenu(page, 'hubbub');
     await page.getByTestId('hubbub-channel-helpdesk').click();
 

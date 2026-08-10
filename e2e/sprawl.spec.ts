@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 import {
   beginShift,
@@ -6,6 +6,7 @@ import {
   logInOnDay,
   openFromStartMenu,
   runSimMinutes,
+  underPause,
 } from './helpers';
 
 /**
@@ -29,13 +30,6 @@ import {
  *   in kind, and the ticket still resolves, or on one of the neutral roads.
  */
 
-/** Holds the day still so an assertion about a minute is about that minute. */
-async function paused(page: Page, check: () => Promise<void>): Promise<void> {
-  await page.getByTestId('day-pause').click();
-  await check();
-  await page.getByTestId('day-pause').click();
-}
-
 test('the unread room pile builds while ignored and stops when it is read', async ({
   page,
 }) => {
@@ -53,7 +47,7 @@ test('the unread room pile builds while ignored and stops when it is read', asyn
   await page.getByTestId('hubbub-channel-water-cooler').click();
 
   await runSimMinutes(page, 50);
-  await paused(page, async () => {
+  await underPause(page, async () => {
     await expect(page.getByTestId('hubbub-summary')).toContainText('3 unread');
     await expect(page.getByTestId('hubbub-badge-announcements')).toHaveText('1');
     await expect(page.getByTestId('hubbub-badge-helpdesk')).toHaveText('2 @');
@@ -62,7 +56,7 @@ test('the unread room pile builds while ignored and stops when it is read', asyn
   // Reading is what stops it. Opening #announcements and #helpdesk puts their
   // messages on screen, which is what "read" means - the badges clear, the
   // summary falls to nothing, and from here the pile the drip charges is empty.
-  await paused(page, async () => {
+  await underPause(page, async () => {
     await page.getByTestId('hubbub-channel-announcements').click();
     await page.getByTestId('hubbub-channel-helpdesk').click();
     await expect(page.getByTestId('hubbub-badge-announcements')).toBeHidden();
@@ -75,7 +69,7 @@ test('the unread room pile builds while ignored and stops when it is read', asyn
   // that has not arrived yet is not in this count - the pile is only ever what
   // the clock has actually dealt.
   await runSimMinutes(page, 30);
-  await paused(page, async () => {
+  await underPause(page, async () => {
     await expect(page.getByTestId('hubbub-summary')).toContainText('0 unread');
   });
 });

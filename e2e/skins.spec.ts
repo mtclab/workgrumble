@@ -71,7 +71,10 @@ async function promote(page: Page): Promise<void> {
 
 test('the desk is refused its own desktop, and told why', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  // The clock is frozen for the same reason every other short spec freezes it:
+  // The fake clock is INSTALLED, which is not the same as stopped: it leaves
+  // the day syncing with real time (the contract in `helpers.ts`), and what it
+  // buys a short spec like this one is that the minutes are the test's to spend
+  // rather than the machine's to lose. Nothing below reads a minute anyway -
   // this is a question about a refusal, not about what the day does while it is
   // being asked.
   await page.clock.install();

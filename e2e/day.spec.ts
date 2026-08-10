@@ -1,41 +1,11 @@
 import { expect, type Page, test } from '@playwright/test';
 
-import { completeLogin, logInOnDay, openFromStartMenu } from './helpers';
-
-/**
- * The house pattern (#15). An `expect` retries in REAL time while a raw speed
- * run advances the fake clock in SIM time, so an assertion that pins an EXACT
- * minute can be retried against a clock that has moved on under full-suite
- * parallel load - the +20/+40 fingerprint. Held under a pause, the read is
- * taken with the day stopped, which is a control the player has and one this
- * test does not otherwise touch.
- *
- * It holds ONLY the read. The runFor before it has already produced the
- * transition the raw run exists to prove, so a tick that overspends still lands
- * the clock on the wrong minute and this still reds on it - the pause stops the
- * clock from moving further, not the assertion from seeing where it got to.
- *
- * Idempotent: a read taken inside another pause must not start the clock again
- * on its way out.
- */
-async function underPause<T>(page: Page, read: () => Promise<T>): Promise<T> {
-  const pause = page.getByTestId('day-pause');
-  const already = await pause.getAttribute('aria-pressed') === 'true';
-
-  if (!already) {
-    await pause.click();
-    await expect(pause).toHaveAttribute('aria-pressed', 'true');
-  }
-
-  try {
-    return await read();
-  } finally {
-    if (!already) {
-      await pause.click();
-      await expect(pause).toHaveAttribute('aria-pressed', 'false');
-    }
-  }
-}
+import {
+  completeLogin,
+  logInOnDay,
+  openFromStartMenu,
+  underPause,
+} from './helpers';
 
 function minutesOf(time: string): number {
   const [hours, mins] = time.split(':').map(Number);
@@ -188,9 +158,14 @@ test('walks a day from the morning brief to the scorecard', async ({
   await expect(page.getByTestId('day-state')).toHaveText('Morning brief');
   await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
 
-  // Starting the shift skips whatever is left of the morning.
+  // Starting the shift skips whatever is left of the morning. The HOUR is what
+  // is asserted, not the minute: the clock is running from the moment the shift
+  // opens (the contract in `helpers.ts` - `install()` never stopped it), so a
+  // read pinned to 09:00 is a read racing the first tick of the shift. Nine
+  // o'clock is still the whole claim - a morning that was not skipped is at
+  // 08-something and stays there for the best part of an hour.
   await page.getByTestId('brief-start-shift').click();
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
   await expect(page.getByTestId('day-state')).toHaveText('Shift');
   await expect(page.getByTestId('brief-start-shift')).toBeDisabled();
 
@@ -198,13 +173,20 @@ test('walks a day from the morning brief to the scorecard', async ({
   await expect(brief).toHaveCount(0);
 
   // Pause stops the conversion of real time; nothing else about the world
-  // changes, and the clock does not creep.
+  // changes, and the clock does not creep. What pause promises is that the
+  // clock does not MOVE, not that it is any particular minute - getting to the
+  // button costs a couple of them - so the minute it was caught on is captured
+  // and the ten that follow are asserted against that.
   const pause = page.getByTestId('day-pause');
   await pause.click();
   await expect(pause).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('day-state')).toHaveText('Shift · paused');
+
+  const stopped = (await page.getByTestId('sim-clock-time').textContent())
+    ?.trim() ?? '';
+
   await page.clock.runFor(realMs(10, 1));
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(stopped);
 
   await pause.click();
   await expect(pause).toHaveAttribute('aria-pressed', 'false');
@@ -381,14 +363,19 @@ test('refuses a damaged save without taking the session with it', async ({
   await page.getByTestId('day-state').click();
   await page.getByTestId('brief-start-shift').click();
   await page.getByTestId('close-brief').click();
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-load').click();
   await expect(page.getByTestId('toast')).toContainText('Not loaded');
   await expect(page.getByTestId('toast')).toContainText('newer build');
 
-  await expect(page.getByTestId('sim-clock-time')).toHaveText('09:00');
+  // Where it was, which is a shift in the nine o'clock hour rather than a
+  // particular minute of one: the clock ran through the menu and the two
+  // notices above, because a running clock is exactly what the refusal has to
+  // leave alone. A session the load HAD taken with it is back at 08-something
+  // on a morning brief, which this still reds on.
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
   await expect(page.getByTestId('day-state')).toHaveText('Shift');
 });
 

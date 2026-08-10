@@ -1,5 +1,27 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
+/**
+ * THE CLOCK CONTRACT, and the whole of the house style for this suite.
+ *
+ * `page.clock.install()` DOES NOT STOP TIME. Playwright installs fake
+ * time-functions and leaves them SYNCING WITH REAL TIME - `runFor` pauses that
+ * sync for the length of its jump and resumes it on the way out, and only
+ * `pauseAt` ever clears it - so the simulated day goes on arriving through
+ * every await this suite does, including the five seconds an `expect` spends
+ * polling a value it has already missed. Three rules follow, and every spec in
+ * this directory is written to them. An EXACT value on anything that accrues -
+ * a clock face, a countdown, a meter, a minute of somebody's afternoon - is
+ * read only with the day explicitly held (`underPause` below, or
+ * `page.clock.pauseAt`), or off a figure the WORLD has already stopped (the day
+ * end, a session nobody is logged into, a sheet that has been filed). A JOURNEY
+ * asserts DIRECTION and OUTCOME - it moved, it went up, it got there, the row
+ * says Closed - rather than the number it happened to be on in the moment the
+ * assertion looked. And a raise or a focus that a screen-drop can steal goes
+ * through the raise-loop (`raiseWindow` / `focusWindow`), because the day puts
+ * its own windows on the desk - the caught scene, a call, a meeting - and every
+ * one of them takes the focus a single click had just bought.
+ */
+
 export interface Box {
   readonly x: number;
   readonly y: number;
@@ -201,6 +223,51 @@ export async function runRealMinutes(
   speed: Speed = 4,
 ): Promise<void> {
   await page.clock.runFor(realMs(minutes, speed));
+}
+
+/**
+ * Holds the day still for a read that has to be exact.
+ *
+ * The first half of the clock contract at the top of this file, as a helper:
+ * an assertion retries in REAL time while the clock runs in SIM time, so at x4
+ * every half-second of retrying spends two minutes of somebody's afternoon and
+ * a figure that was right when the read started is a different figure by the
+ * time the retry agrees with it. Anything pinning an exact minute - a
+ * countdown, a taskbar clock, a meter - reads it with the day stopped, which is
+ * a control the player has and the one control every takeover in this game
+ * deliberately leaves reachable.
+ *
+ * It holds ONLY the read. Whatever produced the state is already done, so a
+ * tick that overspent still lands the clock on the wrong minute and this still
+ * reds on it: the pause stops the clock from moving further, not the assertion
+ * from seeing where it got to.
+ *
+ * Idempotent, and both reasons cost a test if they are got wrong: a read taken
+ * inside another pause must not start the clock again on its way out, and a
+ * session restored from a save taken while paused comes back paused - a helper
+ * that clicked blindly would start the clock in the middle of the read it was
+ * called to protect.
+ */
+export async function underPause<T>(
+  page: Page,
+  read: () => Promise<T>,
+): Promise<T> {
+  const pause = page.getByTestId('day-pause');
+  const already = await pause.getAttribute('aria-pressed') === 'true';
+
+  if (!already) {
+    await pause.click();
+    await expect(pause).toHaveAttribute('aria-pressed', 'true');
+  }
+
+  try {
+    return await read();
+  } finally {
+    if (!already) {
+      await pause.click();
+      await expect(pause).toHaveAttribute('aria-pressed', 'false');
+    }
+  }
 }
 
 /**

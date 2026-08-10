@@ -12,6 +12,7 @@ import {
   runOnlyCommand,
   runRealMinutes,
   runSimMinutes,
+  underPause,
   workUntil,
   workUntilMinute,
 } from './helpers';
@@ -303,6 +304,19 @@ test('a save taken while the phone is ringing comes back ringing', async ({
   const ringing = await huntFor(page, 'call');
   const ringingFor = ringing.call;
 
+  // Held for the reading and LEFT held for the save, the way the meeting walk
+  // below does it and for the same reason: the minute below is compared across
+  // a reload, so it has to be a minute nothing is spending in between - and a
+  // clock left running spends one on every click of the start menu. The pause
+  // rides the save, so the restored session comes back on the same held minute,
+  // and none of it touches the thing under test: occupancy is a function of the
+  // schedule and the clock, and the phone goes on ringing while the day stands
+  // still.
+  const pause = page.getByTestId('day-pause');
+
+  await pause.click();
+  await expect(pause).toHaveAttribute('aria-pressed', 'true');
+
   const before = await page.getByTestId('sim-clock-time').textContent();
 
   await page.getByTestId('start-button').click();
@@ -497,40 +511,6 @@ async function huntForReboot(
   }
 
   throw new Error('The workstation never took the desk.');
-}
-
-/**
- * Holds the day still for a read that has to be exact.
- *
- * An assertion retries in REAL time while the clock runs in SIM time, so at
- * speed a retry loop spends the very minutes it is trying to count. Anything
- * pinning an exact minute reads it with the day stopped - which is a control
- * the player has, and one every takeover deliberately leaves reachable.
- *
- * Idempotent, because a session restored from a save taken while paused comes
- * back paused: a helper that clicked blindly would start the clock in the
- * middle of the read it was called to protect.
- */
-async function underPause<T>(
-  page: import('@playwright/test').Page,
-  read: () => Promise<T>,
-): Promise<T> {
-  const pause = page.getByTestId('day-pause');
-  const already = await pause.getAttribute('aria-pressed') === 'true';
-
-  if (!already) {
-    await pause.click();
-    await expect(pause).toHaveAttribute('aria-pressed', 'true');
-  }
-
-  try {
-    return await read();
-  } finally {
-    if (!already) {
-      await pause.click();
-      await expect(pause).toHaveAttribute('aria-pressed', 'false');
-    }
-  }
 }
 
 /** Everything the terminal has printed, as one string. */
