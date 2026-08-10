@@ -16,6 +16,7 @@
     "core:build": "wasm-pack build core-rs --target web --out-dir pkg",
     "gate:core": "npm run core:test && npm run core:lint && npm run core:build",
     "gate": "npm run gate:core && npm run typecheck && npm run lint && vitest run",
+    "gate:seeds": "WG_SEEDS=10000 vitest run --no-file-parallelism src/world/tickets/solvability.test.ts -t \"drawn weeks\"",
     "gate:e2e": "playwright test"
   },
   "devDependencies": {

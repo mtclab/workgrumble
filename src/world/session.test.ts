@@ -67,10 +67,23 @@ function fixtureEmployer(): Employer {
     // is fine, and week one of any arc is quiet, so nothing weathers here.
     arc: EMPLOYER_ARC,
     // The switch-engine tests read the arriving player node and never drive the
-    // day loop, so the week and rooms can be empty here - a coherent value the
-    // session can point the active pointers at, no more. Slice 3's real second
-    // employer carries a genuine five-day week; this bench does not need one.
-    week: [],
+    // day loop, so the week deals nothing - but it is five days of dealing
+    // nothing rather than no days at all. A nought-day week is a week the
+    // loader has always refused (I1); it only ever got through here because
+    // the session handed the table back untouched, and it stopped getting
+    // through the day the session started BUILDING one (E11, 0.31.0 slice 2).
+    // Slice 3's real second employer carries a genuine five-day week; this
+    // bench needs a coherent one, not a full one.
+    week: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(
+      (label, index) => ({
+        day: index + 1,
+        label,
+        inherited: [],
+        drip: [],
+        patrolSeed: index === 0 ? 0 : 1_000 + index,
+        load: 1,
+      }),
+    ),
     channels: [],
     reviewBar: REVIEW_PASS_PERFORMANCE,
     runsBossPings: false,

@@ -76,7 +76,16 @@ import { UNTRIAGED_SLA_TICKS } from '../priority';
 import { TICKET_HYGIENE_SYNC } from '../scenes/meeting';
 import { createWorldSession, seedForAttempt, type WorldSession } from '../session';
 import { type Employer, EMPLOYER_IDS, employerFor } from '../employers';
-import { dayPlan, interruptionPlanFor, WEEK_DAYS } from '../week';
+import {
+  dayPlan,
+  interruptionPlanFor,
+  MAX_INHERITED,
+  WEEK_DAYS,
+  type DayScript,
+} from '../week';
+import { dayLoad } from '../load';
+import { contentFor } from '../pools';
+import { generateWeek } from '../week-gen';
 import { BODGE_TICKETS } from './bodge';
 import { CORPORATE_TICKETS } from './corporate';
 import { mspOnboardingSetup } from '../msp-company';
@@ -654,10 +663,11 @@ function dealtOn(
   day: number,
   seed: number,
   employer: Employer = employerFor(),
+  week: readonly DayScript[] = employer.week,
 ): readonly Dealt[] {
   const graph = estateOf(employer);
 
-  return buildDaySchedule(day, seed, dayPlan(day, employer.week)).arrivals
+  return buildDaySchedule(day, seed, dayPlan(day, week)).arrivals
     .map((arrival) => {
       const entry = findWorldTicket(arrival.ticketId);
 
@@ -734,6 +744,18 @@ export function clearAirOn(
    */
   presence: Presence = DEFAULT_PRESENCE,
   /**
+   * WHICH of that shop's weeks is being audited.
+   *
+   * The shipped table by default, which is every caller that existed before
+   * the generator. A drawn week is the same fourteen columns arranged
+   * differently, and the whole point of the auditor being the property (E11,
+   * 0.31.0 slice 2) is that a week nobody wrote by hand goes through exactly
+   * the arithmetic the four hand-written ones do. The employer stays a separate
+   * argument because the ESTATE is the other half of the answer - the clock a
+   * Gold customer's fault lands with is a fact about the shop, not the week.
+   */
+  week: readonly DayScript[] = employer.week,
+  /**
    * How many nights the audit is allowed to look past the arriving day.
    *
    * Two by default, which is one more than the longest target in the ladder
@@ -752,21 +774,35 @@ export function clearAirOn(
    * they are real days of the same week and a ticket carried into one of them
    * is competing with whatever that day actually holds.
    */
+  // Remembered per day, because the loop below asks for the same day's
+  // bookings once per ticket it deals and the answer cannot move between two
+  // of those asks. It is the difference between a sweep that runs in the suite
+  // and one that rebuilds four schedules for every ticket in a hundred weeks.
+  const booked = new Map<number, readonly TickWindow[]>();
   const bookedOn = (on: number): readonly TickWindow[] => {
-    const dayPlanned = interruptionPlanFor(on, seed, employer.week);
+    const remembered = booked.get(on);
+
+    if (remembered !== undefined) {
+      return remembered;
+    }
+
+    const dayPlanned = interruptionPlanFor(on, seed, week);
     const dayBlocked = on === day ? rounds ?? dayPlanned.blocked : dayPlanned.blocked;
     const schedule = buildInterruptionSchedule(seed, on, {
       slots: on === day ? [...dayPlanned.slots, ...extra] : dayPlanned.slots,
       blocked: dayBlocked,
     });
 
-    return [
+    const windows = [
       ...dayBlocked,
       ...worstCaseWindows(schedule, dayBlocked, presence),
     ];
+    booked.set(on, windows);
+
+    return windows;
   };
 
-  return dealtOn(day, seed, employer).map((ticket) => {
+  return dealtOn(day, seed, employer, week).map((ticket) => {
     // The window a player could work it in: from the minute it lands to the
     // minute the deadline runs out - counted a SHIFT AT A TIME, because both
     // clocks on a ticket are counted in working minutes and a night is not a
@@ -831,9 +867,10 @@ export function auditDayTiming(
   extra: readonly InterruptionSlot[] = [],
   rounds?: readonly TickWindow[],
   presence: Presence = DEFAULT_PRESENCE,
+  week: readonly DayScript[] = employer.week,
   daysAhead = 2,
 ): readonly string[] {
-  return clearAirOn(day, seed, employer, extra, rounds, presence, daysAhead)
+  return clearAirOn(day, seed, employer, extra, rounds, presence, week, daysAhead)
     .filter((air) => air.clear < CLEAR_MINUTES_NEEDED)
     .map(
       (air) => `${air.id} has ${String(air.clear)} clear minute(s) between `
@@ -945,9 +982,15 @@ describe.each(SHIPPED_WEEKS)(
      */
     it('counts no minute past the end of the week', () => {
       expect(
-        clearAirOn(WEEK_DAYS, seed, employer, [], undefined, DEFAULT_PRESENCE, 2),
+        clearAirOn(
+          WEEK_DAYS, seed, employer, [], undefined, DEFAULT_PRESENCE,
+          employer.week, 2,
+        ),
       ).toEqual(
-        clearAirOn(WEEK_DAYS, seed, employer, [], undefined, DEFAULT_PRESENCE, 0),
+        clearAirOn(
+          WEEK_DAYS, seed, employer, [], undefined, DEFAULT_PRESENCE,
+          employer.week, 0,
+        ),
       );
     });
 
@@ -1054,6 +1097,7 @@ describe('the probation week, under the worst schedule it can deal', () => {
       [],
       undefined,
       DEFAULT_PRESENCE,
+      employerFor().week,
       0,
     );
 
@@ -1272,4 +1316,136 @@ describe('the solvability gate, pointed at something that is meant to fail', () 
       return session;
     })).toEqual([]);
   });
+});
+
+/**
+ * And the same arithmetic over weeks nobody wrote (E11, 0.31.0 slice 2).
+ *
+ * The auditor IS the property. The generator's own tests prove it emits the
+ * shipped tables and that its beats, its window and its budget behave; none of
+ * that says a DRAWN week is playable, and "playable" here has an exact meaning
+ * this file already owns - every ticket the day deals has ten clear minutes
+ * between arriving and going red, under the worst schedule the day could
+ * produce, under each of the three dots. A sampled week that breaches before
+ * the shift opens or buries a ticket under a calendar is a generator bug, and
+ * it is the kind that would not look like a bug: it would look like one shop's
+ * Thursday being quietly impossible on one seed in fifty.
+ *
+ * A hundred weeks per shop, which is the QuickCheck and Hypothesis default and
+ * is chosen for exactly this workflow - a suite run locally on every change,
+ * balancing running time against the chance of missing a case. `WG_SEEDS`
+ * raises it for the deep run the overseer does before a release (`npm run
+ * gate:seeds`, ten thousand), and a seed that ever fails becomes a named test
+ * here rather than a bigger number.
+ *
+ * WHY THE WINDOW IS NOUGHT, said out loud because it is a real limitation of
+ * this version and not a convenience. Every shop's pool holds exactly the
+ * entries its authored week uses - this version added no content - so a
+ * three-week exclusion window has nothing left to draw in week two and the
+ * generator refuses, correctly. The sweep therefore asks for no recency memory,
+ * which gives it genuinely different ARRANGEMENTS of the same content: the same
+ * question the auditor was built to answer, over weeks no human placed. The
+ * window itself is gated on content with a surplus in `week-gen.test.ts`.
+ */
+describe.each(SHIPPED_WEEKS)('$name: a hundred drawn weeks', ({ employer }) => {
+  const HOW_MANY = Number.parseInt(process.env.WG_SEEDS ?? '', 10) || 100;
+  const content = contentFor(employer);
+  const drawn = Array.from({ length: HOW_MANY }, (_, index) => ({
+    arcWeek: index + 2,
+    attempt: 1 + (index % 5),
+  }));
+
+  it(`are feasible under the worst schedule, all ${String(HOW_MANY)} of them`, () => {
+    const refused: string[] = [];
+    const complaints: string[] = [];
+    let worst = Number.POSITIVE_INFINITY;
+
+    for (const { arcWeek, attempt } of drawn) {
+      const seeded = seedForAttempt(attempt);
+      let week: readonly DayScript[];
+
+      try {
+        week = generateWeek({ employer: employer.id, attempt, arcWeek }, content, {
+          window: 0,
+        });
+      } catch (failure: unknown) {
+        refused.push(`week ${String(arcWeek)}: ${String(failure)}`);
+        continue;
+      }
+
+      for (const day of [1, 2, 3, 4, 5]) {
+        for (const air of clearAirOn(
+          day, seeded, employer, [], undefined, DEFAULT_PRESENCE, week,
+        )) {
+          worst = Math.min(worst, air.clear);
+        }
+
+        complaints.push(...auditDayTiming(
+          day, seeded, employer, [], undefined, DEFAULT_PRESENCE, week,
+        ).map((line) => `week ${String(arcWeek)} day ${String(day)}: ${line}`));
+      }
+    }
+
+    // Reported rather than only asserted: the margin is the number that says
+    // whether this gate is holding a line or standing next to one, and a sweep
+    // that only ever says "no complaints" cannot tell the difference between a
+    // week with eleven clear minutes and one with two hundred. Straight to the
+    // error stream, because that is the one the runner does not intercept and
+    // a number nobody can read is a number nobody has.
+    process.stderr.write(
+      `[seeds] ${employer.name}: ${String(drawn.length - refused.length)} drawn `
+      + `weeks, ${String(refused.length)} refused, worst clear air `
+      + `${String(worst)} minutes against the `
+      + `${String(CLEAR_MINUTES_NEEDED)} needed.\n`,
+    );
+
+    expect(refused).toEqual([]);
+    expect(complaints).toEqual([]);
+    expect(worst).toBeGreaterThanOrEqual(CLEAR_MINUTES_NEEDED);
+  }, 600_000);
+
+  /**
+   * And the shape of them, which is the half the auditor cannot see.
+   *
+   * The feasibility gate asks whether each ticket is reachable. It says nothing
+   * about whether the week is the week this shop writes - the ramp it wrote
+   * down, the morning pile the loader caps, the days it deals nothing on
+   * purpose. Those are cheap to check and they are the assertions that go red
+   * the moment somebody skews the budget, which is what makes the sweep a gate
+   * on the SAMPLER rather than only on the schedule.
+   */
+  it('and keep the shop\'s own shape', () => {
+    const empty = new Set(DEALS_NOTHING[employer.id] ?? []);
+
+    for (const { arcWeek, attempt } of drawn) {
+      const week = generateWeek(
+        { employer: employer.id, attempt, arcWeek },
+        content,
+        { window: 0 },
+      );
+      const priced = week.map((script) => dayLoad(script, findWorldTicket));
+
+      for (const [index, script] of week.entries()) {
+        expect(priced[index]?.load).toBe(script.load);
+        expect(script.inherited.length).toBeLessThanOrEqual(MAX_INHERITED);
+
+        const deals = script.inherited.length + script.drip.length;
+
+        if (!empty.has(script.day) && employer.week.some(
+          (authored) => authored.day === script.day
+            && authored.inherited.length + authored.drip.length > 0,
+        )) {
+          expect(deals).toBeGreaterThan(0);
+        }
+      }
+
+      // The ramp, which is the one thing about a week that is a design claim
+      // rather than an arrangement: Monday to Thursday it does not go
+      // backwards, whoever placed the content.
+      for (let day = 1; day < WEEK_DAYS - 1; day += 1) {
+        expect(week[day]?.load ?? 0)
+          .toBeGreaterThanOrEqual(week[day - 1]?.load ?? 0);
+      }
+    }
+  }, 600_000);
 });

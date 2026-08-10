@@ -34,11 +34,8 @@ import {
 import { FIELDS, playerTierOf } from '../world/fields';
 import { exitForOutcome } from '../world/offer';
 import { isReviewOutcome } from '../world/week';
-import {
-  shippedWeek,
-  weekRequestFrom,
-  type WeekSource,
-} from '../world/week-source';
+import { generatedWeek } from '../world/week-gen';
+import { weekRequestFrom, type WeekSource } from '../world/week-source';
 
 /**
  * The shape written today. Bumped when the file's meaning changes.
@@ -443,8 +440,9 @@ export interface SessionParts {
    * the session that WROTE the file would have got. It is asked with the
    * employer the file names and the attempt and arc position read off the
    * restored graph, so a save taken in one week cannot reload into another.
-   * The default is the shipped table, which is what every caller wants until
-   * the generator lands.
+   * The default is the generator, which at the first week of an arc emits the
+   * shop's authored table byte for byte - so this is the same answer the
+   * shipped table gave, arrived at through the seam a later week will need.
    */
   weekFor?: WeekSource;
   /**
@@ -626,7 +624,7 @@ export function createShellSession(
         return file;
       }
 
-      const weekFor = parts.weekFor ?? shippedWeek;
+      const weekFor = parts.weekFor ?? generatedWeek;
       const tried = preflight(file.value, actor, parts.probeEngine, weekFor);
 
       if (!tried.ok) {

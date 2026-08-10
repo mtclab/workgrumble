@@ -28,6 +28,7 @@ import {
 } from './pressure';
 import { spawnWorldTicket } from './tickets';
 import { type DayScript } from './week';
+import { generatedWeekFor } from './week-gen';
 import { type WeekSource } from './week-source';
 
 /**
@@ -250,14 +251,14 @@ export function createWorldSession(
    * weeks are generated there is one place that answers the question and one
    * place a load has to agree with (`week-source.ts`).
    *
-   * The default is the week the employer HANDED IN is carrying, which is what
-   * this function has always used and is not the same thing as `shippedWeek`:
-   * that one resolves an id against the registry, and a test may stand up a
-   * fixture shop the registry has never heard of. Asking the registry for an
-   * employer somebody just gave us would be a second answer to a question that
-   * arrived with one.
+   * The default generates it from the employer HANDED IN, rather than from the
+   * registry: a test may stand up a fixture shop the registry has never heard
+   * of, and asking the registry for an employer somebody just gave us would be
+   * a second answer to a question that arrived with one. At the first week of
+   * an arc - which is every week this build can reach - the generator emits
+   * that shop's authored table byte for byte, so nothing a player sees moves.
    */
-  weekSource: WeekSource = () => employer.week,
+  weekSource: WeekSource = generatedWeekFor(employer),
 ): WorldSession {
   const start = requireCarry(carry);
   const player = employer.playerId;
