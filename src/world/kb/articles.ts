@@ -2514,4 +2514,74 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/licence-seats', 'kb/msp-scope-escalation'],
   },
+  {
+    id: 'kb/mac-shell-dialect',
+    title: 'On a Mac the shell is zsh, the init is launchd, and there is no '
+      + 'package manager',
+    summary: 'A terminal on a Mac is a unix terminal and is not a Linux one. '
+      + 'The shared tools carry over; systemctl, apt and the SELinux verbs are '
+      + 'not there at all, and what replaces them is launchctl and the '
+      + 'management catalogue.',
+    state: 'published',
+    issue: 'I got onto the designer\'s Mac over ssh and half of what I type '
+      + 'comes back "command not found". systemctl is not there. apt is not '
+      + 'there. Is the box broken, or locked down, or am I on the wrong machine?',
+    environment: 'Any managed Mac reached over Remote Login (ssh), at the '
+      + 'engineer tier. Most often the first time somebody who lives on Linux '
+      + 'servers has to work one.',
+    resolution: [
+      'Nothing is broken. Read the prompt: a Mac ends it with a space and a '
+        + 'percent sign - "you@host ~ %" - because the shell is zsh and that is '
+        + 'the PS1 macOS ships in /etc/zshrc. A colon and a dollar is bash on a '
+        + 'Linux box. The prompt tells you which family you are in before you '
+        + 'have typed anything.',
+      'For services, use launchctl and give it a DOMAIN: "launchctl list" for '
+        + 'what is loaded, "launchctl print system/<label>" to read one, and '
+        + '"launchctl kickstart -k system/<label>" to restart it. Jobs are '
+        + 'named in reverse-DNS (com.apple.mDNSResponder), not as nginx.service.',
+      'Get the domain right or the command fails, and that is the tool being '
+        + 'correct rather than awkward: "system" is a root daemon out of '
+        + '/Library/LaunchDaemons, "gui/<uid>" is an agent in the logged-in '
+        + 'user\'s session out of /Library/LaunchAgents. A job lives in one of '
+        + 'them, and asking for it in the other says so.',
+      'For logs, "log show" - the same stream the Console app shows. There is '
+        + 'no journalctl because there is no journal.',
+      'Do not reach for a package manager. macOS has none, and on a managed '
+        + 'fleet Homebrew is usually not installed either: software comes from '
+        + 'the MDM\'s catalogue. If a tool you want is missing, that is a fleet '
+        + 'question, not a "sudo something install" question.',
+      'Everything shared still works exactly as you know it: ls, ps, df, du, '
+        + 'chmod, chown, dig, curl, ping. Read the OUTPUT carefully though - '
+        + 'df heads its column Capacity, ifconfig writes the netmask in hex, and '
+        + 'ping counts from zero. Same job, BSD spelling.',
+    ],
+    cause: [
+      'macOS is a unix, and it is not a Linux. The userland it inherits is '
+      + 'BSD\'s, so the tools that come from BSD are the ones that ship: '
+      + 'ifconfig, netstat and traceroute are here and are current, while '
+      + 'iproute2 - the ip and ss that replaced them on Linux - was never on '
+      + 'this family at all. That is why the "deprecated" advice you have '
+      + 'learned on Linux is wrong here.',
+      'The init system is launchd, and launchctl is its tool. The vocabulary '
+      + 'moved once, which is why half the instructions on the web are wrong: '
+      + 'load and unload are the legacy pair, and the modern verbs are '
+      + 'bootstrap, bootout, kickstart and print, all of which take a domain '
+      + 'target. Learn the modern four and you can read what a box is actually '
+      + 'doing.',
+      'The shell changed too. macOS made zsh the default in Catalina, and the '
+      + 'bash that is still on the box is version 3.2 - frozen in 2007, because '
+      + 'bash 4 moved to GPL v3 and Apple has not shipped that licence since. '
+      + 'So a script that wants associative arrays or "${var^^}" fails on a Mac '
+      + 'in a way it fails nowhere else, and the fix is to write for zsh, or '
+      + 'for POSIX sh, or to install a modern bash yourself. It is the oldest '
+      + 'binary on the machine and it will still be there next year.',
+      'And there is no system package manager, which surprises everyone once. '
+      + 'Homebrew is a third-party project, not an Apple one; it installs into '
+      + 'its own prefix and it is somebody\'s deliberate decision to have on a '
+      + 'managed machine. On a fleet the shop actually manages, the software '
+      + 'story is the MDM, and a tech who assumes brew is present is assuming a '
+      + 'machine that was never set up that way.',
+    ],
+    see_also: ['kb/mac-screen-recording-consent', 'kb/gatekeeper-unnotarized'],
+  },
 ];

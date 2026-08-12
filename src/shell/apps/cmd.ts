@@ -8,6 +8,7 @@ import {
   executeUnix,
   parseUnixCommand,
   promotionEarned,
+  sessionFamily,
   type SshSession,
   unixPrompt,
 } from './cmd-unix';
@@ -79,7 +80,7 @@ export const CMD_APP: AppDef = {
 
     const currentPrompt = (): string => session === null
       ? promptFor(cwd)
-      : unixPrompt(session);
+      : unixPrompt(session, sessionFamily(api, session));
 
     const showPrompt = (): void => {
       prompt.textContent = currentPrompt();

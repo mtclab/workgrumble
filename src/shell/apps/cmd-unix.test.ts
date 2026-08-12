@@ -41,6 +41,7 @@ import {
   parseUnixCommand,
   readInstalledPackages,
   readKnownHosts,
+  sessionFamily,
   type SshSession,
   unixPrompt,
 } from './cmd-unix';
@@ -264,8 +265,8 @@ describe('the promotion, ssh, and the unix terminal (E6)', () => {
     }
 
     it('prompts as user@host, a real family difference from C:\\>', () => {
-      const { ssh } = onBox();
-      expect(unixPrompt(ssh)).toBe('pat@APP-01:~$');
+      const { api, ssh } = onBox();
+      expect(unixPrompt(ssh, sessionFamily(api, ssh))).toBe('pat@APP-01:~$');
     });
 
     it('systemctl status reads the seeded unit as the richer ●-dot block', () => {

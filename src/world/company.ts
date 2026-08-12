@@ -23,6 +23,7 @@ import {
   baselineServiceId,
   baselineUnitsFor,
   unitIdOn,
+  unitNodeFields,
 } from './services';
 
 /**
@@ -1301,16 +1302,7 @@ export function companySetup(): readonly SetupOp[] {
       for (const unit of baselineUnitsFor(os, machine.role)) {
         const id = unitIdOn(machine.id, unit.unit);
 
-        addNode(ops, {
-          id,
-          kind: 'unit',
-          fields: {
-            [FIELDS.name]: unit.name,
-            [FIELDS.unitName]: unit.unit,
-            [FIELDS.unitState]: unit.state,
-            [FIELDS.unitEnabled]: unit.enabled,
-          },
-        });
+        addNode(ops, { id, kind: 'unit', fields: unitNodeFields(unit) });
         addEdge(ops, { from: id, to: machine.id, kind: 'runs_on' });
       }
 

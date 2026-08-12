@@ -1249,6 +1249,27 @@ export const FIELDS = {
    */
   unitEnabled: 'unit_enabled',
   /**
+   * The launchd DOMAIN a job is bootstrapped into (0.33.0), on the `unit` nodes
+   * of the third family and on nothing else.
+   *
+   * It is the half of a launchd job that has no systemd cousin at all. Every
+   * modern `launchctl` verb takes a service TARGET rather than a name -
+   * `launchctl print system/com.apple.mDNSResponder`, `launchctl kickstart -k
+   * gui/501/com.adobe.ARMDC.Communicator` - and the domain in front of the
+   * label is what says whether the job is a root DAEMON that runs whether or
+   * not anybody is logged in, or a per-user AGENT that comes and goes with the
+   * login session. Two things a tech has to get right, and the reason
+   * `launchctl print` on the wrong domain fails rather than guessing.
+   *
+   * So it is DATA on the unit, the way the state and the enablement are, and
+   * not something the dialect infers off a label prefix: which domain a job
+   * lives in is a fact about the job, and `com.adobe.*` is in both of them on
+   * the very estate this ships for. Absent means the node is not a launchd job
+   * - every systemd unit on every Linux box carries none, and nothing reads it
+   * there.
+   */
+  launchdDomain: 'launchd_domain',
+  /**
    * A unit's journal (E6, Pass B): the lines `journalctl -u <unit>` prints and
    * the tail `systemctl status` shows, one journal line per newline, in the real
    * `MMM DD HH:MM:SS host process[pid]: message` shape.
@@ -1977,6 +1998,42 @@ export function machineOsOf(value: unknown): MachineOs {
  */
 export function isUnixFamily(os: MachineOs): boolean {
   return os === MACHINE_OS.linux || os === MACHINE_OS.mac;
+}
+
+/**
+ * The uid macOS gives the first human account on a box, and the one every
+ * `gui/<uid>` domain target on this estate is spelled with.
+ *
+ * 501 rather than Linux's 1000, because that is the number: macOS starts local
+ * accounts at 501 and a tech reads `gui/501` off a real Mac every day of the
+ * week. It is a constant rather than a seeded field for the same reason the
+ * baseline unit tables are tables - every Mac in this world is one desk with
+ * one person at it, and a second uid would be a fact the estate does not hold.
+ */
+export const MAC_LOGIN_UID = 501;
+
+/**
+ * The two launchd domains this world holds, in the exact spelling `launchctl`
+ * takes them.
+ *
+ * `system` is the root domain: LaunchDaemons, loaded at boot, running whether
+ * anybody is logged in or not. `gui/<uid>` is the login session's: LaunchAgents,
+ * which arrive when that user logs in and leave with them. (launchd has more -
+ * `user/<uid>`, `pid/<pid>`, `login/<asid>` - and this world holds jobs in
+ * neither of them, so neither is spelled anywhere.)
+ */
+export const LAUNCHD_DOMAINS = {
+  system: 'system',
+  gui: `gui/${String(MAC_LOGIN_UID)}`,
+} as const;
+
+export type LaunchdDomain = (typeof LAUNCHD_DOMAINS)[keyof typeof LAUNCHD_DOMAINS];
+
+/** The domain a launchd job is bootstrapped into, or null for a systemd unit. */
+export function launchdDomainOf(value: unknown): LaunchdDomain | null {
+  return value === LAUNCHD_DOMAINS.system || value === LAUNCHD_DOMAINS.gui
+    ? value
+    : null;
 }
 
 /**

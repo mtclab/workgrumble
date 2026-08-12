@@ -32,7 +32,11 @@
  * written down in `docs/research/terminal-fidelity.md` rather than faked.
  */
 
+import type { FieldValue } from '../engine-api';
 import {
+  FIELDS,
+  LAUNCHD_DOMAINS,
+  type LaunchdDomain,
   MACHINE_OS,
   type MachineOs,
   type MachineRole,
@@ -624,6 +628,14 @@ export const BASELINE_UNITS: Readonly<
 export interface LaunchdJob {
   /** The reverse-DNS label `launchctl` takes: `com.apple.mDNSResponder`. */
   readonly unit: string;
+  /**
+   * The domain the job is bootstrapped into, and the half of a launchd job
+   * that has no systemd cousin (0.33.0): `system` for a root LaunchDaemon,
+   * `gui/501` for a LaunchAgent in the logged-in user's session. Every modern
+   * `launchctl` verb takes it in front of the label, and which one a job is in
+   * decides where its plist lives and whether it runs with nobody logged in.
+   */
+  readonly domain: LaunchdDomain;
   /** What the job is for, in plain words - the label alone teaches nothing. */
   readonly name: string;
   /** Running or not, in the storage words above. */
@@ -658,35 +670,47 @@ export type BaselineUnit = LinuxUnit | LaunchdJob;
  *   Cloud and which every Mac tech has read off a login-items list while
  *   somebody asked what they were.
  *
+ * The DOMAIN column (0.33.0) is the daemon/agent split, and Adobe's pair is
+ * exactly why it is data rather than a guess off the label: the Communicator
+ * is a LaunchAgent in the user's login session (`gui/501`) and the privileged
+ * SMJobBless helper it talks to is a root LaunchDaemon (`system`), which is
+ * the whole shape of a privileged-helper install and two lines of the same
+ * reverse-DNS prefix.
+ *
  * Sorted by label, which is the order `launchctl list` is read in.
  */
 const MANAGED_MAC_UNITS: readonly LaunchdJob[] = [
   {
     unit: 'com.adobe.ARMDC.Communicator',
+    domain: LAUNCHD_DOMAINS.gui,
     name: 'Adobe Acrobat update communicator',
     state: SYSTEMD_STATES.activeRunning,
     enabled: UNIT_ENABLEMENTS.enabled,
   },
   {
     unit: 'com.adobe.ARMDC.SMJobBlessHelper',
+    domain: LAUNCHD_DOMAINS.system,
     name: 'Adobe Acrobat privileged update helper',
     state: SYSTEMD_STATES.activeRunning,
     enabled: UNIT_ENABLEMENTS.enabled,
   },
   {
     unit: 'com.apple.mDNSResponder',
+    domain: LAUNCHD_DOMAINS.system,
     name: 'Bonjour: multicast DNS and service discovery',
     state: SYSTEMD_STATES.activeRunning,
     enabled: UNIT_ENABLEMENTS.enabled,
   },
   {
     unit: 'com.jamf.management.daemon',
+    domain: LAUNCHD_DOMAINS.system,
     name: 'Jamf Pro management daemon',
     state: SYSTEMD_STATES.activeRunning,
     enabled: UNIT_ENABLEMENTS.enabled,
   },
   {
     unit: 'com.openssh.sshd',
+    domain: LAUNCHD_DOMAINS.system,
     name: 'Remote Login (OpenSSH)',
     state: SYSTEMD_STATES.activeRunning,
     enabled: UNIT_ENABLEMENTS.enabled,
@@ -756,6 +780,30 @@ export function baselineServiceId(machineId: string, service: string): string {
  * because the node kind is, and a Mac's jobs going through a function with
  * `linux` in its name would have been a lie sitting in the call sites.
  */
+/**
+ * The fields a baseline unit becomes on its node - the ONE place a table row
+ * is turned into a `unit` (0.33.0).
+ *
+ * It exists for the reason `baselineUnitsFor` exists: the seeders spelled these
+ * four keys out by hand at two call sites, which was fine while both families
+ * wrote the same four and a bug the moment the third family had a fifth. A
+ * launchd job carries its DOMAIN and a systemd unit has no such thing, so the
+ * fork belongs here rather than in two seeders that would have to remember it.
+ */
+export function unitNodeFields(
+  unit: Readonly<BaselineUnit>,
+): Record<string, FieldValue> {
+  return {
+    [FIELDS.name]: unit.name,
+    [FIELDS.unitName]: unit.unit,
+    [FIELDS.unitState]: unit.state,
+    [FIELDS.unitEnabled]: unit.enabled,
+    // Only a launchd job has one, and the absence is what says a node is a
+    // systemd unit - so no Linux box anywhere gains a field it has no use for.
+    ...('domain' in unit ? { [FIELDS.launchdDomain]: unit.domain } : {}),
+  };
+}
+
 export function unitIdOn(machineId: string, unit: string): string {
   const box = machineId.includes(':')
     ? machineId.slice(machineId.indexOf(':') + 1)

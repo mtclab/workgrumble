@@ -2794,6 +2794,64 @@ const ENTRIES = [
       + 'promotion unlocks.',
   },
   {
+    id: 'cmd.launchctl',
+    surface: 'cmd',
+    control: 'launchctl <list | print <domain>/<label> | kickstart [-k] '
+      + '<domain>/<label> | bootout <domain>/<label> | bootstrap <domain> '
+      + '<plist>>',
+    does: 'The third family\'s service manager (0.33.0), in the modern '
+      + 'vocabulary: "list" prints the loaded jobs in launchctl\'s PID/Status/'
+      + 'Label columns under their real reverse-DNS names, "print" prints one '
+      + 'job\'s block (path, state, pid, last exit code) and FAILS on the wrong '
+      + 'domain in launchctl\'s own "Could not find service" sentence, and the '
+      + 'three fix verbs dispatch THE SAME registered actions systemctl does - '
+      + 'kickstart -k is unitRestart, bootout is unitStop, bootstrap is '
+      + 'unitStart - through the same customer-scope, change-control and '
+      + 'permission guards, silent on success exactly as systemctl is. A bare '
+      + 'label is refused with what a service target is, and the legacy '
+      + 'load/unload pair is refused by name rather than half-shipped.',
+    command: 'launchctl',
+    actions: [
+      SYSTEMD_ACTIONS.unitRestart,
+      SYSTEMD_ACTIONS.unitStart,
+      SYSTEMD_ACTIONS.unitStop,
+    ],
+    run: 'sysadmin',
+    why: 'The mac dialect, which needs the promotion (ssh is the engineers\' '
+      + 'tier) and a Mac to stand on - the studio\'s desks, at the MSP.',
+  },
+  {
+    id: 'cmd.log',
+    surface: 'cmd',
+    control: 'log show [--last <n>]',
+    does: 'macOS\'s unified-log reader (0.33.0), and the third face of a log '
+      + 'this world already holds: the real Timestamp/Thread/Type/Activity/PID/'
+      + 'TTL columns and the "Log - Default: N" count footer, over the SAME '
+      + 'lines journalctl reads off the jobs on the box. --last is the real flag '
+      + 'and is not applied, which the output says out loud rather than letting '
+      + 'a player believe a window ran; log stream is refused, because a live '
+      + 'tail runs until it is interrupted and this terminal cannot interrupt '
+      + 'anything.',
+    command: 'log',
+    run: 'sysadmin',
+    why: 'The mac dialect, behind the same promotion and the same box.',
+  },
+  {
+    id: 'cmd.brew',
+    surface: 'cmd',
+    control: 'brew <install <formula> | list | upgrade>',
+    does: 'Homebrew, refused honestly (0.33.0) - and the refusal is the '
+      + 'teaching. Homebrew is not part of macOS: it is a third-party manager '
+      + 'somebody installs by hand, and these desks are MDM-enrolled, so their '
+      + 'software comes from the management catalogue. zsh\'s own '
+      + 'command-not-found, then the true reason. A simulated brew install '
+      + 'would have been a fabricated package manager on a box that has none, '
+      + 'which teaches exactly the wrong instinct about a managed fleet.',
+    command: 'brew',
+    run: 'sysadmin',
+    why: 'The mac dialect, behind the same promotion and the same box.',
+  },
+  {
     id: 'cmd.gagged-tools-installed',
     surface: 'cmd',
     control: 'htop | traceroute <host> | ifconfig | netstat -tlnp',

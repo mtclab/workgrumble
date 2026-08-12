@@ -55,6 +55,10 @@ import {
 import {
   FIELDS,
   isSystemsEngineer,
+  LAUNCHD_DOMAINS,
+  type LaunchdDomain,
+  launchdDomainOf,
+  MAC_LOGIN_UID,
   MACHINE_OS,
   machineOsOf,
   SYSTEMD_STATES,
@@ -104,6 +108,209 @@ export interface SshSession {
 }
 
 /**
+ * The two unix families this terminal can stand on (0.33.0). Not `MachineOs`:
+ * there is no such thing as an ssh session on a Windows box here, and a type
+ * that admitted one would be a third branch every renderer had to answer for.
+ */
+export type UnixFamily = typeof MACHINE_OS.linux | typeof MACHINE_OS.mac;
+
+/**
+ * Which family the box under a session is in - the ONE fork the dialect has.
+ *
+ * Read off the box the way `packageManagerOn` reads its package manager, rather
+ * than stored on the session, because it is a fact about the machine and the
+ * session is window-local scratch. Anything that is not a seeded Mac reads
+ * LINUX, and the interesting case is the player's own reinstalled workstation:
+ * its `machine_os` field still says `windows` (a reinstall is a shell fact, and
+ * the 0.27.0 invariant is that it writes nothing to the world), and it is a
+ * Linux box in every way that matters here - which is exactly the join
+ * `isUnixHost` makes at the ssh seam.
+ */
+export function sessionFamily(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): UnixFamily {
+  const box = api.graph.getNode(session.hostId);
+
+  return box !== undefined
+    && machineOsOf(box.fields[FIELDS.machineOs]) === MACHINE_OS.mac
+    ? MACHINE_OS.mac
+    : MACHINE_OS.linux;
+}
+
+/** Shorthand for the one question the mac overlays ask. */
+function isMac(api: GameApi, session: Readonly<SshSession>): boolean {
+  return sessionFamily(api, session) === MACHINE_OS.mac;
+}
+
+/**
+ * How the box's own shell says a word is not a command, which is not the same
+ * sentence in the two families.
+ *
+ * bash prints `<name>: command not found` (Ubuntu's handler then adds its
+ * install hint on the next line, which is why the Linux half is spelled
+ * bare here). zsh prints the name LAST - `zsh: command not found: systemctl` -
+ * and names itself while it does it. It is one line and it is the first thing
+ * that tells somebody which shell caught their typo.
+ */
+function commandNotFound(name: string, family: UnixFamily): string {
+  return family === MACHINE_OS.mac
+    ? `zsh: command not found: ${name}`
+    : `${name}: command not found`;
+}
+
+/**
+ * The verbs that belong to ONE unix family, and what the other family has
+ * instead (0.33.0).
+ *
+ * This is the same mechanism `wrongPackageManager` has run since 0.27.0,
+ * generalised one axis outward: a binary a box does not have is a
+ * command-not-found, and the second line names the tool that box DOES have,
+ * because a refusal that leaves somebody guessing at two in the morning is a
+ * dead end. Reading it as a table rather than as branches is what keeps the two
+ * dialects honest in BOTH directions - `systemctl` on a Mac and `launchctl` on
+ * a Linux box are the same kind of miss, and neither of them is special-cased.
+ *
+ * Every entry is a real absence, checked: iproute2 (`ip`, `ss`) is Linux's and
+ * macOS is BSD-flavoured; `getent` is glibc's NSS front end and macOS keeps its
+ * accounts in Directory Services; SELinux is a Linux kernel module and macOS
+ * confines processes with an entirely different mechanism; and launchd, brew
+ * and `log` have never been on a Linux box. Nothing is listed here because it
+ * is inconvenient - `ls`, `ps`, `df`, `du`, `chmod`, `dig`, `curl` and the rest
+ * of the shared table are on BOTH, and they carry over.
+ */
+interface DialectVerb {
+  /** The family whose boxes have the binary. */
+  readonly family: UnixFamily;
+  /** What the OTHER family has instead - the second line of the refusal. */
+  readonly instead: string;
+}
+
+const DIALECT_VERBS: Readonly<Record<string, DialectVerb>> = {
+  systemctl: {
+    family: MACHINE_OS.linux,
+    instead: 'macOS runs launchd, not systemd. The tool is launchctl and it '
+      + 'takes a domain target: "launchctl print system/<label>".',
+  },
+  journalctl: {
+    family: MACHINE_OS.linux,
+    instead: 'There is no journal here. macOS keeps a unified log, read with '
+      + '"log show" (and in the Console app, which is the same stream).',
+  },
+  apt: {
+    family: MACHINE_OS.linux,
+    instead: 'That is Debian\'s package manager. macOS ships none: software on '
+      + 'a managed Mac arrives from the MDM, and Homebrew is the third-party '
+      + 'one people install themselves.',
+  },
+  dnf: {
+    family: MACHINE_OS.linux,
+    instead: 'That is the RHEL family\'s package manager, and macOS has no '
+      + 'system package manager at all.',
+  },
+  yum: {
+    family: MACHINE_OS.linux,
+    instead: 'That is the RHEL family\'s, and macOS has no system package '
+      + 'manager at all.',
+  },
+  zypper: {
+    family: MACHINE_OS.linux,
+    instead: 'That is openSUSE\'s, and macOS has no system package manager at '
+      + 'all.',
+  },
+  pacman: {
+    family: MACHINE_OS.linux,
+    instead: 'That is Arch\'s, and macOS has no system package manager at all.',
+  },
+  dpkg: {
+    family: MACHINE_OS.linux,
+    instead: 'That is the Debian package database. macOS has no such database: '
+      + 'what is installed is applications in /Applications and receipts under '
+      + '/var/db/receipts, which is a different model rather than a different '
+      + 'spelling.',
+  },
+  'subscription-manager': {
+    family: MACHINE_OS.linux,
+    instead: 'That is Red Hat\'s entitlement tool. This is a Mac; whatever it '
+      + 'is licensed for, Red Hat is not it.',
+  },
+  getenforce: {
+    family: MACHINE_OS.linux,
+    instead: 'SELinux is a Linux kernel module. macOS confines processes with '
+      + 'its own sandbox, SIP and TCC - different mechanisms, no contexts on '
+      + 'files, and none of them read by this tool.',
+  },
+  sestatus: {
+    family: MACHINE_OS.linux,
+    instead: 'SELinux is a Linux kernel module, and this box has never had one.',
+  },
+  restorecon: {
+    family: MACHINE_OS.linux,
+    instead: 'SELinux is a Linux kernel module. There are no file contexts on '
+      + 'this box to put back.',
+  },
+  setenforce: {
+    family: MACHINE_OS.linux,
+    instead: 'SELinux is a Linux kernel module, and there is no enforcement '
+      + 'mode here to switch.',
+  },
+  ip: {
+    family: MACHINE_OS.linux,
+    instead: 'iproute2 is Linux\'s. macOS is BSD-flavoured and still lives on '
+      + 'ifconfig, which is here and is not deprecated on this family.',
+  },
+  ss: {
+    family: MACHINE_OS.linux,
+    instead: 'iproute2 is Linux\'s. The listener read here is "netstat -an", '
+      + 'and "lsof -i" is what names the process.',
+  },
+  getent: {
+    family: MACHINE_OS.linux,
+    instead: 'getent is glibc\'s front end to NSS. macOS keeps accounts in '
+      + 'Directory Services and reads them with dscl, which this terminal does '
+      + 'not simulate.',
+  },
+  certbot: {
+    family: MACHINE_OS.linux,
+    instead: 'certbot is not on this box. Nothing on a designer\'s Mac '
+      + 'terminates TLS for anybody; the certificates this shop renews are on '
+      + 'the Linux servers.',
+  },
+  launchctl: {
+    family: MACHINE_OS.mac,
+    instead: 'launchd is Apple\'s. This box runs systemd, and systemctl is the '
+      + 'tool.',
+  },
+  log: {
+    family: MACHINE_OS.mac,
+    instead: '"log" is macOS\'s unified-log reader. The journal here is read '
+      + 'with journalctl.',
+  },
+  brew: {
+    family: MACHINE_OS.mac,
+    instead: 'Homebrew is a macOS package manager. This box has its own, and '
+      + 'it is the distribution\'s.',
+  },
+};
+
+/**
+ * The refusal a verb from the other family gets, or null when the box has it.
+ *
+ * One seam, read at the top of the command switch, so a verb is answered by
+ * exactly one dialect and neither dialect has to remember the other exists.
+ */
+function otherFamilyVerb(
+  name: string,
+  family: UnixFamily,
+): CommandResult | null {
+  const verb = DIALECT_VERBS[name];
+
+  return verb === undefined || verb.family === family
+    ? null
+    : lines(commandNotFound(name, family), verb.instead);
+}
+
+/**
  * The unix dialect's registry - the parallel to the Windows `COMMANDS`. The
  * core sysadmin surface at fidelity: `systemctl` (status + the restart/start/stop
  * fix verbs), `journalctl`, `df`, `ps`, `ip`, `ls`, and `exit`/`logout`, plus
@@ -121,6 +328,51 @@ export const UNIX_COMMANDS: readonly CommandSpec[] = [
     summary: 'Read or work a systemd unit: the ●-dot block, and the fix verbs.',
     minArgs: 2,
     maxArgs: 5,
+    joined: true,
+    subcommand: true,
+  },
+  {
+    // The third family's service manager (0.33.0), in the MODERN vocabulary the
+    // spike verified - `list`/`print`/`kickstart -k`/`bootout`/`bootstrap` with
+    // domain targets, not the `load`/`unload` most of the web still says. It is
+    // in the registry for the same reason dnf is: the grammar has to KNOW every
+    // family's words, and which box actually has the binary is decided at the
+    // seam in `executeUnix`.
+    name: 'launchctl',
+    usage: 'launchctl <list | print <domain>/<label> | kickstart [-k] '
+      + '<domain>/<label> | bootout <domain>/<label> | bootstrap <domain> '
+      + '<plist>>',
+    summary: 'Read or work a launchd job: the loaded list, one job\'s print '
+      + 'block, and the verbs that stop, start and restart it.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+    subcommand: true,
+  },
+  {
+    // macOS's unified log, the third face of a log this world already holds
+    // (0.33.0). `log show` is the read; `log stream` is the live tail and is
+    // refused by name, because a terminal that cannot be interrupted cannot
+    // host one.
+    name: 'log',
+    usage: 'log show [--last <n>]',
+    summary: 'Read the box\'s log the way a Mac does - the Console window\'s '
+      + 'own command.',
+    minArgs: 1,
+    maxArgs: 4,
+    joined: true,
+    subcommand: true,
+  },
+  {
+    // Homebrew (0.33.0). It is in the registry so that the grammar knows the
+    // word and the refusal can be the TRUE one - see `brewLines`: this is a
+    // Jamf-managed fleet Mac and Homebrew is not on it, which is a fact worth
+    // more than a fake install would be.
+    name: 'brew',
+    usage: 'brew <install <formula> | list | upgrade>',
+    summary: 'Homebrew - which is not part of macOS, and is not on this box.',
+    minArgs: 1,
+    maxArgs: 4,
     joined: true,
     subcommand: true,
   },
@@ -455,9 +707,29 @@ export function parseUnixCommand(input: string): ParsedCommand {
     : parsed;
 }
 
-/** The server prompt, a real family difference from the Windows `C:\>`. */
-export function unixPrompt(session: Readonly<SshSession>): string {
-  return `${session.username}@${session.hostname}:~$`;
+/**
+ * The server prompt, a real family difference from the Windows `C:\>` - and,
+ * from 0.33.0, two of them, because the two unix families do not ship the same
+ * shell.
+ *
+ * Linux is bash with Debian's default `PS1`: `user@host:~$`, and the `$` is
+ * how a normal user's prompt is spelled against root's `#`.
+ *
+ * macOS is zsh (the default since Catalina), and the prompt is not a choice
+ * anybody made - it is the `PS1="%n@%m %1~ %# "` that ships in `/etc/zshrc`:
+ * name, `@`, short host, a SPACE, the working directory with `$HOME` written
+ * as `~`, and `%#`, which is `%` for a normal user and `#` for root. Two
+ * spaces and a percent sign rather than a colon and a dollar - which is the
+ * first thing that tells a tech, before they have typed anything, which family
+ * they are standing in.
+ */
+export function unixPrompt(
+  session: Readonly<SshSession>,
+  family: UnixFamily,
+): string {
+  return family === MACHINE_OS.mac
+    ? `${session.username}@${session.hostname} ~ %`
+    : `${session.username}@${session.hostname}:~$`;
 }
 
 function lines(...values: readonly string[]): CommandResult {
@@ -561,28 +833,37 @@ function machineByName(api: GameApi, query: string): ReadOnlyGraphNode | null {
  * the two answers are joined, and it reads the same shell store the desktop
  * paints itself from.
  *
- * LINUX, not the unix family, and it is the one place in the 0.32.0 audit that
- * reads that way on purpose. A Mac does run sshd - Remote Login is a checkbox,
- * not a fiction - so the honest thing at this seam is NOT the Windows refusal
- * ("it does not run sshd"), which would be a flat lie about a Mac, and NOT a
- * connection either: this terminal has exactly one unix dialect in it and it is
- * the Linux one. `systemctl`, `apt`, `getenforce` and the not-installed gag are
- * all facts about a Linux distribution, and a session standing on a Mac would
- * answer with every one of them. So a Mac gets its own refusal, in `sshLines`,
- * that says which family it is and what this terminal has not got - the same
- * ruling `docs/research/terminal-fidelity.md` made about `ls` in the Windows
- * shell, and the ruling the mac spike repeats in section 7. The dialect slice
- * flips this predicate to `isUnixFamily`; nothing else here has to move.
+ * THE UNIX FAMILY, and 0.33.0 is where that became true. 0.32.0 shipped this
+ * predicate as LINUX-only on purpose, with the reason written here: a Mac does
+ * run sshd - Remote Login is a checkbox, not a fiction - so the Windows refusal
+ * ("it does not run sshd") is a flat lie about one, but a SESSION would have
+ * been worse, because this terminal held exactly one unix dialect and it was
+ * the Linux one. `systemctl`, `apt`, `getenforce` and the Ubuntu not-installed
+ * gag are every one of them a fact about a Linux distribution, and a Mac
+ * session would have answered with all of them. So the Mac got a refusal by
+ * name, and that note ended: "the dialect slice flips this predicate; nothing
+ * else here has to move."
+ *
+ * This is that slice, and that is what it did. The predicate is the family
+ * question now; the third dialect column - launchctl, `log show`, zsh's own
+ * command-not-found - lives at the seam in `executeUnix`, where every
+ * Linux-only verb refuses BY NAME on a Mac and every Mac-only one refuses by
+ * name on a Linux box. The tier gate above is untouched: a service-desk player
+ * gets the same refusal for a Mac they get for any other box, because ssh is
+ * the engineers' tier whatever is on the far end.
  */
-function isLinuxHost(
+function isUnixHost(
   api: GameApi,
   machine: Readonly<ReadOnlyGraphNode>,
 ): boolean {
-  return machineOsOf(machine.fields[FIELDS.machineOs]) === MACHINE_OS.linux
+  const os = machineOsOf(machine.fields[FIELDS.machineOs]);
+
+  return os === MACHINE_OS.linux
+    || os === MACHINE_OS.mac
     || (isOwnBox(api, machine.id) && ownBoxDistro(api) !== null);
 }
 
-/** Whether a host is a Mac, which is a family this terminal does not speak. */
+/** Whether a host is a Mac - which family the session that opens will speak. */
 function isMacHost(machine: Readonly<ReadOnlyGraphNode>): boolean {
   return machineOsOf(machine.fields[FIELDS.machineOs]) === MACHINE_OS.mac;
 }
@@ -677,24 +958,10 @@ export function sshLines(api: GameApi, query: string): CommandResult {
   // any other. That is a SHELL fact rather than a world one - the estate's
   // seeded boxes are untouched, and so is every golden - and it is the only way
   // the distro the player chose is a thing they can actually stand on.
-  // The third family, refused BY NAME before the Windows refusal can claim it
-  // (0.32.0). "It does not run sshd" is true of every Windows box on the estate
-  // and false of a Mac, and the family rule is that a refusal says what is true
-  // of the box in front of you.
-  if (isMacHost(machine)) {
-    return lines(
-      `${labelOf(machine)} is a Mac, and this terminal speaks one unix dialect: `
-        + 'the Linux one.',
-      'launchd is not systemd, launchctl is not systemctl, and brew is not apt, '
-        + 'so a',
-      'session here would answer you in the wrong family\'s words. The box is '
-        + 'real and',
-      'on the wire (ping and dig find it); its own dialect is a later slice, '
-        + 'not a lie.',
-    );
-  }
-
-  if (!isLinuxHost(api, machine)) {
+  // The third family CONNECTS from 0.33.0 - see `isUnixHost`. What is left at
+  // this seam is the Windows refusal, which is true of every Windows box on
+  // this estate and was never true of a Mac.
+  if (!isUnixHost(api, machine)) {
     return lines(
       `ssh: connect to host ${labelOf(machine)} port 22: Connection refused.`,
       `${labelOf(machine)} is a Windows box; it does not run sshd. A Windows `
@@ -706,8 +973,16 @@ export function sshLines(api: GameApi, query: string): CommandResult {
 
   const hostname = labelOf(machine);
   const session: SshSession = { hostId: machine.id, hostname, username: user };
-  const connected = `Connected to ${hostname}. The terminal is on the server `
-    + 'now; its dialect is unix. "exit" comes back to the desktop.';
+  // What you landed on, said in the family's own terms. A Mac is not "the
+  // server" - it is somebody's desk with Remote Login switched on - and the
+  // shell you get is zsh over the same unix table, which is the one sentence
+  // that stops a player typing systemctl at it for ten minutes.
+  const connected = isMacHost(machine)
+    ? `Connected to ${hostname}. That is a Mac: zsh over the shared unix `
+      + 'tools, launchctl where systemctl would be. "exit" comes back to the '
+      + 'desktop.'
+    : `Connected to ${hostname}. The terminal is on the server `
+      + 'now; its dialect is unix. "exit" comes back to the desktop.';
   // The message of the day, on the one box that has one (0.28.0). This is also
   // where the SELinux beat is BUILT - see `motdLines` - because standing on the
   // box is the first moment anybody could have found what the rebuild did to it.
@@ -853,6 +1128,26 @@ function promotionOfferLines(api: GameApi): CommandResult {
 }
 
 /* -- the unix command surface (Pass A: three verbs) ----------------------- */
+
+/**
+ * What the SHOP's own verbs say when the unit they were aimed at is not on the
+ * box - changereq, breakglass and postmortem, which are process rather than
+ * operating system and so exist on both families.
+ *
+ * The sentence still has to be in the box's own words: `nginx.service` is a
+ * systemd unit name and a Mac has no such thing, so saying it on a Mac would
+ * be the family leak this dialect exists to close. A launchd job has a LABEL,
+ * and the refusal says so.
+ */
+function unitNotHere(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  unitName: string,
+): CommandResult {
+  return lines(isMac(api, session)
+    ? `No job labelled "${unitName}" is loaded on this box.`
+    : `Unit ${unitName}.service could not be found on this box.`);
+}
 
 /** The systemd unit a query names, on the box the session is standing on. */
 function unitOnBox(
@@ -1115,6 +1410,32 @@ function systemctlVerbLines(
     } ${query.trim()}.service: Unit ${query.trim()}.service not found.`);
   }
 
+  return unitVerbLines(api, session, action, unit);
+}
+
+/**
+ * The remediation itself, once a dialect has worked out WHICH unit is meant -
+ * every guard, and the one dispatch (0.33.0).
+ *
+ * It was the back half of `systemctlVerbLines` and it is its own function now
+ * because a second dialect arrived that reaches the same three actions by
+ * different words: `launchctl kickstart -k` IS `systemctl restart`, `bootout`
+ * IS `stop`, and `bootstrap` IS `start`. Sharing the body is not tidiness - it
+ * is the whole claim. A second implementation would be a second place for the
+ * scope wall, the change-control gate and the permission gate to be forgotten,
+ * and the launchctl tests assert the ACTION IDENTITY rather than a parallel
+ * output, which is only a meaningful assertion because this is one function.
+ *
+ * The two dialects keep their own sentences for the miss (systemd says "Unit
+ * x.service not found", launchctl says it could not find the service in the
+ * domain), because that is the half that genuinely differs.
+ */
+function unitVerbLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  action: string,
+  unit: Readonly<ReadOnlyGraphNode>,
+): CommandResult {
   // The contract governs a change even over ssh: a wrong tenant, or a customer's
   // out-of-scope server, is refused before the action lands - the non-bypass the
   // 0.8.0 scope engine enforces, carried onto the unix path. An in-house box (the
@@ -1346,18 +1667,73 @@ function dfLines(
 ): CommandResult {
   const box = api.graph.getNode(session.hostId);
   const free = box?.fields[FIELDS.diskFree];
-  const avail = typeof free === 'number' ? free : DF_TOTAL_BYTES;
-  const used = Math.max(0, DF_TOTAL_BYTES - avail);
-  const usePct = Math.min(100, Math.round((used / DF_TOTAL_BYTES) * 100));
+  const total = box === undefined
+    ? DF_TOTAL_BYTES
+    : dfTotalOn(api, session, typeof free === 'number' ? free : DF_TOTAL_BYTES);
+  const avail = typeof free === 'number' ? free : total;
+  const used = Math.max(0, total - avail);
+  const usePct = Math.min(100, Math.round((used / total) * 100));
+
+  // The two families print a DIFFERENT TABLE, and the header is the tell. BSD
+  // df calls the column Capacity and adds the inode trio; GNU df calls it Use%
+  // and prints no inodes without -i. The device is the other tell: a Linux root
+  // is a /dev device with a name a person chose, and an APFS root is a synthetic
+  // container snapshot whose name nobody chose - /dev/disk3s1s1 - mounted at /
+  // and read-only, which is what a sealed system volume is.
+  if (isMac(api, session)) {
+    // The inode trio is DERIVED, the way `ps aux` derives a VSZ and `tracert`
+    // derives a hop time: the estate holds no inode table, the real table has
+    // the columns, and a derived count cannot disagree with a truth that is not
+    // there. `ifree` is the constant every APFS volume prints, because APFS
+    // allocates inodes dynamically and the number is not about this disk.
+    return lines(
+      `${pad('Filesystem', 18)}${pad('Size', 7)}${pad('Used', 7)}${
+        pad('Avail', 7)
+      }${pad('Capacity', 10)}${pad('iused', 8)}${pad('ifree', 8)}${
+        pad('%iused', 8)
+      }Mounted on`,
+      `${pad('/dev/disk3s1s1', 18)}${pad(`${humanSize(total)}i`, 7)}${
+        pad(`${humanSize(used)}i`, 7)
+      }${pad(`${humanSize(avail)}i`, 7)}${pad(`${String(usePct)}%`, 10)}${
+        pad(`${String(400 + (stableHash(session.hostId) % 200))}k`, 8)
+      }${pad('4.3G', 8)}${pad('0%', 8)}/`,
+    );
+  }
 
   return lines(
     `${pad('Filesystem', 22)}${pad('Size', 6)}${pad('Used', 6)}${
       pad('Avail', 6)
     }${pad('Use%', 5)}Mounted on`,
-    `${pad('/dev/root', 22)}${pad(humanSize(DF_TOTAL_BYTES), 6)}${
+    `${pad('/dev/root', 22)}${pad(humanSize(total), 6)}${
       pad(humanSize(used), 6)
     }${pad(humanSize(avail), 6)}${pad(`${String(usePct)}%`, 5)}/`,
   );
+}
+
+/**
+ * The size of the root filesystem the box believes in.
+ *
+ * 40G is the seeded Linux server's, and it is the number every Linux box has
+ * reported since 0.16.0 - so it stays exactly that, byte for byte. A Mac desk
+ * is not a 40G server: these machines carry hundreds of gigabytes of project
+ * files, the world seeds their free space, and a root smaller than the free
+ * space on it would be a table that contradicts itself. So a Mac's total is
+ * derived from its own seeded free space, rounded up to the next real disk
+ * size, which is the honest way to have a Size column at all.
+ */
+function dfTotalOn(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  free: number,
+): number {
+  if (!isMac(api, session)) {
+    return DF_TOTAL_BYTES;
+  }
+
+  const gib = 1024 * 1024 * 1024;
+  const sizes = [256, 512, 1024, 2048].map((size) => size * gib);
+
+  return sizes.find((size) => size > free) ?? free;
 }
 
 /**
@@ -1392,6 +1768,28 @@ function duLeaves(
   const box = api.graph.getNode(session.hostId);
   const journal = box?.fields[FIELDS.journalBytes];
   const journalBytes = typeof journal === 'number' ? journal : DU_JOURNAL_BASELINE;
+
+  // A Mac's directories are not a Linux server's, and listing a server's on one
+  // would be the same class of lie as a Windows service list on a Linux box.
+  // There is no /var/log/journal, because there is no journald; the home is
+  // under /Users, not /home; and what is actually eating a designer's disk is
+  // the two directories every Mac tech has emptied - the Creative Cloud cache
+  // and the iOS/Xcode-flavoured Application Support pile - plus the projects
+  // themselves. The sizes are fixed and plausible, exactly as the Linux ones
+  // are, because the world holds no directory sizes for a Mac either.
+  if (isMac(api, session)) {
+    return [
+      { path: `/Users/${session.username}/Library/Caches`, bytes: 6_442_450_944 },
+      {
+        path: `/Users/${session.username}/Library/Application Support`,
+        bytes: 3_221_225_472,
+      },
+      { path: `/Users/${session.username}/Movies`, bytes: 48_318_382_080 },
+      { path: `/Users/${session.username}`, bytes: 12_582_912 },
+      { path: '/Library/Logs', bytes: 264_241_152 },
+      { path: '/Applications', bytes: 22_548_578_304 },
+    ];
+  }
 
   return [
     { path: '/var/log/journal', bytes: journalBytes },
@@ -1441,19 +1839,25 @@ function duLines(
   session: Readonly<SshSession>,
   args: readonly string[],
 ): CommandResult {
+  const mac = isMac(api, session);
   const flags = args.filter((arg) => arg.startsWith('-')).join('');
   const summarise = flags.includes('s');
   const rawPath = args.find((arg) => !arg.startsWith('-'));
-  const target = duTarget(rawPath ?? `/home/${session.username}`);
+  // Where a bare `du` stands, which is where the home directory IS on each
+  // family: /Users on a Mac, /home on Linux.
+  const target = duTarget(
+    rawPath ?? `${mac ? '/Users' : '/home'}/${session.username}`,
+  );
 
   const leaves = duLeaves(api, session);
   const under = leaves.filter((leaf) => underPath(leaf.path, target));
   const total = under.reduce((sum, leaf) => sum + leaf.bytes, 0);
 
   // A path with no directories under it is a small ordinary directory - du
-  // reports the 4K an empty ext4 directory takes, not an error.
+  // reports the 4K an empty ext4 directory takes, not an error. APFS reports
+  // an empty directory as nothing at all, which is what a Mac prints.
   if (under.length === 0) {
-    return lines(duRow(4096, target));
+    return lines(duRow(mac ? 0 : 4096, target));
   }
 
   // -s is the total alone; without it, every directory under the path and then
@@ -1485,11 +1889,15 @@ function psLines(
   api: GameApi,
   session: Readonly<SshSession>,
 ): CommandResult {
+  const mac = isMac(api, session);
+  // BSD `ps aux` and GNU `ps aux` are the same command with two different
+  // headers, and the two words that differ are the two this prints: BSD says
+  // TT and STARTED where procps says TTY and START.
   const header = `${pad('USER', 10)}${pad('PID', 6)}${pad('%CPU', 5)}${
     pad('%MEM', 5)
-  }${pad('VSZ', 8)}${pad('RSS', 7)}${pad('TTY', 6)}${pad('STAT', 5)}${
-    pad('START', 6)
-  }${pad('TIME', 6)}COMMAND`;
+  }${pad('VSZ', 8)}${pad('RSS', 7)}${pad(mac ? 'TT' : 'TTY', 6)}${
+    pad('STAT', 5)
+  }${pad(mac ? 'STARTED' : 'START', 8)}${pad('TIME', 6)}COMMAND`;
 
   const running = runningUnitsOn(api, session);
 
@@ -1504,7 +1912,7 @@ function psLines(
     pad(mem, 5)
   }${pad(String(9000 + (pid % 900)), 8)}${pad(String(2000 + (pid % 700)), 7)}${
     pad('?', 6)
-  }${pad(stat, 5)}${pad('08:32', 6)}${pad('0:00', 6)}${command}`;
+  }${pad(stat, 5)}${pad(mac ? '8:32AM' : '08:32', 8)}${pad('0:00', 6)}${command}`;
 
   const procRows = running.map((unit) => {
     const name = textValue(unit.fields[FIELDS.unitName], unit.id);
@@ -1512,19 +1920,31 @@ function psLines(
       ? name.slice(0, -'.service'.length)
       : name;
     const pid = unitPid(unit.id);
-    // The app runs as the session's user; the base plumbing runs as root, the
-    // way a real box splits them.
-    const user = base === 'nginx' || base === 'cron' || base === 'ssh'
-      || base === 'systemd-journald'
-      ? 'root'
-      : session.username;
+    // Who a job runs as. On a Mac it is READ rather than guessed: a job in the
+    // system domain is a root daemon and one in the gui domain is an agent in
+    // the logged-in user's session, which is the whole of what the two domains
+    // mean. On Linux the app runs as the session's user and the base plumbing
+    // runs as root, the way a real box splits them.
+    const user = mac
+      ? (domainOf(unit) === LAUNCHD_DOMAINS.system ? 'root' : session.username)
+      : (base === 'nginx' || base === 'cron' || base === 'ssh'
+        || base === 'systemd-journald'
+        ? 'root'
+        : session.username);
 
-    return row(user, pid, '0.0', '1.2', 'Ss', `/usr/bin/${base}`);
+    // The COMMAND cell. A real `ps` prints the executable, and the world holds
+    // a launchd LABEL rather than a program path - so a Mac's rows carry the
+    // label, which is a true thing in a column that would hold a path, and the
+    // omission is written down in `terminal-fidelity.md` rather than papered
+    // over with an invented `/usr/sbin/` for somebody else's daemon.
+    return row(user, pid, '0.0', '1.2', 'Ss', mac ? name : `/usr/bin/${base}`);
   });
 
   return lines(
     header,
-    row('root', 1, '0.0', '0.4', 'Ss', '/sbin/init'),
+    // PID 1, and the sharpest one-line family difference there is: systemd on
+    // Linux, launchd on a Mac. Everything else on the box is its child.
+    row('root', 1, '0.0', '0.4', 'Ss', mac ? '/sbin/launchd' : '/sbin/init'),
     ...procRows,
   );
 }
@@ -1609,7 +2029,13 @@ function unitBase(node: Readonly<ReadOnlyGraphNode>): string {
 function listenersOf(node: Readonly<ReadOnlyGraphNode>): readonly Listener[] {
   const base = unitBase(node);
 
-  if (base === 'ssh') {
+  // The same daemon under both families' naming: Debian calls the unit
+  // `ssh.service` and launchd labels the job `com.openssh.sshd`, and it is the
+  // same sshd holding the same port 22. Found by the 0.33.0 audit, and it is
+  // the sharpest kind of miss - a Mac you are CONNECTED TO over ssh showing
+  // nothing listening on 22 would be a listener table that contradicts the
+  // session reading it.
+  if (base === 'ssh' || base === 'com.openssh.sshd') {
     return [{ proc: 'sshd', addr: '*', port: 22, backlog: 128 }];
   }
 
@@ -1787,7 +2213,13 @@ function pingMs(hostId: string, seq: number): string {
   return (tenths / 10).toFixed(1);
 }
 
-/** One `64 bytes from ...` reply row. */
+/**
+ * One `64 bytes from ...` reply row.
+ *
+ * The BSD one counts from ZERO and the Linux one from one, which is the sort
+ * of difference nobody believes until they have two terminals open, and the
+ * caller passes the sequence it wants printed.
+ */
 function pingReply(address: string, hostId: string, seq: number): string {
   return `64 bytes from ${address}: icmp_seq=${String(seq)} ttl=57 time=${
     pingMs(hostId, seq)
@@ -1809,8 +2241,10 @@ function pingReply(address: string, hostId: string, seq: number): string {
  */
 function pingLines(
   api: GameApi,
+  family: UnixFamily,
   args: readonly string[],
 ): CommandResult {
+  const mac = family === MACHINE_OS.mac;
   const flagAt = args.findIndex((arg) => arg === '-c');
   const countRaw = flagAt >= 0 ? (args[flagAt + 1] ?? '') : null;
   // The host is the first bare argument that is NOT the `-c` count value - so
@@ -1824,12 +2258,20 @@ function pingLines(
   const machine = machineByName(api, host);
 
   if (machine === null) {
-    return lines(`ping: ${host}: Name or service not known`);
+    // The two resolvers fail in their own words, and both are the real ones.
+    return lines(mac
+      ? `ping: cannot resolve ${host}: Unknown host`
+      : `ping: ${host}: Name or service not known`);
   }
 
   const address = addressOf(machine.id);
   const canonical = fqdn(labelOf(machine));
-  const header = `PING ${canonical} (${address}) 56(84) bytes of data.`;
+  // BSD counts the ICMP payload and GNU counts the payload and the header, so
+  // the same 56 bytes are announced two ways; and BSD's sequence starts at 0.
+  const header = mac
+    ? `PING ${canonical} (${address}): 56 data bytes`
+    : `PING ${canonical} (${address}) 56(84) bytes of data.`;
+  const first = mac ? 0 : 1;
 
   // Continuous: a few replies, then the teaching. No statistics block, because
   // the run did not end - a real one would still be going.
@@ -1838,11 +2280,11 @@ function pingLines(
       header,
       ...Array.from(
         { length: PING_CONTINUOUS_SAMPLE },
-        (_, index) => pingReply(address, machine.id, index + 1),
+        (_, index) => pingReply(address, machine.id, index + first),
       ),
       '',
-      'This is Linux ping: it does not stop on its own - it would keep sending '
-        + 'until',
+      `This is ${mac ? 'BSD' : 'Linux'} ping: it does not stop on its own - it `
+        + 'would keep sending until',
       `you press Ctrl-C. Bound it with -c, e.g. "ping -c 4 ${host}", for a `
         + 'fixed run',
       'and a transmitted/received summary.',
@@ -1864,14 +2306,23 @@ function pingLines(
   const avg = (times.reduce((sum, time) => sum + time, 0) / capped).toFixed(1);
   const elapsed = (capped - 1) * 1000 + (stableHash(machine.id) % 20);
 
+  // The summary block is the other half of the family difference: BSD says
+  // "packets received" and "round-trip ... stddev" and prints no elapsed time;
+  // GNU says "received", prints the elapsed time, and calls the last number
+  // mdev. Same four numbers, two vocabularies.
   return lines(
     header,
-    ...times.map((_, index) => pingReply(address, machine.id, index + 1)),
+    ...times.map((_, index) => pingReply(address, machine.id, index + first)),
     '',
     `--- ${canonical} ping statistics ---`,
-    `${String(capped)} packets transmitted, ${String(capped)} received, `
-      + `0% packet loss, time ${String(elapsed)}ms`,
-    `rtt min/avg/max/mdev = ${min}/${avg}/${max}/0.050 ms`,
+    mac
+      ? `${String(capped)} packets transmitted, ${String(capped)} packets `
+        + 'received, 0.0% packet loss'
+      : `${String(capped)} packets transmitted, ${String(capped)} received, `
+        + `0% packet loss, time ${String(elapsed)}ms`,
+    mac
+      ? `round-trip min/avg/max/stddev = ${min}/${avg}/${max}/0.050 ms`
+      : `rtt min/avg/max/mdev = ${min}/${avg}/${max}/0.050 ms`,
   );
 }
 
@@ -2123,19 +2574,44 @@ function resolveGaggedTool(
     return null;
   }
 
+  const family = sessionFamily(api, session);
+
+  // THE GAG IS UBUNTU'S, NOT UNIX'S (0.33.0). Three of these four are in the
+  // macOS base system - traceroute, ifconfig and netstat are BSD tools and
+  // Apple ships all three - so on a Mac they RUN, with no package and no hint,
+  // and an `apt install net-tools` line here would have been false twice over:
+  // there is no apt, and there is nothing missing. htop is the one that really
+  // is absent, and `macMissLines` has already answered it in the true words.
+  if (family === MACHINE_OS.mac) {
+    const missed = macMissLines(name);
+
+    return missed ?? runToolLines(api, session, name, args, family);
+  }
+
   if (!isPackageInstalled(api, session, pkg)) {
     return notInstalledHint(name, pkg, packageManagerOn(api, session));
   }
 
+  return runToolLines(api, session, name, args, family);
+}
+
+/** The four tools themselves, once the box is agreed to have them. */
+function runToolLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  name: string,
+  args: readonly string[],
+  family: UnixFamily,
+): CommandResult | null {
   switch (name) {
     case 'htop':
       return htopLines(api, session);
     case 'traceroute':
-      return tracerouteLines(api, nameArg(args));
+      return tracerouteLines(api, nameArg(args), family);
     case 'ifconfig':
-      return ifconfigLines(session);
+      return ifconfigLines(session, family);
     case 'netstat':
-      return netstatLines(api, session, args);
+      return netstatLines(api, session, args, family);
     default:
       return null;
   }
@@ -2224,9 +2700,18 @@ function htopLines(
  * The address is the estate's own derived one and the three probe times are
  * derived off the host id, so the run is deterministic.
  */
-function tracerouteLines(api: GameApi, host: string): CommandResult {
+function tracerouteLines(
+  api: GameApi,
+  host: string,
+  family: UnixFamily,
+): CommandResult {
+  const mac = family === MACHINE_OS.mac;
+
   if (host.length === 0) {
-    return lines('Usage: traceroute [OPTIONS] HOST');
+    return lines(mac
+      ? 'usage: traceroute [-adDeFInrSvx] [-A as_server] [-f first_ttl] '
+        + '[-g gateway] host [packetlen]'
+      : 'Usage: traceroute [OPTIONS] HOST');
   }
 
   const machine = machineByName(api, host);
@@ -2241,8 +2726,12 @@ function tracerouteLines(api: GameApi, host: string): CommandResult {
     (5 + ((stableHash(machine.id) + sample * 7) % 30)) / 10
   ).toFixed(3);
 
+  // The defaults are the tell, and they are per-family: Linux's traceroute
+  // gives up at 30 hops with 60-byte probes, BSD's at 64 with 52-byte ones.
   return lines(
-    `traceroute to ${canonical} (${address}), 30 hops max, 60 byte packets`,
+    mac
+      ? `traceroute to ${canonical} (${address}), 64 hops max, 52 byte packets`
+      : `traceroute to ${canonical} (${address}), 30 hops max, 60 byte packets`,
     ` 1  ${canonical} (${address})  ${probe(1)} ms  ${probe(2)} ms  ${
       probe(3)
     } ms`,
@@ -2255,8 +2744,29 @@ function tracerouteLines(api: GameApi, host: string): CommandResult {
  * ifconfig prints the DOTTED `netmask 255.255.255.0` where `ip a` prints the
  * CIDR `/24`. Same address, older tool - which is why `ip` is canonical.
  */
-function ifconfigLines(session: Readonly<SshSession>): CommandResult {
+function ifconfigLines(
+  session: Readonly<SshSession>,
+  family: UnixFamily,
+): CommandResult {
   const address = addressOf(session.hostId);
+
+  // The BSD one, which is not net-tools with a different interface name. The
+  // interface is `en0` rather than `eth0`; loopback comes FIRST because BSD
+  // lists in kernel order; the netmask is written in HEX (`0xffffff00`), which
+  // is the single most disorienting thing about reading a Mac's addresses; and
+  // the tail is media and status rather than packet counters, which BSD keeps
+  // behind `netstat -i`.
+  if (family === MACHINE_OS.mac) {
+    return lines(
+      'lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384',
+      '\tinet 127.0.0.1 netmask 0xff000000',
+      'en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500',
+      '\tether 02:42:0a:2a:00:01',
+      `\tinet ${address} netmask 0xffffff00 broadcast 10.42.0.255`,
+      '\tmedia: autoselect (1000baseT <full-duplex>)',
+      '\tstatus: active',
+    );
+  }
 
   return lines(
     'eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500',
@@ -2283,7 +2793,49 @@ function netstatLines(
   api: GameApi,
   session: Readonly<SshSession>,
   args: readonly string[],
+  family: UnixFamily,
 ): CommandResult {
+  const listeners = runningUnitsOn(api, session)
+    .flatMap((unit) => listenersOf(unit).map((listener) => ({
+      listener,
+      pid: unitPid(unit.id),
+    })))
+    .sort((left, right) => left.listener.port - right.listener.port);
+
+  // BSD netstat is a different table AND a different flag grammar, and the
+  // second half is the trap: `-p` on BSD selects a PROTOCOL (`netstat -p tcp`)
+  // and has nothing to do with processes - the process behind a socket comes
+  // from `lsof -i`. So the mac table has no process column, addresses are
+  // written host.PORT with a DOT, the state column is headed `(state)`, and a
+  // `-p` that arrived with no protocol after it is answered rather than
+  // silently read as net-tools' flag.
+  if (family === MACHINE_OS.mac) {
+    const protoAt = args.findIndex((arg) => arg === '-p');
+    const proto = protoAt < 0 ? null : (args[protoAt + 1] ?? '').trim();
+
+    if (protoAt >= 0 && proto?.length === 0) {
+      return lines(
+        'netstat: option requires an argument -- p',
+        'On this family -p takes a PROTOCOL - "netstat -p tcp" - and is not '
+          + 'net-tools\' process',
+        'flag. What is listening is "netstat -an"; what OWNS a socket is '
+          + '"lsof -i".',
+      );
+    }
+
+    return lines(
+      'Active Internet connections (only servers)',
+      `${pad('Proto', 8)}${pad('Recv-Q', 7)}${pad('Send-Q', 7)}${
+        pad('Local Address', 23)
+      }${pad('Foreign Address', 23)}(state)`,
+      ...listeners.map(({ listener }) => `${pad('tcp4', 8)}${pad('0', 7)}${
+        pad('0', 7)
+      }${pad(`${listener.addr === '*' ? '*' : listener.addr}.${
+        String(listener.port)
+      }`, 23)}${pad('*.*', 23)}LISTEN`),
+    );
+  }
+
   const withProc = args.join('').includes('p');
   const header = `${pad('Proto', 6)}${pad('Recv-Q', 7)}${pad('Send-Q', 7)}${
     pad('Local Address', 24)
@@ -2291,12 +2843,7 @@ function netstatLines(
     withProc ? 'PID/Program name' : ''
   }`;
 
-  const rows = runningUnitsOn(api, session)
-    .flatMap((unit) => listenersOf(unit).map((listener) => ({
-      listener,
-      pid: unitPid(unit.id),
-    })))
-    .sort((left, right) => left.listener.port - right.listener.port)
+  const rows = listeners
     .map(({ listener, pid }) => `${pad('tcp', 6)}${pad('0', 7)}${pad('0', 7)}${
       pad(`${listener.addr === '*' ? '0.0.0.0' : listener.addr}:${
         String(listener.port)
@@ -4228,7 +4775,7 @@ function changeReqUnixLines(
   const unit = unitOnBox(api, session, unitName);
 
   if (unit === null) {
-    return lines(`Unit ${unitName}.service could not be found on this box.`);
+    return unitNotHere(api, session, unitName);
   }
 
   return lines(...api.day.fileChangeRequest(unit.id, verb));
@@ -4259,7 +4806,7 @@ function breakGlassUnixLines(
   const unit = unitOnBox(api, session, unitName);
 
   if (unit === null) {
-    return lines(`Unit ${unitName}.service could not be found on this box.`);
+    return unitNotHere(api, session, unitName);
   }
 
   return lines(...api.day.breakGlass(unit.id));
@@ -4409,7 +4956,7 @@ function postmortemUnixLines(
   const unit = unitOnBox(api, session, unitName);
 
   if (unit === null) {
-    return lines(`Unit ${unitName}.service could not be found on this box.`);
+    return unitNotHere(api, session, unitName);
   }
 
   return lines(...api.day.filePostmortem(unit.id));
@@ -4494,6 +5041,11 @@ function boxUsers(
   session: Readonly<SshSession>,
 ): readonly PasswdEntry[] {
   const login = session.username;
+
+  if (isMac(api, session)) {
+    return macUsers(login);
+  }
+
   const services = new Set(unitsOnBox(api, session).map(serviceUserOf));
 
   const entries: PasswdEntry[] = [
@@ -4592,6 +5144,66 @@ function boxUsers(
   });
 
   return entries;
+}
+
+/**
+ * The user set on a Mac, which is a different world from a Linux box's.
+ *
+ * Three real differences, and all three are what a tech actually trips over:
+ * the first human account is uid 501 rather than 1000; their primary group is
+ * `staff` (gid 20) rather than a group of their own name; and root's group is
+ * `wheel`, which is where the old "add them to wheel" instruction comes from.
+ * Their supplementary groups are the ones a local admin on a Mac really has -
+ * `everyone`, `localaccounts`, `admin`, and the access group that decides who
+ * may ssh in at all.
+ *
+ * DELIBERATELY ABSENT, and named in `terminal-fidelity.md`: the ninety-odd
+ * `_`-prefixed system accounts a real Mac carries (`_www`, `_spotlight`,
+ * `_softwareupdate`). The world holds none of them, they are not derived from
+ * anything it does hold, and ninety invented accounts would be the largest
+ * fabrication in this dialect. `getent` is not on this family anyway, so
+ * nothing here ever prints a passwd file.
+ */
+function macUsers(login: string): readonly PasswdEntry[] {
+  return [
+    {
+      name: 'root',
+      uid: 0,
+      gid: 0,
+      group: 'wheel',
+      gecos: 'System Administrator',
+      home: '/var/root',
+      shell: '/bin/sh',
+      groups: [[0, 'wheel'], [1, 'daemon'], [12, 'everyone'], [80, 'admin']],
+    },
+    {
+      name: 'nobody',
+      uid: 4_294_967_294,
+      gid: 4_294_967_294,
+      group: 'nobody',
+      gecos: 'Unprivileged User',
+      home: '/var/empty',
+      shell: '/usr/bin/false',
+      groups: [[4_294_967_294, 'nobody']],
+    },
+    {
+      name: login,
+      uid: MAC_LOGIN_UID,
+      gid: 20,
+      group: 'staff',
+      gecos: '',
+      home: `/Users/${login}`,
+      shell: '/bin/zsh',
+      groups: [
+        [20, 'staff'],
+        [12, 'everyone'],
+        [61, 'localaccounts'],
+        [80, 'admin'],
+        [98, '_lpadmin'],
+        [399, 'com.apple.access_ssh'],
+      ],
+    },
+  ];
 }
 
 /** The passwd entry for a named user on the box, or null. */
@@ -5369,6 +5981,563 @@ function isKnownGroup(
   return STOCK_GROUPS.has(group) || userNamed(api, session, group) !== null;
 }
 
+/* == the mac overlay (0.33.0): launchctl, the log, and the honest absences == */
+
+/**
+ * The domain a launchd job is bootstrapped into, off the node.
+ *
+ * DATA, read - never inferred from the label. `com.adobe.ARMDC.Communicator`
+ * is an agent and `com.adobe.ARMDC.SMJobBlessHelper` is a daemon, on the same
+ * box, under the same reverse-DNS prefix, which is what a privileged-helper
+ * install looks like everywhere. A node with no domain on it is not a launchd
+ * job, and the only way to reach this with one is to be standing on a Mac.
+ */
+function domainOf(node: Readonly<ReadOnlyGraphNode>): LaunchdDomain {
+  return launchdDomainOf(node.fields[FIELDS.launchdDomain])
+    ?? LAUNCHD_DOMAINS.system;
+}
+
+/**
+ * Where launchd loads a job's property list from, by the domain it is in.
+ *
+ * The real convention, and derived rather than seeded for the reason the pid
+ * is derived: the estate holds no file paths for a Mac, and this one is a pure
+ * function of two things the world DOES hold. `/Library/LaunchDaemons` is the
+ * root domain's, `/Library/LaunchAgents` the login session's - both under
+ * `/Library` because these are jobs an MDM put there, not ones a user wrote in
+ * `~/Library/LaunchAgents`.
+ */
+function plistPath(label: string, domain: LaunchdDomain): string {
+  return domain === LAUNCHD_DOMAINS.system
+    ? `/Library/LaunchDaemons/${label}.plist`
+    : `/Library/LaunchAgents/${label}.plist`;
+}
+
+/** The launchd jobs on the box, label-sorted - the order `launchctl list` reads. */
+function launchdJobsOn(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): readonly ReadOnlyGraphNode[] {
+  return [...unitsOnBox(api, session)].sort(
+    (left, right) => textValue(left.fields[FIELDS.unitName], left.id)
+      .localeCompare(textValue(right.fields[FIELDS.unitName], right.id)),
+  );
+}
+
+/** Whether a job is up, off the same state field every other surface reads. */
+function jobRunning(node: Readonly<ReadOnlyGraphNode>): boolean {
+  return textValue(node.fields[FIELDS.unitState], '')
+    === SYSTEMD_STATES.activeRunning;
+}
+
+/**
+ * `launchctl list` - the loaded jobs, in the three columns the real one prints.
+ *
+ * `PID  Status  Label`, tab-separated, which is exactly what launchctl emits.
+ * A running job shows its pid (the same derived one `launchctl print` and any
+ * other surface reads, so they cannot disagree); one that is loaded and not
+ * running shows `-`, because there is no process to have a number. The Status
+ * column is the job's LAST EXIT STATUS, which is 0 for anything healthy and
+ * non-zero for a job that died - the world holds "failed" rather than a code,
+ * so a failed job reads 1, the generic failure, and the fidelity row says so.
+ *
+ * The real one lists the domain you are asking as - a user's jobs bare, the
+ * system's under sudo. This lists the box, which is the omission named in the
+ * fidelity row: which domain each job is in is what `print` answers.
+ */
+function launchctlListLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): CommandResult {
+  const jobs = launchdJobsOn(api, session);
+
+  return lines(
+    'PID\tStatus\tLabel',
+    ...jobs.map((job) => {
+      const running = jobRunning(job);
+      const failed = textValue(job.fields[FIELDS.unitState], '')
+        === SYSTEMD_STATES.failed;
+
+      return `${running ? String(unitPid(job.id)) : '-'}\t${
+        failed ? '1' : '0'
+      }\t${textValue(job.fields[FIELDS.unitName], job.id)}`;
+    }),
+  );
+}
+
+/** A parsed service target: the domain in front, the label behind. */
+interface ServiceTarget {
+  readonly domain: string;
+  readonly label: string;
+}
+
+/**
+ * `system/com.apple.mDNSResponder`, `gui/501/com.adobe.ARMDC.Communicator` -
+ * split at the LAST slash, because a gui domain has one of its own in it.
+ *
+ * A bare label with no domain is null, and that is not pedantry: every modern
+ * launchctl verb takes a service TARGET, the domain is half of it, and a tool
+ * that guessed the domain would be teaching the one thing this vocabulary
+ * exists to make explicit.
+ */
+function serviceTarget(raw: string): ServiceTarget | null {
+  const trimmed = raw.trim();
+  const at = trimmed.lastIndexOf('/');
+
+  return at <= 0 || at === trimmed.length - 1
+    ? null
+    : { domain: trimmed.slice(0, at), label: trimmed.slice(at + 1) };
+}
+
+/** What launchctl says when a target names no job it can find in that domain. */
+function noSuchService(target: Readonly<ServiceTarget>): CommandResult {
+  return lines(
+    `Could not find service "${target.label}" in domain for ${target.domain}`,
+  );
+}
+
+/** What launchctl says when the verb was handed a label with no domain on it. */
+function needsDomain(sub: string, raw: string): CommandResult {
+  const label = raw.trim();
+
+  return lines(
+    `launchctl ${sub} requires a service target, not a bare label.`,
+    `A target is <domain>/<label>: "${LAUNCHD_DOMAINS.system}/${label}" for a `
+      + `daemon, "${LAUNCHD_DOMAINS.gui}/${label}" for an agent in the logged-in`,
+    'user\'s session. The domain is not decoration - a job exists in one of '
+      + 'them and not the other.',
+  );
+}
+
+/**
+ * The job a service target names, or the refusal for one that is not there.
+ *
+ * The domain is CHECKED against the job's own, which is the whole reason the
+ * domain is data: asking for an agent in the system domain does not quietly
+ * work, it fails the way the real one fails, with launchctl's own sentence.
+ */
+function jobAtTarget(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  target: Readonly<ServiceTarget>,
+): ReadOnlyGraphNode | null {
+  const job = launchdJobsOn(api, session).find(
+    (node) => textValue(node.fields[FIELDS.unitName], '').toLowerCase()
+      === target.label.toLowerCase(),
+  );
+
+  return job !== undefined && domainOf(job) === target.domain ? job : null;
+}
+
+/**
+ * `launchctl print <domain>/<label>` - the modern status read, and launchd's
+ * answer to `systemctl status`.
+ *
+ * The real one prints a property dump dozens of lines long. This prints the
+ * lines the world can answer truthfully - the target as its own heading, the
+ * plist path, the state in launchd's words (`running` / `not running`), and
+ * the pid and last exit code of a job that is up - and prints no others,
+ * because every remaining key in a real block (endpoints, spawn type, the
+ * whole event-monitor stanza) would be an invention. The braces and the
+ * `key = value` shape are the real one's, so the block a player learns to read
+ * here is the block they will meet.
+ */
+function launchctlPrintLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  raw: string,
+): CommandResult {
+  const target = serviceTarget(raw);
+
+  if (target === null) {
+    return needsDomain('print', raw);
+  }
+
+  const job = jobAtTarget(api, session, target);
+
+  if (job === null) {
+    return noSuchService(target);
+  }
+
+  const label = textValue(job.fields[FIELDS.unitName], job.id);
+  const running = jobRunning(job);
+  const failed = textValue(job.fields[FIELDS.unitState], '')
+    === SYSTEMD_STATES.failed;
+
+  return lines(
+    `${target.domain}/${label} = {`,
+    `\tpath = ${plistPath(label, domainOf(job))}`,
+    `\tstate = ${running ? 'running' : 'not running'}`,
+    ...(running ? [`\tpid = ${String(unitPid(job.id))}`] : []),
+    `\tlast exit code = ${failed ? '1' : '0'}`,
+    `\tdescription = ${textValue(job.fields[FIELDS.name], label)}`,
+    '}',
+  );
+}
+
+/**
+ * The three launchctl verbs that CHANGE something, and the actions they are.
+ *
+ * This is the mapping the slice exists for. launchd's vocabulary is not
+ * systemd's and its actions are the same actions:
+ *
+ *   launchctl kickstart -k <target>   ->  SYSTEMD_ACTIONS.unitRestart
+ *   launchctl kickstart <target>      ->  SYSTEMD_ACTIONS.unitStart
+ *   launchctl bootout <target>        ->  SYSTEMD_ACTIONS.unitStop
+ *   launchctl bootstrap <domain> <plist> -> SYSTEMD_ACTIONS.unitStart
+ *
+ * `kickstart` starts a job; `-k` kills it first, which is why the pair is the
+ * real restart and why the modern instruction is `kickstart -k` rather than
+ * the old unload-then-load two-step. `bootout` takes the job out of its domain
+ * and `bootstrap` puts it back, which is stop and start with the load state
+ * moving too - the closest launchd has, and named as such rather than pretended
+ * to be identical.
+ *
+ * The action ids are the SYSTEMD_ constants and that is not a leak: the id
+ * names what the world does to a unit, the world has one `unit` node kind for
+ * both managers (0.32.0), and inventing LAUNCHD_ACTIONS aliases would have made
+ * three dialects into two engines. Nothing the player sees says "systemd".
+ */
+function launchdActionFor(sub: string, kill: boolean): string | null {
+  switch (sub) {
+    case 'kickstart':
+      return kill ? SYSTEMD_ACTIONS.unitRestart : SYSTEMD_ACTIONS.unitStart;
+    case 'bootout':
+      return SYSTEMD_ACTIONS.unitStop;
+    case 'bootstrap':
+      return SYSTEMD_ACTIONS.unitStart;
+    default:
+      return null;
+  }
+}
+
+/**
+ * `launchctl kickstart [-k] <domain>/<label>` and `launchctl bootout
+ * <domain>/<label>` - the fix verbs, through the SAME pipeline systemctl's go
+ * through, and silent on success for the same reason: launchctl says nothing
+ * when it works, and `launchctl print` is how you confirm it.
+ */
+function launchctlTargetVerbLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sub: string,
+  action: string,
+  raw: string,
+): CommandResult {
+  const target = serviceTarget(raw);
+
+  if (target === null) {
+    return needsDomain(sub, raw);
+  }
+
+  const job = jobAtTarget(api, session, target);
+
+  return job === null
+    ? noSuchService(target)
+    : unitVerbLines(api, session, action, job);
+}
+
+/**
+ * `launchctl bootstrap <domain> <plist>` - the load half of the pair, and the
+ * one verb whose shape is genuinely different.
+ *
+ * bootout takes a service target because the job is loaded and can be named.
+ * bootstrap cannot: the job is NOT in the domain yet, so there is nothing to
+ * name, and what it takes is the domain and a PATH to the property list. That
+ * asymmetry is real, it is the thing people get wrong, and it is why this is
+ * not simply the other half of a switch.
+ */
+function launchctlBootstrapLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  raw: string,
+): CommandResult {
+  const words = raw.trim().split(/\s+/u).filter((word) => word.length > 0);
+  const domain = words[0] ?? '';
+  const path = words[1] ?? '';
+
+  if (serviceTarget(domain) !== null && path.length === 0) {
+    return lines(
+      'launchctl bootstrap does not take a service target. The job is not in '
+        + 'the domain',
+      'yet, so there is nothing to name: it takes the DOMAIN and the path to '
+        + 'the plist -',
+      `"launchctl bootstrap ${LAUNCHD_DOMAINS.system} /Library/LaunchDaemons/`
+        + '<label>.plist". bootout is the one that takes a target.',
+    );
+  }
+
+  if (domain.length === 0 || path.length === 0) {
+    return lines(
+      'usage: launchctl bootstrap <domain> <plist>',
+    );
+  }
+
+  const job = launchdJobsOn(api, session).find(
+    (node) => plistPath(
+      textValue(node.fields[FIELDS.unitName], ''),
+      domainOf(node),
+    ) === path && domainOf(node) === domain,
+  );
+
+  if (job === undefined) {
+    return lines(
+      `Bootstrap failed: 5: Input/output error`,
+      `Nothing at ${path} in the ${domain} domain. bootstrap loads a property `
+        + 'list that is',
+      'there; the plists on this box are the jobs "launchctl list" already '
+        + 'knows about.',
+    );
+  }
+
+  return unitVerbLines(api, session, SYSTEMD_ACTIONS.unitStart, job);
+}
+
+/** `launchctl <verb>` - the third dialect column, dispatched. */
+function launchctlLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sub: string,
+  query: string,
+  args: readonly string[],
+): CommandResult {
+  if (sub === 'list') {
+    return launchctlListLines(api, session);
+  }
+
+  if (sub === 'print') {
+    return launchctlPrintLines(api, session, query);
+  }
+
+  // `-k` is the kill half of kickstart, and the difference between a start and
+  // a restart. Read off the raw arguments so the flag can sit either side of
+  // the target, as it can on a real box.
+  const kill = args.some((arg) => arg === '-k');
+  const action = launchdActionFor(sub, kill);
+
+  if (action === null) {
+    return lines(
+      `launchctl: unrecognized subcommand: ${sub}`,
+      'This terminal does launchctl list, print, kickstart, bootout and '
+        + 'bootstrap - the',
+      'modern vocabulary. load and unload are the legacy pair and are not here: '
+        + 'they',
+      'take a plist and no domain, and half of that vocabulary is worse than '
+        + 'none.',
+    );
+  }
+
+  if (sub === 'bootstrap') {
+    return launchctlBootstrapLines(api, session, query);
+  }
+
+  const target = args.filter((arg) => arg !== sub && arg !== '-k').join(' ');
+
+  return launchctlTargetVerbLines(api, session, sub, action, target);
+}
+
+/* -- log show: the third face of a log this world already holds ----------- */
+
+/** The header row `log show` prints over its table, in the real columns. */
+const LOG_SHOW_HEADER = `${pad('Timestamp', 32)}${pad('Thread', 11)}${
+  pad('Type', 12)
+}${pad('Activity', 21)}${pad('PID', 7)}TTL`;
+
+/**
+ * `log show [--last <n>]` - the Mac's face of the box's log.
+ *
+ * The SAME source `journalctl` reads: the log lines the world holds on the
+ * jobs running on this box. One log, two faces, the spool-directory rule -
+ * there is no second store to keep true, and a job that has written nothing
+ * shows nothing here for the same reason journalctl answers `-- No entries --`
+ * rather than inventing startup lines.
+ *
+ * What it is NOT is the Windows `event_log` field, and that is a ruling worth
+ * writing down: that field's rows are Windows sources - Service Control
+ * Manager, Print, the Security log - and a Console face over them would be
+ * naming Windows subsystems on a Mac, which is precisely the lie the 0.32.0
+ * audit exists to kill. The unix log source is the unit journal, so the unix
+ * log readers read it.
+ *
+ * The shape is the real one: Timestamp / Thread / Type / Activity / PID / TTL,
+ * the rule, and the `Log - Default: N, Info: ...` count footer. The window
+ * `--last` names is NOT applied, because the lines this world holds carry no
+ * machine-readable timestamp to filter on, and the last line says so rather
+ * than letting a player believe a filter ran.
+ */
+function logShowLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  args: readonly string[],
+): CommandResult {
+  const held = unitsOnBox(api, session).flatMap(
+    (job) => readUnitJournal(job.fields[FIELDS.unitJournal]),
+  );
+  const lastAt = args.findIndex(
+    (arg) => arg === '--last' || arg.startsWith('--last='),
+  );
+  const flag = lastAt < 0 ? '' : (args[lastAt] ?? '');
+  const window = lastAt < 0
+    ? null
+    : (flag.includes('=')
+      ? flag.slice(flag.indexOf('=') + 1)
+      : (args[lastAt + 1] ?? '')).trim();
+
+  if (window !== null && window.length === 0) {
+    return lines('log: Invalid time offset for --last.');
+  }
+
+  return lines(
+    LOG_SHOW_HEADER,
+    ...held,
+    '-'.repeat(LOG_SHOW_HEADER.length),
+    `Log      - Default:${String(held.length).padStart(10, ' ')}, Info: `
+      + '               0, Debug:             0, Error:          0, Fault:'
+      + '          0',
+    ...(window === null
+      ? []
+      : [
+        '',
+        `--last ${window} is the real flag and the real spelling, and this face `
+          + 'does not apply it:',
+        'the lines this box holds carry no timestamp anything can filter on, so '
+          + 'what is',
+        'above is the whole of the log rather than a window of it.',
+      ]),
+  );
+}
+
+/** `log <verb>` - the read, and the one that cannot live in this terminal. */
+function logLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+  sub: string,
+  args: readonly string[],
+): CommandResult {
+  if (sub === 'show') {
+    return logShowLines(api, session, args);
+  }
+
+  if (sub === 'stream') {
+    return lines(
+      'log stream is a live tail: it runs until you interrupt it, and this '
+        + 'terminal has',
+      'no way to interrupt anything. "log show" is the read of the same log, '
+        + 'and Console',
+      'is the same stream with a window around it.',
+    );
+  }
+
+  return lines(
+    `log: unrecognized subcommand: ${sub}`,
+    'This terminal does "log show". The other verbs (stream, collect, config) '
+      + 'are not here.',
+  );
+}
+
+/* -- brew, and the truth about a managed fleet Mac ------------------------ */
+
+/**
+ * `brew` - refused, and the refusal is the teaching.
+ *
+ * Homebrew is not part of macOS. It is a third-party package manager somebody
+ * installs, it puts its prefix under `/opt/homebrew` (Apple silicon) or
+ * `/usr/local` (Intel), and on a fleet a shop actually manages it is either
+ * absent or a deliberate decision with a support story attached. These Macs are
+ * Jamf-enrolled desks in a design studio: their software comes from the MDM's
+ * Self Service catalogue, and nobody has put Homebrew on them.
+ *
+ * So there is no `brew` here, and the honest answer is the one a real box would
+ * give - zsh's own miss - with the true reason under it. A simulated `brew
+ * install` would have been a fabricated package manager on a box that has none,
+ * which is a bigger lie than the absence and teaches the exact wrong instinct
+ * about a managed fleet.
+ */
+function brewLines(): CommandResult {
+  return lines(
+    commandNotFound('brew', MACHINE_OS.mac),
+    'Homebrew is not part of macOS and it is not on this box. It is a '
+      + 'third-party package',
+    'manager somebody installs by hand, under /opt/homebrew on Apple silicon; '
+      + 'these desks',
+    'are MDM-enrolled and their software comes from the management catalogue, '
+      + 'which is',
+    'what "managed fleet" means. There is nothing here to install a formula '
+      + 'with.',
+  );
+}
+
+/* -- the macOS tools that are real, and are not simulated ----------------- */
+
+/**
+ * Real macOS binaries this terminal does not model, and what each one is for.
+ *
+ * The distinction this table exists for: `zsh: command not found` is the truth
+ * about `systemctl` on a Mac and a LIE about `open`, which is on every Mac ever
+ * shipped. The house rule is that a refusal says what is true of the box in
+ * front of you, so these say the true thing - the tool is here, the terminal
+ * does not simulate it, and what it does is named so the miss still teaches.
+ *
+ * A fake would be worse than either: a `softwareupdate --list` that invented
+ * three updates would be teaching a player this box's patch state, which the
+ * world does not hold.
+ */
+const MAC_NOT_SIMULATED: Readonly<Record<string, string>> = {
+  open: 'opens a file, a folder or a URL with whatever app is registered for '
+    + 'it - the command-line half of double-clicking.',
+  pbcopy: 'pipes stdin into the clipboard (and pbpaste pipes it back out), '
+    + 'which is the trick that makes a Mac terminal worth living in.',
+  pbpaste: 'writes the clipboard to stdout, the other half of pbcopy.',
+  softwareupdate: 'lists and installs Apple\'s own updates from the command '
+    + 'line - what an MDM drives when it defers a macOS upgrade for a fleet.',
+  dscl: 'reads and writes Directory Services, which is where macOS keeps '
+    + 'accounts instead of /etc/passwd.',
+  networksetup: 'reads and writes the network settings the Network pane '
+    + 'shows - services, DNS servers, proxies, the lot.',
+  scutil: 'reads the dynamic network store: DNS state, the computer name, '
+    + 'what the system thinks the network is doing right now.',
+  defaults: 'reads and writes the preference plists every app on the box '
+    + 'stores its settings in.',
+  diskutil: 'lists, mounts, unmounts, verifies and repairs volumes - what '
+    + 'Disk Utility drives.',
+  sw_vers: 'prints the macOS product name, version and build.',
+};
+
+/**
+ * The mac half of the command-not-found seam.
+ *
+ * Three answers, and each is true of a different kind of name: a real tool this
+ * terminal does not model says so (above); `htop` is genuinely absent from
+ * macOS and the way you would get it is genuinely Homebrew, which is genuinely
+ * not here, so the miss says the whole chain; and everything else falls through
+ * to the plain miss in zsh's own words.
+ */
+function macMissLines(name: string): CommandResult | null {
+  const real = MAC_NOT_SIMULATED[name];
+
+  if (real !== undefined) {
+    return lines(
+      `${name} is a real tool on this box, and this terminal does not simulate `
+        + 'it.',
+      `It ${real}`,
+      'A fake would teach you its output rather than its job, which is the '
+        + 'trade this game does not make.',
+    );
+  }
+
+  if (name === 'htop') {
+    return lines(
+      commandNotFound('htop', MACHINE_OS.mac),
+      'htop is not part of macOS. The way onto a Mac is Homebrew, which is not '
+        + 'on this',
+      'managed box either - "top" is what ships, and Activity Monitor is the '
+        + 'window over it.',
+    );
+  }
+
+  return null;
+}
+
 /**
  * Runs one parsed unix command against the world and the session. The twin of
  * `executeCommand` in `cmd-run.ts`, and DOM-free for the same reason.
@@ -5382,6 +6551,17 @@ export function executeUnix(
     case 'empty':
       return { lines: [], clear: false };
     case 'unknown': {
+      // The mac seam, first, because the answers below are Ubuntu's (0.33.0):
+      // a real macOS tool this terminal does not model, and the htop chain that
+      // ends at a Homebrew nobody installed here.
+      if (isMac(api, session)) {
+        const missed = macMissLines(parsed.name);
+
+        if (missed !== null) {
+          return missed;
+        }
+      }
+
       // The not-installed seam (0.16.0, closed 0.20.0): a stock Ubuntu box does
       // not carry traceroute/ifconfig/netstat/htop, so typing one is a real miss
       // that teaches, with Ubuntu's own `sudo apt install <pkg>` hint. Once the
@@ -5404,7 +6584,7 @@ export function executeUnix(
       }
 
       return lines(
-        `${parsed.name}: command not found`,
+        commandNotFound(parsed.name, sessionFamily(api, session)),
         parsed.suggestion === null
           ? 'This dialect is the core sysadmin surface - the deeper filesystem '
             + 'browsing (cat/cd beyond what a fix needs) is a later slice.'
@@ -5415,6 +6595,19 @@ export function executeUnix(
       return lines(`usage: ${parsed.spec.usage}`, parsed.spec.summary);
     case 'command':
       break;
+  }
+
+  // The dialect seam (0.33.0), one line and both directions: a verb that
+  // belongs to the OTHER unix family is a missing binary here, exactly as it is
+  // on a real box, and the refusal names what this box has instead. It is read
+  // before the switch so that neither dialect's code has to know the other one
+  // exists - `systemctl` on a Mac never reaches the systemd branch, and
+  // `launchctl` on a Linux box never reaches launchd's.
+  const family = sessionFamily(api, session);
+  const wrongFamily = otherFamilyVerb(parsed.spec.name, family);
+
+  if (wrongFamily !== null) {
+    return wrongFamily;
   }
 
   switch (parsed.spec.name) {
@@ -5436,6 +6629,15 @@ export function executeUnix(
     }
     case 'journalctl':
       return journalctlLines(api, session, parsed.args);
+    // The third dialect column (0.33.0). Every one of these reached only on a
+    // Mac - the seam above sent them back on a Linux box - so none of them asks
+    // the family again.
+    case 'launchctl':
+      return launchctlLines(api, session, parsed.sub, parsed.query, parsed.args);
+    case 'log':
+      return logLines(api, session, parsed.sub, parsed.args);
+    case 'brew':
+      return brewLines();
     case 'df':
       return dfLines(api, session);
     case 'du':
@@ -5566,7 +6768,7 @@ export function executeUnix(
     case 'host':
       return hostLines(api, nameArg(parsed.args));
     case 'ping':
-      return pingLines(api, parsed.args);
+      return pingLines(api, family, parsed.args);
     case 'curl':
       return curlLines(api, session, parsed.args);
     case 'changereq':

@@ -48,6 +48,7 @@ import {
   baselineServiceId,
   type LinuxUnit,
   unitIdOn,
+  unitNodeFields,
   UBUNTU_BASE_UNITS,
 } from './services';
 
@@ -663,16 +664,7 @@ export function bodgeSetup(): readonly SetupOp[] {
   for (const unit of CORNER_BOX_UNITS) {
     const id = unitIdOn(BODGE_IDS.cornerBox, unit.unit);
 
-    addNode(ops, {
-      id,
-      kind: 'unit',
-      fields: {
-        [FIELDS.name]: unit.name,
-        [FIELDS.unitName]: unit.unit,
-        [FIELDS.unitState]: unit.state,
-        [FIELDS.unitEnabled]: unit.enabled,
-      },
-    });
+    addNode(ops, { id, kind: 'unit', fields: unitNodeFields(unit) });
     addEdge(ops, { from: id, to: BODGE_IDS.cornerBox, kind: 'runs_on' });
   }
 

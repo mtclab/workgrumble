@@ -24,6 +24,11 @@ import { AppStateStore } from '../app-state';
 import { DayDriver } from '../day-driver';
 import { parseCommand } from './cmd-parse';
 import { executeCommand, type CommandResult } from './cmd-run';
+import {
+  executeUnix,
+  parseUnixCommand,
+  type SshSession,
+} from './cmd-unix';
 import type { GameApi } from './types';
 import type { SetupOp } from '../../engine-api';
 
@@ -88,6 +93,15 @@ function apiFor(session: WorldSession): GameApi {
     employer: 'workgrumble',
     actor: COMPANY_IDS.player,
   };
+}
+
+/** Runs a unix-dialect line inside a session, as the terminal does on a box. */
+function unix(
+  api: GameApi,
+  session: SshSession,
+  input: string,
+): CommandResult {
+  return executeUnix(parseUnixCommand(input), api, session);
 }
 
 /**
@@ -306,19 +320,22 @@ describe('a Windows terminal meets a Mac', () => {
 });
 
 /**
- * The unix terminal and the Mac (0.32.0).
+ * The unix terminal and the Mac (0.32.0, and what 0.33.0 did to it).
  *
  * A Mac runs sshd - Remote Login is a checkbox, not a fiction - so the WINDOWS
  * refusal at this seam ("it does not run sshd") would be a flat lie about one,
- * and the audit's job is to stop the Mac reading as the Windows side. What it
- * gets instead is its own refusal, because this terminal holds exactly one unix
- * dialect and it is the Linux one: `systemctl`, `apt`, `getenforce` and the
- * not-installed gag are all facts about a Linux distribution, and a session
- * standing on a Mac would answer with every one of them.
+ * and the audit's job was to stop the Mac reading as the Windows side. In
+ * 0.32.0 what it got instead was its own refusal, because the terminal held
+ * exactly one unix dialect and it was the Linux one, and that refusal WAS the
+ * gate: no session, so no `apt` and no SELinux verb could be typed at a Mac.
  *
- * That refusal is also the gate that keeps those surfaces off a Mac, and it is
- * asserted as such: NO session is handed back, so there is no Mac session for
- * an apt or an SELinux verb to be typed into.
+ * 0.33.0 brought the dialect, so the session opens - and the gate it replaces
+ * the refusal with is the stronger statement of the same guarantee. It is no
+ * longer "there is nowhere to type systemctl"; it is "you can type it, and the
+ * box tells you the truth about itself". Every Linux-only verb is asserted
+ * inside a real Mac session, twice over: the Linux answer is ABSENT, and the
+ * refusal names the tool the Mac actually has. A dialect seam that quietly let
+ * one through would fail here rather than pass quietly.
  */
 describe('the unix terminal meets a Mac', () => {
   function promotedMac(): GameApi {
@@ -335,29 +352,90 @@ describe('the unix terminal meets a Mac', () => {
     return api;
   }
 
-  it('refuses ssh to a Mac by name, and never with the Windows words', () => {
+  /** The session an engineer gets on the Mac, or a failure the test can read. */
+  function macSession(api: GameApi): SshSession {
+    const session = win(api, `ssh pat@${MAC_HOST}`).enterSession;
+
+    if (session === undefined) {
+      throw new Error('ssh did not open a session on the Mac');
+    }
+
+    return session;
+  }
+
+  it('opens a session on a Mac, and never with the Windows words', () => {
     const api = promotedMac();
     const result = win(api, `ssh ${MAC_HOST}`);
     const output = result.lines.join('\n');
 
-    expect(output).toContain(`${MAC_HOST} is a Mac`);
-    expect(output).toContain('launchd is not systemd');
-    expect(output).toContain('brew is not apt');
+    expect(result.enterSession?.hostname).toBe(MAC_HOST);
+    expect(output).toContain('That is a Mac');
     // The Windows refusal is false about a Mac in both of its claims, and it
-    // must not be what a Mac gets.
+    // must not be what a Mac gets - which was the whole of the 0.32.0 audit.
     expect(output).not.toContain('Connection refused');
     expect(output).not.toContain('is a Windows box');
     expect(output).not.toContain('does not run sshd');
   });
 
-  it('opens no session on a Mac, so no Linux-only surface can fire there', () => {
-    const api = promotedMac();
+  it('keeps the tier gate: the desk has no ssh to a Mac either', () => {
+    // The 0.32.0 refusal a service-desk player gets, unchanged. ssh is the
+    // engineers' tier whatever is on the far end of it, so the Mac dialect
+    // arriving does not open a door the promotion is supposed to.
+    const { api } = macWorld();
+    const result = win(api, `ssh ${MAC_HOST}`);
 
-    // The gate, stated as the thing it guarantees: there is no Mac session, so
-    // `apt`, `dnf`, `getenforce` and the Ubuntu not-installed gag - every one
-    // of them a fact about a Linux distribution - cannot be typed at a Mac.
-    expect(win(api, `ssh ${MAC_HOST}`).enterSession).toBeUndefined();
-    expect(win(api, `ssh pat@${MAC_HOST}`).enterSession).toBeUndefined();
+    expect(result.enterSession).toBeUndefined();
+    expect(result.lines.join('\n')).toContain('not service-desk access');
+  });
+
+  it('answers every Linux-only verb with the truth about a Mac', () => {
+    const api = promotedMac();
+    const session = macSession(api);
+
+    // One row per Linux-only verb: what the refusal must NAME, and a string
+    // from the Linux answer that must be ABSENT. The second half is the half
+    // that has teeth - a verb that quietly ran its Ubuntu branch on a Mac
+    // would satisfy no row here.
+    const cases: readonly (readonly [string, string, string])[] = [
+      ['systemctl status com.apple.mDNSResponder', 'launchctl', 'Loaded:'],
+      ['journalctl', 'log show', '-- No entries --'],
+      ['apt update', 'MDM', 'Hit:'],
+      ['dnf check-update', 'no system package manager', 'Last metadata'],
+      ['zypper refresh', 'no system package manager', 'repositories'],
+      ['pacman -Q', 'no system package manager', 'core'],
+      ['dpkg -l', 'receipts', 'ii '],
+      ['getenforce', 'SELinux is a Linux kernel module', 'Enforcing'],
+      ['sestatus', 'SELinux is a Linux kernel module', 'SELinux status'],
+      ['ip a', 'ifconfig', 'qdisc'],
+      ['ss -tlnp', 'netstat -an', 'Peer Address'],
+      ['getent passwd', 'dscl', 'root:x:0:0'],
+    ];
+
+    for (const [line, names, linuxAnswer] of cases) {
+      const output = unix(api, session, line).lines.join('\n');
+
+      expect(output, line).toContain('command not found');
+      expect(output, line).toContain(names);
+      expect(output, line).not.toContain(linuxAnswer);
+    }
+  });
+
+  it('says zsh caught the miss, not bash - and never offers apt', () => {
+    const api = promotedMac();
+    const session = macSession(api);
+
+    // The shells fail differently and both spellings are real: zsh names
+    // itself and puts the command last. And the Ubuntu command-not-found
+    // handler - the one that offers "sudo apt install net-tools" - is not on
+    // this family at all, so nothing here may offer a package.
+    expect(unix(api, session, 'systemctl status x').lines[0])
+      .toBe('zsh: command not found: systemctl');
+    expect(unix(api, session, 'ifconfig').lines.join('\n'))
+      .not.toContain('apt install');
+    expect(unix(api, session, 'netstat -an').lines.join('\n'))
+      .not.toContain('apt install');
+    expect(unix(api, session, 'htop').lines.join('\n'))
+      .not.toContain('apt install');
   });
 
   it('still opens a session on the Linux boxes, unchanged', () => {
@@ -365,6 +443,16 @@ describe('the unix terminal meets a Mac', () => {
     const session = win(api, 'ssh pat@APP-01').enterSession;
 
     expect(session?.hostname).toBe('APP-01');
+    // And the Linux box is still a Linux box: the third dialect is refused
+    // there in the same shape, which is the other direction of the same seam.
+    if (session === undefined) {
+      throw new Error('ssh did not open a session on the Linux box');
+    }
+
+    const output = unix(api, session, 'launchctl list').lines.join('\n');
+
+    expect(output).toContain('launchctl: command not found');
+    expect(output).toContain('systemd');
   });
 });
 

@@ -4935,6 +4935,108 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await runCommand(page, 'exit');
     await expect(page.locator('.cmd-prompt').first()).toHaveText(/^C:\\/u);
   });
+
+  /*
+   * The MAC DIALECT (E5 slice 3, 0.33.0), on a box nobody reinstalled: one of
+   * MARLOWE-STUDIO's designer Macs, seeded by the estate since 0.32.0 and
+   * refused at this seam until now.
+   *
+   * The scrollback rule this section runs under applies here too - `cmd-output`
+   * is the whole session and is never cleared - so every string below is one
+   * this run has printed nowhere else, and the two that could not be made
+   * unique are read off the LAST line rather than by containment.
+   */
+  await step('cmd.launchctl', async () => {
+    await focusWindow(page, 'cmd');
+    await runCommand(page, 'ssh pat@MARL-WS-01');
+
+    // The prompt is the first thing that says which family this is, before
+    // anything has been typed: zsh's space-and-percent, not bash's colon.
+    await expect(page.locator('.cmd-prompt').first())
+      .toHaveText('pat@MARL-WS-01 ~ %');
+
+    // The Linux dialect refuses BY NAME here, in zsh's own word order, and
+    // names the tool this box actually has.
+    await runCommand(page, 'systemctl status sshd');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('zsh: command not found: systemctl');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('macOS runs launchd, not systemd');
+
+    // The loaded jobs, by their real reverse-DNS labels.
+    await runCommand(page, 'launchctl list');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('com.jamf.management.daemon');
+
+    // The status read, and the domain that decides where the plist lives.
+    await runCommand(page, 'launchctl print system/com.apple.mDNSResponder');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('/Library/LaunchDaemons/com.apple.mDNSResponder.plist');
+
+    // The wrong domain FAILS, which is the whole reason the domain is data:
+    // Adobe's Communicator is an agent in the login session, not a daemon.
+    await runCommand(page, 'launchctl print system/com.adobe.ARMDC.Communicator');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Could not find service "com.adobe.ARMDC.Communicator"');
+    await runCommand(page, 'launchctl print gui/501/com.adobe.ARMDC.Communicator');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('/Library/LaunchAgents/com.adobe.ARMDC.Communicator.plist');
+
+    // The fix verbs, and the goal rather than the call: bootout takes the job
+    // out and the box AGREES it is out. "state = not running" is a string this
+    // run has printed nowhere else, which is the rule this whole section is
+    // written under - the scrollback is never cleared.
+    await runCommand(page, 'launchctl bootout system/com.jamf.management.daemon');
+    await runCommand(page, 'launchctl print system/com.jamf.management.daemon');
+    await expect(cmdOut).toContainText('state = not running');
+
+    // And back: bootstrap takes the PLIST PATH rather than a target, which is
+    // launchd's real asymmetry, and kickstart -k is the restart. Both are
+    // SILENT on success, exactly as systemctl is - so the proof is read off
+    // the LAST line, which is the echo of the command itself and nothing
+    // after it. A verb that printed a fabricated "started successfully" would
+    // fail here.
+    await runCommand(
+      page,
+      'launchctl bootstrap system /Library/LaunchDaemons/'
+        + 'com.jamf.management.daemon.plist',
+    );
+    await runCommand(page, 'launchctl kickstart -k system/com.jamf.management.daemon');
+    await expect(lastOut)
+      .toHaveText(/launchctl kickstart -k system\/com\.jamf\.management\.daemon$/u);
+  });
+
+  await step('cmd.log', async () => {
+    // The Mac's face of the log, in the real columns - and the last line says
+    // out loud that the window was not applied rather than implying it was.
+    await runCommand(page, 'log show --last 30m');
+    await expect(page.getByTestId('cmd-output')).toContainText('Log      - Default:');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('--last 30m is the real flag');
+    await runCommand(page, 'log stream');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('log stream is a live tail');
+  });
+
+  await step('cmd.brew', async () => {
+    // The refusal that is the teaching: no Homebrew on a managed fleet Mac.
+    await runCommand(page, 'brew install htop');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Homebrew is not part of macOS');
+
+    // And the shared table, audited: BSD's df table, launchd as PID 1, and a
+    // real macOS tool that is NOT claimed to be missing.
+    await runCommand(page, 'df -h');
+    await expect(page.getByTestId('cmd-output')).toContainText('%iused');
+    await runCommand(page, 'ps aux');
+    await expect(page.getByTestId('cmd-output')).toContainText('/sbin/launchd');
+    await runCommand(page, 'softwareupdate --list');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('is a real tool on this box');
+
+    await runCommand(page, 'exit');
+    await expect(page.locator('.cmd-prompt').first()).toHaveText(/^C:\\/u);
+  });
 });
 
 /* ========================================================================= *
