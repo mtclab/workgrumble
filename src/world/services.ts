@@ -529,6 +529,49 @@ export const FC_INFRA_UNITS: readonly LinuxUnit[] = orderedUnits([
 ]);
 
 /**
+ * The creative agency's NAS (0.32.0): the box the project files are actually
+ * on, and the only server on a Mac-heavy estate.
+ *
+ * A 10GbE project NAS is a Linux appliance - which is why it is seeded here by
+ * hand rather than off a role table: `file_server` is a WINDOWS role in
+ * `BASELINE_SERVICES`, and the honest answer for this box is neither that list
+ * nor an Ubuntu server's. Three units, all real and all load-bearing for the
+ * fiction:
+ *
+ * - `smbd.service` is Samba, which is what a NAS serves SMB with and what a Mac
+ *   mounts when it opens a project. It is the share, as a running thing.
+ * - `avahi-daemon.service` is the mDNS responder, and it is the answer to "how
+ *   do the Macs see the NAS without anybody typing an address" - the Linux half
+ *   of the Bonjour conversation `com.apple.mDNSResponder` is the Mac half of.
+ * - `ssh.service` because a box an MSP looks after is a box the MSP can reach,
+ *   the same reason Remote Login is on across the studio's Macs.
+ *
+ * No cron and no journald: this is an appliance with a web console, not
+ * somebody's Ubuntu server, and listing the whole base stack on it would be
+ * claiming a box the estate has not got.
+ */
+export const NAS_APPLIANCE_UNITS: readonly LinuxUnit[] = orderedUnits([
+  {
+    unit: 'smbd.service',
+    name: 'Samba SMB Daemon',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'avahi-daemon.service',
+    name: 'Avahi mDNS/DNS-SD Stack',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'ssh.service',
+    name: 'OpenBSD Secure Shell server',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+]);
+
+/**
  * The Windows service baseline per role. Partial because a role is either a
  * Windows role (here) or a Linux role (`BASELINE_UNITS` below), never both - the
  * seeder reads the machine's `os` and picks the matching map.

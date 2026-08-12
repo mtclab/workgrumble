@@ -1164,6 +1164,26 @@ export const FIELDS = {
    */
   mdmEnrolled: 'mdm_enrolled',
   mailProfileOk: 'mail_profile_ok',
+  /**
+   * Whether the remote-support tool has been granted SCREEN RECORDING on this
+   * Mac (0.32.0, the creative vertical).
+   *
+   * macOS keeps a short list of consents that no administrator can grant on
+   * somebody's behalf, and this is the one a support desk meets first: a
+   * management profile can pre-approve Accessibility for a support tool, and
+   * it cannot pre-approve Screen Recording - that click belongs to the person
+   * sitting at the keyboard, in System Settings > Privacy & Security. So the
+   * field is not an MDM state and is not a fault of the box: it is what the
+   * viewer is allowed to see, `false` being the black screen the ticket is
+   * about.
+   *
+   * It carries on the MACHINE rather than on any tool node because that is
+   * where the consent lives - it is granted per application on that Mac - and
+   * it is what the MDM push verb reads to refuse a thing no console can do.
+   * Absent everywhere but a managed Mac, so every other estate reads nothing
+   * and behaves exactly as it did.
+   */
+  tccScreenRecording: 'tcc_screen_recording',
   /** service */
   status: 'status',
   /**
@@ -2060,6 +2080,17 @@ export const BUSINESS_TYPES = {
    * monitoring-only clinic the MSP only watches: this one is a MANAGED contract.
    */
   dentalClinic: 'dental_clinic',
+  /**
+   * A creative/media agency (0.32.0): the INVERSE estate, and the one the third
+   * OS family was built for. Designers on Macs managed by an MDM at fleet
+   * grain, a NAS the project files actually live on, and a creative suite
+   * licensed per PERSON rather than per machine. It teaches the three things a
+   * Windows-shaped desk gets wrong about a Mac shop - a consent only the user
+   * can give, a policy enforced by the OS vendor rather than by the employer,
+   * and a seat that follows a person out of the door - and it is the first
+   * estate in the game where the workstations are not Windows at all.
+   */
+  creativeAgency: 'creative_agency',
 } as const;
 
 export type BusinessType = (typeof BUSINESS_TYPES)[keyof typeof BUSINESS_TYPES];
@@ -2072,6 +2103,7 @@ export const BUSINESS_TYPE_LABELS: Readonly<Record<BusinessType, string>> = {
   [BUSINESS_TYPES.manufacturing]: 'Manufacturer',
   [BUSINESS_TYPES.trades]: 'Trades firm',
   [BUSINESS_TYPES.dentalClinic]: 'Dental clinic',
+  [BUSINESS_TYPES.creativeAgency]: 'Creative agency',
 };
 
 /**

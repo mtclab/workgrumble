@@ -15,8 +15,41 @@
  * MSP's job is the scope none of them can quite see.
  */
 
+import { HELPDESK_ACTIONS } from '../actions/ids';
 import { MSP_IDS } from '../msp-company';
-import type { DialogueTree } from './types';
+import {
+  GATEKEEPER_ANSWER,
+  HIPAA_ACCESS_REPORT,
+  SCREEN_RECORDING_WALKTHROUGH,
+} from '../tickets/msp';
+import type { DialogueEffect, DialogueTree } from './types';
+
+/**
+ * The three replies that CLOSE a ticket on this roster, as effects.
+ *
+ * A chat option is the only route a player has to `ticket.reply_to_reporter`,
+ * so a ticket whose resolution rule watches `replied` is closable exactly as
+ * far as its tree offers one of these. The sentences themselves live with the
+ * paths that advertise them (`tickets/msp.ts`), so the conversation and the
+ * advertised path say the same thing rather than two similar things.
+ */
+const REPORT_THE_ACCESS_REVIEW: DialogueEffect = {
+  action: HELPDESK_ACTIONS.ticketReplyToReporter,
+  target: 'ticket:elmwood-hipaa-audit',
+  params: { comment: HIPAA_ACCESS_REPORT },
+};
+
+const WALK_THROUGH_THE_GRANT: DialogueEffect = {
+  action: HELPDESK_ACTIONS.ticketReplyToReporter,
+  target: 'ticket:marlowe-screen-recording',
+  params: { comment: SCREEN_RECORDING_WALKTHROUGH },
+};
+
+const EXPLAIN_THE_REFUSAL: DialogueEffect = {
+  action: HELPDESK_ACTIONS.ticketReplyToReporter,
+  target: 'ticket:marlowe-gatekeeper-plugin',
+  params: { comment: GATEKEEPER_ANSWER },
+};
 
 const NADIA: DialogueTree = {
   id: 'dialogue/msp-nadia',
@@ -1130,7 +1163,14 @@ const GRACE: DialogueTree = {
             },
           ],
         },
-        { label: 'Tell her you will pull the log and write it up' },
+        {
+          // The reply IS the fix here - the deliverable is the accounting,
+          // given - so this option dispatches it rather than promising it.
+          // Until 0.32.0 it only promised, and the ticket could not be closed
+          // by anybody: the path advertised a verb no surface offered.
+          label: 'Give her the accounting off the audit trail',
+          effects: [REPORT_THE_ACCESS_REVIEW],
+        },
       ],
     },
     {
@@ -1138,7 +1178,12 @@ const GRACE: DialogueTree = {
       npc_line: 'It is for one patient, over the last month - I will send you the '
         + 'name. They just want to know it was only the people who should have '
         + 'seen it. Which I am sure it was, but they are entitled to the list.',
-      options: [{ label: 'Pull the Dentrix audit trail and report the accounting back' }],
+      options: [
+        {
+          label: 'Pull the Dentrix audit trail and report the accounting back',
+          effects: [REPORT_THE_ACCESS_REVIEW],
+        },
+      ],
     },
     {
       id: 'hipaa-done',
@@ -1162,6 +1207,202 @@ const GRACE: DialogueTree = {
  * it. The reveal names the real reason a `systemctl restart` is the fix: the
  * unit crashed once and systemd hit its start-limit and stopped retrying.
  */
+/**
+ * Rosa at MARLOWE-STUDIO, the fully-managed creative agency (0.32.0). She runs
+ * the studio and files for whoever is stuck at a desk, so she is right about
+ * three symptoms and reaching for the wrong cause on all three - which is the
+ * shape of every Mac ticket a Windows-shaped desk gets: "surely you can switch
+ * that on from your end" (you cannot, it is a consent), "surely that means it
+ * is a virus" (it means nobody checked it), and "surely the machine has lost
+ * its licence" (the licence was never on the machine).
+ *
+ * The `reveal` on each is the cause said plainly, each has an `asks` so the
+ * clock can be parked honestly, and each has its own reaction afterwards.
+ */
+const ROSA: DialogueTree = {
+  id: 'dialogue/msp-rosa',
+  speaker: MSP_IDS.marloweContact,
+  tickets: [
+    'ticket:marlowe-screen-recording',
+    'ticket:marlowe-gatekeeper-plugin',
+    'ticket:marlowe-seat-expired',
+  ],
+  root: 'screen',
+  roots: {
+    'ticket:marlowe-screen-recording': 'screen',
+    'ticket:marlowe-gatekeeper-plugin': 'plugin',
+    'ticket:marlowe-seat-expired': 'seat',
+  },
+  resolved_roots: {
+    'ticket:marlowe-screen-recording': 'screen-done',
+    'ticket:marlowe-gatekeeper-plugin': 'plugin-done',
+    'ticket:marlowe-seat-expired': 'seat-done',
+  },
+  nodes: [
+    {
+      id: 'screen',
+      npc_line: 'Whatever you are doing to look at Corin\'s Mac, it is not '
+        + 'working - he can see that somebody has joined, and you are apparently '
+        + 'looking at a black square. He is describing a colour problem down the '
+        + 'phone at me instead, which is going about as well as you would '
+        + 'imagine. His Mac is on your management thing, so can you not just '
+        + 'switch the screen on from your end?',
+      options: [
+        {
+          label: 'Ask whether he has been asked to allow anything since the '
+            + 'tool was installed',
+          next: 'screen-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check why a connected Mac session shows nothing',
+          effects: [
+            {
+              reveal: 'macOS puts screen capture behind a consent only the '
+                + 'person logged in at that Mac can give - Privacy & Security > '
+                + 'Screen Recording, per application - so a support tool without '
+                + 'it connects normally and is handed a blank frame. Device '
+                + 'management cannot grant it: a profile can pre-approve '
+                + 'Accessibility for the same tool, and Apple keeps Screen '
+                + 'Recording for the user\'s own click. The fix is to talk him '
+                + 'through it.',
+            },
+          ],
+        },
+        {
+          label: 'Write him the two lines: Privacy & Security, Screen '
+            + 'Recording, tick it, reopen',
+          effects: [WALK_THROUGH_THE_GRANT],
+        },
+      ],
+    },
+    {
+      id: 'screen-q',
+      npc_line: 'There was a box, he says, when the tool first went on. He '
+        + 'thinks he clicked whichever one made it go away, because he was in '
+        + 'the middle of something. Is that the whole of it?',
+      options: [
+        {
+          label: 'Send him the steps and say why we cannot do it from here',
+          effects: [WALK_THROUGH_THE_GRANT],
+        },
+      ],
+    },
+    {
+      id: 'screen-done',
+      npc_line: 'He has ticked it and you are in - he says it came up the second '
+        + 'the tool reopened. I did not know there were things we had to allow '
+        + 'and you could not. Good to know it is us and not you being awkward.',
+      options: [{ label: 'Log the walkthrough' }],
+    },
+    {
+      id: 'plugin',
+      npc_line: 'The edit Mac will not open the plugin the whole job is built '
+        + 'on. It says - I wrote it down - "Chroma Bloom cannot be opened '
+        + 'because the developer cannot be verified. macOS cannot verify that '
+        + 'this app is free from malware." Half the room thinks we have been '
+        + 'sent a virus and the other half wants to turn the security off. We '
+        + 'deliver today.',
+      options: [
+        {
+          label: 'Ask where the plugin came from and whether it is the usual '
+            + 'supplier',
+          next: 'plugin-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check what "the developer cannot be verified" actually claims',
+          effects: [
+            {
+              reveal: 'That is Gatekeeper saying the build has not been '
+                + 'NOTARIZED - never submitted to Apple\'s malware scan and '
+                + 'stamped - which is "nobody has checked this", not "this is '
+                + 'malware". Plugins and small tools frequently are not. macOS '
+                + 'ships the override for exactly this: open it from Finder\'s '
+                + 'context menu and confirm, or allow it in Privacy & Security '
+                + 'after the refusal. Turning Gatekeeper off for the machine to '
+                + 'open one file is the wrong trade.',
+            },
+          ],
+        },
+        {
+          label: 'Write back with what it means and the supported way to open '
+            + 'it',
+          effects: [EXPLAIN_THE_REFUSAL],
+        },
+      ],
+    },
+    {
+      id: 'plugin-q',
+      npc_line: 'It is from the freelancer who built the effect - we have used '
+        + 'his work for two years and he sent it the way he always does. So it '
+        + 'is not a virus, it is just... unsigned, or something?',
+      options: [
+        {
+          label: 'Explain notarization and give her the right-click Open path',
+          effects: [EXPLAIN_THE_REFUSAL],
+        },
+      ],
+    },
+    {
+      id: 'plugin-done',
+      npc_line: 'Open, running, and rendering. I have told the room nobody is '
+        + 'switching anything off, and I have asked him to do the notarizing '
+        + 'thing on the next one so we are not doing this on every machine.',
+      options: [{ label: 'Log the answer' }],
+    },
+    {
+      id: 'seat',
+      npc_line: 'Luca cannot get into the suite this morning - it says his '
+        + 'subscription is not active. He was in it on Friday, same desk, same '
+        + 'files. I have signed him out and in again and I have sat him at '
+        + 'another Mac, and it says exactly the same thing on that one. He is '
+        + 'billing us by the hour to sit there.',
+      options: [
+        {
+          label: 'Ask when his contract term was set up and who renewed the plan',
+          next: 'seat-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check what a licence is actually attached to',
+          effects: [
+            {
+              reveal: 'The suite is licensed NAMED USER: the seat is assigned to '
+                + 'a person in the vendor\'s admin console and follows them '
+                + 'between machines, which is why signing out and changing Mac '
+                + 'both changed nothing. His term seat lapsed at renewal. The '
+                + 'plan has no free seat and the ones it has are held by '
+                + 'designers who are working, so this is a seat to be bought, '
+                + 'raised with the licensing desk - not a fix on the estate.',
+            },
+          ],
+        },
+        { label: 'Tell her it is the licence and not the Macs' },
+      ],
+    },
+    {
+      id: 'seat-q',
+      npc_line: 'He was set up for the two weeks we booked him for, and this is '
+        + 'week three - we kept him on. The renewal went through at the start of '
+        + 'the month; I assumed it just covered everybody. Can you not move a '
+        + 'spare one over?',
+      options: [
+        { label: 'Explain there is no spare, and raise it with the licensing '
+            + 'desk' },
+      ],
+    },
+    {
+      id: 'seat-done',
+      npc_line: 'Raised, and I will chase the seat at our end - I take the point '
+        + 'about not pulling one off Corin to do it. I had genuinely thought a '
+        + 'licence lived on the machine. That explains the last two of these as '
+        + 'well.',
+      options: [{ label: 'Log the escalation' }],
+    },
+  ],
+};
+
 const MORGAN: DialogueTree = {
   id: 'dialogue/msp-morgan',
   speaker: MSP_IDS.mspLead,
@@ -1404,5 +1645,6 @@ export const MSP_TREES: readonly DialogueTree[] = [
   DEV,
   GLENDA,
   GRACE,
+  ROSA,
   MORGAN,
 ];

@@ -10,6 +10,11 @@
  *    executive's personal tablet cannot, honestly and by name. The refusal is the
  *    lesson: the desk does not lack authority over that tablet, it lacks a
  *    channel to it, and no amount of clicking makes an unenrolled device managed.
+ *    Since 0.32.0 it refuses a second thing, on the other side of the same
+ *    truth: a managed Mac IS enrolled and the console still cannot push it a
+ *    Screen Recording approval, because that consent is not a profile's to
+ *    give. Two refusals, one lesson - what a management channel is FOR, and
+ *    where it stops.
  *
  *  - `deviceManualMailSetup` is what a real desk does about that: talk the person
  *    holding the thing through setting the mailbox up by hand. It works on any
@@ -58,6 +63,33 @@ export const VIP_ACTIONS: readonly ActionData[] = [
     id: HELPDESK_ACTIONS.mdmPushProfile,
     tier: HELPDESK_TIER,
     validate: [
+      // BEFORE the kind guard, and on purpose (0.32.0, the creative vertical).
+      //
+      // A managed Mac is a `machine`, so the shipped kind refusal would answer
+      // "that is a workstation, and this action only works on a device" - which
+      // is true about the node and useless about the question. The question is
+      // whether a console can push a Screen Recording approval down, the answer
+      // is no, and the answer is the same whether the consent is currently
+      // granted or not - so the guard fires on any box that CARRIES the consent
+      // at all rather than on one particular value of it. Nothing else in any
+      // world has the field, so no other target's behaviour moves.
+      //
+      // The refusal is the lesson and it is the real limit: a PPPC profile can
+      // pre-approve Accessibility for a support tool, and Screen Recording is
+      // the consent Apple keeps for the person at the keyboard.
+      {
+        when: {
+          pred: 'field_is_bool',
+          node: TARGET,
+          field: FIELDS.tccScreenRecording,
+        },
+        reason: 'Screen Recording is not a thing this console can grant on '
+          + '"{target.label}". A management profile can pre-approve '
+          + 'Accessibility for a support tool; macOS keeps the screen itself '
+          + 'for the person sitting at it, under System Settings > Privacy & '
+          + 'Security > Screen Recording. There is no button here that clicks '
+          + 'it for them - the fix is a phone call and their own hand.',
+      },
       ...targetGuards('device'),
       {
         when: not(fieldIs(TARGET, FIELDS.mdmEnrolled, true)),

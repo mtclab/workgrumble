@@ -2344,4 +2344,174 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/co-managed-coordination', 'kb/msp-scope-escalation'],
   },
+  {
+    id: 'kb/mac-screen-recording-consent',
+    title: 'A remote session to a Mac shows a black screen',
+    summary: 'macOS keeps screen capture behind a consent only the person at '
+      + 'the Mac can give. A management profile can pre-approve Accessibility '
+      + 'and cannot pre-approve Screen Recording - so this one is a walkthrough, '
+      + 'not a console fix.',
+    state: 'published',
+    issue: 'The desk starts a remote-support session to a Mac. It connects, the '
+      + 'user is told somebody has joined, and the viewer shows nothing but '
+      + 'black - or the mouse moves and the screen never appears.',
+    environment: 'A managed Mac (enrolled in the shop\'s MDM) running a '
+      + 'remote-support or screen-sharing tool. The same tool works on other '
+      + 'Macs in the same fleet.',
+    resolution: [
+      'Do not go looking for a fault. A connected session with a black frame is '
+        + 'almost always the Screen Recording consent missing for that '
+        + 'particular application, and nothing on the Mac is broken.',
+      'Talk the person at the Mac through it, because only they can do it: '
+        + 'System Settings > Privacy & Security > Screen Recording, find the '
+        + 'support tool in the list, switch it on. macOS will ask for the '
+        + 'application to be quit and reopened before the permission takes '
+        + 'effect - it is not live until it has restarted.',
+      'If the tool is not in the list at all, have them start a session and let '
+        + 'it be refused once: the attempt is what puts the application in the '
+        + 'Privacy & Security list to be approved.',
+      'Do not promise to push it from the management console, and do not put a '
+        + 'ticket on hold waiting for a profile that cannot exist. Confirm the '
+        + 'session shows the screen, and note on the ticket that the grant was '
+        + 'given by the user - if the Mac is rebuilt, it is given again.',
+    ],
+    cause: [
+      'macOS governs a set of sensitive capabilities through Transparency, '
+      + 'Consent and Control (TCC): the camera, the microphone, the disk, '
+      + 'Accessibility, and screen capture. An application that has not been '
+      + 'granted screen capture is not blocked from connecting - it is handed a '
+      + 'blank frame, which is why the session looks alive and shows nothing, '
+      + 'and why this reads as a broken tool rather than as a permission.',
+      'Device management does not solve it, and the split is deliberate on '
+      + 'Apple\'s part. A PPPC profile pushed from an MDM can pre-approve '
+      + 'several of these for a named application - Accessibility, which is what '
+      + 'lets a support tool control the keyboard and mouse, is one of them. '
+      + 'Screen Recording is not: Apple reserves it for a click by the person '
+      + 'logged in at that Mac. So there is no console button at any tier, on '
+      + 'any MDM, and a desk that keeps looking for one is looking for something '
+      + 'that was removed on purpose.',
+      'Which makes the walkthrough the actual work, and worth doing well: say '
+      + 'where the setting is, say that the app has to be reopened, and say why '
+      + 'you cannot do it for them. A user who is told "we are not allowed to '
+      + 'switch on your screen from here, only you can" understands the next one '
+      + 'too, and is markedly happier about the one after that.',
+    ],
+    see_also: ['kb/unmanaged-personal-device', 'kb/reading-the-error'],
+  },
+  {
+    id: 'kb/gatekeeper-unnotarized',
+    title: '"The developer cannot be verified": Gatekeeper and notarization',
+    summary: 'An unnotarized app is UNCHECKED, not known-bad. macOS ships a '
+      + 'supported override for software you have reason to trust - use that, '
+      + 'and never turn Gatekeeper off to get one file open.',
+    state: 'published',
+    issue: 'A Mac refuses to open an application, plugin or tool with: "[App] '
+      + 'cannot be opened because the developer cannot be verified. macOS cannot '
+      + 'verify that this app is free from malware." (Older and newer builds '
+      + 'word the second sentence as "...because Apple cannot check it for '
+      + 'malicious software.") The file usually came from a supplier, a '
+      + 'freelancer, or a small tool downloaded from the web.',
+    environment: 'Any modern Mac, managed or not. It is Gatekeeper, which is on '
+      + 'by default and applies to anything downloaded rather than installed '
+      + 'from the App Store.',
+    resolution: [
+      'Read what it says before deciding anything. "The developer cannot be '
+        + 'verified" is a statement about a missing signature and a missing '
+        + 'notarization stamp. It is not a detection, and macOS has not found '
+        + 'anything in the file.',
+      'Establish provenance, because that is the only part a human can '
+        + 'contribute: who sent it, is it the supplier the studio already works '
+        + 'with, did it arrive the way their files normally arrive. If the '
+        + 'answer is a shrug, stop here and treat it as untrusted.',
+      'For software you have reason to trust, use the override macOS provides: '
+        + 'open the item from Finder\'s context menu and confirm at the prompt, '
+        + 'or allow it under System Settings > Privacy & Security immediately '
+        + 'after it has been blocked once. The permission is remembered for that '
+        + 'application on that Mac.',
+      'Do not disable Gatekeeper. Turning the check off for the whole machine '
+        + 'to open one file removes it for everything that machine ever '
+        + 'downloads afterwards, and it will not be turned back on.',
+      'Then fix it upstream: ask the developer to notarize their builds. It is a '
+        + 'step at their end, once, and it stops the same conversation happening '
+        + 'on every Mac in the building.',
+    ],
+    cause: [
+      'Notarization is Apple\'s automated malware scan: a developer submits a '
+      + 'build, it is checked, and if it passes it is stamped so that every Mac '
+      + 'can confirm the stamp offline. Gatekeeper refuses to open downloaded '
+      + 'software that has no stamp. The refusal therefore means "nobody has '
+      + 'checked this build", which is a genuinely useful thing to be told and a '
+      + 'different claim from "this is malware" - the wording is careful about '
+      + 'that, and support people routinely are not.',
+      'Plenty of legitimate software is unnotarized: plugins, internal tools, '
+      + 'one-off builds and anything from a developer without a paid Apple '
+      + 'account. That is exactly why the override exists and why using it is a '
+      + 'supported path rather than a workaround. What the override does is '
+      + 'move the decision from Apple to a person - so the person has to '
+      + 'actually make it, on provenance, rather than clicking through.',
+      'The two failure modes are opposite and both common. Turning Gatekeeper '
+      + 'off wholesale trades a permanent protection for a moment\'s '
+      + 'convenience. Deleting a supplier\'s work on the strength of a message '
+      + 'that never said it was dangerous costs a delivery and a relationship. '
+      + 'Knowing what the sentence actually claims is the whole difference.',
+    ],
+    see_also: ['kb/reading-the-error', 'kb/somebody-reported-a-phish'],
+  },
+  {
+    id: 'kb/named-user-seats',
+    title: 'Named User licensing: the seat follows the person, not the machine',
+    summary: 'A creative-suite seat is attached to a person in the vendor\'s '
+      + 'admin console. Signing out, signing in and swapping Macs cannot help, '
+      + 'and a plan with no free seat is a purchase decision, not a desk fix.',
+    state: 'published',
+    issue: 'Somebody who was working in the suite on Friday cannot open it on '
+      + 'Monday: it reports that their subscription is not active. Nothing about '
+      + 'their machine has changed, and moving them to a different one changes '
+      + 'nothing either.',
+    environment: 'A design or media shop on a Named User plan for its creative '
+      + 'software - the common case - where entitlements are assigned per person '
+      + 'in the vendor\'s admin console and the shop buys a fixed number of '
+      + 'seats. Frequently mixed permanent staff and contract people.',
+    resolution: [
+      'Check the person, not the Mac. In the admin console, is a seat assigned '
+        + 'to that account today? A lapsed term, a renewal that reduced the plan, '
+        + 'or an offboarding sweep will all show up as an unassigned person and '
+        + 'nothing else.',
+      'Stop the machine-shaped troubleshooting once you know. Reinstalling the '
+        + 'suite, clearing caches, signing out and back in and trying another Mac '
+        + 'are all reasonable instincts and none of them can hand somebody an '
+        + 'entitlement they do not have.',
+      'If the plan has a free seat, assign it to them and they are working in a '
+        + 'minute. If it has none, that is the answer: the plan is fully '
+        + 'subscribed.',
+      'Do not take a seat off somebody who is using it to unblock somebody who '
+        + 'is not. It blocks a working designer to unblock a stopped one, which '
+        + 'is one problem moved rather than one solved, and it is the studio\'s '
+        + 'decision to make and not the desk\'s.',
+      'Escalate to whoever owns the licensing with the specifics - the account, '
+        + 'the job it is holding up, when the seat lapsed - so a seat is bought '
+        + 'or the term renewed. That is what actually ends it, and a clean '
+        + 'escalation with the details ends it the same day.',
+    ],
+    cause: [
+      'Named User licensing binds the entitlement to an identity rather than to '
+      + 'hardware, which is why it travels with a person between machines and '
+      + 'why it is enforced by a sign-in rather than by anything on the disk. '
+      + 'The alternative model - shared device licensing, used in labs and '
+      + 'classrooms - binds it to the machine instead, and the two behave in '
+      + 'opposite ways when somebody moves desks. Knowing which one a shop is on '
+      + 'answers half the licensing tickets it will ever raise.',
+      'It also means an offboarding, a renewal or a contract ending is a '
+      + 'licensing event, and the seat quietly comes back to the pool. That is '
+      + 'correct behaviour and it is invisible until somebody tries to work: the '
+      + 'suite was fine on Friday because the term ended on Sunday.',
+      'And it is why this is not a fault to repair. A seat that has lapsed at '
+      + 'the vendor cannot be conjured by an administrator, in an MDM, or from '
+      + 'the desk: it is bought. The desk\'s job is to identify it correctly and '
+      + 'fast - which spares everybody an afternoon of reinstalling software '
+      + 'that was never broken - and to raise it to the people who hold the '
+      + 'budget with enough detail that they can act on it.',
+    ],
+    see_also: ['kb/licence-seats', 'kb/msp-scope-escalation'],
+  },
 ];

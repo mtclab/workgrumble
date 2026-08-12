@@ -1469,6 +1469,43 @@ const IMAGING_BRIDGE_BREAK: WorldTicket = {
  * contract, and the accounting handed back to the practice manager IS the job.
  * Nothing is remediated because nothing is broken; the record is produced.
  */
+/**
+ * The three replies this roster closes a ticket with, said once.
+ *
+ * They live here, beside the paths that advertise them, and the DIALOGUE reads
+ * them - the same arrangement the phish praise has had since the pilot week
+ * (`PHISH_PRAISE`), and for a reason 0.32.0 found the hard way: a chat option
+ * is the ONLY route a player has to `ticket.reply_to_reporter`, so a
+ * reply-closed ticket whose tree does not offer one is a ticket nobody can
+ * close. The dental access review shipped in that state in 0.14.0 and nothing
+ * caught it, because every gate it had drove the PATH rather than the tree.
+ * There is a standing gate now (`dialogue.test.ts`), and these constants are
+ * what keep the two halves saying the same sentence.
+ */
+export const HIPAA_ACCESS_REPORT = 'Access review complete: the Dentrix audit '
+  + 'trail for that chart over the last month shows only the treating dentist '
+  + 'and the practice manager, each entry stamped with the login and time. No '
+  + 'unexpected access. Full report is on the ticket for your records.';
+
+export const SCREEN_RECORDING_WALKTHROUGH = 'This one has to be done at the '
+  + 'Mac, and it takes a minute: on Corin\'s machine, System Settings > Privacy '
+  + '& Security > Screen Recording, switch our support tool on, and let it quit '
+  + 'and reopen when it asks. macOS will not let us do it from the management '
+  + 'console - Apple keeps screen capture as the user\'s own decision, however '
+  + 'managed the Mac is. Once he has ticked it the session will show his screen '
+  + 'straight away.';
+
+export const GATEKEEPER_ANSWER = 'That message is not saying the plugin is '
+  + 'malware - it is saying it has not been notarized, which means Apple has '
+  + 'never scanned that particular build. For a tool from a supplier you have '
+  + 'worked with for two years, the supported way through is the override macOS '
+  + 'provides: right-click the plugin in Finder, choose Open and confirm, or '
+  + 'allow it under System Settings > Privacy & Security straight after it is '
+  + 'blocked. Please do NOT turn Gatekeeper off - that drops the check for '
+  + 'everything the studio downloads from now on to solve one file. Worth '
+  + 'asking him to notarize future builds; it is a step at his end and it stops '
+  + 'this happening on every machine.';
+
 const HIPAA_ACCESS_REVIEW: WorldTicket = {
   arrival: 'drip',
   nodes: [MSP_IDS.elmwoodServer, MSP_IDS.elmwoodContactAccount],
@@ -1520,12 +1557,299 @@ const HIPAA_ACCESS_REVIEW: WorldTicket = {
         {
           action: HELPDESK_ACTIONS.ticketReplyToReporter,
           target: 'ticket:elmwood-hipaa-audit',
+          params: { comment: HIPAA_ACCESS_REPORT },
+        },
+      ],
+    },
+  ],
+};
+
+/* -- MARLOWE-STUDIO: the Mac vertical, fully-managed (0.32.0) -------------- */
+
+/**
+ * The black screen: a remote session that connects and shows nothing, because
+ * nobody has granted the support tool Screen Recording.
+ *
+ * The first thing a Windows-shaped desk gets wrong about a Mac. The session is
+ * up, the tool is running, the box is enrolled in the studio's MDM - and the
+ * viewer is looking at a black rectangle, because macOS treats "see this
+ * screen" as a consent belonging to the person sitting in front of it. There is
+ * no console button for it: a management profile can pre-approve Accessibility
+ * for the same tool and CANNOT pre-approve Screen Recording, which is exactly
+ * what `mdm.push_profile` refuses on this box and why the refusal is the lesson
+ * rather than a wall.
+ *
+ * So the fix is somebody else's click, and the work is talking them through it:
+ * System Settings > Privacy & Security > Screen Recording, tick the support
+ * tool, and let it restart. That is a reply to the reporter - the same shape the
+ * HIPAA access review closes on - because the deliverable is the walkthrough,
+ * not a state the desk can reach from here. The consent itself is real estate
+ * (`tcc_screen_recording` on the Mac, granted across the studio and taken away
+ * on this one box by the setup below), which is what the MDM refusal reads.
+ */
+const SCREEN_RECORDING_BLIND: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.marloweDesignMac, MSP_IDS.marloweDesignerAccount],
+  // Rosa says the designer is sitting waiting on IT, which is true; the fault is
+  // a two-minute walkthrough rather than the emergency the studio calls it.
+  claimed_urgency: 3,
+  true_urgency: 2,
+  def: {
+    id: 'ticket:marlowe-screen-recording',
+    archetype: 'hidden_cause',
+    flavor: {
+      title: 'Marlowe: your remote thing connects to Corin\'s Mac and shows a '
+        + 'black screen',
+      body:
+        'Rosa reports that when the desk starts a remote session to Corin\'s Mac '
+        + 'it connects - he can see it say somebody has joined - and then the '
+        + 'viewer just shows black. Corin can see his own screen perfectly well '
+        + 'and is describing it down the phone, which he says is the worst '
+        + 'possible way to get help with a colour problem. The Mac is on the '
+        + 'studio\'s management, so Rosa assumed this was something IT could '
+        + 'switch on from your end.',
+    },
+    reporter: MSP_IDS.marloweContact,
+    // The consent, withdrawn. It arrives with the ticket like every other fault
+    // here: the studio's Macs are seeded with the support tool approved, and
+    // this one box is not - a new machine, a reinstalled tool, a "Deny" clicked
+    // in a hurry. Nothing else about the Mac is wrong.
+    setup: [
+      {
+        op: 'setField',
+        id: MSP_IDS.marloweDesignMac,
+        field: FIELDS.tccScreenRecording,
+        value: false,
+      },
+    ],
+    // Closed when the walkthrough has been given: the desk cannot grant this
+    // and never could, so the job is the person on the other end being told
+    // exactly where to click and why.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: 'ticket:marlowe-screen-recording' },
+      field: FIELDS.replied,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/mac-screen-recording-consent',
+  },
+  cause: 'macOS puts screen capture behind a consent (TCC) that only the person '
+    + 'logged in at that Mac can give: System Settings > Privacy & Security > '
+    + 'Screen Recording, per application. A remote-support tool without it '
+    + 'connects normally and is handed a black frame, which is why the session '
+    + 'looks alive and shows nothing. Device management does not solve it - a '
+    + 'PPPC profile can pre-approve Accessibility for the same tool, and Apple '
+    + 'deliberately excludes Screen Recording from what an administrator may '
+    + 'grant - so there is no console fix at any tier, and the correct work is '
+    + 'to walk the user through granting it themselves.',
+  dialogue_ref: 'dialogue/msp-rosa',
+  paths: [
+    {
+      id: 'walk-them-through-the-grant',
+      app: 'chat',
+      label: 'Walk Corin through granting Screen Recording in Privacy & '
+        + 'Security',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.ticketReplyToReporter,
+          target: 'ticket:marlowe-screen-recording',
+          params: { comment: SCREEN_RECORDING_WALKTHROUGH },
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The plugin that will not open: Gatekeeper, notarization, and the override
+ * that is a legitimate move rather than a hack.
+ *
+ * A freelance-supplied plugin lands on the edit Mac and refuses to run, with
+ * the wording macOS actually uses. The instinct - "this is a virus, wipe it" or
+ * "turn Gatekeeper off" - is wrong in both directions, and the truth is the
+ * teachable middle: notarization is Apple checking a developer's build for
+ * known malware and stamping it, an unnotarized build is UNCHECKED rather than
+ * KNOWN BAD, and macOS ships a documented way to open one anyway for software
+ * you have reason to trust. That is the whole ticket: read the dialog, know
+ * what it is claiming, and give the studio the real answer.
+ *
+ * Nothing is seeded, for the same reason the imaging bridge seeds nothing: the
+ * refusal is the OS enforcing a policy, not a state on the box gone wrong, and
+ * a field called "gatekeeper_blocked" would be a fault where there is none. It
+ * closes on the reply, which is where the knowledge is handed over.
+ */
+const GATEKEEPER_PLUGIN: WorldTicket = {
+  arrival: 'drip',
+  nodes: [MSP_IDS.marloweEditMac, MSP_IDS.marloweProjectShare],
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:marlowe-gatekeeper-plugin',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Marlowe: the edit suite will not open the plugin the job needs',
+      body:
+        'Rosa reports that the render plugin the client\'s job is built around '
+        + 'will not open on the edit Mac. She has read the message out twice: '
+        + '"Chroma Bloom cannot be opened because the developer cannot be '
+        + 'verified. macOS cannot verify that this app is free from malware." '
+        + 'The plugin came from the freelancer who built the effect, the studio '
+        + 'has used his work for two years, and somebody in the room has already '
+        + 'suggested turning the security off entirely. The delivery is today.',
+    },
+    reporter: MSP_IDS.marloweContact,
+    // Nothing to seed and nothing wrong with the Mac: Gatekeeper is doing
+    // precisely its job on a build that has not been through notarization, and
+    // there is no state on the box to repair - only a decision to make and
+    // explain.
+    setup: [],
+    // Closed when the studio has been given the real answer: what the message
+    // means, and the documented way to open a build you have reason to trust.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: 'ticket:marlowe-gatekeeper-plugin' },
+      field: FIELDS.replied,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/gatekeeper-unnotarized',
+  },
+  cause: '"The developer cannot be verified" is Gatekeeper reporting that the '
+    + 'app has not been NOTARIZED - it has not been submitted to Apple\'s '
+    + 'automated malware scan and stamped - which is a different claim from '
+    + '"this is malware". Small tools, plugins and one-off builds from people '
+    + 'you work with are frequently unnotarized because notarizing costs the '
+    + 'developer a paid account and a step in their build. macOS ships the '
+    + 'override for exactly this case: open the item from Finder\'s context menu '
+    + 'and confirm, or allow it under System Settings > Privacy & Security '
+    + 'after the first refusal. Turning Gatekeeper off wholesale is the wrong '
+    + 'move - it removes the check for everything the studio ever downloads to '
+    + 'solve one file - and so is deleting a supplier\'s work on the strength of '
+    + 'a message that never said it was dangerous.',
+  dialogue_ref: 'dialogue/msp-rosa',
+  paths: [
+    {
+      id: 'explain-and-authorise-the-override',
+      app: 'chat',
+      label: 'Tell them what the message means and the supported way to open '
+        + 'it',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.ticketReplyToReporter,
+          target: 'ticket:marlowe-gatekeeper-plugin',
+          params: { comment: GATEKEEPER_ANSWER },
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The seat that followed the person: a Named User licence expired mid-project,
+ * and there is nothing on the estate to fix.
+ *
+ * The third Mac-shop truth, and the one that has nothing to do with Macs and
+ * everything to do with how creative software is sold. A creative-suite seat is
+ * attached to a PERSON in the vendor's admin console, not to a machine: it
+ * follows them between the studio's Macs, and it stops the day the term it was
+ * bought for ends. The freelancer's did, in the middle of a job, so the suite
+ * opens and refuses.
+ *
+ * Every desk instinct is a dead end and the estate says so with the machinery
+ * it already had. Assigning a seat is refused because the studio's plan is
+ * fully subscribed (`seats_free: 0` on the pool), and the seats it does have
+ * are held by working designers - taking one back to unblock the freelancer
+ * blocks somebody else and does NOT close this, because moving a problem is not
+ * solving it. What is left is the true move: raise it with the licensing desk,
+ * with the account and the job on it, so a seat is bought or the term renewed.
+ * The same clean-escalation shape as the imaging bridge, for the same reason -
+ * the decision is not the desk's to make.
+ */
+const CREATIVE_SEAT_EXPIRED: WorldTicket = {
+  arrival: 'drip',
+  nodes: [
+    MSP_IDS.marloweFreelancerAccount,
+    MSP_IDS.marloweSuiteSeats,
+    MSP_IDS.marloweStudioMac,
+  ],
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:marlowe-seat-expired',
+    archetype: 'hidden_cause',
+    flavor: {
+      title: 'Marlowe: the freelancer cannot open the suite and he is billing '
+        + 'by the hour',
+      body:
+        'Rosa reports that Luca, the motion designer they have in for a job, '
+        + 'signed in this morning and the creative suite will not open for him - '
+        + 'it says his subscription is not active. He was working in it on '
+        + 'Friday, on the same desk, on the same files. Rosa has already tried '
+        + 'the obvious: signing him out and back in, and moving him to a '
+        + 'different Mac, on the theory that the machine had lost its licence.',
+    },
+    reporter: MSP_IDS.marloweContact,
+    // The seat, gone. Written explicitly rather than left absent: "this person
+    // holds no seat" is the fact the whole ticket turns on, and a field nobody
+    // wrote is a fact nobody can read.
+    setup: [
+      {
+        op: 'setField',
+        id: MSP_IDS.marloweFreelancerAccount,
+        field: FIELDS.licence,
+        value: false,
+      },
+    ],
+    // The honest ending: raise it with the licensing desk. A seat that has
+    // lapsed at the vendor is bought or renewed, not conjured, and no verb on
+    // this estate can make one - which is why the escalation IS the work here.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: 'ticket:marlowe-seat-expired' },
+      field: FIELDS.escalated,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 5 },
+    kb_ref: 'kb/named-user-seats',
+  },
+  cause: 'Creative-suite licences are NAMED USER: the entitlement is attached to '
+    + 'the person in the vendor\'s admin console and travels with them between '
+    + 'machines, which is why signing out, signing in and changing Mac all '
+    + 'change nothing. The freelancer\'s seat was bought for a term, the term '
+    + 'ended, and the seat was unassigned at renewal - so the suite is behaving '
+    + 'correctly by refusing to open. The studio\'s plan has no spare seat to '
+    + 'give him, and the seats it has are held by designers who are using them: '
+    + 'reclaiming one unblocks Luca by blocking somebody else, which is a '
+    + 'commercial decision the studio makes and not a fix the desk performs. '
+    + 'Escalating it with the account, the job and the date it lapsed is what '
+    + 'actually gets a seat bought.',
+  dialogue_ref: 'dialogue/msp-rosa',
+  paths: [
+    {
+      id: 'escalate-to-the-licensing-desk',
+      app: 'tickets',
+      label: 'Escalate it: the seat lapsed at the vendor and has to be bought '
+        + 'back',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.ticketEscalate,
+          target: 'ticket:marlowe-seat-expired',
           params: {
-            comment: 'Access review complete: the Dentrix audit trail for that '
-              + 'chart over the last month shows only the treating dentist and '
-              + 'the practice manager, each entry stamped with the login and time. '
-              + 'No unexpected access. Full report is on the ticket for your '
-              + 'records.',
+            reported: 'MARLOWE-STUDIO: Named User seat for lvasquez (Luca '
+              + 'Vasquez, contract motion designer) is not active - creative '
+              + 'suite refuses to open. Working Friday, blocked this morning.',
+            tried:
+              'Sign-out/sign-in and a different Mac, both by the studio - a '
+              + 'Named User seat follows the person, so neither could help\n'
+              + 'Creative suite seats pool shows 0 free: the plan is fully '
+              + 'subscribed and every seat is held by working staff, so there '
+              + 'is none to assign and none to take back without blocking '
+              + 'somebody else\n'
+              + 'Needs a seat bought or the term renewed at the licensing desk',
           },
         },
       ],
@@ -2143,6 +2467,12 @@ export const MSP_TICKETS: readonly WorldTicket[] = [
   XRAY_SENSOR_NOT_DETECTED,
   IMAGING_BRIDGE_BREAK,
   HIPAA_ACCESS_REVIEW,
+  // MARLOWE-STUDIO - the fully-managed creative agency and the Mac vertical
+  // (0.32.0): the consent only the user can give, the policy the OS vendor
+  // enforces, and the seat that follows the person out of the door.
+  SCREEN_RECORDING_BLIND,
+  GATEKEEPER_PLUGIN,
+  CREATIVE_SEAT_EXPIRED,
   // FETTLE & CRANE's own infra: the first fix at the engineer tier (E6, Pass B).
   // Summoned - raised by the promotion, not by a scripted day.
   SYSENG_FIRST_INCIDENT,

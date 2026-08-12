@@ -60,6 +60,11 @@ export const BANNED_NAMES: readonly string[] = [
   'Pryce', 'Pat', 'Pending', 'Priya', 'Mehta', 'Raval', 'Rafiq', 'Hassan',
   'Rob', 'Tulliver', 'Terry', 'Blunt', 'Theo', 'Vic', 'Ndlovu', 'Yolanda',
   'Reece', 'Glenda', 'Tillman',
+  // The creative agency (0.32.0). "Marlowe" is both the studio manager's
+  // surname and the customer's handle, and it goes on the list as a NAME: a
+  // blameless record naming MARLOWE-STUDIO's manager is exactly what the ban
+  // is for, and the customer can be identified by its estate.
+  'Rosa', 'Marlowe', 'Corin', 'Adeyemi', 'Luca', 'Vasquez',
 ];
 
 /** One matcher per banned name, whole-word and case-insensitive, built once. */

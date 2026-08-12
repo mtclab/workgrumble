@@ -41,6 +41,7 @@ import {
   type MachineOs,
   type MachineRole,
   MACHINE_ROLES,
+  SERVICE_CLASSES,
   SERVICE_SCOPES,
   type ServiceScope,
   SERVICE_STATUS,
@@ -54,6 +55,7 @@ import {
   baselineServiceId,
   baselineUnitsFor,
   FC_INFRA_UNITS,
+  NAS_APPLIANCE_UNITS,
   unitIdOn,
 } from './services';
 
@@ -95,6 +97,9 @@ export const MSP_CUSTOMERS = {
   // from monitoring-only NORTHWIND-CLINIC: this one is fully-managed, with real
   // chair-side, time-pressured tickets.
   elmwood: 'customer:elmwood',
+  // 0.32.0, the creative agency - the Mac vertical, and the first customer on
+  // this roster whose desks are not Windows at all.
+  marlowe: 'customer:marlowe',
 } as const;
 
 const CUSTOMERS: readonly CustomerSeed[] = [
@@ -154,6 +159,23 @@ const CUSTOMERS: readonly CustomerSeed[] = [
     businessType: BUSINESS_TYPES.dentalClinic,
     scope: SERVICE_SCOPES.fullyManaged,
     sla: SLA_TIERS.gold,
+  },
+  {
+    // MARLOWE-STUDIO: a creative agency with no in-house IT at all - a studio
+    // manager, designers, and Fettle & Crane for everything else - so the
+    // contract is fully-managed and the whole estate is in reach, MDM console
+    // and licensing console included. Silver, because that tier had every scope
+    // but this one: a studio missing a delivery loses a client, which is worth
+    // paying above Bronze for, and it is not a surgery with a patient in the
+    // chair, which is what Gold is for. The estate is the axis-3 archetype
+    // whole - Macs, a project NAS, an MDM at fleet grain, a creative suite
+    // licensed per person - and it is the first one where a Windows-shaped
+    // instinct is wrong three different ways.
+    id: MSP_CUSTOMERS.marlowe,
+    name: 'MARLOWE-STUDIO',
+    businessType: BUSINESS_TYPES.creativeAgency,
+    scope: SERVICE_SCOPES.fullyManaged,
+    sla: SLA_TIERS.silver,
   },
 ] as const;
 
@@ -368,6 +390,35 @@ export const MSP_IDS = {
   elmwoodServer: 'machine:elm-srv-01',
   elmwoodSensor: 'device:elm-sensor-01',
   elmwoodImagingBridge: 'service:elm-srv-01/imaging-bridge',
+
+  /**
+   * MARLOWE-STUDIO, the fully-managed creative agency (0.32.0) - the Mac
+   * vertical, and the estate the third OS family was seeded for.
+   *
+   * Rosa runs the studio and files everything on behalf of the people at the
+   * desks, the way Grace does for the surgery. Corin is the senior designer
+   * whose Mac the remote session cannot see and whose plugin the OS will not
+   * open; Luca is the freelance motion designer whose seat on the creative suite
+   * expired in the middle of a job, which is the licensing lesson: the seat was
+   * never on the machine, it was on the person.
+   *
+   * The estate is three managed Macs and the box the work actually lives on -
+   * a Linux project NAS serving SMB, which is what a 10GbE studio NAS is. The
+   * suite's seats are a licence pool the same shape the probation shop's is,
+   * and the project share is the volume every one of those Macs has mounted.
+   */
+  marloweContact: 'person:marlowe-rosa',
+  marloweContactAccount: 'account:marlowe-rosa',
+  marloweDesigner: 'person:marlowe-corin',
+  marloweDesignerAccount: 'account:marlowe-corin',
+  marloweFreelancer: 'person:marlowe-luca',
+  marloweFreelancerAccount: 'account:marlowe-luca',
+  marloweDesignMac: 'machine:marl-ws-01',
+  marloweEditMac: 'machine:marl-ws-02',
+  marloweStudioMac: 'machine:marl-ws-03',
+  marloweNas: 'machine:marl-nas-01',
+  marloweProjectShare: 'share:marl-projects',
+  marloweSuiteSeats: 'service:marl-suite-seats',
 } as const;
 
 export type MspNodeId = (typeof MSP_IDS)[keyof typeof MSP_IDS];
@@ -386,6 +437,14 @@ interface StaffSeed {
    * MSP's own tech, whose account belongs to no customer.
    */
   readonly customer?: string;
+  /**
+   * Whether this person holds a seat of the software their shop licenses per
+   * PERSON (0.32.0, the creative agency). Only the studio has a licence pool,
+   * and its permanent designers hold its seats - which is why there is not a
+   * spare one for the freelancer whose term seat lapsed, and why taking one
+   * back would block a working designer instead of a blocked one.
+   */
+  readonly licence?: boolean;
 }
 
 const STAFF: readonly StaffSeed[] = [
@@ -545,6 +604,44 @@ const STAFF: readonly StaffSeed[] = [
       + 'and the server lives in a cupboard behind the sterilisation room',
     customer: MSP_CUSTOMERS.elmwood,
   },
+
+  // MARLOWE-STUDIO, fully-managed (0.32.0). Rosa files every studio ticket on
+  // behalf of whoever is stuck; Corin and Luca are the two people the faults are
+  // actually happening to, and both need accounts of their own - Corin because
+  // the Mac in front of him is his, Luca because the licence seat that expired
+  // is attached to a PERSON and there is nowhere else to hang it.
+  {
+    person: MSP_IDS.marloweContact,
+    account: MSP_IDS.marloweContactAccount,
+    name: 'Rosa Marlowe',
+    title: 'Studio Manager, Marlowe Studio',
+    username: 'rmarlowe',
+    desk: 'A studio front desk with three delivery dates on the wall and a '
+      + 'kettle nobody descales',
+    customer: MSP_CUSTOMERS.marlowe,
+    licence: true,
+  },
+  {
+    person: MSP_IDS.marloweDesigner,
+    account: MSP_IDS.marloweDesignerAccount,
+    name: 'Corin Adeyemi',
+    title: 'Senior Designer, Marlowe Studio',
+    username: 'cadeyemi',
+    desk: 'The corner desk with the colour-calibrated screen nobody else is '
+      + 'allowed to touch',
+    customer: MSP_CUSTOMERS.marlowe,
+    licence: true,
+  },
+  {
+    person: MSP_IDS.marloweFreelancer,
+    account: MSP_IDS.marloweFreelancerAccount,
+    name: 'Luca Vasquez',
+    title: 'Motion Designer (freelance), Marlowe Studio',
+    username: 'lvasquez',
+    desk: 'A hot desk by the window, booked by the week, on the third week of '
+      + 'a two-week job',
+    customer: MSP_CUSTOMERS.marlowe,
+  },
 ];
 
 interface MachineSeed {
@@ -561,6 +658,23 @@ interface MachineSeed {
   readonly processor: string;
   readonly memory: string;
   readonly diskFree: number;
+  /**
+   * Whether this box is enrolled in the customer's device management (0.32.0).
+   *
+   * The same field a company-issue handset carries at the corporate employer,
+   * on a workstation for the first time, because that is what an MDM at FLEET
+   * grain manages: a managed Mac is enrolled, and the console can push a
+   * configuration profile to it. It is what makes the Screen Recording refusal
+   * about the LIMIT of a profile rather than about a missing channel.
+   */
+  readonly mdmEnrolled?: boolean;
+  /**
+   * Whether the remote-support tool holds Screen Recording consent on this Mac
+   * (0.32.0). Seeded granted across the studio, because a desk that could
+   * never see a screen would not have a support contract; the ticket takes it
+   * away on one box, which is the fault.
+   */
+  readonly screenRecording?: boolean;
 }
 
 const MACHINES: readonly MachineSeed[] = [
@@ -762,6 +876,73 @@ const MACHINES: readonly MachineSeed[] = [
       + 'imaging bridge, in a cupboard behind the sterilisation room',
     memory: '32 GB',
     diskFree: 214_748_364_800,
+  },
+
+  // MARLOWE-STUDIO: fully-managed, and the inverse of every estate above it.
+  // Three Macs at three desks, all enrolled in the studio's MDM and all with
+  // the support tool's Screen Recording consent granted, wired to the one box
+  // that is not a Mac: the project NAS the work lives on.
+  {
+    id: MSP_IDS.marloweDesignMac,
+    hostname: 'MARL-WS-01',
+    role: MACHINE_ROLES.workstation,
+    os: MACHINE_OS.mac,
+    customer: MSP_CUSTOMERS.marlowe,
+    owner: MSP_IDS.marloweDesigner,
+    wiredTo: MSP_IDS.marloweNas,
+    resolution: '2560x1440',
+    processor: 'The senior designer\'s desktop Mac, colour-calibrated to within '
+      + 'an inch of its life',
+    memory: '32 GB',
+    diskFree: 343_597_383_680,
+    mdmEnrolled: true,
+    screenRecording: true,
+  },
+  {
+    id: MSP_IDS.marloweEditMac,
+    hostname: 'MARL-WS-02',
+    role: MACHINE_ROLES.workstation,
+    os: MACHINE_OS.mac,
+    customer: MSP_CUSTOMERS.marlowe,
+    wiredTo: MSP_IDS.marloweNas,
+    resolution: '2560x1440',
+    processor: 'The edit suite: whoever is cutting this week sits at it, which '
+      + 'is why it has every plugin anybody has ever asked for',
+    memory: '64 GB',
+    diskFree: 171_798_691_840,
+    mdmEnrolled: true,
+    screenRecording: true,
+  },
+  {
+    id: MSP_IDS.marloweStudioMac,
+    hostname: 'MARL-WS-03',
+    role: MACHINE_ROLES.workstation,
+    os: MACHINE_OS.mac,
+    customer: MSP_CUSTOMERS.marlowe,
+    owner: MSP_IDS.marloweContact,
+    wiredTo: MSP_IDS.marloweNas,
+    resolution: '2560x1440',
+    processor: 'The studio manager\'s laptop, which runs the schedule, the '
+      + 'invoices and one very large spreadsheet',
+    memory: '16 GB',
+    diskFree: 128_849_018_880,
+    mdmEnrolled: true,
+    screenRecording: true,
+  },
+  {
+    // The NAS: Linux, because a 10GbE project NAS is, and the estate says so
+    // rather than dressing an appliance as a Windows file server. Its units are
+    // hand-written (`NAS_APPLIANCE_UNITS`) for the same reason - the file-server
+    // role table is a list of Windows services, and this box runs Samba.
+    id: MSP_IDS.marloweNas,
+    hostname: 'MARL-NAS-01',
+    role: MACHINE_ROLES.fileServer,
+    os: MACHINE_OS.linux,
+    customer: MSP_CUSTOMERS.marlowe,
+    processor: 'The project NAS on the studio\'s 10-gig switch: every job, every '
+      + 'render, every version anybody has been too frightened to delete',
+    memory: '16 GB',
+    diskFree: 3_298_534_883_328,
   },
 ];
 
@@ -987,7 +1168,12 @@ export function mspSetup(): readonly SetupOp[] {
           : {}),
       },
     });
-    addNode(ops, accountNode(member.account, member.username, member.customer));
+    addNode(ops, accountNode(
+      member.account,
+      member.username,
+      member.customer,
+      member.licence,
+    ));
     addEdge(ops, { from: member.person, to: member.account, kind: 'owns' });
   }
 
@@ -1010,6 +1196,14 @@ export function mspSetup(): readonly SetupOp[] {
         [FIELDS.processor]: machine.processor,
         [FIELDS.memory]: machine.memory,
         [FIELDS.diskFree]: machine.diskFree,
+        // The two managed-Mac dimensions (0.32.0), written only where a box has
+        // them: every other estate reads nothing and is byte-identical.
+        ...(machine.mdmEnrolled === undefined
+          ? {}
+          : { [FIELDS.mdmEnrolled]: machine.mdmEnrolled }),
+        ...(machine.screenRecording === undefined
+          ? {}
+          : { [FIELDS.tccScreenRecording]: machine.screenRecording }),
       },
     });
   }
@@ -1139,6 +1333,67 @@ export function mspSetup(): readonly SetupOp[] {
     from: MSP_IDS.elmwoodImagingBridge,
     to: MSP_IDS.elmwoodServer,
     kind: 'runs_on',
+  });
+
+  // MARLOWE-STUDIO's three named pieces of estate (0.32.0), all seeded HEALTHY
+  // and none of them a fault: the volume the work is on, the units that serve
+  // it, and the pool the creative suite is licensed out of.
+  //
+  // The project share is what every Mac in the studio has mounted, and it is
+  // named with an SMB URL rather than a UNC path because that is what a Mac
+  // shows you when you ask where a file is. It is estate the tickets talk
+  // about; nothing in this version wedges it.
+  addNode(ops, {
+    id: MSP_IDS.marloweProjectShare,
+    kind: 'share',
+    fields: {
+      [FIELDS.name]: 'Projects - live jobs',
+      [FIELDS.path]: 'smb://marl-nas-01/projects',
+    },
+  });
+
+  // What the NAS runs. Hand-seeded rather than taken from a role table, because
+  // `file_server` in that table is a list of WINDOWS services and this box is a
+  // Linux appliance serving SMB - the same reason Fettle & Crane's own box
+  // carries its units by name.
+  for (const unit of NAS_APPLIANCE_UNITS) {
+    const id = unitIdOn(MSP_IDS.marloweNas, unit.unit);
+
+    addNode(ops, {
+      id,
+      kind: 'unit',
+      fields: {
+        [FIELDS.name]: unit.name,
+        [FIELDS.unitName]: unit.unit,
+        [FIELDS.unitState]: unit.state,
+        [FIELDS.unitEnabled]: unit.enabled,
+      },
+    });
+    addEdge(ops, { from: id, to: MSP_IDS.marloweNas, kind: 'runs_on' });
+  }
+
+  // The creative suite's seats: NAMED USER licensing, which is the whole of the
+  // third ticket. A seat is attached to a person in the vendor's admin console,
+  // not to a machine, and the studio's plan is fully subscribed - every seat it
+  // pays for is held by somebody on the permanent staff. `seats_free: 0` is
+  // therefore not a fault either: it is a company that bought exactly as many
+  // seats as it has people, which is what every company does, and it is why the
+  // freelancer whose term seat lapsed cannot simply be given one.
+  //
+  // Same shape as the probation shop's pool (an `appliance`: somebody else's
+  // licence service answering over the wire, with a number on it and nothing to
+  // restart) and a deliberately different lesson - there, a leaver was still
+  // holding a seat and the fix was to take it back; here there is no stale seat
+  // to reclaim and the honest move is to raise it.
+  addNode(ops, {
+    id: MSP_IDS.marloweSuiteSeats,
+    kind: 'service',
+    fields: {
+      [FIELDS.name]: 'Creative suite seats (Named User)',
+      [FIELDS.status]: SERVICE_STATUS.running,
+      [FIELDS.serviceClass]: SERVICE_CLASSES.appliance,
+      [FIELDS.seatsFree]: 0,
+    },
   });
 
   // ARDEN-MFG's edge (0.29.0): the ISP handoff, cabled into the OLD box, and
@@ -1539,6 +1794,13 @@ function accountNode(
   id: string,
   username: string,
   customer?: string,
+  /**
+   * Whether this person is holding one of the seats their employer bought
+   * (0.32.0). Written only where a licence pool exists to hold seats against -
+   * the creative agency - so every other account in this world is the account
+   * it has always been, field for field.
+   */
+  licence?: boolean,
 ): GraphNode {
   return {
     id,
@@ -1553,6 +1815,7 @@ function accountNode(
       [FIELDS.mfaEnrolled]: false,
       [FIELDS.verificationChannels]: VERIFICATION_CHANNELS_ON_FILE,
       ...(customer === undefined ? {} : { [FIELDS.machineCustomer]: customer }),
+      ...(licence === undefined ? {} : { [FIELDS.licence]: licence }),
     },
   };
 }

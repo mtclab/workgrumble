@@ -132,6 +132,10 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
   [MSP_IDS.tillmanContact]: 'You are showing away. We only signed this week and '
     + 'you are the whole of our IT now - if away means nobody is looking, that is '
     + 'exactly the arrangement we thought we were getting away from.',
+  [MSP_IDS.marloweContact]: 'Your status says away, which is a lovely thing to '
+    + 'be looking at while three people sit at desks they cannot work at. We '
+    + 'deliver today. I am not asking you to be quick, I am asking you to be '
+    + 'here.',
   [MSP_IDS.elmwoodContact]: 'You are marked away, and I have a patient in the '
     + 'chair. I can see you working on something - just not on us - and "away" is '
     + 'not a word I can say to a surgery that is running behind because of it.',

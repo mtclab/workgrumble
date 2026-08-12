@@ -307,6 +307,14 @@ describe('shipped tickets', () => {
       'ticket:elmwood-xray-sensor',
       'ticket:elmwood-imaging-bridge',
       'ticket:elmwood-hipaa-audit',
+      // And the creative vertical (0.32.0): the Mac agency's three, one per
+      // thing a Windows-shaped desk gets wrong about a Mac shop - the Screen
+      // Recording consent no console can grant, the Gatekeeper refusal that is
+      // not a malware detection, and the Named User seat that followed the
+      // person out of the door.
+      'ticket:marlowe-screen-recording',
+      'ticket:marlowe-gatekeeper-plugin',
+      'ticket:marlowe-seat-expired',
       // And the engineer's first fix (E6, Pass B): the MSP's OWN client portal
       // down on FC-RMM-01. Summoned - raised by the promotion, not by a scripted
       // day - and the payoff of the whole tier crossing.
@@ -499,7 +507,10 @@ describe('escalation policy', () => {
     // backup that never worked is escalated to whoever owns the remediation plan;
     // and the dental clinic's imaging bridge is a vendor integration a PMS update
     // broke - a restart cannot reconcile it even on a fully-managed contract, so
-    // escalating it to the imaging vendor is the job, not a fallback.
+    // escalating it to the imaging vendor is the job, not a fallback; and the
+    // creative agency's expired seat is the same shape one step further out - a
+    // Named User licence that lapsed at the VENDOR cannot be conjured by any
+    // verb on any estate, so raising it with the licensing desk is the work.
     expect(escalatable).toEqual([
       'ticket:fan-noise',
       'ticket:hr-report-macro',
@@ -510,6 +521,7 @@ describe('escalation policy', () => {
       'ticket:arden-lockout-handback',
       'ticket:tillman-backup-discovery',
       'ticket:elmwood-imaging-bridge',
+      'ticket:marlowe-seat-expired',
     ]);
   });
 

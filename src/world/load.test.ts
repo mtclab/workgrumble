@@ -45,9 +45,12 @@ const COMMITTED: Readonly<Record<string, readonly (readonly [number, number])[]>
   // Five tickets in a week. The authored ramp (1/2/3/2/1) was a shape rather
   // than a measurement: Bodgeworth is one long light week with a joke in it.
   bodgeworth: [[120, 1], [70, 1], [60, 1], [60, 1], [30, 1]],
-  // Four tickets a day, every day, and nothing that takes the screen: the
-  // busiest-LOOKING week in the game is a little over half a shift.
-  msp: [[270, 1], [270, 1], [270, 1], [270, 1], [210, 1]],
+  // Four tickets a day and nothing that takes the screen: the busiest-LOOKING
+  // week in the game is a little over half a shift. The creative vertical
+  // (0.32.0) put a fifth arrival on Wednesday and Thursday, which is what a
+  // customer being added to a week looks like in minutes: 330 apiece, over
+  // band one, and the ramp the week always claimed to have.
+  msp: [[270, 1], [270, 1], [330, 2], [330, 2], [270, 1]],
   // The exec week is about what you are asked to do, not how much of it there
   // is. Thursday's recertification is six dispatches - the longest ticket in
   // the game - and it is still only the second band.

@@ -4,8 +4,10 @@ import {
   clockOffFor,
   completeLogin,
   openFromStartMenu,
+  resolvedToast,
   runCommand,
   runSimMinutes,
+  workUntilMinute,
 } from './helpers';
 
 /**
@@ -233,6 +235,83 @@ test('the mid-week onboarding stands a customer up and discovery finds the horro
   // And the horror, read off the estate node: a backup reporting success it
   // cannot restore from.
   await expect(output).toContainText('failing silently');
+});
+
+/**
+ * The creative vertical on the built artifact (0.32.0, E5 slice 2).
+ *
+ * MARLOWE-STUDIO is in the world from Monday boot, so the estate half needs no
+ * clock: the Macs answer on the wire, the Windows tools refuse them BY NAME
+ * (lane A's family rule, on a customer's estate rather than in a fixture), and
+ * the licensing verb refuses a plan with no seat in it. All through the real
+ * terminal, on the real artifact.
+ */
+test('the studio\'s Macs answer, refuse the Windows tools, and have no spare seat', async ({
+  page,
+}) => {
+  await arriveAtMsp(page);
+  await openFromStartMenu(page, 'cmd');
+
+  const output = page.getByTestId('cmd-output');
+
+  // A Mac is a box on the wire like any other: ping reaches it.
+  await runCommand(page, 'ping MARL-WS-01');
+  await expect(output).toContainText(/Reply from|bytes/i);
+
+  // And the Windows service tools refuse it truthfully, naming the family and
+  // what would actually reach it - not RDP, and not sc.
+  await runCommand(page, 'restart MARL-WS-01\\Spooler');
+  await expect(output).toContainText(/Mac|Screen Sharing/i);
+
+  // The studio is fully-managed, so this is not a scope wall: the desk MAY
+  // administer their licensing, and the refusal is the plan's arithmetic.
+  await runCommand(page, 'licence give lvasquez');
+  await expect(output).toContainText('no free seats');
+});
+
+/**
+ * And the journey, walked: the ticket the Mac vertical opens on is closed the
+ * only way it can be - by talking somebody through a click the desk is not
+ * allowed to make.
+ *
+ * Wednesday afternoon, because that is where the week deals it. The reply is
+ * dispatched from a CONVERSATION, which is the only surface that reaches
+ * `ticket.reply_to_reporter` at all - the thing 0.32.0 found the dental access
+ * review had never had - so this walk is also the shipped-path proof that the
+ * option exists and closes what it claims to.
+ */
+test('the black-screen ticket closes on the walkthrough, from the chat window', async ({
+  page,
+}) => {
+  await arriveAtMsp(page);
+
+  // Monday and Tuesday out, then open the Wednesday and run past the drip at
+  // 14:20 - far enough past it to clear the arrival jitter either way.
+  await clockOffFor(page, 1);
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('close-brief').click();
+  await clockOffFor(page, 2);
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('close-brief').click();
+  await workUntilMinute(page, 15 * 60 - 8 * 60);
+
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('ticket-row-marlowe-screen-recording').click();
+
+  // The conversation with the studio manager, opened off the ticket the way a
+  // player reaches it.
+  await page.getByTestId('ticket-open-chat').click();
+  await expect(page.getByTestId('chat-heading')).toHaveText('Rosa Marlowe');
+  await expect(page.getByTestId('chat-transcript'))
+    .toContainText('black square');
+
+  // The option that does the job rather than promising it: the walkthrough,
+  // sent. Nothing on the estate changes and the ticket closes, because the
+  // deliverable was always the sentence.
+  await page.getByTestId('chat-options')
+    .getByRole('button', { name: /Privacy & Security, Screen/ })
+    .click();
+  await expect(resolvedToast(page)).toHaveCount(1);
 });
 
 test('the network toolbox diagnoses the downed portal over ssh (E6, 0.16.0)', async ({

@@ -106,16 +106,14 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
       { ticketId: 'ticket:elmwood-imaging-bridge', minute: 13 * 60 + 30 },
     ],
     patrolSeed: 0,
-    // ONE, and all five days of this week are one, where every one of them was
-    // authored three (0.31.0, when the column became arithmetic). Four tickets
-    // a day at 270 committed minutes of a 480-minute shift is a busy-looking
-    // week that is not a heavy one: the MSP deals more ROWS than the probation
-    // shop and fewer MINUTES, because nothing here takes the screen away - no
-    // takeovers, no walk-ups, no meeting - and four tickets that each close in
-    // one dispatch is four tickets. The flat three was a claim about how the
-    // week FEELS; the flat one is what it costs. What that says about the MSP
-    // week is a content finding and it is written up in the commit, not fixed
-    // by moving the number back.
+    // ONE, where this day was authored three (0.31.0, when the column became
+    // arithmetic). Four tickets at 270 committed minutes of a 480-minute shift
+    // is a busy-looking day that is not a heavy one: the MSP deals more ROWS
+    // than the probation shop and fewer MINUTES, because nothing here takes the
+    // screen away - no takeovers, no walk-ups, no meeting - and four tickets
+    // that each close in one dispatch is four tickets. The flat three was a
+    // claim about how the week FEELS; the arithmetic is what it costs, and it
+    // is not fixed by moving the number back.
     load: 1,
   },
   {
@@ -157,6 +155,11 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
       { ticketId: 'ticket:tillman-backup-discovery', minute: 10 * 60 + 20 },
       { ticketId: 'ticket:holloway-shared-drive', minute: 11 * 60 + 30 },
       { ticketId: 'ticket:northwind-cert-alert', minute: 13 * 60 + 30 },
+      // And the studio, mid-afternoon: a remote session to a designer's Mac
+      // that connects and shows black. The vertical opens on the one that is
+      // purely a misunderstanding about whose click a consent is - no fault, no
+      // fix, and a walkthrough that is the whole of the work.
+      { ticketId: 'ticket:marlowe-screen-recording', minute: 14 * 60 + 20 },
     ],
     // The customer that signs mid-shift, the way Bodgeworth's storm is a beat the
     // Wednesday fires. It stands up TILLMAN's estate at ten, before the discovery
@@ -170,7 +173,14 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     // the page you learn not to scramble for.
     onCall: [PAGE_FC_BACKUP_FLAP],
     patrolSeed: 4_057,
-    load: 1,
+    // TWO from 0.32.0, and the arithmetic moved the label rather than the
+    // other way round: the studio's black-screen session makes this five
+    // tickets, which is 150 ticket-minutes at the six-or-fewer partition
+    // factor plus the lead's rounds - 330 committed minutes of a 480-minute
+    // shift, over band one's 312. Wednesday and Thursday are the two the
+    // vertical lands a ticket on, so they are the two that climb, and the
+    // ramp now does what the week always claimed it did.
+    load: 2,
   },
   {
     day: 4,
@@ -183,12 +193,22 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     // what the MSP does NOT touch.
     drip: [
       { ticketId: 'ticket:meridian-offboarding', minute: 9 * 60 + 50 },
+      // The studio's edit Mac refuses the plugin the day's delivery is built
+      // on, in Gatekeeper's own words - and the room is already split between
+      // "it is a virus" and "turn the security off". Early, because the answer
+      // is knowledge rather than work and the rest of this day is work.
+      { ticketId: 'ticket:marlowe-gatekeeper-plugin', minute: 10 * 60 + 20 },
       { ticketId: 'ticket:fontaine-efiling', minute: 11 * 60 },
       { ticketId: 'ticket:arden-lockout-handback', minute: 12 * 60 + 30 },
       { ticketId: 'ticket:meridian-prod-down', minute: 14 * 60 },
     ],
     patrolSeed: 6_421,
-    load: 1,
+    // TWO, for the same reason Wednesday is: the plugin refusal makes five
+    // arrivals and 330 committed minutes. It is the heaviest day in the MSP
+    // week by content and it prices identically to Wednesday, which is worth
+    // saying out loud - what makes this day hard is the prod-down and the
+    // deadline in it, and neither of those is a minute the budget can see.
+    load: 2,
   },
   {
     day: 5,
@@ -203,6 +223,11 @@ export const MSP_WEEK: readonly DayScript[] = validateWeek([
     drip: [
       { ticketId: 'ticket:northwind-disk-alert', minute: 10 * 60 + 30 },
       { ticketId: 'ticket:elmwood-hipaa-audit', minute: 11 * 60 },
+      // And the studio's freelancer, stopped by a licence rather than by a
+      // machine: the seat he had for the job lapsed at renewal and there is no
+      // spare. Friday, because the honest ending is a raise to the licensing
+      // desk and the answer comes back on somebody else's Monday.
+      { ticketId: 'ticket:marlowe-seat-expired', minute: 13 * 60 + 20 },
       { ticketId: 'ticket:arden-portal-afterhours', minute: 14 * 60 + 45 },
     ],
     patrolSeed: 2_939,

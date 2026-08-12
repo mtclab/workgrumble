@@ -20,6 +20,7 @@ import { MSP_IDS } from './msp-company';
 import {
   SLA_TARGETS,
   tierResolutionTicks,
+  tierTargetsFor,
   UNTRIAGED_PRIORITY,
   UNTRIAGED_SLA_TICKS,
 } from './priority';
@@ -713,6 +714,36 @@ describe('a customer\'s SLA tier sets the clock', () => {
       .toBe(tierResolutionTicks(SLA_TIERS.gold));
     expect(sensor.clocks().resolution.dueAt)
       .toBeLessThan(UNTRIAGED_SLA_TICKS);
+  });
+
+  /**
+   * And the middle tier gets its first fully-managed exemplar (0.32.0).
+   *
+   * Every fully-managed customer before MARLOWE-STUDIO was Gold, so "the whole
+   * stack is yours" and "the tightest clock there is" had never been separated:
+   * a reader could have concluded that scope sets the tier. The studio is
+   * fully-managed and SILVER - the MSP is their entire IT department and a
+   * missed delivery is not a patient in a chair - and its tickets are stamped
+   * with that, on the middle budget: looser than Gold's, and (untriaged, which
+   * is where every ticket spawns) exactly the tier-less default, which is the
+   * honest shape of a middle tier. What Silver buys over Bronze at this point
+   * in the day is the RESPONSE clock and what a breach costs, not the
+   * resolution budget.
+   */
+  it('stamps the fully-managed studio\'s tickets Silver, not Gold', () => {
+    const seat = mspHarness('ticket:marlowe-seat-expired');
+
+    expect(seat.node().fields[FIELDS.customerSlaTier]).toBe(SLA_TIERS.silver);
+    expect(seat.clocks().tier).toBe(SLA_TIERS.silver);
+    expect(seat.clocks().resolution.dueAt)
+      .toBe(tierResolutionTicks(SLA_TIERS.silver));
+    expect(seat.clocks().resolution.dueAt)
+      .toBeGreaterThan(tierResolutionTicks(SLA_TIERS.gold));
+    expect(seat.clocks().resolution.dueAt).toBe(UNTRIAGED_SLA_TICKS);
+    // What the middle tier does buy, from the table the clock is read off:
+    // the reporter is owed a first word sooner than a Bronze account's is.
+    expect(tierTargetsFor(SLA_TIERS.silver, null).response)
+      .toBeLessThan(tierTargetsFor(SLA_TIERS.bronze, null).response);
   });
 
   it('still pauses the resolution clock waiting on the customer', () => {

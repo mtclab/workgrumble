@@ -353,6 +353,49 @@ describe('shipped conversations', () => {
   });
 
   /**
+   * A ticket that closes on a REPLY can be replied to (0.32.0).
+   *
+   * `ticket.reply_to_reporter` is dispatched from exactly one place a player can
+   * reach: an option in a conversation. No terminal verb runs it, no control in
+   * the tickets app runs it, and nothing else in the world writes `replied`. So
+   * a ticket whose resolution rule watches that field, in a tree with no option
+   * that dispatches it, is a row in the queue with a clock on it that NOBODY can
+   * close - the exact failure the solvability gate exists for, walking straight
+   * past it because that gate drives the advertised PATH rather than the surface
+   * the path is played on.
+   *
+   * It shipped. The dental access review (0.14.0) advertised a reply-to-reporter
+   * close for six versions and Grace's tree only ever promised to write back;
+   * the ticket was unclosable in play and every gate it had was green. This is
+   * the standing assertion that forbids the class, and it is checked against the
+   * TICKET the option aims at, because an option that replies to a different
+   * ticket closes a different ticket.
+   */
+  it('gives every reply-closed ticket a conversation that can reply', () => {
+    const replyClosed = WORLD_TICKETS.filter((entry) => entry.paths.some(
+      (path) => path.steps.some(
+        (step) => step.action === HELPDESK_ACTIONS.ticketReplyToReporter,
+      ),
+    ));
+
+    // The sweep only means something if it swept something, and it is three
+    // shops' worth: the phish praise, the clinic's access review, and the two
+    // the creative agency closes with knowledge rather than with a fix.
+    expect(replyClosed.length).toBeGreaterThanOrEqual(4);
+
+    for (const entry of replyClosed) {
+      const offered = (findDialogueTree(entry.dialogue_ref)?.nodes ?? [])
+        .flatMap((node) => node.options.flatMap((option) => option.effects ?? []))
+        .filter((effect) => 'action' in effect
+          && effect.action === HELPDESK_ACTIONS.ticketReplyToReporter
+          && effect.target === entry.def.id);
+
+      expect(offered.length, `${entry.def.id} can be replied to`)
+        .toBeGreaterThan(0);
+    }
+  });
+
+  /**
    * The other half of the CYA gate. `ticket.set_waiting` refuses until the
    * reporter has been asked something, so a reporter with no `asks` option in
    * their tree is a ticket the player can NEVER legitimately park - a dead

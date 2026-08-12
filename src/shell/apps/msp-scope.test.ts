@@ -397,6 +397,58 @@ describe('the imaging bridge closes by vendor escalation, not by a restart', () 
 });
 
 /**
+ * The creative agency's expired seat (0.32.0), proven through the real terminal:
+ * the licensing verbs a player actually types, refusing for the true reason.
+ *
+ * MARLOWE-STUDIO is fully-managed, so nothing here is a scope wall - the desk
+ * administers their licensing exactly as it administers everything else, which
+ * is what makes the refusal informative rather than bureaucratic. What refuses
+ * is arithmetic the shop cannot argue with: the plan has no free seat. Teeth:
+ * put a seat back in the pool (or leave the freelancer holding one) and the
+ * first assertion goes green while the ticket closes on the wrong thing.
+ */
+describe('the studio\'s Named User seat is bought, not conjured', () => {
+  it('refuses "licence give" while the plan is full, then closes on the raise', () => {
+    const session = mspSession('ticket:marlowe-seat-expired');
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.marlowe);
+    const api = apiFor(session, appState);
+
+    // The instinct, typed: hand the freelancer a seat. The pool is fully
+    // subscribed, so the shipped guard refuses it with the reason - and the
+    // ticket does not move, because nothing about the estate has.
+    const refused = run(api, 'licence give lvasquez');
+    expect(refused).toContain('no free seats');
+    expect(refused).not.toContain('Seat assigned');
+    expect(session.engine.ticketState('ticket:marlowe-seat-expired'))
+      .toBe('open');
+
+    // And the machine-shaped instinct is refused too, by the estate rather than
+    // by a rule: the Macs are Macs, so the Windows service tools do not reach
+    // them, and there was never a licence on the box to repair anyway.
+    const wrongFamily = run(api, 'restart MARL-WS-03\\Spooler');
+    expect(wrongFamily).toMatch(/Mac|Screen Sharing/u);
+
+    // The honest ending: raise it with the licensing desk, with the account and
+    // the date it lapsed. That - and only that - closes it.
+    const escalate = session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketEscalate,
+      MSP_IDS.player,
+      'ticket:marlowe-seat-expired',
+      {
+        reported: 'MARLOWE-STUDIO: Named User seat for lvasquez is not active.',
+        tried: 'Sign-out/in and a second Mac, both by the studio\n'
+          + 'Seats pool shows 0 free - no seat to assign and none to take back '
+          + 'without blocking a working designer',
+      },
+    );
+    expect(escalate.ok).toBe(true);
+    expect(session.engine.ticketState('ticket:marlowe-seat-expired'))
+      .toBe('resolved');
+  });
+});
+
+/**
  * The fully-managed tier (0.11.0), proven through the real terminal: the server
  * fix a helpdesk contract WALLS OFF succeeds here, because the MSP owns the whole
  * estate. Teeth: the SAME server fix at a helpdesk customer is refused, so the
