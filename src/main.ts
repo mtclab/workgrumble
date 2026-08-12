@@ -1,3 +1,4 @@
+import type { FieldValue } from './engine-api';
 import { loadEngine, WasmEngine } from './engine-api';
 import { type Account, createCloudApi } from './shell/api';
 import { type AppState, AppStateStore } from './shell/app-state';
@@ -52,6 +53,17 @@ export interface SimDebug {
   tick(): number;
   /** What the apps were showing, as the save would carry it. */
   screens(): AppState;
+  /**
+   * One field off one node of the live graph (E11, 0.34.0).
+   *
+   * For the half of a week boundary that no screen shows. The estate delta a
+   * stay carries is world state by design - a note by a socket is a repair to a
+   * building, not a window - so the only way for a journey on the built artifact
+   * to ask "did the building keep it" is to ask the graph. It reads exactly one
+   * field and returns whatever is there, which is strictly less than the hash
+   * above already gives away.
+   */
+  field(node: string, name: string): FieldValue | undefined;
 }
 
 declare global {
@@ -154,11 +166,14 @@ async function boot(): Promise<void> {
   const switchSlot = new SwitchSlot(store.storage);
   const arriving = switchSlot.peek();
   const carried = arriving === null ? retry.peek() : null;
-  const { engine, tier, seed, employer, week } = createWorldSession(
-    arriving !== null
-      ? carryForSwitch(arriving)
-      : carried === null ? FIRST_WEEK : carryFrom(carried),
-  );
+  // What this session's world was BUILT from, kept rather than thrown away: the
+  // save file stamps it (schema 5) and a firing reads it back, because the
+  // estate a retry is owed is the one the lost week OPENED on and the graph
+  // stops being able to answer that question the moment anybody fixes anything.
+  const opening = arriving !== null
+    ? carryForSwitch(arriving)
+    : carried === null ? FIRST_WEEK : carryFrom(carried);
+  const { engine, tier, seed, employer, week } = createWorldSession(opening);
   // The employer this session is a week at, as LIVE state rather than a
   // constant read once: the driver deals its week, the audit prices installs
   // against its policy, and the offer names the shop after it - and a LOAD can
@@ -172,6 +187,16 @@ async function boot(): Promise<void> {
 
   if (carried !== null) {
     hydrateFromRetry(appState, carried);
+  }
+
+  // And the toys, on a STAY (E11, 0.34.0). The install set is app state rather
+  // than world state - it always has been - so it cannot ride the estate
+  // whitelist, and it is carried here beside the retry's article for the same
+  // reason that one is: it is a screen fact that survives the boundary. Only an
+  // arrival that names an arc week has one; a change of employer is a change of
+  // machine, and the desktop it comes with is the new shop's.
+  if (arriving?.installed !== undefined && arriving.installed.length > 0) {
+    appState.patch('installed', { apps: [...arriving.installed] });
   }
 
   const slot = new SaveSlot(store.storage);
@@ -544,8 +569,8 @@ async function boot(): Promise<void> {
       shell.notify(
         'That is the week',
         outcome === 'passed'
-          ? 'Five days, one review and a fund that has moved. Week two is '
-            + 'Monday.'
+          ? 'Five days, one review and a fund that has moved. There is a job '
+            + 'elsewhere on the table, and there is a Monday here.'
           : 'Five days and a short conversation. The fund is still yours, '
             + 'which is the only part of this they cannot take back.',
       );
@@ -578,6 +603,8 @@ async function boot(): Promise<void> {
     // arrival at the second employer stamps ITS id, and the switch verb reads
     // the same value to work out where the next job after this one is.
     employer,
+    // And the building this week opened on, stamped into every save beside it.
+    carried: opening.estate ?? [],
     // When a LOAD stands a different shop up than this tab booted at, the rest
     // of the shell has to follow: the audit prices installs against the loaded
     // shop's policy, and the offer names the shop after it (0.6.0, P1-1). The
@@ -799,6 +826,7 @@ async function boot(): Promise<void> {
     hash: () => engine.snapshotHash(),
     tick: () => engine.now(),
     screens: () => appState.snapshot(),
+    field: (node: string, name: string) => engine.graph.getField(node, name),
   });
 
   /**

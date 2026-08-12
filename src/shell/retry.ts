@@ -34,6 +34,7 @@
 import type { AppState, AppStateStore } from './app-state';
 import { createAppState } from './app-state';
 import type { SaveOutcome } from './save';
+import { type CarriedValue, parseCarried } from '../world/carry';
 import { FIRST_EMPLOYER } from '../world/employers';
 import { PROBATION_WEEK } from '../world/pressure';
 import type { WeekCarry } from '../world/session';
@@ -71,6 +72,24 @@ export interface RetryRecord {
    * carry reads forwards.
    */
   readonly employer: string;
+  /**
+   * And the estate the fired week was STOOD UP with (E11, 0.34.0).
+   *
+   * The start-of-week delta, not the end-of-week one, and the difference is the
+   * whole reason this is on the record rather than read off the graph at the
+   * moment of the firing. A retry is the same week again: "everything else -
+   * the world, the meters, the queue, the reputation that got you fired - is
+   * built again from nothing". A firing therefore does not hand you the damage
+   * you did in the week you were fired for, and it does not hand you the
+   * repairs either - it hands you the building as it stood on the Monday you
+   * lost. The live world cannot answer that question by the Friday, so the
+   * session carries what it was seeded with and the save file keeps it
+   * (schema 5).
+   *
+   * Empty on every retry of a week that carried nothing, which is every retry
+   * this game has ever handled.
+   */
+  readonly estate: readonly CarriedValue[];
 }
 
 function refuse(reason: string): SaveOutcome<never> {
@@ -84,6 +103,7 @@ export function recordFrom(
   screens: Readonly<AppState>,
   arcWeek: number = PROBATION_WEEK,
   employer: string = FIRST_EMPLOYER,
+  estate: readonly CarriedValue[] = [],
 ): RetryRecord {
   return {
     attempt: attempt + 1,
@@ -91,6 +111,7 @@ export function recordFrom(
     kbSelected: screens.kb.selectedId,
     arcWeek: Math.max(PROBATION_WEEK, arcWeek),
     employer: employer.length > 0 ? employer : FIRST_EMPLOYER,
+    estate,
   };
 }
 
@@ -105,6 +126,7 @@ export function parseRetryRecord(value: unknown): RetryRecord | null {
     kbSelected,
     arcWeek,
     employer,
+    estate,
   } = value as Record<string, unknown>;
   const whole = (candidate: unknown, least: number): number | null => (
     typeof candidate === 'number'
@@ -119,7 +141,17 @@ export function parseRetryRecord(value: unknown): RetryRecord | null {
     ? kbSelected
     : undefined;
 
-  if (nextAttempt === null || fund === null || selected === undefined) {
+  // A delta that will not parse is a REFUSED record rather than a record with
+  // an empty one: an empty estate is a real answer (every retry before week two
+  // existed) and it must not be the answer a corrupt one falls back to, or a
+  // hand-edited file would silently rebuild the Monday without last week's
+  // repairs and nothing on any screen would say which half went missing.
+  const delta = parseCarried(estate);
+
+  if (
+    nextAttempt === null || fund === null || selected === undefined
+    || delta === null
+  ) {
     return null;
   }
 
@@ -138,6 +170,7 @@ export function parseRetryRecord(value: unknown): RetryRecord | null {
     employer: typeof employer === 'string' && employer.length > 0
       ? employer
       : FIRST_EMPLOYER,
+    estate: delta,
   };
 }
 
@@ -150,6 +183,9 @@ export function carryFrom(record: Readonly<RetryRecord>): WeekCarry {
     // The retried week stands up the SAME shop it was fired at, not a fall-back
     // to the probation one (0.6.0, P1-5).
     employer: record.employer,
+    // And the building as it stood on the Monday that was lost, which is empty
+    // for every retry of a first week.
+    ...(record.estate.length === 0 ? {} : { estate: record.estate }),
   };
 }
 

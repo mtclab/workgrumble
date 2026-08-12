@@ -62,7 +62,9 @@ import {
   REVIEW_PASS_PERFORMANCE,
   type ReviewOutcome,
   reviewTick,
+  WEEK,
 } from '../world/week';
+import type { WeekSource } from '../world/week-source';
 import { AppStateStore } from './app-state';
 import { APP_MANIFEST } from './apps';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
@@ -92,12 +94,37 @@ interface Week {
   readonly appState: AppStateStore;
 }
 
+/**
+ * The probation table, held fixed while the ARC POSITION moves.
+ *
+ * Until 0.34.0 this was what the seam handed back at every arc position anyway,
+ * because the generator was clamped to week one and no career could reach week
+ * two. Now the clamp is gone and week ten is a drawn week - which is right for
+ * the product and wrong for this file, because this file is about a SEASON and
+ * nothing else. Its five profiles, its marks, its bars and its ranking are the
+ * same five profiles the probation goldens pin, played in a week where a round
+ * is on; letting the composition move as well would mean any drift in the
+ * numbers had two possible causes and no way to tell them apart.
+ *
+ * So the week is pinned and the arc position is the variable, which is what the
+ * header above has always claimed is the only difference between this file and
+ * `scripted-week.test.ts`. The DRAWN weeks have their own gates: the sampler's
+ * in `week-gen.test.ts`, their feasibility in the hundred-week sweep, and the
+ * career that reaches them in `week-two.test.ts`.
+ */
+const AUTHORED: WeekSource = () => WEEK;
+
 function startWeek(arcWeek: number): Week {
-  const { engine, seed } = createWorldSession({
-    farmFund: 0,
-    attempt: 1,
-    arcWeek,
-  });
+  const { engine, seed } = createWorldSession(
+    {
+      farmFund: 0,
+      attempt: 1,
+      arcWeek,
+    },
+    undefined,
+    undefined,
+    AUTHORED,
+  );
   const appState = new AppStateStore();
   const visible = (): readonly string[] => appState.get().windows.open
     .filter((entry) => !entry.minimized && SLACK_APPS.has(entry.appId))

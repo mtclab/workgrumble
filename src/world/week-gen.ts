@@ -42,9 +42,12 @@
  * one spare. A three-week exclusion window over a pool with no surplus has
  * nothing to draw in week two, and this module refuses rather than quietly
  * dealing the same Tuesday again - see `WeekRefused`. That is the content bill
- * D-E11-1 has to pay (the spike costs it at 50 to 60 drip entries per shop),
+ * D-E11-6 has to pay (the spike costs it at 50 to 60 drip entries per shop),
  * and refusing is how the generator says so in a sentence instead of in a
- * player's second week.
+ * player's second week. Until it is paid, the PRODUCT draws under the window
+ * the content can carry rather than the one the design asks for - see
+ * `PRODUCT_WINDOW` at the bottom of this file, and the ratchet that stops that
+ * number outliving its reason.
  *
  * Nothing here dispatches, reads a clock, or consumes the engine's RNG: a week
  * is decided before the day starts, and the same request answers the same way
@@ -1085,29 +1088,74 @@ export function generateWeek(
 }
 
 /**
- * How far into an arc the PRODUCT resolves weeks. One, deliberately.
+ * The exclusion window THE PRODUCT draws under, which is not yet the one the
+ * design asks for (E11, 0.34.0 slice 1).
  *
- * The generator can compose week nine of any shop and the sweep audits ten
- * thousand of them, but no career in this build reaches week two: the arc's
- * twelve-week pressure ladder is shipped and unreachable, and wiring a drawn
- * week to a player is D-E11-1's decision to make, not this slice's. So the
- * seam clamps - every arc position a live session can hold resolves to the
- * shop's authored table, byte for byte, exactly as the registry lookup it
- * replaces did. A player sees nothing new this version, which is the point of
- * this version.
+ * Nought, and it is a measured fact about the content rather than a taste.
+ * `RECENCY_WEEKS` above is the decided design - three, D-E11-6, and the
+ * arithmetic behind it is the strongest external finding in the spike. But a
+ * window bars the draw from a POOL, and this version's pools hold exactly the
+ * entries their authored weeks use and not one spare: 0.31.0 built them from
+ * the four shipped tables and added no content. Ask any of the four shops for a
+ * week two under a window of even ONE and the generator refuses, correctly and
+ * loudly, because there is nothing left to deal.
  *
- * Deleting the clamp is the whole of the wiring when that decision lands.
+ * So slice 1 wires the week-two door with the window the content can actually
+ * carry, which is none, and slice 2 - whose whole job is growing each shop's
+ * drip pool to the fifty-to-sixty the window needs - raises it. Two things stop
+ * that from being a placeholder that rots. The first is that a window of nought
+ * does NOT mean a repeated week: composition is keyed on the arc position, so
+ * week two is a different arrangement drawn from the same content, and the
+ * owner's own calibration for D-E11-6 is that some repetition is the job's
+ * texture. The second is the ratchet in `week-gen.test.ts`: the day every
+ * shipped shop can honour `RECENCY_WEEKS`, that test goes red until this
+ * constant moves, so the number cannot outlive the reason for it.
  */
-const WIRED_WEEKS = AUTHORED_WEEK;
+export const PRODUCT_WINDOW = 0;
+
+/**
+ * The widest window a shop's content can actually honour, measured rather than
+ * asserted - the ratchet's own reading, and the sweep's.
+ *
+ * It composes the shop's next few weeks at each window from the widest down and
+ * answers with the first one that does not refuse. `depth` is how many weeks
+ * past the authored one it insists on, because a window only bites once enough
+ * weeks have been drawn to fill it: a shop that manages week two under a window
+ * of three and then refuses week three has not honoured a window of three.
+ */
+export function windowAfforded(
+  content: EmployerContent,
+  depth: number = RECENCY_WEEKS + 1,
+): number {
+  for (let window = RECENCY_WEEKS; window > 0; window -= 1) {
+    let carried = true;
+
+    for (let week = AUTHORED_WEEK + 1; week <= AUTHORED_WEEK + depth; week += 1) {
+      try {
+        generateFor(content, week, { window });
+      } catch (refused: unknown) {
+        if (!(refused instanceof WeekRefused)) {
+          throw refused;
+        }
+
+        carried = false;
+        break;
+      }
+    }
+
+    if (carried) {
+      return window;
+    }
+  }
+
+  return 0;
+}
 
 function wired(
   request: Readonly<WeekRequest>,
   content: EmployerContent,
 ): readonly DayScript[] {
-  return generateWeek(
-    { ...request, arcWeek: Math.min(request.arcWeek, WIRED_WEEKS) },
-    content,
-  );
+  return generateWeek(request, content, { window: PRODUCT_WINDOW });
 }
 
 /** The seam's answer, for the shops the registry knows. */

@@ -23,6 +23,7 @@ import {
   parseCareer,
   serializeCareer,
 } from './career';
+import { playerCarries } from './carry';
 import type { Employer } from './employers';
 import { FIELDS, PLAYER_TIERS } from './fields';
 import { STARTING_REPUTATION } from './meters';
@@ -87,6 +88,9 @@ function fixtureEmployer(): Employer {
     channels: [],
     reviewBar: REVIEW_PASS_PERFORMANCE,
     runsBossPings: false,
+    // Its own whitelist: the player's own client and nothing of the building,
+    // which is what every shop but the probation one declares (E11, 0.34.0).
+    carries: playerCarries(FIXTURE_PLAYER),
     setup: () => [
       {
         op: 'addNode',
@@ -106,7 +110,6 @@ function fixtureEmployer(): Employer {
         },
       },
     ],
-    mondayTicketIds: () => [],
   };
 }
 

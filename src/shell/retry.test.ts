@@ -110,6 +110,9 @@ describe('what a firing leaves behind', () => {
       // And the SAME shop: a firing puts you back on this employer's Monday, not
       // a fall-back to the probation one (0.6.0, P1-5).
       employer: 'bodgeworth',
+      // And the building as it stood on the Monday that was lost, which is
+      // empty for a week that carried nothing in (E11, 0.34.0).
+      estate: [],
     });
 
     const screens = screensFrom(record);

@@ -596,6 +596,80 @@ describe('the save file', () => {
   });
 
   /**
+   * The estate delta (E11, 0.34.0, schema 5), and the file that has none.
+   *
+   * A save now carries the building as it stood on the MONDAY - the opening
+   * balance the whitelist wrote, which the live graph stops being able to answer
+   * the moment anybody fixes anything. A schema-4 file has none, and there is
+   * exactly one honest answer for it: empty. It is not a guess dressed as a
+   * fact - no build that wrote a schema-4 file could reach week two, so every
+   * week in every one of them was stood up from the shop's own seed and nothing
+   * else.
+   *
+   * Reverting the 4 -> 5 step fails this: the parse reads the delta STRICTLY
+   * (an unreadable one is a refused save, because half a building is worse than
+   * none), so a migration that stopped writing the default would turn every
+   * older save into "that save is missing pieces of itself".
+   */
+  it('gives a schema-4 file an empty estate rather than refusing it', () => {
+    const live = session();
+    live.session.save();
+
+    const written = parseSaveFile(live.storage.getItem('workgrumble/save') ?? '');
+    expect(written.ok && written.value.carried).toEqual([]);
+
+    const current = JSON.parse(live.storage.getItem('workgrumble/save') ?? '{}') as
+      Record<string, unknown>;
+    const older: Record<string, unknown> = { ...current, schema: 4 };
+    delete older.carried;
+
+    const migrated = parseSaveFile(JSON.stringify(older));
+    expect(migrated.ok).toBe(true);
+    expect(migrated.ok && migrated.value.carried).toEqual([]);
+    expect(migrated.ok && migrated.value.schema).toBe(SAVE_SCHEMA);
+    // And the world came through it untouched: a migration that lost the day
+    // would be a worse bug than one that refused the file.
+    expect(migrated.ok && migrated.value.savedAtTick)
+      .toBe(written.ok ? written.value.savedAtTick : -1);
+
+    // Through the shipped load, on the preflight-and-rollback rails, not just
+    // through the parser: the whole point of a migration is that somebody's
+    // week comes back.
+    const fresh = session();
+    fresh.storage.setItem('workgrumble/save', JSON.stringify(older));
+    expect(fresh.session.load().ok).toBe(true);
+    expect(fresh.engine.snapshotHash()).toBe(live.engine.snapshotHash());
+  });
+
+  /**
+   * And a delta that will not parse is REFUSED, which is the other half.
+   *
+   * The employer id is read tolerantly (a file that lost it has one honest
+   * answer); the delta is not, and the difference is deliberate. A Monday whose
+   * building came back with half its repairs on it is a world nothing on any
+   * screen can name the missing half of, so it is a sentence and a session left
+   * running rather than a load nobody can check.
+   */
+  it('refuses a save whose estate delta is rubbish', () => {
+    const live = session();
+    live.session.save();
+
+    const current = JSON.parse(live.storage.getItem('workgrumble/save') ?? '{}') as
+      Record<string, unknown>;
+
+    for (const spoiled of [
+      'not a list',
+      [{ node: 'machine:print-02' }],
+      [{ node: 'machine:print-02', field: '', value: true }],
+      [{ node: 'machine:print-02', field: 'sticky_note', value: { deep: 1 } }],
+    ]) {
+      const bad = parseSaveFile(JSON.stringify({ ...current, carried: spoiled }));
+
+      expect(bad.ok, JSON.stringify(spoiled)).toBe(false);
+    }
+  });
+
+  /**
    * The hole the malformed-engine cases above cannot reach.
    *
    * Every "foreign" file in this suite so far is a broken engine STRING, and
@@ -690,6 +764,7 @@ describe('the carry-over a firing leaves behind', () => {
       kbSelected: null,
       arcWeek: 1,
       employer: 'workgrumble',
+      estate: [],
     }))
       .toEqual({ ok: true, value: undefined });
 
@@ -702,6 +777,7 @@ describe('the carry-over a firing leaves behind', () => {
       kbSelected: null,
       arcWeek: 1,
       employer: 'workgrumble',
+      estate: [],
     }));
     expect(
       acknowledgeCarry(slot, () => booted.session.save(), new SaveSlot(storage)),
@@ -730,6 +806,7 @@ describe('the carry-over a firing leaves behind', () => {
       kbSelected: null,
       arcWeek: 1,
       employer: 'workgrumble',
+      estate: [],
     });
 
     const booted = session(storage, { farmFund: 900, attempt: 3 });
@@ -772,6 +849,7 @@ describe('the carry-over a firing leaves behind', () => {
       kbSelected: null,
       arcWeek: 1,
       employer: 'workgrumble',
+      estate: [],
     });
 
     // The boot whose write was refused: the record stays, nothing is saved.

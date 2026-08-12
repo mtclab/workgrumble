@@ -20,12 +20,17 @@ import { formatSimTime } from './clock-format';
 import type { DriverSaveSeam, DriverState } from './day-driver';
 import { DayDriver, parseDriverState } from './day-driver';
 import { recordFrom, type RetrySlot } from './retry';
-import { switchRecord, type SwitchSlot } from './switch';
+import { stayRecord, switchRecord, type SwitchSlot } from './switch';
 import { BUILD_VERSION } from '../shared/build';
 import {
   careerAfter,
   type CareerStanding,
 } from '../world/career';
+import {
+  type CarriedValue,
+  parseCarried,
+  readCarried,
+} from '../world/carry';
 import {
   employerFor,
   FIRST_EMPLOYER,
@@ -33,6 +38,7 @@ import {
 } from '../world/employers';
 import { FIELDS, playerTierOf } from '../world/fields';
 import { exitForOutcome } from '../world/offer';
+import { PROBATION_WEEK } from '../world/pressure';
 import { isReviewOutcome } from '../world/week';
 import { generatedWeek } from '../world/week-gen';
 import { weekRequestFrom, type WeekSource } from '../world/week-source';
@@ -53,8 +59,18 @@ import { weekRequestFrom, type WeekSource } from '../world/week-source';
  *    engine payload but the employer's IDENTITY is not - it is the one fact a
  *    reload needs that the graph does not carry. Absent means the first
  *    employer, which is the only one a schema-3 file could have been at.
+ * 5: week two (E11). A save now carries the ESTATE DELTA its week was stood up
+ *    with - the values the employer's whitelist said survive a week boundary,
+ *    as they stood on the MONDAY. The world in the payload already holds them
+ *    as they stand now, so this is not a second copy of the world: it is the
+ *    OPENING BALANCE, and it is here for the one question the live graph
+ *    cannot answer by the Friday. A firing hands the player the week they lost,
+ *    not the week they made of it, so the retry has to be seeded with the
+ *    building as it stood on the Monday - and by the Friday the graph is
+ *    holding the Friday. Absent means no delta, which is what every week one
+ *    of every career carries and what every schema-4 file was written with.
  */
-export const SAVE_SCHEMA = 4;
+export const SAVE_SCHEMA = 5;
 
 export const SAVE_KEY = 'workgrumble/save';
 
@@ -86,6 +102,21 @@ export interface SaveFile {
    * which company the restored world belongs to.
    */
   readonly employer: string;
+  /**
+   * The estate delta this week was STOOD UP with (schema 5).
+   *
+   * The opening balance of the building, and deliberately not a copy of the
+   * current one - the engine payload below is the current one. It rides the
+   * file because it is the only fact about this week that the world stops being
+   * able to answer the moment the player changes anything: by Thursday the
+   * graph holds Thursday's note by the socket, and a retry that read the delta
+   * off it would hand a fired player the repairs they made in the week they
+   * were fired for.
+   *
+   * Empty for every week that carried nothing, which is week one of every
+   * career and every save any earlier build wrote.
+   */
+  readonly carried: readonly CarriedValue[];
   /** The engine's own serialization, carried verbatim. */
   readonly engine: string;
   readonly app: AppState;
@@ -177,6 +208,17 @@ function migrate(file: Record<string, unknown>): SaveOutcome<
     value = { ...value, schema: 4, employer: FIRST_EMPLOYER };
   }
 
+  // 4 -> 5. The world is complete and needs nothing: a schema-4 file was
+  // written by a build in which no career could reach week two, so the week it
+  // holds was stood up from the employer's own seed and NOTHING else. The
+  // honest opening balance for it is therefore the empty one - which is not a
+  // guess dressed as a fact but the only value it could have had - and it is
+  // exactly the shape the 3 -> 4 step used: one fact this build needs, with one
+  // true answer for every file that predates it.
+  if ((value.schema as number) < 5) {
+    value = { ...value, schema: 5, carried: [] };
+  }
+
   return { ok: true, value };
 }
 
@@ -216,6 +258,15 @@ export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {
     ? file.employer
     : FIRST_EMPLOYER;
 
+  // The delta is read STRICTLY where the employer is read tolerantly, and the
+  // two are different on purpose. A missing employer has one honest answer
+  // (there was only ever one shop those files could be at); a delta with
+  // rubbish in it has none - it is a Monday whose building came back with half
+  // the repairs on it, and nothing on any screen would say which half. A file
+  // with no delta AT ALL is legal and empty, because that is the migration's
+  // own answer for every schema-4 save.
+  const carried = parseCarried(file.carried);
+
   if (
     typeof file.engine !== 'string'
     || file.engine.length === 0
@@ -227,6 +278,7 @@ export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {
     || !Number.isSafeInteger(file.savedAt)
     || file.savedAt < 0
     || version === undefined
+    || carried === null
     || app === null
     || driver === null
   ) {
@@ -243,6 +295,7 @@ export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {
       version,
       label: file.label,
       employer,
+      carried,
       engine: file.engine,
       app,
       driver,
@@ -368,6 +421,25 @@ export interface ShellSessionApi {
    * says so with the session it was in still running.
    */
   switchEmployer(): SaveOutcome;
+  /**
+   * Stays: the same employer, and it is week `n + 1` (E11, 0.34.0).
+   *
+   * The THIRD door out of a Friday, and the one the game has been written for
+   * since 0.2.7 without ever having: `EMPLOYER_ARC` declares every employer a
+   * twelve-week job with a redundancy round at weeks four to ten, and no career
+   * has ever reached week two, so the whole systemic layer above the week has
+   * been shipped, tested and unreachable. This is the door.
+   *
+   * A session verb, exactly like its two siblings and for exactly the same
+   * reason: the world it would change is the one being thrown away. It reads
+   * the verdict and the standing off the graph, reads the employer's declared
+   * whitelist off the world that is ending, writes one record that outlives the
+   * tab, throws the save away and starts the page again on the same shop's next
+   * Monday. It answers rather than throwing - a week that is not over has no
+   * next week to go to, a firing is not a thing you stay through, and neither
+   * is a redundancy, because in a redundancy the role is what went.
+   */
+  stayAnotherWeek(): SaveOutcome;
 }
 
 export interface SessionParts {
@@ -409,6 +481,17 @@ export interface SessionParts {
    * graph field - see `SaveFile.employer`.
    */
   readonly employer?: string;
+  /**
+   * The estate delta this session's week was STOOD UP with (E11, 0.34.0).
+   *
+   * Comes in through the seam rather than being read off the graph for the same
+   * reason the employer id does: it is a fact about how the world was BUILT
+   * rather than a fact the world holds. The Monday's graph and this agree; by
+   * Wednesday they do not, and the difference is what a firing is owed.
+   *
+   * Absent is the empty delta, which is every first week.
+   */
+  readonly carried?: readonly CarriedValue[];
   /**
    * Told which employer a LOAD just stood up, so the shell can follow it
    * (0.6.0, P1-1).
@@ -571,6 +654,11 @@ export function createShellSession(
   // day-boundary checkpoint, the retry record - has to stamp the shop the world
   // is actually at now, or the next load would stand the wrong company up.
   let employerId = parts.employer ?? FIRST_EMPLOYER;
+  // And the opening balance of the building, as LIVE state for the same reason
+  // the employer is: a load replaces the world with one that was stood up from
+  // a different Monday, and every retry and every stay written afterwards has
+  // to answer with the delta THAT week opened on.
+  let carriedIn: readonly CarriedValue[] = parts.carried ?? [];
   const number = (field: string): number => {
     const value = engine.graph.getField(actor, field);
     return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
@@ -588,6 +676,7 @@ export function createShellSession(
         version: BUILD_VERSION,
         label: `${display.day}, ${display.time}`,
         employer: employerId,
+        carried: carriedIn,
         engine: engine.serialize(),
         app: appState.snapshot(),
         driver: day.driverState(),
@@ -665,6 +754,10 @@ export function createShellSession(
         // Every save from here stamps the shop just loaded, and the rest of the
         // shell (install policy, the offer's next-employer name) is told.
         employerId = restored.id;
+        // And the opening balance of the building the file was taken in, so a
+        // firing after a load hands the player the Monday that file's week
+        // started on rather than the Monday this tab happened to boot at.
+        carriedIn = file.value.carried;
         parts.onEmployerRestored?.(restored.id);
         return { ok: true, value: undefined };
       } catch (failure: unknown) {
@@ -691,6 +784,10 @@ export function createShellSession(
         // The retry replays the shop the week was fired at, not a fall-back to
         // the probation one (0.6.0, P1-5).
         employerId,
+        // And the building as it stood on the Monday that was lost - the
+        // opening balance, never the Friday's. A firing does not hand back the
+        // repairs made in the week it was for (E11, 0.34.0).
+        carriedIn,
       ));
 
       parts.onWrite?.(written);
@@ -748,6 +845,98 @@ export function createShellSession(
       const written = parts.switch.write(
         switchRecord(next, careerAfter(exit, standing)),
       );
+
+      parts.onWrite?.(written);
+
+      if (!written.ok) {
+        return written;
+      }
+
+      slot.clear();
+      parts.restart();
+      return { ok: true, value: undefined };
+    },
+
+    /**
+     * Staying, which is the same three-step order again and for the third time
+     * the same reason: the record that outlives the tab is written FIRST, the
+     * save of a world nobody is going back to goes next, and the restart is
+     * last because after it nothing in this session runs again.
+     *
+     * The three refusals are the fiction, not a validation pass. A week that is
+     * not over has not decided anything, so there is nothing to stay INTO. A
+     * firing and a redundancy are the two endings where staying is not
+     * available to the player as a matter of fact rather than of rules - one
+     * has taken the lanyard off you and the other has taken the role away - so
+     * both are answered in the words that say which. And the arc's last week is
+     * a refusal because the arc is twelve weeks long and `pressure.ts` says so:
+     * the door out of week twelve is the offer, and inventing a week thirteen
+     * here would be the shell overruling the one table that knows how long a
+     * job is (the several post-arc doors D-E11-3 asks for are a design
+     * proposal, not a fall-through).
+     */
+    stayAnotherWeek: (): SaveOutcome => {
+      const outcome = engine.graph.getField(actor, FIELDS.reviewOutcome);
+
+      if (!isReviewOutcome(outcome) || outcome === 'pending') {
+        return refuse(
+          'There is no next week yet. The week is not over, so nobody has said '
+          + 'whether there is one.',
+        );
+      }
+
+      if (outcome === 'fired') {
+        return refuse(
+          'They have taken the lanyard off you. Staying is not one of the '
+          + 'things on offer - the Monday you can have is this one again, or a '
+          + 'worse job somewhere else.',
+        );
+      }
+
+      if (outcome === 'redundant') {
+        return refuse(
+          'The role went, which is the whole point of a redundancy: there is '
+          + 'no desk here next week to come back to. What is on the other side '
+          + 'of this is a different employer.',
+        );
+      }
+
+      const employer = employerFor(employerId);
+      const here = number(FIELDS.arcWeek);
+      const arcWeek = Math.max(PROBATION_WEEK, here);
+
+      if (arcWeek >= employer.arc.weeks) {
+        return refuse(
+          `That was week ${String(arcWeek)} of ${String(employer.arc.weeks)} at `
+          + `${employer.name}, and ${String(employer.arc.weeks)} is how long `
+          + 'this job is. What comes after it is the offer, not another Monday '
+          + 'here.',
+        );
+      }
+
+      const title = engine.graph.getField(actor, FIELDS.title);
+      const standing: CareerStanding = {
+        reputation: number(FIELDS.reputation),
+        title: typeof title === 'string' && title.length > 0
+          ? title
+          : 'IT Support Technician',
+        farmFund: number(FIELDS.farmFund),
+        tier: playerTierOf(engine.graph.getField(actor, FIELDS.playerTier)),
+      };
+
+      const written = parts.switch.write(stayRecord(
+        employerId,
+        // A stay is a clean continuation and is scored as one: `completed`
+        // leaves no trail and takes nothing off the standing, which is what
+        // passing a week and turning up again on the Monday is.
+        careerAfter('completed', standing),
+        arcWeek + 1,
+        // The delta is read off the world that is ENDING - the Friday - which
+        // is the opposite of what the retry reads and is right for the opposite
+        // reason: next week starts where this week left the building.
+        readCarried(engine.graph, employer.carries),
+        appState.snapshot().installed.apps,
+      ));
 
       parts.onWrite?.(written);
 

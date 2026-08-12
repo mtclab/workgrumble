@@ -3098,6 +3098,17 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('weekend-offer-body')).toContainText('standing');
   });
 
+  await step('weekend.stay-door', async () => {
+    // The third door (E11): after a pass, and while the arc has another week
+    // in it, the option that does not leave - named with the week it goes to.
+    // NOT pressed here; pressing it is the step at the bottom of this run,
+    // after the two session ceremonies below, because it reloads the page.
+    const stay = page.getByTestId('weekend-stay');
+    await expect(stay).toBeVisible();
+    await expect(stay).toBeEnabled();
+    await expect(stay).toHaveText('Stay for week 2');
+  });
+
   /* -- and the two ways out of a session ----------------------------------- */
 
   await step('start-menu.open', async () => {
@@ -3133,6 +3144,33 @@ test('walks every function of a probation week that goes well', async ({
     await page.keyboard.press('Space');
     await page.getByTestId('login-submit').click();
     await expect(page.getByTestId('desktop')).toBeVisible();
+  });
+
+  /* -- and out of the week, forwards ---------------------------------------- */
+
+  await step('weektwo.arrive', async () => {
+    // LAST, because it reloads onto a Monday nobody has worked and everything
+    // above is about the week that has just been. The whole chain in one
+    // session: a week played properly, a Friday passed, the door pressed, and
+    // the world the boot on the far side of it stands up.
+    await openFromStartMenu(page, 'weekend');
+    await page.getByTestId('weekend-stay').click();
+
+    await completeLogin(page, { brief: 'keep' });
+    await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 1');
+    await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
+
+    // The same shop's SECOND week: the arc position climbed, and the Monday is
+    // not the probation Monday every player is dealt.
+    expect(await page.evaluate(
+      () => globalThis.careerSim?.field('person:pat', 'arc_week') ?? null,
+    )).toBe(2);
+
+    await page.getByTestId('brief-start-shift').click();
+    await page.getByTestId('close-brief').click();
+    await openFromStartMenu(page, 'tickets');
+    await expect(page.getByTestId('ticket-row-locked-account')).toHaveCount(0);
+    await expect(page.getByTestId('tickets-empty')).toHaveCount(0);
   });
 });
 

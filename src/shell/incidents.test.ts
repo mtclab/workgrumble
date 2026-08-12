@@ -96,6 +96,7 @@ function rig(): Rig {
     setDesktop: () => ({ ok: true }),
     restartWeek: () => {},
     acceptOffer: () => {},
+    stayAnotherWeek: () => {},
     employer: 'msp',
     actor: COMPANY_IDS.player,
   };

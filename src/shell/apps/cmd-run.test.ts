@@ -53,6 +53,7 @@ function apiFor(
     setDesktop: () => ({ ok: true }),
     restartWeek: () => {},
     acceptOffer: () => {},
+    stayAnotherWeek: () => {},
     employer: 'workgrumble',
     actor,
   };

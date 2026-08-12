@@ -85,7 +85,7 @@ import {
 } from '../week';
 import { dayLoad } from '../load';
 import { contentFor } from '../pools';
-import { generateWeek } from '../week-gen';
+import { generateWeek, PRODUCT_WINDOW } from '../week-gen';
 import { BODGE_TICKETS } from './bodge';
 import { CORPORATE_TICKETS } from './corporate';
 import { mspOnboardingSetup } from '../msp-company';
@@ -1338,14 +1338,17 @@ describe('the solvability gate, pointed at something that is meant to fail', () 
  * gate:seeds`, ten thousand), and a seed that ever fails becomes a named test
  * here rather than a bigger number.
  *
- * WHY THE WINDOW IS NOUGHT, said out loud because it is a real limitation of
- * this version and not a convenience. Every shop's pool holds exactly the
- * entries its authored week uses - this version added no content - so a
- * three-week exclusion window has nothing left to draw in week two and the
- * generator refuses, correctly. The sweep therefore asks for no recency memory,
- * which gives it genuinely different ARRANGEMENTS of the same content: the same
- * question the auditor was built to answer, over weeks no human placed. The
- * window itself is gated on content with a surplus in `week-gen.test.ts`.
+ * IT AUDITS THE WEEKS A PLAYER CAN BE DEALT, which is what changed in 0.34.0.
+ * The window is `PRODUCT_WINDOW` rather than a nought written here: from this
+ * version week two is REACHABLE - the seam's clamp is gone and the Friday has a
+ * door that climbs the arc - so an auditor drawing under different rules from
+ * the product would be auditing weeks nobody can reach while the reachable ones
+ * went unchecked. That the product's window is currently nought is a fact about
+ * the pools (every shop holds exactly the entries its authored week uses, and
+ * slice 2 is what pays that bill); this file reads the constant rather than
+ * repeating the number, so the day it moves these hundred weeks a shop move
+ * with it. The window's own behaviour is gated on content with a surplus in
+ * `week-gen.test.ts`.
  */
 describe.each(SHIPPED_WEEKS)('$name: a hundred drawn weeks', ({ employer }) => {
   const HOW_MANY = Number.parseInt(process.env.WG_SEEDS ?? '', 10) || 100;
@@ -1366,7 +1369,7 @@ describe.each(SHIPPED_WEEKS)('$name: a hundred drawn weeks', ({ employer }) => {
 
       try {
         week = generateWeek({ employer: employer.id, attempt, arcWeek }, content, {
-          window: 0,
+          window: PRODUCT_WINDOW,
         });
       } catch (failure: unknown) {
         refused.push(`week ${String(arcWeek)}: ${String(failure)}`);
@@ -1421,7 +1424,7 @@ describe.each(SHIPPED_WEEKS)('$name: a hundred drawn weeks', ({ employer }) => {
       const week = generateWeek(
         { employer: employer.id, attempt, arcWeek },
         content,
-        { window: 0 },
+        { window: PRODUCT_WINDOW },
       );
       const priced = week.map((script) => dayLoad(script, findWorldTicket));
 

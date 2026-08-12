@@ -294,6 +294,7 @@ function terminalApi(session: WorldSession, appState: AppStateStore): GameApi {
     setDesktop: () => ({ ok: true }),
     restartWeek: () => {},
     acceptOffer: () => {},
+    stayAnotherWeek: () => {},
     employer: 'msp',
     actor: MSP_IDS.player,
   };

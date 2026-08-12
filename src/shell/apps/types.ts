@@ -142,6 +142,18 @@ export interface GameApi {
    */
   acceptOffer(): void;
   /**
+   * Stays at this employer for the next week of its arc (E11, 0.34.0).
+   *
+   * The third door, beside the retry that rebuilds the SAME week and the offer
+   * that stands up a DIFFERENT employer's first one: this stands up the same
+   * employer's NEXT one, with the arc position climbed, the career carried and
+   * the estate the shop declared persistent still in the building. A session
+   * verb for the same reason its two siblings are - the world it changes is the
+   * one being left behind, and a Monday that never happened cannot be built in
+   * place.
+   */
+  stayAnotherWeek(): void;
+  /**
    * Which employer this session is a week at.
    *
    * The offer surface reads it to work out where the next job is, and the accept

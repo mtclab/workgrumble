@@ -328,9 +328,9 @@ test('passes the review, opens the beer and reads the week back', async ({
   await expect(page.getByTestId('weekend-earned')).toContainText('£');
   await expect(page.getByTestId('weekend-farm-total')).toContainText('banked');
 
-  // Passing the probation is a job elsewhere, not week two at the same desk:
-  // the onward button is the offer itself, named and enabled, and the offer
-  // section says so in the tone a pass earns.
+  // Passing the probation opens two doors and this walk proves both are on the
+  // screen. The onward button is the offer itself - a job elsewhere, named and
+  // enabled - and the offer section says so in the tone a pass earns.
   const onward = page.getByTestId('weekend-onward');
   await expect(onward).toBeEnabled();
   await expect(onward).toHaveText(/Take the job at .+/);
@@ -338,9 +338,61 @@ test('passes the review, opens the beer and reads the week back', async ({
     .toHaveAttribute('data-tone', 'earned');
   await expect(page.getByTestId('weekend-offer-body')).toContainText('come with you');
 
+  // And the third door (E11, 0.34.0): the one that does not leave. Named with
+  // the week it goes to, because "week two" is a place rather than a concept.
+  const stay = page.getByTestId('weekend-stay');
+  await expect(stay).toBeVisible();
+  await expect(stay).toBeEnabled();
+  await expect(stay).toHaveText('Stay for week 2');
+
   // And there is no Saturday: the clock stays where the week left it.
   await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 5');
   await expect(page.getByTestId('sim-clock-time')).toHaveText('17:00');
+
+  /* -- and through it, onto a Monday nobody has worked ------------------- */
+
+  /**
+   * THE WHOLE CHAIN, on the built artifact, in one session.
+   *
+   * This is the 0.6.0 lesson paid forward. The employer switch shipped with
+   * five wiring defects that every unit test missed, because a world transition
+   * is not a function call - it is a Friday, a record written to storage, a
+   * page torn down, and a boot that has to find what the last one left. So the
+   * week that was actually played presses the actual button and the assertions
+   * below are made on whatever comes back.
+   */
+  const banked = await page.getByTestId('weekend-farm-total').textContent();
+  await stay.click();
+
+  await completeLogin(page, { brief: 'keep' });
+
+  // A Monday. The same building - the offer named a different one and was not
+  // taken - and the fund that has never been anybody else's.
+  await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 1');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
+  await expect(page.getByTestId('brief-heading')).toContainText('Day 1');
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('close-brief').click();
+
+  await openFromStartMenu(page, 'scorecard');
+  await expect(page.getByTestId('scorecard-farm-total')).toHaveText(banked ?? '');
+
+  // And a queue nobody has seen. The probation Monday opens on the locked
+  // account and the rotated screen, every time, for every player; week two is
+  // drawn, so it does not. If the composition stopped climbing with the arc -
+  // or if the Monday pile went back to being spawned off the shop's authored
+  // week while the driver dealt a different one - this is what reds.
+  await openFromStartMenu(page, 'tickets');
+  await expect(page.getByTestId('ticket-row-locked-account')).toHaveCount(0);
+  await expect(page.getByTestId('ticket-row-rotated-screen')).toHaveCount(0);
+  await expect(page.getByTestId('tickets-empty')).toHaveCount(0);
+
+  // The week is not over and nobody has had the conversation: a fresh Friday to
+  // work toward rather than last week's verdict carried across.
+  await openFromStartMenu(page, 'weekend');
+  await expect(page.getByTestId('weekend-verdict'))
+    .toHaveAttribute('data-outcome', 'pending');
+  await expect(page.getByTestId('weekend-stay')).toBeHidden();
 });
 
 /**

@@ -37,9 +37,11 @@ import {
   generatedWeek,
   generatedWeekFor,
   generateWeek,
+  PRODUCT_WINDOW,
   RECENCY_WEEKS,
   weekSeedFor,
   WeekRefused,
+  windowAfforded,
 } from './week-gen';
 
 const SHOPS = EMPLOYER_IDS.map((id) => {
@@ -382,23 +384,74 @@ describe('the pools, as they stand', () => {
 /**
  * And the seam, which is the half a player can reach.
  *
- * The generator composes weeks the product does not deal yet, and that is the
- * whole scope of this slice: week two is a decision nobody has taken. So the
- * gate on the wiring is the opposite of the gate on the sampler - it asserts
- * that NOTHING moved. Whatever arc position a live session holds, the week the
- * seam hands back is the shop's authored table, which is what the registry
- * lookup it replaced returned.
+ * 0.31.0's version of this described a CLAMP: the generator could compose week
+ * nine of any shop, no career could reach week two, and the seam therefore
+ * answered every arc position with the shop's authored table. 0.34.0 deletes
+ * the clamp, which was always the whole of the wiring, so this asks the two
+ * questions that replace it.
+ *
+ * WEEK ONE IS STILL THE AUTHORED WEEK, at every attempt, byte for byte. That is
+ * the D-E11-4 guarantee said in code: composition is keyed on the arc position
+ * ALONE, so every career's first week at a shop is the week somebody wrote, and
+ * every golden in this project is still pinned to it. If this moves, the keying
+ * broke and the goldens are next.
+ *
+ * AND WEEK TWO EXISTS AND IS NOT WEEK ONE. The other half, and it is the one
+ * that would have been silently satisfiable by a clamp nobody removed.
  */
 describe('the seam', () => {
-  it.each(SHOPS)('$name: deals the authored week at every arc position', ({ employer }) => {
-    for (const arcWeek of [1, 2, 4, 9, 12]) {
-      expect(generatedWeek({ employer: employer.id, attempt: 1, arcWeek }))
+  it.each(SHOPS)('$name: deals the authored week at week one, every attempt', ({ employer }) => {
+    for (const attempt of [1, 2, 3]) {
+      expect(generatedWeek({ employer: employer.id, attempt, arcWeek: 1 }))
         .toEqual(employer.week);
       expect(generatedWeekFor(employer)({
         employer: employer.id,
-        attempt: 3,
-        arcWeek,
+        attempt,
+        arcWeek: 1,
       })).toEqual(employer.week);
     }
+  });
+
+  it.each(SHOPS)('$name: deals a REAL week two, and it is not week one', ({ employer }) => {
+    const two = generatedWeek({ employer: employer.id, attempt: 1, arcWeek: 2 });
+
+    expect(two).toHaveLength(employer.week.length);
+    expect(two).not.toEqual(employer.week);
+    // And the retry contract, one level up: the attempt moves the minutes and
+    // never the composition, so week two of a second attempt is the same week
+    // two. A player fired on the Thursday of week five comes back to the week
+    // they lost.
+    expect(generatedWeek({ employer: employer.id, attempt: 4, arcWeek: 2 }))
+      .toEqual(two);
+  });
+
+  it.each(SHOPS)('$name: keeps climbing - week three is neither of them', ({ employer }) => {
+    const two = generatedWeek({ employer: employer.id, attempt: 1, arcWeek: 2 });
+    const three = generatedWeek({ employer: employer.id, attempt: 1, arcWeek: 3 });
+
+    expect(three).not.toEqual(employer.week);
+    expect(three).not.toEqual(two);
+  });
+
+  /**
+   * The ratchet on `PRODUCT_WINDOW`, and it is the teeth on the one number in
+   * this file that is a compromise rather than a decision.
+   *
+   * The product draws with no recency memory because no shop's pool has a spare
+   * entry in it; the DESIGN is three weeks (D-E11-6). Slice 2 grows the pools,
+   * and on the day it does, this test fails until somebody raises the constant -
+   * so the gap between what the product does and what the design says cannot
+   * quietly become permanent. It is deliberately written as "no wider than the
+   * content affords AND no narrower", because both directions are bugs: a
+   * window past what the pools carry is a refused Monday, and a window under it
+   * is repetition nobody chose.
+   */
+  it('draws with the widest window every shipped shop can honour', () => {
+    const afforded = SHOPS.map(
+      ({ employer }) => windowAfforded(contentFor(employer)),
+    );
+
+    expect(PRODUCT_WINDOW).toBe(Math.min(...afforded));
+    expect(PRODUCT_WINDOW).toBeLessThanOrEqual(RECENCY_WEEKS);
   });
 });

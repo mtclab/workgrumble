@@ -11,6 +11,7 @@ import {
 } from './actions';
 import type { ChannelDef } from './channels';
 import type { InstallPolicy } from './company';
+import { carriedSetup, type CarriedValue } from './carry';
 import { DEMO_ACTION_DATA } from './demo-world';
 import {
   type Employer,
@@ -120,6 +121,20 @@ export interface WeekCarry {
    * a player across a change of employer, permanently.
    */
   readonly playerTier?: PlayerTier;
+  /**
+   * What last week at THIS employer left in the world (E11, 0.34.0).
+   *
+   * The declared estate delta: the values the employer's own whitelist said
+   * survive its week boundary, read off the Friday's graph and written back
+   * over the Monday's seed. Absent on a first week, on a retry of a week that
+   * carried nothing, and on every employer SWITCH - a new building is a new
+   * estate, and nothing on the last one's list means anything at this one.
+   *
+   * Absent and empty are the same thing and both write NOTHING, which is what
+   * keeps week one of every career byte-identical to the week before this
+   * field existed.
+   */
+  readonly estate?: readonly CarriedValue[];
 }
 
 export const FIRST_WEEK: WeekCarry = Object.freeze({
@@ -175,6 +190,8 @@ interface ResolvedCarry {
    * the carry setup pushes onto the player node.
    */
   readonly playerTier: PlayerTier | null;
+  /** The estate delta to write, empty for a week that carries none. */
+  readonly estate: readonly CarriedValue[];
 }
 
 function requireCarry(carry: Readonly<WeekCarry>): ResolvedCarry {
@@ -227,6 +244,7 @@ function requireCarry(carry: Readonly<WeekCarry>): ResolvedCarry {
     reputation,
     title,
     playerTier,
+    estate: carry.estate ?? [],
   };
 }
 
@@ -265,6 +283,11 @@ export function createWorldSession(
   engine.setTier(HELPDESK_TIER);
   engine.applySetup([
     ...employer.setup(),
+    // The estate delta goes on TOP of the shop's own seed and UNDER everything
+    // a ticket does: this is a Monday that starts where Friday left the
+    // building, and a fault a ticket reports still re-seeds itself when that
+    // ticket spawns, which is what keeps a carried world solvable.
+    ...carriedSetup(start.estate),
     ...weekOpeningSetup(player, employer.reviewBar),
     ...carrySetup(start, player),
     ...pressureSetup(start.arcWeek, employer.arc, player),
@@ -282,11 +305,30 @@ export function createWorldSession(
   // faults and an empty log.
   watchMachineEvents(engine, player);
 
+  // The content the driver and the shell read off the session, so the world
+  // plays as THIS employer at THIS point in its arc without any module global
+  // to race. Resolved before the pile is spawned, because the pile is the first
+  // page of it.
+  const week = weekSource({
+    employer: employer.id,
+    attempt: start.attempt,
+    arcWeek: start.arcWeek,
+  });
+
   // Only Monday's inherited pile is spawned here: it is what was waiting when
   // the player sat down. Everything that ARRIVES during a shift, and every
   // other day of the week, is the day driver's to spawn at the tick the week's
   // table says it turns up.
-  for (const id of employer.mondayTicketIds()) {
+  //
+  // OFF THE RESOLVED WEEK, and 0.34.0 is where that stopped being a
+  // distinction without a difference. It used to be `employer.mondayTicketIds()`
+  // - the shop's AUTHORED Monday - which was the same list while every session
+  // played week one and is a silently wrong one the moment a career reaches
+  // week two: the driver would deal week two's table all week while the pile on
+  // the desk at eight o'clock was week one's, and nothing would throw. The week
+  // is the single answer to what this week deals, and its first day is its
+  // first day.
+  for (const id of week[0]?.inherited ?? []) {
     spawnWorldTicket(engine, id);
   }
 
@@ -296,13 +338,7 @@ export function createWorldSession(
     seed: seedForAttempt(start.attempt),
     carry: resolvedToCarry(start),
     employer: employer.id,
-    // The content the driver and shell read off the session, so the world plays
-    // as THIS employer without any module global to race.
-    week: weekSource({
-      employer: employer.id,
-      attempt: start.attempt,
-      arcWeek: start.arcWeek,
-    }),
+    week,
     channels: employer.channels,
     installPolicy: employer.installPolicy,
     reviewBar: employer.reviewBar,
@@ -327,6 +363,11 @@ function resolvedToCarry(start: Readonly<ResolvedCarry>): WeekCarry {
     ...(start.reputation === null ? {} : { reputation: start.reputation }),
     ...(start.title === null ? {} : { title: start.title }),
     ...(start.playerTier === null ? {} : { playerTier: start.playerTier }),
+    // Dropped when it is empty, for the reason the career fields are dropped
+    // when they are null: `createWorldSession(FIRST_WEEK).carry` still has to
+    // equal `FIRST_WEEK`, and a first week reporting `estate: []` back would be
+    // a carry that had grown a field on the way through.
+    ...(start.estate.length === 0 ? {} : { estate: start.estate }),
   };
 }
 

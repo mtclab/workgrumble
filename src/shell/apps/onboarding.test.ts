@@ -123,6 +123,7 @@ function apiFor(world: Week): GameApi {
     setDesktop: () => ({ ok: true }),
     restartWeek: () => {},
     acceptOffer: () => {},
+    stayAnotherWeek: () => {},
     employer: 'msp',
     actor: MSP_IDS.player,
   };

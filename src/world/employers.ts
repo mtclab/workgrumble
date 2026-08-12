@@ -6,7 +6,7 @@
  * parameter: `createWorldSession` is told WHICH employer to stand up, and an
  * employer is the four things a session needs that differ between one shop and
  * the next - the world graph, the pressure arc it runs, the install policy the
- * audit prices, and the pile of tickets already on the desk on the Monday.
+ * audit prices, and the five days it deals.
  *
  * Slice 1 ships exactly one real employer, the probation shop, and the whole
  * of it is the seam: the registry has one entry, `employerFor` resolves it, and
@@ -21,7 +21,9 @@
  */
 
 import type { NodeId, SetupOp } from '../engine-api';
+import { type CarriedField, playerCarries } from './carry';
 import { CHANNELS, type ChannelDef } from './channels';
+import { FIELDS } from './fields';
 import {
   COMPANY,
   companyInstallPolicy,
@@ -36,24 +38,23 @@ import {
   MSP_IDS,
   mspSetup,
 } from './msp-company';
-import { mspInheritedTicketIds, MSP_WEEK } from './msp-week';
+import { MSP_WEEK } from './msp-week';
 import {
   bodgeChannels,
   BODGE_COMPANY,
   BODGE_IDS,
   bodgeSetup,
 } from './second-company';
-import { bodgeInheritedTicketIds, SECOND_WEEK } from './second-week';
+import { SECOND_WEEK } from './second-week';
 import {
   halcyonChannels,
   HALCYON_COMPANY,
   HALCYON_IDS,
   halcyonSetup,
 } from './corporate-company';
-import { corporateInheritedTicketIds, CORPORATE_WEEK } from './corporate-week';
+import { CORPORATE_WEEK } from './corporate-week';
 import {
   type DayScript,
-  inheritedTicketIds,
   REVIEW_PASS_PERFORMANCE,
   WEEK,
 } from './week';
@@ -140,10 +141,23 @@ export interface Employer {
    * world that lead is not in.
    */
   readonly runsBossPings: boolean;
+  /**
+   * The world facts that survive a week AT THIS EMPLOYER (E11, 0.34.0).
+   *
+   * D-E11-1's declared list, per shop, node by node and field by field. It is
+   * DATA rather than a rule because a repair is a fact about a building: the
+   * note by the socket in the probation shop's warehouse corridor is not a
+   * concept the MSP has, and a whitelist that generalised over "machines" would
+   * be a rule nobody could review. Everything not named here is rebuilt from
+   * `setup()` on the Monday exactly as it always was, and a shop with an empty
+   * list is byte-identical to the world before this existed.
+   *
+   * Read by `stayAnotherWeek` off the Friday's world and written back into the
+   * Monday's; see `carry.ts` for the three questions each entry was put to.
+   */
+  readonly carries: readonly CarriedField[];
   /** The world graph - company, estate, accounts - as construction ops. */
   setup(): readonly SetupOp[];
-  /** The ids of the tickets already waiting when the player sits down Monday. */
-  mondayTicketIds(): readonly string[];
 }
 
 /**
@@ -164,8 +178,47 @@ const PROBATION_EMPLOYER: Employer = Object.freeze({
   channels: CHANNELS,
   reviewBar: REVIEW_PASS_PERFORMANCE,
   runsBossPings: true,
+  /**
+   * What the probation shop's world keeps over the weekend.
+   *
+   * TWO entries, and both were argued for one at a time.
+   *
+   * `known_hosts` on the player: the ssh client's trust-on-first-use set. Not
+   * an estate fact at all - a fact about the player's own client - and it is on
+   * the list because the field's own documentation gives the argument for it
+   * while making the opposite case about a SWITCH: "a new estate is new boxes,
+   * and last job's fingerprints mean nothing at this one". At the same estate
+   * they mean everything, and being asked to trust PRINT-02 again on the Monday
+   * would be a client forgetting the one thing an ssh client does not forget.
+   *
+   * `sticky_note` on the warehouse print server: the DO NOT UNPLUG note by the
+   * socket in the corridor. It is the sharpest case in the game for
+   * persistence, which is why it is here rather than in the reset pile - it is
+   * a REPAIR TO A BUILDING, made by a person with a marker who is not coming
+   * back to un-make it, and it is the payoff of the one arc in the probation
+   * week whose entire lesson is that the second occurrence needs a different
+   * fix from the first. A Monday that had quietly taken it down would make that
+   * lesson a coincidence.
+   *
+   * And everything else at this shop resets, including two that were close:
+   * `power_losses` on the warehouse printer (a COUNT of what went off this
+   * week, and the evidence gate the note is earned by - carried, it would hand
+   * a Monday a timetable that Monday has not shown, which is the exact defect
+   * `facilities.ts` added the evidence guard to close), and `conduct_file` on
+   * the player (every line is `tick|kind|text` stamped by `conductStamp` with a
+   * day NAME off a clock that restarts every Monday, so carrying it puts lines
+   * reading "Wednesday 14:32" into a week where that minute has not happened -
+   * and the bar reads only the file's SIZE, so it would silently raise next
+   * week's pass mark by up to twenty-five points with no surface saying why in
+   * that week's own words). The file crossing weeks needs its own week-stamped
+   * archive and its own sentence on the review screen; that is content, not a
+   * whitelist row.
+   */
+  carries: Object.freeze([
+    ...playerCarries(COMPANY_IDS.player),
+    { node: COMPANY_IDS.warehousePrintServer, field: FIELDS.stickyNote },
+  ]),
   setup: companySetup,
-  mondayTicketIds: () => inheritedTicketIds(1),
 });
 
 /**
@@ -207,8 +260,20 @@ const SECOND_EMPLOYER: Employer = Object.freeze({
   // ticket to mint, no probation thread to write. The boss still walks the
   // floor and still catches you slacking; he just does not ping.
   runsBossPings: false,
+  /**
+   * Bodgeworth keeps the player's own client and nothing about the building.
+   *
+   * Walked field by field, the shop has no permanent repair in it to keep: its
+   * week is five days of break-fix on machines whose faults are re-seeded by
+   * whichever ticket reports them, its accounts are shared logins nobody ever
+   * remediates, and its one distinguishing state is the ABSENCE of an install
+   * audit, which is a policy rather than a fact anybody wrote down. A
+   * wild-west shop that carries nothing but the fingerprints is the honest
+   * answer, and an empty-but-for-the-player list is a real answer rather than
+   * an unfinished one.
+   */
+  carries: playerCarries(BODGE_IDS.player),
   setup: bodgeSetup,
-  mondayTicketIds: bodgeInheritedTicketIds,
 });
 
 /**
@@ -235,8 +300,21 @@ const MSP_EMPLOYER: Employer = Object.freeze({
   channels: mspChannels(),
   reviewBar: REVIEW_PASS_PERFORMANCE,
   runsBossPings: false,
+  /**
+   * The MSP keeps the player's own client and, for now, nothing of its
+   * customers' estates.
+   *
+   * The two real candidates here are the project's phase state and the
+   * firewall rules a migration documented (`fw_rule_documented`,
+   * `fw_rule_migrated`), and both are deliberately OFF the list rather than
+   * missing from it. A project that survives Friday is E10 fork B - it needs a
+   * re-seed path that stands the in-flight project's world back up, not a row
+   * in a whitelist - and a half-migrated rule set carried without the project
+   * that was migrating it is an estate with a job half done and nobody doing
+   * it. They go on this list the version the project carries, and not before.
+   */
+  carries: playerCarries(MSP_IDS.player),
   setup: mspSetup,
-  mondayTicketIds: mspInheritedTicketIds,
 });
 
 /**
@@ -265,8 +343,23 @@ const CORPORATE_EMPLOYER: Employer = Object.freeze({
   channels: halcyonChannels(),
   reviewBar: REVIEW_PASS_PERFORMANCE,
   runsBossPings: false,
+  /**
+   * Halcyon keeps the player's own client, and its exceptions are reviewed and
+   * NOT carried - which is the entry on this list it was hardest to leave off.
+   *
+   * `filter_exempt` and `mailbox_delegate` are the granted security exceptions
+   * the whole org-dysfunction epic turns on, and in a real building they
+   * absolutely persist: that is the thesis - the exception IS the
+   * vulnerability, and it is still open next month. But they are not inert
+   * state. They ARM a later incident: the phish reaches the exempted exec
+   * because the exemption is open, and the delegate is the persistence vector
+   * the hunt finds. Carrying them means a week-two world where an incident can
+   * fire out of a decision made in a week the player cannot re-read, with no
+   * beat between the two saying so. That is an E8 arc with its own gate, not a
+   * row here, and the honest thing is to say which it is.
+   */
+  carries: playerCarries(HALCYON_IDS.player),
   setup: halcyonSetup,
-  mondayTicketIds: corporateInheritedTicketIds,
 });
 
 const REGISTRY: Readonly<Record<string, Employer>> = Object.freeze({

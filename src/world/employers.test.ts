@@ -69,8 +69,11 @@ describe('the employer registry', () => {
     expect(msp.name).not.toBe(employerFor(FIRST_EMPLOYER).name);
     expect(msp.name).not.toBe(employerFor('bodgeworth').name);
     expect(nextEmployerAfter('bodgeworth')).toBe('msp');
-    // Its Monday pile is its own customer's ticket, not another shop's.
-    expect(msp.mondayTicketIds()).toContain('ticket:fontaine-matter-access');
+    // Its Monday pile is its own customer's ticket, not another shop's - read
+    // off the shop's own week, which since 0.34.0 is the single answer to what
+    // a Monday deals (the session spawns the resolved week's first day, so a
+    // second list here could disagree with the queue and used to).
+    expect(msp.week[0]?.inherited).toContain('ticket:fontaine-matter-access');
   });
 
   it('names an employer, and falls back to the id for a stranger', () => {

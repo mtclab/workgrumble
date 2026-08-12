@@ -769,6 +769,26 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'weekend.stay-door',
+    surface: 'weekend',
+    control: 'weekend-stay',
+    does: 'The third door out of a Friday (E11): after a pass, and while the '
+      + 'arc has another week in it, the option that does not leave - named '
+      + 'with the week number it goes to. Hidden on a firing (no desk), on a '
+      + 'redundancy (no role) and on the arc\'s last week (no job).',
+    run: 'week',
+  },
+  {
+    id: 'weektwo.arrive',
+    surface: 'boot',
+    control: 'weekend-stay, then the boot that follows it',
+    does: 'Staying: the same employer\'s NEXT week stands up, the arc position '
+      + 'climbed, the career carried and the whitelisted estate still in the '
+      + 'building. The unlock the twelve-week pressure ladder has been waiting '
+      + 'on since 0.2.7.',
+    run: 'week',
+  },
+  {
     id: 'weekend.offer',
     surface: 'weekend',
     control: 'weekend-offer, weekend-offer-title, weekend-offer-body',
@@ -4277,6 +4297,11 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   // COVERAGE (weekend.offer-fired, switch.accept); this is the DOM half - the
   // button is on screen on a fired week, so the inventory has to name it.
   'weekend-accept-offer',
+  // The third door (E11, 0.34.0): staying for the next week of the arc. Its
+  // FUNCTION is in COVERAGE (weekend.stay-door, weektwo.arrive); this is the
+  // DOM half - the button is on screen on a passed week, so the inventory has
+  // to name it.
+  'weekend-stay',
 ]);
 
 /**

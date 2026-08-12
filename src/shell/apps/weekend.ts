@@ -3,7 +3,11 @@ import {
   farmProgress,
   formatPence,
 } from '../../world/day';
-import { employerName, nextEmployerAfter } from '../../world/employers';
+import {
+  employerFor,
+  employerName,
+  nextEmployerAfter,
+} from '../../world/employers';
 import { FIELDS } from '../../world/fields';
 import { offerTone } from '../../world/offer';
 import {
@@ -91,8 +95,25 @@ export const WEEKEND_APP: AppDef = {
     const accept = osButton('Take the offer', 'weekend-accept-offer', {
       primary: false,
     });
+    /**
+     * And the third door (E11, 0.34.0): the one that does not leave.
+     *
+     * It exists only on a PASS, and only while the arc has another week in it.
+     * A firing has taken the desk back and a redundancy has taken the role, so
+     * neither has a Monday here to come back to; week twelve has one but the
+     * job does not, and the offer is what is on the other side of that.
+     *
+     * It is the SECOND button rather than the first on purpose, for now: the
+     * offer is what a pass has always led to, the copy on this screen sells it
+     * that way, and which of the two doors a passed week should press first is
+     * a content question with a real answer somebody should choose rather than
+     * one a slice that wires the mechanism gets to decide by button order.
+     */
+    const stay = osButton('Stay another week', 'weekend-stay', {
+      primary: false,
+    });
     const note = element('p', 'scorecard-note', 'weekend-note');
-    footer.append(onward, accept, note);
+    footer.append(onward, accept, stay, note);
 
     root.append(heading, stamp, columns, verdict, offer, farm, footer);
 
@@ -111,6 +132,13 @@ export const WEEKEND_APP: AppDef = {
       if (outcome === 'passed' || outcome === 'redundant') {
         api.acceptOffer();
       }
+    });
+
+    stay.addEventListener('click', () => {
+      // The world verb carries the whole guard - not over yet, fired, made
+      // redundant, out of weeks - so a stray click costs a sentence rather than
+      // a wrong Monday, exactly as the accept below does.
+      api.stayAnotherWeek();
     });
 
     accept.addEventListener('click', () => {
@@ -399,6 +427,34 @@ export const WEEKEND_APP: AppDef = {
       // onward button, so it is hidden there rather than a duplicate.
       accept.hidden = card.outcome !== 'fired';
 
+      /**
+       * And the third: staying, which only a PASS has and only while the job
+       * has another week in it.
+       *
+       * The number is read off the world rather than counted here - the arc
+       * week is a player-node field the save carries and the redundancy matrix
+       * reads - and the length is read off the employer's own arc, because how
+       * long a job is belongs to `pressure.ts` and nowhere else. Week twelve of
+       * twelve therefore has no button rather than a disabled one: there is no
+       * week thirteen to be told to wait for.
+       */
+      const arc = employerFor(api.employer).arc;
+      const arcWeek = Math.max(1, numberField(api, FIELDS.arcWeek));
+      const another = card.outcome === 'passed' && arcWeek < arc.weeks;
+
+      stay.hidden = !another;
+
+      if (another) {
+        stay.textContent = `Stay for week ${String(arcWeek + 1)}`;
+        setAvailability(
+          stay,
+          ended
+            ? null
+            : 'Clock off first. Monday is not going anywhere, and the week is '
+              + 'not banked until you have.',
+        );
+      }
+
       if (card.outcome === 'fired') {
         accept.textContent = `Take the offer at ${nextName}`;
         setAvailability(
@@ -414,8 +470,16 @@ export const WEEKEND_APP: AppDef = {
           + 'Monday - or take the offer: a worse job, the same fund, a '
           + 'different building.'
         : card.outcome === 'passed'
-          ? 'The fund goes with you, because the fund always does - and so '
-            + 'does the standing you earned to be offered the job.'
+          ? another
+            // Two doors, said as two doors. The fund is the one thing that does
+            // not depend on which - it never has - so the sentence leads with
+            // the choice and ends with the joke.
+            ? `Take the job elsewhere, or stay and it is week ${
+              String(arcWeek + 1)
+            } here on Monday. The standing you earned comes either way, and so `
+              + 'does the fund, because the fund always does.'
+            : 'The fund goes with you, because the fund always does - and so '
+              + 'does the standing you earned to be offered the job.'
           : card.outcome === 'redundant'
             ? 'The fund carries, the notice is in it, and the file is not. That '
               + 'is what being cut for the weather is worth: a clean sheet and '

@@ -111,6 +111,7 @@ function rig(): Rig {
     setDesktop: () => ({ ok: true as const }),
     restartWeek: () => {},
     acceptOffer: () => {},
+    stayAnotherWeek: () => {},
     employer: 'msp',
     actor: COMPANY_IDS.player,
   } as unknown as GameApi;

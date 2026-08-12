@@ -67,6 +67,7 @@ function apiFor(session: WorldSession): GameApi {
     setDesktop: () => ({ ok: true }),
     restartWeek: () => {},
     acceptOffer: () => {},
+    stayAnotherWeek: () => {},
     employer: 'workgrumble',
     actor: COMPANY_IDS.player,
   };

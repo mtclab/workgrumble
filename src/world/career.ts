@@ -29,6 +29,7 @@
  * left the last one", and inventing one would move the goldens for nothing.
  */
 
+import type { CarriedValue } from './carry';
 import { type PlayerTier, PLAYER_TIERS, playerTierOf } from './fields';
 import { clampMeter } from './meters';
 import { PROBATION_WEEK } from './pressure';
@@ -162,6 +163,47 @@ export function carryForEmployer(
     reputation: career.reputation,
     title: career.title,
     playerTier: career.tier,
+  };
+}
+
+/**
+ * The seed for the NEXT week at the SAME employer (E11, 0.34.0).
+ *
+ * The sibling of `carryForEmployer`, and the two differ in exactly the three
+ * places that matter. The employer does not change, because you did not leave.
+ * The arc position CLIMBS rather than resetting, because a second week at a
+ * shop is that shop's week two and not its probation over again - that
+ * increment is the whole unlock, and the twelve-week ladder in `pressure.ts`
+ * has been waiting at the top of it since 0.2.7. And the estate delta rides
+ * across, because a week at the same desk is the same building on the Monday.
+ *
+ * The career fields are carried the same way a switch carries them, which is
+ * deliberately not "left alone": a week two seeded from the employer's own
+ * starting reputation would hand a player who earned 82 a Monday at whatever
+ * the shop hires people on. `carryForEmployer` and this function are therefore
+ * one shape with two rules about the arc, rather than two ideas.
+ *
+ * The attempt resets to one, because this is a week nobody has attempted yet.
+ */
+export function carryForAnotherWeek(
+  career: Readonly<EmployerCareer>,
+  employer: string,
+  arcWeek: number,
+  estate: readonly CarriedValue[] = [],
+): WeekCarry {
+  if (!Number.isSafeInteger(arcWeek) || arcWeek < PROBATION_WEEK) {
+    throw new TypeError('A week of the employer arc is numbered from 1.');
+  }
+
+  return {
+    farmFund: career.farmFund,
+    attempt: 1,
+    arcWeek,
+    employer,
+    reputation: career.reputation,
+    title: career.title,
+    playerTier: career.tier,
+    ...(estate.length === 0 ? {} : { estate }),
   };
 }
 

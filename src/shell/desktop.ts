@@ -623,6 +623,9 @@ export class Desktop {
       acceptOffer: () => {
         this.acceptOffer();
       },
+      stayAnotherWeek: () => {
+        this.stayAnotherWeek();
+      },
       employer: context.employer,
       report: (submission) => context.report(submission),
       actor: context.user.node,
@@ -2210,6 +2213,20 @@ export class Desktop {
 
     if (!outcome.ok) {
       this.notify('The offer is still open', outcome.reason);
+    }
+  }
+
+  /**
+   * Staying. The session writes down the career, the building and the toys, and
+   * the page starts again on the same shop's next Monday - a reload for the
+   * same reason the other two doors are one: the world on the far side of a
+   * week boundary is built, not edited.
+   */
+  private stayAnotherWeek(): void {
+    const outcome = this.context.session.stayAnotherWeek();
+
+    if (!outcome.ok) {
+      this.notify('Not staying, then', outcome.reason);
     }
   }
 
