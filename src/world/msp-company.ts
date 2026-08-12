@@ -1233,6 +1233,9 @@ export function mspSetup(): readonly SetupOp[] {
     if (machine.wiredTo !== undefined) {
       addEdge(ops, { from: machine.id, to: machine.wiredTo, kind: 'connected_to' });
     }
+    // A machine with no local uplink is its site's anchor; its RMM tunnel
+    // edge is laid AFTER the RMM box's own node below, because the engine
+    // refuses an edge before both of its endpoints exist.
   }
 
   addNode(ops, {
@@ -1569,6 +1572,22 @@ export function mspSetup(): readonly SetupOp[] {
     kind: 'connected_to',
   });
 
+  // The RMM tunnel. Every managed site's anchor (the machine with no local
+  // uplink) reaches the desk through the RMM box - the same wire Remote
+  // Assist and the monitoring board already ride; a desk that can take over
+  // a customer's screen but whose ping times out would be lying in one of
+  // the two places. Until 0.32.0 nothing ever pinged a customer box, so
+  // every customer estate was a graph island and nobody knew.
+  for (const machine of MACHINES) {
+    if (machine.wiredTo === undefined && machine.customer !== undefined) {
+      addEdge(ops, {
+        from: machine.id,
+        to: MSP_IDS.mspInfraServer,
+        kind: 'connected_to',
+      });
+    }
+  }
+
   for (const unit of FC_INFRA_UNITS) {
     const id = unitIdOn(MSP_IDS.mspInfraServer, unit.unit);
 
@@ -1726,6 +1745,15 @@ export function mspOnboardingSetup(): readonly SetupOp[] {
 
     if (machine.wiredTo !== undefined) {
       addEdge(ops, { from: machine.id, to: machine.wiredTo, kind: 'connected_to' });
+    } else {
+      // The RMM tunnel, same rule as the seeded estates: standing a customer
+      // up includes deploying the agent, so the site's anchor reaches the
+      // desk from the day it is onboarded.
+      addEdge(ops, {
+        from: machine.id,
+        to: MSP_IDS.mspInfraServer,
+        kind: 'connected_to',
+      });
     }
 
     for (const service of BASELINE_SERVICES[machine.role] ?? []) {

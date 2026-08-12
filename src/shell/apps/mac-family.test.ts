@@ -514,4 +514,56 @@ describe('every shipped estate keeps the family rule', () => {
     // The sweep only means something if it swept something.
     expect(unixBoxes).toBeGreaterThan(0);
   });
+
+  it('routes every customer machine from the MSP desk - the RMM tunnel', () => {
+    /*
+     * Found by the 0.32.0 box gate: MARL-WS-01 answered ping with 100% loss,
+     * and the pull on that thread showed EVERY customer estate had been an
+     * island since 0.8.0 - workstation wired to site server, site server
+     * wired to nothing, and no test had ever pinged a customer box. The
+     * Remote Assist window and the monitoring board already claim the desk
+     * reaches these sites, so the wire exists in the fiction; this gate makes
+     * the graph tell the same story, via the RMM tunnel edges the seeders now
+     * lay. Drop the tunnel rule and this goes red on every customer.
+     */
+    const world = createWorldSession({ ...FIRST_WEEK, employer: 'msp' });
+    const { graph } = world.engine;
+
+    const desk = 'machine:msp-desk';
+    const seen = new Set<string>([desk]);
+    const queue = [desk];
+
+    while (queue.length > 0) {
+      const id = queue.pop();
+
+      if (id === undefined) {
+        break;
+      }
+
+      const wired = [
+        ...graph.neighbors(id, { direction: 'out', edgeKind: 'connected_to' }),
+        ...graph.neighbors(id, { direction: 'in', edgeKind: 'connected_to' }),
+      ];
+
+      for (const next of wired) {
+        if (!seen.has(next.id)) {
+          seen.add(next.id);
+          queue.push(next.id);
+        }
+      }
+    }
+
+    let customerBoxes = 0;
+
+    for (const machine of graph.nodesOfKind('machine')) {
+      if (machine.fields[FIELDS.machineCustomer] === undefined) {
+        continue;
+      }
+
+      customerBoxes += 1;
+      expect(seen.has(machine.id), machine.id).toBe(true);
+    }
+
+    expect(customerBoxes).toBeGreaterThan(10);
+  });
 });

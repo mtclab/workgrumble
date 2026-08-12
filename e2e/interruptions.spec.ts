@@ -726,10 +726,20 @@ test('the update is put off three times and then takes the afternoon', async ({
 
   // THE ARITHMETIC, which is the point of the whole mechanic: the queue does
   // not stop for the workstation. The duplicate's 14:38 deadline runs out
-  // while the machine is mid-update - it goes red on a screen nobody can
-  // touch, and the toast about it arrives over the top of an update screen.
-  for (let minute = 0; minute < 15; minute += 1) {
-    if (await duplicate.getAttribute('data-breached') === 'true') {
+  // during the outage the postpones bought, on a screen nobody can touch.
+  // WHERE inside the outage it lands is real-time drift's to smear (the fake
+  // clock re-syncs between jumps - the 0.30.0 forensics), so per the house
+  // rule this journey asserts the destination: the deadline ran out, the desk
+  // came back, and the record of the announcement survived. The instant-
+  // coincidence reading (breached WHILE data-takeover says machine) is exact-
+  // timing in disguise and cost three box runs before this comment.
+  for (let minute = 0; minute < 40; minute += 1) {
+    const breached =
+      await duplicate.getAttribute('data-breached') === 'true';
+    const takeover =
+      await page.getByTestId('desktop').getAttribute('data-takeover');
+
+    if (breached && takeover === 'none') {
       break;
     }
 
@@ -737,32 +747,24 @@ test('the update is put off three times and then takes the afternoon', async ({
   }
 
   await expect(duplicate).toHaveAttribute('data-breached', 'true');
-  await expect(page.getByTestId('desktop'))
-    .toHaveAttribute('data-takeover', 'machine');
-  await expect(
-    page.getByTestId('toast').filter({ hasText: 'SLA breached' }),
-  ).toBeVisible();
 
-  /* The far side of it. */
-
-  for (let minute = 0; minute < 20; minute += 1) {
-    if (await page.getByTestId('desktop').getAttribute('data-takeover')
-      === 'none') {
-      break;
-    }
-
-    await runSimMinutes(page, 1, 1);
-  }
+  // The announcement was made to a screen nobody could touch, and the tray
+  // kept it - the toast itself is allowed to have expired by now.
+  await page.getByTestId('notification-tray').click();
+  await expect(page.getByTestId('notification-panel'))
+    .toContainText('SLA breached');
+  await page.getByTestId('notification-tray').click();
 
   // THE GOAL: the desk is the player's, the price is said out loud on the
   // taskbar, and everything that was on it is still on it.
   await expect(page.getByTestId('desktop'))
     .toHaveAttribute('data-takeover', 'none');
   await expect(page.getByTestId('window-reboot')).toHaveCount(0);
+  // The refocus debuff runs 23 minutes from the restore and the loop above
+  // exits at most a handful past it, so the chip is a safe read; the
+  // 'Restoring your work' toast is NOT (it can expire inside the loop's
+  // drift allowance) and its record is in the tray with the breach above.
   await expect(page.getByTestId('refocus-chip')).toBeVisible();
-  await expect(
-    page.getByTestId('toast').filter({ hasText: 'Restoring your work' }),
-  ).toBeVisible();
   await expect(page.getByTestId('reboot-chip')).toBeHidden();
 
   // Same windows, same states - as a SET. Stacking order is not part of the

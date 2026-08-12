@@ -31,6 +31,40 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.32.0',
+    date: '2026-08-12',
+    summary: 'The Macs arrive. IT has opinions about this, and so does '
+      + 'everyone else in the building.',
+    lines: Object.freeze([
+      'A creative studio has joined the managed-service roster, and its '
+        + 'machines are Macs. All of them. The service tools you know refuse '
+        + 'them politely and tell you what would work instead, which is more '
+        + 'courtesy than they extend to you.',
+      'Three of the studio\'s problems are now yours. Be advised that on '
+        + 'these machines your instincts are wrong three separate ways: the '
+        + 'remote-support tool showing a black square is not broken, the '
+        + 'plugin that will not open is not broken, and the licence that '
+        + 'expired mid-project is, regrettably, working exactly as licensed. '
+        + 'In each case the fix is knowing why, and in one of them the only '
+        + 'person who can click the button is the person on the phone.',
+      'Separately, IT must confess something. A ticket at the dental '
+        + 'practice has been advertising "write back to the reporter" as its '
+        + 'closing move since the practice joined us, and the button for '
+        + 'writing back did not exist. Six updates. Nobody could close it, '
+        + 'nobody reported it, and our checks kept passing because they '
+        + 'checked the plan rather than the door. The button exists now, a '
+        + 'check stands guard at the door specifically, and IT has updated '
+        + 'its definition of the word "checked".',
+      'While installing the studio it also emerged that pinging any managed '
+        + 'customer\'s machine from the service desk has never worked. The '
+        + 'remote-control tool reached them; ping insisted a cable was on '
+        + 'the floor. Every customer site now answers over the management '
+        + 'tunnel it was always supposedly connected to, and IT would like '
+        + 'to thank the Macs for being the first machines anyone tried to '
+        + 'ping.',
+    ]),
+  },
+  {
     version: '0.31.0',
     date: '2026-08-12',
     summary: 'This update contains no visible changes. IT would like to talk '
