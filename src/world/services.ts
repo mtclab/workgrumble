@@ -33,6 +33,8 @@
  */
 
 import {
+  MACHINE_OS,
+  type MachineOs,
   type MachineRole,
   MACHINE_ROLES,
   SERVICE_CLASSES,
@@ -551,6 +553,140 @@ export const BASELINE_UNITS: Readonly<
 };
 
 /**
+ * A launchd job on a Mac (0.32.0, `docs/research/mac-edition.md` section 1).
+ *
+ * The same four columns as a systemd unit and a DIFFERENT manager behind them,
+ * which is the whole of the third family: launchd runs property lists out of
+ * `/Library/LaunchDaemons` and `~/Library/LaunchAgents`, `launchctl` is the
+ * tool, and a job is named by a reverse-DNS LABEL - `com.apple.mDNSResponder`
+ * - where systemd names a unit `nginx.service`. Declared as its own interface
+ * rather than reusing `LinuxUnit`, because a label is not a unit file and the
+ * two managers are not one manager in hats.
+ *
+ * TWO COMPROMISES, both deliberate and both at the storage layer rather than
+ * in what anybody is told:
+ *
+ * - The engine has ONE `unit` node kind (shipped 0.7.0) and a launchd job goes
+ *   on it unchanged. That is the right call and the spike says so: the node is
+ *   "a thing a service manager owns", and a second kind would buy nothing but
+ *   a second set of guards.
+ * - `state` is held in systemd's words because the engine's schema validates
+ *   that column against them. launchd has no `active (running)`; it has a PID
+ *   and a last exit status, and `launchctl print` reports them. The words are
+ *   therefore a STORAGE encoding here - running vs not - and the mac dialect
+ *   slice renders them in launchd's own vocabulary when it ships. Nothing in
+ *   0.32.0 prints these to a player, which is why the encoding is safe: no
+ *   surface can say `active (running)` about a Mac.
+ */
+export interface LaunchdJob {
+  /** The reverse-DNS label `launchctl` takes: `com.apple.mDNSResponder`. */
+  readonly unit: string;
+  /** What the job is for, in plain words - the label alone teaches nothing. */
+  readonly name: string;
+  /** Running or not, in the storage words above. */
+  readonly state: SystemdState;
+  /**
+   * Whether launchd will start it. `disabled` is a real launchd state - the
+   * `Disabled` key in the service's override database, which is what
+   * `launchctl disable` writes and what Remote Login being switched off looks
+   * like on a box that has never had it on.
+   */
+  readonly enabled: UnitEnablement;
+}
+
+/** Whichever manager owns it, this is what a seeder writes on a `unit` node. */
+export type BaselineUnit = LinuxUnit | LaunchdJob;
+
+/**
+ * What a MANAGED Mac in a creative shop is running, and every label is a real
+ * one (sources in `docs/research/mac-edition.md`).
+ *
+ * - `com.apple.mDNSResponder` is Bonjour, on every Mac ever shipped, and the
+ *   reason the shop's printers and the NAS appear without anybody typing an
+ *   address.
+ * - `com.openssh.sshd` is Remote Login. It is OFF by default on macOS; it is
+ *   ON here, because a box an MSP looks after is a box the MSP can reach, and
+ *   that is what makes the honest refusal on the Windows side honest - the
+ *   Mac really is reachable, just not by `sc`.
+ * - `com.jamf.management.daemon` is the Jamf Pro management daemon: the MDM
+ *   this vertical runs, and the `sc`/`systemctl` analogue at FLEET grain.
+ * - `com.adobe.ARMDC.Communicator` and `com.adobe.ARMDC.SMJobBlessHelper` are
+ *   Adobe's Reader-and-Acrobat update helpers, which arrive with Creative
+ *   Cloud and which every Mac tech has read off a login-items list while
+ *   somebody asked what they were.
+ *
+ * Sorted by label, which is the order `launchctl list` is read in.
+ */
+const MANAGED_MAC_UNITS: readonly LaunchdJob[] = [
+  {
+    unit: 'com.adobe.ARMDC.Communicator',
+    name: 'Adobe Acrobat update communicator',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'com.adobe.ARMDC.SMJobBlessHelper',
+    name: 'Adobe Acrobat privileged update helper',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'com.apple.mDNSResponder',
+    name: 'Bonjour: multicast DNS and service discovery',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'com.jamf.management.daemon',
+    name: 'Jamf Pro management daemon',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+  {
+    unit: 'com.openssh.sshd',
+    name: 'Remote Login (OpenSSH)',
+    state: SYSTEMD_STATES.activeRunning,
+    enabled: UNIT_ENABLEMENTS.enabled,
+  },
+];
+
+/**
+ * The launchd baseline per Mac role - the `BASELINE_UNITS` of the third
+ * family.
+ *
+ * One role, because a Mac on this estate is a desk: the creative vertical runs
+ * designers' workstations and a NAS, and a NAS is an appliance rather than a
+ * Mac. A role with no entry seeds nothing, exactly as a Linux role with no
+ * entry does.
+ */
+export const MAC_BASELINE_UNITS: Readonly<
+  Partial<Record<MachineRole, readonly LaunchdJob[]>>
+> = {
+  [MACHINE_ROLES.workstation]: MANAGED_MAC_UNITS,
+};
+
+/**
+ * The units a box carries, by the family it is in and the job it does.
+ *
+ * The ONE place the unit tables fork on the OS, so that a seeder asks a
+ * question rather than picking a map - the third family arrived in 0.32.0 and
+ * `BASELINE_UNITS[machine.role]` spelled directly at four call sites would
+ * have been four places to forget it. A Windows box has no units at all: it
+ * has services, from `BASELINE_SERVICES`, and the two lists have never
+ * overlapped.
+ */
+export function baselineUnitsFor(
+  os: MachineOs,
+  role: MachineRole,
+): readonly BaselineUnit[] {
+  if (os === MACHINE_OS.mac) {
+    return MAC_BASELINE_UNITS[role] ?? [];
+  }
+
+  return os === MACHINE_OS.linux ? BASELINE_UNITS[role] ?? [] : [];
+}
+
+/**
  * The id a baseline service gets on a given box.
  *
  * Every machine runs its own copy, because every machine does: the DNS Client
@@ -567,11 +703,17 @@ export function baselineServiceId(machineId: string, service: string): string {
 }
 
 /**
- * The id a systemd unit gets on a given box - the `unit:` analogue of
+ * The id a unit gets on a given box - the `unit:` analogue of
  * `baselineServiceId`, so every Linux box runs its own copy of `nginx.service`
- * the way every Windows box runs its own `Spooler`.
+ * the way every Windows box runs its own `Spooler`, and every Mac its own
+ * `com.apple.mDNSResponder`.
+ *
+ * Named for the node kind rather than for a family (it was `linuxUnitId` until
+ * 0.32.0): the id shape is the same for a systemd unit and a launchd job,
+ * because the node kind is, and a Mac's jobs going through a function with
+ * `linux` in its name would have been a lie sitting in the call sites.
  */
-export function linuxUnitId(machineId: string, unit: string): string {
+export function unitIdOn(machineId: string, unit: string): string {
   const box = machineId.includes(':')
     ? machineId.slice(machineId.indexOf(':') + 1)
     : machineId;

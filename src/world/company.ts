@@ -8,6 +8,7 @@ import { driveSetup, SOFTWARE, type Software } from './filesystem';
 import {
   DEVICE_TYPES,
   FIELDS,
+  isUnixFamily,
   MACHINE_OS,
   type MachineOs,
   type MachineRole,
@@ -20,8 +21,8 @@ import { STARTING_REPUTATION } from './meters';
 import {
   BASELINE_SERVICES,
   baselineServiceId,
-  BASELINE_UNITS,
-  linuxUnitId,
+  baselineUnitsFor,
+  unitIdOn,
 } from './services';
 
 /**
@@ -925,10 +926,12 @@ export function companySetup(): readonly SetupOp[] {
   // `contains` edge from a machine to its own root is an edge like any other
   // and the engine refuses one whose ends are not both built yet.
   for (const machine of MACHINES) {
-    // A Linux box has no Windows C: drive to build - its filesystem is the
+    // A unix box has no Windows C: drive to build - its filesystem is the
     // Engineer tier's, seeded when the unix commands that read it exist. The
-    // SD player reaches it over the wire and no further.
-    if ((machine.os ?? MACHINE_OS.windows) === MACHINE_OS.linux) {
+    // SD player reaches it over the wire and no further. Family rather than
+    // distribution: a Mac has no drive letters either, and a C: drive on one
+    // would be the invention the fidelity bar forbids.
+    if (isUnixFamily(machine.os ?? MACHINE_OS.windows)) {
       continue;
     }
 
@@ -1289,12 +1292,14 @@ export function companySetup(): readonly SetupOp[] {
   // skill this game is about is reading twenty lines and finding the one that
   // is wrong, and a list with only the wrong line in it has done that for you.
   for (const machine of MACHINES) {
-    // A Linux box runs systemd units, not Windows services - a different
-    // manager with different words, seeded as `unit` nodes off the role's unit
-    // table. Real world data, not readable by the SD player's Windows tools.
-    if ((machine.os ?? MACHINE_OS.windows) === MACHINE_OS.linux) {
-      for (const unit of BASELINE_UNITS[machine.role] ?? []) {
-        const id = linuxUnitId(machine.id, unit.unit);
+    // A unix box runs units, not Windows services - a different manager with
+    // different words, seeded as `unit` nodes off the table for its family and
+    // its role. Real world data, not readable by the SD player's Windows tools.
+    const os = machine.os ?? MACHINE_OS.windows;
+
+    if (isUnixFamily(os)) {
+      for (const unit of baselineUnitsFor(os, machine.role)) {
+        const id = unitIdOn(machine.id, unit.unit);
 
         addNode(ops, {
           id,

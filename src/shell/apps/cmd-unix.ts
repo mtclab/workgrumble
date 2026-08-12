@@ -551,7 +551,7 @@ function machineByName(api: GameApi, query: string): ReadOnlyGraphNode | null {
 }
 
 /**
- * Whether a host is a box ssh can actually reach.
+ * Whether a host is a box THIS TERMINAL can stand on.
  *
  * The world's answer first - a machine seeded `os: linux` runs sshd, and every
  * Windows box on the estate does not. Then the one the player wrote themselves:
@@ -560,6 +560,19 @@ function machineByName(api: GameApi, query: string): ReadOnlyGraphNode | null {
  * a dialect rather than a fact about the estate - so this is the single place
  * the two answers are joined, and it reads the same shell store the desktop
  * paints itself from.
+ *
+ * LINUX, not the unix family, and it is the one place in the 0.32.0 audit that
+ * reads that way on purpose. A Mac does run sshd - Remote Login is a checkbox,
+ * not a fiction - so the honest thing at this seam is NOT the Windows refusal
+ * ("it does not run sshd"), which would be a flat lie about a Mac, and NOT a
+ * connection either: this terminal has exactly one unix dialect in it and it is
+ * the Linux one. `systemctl`, `apt`, `getenforce` and the not-installed gag are
+ * all facts about a Linux distribution, and a session standing on a Mac would
+ * answer with every one of them. So a Mac gets its own refusal, in `sshLines`,
+ * that says which family it is and what this terminal has not got - the same
+ * ruling `docs/research/terminal-fidelity.md` made about `ls` in the Windows
+ * shell, and the ruling the mac spike repeats in section 7. The dialect slice
+ * flips this predicate to `isUnixFamily`; nothing else here has to move.
  */
 function isLinuxHost(
   api: GameApi,
@@ -567,6 +580,11 @@ function isLinuxHost(
 ): boolean {
   return machineOsOf(machine.fields[FIELDS.machineOs]) === MACHINE_OS.linux
     || (isOwnBox(api, machine.id) && ownBoxDistro(api) !== null);
+}
+
+/** Whether a host is a Mac, which is a family this terminal does not speak. */
+function isMacHost(machine: Readonly<ReadOnlyGraphNode>): boolean {
+  return machineOsOf(machine.fields[FIELDS.machineOs]) === MACHINE_OS.mac;
 }
 
 /**
@@ -659,6 +677,23 @@ export function sshLines(api: GameApi, query: string): CommandResult {
   // any other. That is a SHELL fact rather than a world one - the estate's
   // seeded boxes are untouched, and so is every golden - and it is the only way
   // the distro the player chose is a thing they can actually stand on.
+  // The third family, refused BY NAME before the Windows refusal can claim it
+  // (0.32.0). "It does not run sshd" is true of every Windows box on the estate
+  // and false of a Mac, and the family rule is that a refusal says what is true
+  // of the box in front of you.
+  if (isMacHost(machine)) {
+    return lines(
+      `${labelOf(machine)} is a Mac, and this terminal speaks one unix dialect: `
+        + 'the Linux one.',
+      'launchd is not systemd, launchctl is not systemctl, and brew is not apt, '
+        + 'so a',
+      'session here would answer you in the wrong family\'s words. The box is '
+        + 'real and',
+      'on the wire (ping and dig find it); its own dialect is a later slice, '
+        + 'not a lie.',
+    );
+  }
+
   if (!isLinuxHost(api, machine)) {
     return lines(
       `ssh: connect to host ${labelOf(machine)} port 22: Connection refused.`,

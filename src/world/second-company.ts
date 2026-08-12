@@ -31,6 +31,7 @@ import { driveSetup } from './filesystem';
 import {
   DEVICE_TYPES,
   FIELDS,
+  isUnixFamily,
   MACHINE_OS,
   type MachineOs,
   type MachineRole,
@@ -46,7 +47,7 @@ import {
   BASELINE_SERVICES,
   baselineServiceId,
   type LinuxUnit,
-  linuxUnitId,
+  unitIdOn,
   UBUNTU_BASE_UNITS,
 } from './services';
 
@@ -472,8 +473,9 @@ export function bodgeSetup(): readonly SetupOp[] {
   }
 
   for (const machine of MACHINES) {
-    // The camera box is Linux and has no Windows drive to build.
-    if ((machine.os ?? MACHINE_OS.windows) === MACHINE_OS.linux) {
+    // The camera box is Linux and has no Windows drive to build - and no unix
+    // box of any family does, which is what the question asks.
+    if (isUnixFamily(machine.os ?? MACHINE_OS.windows)) {
       continue;
     }
 
@@ -626,7 +628,7 @@ export function bodgeSetup(): readonly SetupOp[] {
   // is Linux and gets systemd units by hand below rather than from this loop,
   // because its one service is nobody's product but Kev's.
   for (const machine of MACHINES) {
-    if ((machine.os ?? MACHINE_OS.windows) === MACHINE_OS.linux) {
+    if (isUnixFamily(machine.os ?? MACHINE_OS.windows)) {
       continue;
     }
 
@@ -659,7 +661,7 @@ export function bodgeSetup(): readonly SetupOp[] {
   // Kev's camera box, as systemd units. Real data on a real box; the SD player
   // reaches it over the wire and the Windows tools stop there.
   for (const unit of CORNER_BOX_UNITS) {
-    const id = linuxUnitId(BODGE_IDS.cornerBox, unit.unit);
+    const id = unitIdOn(BODGE_IDS.cornerBox, unit.unit);
 
     addNode(ops, {
       id,

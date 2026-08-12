@@ -19,7 +19,7 @@ import {
   SELINUX_WEB_CONTEXT,
   selinuxNodeIds,
 } from '../../world/selinux';
-import { linuxUnitId } from '../../world/services';
+import { unitIdOn } from '../../world/services';
 import {
   createWorldSession,
   WORLD_SEED,
@@ -298,7 +298,7 @@ describe('the promotion, ssh, and the unix terminal (E6)', () => {
       // Pass B fix task will find it in) and the block changes with it.
       world.engine.applySetup([{
         op: 'setField',
-        id: linuxUnitId('machine:app', 'nginx.service'),
+        id: unitIdOn('machine:app', 'nginx.service'),
         field: FIELDS.unitState,
         value: SYSTEMD_STATES.failed,
       }]);
@@ -656,7 +656,7 @@ describe('the sysadmin network toolbox (E6, 0.16.0)', () => {
       // listing would still show *:80 here and fail.
       world.engine.applySetup([{
         op: 'setField',
-        id: linuxUnitId(MSP_IDS.meridianAppServer, 'nginx.service'),
+        id: unitIdOn(MSP_IDS.meridianAppServer, 'nginx.service'),
         field: FIELDS.unitState,
         value: SYSTEMD_STATES.failed,
       }]);
@@ -791,7 +791,7 @@ describe('the sysadmin network toolbox (E6, 0.16.0)', () => {
       // Down nginx entirely: nothing is answering on 80/443 now.
       world.engine.applySetup([{
         op: 'setField',
-        id: linuxUnitId(MSP_IDS.meridianAppServer, 'nginx.service'),
+        id: unitIdOn(MSP_IDS.meridianAppServer, 'nginx.service'),
         field: FIELDS.unitState,
         value: SYSTEMD_STATES.failed,
       }]);

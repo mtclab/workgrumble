@@ -1911,15 +1911,19 @@ export function machineRoleOf(value: unknown): MachineRole {
 }
 
 /**
- * The family of operating system a box runs. Two, because the estate is
- * heterogeneous: Windows workstations and servers, Linux product boxes.
+ * The family of operating system a box runs. Three, because the estate is
+ * heterogeneous: Windows workstations and servers, Linux product boxes, and -
+ * since 0.32.0 - the Macs a creative shop runs on.
  *
  * Absent reads as `windows`, which is the back-compat rule - every box that
- * predates this dimension is a Windows box, exactly what it was before.
+ * predates this dimension is a Windows box, exactly what it was before. A
+ * value this list has never heard of reads as `windows` too, for the same
+ * reason: the default is what the world was before anybody wrote a value.
  */
 export const MACHINE_OS = {
   windows: 'windows',
   linux: 'linux',
+  mac: 'mac',
 } as const;
 
 export type MachineOs = (typeof MACHINE_OS)[keyof typeof MACHINE_OS];
@@ -1927,10 +1931,32 @@ export type MachineOs = (typeof MACHINE_OS)[keyof typeof MACHINE_OS];
 export const MACHINE_OS_LABELS: Readonly<Record<MachineOs, string>> = {
   [MACHINE_OS.windows]: 'Windows',
   [MACHINE_OS.linux]: 'Linux',
+  [MACHINE_OS.mac]: 'macOS',
 };
 
 export function machineOsOf(value: unknown): MachineOs {
-  return value === MACHINE_OS.linux ? value : MACHINE_OS.windows;
+  return value === MACHINE_OS.linux || value === MACHINE_OS.mac
+    ? value
+    : MACHINE_OS.windows;
+}
+
+/**
+ * Whether a box is in the UNIX family, which from 0.32.0 is two families and
+ * not one.
+ *
+ * The question nearly every OS check in this codebase is actually asking is
+ * "is this a Windows box", and while there were two values the answer was
+ * spelled `=== linux` everywhere. A third value makes that spelling a bug
+ * rather than a shorthand: a Mac would silently read as a Windows box and get
+ * a C: drive, a Windows service list and the wrong refusal. So the membership
+ * question has a name, and the sites that mean it say it.
+ *
+ * The sites that genuinely mean LINUX - systemd unit naming, apt and dnf, the
+ * SELinux surface, anything distro-flavoured - keep the `=== linux` spelling,
+ * because those are facts about a distribution and macOS has none of them.
+ */
+export function isUnixFamily(os: MachineOs): boolean {
+  return os === MACHINE_OS.linux || os === MACHINE_OS.mac;
 }
 
 /**

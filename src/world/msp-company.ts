@@ -36,6 +36,7 @@ import {
   BUSINESS_TYPES,
   DEVICE_TYPES,
   FIELDS,
+  isUnixFamily,
   MACHINE_OS,
   type MachineOs,
   type MachineRole,
@@ -51,9 +52,9 @@ import { STARTING_REPUTATION } from './meters';
 import {
   BASELINE_SERVICES,
   baselineServiceId,
-  BASELINE_UNITS,
+  baselineUnitsFor,
   FC_INFRA_UNITS,
-  linuxUnitId,
+  unitIdOn,
 } from './services';
 
 /**
@@ -1014,8 +1015,8 @@ export function mspSetup(): readonly SetupOp[] {
   }
 
   for (const machine of MACHINES) {
-    // Linux boxes have no Windows drive to build.
-    if ((machine.os ?? MACHINE_OS.windows) === MACHINE_OS.linux) {
+    // Unix boxes have no Windows drive to build, whichever family they are in.
+    if (isUnixFamily(machine.os ?? MACHINE_OS.windows)) {
       continue;
     }
 
@@ -1224,7 +1225,7 @@ export function mspSetup(): readonly SetupOp[] {
   // table for its role - so a customer's file server has real Windows services
   // for the helpdesk scope refusal to fire on when a Tier-1 tech reaches for one.
   for (const machine of MACHINES) {
-    if ((machine.os ?? MACHINE_OS.windows) === MACHINE_OS.linux) {
+    if (isUnixFamily(machine.os ?? MACHINE_OS.windows)) {
       continue;
     }
 
@@ -1254,16 +1255,20 @@ export function mspSetup(): readonly SetupOp[] {
     }
   }
 
-  // And the systemd units on the Linux boxes, from the table for their role - so
-  // Meridian's product fleet is real ahead of the tools that would manage it,
-  // and refuses on OS and scope both when a helpdesk tech reaches for it.
+  // And the units on the unix boxes, from the table for their family and their
+  // role - so Meridian's product fleet is real ahead of the tools that would
+  // manage it, and refuses on OS and scope both when a helpdesk tech reaches
+  // for it. A Mac's launchd jobs seed through the same loop and the same node
+  // kind; only the table behind `baselineUnitsFor` differs.
   for (const machine of MACHINES) {
-    if ((machine.os ?? MACHINE_OS.windows) !== MACHINE_OS.linux) {
+    const os = machine.os ?? MACHINE_OS.windows;
+
+    if (!isUnixFamily(os)) {
       continue;
     }
 
-    for (const unit of BASELINE_UNITS[machine.role] ?? []) {
-      const id = linuxUnitId(machine.id, unit.unit);
+    for (const unit of baselineUnitsFor(os, machine.role)) {
+      const id = unitIdOn(machine.id, unit.unit);
 
       addNode(ops, {
         id,
@@ -1310,7 +1315,7 @@ export function mspSetup(): readonly SetupOp[] {
   });
 
   for (const unit of FC_INFRA_UNITS) {
-    const id = linuxUnitId(MSP_IDS.mspInfraServer, unit.unit);
+    const id = unitIdOn(MSP_IDS.mspInfraServer, unit.unit);
 
     addNode(ops, {
       id,

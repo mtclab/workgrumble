@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isUnixFamily,
+  MACHINE_OS,
+  MACHINE_OS_LABELS,
+  machineOsOf,
   MACHINE_ROLES,
   SERVICE_CLASSES,
   SERVICE_STATUS,
@@ -16,7 +20,9 @@ import {
   BASELINE_SERVICES,
   baselineServiceId,
   BASELINE_UNITS,
-  linuxUnitId,
+  baselineUnitsFor,
+  unitIdOn,
+  MAC_BASELINE_UNITS,
 } from './services';
 
 /** The Windows roles - the only ones the Windows service baseline covers. */
@@ -230,11 +236,144 @@ describe('the baseline systemd units', () => {
   });
 
   it('gives every box its own copy of a unit, by id', () => {
-    expect(linuxUnitId('machine:app', 'nginx.service'))
+    expect(unitIdOn('machine:app', 'nginx.service'))
       .toBe('unit:app/nginx.service');
     // The `unit:` prefix keeps units out of the `service:` id space, so no
     // Windows service tool can ever collide with one.
-    expect(linuxUnitId('machine:app', 'nginx.service'))
+    expect(unitIdOn('machine:app', 'nginx.service'))
       .not.toBe(baselineServiceId('machine:app', 'nginx'));
+  });
+});
+
+/**
+ * The third family, as the DATA half of it (0.32.0, lane A).
+ *
+ * `machineOsOf` is the one reader every OS check in the game goes through, and
+ * a third value only helps if the reader admits it - so the round trip is
+ * asserted here beside the tables it decides between. The back-compat rule is
+ * asserted with it and is not negotiable: a box with no `os` field is a Windows
+ * box, exactly what it was before this dimension existed, and so is a box
+ * carrying a value this build has never heard of.
+ */
+describe('the third OS family, as a value', () => {
+  it('round-trips mac, and reads absent and junk as Windows', () => {
+    expect(machineOsOf(MACHINE_OS.mac)).toBe(MACHINE_OS.mac);
+    expect(machineOsOf(MACHINE_OS.linux)).toBe(MACHINE_OS.linux);
+    expect(machineOsOf(MACHINE_OS.windows)).toBe(MACHINE_OS.windows);
+
+    // The back-compat rule, in the two shapes it has to hold for: a box that
+    // predates the dimension, and a value from somewhere this build cannot
+    // read. Both are Windows boxes, which is what they were before.
+    expect(machineOsOf(undefined)).toBe(MACHINE_OS.windows);
+    expect(machineOsOf(null)).toBe(MACHINE_OS.windows);
+    expect(machineOsOf('macos')).toBe(MACHINE_OS.windows);
+    expect(machineOsOf('MAC')).toBe(MACHINE_OS.windows);
+    expect(machineOsOf('plan9')).toBe(MACHINE_OS.windows);
+    expect(machineOsOf(7)).toBe(MACHINE_OS.windows);
+  });
+
+  it('labels it the way the vendor spells it, and only three of them', () => {
+    expect(MACHINE_OS_LABELS[MACHINE_OS.mac]).toBe('macOS');
+    expect(Object.keys(MACHINE_OS_LABELS)).toHaveLength(3);
+  });
+
+  it('puts mac in the unix family and leaves Windows out of it', () => {
+    expect(isUnixFamily(MACHINE_OS.linux)).toBe(true);
+    expect(isUnixFamily(MACHINE_OS.mac)).toBe(true);
+    expect(isUnixFamily(MACHINE_OS.windows)).toBe(false);
+  });
+});
+
+/**
+ * The launchd side of the heterogeneous estate: real reverse-DNS labels, on the
+ * same `unit` node kind the systemd side uses, chosen by the same selector.
+ *
+ * The point of the selector is that a seeder asks which table rather than
+ * naming one, so the family cannot be forgotten at a call site. That is exactly
+ * what is asserted: mac gets launchd labels, Linux gets what it always got, and
+ * Windows gets nothing at all, because a Windows box runs services.
+ */
+describe('the baseline launchd jobs', () => {
+  const macWorkstation = MAC_BASELINE_UNITS[MACHINE_ROLES.workstation] ?? [];
+
+  it('names its jobs in reverse DNS, never in systemd unit names', () => {
+    expect(macWorkstation.length).toBeGreaterThanOrEqual(4);
+
+    for (const job of macWorkstation) {
+      // A launchd label is reverse-DNS and carries no unit type: it is
+      // com.apple.mDNSResponder, never mDNSResponder.service.
+      expect(job.unit).toMatch(/^[a-z]+(?:\.[A-Za-z0-9]+){2,}$/u);
+      expect(job.unit, job.unit).not.toMatch(/\.(?:service|socket|timer)$/u);
+      expect(job.name.length, job.unit).toBeGreaterThan(2);
+      // Held in the words the engine's schema validates, which is the storage
+      // compromise the map documents - and the reason no Rust change is needed.
+      expect(Object.values(SYSTEMD_STATES), job.unit).toContain(job.state);
+      expect(Object.values(UNIT_ENABLEMENTS), job.unit).toContain(job.enabled);
+    }
+  });
+
+  it('carries the labels a managed creative fleet actually runs', () => {
+    const labels = macWorkstation.map((job) => job.unit);
+
+    // Bonjour, on every Mac ever shipped.
+    expect(labels).toContain('com.apple.mDNSResponder');
+    // The MDM this vertical runs, and Remote Login, which is how it is reached.
+    expect(labels).toContain('com.jamf.management.daemon');
+    expect(labels).toContain('com.openssh.sshd');
+    // Adobe's update helpers, which arrive with Creative Cloud.
+    expect(labels.some((label) => label.startsWith('com.adobe.'))).toBe(true);
+  });
+
+  it('picks the table off the family, and gives a Windows box none', () => {
+    const macLabels = baselineUnitsFor(
+      MACHINE_OS.mac,
+      MACHINE_ROLES.workstation,
+    ).map((job) => job.unit);
+
+    expect(macLabels).toContain('com.apple.mDNSResponder');
+    // The Linux tables are untouched by the third family arriving: the selector
+    // hands back the same array `BASELINE_UNITS` has always held.
+    expect(baselineUnitsFor(MACHINE_OS.linux, MACHINE_ROLES.appServer))
+      .toEqual(BASELINE_UNITS[MACHINE_ROLES.appServer]);
+    expect(
+      baselineUnitsFor(MACHINE_OS.linux, MACHINE_ROLES.appServer)
+        .map((unit) => unit.unit),
+    ).toContain('nginx.service');
+
+    // A Windows box has no units at all - it has services - and neither family
+    // seeds anything for a role its table has no entry for.
+    expect(baselineUnitsFor(MACHINE_OS.windows, MACHINE_ROLES.workstation))
+      .toEqual([]);
+    expect(baselineUnitsFor(MACHINE_OS.windows, MACHINE_ROLES.appServer))
+      .toEqual([]);
+    expect(baselineUnitsFor(MACHINE_OS.mac, MACHINE_ROLES.appServer))
+      .toEqual([]);
+    expect(baselineUnitsFor(MACHINE_OS.linux, MACHINE_ROLES.workstation))
+      .toEqual([]);
+  });
+
+  it('never lets one family\'s vocabulary into the other\'s table', () => {
+    const macLabels = new Set(macWorkstation.map((job) => job.unit));
+
+    for (const role of LINUX_ROLES) {
+      for (const unit of BASELINE_UNITS[role] ?? []) {
+        expect(macLabels.has(unit.unit), unit.unit).toBe(false);
+        // No systemd unit is spelled in reverse DNS, and no launchd job is
+        // spelled with a unit type. The two managers stay two managers.
+        expect(unit.unit, unit.unit).toMatch(/\.service$/u);
+      }
+    }
+
+    for (const job of macWorkstation) {
+      expect(job.unit.startsWith('com.'), job.unit).toBe(true);
+    }
+  });
+
+  it('gives a Mac its own copy of a job, in the same id space', () => {
+    expect(unitIdOn('machine:studio-04', 'com.apple.mDNSResponder'))
+      .toBe('unit:studio-04/com.apple.mdnsresponder');
+    // Two Macs run two copies, exactly as two Linux boxes run two nginxes.
+    expect(unitIdOn('machine:studio-04', 'com.apple.mDNSResponder'))
+      .not.toBe(unitIdOn('machine:studio-05', 'com.apple.mDNSResponder'));
   });
 });

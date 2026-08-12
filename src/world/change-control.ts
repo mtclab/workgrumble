@@ -43,8 +43,8 @@ import { SYSTEMD_ACTIONS } from './actions/ids';
 import {
   FIELDS,
   isServerRole,
+  isUnixFamily,
   machineOsOf,
-  MACHINE_OS,
   machineRoleOf,
   SYSTEMD_STATES,
 } from './fields';
@@ -150,12 +150,19 @@ function isCustomerFacingUnit(unit: Readonly<ReadOnlyGraphNode>): boolean {
 
 /**
  * Whether a box is IN-HOUSE production infrastructure the engineer manages: a
- * Linux server that belongs to NO customer.
+ * unix server that belongs to NO customer.
  *
  * A customer's server is governed by its CONTRACT (the 0.8.0 scope engine
  * refuses it before change control is even reached), so change control is for
  * the MSP's OWN prod - FC-RMM-01 and its like. Absent `customer` is the in-house
  * case, exactly as it is everywhere the customer dimension is read.
+ *
+ * FAMILY, not distribution (0.32.0). What puts a box under change control is
+ * that people depend on what it serves, which is a fact about the box and not
+ * about its service manager - so an in-house Mac server is governed exactly as
+ * the Linux one is. Reading `=== linux` here would have been the dangerous
+ * half of the third family: a production box that quietly needed no change
+ * request, which is a hole rather than a difference.
  */
 function isInHouseProdBox(box: Readonly<ReadOnlyGraphNode>): boolean {
   const customer = box.fields[FIELDS.machineCustomer];
@@ -163,7 +170,7 @@ function isInHouseProdBox(box: Readonly<ReadOnlyGraphNode>): boolean {
   const role = machineRoleOf(box.fields[FIELDS.machineRole]);
 
   return customer === undefined
-    && os === MACHINE_OS.linux
+    && isUnixFamily(os)
     && isServerRole(role);
 }
 
