@@ -5924,6 +5924,99 @@ input {
   max-height: calc(100vh - (2 * var(--size-taskbar)) - var(--space-3));
 }
 
+/* The Mac family (0.33.0): a MENU BAR on top and a DOCK underneath - the first
+   layout in this registry that is not "a taskbar, somewhere".
+
+   Keyed off the data exactly as MATE's is: `data-panel-second="top"` is a
+   desktop whose launcher panel is at the BOTTOM and whose other bar is over
+   the surface, which is the mirror of the block above and needs the same three
+   rows. A second desktop wanting this shape would need no new CSS. */
+.screen-desktop[data-panel-second="top"] {
+  grid-template-rows: auto 1fr auto;
+}
+
+.screen-desktop[data-panel-second="top"] .taskbar-second {
+  grid-row: 1;
+}
+
+.screen-desktop[data-panel-second="top"] .desktop-surface {
+  grid-row: 2;
+}
+
+.screen-desktop[data-panel-second="top"] .taskbar:not(.taskbar-second) {
+  grid-row: 3;
+}
+
+/* The tray is UP in the menu bar on this shape, so the two surfaces that hang
+   off it come DOWN from the top edge. The start menu is not one of them: it
+   opens off the launcher, and the launcher is down in the dock, so it keeps
+   the bottom anchor every other bottom-panel desktop gives it. */
+.screen-desktop[data-panel-second="top"] .tray-panel,
+.screen-desktop[data-panel-second="top"] .presence-refusal {
+  top: var(--size-taskbar);
+  bottom: auto;
+}
+
+/* And it has two bars to clear rather than one, the same cap MATE needs and
+   for the same reason: a menu whose last entry is under the other bar is a
+   button you can see and cannot press. */
+.screen-desktop[data-panel-second="top"] .start-menu {
+  max-height: calc(100vh - (2 * var(--size-taskbar)) - var(--space-3));
+}
+
+/* A panel that is a MENU BAR: flat, no window buttons on it, the app name at
+   the left and the status end pushed to the right. It is a KIND rather than a
+   position - MATE's top bar is a panel and stays one - so the rule keys off
+   the bar's own attribute and not off which edge it is on. */
+.taskbar[data-kind="menu-bar"] {
+  box-shadow: inset 0 calc(-1 * var(--border-hair)) 0 var(--color-bevel-dark);
+}
+
+.menu-bar-app {
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+/* No window list in this bar, so nothing between the name and the clock is
+   growing: the status end takes the slack itself. */
+.taskbar[data-kind="menu-bar"] .taskbar-tray {
+  margin-left: auto;
+}
+
+/* The DOCK: the launcher strip in the MIDDLE of the bottom edge, with the open
+   windows in it, and the words off the buttons.
+
+   The labels are clipped rather than removed - they stay in the accessibility
+   tree and in the document, so a screen reader still reads "Remote Assist" off
+   the button a sighted player reads as an icon. A `display: none` here would
+   have bought the look by taking the name away from the people who need it
+   most, which is not a trade this shell makes for a joke about a dock. */
+.screen-desktop[data-launcher="dock"] .taskbar:not(.taskbar-second) {
+  justify-content: center;
+  border-radius: var(--radius-chrome) var(--radius-chrome) 0 0;
+}
+
+.screen-desktop[data-launcher="dock"] .taskbar-windows {
+  flex: 0 1 auto;
+}
+
+.screen-desktop[data-launcher="dock"] .start-button,
+.screen-desktop[data-launcher="dock"] .taskbar-button {
+  flex: 0 0 auto;
+  width: calc(var(--size-taskbar) - var(--space-4));
+  padding: var(--space-1);
+}
+
+.screen-desktop[data-launcher="dock"] .start-button > span,
+.screen-desktop[data-launcher="dock"] .taskbar-button > span {
+  position: absolute;
+  width: var(--border-hair);
+  height: var(--border-hair);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* The launcher, per desktop. Kickoff is an icon-led button in the far corner;
    Activities is a WORD with no glyph at all, which is exactly how the real one
    reads; Cinnamon's Menu is the Start-menu clone it is, in the accent; MATE's
@@ -5987,12 +6080,32 @@ input {
   font-size: var(--text-xs);
 }
 
-/* Which end of the titlebar the buttons live at. Every desktop shipped in
-   0.27.0 says "right", which is what all three of them actually do; the rule
-   exists because "and where" is half of what a skin declares, and the Mac
-   family in the backlog is the case that needs the other value. */
+/* The dock's launcher is one more icon in the strip rather than a button with
+   a word on it, so it wears the strip's clothes: no raised bevel, the accent
+   on the glyph, and the pressed state the only thing that marks it out. */
+.screen-desktop[data-launcher="dock"] .start-button {
+  background: var(--color-surface-raised);
+  box-shadow: none;
+}
+
+.screen-desktop[data-launcher="dock"] .start-button[aria-expanded="true"] {
+  background: var(--color-surface-sunken);
+  box-shadow: var(--bevel-sunken);
+}
+
+/* Which end of the titlebar the buttons live at. Every Windows-or-Linux
+   desktop says "right", which is what all seven of them actually do; 0.33.0 is
+   the entry that finally uses the other value, and the rule was already here
+   waiting for it because "and where" is half of what a skin declares.
+
+   `order` rather than a re-parented row: the buttons are built by the window
+   renderer in the order the skin names, and which END that row sits at is the
+   one thing about it that is genuinely presentation. The margin is the other
+   half of the flip - the titlebar's padding is tight on the button side, so
+   moving the buttons across has to move the breathing room with them. */
 .window-controls[data-side="left"] {
   order: -1;
+  margin-right: var(--space-2);
 }
 
 /* ---- Display Properties: where the desktop is chosen -------------------- */

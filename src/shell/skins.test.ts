@@ -4,7 +4,10 @@ import {
   canChooseDesktop,
   DEFAULT_DESKTOP_CHOICE,
   DEFAULT_SKIN_ID,
+  DESKTOP_TIER_REFUSAL_MAC,
   DISTROS,
+  LAUNCHER_STYLES,
+  PANEL_KINDS,
   type DesktopChoiceState,
   distroById,
   hasWindowButton,
@@ -46,19 +49,27 @@ import {
  * them could have been given the same word in the corner and nothing would
  * have complained. The second panel is in it for the same reason in the other
  * direction - MATE's whole tell is the bar the others do not have.
+ *
+ * 0.33.0 adds the panel KINDS to the key, both of them, because that is the
+ * version's own version of the same trap: MATE and the Mac family both put a
+ * bar on the top edge and a bar on the bottom, and the difference between them
+ * is which one is a menu bar and where the launcher is. Without the kinds in
+ * here, a future desktop could be given MATE's exact shape with the labels
+ * swapped and nothing would notice.
  */
 function chrome(skin: Readonly<Skin>): string {
   const second = skin.secondPanel;
 
   return [
     skin.panel.position,
+    skin.panel.kind,
     skin.panel.launcher.style,
     skin.panel.launcher.label,
     String(skin.panel.windowList),
     String(skin.panel.tray),
     second === null
       ? 'one-panel'
-      : `${second.position}:${String(second.windowList)}:${
+      : `${second.position}:${second.kind}:${String(second.windowList)}:${
         String(second.tray)
       }`,
     skin.windowButtons.order.join('+'),
@@ -79,7 +90,15 @@ describe('the skin registry', () => {
       expect(skin.blurb.trim().length, skin.id).toBeGreaterThan(40);
       expect(skin.panel.launcher.label.trim().length, skin.id)
         .toBeGreaterThan(0);
+      expect(LAUNCHER_STYLES, skin.id).toContain(skin.panel.launcher.style);
+      expect(PANEL_KINDS, skin.id).toContain(skin.panel.kind);
       expect(skin.windowButtons.order.length, skin.id).toBeGreaterThan(0);
+      // Every button a titlebar declares is one the renderer knows how to
+      // build, and it declares each of them ONCE: a duplicate would be two
+      // close buttons on the same window, which the order-as-the-set model
+      // cannot otherwise catch.
+      expect(new Set(skin.windowButtons.order).size, skin.id)
+        .toBe(skin.windowButtons.order.length);
 
       for (const button of skin.windowButtons.order) {
         expect(WINDOW_BUTTONS, skin.id).toContain(button);
@@ -95,9 +114,34 @@ describe('the skin registry', () => {
         expect(name.startsWith('--'), `${skin.id} sets "${name}"`).toBe(true);
       }
 
+      // A MENU BAR is not a taskbar (0.33.0), and the registry may not declare
+      // one that is: the open windows live in the panel that has the launcher
+      // beside them, and a menu bar carrying the window list would be this
+      // table calling a taskbar a menu bar. Said over both panels of every
+      // skin, because either of them can be the one.
+      for (const panel of [skin.panel, skin.secondPanel]) {
+        if (panel !== null && panel.kind === 'menu-bar') {
+          expect(panel.windowList, `${skin.id}'s menu bar holds a window list`)
+            .toBe(false);
+        }
+      }
+
       if (skin.secondPanel === null) {
+        // And a desktop with ONE bar cannot have made it a menu bar: a menu
+        // bar with the launcher and the window list in it is a taskbar with a
+        // name it has not earned, and there would be nowhere else for either
+        // of them to be.
+        expect(skin.panel.kind, skin.id).toBe('panel');
         continue;
       }
+
+      // At most one of the two is a menu bar. Two would be a desktop whose
+      // focused app owns both edges of the screen, which is nobody's.
+      expect(
+        [skin.panel.kind, skin.secondPanel.kind]
+          .filter((kind) => kind === 'menu-bar').length,
+        `${skin.id} declares two menu bars`,
+      ).toBeLessThan(2);
 
       // A desktop with two panels puts them on OPPOSITE edges. Both on the
       // same one is not a layout - it is two bars in the same grid row, which
@@ -147,6 +191,10 @@ describe('the skin registry', () => {
     expect(deskpro.tokens).toEqual({});
     expect(deskpro.family).toBe('windows');
     expect(deskpro.panel.position).toBe('bottom');
+    // A taskbar, and the 0.33.0 fork is not in it: the issued box's bar is the
+    // one it always was, and a menu bar here would be the new primitive
+    // leaking into the desktop the whole suite is the gate on.
+    expect(deskpro.panel.kind).toBe('panel');
     expect(deskpro.panel.launcher.style).toBe('start');
     expect(deskpro.panel.launcher.label).toBe('Start');
     expect(deskpro.panel.launcher.icon).toBe('icon-start');
@@ -230,8 +278,10 @@ describe('the skin registry', () => {
     expect(mate.panel.launcher.style).toBe('classic');
     expect(mate.panel.launcher.label).toBe('Applications');
     expect(mate.panel.launcher.icon).toBeNull();
+    expect(mate.panel.kind).toBe('panel');
     expect(mate.secondPanel).toEqual({
       position: 'bottom',
+      kind: 'panel',
       windowList: true,
       tray: true,
     });
@@ -245,14 +295,40 @@ describe('the skin registry', () => {
       .toEqual(['minimize', 'maximize', 'close']);
   });
 
-  it('gives the second panel to MATE and to nobody else', () => {
+  /**
+   * The two-bar desktops, which 0.33.0 makes two: MATE and the Mac.
+   *
+   * They are here together because they are the same extension used in
+   * OPPOSITE directions, and asserting them side by side is the only way to
+   * say that: MATE's launcher is in the top bar and its window list is
+   * downstairs, the Mac's launcher is in the bottom bar and its clock is
+   * upstairs. Same two fields, mirrored - which is what proves the second
+   * panel is a general shape and not a MATE-shaped hole.
+   */
+  it('gives a second panel to MATE and the Mac, and to nobody else', () => {
     const twoPanelled = SKINS.filter((skin) => skin.secondPanel !== null);
 
-    expect(twoPanelled.map((skin) => skin.id)).toEqual(['mate']);
+    expect(twoPanelled.map((skin) => skin.id)).toEqual(['mate', 'orchard']);
     // Which is the other half of "the extension left every other desktop
     // untouched": six skins declare one panel, and the shell builds one bar
     // for each of them.
     expect(SKINS.length - twoPanelled.length).toBe(6);
+
+    // The mirror, in one read: the launcher panel is on opposite edges and the
+    // tray is on opposite edges with it.
+    const mate = skinById('mate');
+    const orchard = skinById('orchard');
+
+    expect(mate.panel.position).not.toBe(orchard.panel.position);
+    expect(mate.panel.tray).toBe(false);
+    expect(orchard.panel.tray).toBe(false);
+    expect(mate.secondPanel?.tray).toBe(true);
+    expect(orchard.secondPanel?.tray).toBe(true);
+    // And exactly one of the four bars in this test is a menu bar.
+    expect(
+      [mate.panel, mate.secondPanel, orchard.panel, orchard.secondPanel]
+        .filter((panel) => panel?.kind === 'menu-bar').length,
+    ).toBe(1);
   });
 
   it('makes Xfce the no-frills bottom panel with an Applications menu', () => {
@@ -305,6 +381,60 @@ describe('the skin registry', () => {
   });
 
   /**
+   * The Mac family (0.33.0), and the three primitives it is here to prove.
+   *
+   * TEETH, and they are the point of this block: take the `side` back to
+   * 'right' and the order back to min/max/close and the two assertions below
+   * red - which is the whole of the layout fork stated as data. Take the
+   * menu-bar kind off the second panel and the kind assertion reds AND the
+   * twin-chrome tooth reds with it, because a Mac whose bars are both plain
+   * panels is MATE upside down.
+   */
+  it('gives the Mac a menu bar, a dock, and the buttons on the left', () => {
+    const orchard = skinById('orchard');
+
+    // THE MENU BAR: a kind, on the OTHER panel, over a launcher panel at the
+    // bottom. Not a taskbar that has been moved - it holds no window list, and
+    // the clock is in it because that is where a Mac keeps the clock.
+    expect(orchard.secondPanel).toEqual({
+      position: 'top',
+      kind: 'menu-bar',
+      windowList: false,
+      tray: true,
+    });
+
+    // THE DOCK: the launcher style, in the panel at the bottom, with the open
+    // windows in the same strip and the clock NOT in it.
+    expect(orchard.panel.position).toBe('bottom');
+    expect(orchard.panel.kind).toBe('panel');
+    expect(orchard.panel.launcher.style).toBe('dock');
+    expect(orchard.panel.launcher.icon).not.toBeNull();
+    expect(orchard.panel.windowList).toBe(true);
+    expect(orchard.panel.tray).toBe(false);
+
+    // THE BUTTONS: left, close first, and all three of them present. The
+    // third one stays `maximize` on purpose - the mechanic is the maximize
+    // toggle every other desktop's is, and a `zoom` value would be the
+    // registry naming a behaviour the window manager does not have.
+    expect(orchard.windowButtons.side).toBe('left');
+    expect(orchard.windowButtons.order)
+      .toEqual(['close', 'minimize', 'maximize']);
+    expect(hasWindowButton(orchard, 'maximize')).toBe(true);
+
+    // It is the ONLY desktop on the left, which is what makes it a tell.
+    expect(
+      SKINS.filter((skin) => skin.windowButtons.side === 'left')
+        .map((skin) => skin.id),
+    ).toEqual(['orchard']);
+
+    // And it is not on a distribution, because it is not Linux. A
+    // package-manager column under a Mac would be a fabricated fact about a
+    // machine - the same reason the issued Windows box has none.
+    expect(orchard.family).toBe('mac');
+    expect(orchard.distro).toBeNull();
+  });
+
+  /**
    * The three desktops that share the bottom edge and the same three window
    * buttons. Cinnamon, Xfce and LXQt are the case the spec calls out by name:
    * with the same panel position and the same titlebar, the LAUNCHER and the
@@ -346,7 +476,12 @@ describe('the skin registry', () => {
 describe('the distro axis', () => {
   it('pairs every desktop with a distro that ships it, or with none', () => {
     for (const skin of SKINS) {
-      if (skin.family === 'windows') {
+      // A distribution rides under the LINUX family and under nothing else.
+      // Asserted as "not Linux means null" rather than "Windows means null"
+      // (0.33.0): with three families the old spelling would have let a Mac
+      // quietly acquire a package manager, which is a fabricated fact about a
+      // machine rather than a mispaired table row.
+      if (skin.family !== 'linux') {
         expect(skin.distro, skin.id).toBeNull();
         continue;
       }
@@ -554,6 +689,39 @@ describe('choosing a desktop', () => {
   });
 
   /**
+   * The Mac, on the axis that is not about it (0.33.0).
+   *
+   * TEETH: the branch used to read `family === 'windows'`, which was the same
+   * sentence while there were two families. Put that spelling back and the
+   * first two of these red - a Mac carrying dnf, and a Mac that could be
+   * ASKED to carry pacman and would say yes.
+   */
+  it('never puts a distribution under the Mac, in either direction', () => {
+    // Coming FROM Linux: the desktop changes and the distribution goes with
+    // the machine it was on.
+    expect(resolved({ skin: 'kde', distro: 'fedora' }, { skin: 'orchard' }))
+      .toEqual({ skin: 'orchard', distro: null });
+
+    // And asked for explicitly - the shape the desktop pick sends - it is
+    // still refused a distribution, because there is no machine at the other
+    // end of that request.
+    expect(resolved(DEFAULT_DESKTOP_CHOICE, {
+      skin: 'orchard',
+      distro: 'arch',
+    })).toEqual({ skin: 'orchard', distro: null });
+
+    // The other direction is an INSTALL and resolves like one: a distribution
+    // chosen on a machine that is not on Linux brings the desktop it ships,
+    // whether the machine it is being put on is the beige box or the laptop.
+    expect(resolved({ skin: 'orchard', distro: null }, { distro: 'mint' }))
+      .toEqual({ skin: 'cinnamon', distro: 'mint' });
+    // Including the one that ships none, which asks rather than inventing one.
+    expect(resolveDesktopChoice({ skin: 'orchard', distro: null }, {
+      distro: 'arch',
+    })).toEqual({ kind: 'needs-desktop', distro: 'arch' });
+  });
+
+  /**
    * The gate: the promotion, the same one ssh keeps. A service-desk player gets
    * the box IT issued them and a sentence about why.
    */
@@ -566,6 +734,36 @@ describe('choosing a desktop', () => {
     expect(refusal.ok).toBe(false);
     expect(refusal.ok ? '' : refusal.reason).toContain('promotion');
     expect(canChooseDesktop({ skin: 'kde', distro: 'fedora' }, true).ok)
+      .toBe(true);
+  });
+
+  /**
+   * The Mac behind the same gate, in its own sentence (0.33.0).
+   *
+   * The tier is the tier: a service-desk player does not get the design team's
+   * hand-me-down any more than they get a Linux install. What differs is WHY,
+   * and the refusal has to be the true one - "IT keeps the image" is an answer
+   * about a machine nobody is asking about.
+   *
+   * TEETH: point `canChooseDesktop` at the Linux sentence for every family and
+   * the hardware assertion below reds; drop the family check entirely and the
+   * FIRST assertion reds, because the desk would be handed a laptop.
+   */
+  it('refuses the Mac below the tier, and for the right reason', () => {
+    const refusal = canChooseDesktop({ skin: 'orchard', distro: null }, false);
+
+    expect(refusal.ok).toBe(false);
+    // Both refusals name the promotion, because both are the same tier and a
+    // player has to be able to hear that they are.
+    expect(refusal.ok ? '' : refusal.reason).toContain('promotion');
+    // And this one is about the HARDWARE rather than about the image on the
+    // issued box: it is a laptop somebody else is still using.
+    expect(refusal.ok ? '' : refusal.reason).toBe(DESKTOP_TIER_REFUSAL_MAC);
+    expect(DESKTOP_TIER_REFUSAL_MAC).toContain('hand-me-down');
+    expect(DESKTOP_TIER_REFUSAL_MAC).not.toContain('image');
+
+    // Past the promotion it is a machine like any other.
+    expect(canChooseDesktop({ skin: 'orchard', distro: null }, true).ok)
       .toBe(true);
   });
 

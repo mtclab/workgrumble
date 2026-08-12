@@ -3232,6 +3232,26 @@ const ENTRIES = [
       + 'issued a Windows box and IT keeps the image.',
   },
   {
+    id: 'display.mac-chrome',
+    surface: 'display',
+    control: 'display-desktop-orchard',
+    does: 'Puts the design team\'s hand-me-down MacBook on the screen, which '
+      + 'is the first desktop in this registry whose LAYOUT the shell could '
+      + 'not previously describe: a MENU BAR along the top that belongs to '
+      + 'whichever app has the keyboard and says which one that is, a DOCK '
+      + 'along the bottom with the launcher and the open windows centred in it '
+      + 'and their words clipped off, and the window buttons on the LEFT in '
+      + 'close-minimize-zoom order - the muscle-memory joke, and the reason '
+      + '`side` was declared in 0.27.0 with nothing using it. No distribution '
+      + 'underneath it, because it is not Linux. Leaving takes both new '
+      + 'primitives back out of the document.',
+    run: 'sysadmin',
+    why: 'The spare laptop goes to whoever is carrying an on-call phone, which '
+      + 'is the same promotion gate every other desktop is behind - and the '
+      + 'refusal below it is its own sentence, because "IT keeps the image" is '
+      + 'an answer about a machine nobody asked about.',
+  },
+  {
     id: 'display.distro',
     surface: 'display',
     control: 'display-distro-ubuntu, display-distro-mint, display-distro-debian, '

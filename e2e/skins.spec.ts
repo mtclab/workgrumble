@@ -3,6 +3,7 @@ import { expect, type Page, test } from '@playwright/test';
 import {
   completeLogin,
   dismissBrief,
+  focusWindow,
   openFromStartMenu,
   runCommand,
 } from './helpers';
@@ -243,6 +244,108 @@ test('MATE puts up two panels and the others put up one', async ({ page }) => {
   await expect(page.getByTestId('start-button').locator('.svg-icon'))
     .toHaveCount(0);
   await expect(page.getByTestId('minimize-display')).toHaveCount(1);
+});
+
+/**
+ * 0.33.0: the Mac, and the first LAYOUT fork the skin system has taken.
+ *
+ * `skins.test.ts` is the tooth on the declaration - a menu-bar panel kind, a
+ * dock launcher, the buttons on the left in close-first order. This is the
+ * half only a browser can answer, and it is asked twice over: what the
+ * DOCUMENT says (which bar holds what, which button is first in the row) and
+ * what the LAYOUT does (the buttons are really at the left-hand end, the dock
+ * is really in the middle), because a `side` that was declared and never
+ * styled would pass every count on the page.
+ */
+test('the Mac puts a menu bar on top, a dock underneath and the buttons left', async ({
+  page,
+}) => {
+  await arrive(page);
+  await promote(page);
+
+  const desktop = page.getByTestId('desktop');
+  const dock = page.getByTestId('taskbar');
+  const menuBar = page.getByTestId('taskbar-second');
+  await openFromStartMenu(page, 'display');
+
+  await page.getByTestId('display-desktop-orchard').click();
+  await expect(desktop).toHaveAttribute('data-skin', 'orchard');
+  // The launcher panel is at the BOTTOM and the other bar is on top, which is
+  // MATE's arrangement mirrored - the same two fields, the other way round.
+  await expect(desktop).toHaveAttribute('data-panel', 'bottom');
+  await expect(desktop).toHaveAttribute('data-panel-second', 'top');
+  await expect(desktop).toHaveAttribute('data-launcher', 'dock');
+  // Not on a distribution, because it is not Linux.
+  await expect(desktop).toHaveAttribute('data-distro', 'none');
+  await expect(page.getByTestId('display-package-manager'))
+    .toContainText('no system package manager');
+
+  // THE MENU BAR, asked INSIDE the bar: it says which app has the keyboard,
+  // it carries the clock, and it has no window list in it at all.
+  await expect(menuBar).toHaveAttribute('data-kind', 'menu-bar');
+  await expect(menuBar.getByTestId('menu-bar-app'))
+    .toHaveText('Display Properties');
+  await expect(menuBar.getByTestId('sim-clock')).toBeVisible();
+  await expect(menuBar.getByTestId('taskbar-windows')).toHaveCount(0);
+  await expect(menuBar.getByTestId('start-button')).toHaveCount(0);
+
+  // THE DOCK, in the other bar: the launcher and the open windows, and the
+  // clock is NOT down here - it is upstairs where a Mac keeps it.
+  await expect(dock).toHaveAttribute('data-kind', 'panel');
+  await expect(dock.getByTestId('start-button')).toBeVisible();
+  await expect(dock.getByTestId('taskbar-windows')).toBeVisible();
+  await expect(dock.getByTestId('sim-clock')).toHaveCount(0);
+
+  // And it is a DOCK rather than a taskbar: the strip is in the middle of the
+  // bar rather than jammed into the corner. Geometry, because that is the
+  // whole of what the launcher style buys - a `dock` that was declared and
+  // never styled would satisfy every assertion above this one.
+  const dockBox = await dock.boundingBox();
+  const launcherBox = await dock.getByTestId('start-button').boundingBox();
+  expect(launcherBox?.x ?? 0)
+    .toBeGreaterThan((dockBox?.x ?? 0) + (dockBox?.width ?? 0) / 5);
+
+  // THE WINDOW BUTTONS: left end, close FIRST, and all three of them there -
+  // this is not GNOME's missing pair, it is the same three controls at the
+  // other end in the other order.
+  const controls = page.getByTestId('window-display').locator('.window-controls');
+  await expect(controls).toHaveAttribute('data-side', 'left');
+  await expect(controls.locator('button')).toHaveCount(3);
+  await expect(controls.locator('button').nth(0)).toHaveClass(/window-close/u);
+  await expect(controls.locator('button').nth(1))
+    .toHaveClass(/window-minimize/u);
+  await expect(controls.locator('button').nth(2))
+    .toHaveClass(/window-maximize/u);
+
+  // And they are really over THERE, not merely declared to be: the row starts
+  // to the left of the title it used to sit opposite.
+  const controlsBox = await controls.boundingBox();
+  const titleBox = await page.getByTestId('window-display')
+    .locator('.window-title').boundingBox();
+  expect(controlsBox?.x ?? Number.MAX_SAFE_INTEGER)
+    .toBeLessThan(titleBox?.x ?? 0);
+
+  // The menu bar follows the FOCUS, which is the whole of what a menu bar
+  // owns in this shell: open the queue and the bar is the queue's.
+  await openFromStartMenu(page, 'tickets');
+  await expect(menuBar.getByTestId('menu-bar-app')).toHaveText('Ticket Queue');
+  await expect(page.getByTestId('tickets-summary')).toContainText('open');
+
+  // Including the way back: close it, and the bar names the desktop rather
+  // than going blank or keeping a window that is not there any more.
+  await page.getByTestId('close-tickets').click();
+  await expect(menuBar.getByTestId('menu-bar-app')).toHaveText('Orchard 15');
+
+  // And leaving takes BOTH new primitives back out of the document: no second
+  // bar, no menu bar, the buttons back on the right in the order they were.
+  await focusWindow(page, 'display');
+  await page.getByTestId('display-desktop-cinnamon').click();
+  await expect(desktop).toHaveAttribute('data-panel-second', 'none');
+  await expect(menuBar).toHaveCount(0);
+  await expect(page.getByTestId('menu-bar-app')).toHaveCount(0);
+  await expect(controls).toHaveAttribute('data-side', 'right');
+  await expect(controls.locator('button').nth(0))
+    .toHaveClass(/window-minimize/u);
 });
 
 test('the desktop the player chose survives a save and a load', async ({

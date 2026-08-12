@@ -21,6 +21,13 @@
  * a null in a table - it is the truest single thing the distro axis says, and it
  * is the only place in the whole shell where a choice opens another choice.
  *
+ * 0.33.0 puts a THIRD family in the Desktop list, and it is not an install:
+ * the design team's hand-me-down MacBook is hardware that exists and is
+ * spoken for, so it carries no distribution underneath it and it is refused
+ * below the tier in its own sentence - the queue for the spare laptop, not
+ * the image on the issued box. Same gate, same promotion, different reason,
+ * and the window says the one that is true.
+ *
  * The gate is the promotion, the same one ssh keeps: IT issues the desk a
  * Windows box and IT keeps the image. A service-desk player still gets this
  * window - it reads their machine back to them and it is where the refusal is
@@ -240,14 +247,32 @@ export const DISPLAY_APP: AppDef = {
       const distro = choice.distro === null ? null : distroById(choice.distro);
       const manager = packageManagerFor(choice.distro);
 
-      running.textContent = distro === null
-        ? `${skin.label} (as issued)`
-        : `${distro.label} · ${skin.label}`;
-      dialect.textContent = manager === null
-        ? 'None. Software arrives on this box when somebody from IT walks over '
-          + 'with it.'
-        : `${manager} - the verb this box answers to when it is asked to `
-          + 'install, list or apply anything.';
+      // What the box IS, in the words that are true of it. "As issued" belongs
+      // to the beige one and to nothing else: the Mac is a hand-me-down and
+      // was issued to somebody in the design team, and a machine that
+      // described itself wrongly would be the one readout in this window that
+      // cannot be checked against anything.
+      if (distro !== null) {
+        running.textContent = `${distro.label} · ${skin.label}`;
+      } else {
+        running.textContent = skin.family === 'mac'
+          ? `${skin.label} (the design team's old one)`
+          : `${skin.label} (as issued)`;
+      }
+
+      if (manager !== null) {
+        dialect.textContent = `${manager} - the verb this box answers to when `
+          + 'it is asked to install, list or apply anything.';
+      } else {
+        // Two boxes with no package manager, and two different reasons - which
+        // is exactly the distinction the terminal makes on the wire, so this
+        // window may not flatten it into one sentence.
+        dialect.textContent = skin.family === 'mac'
+          ? 'None. macOS ships no system package manager, and the one everyone '
+            + 'reaches for is not part of it and is not on this machine.'
+          : 'None. Software arrives on this box when somebody from IT walks '
+            + 'over with it.';
+      }
 
       for (const entry of desktopButtons) {
         const active = entry.id === choice.skin;

@@ -4599,6 +4599,80 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await expect(page.getByTestId('taskbar-windows')).toBeVisible();
   });
 
+  /*
+   * The Mac (0.33.0), between the second-panel step and the distro step for
+   * exactly the reason MATE is: it borrows the machine and hands it back on
+   * Cinnamon-and-Mint, which is what `display.distro` below opens on.
+   *
+   * It is the same extension as MATE's used the other way round - launcher
+   * panel at the bottom, other bar on top - plus the two primitives nothing
+   * before it needed: a bar that is a MENU BAR, and a titlebar whose buttons
+   * are at the other end in the other order.
+   */
+  await step('display.mac-chrome', async () => {
+    const menuBar = page.getByTestId('taskbar-second');
+    const dock = page.getByTestId('taskbar');
+
+    await page.getByTestId('display-desktop-orchard').click();
+    await expect(desktop).toHaveAttribute('data-skin', 'orchard');
+    await expect(desktop).toHaveAttribute('data-panel', 'bottom');
+    await expect(desktop).toHaveAttribute('data-panel-second', 'top');
+    await expect(desktop).toHaveAttribute('data-launcher', 'dock');
+    // Not Linux, so not on a distribution - and the window says the true
+    // reason there is no package manager rather than the beige box's one.
+    await expect(desktop).toHaveAttribute('data-distro', 'none');
+    await expect(page.getByTestId('display-package-manager'))
+      .toContainText('no system package manager');
+
+    // The split, asked inside each bar: the menu bar names the focused app and
+    // holds the clock, the dock holds the launcher and the window list.
+    await expect(menuBar).toHaveAttribute('data-kind', 'menu-bar');
+    await expect(menuBar.getByTestId('menu-bar-app'))
+      .toHaveText('Display Properties');
+    await expect(menuBar.getByTestId('sim-clock')).toBeVisible();
+    await expect(menuBar.getByTestId('taskbar-windows')).toHaveCount(0);
+    await expect(dock.getByTestId('start-button')).toBeVisible();
+    await expect(dock.getByTestId('sim-clock')).toHaveCount(0);
+
+    // THE BUTTONS: left end, close first, all three present. The order is read
+    // off the DOM row rather than off a class on the window, because the row
+    // is what the renderer builds and the order is what it builds it in.
+    const controls = page.getByTestId('window-display')
+      .locator('.window-controls');
+    await expect(controls).toHaveAttribute('data-side', 'left');
+    await expect(controls.locator('button')).toHaveCount(3);
+    await expect(controls.locator('button').nth(0))
+      .toHaveClass(/window-close/u);
+    await expect(controls.locator('button').nth(1))
+      .toHaveClass(/window-minimize/u);
+
+    // And they are really over there: geometry, because a side that was
+    // declared and never styled would pass every assertion above.
+    const controlsBox = await controls.boundingBox();
+    const titleBox = await page.getByTestId('window-display')
+      .locator('.window-title').boundingBox();
+    expect(controlsBox?.x ?? Number.MAX_SAFE_INTEGER)
+      .toBeLessThan(titleBox?.x ?? 0);
+
+    // The product works under it, and the menu bar follows the focus - which
+    // is the whole of what a menu bar owns in a shell whose apps have no menus.
+    await openFromStartMenu(page, 'tickets');
+    await expect(menuBar.getByTestId('menu-bar-app')).toHaveText('Ticket Queue');
+    await expect(page.getByTestId('tickets-summary')).toContainText('open');
+    await page.getByTestId('close-tickets').click();
+    await expect(menuBar.getByTestId('menu-bar-app')).toHaveText('Orchard 15');
+
+    // And back to Cinnamon, which is where the next step needs the box: both
+    // new primitives leave the DOCUMENT rather than being hidden by a rule.
+    await focusWindow(page, 'display');
+    await page.getByTestId('display-desktop-cinnamon').click();
+    await expect(desktop).toHaveAttribute('data-panel-second', 'none');
+    await expect(page.getByTestId('menu-bar-app')).toHaveCount(0);
+    await expect(controls).toHaveAttribute('data-side', 'right');
+    await expect(page.getByTestId('display-package-manager'))
+      .toContainText('apt');
+  });
+
   await step('display.distro', async () => {
     // The second axis, on its own: Mint came with Cinnamon, and moving to
     // Fedora leaves the desktop exactly where it is. KDE-on-Fedora and

@@ -31,6 +31,20 @@
  * one. 0.27.0 shipped three (KDE, GNOME, Cinnamon); 0.28.0 added the rest of
  * the researched set (MATE, Xfce, LXQt) and, with MATE, the one thing the
  * original shape could not say: a desktop with TWO panels.
+ *
+ * 0.33.0 adds the THIRD FAMILY and the first LAYOUT FORK (docs/research/
+ * mac-edition.md section 6): a Mac-shaped desktop, which needed three things
+ * the seven desktops above it never asked for - a panel that is a MENU BAR
+ * rather than a taskbar, a launcher that is a DOCK rather than a corner
+ * button, and window buttons on the LEFT. All three are declared here as data
+ * and read by the renderer, because a skin that reached for a per-skin branch
+ * in the shell would be the skin system admitting it does not generalise.
+ *
+ * What it is NOT: Apple's trade dress. The menu bar, the dock and the button
+ * side are interface LAYOUT - functional facts anybody may draw - and that is
+ * the whole of what is copied. No logo, no wordmark, no claim to their type,
+ * and no traffic-light colours: the buttons wear this skin's token palette
+ * exactly as every other desktop's do. The name is a parody name.
  */
 
 import type { DispatchResult } from '../engine-api';
@@ -40,6 +54,28 @@ import type { DispatchResult } from '../engine-api';
 export const PANEL_POSITIONS = ['bottom', 'top'] as const;
 
 export type PanelPosition = (typeof PANEL_POSITIONS)[number];
+
+/**
+ * What KIND of bar a panel is, which is a different question from where it
+ * sits (0.33.0).
+ *
+ * Every desktop up to here had one answer: a `panel` - a taskbar, wherever it
+ * is nailed. A MENU BAR is not that bar moved to the top. It is a strip that
+ * belongs to the FOCUSED APPLICATION rather than to the window list: the app
+ * whose window has the keyboard owns it, and it says which app that is. MATE's
+ * top bar is emphatically NOT one - it is a panel with a launcher in it, which
+ * is why the kind is data rather than "top means menu bar".
+ *
+ * The honest limit, written where it is decided rather than in a release note:
+ * the apps in this shell have no MENU MODEL. There is no File, no Edit, no
+ * per-app menu tree anywhere in this product, so a menu bar here shows the
+ * focused app's NAME and the status end, and stops. Inventing a File menu with
+ * nothing behind it would be chrome that lies about what it opens, which is
+ * the one thing the whole skin system is built not to do.
+ */
+export const PANEL_KINDS = ['panel', 'menu-bar'] as const;
+
+export type PanelKind = (typeof PANEL_KINDS)[number];
 
 /**
  * The launcher's shape, which is one of the sharpest per-DE tells: a Start
@@ -57,6 +93,18 @@ export const LAUNCHER_STYLES = [
   'applications',
   /** LXQt's: a button with the desktop's name on it and no decoration. */
   'plain',
+  /**
+   * The Mac family's (0.33.0): a DOCK - an icon strip along the bottom, in the
+   * MIDDLE of the screen rather than jammed into a corner, with the open
+   * windows in the same strip as the launcher.
+   *
+   * It is a launcher style rather than a panel kind because that is what it
+   * changes: the panel is still the bar that holds the launcher and the window
+   * list, and what a dock does is stop putting them at the left edge with
+   * words next to them. Magnification is NOT shipped - see the note on the
+   * skin itself.
+   */
+  'dock',
 ] as const;
 
 export type LauncherStyle = (typeof LAUNCHER_STYLES)[number];
@@ -86,6 +134,13 @@ export interface LauncherSpec {
 export interface SecondPanelSpec {
   readonly position: PanelPosition;
   /**
+   * Taskbar or menu bar (0.33.0). On BOTH panel shapes, because "which of my
+   * bars is the menu bar" is a question a two-panel desktop can answer either
+   * way - MATE's top bar is a panel and the Mac family's is a menu bar, and
+   * they are on the same edge.
+   */
+  readonly kind: PanelKind;
+  /**
    * Whether the panel carries a list of the open windows. GNOME is the false:
    * it has no taskbar at all, the overview replaces it, and a window list
    * bolted onto its top bar would be the one thing everybody notices is wrong.
@@ -98,9 +153,11 @@ export interface SecondPanelSpec {
 /**
  * The panel every desktop has: the one with the launcher in it.
  *
- * On the six single-panel desktops it is the whole of the chrome. On MATE it
- * is the menu bar along the top, and the taskbar along the bottom is the
- * `secondPanel` beside it.
+ * On the single-panel desktops it is the whole of the chrome. On MATE it is
+ * the panel along the top, and the taskbar along the bottom is the
+ * `secondPanel` beside it; on the Mac family it is the DOCK, and the menu bar
+ * over it is the second panel - the launcher is what decides which, not the
+ * edge.
  */
 export interface PanelSpec extends SecondPanelSpec {
   readonly launcher: LauncherSpec;
@@ -120,9 +177,19 @@ export type WindowButton = (typeof WINDOW_BUTTONS)[number];
  * would be the skin system lying about the one thing it was built to prove.
  *
  * `side` is declared because "and where" is half the question, and because the
- * backlog the spec names (the Mac family) is the case that needs it. Every
- * desktop shipped so far puts them on the right, which is what all of the
- * researched DEs actually do.
+ * backlog the spec named (the Mac family) is the case that needs it. Every
+ * Windows-or-Linux desktop puts them on the right, which is what all of the
+ * researched DEs actually do; 0.33.0 is the entry that finally uses the other
+ * value, with the ORDER reversed with it - close first, then minimize, then
+ * the zoom slot. Both halves are needed and neither implies the other: a
+ * left-hand row in min/max/close order would be nobody's desktop.
+ *
+ * The third button stays `maximize`, and that is a deliberate refusal. The
+ * Mac family calls it zoom, but the mechanic behind this button is the
+ * maximize toggle every other desktop's is, and a `zoom` value would be a
+ * second name for one function - the registry claiming a behaviour the window
+ * manager does not have. The ORDER is the layout fact; the label is the truth
+ * about the button.
  */
 export interface WindowButtonSpec {
   readonly order: readonly WindowButton[];
@@ -137,6 +204,7 @@ export const SKIN_IDS = [
   'mate',
   'xfce',
   'lxqt',
+  'orchard',
 ] as const;
 
 export type SkinId = (typeof SKIN_IDS)[number];
@@ -147,8 +215,16 @@ export interface Skin {
   readonly label: string;
   /** One line of what it is, in the game's voice. */
   readonly blurb: string;
-  /** Windows-caricature or Linux: what the box is running. */
-  readonly family: 'windows' | 'linux';
+  /**
+   * Which family of machine this chrome belongs to - the same three the world
+   * models (`MACHINE_OS`), because a desktop is a face on one of them.
+   *
+   * It decides two things and no more: whether a distro rides underneath (only
+   * Linux has one) and which sentence a player below the engineer tier is
+   * refused with. The `windows` entry is the box IT issues, which is why it is
+   * the one family nobody is refused.
+   */
+  readonly family: 'windows' | 'linux' | 'mac';
   /**
    * Overrides for the `:root` custom properties in `theme.css`, applied to the
    * desktop element so every component under it picks them up. The default skin
@@ -174,7 +250,8 @@ export interface Skin {
   readonly windowButtons: WindowButtonSpec;
   /**
    * The distro this desktop ships on by default - the DE half of the pairing.
-   * Null for the Windows caricature, which is not a distro at all.
+   * Null off the Linux family: the Windows caricature is not a distro at all,
+   * and neither is a Mac.
    */
   readonly distro: DistroId | null;
 }
@@ -371,6 +448,7 @@ const DESKPRO: Skin = {
   tokens: {},
   panel: {
     position: 'bottom',
+    kind: 'panel',
     launcher: {
       style: 'start',
       label: 'Start',
@@ -429,6 +507,7 @@ const KDE: Skin = {
   },
   panel: {
     position: 'bottom',
+    kind: 'panel',
     launcher: {
       style: 'kickoff',
       label: 'Kickoff',
@@ -489,6 +568,7 @@ const GNOME: Skin = {
   },
   panel: {
     position: 'top',
+    kind: 'panel',
     launcher: {
       style: 'activities',
       label: 'Activities',
@@ -546,6 +626,7 @@ const CINNAMON: Skin = {
   },
   panel: {
     position: 'bottom',
+    kind: 'panel',
     launcher: {
       style: 'menu',
       label: 'Menu',
@@ -609,6 +690,7 @@ const MATE: Skin = {
   },
   panel: {
     position: 'top',
+    kind: 'panel',
     launcher: {
       style: 'classic',
       label: 'Applications',
@@ -622,6 +704,7 @@ const MATE: Skin = {
   },
   secondPanel: {
     position: 'bottom',
+    kind: 'panel',
     windowList: true,
     tray: true,
   },
@@ -675,6 +758,7 @@ const XFCE: Skin = {
   },
   panel: {
     position: 'bottom',
+    kind: 'panel',
     launcher: {
       style: 'applications',
       label: 'Applications',
@@ -735,6 +819,7 @@ const LXQT: Skin = {
   },
   panel: {
     position: 'bottom',
+    kind: 'panel',
     launcher: {
       style: 'plain',
       label: 'LXQt',
@@ -748,6 +833,111 @@ const LXQT: Skin = {
   distro: 'ubuntu',
 };
 
+/**
+ * The Mac family: the design team's hand-me-down, and the first desktop in
+ * this registry whose LAYOUT the shell could not previously describe.
+ *
+ * Three tells, all of them layout and all of them declared rather than coded:
+ *
+ * - a MENU BAR across the top, which is a panel `kind` and not a taskbar that
+ *   has been moved. It belongs to whichever app has the keyboard, and it says
+ *   which one that is. What it does NOT hold is menus, because this shell's
+ *   apps have none - see `PANEL_KINDS`, where that limit is written down.
+ * - a DOCK along the bottom, which is the launcher style: the strip is
+ *   CENTRED, the words come off the buttons, and the launcher stands in it
+ *   beside the open windows instead of in a corner by itself.
+ * - the window buttons on the LEFT, in close-then-minimize-then-zoom order,
+ *   which is the muscle-memory joke the whole slice is for: a week of aiming
+ *   at the top right corner, and the thing up there now is the menu bar.
+ *
+ * Not shipped, and both are deliberate. DOCK MAGNIFICATION: the icons do not
+ * swell under the pointer, because this shell has no pointer-driven layout
+ * anywhere else and a strip that resized under the cursor would move the
+ * button a player was aiming at - a gag paid for with a misclick. And the
+ * TRAFFIC-LIGHT COLOURS: the buttons take this skin's palette like every other
+ * desktop's do. Their side and their order are interface layout; their exact
+ * three colours are somebody's trade dress, and this game does not need them
+ * to make the joke land.
+ *
+ * No distro, for the same reason the Windows box has none: it is not Linux,
+ * and a package-manager column under it would be a fabricated fact about a
+ * machine.
+ */
+const ORCHARD: Skin = {
+  id: 'orchard',
+  label: 'Orchard 15',
+  blurb: 'The design team replaced their laptops and the old one came to you, '
+    + 'still logged into somebody\'s photo library. Menu bar along the top, a '
+    + 'dock along the bottom, and the close button on the LEFT, which you will '
+    + 'discover roughly forty times today.',
+  family: 'mac',
+  tokens: {
+    // Light, low-contrast and almost bevel-free: the palette of a desktop that
+    // has not drawn a raised grey button since the beige box was current.
+    '--color-surface': '#f2f2f4',
+    '--color-surface-raised': '#ffffff',
+    '--color-surface-sunken': '#e2e2e6',
+    '--color-surface-field': '#ffffff',
+    '--color-bevel-light': '#ffffff',
+    '--color-bevel-dark': '#d0d0d6',
+    '--color-bevel-shadow': '#a6a6ae',
+    '--color-ink': '#1d1d1f',
+    '--color-ink-soft': '#5b5b63',
+    '--color-ink-disabled': '#a6a6ae',
+    '--color-ink-inverse': '#ffffff',
+    // A muted graphite-teal rather than anybody's brand blue, and nowhere near
+    // the three colours this skin is deliberately not wearing.
+    '--color-accent': '#3f6f7a',
+    '--color-accent-bright': '#5d97a3',
+    '--color-accent-deep': '#2b4d55',
+    '--color-accent-ink': '#ffffff',
+    '--color-wallpaper': '#232733',
+    '--color-wallpaper-weave': '#2c3140',
+    '--color-wallpaper-glow': '#3a4152',
+    // No claim on anybody's system font: a stack of faces that are actually
+    // installed, in the order a Mac would find them.
+    '--font-ui': '"Helvetica Neue", Helvetica, "Nimbus Sans", Arial, sans-serif',
+    // The same reasoning MATE's height is set by: two bars, so neither may
+    // spend a taskbar's worth of the player's screen.
+    '--size-taskbar': '32px',
+    // The roundest chrome in the registry, which is the other half of "this is
+    // not the beige box" before a single button is read.
+    '--radius-chrome': '10px',
+    '--bevel-raised': 'inset 0 0 0 1px var(--color-bevel-dark)',
+    '--bevel-sunken': 'inset 0 0 0 1px var(--color-bevel-shadow)',
+    '--bevel-window': 'inset 0 0 0 1px var(--color-bevel-dark)',
+  },
+  panel: {
+    // The DOCK is the panel with the launcher in it, and it is at the bottom -
+    // so the app list still opens upward from where it is pressed, exactly as
+    // it does on the issued box.
+    position: 'bottom',
+    kind: 'panel',
+    launcher: {
+      style: 'dock',
+      // A grid of applications, which is what pressing it opens. Named for
+      // what it does rather than for anybody's product.
+      label: 'Applications',
+      icon: 'icon-applications',
+    },
+    windowList: true,
+    // The clock is upstairs in the menu bar, which is where a Mac keeps it.
+    tray: false,
+  },
+  secondPanel: {
+    position: 'top',
+    kind: 'menu-bar',
+    // A menu bar is not a window list, and the dock downstairs already is one.
+    windowList: false,
+    tray: true,
+  },
+  // The tell, and the reason `side` was declared with nothing using it: LEFT,
+  // close first. Not a hidden button, not a re-labelled one - the same three
+  // controls the beige box has, at the other end and in the other order.
+  windowButtons: { order: ['close', 'minimize', 'maximize'], side: 'left' },
+  distro: null,
+};
+
 export const SKINS: readonly Skin[] = Object.freeze([
   DESKPRO,
   KDE,
@@ -756,6 +946,7 @@ export const SKINS: readonly Skin[] = Object.freeze([
   MATE,
   XFCE,
   LXQT,
+  ORCHARD,
 ]);
 
 export function isSkinId(value: unknown): value is SkinId {
@@ -841,17 +1032,19 @@ export type DesktopResolution =
  *   because the axes are genuinely independent: Fedora running KDE is a real
  *   machine, and a chooser that dragged the desktop back to GNOME would teach
  *   the opposite of what the model says.
- * - Picking a DISTRO on the issued Windows box installs it, so it brings the
- *   desktop that distro SHIPS (the distro half of the pairing). This is not a
- *   convenience: there is no desktop to leave alone on a machine that is not on
- *   Linux yet, and a press that resolved to nothing would be a dead click.
+ * - Picking a DISTRO on a box that is not on Linux at all - the issued Windows
+ *   one, or the hand-me-down Mac - installs it, so it brings the desktop that
+ *   distro SHIPS (the distro half of the pairing). This is not a convenience:
+ *   there is no desktop to leave alone on a machine that is not on Linux yet,
+ *   and a press that resolved to nothing would be a dead click.
  * - Except on the one distro that ships NO desktop. Arch on a machine with no
  *   desktop yet resolves to `needs-desktop`, and the chooser makes the player
  *   pick - which is not a limitation being worked around, it is the truest
  *   single thing this axis says about Arch, so the resolution says it out loud.
  *
  * Going back to the issued Windows box drops the distro, because a Windows box
- * is not on one.
+ * is not on one - and so does moving to the Mac, for the same reason and by
+ * the same branch.
  */
 export function resolveDesktopChoice(
   current: Readonly<DesktopChoiceState>,
@@ -860,12 +1053,18 @@ export function resolveDesktopChoice(
   if (choice.skin !== undefined) {
     const skin = skinById(choice.skin);
 
-    return skin.family === 'windows'
-      ? { kind: 'choice', next: { skin: skin.id, distro: null } }
-      : {
+    // A distro rides under the LINUX family and under nothing else (0.33.0).
+    // It used to read "not Windows", which was the same sentence while there
+    // were two families and becomes a lie with three: a Mac carrying a
+    // package-manager column would be this table inventing a fact about a
+    // machine, and `{ skin: mac, distro: arch }` is a request the shell must
+    // answer with a machine that exists.
+    return skin.family === 'linux'
+      ? {
         kind: 'choice',
         next: { skin: skin.id, distro: choice.distro ?? skin.distro },
-      };
+      }
+      : { kind: 'choice', next: { skin: skin.id, distro: null } };
   }
 
   if (choice.distro === undefined) {
@@ -875,7 +1074,12 @@ export function resolveDesktopChoice(
     };
   }
 
-  if (skinById(current.skin).family !== 'windows') {
+  // A box that is ALREADY on Linux keeps its desktop and changes distribution
+  // underneath it, which is the independence rule. A Mac is not on one: asking
+  // for Ubuntu there is the same request as asking for it on the issued
+  // Windows box - an install - so it falls through to the branch below and
+  // arrives wearing whatever that distribution ships.
+  if (skinById(current.skin).family === 'linux') {
     return {
       kind: 'choice',
       next: { skin: current.skin, distro: choice.distro },
@@ -919,11 +1123,18 @@ export function canChooseDesktop(
   next: Readonly<DesktopChoiceState>,
   engineer: boolean,
 ): DispatchResult {
-  if (engineer || skinById(next.skin).family === 'windows') {
+  const skin = skinById(next.skin);
+
+  if (engineer || skin.family === 'windows') {
     return { ok: true };
   }
 
-  return { ok: false, reason: DESKTOP_TIER_REFUSAL };
+  return {
+    ok: false,
+    reason: skin.family === 'mac'
+      ? DESKTOP_TIER_REFUSAL_MAC
+      : DESKTOP_TIER_REFUSAL,
+  };
 }
 
 /**
@@ -936,3 +1147,23 @@ export const DESKTOP_TIER_REFUSAL = 'IT issues the desk a Windows box and IT '
   + 'keeps the image. Putting your own desktop on it is the engineers\' tier, '
   + 'not the desk\'s - it arrives with the promotion, along with the ssh that '
   + 'makes it worth having.';
+
+/**
+ * And the same gate said about the Mac, which is a different sentence because
+ * it is a different refusal (0.33.0).
+ *
+ * The Linux one is about an IMAGE: the box on the desk is IT's, and what goes
+ * on it is IT's call. This one is about HARDWARE that already exists and has
+ * been promised to somebody else - the design team's old laptop, which goes to
+ * an engineer because engineers are who it goes to. Answering that with "IT
+ * keeps the image" would be the shell refusing a question nobody asked.
+ *
+ * Both name the PROMOTION, because both are the same tier and a player must be
+ * able to hear that they are.
+ */
+export const DESKTOP_TIER_REFUSAL_MAC = 'That is the design team\'s '
+  + 'hand-me-down, and there is a queue for it. The spare goes to whoever is '
+  + 'carrying a laptop between sites and an on-call phone, which is the '
+  + 'engineers\' tier and not the desk\'s - it arrives with the promotion. '
+  + 'Until then you have the beige one, and the beige one has never once '
+  + 'refused to open a Word attachment.';

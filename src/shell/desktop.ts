@@ -132,6 +132,16 @@ export class Desktop {
    * that puts it in or takes it out.
    */
   private readonly panelSecond: HTMLElement;
+  /**
+   * The name of the app that owns the menu bar (0.33.0), and nobody else's
+   * chrome.
+   *
+   * Only ever in the document on a desktop that declares a `menu-bar` panel,
+   * for the same reason the second bar is: a taskbar does not carry one, and a
+   * hidden element in seven desktops' DOM would be the fork leaking into the
+   * skins that never asked for it.
+   */
+  private readonly menuBarApp: HTMLElement;
   private readonly taskbarDivider: HTMLElement;
   private readonly taskbarTray: HTMLElement;
   private readonly taskbarWindows: HTMLElement;
@@ -271,6 +281,14 @@ export class Desktop {
     this.panelSecond = document.createElement('div');
     this.panelSecond.className = 'taskbar taskbar-second';
     this.panelSecond.dataset.testid = 'taskbar-second';
+
+    // Whose menu bar it is. A readout rather than a control: it is the name of
+    // the window with the keyboard, and pressing it does nothing because there
+    // is nothing behind it to open - this shell's apps have no menus, and the
+    // bar says only what it can actually answer for.
+    this.menuBarApp = document.createElement('strong');
+    this.menuBarApp.className = 'menu-bar-app';
+    this.menuBarApp.dataset.testid = 'menu-bar-app';
 
     // The launcher. Its glyph, its word and its style are the skin's to say -
     // Start, Kickoff, Activities, Menu - so the element is built empty here and
@@ -894,6 +912,9 @@ export class Desktop {
     this.renderLauncher();
     this.taskbar.replaceChildren(this.startButton);
     this.fillPanel(this.taskbar, skin.panel, true);
+    // After the bars are filled, because the element it writes into has just
+    // been put in one of them (or has just been left out of both).
+    this.renderMenuBarApp();
 
     if (skin.secondPanel === null) {
       // Out of the document entirely, not emptied and left there: a desktop
@@ -939,6 +960,18 @@ export class Desktop {
     panel: Readonly<SecondPanelSpec>,
     afterLauncher: boolean,
   ): void {
+    // What KIND of bar this is, on the bar itself: a menu bar is not a taskbar
+    // at the other edge, and the stylesheet has to be able to say so without
+    // asking which skin is on. Written for every panel, so "panel" is a fact
+    // the document states rather than the absence of an attribute.
+    element.dataset.kind = panel.kind;
+
+    // The focused app's name, which is the whole of what a menu bar in this
+    // shell owns. First in the row, where the app name goes.
+    if (panel.kind === 'menu-bar') {
+      element.append(this.menuBarApp);
+    }
+
     if (panel.windowList) {
       if (afterLauncher) {
         element.append(this.taskbarDivider);
@@ -950,6 +983,35 @@ export class Desktop {
     if (panel.tray) {
       element.append(this.taskbarTray);
     }
+  }
+
+  /**
+   * Whose menu bar it is at the moment (0.33.0).
+   *
+   * The focused window's title, and the DESKTOP'S OWN NAME when there is no
+   * focused window - which is the honest answer rather than an empty strip: on
+   * a machine with nothing open the shell itself is what has the screen, and a
+   * bar that went blank would read as a bar that had broken.
+   *
+   * A minimized window does not own it. It is not on the screen, and a menu
+   * bar naming a window nobody can see would be the one thing in this chrome
+   * that was not about what is in front of the player.
+   *
+   * Called from the paint AND from the panel build, because the two happen in
+   * either order: a window can be focused on a desktop that has no menu bar
+   * and then the player switches to one, and a menu bar can be built before
+   * anything has ever been painted into it.
+   */
+  private renderMenuBarApp(): void {
+    const state = this.wm;
+    const focused = state === null
+      ? undefined
+      : state.windows.find(
+        (windowState) => windowState.id === state.focusedId
+          && !windowState.minimized,
+      );
+
+    this.menuBarApp.textContent = focused?.title ?? this.skin().label;
   }
 
   /** The launcher's glyph and word, which are the corner's whole personality. */
@@ -1616,6 +1678,9 @@ export class Desktop {
     }
 
     this.taskbarEmpty.hidden = state.windows.length > 0;
+    // The menu bar names whichever of those windows has the keyboard, so it is
+    // repainted with them rather than on its own schedule.
+    this.renderMenuBarApp();
   }
 
   private createTaskbarButton(
