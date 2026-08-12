@@ -673,28 +673,12 @@ test('the update is put off three times and then takes the afternoon', async ({
     .toHaveText('Postpone 5 minutes');
   // Read with the day held: "it has not gone red yet" is a claim about a
   // minute, and a retry loop would spend the minutes it is claiming about.
+  // The duplicate drips at 10:38 (seeded wander on the 10:35 slot), so its
+  // four hours run out at 14:38 - which is INSIDE the forced outage below,
+  // and that is where this journey reads the breach.
   await underPause(page, async () => {
     await expect(duplicate).toHaveAttribute('data-breached', 'false');
   });
-
-  // THE ARITHMETIC, which is the point of the whole mechanic: the queue does
-  // not stop for the workstation. A deadline runs out while the desk is gone,
-  // it goes red on a screen nobody can touch, and the toast about it arrives
-  // over the top of an update screen.
-  for (let minute = 0; minute < 8; minute += 1) {
-    if (await duplicate.getAttribute('data-breached') === 'true') {
-      break;
-    }
-
-    await runSimMinutes(page, 1, 1);
-  }
-
-  await expect(duplicate).toHaveAttribute('data-breached', 'true');
-  await expect(page.getByTestId('desktop'))
-    .toHaveAttribute('data-takeover', 'machine');
-  await expect(
-    page.getByTestId('toast').filter({ hasText: 'SLA breached' }),
-  ).toBeVisible();
 
   await page.getByTestId('reboot-postpone').click();
 
@@ -740,9 +724,35 @@ test('the update is put off three times and then takes the afternoon', async ({
   expect(shown).toBeGreaterThan(0);
   expect(shown).toBeLessThan(100);
 
+  // THE ARITHMETIC, which is the point of the whole mechanic: the queue does
+  // not stop for the workstation. The duplicate's 14:38 deadline runs out
+  // while the machine is mid-update - it goes red on a screen nobody can
+  // touch, and the toast about it arrives over the top of an update screen.
+  for (let minute = 0; minute < 15; minute += 1) {
+    if (await duplicate.getAttribute('data-breached') === 'true') {
+      break;
+    }
+
+    await runSimMinutes(page, 1, 1);
+  }
+
+  await expect(duplicate).toHaveAttribute('data-breached', 'true');
+  await expect(page.getByTestId('desktop'))
+    .toHaveAttribute('data-takeover', 'machine');
+  await expect(
+    page.getByTestId('toast').filter({ hasText: 'SLA breached' }),
+  ).toBeVisible();
+
   /* The far side of it. */
 
-  await runSimMinutes(page, 12, 1);
+  for (let minute = 0; minute < 20; minute += 1) {
+    if (await page.getByTestId('desktop').getAttribute('data-takeover')
+      === 'none') {
+      break;
+    }
+
+    await runSimMinutes(page, 1, 1);
+  }
 
   // THE GOAL: the desk is the player's, the price is said out loud on the
   // taskbar, and everything that was on it is still on it.

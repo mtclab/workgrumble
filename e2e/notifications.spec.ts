@@ -13,16 +13,16 @@ import {
  * Real milliseconds the fan ticket needs to run out its SLA.
  *
  * It is 240 simulated minutes at one minute per real second, and it is now
- * counted from 10:08 rather than from 08:00 twice over: the ticket drips in
+ * counted from 10:15 rather than from 08:00 twice over: the ticket drips in
  * mid-morning on the Monday, and the clock it is held to only counts minutes
- * somebody is at the desk. So the deadline is 14:08, and this is the wait from
+ * somebody is at the desk. So the deadline is 14:15, and this is the wait from
  * a standing start at eight - which is the whole business-hours rule, seen
  * from the far end.
  */
-const FAN_BREACH_MS = 370_000;
+const FAN_BREACH_MS = 377_000;
 
 /** The minute the fan ticket drips into Monday: `buildDaySchedule` picks it. */
-const FAN_ARRIVAL = 128;
+const FAN_ARRIVAL = 135;
 
 /**
  * Journey 4: an app raises a notification, the toast shows, the badge counts

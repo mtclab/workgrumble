@@ -18,24 +18,25 @@ import {
  * Then a save, a page reload, a load, and the same world to the byte.
  *
  * The minutes below are the shipped seed's own schedule. They are not magic
- * numbers: `buildPatrolSchedule(1, WORLD_SEED)` produces them, the unit suite
- * asserts their shape, and this test is the half that proves a player can see
- * and play them.
+ * numbers: `buildPatrolSchedule(1, patrolSeedFor(1, WORLD_SEED))` produces
+ * them, the unit suite asserts their shape, and this test is the half that
+ * proves a player can see and play them.
  */
 
 /** Day one, from the shipped seed. Minutes since 08:00. */
-const FIRST_TELEGRAPH = 216;
-const FIRST_ARRIVAL = 220;
-const FIRST_PING = 229;
-const SECOND_TELEGRAPH = 307;
-const SECOND_ARRIVAL = 311;
+const FIRST_TELEGRAPH = 185;
+const FIRST_ARRIVAL = 189;
+const FIRST_PING = 270;
+const SECOND_TELEGRAPH = 309;
+const SECOND_ARRIVAL = 313;
 
 const SHIFT_END = 540;
 const LUNCH_START = 240;
-const LUNCH_END = 270;
+// Lunch ends at 270, and FIRST_PING lands on that same minute by seeded
+// coincidence - the ping section below reads the shift's return for both.
 /** The one Monday ticket that is not waiting at 08:00: `buildDaySchedule`
- * puts it at eight minutes past ten, and the week's table names the hour. */
-const DRIP_ARRIVAL = 128;
+ * puts it at fifteen minutes past ten, and the week's table names the hour. */
+const DRIP_ARRIVAL = 135;
 
 /**
  * Runs the day forward to a given minute-of-day, at four times normal speed.
@@ -148,7 +149,7 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   const dripped = page.getByTestId('ticket-row-fan-noise');
   await expect(dripped).toBeVisible();
   await dripped.click();
-  await expect(page.getByTestId('ticket-detail-raised')).toHaveText('10:08');
+  await expect(page.getByTestId('ticket-detail-raised')).toHaveText('10:15');
   // Untriaged, and the badge says what that costs rather than leaving the
   // player to find out at 17:00.
   await expect(page.getByTestId('ticket-detail-priority'))
@@ -177,9 +178,25 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   await expect(page.getByTestId('window-caught')).toHaveCount(0);
   await expect(desktop).toHaveAttribute('data-boss', 'clear');
 
+  /* -- lunch, which is the safe window ----------------------------------- */
+
+  await runTo(page, LUNCH_START + 5);
+  await expect(page.getByTestId('day-state')).toHaveText('Lunch');
+  // The browser is behind the panic key from the corridor above, and the line
+  // under this one reaches inside it: raised through the loop, because a raise
+  // the day takes back - it is still putting its own screens on the desk - is a
+  // click hunting a covered button (the contract in `helpers.ts`).
+  await focusWindow(page, 'browser');
+  await page.getByTestId('browser-site-cats').click();
+  await expect(page.getByTestId('browser-grid').getByRole('listitem'))
+    .toHaveCount(6);
+
   /* -- the ping, which is a ticket nobody raised ------------------------- */
 
+  // The seed puts it on the minute lunch ends, so one run reads both: the
+  // shift is back and the lead's message is on top of it.
   await runTo(page, FIRST_PING + 1);
+  await expect(page.getByTestId('day-state')).toHaveText('Shift');
   await expect(
     page.getByTestId('toast').filter({ hasText: 'Message from the lead' }),
   ).toHaveCount(1);
@@ -208,22 +225,6 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
     page.getByTestId('chat-options')
       .getByRole('button', { name: /still arriving on his desktop/ }),
   ).toBeVisible();
-
-  /* -- lunch, which is the safe window ----------------------------------- */
-
-  await runTo(page, LUNCH_START + 5);
-  await expect(page.getByTestId('day-state')).toHaveText('Lunch');
-  // The browser is behind the panic key from the corridor above, and the line
-  // under this one reaches inside it: raised through the loop, because a raise
-  // the day takes back - it is still putting its own screens on the desk - is a
-  // click hunting a covered button (the contract in `helpers.ts`).
-  await focusWindow(page, 'browser');
-  await page.getByTestId('browser-site-cats').click();
-  await expect(page.getByTestId('browser-grid').getByRole('listitem'))
-    .toHaveCount(6);
-
-  await runTo(page, LUNCH_END + 5);
-  await expect(page.getByTestId('day-state')).toHaveText('Shift');
 
   /* -- the corridor, walked into on purpose ------------------------------ */
 

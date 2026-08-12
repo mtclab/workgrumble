@@ -31,6 +31,39 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.31.0',
+    date: '2026-08-12',
+    summary: 'This update contains no visible changes. IT would like to talk '
+      + 'about it at length anyway, because it is proud of it.',
+    lines: Object.freeze([
+      'Nothing on your desktop is different today. We want to be clear that '
+        + 'this took considerable effort.',
+      'The scheduling infrastructure that decides what a week throws at you '
+        + 'has been rebuilt underneath the week you are in. The old system '
+        + 'held one week per site, laid out by hand, the way a seating chart '
+        + 'is laid out by somebody\'s aunt. The new system understands WHY '
+        + 'that week is shaped the way it is - how much a day can hold, what '
+        + 'must arrive together, what must never arrive on a Friday - and '
+        + 'can, in principle, lay out others. It currently reproduces your '
+        + 'existing week exactly, to the minute, which we verified more '
+        + 'thoroughly than we have ever verified anything, including the '
+        + 'payroll migration.',
+      'In the process, several numbers that described how heavy each day is '
+        + 'were found to be decorative. They have been replaced with '
+        + 'arithmetic. Twelve of twenty days were not the weight the label '
+        + 'said - some days were heavier than anyone had admitted, and three '
+        + 'sites\' carefully ramped difficulty curves turned out to be flat. '
+        + 'The labels now agree with the days, which changes nothing about '
+        + 'the days and everything about the labels, and IT considers this '
+        + 'the correct direction of repair.',
+      'Also, saving. Your save now remembers which week it was taken in, '
+        + 'rather than assuming there was only ever one week to come back '
+        + 'to. There was, so far, only ever one week to come back to. IT '
+        + 'declines to explain why this mattered, and asks you to trust '
+        + 'that it one day will.',
+    ]),
+  },
+  {
     version: '0.30.0',
     date: '2026-08-09',
     summary: 'This update introduces the timesheet. The system already knew '

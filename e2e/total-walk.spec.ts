@@ -349,24 +349,46 @@ async function runUntilCaught(page: Page): Promise<void> {
  * underneath them.
  */
 async function doSomeWork(page: Page): Promise<void> {
-  if (await page.getByTestId('window-remote').count() === 0) {
-    await openFromStartMenu(page, 'remote');
-  } else {
-    await focusWindow(page, 'remote');
+  // The callers of this run it in a loop that is WAITING to be caught, and
+  // the caught dialog takes the desk the minute the lead arrives - including
+  // halfway through the work below, where it intercepts the next click and
+  // the click would otherwise retry into the test timeout. A caught window is
+  // this function's cue to hand the turn back, not an error.
+  const caught = page.getByTestId('window-caught');
+
+  if (await caught.count() > 0) {
+    return;
   }
 
-  await page.getByTestId('remote-machine-ada').click();
+  try {
+    if (await page.getByTestId('window-remote').count() === 0) {
+      await openFromStartMenu(page, 'remote');
+    } else {
+      await focusWindow(page, 'remote');
+    }
 
-  const viewport = page.getByTestId('remote-viewport');
-  // The other wrong angle, whichever this is: applying the angle a screen is
-  // already at is refused before the click, by a button that greys itself out.
-  const angle = await viewport.getAttribute('data-rotation') === '180'
-    ? '90'
-    : '180';
+    await page.getByTestId('remote-machine-ada').click({ timeout: 10_000 });
 
-  await page.getByTestId('remote-rotation-picker').selectOption(angle);
-  await page.getByTestId('remote-apply-rotation').click();
-  await expect(viewport).toHaveAttribute('data-rotation', angle);
+    const viewport = page.getByTestId('remote-viewport');
+    // The other wrong angle, whichever this is: applying the angle a screen is
+    // already at is refused before the click, by a button that greys itself
+    // out.
+    const angle = await viewport.getAttribute('data-rotation') === '180'
+      ? '90'
+      : '180';
+
+    await page.getByTestId('remote-rotation-picker')
+      .selectOption(angle, { timeout: 10_000 });
+    await page.getByTestId('remote-apply-rotation')
+      .click({ timeout: 10_000 });
+    await expect(viewport).toHaveAttribute('data-rotation', angle);
+  } catch (error) {
+    if (await caught.count() > 0) {
+      return;
+    }
+
+    throw error;
+  }
 }
 
 /** Runs the clock until the desk is on the far side of its can. */
