@@ -126,18 +126,28 @@ TWO epics, because the dependency shapes differ:
 Near-term order stays: 0.28.0 (in flight) -> E9 first lanes (cheap, data over rails)
 interleaved with the standing human play-test recommendation -> E10 -> E7.
 
-## 6. Owner decisions (nothing recorded as decided)
+## 6. Owner decisions (ALL ANSWERED 2026-08-12; D3 earlier)
 
-- **D1** - Start-title = difficulty select at new game (the July sketch)? Confirm.
-- **D2** - After promotion, does lower-tier work BLEND into the queue (research truth:
-  seniors stay the safety net) or get replaced? Recommendation: blend, ratio per title.
+- **D1 - DECIDED (owner, 2026-08-12): YES** - start-title = the difficulty
+  select at new game.
+- **D2 - DECIDED (owner, 2026-08-12): BLEND, and it LESSENS by title and by
+  the type of the work** - lower-tier work stays in the queue after
+  promotion, with the ratio a function of both the title and the work kind
+  (a senior still resets the odd password; an architect rarely sees one but
+  still catches the outage-adjacent basics). Ratio table = build-time data.
 - **D3 - DECIDED (owner, 2026-08-09): yes, Systems Engineers do projects too.**
   E10 builds standalone, sequenced before E7; E7 ships as a content pack over it.
   First content: the firewall replacement at the MSP.
-- **D4** - External/vendor-tier arrivals: bind acknowledgment + update-cadence clocks
-  instead of resolution (the honesty flag above)? Internal keeps tool-target
-  resolution clocks either way.
-- **D5** - The career fork (management track vs IC track, Larson's four archetypes,
-  the org offering "just a small team") - in scope for E9 content or parked?
-- **D6** - The three org-level events (swarming / change-rate audit / CAB debate) -
-  E9 content pool or E8-leftovers pool?
+- **D4 - DECIDED (owner, 2026-08-12): YES** - external/vendor-tier arrivals
+  bind acknowledgment + update-cadence clocks; internal keeps tool-target
+  resolution clocks.
+- **D5 - DECIDED (owner, 2026-08-12): MANAGEMENT TRACK PARKED** - the manager
+  game is konttori's job, not this one's. The owner DOES want forks, but
+  IT-shaped ones: IC specialisation tracks (the security / infra / cloud
+  flavour of senior, not "just a small team"). Wants its own short design
+  pass when E9 reaches the senior rungs.
+- **D6 - DECIDED (overseer's call, owner delegated 2026-08-12): E9 content
+  pool** - the three org-level events are title-flavoured (a CAB debate
+  lands when you are senior enough to be in the room; swarming and the
+  change-rate audit read differently per rung), so they ship with the title
+  system rather than as E8 leftovers.

@@ -845,6 +845,28 @@ Each slice is independently shippable and independently gated. Versions are indi
 
 ## 10. Owner decisions the epic needs before build
 
+**ANSWERED (owner, 2026-08-12) - recorded verbatim-in-substance, refinements
+flagged where the answer was a direction rather than a value:**
+
+- **D-E11-1: YES** - the estate persists; the recommendation as written
+  (per-employer field whitelist, schema 5). Unblocks E10 fork B.
+- **D-E11-2: SHORTEN** ("more fun that way"). The shorten option on the table
+  was six weeks with the season re-timed; SIX is the overseer's instantiation
+  of "shorten" and the re-time slice should present the exact number for a
+  nod before the redundancy round moves.
+- **D-E11-3: MULTIPLE WAYS** - not one wrap answer; the owner wants several
+  post-arc exits designed together (new-employer offer, an ending, a legal
+  wrap with rising arcWeek all candidates). Needs a short design proposal,
+  not a pick.
+- **D-E11-4: PER-WEEK** - composition keyed on arcWeek only; weeks shareable
+  between testers; goldens keep.
+- **D-E11-5: YES** - load becomes player-visible (the morning-brief reading).
+- **D-E11-6: the recommendation stands with the owner's calibration** -
+  "boring shoveling and repetition is expected but not too much": 3-week
+  exclusion window, drip pools at 50-60 per employer, and the tone note that
+  SOME repetition is the job's own texture, deliberately kept.
+- **D-E11-7: E11 FIRST** - E9 inherits the pool machinery.
+
 - **D-E11-1. Does the estate persist across a week at the same employer?** Section 8.2. My recommendation: yes, via a declared per-employer field whitelist, schema 5. The cheap alternative (authored continuity, no persistence) is legitimate and does not unblock E10 fork B. **This is the decision the slice plan branches on and it should be settled first.**
 - **D-E11-2. Is the authored twelve-week arc the target, or is it too long?** The code already answers "twelve weeks, redundancy round at weeks 4-10" (`pressure.ts:526-543`), and that number sizes the pools. But twelve weeks x four employers is 48 weeks of play, and nobody has playtested even two. The honest options are: build to twelve and accept that most players will not see it; shorten the arc to 6 and re-time the season; or make `weeks` per-employer so the probation shop is short and the MSP is long. **Confirm before pool sizing, because pool size is a direct function of this number.**
 - **D-E11-3. What replaces the `nextEmployerAfter` wrap?** Today it loops back to the probation shop (`employers.ts:328-332`, documented as a placeholder). Options: a fifth employer, a "you have run out of jobs" ending, or the wrap becomes legal because `arcWeek` keeps climbing and the probation shop's week 9 is not its week 1.
