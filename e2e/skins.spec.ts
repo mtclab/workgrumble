@@ -331,10 +331,23 @@ test('the Mac puts a menu bar on top, a dock underneath and the buttons left', a
   await expect(menuBar.getByTestId('menu-bar-app')).toHaveText('Ticket Queue');
   await expect(page.getByTestId('tickets-summary')).toContainText('open');
 
-  // Including the way back: close it, and the bar names the desktop rather
-  // than going blank or keeping a window that is not there any more.
+  // Including the way back: close it, and the bar follows focus to the
+  // window still open underneath - Display Properties never closed, and a
+  // bar that skipped it for the desktop name would be showing a screen that
+  // is not the one in front.
   await page.getByTestId('close-tickets').click();
+  await expect(menuBar.getByTestId('menu-bar-app'))
+    .toHaveText('Display Properties');
+
+  // The desktop name is what NOTHING focused shows: park BOTH windows still
+  // open (the promotion's terminal is under Display Properties) and the bar
+  // says whose desk this is; bring Display Properties back for the switch.
+  await page.getByTestId('minimize-display').click();
+  await expect(menuBar.getByTestId('menu-bar-app'))
+    .toHaveText('Support Terminal');
+  await page.getByTestId('minimize-cmd').click();
   await expect(menuBar.getByTestId('menu-bar-app')).toHaveText('Orchard 15');
+  await page.getByTestId('taskbar-button-display').click();
 
   // And leaving takes BOTH new primitives back out of the document: no second
   // bar, no menu bar, the buttons back on the right in the order they were.

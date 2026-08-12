@@ -31,6 +31,37 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.33.0',
+    date: '2026-08-12',
+    summary: 'The design team\'s old MacBook is available, if you have earned '
+      + 'it. Also the remote viewer has stopped making things up.',
+    lines: Object.freeze([
+      'Engineers may now collect a hand-me-down MacBook from the design '
+        + 'team\'s queue and use it as their own machine. The menu bar lives '
+        + 'at the top and belongs to whatever you are looking at, the '
+        + 'window buttons have moved to the other side in a different '
+        + 'order, and the dock is at the bottom being decorative. Your '
+        + 'muscle memory will file its own ticket.',
+      'The Mac\'s terminal speaks its own language: launchctl instead of '
+        + 'systemctl, reverse-dotted service names, and a filesystem that '
+        + 'does not care about capital letters until it suddenly does. The '
+        + 'commands that do not exist on a Mac now say so instead of '
+        + 'answering in Ubuntu. Notably there is no package manager on the '
+        + 'studio\'s machines, which is not an oversight - it is fleet '
+        + 'management, and the knowledge base will explain it to you '
+        + 'twice.',
+      'The remote-support viewer previously drew a small Windows desktop '
+        + 'for every machine it connected to, including servers with no '
+        + 'desktop and Macs with very much their own. It now shows what is '
+        + 'actually there, which for most servers is a login prompt and an '
+        + 'implication that you should have used ssh. Where a designer has '
+        + 'not granted the screen-sharing consent, the viewer now shows '
+        + 'the honest black square rather than a Windows desktop nobody '
+        + 'owns - the ticket about that click was always real, and now '
+        + 'the screen agrees with it.',
+    ]),
+  },
+  {
     version: '0.32.0',
     date: '2026-08-12',
     summary: 'The Macs arrive. IT has opinions about this, and so does '

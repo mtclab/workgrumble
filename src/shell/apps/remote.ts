@@ -790,7 +790,11 @@ export const REMOTE_APP: AppDef = {
       if (face.console !== null) {
         // A box with no graphical session, drawn as what it actually shows.
         const consolePane = element('div', 'remote-console', 'remote-console');
-        const prompt = element('p', 'remote-console-prompt');
+        const prompt = element(
+          'p',
+          'remote-console-prompt',
+          'remote-console-prompt',
+        );
         prompt.textContent = face.console;
         const note = element('p', 'remote-console-note');
         note.textContent = 'No graphical session on this one. A screen plugged '

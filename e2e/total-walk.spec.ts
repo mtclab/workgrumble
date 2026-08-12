@@ -4659,8 +4659,29 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await openFromStartMenu(page, 'tickets');
     await expect(menuBar.getByTestId('menu-bar-app')).toHaveText('Ticket Queue');
     await expect(page.getByTestId('tickets-summary')).toContainText('open');
+    // Closing the queue drops focus to whatever is open underneath - this
+    // walk has a desk's worth of windows by now - and the desktop's own name
+    // is what NOTHING focused shows. So park windows until the bar says
+    // whose desk this is, reading each owner off the bar itself (the bar
+    // names the focused window; that is the claim being leaned on), then
+    // bring Display Properties back for the switch below.
     await page.getByTestId('close-tickets').click();
+
+    for (let parked = 0; parked < 8; parked += 1) {
+      const owner = await menuBar.getByTestId('menu-bar-app').textContent();
+
+      if (owner === 'Orchard 15') {
+        break;
+      }
+
+      await page
+        .locator('.os-window[data-focused="true"]')
+        .locator('[data-testid^="minimize-"]')
+        .click();
+    }
+
     await expect(menuBar.getByTestId('menu-bar-app')).toHaveText('Orchard 15');
+    await page.getByTestId('taskbar-button-display').click();
 
     // And back to Cinnamon, which is where the next step needs the box: both
     // new primitives leave the DOCUMENT rather than being hidden by a rule.
