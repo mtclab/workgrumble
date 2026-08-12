@@ -6,8 +6,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { loadEngineForTests } from '../../engine-api/load-node';
 import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../../world/actions';
 import { COMPANY_IDS } from '../../world/company';
+import { EMPLOYER_IDS } from '../../world/employers';
 import { AppStateStore } from '../app-state';
-import { createWorldSession } from '../../world/session';
+import { createWorldSession, FIRST_WEEK } from '../../world/session';
 import { spawnWorldTicket } from '../../world/tickets';
 import { directoryDetail, type DirectoryView } from './directory';
 import {
@@ -364,12 +365,27 @@ describe('the remote session pane', () => {
    * That is a whole class of failure - a spec naming a world that does not
    * exist - and it can only be caught here, because nothing else in the local
    * half of the gate reads what the specs ask for.
+   *
+   * Read across EVERY shipped world rather than the probation one (0.33.0):
+   * the specs walk four employers now, and #55's viewer faces are asked on the
+   * MSP's own customers - a Linux NAS and a Mac - so a check that only knew
+   * the first estate would call a real machine a typo. The question the gate
+   * asks is unchanged: is there a node anywhere in this build with that key.
    */
   it('has a node behind every Remote Assist test id the e2e specs use', () => {
-    const world = session();
-    const keysOf = (kind: 'service' | 'machine' | 'device'): Set<string> => new Set(
-      world.api.graph.nodesOfKind(kind).map((node) => nodeKey(node.id)),
-    );
+    const keysOf = (kind: 'service' | 'machine' | 'device'): Set<string> => {
+      const keys = new Set<string>();
+
+      for (const employer of EMPLOYER_IDS) {
+        const world = createWorldSession({ ...FIRST_WEEK, employer });
+
+        for (const node of world.engine.graph.nodesOfKind(kind)) {
+          keys.add(nodeKey(node.id));
+        }
+      }
+
+      return keys;
+    };
     // One pattern per family, because each family is built from a different
     // half of the world and a locator can only be checked against its own.
     const families: readonly {

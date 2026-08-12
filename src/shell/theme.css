@@ -3164,6 +3164,71 @@ input {
   transform-origin: center;
 }
 
+/* The three faces (#55, 0.33.0). The viewport is a two-row grid for the
+   Windows caricature it has always drawn - wallpaper, then the taskbar - and
+   the other two families need their own shapes: a Mac has a strip at BOTH
+   ends, and a box with no graphical session has one thing on it. */
+.remote-viewport[data-face="mac"] {
+  grid-template-rows: auto 1fr auto;
+}
+
+.remote-viewport[data-face="linux"],
+.remote-viewport[data-blackout="true"] {
+  grid-template-rows: 1fr;
+}
+
+/* The menu bar, read-only: the strip along the top with the clock in it, which
+   is the one thing about a Mac's menu bar this game actually knows. */
+.remote-menu-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface);
+  font-size: var(--text-xs);
+}
+
+/* The dock: the same bar the Windows face uses, centred, which is the whole of
+   the silhouette. It carries no Start button because there is not one. */
+.remote-dock {
+  justify-content: center;
+}
+
+/* A box with no desktop on it, drawn as what a screen plugged into one shows:
+   a login prompt on a black console, and a sentence saying why there is
+   nothing else here to point at. */
+.remote-console {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  padding: var(--space-3);
+  background: var(--color-ink);
+  color: var(--color-ink-inverse);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.remote-console-note {
+  color: var(--color-ink-disabled);
+  font-family: var(--font-read);
+}
+
+/* The black frame a Mac hands a viewer with no Screen Recording consent. It is
+   black because that is the mechanic - the session is up and the picture is
+   not - and the caption says only what the person at the other end can see
+   happening, because which consent is missing is the ticket's question. */
+.remote-blackout {
+  display: grid;
+  align-content: end;
+  padding: var(--space-3);
+  background: #000000;
+}
+
+.remote-blackout-note {
+  color: var(--color-ink-disabled);
+  font-size: var(--text-xs);
+}
+
 .remote-wallpaper {
   display: grid;
   grid-template-rows: auto 1fr;

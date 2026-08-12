@@ -1499,6 +1499,36 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'remote.face-console',
+    surface: 'remote',
+    control: 'remote-console (a Linux host)',
+    does: 'Shows a box with no graphical session as what a screen plugged into '
+      + 'it actually shows - its own login prompt, and a line saying the work '
+      + 'happens over ssh - instead of the Windows desktop this window drew on '
+      + 'every machine in the estate from 0.7.0 to 0.33.0 (#55). No My '
+      + 'Documents, no Recycle bin, no Start button anywhere in the document.',
+    run: 'sysadmin',
+    why: 'The customer estates with Linux boxes on them are the MSP\'s, and the '
+      + 'probation week never reaches a machine that is not a Windows one.',
+  },
+  {
+    id: 'remote.face-mac',
+    surface: 'remote',
+    control: 'remote-menu-bar, remote-dock (a Mac host)',
+    does: 'Shows a Mac as a Mac: the two layout facts the chrome slice ships - '
+      + 'a menu bar with the clock in it and a dock silhouette along the '
+      + 'bottom - and nothing invented on top of them, because this estate '
+      + 'models a Mac\'s hardware and its jobs and has never held anything '
+      + 'about its desktop. The OTHER state of this face is the black frame a '
+      + 'viewer gets before Screen Recording is granted, which needs the '
+      + 'studio\'s Wednesday ticket to have taken the consent away: it is '
+      + 'proven on the artifact in msp.spec.ts, beside the ticket it belongs '
+      + 'to, and swept offline over every world in remote-face.test.ts.',
+    run: 'sysadmin',
+    why: 'The Macs are MARLOWE-STUDIO\'s, which is an MSP customer - the '
+      + 'probation week has no Mac on the wire at all.',
+  },
+  {
     id: 'remote.rotate',
     surface: 'remote',
     control: 'remote-rotation-picker, remote-apply-rotation',

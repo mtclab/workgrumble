@@ -5111,6 +5111,62 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await runCommand(page, 'exit');
     await expect(page.locator('.cmd-prompt').first()).toHaveText(/^C:\\/u);
   });
+
+  /*
+   * And the same two families on the surface that DRAWS a screen (#55, 0.33.0).
+   *
+   * The terminal above has been honest about these boxes since 0.32.0 - it
+   * refuses the Windows tools on them by name - while Remote Assist drew My
+   * Documents and a Recycle bin on every one of them from 0.7.0. This is the
+   * shipped-path half of that fix, asked on the two customer estates the
+   * dialect steps have just been standing on.
+   */
+  await step('remote.face-console', async () => {
+    await openFromStartMenu(page, 'remote');
+    await page.getByTestId('remote-machine-marl-nas-01').click();
+    await expect(page.getByTestId('remote-hostname')).toHaveText('MARL-NAS-01');
+
+    // What a screen plugged into a NAS shows: its own login prompt, and a
+    // sentence about where the work actually happens.
+    await expect(page.getByTestId('remote-viewport'))
+      .toHaveAttribute('data-face', 'linux');
+    await expect(page.getByTestId('remote-console-prompt'))
+      .toHaveText('MARL-NAS-01 login:');
+    await expect(page.getByTestId('remote-console')).toContainText('over ssh');
+
+    // THE GATE, on the document: no Windows furniture anywhere in it. Asked as
+    // counts, so a caricature hidden behind a rule would still be found.
+    await expect(page.getByTestId('remote-desktop-icons')).toHaveCount(0);
+    await expect(page.getByTestId('remote-dialog')).toHaveCount(0);
+    await expect(page.getByTestId('remote-start')).toHaveCount(0);
+  });
+
+  await step('remote.face-mac', async () => {
+    await page.getByTestId('remote-machine-marl-ws-01').click();
+    await expect(page.getByTestId('remote-hostname')).toHaveText('MARL-WS-01');
+
+    // A Mac drawn as a Mac: the menu bar over the dock, the same two layout
+    // facts the chrome slice ships, and the clock in the bar a Mac keeps it
+    // in. Nothing else - this estate holds no Mac desktop to draw.
+    await expect(page.getByTestId('remote-viewport'))
+      .toHaveAttribute('data-face', 'mac');
+    await expect(page.getByTestId('remote-menu-bar')).toBeVisible();
+    await expect(page.getByTestId('remote-dock')).toBeVisible();
+    await expect(page.getByTestId('remote-menu-bar')
+      .getByTestId('remote-tray')).toHaveCount(1);
+
+    // The consent is granted across the studio until the Wednesday ticket
+    // takes it away on one box, so this Mac shows a screen rather than the
+    // black frame - the other state is walked in msp.spec.ts, on the ticket.
+    await expect(page.getByTestId('remote-viewport'))
+      .toHaveAttribute('data-blackout', 'false');
+    await expect(page.getByTestId('remote-blackout')).toHaveCount(0);
+
+    // And the gate again, on the family the 0.32.0 estate added.
+    await expect(page.getByTestId('remote-desktop-icons')).toHaveCount(0);
+    await expect(page.getByTestId('remote-dialog')).toHaveCount(0);
+    await expect(page.getByTestId('remote-start')).toHaveCount(0);
+  });
 });
 
 /* ========================================================================= *

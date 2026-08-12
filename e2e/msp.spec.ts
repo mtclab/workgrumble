@@ -3,6 +3,7 @@ import { expect, type Page, test } from '@playwright/test';
 import {
   clockOffFor,
   completeLogin,
+  focusWindow,
   openFromStartMenu,
   resolvedToast,
   runCommand,
@@ -297,6 +298,38 @@ test('the black-screen ticket closes on the walkthrough, from the chat window', 
 
   await openFromStartMenu(page, 'tickets');
   await page.getByTestId('ticket-row-marlowe-screen-recording').click();
+
+  /*
+   * The fault, LOOKED AT (#55, 0.33.0), before it is talked through.
+   *
+   * This is the fiction hole 0.32.0 named and left open: the ticket closes
+   * from a chat window, so nothing made anybody open the viewer - and if they
+   * had, they would have been shown a Windows desktop, complete with a Recycle
+   * bin, on a Mac that is supposed to be showing them nothing at all. The
+   * viewer reads the consent now, so the reporter's description and the
+   * player's screen finally agree.
+   */
+  // Corin's box, picked by hand: the ticket's reporter is the studio MANAGER,
+  // whose own Mac is fine, and the machine the fault is on is the designer's -
+  // which is the shape of the ticket and the reason the link does not aim
+  // there.
+  await openFromStartMenu(page, 'remote');
+  await page.getByTestId('remote-machine-marl-ws-01').click();
+  await expect(page.getByTestId('remote-hostname')).toHaveText('MARL-WS-01');
+  await expect(page.getByTestId('remote-viewport'))
+    .toHaveAttribute('data-blackout', 'true');
+  await expect(page.getByTestId('remote-blackout'))
+    .toContainText('The screen is black');
+
+  // And nothing else is on it. Not the Windows furniture that used to be, and
+  // not the Mac face either: a blackout drawn over a dock silhouette would be
+  // this window showing a screen it has just said it cannot see.
+  await expect(page.getByTestId('remote-desktop-icons')).toHaveCount(0);
+  await expect(page.getByTestId('remote-start')).toHaveCount(0);
+  await expect(page.getByTestId('remote-dock')).toHaveCount(0);
+  await expect(page.getByTestId('remote-menu-bar')).toHaveCount(0);
+
+  await focusWindow(page, 'tickets');
 
   // The conversation with the studio manager, opened off the ticket the way a
   // player reaches it.

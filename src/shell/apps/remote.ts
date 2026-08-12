@@ -6,6 +6,9 @@ import {
   isRestartable,
   isRotation,
   isService,
+  MACHINE_OS,
+  type MachineOs,
+  machineOsOf,
   type Rotation,
   ROTATIONS,
   SERVICE_CLASSES,
@@ -237,6 +240,30 @@ export interface RemoteSession {
   readonly id: string;
   readonly hostname: string;
   readonly owner: string;
+  /**
+   * What is actually running on the far end (#55, 0.33.0).
+   *
+   * Read off the box rather than assumed, which is the whole of the bug this
+   * closes: since 0.7.0 the viewer drew the Windows caricature - My Documents,
+   * a Recycle bin, a Start button - onto EVERY machine, including Meridian's
+   * Linux fleet and, from 0.32.0, a studio full of Macs. The estate was honest
+   * on the wire the entire time and the one surface that draws a screen was
+   * not.
+   */
+  readonly os: MachineOs;
+  /**
+   * Whether the support tool holds Screen Recording consent on this Mac, and
+   * NULL on every box that does not carry the consent at all.
+   *
+   * Three values rather than two, and the null is load-bearing: "this Mac has
+   * not granted it" and "this box has no such thing" are different sentences,
+   * and only the first of them is a black frame. It is the same field the MDM
+   * refusal reads (`tcc_screen_recording`), read here for the first time -
+   * 0.32.0 shipped the mechanic and the ticket that turns it off, and the
+   * viewer never once looked at it, which is the half of #55 that is a fiction
+   * hole rather than a wrong picture.
+   */
+  readonly screenRecording: boolean | null;
   readonly rotation: Rotation;
   /** What the dropdown is standing on, which is upright until it is moved. */
   readonly picked: Rotation;
@@ -283,11 +310,17 @@ export function remoteSession(
   // listener, where one throw would stop every other tick listener with it.
   const uptime = machine.fields[FIELDS.uptimeSince];
   const ownDesk = ownMachineId(api) === machine.id;
+  const consent = machine.fields[FIELDS.tccScreenRecording];
 
   return {
     id: machine.id,
     hostname: hostnameOf(machine),
     owner: textValue(ownerOf(api, machine)?.fields[FIELDS.name], 'Unassigned'),
+    os: machineOsOf(machine.fields[FIELDS.machineOs]),
+    // Absent is NULL, not false: a box with no consent field has no consent to
+    // be missing, and reading the absence as "denied" would black out every
+    // Windows screen in the estate.
+    screenRecording: typeof consent === 'boolean' ? consent : null,
     rotation: rotationOf(machine),
     picked: view.picked ?? 0,
     resolution: textValue(
@@ -362,6 +395,163 @@ export function remoteSession(
   };
 }
 
+/* -- what is on the far end's screen (#55, 0.33.0) ------------------------- */
+
+/**
+ * The Windows caricature's furniture, by TEST ID.
+ *
+ * Named here because two things read the list and they must not drift: the
+ * renderer, which writes these ids onto the elements it builds, and the
+ * standing gate, which walks every machine in every shipped world and fails if
+ * a face that is not a Windows one would put any of them on screen. A gate
+ * written against copies of these strings would go green the day somebody
+ * renamed one.
+ */
+export const WINDOWS_FURNITURE = Object.freeze({
+  /** My Documents, the Q4 file, the Recycle bin. */
+  icons: 'remote-desktop-icons',
+  /** The little system dialog nobody has read since 1997. */
+  dialog: 'remote-dialog',
+  /** The Start button, which is the sharpest single tell of the three. */
+  start: 'remote-start',
+});
+
+/**
+ * What the viewer draws, as DATA rather than as three branches in a render.
+ *
+ * This exists in this shape because of what #55 actually was: not a missing
+ * feature, but a renderer that KNEW how to draw one desktop and drew it at
+ * everything. A face computed here and built mechanically below cannot make
+ * that mistake again - there is no Windows branch to fall through into,
+ * because the furniture only exists as fields on this object, and those fields
+ * are empty for anything that is not a Windows box.
+ *
+ * Every face is minimal on purpose. This game does not model what is on
+ * somebody else's screen; what it models is the machine. So each face draws
+ * only what is TRUE of the family it belongs to, and where a family's screen
+ * is genuinely unknowable the face says so in a sentence rather than filling
+ * the space with invented furniture.
+ */
+export interface RemoteFace {
+  readonly os: MachineOs;
+  /**
+   * The desktop icons, which are the Windows caricature's and nobody else's.
+   * Empty is not "we did not get round to it" - it is the honest answer for a
+   * headless server and for a Mac whose desktop this estate does not model.
+   */
+  readonly icons: readonly string[];
+  /** The system dialog, on the one face that has one. */
+  readonly dialog: {
+    readonly title: string;
+    readonly body: string;
+  } | null;
+  /**
+   * The bar along the bottom, and which kind: a taskbar with a Start button on
+   * it, a dock silhouette, or - on a box with no graphical session at all -
+   * nothing.
+   */
+  readonly bar: 'taskbar' | 'dock' | null;
+  /** The strip along the top, which only the Mac family has. */
+  readonly menuBar: boolean;
+  /** The clock, which is a thing the world genuinely knows. */
+  readonly clock: boolean;
+  /**
+   * The console line a box with no desktop shows instead of one, or null on a
+   * box that has a desktop to draw.
+   */
+  readonly console: string | null;
+  /**
+   * The frame a Mac hands a viewer that has not been granted Screen Recording:
+   * black, and nothing else on it at all.
+   */
+  readonly blackout: boolean;
+}
+
+/**
+ * The face for a session - one per OS family, and the TCC state on top.
+ *
+ * The blackout is checked FIRST and clears everything with it, because that is
+ * what the mechanic is: the session connects, the tool runs, and the frame it
+ * is handed is black. A blackout drawn over a dock silhouette would be this
+ * window showing a player a screen it has just said it cannot see.
+ */
+export function remoteFace(model: Readonly<RemoteSession>): RemoteFace {
+  const blackout = model.os === MACHINE_OS.mac && model.screenRecording === false;
+
+  if (blackout) {
+    return {
+      os: model.os,
+      icons: [],
+      dialog: null,
+      bar: null,
+      menuBar: false,
+      clock: false,
+      console: null,
+      blackout: true,
+    };
+  }
+
+  if (model.os === MACHINE_OS.mac) {
+    // The read-only caricature: the two layout facts the chrome slice already
+    // ships (a menu bar over a dock), and not one thing more. No Finder, no
+    // desktop furniture, no invented documents - the estate models a Mac's
+    // hardware and its jobs, and has never held anything about its desktop.
+    return {
+      os: model.os,
+      icons: [],
+      dialog: null,
+      bar: 'dock',
+      menuBar: true,
+      clock: true,
+      console: null,
+      blackout: false,
+    };
+  }
+
+  if (model.os === MACHINE_OS.linux) {
+    // The honest one, and the smallest. Every Linux box in this estate is a
+    // server - a NAS, an app server, a database, an edge firewall - and a
+    // server has no graphical session on it: what a screen plugged into one
+    // shows is a login prompt, and what the work is actually done over is ssh.
+    // Drawing a desktop here would be a picture of a machine that does not
+    // exist. (`remote-face.test.ts` keeps the estate honest about that: a
+    // Linux WORKSTATION seeded into any world fails there rather than being
+    // quietly libelled here.)
+    return {
+      os: model.os,
+      icons: [],
+      dialog: null,
+      bar: null,
+      menuBar: false,
+      clock: false,
+      console: `${model.hostname} login:`,
+      blackout: false,
+    };
+  }
+
+  return {
+    os: model.os,
+    // The caricature this window has always drawn, unchanged - the Windows
+    // boxes are the ones this face was always right about.
+    icons: ['My Documents', 'Q4 (final) (final2)', 'Recycle'],
+    dialog: model.updates
+      ? {
+        title: 'Updates are ready when you are',
+        body: 'Your workstation will restart at a time chosen by somebody who '
+          + 'does not use it.',
+      }
+      : {
+        title: 'System Notice',
+        body: 'Nothing needs your attention, which is itself suspicious.',
+      },
+    bar: 'taskbar',
+    menuBar: false,
+    clock: true,
+    console: null,
+    blackout: false,
+  };
+}
+
 /**
  * Remote Assist - the signature tool.
  *
@@ -373,6 +563,12 @@ export function remoteSession(
  * There is no second window manager in there. It is a static-layout parody
  * desktop, and every control on it dispatches the same registered actions the
  * terminal and the directory use - one verb set, three skins.
+ *
+ * And from 0.33.0 (#55) it is a parody of the RIGHT desktop: the face is
+ * chosen by what the box actually runs, because for six versions this window
+ * drew My Documents and a Recycle bin onto Linux servers and, latterly, onto a
+ * studio full of Macs. See `remoteFace` for the three faces and for what each
+ * one refuses to invent.
  */
 export const REMOTE_APP: AppDef = {
   id: 'remote',
@@ -471,46 +667,47 @@ export const REMOTE_APP: AppDef = {
       })));
     };
 
-    /** The parody desktop: their screen, drawn from their machine's state. */
-    const renderScreen = (model: Readonly<RemoteSession>): HTMLElement => {
-      const rotation = model.rotation;
-      const frame = element('div', 'remote-frame', 'remote-frame');
-      const viewport = element('div', 'remote-viewport', 'remote-viewport');
-      viewport.dataset.rotation = String(rotation);
-      viewport.style.setProperty('--remote-rotation', `${String(rotation)}deg`);
+    /**
+     * The clock that lives in whichever strip this face keeps one in - the
+     * Windows taskbar, or the Mac's menu bar, which is where a Mac keeps it.
+     *
+     * It is built here rather than inline in both, because it is the one
+     * element in this window that is repainted on its own every tick, and
+     * `remoteTray` has to point at exactly one of them.
+     */
+    const renderClock = (): HTMLElement => {
+      const tray = element('span', 'remote-tray', 'remote-tray');
+      tray.textContent = formatSimTime(api.clock.now()).time;
+      remoteTray = tray;
+      return tray;
+    };
 
-      const wallpaper = element('div', 'remote-wallpaper');
-      const icons = element('ul', 'remote-desktop-icons');
+    /**
+     * The bar along the bottom, filled with what is OPEN on that machine -
+     * which is a question this session can only honestly answer about the
+     * player's own box.
+     *
+     * Shared by the taskbar and the dock, because the honest content is the
+     * same content: a Mac dock with invented windows in it would be exactly
+     * the lie a Windows taskbar with invented windows in it is. Only the
+     * chrome around them differs, which is the whole point of the split.
+     */
+    const renderBar = (
+      model: Readonly<RemoteSession>,
+      face: Readonly<RemoteFace>,
+    ): HTMLElement => {
+      const dock = face.bar === 'dock';
+      const bar = element(
+        'div',
+        dock ? 'remote-taskbar remote-dock' : 'remote-taskbar',
+        dock ? 'remote-dock' : 'remote-taskbar',
+      );
 
-      for (const label of ['My Documents', 'Q4 (final) (final2)', 'Recycle']) {
-        const icon = element('li', 'remote-desktop-icon');
-        icon.textContent = label;
-        icons.append(icon);
+      if (!dock) {
+        const start = element('span', 'remote-start', WINDOWS_FURNITURE.start);
+        start.textContent = 'Start';
+        bar.append(start);
       }
-
-      const dialog = element('div', 'remote-dialog', 'remote-dialog');
-      const dialogTitle = element('strong');
-      dialogTitle.textContent = model.updates
-        ? 'Updates are ready when you are'
-        : 'System Notice';
-      const dialogBody = element('p');
-      dialogBody.textContent = model.updates
-        ? 'Your workstation will restart at a time chosen by somebody who '
-          + 'does not use it.'
-        : 'Nothing needs your attention, which is itself suspicious.';
-      dialog.append(dialogTitle, dialogBody);
-
-      wallpaper.append(icons, dialog);
-
-      // The taskbar is a taskbar: what is OPEN on that machine, which is a
-      // question this session can only honestly answer about the player's own
-      // box. The services used to sit here as chips, which read as "the print
-      // spooler is a window Ada has open" - and there is now a services panel
-      // below with the columns a services list actually has.
-      const taskbar = element('div', 'remote-taskbar', 'remote-taskbar');
-      const start = element('span', 'remote-start');
-      start.textContent = 'Start';
-      taskbar.append(start);
 
       for (const program of model.programs) {
         const button = element(
@@ -523,7 +720,7 @@ export const REMOTE_APP: AppDef = {
         button.title = `${program.image}${
           program.minimized ? ', minimised - which is still running' : ''
         }`;
-        taskbar.append(button);
+        bar.append(button);
       }
 
       if (model.programs.length === 0) {
@@ -532,15 +729,117 @@ export const REMOTE_APP: AppDef = {
           ? 'Nothing open. Suspicious in itself.'
           : 'This session cannot see what they have open. Only the boss can '
             + 'do that, and he does it by walking.';
-        taskbar.append(none);
+        bar.append(none);
       }
 
-      const tray = element('span', 'remote-tray', 'remote-tray');
-      tray.textContent = formatSimTime(api.clock.now()).time;
-      taskbar.append(tray);
-      remoteTray = tray;
+      if (face.clock && !face.menuBar) {
+        bar.append(renderClock());
+      }
 
-      viewport.append(wallpaper, taskbar);
+      return bar;
+    };
+
+    /**
+     * Their screen, drawn from their machine's state AND from what their
+     * machine actually is (#55).
+     *
+     * Everything below is built off `RemoteFace`, which is the fix: the
+     * furniture exists as FIELDS on that object, so a face that declares none
+     * puts none in the document - there is no Windows branch left for a
+     * non-Windows box to fall into. The frame, the viewport and the rotation
+     * transform are shared, because a screen is a screen whatever is drawing
+     * it and the rotation field is true of any box that has one.
+     */
+    const renderScreen = (model: Readonly<RemoteSession>): HTMLElement => {
+      const face = remoteFace(model);
+      const rotation = model.rotation;
+      const frame = element('div', 'remote-frame', 'remote-frame');
+      const viewport = element('div', 'remote-viewport', 'remote-viewport');
+      viewport.dataset.rotation = String(rotation);
+      viewport.style.setProperty('--remote-rotation', `${String(rotation)}deg`);
+      // What kind of screen this is, on the element, so the stylesheet can lay
+      // out three faces without a class per family and so a test can ask the
+      // document which one it got.
+      viewport.dataset.face = face.os;
+      viewport.dataset.blackout = String(face.blackout);
+
+      // The black frame, and NOTHING else in the viewport. Said plainly and
+      // without diagnosing it: the reporter's own description is "it connects
+      // and then it is black", and which consent is missing is the ticket's
+      // question rather than this window's answer.
+      if (face.blackout) {
+        const black = element('div', 'remote-blackout', 'remote-blackout');
+        const note = element('p', 'remote-blackout-note');
+        note.textContent = 'Connected. The screen is black.';
+        black.append(note);
+        viewport.append(black);
+        frame.append(viewport);
+        return frame;
+      }
+
+      if (face.menuBar) {
+        // The top strip: a silhouette of the bar the chrome slice ships, and
+        // the clock, which is the one thing in it this game genuinely knows.
+        // No app name - that would be a claim about what somebody else has
+        // open, which is exactly what the taskbar below refuses to invent.
+        const menuBar = element('div', 'remote-menu-bar', 'remote-menu-bar');
+        menuBar.append(renderClock());
+        viewport.append(menuBar);
+      }
+
+      if (face.console !== null) {
+        // A box with no graphical session, drawn as what it actually shows.
+        const consolePane = element('div', 'remote-console', 'remote-console');
+        const prompt = element('p', 'remote-console-prompt');
+        prompt.textContent = face.console;
+        const note = element('p', 'remote-console-note');
+        note.textContent = 'No graphical session on this one. A screen plugged '
+          + 'into it shows this, and the work happens over ssh - which is why '
+          + 'there is nothing here to point at.';
+        consolePane.append(prompt, note);
+        viewport.append(consolePane);
+        frame.append(viewport);
+        return frame;
+      }
+
+      const wallpaper = element('div', 'remote-wallpaper');
+
+      if (face.icons.length > 0) {
+        const icons = element(
+          'ul',
+          'remote-desktop-icons',
+          WINDOWS_FURNITURE.icons,
+        );
+
+        for (const label of face.icons) {
+          const icon = element('li', 'remote-desktop-icon');
+          icon.textContent = label;
+          icons.append(icon);
+        }
+
+        wallpaper.append(icons);
+      }
+
+      if (face.dialog !== null) {
+        const dialog = element(
+          'div',
+          'remote-dialog',
+          WINDOWS_FURNITURE.dialog,
+        );
+        const dialogTitle = element('strong');
+        dialogTitle.textContent = face.dialog.title;
+        const dialogBody = element('p');
+        dialogBody.textContent = face.dialog.body;
+        dialog.append(dialogTitle, dialogBody);
+        wallpaper.append(dialog);
+      }
+
+      viewport.append(wallpaper);
+
+      if (face.bar !== null) {
+        viewport.append(renderBar(model, face));
+      }
+
       frame.append(viewport);
       return frame;
     };
