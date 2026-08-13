@@ -35,7 +35,7 @@ import { MSP_WEEK } from './msp-week';
 import { CORPORATE_WEEK } from './corporate-week';
 import { SECOND_WEEK } from './second-week';
 import { spareWeeks } from './spares';
-import { WORLD_TICKETS } from './tickets';
+import { auditDeals, WORLD_TICKETS } from './tickets';
 import {
   arrivesBeforeClose,
   assertWeekGreetings,
@@ -185,6 +185,11 @@ describe('the shipped week', () => {
       ...MSP_WEEK,
       ...CORPORATE_WEEK,
       ...spareWeeks().flat(),
+      // And the audit queue (E9, 0.36.0), for the same reason the surplus is
+      // here: an audit item is dealt by the audit rail rather than by an
+      // authored day, and a claim about "every non-summoned ticket" that could
+      // not see it would be a claim that the second queue ships dead.
+      ...auditDeals(),
     ]
       .flatMap((script) => [
         ...script.inherited,
@@ -599,7 +604,14 @@ describe('the week against the roster', () => {
     // thing the surplus is written not to be.
     expect(() => assertWeekTickets(
       WORLD_TICKETS,
-      [WEEK, SECOND_WEEK, MSP_WEEK, CORPORATE_WEEK, ...spareWeeks()],
+      [
+        WEEK,
+        SECOND_WEEK,
+        MSP_WEEK,
+        CORPORATE_WEEK,
+        ...spareWeeks(),
+        auditDeals(),
+      ],
     )).not.toThrow();
   });
 

@@ -26,6 +26,8 @@ import { slaTierForTicketNodes } from '../customers';
 import { vipForcedPriority } from '../vip';
 import { ACCESS_TICKETS } from './access';
 import { ARC_TICKETS } from './arc';
+import { AUDIT_ITEMS } from '../audit';
+import { AUDIT_TICKETS } from './audit';
 import { BODGE_TICKETS } from './bodge';
 import { CORPORATE_TICKETS } from './corporate';
 import { BOSS_PHONE } from './boss-trash';
@@ -51,7 +53,7 @@ import { SECOND_WEEK } from '../second-week';
 import { halcyonSetup } from '../corporate-company';
 import { CORPORATE_WEEK } from '../corporate-week';
 import { spareWeeks } from '../spares';
-import { assertWeekTickets, WEEK } from '../week';
+import { assertWeekTickets, type DayScript, WEEK } from '../week';
 import { assertWeekLoads, type NamedWeek } from '../load';
 
 export { BOSS_PHONE } from './boss-trash';
@@ -384,6 +386,33 @@ const EMPLOYER_WEEKS: readonly NamedWeek[] = [
 ];
 
 /**
+ * The audit queue in the shape the roster gate reads: one day per day the
+ * senior's week deals items on, and the items as that day's drip.
+ *
+ * It is a table for a gate rather than a week anybody plays - nothing resolves
+ * it, nothing prices it, and the driver reads `AUDIT_ITEMS` directly - so the
+ * columns it does not use are the empty ones a `DayScript` requires and no
+ * more. The one job it does is the one `spareWeeks` does for the surplus:
+ * prove that every audit ticket in the roster is dealt by something.
+ */
+export function auditDeals(): readonly DayScript[] {
+  const days = [...new Set(AUDIT_ITEMS.map((item) => item.day))].sort(
+    (left, right) => left - right,
+  );
+
+  return days.map((day) => ({
+    day,
+    label: `audit ${String(day)}`,
+    inherited: [],
+    drip: AUDIT_ITEMS
+      .filter((item) => item.day === day)
+      .map((item) => ({ ticketId: item.ticket, minute: item.minute })),
+    patrolSeed: 0,
+    load: 1,
+  }));
+}
+
+/**
  * Everything the shipped world can put on the desk, in spawn order.
  *
  * The week is checked against it here, where the roster exists: every ticket
@@ -422,6 +451,12 @@ export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekLoads(
       // The corporate employer's VIP-exception queue (E8, 0.22.0), proven against
       // the corporate week below.
       ...CORPORATE_TICKETS,
+      // The senior rung's second queue (E9, 0.36.0). They are in the one roster
+      // because everything the roster gates - solvability, paths, dialogue,
+      // articles - is as true of somebody else's ticket as of one of yours; what
+      // is different about them is the FILING already on them, which is
+      // `src/world/audit.ts` and not this list.
+      ...AUDIT_TICKETS,
     ]),
     // Every employer's week, so every ticket in the shared roster is proven to
     // arrive on SOME shop's day rather than shipping dead - the probation
@@ -435,9 +470,16 @@ export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekLoads(
     // surplus is not a week and is never validated as one; it is handed over in
     // the shape this gate reads so that a spare naming a ticket nobody wrote,
     // or dealing a summoned one, is the same boot failure it is anywhere else.
+    // And the audit queue (E9, 0.36.0), for exactly the reason the surplus is
+    // here: an audit item is dealt by the audit rail rather than by an authored
+    // day, so without this it would trip the ships-dead half of the gate on the
+    // morning it was written. Handed over in the shape the gate reads, so an
+    // item naming a ticket nobody wrote is the same boot failure it is
+    // anywhere else.
     [
       ...EMPLOYER_WEEKS.map((named) => named.week),
       ...spareWeeks(),
+      auditDeals(),
     ],
   ),
   // And the other direction, in minutes: what each day PUTS ON THE DESK,

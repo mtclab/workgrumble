@@ -453,6 +453,13 @@ describe('shipped tickets', () => {
       'ticket:halcyon-dfs-disabled',
       'ticket:halcyon-bits-disabled',
       'ticket:halcyon-audio-disabled',
+      // The senior rung's audit queue (E9, 0.36.0): somebody else's filings,
+      // on ordinary tickets.
+      'ticket:audit-print-task',
+      'ticket:audit-marketing-spooler',
+      'ticket:audit-lead-locked',
+      'ticket:audit-print-workstation',
+      'ticket:audit-print-browser',
     ]);
   }, ROSTER_SWEEP_MS);
 

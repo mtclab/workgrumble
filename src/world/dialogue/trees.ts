@@ -960,6 +960,9 @@ const WEDGED_SPOOLER: DialogueTree = {
   id: 'dialogue/logistics',
   speaker: COMPANY_IDS.nina,
   tickets: [
+    // The audit queue's first item (E9, 0.36.0). She rang about the printer
+    // again, which is what makes her the one person on the filing.
+    'ticket:audit-print-task',
     'ticket:wedged-spooler',
     'ticket:vpn-cert-expired',
     // The pool's two (E11, 0.34.0 slice 2). She sits nearest the printer, so
@@ -975,6 +978,7 @@ const WEDGED_SPOOLER: DialogueTree = {
   ],
   root: 'complaint',
   roots: {
+    'ticket:audit-print-task': 'queue-again',
     'ticket:wedged-spooler': 'complaint',
     'ticket:vpn-cert-expired': 'depot',
     'ticket:pool-hercules-dead': 'dead-printer',
@@ -982,6 +986,7 @@ const WEDGED_SPOOLER: DialogueTree = {
     'ticket:pool-logistics-share': 'files',
   },
   resolved_roots: {
+    'ticket:audit-print-task': 'queue-again-after',
     'ticket:wedged-spooler': 'after',
     'ticket:vpn-cert-expired': 'depot-after',
     'ticket:pool-hercules-dead': 'lights-on',
@@ -994,6 +999,40 @@ const WEDGED_SPOOLER: DialogueTree = {
   // same call taken by somebody whose hands are already going.
   call_roots: ['ringing-spooler', 'ringing-spooler-shaky'],
   nodes: [
+    {
+      // The audit queue's first item (E9, 0.36.0). She is the only person who
+      // has rung, which is the fact the junior's filing is a reading of - and
+      // she says out loud that she is the only one near enough to notice.
+      id: 'queue-again',
+      npc_line: 'It is doing it again. Things go in the queue and stop. I am '
+        + 'the only one who has said anything because I am the only one who '
+        + 'can see the tray from where I sit.',
+      options: [
+        {
+          label: 'Ask whether anybody else has printed successfully today',
+          next: 'queue-again-others',
+          effects: [
+            { asks: true },
+            { reveal: 'Nothing has come out of the print server all morning - the overnight job that clears the queue has not run, so the queue is full for everybody.' },
+          ],
+        },
+        { label: 'Tell her you will look at the print server' },
+      ],
+    },
+    {
+      id: 'queue-again-others',
+      npc_line: 'I have not asked. Nobody walks past a printer to check it '
+        + 'worked, do they. They find out at four when they go to collect it.',
+      options: [
+        { label: 'Go back to the top', next: 'queue-again' },
+      ],
+    },
+    {
+      id: 'queue-again-after',
+      npc_line: 'It has all come out at once. Nine copies of a delivery note '
+        + 'from Friday and somebody\'s Christmas rota.',
+      options: [{ label: 'Leave her to it' }],
+    },
     {
       id: 'complaint',
       npc_line: 'The printer is haunted. It hums, it flashes, it prints '
@@ -1626,6 +1665,9 @@ const RECEPTION: DialogueTree = {
   id: 'dialogue/reception',
   speaker: COMPANY_IDS.bev,
   tickets: [
+    // The audit queue's VIP item (E9, 0.36.0): she typed it, and it is not
+    // about her, which is the whole of what the junior missed.
+    'ticket:audit-lead-locked',
     'ticket:tidied-list',
     'ticket:share-maintenance',
     'ticket:bev-vpn-request',
@@ -1637,6 +1679,7 @@ const RECEPTION: DialogueTree = {
   ],
   root: 'hello',
   roots: {
+    'ticket:audit-lead-locked': 'for-desmond',
     'ticket:tidied-list': 'hello',
     'ticket:share-maintenance': 'drive',
     // The one she asked for in three windows at once, once you have turned the
@@ -1648,6 +1691,7 @@ const RECEPTION: DialogueTree = {
     'ticket:pool-reception-badges': 'badges',
   },
   resolved_roots: {
+    'ticket:audit-lead-locked': 'for-desmond-after',
     'ticket:tidied-list': 'after',
     'ticket:share-maintenance': 'drive-after',
     'ticket:bev-vpn-request': 'vpn-after',
@@ -1655,6 +1699,40 @@ const RECEPTION: DialogueTree = {
     'ticket:pool-reception-badges': 'badges-printed',
   },
   nodes: [
+    {
+      // The shadow-VIP beat (E9, 0.36.0). She types it, she says whose it is
+      // in the first sentence, and the flag on the queue belongs to him.
+      id: 'for-desmond',
+      npc_line: 'It is not mine. Desmond stopped at the desk on his way in '
+        + 'and asked me to put it in for him, because he is in meetings until '
+        + 'eleven and he does not put his own in.',
+      options: [
+        {
+          label: 'Ask whether he said what he had typed',
+          next: 'for-desmond-what',
+          effects: [
+            { asks: true },
+            { reveal: 'The account that is locked is Desmond\'s, not Bev\'s. The ticket is hers to type and his to be about.' },
+          ],
+        },
+        { label: 'Tell her you will sort it before he comes out' },
+      ],
+    },
+    {
+      id: 'for-desmond-what',
+      npc_line: 'He said the same password he has always used, which is what '
+        + 'everybody says. He said it four times, which is what nobody admits.',
+      options: [
+        { label: 'Go back to the top', next: 'for-desmond' },
+      ],
+    },
+    {
+      id: 'for-desmond-after',
+      npc_line: 'He came past and said thank you to me, which is nice, and '
+        + 'which I will pass on to you now.',
+      options: [{ label: 'Leave her to it' }],
+    },
+
     {
       id: 'hello',
       npc_line: 'Is this about the printer? Everything is about the printer. '

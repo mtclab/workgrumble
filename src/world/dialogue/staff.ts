@@ -479,6 +479,9 @@ const ESTIMATING: DialogueTree = {
   id: 'dialogue/estimating',
   speaker: COMPANY_IDS.terry,
   tickets: [
+    // The audit queue (E9, 0.36.0): the rebuilt machine that cannot fetch a
+    // driver, filed as one desk.
+    'ticket:audit-print-workstation',
     'ticket:must-change-password',
     'ticket:share-dup-terry',
     // The pool's two (E11, 0.34.0 slice 2): a screen he turned over himself
@@ -488,12 +491,14 @@ const ESTIMATING: DialogueTree = {
   ],
   root: 'idle',
   roots: {
+    'ticket:audit-print-workstation': 'new-machine',
     'ticket:must-change-password': 'box',
     'ticket:share-dup-terry': 'files',
     'ticket:pool-estimating-rotated': 'upside-down',
     'ticket:pool-estimating-tender': 'tender-gone',
   },
   resolved_roots: {
+    'ticket:audit-print-workstation': 'new-machine-after',
     'ticket:must-change-password': 'sorted',
     'ticket:share-dup-terry': 'drive-back',
     'ticket:pool-estimating-rotated': 'right-way-up',
@@ -501,6 +506,41 @@ const ESTIMATING: DialogueTree = {
   },
   summoned_root: 'favour',
   nodes: [
+    {
+      // The audit queue (E9, 0.36.0). One man, one rebuilt machine - and the
+      // thing that is broken is on the print server, which is everybody's.
+      id: 'new-machine',
+      npc_line: 'The rebuild has gone on fine and it will not take the '
+        + 'printer. It finds the name and then says it cannot get the driver. '
+        + 'I have done it twice and I am going to lunch.',
+      options: [
+        {
+          label: 'Ask whether anything else on the rebuild has worked',
+          next: 'new-machine-else',
+          effects: [
+            { asks: true },
+            { reveal: 'The print server cannot read the share it hands drivers out of, so no machine set up from today can add the printer.' },
+          ],
+        },
+        { label: 'Tell him you will look at the print server' },
+      ],
+    },
+    {
+      id: 'new-machine-else',
+      npc_line: 'Everything else. The estimating package, the tender folder, '
+        + 'the lot. It is only the printer, which is why I said it is the '
+        + 'printer.',
+      options: [
+        { label: 'Go back to the top', next: 'new-machine' },
+      ],
+    },
+    {
+      id: 'new-machine-after',
+      npc_line: 'It has taken it. I have printed the tender to check and then '
+        + 'thrown it away, which is a thing I now do twice a day.',
+      options: [{ label: 'Leave him to it' }],
+    },
+
     {
       id: 'idle',
       npc_line: 'Estimating. If it is about the quote for the Denby job, it '
@@ -826,6 +866,9 @@ const WAREHOUSE: DialogueTree = {
   id: 'dialogue/warehouse',
   speaker: COMPANY_IDS.hilda,
   tickets: [
+    // The audit queue (E9, 0.36.0): PRINT-01 has stopped announcing itself and
+    // she has concluded somebody took it away.
+    'ticket:audit-print-browser',
     'ticket:stale-device-relock',
     'ticket:disk-full',
     // The pool's two (E11, 0.34.0 slice 2). Both are the machine in the corner
@@ -836,18 +879,53 @@ const WAREHOUSE: DialogueTree = {
   ],
   root: 'again',
   roots: {
+    'ticket:audit-print-browser': 'gone-missing',
     'ticket:stale-device-relock': 'again',
     'ticket:disk-full': 'full',
     'ticket:pool-warehouse-schedule': 'head-office-rang',
     'ticket:pool-warehouse-tablet': 'scanner-dead',
   },
   resolved_roots: {
+    'ticket:audit-print-browser': 'gone-missing-after',
     'ticket:stale-device-relock': 'after',
     'ticket:disk-full': 'space-after',
     'ticket:pool-warehouse-schedule': 'export-sent',
     'ticket:pool-warehouse-tablet': 'scanner-back',
   },
   nodes: [
+    {
+      // The audit queue's third instance of the class (E9, 0.36.0): the box
+      // has stopped announcing itself, so anybody setting a machine up today
+      // cannot find it - and one person has noticed.
+      id: 'gone-missing',
+      npc_line: 'PRINT-01 has gone. It is not in the network list any more. '
+        + 'I am not saying anybody has taken it, but it is not there.',
+      options: [
+        {
+          label: 'Ask whether printing still works from her own machine',
+          next: 'gone-missing-hers',
+          effects: [
+            { asks: true },
+            { reveal: 'PRINT-01 has stopped announcing itself on the network, so nothing lists it - anybody who already has it keeps printing.' },
+          ],
+        },
+        { label: 'Tell her you will go and look at it' },
+      ],
+    },
+    {
+      id: 'gone-missing-hers',
+      npc_line: 'Mine prints. Mine has always printed. It is the list that is '
+        + 'wrong, and the lad in the office cannot add it to his at all.',
+      options: [
+        { label: 'Go back to the top', next: 'gone-missing' },
+      ],
+    },
+    {
+      id: 'gone-missing-after',
+      npc_line: 'It is back on the list. I will not ask where it went.',
+      options: [{ label: 'Leave her to it' }],
+    },
+
     {
       id: 'again',
       npc_line: 'It has locked me out again. Third time this week. Somebody '
@@ -1881,14 +1959,22 @@ const MARKETING: DialogueTree = {
   // And the trust relationship (E11, 0.34.0 slice 2), which is the same man
   // again: he photographs the error, reads it out accurately, and concludes
   // the fault is his own for having been the one it happened to.
-  tickets: ['ticket:phishing-report', 'ticket:pool-marketing-trust'],
+  // And the audit queue's arithmetic item (E9, 0.36.0): one desk, genuinely,
+  // and a number underneath it that the nine cells do not make.
+  tickets: [
+    'ticket:phishing-report',
+    'ticket:pool-marketing-trust',
+    'ticket:audit-marketing-spooler',
+  ],
   root: 'sorry',
   roots: {
+    'ticket:audit-marketing-spooler': 'nothing-prints',
     'ticket:phishing-report': 'sorry',
     'ticket:pool-marketing-trust': 'trust',
   },
   resolved_root: 'after',
   resolved_roots: {
+    'ticket:audit-marketing-spooler': 'nothing-prints-after',
     'ticket:phishing-report': 'after',
     'ticket:pool-marketing-trust': 'trust-done',
   },
@@ -1899,6 +1985,40 @@ const MARKETING: DialogueTree = {
   // minutes back onto the work. Same interruption family, one register over.
   call_roots: ['chat-dennis', 'chat-dennis-shaky'],
   nodes: [
+    {
+      // The audit queue's arithmetic item (E9, 0.36.0). One desk, genuinely -
+      // and a deadline, which is the urgency half the filing got right.
+      id: 'nothing-prints',
+      npc_line: 'Nothing at all comes out of mine. Both people either side of '
+        + 'me print off the same printer without a murmur. The proof has to be '
+        + 'signed on paper by five by a man who will not read a screen.',
+      options: [
+        {
+          label: 'Ask what happens when he prints',
+          next: 'nothing-prints-what',
+          effects: [
+            { asks: true },
+            { reveal: 'The spooler on Dennis\'s own machine is stopped, so his jobs never leave the desk. It is his machine and nobody else\'s.' },
+          ],
+        },
+        { label: 'Tell him you will look at his machine' },
+      ],
+    },
+    {
+      id: 'nothing-prints-what',
+      npc_line: 'Nothing happens. No error, no queue, no anything. It is as '
+        + 'though I have not pressed it, and I have, forty times.',
+      options: [
+        { label: 'Go back to the top', next: 'nothing-prints' },
+      ],
+    },
+    {
+      id: 'nothing-prints-after',
+      npc_line: 'It has printed. All forty of them. I am going to have a very '
+        + 'quiet word with the recycling.',
+      options: [{ label: 'Leave him to it' }],
+    },
+
     {
       id: 'sorry',
       npc_line: 'Sorry, this is probably nothing. It just felt wrong. It wants '
