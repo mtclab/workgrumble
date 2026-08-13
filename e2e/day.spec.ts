@@ -6,6 +6,33 @@ import {
   openFromStartMenu,
   underPause,
 } from './helpers';
+import { FIRST_EMPLOYER } from '../src/world/employers';
+import { dayLoad } from '../src/world/load';
+import { loadReading } from '../src/world/load-voice';
+import { dayScript } from '../src/world/week';
+import { findWorldTicket } from '../src/world/tickets';
+
+/**
+ * What the brief should be saying about a day of the probation week, derived
+ * rather than typed out (E11, 0.34.0 slice 3).
+ *
+ * The chain the assertion is about is `dayLoad` -> band -> the shop's voice, so
+ * the test walks the same chain rather than pinning the sentence: a week table
+ * that is edited, or a seed that moves a day about, moves this with it, and a
+ * brief that stopped reading the arithmetic still goes red.
+ */
+function readingFor(day: number): string {
+  const said = loadReading(
+    FIRST_EMPLOYER,
+    dayLoad(dayScript(day), findWorldTicket).load,
+  );
+
+  if (said === null) {
+    throw new Error(`No reading is written for day ${String(day)}.`);
+  }
+
+  return said;
+}
 
 function minutesOf(time: string): number {
   const [hours, mins] = time.split(':').map(Number);
@@ -158,6 +185,14 @@ test('walks a day from the morning brief to the scorecard', async ({
   await expect(page.getByTestId('day-state')).toHaveText('Morning brief');
   await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
 
+  // How heavy the day looks, in the lead's own words and as a band rather than
+  // a figure - the reading is what the week's arithmetic makes of Monday, and
+  // it is a reading of the SCHEDULE: nothing on it about the rounds, the pings
+  // or the favours the day has not asked for yet.
+  const reading = page.getByTestId('brief-load');
+  await expect(reading).toHaveText(readingFor(1));
+  await expect(reading).not.toContainText(/\d|walk-?up|ping|ticket/i);
+
   // Starting the shift skips whatever is left of the morning. The HOUR is what
   // is asserted, not the minute: the clock is running from the moment the shift
   // opens (the contract in `helpers.ts` - `install()` never stopped it), so a
@@ -168,6 +203,10 @@ test('walks a day from the morning brief to the scorecard', async ({
   await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
   await expect(page.getByTestId('day-state')).toHaveText('Shift');
   await expect(page.getByTestId('brief-start-shift')).toBeDisabled();
+
+  // And it does not move when the shift starts: the brief is a morning
+  // surface, and the day weighs what it weighs however much of it is left.
+  await expect(reading).toHaveText(readingFor(1));
 
   await page.getByTestId('close-brief').click();
   await expect(brief).toHaveCount(0);
@@ -332,8 +371,15 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
   await page.getByTestId('ticket-row-locked-account').click();
   await expect(page.getByTestId('ticket-detail-state')).toContainText('Open');
 
+  // And the brief, reopened after the reload, is still weighing the same day.
+  // It is derived from the week's table rather than carried in the file, which
+  // is why nothing had to be added to the save for it - and why a load that
+  // came back on the wrong day would say so here.
+  await page.getByTestId('day-state').click();
+  await expect(page.getByTestId('brief-load')).toHaveText(readingFor(1));
+  await page.getByTestId('close-brief').click();
+
   // And the shell's own memory: the mail that was read is still read.
-  await openFromStartMenu(page, 'mail');
   await expect(page.getByTestId('mail-summary')).toContainText('3 unread');
   await expect(page.getByTestId('mail-row-queue-nag')).toHaveAttribute(
     'data-unread',

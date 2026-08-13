@@ -96,6 +96,7 @@ import {
   type TickWindow,
 } from '../world/day';
 import { serviceMinutesBetween } from '../world/hours';
+import { dayLoad } from '../world/load';
 import {
   type ConductReading,
   conductLine,
@@ -1207,6 +1208,20 @@ export interface DayApi {
   channelFeed(now: number): readonly ChannelMessage[];
   /** What the brief calls a day of THIS employer's week, or a bare number. */
   dayLabel(day: number): string;
+  /**
+   * How heavy today is, as the band the week's own arithmetic makes it - one
+   * to four - or null on a day that is not one of this week's five (E11,
+   * 0.34.0 slice 3).
+   *
+   * Free to read and changes nothing, like the rest of this half of the
+   * interface, and computed rather than remembered for the reason `boss()` and
+   * `typing()` are: it is a function of the day's table and the roster, so a
+   * save carries nothing about it and a load lands on exactly the reading the
+   * loaded day has. It is the SAME `dayLoad` the roster gate and the week
+   * generator price days with - there is one answer to how heavy a day is, and
+   * a second one on a screen would be the one nobody could check.
+   */
+  loadBand(): number | null;
   /** Fires when the day, its state, the pause or the speed changed. */
   onChanged(listener: () => void): () => void;
 }
@@ -2969,6 +2984,24 @@ export class DayDriver implements DayApi {
   /** What the brief calls a day of this employer's week. */
   public dayLabel(day: number): string {
     return isWeekDay(day) ? dayScript(day, this.week_).label : `Day ${String(day)}`;
+  }
+
+  /**
+   * How heavy today is, priced off this week's own table (E11, 0.34.0 slice 3).
+   *
+   * `dayLoad` rather than `script.load`, and the difference matters even though
+   * the two agree: the authored column is checked AGAINST the arithmetic by
+   * `assertWeekLoads` and by the generator's own gate, so reading the column
+   * would be reading the copy that has to follow rather than the half that can
+   * be checked. The lookup is the shipped roster, which is the same one both
+   * gates and the sampler price with.
+   */
+  public loadBand(): number | null {
+    const day = this.day();
+
+    return isWeekDay(day)
+      ? dayLoad(dayScript(day, this.week_), findWorldTicket).load
+      : null;
   }
 
   /** The bottle in the fridge with your name on it. */

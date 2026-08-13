@@ -31,7 +31,13 @@ import {
   STRESS_PER_UNREAD_CHANNEL,
 } from '../world/meters';
 import { createWorldSession, WORLD_SEED } from '../world/session';
-import { dayPlan, dayScript, inheritedTicketIds } from '../world/week';
+import {
+  dayPlan,
+  dayScript,
+  inheritedTicketIds,
+  WEEK_DAYS,
+} from '../world/week';
+import { dayLoad } from '../world/load';
 import {
   SLA_TARGETS,
   UNTRIAGED_PRIORITY,
@@ -42,6 +48,7 @@ import { isActiveWork, ticketClocks } from '../world/sla';
 import {
   actionSummary,
   closesWithParent,
+  findWorldTicket,
   HANDOFF_BOUNCE,
   linkNote,
   spawnWorldTicket,
@@ -1473,5 +1480,63 @@ describe('the unread channel pile, as a pull on attention', () => {
     // move for other reasons - the queue - so this asserts the CHARGED ledger,
     // which is the drip's own record, did not grow).
     expect(world.stress()).toBeGreaterThanOrEqual(afterFirst);
+  });
+});
+
+/**
+ * How heavy the day says it is (E11, 0.34.0 slice 3).
+ *
+ * The driver's answer has to BE the arithmetic rather than agree with it: the
+ * roster gate, the week generator and the brief all ask how much a day is
+ * asking for, and the only version of that question worth putting on a screen
+ * is the one the other two are already checked against. So these compute the
+ * expected band with `dayLoad` itself, which is what makes a constant - or a
+ * read of the authored `load` column, or a second table - fail here rather than
+ * pass quietly on the one day it happens to be right about.
+ */
+describe('the day, weighed', () => {
+  it('reads the band off the same arithmetic the roster gate prices with', () => {
+    const world = harness();
+    const bands: number[] = [];
+
+    for (let day = 1; day <= WEEK_DAYS; day += 1) {
+      world.engine.advance(dayOpensTick(day) - world.engine.now());
+
+      const priced = dayLoad(dayScript(day), findWorldTicket).load;
+      expect(world.driver.loadBand(), `day ${String(day)}`).toBe(priced);
+      bands.push(priced);
+    }
+
+    // And the teeth on the assertion above: the probation week is not one band
+    // wide, so nothing constant can satisfy it.
+    expect(new Set(bands).size).toBeGreaterThan(1);
+  });
+
+  /**
+   * It does not move while the day is played, which is the whole of why the
+   * brief needs nothing carried in a save: the band is a function of the week's
+   * table and the roster, not of how much of the day is left. A reading that
+   * drifted with the queue would be a different sentence at four o'clock than
+   * at eight, and the morning brief is a morning surface.
+   */
+  it('says the same thing at the end of the day as it did at eight', () => {
+    const world = harness(DRIP_TICKET);
+    const morning = world.driver.loadBand();
+
+    expect(morning).toBe(dayLoad(dayScript(1), findWorldTicket).load);
+
+    world.driver.startShift();
+    world.driver.step(realMs(shiftEndTick(1) - world.engine.now() - 1));
+
+    expect(world.engine.now()).toBeGreaterThan(shiftStartTick(1));
+    expect(world.driver.loadBand()).toBe(morning);
+  });
+
+  /** A day that is not one of the week's five is not a day anybody weighs. */
+  it('weighs nothing on a day outside the week', () => {
+    const world = harness();
+    world.engine.advance(dayOpensTick(WEEK_DAYS + 1) - world.engine.now());
+
+    expect(world.driver.loadBand()).toBeNull();
   });
 });

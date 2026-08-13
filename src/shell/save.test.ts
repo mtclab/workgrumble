@@ -15,8 +15,15 @@ import {
   seedForAttempt,
   type WeekCarry,
 } from '../world/session';
-import { spawnWorldTicket } from '../world/tickets';
-import { type DayScript, noHelloOn, validateWeek } from '../world/week';
+import { findWorldTicket, spawnWorldTicket } from '../world/tickets';
+import { dayLoad } from '../world/load';
+import { loadReading } from '../world/load-voice';
+import {
+  type DayScript,
+  dayScript,
+  noHelloOn,
+  validateWeek,
+} from '../world/week';
 import { shiftEndTick, shiftStartTick } from '../world/day';
 import { shippedWeek, type WeekSource } from '../world/week-source';
 import { acknowledgeCarry, carryFrom, RetrySlot } from './retry';
@@ -328,6 +335,58 @@ describe('the save file', () => {
     runTo(loaded, said + 2);
     expect(loaded.driver.typing(slot?.speaker ?? '')?.minutesLeft)
       .toBe((slot?.typingMinutes ?? 0) - 2);
+  });
+
+  /**
+   * And a save taken in the middle of a day comes back weighing the same
+   * (E11, 0.34.0 slice 3).
+   *
+   * The morning brief's load reading is the other surface in this game with no
+   * stored state behind it: `day.loadBand()` is `dayLoad` on the week's own
+   * table, which is why nothing was added to the file for it. The claim is the
+   * same one the typing indicator makes and it is worth the same walk, because
+   * the obvious wrong implementation is a band worked out once at eight o'clock
+   * and remembered - and a remembered band is a band a load either loses or
+   * brings back from the wrong day.
+   *
+   * So it is walked on TUESDAY, whose band is not Monday's: the session that
+   * does the loading opens on a Monday it has never played, reads Monday's
+   * band, and has to be reading Tuesday's - and Tuesday's sentence - the minute
+   * the file is in.
+   */
+  it('comes back into the middle of a day that weighs the same', () => {
+    const live = session();
+
+    live.driver.startShift();
+    runTo(live, shiftEndTick(1));
+    live.driver.clockOff();
+    live.driver.startShift();
+    runTo(live, shiftStartTick(2) + 120);
+    expect(live.driver.day()).toBe(2);
+
+    const monday = dayLoad(dayScript(1), findWorldTicket).load;
+    const tuesday = dayLoad(dayScript(2), findWorldTicket).load;
+    expect(tuesday).not.toBe(monday);
+    expect(live.driver.loadBand()).toBe(tuesday);
+
+    live.driver.setPaused(true);
+    expect(live.session.save()).toEqual({ ok: true, value: undefined });
+
+    // A session that has never had a Tuesday, reading Monday's weight.
+    const loaded = session(live.storage);
+    expect(loaded.driver.loadBand()).toBe(monday);
+    expect(loaded.session.load()).toEqual({ ok: true, value: undefined });
+
+    expect(loaded.driver.day()).toBe(2);
+    expect(loaded.driver.loadBand()).toBe(tuesday);
+    expect(loadReading(FIRST_EMPLOYER, loaded.driver.loadBand() ?? 0))
+      .toBe(loadReading(FIRST_EMPLOYER, tuesday));
+
+    // And playing on does not move it: the band is what the day is asking for,
+    // not what is left of it.
+    loaded.driver.setPaused(false);
+    runTo(loaded, shiftStartTick(2) + 240);
+    expect(loaded.driver.loadBand()).toBe(tuesday);
   });
 
   /**

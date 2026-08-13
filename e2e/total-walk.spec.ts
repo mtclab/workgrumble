@@ -29,6 +29,11 @@ import {
 import { REFUSED_TOKENS, SHARED_TOKEN } from './tokens';
 import { AWAY_NOTICED_LINES } from '../src/world/dialogue';
 import { buildPatrolSchedule } from '../src/world/boss';
+import { FIRST_EMPLOYER } from '../src/world/employers';
+import { dayLoad } from '../src/world/load';
+import { loadReading } from '../src/world/load-voice';
+import { dayScript } from '../src/world/week';
+import { findWorldTicket } from '../src/world/tickets';
 import { WORLD_SEED } from '../src/world/session';
 import { DND_BEAT_MINUTES, dndEvidence } from '../src/world/presence';
 import {
@@ -471,6 +476,25 @@ test('walks every function of a probation week that goes well', async ({
     // The day drips more in while it is being worked, and the brief only says
     // so when it is true.
     await expect(page.getByTestId('brief-later')).toContainText('on their way');
+  });
+
+  await step('brief.load-reading', async () => {
+    // The one reading on this screen that is arithmetic rather than a list, and
+    // the assertion walks the same chain the surface does: `dayLoad` prices
+    // Monday off the week's own table, the band picks the shop's line, and the
+    // brief has to be saying that line. Derived rather than pinned, so a week
+    // table that moves moves this with it - and a brief that stopped asking the
+    // arithmetic goes red on the day the two disagree.
+    const band = dayLoad(dayScript(1), findWorldTicket).load;
+    const said = loadReading(FIRST_EMPLOYER, band);
+    const reading = page.getByTestId('brief-load');
+
+    expect(said).not.toBeNull();
+    await expect(reading).toHaveAttribute('data-band', String(band));
+    await expect(reading).toHaveText(said ?? '');
+    // A forecast, not a manifest: no figure, and nothing about the walk-ups,
+    // the pings and the rounds the day has not dealt yet.
+    await expect(reading).not.toContainText(/\d|walk-?up|ping|ticket/i);
   });
 
   await step('brief.start-shift', async () => {

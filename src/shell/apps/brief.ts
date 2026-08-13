@@ -1,6 +1,7 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import { isLunchtime, shiftStartTick } from '../../world/day';
 import { FIELDS } from '../../world/fields';
+import { loadReading } from '../../world/load-voice';
 import { latestTick, type MailThread, visibleMail } from '../../world/mail';
 import { findWorldTicket } from '../../world/tickets';
 import {
@@ -47,10 +48,21 @@ function ticketTitleOf(ticket: ReadOnlyGraphNode): string {
  * The morning brief: the hour before the shift, which is the only part of the
  * day nobody is measuring.
  *
- * It says three things and no more - what day it is, what somebody wants from
- * you before you have sat down, and what is already in the queue - and then
- * offers the one button that starts the clock properly. Reading it is not paid
- * time, so starting the shift skips whatever is left of the morning.
+ * It says four things and no more - what day it is, how heavy the day looks,
+ * what somebody wants from you before you have sat down, and what is already
+ * in the queue - and then offers the one button that starts the clock
+ * properly. Reading it is not paid time, so starting the shift skips whatever
+ * is left of the morning.
+ *
+ * The second of those is the newest (E11, 0.34.0 slice 3, D-E11-5) and the one
+ * with a rule attached: it is the day's computed load, in the shop's own voice
+ * and as a BAND rather than a figure, and it is a reading of the SCHEDULE. It
+ * knows what the week's table holds at eight o'clock and nothing else - the
+ * walk-up at half two, the direct message, the round the lead makes at a minute
+ * the seed picked are all still surprises, and the copy is written as a
+ * forecast so it stays true whichever way the day's favours are answered. The
+ * band comes off `dayLoad`, which is the same arithmetic the roster gate and
+ * the week generator price a day with: one answer, on the screen.
  */
 export const BRIEF_APP: AppDef = {
   id: 'brief',
@@ -65,7 +77,12 @@ export const BRIEF_APP: AppDef = {
     const head = element('div', 'brief-head');
     const heading = element('h2', undefined, 'brief-heading');
     const stamp = element('p', 'brief-stamp', 'brief-stamp');
-    head.append(heading, stamp);
+    // The day, weighed. Hidden outright rather than blank when the shop has no
+    // voice written for it or the day is not one of the week's five: a heading
+    // over nothing is the same small lie the overnight panel refuses to tell.
+    const load = element('p', 'brief-load', 'brief-load');
+    load.hidden = true;
+    head.append(heading, stamp, load);
 
     // The overnight surface, above the two columns because it is the one thing
     // on this screen that is about last night rather than about the day ahead.
@@ -363,6 +380,23 @@ export const BRIEF_APP: AppDef = {
           + 'as it is allowed to.'
         : 'The shift is under way. This is the brief you already read.';
       root.dataset.dayState = state;
+
+      // What the day is asking for, read off the week's own arithmetic and
+      // said in the shop's own words. It does not move while the day is played
+      // - the band is a function of the table and the roster, not of how much
+      // of it is left - so the brief reopened at four says exactly what it said
+      // at eight, and so does the same brief after a save and a load.
+      const band = api.day.loadBand();
+      const reading = band === null ? null : loadReading(api.employer, band);
+
+      load.hidden = reading === null;
+      load.textContent = reading ?? '';
+
+      if (band !== null && reading !== null) {
+        load.dataset.band = String(band);
+      } else {
+        delete load.dataset.band;
+      }
 
       // The panels are rebuilt every minute, and the player may be standing on
       // one of the buttons inside them when the clock moves.

@@ -3648,6 +3648,15 @@ input {
   font-size: var(--text-sm);
 }
 
+/* The day, weighed: a line of somebody's opinion rather than a readout, so it
+   is the reading face at reading size and it is not dressed as a number. */
+.brief-load {
+  color: var(--color-ink);
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
 .brief-columns,
 .scorecard-columns {
   display: grid;

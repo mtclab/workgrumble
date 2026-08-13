@@ -655,6 +655,17 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'brief.load-reading',
+    surface: 'brief',
+    control: 'brief-load',
+    does: 'Reads how heavy today looks, in the shop\'s own voice and as a band '
+      + 'rather than a figure - the day\'s committed minutes off the same '
+      + 'arithmetic the roster gate prices weeks with, and a reading of the '
+      + 'schedule only: nothing about the walk-ups, the pings or the rounds '
+      + 'still to come.',
+    run: 'week',
+  },
+  {
     id: 'brief.start-shift',
     surface: 'brief',
     control: 'brief-start-shift',
