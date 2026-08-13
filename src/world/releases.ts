@@ -31,6 +31,33 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.34.0',
+    date: '2026-08-13',
+    summary: 'There is now a second week. IT apologises for the implications.',
+    lines: Object.freeze([
+      'Passing your Friday review now offers a choice it always claimed to '
+        + 'offer: take the job somewhere else, or come back to the same desk '
+        + 'on Monday. The desk will remember you. Specifically it remembers '
+        + 'what you installed, which machines you have made peace with, and '
+        + 'one sticky note in the warehouse - and it forgets your meters, '
+        + 'which is the closest thing this building has to mercy.',
+      'The second week is not the first week again. The queue is drawn '
+        + 'fresh, and nothing you dealt with last week comes back this week '
+        + 'wearing the same face. Some of it will be mundane. That is not a '
+        + 'defect; you work in IT.',
+      'The morning brief now says how the day looks before you are in it - '
+        + 'in words, not numbers, because your lead does not speak in '
+        + 'minutes. It reads the schedule, not the future: nobody can brief '
+        + 'you on who will walk up to your desk, least of all the people '
+        + 'who walk up to your desk.',
+      'A confession, as is now traditional: the check that was supposed to '
+        + 'refuse a week where a colleague greets you with a bare "hello" '
+        + 'and nothing else had never actually been switched on. It is '
+        + 'switched on. It found nothing. The clean record is somehow more '
+        + 'unsettling.',
+    ]),
+  },
+  {
     version: '0.33.0',
     date: '2026-08-12',
     summary: 'The design team\'s old MacBook is available, if you have earned '

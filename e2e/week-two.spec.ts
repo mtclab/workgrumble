@@ -4,6 +4,7 @@ import {
   completeLogin,
   openFromStartMenu,
   runSimMinutes,
+  underPause,
 } from './helpers';
 
 /**
@@ -107,6 +108,15 @@ test('the building kept what it was told to keep, and nothing else', async ({
   await page.getByTestId('brief-start-shift').click();
   await page.getByTestId('close-brief').click();
 
+  // REBUILT, read FIRST and with the day held: the fresh-morning claim is a
+  // minute read, and every await below this line spends the minutes it would
+  // be claiming about (the standing faked-clock rule - the arrival walk
+  // above already cost an hour of drift on the first box run).
+  await underPause(page, async () => {
+    await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 1');
+    await expect(page.getByTestId('sim-clock-time')).toHaveText(/^0[89]:/);
+  });
+
   // CARRIED, and visible on the desktop: the toy that was installed last week
   // is installed this week. It is app state rather than world state, so it
   // rides the arrival record rather than the estate whitelist - and it is the
@@ -129,11 +139,9 @@ test('the building kept what it was told to keep, and nothing else', async ({
     () => globalThis.careerSim?.field('person:pat', 'arc_week') ?? null,
   )).toBe(2);
 
-  // REBUILT: the day, the meters and the verdict. A whitelist that carried the
-  // world wholesale would pass everything above and fail everything here.
-  await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 1');
-  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
-
+  // REBUILT: the verdict and the ledger. A whitelist that carried the world
+  // wholesale would pass everything above and fail everything here. (The
+  // clock's own fresh-morning read moved to the top of the walk, held.)
   await openFromStartMenu(page, 'weekend');
   await expect(page.getByTestId('weekend-verdict'))
     .toHaveAttribute('data-outcome', 'pending');
