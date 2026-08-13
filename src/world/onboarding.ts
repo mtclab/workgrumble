@@ -62,7 +62,13 @@ const TILLMAN_ONBOARDING: OnboardingEvent = {
   },
 };
 
-const ONBOARDINGS: readonly OnboardingEvent[] = [TILLMAN_ONBOARDING];
+/**
+ * Exported because the work-kind index reads every setup this build ships
+ * (`work-kinds.ts`), and an onboarding's estate is a third of an answer:
+ * TILLMAN's server is built HERE rather than by the MSP, so a list this module
+ * kept to itself left the one ticket about that server unclassifiable.
+ */
+export const ONBOARDINGS: readonly OnboardingEvent[] = [TILLMAN_ONBOARDING];
 
 /** The onboarding a day script's slot names, or undefined if nobody wrote it. */
 export function findOnboarding(id: string): OnboardingEvent | undefined {

@@ -27,7 +27,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { PROMOTION_REPUTATION, SYSTEMD_ACTIONS } from '../../world/actions';
+import { SYSTEMD_ACTIONS } from '../../world/actions';
 import {
   FIELDS,
   LAUNCHD_DOMAINS,
@@ -53,6 +53,7 @@ import {
   unixPrompt,
 } from './cmd-unix';
 import type { GameApi } from './types';
+import { offeredAtFor } from '../../world/titles';
 
 /** The Mac the studio's senior designer sits at, and its Bonjour daemon. */
 const MAC_HOST = 'MARL-WS-01';
@@ -140,7 +141,7 @@ function promoted(): Rig {
     op: 'setField',
     id: MSP_IDS.player,
     field: FIELDS.reputation,
-    value: PROMOTION_REPUTATION,
+    value: offeredAtFor('systems_engineer'),
   }]);
   win(api, 'promotion accept');
 

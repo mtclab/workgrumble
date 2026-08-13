@@ -35,7 +35,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { WasmEngine } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
-import { CAREER_ACTIONS, PROMOTION_REPUTATION } from '../world/actions';
+import { CAREER_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS, PLAYER_TIERS } from '../world/fields';
 import { shiftEndTick, shiftStartTick } from '../world/hours';
@@ -78,6 +78,7 @@ import {
 } from './save';
 import { MemoryStorage } from './storage';
 import { switchRecord, SwitchSlot } from './switch';
+import { offeredAtFor } from '../world/titles';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -194,7 +195,7 @@ function rig(promoted = true, storage: Storage = new MemoryStorage()): Rig {
       op: 'setField',
       id: COMPANY_IDS.player,
       field: FIELDS.reputation,
-      value: PROMOTION_REPUTATION,
+      value: offeredAtFor('systems_engineer'),
     }]);
     session.engine.dispatch(
       CAREER_ACTIONS.acceptPromotion,

@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  PROMOTION_REPUTATION,
-  SYSTEMS_ENGINEER_TITLE,
-} from '../../world/actions';
+
 import { COMPANY_IDS } from '../../world/company';
 import { MSP_IDS } from '../../world/msp-company';
 import { WasmEngine } from '../../engine-api';
@@ -46,6 +43,7 @@ import {
   unixPrompt,
 } from './cmd-unix';
 import type { GameApi } from './types';
+import { ENGINEER_TITLE, offeredAtFor } from '../../world/titles';
 
 function apiFor(session: WorldSession): GameApi {
   return {
@@ -92,7 +90,7 @@ function earnPromotion(session: WorldSession): void {
     op: 'setField',
     id: COMPANY_IDS.player,
     field: FIELDS.reputation,
-    value: PROMOTION_REPUTATION,
+    value: offeredAtFor('systems_engineer'),
   }]);
 }
 
@@ -138,7 +136,7 @@ describe('the promotion, ssh, and the unix terminal (E6)', () => {
       expect(api.graph.getField(COMPANY_IDS.player, FIELDS.playerTier))
         .toBe(PLAYER_TIERS.systemsEngineer);
       expect(api.graph.getField(COMPANY_IDS.player, FIELDS.title))
-        .toBe(SYSTEMS_ENGINEER_TITLE);
+        .toBe(ENGINEER_TITLE);
     });
 
     it('refuses a second promotion - the crossing is one-way', () => {
@@ -371,7 +369,7 @@ describe('the promotion, ssh, and the unix terminal (E6)', () => {
       expect(reloaded.graph.getField(COMPANY_IDS.player, FIELDS.playerTier))
         .toBe(PLAYER_TIERS.systemsEngineer);
       expect(reloaded.graph.getField(COMPANY_IDS.player, FIELDS.title))
-        .toBe(SYSTEMS_ENGINEER_TITLE);
+        .toBe(ENGINEER_TITLE);
       expect(readKnownHosts(
         reloaded.graph.getField(COMPANY_IDS.player, FIELDS.knownHosts),
       )).toContain('machine:app');

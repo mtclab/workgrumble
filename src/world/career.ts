@@ -30,9 +30,10 @@
  */
 
 import type { CarriedValue } from './carry';
-import { type PlayerTier, PLAYER_TIERS, playerTierOf } from './fields';
+import { type PlayerTier, playerTierOf } from './fields';
 import { clampMeter } from './meters';
 import { PROBATION_WEEK } from './pressure';
+import { DEFAULT_RUNG, tierFor } from './titles';
 import type { WeekCarry } from './session';
 
 /** The three ways a probation ends, as the carry sees them. */
@@ -270,5 +271,11 @@ export function serializeCareer(career: Readonly<EmployerCareer>): string {
   });
 }
 
-/** The default a fresh career carries: the desk, until the promotion crosses it. */
-export const FRESH_CAREER_TIER: PlayerTier = PLAYER_TIERS.serviceDesk;
+/**
+ * The default a fresh career carries: the desk, until the promotion crosses it.
+ *
+ * Off the junior rung's own row (E9, 0.35.0) rather than named again here - the
+ * tier a fresh career stands on is the tier the bottom of the ladder is, and
+ * two places saying so was two places to change.
+ */
+export const FRESH_CAREER_TIER: PlayerTier = tierFor(DEFAULT_RUNG);

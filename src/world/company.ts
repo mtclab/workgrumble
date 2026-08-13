@@ -25,6 +25,7 @@ import {
   unitIdOn,
   unitNodeFields,
 } from './services';
+import { TITLE_TABLE } from './titles';
 
 /**
  * What everybody on this estate has on file, from the June rollout: a number
@@ -291,7 +292,12 @@ const STAFF: readonly StaffSeed[] = [
     person: COMPANY_IDS.player,
     account: COMPANY_IDS.playerAccount,
     name: 'Pat Pending',
-    title: 'IT Support Technician (probationary)',
+    // OFF THE RUNG TABLE (E9, 0.35.0): the probationary title is what the
+    // junior rung IS, and it was written down twice - here, and in the design
+    // of the ladder. The row is the one that decides now, so a rung renamed in
+    // the table renames the person the world seeds rather than disagreeing
+    // with them.
+    title: TITLE_TABLE.sd_junior.title,
     username: 'ppending',
     desk: 'The cupboard with the good kettle',
     lastLogon: 0,

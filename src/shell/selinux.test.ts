@@ -16,7 +16,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadEngineForTests } from '../engine-api/load-node';
-import { CAREER_ACTIONS, PROMOTION_REPUTATION } from '../world/actions';
+import { CAREER_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { tickAtMinute } from '../world/day';
 import { FIELDS } from '../world/fields';
@@ -32,6 +32,7 @@ import { executeCommand } from './apps/cmd-run';
 import { executeUnix, parseUnixCommand, type SshSession } from './apps/cmd-unix';
 import type { GameApi } from './apps/types';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
+import { offeredAtFor } from '../world/titles';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -110,7 +111,7 @@ function rig(distro: DistroId = 'fedora'): Rig {
     op: 'setField',
     id: COMPANY_IDS.player,
     field: FIELDS.reputation,
-    value: PROMOTION_REPUTATION,
+    value: offeredAtFor('systems_engineer'),
   }]);
   session.engine.dispatch(
     CAREER_ACTIONS.acceptPromotion,

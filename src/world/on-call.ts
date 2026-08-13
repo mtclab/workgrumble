@@ -32,7 +32,8 @@
  * and a surface draws.
  */
 
-import { isSystemsEngineer } from './fields';
+import { playerTierOf } from './fields';
+import { rowForTier } from './titles';
 
 /**
  * How loud the page is. A sev-1 is a customer-facing service down (the portal
@@ -278,14 +279,19 @@ export function formatPageTime(minute: number): string {
 }
 
 /**
- * Whether this player carries the pager: only a Systems Engineer is on-call.
+ * Whether this player carries the pager, which is a fact about their RUNG and
+ * is therefore read off the rung table (E9, 0.35.0: `carriesPager`).
  *
  * The one gate the whole version rests on, and the whole of why a service-desk
  * player and every pre-promotion golden are byte-identical - a desk player is
  * never paged, so nothing fires, nothing is authored onto their save, and the
- * on-call column is inert. Reads the raw tier field with the back-compat default
- * (absent is service desk), exactly as the ssh gate does.
+ * on-call column is inert. It used to ask whether the tier was Systems
+ * Engineer, which was the same answer by coincidence of there being one rung
+ * with a pager; the table says which rungs carry one, so the rung above the
+ * engineer that also carries it will not need this line edited. Reads the raw
+ * tier field with the back-compat default (absent is service desk), exactly as
+ * the ssh gate does.
  */
 export function isOnCall(playerTierValue: unknown): boolean {
-  return isSystemsEngineer(playerTierValue);
+  return rowForTier(playerTierOf(playerTierValue)).carriesPager;
 }

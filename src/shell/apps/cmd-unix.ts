@@ -35,7 +35,6 @@ import {
   FS_MODE_PARAM,
   FS_OWNER_PARAM,
   INCIDENT_ACTIONS,
-  PROMOTION_REPUTATION,
   SELINUX_ACTIONS,
   SELINUX_MODE_PARAM,
   SSH_HOST_PARAM,
@@ -89,6 +88,7 @@ import {
 import type { CommandResult } from './cmd-run';
 import type { GameApi } from './types';
 import { textValue } from './ui';
+import { offeredAtFor } from '../../world/titles';
 
 /**
  * Where the terminal is standing when it is on a server: which box, what it is
@@ -1087,7 +1087,7 @@ export function promotionEarned(api: GameApi): boolean {
 
   const reputation = api.graph.getField(api.actor, FIELDS.reputation);
 
-  return typeof reputation === 'number' && reputation >= PROMOTION_REPUTATION;
+  return typeof reputation === 'number' && reputation >= offeredAtFor('systems_engineer');
 }
 
 /**

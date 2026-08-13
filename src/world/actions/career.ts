@@ -19,21 +19,19 @@
 
 import type { ActionData } from '../../engine-api';
 import { FIELDS, PLAYER_TIERS } from '../fields';
+import { ENGINEER_OFFER_AT, ENGINEER_TITLE } from '../titles';
 import { fieldIs, HELPDESK_TIER, not, TARGET, targetGuards } from './helpers';
 import { CAREER_ACTIONS } from './ids';
 
 /**
- * The reputation the Systems Engineer offer is made at. An OVERSEER TUNING KNOB,
- * and deliberately high on the nought-to-a-hundred scale the reputation meter
- * runs: the promotion is the payoff of career progression, not a free unlock, so
- * the world holds the door shut until the standing behind it is real. A player
- * arriving at the MSP with the standing they built across the arc clears it; a
- * fresh probationer nowhere near it does not, which is the whole of "earned".
+ * The standing the offer is made at and the title it writes both live on the
+ * Systems Engineer's row in the rung table (E9, 0.35.0) - `offeredAt` and
+ * `title` - and are read from there rather than kept here as well. The figure
+ * is still an OVERSEER TUNING KNOB and still deliberately high on the
+ * nought-to-a-hundred scale the reputation meter runs: the promotion is the
+ * payoff of career progression, not a free unlock, so the world holds the door
+ * shut until the standing behind it is real.
  */
-export const PROMOTION_REPUTATION = 70;
-
-/** The title the promotion writes over whatever the player held before it. */
-export const SYSTEMS_ENGINEER_TITLE = 'Systems Engineer';
 
 /** The ssh host the trust action records, named in its one string parameter. */
 export const SSH_HOST_PARAM = 'host';
@@ -62,7 +60,7 @@ export const CAREER_ACTION_DATA: readonly ActionData[] = [
           pred: 'field_at_least',
           node: TARGET,
           field: FIELDS.reputation,
-          value: PROMOTION_REPUTATION,
+          value: ENGINEER_OFFER_AT,
         }),
         reason: 'The Systems Engineer offer is not on the table yet. It is the '
           + 'payoff of a career built, not a free unlock - keep the standing up '
@@ -80,7 +78,7 @@ export const CAREER_ACTION_DATA: readonly ActionData[] = [
         op: 'set_field',
         node: TARGET,
         field: FIELDS.title,
-        value: { const: SYSTEMS_ENGINEER_TITLE },
+        value: { const: ENGINEER_TITLE },
       },
     ],
   },

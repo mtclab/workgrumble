@@ -37,7 +37,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadEngineForTests } from '../../engine-api/load-node';
-import { CAREER_ACTIONS, PROMOTION_REPUTATION } from '../../world/actions';
+import { CAREER_ACTIONS } from '../../world/actions';
 import { COMPANY_IDS } from '../../world/company';
 import { FIELDS } from '../../world/fields';
 import { calendarDate, shiftStartTick } from '../../world/hours';
@@ -73,6 +73,7 @@ import {
   unattributedLine,
 } from './timesheet';
 import type { GameApi } from './types';
+import { offeredAtFor } from '../../world/titles';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -138,7 +139,7 @@ function rig(promoted = true): Rig {
       op: 'setField',
       id: COMPANY_IDS.player,
       field: FIELDS.reputation,
-      value: PROMOTION_REPUTATION,
+      value: offeredAtFor('systems_engineer'),
     }]);
     session.engine.dispatch(
       CAREER_ACTIONS.acceptPromotion,

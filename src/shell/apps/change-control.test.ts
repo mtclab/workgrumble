@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PROMOTION_REPUTATION } from '../../world/actions';
+
 import { COMPANY_IDS } from '../../world/company';
 import { MSP_IDS } from '../../world/msp-company';
 import {
@@ -20,6 +20,7 @@ import { parseCommand } from './cmd-parse';
 import { executeCommand, type CommandResult } from './cmd-run';
 import { executeUnix, parseUnixCommand, type SshSession } from './cmd-unix';
 import type { GameApi } from './types';
+import { offeredAtFor } from '../../world/titles';
 
 /**
  * Change control (E6, 0.18.0), driven through the REAL dispatch path.
@@ -80,7 +81,7 @@ function earnPromotion(session: WorldSession): void {
     op: 'setField',
     id: COMPANY_IDS.player,
     field: FIELDS.reputation,
-    value: PROMOTION_REPUTATION,
+    value: offeredAtFor('systems_engineer'),
   }]);
 }
 

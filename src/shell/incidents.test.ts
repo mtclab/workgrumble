@@ -19,7 +19,6 @@ import {
   CAREER_ACTIONS,
   INCIDENT_JOURNAL_BYTES,
   JOURNAL_VACUUM_TARGET,
-  PROMOTION_REPUTATION,
 } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS, PLAYER_TIERS, SYSTEMD_STATES } from '../world/fields';
@@ -33,6 +32,7 @@ import { executeCommand } from './apps/cmd-run';
 import { executeUnix, parseUnixCommand, type SshSession } from './apps/cmd-unix';
 import type { GameApi } from './apps/types';
 import { DayDriver } from './day-driver';
+import { offeredAtFor } from '../world/titles';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -110,7 +110,7 @@ function promoteAndRaise(rigged: Rig): void {
     op: 'setField',
     id: COMPANY_IDS.player,
     field: FIELDS.reputation,
-    value: PROMOTION_REPUTATION,
+    value: offeredAtFor('systems_engineer'),
   }]);
   rigged.session.engine.dispatch(
     CAREER_ACTIONS.acceptPromotion,

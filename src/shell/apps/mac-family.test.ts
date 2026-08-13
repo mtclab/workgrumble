@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PROMOTION_REPUTATION } from '../../world/actions';
+
 import { SYSTEMD_ACTIONS } from '../../world/actions';
 import { isRiskyProductionChange } from '../../world/change-control';
 import { COMPANY_IDS } from '../../world/company';
@@ -31,6 +31,7 @@ import {
 } from './cmd-unix';
 import type { GameApi } from './types';
 import type { SetupOp } from '../../engine-api';
+import { offeredAtFor } from '../../world/titles';
 
 /**
  * The third OS family meets the tools that cannot reach it (0.32.0, lane A).
@@ -346,7 +347,7 @@ describe('the unix terminal meets a Mac', () => {
       op: 'setField',
       id: COMPANY_IDS.player,
       field: FIELDS.reputation,
-      value: PROMOTION_REPUTATION,
+      value: offeredAtFor('systems_engineer'),
     }]);
     win(api, 'promotion accept');
 

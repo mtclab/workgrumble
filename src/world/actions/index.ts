@@ -26,11 +26,7 @@ export {
   TIMESHEET_LINES_PARAM,
   TIMESHEET_SUBMITTED_REASON,
 } from './timesheet';
-export {
-  PROMOTION_REPUTATION,
-  SSH_HOST_PARAM,
-  SYSTEMS_ENGINEER_TITLE,
-} from './career';
+export { SSH_HOST_PARAM } from './career';
 import { DAY_ACTION_DATA } from './day';
 import { DEVICE_ACTIONS } from './device';
 import { DRIVE_ACTIONS } from './drive';
