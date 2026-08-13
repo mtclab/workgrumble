@@ -922,6 +922,21 @@ const DRAWN_MATRIX = SHIPPED_WEEKS.flatMap((shop) => BUILT_RUNGS.map((rung) => (
 })));
 
 /**
+ * How long one cell of that matrix may take.
+ *
+ * Thirty minutes, raised from ten by the matrix that doubled it and by what the
+ * second rung costs. An engineer's week is drawn twice wherever a shop's pool
+ * cannot express the blend - the strict pass in full, then the shop as it comes
+ * (`composeWeek`) - and Halcyon Grange is the worst case in the game for it:
+ * eight coupled beats, seventeen loose entries, and a blend it manages about
+ * half the time. MEASURED at ten thousand seeds a cell: the whole matrix is
+ * about half an hour and the slowest cell is a good part of it, which is a
+ * deep pre-release gate rather than a suite run, and is exactly what
+ * `gate:seeds` is for. The default hundred a cell is seconds.
+ */
+const DEEP_RUN_MS = 1_800_000;
+
+/**
  * The days a shipped week deliberately deals nothing at all.
  *
  * Bodgeworth's Friday is five tickets' worth of week running out on the
@@ -1432,7 +1447,7 @@ describe.each(DRAWN_MATRIX)('$name: a hundred drawn weeks', ({ employer, rung })
     expect(refused).toEqual([]);
     expect(complaints).toEqual([]);
     expect(worst).toBeGreaterThanOrEqual(CLEAR_MINUTES_NEEDED);
-  }, 600_000);
+  }, DEEP_RUN_MS);
 
   /**
    * And the shape of them, which is the half the auditor cannot see.
@@ -1477,5 +1492,5 @@ describe.each(DRAWN_MATRIX)('$name: a hundred drawn weeks', ({ employer, rung })
           .toBeGreaterThanOrEqual(week[day - 1]?.load ?? 0);
       }
     }
-  }, 600_000);
+  }, DEEP_RUN_MS);
 });
