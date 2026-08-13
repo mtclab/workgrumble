@@ -31,6 +31,24 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.35.2',
+    date: '2026-08-13',
+    summary: 'Your inbox no longer contains another building\'s post.',
+    lines: Object.freeze([
+      'If you changed employers and still received emails from the '
+        + 'previous shop\'s service lead - a man who does not work at your '
+        + 'company, about a kettle your building does not have - that has '
+        + 'been corrected. Mail now belongs to the building it was sent '
+        + 'in. IT notes, in fairness to itself, that forwarding rules '
+        + 'outliving their owners is one of the most realistic bugs it '
+        + 'has ever shipped.',
+      'Relatedly: colleagues from your old job no longer notice your '
+        + 'presence dot from a different postcode, and the morning '
+        + 'brief\'s reading of the day now follows you when you change '
+        + 'desks instead of describing a queue in another town.',
+    ]),
+  },
+  {
     version: '0.35.1',
     date: '2026-08-13',
     summary: 'Display Properties now says no where you can see it saying no.',
