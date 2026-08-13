@@ -57,9 +57,16 @@ test('the log-on box offers the whole ladder, and only the built rungs', async (
   // difficulties rather than a career with five rungs still to come.
   await expect(desk.locator('option')).toHaveCount(7);
   await expect(desk.locator('option:not([disabled])')).toHaveCount(2);
-  await expect(desk.locator('option[value="sd_junior"]')).toBeEnabled();
-  await expect(desk.locator('option[value="systems_engineer"]')).toBeEnabled();
-  await expect(desk.locator('option[value="architect"]')).toBeDisabled();
+  // Asserted on the ATTRIBUTE, not toBeDisabled(): Playwright's
+  // enabled/disabled read is unreliable for <option> on this runner (the
+  // attribute was present in the DOM and the matcher still said enabled on
+  // the first box run). The attribute is the thing the product ships.
+  await expect(desk.locator('option[value="sd_junior"]'))
+    .not.toHaveAttribute('disabled', '');
+  await expect(desk.locator('option[value="systems_engineer"]'))
+    .not.toHaveAttribute('disabled', '');
+  await expect(desk.locator('option[value="architect"]'))
+    .toHaveAttribute('disabled', '');
 
   // The standard desk is the one already selected, so a player who reads none
   // of this and presses Log on gets the game they have always got.

@@ -241,6 +241,16 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'login.desk',
+    surface: 'login',
+    control: 'login-desk',
+    does: 'Picks the desk you were hired onto - the whole ladder shown, the '
+      + 'built rungs selectable, the unwritten ones saying so. Driven '
+      + 'through the real log-on box by its own spec; the total walk logs '
+      + 'on at the standard desk, which is this control at its default.',
+    run: 'week',
+  },
+  {
     id: 'login.issue-badge',
     surface: 'login',
     control: 'login-issue-badge',
@@ -4124,6 +4134,7 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'login-issue-badge',
   'login-submit',
   'login-restart',
+  'login-desk',
 
   /* -- the desktop, the taskbar and the start menu ------------------------ */
   'desktop-icon-*',

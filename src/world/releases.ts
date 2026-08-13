@@ -31,6 +31,33 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.35.0',
+    date: '2026-08-13',
+    summary: 'You may now be hired as somebody more senior. The queue has '
+      + 'been informed and is adjusting its expectations of you accordingly.',
+    lines: Object.freeze([
+      'The log-on screen now shows the whole career ladder and lets you '
+        + 'start at the rungs that exist: the service desk you know, or a '
+        + 'Systems Engineer post at the managed-service provider - pager, '
+        + 'server work and all, no probation week. The greyed rungs are '
+        + 'not locked content, they are unwritten ones, and the screen '
+        + 'says so rather than pretending otherwise.',
+      'Your title now genuinely changes what lands on you. An engineer '
+        + 'still gets password resets - seniors are the safety net, that '
+        + 'is the whole tragedy of seniority - but fewer of them, and the '
+        + 'server work does not thin out to compensate. The mix follows '
+        + 'the job description in the way job descriptions usually fail '
+        + 'to.',
+      'A correction, in the confessional tradition of these notes: being '
+        + 'fired used to quietly demote you. An engineer who lost the job '
+        + 'and retried the week came back with the title but not the '
+        + 'tier - ssh refused, the pager silent, their own incidents '
+        + 'unfixable, and nothing on screen to say why. The tier now '
+        + 'survives the firing, which is more than can be said for the '
+        + 'reputation.',
+    ]),
+  },
+  {
     version: '0.34.0',
     date: '2026-08-13',
     summary: 'There is now a second week. IT apologises for the implications.',

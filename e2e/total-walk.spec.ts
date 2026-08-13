@@ -441,6 +441,18 @@ test('walks every function of a probation week that goes well', async ({
     await expect(page.getByTestId('login-screen')).toBeVisible();
   });
 
+  await step('login.desk', async () => {
+    // The desk you were hired onto (0.35.0): the whole ladder on the log-on
+    // box, the standard desk already selected. The walk takes the default
+    // ON PURPOSE - this run IS the standard desk's career; the engineer
+    // boot has its own spec. Driving the control here means reading it and
+    // choosing, not merely sailing past a default.
+    const desk = page.getByTestId('login-desk');
+    await expect(desk).toBeVisible();
+    await expect(desk).toHaveValue('sd_junior');
+    await desk.selectOption('sd_junior');
+  });
+
   await step('login.submit', async () => {
     await expect(page.getByTestId('login-user')).toContainText('Pat Pending');
     await expect(page.getByTestId('login-hint')).toContainText('sticky note');
