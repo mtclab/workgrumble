@@ -9,6 +9,7 @@ import { DAY_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { employerFor, FIRST_EMPLOYER } from '../world/employers';
 import { FIELDS } from '../world/fields';
+import { visibleMail } from '../world/mail';
 import {
   createWorldSession,
   FIRST_WEEK,
@@ -1039,8 +1040,21 @@ describe('the carry-over a firing leaves behind', () => {
     const feed = reboot.driver.channelFeed(Number.MAX_SAFE_INTEGER);
     expect(feed.some((message) => message.id.startsWith('bodge:'))).toBe(true);
     // And the shell was told which shop it is now at, so the install policy the
-    // audit reads and the name the offer prints follow the loaded save too.
+    // audit reads, the voice the brief speaks in and the name the offer prints
+    // follow the loaded save too.
     expect(reboot.loadedEmployer()).toBe('bodgeworth');
+    // The INBOX with them, which is the other door onto the same defect: the
+    // surfaces that draw mail ask the shell which shop this is, so a stale
+    // answer here would put Desmond's onboarding into Bodgeworth's Mail app -
+    // sent, in that building, by nobody. Not one of the probation shop's
+    // threads is Bodgeworth's post.
+    const post = visibleMail(
+      reboot.engine.graph,
+      reboot.loadedEmployer() ?? FIRST_EMPLOYER,
+    ).map(({ id }) => id);
+
+    expect(post).not.toContain('mail/onboarding');
+    expect(post).not.toContain('mail/queue-nag');
   });
 
   /**

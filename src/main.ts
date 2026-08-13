@@ -826,10 +826,19 @@ async function boot(): Promise<void> {
     day,
     session,
     // Which employer this session is a week at - the offer surface reads it to
-    // work out where the next job is, and it is the id the world was actually
-    // stood up FROM (`createWorldSession` above), so it is right on an arrival
-    // as well as on a first Monday.
-    employer,
+    // work out where the next job is, the brief reads it for the shop's voice,
+    // and the inbox reads it to know whose post this is. It is the id the world
+    // was actually stood up FROM (`createWorldSession` above), so it is right on
+    // an arrival as well as on a first Monday.
+    //
+    // READ THROUGH, not copied: a load can stand a DIFFERENT shop up in this tab
+    // (P1-1, `onEmployerRestored` above), and a value captured at boot would go
+    // on answering with the company this browser opened at - which for the two
+    // surfaces above is the wrong voice, and for the inbox is somebody else's
+    // mail. `currentEmployer` is the one thing that already follows a load.
+    get employer(): string {
+      return currentEmployer.id;
+    },
     clock: {
       now: () => engine.now(),
       onTick: (listener) => engine.onTick(listener),

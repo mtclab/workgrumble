@@ -1,5 +1,6 @@
 import { COMPANY_IDS, staffName } from '../company';
 import { WORLD_IDS } from '../demo-world';
+import { type EmployerId, FIRST_EMPLOYER } from '../employers';
 import { FIELDS } from '../fields';
 import { MSP_IDS } from '../msp-company';
 import {
@@ -15,6 +16,16 @@ import {
 } from '../scenes';
 import { HANDOFF_BOUNCE } from '../tickets/handoff';
 import type { MailThread } from './types';
+
+/**
+ * The two buildings this file writes for.
+ *
+ * Named here rather than typed into eleven threads so that the ownership of the
+ * inbox can be read in one place, and typed as `EmployerId` so a shop that does
+ * not exist is a compile error rather than a thread nobody ever receives.
+ */
+const PROBATION_SHOP: EmployerId = FIRST_EMPLOYER;
+const MSP: EmployerId = 'msp';
 
 /** The hour the summons names, in the shape a person writes it. */
 function clockTime(minute: number): string {
@@ -44,11 +55,21 @@ function minutedInFull(): readonly string[] {
   );
 }
 
-/** The inbox, as it stood when the shift started. */
+/**
+ * The inbox, as it stood when the shift started.
+ *
+ * Every thread names the building it was written in, because every thread was
+ * written in one: the cast is the proof, and a thread sent by somebody who is
+ * not on that floor is a thread in the wrong inbox. See `MailThread.employer`.
+ */
 export const MAIL_THREADS: readonly MailThread[] = [
   {
     id: 'mail/onboarding',
     subject: 'Welcome to Workgrumble (please read, there is a quiz)',
+    // Bev, on reception at the probation shop, about a kettle in a cupboard in
+    // that building. It has no meaning anywhere else and no sender anywhere
+    // else either.
+    employer: PROBATION_SHOP,
     messages: [
       {
         id: 'mail/onboarding#1',
@@ -89,6 +110,9 @@ export const MAIL_THREADS: readonly MailThread[] = [
   {
     id: 'mail/queue-nag',
     subject: 'Quick one - the queue',
+    // Desmond, the probation lead. Nobody else in the game has a call at eleven
+    // they would like to sound informed at.
+    employer: PROBATION_SHOP,
     messages: [
       {
         id: 'mail/queue-nag#1',
@@ -125,6 +149,9 @@ export const MAIL_THREADS: readonly MailThread[] = [
   {
     id: 'mail/maintenance-window',
     subject: 'PLANNED: file sharing unavailable Wednesday 09:00-11:00',
+    // Desmond, about the common drive on the probation shop's own estate, and
+    // it is the thing you point at during that shop's Wednesday flood.
+    employer: PROBATION_SHOP,
     messages: [
       {
         id: 'mail/maintenance-window#1',
@@ -152,6 +179,10 @@ export const MAIL_THREADS: readonly MailThread[] = [
   {
     id: 'mail/security-incident',
     subject: 'INCIDENT 4471 - account takeover, Accounts Payable',
+    // Desmond, about Priya's account. Both of them are the probation shop's,
+    // and so is the gate below - which is now belt and braces rather than the
+    // only thing keeping this thread out of a world it has no people in.
+    employer: PROBATION_SHOP,
     arrival: {
       node: COMPANY_IDS.priyaAccount,
       field: FIELDS.securityFalloutAt,
@@ -187,6 +218,10 @@ export const MAIL_THREADS: readonly MailThread[] = [
   {
     id: HANDOFF_BOUNCE.mailRef,
     subject: 'RE: escalation - returning this one',
+    // Desmond, forwarding the probation shop's second line, gated on the fan
+    // ticket that only that shop's week deals. A bounce written for another
+    // building is that building's to write.
+    employer: PROBATION_SHOP,
     arrival: {
       node: WORLD_IDS.ticket,
       field: FIELDS.handoffSettledAt,
@@ -226,6 +261,19 @@ export const MAIL_THREADS: readonly MailThread[] = [
   {
     id: PRESSURE_MAIL.weather,
     subject: 'FW: Q3 forecast - board pack (DRAFT - not for circulation)',
+    /**
+     * Marcus in Accounts at the probation shop - and this is the thread whose
+     * ownership is worth the sentence, because its GATE is not enough.
+     *
+     * The gate is a field on `person:pat`, and `person:pat` is the player at
+     * every employer, so the arc writing the field at the MSP used to put this
+     * mail in the MSP's inbox from a man who does not work there. The arc is
+     * shared (`EMPLOYER_ARC`); the WORDS are not, and the words are what an
+     * inbox shows. So the round's mail belongs where its cast is, which is
+     * here, and a shop that wants a round of its own writes one in its own
+     * voice rather than borrowing Workgrumble's Finance department.
+     */
+    employer: PROBATION_SHOP,
     arrival: {
       node: COMPANY_IDS.player,
       field: FIELDS.pressureWeatherAt,
@@ -276,6 +324,10 @@ export const MAIL_THREADS: readonly MailThread[] = [
     subject: `ALL STAFF - proposed reduction of ${
       String(REDUNDANCY_ROUND.cut)
     } roles: consultation`,
+    // Yolanda in HR and Desmond, about a pool of six drawn from the probation
+    // shop's own floor (`pool.ts`). Same reason as the weather above: the arc
+    // is shared, the people in it are not.
+    employer: PROBATION_SHOP,
     arrival: {
       node: COMPANY_IDS.player,
       field: FIELDS.pressureNoticeAt,
@@ -338,6 +390,9 @@ export const MAIL_THREADS: readonly MailThread[] = [
     subject: `${TICKET_HYGIENE_SYNC.title} - Wednesday ${
       clockTime(HYGIENE_SYNC_MINUTE)
     }`,
+    // Desmond, booking the probation week's one meeting - a scene only that
+    // shop's Wednesday runs.
+    employer: PROBATION_SHOP,
     messages: [
       {
         id: 'mail/hygiene-sync#1',
@@ -368,6 +423,10 @@ export const MAIL_THREADS: readonly MailThread[] = [
   {
     id: MEETING_MAIL.recap,
     subject: `RECAP: ${TICKET_HYGIENE_SYNC.title}`,
+    // The meeting it is a recap of, so the same building as the summons above -
+    // and its body is built out of that meeting's beats, spoken by four people
+    // who all work here.
+    employer: PROBATION_SHOP,
     arrival: {
       node: COMPANY_IDS.player,
       field: FIELDS.meetingRecapAt,
@@ -403,6 +462,9 @@ export const MAIL_THREADS: readonly MailThread[] = [
   {
     id: 'mail/selinux-permissive',
     subject: 'Compliance sweep - SELinux not enforcing on FC-DESK-07',
+    // Morgan, who runs Fettle & Crane's estate, about Fettle & Crane's desk
+    // box. The one thread in this file that is not the probation shop's.
+    employer: MSP,
     arrival: {
       node: MSP_IDS.playerMachine,
       field: FIELDS.selinuxNoticedAt,

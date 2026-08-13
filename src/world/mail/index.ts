@@ -1,9 +1,15 @@
 import type { ReadOnlyGraphView } from '../../engine-api';
+import { isEmployerId } from '../employers';
 import { EMPLOYER_ARC } from '../pressure';
 import { MAIL_THREADS } from './threads';
-import type { MailThread } from './types';
+import type { MailContent, MailThread } from './types';
 
-export type { MailArrival, MailMessage, MailThread } from './types';
+export type {
+  MailArrival,
+  MailContent,
+  MailMessage,
+  MailThread,
+} from './types';
 
 /**
  * Load-time content gate. Mail is harmless right up until a thread has no
@@ -27,6 +33,25 @@ export function validateMailThreads(
     }
 
     threadIds.add(thread.id);
+
+    /**
+     * The world it was written for, checked against the closed set of shops
+     * this build ships.
+     *
+     * A thread whose employer nobody ships would be invisible everywhere,
+     * which is the quiet half of the same defect: a typo in an id would delete
+     * a thread from the game and nothing would say so. Refused at load, in the
+     * same breath as a thread with no subject.
+     */
+    const addressee: string = thread.employer;
+
+    if (!isEmployerId(addressee)) {
+      throw new Error(
+        `Thread "${thread.id}" is addressed to "${addressee}", which is not an `
+        + 'employer this build ships. Mail belongs to one building; a thread '
+        + 'with no building is a thread nobody can be sent.',
+      );
+    }
 
     if (thread.subject.trim().length === 0) {
       throw new Error(`Thread "${thread.id}" has no subject.`);
@@ -120,7 +145,7 @@ export function findMailThread(id: string): MailThread | undefined {
  * bounced anything is telling the player their future.
  */
 export function arrivedAt(
-  thread: Readonly<MailThread>,
+  thread: Readonly<MailContent>,
   graph: ReadOnlyGraphView,
 ): number | null {
   if (thread.arrival === undefined) {
@@ -134,16 +159,39 @@ export function arrivedAt(
     : null;
 }
 
-/** The threads that exist right now, gated ones included once they do. */
+/** Every thread written for one shop, arrived or not. */
+export function mailFor(employer: string): readonly MailThread[] {
+  return WORLD_MAIL.filter((thread) => thread.employer === employer);
+}
+
+/**
+ * The threads that exist right now, in THIS building: the ones this employer's
+ * fiction wrote, gated ones included once the world says they landed.
+ *
+ * Two questions, and they are deliberately different ones. WHOSE mail this is
+ * is a fact about the content and is answered by the content; WHETHER it has
+ * happened yet is a fact about the world and is answered by the graph. Folding
+ * the first into the second - an arrival gate pointed at some per-shop anchor -
+ * would have made "does this thread belong here" and "has it arrived" the same
+ * field, and a thread that belongs here is not the same claim as a thread that
+ * has happened.
+ *
+ * The employer is handed in rather than read off the graph because an
+ * employer's identity is deliberately NOT a graph field (a field on the player
+ * node would move the probation goldens); the session knows which shop it stood
+ * up, and every surface that draws an inbox already carries it.
+ */
 export function visibleMail(
   graph: ReadOnlyGraphView,
+  employer: string,
 ): readonly MailThread[] {
-  return WORLD_MAIL.filter((thread) => arrivedAt(thread, graph) !== null);
+  return mailFor(employer)
+    .filter((thread) => arrivedAt(thread, graph) !== null);
 }
 
 /** When each message in a thread landed, absolute, gate or no gate. */
 export function messageTick(
-  thread: Readonly<MailThread>,
+  thread: Readonly<MailContent>,
   offset: number,
   graph: ReadOnlyGraphView,
 ): number {
@@ -152,7 +200,7 @@ export function messageTick(
 
 /** When a thread last saw traffic - what the inbox list sorts and stamps by. */
 export function latestTick(
-  thread: Readonly<MailThread>,
+  thread: Readonly<MailContent>,
   graph: ReadOnlyGraphView,
 ): number {
   return thread.messages.reduce(

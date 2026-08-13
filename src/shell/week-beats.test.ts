@@ -25,6 +25,7 @@ import {
 } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { MINUTES_PER_DAY, shiftEndTick, tickAtMinute } from '../world/day';
+import { FIRST_EMPLOYER } from '../world/employers';
 import { EVENT_IDS, readEventLog } from '../world/events';
 import { VERIFICATION_METHODS } from '../world/fallout';
 import { FIELDS, LOCKOUT_THRESHOLD } from '../world/fields';
@@ -173,7 +174,7 @@ describe('the shortcut on the new phone', () => {
       ),
     ).toBeTypeOf('number');
     // And the mail that says so exists, stamped at the minute it landed.
-    expect(visibleMail(scene.engine.graph).map(({ id }) => id))
+    expect(visibleMail(scene.engine.graph, FIRST_EMPLOYER).map(({ id }) => id))
       .toContain('mail/security-incident');
 
     // Once. A second morning does not bill it again - asserted on the
@@ -208,7 +209,7 @@ describe('the shortcut on the new phone', () => {
 
     expect(meter(scene, FIELDS.reputation)).toBe(before);
     expect(scene.notices).not.toContain('Security incident report');
-    expect(visibleMail(scene.engine.graph).map(({ id }) => id))
+    expect(visibleMail(scene.engine.graph, FIRST_EMPLOYER).map(({ id }) => id))
       .not.toContain('mail/security-incident');
   });
 

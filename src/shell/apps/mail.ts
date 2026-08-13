@@ -1,7 +1,6 @@
 import {
-  findMailThread,
   latestTick,
-  type MailThread,
+  type MailContent,
   mailKey,
   messageTick,
   visibleMail,
@@ -46,9 +45,14 @@ export const MAIL_APP: AppDef = {
      *
      * Empty in every world where nobody padded anything, which is why the inbox
      * is byte-identical for every week that has been played so far.
+     *
+     * Both halves are THIS building's post. The authored threads are filtered
+     * to the employer this session stood up; the derived ones are built out of
+     * this world's own customers and sheet, so they could never have been
+     * anybody else's.
      */
-    const inbox = (): readonly MailThread[] => [
-      ...visibleMail(api.graph),
+    const inbox = (): readonly MailContent[] => [
+      ...visibleMail(api.graph, api.employer),
       ...api.day.invoiceMail(),
     ];
     const unreadCount = (): number => inbox().filter(
@@ -99,7 +103,7 @@ export const MAIL_APP: AppDef = {
     root.append(toolbar, requests, columns);
 
     /** Newest traffic at the top, the way every inbox has always sorted. */
-    const threads = (): readonly MailThread[] => [...inbox()]
+    const threads = (): readonly MailContent[] => [...inbox()]
       .sort(
         (left, right) => latestTick(right, api.graph)
           - latestTick(left, api.graph),
@@ -143,7 +147,7 @@ export const MAIL_APP: AppDef = {
       }
     };
 
-    const renderReader = (thread: MailThread | undefined): void => {
+    const renderReader = (thread: MailContent | undefined): void => {
       reader.replaceChildren();
 
       if (thread === undefined) {
@@ -191,11 +195,15 @@ export const MAIL_APP: AppDef = {
         + `${String(inbox().length)} threads`;
       renderRequests();
       renderList();
+      // Out of the INBOX, and only out of the inbox. It used to ask the whole
+      // content file first, which would happily hand back a thread this world
+      // does not hold - one belonging to another employer, or a gated one that
+      // has not arrived - and draw it under a list that does not list it. A
+      // save carries the selection, so that is a real door, not a hypothetical.
       renderReader(
         selectedId === null
           ? undefined
-          : findMailThread(selectedId)
-            ?? inbox().find((thread) => thread.id === selectedId),
+          : inbox().find((thread) => thread.id === selectedId),
       );
     };
 

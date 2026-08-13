@@ -35,6 +35,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { EngineApi } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { COMPANY_IDS } from '../world/company';
+import { FIRST_EMPLOYER } from '../world/employers';
 import { conductEntries } from '../world/conduct';
 import { shiftEndTick, shiftStartTick } from '../world/day';
 import { FIELDS } from '../world/fields';
@@ -308,7 +309,7 @@ function walk(
     if (day === REVIEW_DAY) {
       runTo(world, reviewTick(day) - ONE_HOUR);
       const reading = world.driver.pressureReading();
-      const notice = visibleMail(world.engine.graph).find(
+      const notice = visibleMail(world.engine.graph, FIRST_EMPLOYER).find(
         (thread) => thread.id === REDUNDANCY_ROUND.noticeThread,
       );
 

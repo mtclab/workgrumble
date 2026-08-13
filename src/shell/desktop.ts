@@ -626,7 +626,11 @@ export class Desktop {
       stayAnotherWeek: () => {
         this.stayAnotherWeek();
       },
-      employer: context.employer,
+      // Through to the context on every read rather than copied once, because
+      // the context's own answer moves when a load stands a different shop up.
+      get employer(): string {
+        return context.employer;
+      },
       report: (submission) => context.report(submission),
       actor: context.user.node,
     };
@@ -2265,9 +2269,24 @@ export class Desktop {
    *
    * One per change at most: the whole table firing at once would be the chorus
    * the spec forbids, and the office is not a Greek play.
+   *
+   * And only from people who are IN this building. The four remarks are the
+   * probation shop's - Bev on reception, Terry, Owen on nights, Priya in
+   * Accounts - and the table was never de-globaled with the rest of the
+   * employer's content, so at another shop the dot was answered by a colleague
+   * who does not work there: a toast titled "Somebody noticed the dot" and a
+   * line written into a thread with nobody at the other end of it, because the
+   * chat roster is built from the graph and there is no such person to open.
+   * Silence is the honest answer until a shop has chatter of its own; the away
+   * sting next door already has a line per person per employer, which is what
+   * this table owes and does not yet have.
    */
   private sayWhatTheOfficeThinks(to: Presence): void {
     for (const remark of presenceChatter(to)) {
+      if (this.context.graph.getNode(remark.speaker)?.kind !== 'person') {
+        continue;
+      }
+
       if (remarkInThread(this.context.appState, remark.speaker, remark.line, true)) {
         const name = this.context.graph.getField(remark.speaker, FIELDS.name);
 

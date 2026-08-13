@@ -174,7 +174,8 @@ function overnight(rigged: Rig): { readonly before: number; readonly after: numb
 }
 
 function mailIds(rigged: Rig): readonly string[] {
-  return visibleMail(rigged.session.engine.graph).map(({ id }) => id);
+  return visibleMail(rigged.session.engine.graph, rigged.session.employer)
+    .map(({ id }) => id);
 }
 
 describe('the SELinux denial, walked both ways (E6, 0.28.0)', () => {

@@ -26,9 +26,14 @@ import {
  * The one thread the brief puts in front of you: whatever came in last, which
  * in this building means whoever is most worried. Picked from the same inbox
  * the Mail app reads, so the brief can never quote a mail that is not there.
+ *
+ * "This building" is load-bearing and used not to be: the inbox is asked which
+ * employer this session is a week at, because a thread is one shop's post. The
+ * brief is where that went wrong LOUDEST - it prints the sender's name off the
+ * graph, so a leaked thread came out as a raw node id beside the time.
  */
 function briefingMail(api: GameApi): MailThread | undefined {
-  return [...visibleMail(api.graph)].sort(
+  return [...visibleMail(api.graph, api.employer)].sort(
     (left, right) => latestTick(right, api.graph) - latestTick(left, api.graph),
   )[0];
 }

@@ -3,12 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { formatSimTime } from '../../shell/clock-format';
 import { COMPANY_IDS } from '../company';
 import { shiftStartTick } from '../day';
+import { EMPLOYER_IDS, type EmployerId, FIRST_EMPLOYER } from '../employers';
+import { FIELDS } from '../fields';
+import { PROBATION_WEEK, REDUNDANCY_ROUND } from '../pressure';
 import { createWorldSession } from '../session';
 import { spawnWorldTicket } from '../tickets';
 import {
   arrivedAt,
   findMailThread,
   latestTick,
+  mailFor,
   mailKey,
   messageTick,
   validateMailThreads,
@@ -21,6 +25,7 @@ function thread(overrides: Partial<MailThread> = {}): MailThread {
   return {
     id: 'mail/fixture',
     subject: 'Fixture',
+    employer: FIRST_EMPLOYER,
     messages: [
       {
         id: 'mail/fixture#1',
@@ -45,6 +50,17 @@ describe('mail content gate', () => {
       .toThrow('no messages');
     expect(() => validateMailThreads([thread({ subject: '  ' })]))
       .toThrow('no subject');
+  });
+
+  /**
+   * A thread addressed to a building this game does not have is a thread
+   * nobody is ever sent - the quiet half of the leak this field closed, and
+   * the one a typo would cause.
+   */
+  it('refuses a thread addressed to an employer nobody ships', () => {
+    expect(() => validateMailThreads([
+      thread({ employer: 'workgrumbel' as EmployerId }),
+    ])).toThrow('not an employer this build ships');
   });
 
   it('refuses a stamp the shift clock cannot render', () => {
@@ -131,47 +147,6 @@ describe('shipped inbox', () => {
     expect(taught[0]?.tick).toBeLessThan(shiftStartTick(1));
   });
 
-  /**
-   * A thread is sent by somebody who exists WHERE THE THREAD CAN APPEAR.
-   *
-   * That used to be one world, because every thread hung off the probation
-   * shop. A gated thread hangs off a NODE, and a node belongs to an employer -
-   * the SELinux compliance sweep (0.28.0) is about the MSP's desk box and is
-   * sent by the MSP's own infra lead, and neither of them is in the shop this
-   * career starts at. So the gate follows the gate: whichever world holds the
-   * arrival node is the world the sender has to be a person in, and an ungated
-   * thread is still held to the first one, where it is in the inbox from the
-   * Monday.
-   */
-  it('is sent by people who exist where the thread can appear', () => {
-    const worlds = [
-      createWorldSession(),
-      createWorldSession({
-        farmFund: 0,
-        attempt: 1,
-        arcWeek: 1,
-        employer: 'msp',
-      }),
-    ];
-
-    for (const entry of WORLD_MAIL) {
-      // The world the gate points at, when one of them holds it. A thread gated
-      // on a node nobody SEEDS - the handoff bounce hangs off a ticket the queue
-      // spawns - names no employer, so it falls back to the first, which is
-      // where a thread with no better answer has always belonged.
-      const gated = worlds.find(
-        (world) => entry.arrival !== undefined
-          && world.engine.graph.getNode(entry.arrival.node) !== undefined,
-      );
-      const home = gated ?? worlds[0];
-
-      for (const message of entry.messages) {
-        expect(home?.engine.graph.getNode(message.from)?.kind, message.id)
-          .toBe('person');
-      }
-    }
-  });
-
   it('stamps every message at a time the shift clock can show', () => {
     const { engine } = createWorldSession();
 
@@ -205,6 +180,7 @@ describe('shipped inbox', () => {
     const gated: MailThread = {
       id: 'mail/gated',
       subject: 'Sent back',
+      employer: FIRST_EMPLOYER,
       arrival: { node: 'ticket:fan-noise', field: 'handoff_settled_at' },
       messages: [
         { id: 'mail/gated#1', from: COMPANY_IDS.boss, tick: 0, body: ['No.'] },
@@ -212,8 +188,10 @@ describe('shipped inbox', () => {
     };
 
     expect(arrivedAt(gated, engine.graph)).toBeNull();
-    expect(visibleMail(engine.graph).some((entry) => entry.arrival !== undefined))
-      .toBe(false);
+    expect(
+      visibleMail(engine.graph, FIRST_EMPLOYER)
+        .some((entry) => entry.arrival !== undefined),
+    ).toBe(false);
 
     // A thin handoff, followed by second line getting round to it.
     engine.dispatch('ticket.escalate', COMPANY_IDS.player, 'ticket:fan-noise', {
@@ -232,7 +210,142 @@ describe('shipped inbox', () => {
     expect(landed).toBe(30);
     expect(messageTick(gated, 0, engine.graph)).toBe(30);
     expect(latestTick(gated, engine.graph)).toBe(30);
-    expect(visibleMail(engine.graph).some((entry) => entry.id === 'mail/x'))
-      .toBe(false);
+    expect(
+      visibleMail(engine.graph, FIRST_EMPLOYER)
+        .some((entry) => entry.id === 'mail/x'),
+    ).toBe(false);
+  });
+});
+
+/**
+ * THE STANDING GATE: nobody in an inbox is a stranger to the building.
+ *
+ * The instance was Desmond. An ungated thread had no employer on it, so it was
+ * visible in EVERY world, and an engineer starting at the MSP opened the Mail
+ * app on the probation shop's onboarding and its lead's queue nag - then the
+ * morning brief printed the sender as `person:desmond`, because the name lookup
+ * had nothing in that graph to find and the raw node id is what a truthful
+ * fallback prints.
+ *
+ * The class is wider than that thread and wider than mail: content authored for
+ * one shop's cast, shown in a world that cast is not in. So the assertion is
+ * made over EVERY employer this build ships, at every position in the arc where
+ * a beat fires, against EVERY thread that world can show - and it asks the one
+ * question the shell asks: does this sender have a NAME here. A future thread,
+ * a future employer and a future season are all inside it without anybody
+ * remembering to come back.
+ *
+ * TEETH: drop the employer filter in `visibleMail` and this goes red at the MSP
+ * naming `mail/onboarding` and `person:bev`, which is exactly what the visual
+ * sweep found on the shipped artifact.
+ */
+describe('every inbox is one building\'s post', () => {
+  /**
+   * The arc positions worth standing a world up at: the Monday of a career, and
+   * the four weeks a season has a beat in. The season's own numbers rather than
+   * a hand-typed list, so a round that moves drags this with it.
+   */
+  const ARC_WEEKS: readonly number[] = [
+    PROBATION_WEEK,
+    REDUNDANCY_ROUND.weather,
+    REDUNDANCY_ROUND.notice,
+    REDUNDANCY_ROUND.criteriaFrom,
+    REDUNDANCY_ROUND.decision,
+  ];
+
+  function worldAt(employer: EmployerId, arcWeek: number): ReturnType<
+    typeof createWorldSession
+  > {
+    return createWorldSession({
+      farmFund: 0,
+      attempt: 1,
+      arcWeek,
+      employer,
+    });
+  }
+
+  /** Whoever this is, as the screens ask for them: a person with a name. */
+  function namedPerson(
+    world: ReturnType<typeof createWorldSession>,
+    id: string,
+  ): string | null {
+    const node = world.engine.graph.getNode(id);
+    const name = node?.fields[FIELDS.name];
+
+    return node?.kind === 'person' && typeof name === 'string'
+      && name.length > 0
+      ? name
+      : null;
+  }
+
+  it('shows nobody a message from somebody it has no name for', () => {
+    for (const employer of EMPLOYER_IDS) {
+      for (const arcWeek of ARC_WEEKS) {
+        const world = worldAt(employer, arcWeek);
+
+        for (const entry of visibleMail(world.engine.graph, employer)) {
+          for (const message of entry.messages) {
+            expect(
+              namedPerson(world, message.from),
+              `${employer} week ${String(arcWeek)}: ${message.id}`,
+            ).not.toBeNull();
+          }
+        }
+      }
+    }
+  });
+
+  /**
+   * And the same question asked of the threads a fresh world cannot show yet,
+   * which is where the gated ones live: whoever wrote it is on the floor of the
+   * shop it is addressed to. A thread whose gate never opens in this build is
+   * still checked, because it will open in the next one.
+   */
+  it('is written, thread by thread, by people who work there', () => {
+    for (const employer of EMPLOYER_IDS) {
+      const world = worldAt(employer, PROBATION_WEEK);
+
+      for (const entry of mailFor(employer)) {
+        for (const message of entry.messages) {
+          expect(namedPerson(world, message.from), message.id).not.toBeNull();
+        }
+      }
+    }
+
+    // Every thread is somebody's: no thread falls out of the game because its
+    // employer is spelled in a way no world asks for.
+    expect(EMPLOYER_IDS.flatMap((employer) => [...mailFor(employer)]))
+      .toHaveLength(WORLD_MAIL.length);
+  });
+
+  /**
+   * The leak, stated as itself, so the fix cannot be undone quietly.
+   *
+   * The probation shop's inbox is unchanged to the byte - it owns all but one
+   * of the shipped threads and every one of them is still in it - and the other
+   * three shops are shown none of it.
+   */
+  it('keeps the probation shop\'s post out of every other shop', () => {
+    const probation = worldAt(FIRST_EMPLOYER, PROBATION_WEEK);
+    const home = visibleMail(probation.engine.graph, FIRST_EMPLOYER)
+      .map(({ id }) => id);
+
+    expect(home).toStrictEqual([
+      'mail/onboarding',
+      'mail/queue-nag',
+      'mail/maintenance-window',
+      'mail/hygiene-sync',
+    ]);
+
+    for (const employer of EMPLOYER_IDS.filter((id) => id !== FIRST_EMPLOYER)) {
+      const elsewhere = visibleMail(
+        worldAt(employer, PROBATION_WEEK).engine.graph,
+        employer,
+      ).map(({ id }) => id);
+
+      for (const id of home) {
+        expect(elsewhere, employer).not.toContain(id);
+      }
+    }
   });
 });
