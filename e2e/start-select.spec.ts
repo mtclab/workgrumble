@@ -69,9 +69,13 @@ test('the log-on box offers the whole ladder, and only the built rungs', async (
   // the honest description of what picking it does.
   await expect(page.getByTestId('login-desk-note')).toContainText('KB');
 
+  // The option wears it, and so does the line under the box - the two say the
+  // same true thing in the two places a player reads.
+  await expect(desk.locator('option[value="architect"]'))
+    .toContainText('not written yet');
   await desk.selectOption('architect');
   await expect(page.getByTestId('login-desk-note'))
-    .toContainText('not written yet');
+    .toContainText('Nobody has written this rung yet');
 });
 
 test('the standard desk logs straight on, at the probation shop', async ({
@@ -107,7 +111,7 @@ test('taking the engineer\'s desk starts the career already promoted', async ({
   // offer: the select is gone.
   await expect(page.getByTestId('login-desk-field')).toHaveCount(0);
 
-  await completeLogin(page);
+  await completeLogin(page, { brief: 'keep' });
 
   // THE JOB, not the lanyard. The tier is crossed, the title is the engineer's,
   // and the shop is the MSP.
@@ -116,6 +120,10 @@ test('taking the engineer\'s desk starts the career already promoted', async ({
 
   // And the engineer's own work is on the desk: the marquee incident the
   // promotion raises is raised for a player hired straight onto the tier too.
+  // Through the brief and into the shift, the way a Monday is played, and the
+  // brief out of the way afterwards so the start menu is reachable.
+  await page.getByTestId('brief-start-shift').click();
+  await page.getByTestId('close-brief').click();
   await openFromStartMenu(page, 'tickets');
   await expect(page.getByTestId('ticket-row-syseng-first-incident'))
     .toBeVisible({ timeout: 30_000 });

@@ -921,16 +921,17 @@ function fillToBudget(
   // days keep their room; a kind with nowhere to go is a refusal, because a
   // rung whose password work cannot be dealt at all is not that rung.
   if (mix !== null) {
+    const lightestFirst = [...content.shapes].sort(
+      (left, right) => bandBottom(left.load) - bandBottom(right.load)
+        || left.day - right.day,
+    );
+
     for (const kind of WORK_KINDS) {
       const wanted = mix.bounds[kind].least;
 
       for (let step = mixOf(planEntries(placed), mix.kindOf)[kind];
         step < wanted;
         step += 1) {
-        const lightestFirst = [...content.shapes].sort(
-          (left, right) => bandBottom(left.load) - bandBottom(right.load)
-            || left.day - right.day,
-        );
         let taken = false;
 
         for (const shape of lightestFirst) {
