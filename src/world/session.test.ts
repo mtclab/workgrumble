@@ -27,7 +27,7 @@ import { playerCarries } from './carry';
 import type { Employer } from './employers';
 import { FIELDS, PLAYER_TIERS } from './fields';
 import { STARTING_REPUTATION } from './meters';
-import { EMPLOYER_ARC, PROBATION_WEEK } from './pressure';
+import { PROBATION_WEEK, seasonlessArc } from './pressure';
 import {
   createWorldSession,
   FIRST_WEEK,
@@ -64,9 +64,11 @@ function fixtureEmployer(): Employer {
     // A different archetype from the locked-down probation shop, which is what
     // slice 3 ships for real; here it just has to be a coherent, different value.
     installPolicy: 'wild_west',
-    // Its own arc is slice 3's; for the switch engine the probation arc's shape
-    // is fine, and week one of any arc is quiet, so nothing weathers here.
-    arc: EMPLOYER_ARC,
+    // Its own, and seasonless: a shop that has authored no weather runs the
+    // twelve weeks with nothing on them (#59a), which is what every shop but
+    // the probation one ships. Pointing a fixture at the probation shop's arc
+    // is the exact mistake the registry now refuses.
+    arc: seasonlessArc('fixture-shop'),
     // The switch-engine tests read the arriving player node and never drive the
     // day loop, so the week deals nothing - but it is five days of dealing
     // nothing rather than no days at all. A nought-day week is a week the

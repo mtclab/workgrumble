@@ -31,7 +31,7 @@ import {
   COMPANY_IDS,
   type InstallPolicy,
 } from './company';
-import { EMPLOYER_ARC, type EmployerArc } from './pressure';
+import { EMPLOYER_ARC, type EmployerArc, seasonlessArc } from './pressure';
 import {
   mspChannels,
   MSP_COMPANY,
@@ -111,7 +111,16 @@ export interface Employer {
   readonly playerId: NodeId;
   /** What the audit does about an install here. Read by the drip in the shell. */
   readonly installPolicy: InstallPolicy;
-  /** The career arc this employer runs - one season of weather in it, or none. */
+  /**
+   * The career arc this employer runs - one season of weather in it, or none.
+   *
+   * ITS OWN arc, since 0.36.0 (#59a). All four shops shared one until then,
+   * which read as a saving of four lines and was in fact the probation shop's
+   * redundancy round firing at every building in the game, narrated by a pool
+   * of five colleagues who work at one of them. The arc names the shop it
+   * belongs to and `REGISTRY` refuses a mismatch at load, so this field is a
+   * declaration rather than a pointer anybody can re-use.
+   */
   readonly arc: EmployerArc;
   /**
    * This employer's five days, as data (0.6.0 slice 3). The session points the
@@ -252,7 +261,11 @@ const SECOND_EMPLOYER: Employer = Object.freeze({
   name: BODGE_COMPANY.name,
   playerId: BODGE_IDS.player,
   installPolicy: 'wild_west',
-  arc: EMPLOYER_ARC,
+  // Twelve weeks and no weather on them. Bodgeworth has authored no season -
+  // it has no Marcus in Accounts to forward the wrong board pack and no pool
+  // to be scored in - so it runs the arc seasonless until it writes one, which
+  // is the truthful shape rather than borrowing the probation shop's round.
+  arc: seasonlessArc('bodgeworth'),
   week: SECOND_WEEK,
   channels: bodgeChannels(),
   reviewBar: REVIEW_PASS_PERFORMANCE,
@@ -295,7 +308,12 @@ const MSP_EMPLOYER: Employer = Object.freeze({
   name: MSP_COMPANY.name,
   playerId: MSP_IDS.player,
   installPolicy: MSP_COMPANY.installPolicy,
-  arc: EMPLOYER_ARC,
+  // Seasonless, like Bodgeworth: the MSP is where the shared-arc defect was
+  // FOUND (an inbox holding a redundancy announcement signed by two people at
+  // another company), and a desk that serves three customer estates would want
+  // a season about losing one of them - `client_loss` is in the catalogue,
+  // written down and unbuilt - rather than this building's round.
+  arc: seasonlessArc('msp'),
   week: MSP_WEEK,
   channels: mspChannels(),
   reviewBar: REVIEW_PASS_PERFORMANCE,
@@ -338,7 +356,11 @@ const CORPORATE_EMPLOYER: Employer = Object.freeze({
   name: HALCYON_COMPANY.name,
   playerId: HALCYON_IDS.player,
   installPolicy: HALCYON_COMPANY.installPolicy,
-  arc: EMPLOYER_ARC,
+  // Seasonless, like the other two. Halcyon is the shop with the most obvious
+  // season waiting to be written - `new_leadership` and `merger` are both
+  // exec-politics weather and both are in the catalogue unbuilt - and none of
+  // that is a reason to run somebody else's round in the meantime.
+  arc: seasonlessArc('corporate'),
   week: CORPORATE_WEEK,
   channels: halcyonChannels(),
   reviewBar: REVIEW_PASS_PERFORMANCE,
@@ -362,7 +384,45 @@ const CORPORATE_EMPLOYER: Employer = Object.freeze({
   setup: halcyonSetup,
 });
 
-const REGISTRY: Readonly<Record<string, Employer>> = Object.freeze({
+/**
+ * Load-time gate for the registry: every shop is filed under its own id, and
+ * every arc belongs to the shop that runs it (#59a).
+ *
+ * The second half is the one with the history. `Employer.arc` is a reference,
+ * and four references to one value are indistinguishable from four
+ * declarations right up until the value has content on it - at which point
+ * every building in the game is running one building's redundancy round and
+ * nothing anywhere says so. Now the arc names its owner and this refuses the
+ * mismatch at boot, so re-pointing a shop at another shop's season is a
+ * stopped build rather than a career ended by five colleagues the player has
+ * never met.
+ */
+export function validateRegistry(
+  registry: Readonly<Record<string, Employer>>,
+): Readonly<Record<string, Employer>> {
+  for (const [id, employer] of Object.entries(registry)) {
+    if (employer.id !== id) {
+      throw new Error(
+        `The employer registry files "${employer.id}" under "${id}". A shop is `
+        + 'looked up by the id it carries, and two answers to which one this '
+        + 'is would stand the wrong world up.',
+      );
+    }
+
+    if (employer.arc.employer !== employer.id) {
+      throw new Error(
+        `"${employer.id}" runs the arc that belongs to `
+        + `"${employer.arc.employer}". A season is content: its pool, its `
+        + 'announcements and its cast are one building\'s, and a shop that has '
+        + 'authored none runs a seasonless arc rather than borrowing one.',
+      );
+    }
+  }
+
+  return Object.freeze(registry);
+}
+
+const REGISTRY: Readonly<Record<string, Employer>> = validateRegistry({
   [FIRST_EMPLOYER]: PROBATION_EMPLOYER,
   [SECOND_EMPLOYER.id]: SECOND_EMPLOYER,
   [MSP_EMPLOYER.id]: MSP_EMPLOYER,

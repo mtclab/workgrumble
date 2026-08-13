@@ -35,7 +35,9 @@
  *   days, and the pacing rules are enforced by its loader: nothing in the
  *   probation week, two quiet weeks before the first thing happens, one season
  *   per employer, never two live at once, two clear weeks after each one is
- *   resolved.
+ *   resolved. An arc BELONGS TO ONE SHOP and says which - the season on it is
+ *   that shop's content, narrated by that shop's cast, and a building that has
+ *   authored none runs the same twelve weeks with nothing on them.
  * - THE FOUR-BEAT CONTRACT. Weather, notice, criteria, decision - in that
  *   order, each inspectable, and `telegraph` is the only way to obtain the
  *   type the decision function will accept. A future entry cannot skip a beat
@@ -448,6 +450,17 @@ export interface PressureSeason {
  * a table of weeks with beats on them.
  */
 export interface EmployerArc {
+  /**
+   * WHOSE arc this is, by employer id - the one seam a season's ownership
+   * hangs on (#59a).
+   *
+   * It was the shop's display name until 0.36.0, which is a field nothing read
+   * and which let all four employers point at one arc: the round then fired at
+   * every building, narrated by five colleagues who work at exactly one of
+   * them. An id instead, checked against the registry at load
+   * (`employers.ts`), so "which shop does this season belong to" has one
+   * answer that the surfaces, the mail and the telegraph gate all read.
+   */
   readonly employer: string;
   /** How many weeks this employer lasts. */
   readonly weeks: number;
@@ -536,11 +549,56 @@ export const REDUNDANCY_ROUND: PressureSeason = {
   noticeThread: PRESSURE_MAIL.notice,
 };
 
+/**
+ * How long a job is, in weeks, at every shop this build ships.
+ *
+ * One number rather than one per employer, because a seasonless arc is the
+ * SAME arc with nothing on it: the weeks climb, the generator draws, the
+ * review fires, and the only thing a shop without authored weather is missing
+ * is the weather. An arc that also got shorter would be a second difference
+ * nobody asked for, and `stayAnotherWeek` reads this to know when the job is
+ * over.
+ */
+export const ARC_WEEKS = 12;
+
+/**
+ * The probation shop's arc, and the only one in this build with a season on it.
+ *
+ * The id is written here as a literal because `employers.ts` imports this file
+ * and cannot be imported back, and it is not left to trust: the registry
+ * refuses at load to hand out an employer whose arc names a different shop, so
+ * a typo here is a boot failure rather than a season that belongs to nobody.
+ */
 export const EMPLOYER_ARC: EmployerArc = validateArc({
-  employer: 'Workgrumble Ltd',
-  weeks: 12,
+  employer: 'workgrumble',
+  weeks: ARC_WEEKS,
   seasons: [REDUNDANCY_ROUND],
 });
+
+/**
+ * The same twelve weeks, at a shop that has not authored any weather yet.
+ *
+ * This is the whole of #59a's fix stated as a value. The redundancy round is
+ * Workgrumble's - its pool IS that building's five colleagues, its two
+ * announcements are written in that building's Finance and HR voices - and a
+ * shared arc fired it at the haulage firm, the MSP and the corporate desk as
+ * well, where `pressureSummary` narrated a round through people who do not
+ * exist and `readTheMatrix` could end a career on it.
+ *
+ * A seasonless arc is not a switched-off one: `arcWeek` still climbs, the week
+ * generator still draws, the Friday still reviews, `stayAnotherWeek` still
+ * counts down to the offer. What a shop with no season has is no weather, no
+ * notice, no matrix and no round - which is the truthful reading of a building
+ * whose content nobody has written yet, and is exactly what the other three
+ * shops have shipped all along in every place except this one.
+ *
+ * It goes through `validateArc` like the authored one: an empty season list is
+ * a list the pacing rules have nothing to say about, and running it through
+ * the same loader is what makes that a fact rather than an assumption.
+ */
+export function seasonlessArc(employer: string): EmployerArc {
+  return validateArc({ employer, weeks: ARC_WEEKS, seasons: [] });
+}
 
 /**
  * Load-time gate for a career arc: the pacing rules, as refusals.
@@ -697,10 +755,19 @@ export function validateArc(arc: Readonly<EmployerArc>): EmployerArc {
 
 /* -- where a week sits in it ----------------------------------------------- */
 
-/** The season a given week of the arc belongs to, or null for a quiet week. */
+/**
+ * The season a given week of the arc belongs to, or null for a quiet week.
+ *
+ * The arc is REQUIRED, and that is the whole enforcement of #59a rather than a
+ * tidy-up: it used to default to `EMPLOYER_ARC`, so every caller that did not
+ * happen to be holding a shop's own arc silently asked the probation shop's
+ * one instead - which is how the round reached three buildings that never
+ * authored it. There is no default any more, so "which shop's weather is
+ * this" is a question nobody can forget to answer.
+ */
 export function seasonAt(
   week: number,
-  arc: Readonly<EmployerArc> = EMPLOYER_ARC,
+  arc: Readonly<EmployerArc>,
 ): PressureSeason | null {
   return arc.seasons.find(
     (season) => week >= season.weather && week <= season.decision,
@@ -710,7 +777,7 @@ export function seasonAt(
 /** Whether anything at all is live in this week of the arc. */
 export function isQuietWeek(
   week: number,
-  arc: Readonly<EmployerArc> = EMPLOYER_ARC,
+  arc: Readonly<EmployerArc>,
 ): boolean {
   return seasonAt(week, arc) === null;
 }

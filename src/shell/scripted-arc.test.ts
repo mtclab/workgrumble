@@ -361,7 +361,7 @@ function walk(
 
 describe('the season, paced', () => {
   it('leaves the probation week alone and never runs two at once', () => {
-    expect(isQuietWeek(PROBATION_WEEK)).toBe(true);
+    expect(isQuietWeek(PROBATION_WEEK, EMPLOYER_ARC)).toBe(true);
 
     for (let week = 1; week <= EMPLOYER_ARC.weeks; week += 1) {
       const live = EMPLOYER_ARC.seasons.filter(
@@ -369,7 +369,7 @@ describe('the season, paced', () => {
       );
 
       expect(live.length, `week ${String(week)}`).toBeLessThanOrEqual(1);
-      expect(seasonAt(week), `week ${String(week)}`)
+      expect(seasonAt(week, EMPLOYER_ARC), `week ${String(week)}`)
         .toBe(live[0] ?? null);
     }
   });
@@ -379,7 +379,7 @@ describe('the season, paced', () => {
     // all, because a redundancy round means nothing to somebody who has never
     // had a normal week to compare it against.
     for (let week = 1; week < REDUNDANCY_ROUND.weather; week += 1) {
-      expect(isQuietWeek(week), `week ${String(week)}`).toBe(true);
+      expect(isQuietWeek(week, EMPLOYER_ARC), `week ${String(week)}`).toBe(true);
     }
 
     // And recovery scheduled rather than rolled for.
@@ -388,7 +388,7 @@ describe('the season, paced', () => {
       week <= DECISION + QUIET_WEEKS_AFTER;
       week += 1
     ) {
-      expect(isQuietWeek(week), `week ${String(week)}`).toBe(true);
+      expect(isQuietWeek(week, EMPLOYER_ARC), `week ${String(week)}`).toBe(true);
       expect(week).toBeLessThanOrEqual(EMPLOYER_ARC.weeks);
     }
   });

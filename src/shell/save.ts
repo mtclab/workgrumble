@@ -425,10 +425,11 @@ export interface ShellSessionApi {
    * Stays: the same employer, and it is week `n + 1` (E11, 0.34.0).
    *
    * The THIRD door out of a Friday, and the one the game has been written for
-   * since 0.2.7 without ever having: `EMPLOYER_ARC` declares every employer a
-   * twelve-week job with a redundancy round at weeks four to ten, and no career
-   * has ever reached week two, so the whole systemic layer above the week has
-   * been shipped, tested and unreachable. This is the door.
+   * since 0.2.7 without ever having: `ARC_WEEKS` declares every employer a
+   * twelve-week job - the probation shop's twelve with a redundancy round at
+   * weeks four to ten on them (#59a), everybody else's twelve with nothing -
+   * and no career had ever reached week two, so the whole systemic layer above
+   * the week was shipped, tested and unreachable. This is the door.
    *
    * A session verb, exactly like its two siblings and for exactly the same
    * reason: the world it would change is the one being thrown away. It reads
@@ -599,6 +600,7 @@ function preflight(
       weekFor(weekRequestFrom(probe.graph, actor, employer.id)),
       employer.channels,
       employer.runsBossPings,
+      employer.arc,
     );
     // The two reads every day screen makes on its first paint. A world that
     // cannot answer them is a world the shell cannot draw.
@@ -755,6 +757,10 @@ export function createShellSession(
           weekFor(weekRequestFrom(engine.graph, actor, restored.id)),
           restored.channels,
           restored.runsBossPings,
+          // And the arc, beside them: a save taken at a shop with no season on
+          // it reloads with no season on it, whatever the tab happened to boot
+          // at (#59a).
+          restored.arc,
         );
         // Every save from here stamps the shop just loaded, and the rest of the
         // shell (install policy, the offer's next-employer name) is told.

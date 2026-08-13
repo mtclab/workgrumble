@@ -1,6 +1,5 @@
 import type { ReadOnlyGraphView } from '../../engine-api';
-import { isEmployerId } from '../employers';
-import { EMPLOYER_ARC } from '../pressure';
+import { EMPLOYER_IDS, employerFor, isEmployerId } from '../employers';
 import { MAIL_THREADS } from './threads';
 import type { MailContent, MailThread } from './types';
 
@@ -104,7 +103,8 @@ export const WORLD_MAIL: readonly MailThread[] = assertPressureSignals(
 
 /**
  * The second half of the four-beat contract, checked where content refers to
- * content: a season whose announcement nobody wrote.
+ * content: a season whose announcement nobody wrote, or wrote for somewhere
+ * else.
  *
  * Two of the four beats ARE mail - the weather and the notice - and the
  * contract says an event may not change an outcome unless each beat left
@@ -112,20 +112,39 @@ export const WORLD_MAIL: readonly MailThread[] = assertPressureSignals(
  * not hold would satisfy the calendar and fail the player, silently, in the
  * one week it mattered. So it is a boot failure instead, exactly like a day
  * that schedules a ticket nobody wrote.
+ *
+ * Walked per EMPLOYER since 0.36.0, and the second refusal is the one #59a
+ * needed: a thread exists, and it is addressed to the shop whose season names
+ * it. The two halves of the fix have to agree or they are not a fix - the
+ * inbox has been one building's post since 0.35.2, so a season announcing
+ * itself through another building's thread is a season whose first two beats
+ * are invisible where they fire, which is precisely the state the MSP shipped
+ * in and which no calendar check can see.
  */
 export function assertPressureSignals(
   threads: readonly MailThread[],
 ): readonly MailThread[] {
-  const known = new Set(threads.map((thread) => thread.id));
+  for (const employer of EMPLOYER_IDS) {
+    for (const season of employerFor(employer).arc.seasons) {
+      for (const id of [season.weatherThread, season.noticeThread]) {
+        const written = threads.find((thread) => thread.id === id);
 
-  for (const season of EMPLOYER_ARC.seasons) {
-    for (const id of [season.weatherThread, season.noticeThread]) {
-      if (!known.has(id)) {
-        throw new Error(
-          `"${season.id}" announces itself as "${id}", which nobody wrote. `
-          + 'Four beats or no effect, and a beat with nothing to read is a '
-          + 'beat that did not fire.',
-        );
+        if (written === undefined) {
+          throw new Error(
+            `"${season.id}" announces itself as "${id}", which nobody wrote. `
+            + 'Four beats or no effect, and a beat with nothing to read is a '
+            + 'beat that did not fire.',
+          );
+        }
+
+        if (written.employer !== employer) {
+          throw new Error(
+            `"${employer}" runs "${season.id}", which announces itself through `
+            + `"${id}" - a thread written for "${written.employer}". Mail `
+            + 'belongs to one building and so does a season; a beat announced '
+            + 'in somebody else\'s inbox is a beat this shop cannot read.',
+          );
+        }
       }
     }
   }

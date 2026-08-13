@@ -144,13 +144,17 @@ import {
 } from '../world/presence';
 import {
   beatAt,
+  EMPLOYER_ARC,
+  type EmployerArc,
   type PressureBeat,
   type PressureReading,
+  type PressureSeason,
   PROBATION_WEEK,
   pressureSummary,
   seasonAt,
   telegraph,
 } from '../world/pressure';
+import { visibleMail } from '../world/mail';
 import {
   caughtScene,
   DND_CAUGHT_SCENE,
@@ -1479,6 +1483,7 @@ export interface DriverSaveSeam {
     week: readonly DayScript[],
     channels: readonly ChannelDef[],
     runsBossPings: boolean,
+    arc: Readonly<EmployerArc>,
   ): void;
 }
 
@@ -1537,6 +1542,18 @@ export class DayDriver implements DayApi {
   private week_: readonly DayScript[];
   private channels_: readonly ChannelDef[];
   /**
+   * The career arc THIS shop runs, and therefore whose weather this driver is
+   * allowed to narrate (#59a).
+   *
+   * On the driver beside the week and the rooms rather than read off a module
+   * global, for the same reason those two are: it is per-shop content, a load
+   * can re-point it, and the global default was how the probation shop's
+   * redundancy round came to fire at three buildings that never authored one.
+   * The arc also names the shop it belongs to, which is where every read below
+   * gets the employer it needs - one fact, not two that can disagree.
+   */
+  private arc_: Readonly<EmployerArc>;
+  /**
    * Whether this employer runs the probation lead's boss PINGS - the beat where
    * a round of the corridor mints his concern as a ticket and messages you
    * about it. It is probation content (`BOSS_TRAP_TICKET`, a probation reporter,
@@ -1573,6 +1590,13 @@ export class DayDriver implements DayApi {
     week: readonly DayScript[] = WEEK,
     channels: readonly ChannelDef[] = CHANNELS,
     runsBossPings = true,
+    /**
+     * And this shop's arc, defaulting to the probation shop's for the same
+     * reason its week and rooms do: every existing caller stands a probation
+     * driver up and is unchanged. The shell hands the session's employer's own
+     * arc in, which is the only way any other shop's weather is ever read.
+     */
+    arc: Readonly<EmployerArc> = EMPLOYER_ARC,
   ) {
     this.engine = engine;
     this.actor = actor;
@@ -1580,6 +1604,7 @@ export class DayDriver implements DayApi {
     this.week_ = week;
     this.channels_ = channels;
     this.runsBossPings_ = runsBossPings;
+    this.arc_ = arc;
     // The default plan reader binds THIS driver's week, so an injected harness
     // day still wins and the shipped path deals the employer's own days.
     this.plans = plans
@@ -3036,15 +3061,24 @@ export class DayDriver implements DayApi {
    * rebuilds the schedule, patrols and interruptions for the day the load landed
    * on, off the week just adopted. Nothing here is a module global: it is this
    * one driver instance following its own save, set only by an explicit load.
+   *
+   * The ARC came with the rest of it in 0.36.0 (#59a) and is required rather
+   * than optional, because the one thing worse than a load that keeps dealing
+   * the booted shop's week is a load that keeps running the booted shop's
+   * WEATHER: a probation save opened over an MSP session would have carried
+   * the round into a building whose cast it names none of. Required, so the
+   * compiler asks every caller which shop's arc this world is running.
    */
   public adoptEmployer(
     week: readonly DayScript[],
     channels: readonly ChannelDef[],
     runsBossPings: boolean,
+    arc: Readonly<EmployerArc>,
   ): void {
     this.week_ = week;
     this.channels_ = channels;
     this.runsBossPings_ = runsBossPings;
+    this.arc_ = arc;
     this.resync();
   }
 
@@ -3215,7 +3249,11 @@ export class DayDriver implements DayApi {
    */
   public pressureReading(): PressureReading {
     const week = this.arcWeek();
-    const season = seasonAt(week);
+    // THIS shop's arc, which since 0.36.0 is the only arc this driver can see
+    // (#59a). A seasonless shop answers null here for every week of the
+    // career, and every surface below - the summary, the scorecard's criteria
+    // line, the review window's beat - is that null read out.
+    const season = seasonAt(week, this.arc_);
     const beat = season === null ? null : beatAt(season, week);
     const scored = season !== null
       && (beat === 'criteria' || beat === 'decision');
@@ -3251,21 +3289,35 @@ export class DayDriver implements DayApi {
    * Whether a beat of the season actually left something the player could
    * look at, which is the half of the contract a calendar cannot answer.
    *
-   * Two of the four are mail, and mail in this game is gated on a field: no
-   * field, no thread, and the inbox does not show anybody an announcement
-   * about a round nobody has announced. The third is the matrix, which is
-   * readable exactly when there is a pool to score. The fourth is the
-   * conversation itself, which is a scene on a Friday at three.
+   * Two of the four are mail, and until 0.36.0 this asked the ARRIVAL FIELD
+   * whether they had landed - which was the same question as "is it in the
+   * inbox" for exactly as long as an inbox showed every thread. 0.35.2 ended
+   * that: mail belongs to one building, the round's two announcements are the
+   * probation shop's, and the field is on `person:pat`, who is the player at
+   * every shop. So at the MSP the gate said the notice was readable while the
+   * Mail app showed nothing, the telegraph passed on a beat the player could
+   * not have seen, and a career could end on it. That is the reported gap
+   * (#59), and the fix is to ask the surface the claim is about: is the thread
+   * this season announces itself through actually IN this world's inbox.
+   *
+   * Same question, one truth. The arrival field is still what decides it -
+   * `visibleMail` reads it through the thread's own gate - with the shop the
+   * mail belongs to folded into the same read, so the gate and the inbox
+   * cannot disagree again.
+   *
+   * The third is the matrix, which is readable exactly when there is a pool to
+   * score. The fourth is the conversation itself, a scene on a Friday at three.
    */
-  private readableBeat(beat: PressureBeat): boolean {
+  private readableBeat(
+    season: Readonly<PressureSeason>,
+    beat: PressureBeat,
+  ): boolean {
     if (beat === 'weather') {
-      return typeof this.engine.graph
-        .getField(this.actor, FIELDS.pressureWeatherAt) === 'number';
+      return this.inThisInbox(season.weatherThread);
     }
 
     if (beat === 'notice') {
-      return typeof this.engine.graph
-        .getField(this.actor, FIELDS.pressureNoticeAt) === 'number';
+      return this.inThisInbox(season.noticeThread);
     }
 
     if (beat === 'criteria') {
@@ -3273,6 +3325,16 @@ export class DayDriver implements DayApi {
     }
 
     return isReviewDay(this.day());
+  }
+
+  /**
+   * Whether a thread is in the inbox of the building this driver is standing
+   * in - the shop off the arc, which is the one seam that says whose season
+   * this is.
+   */
+  private inThisInbox(thread: string): boolean {
+    return visibleMail(this.engine.graph, this.arc_.employer)
+      .some((entry) => entry.id === thread);
   }
 
   /**
@@ -3300,7 +3362,7 @@ export class DayDriver implements DayApi {
     const telegraphed = telegraph(
       season,
       reading.week,
-      (beat) => this.readableBeat(beat),
+      (beat) => this.readableBeat(season, beat),
     );
 
     if (telegraphed === null) {

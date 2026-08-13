@@ -617,7 +617,11 @@ async function boot(): Promise<void> {
   // employer record would be a second answer to a question with one answer.
   week,
   currentEmployer.channels,
-  currentEmployer.runsBossPings);
+  currentEmployer.runsBossPings,
+  // And the arc THIS shop runs, so the weather the driver narrates is the
+  // weather this building authored - which, at three of the four, is none
+  // (#59a).
+  currentEmployer.arc);
 
   const session = createShellSession({
     engine,

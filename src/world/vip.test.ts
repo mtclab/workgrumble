@@ -98,7 +98,12 @@ function driverFor(session: WorldSession, notices: Notice[] = []): DayDriver {
     },
   });
   const employer = employerFor('corporate');
-  driver.adoptEmployer(employer.week, employer.channels, employer.runsBossPings);
+  driver.adoptEmployer(
+    employer.week,
+    employer.channels,
+    employer.runsBossPings,
+    employer.arc,
+  );
   return driver;
 }
 

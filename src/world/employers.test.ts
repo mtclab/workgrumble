@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { companySetup } from './company';
-import { EMPLOYER_ARC } from './pressure';
+import { ARC_WEEKS, EMPLOYER_ARC, seasonlessArc } from './pressure';
 import {
   EMPLOYER_IDS,
   employerFor,
@@ -9,6 +9,7 @@ import {
   FIRST_EMPLOYER,
   isEmployerId,
   nextEmployerAfter,
+  validateRegistry,
 } from './employers';
 
 describe('the employer registry', () => {
@@ -26,6 +27,43 @@ describe('the employer registry', () => {
     // would move. The cheapest proof is that the setup IS the company seed.
     expect(employerFor().setup()).toEqual(companySetup());
     expect(employerFor().arc).toBe(EMPLOYER_ARC);
+  });
+
+  /**
+   * A season belongs to the shop that authored it (#59a).
+   *
+   * All four employers pointed at `EMPLOYER_ARC` until 0.36.0, which cost four
+   * lines and gave the probation shop's redundancy round to every building in
+   * the game. Each shop now DECLARES its arc, the arc names its owner, and the
+   * registry refuses a mismatch at boot - so the four-line saving cannot be
+   * made again by accident.
+   */
+  it('gives every shop its own arc, and only the one that wrote a season has one', () => {
+    expect(employerFor(FIRST_EMPLOYER).arc.seasons).toHaveLength(1);
+
+    for (const id of EMPLOYER_IDS) {
+      const arc = employerFor(id).arc;
+
+      expect(arc.employer, id).toBe(id);
+      // The same twelve weeks everywhere: a seasonless arc is this arc with
+      // nothing on it, not a shorter job.
+      expect(arc.weeks, id).toBe(ARC_WEEKS);
+      expect(arc.seasons.length, id)
+        .toBe(id === FIRST_EMPLOYER ? 1 : 0);
+    }
+  });
+
+  it('refuses a shop that runs another shop\'s season', () => {
+    // The revert, as a refusal: point Bodgeworth back at the probation shop's
+    // arc and the build stops instead of shipping a round narrated by five
+    // people who work somewhere else.
+    expect(() => validateRegistry({
+      bodgeworth: { ...employerFor('bodgeworth'), arc: EMPLOYER_ARC },
+    })).toThrow('belongs to');
+    // And the other half: a shop filed under somebody else's id.
+    expect(() => validateRegistry({
+      msp: { ...employerFor('bodgeworth'), arc: seasonlessArc('bodgeworth') },
+    })).toThrow('files "bodgeworth" under "msp"');
   });
 
   it('refuses an employer this build has never shipped', () => {

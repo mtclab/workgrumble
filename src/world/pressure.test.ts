@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   arcDate,
+  ARC_WEEKS,
   beatAt,
   beatsFiredBy,
   cutsBothWays,
@@ -34,6 +35,7 @@ import {
   QUIET_WEEKS_BEFORE,
   REDUNDANCY_ROUND,
   seasonAt,
+  seasonlessArc,
   telegraph,
   validateArc,
   validateCatalogue,
@@ -112,19 +114,50 @@ describe('the pressure catalogue', () => {
 });
 
 describe('the arc this employer ships', () => {
-  it('takes the arc it ships', () => {
+  it('takes the arc it ships, and says whose it is', () => {
     expect(() => validateArc(EMPLOYER_ARC)).not.toThrow();
     expect(EMPLOYER_ARC.seasons).toHaveLength(1);
+    // The one seam a season's ownership hangs on (#59a): the arc names the
+    // shop, and `employers.ts` refuses at load to hand it to another one.
+    expect(EMPLOYER_ARC.employer).toBe('workgrumble');
+    expect(EMPLOYER_ARC.weeks).toBe(ARC_WEEKS);
+  });
+
+  /**
+   * The shape of a shop that has not written any weather yet.
+   *
+   * Not a switched-off arc - the same twelve weeks, climbing, drawing and
+   * reviewing exactly as the probation shop's do. What it does not have is a
+   * season, which is what the other three employers have truthfully had all
+   * along everywhere except in the one field they shared.
+   */
+  it('gives a shop with no season the same twelve quiet weeks', () => {
+    const bare = seasonlessArc('bodgeworth');
+
+    expect(bare.employer).toBe('bodgeworth');
+    expect(bare.weeks).toBe(EMPLOYER_ARC.weeks);
+    expect(bare.seasons).toHaveLength(0);
+
+    for (let week = 1; week <= bare.weeks; week += 1) {
+      expect(seasonAt(week, bare), `week ${String(week)}`).toBeNull();
+      expect(isQuietWeek(week, bare), `week ${String(week)}`).toBe(true);
+    }
+
+    // And the week the round is loudest at the shop that owns it is a week
+    // like any other here.
+    expect(seasonAt(REDUNDANCY_ROUND.decision, bare)).toBeNull();
+    expect(seasonAt(REDUNDANCY_ROUND.decision, EMPLOYER_ARC)).not.toBeNull();
   });
 
   it('leaves the probation week and the two after it alone', () => {
-    expect(isQuietWeek(PROBATION_WEEK)).toBe(true);
+    expect(isQuietWeek(PROBATION_WEEK, EMPLOYER_ARC)).toBe(true);
 
     for (let week = 1; week <= PROBATION_WEEK + QUIET_WEEKS_BEFORE; week += 1) {
-      expect(seasonAt(week), `week ${String(week)}`).toBeNull();
+      expect(seasonAt(week, EMPLOYER_ARC), `week ${String(week)}`).toBeNull();
     }
 
-    expect(seasonAt(REDUNDANCY_ROUND.weather)?.id).toBe('redundancy_round');
+    expect(seasonAt(REDUNDANCY_ROUND.weather, EMPLOYER_ARC)?.id)
+      .toBe('redundancy_round');
   });
 
   it('leaves two clear weeks after the conversation', () => {
@@ -133,7 +166,7 @@ describe('the arc this employer ships', () => {
       week <= EMPLOYER_ARC.weeks;
       week += 1
     ) {
-      expect(isQuietWeek(week), `week ${String(week)}`).toBe(true);
+      expect(isQuietWeek(week, EMPLOYER_ARC), `week ${String(week)}`).toBe(true);
     }
 
     expect(EMPLOYER_ARC.weeks - REDUNDANCY_ROUND.decision)

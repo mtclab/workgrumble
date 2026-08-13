@@ -267,11 +267,14 @@ export const MAIL_THREADS: readonly MailThread[] = [
      *
      * The gate is a field on `person:pat`, and `person:pat` is the player at
      * every employer, so the arc writing the field at the MSP used to put this
-     * mail in the MSP's inbox from a man who does not work there. The arc is
-     * shared (`EMPLOYER_ARC`); the WORDS are not, and the words are what an
-     * inbox shows. So the round's mail belongs where its cast is, which is
-     * here, and a shop that wants a round of its own writes one in its own
-     * voice rather than borrowing Workgrumble's Finance department.
+     * mail in the MSP's inbox from a man who does not work there. The arc was
+     * shared then; the WORDS never were, and the words are what an inbox
+     * shows. So the round's mail belongs where its cast is, which is here, and
+     * a shop that wants a round of its own writes one in its own voice rather
+     * than borrowing Workgrumble's Finance department. 0.36.0 closed the other
+     * end of it (#59a): the arc is the probation shop's too, the season only
+     * fires here, and `assertPressureSignals` refuses at load a season that
+     * announces itself through another building's thread.
      */
     employer: PROBATION_SHOP,
     arrival: {
@@ -325,8 +328,9 @@ export const MAIL_THREADS: readonly MailThread[] = [
       String(REDUNDANCY_ROUND.cut)
     } roles: consultation`,
     // Yolanda in HR and Desmond, about a pool of six drawn from the probation
-    // shop's own floor (`pool.ts`). Same reason as the weather above: the arc
-    // is shared, the people in it are not.
+    // shop's own floor (`pool.ts`). Same reason as the weather above - and
+    // since 0.36.0 the season that sends it is this shop's as well, so the
+    // announcement and the round it announces are finally in one building.
     employer: PROBATION_SHOP,
     arrival: {
       node: COMPANY_IDS.player,
