@@ -26,6 +26,7 @@
 
 import {
   APT_ACTIONS,
+  AUDIT_ACTIONS,
   CAREER_ACTIONS,
   CHANGE_ACTIONS,
   DAY_ACTIONS,
@@ -90,6 +91,16 @@ export const WALK_RUNS = {
     + 'week cannot hold the engineer tier: ssh is refused until the promotion '
     + 'fires, so the whole server surface lives on the far side of a threshold no '
     + 'probation week reaches.',
+  senior: 'The SECOND QUEUE (E9, 0.36.0): hired as a Senior Service Desk '
+    + 'Analyst rather than a probationer, which opens a rung the other runs '
+    + 'cannot reach - one start select writes one desk, and a probation week '
+    + 'is not a senior\'s week. It walks the whole of what the rung is: the '
+    + 'audit tab beside your own queue, a filing agreed with, a filing '
+    + 'corrected through the queue\'s own triage form (which is what a '
+    + 'correction IS at this grade), the article the second sighting of a '
+    + 'class earns, and an escalation that does not take the ticket off your '
+    + 'board. Its own run because every one of those needs a title no other '
+    + 'walk wears.',
   selinux: 'The other way out of the SELinux denial (0.28.0): the same box, and '
     + 'setenforce 0 instead of the relabel. Its own run for the reason the '
     + 'shortcut/checked pair is two runs - one box cannot be fixed both ways, '
@@ -1254,6 +1265,90 @@ const ENTRIES = [
     does: 'Keeps what you worked out and what was put to the reporter in two '
       + 'streams that are not the same stream.',
     run: 'week',
+  },
+  {
+    id: 'tickets.tab-audit',
+    surface: 'tickets',
+    control: 'tickets-tab-audit',
+    does: 'Opens the second queue: other people\'s filings, waiting on a '
+      + 'signature, with your own clocks still running behind them.',
+    run: 'senior',
+    why: 'There is no second queue below the senior rung. A probationer has '
+      + 'nobody\'s work to audit, and the tab is not on their window at all.',
+  },
+  {
+    id: 'tickets.tab-mine',
+    surface: 'tickets',
+    control: 'tickets-tab-mine',
+    does: 'Goes back to your own queue, which has been running the whole '
+      + 'time you were in somebody else\'s.',
+    run: 'senior',
+    why: 'The strip only exists where there are two lists.',
+  },
+  {
+    id: 'tickets.audit-panel',
+    surface: 'tickets',
+    control: 'ticket-audit, ticket-audit-filed, ticket-audit-beneficiary',
+    does: 'Shows whose filing it is and what it says - and nothing about '
+      + 'whether it is right, because that is the question being asked.',
+    run: 'senior',
+    why: 'Only an audit item has somebody else\'s filing on it.',
+  },
+  {
+    id: 'tickets.audit-confirm',
+    surface: 'tickets',
+    control: 'audit-confirm',
+    does: 'Signs a filing off as it stands. Costs nothing this minute, which '
+      + 'is the trap.',
+    actions: [AUDIT_ACTIONS.auditConfirm],
+    run: 'senior',
+    why: 'The verb refuses anything without somebody else\'s name on it.',
+  },
+  {
+    id: 'tickets.audit-correct',
+    surface: 'tickets',
+    control: 'triage-impact, triage-urgency, triage-file (on an audit item)',
+    does: 'Corrects somebody else\'s filing through the queue\'s own triage '
+      + 'form, and pays the attention tax for it.',
+    actions: [HELPDESK_ACTIONS.ticketClassify],
+    run: 'senior',
+    why: 'The same control the week run drives on your own tickets, on the '
+      + 'one kind of ticket only this rung is dealt - which is the whole '
+      + 'reason there is no second classify verb to cover instead.',
+  },
+  {
+    id: 'tickets.audit-bill',
+    surface: 'notifications',
+    control: 'the notice a signed-off wrong filing produces on breach',
+    does: 'Puts the QA finding on the desk when the clock the filing bought '
+      + 'runs out, with the half that was wrong named.',
+    actions: [AUDIT_ACTIONS.auditFallout],
+    run: 'senior',
+    why: 'It needs a filing agreed with and then a deadline missed, which is '
+      + 'two decisions and most of a day.',
+  },
+  {
+    id: 'tickets.write-up',
+    surface: 'tickets',
+    control: 'audit-author-article',
+    does: 'Writes the article the second sighting of a class earns, which '
+      + 'costs the afternoon\'s concentration and makes the next one arrive '
+      + 'right.',
+    actions: [AUDIT_ACTIONS.kbWriteUp],
+    run: 'senior',
+    why: 'The prompt needs two of one class ruled on, which no other run '
+      + 'is ever dealt.',
+  },
+  {
+    id: 'tickets.retained',
+    surface: 'tickets',
+    control: 'handoff-send (at the senior title), ticket-detail-retained',
+    does: 'Sends the handoff and KEEPS the ticket, with the clock still '
+      + 'running - which is what ownership means at this grade.',
+    actions: [HELPDESK_ACTIONS.ticketEscalate],
+    run: 'senior',
+    why: 'Every other rung\'s escalation hands the ticket over and it leaves '
+      + 'the board; the retained branch is guarded on the title.',
   },
   {
     id: 'tickets.triage-pickers',
@@ -4079,6 +4174,17 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
   // off the clock, the same shape as the override finding. Nobody presses it - it
   // is what happens when the deadline on whichever ticket was left waiting runs
   // out, and the two branches charge in two different currencies.
+  [AUDIT_ACTIONS.auditDeal]: 'A first-line analyst\'s triage arriving on a '
+    + 'ticket that has just been raised. Nobody presses it and nobody can: it '
+    + 'is somebody else having already done the easy half of the job, '
+    + 'dispatched by the day loop in the minute it deals the item, and what '
+    + 'the player meets is the filing itself on the audit tab (walked as '
+    + 'tickets.audit-panel).',
+  [AUDIT_ACTIONS.vendorReply]: 'Second line coming back on a ticket the '
+    + 'senior kept rather than handed over. Nobody presses it: it is somebody '
+    + 'else finishing on their own timetable, settled by the day loop ninety '
+    + 'minutes after the handoff went, and what the player meets is the '
+    + 'notice and a ticket that finally closes (walked as tickets.retained).',
   [WORLD_ACTIONS.queueJumpFallout]: 'The cost of the queue-jump landing on '
     + 'whichever colliding ticket was left waiting: suspicion when the flagged '
     + 'caller goes over your head, reputation when the ordinary team sits blocked '
@@ -4187,6 +4293,14 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'handoff-reported',
   'handoff-send',
   'handoff-cancel',
+  // The second queue (E9, 0.36.0). The strip is not on the window below the
+  // senior rung and the confirm is not on a ticket of your own, which is why
+  // the walk that drives them is its own run - but a control is a control, and
+  // this list is the inventory rather than the itinerary.
+  'tickets-tab-mine',
+  'tickets-tab-audit',
+  'audit-confirm',
+  'audit-author-article',
 
   /* -- the other tools ---------------------------------------------------- */
   'directory-search',

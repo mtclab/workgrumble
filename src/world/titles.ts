@@ -267,43 +267,32 @@ const TITLE_ROWS: readonly TitleRow[] = [
     title: 'Senior Service Desk Analyst',
     shapeBreak: 'A second queue appears: other people\'s work, audited while '
       + 'your own clocks run.',
-    // NOT YET TAKEABLE, and the reason is the honesty this whole select is
-    // built on (0.35.0): the rung's CONTENT exists - the audit queue's five
-    // authored filings, the grader that proves each one wrong in exactly one
-    // findable way, the price of an audit in minutes - and the SURFACE does
-    // not. A rung whose row says "a second queue appears" and whose game has
-    // one queue in it would be the ladder lying about what it ships, which is
-    // worse than a greyed row saying nobody has written it yet. It flips the
-    // day the queue has a window, a verb and a walk step.
-    built: false,
-    // WHERE IT WILL STAND when it opens, written here as a comment rather than
-    // as state, because the table refuses start state on a rung nobody can
-    // reach - and that refusal is right.
-    //
-    // The TIER will be the junior's, `service_desk`, and that is the honest
-    // answer rather than an oversight: the PAM tier is about PRIVILEGE, and a
-    // senior service desk analyst may touch exactly what a junior may. The
-    // whole of what the rung buys is other people's work and the right to
-    // disagree with it. Inventing a third tier to give the row a distinct value
-    // would be the promotion mechanic used as a label, and it would hand this
-    // rung `sudo`. That is also why `rungFor` reads the TITLE beside the tier
-    // since 0.36.0 - two rungs on one tier is a thing this table now supports.
-    //
-    // The EMPLOYER will be the probation shop, which is the argument this row
-    // has to win. It is the only shop in the build with a first line to audit:
-    // the MSP is an engineers' shop, Bodgeworth is five arrivals and a man
-    // called Trev, and Halcyon's desk is one person and it is you. A senior
-    // analyst is a service desk's senior analyst, so the honest home is the
-    // service desk - and the difference between a probationer and a senior at
-    // the same address is the TITLE CARRY, which is machinery this game already
-    // ships and which 0.35.0's start select is built out of.
-    //
-    // And `startsAt` will be 2, not 1, because week one of that shop is
-    // somebody's probation - the authored Monday that teaches the two basic
-    // tools, and the one week a rung's blend is forbidden to touch.
-    tier: null,
-    employer: null,
-    startsAt: null,
+    built: true,
+    // THE JUNIOR'S TIER, and that is the honest answer rather than an
+    // oversight. The PAM tier is about PRIVILEGE - what the account may touch -
+    // and a senior service desk analyst may touch exactly what a junior may:
+    // the whole of what this rung buys is other people's work and the right to
+    // disagree with it. A third tier invented to give the row a distinct value
+    // would be the promotion mechanic used as a label, and it would hand a
+    // service desk analyst `sudo`. It is why `rungFor` reads the TITLE beside
+    // the tier since 0.36.0: two rungs on one tier is a thing this table
+    // supports on purpose.
+    tier: PLAYER_TIERS.serviceDesk,
+    // AND THE PROBATION SHOP, which is the argument this row had to win. It is
+    // the only shop in the build with a first line to audit: the MSP is an
+    // engineers' shop, Bodgeworth is five arrivals and a man called Trev, and
+    // Halcyon's desk is one person and it is you. A senior analyst is a service
+    // desk's senior analyst, so the honest home is the service desk - and the
+    // difference between a probationer and a senior at the same address is the
+    // TITLE CARRY, which is machinery this game already ships and which
+    // 0.35.0's start select is built out of.
+    employer: 'workgrumble',
+    // Week TWO, not one. Week one of that shop is somebody's probation - the
+    // authored Monday that teaches the two basic tools, reproduced byte for
+    // byte by the generator - and it is the one week a rung's blend is
+    // forbidden to touch, so a senior starting there would carry ratios that
+    // mean nothing. See `startsAt`.
+    startsAt: 2,
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 0.9, device: 0.9, server: 1, project: 0 },

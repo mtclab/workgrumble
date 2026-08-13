@@ -13,9 +13,20 @@ import {
   customerIdForTicketNodes,
   customerName,
 } from '../../world/customers';
-import { FIELDS, SLA_TIER_LABELS, type SlaTier } from '../../world/fields';
-import { articleLinkNote, findKbArticle, WORLD_KB } from '../../world/kb';
 import {
+  AUDIT_VERDICTS,
+  filedOn,
+  isAuditTicket,
+  verdictOn,
+} from '../../world/audit';
+import { FIELDS, SLA_TIER_LABELS, type SlaTier } from '../../world/fields';
+import {
+  articleLinkNote,
+  findKbArticle,
+  kbShelf,
+} from '../../world/kb';
+import {
+  cellLabel,
   type Classification,
   classify,
   isLevel,
@@ -366,6 +377,8 @@ export const TICKETS_APP: AppDef = {
   slack: false,
   mount: (host, api) => {
     let selectedId: string | null = null;
+    /** Which list is on screen. `mine` on every rung that has only one. */
+    let tab: 'mine' | 'audit' = 'mine';
     // The last refusal stays on screen until the player does something else:
     // a repaint driven by the clock must not swallow the explanation.
     let refusal: string | null = null;
@@ -412,6 +425,51 @@ export const TICKETS_APP: AppDef = {
     note.textContent = 'Tickets close when the world is fixed, not when you '
       + 'say so.';
     toolbar.append(summary, note);
+
+    /**
+     * THE SECOND QUEUE (E9, 0.36.0) - a tab on this window rather than a window
+     * of its own, and that is the load-bearing decision of the whole slice.
+     *
+     * The senior rung's shape break is that a SECOND LIST arrives, not a second
+     * desk. Everything below the list is the same: the same detail pane, the
+     * same clocks, the same estate, and - the part that decides it - the same
+     * TRIAGE FORM, because correcting a junior's filing is filing a triage. A
+     * window of its own would have had to either carry its own copy of the two
+     * dropdowns, the nine cells and the deadline arithmetic (a second matrix,
+     * free to drift from the one the game teaches) or reduce to an index that
+     * sends you back here, which is a window that does nothing.
+     *
+     * And the tension reads for free this way: switching tabs does not stop
+     * your own clocks. Same window, same minute, somebody else's problem.
+     *
+     * The strip is HIDDEN outright where no audit item exists, which is every
+     * rung but the senior's. A dead tab on a junior's Monday would be the
+     * window advertising a job that desk does not have, and it keeps the
+     * shipped weeks' markup byte-identical.
+     */
+    const tabs = element('div', 'tickets-tabs', 'tickets-tabs');
+    const mineTab = osButton('My queue', 'tickets-tab-mine', { compact: true });
+    const auditTab = osButton('QA audit', 'tickets-tab-audit', {
+      compact: true,
+    });
+
+    for (const [button, which] of [
+      [mineTab, 'mine'],
+      [auditTab, 'audit'],
+    ] as const) {
+      button.addEventListener('click', () => {
+        tab = which;
+        // The selection belongs to the list it was made in: carrying it across
+        // would open the audit tab on one of your own tickets, which is the
+        // one thing the split exists to stop.
+        selectedId = null;
+        refusal = null;
+        render();
+      });
+    }
+
+    tabs.append(mineTab, auditTab);
+    toolbar.append(tabs);
 
     const queue = element('ul', 'tickets-queue', 'tickets-queue');
     const detail = element('section', 'tickets-detail', 'ticket-detail');
@@ -604,6 +662,141 @@ export const TICKETS_APP: AppDef = {
 
       wrap.append(caption, select);
       return wrap;
+    };
+
+    /**
+     * The filing under audit: whose it is, what it says, and the one answer the
+     * triage form below cannot give.
+     *
+     * IT DOES NOT PRINT THE ANSWER, and that is the whole design of the panel.
+     * The player is shown exactly what a person doing this job is shown - the
+     * cell, the number beside it, who the ticket is for - and everything needed
+     * to check it is already on this screen or one click away: the estate is in
+     * the monitor and the directory, the matrix is printed under the dropdowns,
+     * and the VIP rule is on the row above. A panel that said "the impact is
+     * wrong" would be the game doing the audit and asking the player to agree.
+     *
+     * The verdict, once there is one, is stated rather than hidden: a signature
+     * is a fact about the ticket, and the pane says which way it went and when.
+     */
+    const renderAudit = (
+      node: Readonly<ReadOnlyGraphNode>,
+    ): HTMLElement => {
+      const panel = element('section', 'ticket-audit', 'ticket-audit');
+      const filed = filedOn(api.graph, node.id);
+      const verdict = verdictOn(api.graph, node.id);
+      panel.dataset.verdict = verdict ?? 'none';
+
+      const heading = element('h3');
+      heading.textContent = 'Quality check';
+
+      const who = element('p', 'ticket-audit-who', 'ticket-audit-who');
+      who.textContent = `Filed by ${
+        textValue(node.fields[FIELDS.auditOf], 'somebody at first line')
+      }. It is on their desk; the triage is on yours.`;
+
+      const said = element('p', 'ticket-audit-filed', 'ticket-audit-filed');
+      said.textContent = filed === null
+        ? 'Nothing legible was filed, which is its own answer.'
+        : `They filed ${cellLabel(filed)}.`;
+
+      panel.append(heading, who, said);
+
+      // Who it is FOR, where that is not who typed it. Only on the tickets that
+      // have one, so the line's presence is itself the thing worth noticing -
+      // which is exactly the fact the filing on this one missed.
+      const beneficiary = node.fields[FIELDS.beneficiary];
+
+      if (typeof beneficiary === 'string' && beneficiary.length > 0) {
+        const forWhom = element(
+          'p',
+          'ticket-audit-beneficiary',
+          'ticket-audit-beneficiary',
+        );
+        forWhom.textContent = `Raised on behalf of ${beneficiary}.`;
+        panel.append(forWhom);
+      }
+
+      // The article, when the class has one. It is the compounding half made
+      // visible: this filing is right because somebody wrote the thing down.
+      const article = node.fields[FIELDS.kbRef];
+      const linked = typeof article === 'string'
+        ? findKbArticle(article)
+        : undefined;
+
+      if (linked !== undefined && verdict === null && filed !== null) {
+        const cite = element('p', 'ticket-audit-article', 'ticket-audit-article');
+        cite.textContent = `They followed ${linked.id} - "${linked.title}".`;
+        panel.append(cite);
+      }
+
+      const outcome = element('p', 'ticket-audit-outcome', 'ticket-audit-outcome');
+      outcome.textContent = verdict === null
+        ? 'Agree with it, or file your own triage below. Filing your own costs '
+          + 'you the rest of the thought you were having.'
+        : verdict === AUDIT_VERDICTS.confirmed
+          ? 'You signed this triage off as filed.'
+          : 'You re-triaged this one.';
+      panel.append(outcome);
+
+      const actions = element('div', 'app-action-row');
+      const confirm = osButton('Agree with this triage', 'audit-confirm', {
+        primary: true,
+      });
+      setAvailability(
+        confirm,
+        verdict === null
+          ? null
+          : 'You have already ruled on this one. A QA signature is not '
+            + 'something you take back by pressing the other button.',
+      );
+      confirm.addEventListener('click', () => {
+        const result = api.day.confirmAudit(node.id);
+        refusal = result.ok ? null : result.reason;
+        render();
+      });
+      actions.append(confirm);
+      panel.append(actions);
+
+      return panel;
+    };
+
+    /**
+     * The desk asking for the article, when the same class has come past twice.
+     *
+     * A banner on the audit tab rather than a panel on a ticket, because the
+     * article is about a CLASS: hanging it off whichever instance happens to be
+     * open would make it a property of one ticket, and the next one would ask
+     * again. Null until KCS's own threshold is met, and gone for good once it
+     * is written.
+     */
+    const renderWriteUp = (): HTMLElement | null => {
+      if (api.day.writeUpClass() === null) {
+        return null;
+      }
+
+      const banner = element('section', 'ticket-writeup', 'ticket-writeup');
+      const heading = element('h3');
+      heading.textContent = 'Write it up';
+      const line = element('p', 'ticket-writeup-line', 'ticket-writeup-line');
+      line.textContent = 'That is the second one of these this week, and first '
+        + 'line have filed it the same way both times. There is no article for '
+        + 'it. Writing one costs you the rest of the afternoon\'s '
+        + 'concentration and it means the next one arrives right.';
+
+      const actions = element('div', 'app-action-row');
+      const write = osButton('Author the article', 'audit-author-article', {
+        primary: true,
+      });
+      write.addEventListener('click', () => {
+        const result = api.day.writeUpArticle();
+        refusal = result.ok ? null : result.reason;
+        render();
+      });
+      actions.append(write);
+
+      banner.append(heading, line, actions);
+      return banner;
     };
 
     const renderTriage = (
@@ -858,7 +1051,12 @@ export const TICKETS_APP: AppDef = {
       );
       picker.setAttribute('aria-label', 'Knowledge article');
 
-      for (const article of WORLD_KB) {
+      // The SHELF rather than the corpus (E9, 0.36.0): you cannot link an
+      // article nobody has written, and the picker is the one place a player
+      // would otherwise find the answer to a beat they are being asked to do.
+      const shelf = kbShelf(api.graph, api.actor);
+
+      for (const article of shelf) {
         const option = element('option');
         option.value = article.id;
         option.textContent = article.state === 'draft'
@@ -869,11 +1067,11 @@ export const TICKETS_APP: AppDef = {
 
       const fallback = linked
         ?? findWorldTicket(node.id)?.def.kb_ref
-        ?? WORLD_KB[0]?.id
+        ?? shelf[0]?.id
         ?? '';
       const chosen = pickedArticle ?? fallback;
 
-      if (WORLD_KB.some((article) => article.id === chosen)) {
+      if (shelf.some((article) => article.id === chosen)) {
         picker.value = chosen;
       }
 
@@ -1078,6 +1276,21 @@ export const TICKETS_APP: AppDef = {
           + 'chose it and nobody can unpick it here.';
       }
 
+      // RETAINED OWNERSHIP (E9, 0.36.0), where it can be read: this ticket has
+      // been sent to second line and is still yours, and - the part worth a
+      // sentence - the clock underneath it is still running. A chip on the row
+      // would say the first half; only the pane can say the second, and the
+      // second is the mechanic.
+      if (typeof node.fields[FIELDS.retainedAt] === 'number'
+        && node.fields[FIELDS.escalated] !== true) {
+        const kept = definitionRow(facts, 'Ownership', 'ticket-detail-retained');
+        kept.dataset.retained = 'true';
+        kept.textContent = 'Sent to second line at '
+          + `${formatSimTime(Number(node.fields[FIELDS.retainedAt])).time}, and `
+          + 'still yours. The clock below has not stopped and will not: at this '
+          + 'grade you keep it until they come back.';
+      }
+
       // The customer's SLA tier (0.12.0), the thing the two clocks below are set
       // by. Only when there is one: an in-house ticket has no tier, so the row is
       // simply not there and the pane reads as it always did.
@@ -1139,6 +1352,14 @@ export const TICKETS_APP: AppDef = {
         still.textContent = `User says: ${preChew.stillBroken}`;
         note.append(label, tried, still);
         detail.append(note);
+      }
+
+      // Somebody else's filing, above the form that disagrees with it (E9,
+      // 0.36.0). Above rather than below on purpose: the question this pane is
+      // asking is "is this right", and the triage controls underneath are the
+      // way to say no.
+      if (isAuditTicket(api.graph, node.id)) {
+        detail.append(renderAudit(node));
       }
 
       detail.append(renderTriage(node, entry, clocks));
@@ -1341,8 +1562,41 @@ export const TICKETS_APP: AppDef = {
     };
 
     const render = (): void => {
-      const nodes = ticketNodes();
+      const all = ticketNodes();
+      // The split, and the ONE place it happens. Everything below reads
+      // `nodes`, so the queue, the selection, the counters and the detail pane
+      // cannot end up talking about different lists.
+      const audits = all.filter((node) => isAuditTicket(api.graph, node.id));
+      const mine = all.filter((node) => !isAuditTicket(api.graph, node.id));
+      const second = audits.length > 0;
+
+      // A tab strip that is not there at all where there is no second queue -
+      // and the tab falls back with it, so a rung that never had one cannot be
+      // left looking at an empty list by a stale bit of state.
+      tabs.hidden = !second;
+
+      if (!second) {
+        tab = 'mine';
+      }
+
+      const nodes = tab === 'audit' ? audits : mine;
       selectedId = resolveSelection(nodes, selectedId).id;
+
+      for (const [button, which] of [
+        [mineTab, 'mine'],
+        [auditTab, 'audit'],
+      ] as const) {
+        button.dataset.selected = String(tab === which);
+        button.setAttribute('aria-pressed', String(tab === which));
+      }
+
+      mineTab.textContent = `My queue (${String(mine.length)})`;
+      // Ruled or not, because that is the question the tab is asking: the count
+      // that matters to a senior is how many filings are still waiting on a
+      // signature, not how many tickets are on the board.
+      auditTab.textContent = `QA audit (${String(
+        audits.filter((node) => verdictOn(api.graph, node.id) === null).length,
+      )})`;
 
       const openCount = nodes.filter(
         (node) => ticketState(node) === 'open'
@@ -1362,13 +1616,26 @@ export const TICKETS_APP: AppDef = {
       withFocusRestored(root, () => {
         renderQueue(nodes);
         renderDetail(nodes.find((node) => node.id === selectedId), nodes);
+
+        // The write-up prompt lives on the audit tab and nowhere else: it is
+        // the second queue's own beat, and a banner about somebody else's
+        // filings on top of your own list would be the window shouting across
+        // itself.
+        const banner = tab === 'audit' ? renderWriteUp() : null;
+
+        if (banner !== null) {
+          detail.prepend(banner);
+        }
       });
 
       // The queue as it now stands, so the next world change can tell whether
       // it moved anything this window draws. Recorded on every paint, world- or
       // player-driven, so a rebuild the player's own click asked for resets the
       // baseline just as a world one does.
-      painted = ticketQueueFingerprint(nodes, selectedId);
+      // Off the WHOLE board rather than the shown tab: an item dealt onto the
+      // other list is a world change this window draws (the tab counts move),
+      // and a fingerprint that could not see it would leave the strip stale.
+      painted = ticketQueueFingerprint(all, selectedId);
     };
 
     /**

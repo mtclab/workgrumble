@@ -6069,6 +6069,160 @@ test('the aggressive register - repeating it escalates', async ({ page }) => {
   });
 });
 
+
+/* ========================================================================= *
+ * The senior rung: the second queue (E9, 0.36.0).
+ *
+ * Its own session because it is its own JOB. The start select writes one desk
+ * per browser, and a probation week cannot also be a senior's week - so the
+ * only way to walk a rung is to be hired onto it, which is what this run does
+ * before it touches anything.
+ *
+ * The journey is the rung's own day, in the order a person would live it: read
+ * somebody else's filing, disagree with one and agree with another, watch the
+ * one you agreed with come back, write the article the repetition earns, and
+ * send a handoff that does not take the ticket off your board.
+ * ========================================================================= */
+
+test('walks the second queue: audited, corrected, billed and written up',
+  async ({ page }) => {
+    await recordControls(page);
+    // Several days are run out inside this one, so it gets the room the other
+    // multi-day runs get rather than a cliff.
+    test.setTimeout(1_800_000);
+    await page.clock.install();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/');
+
+    const boot = page.getByTestId('boot-screen');
+
+    if (await boot.isVisible()) {
+      await page.keyboard.press('Space');
+    }
+
+    // HIRED AS A SENIOR, through the shipped ladder rather than through a
+    // seeded save: the whole of D1 is that the desk you are hired onto is the
+    // difficulty select, and a walk that wrote the title itself would be
+    // walking a second way to be a senior.
+    await expect(page.getByTestId('login-desk')).toBeVisible();
+    await page.getByTestId('login-desk').selectOption('sd_senior');
+    await page.getByTestId('login-password').fill('hunter2');
+    await page.getByTestId('login-submit').click();
+
+    // The pick rebuilds the world, so the machine starts again.
+    await expect(page.getByTestId('login-screen'))
+      .toBeVisible({ timeout: 30_000 });
+    await completeLogin(page, { brief: 'keep' });
+    await beginShift(page);
+
+    // Far enough into the morning that first line have filed the first two.
+    await workUntilMinute(page, 800);
+
+    await step('tickets.tab-audit', async () => {
+      await openFromStartMenu(page, 'tickets');
+      await expect(page.getByTestId('tickets-tabs')).toBeVisible();
+      await page.getByTestId('tickets-tab-audit').click();
+      await expect(page.getByTestId('tickets-tab-audit'))
+        .toHaveAttribute('aria-pressed', 'true');
+    });
+
+    await step('tickets.audit-panel', async () => {
+      await page.getByTestId('ticket-row-audit-print-task').click();
+      await expect(page.getByTestId('ticket-audit')).toBeVisible();
+      await expect(page.getByTestId('ticket-audit-who'))
+        .toContainText('first line');
+      // What was filed, and NOT whether it is right: the panel states the
+      // filing and leaves the judgement where it belongs.
+      await expect(page.getByTestId('ticket-audit-filed'))
+        .toContainText('They filed');
+    });
+
+    /**
+     * The correction, through the QUEUE'S OWN TRIAGE FORM. There is no
+     * audit-correct control to click and that is the design: a correction is a
+     * triage, and the same two dropdowns and the same button file it.
+     */
+    await step('tickets.audit-correct', async () => {
+      await page.getByTestId('triage-impact').selectOption('3');
+      await page.getByTestId('triage-urgency').selectOption('2');
+      await page.getByTestId('triage-file').click();
+      await expect(page.getByTestId('ticket-audit-outcome'))
+        .toContainText('re-triaged');
+      // And it cost the rest of the thought you were having, which the desk
+      // says out loud on the same beat every interruption in this game does.
+      await expect(page.getByTestId('ticket-audit')).toHaveAttribute(
+        'data-verdict',
+        'corrected',
+      );
+    });
+
+    // The other one: agreed with, as filed, for nothing - which is the whole
+    // temptation the bill later is the answer to.
+    await step('tickets.audit-confirm', async () => {
+      await page.getByTestId('ticket-row-audit-marketing-spooler').click();
+      await page.getByTestId('audit-confirm').click();
+      await expect(page.getByTestId('ticket-audit')).toHaveAttribute(
+        'data-verdict',
+        'confirmed',
+      );
+      await expect(page.getByTestId('audit-confirm')).toBeDisabled();
+    });
+
+    await step('tickets.tab-mine', async () => {
+      await page.getByTestId('tickets-tab-mine').click();
+      await expect(page.getByTestId('tickets-tab-mine'))
+        .toHaveAttribute('aria-pressed', 'true');
+      // Your own queue has been running the whole time you were in theirs.
+      await expect(page.getByTestId('tickets-tab-mine')).toContainText('My queue');
+    });
+
+    /**
+     * Retained ownership: the handoff goes and the ticket stays, with the clock
+     * still running. Driven on one of the player's OWN tickets, because that is
+     * where the rung's second shape break lives - it is not an audit thing.
+     */
+    await step('tickets.retained', async () => {
+      const escalatable = page.getByTestId('ticket-escalate');
+      await escalatable.click();
+      await page.getByTestId('handoff-reported').fill('Reported by the user.');
+      await page.getByTestId('handoff-send').click();
+      await expect(page.getByTestId('ticket-detail-retained'))
+        .toContainText('still yours');
+    });
+
+    // The clock the confirmed filing bought, run out.
+    await runToDayEnd(page);
+    await logInOnDay(page, 2, { brief: 'keep' });
+    await beginShift(page);
+
+    await step('tickets.audit-bill', async () => {
+      await expectNoticed(page, 'QA sign-off');
+    });
+
+    // Wednesday deals the second instance of the class; ruling on it is what
+    // earns the prompt.
+    await runToDayEnd(page);
+    await logInOnDay(page, 3, { brief: 'keep' });
+    await beginShift(page);
+    await workUntilMinute(page, 700);
+    await openFromStartMenu(page, 'tickets');
+    await page.getByTestId('tickets-tab-audit').click();
+    await page.getByTestId('ticket-row-audit-print-workstation').click();
+    await page.getByTestId('audit-confirm').click();
+
+    await step('tickets.write-up', async () => {
+      await expect(page.getByTestId('ticket-writeup')).toBeVisible();
+      await page.getByTestId('audit-author-article').click();
+      await expect(page.getByTestId('ticket-writeup')).toHaveCount(0);
+      // And the article is on the shelf, which is the compounding half: it was
+      // not there to be read a minute ago.
+      await openFromStartMenu(page, 'kb');
+      await expect(
+        page.getByTestId('kb-row-impact-is-the-estate-not-the-fault'),
+      ).toBeVisible();
+    });
+  });
+
 /* ========================================================================= *
  * The gate.
  * ========================================================================= */

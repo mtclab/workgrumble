@@ -20,6 +20,7 @@ import type {
   TicketState,
 } from '../engine-api';
 import {
+  AUDIT_ACTIONS,
   CHANGE_ACTIONS,
   DAY_ACTIONS,
   HELPDESK_ACTIONS,
@@ -114,6 +115,25 @@ import {
   selinuxRelabelSetup,
 } from '../world/selinux';
 import { queueJumpFalloutDue } from '../world/vip';
+import { rungFor } from '../world/titles';
+import {
+  AUDIT_FAULT_NOTES,
+  type AuditFault,
+  auditFalloutDue,
+  auditItemsOn,
+  classAuthored,
+  filingOf,
+  SENIOR_RUNG,
+  vendorRepliesDue,
+  writeUpDue,
+} from '../world/audit';
+import {
+  ARTICLE_PARAM,
+  BENEFICIARY_PARAM,
+  CLASS_PARAM,
+  FAULT_PARAM,
+  JUNIOR_PARAM,
+} from '../world/actions/audit';
 import { findIncident } from '../world/incidents';
 import { findOnboarding } from '../world/onboarding';
 import { postmortemFor } from '../world/postmortem';
@@ -1026,6 +1046,18 @@ export interface DayApi {
   }[];
   invoiceBreakdown(customer: string): readonly string[];
   invoiceMail(): readonly InvoiceThread[];
+  /**
+   * The second queue's two verbs (E9, 0.36.0). The THIRD player answer -
+   * correcting - is not here on purpose: it is `ticket.classify`, dispatched
+   * from the triage panel like any other triage, because a correction is a
+   * triage and a second road to it would be a second matrix.
+   *
+   * `writeUpClass()` is the prompt, a pure read of the board: the class the
+   * desk is now asking for an article about, or nothing.
+   */
+  writeUpClass(): string | null;
+  confirmAudit(ticketId: string): DispatchResult;
+  writeUpArticle(): DispatchResult;
   projectReports(): readonly StatusReport[];
   projectHonestRag(): ProjectRag | null;
   projectReportReadout(): readonly string[];
@@ -2700,6 +2732,10 @@ export class DayDriver implements DayApi {
     }
 
     this.spawnArrivals(before, now);
+    // And the second queue with it (E9, 0.36.0), in the same minute and after
+    // it: an audit item is an ordinary arrival wearing somebody else's filing,
+    // so it goes where arrivals go. Inert by content off the senior rung.
+    this.spawnAudits(before, now);
     // Before the floor and before the queue: the world breaking is not
     // something the player did, and everything else this minute has to see
     // the world as it now is.
@@ -2726,6 +2762,15 @@ export class DayDriver implements DayApi {
     // the passing minute causes, and not in `dispatch` where the fallouts that
     // follow an action live.
     this.settleQueueJumpFallout();
+    // And the audit queue's (E9, 0.36.0), which is the same kind of event and
+    // therefore in the same place: a wrong triage you signed off costs nothing
+    // until the clock it bought runs out, and that is a minute passing rather
+    // than anything anybody did.
+    this.settleAuditFallout();
+    // And second line coming back on a ticket the senior KEPT (E9, 0.36.0),
+    // which is the same kind of event again: somebody else finishing, on their
+    // own timetable, noticed by a minute passing.
+    this.settleVendorReplies(now);
     this.walkTheFloor(before, now);
     // After the corridor, in the same minute: the lead arriving is a takeover
     // too, and the assert inside this one is entitled to see it. Before the
@@ -2791,6 +2836,7 @@ export class DayDriver implements DayApi {
       // Same as the night, and the same reason: the brief is not paid time.
       this.engine.advanceOffHours(start - now);
       this.spawnArrivals(now, this.engine.now());
+      this.spawnAudits(now, this.engine.now());
       // A window that opens at nine opens at nine, whether the player spent
       // the hour reading the brief or skipped it in four seconds.
       this.applyIncidents(now, this.engine.now());
@@ -2891,6 +2937,7 @@ export class DayDriver implements DayApi {
     this.patrol_ = this.patrolFor(day + 1);
     this.rebuildInterruptions(day + 1);
     this.spawnArrivals(now, this.engine.now());
+    this.spawnAudits(now, this.engine.now());
     // On-call, at the one boundary that has a night in it: first settle the
     // pages whose on-call day just ended - a real fire still down is a miss, the
     // downtime read at the review - then fire tonight's, which the engineer
@@ -3556,6 +3603,69 @@ export class DayDriver implements DayApi {
     }
   }
 
+  /**
+   * The second queue, dealt (E9, 0.36.0 - the SD-senior rung).
+   *
+   * Two dispatches per item and they are in this order for a reason: the ticket
+   * spawns the ORDINARY way, through `spawnWorldTicket`, so an audit item is an
+   * ordinary ticket in every respect the engine cares about - the estate is set
+   * up, the clock starts, the customer tier and the VIP flag fold in exactly as
+   * they do for anything else - and only then is somebody else's filing dealt
+   * onto it. The alternative was a second spawn path for other people's
+   * tickets, which is a second answer to "what is a ticket".
+   *
+   * It is GATED ON THE RUNG, and that gate is the load-bearing line rather
+   * than a belt-and-braces one. The audit queue is the senior rung's whole
+   * shape break, and its five tickets are faults on the probation shop's
+   * estate: dealt anywhere else they would name a reporter that world has
+   * never heard of. So the read asks who is sitting here - the tier and the
+   * title, which is the same pair `rungFor` settles the week's blend with -
+   * and answers with nothing for everybody else. That is what keeps a junior's
+   * Monday and an engineer's Monday the ones they always were.
+   *
+   * The KB beat's compounding half is the one branch here: the last instance of
+   * the class asks the world whether the player has written the article, and a
+   * player who has gets a filing that is RIGHT, with the article already linked
+   * on it. Take that branch out and the third one arrives mis-triaged like the
+   * other two, which is what `audit-teeth.test.ts` proves by doing exactly that.
+   */
+  private spawnAudits(after: number, upTo: number): void {
+    if (rungFor(this.playerTier(), this.playerText(FIELDS.title)) !== SENIOR_RUNG) {
+      return;
+    }
+
+    const day = this.day();
+    const authored = classAuthored(this.engine.graph, this.actor);
+
+    for (const item of auditItemsOn(day)) {
+      const at = tickAtMinute(day, item.minute);
+
+      if (at <= after || at > upTo
+        || this.engine.graph.getNode(item.ticket) !== undefined) {
+        continue;
+      }
+
+      spawnWorldTicket(this.engine, item.ticket);
+
+      const { filed, fault, kbRef } = filingOf(item, authored);
+
+      this.engine.dispatch(AUDIT_ACTIONS.auditDeal, this.actor, item.ticket, {
+        [JUNIOR_PARAM]: item.junior,
+        impact: filed.impact,
+        urgency: filed.urgency,
+        priority: filed.priority,
+        ...(fault === null ? {} : { [FAULT_PARAM]: fault }),
+        ...(item.auditClass === undefined
+          ? {}
+          : { [CLASS_PARAM]: item.auditClass }),
+        ...(item.beneficiary === undefined
+          ? {}
+          : { [BENEFICIARY_PARAM]: item.beneficiary }),
+        ...(kbRef === null ? {} : { [ARTICLE_PARAM]: kbRef }),
+      });
+    }
+  }
+
   /** Whose estate a ticket that has not spawned yet is about, off the roster. */
   private customerOfTicket(ticketId: string): string | null {
     return customerIdForTicketNodes(this.engine.graph, ticketNodes(ticketId));
@@ -4041,6 +4151,72 @@ export class DayDriver implements DayApi {
           : `${ticketTitle(ticket)} - the clock on it has run out with the team `
           + 'still locked out, and the payment run missed its cut-off. Nobody '
           + 'has complained. They all saw which ticket got done first.',
+      );
+    }
+  }
+
+  /**
+   * Second line answering on a ticket that never left the board.
+   *
+   * The verb closes it through the ticket's own resolution rule, so the ending
+   * is the ordinary ending. The notice exists because the player has been
+   * watching a clock they did not control for ninety minutes and is entitled to
+   * be told it has stopped.
+   */
+  private settleVendorReplies(now: number): void {
+    for (const ticket of vendorRepliesDue(this.engine.graph, now)) {
+      const result = this.engine.dispatch(
+        AUDIT_ACTIONS.vendorReply,
+        this.actor,
+        ticket,
+        {},
+      );
+
+      if (result.ok) {
+        this.handlers.onNotice?.(
+          'Second line have come back',
+          `${ticketTitle(ticket)} - they have picked it up and finished it. It `
+          + 'was yours the whole time it was theirs, which is the arrangement '
+          + 'at this grade.',
+        );
+      }
+    }
+  }
+
+  /**
+   * The bill for a triage you signed off (E9, 0.36.0) - the half that makes
+   * confirming a decision rather than a free click.
+   *
+   * The world decides whether there is one: the verb refuses a filing nobody
+   * confirmed, a filing that was RIGHT, a clock that has not run out and a
+   * ticket already charged, so this is a read followed by a dispatch. The
+   * notice names the fault out loud, because the whole content of the mechanic
+   * is that the wrong answer was findable at the time - a bill that said only
+   * "you got it wrong" would teach nothing about which half to check next time.
+   *
+   * Inert everywhere the audit queue is not dealt, which is every rung but the
+   * senior's and every world but the probation shop's.
+   */
+  private settleAuditFallout(): void {
+    for (const ticket of auditFalloutDue(this.engine.graph)) {
+      const fault = this.engine.graph.getField(ticket, FIELDS.auditFault);
+      const result = this.engine.dispatch(
+        AUDIT_ACTIONS.auditFallout,
+        this.actor,
+        ticket,
+        {},
+      );
+
+      if (!result.ok) {
+        continue;
+      }
+
+      this.handlers.onNotice?.(
+        'The QA sign-off has come back',
+        `${ticketTitle(ticket)} - the clock has run out on it, and the review `
+        + 'of the breach says the priority was wrong before anybody started. '
+        + `${AUDIT_FAULT_NOTES[fault as AuditFault] ?? ''} You signed it off, `
+        + 'so the finding is yours as much as the analyst\'s.',
       );
     }
   }
@@ -4831,6 +5007,31 @@ export class DayDriver implements DayApi {
    * whole design: the phase, the dates and the slip are still derived, and
    * this is stored beside them as what the business was told.
    */
+  public writeUpClass(): string | null {
+    return writeUpDue(this.engine.graph, this.actor);
+  }
+
+  /**
+   * The other answer to somebody else's filing. Through `this.dispatch` rather
+   * than at the engine, because agreeing with a triage is WORK on that ticket -
+   * it is a touch, it stops the response clock, and the timesheet is entitled
+   * to know the minute went on the audit queue.
+   */
+  public confirmAudit(ticketId: string): DispatchResult {
+    return this.dispatch(AUDIT_ACTIONS.auditConfirm, this.actor, ticketId, {});
+  }
+
+  /**
+   * The article. Aimed at nothing, because it is about a class rather than a
+   * ticket - and `announced` rather than `dispatch` for the same reason: there
+   * is no ticket for a touch to go onto.
+   */
+  public writeUpArticle(): DispatchResult {
+    return this.announced(
+      this.engine.dispatch(AUDIT_ACTIONS.kbWriteUp, this.actor, null, {}),
+    );
+  }
+
   public reportProject(rag: ProjectRag): DispatchResult {
     return this.announced(this.engine.dispatch(
       PROJECT_ACTIONS.report,

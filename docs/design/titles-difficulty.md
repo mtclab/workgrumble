@@ -25,7 +25,7 @@ the career ladder (titles above the start = content).
 | Title | The shape break | What exists | What is new |
 |---|---|---|---|
 | SD junior (shipped) | KB-rule-bound, permission walls everywhere | The whole probation week | - |
-| SD senior | A SECOND QUEUE: other people's work. QA-audit juniors' triage/priority while your own clocks run; retained ownership after escalation; KB authoring; major-incident comms | Queue, triage matrix, KB app, escalation | The audit queue surface; authored junior-work content (pre-triaged WRONG) |
+| SD senior (shipped 0.36.0) | A SECOND QUEUE: other people's work. QA-audit juniors' triage/priority while your own clocks run; retained ownership after escalation; KB authoring; major-incident comms | Queue, triage matrix, KB app, escalation | BUILT: the audit tab, five authored filings each wrong in one findable way, the confirm/correct pair, retained ownership, the KB write-up. NOT built: major-incident comms |
 | L2 / desktop | Permission wall opens; arrivals come pre-diagnosed wrong | AD/services/terminal surfaces | Mostly content + gating data |
 | Systems engineer (shipped) | Ticket TYPE becomes a choice (incident/request/change/problem); on-call | Incidents, change control, break-glass, postmortems | On-call weeks (SRE-true: an on-call week zeroes project work; max 2 incidents/12h); alert-fatigue tuning (2-5% of ~50 alerts/week actionable) |
 | Senior engineer | You approve OTHER people's changes and eat their blast radius; two clocks that cannot both be green (billable 55-70% target vs delivery) | Change-request machinery, timesheet design (unbuilt) | Approval queue; utilisation mechanic |
@@ -125,6 +125,44 @@ TWO epics, because the dependency shapes differ:
 
 Near-term order stays: 0.28.0 (in flight) -> E9 first lanes (cheap, data over rails)
 interleaved with the standing human play-test recommendation -> E10 -> E7.
+
+## 5a. What 0.36.0 settled about the SD-senior rung (built)
+
+Four decisions the build made, recorded because they are the shape of the rung
+rather than implementation detail:
+
+- **The second queue is a TAB on the ticket window, not an app.** What doubles
+  at this rung is the LIST; everything under it - the detail pane, the clocks,
+  the estate, and above all the triage form - is shared. A window of its own
+  would have had to carry its own copy of the two dropdowns, the nine cells and
+  the deadline arithmetic, which is a second matrix free to drift from the one
+  the game teaches. Corollary, and the load-bearing one: **there is no
+  audit-correct verb.** Correcting a junior's filing IS `ticket.classify`, with
+  a signature and an attention tax hung off the end of it, guarded on a field
+  no other ticket carries.
+- **The senior is hired at the probation shop, at ARC WEEK TWO.** It is the only
+  shop in the build with a first line to audit. Week one is somebody's
+  probation - the authored Monday the generator reproduces byte for byte, and
+  the one week a rung's blend is forbidden to touch - so a senior starting there
+  would carry ratios that mean nothing. Rows now name `startsAt`.
+- **Two rungs stand on one PAM tier.** The tier is about privilege and a senior
+  service desk analyst has a junior's; a third tier invented to make a lookup
+  convenient would have handed this rung `sudo`. `rungFor` reads the TITLE
+  beside the tier - both already on the career carry - and the table refuses two
+  rows sharing a title.
+- **An audit costs the day 33 minutes**, borrowed rather than invented:
+  `CAUGHT_MINUTES` (the least clear air a piece of work needs) plus
+  `REFOCUS_TICKS` (the tax the correction actually charges), priced as the
+  heavier branch and kept out of the partition factor because the switch is
+  already in the number. The five items are spread by that budget: two on the
+  lightest drawn day, none at all on the heaviest, and the class's last instance
+  on the Friday where the ramp does not bind.
+
+Retained ownership is one field and one omission: at the senior title the
+handoff GOES and the ticket stays, with no `set_waiting` - because parking it
+would pause the deadline, and a rung that could escalate its way out of its own
+clock is the opposite of retained ownership. Second line come back ninety
+minutes later, which is inside a P3's budget and not reliably inside a P2's.
 
 ## 6. Owner decisions (ALL ANSWERED 2026-08-12; D3 earlier)
 

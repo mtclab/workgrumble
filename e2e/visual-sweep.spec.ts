@@ -10,10 +10,12 @@
 import { expect, type Page, test } from '@playwright/test';
 
 import {
+  beginShift,
   completeLogin,
   dismissBrief,
   openFromStartMenu,
   runCommand,
+  workUntilMinute,
 } from './helpers';
 
 const OUT = 'test-results/visual-sweep';
@@ -119,6 +121,41 @@ test('captures the start select and the engineer boot', async ({ page }) => {
   await shot(page, '31-engineer-first-monday');
   await dismissBrief(page);
   await shot(page, '32-engineer-desktop-with-pile');
+});
+
+/**
+ * The second queue (E9, 0.36.0), which is the one surface this slice adds and
+ * therefore the one the sweep has never seen.
+ *
+ * Two frames rather than one, because the tab is half the design: the strip
+ * with both lists on it and the count of what is still unsigned, and then the
+ * pane where somebody else's filing sits above the form that disagrees with
+ * it. A capture of only the second would not show that this is a SECOND queue
+ * at all.
+ */
+test('captures the senior rung\'s audit queue', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.install();
+  await page.goto('/');
+
+  await page.getByTestId('login-desk').selectOption('sd_senior');
+  await page.getByTestId('login-password').fill('hunter2');
+  await page.getByTestId('login-submit').click();
+  await expect(page.getByTestId('login-screen'))
+    .toBeVisible({ timeout: 30_000 });
+  await completeLogin(page, { brief: 'keep' });
+  await dismissBrief(page);
+  await beginShift(page);
+  // Far enough into the morning that first line have filed the first two.
+  await workUntilMinute(page, 800);
+
+  await openFromStartMenu(page, 'tickets');
+  await page.getByTestId('tickets-tab-audit').click();
+  await shot(page, '35-audit-queue-tab');
+
+  await page.getByTestId('ticket-row-audit-print-task').click();
+  await shot(page, '36-audit-filing-and-triage');
 });
 
 test('captures the MSP surfaces', async ({ page }) => {

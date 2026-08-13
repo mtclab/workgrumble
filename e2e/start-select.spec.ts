@@ -53,15 +53,19 @@ test('the log-on box offers the whole ladder, and only the built rungs', async (
   await expect(desk).toBeVisible();
 
   // Seven rungs, because the ladder IS the difficulty scale: a select holding
-  // the two that are written would teach a player this game has two
-  // difficulties rather than a career with five rungs still to come.
+  // only the ones that are written would teach a player this game has three
+  // difficulties rather than a career with four rungs still to come.
   await expect(desk.locator('option')).toHaveCount(7);
-  await expect(desk.locator('option:not([disabled])')).toHaveCount(2);
+  // Three takeable since 0.36.0: the probation desk, the senior desk's second
+  // queue, and the engineer.
+  await expect(desk.locator('option:not([disabled])')).toHaveCount(3);
   // Asserted on the ATTRIBUTE, not toBeDisabled(): Playwright's
   // enabled/disabled read is unreliable for <option> on this runner (the
   // attribute was present in the DOM and the matcher still said enabled on
   // the first box run). The attribute is the thing the product ships.
   await expect(desk.locator('option[value="sd_junior"]'))
+    .not.toHaveAttribute('disabled', '');
+  await expect(desk.locator('option[value="sd_senior"]'))
     .not.toHaveAttribute('disabled', '');
   await expect(desk.locator('option[value="systems_engineer"]'))
     .not.toHaveAttribute('disabled', '');
@@ -83,6 +87,31 @@ test('the log-on box offers the whole ladder, and only the built rungs', async (
   await desk.selectOption('architect');
   await expect(page.getByTestId('login-desk-note'))
     .toContainText('Nobody has written this rung yet');
+});
+
+/**
+ * The senior desk (E9, 0.36.0): the same shop as the probation start and a
+ * different JOB, which is the argument the row had to win. It is the one rung
+ * where the difference between two starts is entirely the title carry.
+ */
+test('taking the senior desk starts at the same shop, past probation', async ({
+  page,
+}) => {
+  await freshBoot(page);
+
+  await page.getByTestId('login-desk').selectOption('sd_senior');
+  await page.getByTestId('login-password').fill('hunter2');
+  await page.getByTestId('login-submit').click();
+
+  await expect(page.getByTestId('login-screen')).toBeVisible({ timeout: 30_000 });
+  await completeLogin(page, { brief: 'keep' });
+
+  // A junior's tier and a senior's title - which is the whole of the decision
+  // that this rung buys work rather than privilege.
+  expect(await playerField(page, 'player_tier')).not.toBe('systems_engineer');
+  expect(await playerField(page, 'title')).toBe('Senior Service Desk Analyst');
+  // And NOT week one: week one of this shop is somebody's probation.
+  expect(await playerField(page, 'arc_week')).toBe(2);
 });
 
 test('the standard desk logs straight on, at the probation shop', async ({

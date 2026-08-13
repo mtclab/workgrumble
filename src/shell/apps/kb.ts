@@ -1,4 +1,9 @@
-import { findKbArticle, type KbArticle, kbSlug, WORLD_KB } from '../../world/kb';
+import {
+  findKbArticle,
+  type KbArticle,
+  kbShelf,
+  kbSlug,
+} from '../../world/kb';
 import type { AppDef, AppInstance, AppIntent } from './types';
 import { element, osButton } from './ui';
 
@@ -18,10 +23,19 @@ export const KB_APP: AppDef = {
   tier_required: 1,
   slack: false,
   mount: (host, api): AppInstance => {
+    /**
+     * THE SHELF, not the corpus (E9, 0.36.0): what can be looked up in this
+     * world, which is everything anybody wrote before you got here plus
+     * anything you have written yourself. It is a function rather than a
+     * constant because the second half moves - the senior rung's KB beat puts
+     * an article on it mid-week - and a list captured at mount would leave the
+     * player having written something they could not then read.
+     */
+    const shelf = (): readonly KbArticle[] => kbShelf(api.graph, api.actor);
     // Which article the player was on outlives the window: closing the KB to
     // get at the desktop is not the same as putting the article back.
     const selected = (): string => api.appState.get().kb.selectedId
-      ?? WORLD_KB[0]?.id
+      ?? shelf()[0]?.id
       ?? '';
     // A miss is about the intent that was just delivered, so it dies with the
     // window on purpose - there is nothing to come back to.
@@ -31,7 +45,6 @@ export const KB_APP: AppDef = {
 
     const toolbar = element('div', 'kb-toolbar');
     const count = element('span', 'kb-count', 'kb-count');
-    count.textContent = `${String(WORLD_KB.length)} articles`;
     const note = element('span', 'kb-note');
     note.textContent = 'Written by people who had to fix it at the time.';
     toolbar.append(count, note);
@@ -51,7 +64,9 @@ export const KB_APP: AppDef = {
     const renderList = (): void => {
       list.replaceChildren();
 
-      for (const article of WORLD_KB) {
+      count.textContent = `${String(shelf().length)} articles`;
+
+      for (const article of shelf()) {
         const item = element('li');
         const row = element(
           'button',

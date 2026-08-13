@@ -47,8 +47,8 @@ describe('the rung table', () => {
     }
   });
 
-  it('says exactly two rungs are built, and they are the two with tiers', () => {
-    expect(BUILT_RUNGS).toEqual(['sd_junior', 'systems_engineer']);
+  it('says exactly three rungs are built, and they all have tiers', () => {
+    expect(BUILT_RUNGS).toEqual(['sd_junior', 'sd_senior', 'systems_engineer']);
 
     for (const rung of RUNGS) {
       const row = TITLE_TABLE[rung];
@@ -272,12 +272,12 @@ describe('the constants moved in, and their old homes are dead', () => {
     expect(rungFor(PLAYER_TIERS.systemsEngineer)).toBe('systems_engineer');
     expect(rowFor(PLAYER_TIERS.serviceDesk).id).toBe('sd_junior');
     // And the title is the OTHER half of the read since 0.36.0, for the rung
-    // that will share the desk tier. Nothing recognised - a title from an
+    // that shares the desk tier. Nothing recognised - a title from an
     // unbuilt row, a hand-edited save, a build that has renamed a row - falls
     // back to the bottom of the ladder rather than guessing, which is the whole
     // of what the fallback is for.
     expect(rungFor(PLAYER_TIERS.serviceDesk, TITLE_TABLE.sd_senior.title))
-      .toBe('sd_junior');
+      .toBe('sd_senior');
     expect(rungFor(PLAYER_TIERS.serviceDesk, 'Chief Beverage Officer'))
       .toBe('sd_junior');
 
