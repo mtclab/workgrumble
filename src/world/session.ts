@@ -28,7 +28,7 @@ import {
   seasonAt,
 } from './pressure';
 import { spawnWorldTicket } from './tickets';
-import { DEFAULT_RUNG, rungForTier } from './titles';
+import { DEFAULT_RUNG, rungFor } from './titles';
 import { type DayScript } from './week';
 import { generatedWeekFor } from './week-gen';
 import { type WeekSource } from './week-source';
@@ -320,9 +320,9 @@ export function createWorldSession(
     // for a session standing up a fixture shop with no player node yet. After
     // this moment every re-resolution reads the graph (`weekRequestFrom`),
     // which is what a promotion mid-week needs.
-    rung: start.playerTier === null
+    rung: start.playerTier === undefined || start.playerTier === null
       ? DEFAULT_RUNG
-      : rungForTier(start.playerTier),
+      : rungFor(start.playerTier, start.title),
   });
 
   // Only Monday's inherited pile is spawned here: it is what was waiting when

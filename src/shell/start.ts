@@ -30,6 +30,7 @@
  */
 
 import {
+  carryForAnotherWeek,
   carryForEmployer,
   FRESH_CAREER_TIER,
   type EmployerCareer,
@@ -93,7 +94,28 @@ export function carryForStart(rung: Rung): WeekCarry {
     return FIRST_WEEK;
   }
 
-  return carryForEmployer(careerFor(rung), TITLE_TABLE[rung].employer ?? '');
+  const row = TITLE_TABLE[rung];
+  const employer = row.employer ?? '';
+
+  /**
+   * A rung that names a week of the arc opens on THAT week, through the road a
+   * second week at the same shop already takes (E9, 0.36.0).
+   *
+   * The senior analyst is hired onto the probation shop's desk, and week one of
+   * that shop is somebody's probation - the Monday that teaches the two basic
+   * tools, reproduced byte for byte by the generator on purpose. Dealing it to
+   * a senior would be the game insisting an experienced analyst be walked
+   * through the ticket window; worse, it is the one week a rung's blend is
+   * forbidden to touch, so the ratios on the row would mean nothing at all.
+   *
+   * `carryForAnotherWeek` rather than a field set here, for the reason
+   * `carryForEmployer` is used below: being somewhere in an employer's arc has
+   * one implementation, and a start that wrote `arcWeek` itself would be a
+   * second one, free to drift.
+   */
+  return row.startsAt === null
+    ? carryForEmployer(careerFor(rung), employer)
+    : carryForAnotherWeek(careerFor(rung), employer, row.startsAt);
 }
 
 /** Whether a start record stands a player at the engineer tier (E6). */

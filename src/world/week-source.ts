@@ -36,7 +36,7 @@
 import type { ReadOnlyGraphView } from '../engine-api';
 import { employerFor } from './employers';
 import { FIELDS, playerTierOf } from './fields';
-import { rungForTier, type Rung } from './titles';
+import { rungFor, type Rung } from './titles';
 import type { DayScript } from './week';
 
 /** Everything the answer to "which week is this" is allowed to depend on. */
@@ -110,6 +110,14 @@ export function weekRequestFrom(
     // reason: a promotion taken on the Wednesday changes the rung mid-week, and
     // a caller holding its own copy would re-resolve the rest of the week for
     // the title the player had at eight o'clock on Monday.
-    rung: rungForTier(playerTierOf(graph.getField(actor, FIELDS.playerTier))),
+    // The TITLE goes with the tier since 0.36.0: two rungs stand on the
+    // service desk tier, and the one the player is on is the one whose title
+    // they are wearing.
+    rung: rungFor(
+      playerTierOf(graph.getField(actor, FIELDS.playerTier)),
+      typeof graph.getField(actor, FIELDS.title) === 'string'
+        ? (graph.getField(actor, FIELDS.title) as string)
+        : null,
+    ),
   };
 }

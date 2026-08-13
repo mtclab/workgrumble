@@ -33,7 +33,7 @@
  */
 
 import { playerTierOf } from './fields';
-import { rowForTier } from './titles';
+import { rowFor } from './titles';
 
 /**
  * How loud the page is. A sev-1 is a customer-facing service down (the portal
@@ -293,5 +293,11 @@ export function formatPageTime(minute: number): string {
  * the ssh gate does.
  */
 export function isOnCall(playerTierValue: unknown): boolean {
-  return rowForTier(playerTierOf(playerTierValue)).carriesPager;
+  // The TIER alone, with no title beside it, and that is safe rather than
+  // sloppy: two rungs share the service desk tier since 0.36.0 and neither
+  // carries a pager, which `titles.test.ts` asserts of every tier rather than
+  // leaving to be true by luck. The day a rung sharing a tier disagrees about
+  // the pager, that gate goes red here rather than a senior analyst being
+  // quietly paged at two in the morning.
+  return rowFor(playerTierOf(playerTierValue)).carriesPager;
 }

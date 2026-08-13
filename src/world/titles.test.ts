@@ -21,8 +21,8 @@ import {
   offeredAtFor,
   RATES_PROFILES,
   RUNGS,
-  rowForTier,
-  rungForTier,
+  rowFor,
+  rungFor,
   SLA_PROFILES,
   tierFor,
   TITLE_TABLE,
@@ -243,10 +243,50 @@ describe('the constants moved in, and their old homes are dead', () => {
     expect(isOnCall(undefined)).toBe(false);
   });
 
+  /**
+   * `isOnCall` reads the tier and no title, which is a shortcut - and this is
+   * what makes it a safe one rather than a lucky one. Two rungs will share the
+   * service desk tier, so the shortcut is only honest while every rung on a
+   * tier agrees about the pager. The day one of them disagrees, this goes red
+   * here rather than a senior analyst being quietly paged at two in the
+   * morning.
+   */
+  it('lets every rung on one tier agree about the pager', () => {
+    const byTier = new Map<string, boolean>();
+
+    for (const rung of RUNGS) {
+      const row = TITLE_TABLE[rung];
+
+      if (row.tier === null) {
+        continue;
+      }
+
+      const seen = byTier.get(row.tier);
+      expect(seen ?? row.carriesPager, rung).toBe(row.carriesPager);
+      byTier.set(row.tier, row.carriesPager);
+    }
+  });
+
   it('starts a fresh career on the bottom rung\'s tier', () => {
     expect(FRESH_CAREER_TIER).toBe(tierFor(DEFAULT_RUNG));
-    expect(rungForTier(PLAYER_TIERS.systemsEngineer)).toBe('systems_engineer');
-    expect(rowForTier(PLAYER_TIERS.serviceDesk).id).toBe('sd_junior');
+    expect(rungFor(PLAYER_TIERS.systemsEngineer)).toBe('systems_engineer');
+    expect(rowFor(PLAYER_TIERS.serviceDesk).id).toBe('sd_junior');
+    // And the title is the OTHER half of the read since 0.36.0, for the rung
+    // that will share the desk tier. Nothing recognised - a title from an
+    // unbuilt row, a hand-edited save, a build that has renamed a row - falls
+    // back to the bottom of the ladder rather than guessing, which is the whole
+    // of what the fallback is for.
+    expect(rungFor(PLAYER_TIERS.serviceDesk, TITLE_TABLE.sd_senior.title))
+      .toBe('sd_junior');
+    expect(rungFor(PLAYER_TIERS.serviceDesk, 'Chief Beverage Officer'))
+      .toBe('sd_junior');
+
+    // The read is only ambiguous if two rows can be told apart by their title,
+    // so the table refuses a shared one - proven rather than assumed, because
+    // the day the senior rung opens this is what stops it being dealt the
+    // probationer's week.
+    const titles = RUNGS.map((rung) => TITLE_TABLE[rung].title);
+    expect(new Set(titles).size).toBe(titles.length);
   });
 
   it('leaves nothing behind at the old homes', () => {

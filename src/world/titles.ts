@@ -167,6 +167,22 @@ export interface TitleRow {
   readonly tier: PlayerTier | null;
   /** The shop this rung is hired at, for the rungs that can be. */
   readonly employer: string | null;
+  /**
+   * WHICH WEEK OF THE SHOP'S ARC a hire at this rung opens on, or null for the
+   * shop's first week (E9, 0.36.0).
+   *
+   * It exists because week one of every shop is a table somebody WROTE - the
+   * probation Monday, which teaches the two basic tools and which the generator
+   * is contractually obliged to reproduce byte for byte - and a hire who is not
+   * a probationer has no business being dealt it. It is also the only way the
+   * blend on this row can mean anything at all: the rung's work mix binds the
+   * DRAW and never the authored week, so a rung that starts on week one starts
+   * on a week its own ratios were not allowed to touch.
+   *
+   * A row naming one is refused unless the shop's content can actually carry
+   * that week, which is what `PRODUCT_WINDOW` measures - see `titles.test.ts`.
+   */
+  readonly startsAt: number | null;
   /** Whether this rung carries the pager after hours (E6's on-call gate). */
   readonly carriesPager: boolean;
   /**
@@ -236,6 +252,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     built: true,
     tier: PLAYER_TIERS.serviceDesk,
     employer: 'workgrumble',
+    startsAt: null,
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 1, device: 1, server: 1, project: 0 },
@@ -250,9 +267,43 @@ const TITLE_ROWS: readonly TitleRow[] = [
     title: 'Senior Service Desk Analyst',
     shapeBreak: 'A second queue appears: other people\'s work, audited while '
       + 'your own clocks run.',
+    // NOT YET TAKEABLE, and the reason is the honesty this whole select is
+    // built on (0.35.0): the rung's CONTENT exists - the audit queue's five
+    // authored filings, the grader that proves each one wrong in exactly one
+    // findable way, the price of an audit in minutes - and the SURFACE does
+    // not. A rung whose row says "a second queue appears" and whose game has
+    // one queue in it would be the ladder lying about what it ships, which is
+    // worse than a greyed row saying nobody has written it yet. It flips the
+    // day the queue has a window, a verb and a walk step.
     built: false,
+    // WHERE IT WILL STAND when it opens, written here as a comment rather than
+    // as state, because the table refuses start state on a rung nobody can
+    // reach - and that refusal is right.
+    //
+    // The TIER will be the junior's, `service_desk`, and that is the honest
+    // answer rather than an oversight: the PAM tier is about PRIVILEGE, and a
+    // senior service desk analyst may touch exactly what a junior may. The
+    // whole of what the rung buys is other people's work and the right to
+    // disagree with it. Inventing a third tier to give the row a distinct value
+    // would be the promotion mechanic used as a label, and it would hand this
+    // rung `sudo`. That is also why `rungFor` reads the TITLE beside the tier
+    // since 0.36.0 - two rungs on one tier is a thing this table now supports.
+    //
+    // The EMPLOYER will be the probation shop, which is the argument this row
+    // has to win. It is the only shop in the build with a first line to audit:
+    // the MSP is an engineers' shop, Bodgeworth is five arrivals and a man
+    // called Trev, and Halcyon's desk is one person and it is you. A senior
+    // analyst is a service desk's senior analyst, so the honest home is the
+    // service desk - and the difference between a probationer and a senior at
+    // the same address is the TITLE CARRY, which is machinery this game already
+    // ships and which 0.35.0's start select is built out of.
+    //
+    // And `startsAt` will be 2, not 1, because week one of that shop is
+    // somebody's probation - the authored Monday that teaches the two basic
+    // tools, and the one week a rung's blend is forbidden to touch.
     tier: null,
     employer: null,
+    startsAt: null,
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 0.9, device: 0.9, server: 1, project: 0 },
@@ -270,6 +321,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     built: false,
     tier: null,
     employer: null,
+    startsAt: null,
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 0.8, device: 1, server: 1, project: 0 },
@@ -287,6 +339,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     built: true,
     tier: PLAYER_TIERS.systemsEngineer,
     employer: 'msp',
+    startsAt: null,
     carriesPager: true,
     offeredAt: 70,
     workMix: { access: 0.75, device: 0.6, server: 1, project: 1 },
@@ -313,6 +366,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     built: false,
     tier: null,
     employer: null,
+    startsAt: null,
     carriesPager: true,
     offeredAt: null,
     workMix: { access: 0.5, device: 0.4, server: 1, project: 1 },
@@ -339,6 +393,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     built: false,
     tier: null,
     employer: null,
+    startsAt: null,
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 0.4, device: 0.3, server: 0.8, project: 1 },
@@ -365,6 +420,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     built: false,
     tier: null,
     employer: null,
+    startsAt: null,
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 0.2, device: 0.15, server: 0.5, project: 1 },
@@ -397,6 +453,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
 export const TITLE_TABLE: Readonly<Record<Rung, TitleRow>> = (() => {
   const table = {} as Record<Rung, TitleRow>;
   const goals = new Set<string>();
+  const titles = new Set<string>();
 
   for (const rung of RUNGS) {
     const row = TITLE_ROWS.find((entry) => entry.id === rung);
@@ -443,6 +500,40 @@ export const TITLE_TABLE: Readonly<Record<Rung, TitleRow>> = (() => {
       );
     }
 
+    /**
+     * And the titles, which stopped being decoration at 0.36.0.
+     *
+     * Two rungs now stand on ONE PAM tier - the senior service desk analyst has
+     * a junior's privileges and a senior's work - so the tier is no longer the
+     * whole answer to "which rung is this", and `rungFor` reads the TITLE the
+     * career already carries to settle it. That makes a duplicated title a rung
+     * silently wearing another rung's week, which is the exact class of bug the
+     * rest of these checks exist to refuse.
+     */
+    if (titles.has(row.title)) {
+      throw new Error(
+        `Two rungs are called "${row.title}". The title is what tells two `
+        + 'rungs on one tier apart, so a shared one is a player being dealt '
+        + 'somebody else\'s week under their own job description.',
+      );
+    }
+
+    if (row.startsAt !== null
+      && (!Number.isSafeInteger(row.startsAt) || row.startsAt < 1)) {
+      throw new Error(
+        `"${rung}" opens on week ${String(row.startsAt)} of its shop's arc. A `
+        + 'week of an arc is numbered from one.',
+      );
+    }
+
+    if (row.startsAt !== null && !row.built) {
+      throw new Error(
+        `"${rung}" is not built and names a week to start on anyway. A start `
+        + 'nobody can reach is a start that will be reached by accident.',
+      );
+    }
+
+    titles.add(row.title);
     goals.add(row.winCondition);
     table[rung] = row;
   }
@@ -463,21 +554,43 @@ export function isBuiltRung(value: unknown): value is Rung {
 export const DEFAULT_RUNG: Rung = 'sd_junior';
 
 /**
- * Which rung a player is on, read off the PAM tier they carry.
+ * Which rung a player is on, read off the two things the career already
+ * carries: the PAM tier, and the title.
  *
- * The tier is the closed set the world already writes, saves and carries across
- * an employer (`FIELDS.playerTier`), and it maps one-to-one onto the two BUILT
- * rungs - which is why the rung needs no field of its own on the player node
- * and no schema version to go with it. The day a third rung is built it will
- * bring a third tier with it, and this is the one function that changes.
+ * It was the tier alone until 0.36.0, and the comment where this one is said
+ * the day a third rung was built it would bring a third tier with it. That
+ * turned out to be wrong about THIS rung and right about the reasoning: the
+ * senior service desk analyst has a junior's privileges, so giving it a tier of
+ * its own would have handed it `sudo` to make a lookup convenient. The title is
+ * the other half of the same carry - `FIELDS.title`, written by `carrySetup`,
+ * taken across an employer by `carryForEmployer`, held in the save file since
+ * 0.6.0 - so this needs no new field and no schema version either, and the
+ * table refuses two rungs sharing a title so the read cannot be ambiguous.
+ *
+ * The TIER still decides first, because it is the fact that cannot be wrong: a
+ * title nothing recognises (a hand-edited save, a build that has renamed a row)
+ * falls back to the bottom of the ladder for the tier it stands on, which is
+ * the same honest default the old function had.
  */
-export function rungForTier(tier: PlayerTier): Rung {
-  return tier === PLAYER_TIERS.systemsEngineer ? 'systems_engineer' : DEFAULT_RUNG;
+export function rungFor(tier: PlayerTier, title?: string | null): Rung {
+  if (tier === PLAYER_TIERS.systemsEngineer) {
+    return 'systems_engineer';
+  }
+
+  const named = typeof title === 'string'
+    ? RUNGS.find(
+      (rung) => TITLE_TABLE[rung].built
+        && TITLE_TABLE[rung].tier === tier
+        && TITLE_TABLE[rung].title === title,
+    )
+    : undefined;
+
+  return named ?? DEFAULT_RUNG;
 }
 
-/** The row a player at this tier is playing under. */
-export function rowForTier(tier: PlayerTier): TitleRow {
-  return TITLE_TABLE[rungForTier(tier)];
+/** The row a player is playing under. */
+export function rowFor(tier: PlayerTier, title?: string | null): TitleRow {
+  return TITLE_TABLE[rungFor(tier, title)];
 }
 
 /**
