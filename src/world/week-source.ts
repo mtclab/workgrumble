@@ -35,7 +35,8 @@
 
 import type { ReadOnlyGraphView } from '../engine-api';
 import { employerFor } from './employers';
-import { FIELDS } from './fields';
+import { FIELDS, playerTierOf } from './fields';
+import { rungForTier, type Rung } from './titles';
 import type { DayScript } from './week';
 
 /** Everything the answer to "which week is this" is allowed to depend on. */
@@ -45,6 +46,20 @@ export interface WeekRequest {
   readonly attempt: number;
   /** Where in the employer's arc this week sits, counting from 1. */
   readonly arcWeek: number;
+  /**
+   * WHICH RUNG is playing it (E9, 0.35.0) - the fourth scalar, and the one that
+   * decides the MIX rather than the week.
+   *
+   * It belongs here for the same reason the other three do: it is a fact the
+   * world already carries and a save already restores. The rung is read off the
+   * player's PAM tier (`FIELDS.playerTier`), which the promotion writes, the
+   * carry takes across an employer and the save file holds - so no new field,
+   * no schema version, and a load resolves the same week it left.
+   *
+   * Absent is the bottom of the ladder, which is every request any earlier
+   * build made and every player who has not been promoted.
+   */
+  readonly rung?: Rung;
 }
 
 export type WeekSource = (request: Readonly<WeekRequest>) => readonly DayScript[];
@@ -91,5 +106,10 @@ export function weekRequestFrom(
     employer,
     attempt: playerNumber(graph, actor, FIELDS.weekAttempt),
     arcWeek: playerNumber(graph, actor, FIELDS.arcWeek),
+    // Off the graph like the other two, and for the sharper version of the same
+    // reason: a promotion taken on the Wednesday changes the rung mid-week, and
+    // a caller holding its own copy would re-resolve the rest of the week for
+    // the title the player had at eight o'clock on Monday.
+    rung: rungForTier(playerTierOf(graph.getField(actor, FIELDS.playerTier))),
   };
 }

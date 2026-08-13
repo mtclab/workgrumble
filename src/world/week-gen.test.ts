@@ -32,6 +32,7 @@ import {
   type EmployerContent,
 } from './pools';
 import { findWorldTicket } from './tickets';
+import type { WorkKind } from './titles';
 import { WEEK_DAYS, type DayScript } from './week';
 import {
   dealtIn,
@@ -197,6 +198,13 @@ describe('the draw', () => {
       { def: { id: `ticket:fill-${String(index)}` }, paths: [{ steps: [{}] }] },
     ]),
   );
+  /**
+   * The fixture classes its own tickets, exactly as it prices its own: no
+   * roster has heard of `ticket:fill-3`, and the rung's work mix measures the
+   * week in kinds. One kind for all of them, because these tests are about the
+   * WINDOW - what they need from the mix is an answer, not a shape.
+   */
+  const kindOf = (): WorkKind => 'device';
   const price = (
     id: string,
   ): { def: { id: string }; paths: { steps: object[] }[] } | undefined => PRICES.get(id);
@@ -232,7 +240,7 @@ describe('the draw', () => {
     return generateWeek(
       { employer: content.employer, attempt: 1, arcWeek },
       content,
-      { price, window },
+      { price, window, kindOf },
     );
   }
 

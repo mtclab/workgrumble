@@ -129,12 +129,29 @@ interleaved with the standing human play-test recommendation -> E10 -> E7.
 ## 6. Owner decisions (ALL ANSWERED 2026-08-12; D3 earlier)
 
 - **D1 - DECIDED (owner, 2026-08-12): YES** - start-title = the difficulty
-  select at new game.
+  select at new game. **BUILT 0.35.0** (#58 slice B): the log-on box carries the
+  whole ladder, the two built rungs are takeable and the five unwritten ones are
+  greyed with the reason on them. Taking a rung other than the standard desk
+  writes it to `workgrumble/start` and boots the shop its row names, already at
+  the tier - through the promotion's own carry, so there is one implementation
+  of being an engineer.
 - **D2 - DECIDED (owner, 2026-08-12): BLEND, and it LESSENS by title and by
   the type of the work** - lower-tier work stays in the queue after
   promotion, with the ratio a function of both the title and the work kind
   (a senior still resets the odd password; an architect rarely sees one but
   still catches the outage-adjacent basics). Ratio table = build-time data.
+  **BUILT 0.35.0** (#58 slices A and C): the ratios are `workMix` on each row of
+  `src/world/titles.ts`, as FACTORS against the shop's own mix (1 = the shop as
+  it deals it), over four work kinds - access, device, server, project - that
+  `src/world/work-kinds.ts` derives from the verb each ticket's advertised path
+  closes with. The week generator consumes them as a per-week share quota. Where
+  a shop's pool cannot express a rung's blend the blend YIELDS to the week (the
+  band is a promise about the day, the blend is a promise about the title);
+  which shops carry which blend is measured by `mixAfforded` and ratcheted in
+  `src/world/week-mix.test.ts`. Measured today: the engineer's blend holds at
+  the MSP every week, at Halcyon Grange and Bodgeworth about half the time, and
+  at the probation shop not at all (its surplus is desk work almost all the way
+  down).
 - **D3 - DECIDED (owner, 2026-08-09): yes, Systems Engineers do projects too.**
   E10 builds standalone, sequenced before E7; E7 ships as a content pack over it.
   First content: the firewall replacement at the MSP.

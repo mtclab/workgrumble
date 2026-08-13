@@ -71,8 +71,16 @@ import {
   type EmployerContent,
 } from './pools';
 import { findWorldTicket } from './tickets';
+import {
+  DEFAULT_RUNG,
+  TITLE_TABLE,
+  WORK_KINDS,
+  type Rung,
+  type WorkKind,
+} from './titles';
 import { MAX_INHERITED, validateWeek, type DayScript } from './week';
 import type { WeekRequest, WeekSource } from './week-source';
+import { mixOfWeek, workKindOf } from './work-kinds';
 
 /**
  * How many weeks an entry sits out after being drawn.
@@ -137,6 +145,175 @@ const NODE_BUDGET = 1_500;
  */
 const QUOTA_PULL = 10_000;
 
+/**
+ * THE WORK MIX: D2's blend ratios, turned into a quota the draw can meet (E9,
+ * 0.35.0 slice 3).
+ *
+ * The rung table says what a title changes as a FACTOR against the shop's own
+ * mix - 0.6 is "this rung sees three of the five password jobs this shop deals
+ * in a week" - and a factor is not something a generator can check. This is the
+ * conversion, and it is done in SHARES rather than in counts: the shop's
+ * authored week gives the share of its arrivals each kind of work takes, the
+ * row's factor thins that share, and the ceiling for a week being drawn is that
+ * share of THAT week's arrivals.
+ *
+ * Shares rather than counts, because the two disagree and the disagreement is
+ * not small: the probation shop authors twenty-three arrivals and draws up to
+ * twenty-five, and a ceiling measured against the authored COUNT would quietly
+ * tighten every time a drawn week came out larger than the week it was measured
+ * from. A share is a claim about the shape of a week, which is what a blend is.
+ *
+ * The baseline is the AUTHORED week rather than an average of drawn ones, for
+ * the same reason the column quotas are measured off it: it is the one week
+ * somebody WROTE, so it is the only statement of what a week at this shop is
+ * that does not depend on the sampler being right.
+ *
+ * FLOOR ONE, WHEREVER THE FACTOR IS NOT NOUGHT, and that is the whole of D2 in
+ * one line: the lower work LESSENS, it does not disappear. An engineer's week
+ * that dealt no password job at all would be the blend decision reversed by
+ * arithmetic - the ceiling would have been met by dealing none.
+ */
+interface MixBound {
+  /** Whole arrivals, at least this many in the week. */
+  readonly least: number;
+  /** The share of the week's arrivals this kind may take, nought to one. */
+  readonly share: number;
+}
+
+type MixBounds = Readonly<Record<WorkKind, MixBound>>;
+
+/** How many of a kind a week of `total` arrivals may hold under a bound. */
+function ceilingFor(bound: MixBound, total: number): number {
+  return bound.share >= 1
+    ? Number.POSITIVE_INFINITY
+    : Math.ceil(bound.share * total);
+}
+
+/** The tickets an entry puts on the desk - the two columns with a clock. */
+function arrivalsOf(entry: ContentEntry): readonly string[] {
+  return [
+    ...(entry.fragment.inherited ?? []),
+    ...(entry.fragment.drip ?? []).map((slot) => slot.ticketId),
+  ];
+}
+
+/** What kinds of work a set of entries deals, counted. */
+function mixOf(
+  entries: readonly ContentEntry[],
+  kindOf: (id: string) => WorkKind,
+): Record<WorkKind, number> {
+  const counts: Record<WorkKind, number> = {
+    access: 0, device: 0, server: 0, project: 0,
+  };
+
+  for (const entry of entries) {
+    for (const id of arrivalsOf(entry)) {
+      counts[kindOf(id)] += 1;
+    }
+  }
+
+  return counts;
+}
+
+/** The rung's bounds, and the classifier they are counted with. */
+interface Mix {
+  readonly bounds: MixBounds;
+  readonly kindOf: (id: string) => WorkKind;
+}
+
+/** Every entry the authored table places, which is the shop's own statement. */
+function authoredEntries(content: EmployerContent): readonly ContentEntry[] {
+  return [
+    ...content.beats.flatMap((beat) => beat.members.map((member) => member.entry)),
+    ...content.pool,
+  ].filter((entry) => entry.homeDay >= 1);
+}
+
+/**
+ * The rung's mix, against this shop, or null when the rung blends nothing.
+ *
+ * Null is the junior's answer and it is not a shortcut - a row of all ones IS
+ * "the shop as it deals it", so there is nothing to hold the draw to, and
+ * returning bounds that could never bite would put a pass over the fill that
+ * changed the order things are drawn in. That is exactly how a junior's weeks
+ * would have quietly stopped being the weeks this game already ships.
+ */
+export function mixBoundsFor(
+  content: EmployerContent,
+  rung: Rung,
+  kindOf: (id: string) => WorkKind = workKindOf,
+): MixBounds | null {
+  const row = TITLE_TABLE[rung];
+
+  // Nothing to measure if nothing is blended: the shop's own week is never
+  // classified for a rung that takes it as it comes, which is what keeps a
+  // junior's draw the draw it has always been - and keeps a fixture shop whose
+  // tickets no roster knows playable without a classifier of its own.
+  if (WORK_KINDS.every((kind) => row.workMix[kind] >= 1)) {
+    return null;
+  }
+
+  const baseline = mixOf(authoredEntries(content), kindOf);
+  const total = WORK_KINDS.reduce((sum, kind) => sum + baseline[kind], 0);
+  const bounds = {} as Record<WorkKind, MixBound>;
+
+  for (const kind of WORK_KINDS) {
+    const factor = row.workMix[kind];
+    const share = total === 0 ? 0 : baseline[kind] / total;
+
+    bounds[kind] = factor >= 1
+      ? { least: 0, share: 1 }
+      : factor <= 0
+        ? { least: 0, share: 0 }
+        : { least: baseline[kind] > 0 ? 1 : 0, share: share * factor };
+  }
+
+  return Object.freeze(bounds);
+}
+
+/** Whether a week's arrivals sit inside the rung's mix, ceilings and floors. */
+function withinMix(
+  mix: Mix | null,
+  counts: Readonly<Record<WorkKind, number>>,
+): boolean {
+  if (mix === null) {
+    return true;
+  }
+
+  const total = WORK_KINDS.reduce((sum, kind) => sum + counts[kind], 0);
+
+  return WORK_KINDS.every(
+    (kind) => counts[kind] >= mix.bounds[kind].least
+      && counts[kind] <= ceilingFor(mix.bounds[kind], total),
+  );
+}
+
+/**
+ * Whether a part-filled week could still take one more entry: the ceilings
+ * alone, against the total the week WOULD have.
+ */
+function withinCeilings(
+  mix: Mix,
+  week: Readonly<Record<WorkKind, number>>,
+  adding: Readonly<Record<WorkKind, number>>,
+): boolean {
+  const total = WORK_KINDS.reduce(
+    (sum, kind) => sum + week[kind] + adding[kind],
+    0,
+  );
+
+  return WORK_KINDS.every(
+    (kind) => week[kind] + adding[kind] <= ceilingFor(mix.bounds[kind], total),
+  );
+}
+
+/** Every entry a plan holds, across all its days. */
+function planEntries(
+  plan: ReadonlyMap<number, readonly ContentEntry[]>,
+): readonly ContentEntry[] {
+  return [...plan.values()].flat();
+}
+
 /** A week the constraints do not admit, with the reason a human can act on. */
 export class WeekRefused extends Error {
   public constructor(message: string) {
@@ -157,6 +334,12 @@ export interface GenerateOptions {
   readonly window?: number;
   /** The roster, for pricing a day. Injected so a fixture can price its own. */
   readonly price?: (id: string) => LoadTicket | undefined;
+  /**
+   * And how a ticket is CLASSED, for the rung's work mix - injected for exactly
+   * the same reason and by exactly the same callers: a fixture shop deals
+   * `ticket:fill-3`, which no roster classifies and no mix could measure.
+   */
+  readonly kindOf?: (id: string) => WorkKind;
 }
 
 /** Where every entry of a week ended up: the plan, before it is a table. */
@@ -623,6 +806,8 @@ function fillToBudget(
   weekSeed: number,
   history: ReadonlySet<string>,
   cost: Pricer,
+  /** The rung's work mix, or null for a rung that takes the shop as it comes. */
+  mix: Mix | null,
 ): void {
   const used = new Set<string>();
 
@@ -632,19 +817,55 @@ function fillToBudget(
     }
   }
 
+  /**
+   * What one entry adds to the week's mix, worked out once per entry.
+   *
+   * The counting is cheap and the search is not: `eligible` runs over the whole
+   * pool at every step of every day, so the difference between measuring an
+   * entry once and measuring the whole week again per candidate is the
+   * difference between a sweep that runs in the suite and one that does not.
+   */
+  const adds = new Map<string, Record<WorkKind, number>>();
+  const addedBy = (entry: ContentEntry): Record<WorkKind, number> => {
+    const known = adds.get(entry.id);
+
+    if (known !== undefined) {
+      return known;
+    }
+
+    const counted = mixOf([entry], mix?.kindOf ?? ((): WorkKind => 'access'));
+    adds.set(entry.id, counted);
+
+    return counted;
+  };
+
   const eligible = (
     day: number,
     column: Column | null,
     top: number,
+    /** A work kind this draw is FOR, when it is the mix being filled. */
+    kind: WorkKind | null = null,
   ): readonly ContentEntry[] => {
     const here = placed.get(day) ?? [];
+    // The mix is a WEEK-level quota, so its ceilings are read against every day
+    // at once rather than against this one - which is the whole difference
+    // between it and the column quotas above it.
+    const week = mix === null
+      ? null
+      : mixOf(planEntries(placed), mix.kindOf);
 
     return content.pool.filter(
       (entry) => !used.has(entry.id)
         && !history.has(entry.id)
         && (column === null || entry.column === column)
+        && (kind === null || addedBy(entry)[kind] > 0)
         && entry.allowedDays.includes(day)
         && fits(content, [...here, entry])
+        && (mix === null || week === null || withinCeilings(
+          mix,
+          week,
+          addedBy(entry),
+        ))
         && cost([...here, entry]) <= top,
     );
   };
@@ -682,6 +903,52 @@ function fillToBudget(
         }
 
         take(shape.day, picked);
+      }
+    }
+  }
+
+  // Pass one and a half: the rung's own floors, which are a WEEK's claim rather
+  // than a day's - "lessened, but present". A day is chosen for each by the
+  // ordinary rules (it has to be allowed there, fit the columns and stay inside
+  // the band), heaviest day last so the light days take the blend and the heavy
+  // days keep their room; a kind with nowhere to go is a refusal, because a
+  // rung whose password work cannot be dealt at all is not that rung.
+  if (mix !== null) {
+    for (const kind of WORK_KINDS) {
+      const wanted = mix.bounds[kind].least;
+
+      for (let step = mixOf(planEntries(placed), mix.kindOf)[kind];
+        step < wanted;
+        step += 1) {
+        const lightestFirst = [...content.shapes].sort(
+          (left, right) => bandBottom(left.load) - bandBottom(right.load)
+            || left.day - right.day,
+        );
+        let taken = false;
+
+        for (const shape of lightestFirst) {
+          const picked = draw(
+            eligible(shape.day, null, heaviest(shape.day), kind),
+            weekSeed,
+            shape.day,
+            `mix:${kind}:${String(step)}`,
+          );
+
+          if (picked !== undefined) {
+            take(shape.day, picked);
+            taken = true;
+            break;
+          }
+        }
+
+        if (!taken) {
+          throw new WeekRefused(
+            `${content.employer} owes this rung ${String(wanted)} of `
+            + `${kind} work in a week and the draw can place `
+            + `${String(step)}. A blend that cannot be dealt is a title `
+            + 'playing a week that is not its own.',
+          );
+        }
       }
     }
   }
@@ -767,13 +1034,19 @@ function fillToBudget(
 function drawnBefore(
   content: EmployerContent,
   arcWeek: number,
+  rung: Rung,
   options: Readonly<GenerateOptions>,
 ): ReadonlySet<string> {
   const window = options.window ?? RECENCY_WEEKS;
   const drawn = new Set<string>();
 
   for (let week = Math.max(1, arcWeek - window); week < arcWeek; week += 1) {
-    for (const script of generateFor(content, week, options)) {
+    // Under the CURRENT rung, which is the same generous approximation the
+    // window already makes: a player promoted mid-arc saw their earlier weeks
+    // as a junior, and recomputing them as an engineer can bar an entry they
+    // never met. The window bars more than it strictly must and never less,
+    // which is the safe direction and the one this module already documents.
+    for (const script of generateFor(content, week, rung, options)) {
       for (const entry of [...content.beats.flatMap(
         (beat) => beat.members.map((member) => member.entry),
       ), ...content.pool]) {
@@ -829,10 +1102,25 @@ export function dealtIn(script: Readonly<DayScript>, entry: ContentEntry): boole
 function composeWeek(
   content: EmployerContent,
   arcWeek: number,
+  rung: Rung,
   options: Readonly<GenerateOptions>,
 ): readonly DayScript[] {
   const price = options.price ?? findWorldTicket;
   const cost = pricerFor(content, price);
+  /**
+   * The rung's mix binds the DRAW and not the authored week, and that is a
+   * content decision rather than a convenience. Week one of every shop is a
+   * table somebody wrote - the probation Monday teaches the two basic tools -
+   * and the pipeline's whole contract with it is to reproduce it byte for byte.
+   * A quota that could refuse it would be a rung refusing the shipped game;
+   * what the quota is FOR is every week after it, which is every week nobody
+   * wrote by hand.
+   */
+  const kindOf = options.kindOf ?? workKindOf;
+  const bounds = arcWeek === AUTHORED_WEEK
+    ? null
+    : mixBoundsFor(content, rung, kindOf);
+  const mix: Mix | null = bounds === null ? null : { bounds, kindOf };
 
   if (arcWeek === AUTHORED_WEEK) {
     const plan = new Map<number, ContentEntry[]>();
@@ -848,10 +1136,10 @@ function composeWeek(
       plan.set(entry.homeDay, [...(plan.get(entry.homeDay) ?? []), entry]);
     }
 
-    return gate(content, assemble(content, plan, arcWeek), price, plan, cost);
+    return gate(content, assemble(content, plan, arcWeek), price, plan, cost, mix);
   }
 
-  const history = drawnBefore(content, arcWeek, options);
+  const history = drawnBefore(content, arcWeek, rung, options);
   const weekSeed = weekSeedFor(content.employer, arcWeek);
   const spare = content.pool.filter((entry) => !history.has(entry.id));
   // Only beats are down while the placer runs, so nothing in the loose pool
@@ -871,57 +1159,113 @@ function composeWeek(
     }, cost(here));
   let last: unknown;
 
-  // Generate and test, bounded. The order above is meant to make rejection
-  // rare rather than routine, but "rare" is not "never" and an unbounded
-  // reroll is a content bug with the symptom hidden: it would spin until it
-  // found the one arrangement that fits and nobody would ever learn the shop
-  // was one entry short. A handful of derived sub-seeds, then the refusal.
-  for (let reroll = 0; reroll < REROLLS; reroll += 1) {
-    const salted = seedStream('compose', weekSeed, 0, `reroll:${String(reroll)}`);
+  /**
+   * THE BLEND YIELDS TO THE WEEK, and only ever in that order.
+   *
+   * Two passes: the rung's mix, and then the shop as it comes. It is the same
+   * decision `PRODUCT_WINDOW` records one constraint along - the designed value
+   * is three weeks and the pools carry one - said here as behaviour instead of
+   * as a constant, because the affordable blend is per shop AND per rung rather
+   * than one number.
+   *
+   * The argument for yielding rather than refusing is what each promise is
+   * worth to a player. The day's band is a promise about the week they are
+   * playing: a Thursday under its floor is a broken Thursday and nothing about
+   * a job title makes it a good one. The blend is a promise about the TITLE, and
+   * where a shop's pool cannot express it - the probation shop's surplus is
+   * desk-work almost all the way down, and no arrangement of it is an
+   * engineer's week - the honest answer is the shop's own week, not a refusal
+   * that would leave a promoted player with no Monday at all. What is NOT
+   * acceptable is doing this quietly at a shop that could have carried the
+   * blend, which is why the strict pass runs first, in full, every time, and
+   * why `mixAfforded` exists for the gates to measure which shops manage it.
+   */
+  for (const attempt of mix === null ? [null] : [mix, null]) {
+    for (let reroll = 0; reroll < REROLLS; reroll += 1) {
+      const salted = seedStream('compose', weekSeed, 0, `reroll:${String(reroll)}`);
 
-    try {
-      const placed = placeBeats(
-        content,
-        salted,
-        cost,
-        reachable,
-        reroll === 0,
-        (trial) => {
-          try {
-            fillToBudget(content, trial, salted, history, cost);
-          } catch (refused: unknown) {
-            if (!(refused instanceof WeekRefused)) {
-              throw refused;
+      try {
+        const placed = placeBeats(
+          content,
+          salted,
+          cost,
+          reachable,
+          reroll === 0,
+          (trial) => {
+            try {
+              fillToBudget(content, trial, salted, history, cost, attempt);
+            } catch (refused: unknown) {
+              if (!(refused instanceof WeekRefused)) {
+                throw refused;
+              }
+
+              last = refused;
+
+              return null;
             }
 
-            last = refused;
+            return admissible(content, trial, cost, attempt) ? trial : null;
+          },
+        );
 
-            return null;
-          }
+        return gate(
+          content,
+          assemble(content, placed, arcWeek),
+          price,
+          placed,
+          cost,
+          attempt,
+        );
+      } catch (refused: unknown) {
+        if (!(refused instanceof WeekRefused)) {
+          throw refused;
+        }
 
-          return admissible(content, trial, cost) ? trial : null;
-        },
-      );
-
-      return gate(
-        content,
-        assemble(content, placed, arcWeek),
-        price,
-        placed,
-        cost,
-      );
-    } catch (refused: unknown) {
-      if (!(refused instanceof WeekRefused)) {
-        throw refused;
+        last = refused;
       }
-
-      last = refused;
     }
   }
 
   throw last instanceof Error ? last : new WeekRefused(
     `${content.employer} has no week ${String(arcWeek)} its constraints admit.`,
   );
+}
+
+/**
+ * Whether a shop's content can actually carry a rung's blend, measured rather
+ * than assumed - the mix's own `windowAfforded`.
+ *
+ * It composes the shop's next few weeks under the rung's mix and answers with
+ * how many of them landed inside it. The gates use it two ways: as the hard
+ * assertion for the pairs a player can REACH today (the engineer at the MSP
+ * carries its blend, every week, or the slice is not built), and as a reported
+ * number for the rest, so "this shop cannot express that rung" is a fact
+ * somebody has written down rather than a surprise in a play-test.
+ */
+export function mixAfforded(
+  content: EmployerContent,
+  rung: Rung,
+  weeks: number = 10,
+  options: Readonly<GenerateOptions> = { window: PRODUCT_WINDOW },
+): number {
+  const bounds = mixBoundsFor(content, rung, options.kindOf ?? workKindOf);
+
+  if (bounds === null) {
+    return weeks;
+  }
+
+  const mix: Mix = { bounds, kindOf: options.kindOf ?? workKindOf };
+  let carried = 0;
+
+  for (let week = AUTHORED_WEEK + 1; week <= AUTHORED_WEEK + weeks; week += 1) {
+    const drawn = generateFor(content, week, rung, options);
+
+    if (withinMix(mix, mixOfWeek(drawn, mix.kindOf))) {
+      carried += 1;
+    }
+  }
+
+  return carried;
 }
 
 /**
@@ -936,7 +1280,14 @@ function admissible(
   content: EmployerContent,
   plan: ReadonlyMap<number, readonly ContentEntry[]>,
   cost: Pricer,
+  mix: Mix | null,
 ): boolean {
+  // The week-level half first, because it is one count over the whole plan and
+  // it is the cheapest thing here to be wrong about.
+  if (mix !== null && !withinMix(mix, mixOf(planEntries(plan), mix.kindOf))) {
+    return false;
+  }
+
   return content.shapes.every((shape) => {
     const entries = plan.get(shape.day) ?? [];
     const committed = cost(entries);
@@ -978,8 +1329,34 @@ function gate(
   price: (id: string) => LoadTicket | undefined,
   plan: Plan,
   cost: Pricer,
+  mix: Mix | null,
 ): readonly DayScript[] {
   const checked = validateWeek(week, content.rooms);
+
+  // The mix, read off the EMITTED week rather than off the plan it came from -
+  // the same rule the column quotas keep two paragraphs down. A plan and a
+  // table disagreeing about what was dealt is exactly the sort of thing that
+  // would show up as a rung's blend being right in the sampler and wrong on the
+  // desk.
+  if (mix !== null) {
+    const dealt = mixOfWeek(checked, mix.kindOf);
+
+    const arrivals = WORK_KINDS.reduce((sum, kind) => sum + dealt[kind], 0);
+
+    for (const kind of WORK_KINDS) {
+      const bound = mix.bounds[kind];
+      const most = ceilingFor(bound, arrivals);
+
+      if (dealt[kind] < bound.least || dealt[kind] > most) {
+        throw new WeekRefused(
+          `${content.employer} drew ${String(dealt[kind])} of ${kind} work in `
+          + `${String(arrivals)} arrivals, and this rung takes between `
+          + `${String(bound.least)} and ${String(most)} of it. The blend is `
+          + 'what the title means.',
+        );
+      }
+    }
+  }
 
   for (const script of checked) {
     const priced = dayLoad(script, price);
@@ -1046,9 +1423,17 @@ const GENERATED = new Map<string, readonly DayScript[]>();
 function generateFor(
   content: EmployerContent,
   arcWeek: number,
+  rung: Rung,
   options: Readonly<GenerateOptions>,
 ): readonly DayScript[] {
-  const key = `${content.employer}#${String(arcWeek)}#${String(
+  // The rung is IN THE KEY and not in the seed, and the difference is the whole
+  // of why a junior's weeks did not move when this arrived. In the key, because
+  // two rungs draw different weeks and a cache that answered the second with
+  // the first's would deal an engineer a junior's Tuesday. Not in the seed,
+  // because the seed decides WHICH week this is - keying it on the title would
+  // have redrawn every existing week the moment the table existed, for a rung
+  // whose row changes nothing.
+  const key = `${content.employer}#${String(arcWeek)}#${rung}#${String(
     options.window ?? RECENCY_WEEKS,
   )}`;
   const cached = options.price === undefined ? GENERATED.get(key) : undefined;
@@ -1063,7 +1448,7 @@ function generateFor(
     );
   }
 
-  const built = composeWeek(content, arcWeek, options);
+  const built = composeWeek(content, arcWeek, rung, options);
 
   if (options.price === undefined) {
     GENERATED.set(key, built);
@@ -1084,7 +1469,12 @@ export function generateWeek(
   content: EmployerContent,
   options: Readonly<GenerateOptions> = {},
 ): readonly DayScript[] {
-  return generateFor(content, request.arcWeek, options);
+  // The rung comes off the request because it comes off the WORLD: it is the
+  // player's own tier, which a save carries and a load restores, so the week a
+  // reload resolves is the week the player was playing (`week-source.ts`). A
+  // request with none is the bottom of the ladder, which is every save written
+  // before the table existed and every player who has not been promoted.
+  return generateFor(content, request.arcWeek, request.rung ?? DEFAULT_RUNG, options);
 }
 
 /**
@@ -1139,13 +1529,15 @@ export const PRODUCT_WINDOW = 1;
 export function windowAfforded(
   content: EmployerContent,
   depth: number = RECENCY_WEEKS + 1,
+  /** Whose weeks: the mix a rung blends changes what the content can carry. */
+  rung: Rung = DEFAULT_RUNG,
 ): number {
   for (let window = RECENCY_WEEKS; window > 0; window -= 1) {
     let carried = true;
 
     for (let week = AUTHORED_WEEK + 1; week <= AUTHORED_WEEK + depth; week += 1) {
       try {
-        generateFor(content, week, { window });
+        generateFor(content, week, rung, { window });
       } catch (refused: unknown) {
         if (!(refused instanceof WeekRefused)) {
           throw refused;

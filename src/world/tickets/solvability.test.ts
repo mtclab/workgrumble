@@ -85,6 +85,7 @@ import {
 } from '../week';
 import { dayLoad } from '../load';
 import { contentFor } from '../pools';
+import { BUILT_RUNGS } from '../titles';
 import { generateWeek, PRODUCT_WINDOW } from '../week-gen';
 import { BODGE_TICKETS } from './bodge';
 import { CORPORATE_TICKETS } from './corporate';
@@ -903,6 +904,24 @@ const SHIPPED_WEEKS = EMPLOYER_IDS.map((id) => {
 });
 
 /**
+ * And every week a player can be DEALT, which since 0.35.0 is a shop and a
+ * RUNG rather than a shop (E9: the title decides the work mix).
+ *
+ * Both built rungs at all four shops, and the second half of that is not
+ * padding: the promotion is earned on a standing rather than at a place, so a
+ * player who crosses the tier at the probation shop and stays for its week two
+ * is dealt an engineer's week at a shop whose pool was written for a junior.
+ * That pair is exactly the one where a blend the content cannot express has to
+ * degrade into the shop's own week rather than into a refusal, and a matrix
+ * that only swept the MSP would never have asked.
+ */
+const DRAWN_MATRIX = SHIPPED_WEEKS.flatMap((shop) => BUILT_RUNGS.map((rung) => ({
+  ...shop,
+  rung,
+  name: `${shop.name} / ${rung}`,
+})));
+
+/**
  * The days a shipped week deliberately deals nothing at all.
  *
  * Bodgeworth's Friday is five tickets' worth of week running out on the
@@ -1355,7 +1374,7 @@ describe('the solvability gate, pointed at something that is meant to fail', () 
  * The window's own behaviour - that week two deals none of week one - is gated
  * in `week-gen.test.ts`.
  */
-describe.each(SHIPPED_WEEKS)('$name: a hundred drawn weeks', ({ employer }) => {
+describe.each(DRAWN_MATRIX)('$name: a hundred drawn weeks', ({ employer, rung }) => {
   const HOW_MANY = Number.parseInt(process.env.WG_SEEDS ?? '', 10) || 100;
   const content = contentFor(employer);
   const drawn = Array.from({ length: HOW_MANY }, (_, index) => ({
@@ -1373,9 +1392,11 @@ describe.each(SHIPPED_WEEKS)('$name: a hundred drawn weeks', ({ employer }) => {
       let week: readonly DayScript[];
 
       try {
-        week = generateWeek({ employer: employer.id, attempt, arcWeek }, content, {
-          window: PRODUCT_WINDOW,
-        });
+        week = generateWeek(
+          { employer: employer.id, attempt, arcWeek, rung },
+          content,
+          { window: PRODUCT_WINDOW },
+        );
       } catch (failure: unknown) {
         refused.push(`week ${String(arcWeek)}: ${String(failure)}`);
         continue;
@@ -1401,7 +1422,8 @@ describe.each(SHIPPED_WEEKS)('$name: a hundred drawn weeks', ({ employer }) => {
     // error stream, because that is the one the runner does not intercept and
     // a number nobody can read is a number nobody has.
     process.stderr.write(
-      `[seeds] ${employer.name}: ${String(drawn.length - refused.length)} drawn `
+      `[seeds] ${employer.name} / ${rung}: `
+      + `${String(drawn.length - refused.length)} drawn `
       + `weeks, ${String(refused.length)} refused, worst clear air `
       + `${String(worst)} minutes against the `
       + `${String(CLEAR_MINUTES_NEEDED)} needed.\n`,
@@ -1427,7 +1449,7 @@ describe.each(SHIPPED_WEEKS)('$name: a hundred drawn weeks', ({ employer }) => {
 
     for (const { arcWeek, attempt } of drawn) {
       const week = generateWeek(
-        { employer: employer.id, attempt, arcWeek },
+        { employer: employer.id, attempt, arcWeek, rung },
         content,
         { window: PRODUCT_WINDOW },
       );

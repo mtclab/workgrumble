@@ -28,6 +28,7 @@ import {
   seasonAt,
 } from './pressure';
 import { spawnWorldTicket } from './tickets';
+import { DEFAULT_RUNG, rungForTier } from './titles';
 import { type DayScript } from './week';
 import { generatedWeekFor } from './week-gen';
 import { type WeekSource } from './week-source';
@@ -313,6 +314,15 @@ export function createWorldSession(
     employer: employer.id,
     attempt: start.attempt,
     arcWeek: start.arcWeek,
+    // The rung, off the CARRY rather than off the graph the setup just wrote
+    // (E9, 0.35.0). The two agree - `carrySetup` is what put the tier on the
+    // player node a few lines above - and the carry is the one that is right
+    // for a session standing up a fixture shop with no player node yet. After
+    // this moment every re-resolution reads the graph (`weekRequestFrom`),
+    // which is what a promotion mid-week needs.
+    rung: start.playerTier === null
+      ? DEFAULT_RUNG
+      : rungForTier(start.playerTier),
   });
 
   // Only Monday's inherited pile is spawned here: it is what was waiting when
