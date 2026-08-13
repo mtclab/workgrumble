@@ -6,7 +6,7 @@ import type { AppStateStore } from './app-state';
 import type { AppDef } from './apps/types';
 import type { DayApi } from './day-driver';
 import type { SaveHealthView } from './save-health';
-import type { ShellSessionApi } from './save';
+import type { SaveOutcome, ShellSessionApi } from './save';
 
 /**
  * The slice of the engine clock the shell is allowed to see: it may read
@@ -47,6 +47,39 @@ export interface ShellIdentity {
 }
 
 /**
+ * Starting a career at a title, as the log-on screen needs it.
+ *
+ * The whole LADDER rather than only the rungs that can be played, because the
+ * screen shows both: the ladder is the difficulty scale, and a select that
+ * listed two jobs would be a difficulty scale with two settings and no shape.
+ * Which of them can be taken is `takeable`, and the screen greys the rest.
+ */
+export interface ShellHireRung {
+  readonly id: string;
+  readonly label: string;
+  /** The employer's name, for the rung a player can actually be hired at. */
+  readonly employer: string | null;
+  /** What this rung changes about the job, in the one sentence the table has. */
+  readonly shapeBreak: string;
+  readonly takeable: boolean;
+}
+
+export interface ShellHire {
+  readonly rungs: readonly ShellHireRung[];
+  /** Which rung this browser starts at with no choice made: the bottom one. */
+  readonly standard: string;
+  /**
+   * Takes the job. Answers rather than throwing, and the answer matters: a
+   * browser that will not keep the choice must say so on the screen the choice
+   * was made on rather than boot a week that is not the one somebody picked.
+   *
+   * A rung that is not takeable is REFUSED here as well as greyed on screen -
+   * the screen is a courtesy and this is the rule.
+   */
+  choose(rung: string): SaveOutcome;
+}
+
+/**
  * Everything the view layer receives from the wiring in `main.ts`. There is no
  * writable graph handle here by design: the shell mutates the world only by
  * dispatching registered actions.
@@ -78,6 +111,18 @@ export interface ShellContext {
   readonly saveHealth: SaveHealthView;
   /** The badge this browser plays as, and the two ways to get one. */
   readonly identity: ShellIdentity;
+  /**
+   * The desk this career is being started at, when one is being started (E9,
+   * 0.35.0, D1: the title you are hired at IS the difficulty).
+   *
+   * NULL is the normal case and it means "not now": this browser is carrying a
+   * week already, or arriving at a new employer, or retrying a lost one, and
+   * none of those is a hire. Only a boot with nothing behind it offers the
+   * choice, which is why it is decided in `main.ts` - where the save slot, the
+   * retry slot and the switch slot are all read - rather than in the screen
+   * that draws it.
+   */
+  readonly hire: ShellHire | null;
   /**
    * Filing a report about the game itself.
    *

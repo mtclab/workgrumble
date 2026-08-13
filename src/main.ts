@@ -21,6 +21,7 @@ import {
 import { createShellSession, type SaveOutcome, SaveSlot } from './shell/save';
 import { SaveHealth } from './shell/save-health';
 import { Shell } from './shell/shell';
+import { carryForStart, startsPromoted, StartSlot } from './shell/start';
 import { carryForSwitch, SwitchSlot } from './shell/switch';
 import { openStorage } from './shell/storage';
 import { CloudSaves } from './shell/sync';
@@ -34,6 +35,12 @@ import { dayForTick } from './world/hours';
 import { FLAVOR, flavorText } from './world/interruptions';
 import { MSP_IDS } from './world/msp-company';
 import { createWorldSession, FIRST_WEEK } from './world/session';
+import {
+  DEFAULT_RUNG,
+  isBuiltRung,
+  RUNGS,
+  TITLE_TABLE,
+} from './world/titles';
 import { ticketTitle } from './world/tickets';
 import { channelFeedThrough } from './world/week';
 
@@ -166,13 +173,36 @@ async function boot(): Promise<void> {
   const switchSlot = new SwitchSlot(store.storage);
   const arriving = switchSlot.peek();
   const carried = arriving === null ? retry.peek() : null;
+  // The save slot, read BEFORE the world is built rather than after, which it
+  // has to be now: whether this boot offers a job depends on whether this
+  // browser is already carrying a week (see `hiring` below). Reading it is free
+  // and the slot itself does nothing until it is written to.
+  const slot = new SaveSlot(store.storage);
+  // And the third read-and-leave slot: WHICH DESK this career was started at
+  // (E9, 0.35.0, D1). It is written by the log-on screen and consumed here, one
+  // boot later, because a start title has to be decided before the world it
+  // decides exists. Absent - which is every existing browser and every player
+  // who takes the standard desk - is the probation shop, exactly as before.
+  const startSlot = new StartSlot(store.storage);
+  const started = arriving === null && carried === null
+    ? startSlot.peek()
+    : null;
+  // Whether this boot is a HIRE at all. Four ways to already have a career, and
+  // none of them is one: a week in the slot, an arrival at a new employer, a
+  // retry after a firing, and a desk already chosen and not yet saved. The
+  // fourth is what stops the select coming back on a refresh between the pick
+  // and the first day boundary.
+  const hiring = arriving === null && carried === null && started === null
+    && !slot.exists();
   // What this session's world was BUILT from, kept rather than thrown away: the
   // save file stamps it (schema 5) and a firing reads it back, because the
   // estate a retry is owed is the one the lost week OPENED on and the graph
   // stops being able to answer that question the moment anybody fixes anything.
   const opening = arriving !== null
     ? carryForSwitch(arriving)
-    : carried === null ? FIRST_WEEK : carryFrom(carried);
+    : carried !== null
+      ? carryFrom(carried)
+      : started === null ? FIRST_WEEK : carryForStart(started.rung);
   const { engine, tier, seed, employer, week } = createWorldSession(opening);
   // The employer this session is a week at, as LIVE state rather than a
   // constant read once: the driver deals its week, the audit prices installs
@@ -199,7 +229,6 @@ async function boot(): Promise<void> {
     appState.patch('installed', { apps: [...arriving.installed] });
   }
 
-  const slot = new SaveSlot(store.storage);
   // The only place real time becomes simulation time. Pause and speed live
   // here rather than in the engine, whose clock counts whole ticks and nothing
   // else - which is what makes a day replayable.
@@ -685,6 +714,14 @@ async function boot(): Promise<void> {
   const switchUnsaved = arriving !== null
     && !acknowledgeCarry(switchSlot, () => session.save(), slot);
 
+  // And the desk, let go of the same way (E9, 0.35.0): the first week at the
+  // job somebody chose is written down, and only then is the choice dropped. A
+  // browser that will not keep it keeps the record instead and stands the same
+  // desk up again next boot, which is the honest failure - the alternative is
+  // a refresh quietly demoting somebody to the service desk.
+  const startUnsaved = started !== null
+    && !acknowledgeCarry(startSlot, () => session.save(), slot);
+
   const context: ShellContext = {
     manifest: APP_MANIFEST,
     saveHealth: health,
@@ -717,6 +754,55 @@ async function boot(): Promise<void> {
         return answer;
       },
     },
+    /**
+     * THE DESK, offered only on a boot that is starting a career (E9, 0.35.0).
+     *
+     * The whole ladder goes to the screen, not only the two rungs with content:
+     * the design is that the title IS the difficulty, and a list of two jobs
+     * would read as a game with two difficulties rather than as a career with
+     * five rungs still to be written. What can be taken is `takeable`, and the
+     * refusal below is the rule the greying is only the manners of.
+     */
+    hire: hiring
+      ? {
+        rungs: RUNGS.map((rung) => ({
+          id: rung,
+          label: TITLE_TABLE[rung].label,
+          employer: TITLE_TABLE[rung].employer === null
+            ? null
+            : employerName(TITLE_TABLE[rung].employer ?? ''),
+          shapeBreak: TITLE_TABLE[rung].shapeBreak,
+          takeable: TITLE_TABLE[rung].built,
+        })),
+        standard: DEFAULT_RUNG,
+        choose: (rung: string): SaveOutcome => {
+          if (!isBuiltRung(rung)) {
+            return {
+              ok: false,
+              reason: 'Nobody has written that rung of the ladder yet. It is '
+                + 'on the list because the ladder is the difficulty and this '
+                + 'is where it runs out, not because the agency can place you '
+                + 'on it.',
+            };
+          }
+
+          const kept = startSlot.write({ rung });
+
+          if (!kept.ok) {
+            return kept;
+          }
+
+          // The world was stood up before anybody was asked, so taking a
+          // different job means building it again - and the honest way to
+          // build a world again is the way a retry already does it: start the
+          // page. The boot on the other side reads the slot, stands the new
+          // shop up and plays the "new machine" ceremony with its name on it.
+          window.location.reload();
+
+          return kept;
+        },
+      }
+      : null,
     report: (submission) => api.sendFeedback(submission),
     tier,
     graph: engine.graph,
@@ -784,16 +870,24 @@ async function boot(): Promise<void> {
   // installing -> login path rather than a new state. A real version update on
   // the same boot keeps its own subject; the two coinciding is rare and the
   // arrival is the one worth naming when they do.
-  const arrivalSubject = arriving === null
-    ? undefined
-    : `Setting up your workstation - new starter - ${
+  const arrivalSubject = arriving !== null
+    ? `Setting up your workstation - new starter - ${
       employerName(arriving.employer)
-    }`;
+    }`
+    // The same ceremony for a career that STARTS above the bottom rung: the
+    // machine the agency sat you at is a new machine whoever you are, and the
+    // screen that says so already exists. The standard desk keeps the plain
+    // boot it has always had, because nothing about it is new.
+    : started === null
+      ? undefined
+      : `Setting up your workstation - new starter - ${
+        employerName(TITLE_TABLE[started.rung].employer ?? '')
+      }`;
 
   const shell = new Shell(
     mountPoint(),
     context,
-    installed.length > 0 || arriving !== null,
+    installed.length > 0 || arriving !== null || started !== null,
     arrivalSubject,
   );
 
@@ -920,6 +1014,40 @@ async function boot(): Promise<void> {
         + `you, and so did the fund - £${
           (arriving.career.farmFund / 100).toFixed(2)
         } towards the farm, exactly where you left it.`,
+    );
+  }
+
+  // The job, said out loud once, and the work that comes with it raised in the
+  // same breath. `raiseFirstIncident` is the PROMOTION's own beat - the moment
+  // an engineer's work arrives - and a player hired straight onto the tier has
+  // to meet it too, or the whole difficulty select delivers a title and none of
+  // the job. It is idempotent and world-guarded, so it raises nothing anywhere
+  // the engineer's boxes do not exist.
+  if (started !== null) {
+    const row = TITLE_TABLE[started.rung];
+
+    if (startsPromoted(started)) {
+      day.raiseFirstIncident();
+    }
+
+    shell.notify(
+      `First day as ${row.title}`,
+      `${employerName(row.employer ?? '')} took you on at the title, not at `
+        + 'the bottom. The desk, the access and the work are the ones that come '
+        + 'with it - and so is everything nobody warned you about.',
+    );
+  }
+
+  if (startUnsaved) {
+    shell.notify(
+      'This start is not saved',
+      savedWeekAlreadyHere
+        ? 'There is already a saved week in this browser, and it has been left '
+          + 'exactly as it is rather than written over - open it from Load if it '
+          + 'is the one you want. Everything works, and refreshing the page will '
+          + 'start the same first day again.'
+        : 'The browser would not keep the new week. Everything works, and '
+          + 'refreshing the page will start the same first day again.',
     );
   }
 

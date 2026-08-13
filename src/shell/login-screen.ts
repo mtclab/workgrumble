@@ -1,6 +1,6 @@
 import { accountFacts, retentionNote } from './account';
 import type { Account, ApiResult } from './api';
-import type { ShellUser } from './context';
+import type { ShellHire, ShellUser } from './context';
 import { createIcon } from './icons';
 import { setAvailability } from './apps/ui';
 import { RETENTION_DAYS } from '../shared/retention';
@@ -20,6 +20,13 @@ export interface LoginScreenHandlers {
   issueBadge(): Promise<ApiResult<Account>>;
   /** The account this browser is already carrying, once anything knows. */
   knownAccount(): Account | null;
+  /**
+   * The desk this career is being started at, or null when nothing is being
+   * started (E9, 0.35.0). Read once, when the screen is built: whether this
+   * boot is a hire is decided before the world is, and cannot change while
+   * somebody is looking at the log-on box.
+   */
+  hire(): ShellHire | null;
 }
 
 export interface LoginScreen {
@@ -164,6 +171,70 @@ export function createLoginScreen(
   retention.textContent = retentionNote();
   record.append(facts, retention);
 
+  /**
+   * THE DESK, which is the difficulty select in the only clothes this game
+   * would ever put it in (E9, 0.35.0, D1).
+   *
+   * It is on the log-on screen and not on a menu because this is the moment the
+   * fiction already has for it: the agency has placed you, and the first thing
+   * you do is log on to the machine they sat you at. The label says the job
+   * rather than "difficulty", the options are titles rather than words like
+   * Normal and Hard, and the line underneath is what the rung actually changes
+   * about the work - which is the honest description of what picking it does.
+   *
+   * THE UNBUILT RUNGS ARE SHOWN, GREYED, and that is a decision rather than an
+   * accident of markup. The whole design is that the ladder IS the difficulty
+   * scale, and a select holding the two rungs with content would teach a player
+   * that this game has two difficulties instead of a career with two of its
+   * seven rungs playable. Greyed with the reason on them says the true thing:
+   * here is the ladder, here is where you can get on it today. The refusal is
+   * enforced in `main.ts` as well, because a disabled option is a courtesy and
+   * not a rule.
+   *
+   * Absent entirely when this browser is not starting a career - a saved week,
+   * an arrival at a new employer, a retry after a firing - because none of
+   * those is a hire and offering a job to somebody mid-week would be a screen
+   * lying about what the button does.
+   */
+  const hire = handlers.hire();
+  const deskField = document.createElement('label');
+  deskField.className = 'field';
+  deskField.dataset.testid = 'login-desk-field';
+  const desk = document.createElement('select');
+  desk.name = 'desk';
+  desk.dataset.testid = 'login-desk';
+  const deskNote = document.createElement('p');
+  deskNote.className = 'login-hint';
+  deskNote.dataset.testid = 'login-desk-note';
+
+  if (hire !== null) {
+    const deskLabel = document.createElement('span');
+    deskLabel.textContent = 'The desk you were hired onto';
+    deskField.append(deskLabel, desk);
+
+    for (const rung of hire.rungs) {
+      const option = document.createElement('option');
+      option.value = rung.id;
+      option.textContent = rung.takeable && rung.employer !== null
+        ? `${rung.label} - ${rung.employer}`
+        : `${rung.label} - not written yet`;
+      option.disabled = !rung.takeable;
+      option.selected = rung.id === hire.standard;
+      desk.append(option);
+    }
+  }
+
+  const sayDesk = (): void => {
+    const picked = hire?.rungs.find((rung) => rung.id === desk.value);
+
+    deskNote.textContent = picked === undefined
+      ? ''
+      : picked.takeable
+        ? picked.shapeBreak
+        : `${picked.shapeBreak} Nobody has written this rung yet - the ladder `
+          + 'is the difficulty, and this is where it runs out.';
+  };
+
   const passwordField = document.createElement('label');
   passwordField.className = 'field';
   const passwordLabel = document.createElement('span');
@@ -196,6 +267,7 @@ export function createLoginScreen(
 
   form.append(
     userField,
+    ...(hire === null ? [] : [deskField, deskNote]),
     badgeField,
     badgeNote,
     issue,
@@ -267,6 +339,24 @@ export function createLoginScreen(
     event.preventDefault();
     const typed = badge.value.trim();
 
+    // The desk first, because taking a different job rebuilds the world: the
+    // pick is written down and the machine starts again, arriving at the new
+    // shop's own first boot. The standard desk is the world this browser has
+    // ALREADY booted, so it costs nothing and changes nothing - which is why
+    // every existing session, and every player who does not touch this, is on
+    // exactly the path they were on before the select existed.
+    if (hire !== null && desk.value !== hire.standard) {
+      const taken = hire.choose(desk.value);
+
+      if (!taken.ok) {
+        say(taken.reason);
+        return;
+      }
+
+      // Nothing after this runs: `choose` starts the page again.
+      return;
+    }
+
     // The path every existing session takes: no badge, no network, straight
     // in. It is also the path a browser with nothing on the other end takes.
     if (typed.length === 0 || typed === handlers.knownAccount()?.badge) {
@@ -311,6 +401,7 @@ export function createLoginScreen(
   };
 
   form.addEventListener('submit', onSubmit, { signal });
+  desk.addEventListener('change', sayDesk, { signal });
   issue.addEventListener('click', onIssue, { signal });
   restart.addEventListener(
     'click',
@@ -324,6 +415,7 @@ export function createLoginScreen(
     element,
     reset: (): void => {
       showBadge(handlers.knownAccount());
+      sayDesk();
       say(null);
       password.value = '';
       password.focus();

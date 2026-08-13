@@ -117,6 +117,10 @@ export class Shell {
         signIn: (badge) => context.identity.signIn(badge),
         issueBadge: () => context.identity.issueBadge(),
         knownAccount: () => context.identity.account(),
+        // Whether this boot is a HIRE, decided in `main.ts` before the world
+        // was stood up. The shell passes it through and paints it; it has no
+        // business knowing what a save slot is.
+        hire: () => context.hire,
       },
       this.abort.signal,
     );
