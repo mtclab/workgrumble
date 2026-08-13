@@ -1767,6 +1767,73 @@ export const FIELDS = {
   /** When L2 sent a thin handoff back, and when that bounce actually landed. */
   handoffBouncedAt: 'handoff_bounced_at',
   handoffSettledAt: 'handoff_settled_at',
+  /* -- the audit queue (E9, 0.36.0) --------------------------------------- */
+  /**
+   * WHOSE triage this is, on a ticket somebody else already classified.
+   *
+   * The presence of this field is the whole of what makes a ticket an audit
+   * item rather than one of yours: the queue splits on it, the audit panel
+   * draws off it, the confirm verb is guarded on it and the correction hook on
+   * `ticket.classify` fires on it. It holds the first-line analyst's NAME
+   * rather than a node id, because the junior is content and not estate - a
+   * person seeded into the building would move the impact walk under every
+   * shipped ticket, and the whole of what this mechanic needs of them is a
+   * signature.
+   */
+  auditOf: 'audit_of',
+  /**
+   * What is wrong with that filing, in one word, or absent for one that is
+   * right.
+   *
+   * Stamped at the deal off the authored item, so the settler is a pure read of
+   * the ticket rather than a re-derivation that could disagree with the
+   * content. `impact` is a misreading of the estate, `matrix` is the table's
+   * own arithmetic ignored, `beneficiary` is the VIP flag read off whoever
+   * typed the ticket instead of whoever it is for.
+   */
+  auditFault: 'audit_fault',
+  /**
+   * Who the ticket is FOR, where that is not who raised it.
+   *
+   * The shadow-VIP truth the customer-axis research names: VIP lists cover
+   * "executives and their assistants", the flag keys off the BENEFICIARY, and
+   * report quality keys off the requester. It is a display line rather than a
+   * node reference because that is what the queue needs of it - the flag it
+   * decides is stamped on the ticket by the deal, and the shipped VIP rule
+   * takes it from there.
+   */
+  beneficiary: 'beneficiary',
+  /** `confirmed` or `corrected` - how the audit was ruled, and when. */
+  auditVerdict: 'audit_verdict',
+  auditVerdictAt: 'audit_verdict_at',
+  /** When a confirmed-wrong triage came back as a breach with your name on it. */
+  auditFalloutAt: 'audit_fallout_at',
+  /**
+   * The class of repeated fault this ticket belongs to, for the KB beat.
+   *
+   * A string on the ticket rather than a lookup, so "have I seen two of these"
+   * is a question about the BOARD and not about the content tables - which is
+   * what lets the prompt survive a save without a second record of it.
+   */
+  auditClass: 'audit_class',
+  /**
+   * The class the PLAYER has written the article for (KCS, on the player node).
+   *
+   * One class today and the field holds its id rather than a flag, because the
+   * question the next arrival asks is "which one", not "any".
+   */
+  kbAuthored: 'kb_authored',
+  /**
+   * When an escalation was sent WITHOUT handing the ticket over (E9, 0.36.0).
+   *
+   * Retained ownership, the senior rung's second shape break: the junior hands
+   * off and the ticket leaves the board, the senior "retains ownership of
+   * request and incidents until resolution". The stamp is what the queue draws
+   * the retained chip from, and the ABSENCE of `escalated` beside it is what
+   * keeps the clock running - which is the whole mechanic, because you cannot
+   * escalate your way out of a deadline that is still yours.
+   */
+  retainedAt: 'retained_at',
 } as const;
 
 export const DEVICE_TYPES = {

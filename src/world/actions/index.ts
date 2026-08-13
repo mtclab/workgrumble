@@ -53,6 +53,7 @@ import { SYSTEMD_ACTION_DATA } from './systemd';
 import { TICKET_ACTIONS } from './ticket';
 import { TIMESHEET_ACTION_DATA } from './timesheet';
 import { TONE_ACTION_DATA } from './tone';
+import { AUDIT_ACTION_LIST } from './audit';
 import { VIP_ACTIONS } from './vip';
 import { WORLD_ACTION_DATA } from './world';
 
@@ -155,6 +156,9 @@ export {
   SYSTEMD_ACTION_IDS,
   SYSTEMD_ACTIONS,
   type SystemdActionId,
+  AUDIT_ACTION_IDS,
+  AUDIT_ACTIONS,
+  type AuditActionId,
   TIMESHEET_ACTION_IDS,
   TIMESHEET_ACTIONS,
   type TimesheetActionId,
@@ -248,6 +252,12 @@ export function helpdeskActions(): readonly ActionData[] {
     // the queue-jump's bill, a world verb the day loop settles when the clock on
     // whichever ticket was left waiting runs out.
     ...VIP_ACTIONS,
+    // The audit queue's verbs (E9, 0.36.0): the confirm and the write-up are
+    // the player's (the third player answer, correcting, is the shipped triage
+    // form), and the deal and the fallout are the world's - one dealt by the
+    // day in the minute an item arrives, one settled by the day when a
+    // signed-off wrong priority finally breaches.
+    ...AUDIT_ACTION_LIST,
     // The project verbs (E10, 0.29.0): the audit (two of them, and they are not
     // the same act), the per-rule migration, and the cutover and its rollback -
     // the cable, moved and moved back. All player verbs bar the last, which is

@@ -497,6 +497,21 @@ export interface DayScript {
   readonly inherited: readonly string[];
   /** Tickets that arrive while the player is working. */
   readonly drip: readonly DripSlot[];
+  /**
+   * The SECOND QUEUE's arrivals (E9, 0.36.0): other people's filings, dealt for
+   * QA while your own clocks run.
+   *
+   * A column of its own rather than more `drip`, and the difference is what the
+   * day's budget has to price. A drip is work you are expected to CLOSE; an
+   * audit item is work you are expected to RULE ON, and the two cost the shift
+   * different amounts (`AUDIT_MINUTES` against `expectedTicketMinutes`). Folded
+   * into the drip they would have been priced as tickets you owed a fix, and
+   * every day that carried one would have read as a day nobody could be given.
+   *
+   * Absent on every rung but the senior's, which is every week the shipped game
+   * currently deals - so a day without one is priced exactly as it always was.
+   */
+  readonly audits?: readonly string[];
   /** What the world does today, whether or not anybody is watching. */
   readonly incidents?: readonly IncidentSlot[];
   /** Who messages you directly today, and when. */

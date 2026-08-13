@@ -65,17 +65,6 @@
  * beat in this game where the player's output makes somebody else better at
  * their job.
  *
- * WHAT IS HERE AND WHAT IS NOT, at 0.36.0. This module and the five tickets it
- * names (`tickets/audit.ts`) are the CONTENT half of the rung, and they are
- * gated as content: every filing is graded against the shop's real estate,
- * every one under-calls (so the bill has somewhere to land), the class repeats,
- * and the price of an audit in minutes is borrowed from figures the day's
- * budget already uses. The SURFACE half - the second queue as a window, the
- * confirm verb, the correction hung on the shipped triage form, the settler the
- * day loop dispatches - is not built, which is why `sd_senior` is still
- * `built: false` on the rung table: a ladder row promising a second queue in a
- * game with one queue in it would be worse than a greyed row.
- *
  * Everything here is a pure read or a table. Nothing dispatches, nothing
  * mutates and nothing touches a clock, which is the shape every settler in this
  * codebase has for the same reason - a replay has to arrive at the same
@@ -84,8 +73,11 @@
 
 import type { ReadOnlyGraphView } from '../engine-api';
 import { CAUGHT_MINUTES } from './boss';
+import { FIELDS } from './fields';
 import { REFOCUS_TICKS } from './meters';
 import {
+  isLevel,
+  isPriority,
   type Level,
   priorityFor,
   type Priority,
@@ -119,6 +111,10 @@ export const AUDIT_VERDICTS = {
 } as const;
 
 export type AuditVerdict = (typeof AUDIT_VERDICTS)[keyof typeof AUDIT_VERDICTS];
+
+export function isAuditVerdict(value: unknown): value is AuditVerdict {
+  return value === AUDIT_VERDICTS.confirmed || value === AUDIT_VERDICTS.corrected;
+}
 
 /** A triage as somebody filed it: the cell, and the number they wrote down. */
 export interface AuditFiling {
@@ -207,6 +203,24 @@ export function faultOf(
   return 'mixed';
 }
 
+/**
+ * The sentence the bill says about each fault.
+ *
+ * Content rather than a lookup in the driver, because it is the same claim the
+ * audit panel makes and the same claim the grader enforces: the wrong answer
+ * was findable, and this is WHICH half to have checked. A bill that said only
+ * "you got it wrong" would teach nothing, which is the difference between a
+ * consequence and a punishment.
+ */
+export const AUDIT_FAULT_NOTES: Readonly<Record<AuditFault, string>> = {
+  impact: 'The impact was filed as one desk and the estate says otherwise - '
+    + 'the walk was there to be done.',
+  matrix: 'The cell was right and the number beside it is not the one the '
+    + 'matrix makes of it.',
+  beneficiary: 'The flag was read off whoever typed the ticket. It keys off '
+    + 'whoever the ticket is for.',
+};
+
 /* -- the authored items --------------------------------------------------- */
 
 /**
@@ -219,6 +233,17 @@ export function faultOf(
 export const AUDIT_CLASS = 'class:the-server-read-as-one-desk';
 
 export const AUDIT_ARTICLE = 'kb/impact-is-the-estate-not-the-fault';
+
+/**
+ * WHOSE queue this is.
+ *
+ * Named here rather than spelled in the driver, because the rung and the
+ * content are one decision: these five filings are faults on the probation
+ * shop's estate dealt to the one rung whose job is other people's work, and a
+ * driver that dealt them to anybody else would be naming reporters that world
+ * has never heard of.
+ */
+export const SENIOR_RUNG = 'sd_senior';
 
 /** How many of a class have to have been ruled before the desk asks for one. */
 export const WRITE_UP_AFTER = 2;
@@ -284,7 +309,7 @@ export const AUDIT_ITEMS: readonly AuditItem[] = Object.freeze([
     ticket: 'ticket:audit-print-task',
     junior: 'Callum Vance (first line)',
     day: 1,
-    minute: 95,
+    minute: 620,
     filed: { impact: 1, urgency: 2, priority: 4 },
     fault: 'impact',
     auditClass: AUDIT_CLASS,
@@ -295,7 +320,7 @@ export const AUDIT_ITEMS: readonly AuditItem[] = Object.freeze([
     ticket: 'ticket:audit-marketing-spooler',
     junior: 'Callum Vance (first line)',
     day: 1,
-    minute: 232,
+    minute: 795,
     filed: { impact: 1, urgency: 3, priority: 4 },
     fault: 'matrix',
   },
@@ -304,7 +329,7 @@ export const AUDIT_ITEMS: readonly AuditItem[] = Object.freeze([
     ticket: 'ticket:audit-lead-locked',
     junior: 'Sasha Bright (first line)',
     day: 2,
-    minute: 118,
+    minute: 605,
     filed: { impact: 1, urgency: 2, priority: 4 },
     fault: 'beneficiary',
     beneficiary: 'Desmond Frisk, Service Delivery Lead',
@@ -315,8 +340,8 @@ export const AUDIT_ITEMS: readonly AuditItem[] = Object.freeze([
     // what makes it a class and what makes the desk ask for the article.
     ticket: 'ticket:audit-print-workstation',
     junior: 'Callum Vance (first line)',
-    day: 2,
-    minute: 274,
+    day: 3,
+    minute: 640,
     filed: { impact: 1, urgency: 2, priority: 4 },
     fault: 'impact',
     auditClass: AUDIT_CLASS,
@@ -325,8 +350,16 @@ export const AUDIT_ITEMS: readonly AuditItem[] = Object.freeze([
     // The class, instance three - and the one the article changes.
     ticket: 'ticket:audit-print-browser',
     junior: 'Callum Vance (first line)',
-    day: 4,
-    minute: 137,
+    // FRIDAY, and the spread of all five is a BUDGET decision rather than a
+    // taste one. Two items land on the Monday because Monday is the lightest
+    // drawn day this shop has; the drawn Thursday is the heaviest and takes
+    // none at all, because one on top of it prices past the top load band and
+    // the overlay refuses that outright; and the class's last instance is here,
+    // where the ramp does not bind and there is room for it. The beat's only
+    // hard requirement is that it lands AFTER the prompt is earned, which the
+    // Wednesday instance does.
+    day: 5,
+    minute: 640,
     filed: { impact: 1, urgency: 2, priority: 4 },
     fault: 'impact',
     auditClass: AUDIT_CLASS,
@@ -396,6 +429,156 @@ export function filingOf(
  * again through the count term would be charging the same switch twice.
  */
 export const AUDIT_MINUTES = CAUGHT_MINUTES + REFOCUS_TICKS;
+
+/* -- the reads the world and the driver make ------------------------------ */
+
+/** Every audit item on the board this minute, ruled or not. */
+export function auditTickets(graph: ReadOnlyGraphView): readonly string[] {
+  return graph.nodesOfKind('ticket')
+    .filter((node) => typeof node.fields[FIELDS.auditOf] === 'string')
+    .map((node) => node.id)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+/** Whether this ticket is somebody else's filing rather than one of yours. */
+export function isAuditTicket(
+  graph: ReadOnlyGraphView,
+  ticket: string,
+): boolean {
+  return typeof graph.getField(ticket, FIELDS.auditOf) === 'string';
+}
+
+/** The filing on a ticket, read back off the node the deal stamped. */
+export function filedOn(
+  graph: ReadOnlyGraphView,
+  ticket: string,
+): AuditFiling | null {
+  const impact = graph.getField(ticket, FIELDS.impact);
+  const urgency = graph.getField(ticket, FIELDS.urgency);
+  const priority = graph.getField(ticket, FIELDS.priority);
+
+  return isLevel(impact) && isLevel(urgency) && isPriority(priority)
+    ? { impact, urgency, priority }
+    : null;
+}
+
+export function verdictOn(
+  graph: ReadOnlyGraphView,
+  ticket: string,
+): AuditVerdict | null {
+  const verdict = graph.getField(ticket, FIELDS.auditVerdict);
+
+  return isAuditVerdict(verdict) ? verdict : null;
+}
+
+/**
+ * Every confirmed-wrong triage whose bill has come due, and not yet been paid.
+ *
+ * The four clauses are the mechanic written as a query: it is somebody else's
+ * filing, the player SIGNED IT OFF, the filing was wrong (the fault stamped at
+ * the deal, so the settler and the content cannot disagree), and the clock the
+ * wrong filing bought has run out. It fires on the BREACH rather than on the
+ * confirmation, for the reason `queueJumpFalloutDue` does: a wrong priority
+ * nothing ever tested cost nobody anything, and a consequence that arrives
+ * before the omission has had a chance to matter is a punishment for the click.
+ *
+ * Inert on every other rung and in every other world, because nothing but the
+ * audit deal writes `audit_of` on a ticket.
+ */
+export function auditFalloutDue(
+  graph: ReadOnlyGraphView,
+): readonly string[] {
+  return auditTickets(graph).filter((ticket) => {
+    if (verdictOn(graph, ticket) !== AUDIT_VERDICTS.confirmed) {
+      return false;
+    }
+
+    if (!isAuditFault(graph.getField(ticket, FIELDS.auditFault))) {
+      return false;
+    }
+
+    if (graph.getField(ticket, FIELDS.breached) !== true) {
+      return false;
+    }
+
+    return typeof graph.getField(ticket, FIELDS.auditFalloutAt) !== 'number';
+  });
+}
+
+/**
+ * The class the desk is now asking for an article about, or nothing.
+ *
+ * Both conditions are about the BOARD rather than about the content tables:
+ * enough of the class have been ruled on to make it a class, and nobody has
+ * written it up. KCS's own rule is that you write it the second time you solve
+ * it, which is where the threshold comes from - and reading it off the board
+ * rather than off a counter is what makes it survive a save with no second
+ * record of it to keep true.
+ */
+export function writeUpDue(
+  graph: ReadOnlyGraphView,
+  actor: string,
+): string | null {
+  if (typeof graph.getField(actor, FIELDS.kbAuthored) === 'string') {
+    return null;
+  }
+
+  const ruled = auditTickets(graph).filter(
+    (ticket) => graph.getField(ticket, FIELDS.auditClass) === AUDIT_CLASS
+      && verdictOn(graph, ticket) !== null,
+  );
+
+  return ruled.length >= WRITE_UP_AFTER ? AUDIT_CLASS : null;
+}
+
+/** Whether the player has the class written up, which the next deal asks. */
+export function classAuthored(
+  graph: ReadOnlyGraphView,
+  actor: string,
+): boolean {
+  return graph.getField(actor, FIELDS.kbAuthored) === AUDIT_CLASS;
+}
+
+/* -- retained ownership (E9, 0.36.0) -------------------------------------- */
+
+/**
+ * How long second line take to come back on a ticket you kept.
+ *
+ * OVERSEER TUNING KNOB, and ninety minutes is chosen against the one thing it
+ * has to be true relative to: the SLA ladder. A P2 has two hours and a P3 has
+ * four, so a retained escalation comes back inside a P3's budget and NOT
+ * reliably inside a P2's - which is the whole tension of the rung. Escalating
+ * a P2 and keeping it means watching a clock you no longer control, and that
+ * is what "yours until the vendor answers" costs.
+ */
+export const VENDOR_REPLY_MINUTES = 90;
+
+/**
+ * Every retained escalation second line have now answered.
+ *
+ * Two clauses: it was sent and kept (`retained_at`), and long enough has
+ * passed. Nothing about the verdict, because retained ownership is not an audit
+ * thing - it is the rung's other shape break, and it applies to your own queue
+ * as much as to somebody else's.
+ *
+ * Inert everywhere nothing is retained, which is every rung but the senior's,
+ * because nothing else writes the stamp.
+ */
+export function vendorRepliesDue(
+  graph: ReadOnlyGraphView,
+  now: number,
+): readonly string[] {
+  return graph.nodesOfKind('ticket')
+    .filter((node) => {
+      const sent = node.fields[FIELDS.retainedAt];
+
+      return typeof sent === 'number'
+        && node.fields[FIELDS.escalated] !== true
+        && now - sent >= VENDOR_REPLY_MINUTES;
+    })
+    .map((node) => node.id)
+    .sort((left, right) => left.localeCompare(right));
+}
 
 /* -- the load-time gate --------------------------------------------------- */
 

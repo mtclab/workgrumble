@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { WORLD_TICKETS } from '../tickets';
+import { AUTHORED_ARTICLES } from './authored';
 import {
   articleLinkNote,
   findKbArticle,
@@ -117,13 +118,28 @@ describe('shipped knowledge base', () => {
    * row, on the page, and in the note a link to it writes.
    */
   it('ships exactly the drafts it means to, flagged as drafts', () => {
-    const drafts = WORLD_KB.filter(({ state }) => state === 'draft');
+    // The SHIPPED shelf: everything somebody wrote before the player got here.
+    // The articles the player writes are drafts too, and for a different and
+    // sharper reason (E9, 0.36.0) - twenty minutes between two tickets is what
+    // a draft IS - so they are counted apart rather than folded in.
+    const drafts = WORLD_KB.filter(
+      ({ id, state }) => state === 'draft' && !AUTHORED_ARTICLES.includes(id),
+    );
 
     expect(drafts).toHaveLength(1);
 
     for (const draft of drafts) {
       expect(draft.title.toUpperCase()).toContain('DRAFT');
       expect(articleLinkNote(draft)).toContain('is a draft');
+    }
+
+    // And the player's own, which nobody has ever been given the afternoon to
+    // validate. It says so in the note a link to it writes, which is the one
+    // place a reader meets it under pressure.
+    for (const id of AUTHORED_ARTICLES) {
+      const written = findKbArticle(id);
+      expect(written?.state, id).toBe('draft');
+      expect(articleLinkNote(written ?? article())).toContain('is a draft');
     }
 
     // A published article that nobody has flagged says nothing about drafts.

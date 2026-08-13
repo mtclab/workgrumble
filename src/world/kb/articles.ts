@@ -1,5 +1,6 @@
 import { POOL_BODGE_ARTICLES } from './pool-bodge';
 import { POOL_CORPORATE_ARTICLES } from './pool-corporate';
+import { AUTHORED_KB_ARTICLES } from './authored';
 import { POOL_DESK_ARTICLES } from './pool-desk';
 import { POOL_MSP_ARTICLES } from './pool-msp';
 import type { KbArticle } from './types';
@@ -2595,4 +2596,9 @@ export const KB_ARTICLES: readonly KbArticle[] = [
   ...POOL_CORPORATE_ARTICLES,
   ...POOL_DESK_ARTICLES,
   ...POOL_MSP_ARTICLES,
+  // And the one the PLAYER writes (E9, 0.36.0). It is in the shipped list
+  // because it has to be a real article the moment it exists - same gate, same
+  // renderer, same link note - and `kbShelf` is what keeps it off the shelf
+  // until the world says somebody wrote it.
+  ...AUTHORED_KB_ARTICLES,
 ];

@@ -50,12 +50,14 @@
  * three times running and again after a load.
  */
 
+import { auditItemsOn, SENIOR_RUNG } from './audit';
 import { CAUGHT_MINUTES, PATROLS_PER_DAY } from './boss';
 import { seedStream } from './day';
 import { employerFor, type Employer } from './employers';
 import {
   dayLoad,
   LOAD_BAND_MINUTES,
+  loadForMinutes,
   partitionFactor,
   type LoadTicket,
 } from './load';
@@ -1570,11 +1572,82 @@ export function windowAfforded(
   return 0;
 }
 
+/**
+ * The SECOND QUEUE, dealt onto a week that has already been drawn (E9, 0.36.0).
+ *
+ * It is an overlay rather than a column the sampler places, and the reason is
+ * what an audit item IS. The draw's whole job is to choose which of a shop's
+ * faults land on which day inside a budget; the audit queue is not the shop's
+ * faults at all - it is five authored filings, on fixed days, whose point is
+ * the order they teach in. Handing them to the placer would let it move the
+ * class's three instances apart or deal the third one first, which is the beat
+ * shuffled into nonsense.
+ *
+ * WHAT IT DOES NOT DO is add work without paying for it. Every day it touches
+ * is RE-PRICED by `dayLoad` - the same arithmetic the roster gate uses - and
+ * the `load` column is rewritten to whatever the day now commits, because the
+ * arithmetic is the half that can be checked and the column follows it. A day
+ * that no load can honestly say is REFUSED rather than shipped: a Thursday
+ * nobody could have been given is not a hard Thursday.
+ *
+ * And the ramp with it, which is the one rule the overlay could break on its
+ * own: audits only ever add minutes, so a Monday carrying two of them could
+ * pass a Tuesday carrying none. Refused for the same reason - the ramp is
+ * written down and it does not go backwards before Thursday.
+ */
+function withAuditQueue(
+  week: readonly DayScript[],
+  rung: Rung,
+  price: (id: string) => LoadTicket | undefined,
+): readonly DayScript[] {
+  if (rung !== SENIOR_RUNG) {
+    return week;
+  }
+
+  let previous = 0;
+
+  return week.map((script) => {
+    const dealt = auditItemsOn(script.day).map((item) => item.ticket);
+
+    if (dealt.length === 0) {
+      previous = script.load;
+      return script;
+    }
+
+    const carrying: DayScript = { ...script, audits: dealt };
+    const priced = dayLoad(carrying, price);
+    const load = loadForMinutes(priced.committedMinutes);
+
+    if (load === null) {
+      throw new WeekRefused(
+        `${script.label} commits ${String(priced.committedMinutes)} minutes `
+        + `once the audit queue is on it, and no load says a day that heavy. `
+        + 'A day nobody could have been given is not a hard day.',
+      );
+    }
+
+    if (script.day <= 4 && load < previous) {
+      throw new WeekRefused(
+        `${script.label} is load ${String(load)} with the audit queue on it, `
+        + `where the day before it is ${String(previous)}. The ramp is written `
+        + 'down and it does not go backwards before Thursday.',
+      );
+    }
+
+    previous = load;
+    return { ...carrying, load };
+  });
+}
+
 function wired(
   request: Readonly<WeekRequest>,
   content: EmployerContent,
 ): readonly DayScript[] {
-  return generateWeek(request, content, { window: PRODUCT_WINDOW });
+  return withAuditQueue(
+    generateWeek(request, content, { window: PRODUCT_WINDOW }),
+    request.rung ?? DEFAULT_RUNG,
+    findWorldTicket,
+  );
 }
 
 /** The seam's answer, for the shops the registry knows. */

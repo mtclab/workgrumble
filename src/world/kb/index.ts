@@ -1,4 +1,7 @@
+import type { ReadOnlyGraphView } from '../../engine-api';
+import { FIELDS } from '../fields';
 import { KB_ARTICLES } from './articles';
+import { AUTHORED_ARTICLES } from './authored';
 import { isArticleState, type KbArticle } from './types';
 
 export {
@@ -91,6 +94,31 @@ export const WORLD_KB: readonly KbArticle[] = validateKbArticles(KB_ARTICLES);
 
 export function findKbArticle(id: string): KbArticle | undefined {
   return WORLD_KB.find((article) => article.id === id);
+}
+
+/**
+ * The shelf as it stands in THIS world: everything anybody wrote before you got
+ * here, plus whatever you have written yourself (E9, 0.36.0).
+ *
+ * `WORLD_KB` is the whole corpus and stays that way - `findKbArticle` has to be
+ * able to resolve an article the moment a ticket links it, and a link that
+ * could not resolve would be a dead reference rather than a locked one. This is
+ * the READING list, and the difference matters exactly once: an article the
+ * player is about to be asked to write must not be sitting on the shelf with
+ * the answer in it, or the beat is a button that renames a file.
+ *
+ * Every world where nobody has written anything gets `WORLD_KB` minus the one
+ * authored article, which is what every shipped week has always shown plus
+ * nothing - so the junior's shelf is the shelf it was.
+ */
+export function kbShelf(
+  graph: ReadOnlyGraphView,
+  actor: string,
+): readonly KbArticle[] {
+  const written = graph.getField(actor, FIELDS.kbAuthored);
+
+  return WORLD_KB.filter((article) => !AUTHORED_ARTICLES.includes(article.id)
+    || typeof written === 'string');
 }
 
 /**

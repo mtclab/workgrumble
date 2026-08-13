@@ -14,11 +14,16 @@ import {
   AUDIT_CLASS,
   AUDIT_ITEMS,
   AUDIT_MINUTES,
+  AUDIT_TICKET_IDS,
   auditItemsOn,
   auditTruth,
   faultOf,
   filingOf,
 } from './audit';
+import { dayLoad, loadForMinutes } from './load';
+import { TITLE_TABLE } from './titles';
+import { generatedWeek } from './week-gen';
+import type { DayScript } from './week';
 import { CAUGHT_MINUTES } from './boss';
 import { REFOCUS_TICKS } from './meters';
 import { priorityFor } from './priority';
@@ -170,6 +175,101 @@ describe('the authored queue', () => {
   it('prices an audit off the two figures the day already uses', () => {
     expect(AUDIT_MINUTES).toBe(CAUGHT_MINUTES + REFOCUS_TICKS);
   });
+});
+
+/**
+ * THE DAY STILL CLOSES.
+ *
+ * The audit queue adds work to a week that was already drawn inside a budget,
+ * so the one thing that could quietly break is the budget itself: five items at
+ * thirty-three minutes each is most of an hour, and an hour on a Thursday is
+ * the difference between a hard day and a day nobody could have been given.
+ *
+ * It goes through the SHIPPED seam (`generatedWeek`) rather than through the
+ * generator directly, because the overlay lives there - a gate that called
+ * `generateWeek` would be measuring a week the player is never dealt.
+ */
+describe('the week the senior is actually dealt', () => {
+  const seniorWeek = (): readonly DayScript[] => generatedWeek({
+    employer: 'workgrumble',
+    attempt: 1,
+    arcWeek: TITLE_TABLE.sd_senior.startsAt ?? 2,
+    rung: 'sd_senior',
+  });
+
+  it('deals every authored item, on the day that authored it', () => {
+    const dealt = seniorWeek().flatMap((script) => script.audits ?? []);
+
+    expect([...dealt].sort()).toEqual([...AUDIT_TICKET_IDS].sort());
+
+    for (const script of seniorWeek()) {
+      expect(script.audits ?? [], script.label)
+        .toEqual(auditItemsOn(script.day).map((item) => item.ticket));
+    }
+  });
+
+  it('still closes: every day inside a band, and the ramp intact', () => {
+    let previous = 0;
+
+    for (const script of seniorWeek()) {
+      const priced = dayLoad(script, findWorldTicket);
+      const band = loadForMinutes(priced.committedMinutes);
+
+      // A day past the top band is a day nobody could have been given, which
+      // the overlay refuses outright - this is the same claim from the outside.
+      expect(band, script.label).not.toBeNull();
+      // And the column follows the arithmetic, which is what the overlay
+      // rewrites it for.
+      expect(script.load, script.label).toBe(band);
+
+      if (script.day <= 4) {
+        expect(script.load, script.label).toBeGreaterThanOrEqual(previous);
+      }
+
+      previous = script.load;
+    }
+  });
+
+  /**
+   * TEETH on the price. The audit minutes are really in the budget: take
+   * `AUDIT_MINUTES` out of `otherMinutes` and a day carrying two items prices
+   * the same as one carrying none, which is what this refuses.
+   */
+  it('prices a day with audits on it above the same day without', () => {
+    const carrying = seniorWeek().find(
+      (script) => (script.audits ?? []).length > 0,
+    );
+
+    expect(carrying).toBeDefined();
+
+    if (carrying === undefined) {
+      return;
+    }
+
+    const withThem = dayLoad(carrying, findWorldTicket).committedMinutes;
+    const without = dayLoad(
+      { ...carrying, audits: [] },
+      findWorldTicket,
+    ).committedMinutes;
+
+    expect(withThem - without)
+      .toBe((carrying.audits ?? []).length * AUDIT_MINUTES);
+  });
+
+  /** And the other rungs are dealt none of it, through the same seam. */
+  it.each(['sd_junior', 'systems_engineer'] as const)(
+    'deals no audits to %s',
+    (rung) => {
+      const week = generatedWeek({
+        employer: 'workgrumble',
+        attempt: 1,
+        arcWeek: 2,
+        rung,
+      });
+
+      expect(week.flatMap((script) => script.audits ?? [])).toEqual([]);
+    },
+  );
 });
 
 describe('the truth read', () => {

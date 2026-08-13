@@ -996,6 +996,37 @@ export const INVOICE_ACTION_IDS: readonly InvoiceActionId[] = Object.freeze(
   Object.values(INVOICE_ACTIONS),
 );
 
+/**
+ * The audit queue's verbs (E9, 0.36.0 - the SD-senior rung).
+ *
+ * FOUR, and the fifth is deliberately missing: correcting a junior's filing is
+ * `ticket.classify`, the queue's own triage form, because a second classify
+ * verb for other people's tickets would be a second matrix free to disagree
+ * with the one the game teaches.
+ */
+export const AUDIT_ACTIONS = {
+  /** Somebody else's filing, onto a ticket. Not a player verb - the day deals it. */
+  auditDeal: 'audit.deal',
+  /** This filing is fine. Costs nothing now; costs later if it was not. */
+  auditConfirm: 'audit.confirm',
+  /** The bill for one that was not. Not a player verb - the day loop settles it. */
+  auditFallout: 'audit.fallout',
+  /** The article the second sighting of a class earns (KCS). A player verb. */
+  kbWriteUp: 'kb.write_up',
+  /**
+   * Second line coming back on a ticket the senior kept (E9, 0.36.0). Not a
+   * player verb: it is somebody else finishing, on their own timetable, and the
+   * day loop is what notices.
+   */
+  vendorReply: 'audit.vendor_reply',
+} as const;
+
+export type AuditActionId = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
+
+export const AUDIT_ACTION_IDS: readonly AuditActionId[] = Object.freeze(
+  Object.values(AUDIT_ACTIONS),
+);
+
 export type DayActionId = (typeof DAY_ACTIONS)[keyof typeof DAY_ACTIONS];
 
 export const DAY_ACTION_IDS: readonly DayActionId[] = Object.freeze(

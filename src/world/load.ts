@@ -49,6 +49,7 @@
  * Nothing here dispatches, mutates, reads a clock or consumes the RNG.
  */
 
+import { AUDIT_MINUTES } from './audit';
 import { CAUGHT_MINUTES, PATROLS_PER_DAY } from './boss';
 import { SHIFT_MINUTES } from './hours';
 import { REFOCUS_TICKS } from './meters';
@@ -194,6 +195,19 @@ export function dealtOrRaised(script: Readonly<DayScript>): readonly string[] {
 
 /** The minutes the day spends on things that are not tickets. */
 function otherMinutes(script: Readonly<DayScript>): number {
+  /**
+   * The second queue (E9, 0.36.0), priced with the interruptions rather than
+   * with the tickets, and for the reason the interruptions are priced apart:
+   * `AUDIT_MINUTES` already carries its own context switch (`REFOCUS_TICKS`,
+   * the tax the correction actually charges), so putting it through the
+   * partition factor as well would charge the same switch twice.
+   *
+   * It prices the HEAVIER branch - correcting - because that is the discipline
+   * `dealtOrRaised` uses for a walk-up that might become a ticket, and because
+   * a budget that assumed the player would agree with every filing would be a
+   * budget that assumed the mechanic away.
+   */
+  const audits = (script.audits ?? []).length * AUDIT_MINUTES;
   const takeovers = (script.interruptions ?? []).reduce(
     (total, slot) => total + slot.minutes
       + (slot.relatedTicket === null ? REFOCUS_TICKS : 0),
@@ -210,7 +224,8 @@ function otherMinutes(script: Readonly<DayScript>): number {
     0,
   );
 
-  return takeovers + walkUps + typing + PATROLS_PER_DAY * CAUGHT_MINUTES;
+  return takeovers + walkUps + typing + audits
+    + PATROLS_PER_DAY * CAUGHT_MINUTES;
 }
 
 /**

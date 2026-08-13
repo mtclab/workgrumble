@@ -1,11 +1,8 @@
 import type { ActionData, GuardData, OpData, PredData } from '../../engine-api';
+import { AUDIT_VERDICTS } from '../audit';
+import { TITLE_TABLE } from '../titles';
 import { FIELDS } from '../fields';
-import {
-  PRIORITIES,
-  PRIORITY_MATRIX,
-  type Priority,
-  SLA_TARGETS,
-} from '../priority';
+import { PRIORITY_MATRIX } from '../priority';
 import { HANDOFF_BOUNCE } from '../tickets/handoff';
 import { VIP_FORCED_PRIORITY } from '../vip';
 import {
@@ -17,6 +14,8 @@ import {
   TARGET,
   targetGuards,
 } from './helpers';
+import { AUDIT_CORRECTION_TAX } from './audit';
+import { deadlineOps } from './deadline';
 import { HELPDESK_ACTIONS } from './ids';
 
 const NOTE_PARAM = 'note';
@@ -242,87 +241,72 @@ const VIP_FORCING_OPS: readonly OpData[] = [
 ];
 
 /**
- * Re-cutting the resolution deadline to the priority that was just assigned.
+ * The correction, when the ticket being triaged is somebody else's (E9,
+ * 0.36.0).
  *
- * One op per priority, guarded on the priority the ops above have already
- * written, because the deadline has to come from the TABLE rather than from a
- * number the caller sent along with it. Assigning a P1 to something that has
- * been sitting all morning therefore leaves it with very little of its hour
- * left, which is the consequence of mis-triage made mechanical rather than
- * narrated.
+ * This is why there is no second classify verb for the audit queue. Correcting
+ * a junior's filing IS filing a triage - the same two dropdowns, the same nine
+ * cells, the same VIP rule putting the number back, the same deadline re-cut
+ * off the same table - and every one of those has to be the shipped one or the
+ * second queue teaches a matrix the first queue does not use. So the whole of
+ * what the audit adds is a signature and a bill for your attention, hung on the
+ * end of the verb that already does the work.
  *
- * The sum is built in a scratch field and the real deadline is written ONCE,
- * at the end. Adding the terms straight onto `sla_deadline` put the ticket on
- * a partial sum for one mutation - the arrival plus the new target, before the
- * pause and the overnight hours went back on - and the engine breaches on
- * whatever the deadline says the moment it says it. A ticket carried over from
- * yesterday was therefore breached BY BEING TRIAGED, and a breach latches: the
- * player never saw a deadline that had passed, only a red badge that arrived
- * with the classification.
+ * Both halves are guarded on `audit_of`, which nothing but the audit deal
+ * writes, so every triage of one of your own tickets is byte-identical to the
+ * one this verb filed before this slice existed - a claim `actions.test.ts`
+ * makes rather than a claim this comment makes.
+ *
+ * The verdict is stamped only where there is not one already, and the tax rides
+ * with the signature rather than with the press: a senior who re-triages a
+ * filing they have already corrected is tidying, not signing it off twice, and
+ * fiddling with a dropdown must not be able to bankrupt an afternoon.
  */
-function deadlineOps(): readonly OpData[] {
-  return PRIORITIES.map((priority: Priority) => ({
-    op: 'when' as const,
-    cond: fieldIs(TARGET, FIELDS.priority, priority),
+const AUDIT_CORRECTION_OPS: readonly OpData[] = [
+  {
+    op: 'when',
+    cond: {
+      pred: 'all',
+      of: [
+        not({ pred: 'field_missing', node: TARGET, field: FIELDS.auditOf }),
+        { pred: 'field_missing', node: TARGET, field: FIELDS.auditVerdict },
+      ],
+    },
     ops: [
       {
-        op: 'set_field' as const,
+        op: 'set_field',
         node: TARGET,
-        field: FIELDS.slaRecut,
-        value: {
-          add: {
-            node: TARGET,
-            field: FIELDS.spawnedAt,
-            by: { const: SLA_TARGETS[priority].resolution },
-            // A deadline is a tick, and the engine holds ticks in the range
-            // JavaScript can read back exactly. Nothing here can get near it;
-            // the clamp is mandatory, and the honest bound for a tick is the
-            // tick range.
-            clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
-          },
-        },
+        field: FIELDS.auditVerdict,
+        value: { const: AUDIT_VERDICTS.corrected },
       },
-      // And every minute the ticket was already excused goes back on top: the
-      // pause it spent on somebody else, and the hours the office was dark.
-      // The target is measured from the minute the ticket ARRIVED, and neither
-      // of those is a minute anybody was allowed to work in. Without this,
-      // following the app's own instruction - clear the hold, then triage -
-      // cost the player every minute of it, and a ticket inherited on Monday
-      // and triaged on Tuesday breached the moment it was classified.
-      ...[FIELDS.heldTicks, FIELDS.offHoursTicks].map((counter) => ({
-        op: 'when' as const,
-        cond: {
-          pred: 'field_is_number' as const,
-          node: TARGET,
-          field: counter,
-        },
-        ops: [
-          {
-            op: 'set_field' as const,
-            node: TARGET,
-            field: FIELDS.slaRecut,
-            value: {
-              add: {
-                node: TARGET,
-                field: FIELDS.slaRecut,
-                by: { field: { node: TARGET, field: counter } },
-                clamp: { min: 0, max: Number.MAX_SAFE_INTEGER },
-              },
-            },
-          },
-        ],
-      })),
-      // The one write anybody sees, and the only one the breach check reads.
       {
-        op: 'set_field' as const,
+        op: 'set_field',
         node: TARGET,
-        field: FIELDS.slaDeadline,
-        value: { field: { node: TARGET, field: FIELDS.slaRecut } },
+        field: FIELDS.auditVerdictAt,
+        value: { now: true },
       },
-      { op: 'clear_field' as const, node: TARGET, field: FIELDS.slaRecut },
+      ...AUDIT_CORRECTION_TAX,
     ],
-  }));
-}
+  },
+];
+
+/**
+ * Whether the person escalating keeps the ticket (E9, 0.36.0).
+ *
+ * Read off the TITLE on the player node, which is the same fact `rungFor`
+ * settles the week's blend with and the one thing the career carry has held
+ * since 0.6.0. A rung field on the player would have been a second answer to
+ * "who is sitting here"; a check on the PAM tier would have been the wrong
+ * question, because this rung shares the junior's tier by design.
+ *
+ * Nobody else in the build wears this title, so every escalation any other rung
+ * files is byte-identical to the one it filed before this slice existed.
+ */
+const RETAINS_OWNERSHIP: PredData = fieldIs(
+  { ref: 'actor' },
+  FIELDS.title,
+  TITLE_TABLE.sd_senior.title,
+);
 
 /** The handoff L2 will actually keep: a symptom AND something tried. */
 const COMPLETE_HANDOFF: PredData = {
@@ -435,6 +419,7 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
       },
       ...VIP_FORCING_OPS,
       ...deadlineOps(),
+      ...AUDIT_CORRECTION_OPS,
     ],
   },
   appendStream(
@@ -888,7 +873,7 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
       // different reason on it, not the reporter's fault.
       {
         op: 'when',
-        cond: COMPLETE_HANDOFF,
+        cond: { pred: 'all', of: [COMPLETE_HANDOFF, not(RETAINS_OWNERSHIP)] },
         ops: [
           {
             op: 'set_field',
@@ -908,6 +893,55 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
                 value: { const: 'awaiting_vendor' },
               },
             ],
+          },
+        ],
+      },
+      /**
+       * RETAINED OWNERSHIP (E9, 0.36.0) - the senior rung's second shape break,
+       * and it is one field and one omission.
+       *
+       * The junior hands a ticket over and it leaves the board: `escalated` is
+       * set, the ticket's own resolution rule closes it, and the clock stops.
+       * The senior analyst's job description says the opposite in as many words
+       * - "retains ownership of request and incidents until resolution,
+       * communicating status to customers and coordinating resolution" - so at
+       * that title the handoff GOES and the ticket stays, with the clock still
+       * running, until the vendor answers.
+       *
+       * The clock is the whole mechanic. There is no `set_waiting` here, and
+       * that absence is deliberate rather than an oversight: parking it would
+       * pause the deadline, and a rung whose escalation pauses its own clock
+       * has escalated its way out of the deadline, which is exactly what
+       * retained ownership means you cannot do.
+       *
+       * NO NEW LIFECYCLE STATE. The ticket is open, because it is open. What is
+       * different about it is a stamp the queue draws a chip from and the
+       * settler reads, and the shipped four states carry the rest.
+       */
+      {
+        op: 'when',
+        cond: { pred: 'all', of: [COMPLETE_HANDOFF, RETAINS_OWNERSHIP] },
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.retainedAt,
+            value: { now: true },
+          },
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.worknotes,
+            value: {
+              append_line: {
+                node: TARGET,
+                field: FIELDS.worknotes,
+                value: {
+                  const: 'Sent to second line, ownership retained. It is still '
+                    + 'ours until they answer, and so is the clock.',
+                },
+              },
+            },
           },
         ],
       },
