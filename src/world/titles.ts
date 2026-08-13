@@ -81,13 +81,6 @@ export const WORK_KINDS = ['access', 'device', 'server', 'project'] as const;
 
 export type WorkKind = (typeof WORK_KINDS)[number];
 
-export const WORK_KIND_LABELS: Readonly<Record<WorkKind, string>> = {
-  access: 'Passwords and access',
-  device: 'Desktops and devices',
-  server: 'Servers and services',
-  project: 'Project work',
-};
-
 /** The ladder, bottom to top (design doc section 2, research thread A §10). */
 export const RUNGS = [
   'sd_junior',
@@ -101,7 +94,8 @@ export const RUNGS = [
 
 export type Rung = (typeof RUNGS)[number];
 
-export function isRung(value: unknown): value is Rung {
+/** Local: the only question anything outside asks is `isBuiltRung`. */
+function isRung(value: unknown): value is Rung {
   return typeof value === 'string' && RUNGS.some((rung) => rung === value);
 }
 

@@ -833,7 +833,14 @@ function fillToBudget(
       return known;
     }
 
-    const counted = mixOf([entry], mix?.kindOf ?? ((): WorkKind => 'access'));
+    // Nothing is counted for a rung that blends nothing: with no mix there is
+    // no ceiling to check and no kind to fill, so the only honest answer is
+    // nought of everything - and a classifier invented to stand in for the one
+    // that is not there would be a number the caller could start believing.
+    const counted = mix === null
+      ? { access: 0, device: 0, server: 0, project: 0 }
+      : mixOf([entry], mix.kindOf);
+
     adds.set(entry.id, counted);
 
     return counted;
@@ -1436,7 +1443,13 @@ function generateFor(
   const key = `${content.employer}#${String(arcWeek)}#${rung}#${String(
     options.window ?? RECENCY_WEEKS,
   )}`;
-  const cached = options.price === undefined ? GENERATED.get(key) : undefined;
+  // A week is only cacheable when both injected seams are absent. The pricer
+  // has always been checked; the CLASSIFIER has to be too, and for the sharper
+  // reason: a fixture that classes its own tickets and lets the roster price
+  // them would otherwise put its own week in the cache under a key the product
+  // shares, and get one of the product's back.
+  const shared = options.price === undefined && options.kindOf === undefined;
+  const cached = shared ? GENERATED.get(key) : undefined;
 
   if (cached !== undefined) {
     return cached;
@@ -1450,7 +1463,7 @@ function generateFor(
 
   const built = composeWeek(content, arcWeek, rung, options);
 
-  if (options.price === undefined) {
+  if (shared) {
     GENERATED.set(key, built);
   }
 
