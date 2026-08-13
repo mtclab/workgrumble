@@ -1,3 +1,7 @@
+import { POOL_BODGE_ARTICLES } from './pool-bodge';
+import { POOL_CORPORATE_ARTICLES } from './pool-corporate';
+import { POOL_DESK_ARTICLES } from './pool-desk';
+import { POOL_MSP_ARTICLES } from './pool-msp';
 import type { KbArticle } from './types';
 
 /**
@@ -2584,4 +2588,11 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     ],
     see_also: ['kb/mac-screen-recording-consent', 'kb/gatekeeper-unnotarized'],
   },
+  // The pool tickets' own articles (E11, 0.34.0 slice 2), where the fault is a
+  // shape the fifty-seven above do not already explain. A pool ticket about a
+  // wedged spooler names the spooler article that already ships.
+  ...POOL_BODGE_ARTICLES,
+  ...POOL_CORPORATE_ARTICLES,
+  ...POOL_DESK_ARTICLES,
+  ...POOL_MSP_ARTICLES,
 ];

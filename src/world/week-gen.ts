@@ -37,17 +37,13 @@
  * node, which is why slice 1 could fix the reload before this existed.
  *
  * WHAT THIS VERSION CANNOT DO, said out loud rather than discovered later. The
- * pools are built from the four shipped weeks and no content was added, so
- * every shop's pool holds EXACTLY the entries its authored week uses and not
- * one spare. A three-week exclusion window over a pool with no surplus has
- * nothing to draw in week two, and this module refuses rather than quietly
- * dealing the same Tuesday again - see `WeekRefused`. That is the content bill
- * D-E11-6 has to pay (the spike costs it at 50 to 60 drip entries per shop),
- * and refusing is how the generator says so in a sentence instead of in a
- * player's second week. Until it is paid, the PRODUCT draws under the window
- * the content can carry rather than the one the design asks for - see
- * `PRODUCT_WINDOW` at the bottom of this file, and the ratchet that stops that
- * number outliving its reason.
+ * pools now carry a surplus (`src/world/spares/`, 0.34.0 slice 2) and the
+ * product draws under a window of ONE: nothing a shop dealt last week is dealt
+ * again this week. The design asks for THREE (D-E11-6) and the content does not
+ * carry it yet, so this module still refuses rather than quietly dealing the
+ * same Tuesday again - see `WeekRefused`, and see `PRODUCT_WINDOW` at the
+ * bottom of this file for what the remaining two weeks would actually cost,
+ * which is not the "more tickets" the spike assumed.
  *
  * Nothing here dispatches, reads a clock, or consumes the engine's RNG: a week
  * is decided before the day starts, and the same request answers the same way
@@ -800,8 +796,12 @@ function drawnBefore(
  * arc's two outages are the same slot at the same minute two days apart, and
  * both of them count as drawn. Generous is the safe direction for a window: it
  * bars more than it strictly must, never less.
+ *
+ * Exported because the window's own gates ask exactly this question of an
+ * emitted week - was this entry dealt - and a second implementation of it in a
+ * test file would be a test agreeing with itself about what "drawn" means.
  */
-function dealtIn(script: Readonly<DayScript>, entry: ContentEntry): boolean {
+export function dealtIn(script: Readonly<DayScript>, entry: ContentEntry): boolean {
   return COLUMNS.some((column) => {
     const mine = cellsOf(entry.fragment, column);
     const theirs = column === 'inherited'
@@ -1088,30 +1088,43 @@ export function generateWeek(
 }
 
 /**
- * The exclusion window THE PRODUCT draws under, which is not yet the one the
- * design asks for (E11, 0.34.0 slice 1).
+ * The exclusion window THE PRODUCT draws under (E11, 0.34.0 slice 2).
  *
- * Nought, and it is a measured fact about the content rather than a taste.
- * `RECENCY_WEEKS` above is the decided design - three, D-E11-6, and the
- * arithmetic behind it is the strongest external finding in the spike. But a
- * window bars the draw from a POOL, and this version's pools hold exactly the
- * entries their authored weeks use and not one spare: 0.31.0 built them from
- * the four shipped tables and added no content. Ask any of the four shops for a
- * week two under a window of even ONE and the generator refuses, correctly and
- * loudly, because there is nothing left to deal.
+ * ONE, raised from nought by the slice that paid for it, and it is a measured
+ * fact about the content rather than a taste. `RECENCY_WEEKS` above is the
+ * decided design - three, D-E11-6 - and this is what the pools can carry today:
+ * nothing a shop dealt last week is dealt again this week, at every shop, at
+ * every arc position the sweep reaches.
  *
- * So slice 1 wires the week-two door with the window the content can actually
- * carry, which is none, and slice 2 - whose whole job is growing each shop's
- * drip pool to the fifty-to-sixty the window needs - raises it. Two things stop
- * that from being a placeholder that rots. The first is that a window of nought
- * does NOT mean a repeated week: composition is keyed on the arc position, so
- * week two is a different arrangement drawn from the same content, and the
- * owner's own calibration for D-E11-6 is that some repetition is the job's
- * texture. The second is the ratchet in `week-gen.test.ts`: the day every
- * shipped shop can honour `RECENCY_WEEKS`, that test goes red until this
- * constant moves, so the number cannot outlive the reason for it.
+ * WHY IT IS ONE AND NOT THREE, because the arithmetic is the interesting part
+ * and it is not the one the spike predicted. The spike costed the window in
+ * POOL SIZE - fifty to sixty drip entries a shop - and that number is right
+ * about the MSP and wrong about the shape of the problem everywhere else. A
+ * window of one means week two is drawn with the whole of week one barred, so
+ * the surplus alone has to build a legal week: five days, each inside the band
+ * its own ramp wrote down. What binds is not how many entries a shop owns but
+ * how many it may put on ONE DAY and what each of them weighs.
+ *
+ * Halcyon Grange is the clearest case. It may deal one inherited ticket and
+ * three drips, so four arrivals is its ceiling, and four thirty-minute
+ * arrivals cannot reach the floor of a load-2 Thursday however they are
+ * arranged - a pool of a hundred one-step tickets would still refuse. Three
+ * two-step tickets fixed it and took that shop to a window of TWO. The
+ * probation shop is the mirror image: it was six arrivals short of a load-3
+ * Wednesday, and the step from six arrivals to seven vaults straight over the
+ * top of the band, so what it needed was four more of the workstation taking
+ * the screen - minutes that are not a ticket.
+ *
+ * So the honest cost of the next window is not "more tickets". It is heavier
+ * entries where a day is capped, and non-ticket minutes where the count term
+ * is the thing in the way. Slice 2 can ship twice, and the second one now knows
+ * what to buy.
+ *
+ * The ratchet in `week-gen.test.ts` holds both directions - no wider than the
+ * content affords and no narrower - so this number cannot outlive its reason
+ * and cannot quietly lag the content either.
  */
-export const PRODUCT_WINDOW = 0;
+export const PRODUCT_WINDOW = 1;
 
 /**
  * The widest window a shop's content can actually honour, measured rather than

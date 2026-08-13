@@ -34,6 +34,7 @@ import {
 import { findWorldTicket } from './tickets';
 import { WEEK_DAYS, type DayScript } from './week';
 import {
+  dealtIn,
   generatedWeek,
   generatedWeekFor,
   generateWeek,
@@ -276,17 +277,53 @@ describe('the draw', () => {
     expect(dealt(weekOf(content, 2))).not.toEqual(dealt(weekOf(content, 3)));
   });
 
+  /**
+   * Refusing rather than repeating, asserted against the content as it stands
+   * rather than against a number (E11, 0.34.0 slice 2).
+   *
+   * This used to say "ask the probation shop for a week two under a three-week
+   * window and it throws", which was true while no shop had a spare entry and
+   * stopped being true the morning one did. The CLAIM it was making is not
+   * about three weeks though - it is that a window the pools cannot carry is a
+   * refusal a human can act on and never a Tuesday quietly dealt twice. So it
+   * now asks for one week MORE than the shop can afford, whatever that is
+   * today, and requires the refusal. It cannot rot as the pools grow: the
+   * measurement moves with the content and the assertion moves with it.
+   */
   it('refuses rather than repeating when the pool cannot honour the window', () => {
-    // The four shipped shops are exactly this case and it is the finding this
-    // slice hands the next one: no surplus content, so a three-week window has
-    // nothing left to draw in week two. The generator says so in a sentence.
     const content = contentFor(employerFor());
+    const beyond = windowAfforded(content) + 1;
 
-    expect(() => generateWeek(
-      { employer: content.employer, attempt: 1, arcWeek: 2 },
-      content,
-      { window: RECENCY_WEEKS },
-    )).toThrow(WeekRefused);
+    // Nothing to prove if a shop has grown all the way to the design; that is
+    // the day D-E11-6 is spent and the ratchet above is what says so.
+    if (beyond > RECENCY_WEEKS) {
+      return;
+    }
+
+    let refused = false;
+
+    for (
+      let arcWeek = AUTHORED_WEEK + 1;
+      arcWeek <= AUTHORED_WEEK + beyond + 1 && !refused;
+      arcWeek += 1
+    ) {
+      try {
+        generateWeek(
+          { employer: content.employer, attempt: 1, arcWeek },
+          content,
+          { window: beyond },
+        );
+      } catch (failure: unknown) {
+        if (!(failure instanceof WeekRefused)) {
+          throw failure;
+        }
+
+        refused = true;
+      }
+    }
+
+    expect(refused, `${content.employer} silently honoured a window it cannot`)
+      .toBe(true);
   });
 });
 
@@ -454,4 +491,82 @@ describe('the seam', () => {
     expect(PRODUCT_WINDOW).toBe(Math.min(...afforded));
     expect(PRODUCT_WINDOW).toBeLessThanOrEqual(RECENCY_WEEKS);
   });
+
+  /**
+   * And what the window BUYS, asserted rather than assumed (E11, 0.34.0 slice
+   * 2).
+   *
+   * The ratchet above says the constant matches the measurement. It does not
+   * say the measurement means anything to a player, and the two are different
+   * claims: `windowAfforded` answers "does the generator refuse", which a shop
+   * could pass by drawing a week that happens to be legal and happens to be
+   * last week again. This is the claim in the player's terms - at a window of
+   * one or more, nothing the second week deals was dealt by the first - and it
+   * is the whole of what the slice was for.
+   *
+   * Skipped rather than asserted at a window of nought, because at nought the
+   * product is not making the claim: the surplus has not been paid for and the
+   * honest behaviour is a differently-arranged week out of the same content.
+   */
+  it.each(SHOPS)('$name: deals week two out of what week one did not', ({ employer }) => {
+    if (PRODUCT_WINDOW < 1) {
+      return;
+    }
+
+    const content = contentFor(employer);
+    const one = generatedWeek({ employer: employer.id, attempt: 1, arcWeek: 1 });
+    const two = generatedWeek({ employer: employer.id, attempt: 1, arcWeek: 2 });
+    const drawn = (week: readonly DayScript[]): ReadonlySet<string> => new Set(
+      content.pool
+        .filter((entry) => week.some((script) => dealtIn(script, entry)))
+        .map((entry) => entry.id),
+    );
+    const second = drawn(two);
+    const repeated = [...drawn(one)].filter((id) => second.has(id));
+
+    expect(repeated, `${employer.name} re-deals its own first week`).toEqual([]);
+  });
+
+  /**
+   * And every spare is a spare somebody can actually be dealt.
+   *
+   * The roster gate proves a pool ticket was WRITTEN into a week-shaped thing;
+   * it cannot prove the sampler has any arrangement that puts it on a desk. An
+   * entry whose column is full of beats on every day it is allowed on, or whose
+   * minutes push every day past the top of its band, is content that boots
+   * clean, passes every other gate, and is never seen by anybody - the exact
+   * failure Mega Crit read off a pick-rate table and this project has no
+   * telemetry to find. Twenty-four weeks is a long enough horizon that "never
+   * drawn" means never rather than not yet.
+   *
+   * It sweeps the SPARES specifically. The authored entries are proven dealt by
+   * the reproduction gate at the top of this file, which is a stronger claim.
+   */
+  it.each(SHOPS)('$name: can deal every spare it wrote', ({ employer }) => {
+    const content = contentFor(employer);
+    const spares = content.pool.filter((entry) => entry.homeDay === 0);
+
+    if (spares.length === 0) {
+      return;
+    }
+
+    const seen = new Set<string>();
+
+    for (let arcWeek = AUTHORED_WEEK + 1; arcWeek <= 25; arcWeek += 1) {
+      const week = generatedWeek({ employer: employer.id, attempt: 1, arcWeek });
+
+      for (const entry of spares) {
+        if (week.some((script) => dealtIn(script, entry))) {
+          seen.add(entry.id);
+        }
+      }
+    }
+
+    const never = spares
+      .filter((entry) => !seen.has(entry.id))
+      .map((entry) => `${entry.id} (${entry.column})`);
+
+    expect(never, `${employer.name} wrote surplus nobody can be dealt`)
+      .toEqual([]);
+  }, 120_000);
 });

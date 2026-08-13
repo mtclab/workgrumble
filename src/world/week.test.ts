@@ -34,6 +34,7 @@ import { seedForAttempt } from './session';
 import { MSP_WEEK } from './msp-week';
 import { CORPORATE_WEEK } from './corporate-week';
 import { SECOND_WEEK } from './second-week';
+import { spareWeeks } from './spares';
 import { WORLD_TICKETS } from './tickets';
 import {
   arrivesBeforeClose,
@@ -171,7 +172,20 @@ describe('the shipped week', () => {
     // "every non-summoned ticket is dealt on some day" spans the probation week,
     // Bodgeworth's AND the MSP's. `scheduledTicketIds` reads the active week (the
     // default, probation); the other shops' are read straight off their tables.
-    const otherScheduled = [...SECOND_WEEK, ...MSP_WEEK, ...CORPORATE_WEEK]
+    //
+    // And every shop's SURPLUS with them (E11, 0.34.0 slice 2), for the reason
+    // the roster gate itself reads it: a pool ticket is dealt by no AUTHORED day
+    // by construction - that is what makes it a pool ticket - so a claim about
+    // "every non-summoned ticket" that could not see the surplus would be a
+    // claim that twenty pieces of content per shop ship dead. The surplus is not
+    // a week and is never validated as one; `spareWeeks` hands it over in the
+    // shape a reader of days can count.
+    const otherScheduled = [
+      ...SECOND_WEEK,
+      ...MSP_WEEK,
+      ...CORPORATE_WEEK,
+      ...spareWeeks().flat(),
+    ]
       .flatMap((script) => [
         ...script.inherited,
         ...script.drip.map((slot) => slot.ticketId),
@@ -578,9 +592,15 @@ describe('the day\'s interruptions', () => {
 
 describe('the week against the roster', () => {
   it('takes the roster it ships', () => {
-    // Both weeks, because the shared roster spans both employers (0.6.0 slice 3).
-    expect(() => assertWeekTickets(WORLD_TICKETS, [WEEK, SECOND_WEEK, MSP_WEEK, CORPORATE_WEEK]))
-      .not.toThrow();
+    // Both weeks, because the shared roster spans both employers (0.6.0 slice 3)
+    // - and every shop's surplus with them (E11, 0.34.0 slice 2), which is the
+    // same list `tickets/index.ts` proves the shipped roster against. Without it
+    // this reads as "every pool ticket in the game ships dead", which is the one
+    // thing the surplus is written not to be.
+    expect(() => assertWeekTickets(
+      WORLD_TICKETS,
+      [WEEK, SECOND_WEEK, MSP_WEEK, CORPORATE_WEEK, ...spareWeeks()],
+    )).not.toThrow();
   });
 
   it('refuses a day that deals a ticket nobody wrote', () => {

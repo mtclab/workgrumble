@@ -117,8 +117,14 @@ beforeAll(() => {
  * fact about how much of this game there is rather than about anything being
  * slow - and a gate that fitted inside a default by covering fewer rows would
  * be worse than a slow one.
+ *
+ * Thirty was crossed the same way by the surplus (E11, 0.34.0 slice 2), which
+ * put roughly another fifty rows in the roster - twenty per shop of pool
+ * tickets, each of them standing up a whole employer world of its own. The
+ * number is a budget for a sweep, not an assertion about anything, so it moves
+ * with the content rather than the content being trimmed to fit it.
  */
-const ROSTER_SWEEP_MS = 30_000;
+const ROSTER_SWEEP_MS = 90_000;
 
 /** A driver over a session, wired to nothing: this gate watches the graph. */
 function driverFor(session: WorldSession): DayDriver {
@@ -1339,16 +1345,15 @@ describe('the solvability gate, pointed at something that is meant to fail', () 
  * here rather than a bigger number.
  *
  * IT AUDITS THE WEEKS A PLAYER CAN BE DEALT, which is what changed in 0.34.0.
- * The window is `PRODUCT_WINDOW` rather than a nought written here: from this
- * version week two is REACHABLE - the seam's clamp is gone and the Friday has a
- * door that climbs the arc - so an auditor drawing under different rules from
- * the product would be auditing weeks nobody can reach while the reachable ones
- * went unchecked. That the product's window is currently nought is a fact about
- * the pools (every shop holds exactly the entries its authored week uses, and
- * slice 2 is what pays that bill); this file reads the constant rather than
- * repeating the number, so the day it moves these hundred weeks a shop move
- * with it. The window's own behaviour is gated on content with a surplus in
- * `week-gen.test.ts`.
+ * The window is `PRODUCT_WINDOW` rather than a number written here: week two is
+ * REACHABLE - the seam's clamp is gone and the Friday has a door that climbs
+ * the arc - so an auditor drawing under different rules from the product would
+ * be auditing weeks nobody can reach while the reachable ones went unchecked.
+ * Slice 2 paid the content bill and moved that constant from nought to one, and
+ * these hundred weeks a shop moved with it without a line changing here, which
+ * is the whole reason it reads the constant instead of repeating the number.
+ * The window's own behaviour - that week two deals none of week one - is gated
+ * in `week-gen.test.ts`.
  */
 describe.each(SHIPPED_WEEKS)('$name: a hundred drawn weeks', ({ employer }) => {
   const HOW_MANY = Number.parseInt(process.env.WG_SEEDS ?? '', 10) || 100;

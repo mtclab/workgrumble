@@ -91,6 +91,16 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
   [COMPANY_IDS.boss]: 'Pat. Your status says Away. You are demonstrably not '
     + 'away. I do not mind which of those two you fix, but I would like it to '
     + 'be one of them.',
+  // Facilities became a reporter with the surplus (E11, 0.34.0 slice 2), and
+  // this line is the cost of that: the gate above refuses a ticket authored for
+  // a person with nothing to say about the dot, because the world takes the
+  // point off either way and a fine with no sender is not a lesson. His is the
+  // only voice in the building that can compare a status honestly with one of
+  // his own, because a note taped to a socket is a status too.
+  [COMPANY_IDS.vic]: 'Your thing says away. I put a sign on a door once saying '
+    + 'back in five minutes and I was gone an hour, so I am the last man here '
+    + 'who should say anything about it. I am saying it because I cannot get '
+    + 'into anything and you are quite clearly in there.',
   // Bodgeworth & Batch (0.6.0 slice 3). The same thought in the wild-west
   // register: nobody here has ever used a status dot for anything, so being
   // caught working while marked Away reads less as a lie and more as a mystery.

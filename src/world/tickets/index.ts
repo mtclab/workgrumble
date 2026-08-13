@@ -39,6 +39,7 @@ import { FLOOD_TICKETS } from './flood';
 import { IDENTITY_TICKETS } from './identity';
 import { acceptsParent } from './parent';
 import { PILOT_TICKETS } from './pilot';
+import { POOL_DESK_TICKETS } from './pool-desk';
 import { MSP_TICKETS } from './msp';
 import { assertPathsAimAtRealNodes, seededNodeIds } from './solvable';
 import type { WorldTicket } from './types';
@@ -49,6 +50,7 @@ import { bodgeSetup } from '../second-company';
 import { SECOND_WEEK } from '../second-week';
 import { halcyonSetup } from '../corporate-company';
 import { CORPORATE_WEEK } from '../corporate-week';
+import { spareWeeks } from '../spares';
 import { assertWeekTickets, WEEK } from '../week';
 import { assertWeekLoads, type NamedWeek } from '../load';
 
@@ -405,6 +407,10 @@ export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekLoads(
       ...DRIVE_TICKETS,
       ...COLLEAGUE_TICKETS,
       ...CHANNEL_REQUEST_TICKETS,
+      // The probation shop's pool (E11, 0.34.0 slice 2): the surplus the
+      // exclusion window draws week two out of. No arc, no chain, no beat -
+      // every one of them is a loose entry the sampler may put on any day.
+      ...POOL_DESK_TICKETS,
       // The second employer's queue (0.6.0 slice 3). It is in the one roster
       // because the roster is what the solvability, path and dialogue gates read;
       // its tickets are proven against the second employer's week below.
@@ -420,7 +426,19 @@ export const WORLD_TICKETS: readonly WorldTicket[] = assertWeekLoads(
     // Every employer's week, so every ticket in the shared roster is proven to
     // arrive on SOME shop's day rather than shipping dead - the probation
     // twenty-eight, Bodgeworth's five, and the MSP's three.
-    EMPLOYER_WEEKS.map((named) => named.week),
+    //
+    // And every employer's SURPLUS with them (E11, 0.34.0 slice 2). A pool
+    // ticket is dealt by no authored day by construction - that is what makes
+    // it a pool ticket - so without this it would trip the ships-dead half of
+    // the gate on the morning it was written, and the only way past would be to
+    // weaken the check that catches content nobody can ever be handed. The
+    // surplus is not a week and is never validated as one; it is handed over in
+    // the shape this gate reads so that a spare naming a ticket nobody wrote,
+    // or dealing a summoned one, is the same boot failure it is anywhere else.
+    [
+      ...EMPLOYER_WEEKS.map((named) => named.week),
+      ...spareWeeks(),
+    ],
   ),
   // And the other direction, in minutes: what each day PUTS ON THE DESK,
   // against the difficulty its own column claims (E11, 0.31.0). It runs here

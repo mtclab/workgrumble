@@ -60,6 +60,7 @@ import {
   VIP_TABLET_TICKET,
 } from '../vip';
 import type { Expr } from '../../engine-api';
+import { POOL_CORPORATE_TICKETS } from './pool-corporate';
 import type { WorldTicket } from './types';
 
 const KB_EXEC_EXCEPTION = 'kb/exec-exception-risk';
@@ -1489,4 +1490,7 @@ export const CORPORATE_TICKETS: readonly WorldTicket[] = [
   CEO_EARBUDS,
   FINANCE_LEDGER_LOCKOUT,
   CEO_PERSONAL_TABLET,
+  // And the pool (E11, 0.34.0 slice 2), in this list because the gates that
+  // stand a world up per employer read it to pick the estate.
+  ...POOL_CORPORATE_TICKETS,
 ];

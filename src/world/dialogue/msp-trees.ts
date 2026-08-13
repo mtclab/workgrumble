@@ -58,17 +58,29 @@ const NADIA: DialogueTree = {
     'ticket:fontaine-matter-access',
     'ticket:fontaine-checkout-deadlock',
     'ticket:fontaine-efiling',
+    // The surplus (E11, 0.34.0 slice 2). Nadia files for the firm, so the
+    // firm's spare work speaks with her voice like the rest of it: a partner
+    // locked out, a document store failing to save, and the ordinary grant.
+    'ticket:msp-pool-fontaine-partner-lockout',
+    'ticket:msp-pool-fontaine-file-server-full',
+    'ticket:msp-pool-fontaine-supervising-partner',
   ],
   root: 'matter',
   roots: {
     'ticket:fontaine-matter-access': 'matter',
     'ticket:fontaine-checkout-deadlock': 'checkout',
     'ticket:fontaine-efiling': 'efiling',
+    'ticket:msp-pool-fontaine-partner-lockout': 'lockout',
+    'ticket:msp-pool-fontaine-file-server-full': 'server-space',
+    'ticket:msp-pool-fontaine-supervising-partner': 'supervising',
   },
   resolved_roots: {
     'ticket:fontaine-matter-access': 'matter-done',
     'ticket:fontaine-checkout-deadlock': 'checkout-done',
     'ticket:fontaine-efiling': 'efiling-done',
+    'ticket:msp-pool-fontaine-partner-lockout': 'lockout-done',
+    'ticket:msp-pool-fontaine-file-server-full': 'server-space-done',
+    'ticket:msp-pool-fontaine-supervising-partner': 'supervising-done',
   },
   nodes: [
     {
@@ -181,6 +193,126 @@ const NADIA: DialogueTree = {
         + 'spare. I am not going to tell the partner how close that was.',
       options: [{ label: 'Log the fix' }],
     },
+
+    /* -- the surplus (E11, 0.34.0 slice 2) -------------------------------- */
+
+    {
+      id: 'lockout',
+      npc_line: 'Marcus cannot sign in. He has been at it since the car park '
+        + 'and it has stopped taking anything at all. He has a client at half '
+        + 'nine and he has mentioned that twice.',
+      options: [
+        {
+          label: 'Ask whether he has changed his password recently',
+          next: 'lockout-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the state on his account in the directory',
+          effects: [
+            {
+              reveal: 'A run of failed sign-ins tripped the lockout threshold, '
+                + 'exactly as it is meant to. The password is still the '
+                + 'password - the directory has shut the door, and the count '
+                + 'that shut it is sitting on the account.',
+            },
+          ],
+        },
+        { label: 'Tell her you will get him in' },
+      ],
+    },
+    {
+      id: 'lockout-q',
+      npc_line: 'Not that he has told me. He types it the way he does '
+        + 'everything, which is fast and about four times.',
+      options: [{ label: 'Unlock the account' }],
+    },
+    {
+      id: 'lockout-done',
+      npc_line: 'He is in. He has gone to make a coffee about it, which is his '
+        + 'version of thank you.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'server-space',
+      npc_line: 'Since yesterday afternoon, saving a document back into the '
+        + 'document system fails about every other go. No pattern, no error '
+        + 'worth repeating, works if you try again. Two fee earners have '
+        + 'started keeping copies on their desktops, which is how a firm loses '
+        + 'a document properly.',
+      options: [
+        {
+          label: 'Ask whether it is everybody or a couple of machines',
+          next: 'server-space-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the free space on the box the document store writes to',
+          effects: [
+            {
+              reveal: 'FONT-FILE-01 is down to about two gigabytes, so a save '
+                + 'into the document store succeeds or fails on how much room '
+                + 'there happens to be in the second it lands - which is what '
+                + '"about half the time" looks like from a fee earner\'s '
+                + 'chair. It is a server, and Fontaine is a helpdesk contract: '
+                + 'the desk may read that box and may not act on it.',
+            },
+          ],
+        },
+        { label: 'Tell her you are looking into it' },
+      ],
+    },
+    {
+      id: 'server-space-q',
+      npc_line: 'Everybody, as far as I can tell - it is not one desk. Which I '
+        + 'took to mean it was the system rather than anybody\'s computer, and '
+        + 'I am hoping that is not worse.',
+      options: [{ label: 'Escalate it to whoever owns their server' }],
+    },
+    {
+      id: 'server-space-done',
+      npc_line: 'Their support company have been on and cleared something '
+        + 'down. They said they had no idea it was that close, which does not '
+        + 'fill me with confidence about them and does about you.',
+      options: [{ label: 'Log the escalation' }],
+    },
+    {
+      id: 'supervising',
+      npc_line: 'Marcus has been put on Delacroix as supervising partner and '
+        + 'the workspace is not there for him. I have checked conflicts - no '
+        + 'wall on this one - so he is clear to be added.',
+      options: [
+        {
+          label: 'Ask when he was brought onto the matter',
+          next: 'supervising-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Compare the matter\'s member list against who can open it',
+          effects: [
+            {
+              reveal: 'He is in none of the matter groups nobody has put him '
+                + 'in. Being staffed on a matter happens in a meeting; being '
+                + 'in that matter\'s security group happens in the directory, '
+                + 'and only the first of those has happened.',
+            },
+          ],
+        },
+        { label: 'Tell her you will see to it' },
+      ],
+    },
+    {
+      id: 'supervising-q',
+      npc_line: 'Friday, at the partners\' meeting, which is where everything '
+        + 'here is decided and nothing here is written down.',
+      options: [{ label: 'Add him to the matter workspace' }],
+    },
+    {
+      id: 'supervising-done',
+      npc_line: 'He can see it. He has already opened three things in it and '
+        + 'changed none of them, which is supervision.',
+      options: [{ label: 'Log the fix' }],
+    },
   ],
 };
 
@@ -192,6 +324,11 @@ const THEO: DialogueTree = {
     'ticket:meridian-offboarding',
     'ticket:meridian-mfa-lockout',
     'ticket:meridian-prod-down',
+    // The surplus (E11, 0.34.0 slice 2): his own laptop, the migration
+    // weekend's other casualty, and the deadline that does not move a contract.
+    'ticket:msp-pool-meridian-restart-prompt',
+    'ticket:msp-pool-meridian-wrong-groups',
+    'ticket:msp-pool-meridian-status-page',
   ],
   root: 'sso',
   roots: {
@@ -199,12 +336,18 @@ const THEO: DialogueTree = {
     'ticket:meridian-offboarding': 'offboard',
     'ticket:meridian-mfa-lockout': 'mfa',
     'ticket:meridian-prod-down': 'prod',
+    'ticket:msp-pool-meridian-restart-prompt': 'laptop-restart',
+    'ticket:msp-pool-meridian-wrong-groups': 'nora-groups',
+    'ticket:msp-pool-meridian-status-page': 'status-page',
   },
   resolved_roots: {
     'ticket:meridian-app-assignment': 'sso-done',
     'ticket:meridian-offboarding': 'offboard-done',
     'ticket:meridian-mfa-lockout': 'mfa-done',
     'ticket:meridian-prod-down': 'prod-done',
+    'ticket:msp-pool-meridian-restart-prompt': 'laptop-restart-done',
+    'ticket:msp-pool-meridian-wrong-groups': 'nora-groups-done',
+    'ticket:msp-pool-meridian-status-page': 'status-page-done',
   },
   nodes: [
     {
@@ -352,6 +495,132 @@ const THEO: DialogueTree = {
         + 'right not to touch it. Faster this way anyway, honestly.',
       options: [{ label: 'Log the escalation' }],
     },
+
+    /* -- the surplus (E11, 0.34.0 slice 2) -------------------------------- */
+
+    {
+      id: 'laptop-restart',
+      npc_line: 'My own laptop has been asking me to restart since the start '
+        + 'of the month and I have been pressing Later like everybody else in '
+        + 'this building. I would like it to stop asking.',
+      options: [
+        {
+          label: 'Ask whether anything is actually going wrong with it',
+          next: 'laptop-restart-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check what the machine is waiting for',
+          effects: [
+            {
+              reveal: 'There is a fortnight of updates staged on it and '
+                + 'nothing else wrong with it at all. Staged means downloaded '
+                + 'and waiting for the box to go round once, because applying '
+                + 'them under somebody mid-call is how you take a floor out at '
+                + 'half past two.',
+            },
+          ],
+        },
+        { label: 'Tell him you will deal with it' },
+      ],
+    },
+    {
+      id: 'laptop-restart-q',
+      npc_line: 'Nothing at all. It works perfectly. It just asks, and I '
+        + 'always say no, and then I say no again.',
+      options: [{ label: 'Take the machine round once' }],
+    },
+    {
+      id: 'laptop-restart-done',
+      npc_line: 'Gone, and it took four minutes rather than the afternoon I '
+        + 'had it filed as. Do not tell me how long I ignored that.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'nora-groups',
+      npc_line: 'Two things about the same person, and I have a horrible '
+        + 'feeling they are one thing. Nora has never once got into Salesforce '
+        + 'since the SSO was rebuilt - she has been asking a colleague to pull '
+        + 'her reports, which he has been doing, which is why nobody said '
+        + 'anything. And the access review has her name in a group I am fairly '
+        + 'sure an analyst should not be in.',
+      options: [
+        {
+          label: 'Ask who set her account up on the migration weekend',
+          next: 'nora-groups-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read every group her account is actually in',
+          effects: [
+            {
+              reveal: 'She was rebuilt by hand that weekend and put into '
+                + 'Production Admins instead of Salesforce Users - two entries '
+                + 'next to each other in the same list at two in the morning. '
+                + 'Okta authenticates her, finds no assignment to the app and '
+                + 'returns her to the dashboard, and the group she did get is '
+                + 'the one the review flagged. Neither half of that is fixed '
+                + 'by the other.',
+            },
+          ],
+        },
+        { label: 'Tell him you will take both of them together' },
+      ],
+    },
+    {
+      id: 'nora-groups-q',
+      npc_line: 'Whoever was still awake. It was meant to be automated and '
+        + 'about six accounts were not, and hers was one of them.',
+      options: [{ label: 'Put both halves of her provisioning right' }],
+    },
+    {
+      id: 'nora-groups-done',
+      npc_line: 'She is in Salesforce and out of the admin group, and the '
+        + 'review has gone quiet. I had those down as two tickets, which tells '
+        + 'you something about me and that weekend.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'status-page',
+      npc_line: 'We are in an incident and our biggest customer\'s contract '
+        + 'says a customer-visible one is posted within thirty minutes. Twenty '
+        + 'are gone. The person who publishes the page is on a plane. I have '
+        + 'written the words - can you push them for me?',
+      options: [
+        {
+          label: 'Ask where the status page is actually served from',
+          next: 'status-page-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check what the contract covers on that box',
+          effects: [
+            {
+              reveal: 'The status page is served off MERI-APP-01 with the '
+                + 'product - a Linux box on their own infrastructure team\'s '
+                + 'side of a helpdesk contract. There is no version of this '
+                + 'the desk can publish: not the contract, not the toolset, '
+                + 'not the credentials. The ten minutes belong to somebody who '
+                + 'can reach the box.',
+            },
+          ],
+        },
+        { label: 'Tell him you are already moving on it' },
+      ],
+    },
+    {
+      id: 'status-page-q',
+      npc_line: 'Same box as everything else - MERI-APP-01. I know what you '
+        + 'are about to say. Say it fast.',
+      options: [{ label: 'Get it to somebody who can publish it, now' }],
+    },
+    {
+      id: 'status-page-done',
+      npc_line: 'It went up at twenty-eight minutes. Their on-call had it '
+        + 'inside two of you raising it. I was going to argue with you and I '
+        + 'am glad I did not have the time.',
+      options: [{ label: 'Log the escalation' }],
+    },
   ],
 };
 
@@ -362,17 +631,26 @@ const IVY: DialogueTree = {
     'ticket:northwind-backup-alert',
     'ticket:northwind-cert-alert',
     'ticket:northwind-disk-alert',
+    // The surplus (E11, 0.34.0 slice 2). Both are the same lesson the three
+    // above teach and neither is a threshold: an outage with an obvious fix,
+    // and a fault on the watched box reported from two desks nobody watches.
+    'ticket:msp-pool-northwind-portal-stopped',
+    'ticket:msp-pool-northwind-server-service',
   ],
   root: 'backup',
   roots: {
     'ticket:northwind-backup-alert': 'backup',
     'ticket:northwind-cert-alert': 'cert',
     'ticket:northwind-disk-alert': 'disk',
+    'ticket:msp-pool-northwind-portal-stopped': 'portal-stopped',
+    'ticket:msp-pool-northwind-server-service': 'folders-gone',
   },
   resolved_roots: {
     'ticket:northwind-backup-alert': 'backup-done',
     'ticket:northwind-cert-alert': 'cert-done',
     'ticket:northwind-disk-alert': 'disk-done',
+    'ticket:msp-pool-northwind-portal-stopped': 'portal-stopped-done',
+    'ticket:msp-pool-northwind-server-service': 'folders-gone-done',
   },
   nodes: [
     {
@@ -486,6 +764,89 @@ const IVY: DialogueTree = {
         + 'stopped, apparently, which is more than the last lot did.',
       options: [{ label: 'Log the escalation' }],
     },
+
+    /* -- the surplus (E11, 0.34.0 slice 2) -------------------------------- */
+
+    {
+      id: 'portal-stopped',
+      npc_line: 'Your board says our booking page is off, and two patients '
+        + 'have rung reception because the website will not let them book. Can '
+        + 'you not just put it back on? It is one button, surely.',
+      options: [
+        {
+          label: 'Ask who comes out when that server needs something doing',
+          next: 'portal-stopped-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read what the board is saying and check the contract',
+          effects: [
+            {
+              reveal: 'The portal service on NW-SRV-01 is stopped, which is '
+                + 'why the booking page answers nothing at all. Starting it '
+                + 'would very probably fix it, and starting it is remediation '
+                + '- this account bought watching and notifying, and the hands '
+                + 'belong to whoever they pay for hands.',
+            },
+          ],
+        },
+        { label: 'Tell her you have it in front of you' },
+      ],
+    },
+    {
+      id: 'portal-stopped-q',
+      npc_line: 'Our chap. He is in on Thursdays, though he will come out if '
+        + 'it is proper. Is this proper? It sounds proper.',
+      options: [{ label: 'Raise it with him now, with the service named' }],
+    },
+    {
+      id: 'portal-stopped-done',
+      npc_line: 'He is coming in. He said it was a five-minute job and he was '
+        + 'cross it had been off since ten, which I gather is a point in your '
+        + 'favour rather than against you.',
+      options: [{ label: 'Log the escalation' }],
+    },
+    {
+      id: 'folders-gone',
+      npc_line: 'Neither of the reception machines can get to the shared '
+        + 'folders - the letters, the scanned referrals, none of it. The '
+        + 'computers themselves seem perfectly happy. I do know those two are '
+        + 'not yours.',
+      options: [
+        {
+          label: 'Ask whether anything has been done to the server this week',
+          next: 'folders-gone-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the one box at this account you are paid to watch',
+          effects: [
+            {
+              reveal: 'The Server service on NW-SRV-01 has wedged. It is the '
+                + 'part that publishes a Windows box\'s shares, so the server '
+                + 'is up, answering and handing out nothing - which from a '
+                + 'reception desk looks exactly like two PCs going wrong at '
+                + 'once. It is one fault, on the only machine here the '
+                + 'contract covers.',
+            },
+          ],
+        },
+        { label: 'Tell her you will look at what you can see' },
+      ],
+    },
+    {
+      id: 'folders-gone-q',
+      npc_line: 'Not to my knowledge, and I would know, because nobody here '
+        + 'does anything to it. It has sat in the same cupboard since we '
+        + 'bought it and we all walk past it.',
+      options: [{ label: 'Raise it with their engineer, naming the service' }],
+    },
+    {
+      id: 'folders-gone-done',
+      npc_line: 'He went to the server rather than the two desks, which he '
+        + 'said saved him an hour. I did not tell him whose hour it was.',
+      options: [{ label: 'Log the escalation' }],
+    },
   ],
 };
 
@@ -498,17 +859,28 @@ const PRIYA: DialogueTree = {
     'ticket:holloway-shared-drive',
     'ticket:holloway-spooler',
     'ticket:holloway-lockout',
+    // The surplus (E11, 0.34.0 slice 2): a cut-off she cannot move, one desk
+    // that is not the office, and the state everybody reports as a lockout.
+    'ticket:msp-pool-holloway-payroll-export',
+    'ticket:msp-pool-holloway-workstation-service',
+    'ticket:msp-pool-holloway-disabled-account',
   ],
   root: 'drive',
   roots: {
     'ticket:holloway-shared-drive': 'drive',
     'ticket:holloway-spooler': 'spool',
     'ticket:holloway-lockout': 'lock',
+    'ticket:msp-pool-holloway-payroll-export': 'payroll',
+    'ticket:msp-pool-holloway-workstation-service': 'mapped-drives',
+    'ticket:msp-pool-holloway-disabled-account': 'switched-off',
   },
   resolved_roots: {
     'ticket:holloway-shared-drive': 'drive-done',
     'ticket:holloway-spooler': 'spool-done',
     'ticket:holloway-lockout': 'lock-done',
+    'ticket:msp-pool-holloway-payroll-export': 'payroll-done',
+    'ticket:msp-pool-holloway-workstation-service': 'mapped-drives-done',
+    'ticket:msp-pool-holloway-disabled-account': 'switched-off-done',
   },
   nodes: [
     {
@@ -620,6 +992,131 @@ const PRIYA: DialogueTree = {
         + 'to sweat about it, and so was I, frankly.',
       options: [{ label: 'Log the fix' }],
     },
+
+    /* -- the surplus (E11, 0.34.0 slice 2) -------------------------------- */
+
+    {
+      id: 'payroll',
+      npc_line: 'I exported Bramble\'s payslip pack an hour ago, went to '
+        + 'lunch, and now the portal is asking me to pick a file and the '
+        + 'folder is empty. BACS closes at two. After that forty-two people '
+        + 'get paid on Thursday instead of Wednesday. I am about to run the '
+        + 'whole payroll again.',
+      options: [
+        {
+          label: 'Ask how long re-running the payroll would take her',
+          next: 'payroll-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Go looking for the pack she says she already made',
+          effects: [
+            {
+              reveal: 'The pack is not lost. The payroll software\'s export '
+                + 'dialog opens where it last read a file from, so it went '
+                + 'into WINDOWS\\TEMP, and the portal\'s upload page opens in '
+                + 'My Documents - two defaults that have never agreed. It is '
+                + 'there, dated an hour ago, with the client and the period in '
+                + 'the first line of it, which is worth reading before moving '
+                + 'anything.',
+            },
+          ],
+        },
+        { label: 'Tell her not to touch the payroll yet' },
+      ],
+    },
+    {
+      id: 'payroll-q',
+      npc_line: 'Fifty minutes if nothing goes wrong, and something always '
+        + 'goes wrong. I have got eighty. You can see why I am not calm.',
+      options: [{ label: 'Put the pack where the upload page opens' }],
+    },
+    {
+      id: 'payroll-done',
+      npc_line: 'Submitted at ten to two. I have written down where that '
+        + 'dialog puts things. In pen. On the monitor.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'mapped-drives',
+      npc_line: 'Every mapped drive has gone off my machine at once - S:, the '
+        + 'scans folder, all of them. I did ask around before ringing: '
+        + 'everybody else is working normally.',
+      options: [
+        {
+          label: 'Ask whether she can reach the server any other way',
+          next: 'mapped-drives-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the file-sharing services on her own machine',
+          effects: [
+            {
+              reveal: 'The Workstation service on HOLL-WS-01 has wedged. It is '
+                + 'the SMB client - the half of file sharing that does the '
+                + 'asking - so every mapping on that one machine stops '
+                + 'resolving while the server and everybody else\'s desk carry '
+                + 'on perfectly. One desk is the client; the whole office is '
+                + 'the server.',
+            },
+          ],
+        },
+        { label: 'Tell her you are looking at her box' },
+      ],
+    },
+    {
+      id: 'mapped-drives-q',
+      npc_line: 'I can get into the practice suite, and that lives on the same '
+        + 'server, so it is not as if the thing is switched off.',
+      options: [{ label: 'Restart the client service on her machine' }],
+    },
+    {
+      id: 'mapped-drives-done',
+      npc_line: 'All back. I did not have to log out and in, which I had '
+        + 'braced myself for.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'switched-off',
+      npc_line: 'I cannot get in and I would like unlocking, please, quickly - '
+        + 'the whole practice\'s post arrives in a mailbox I am the only one '
+        + 'who opens. Gordon signed in fine, so it is not the server.',
+      options: [
+        {
+          label: 'Ask what the screen actually says when she tries',
+          next: 'switched-off-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the state on her account before touching it',
+          effects: [
+            {
+              reveal: 'She is not locked out. The account is DISABLED - '
+                + 'switched off on purpose, which is a different fault with a '
+                + 'different fix and one an unlock does nothing whatever '
+                + 'about. The somebody who switched it off is the monthly '
+                + 'leavers spreadsheet: it carries a row for a P Mehta who '
+                + 'left the practice they merged with in the spring.',
+            },
+          ],
+        },
+        { label: 'Tell her you are reading her account now' },
+      ],
+    },
+    {
+      id: 'switched-off-q',
+      npc_line: 'It says my account is not available and to contact my '
+        + 'administrator, which I took to be a rude way of saying locked. Is '
+        + 'it not the same thing?',
+      options: [{ label: 'Put the account back, and write down why it went' }],
+    },
+    {
+      id: 'switched-off-done',
+      npc_line: 'Back in. And I have found the row with the other P Mehta on '
+        + 'it - she left Ashcombe in April. I have crossed her out in a way I '
+        + 'hope is permanent.',
+      options: [{ label: 'Log the fix' }],
+    },
   ],
 };
 
@@ -646,11 +1143,18 @@ const DEV: DialogueTree = {
     'ticket:arden-fw-handover',
     'ticket:arden-fw-scream-brenmark',
     'ticket:arden-fw-scream-scanners',
+    // The surplus (E11, 0.34.0 slice 2), and it is the co-managed split twice:
+    // the user work that is theirs however convenient it would be to take it,
+    // and the server work that is the MSP's and still cannot happen unannounced.
+    'ticket:msp-pool-arden-reset-handback',
+    'ticket:msp-pool-arden-server-service',
   ],
   root: 'handback',
   roots: {
     'ticket:arden-lockout-handback': 'handback',
     'ticket:arden-portal-afterhours': 'portal',
+    'ticket:msp-pool-arden-reset-handback': 'reset-handback',
+    'ticket:msp-pool-arden-server-service': 'drawings',
     'ticket:arden-fw-project': 'edge-project',
     'ticket:arden-fw-audit': 'edge-audit',
     'ticket:arden-fw-staging': 'edge-staging',
@@ -662,6 +1166,8 @@ const DEV: DialogueTree = {
   resolved_roots: {
     'ticket:arden-lockout-handback': 'handback-done',
     'ticket:arden-portal-afterhours': 'portal-done',
+    'ticket:msp-pool-arden-reset-handback': 'reset-handback-done',
+    'ticket:msp-pool-arden-server-service': 'drawings-done',
     'ticket:arden-fw-project': 'edge-project-done',
     'ticket:arden-fw-audit': 'edge-audit-done',
     'ticket:arden-fw-staging': 'edge-staging-done',
@@ -963,6 +1469,92 @@ const DEV: DialogueTree = {
         + 'undocumented - I am starting to see the pattern.',
       options: [{ label: 'Log the fix' }],
     },
+
+    /* -- the surplus (E11, 0.34.0 slice 2) -------------------------------- */
+
+    {
+      id: 'reset-handback',
+      npc_line: 'Marika\'s password has run out and she has mailed your alias '
+        + 'again - it is the address sitting in her sent items from last time. '
+        + 'I am forwarding it on the off-chance. Can you just do it while you '
+        + 'are in there?',
+      options: [
+        {
+          label: 'Ask whose desk an expired password sits with on this account',
+          next: 'reset-handback-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read her account state, then read the RACI',
+          effects: [
+            {
+              reveal: 'Her password has expired - a policy clock running out '
+                + 'on the credential rather than a door anybody shut - and '
+                + 'under the co-managed RACI day-to-day user work is Arden\'s '
+                + 'own helpdesk\'s. Taking it from here is two desks on one '
+                + 'account an hour apart, and neither knowing the other did.',
+            },
+          ],
+        },
+        { label: 'Tell him you will put it where it belongs' },
+      ],
+    },
+    {
+      id: 'reset-handback-q',
+      npc_line: 'Mine. I know it is mine. I am on a line changeover and I was '
+        + 'hoping you would not notice, and you have, and fair enough.',
+      options: [{ label: 'Route it back to his helpdesk' }],
+    },
+    {
+      id: 'reset-handback-done',
+      npc_line: 'My lot have done it and she is back on the terminal. I have '
+        + 'also put your alias in a rule that bounces her straight to us, which '
+        + 'should stop the next one.',
+      options: [{ label: 'Log the handoff' }],
+    },
+    {
+      id: 'drawings',
+      npc_line: 'Nobody on the floor can open the drawings share on '
+        + 'ARDEN-SRV-01. The machinists are working off a printed set from '
+        + 'March, which is a quality problem waiting to be a safety one. My '
+        + 'people are all on the changeover. That server is your side.',
+      options: [
+        {
+          label: 'Ask whether the portal on the same box is still up',
+          next: 'drawings-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the file-sharing services on ARDEN-SRV-01',
+          effects: [
+            {
+              reveal: 'The Server service on ARDEN-SRV-01 has wedged - the '
+                + 'part that publishes the box\'s shares - so the machine is '
+                + 'up and answering and handing out no files, which is exactly '
+                + 'why the portal on it is fine and the drawings are not. It '
+                + 'is a server, so it is the MSP\'s under the split, and it is '
+                + 'a shared box, so nothing happens on it unannounced.',
+            },
+          ],
+        },
+        { label: 'Tell him you will pick it up, coordinated' },
+      ],
+    },
+    {
+      id: 'drawings-q',
+      npc_line: 'The portal is fine - people are booking on it right now. That '
+        + 'is what made me think it was not the machine.',
+      options: [
+        { label: 'Notify their IT, then restart the file-sharing service' },
+      ],
+    },
+    {
+      id: 'drawings-done',
+      npc_line: 'Drawings are back and the floor has put the paper down. '
+        + 'Thanks for telling me first - two of mine were logged into that box '
+        + 'looking for the same thing.',
+      options: [{ label: 'Log the fix' }],
+    },
   ],
 };
 
@@ -1043,17 +1635,25 @@ const GRACE: DialogueTree = {
     'ticket:elmwood-xray-sensor',
     'ticket:elmwood-imaging-bridge',
     'ticket:elmwood-hipaa-audit',
+    // The surplus (E11, 0.34.0 slice 2): the most ordinary ticket in the game,
+    // and the nastiest shape a fault can take - one whose symptom is an absence.
+    'ticket:msp-pool-elmwood-reception-spooler',
+    'ticket:msp-pool-elmwood-task-scheduler',
   ],
   root: 'sensor',
   roots: {
     'ticket:elmwood-xray-sensor': 'sensor',
     'ticket:elmwood-imaging-bridge': 'bridge',
     'ticket:elmwood-hipaa-audit': 'hipaa',
+    'ticket:msp-pool-elmwood-reception-spooler': 'reception-print',
+    'ticket:msp-pool-elmwood-task-scheduler': 'recalls',
   },
   resolved_roots: {
     'ticket:elmwood-xray-sensor': 'sensor-done',
     'ticket:elmwood-imaging-bridge': 'bridge-done',
     'ticket:elmwood-hipaa-audit': 'hipaa-done',
+    'ticket:msp-pool-elmwood-reception-spooler': 'reception-print-done',
+    'ticket:msp-pool-elmwood-task-scheduler': 'recalls-done',
   },
   nodes: [
     {
@@ -1192,6 +1792,91 @@ const GRACE: DialogueTree = {
         + 'all along; I will sleep better for it.',
       options: [{ label: 'Log the report' }],
     },
+
+    /* -- the surplus (E11, 0.34.0 slice 2) -------------------------------- */
+
+    {
+      id: 'reception-print',
+      npc_line: 'Nothing has printed at reception since yesterday afternoon '
+        + 'and the jobs are just sitting there. Referral letters, appointment '
+        + 'cards, the lot.',
+      options: [
+        {
+          label: 'Ask whether anything comes out, or the queue only grows',
+          next: 'reception-print-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the print services on the reception desktop',
+          effects: [
+            {
+              reveal: 'The Print Spooler on ELM-WS-02 has wedged - reporting '
+                + 'itself running while it neither takes a job nor lets one '
+                + 'go, which is the one status a spooler earns an article for. '
+                + 'It is a workstation service and there is nothing at this '
+                + 'practice standing in front of it.',
+            },
+          ],
+        },
+        { label: 'Tell her you will sort the printing' },
+      ],
+    },
+    {
+      id: 'reception-print-q',
+      npc_line: 'Nothing comes out at all. The printer is on, the light is '
+        + 'green, it simply never hears about any of it.',
+      options: [{ label: 'Restart the spooler on the reception PC' }],
+    },
+    {
+      id: 'reception-print-done',
+      npc_line: 'It has all come out at once and half of it was for yesterday. '
+        + 'The bin is full and reception is happy, which is the usual trade.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'recalls',
+      npc_line: 'A patient rang to ask why she never got her six-month recall. '
+        + 'I looked, and the letter is not in the sent list. Then I looked at '
+        + 'last week, and that is not there either. Please tell me it is the '
+        + 'printer.',
+      options: [
+        {
+          label: 'Ask what else the practice runs overnight',
+          next: 'recalls-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check what has and has not run on the practice server',
+          effects: [
+            {
+              reveal: 'It is not the printer. The Task Scheduler service on '
+                + 'ELM-SRV-01 has wedged, and everything the practice does on '
+                + 'a timer runs under it - the recall run, the overnight '
+                + 'database job, the end-of-day export. A job that never '
+                + 'starts writes no error, because nothing ran to have one, '
+                + 'which is why a fortnight of them went missing in silence.',
+            },
+          ],
+        },
+        { label: 'Tell her you will find out what has run and what has not' },
+      ],
+    },
+    {
+      id: 'recalls-q',
+      npc_line: 'The backup, I think, and something that sends the day\'s '
+        + 'takings off somewhere. I have never had to know, which I am hearing '
+        + 'as a problem while I say it.',
+      options: [
+        { label: 'Get the schedule going again, and tell her what it missed' },
+      ],
+    },
+    {
+      id: 'recalls-done',
+      npc_line: 'Running again, and I have started the recall run by hand for '
+        + 'the two weeks it swallowed. Ninety-one letters. I would rather have '
+        + 'heard that from you than from another patient.',
+      options: [{ label: 'Log the fix' }],
+    },
   ],
 };
 
@@ -1226,17 +1911,29 @@ const ROSA: DialogueTree = {
     'ticket:marlowe-screen-recording',
     'ticket:marlowe-gatekeeper-plugin',
     'ticket:marlowe-seat-expired',
+    // The surplus (E11, 0.34.0 slice 2), and it keeps the vertical's shape: two
+    // of the three are things Rosa is blaming a Mac for and one of them is not
+    // a fault at all, it is a bill.
+    'ticket:msp-pool-marlowe-share-access',
+    'ticket:msp-pool-marlowe-password-expired',
+    'ticket:msp-pool-marlowe-nas-capacity',
   ],
   root: 'screen',
   roots: {
     'ticket:marlowe-screen-recording': 'screen',
     'ticket:marlowe-gatekeeper-plugin': 'plugin',
     'ticket:marlowe-seat-expired': 'seat',
+    'ticket:msp-pool-marlowe-share-access': 'projects-volume',
+    'ticket:msp-pool-marlowe-password-expired': 'corin-password',
+    'ticket:msp-pool-marlowe-nas-capacity': 'nas-space',
   },
   resolved_roots: {
     'ticket:marlowe-screen-recording': 'screen-done',
     'ticket:marlowe-gatekeeper-plugin': 'plugin-done',
     'ticket:marlowe-seat-expired': 'seat-done',
+    'ticket:msp-pool-marlowe-share-access': 'projects-volume-done',
+    'ticket:msp-pool-marlowe-password-expired': 'corin-password-done',
+    'ticket:msp-pool-marlowe-nas-capacity': 'nas-space-done',
   },
   nodes: [
     {
@@ -1398,6 +2095,138 @@ const ROSA: DialogueTree = {
         + 'about not pulling one off Corin to do it. I had genuinely thought a '
         + 'licence lived on the machine. That explains the last two of these as '
         + 'well.',
+      options: [{ label: 'Log the escalation' }],
+    },
+
+    /* -- the surplus (E11, 0.34.0 slice 2) -------------------------------- */
+
+    {
+      id: 'projects-volume',
+      npc_line: 'Luca can see the NAS, he signs into it, and then there is '
+        + 'nothing there - the Projects volume everybody else mounts is simply '
+        + 'not in his list. I have restarted the Mac, I have sat him at '
+        + 'another desk, and I am about to ask whether the thing needs '
+        + 'reinstalling. Why does the same machine work for Corin and not for '
+        + 'him?',
+      options: [
+        {
+          label: 'Ask whether the sign-in itself works or refuses him',
+          next: 'projects-volume-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Compare who can open that volume against who cannot',
+          effects: [
+            {
+              reveal: 'A server hands a client the list of shares that client '
+                + 'is entitled to see, so a volume somebody has no rights to '
+                + 'is not refused - it is absent, and from the Finder that '
+                + 'looks exactly like a share that has been deleted. He signed '
+                + 'in, which proves the Mac, the network and the account are '
+                + 'all fine; he was set up as a freelancer and the Projects '
+                + 'volume was never on the list somebody worked through.',
+            },
+          ],
+        },
+        { label: 'Tell her to leave the Mac alone for a minute' },
+      ],
+    },
+    {
+      id: 'projects-volume-q',
+      npc_line: 'It takes his password first time, every time. That is why I '
+        + 'stopped blaming the password and started blaming the Mac.',
+      options: [{ label: 'Put his account on the volume\'s list' }],
+    },
+    {
+      id: 'projects-volume-done',
+      npc_line: 'It is there and he has mounted it. I have apologised to the '
+        + 'Mac. I did not know an empty list was a permission - I assumed we '
+        + 'would get told off rather than shown nothing.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'corin-password',
+      npc_line: 'Corin\'s password has stopped working on his own Mac. He has '
+        + 'not changed it - I have watched him type it, it is the same one he '
+        + 'has had since I met him, which is its own conversation.',
+      options: [
+        {
+          label: 'Ask when he last changed it',
+          next: 'corin-password-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read which of the three states his account is in',
+          effects: [
+            {
+              reveal: 'His password has expired. The account itself is '
+                + 'completely healthy and the credential is out of date, which '
+                + 'is the third face a login box wears and the only one where '
+                + 'nothing has been shut and nothing has been switched off - '
+                + 'so a Mac says the password is wrong, because from where the '
+                + 'Mac is standing it is.',
+            },
+          ],
+        },
+        { label: 'Tell her you will get him back in' },
+      ],
+    },
+    {
+      id: 'corin-password-q',
+      npc_line: 'He genuinely cannot remember, which I suspect is the answer '
+        + 'to your question.',
+      options: [{ label: 'Issue him a new password' }],
+    },
+    {
+      id: 'corin-password-done',
+      npc_line: 'He is in, and he has been made to choose a new one, which he '
+        + 'did with the enthusiasm you would expect. I have not asked what it '
+        + 'is and I am not going to.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'nas-space',
+      npc_line: 'The NAS has started warning about space and I wondered '
+        + 'whether somebody could clear the old stuff off it. There is a shoot '
+        + 'next week - three days - and the producer says it will land about '
+        + 'four terabytes.',
+      options: [
+        {
+          label: 'Ask what on that volume the studio could stand to lose',
+          next: 'nas-space-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the free space, then read what is taking it',
+          effects: [
+            {
+              reveal: 'There is no old stuff. Every job on that NAS is live or '
+                + 'delivered and being held, every file on it is the only copy '
+                + 'of itself, and nothing automatic has been quietly writing a '
+                + 'second one - which is what makes this different from every '
+                + 'other full drive on the estate. A hundred and twenty '
+                + 'gigabytes against four terabytes is not a housekeeping '
+                + 'problem, and no amount of looking will turn it into one.',
+            },
+          ],
+        },
+        { label: 'Tell her you will read the box before promising anything' },
+      ],
+    },
+    {
+      id: 'nas-space-q',
+      npc_line: 'Nothing, when you put it like that. Delivered jobs we have to '
+        + 'hold for two years and the live ones are, well, live. I was rather '
+        + 'hoping you would find me some.',
+      options: [
+        { label: 'Put the numbers and the date to somebody who can buy disks' },
+      ],
+    },
+    {
+      id: 'nas-space-done',
+      npc_line: 'Raised, and the disks are ordered for Tuesday. I had it filed '
+        + 'as a tidy-up, which would have gone very badly the first time '
+        + 'somebody asked for a re-cut.',
       options: [{ label: 'Log the escalation' }],
     },
   ],

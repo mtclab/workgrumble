@@ -25,15 +25,28 @@ import type { DialogueEffect, DialogueTree } from './types';
 const ACCOUNTS_PAYABLE: DialogueTree = {
   id: 'dialogue/accounts-payable',
   speaker: COMPANY_IDS.priya,
-  tickets: ['ticket:mfa-reregister', 'ticket:saved-into-temp'],
+  tickets: [
+    'ticket:mfa-reregister',
+    'ticket:saved-into-temp',
+    // The pool's two (E11, 0.34.0 slice 2): the thing she mentions at the end
+    // of a call about something else, and the one she rings about at once.
+    // They are the same machine and they are not the same urgency, and she has
+    // them the wrong way round, which is the point of both of them.
+    'ticket:pool-accounts-updates',
+    'ticket:pool-accounts-drives',
+  ],
   root: 'phone',
   roots: {
     'ticket:mfa-reregister': 'phone',
     'ticket:saved-into-temp': 'statement',
+    'ticket:pool-accounts-updates': 'shield-icon',
+    'ticket:pool-accounts-drives': 'red-crosses',
   },
   resolved_roots: {
     'ticket:mfa-reregister': 'after',
     'ticket:saved-into-temp': 'statement-after',
+    'ticket:pool-accounts-updates': 'shield-gone',
+    'ticket:pool-accounts-drives': 'drives-back',
   },
   nodes: [
     {
@@ -335,21 +348,156 @@ const ACCOUNTS_PAYABLE: DialogueTree = {
         { label: 'Agree that this is entirely fair' },
       ],
     },
+    /* -- the pool: the icon she does not want to make a fuss about ------ */
+    {
+      id: 'shield-icon',
+      npc_line: 'While I have you. There is a little shield in the corner with '
+        + 'a cross through it. It has been there for ages and everything works '
+        + 'perfectly, so I am not asking you to do anything, I am just '
+        + 'mentioning it.',
+      options: [
+        {
+          label: 'Ask what the machine says about updates when she opens it',
+          next: 'shield-set',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Automatic Updates on ACCTS-01 is set to Disabled rather '
+                + 'than merely stopped, so nothing has started it since '
+                + 'somebody set it that way and nothing ever will, restart or '
+                + 'no restart.',
+            },
+          ],
+        },
+        {
+          label: 'Ask how long the cross has been on it',
+          next: 'shield-ages',
+          effects: [{ asks: true }],
+        },
+        { label: 'Thank her for mentioning it, and mean it' },
+      ],
+    },
+    {
+      id: 'shield-set',
+      npc_line: 'It says updates are turned off. Not failed. Turned off. Well '
+        + 'that is somebody\'s decision, is it not, and it was not mine.',
+      options: [
+        { label: 'Ask how long the cross has been on it', next: 'shield-ages',
+          effects: [{ asks: true }] },
+        { label: 'Agree that it was somebody\'s decision and go and undo it' },
+      ],
+    },
+    {
+      id: 'shield-ages',
+      npc_line: 'Years, possibly. There was a man who came round and made all '
+        + 'the machines faster. He was very confident about it and I have not '
+        + 'seen him since.',
+      options: [
+        { label: 'Go back to the top', next: 'shield-icon' },
+        { label: 'Say nothing at all about the man who made things faster' },
+      ],
+    },
+    {
+      id: 'shield-gone',
+      npc_line: 'The cross has gone and the machine spent twenty minutes doing '
+        + 'something to itself with a bar on the screen. Was that bad? That '
+        + 'felt like it might have been bad.',
+      options: [
+        { label: 'Tell her that was four years of it, and it was not bad' },
+      ],
+    },
+    /* -- and the drives, which are not the servers ---------------------- */
+    {
+      id: 'red-crosses',
+      npc_line: 'The file server has gone. All three of my drives have little '
+        + 'red crosses on them and none of them will open. I have written down '
+        + 'what it says: "The network path was not found."',
+      options: [
+        {
+          label: 'Ask which servers those three drives are actually on',
+          next: 'red-crosses-all',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The three drives are on three different servers and all '
+                + 'three failed in the same second, which puts the fault on '
+                + 'ACCTS-01 rather than on any of the machines she is naming.',
+            },
+          ],
+        },
+        {
+          label: 'Ask whether the mail and the printing still work',
+          next: 'red-crosses-rest',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her nothing has been lost and go and look at her box' },
+      ],
+    },
+    {
+      id: 'red-crosses-all',
+      npc_line: 'Three different servers. I had not thought about that. Three '
+        + 'servers do not all fall over in the same second, do they. That is '
+        + 'the sort of thing that happens in a film.',
+      options: [
+        { label: 'Go back to the top', next: 'red-crosses' },
+        { label: 'Tell her three at once is always one thing, closer to home' },
+      ],
+    },
+    {
+      id: 'red-crosses-rest',
+      npc_line: 'Mail is fine. Printing is fine. Everything is fine except the '
+        + 'three things I need to do the payment run with.',
+      options: [
+        {
+          label: 'Ask which servers those three drives are actually on',
+          next: 'red-crosses-all',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The three drives are on three different servers and all '
+                + 'three failed in the same second, which puts the fault on '
+                + 'ACCTS-01 rather than on any of the machines she is naming.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'red-crosses' },
+      ],
+    },
+    {
+      id: 'drives-back',
+      npc_line: 'They are back. All three, at once, exactly as they went. So '
+        + 'it was never the servers, and I have just spent forty minutes being '
+        + 'furious at a building.',
+      options: [
+        { label: 'Tell her the building is used to it' },
+      ],
+    },
   ],
 };
 
 const ESTIMATING: DialogueTree = {
   id: 'dialogue/estimating',
   speaker: COMPANY_IDS.terry,
-  tickets: ['ticket:must-change-password', 'ticket:share-dup-terry'],
+  tickets: [
+    'ticket:must-change-password',
+    'ticket:share-dup-terry',
+    // The pool's two (E11, 0.34.0 slice 2): a screen he turned over himself
+    // and a tender he is certain the machine has eaten.
+    'ticket:pool-estimating-rotated',
+    'ticket:pool-estimating-tender',
+  ],
   root: 'idle',
   roots: {
     'ticket:must-change-password': 'box',
     'ticket:share-dup-terry': 'files',
+    'ticket:pool-estimating-rotated': 'upside-down',
+    'ticket:pool-estimating-tender': 'tender-gone',
   },
   resolved_roots: {
     'ticket:must-change-password': 'sorted',
     'ticket:share-dup-terry': 'drive-back',
+    'ticket:pool-estimating-rotated': 'right-way-up',
+    'ticket:pool-estimating-tender': 'tender-found',
   },
   summoned_root: 'favour',
   nodes: [
@@ -531,21 +679,173 @@ const ESTIMATING: DialogueTree = {
         { label: 'Note it, in those words, and move on' },
       ],
     },
+    /* -- the pool: a screen he turned over himself ---------------------- */
+    {
+      id: 'upside-down',
+      npc_line: 'Everything is upside down. I have not installed anything, I '
+        + 'have not clicked anything, and I am reading this to you upside down '
+        + 'as we speak.',
+      options: [
+        {
+          label: 'Ask what he was doing at the desk this morning',
+          next: 'upside-down-clean',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'He wiped the keyboard with his hand flat across it, '
+                + 'which is Control, Alt and an arrow key held down together '
+                + 'for as long as the wipe took.',
+            },
+          ],
+        },
+        {
+          label: 'Ask whether the mouse still moves the way it used to',
+          next: 'upside-down-mouse',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell him to sit up straight, this takes a moment' },
+      ],
+    },
+    {
+      id: 'upside-down-clean',
+      npc_line: 'I cleaned the keyboard. With a cloth. Firmly. It was filthy '
+        + 'and I have been meaning to do it since the spring, and I am now '
+        + 'getting a horrible feeling about the spring.',
+      options: [
+        { label: 'Go back to the top', next: 'upside-down' },
+        { label: 'Tell him the keyboard is cleaner and that is worth something' },
+      ],
+    },
+    {
+      id: 'upside-down-mouse',
+      npc_line: 'The mouse goes the wrong way now as well. Up is down. I have '
+        + 'been trying to get to the start menu for ten minutes and it is at '
+        + 'the top, which is at the bottom.',
+      options: [
+        {
+          label: 'Ask what he was doing at the desk this morning',
+          next: 'upside-down-clean',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'He wiped the keyboard with his hand flat across it, '
+                + 'which is Control, Alt and an arrow key held down together '
+                + 'for as long as the wipe took.',
+            },
+          ],
+        },
+        { label: 'Tell him to leave the mouse alone for two minutes' },
+      ],
+    },
+    {
+      id: 'right-way-up',
+      npc_line: 'That is better. That is much better. I am going to keep '
+        + 'cleaning the keyboard, though. I am just going to do it with the '
+        + 'machine switched off, like a coward.',
+      options: [
+        { label: 'Tell him that is not cowardice, it is the procedure' },
+      ],
+    },
+    /* -- and the tender that goes at four ------------------------------- */
+    {
+      id: 'tender-gone',
+      npc_line: 'The Denby tender has gone. Three days of it. It goes to them '
+        + 'at four o\'clock and the only version on this machine is last '
+        + 'week\'s, with the old steel figure in it, which we have already '
+        + 'been beaten on. I would rather send nothing than send that.',
+      options: [
+        {
+          label: 'Ask where he opened rev 2 from, not where he saved it',
+          next: 'tender-opened',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'He opened rev 2 straight out of the surveyor\'s mail and '
+                + 'has worked in it from there all week, so every Save went '
+                + 'back to the copy the mail client had already written into '
+                + 'the temp directory on EST-03.',
+            },
+          ],
+        },
+        {
+          label: 'Ask what tells the two versions apart',
+          next: 'tender-which',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell him nothing has been lost yet and it is not four yet' },
+      ],
+    },
+    {
+      id: 'tender-opened',
+      npc_line: 'Out of Kerrigan\'s email. That is where it lives. I open it, I '
+        + 'do the numbers, I save it, I close it, and tomorrow I open it again '
+        + 'out of the same email. That is how I have always done it.',
+      options: [
+        { label: 'Ask what tells the two versions apart', next: 'tender-which',
+          effects: [{ asks: true }] },
+        { label: 'Say you know exactly where it is, and that it will take a '
+          + 'minute' },
+      ],
+    },
+    {
+      id: 'tender-which',
+      npc_line: 'The steel. Rev 1 has forty-one one. Rev 2 has thirty-eight '
+        + 'seven fifty, and a line under it saying Hallam matched it. If the '
+        + 'line is there it is the right one.',
+      options: [
+        {
+          label: 'Ask where he opened rev 2 from, not where he saved it',
+          next: 'tender-opened',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'He opened rev 2 straight out of the surveyor\'s mail and '
+                + 'has worked in it from there all week, so every Save went '
+                + 'back to the copy the mail client had already written into '
+                + 'the temp directory on EST-03.',
+            },
+          ],
+        },
+        { label: 'Promise to read the top of it back to him before he sends it' },
+      ],
+    },
+    {
+      id: 'tender-found',
+      npc_line: 'That is it. Thirty-eight seven fifty and the line about '
+        + 'Hallam. It has gone at ten to four. I am going to go and stand '
+        + 'outside for a moment.',
+      options: [
+        { label: 'Tell him where the machine had put it, in one sentence' },
+        { label: 'Let him go and stand outside' },
+      ],
+    },
   ],
 };
 
 const WAREHOUSE: DialogueTree = {
   id: 'dialogue/warehouse',
   speaker: COMPANY_IDS.hilda,
-  tickets: ['ticket:stale-device-relock', 'ticket:disk-full'],
+  tickets: [
+    'ticket:stale-device-relock',
+    'ticket:disk-full',
+    // The pool's two (E11, 0.34.0 slice 2). Both are the machine in the corner
+    // that nobody has ever touched, which is the whole of the warehouse's
+    // relationship with computers.
+    'ticket:pool-warehouse-schedule',
+    'ticket:pool-warehouse-tablet',
+  ],
   root: 'again',
   roots: {
     'ticket:stale-device-relock': 'again',
     'ticket:disk-full': 'full',
+    'ticket:pool-warehouse-schedule': 'head-office-rang',
+    'ticket:pool-warehouse-tablet': 'scanner-dead',
   },
   resolved_roots: {
     'ticket:stale-device-relock': 'after',
     'ticket:disk-full': 'space-after',
+    'ticket:pool-warehouse-schedule': 'export-sent',
+    'ticket:pool-warehouse-tablet': 'scanner-back',
   },
   nodes: [
     {
@@ -725,21 +1025,154 @@ const WAREHOUSE: DialogueTree = {
         { label: 'Say yes, and put that on the ticket where somebody will see' },
       ],
     },
+    /* -- the pool: the file head office has not had -------------------- */
+    {
+      id: 'head-office-rang',
+      npc_line: 'Somebody from head office has rung me about a pallet file. I '
+        + 'have never sent a pallet file in my life. The machine in the corner '
+        + 'sends it and it has always sent it and now apparently it is my '
+        + 'fault that it has not.',
+      options: [
+        {
+          label: 'Ask what else on that machine happens overnight',
+          next: 'export-midnight',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Nothing on WHOUSE-01 has run to a timetable since some '
+                + 'point last month. The scanner does not send the export '
+                + 'itself - it asks the machine to run it at midnight, and '
+                + 'nothing has been there to be asked.',
+            },
+          ],
+        },
+        {
+          label: 'Ask when head office last had one',
+          next: 'export-last-month',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her it is not her fault and you will find out whose' },
+      ],
+    },
+    {
+      id: 'export-midnight',
+      npc_line: 'Midnight. That is the only thing I know about it. The man who '
+        + 'installed it said midnight, in 1997, and it has been doing it at '
+        + 'midnight ever since and nobody has ever looked.',
+      options: [
+        { label: 'Ask when head office last had one', next: 'export-last-month',
+          effects: [{ asks: true }] },
+        { label: 'Tell her that is the whole answer and she has just given it' },
+      ],
+    },
+    {
+      id: 'export-last-month',
+      npc_line: 'The first of last month, they said. So it did one, and then '
+        + 'it did not do the next one, and nobody noticed for four weeks. '
+        + 'Including head office, who are cross.',
+      options: [
+        { label: 'Go back to the top', next: 'head-office-rang' },
+        { label: 'Say that four weeks is quite a long time to notice in' },
+      ],
+    },
+    {
+      id: 'export-sent',
+      npc_line: 'It has gone. Head office have it and have said nothing, which '
+        + 'from head office is a thank you. Will it do the next one on its own?',
+      options: [
+        { label: 'Say yes, and say what would stop it, so she knows the shape' },
+      ],
+    },
+    /* -- and a flat battery, which is a flat battery -------------------- */
+    {
+      id: 'scanner-dead',
+      npc_line: 'The scanner in the cupboard has died. Black screen, nothing, '
+        + 'no lights. It has done nothing wrong and neither have I, and I '
+        + 'cannot book anything in without it.',
+      options: [
+        {
+          label: 'Ask what was on the screen the last time it was on',
+          next: 'scanner-last-said',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The last thing on the tablet was a box about the battery '
+                + 'being low, which she read, agreed with, and put back in the '
+                + 'cupboard.',
+            },
+          ],
+        },
+        {
+          label: 'Ask how long it has been in the cupboard',
+          next: 'scanner-cupboard',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her you will bring it back up from here' },
+      ],
+    },
+    {
+      id: 'scanner-last-said',
+      npc_line: 'There was a box about the battery. I read it. I did agree '
+        + 'with it. And then I put it away, which I can hear is the wrong end '
+        + 'of that sentence.',
+      options: [
+        { label: 'Go back to the top', next: 'scanner-dead' },
+        { label: 'Tell her everybody does this, because everybody does' },
+      ],
+    },
+    {
+      id: 'scanner-cupboard',
+      npc_line: 'Since Thursday. It lives in the cupboard. That is where the '
+        + 'cupboard comes in - it is the scanner cupboard, it is not a '
+        + 'punishment.',
+      options: [
+        {
+          label: 'Ask what was on the screen the last time it was on',
+          next: 'scanner-last-said',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The last thing on the tablet was a box about the battery '
+                + 'being low, which she read, agreed with, and put back in the '
+                + 'cupboard.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'scanner-dead' },
+      ],
+    },
+    {
+      id: 'scanner-back',
+      npc_line: 'It is on. It was batteries. I am not going to say anything '
+        + 'else about it and I would take it as a kindness if you did not '
+        + 'either.',
+      options: [
+        { label: 'Take it as a kindness and say nothing' },
+      ],
+    },
   ],
 };
 
 const SALES_NEW_STARTER: DialogueTree = {
   id: 'dialogue/sales-new-starter',
   speaker: COMPANY_IDS.kwame,
-  tickets: ['ticket:mailbox-access', 'ticket:sendas-missing'],
+  tickets: [
+    'ticket:mailbox-access',
+    'ticket:sendas-missing',
+    // And the pool's one (E11, 0.34.0 slice 2): the second factor that was
+    // bound to a handset belonging to somebody else's company.
+    'ticket:pool-sales-new-mfa',
+  ],
   root: 'access',
   roots: {
     'ticket:mailbox-access': 'access',
     'ticket:sendas-missing': 'send',
+    'ticket:pool-sales-new-mfa': 'agency-phone',
   },
   resolved_roots: {
     'ticket:mailbox-access': 'in',
     'ticket:sendas-missing': 'sent',
+    'ticket:pool-sales-new-mfa': 'codes-back',
   },
   // Two weeks in and doing it for the opposite reason to Owen: he has been
   // told to be polite to the IT desk and this is what being polite looks like
@@ -921,15 +1354,88 @@ const SALES_NEW_STARTER: DialogueTree = {
         { label: 'Congratulate him and get back to the queue' },
       ],
     },
+    /* -- the pool: the codes that went back to the agency --------------- */
+    {
+      id: 'agency-phone',
+      npc_line: 'I am so sorry. The code app has no codes in it. I think this '
+        + 'one is my fault, although I have been through it four times and I '
+        + 'am not sure at which point it became my fault.',
+      options: [
+        {
+          label: 'Ask what phone the codes were on before this one',
+          next: 'agency-posted',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The authenticator was set up on the agency handset, '
+                + 'which went back in the post on Friday in the envelope they '
+                + 'provided. Nothing is broken; the binding is simply not there '
+                + 'any more.',
+            },
+          ],
+        },
+        {
+          label: 'Ask how you are meant to know he is who he says he is',
+          next: 'agency-prove',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell him this is not his fault and it is fixable' },
+      ],
+    },
+    {
+      id: 'agency-posted',
+      npc_line: 'The agency one. I posted it back on Friday in their envelope, '
+        + 'because their letter said to post it back on Friday in their '
+        + 'envelope. Nobody said anything about the codes being on it.',
+      options: [
+        {
+          label: 'Ask how you are meant to know he is who he says he is',
+          next: 'agency-prove',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell him nobody ever says anything about the codes' },
+      ],
+    },
+    {
+      id: 'agency-prove',
+      npc_line: 'Oh - good, yes, you should check. I have been here a '
+        + 'fortnight, so I do not think you would know my voice. There is a '
+        + 'desk phone, and there was an envelope in my induction pack that I '
+        + 'have not opened because I did not know what it was for.',
+      options: [
+        { label: 'Tell him what the envelope is for, and to keep it' },
+        { label: 'Go back to the top', next: 'agency-phone' },
+      ],
+    },
+    {
+      id: 'codes-back',
+      npc_line: 'There are numbers. Changing numbers. And an email saying '
+        + 'somebody re-registered my authenticator, which I assume is you, and '
+        + 'which I am pleased to have got, if that is the right thing to say.',
+      options: [
+        { label: 'Confirm it was you, and say that is exactly what it is for' },
+      ],
+    },
   ],
 };
 
 const FINANCE_NEW_STARTER: DialogueTree = {
   id: 'dialogue/finance-new-starter',
   speaker: COMPANY_IDS.rob,
-  tickets: ['ticket:licence-exhausted'],
+  // And a machine with no sound on it (E11, 0.34.0 slice 2), which he reports
+  // the way a man three weeks in reports everything: unsure whether it is a
+  // fault or simply how it is here.
+  tickets: ['ticket:licence-exhausted', 'ticket:pool-finance-sound'],
   root: 'first-day',
+  roots: {
+    'ticket:licence-exhausted': 'first-day',
+    'ticket:pool-finance-sound': 'sound',
+  },
   resolved_root: 'after',
+  resolved_roots: {
+    'ticket:licence-exhausted': 'after',
+    'ticket:pool-finance-sound': 'sound-done',
+  },
   nodes: [
     {
       id: 'first-day',
@@ -997,21 +1503,73 @@ const FINANCE_NEW_STARTER: DialogueTree = {
         { label: 'Welcome him to Workgrumble' },
       ],
     },
+    {
+      id: 'sound',
+      npc_line: 'There is no sound on this one. Little red cross on the '
+        + 'speaker. I did not want to raise it if that is just how they are '
+        + 'set up here, but somebody said I should ask.',
+      options: [
+        {
+          label: 'Ask whether it has ever made a sound since he arrived',
+          next: 'sound-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read what the cross on the icon is reporting',
+          effects: [
+            {
+              reveal: 'That mark is the audio service not running rather than '
+                + 'a speaker or a lead being wrong, which is why it is silent '
+                + 'in everything and why nothing he plugs in changes it.',
+            },
+          ],
+        },
+        { label: 'Tell him it is not how they are set up here' },
+      ],
+    },
+    {
+      id: 'sound-q',
+      npc_line: 'Not once, now you say it. I assumed the finance ones were '
+        + 'locked down. I have been watching training videos with the '
+        + 'subtitles on for three weeks.',
+      options: [
+        { label: 'Back to the top', next: 'sound' },
+        { label: 'Go and start it' },
+      ],
+    },
+    {
+      id: 'sound-done',
+      npc_line: 'That is sound. Thank you. I will stop assuming things are '
+        + 'meant to be broken.',
+      options: [{ label: 'Log the fix' }],
+    },
   ],
 };
 
 const LATE_SHIFT: DialogueTree = {
   id: 'dialogue/late-shift',
   speaker: COMPANY_IDS.owen,
-  tickets: ['ticket:vacuum-tuesday', 'ticket:vacuum-thursday'],
+  tickets: [
+    'ticket:vacuum-tuesday',
+    'ticket:vacuum-thursday',
+    // The pool's two (E11, 0.34.0 slice 2). Both are the shift that starts at
+    // six: a queue nobody was awake to see build up, and a password policy
+    // that expires credentials at an hour when there is nobody to ask.
+    'ticket:pool-despatch-queue',
+    'ticket:pool-despatch-expired',
+  ],
   root: 'tuesday',
   roots: {
     'ticket:vacuum-tuesday': 'tuesday',
     'ticket:vacuum-thursday': 'thursday',
+    'ticket:pool-despatch-queue': 'ajax-stack',
+    'ticket:pool-despatch-expired': 'password-box',
   },
   resolved_roots: {
     'ticket:vacuum-tuesday': 'back-up',
     'ticket:vacuum-thursday': 'the-note',
+    'ticket:pool-despatch-queue': 'ajax-clear',
+    'ticket:pool-despatch-expired': 'password-done',
   },
   // Eleven years in the building and he still opens with a bare hello. That
   // is the joke and it is the true one: knowing about the habit is not the
@@ -1176,6 +1734,130 @@ const LATE_SHIFT: DialogueTree = {
         { label: 'Admit that it took a month' },
       ],
     },
+    /* -- the pool: the stack on the Ajax at six in the morning ---------- */
+    {
+      id: 'ajax-stack',
+      npc_line: 'The Ajax has a stack of things on it and is printing none of '
+        + 'them. It is on, it is awake, it has paper. It is just sat there '
+        + 'with twelve jobs and a light going round.',
+      options: [
+        {
+          label: 'Ask him to read the queue out, sizes and all',
+          next: 'ajax-front',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The job at the front of the queue is five hundred '
+                + 'kilobytes and is not a delivery note; the eleven behind it '
+                + 'are all the same size and all waiting their turn behind it.',
+            },
+          ],
+        },
+        {
+          label: 'Ask what time the first of them went on',
+          next: 'ajax-when',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell him not to send them again until you call back' },
+      ],
+    },
+    {
+      id: 'ajax-front',
+      npc_line: 'Top one is five hundred and something kilobytes. The rest are '
+        + 'all six thousand-odd, which is what a delivery note is. So the big '
+        + 'one is not one of ours, and the big one is the one at the front.',
+      options: [
+        { label: 'Go back to the top', next: 'ajax-stack' },
+        { label: 'Tell him that is the ticket answered, and he answered it' },
+      ],
+    },
+    {
+      id: 'ajax-when',
+      npc_line: 'Four minutes past six. I know because I got in at six, put '
+        + 'the kettle on, and by the time I sat down there was already '
+        + 'something on it that was not mine. Mine start at seven minutes past.',
+      options: [
+        {
+          label: 'Ask him to read the queue out, sizes and all',
+          next: 'ajax-front',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The job at the front of the queue is five hundred '
+                + 'kilobytes and is not a delivery note; the eleven behind it '
+                + 'are all the same size and all waiting their turn behind it.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'ajax-stack' },
+      ],
+    },
+    {
+      id: 'ajax-clear',
+      npc_line: 'It is going. The lorries will go at six and they will have '
+        + 'paper with them. Whoever sent the big one will send it again and we '
+        + 'will do this on Thursday, but that is Thursday\'s business.',
+      options: [
+        { label: 'Agree to make it Thursday\'s business' },
+      ],
+    },
+    /* -- and the password that expired before anybody was in ------------ */
+    {
+      id: 'password-box',
+      npc_line: 'A box came up at six this morning. I have written it down, '
+        + 'because I have learned that is the useful thing to do: "Your '
+        + 'password has expired. Click Continue to change it."',
+      options: [
+        {
+          label: 'Ask what happened after he clicked Continue',
+          next: 'password-tried',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'He clicked Continue, was asked for the old password and '
+                + 'two copies of a new one, and got as far as finding out that '
+                + 'the new one may not be the old one.',
+            },
+          ],
+        },
+        {
+          label: 'Ask whether it let him in at all',
+          next: 'password-in',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell him the box was right and he did the right thing' },
+      ],
+    },
+    {
+      id: 'password-tried',
+      npc_line: 'It wanted the old one and two of the new one, and then it '
+        + 'told me the new one could not be the old one. Which it was. I had '
+        + 'been using the old one for four years and I am fond of it.',
+      options: [
+        { label: 'Ask whether it let him in at all', next: 'password-in',
+          effects: [{ asks: true }] },
+        { label: 'Sympathise about the old one, briefly' },
+      ],
+    },
+    {
+      id: 'password-in',
+      npc_line: 'It let me in for the shift. It just asks again every time I '
+        + 'go anywhere, which at six in the morning with nobody to ring is a '
+        + 'long five hours.',
+      options: [
+        { label: 'Go back to the top', next: 'password-box' },
+        { label: 'Tell him nobody should have to do five hours of that' },
+      ],
+    },
+    {
+      id: 'password-done',
+      npc_line: 'Right. New one. I have written it on nothing and told nobody, '
+        + 'which I gather is the whole idea. It will ask me to change it again '
+        + 'the moment I log on, will it.',
+      options: [
+        { label: 'Say yes, and say why that is the flag working' },
+      ],
+    },
   ],
 };
 
@@ -1196,9 +1878,20 @@ const PRAISE_DENNIS: DialogueEffect = {
 const MARKETING: DialogueTree = {
   id: 'dialogue/marketing',
   speaker: COMPANY_IDS.dennis,
-  tickets: ['ticket:phishing-report'],
+  // And the trust relationship (E11, 0.34.0 slice 2), which is the same man
+  // again: he photographs the error, reads it out accurately, and concludes
+  // the fault is his own for having been the one it happened to.
+  tickets: ['ticket:phishing-report', 'ticket:pool-marketing-trust'],
   root: 'sorry',
+  roots: {
+    'ticket:phishing-report': 'sorry',
+    'ticket:pool-marketing-trust': 'trust',
+  },
   resolved_root: 'after',
+  resolved_roots: {
+    'ticket:phishing-report': 'after',
+    'ticket:pool-marketing-trust': 'trust-done',
+  },
   // He also messages you on the Thursday, mid-morning, with a quick question
   // that is not a ticket and never was - the malignant half of the cost model
   // in a chat window rather than down a phone. A red dot slides it (chat
@@ -1349,6 +2042,50 @@ const MARKETING: DialogueTree = {
         },
       ],
     },
+    {
+      id: 'trust',
+      npc_line: 'It says the trust relationship between this workstation and '
+        + 'the primary domain failed. I took a photograph of it. I got on '
+        + 'fine at the machine next to mine, so it is definitely this one, '
+        + 'and I am sorry - I do not know what I did to it.',
+      options: [
+        {
+          label: 'Ask what the machine beside him did differently',
+          next: 'trust-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check whether anything else is failing to sign in',
+          effects: [
+            {
+              reveal: 'Nothing he did, and it is not his machine. Signing on '
+                + 'to a domain runs over a channel each machine keeps with the '
+                + 'directory, and the service that maintains those channels is '
+                + 'not running - so a machine that still holds a live one '
+                + 'carries on as normal while any machine that has to '
+                + 're-establish it is told the trust failed.',
+            },
+          ],
+        },
+        { label: 'Tell him it is not something he did' },
+      ],
+    },
+    {
+      id: 'trust-q',
+      npc_line: 'It was already on, I think - Priya had not locked it since '
+        + 'yesterday. Does that matter? It sounds like it might matter, from '
+        + 'the way you asked.',
+      options: [
+        { label: 'Back to the top', next: 'trust' },
+        { label: 'Go and look at the domain controller' },
+      ],
+    },
+    {
+      id: 'trust-done',
+      npc_line: 'I am back on. And you are sure it was not me. I am going to '
+        + 'keep the photograph anyway.',
+      options: [{ label: 'Log the fix' }],
+    },
   ],
 };
 
@@ -1359,15 +2096,26 @@ const ACCOUNTS: DialogueTree = {
   // the week: `conversationFor` opens on the first of these that is live, and
   // a man with a request in and a backup light on is a man who wants to talk
   // about the request.
-  tickets: ['ticket:vpn-month-end', 'ticket:coverup-backup'],
+  tickets: [
+    'ticket:vpn-month-end',
+    'ticket:coverup-backup',
+    // The pool's two (E11, 0.34.0 slice 2): the warning the whole building has
+    // been clicking through, and an empty window he has decided is the network.
+    'ticket:pool-portal-cert',
+    'ticket:pool-accounts-browse',
+  ],
   root: 'itself',
   roots: {
     'ticket:vpn-month-end': 'month-end',
     'ticket:coverup-backup': 'itself',
+    'ticket:pool-portal-cert': 'portal-warning',
+    'ticket:pool-accounts-browse': 'neighbourhood',
   },
   resolved_roots: {
     'ticket:vpn-month-end': 'month-end-after',
     'ticket:coverup-backup': 'after',
+    'ticket:pool-portal-cert': 'portal-clean',
+    'ticket:pool-accounts-browse': 'neighbourhood-back',
   },
   nodes: [
     {
@@ -1506,15 +2254,164 @@ const ACCOUNTS: DialogueTree = {
         { label: 'Tell him that is a much better ticket than the first one' },
       ],
     },
+    /* -- the pool: the warning everybody has been trained to click ------ */
+    {
+      id: 'portal-warning',
+      npc_line: 'The timesheet site puts up a page saying it cannot be '
+        + 'trusted. I have clicked past it, everybody has clicked past it, and '
+        + 'I mention it only because we have now taught the whole of Accounts '
+        + 'to click past a security warning to fill in a timesheet.',
+      options: [
+        {
+          label: 'Ask him to read the warning out, including the small print',
+          next: 'portal-since',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The warning is a date rather than a fault: the '
+                + 'certificate on the portal ran out over the weekend, and '
+                + 'every browser in the building started saying so at nine on '
+                + 'Monday.',
+            },
+          ],
+        },
+        {
+          label: 'Ask who else is seeing it',
+          next: 'portal-everybody',
+          effects: [{ asks: true }],
+        },
+        { label: 'Thank him for raising the part that is actually the problem' },
+      ],
+    },
+    {
+      id: 'portal-since',
+      npc_line: 'It says the certificate for this site expired on the '
+        + 'thirteenth. Which was Sunday. So it did not break, it simply ran '
+        + 'out, like a road tax.',
+      options: [
+        { label: 'Ask who else is seeing it', next: 'portal-everybody',
+          effects: [{ asks: true }] },
+        { label: 'Tell him that is very nearly exactly what it is' },
+      ],
+    },
+    {
+      id: 'portal-everybody',
+      npc_line: 'Everybody. Every desk. Nobody has said anything because '
+        + 'everybody assumed somebody else had, which I believe is how most of '
+        + 'the interesting things in this building happen.',
+      options: [
+        {
+          label: 'Ask him to read the warning out, including the small print',
+          next: 'portal-since',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The warning is a date rather than a fault: the '
+                + 'certificate on the portal ran out over the weekend, and '
+                + 'every browser in the building started saying so at nine on '
+                + 'Monday.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'portal-warning' },
+      ],
+    },
+    {
+      id: 'portal-clean',
+      npc_line: 'No warning. Straight in. I would like it on the record that '
+        + 'the whole of Accounts can now go back to not reading things, which '
+        + 'is where we are all happiest.',
+      options: [
+        { label: 'Put it on the record in almost those words' },
+      ],
+    },
+    /* -- and the window with nothing in it ------------------------------ */
+    {
+      id: 'neighbourhood',
+      npc_line: 'Network Neighbourhood is empty. Not an error - empty. I went '
+        + 'looking for a machine whose name I half remember and there is '
+        + 'nothing in there at all. Has the network gone?',
+      options: [
+        {
+          label: 'Ask what still works from that desk',
+          next: 'neighbourhood-else',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Everything that reaches a machine by name still works '
+                + 'from that desk and only the browsing list is empty, which '
+                + 'puts it on ACCTS-03 rather than on the network.',
+            },
+          ],
+        },
+        {
+          label: 'Ask what he was looking for in there',
+          next: 'neighbourhood-looking',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell him the network has not gone' },
+      ],
+    },
+    {
+      id: 'neighbourhood-else',
+      npc_line: 'Mail is fine. My drives are fine. I printed something two '
+        + 'minutes ago. So everything works and the list of everything is '
+        + 'empty, which is somehow more unsettling.',
+      options: [
+        { label: 'Go back to the top', next: 'neighbourhood' },
+        { label: 'Explain what that window is a list OF' },
+      ],
+    },
+    {
+      id: 'neighbourhood-looking',
+      npc_line: 'A machine called something like ACCTS-OLD. There is a folder '
+        + 'on it from before the merger and I have to find a journal in it '
+        + 'twice a year, and this is the twice.',
+      options: [
+        {
+          label: 'Ask what still works from that desk',
+          next: 'neighbourhood-else',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Everything that reaches a machine by name still works '
+                + 'from that desk and only the browsing list is empty, which '
+                + 'puts it on ACCTS-03 rather than on the network.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'neighbourhood' },
+      ],
+    },
+    {
+      id: 'neighbourhood-back',
+      npc_line: 'There is a list again. Eleven machines, three of which I have '
+        + 'never heard of, and one of them is ACCTS-OLD. I am going to go and '
+        + 'be quietly pleased about this.',
+      options: [
+        { label: 'Let him be quietly pleased' },
+      ],
+    },
   ],
 };
 
 const HR: DialogueTree = {
   id: 'dialogue/hr',
   speaker: COMPANY_IDS.yolanda,
-  tickets: ['ticket:hr-report-macro'],
+  // And a starter who can do everything except print (E11, 0.34.0 slice 2).
+  // It is the same woman from the other end: the one who chases a report
+  // nobody ran is also the one who checks the form twice before she rings.
+  tickets: ['ticket:hr-report-macro', 'ticket:pool-hr-print-group'],
   root: 'three',
+  roots: {
+    'ticket:hr-report-macro': 'three',
+    'ticket:pool-hr-print-group': 'starter',
+  },
   resolved_root: 'after',
+  resolved_roots: {
+    'ticket:hr-report-macro': 'after',
+    'ticket:pool-hr-print-group': 'starter-done',
+  },
   nodes: [
     {
       id: 'three',
@@ -1581,22 +2478,74 @@ const HR: DialogueTree = {
         { label: 'Suggest she puts the good bit on page one' },
       ],
     },
+    {
+      id: 'starter',
+      npc_line: 'I have a starter on the second floor who cannot print. She '
+        + 'can log on, she has her mail, she can open the shared drives. She '
+        + 'presses print and it simply goes. No error, no queue, nothing. I '
+        + 'have been through the starter form twice and it was all done.',
+      options: [
+        {
+          label: 'Ask whether anything at all comes back when she prints',
+          next: 'starter-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Compare her account against somebody who can print',
+          effects: [
+            {
+              reveal: 'Everything on the form was done and the form does not '
+                + 'cover this: printing here is a membership, held separately '
+                + 'from the account and from the drives. Without it the server '
+                + 'takes the job politely and throws it away, which is why '
+                + 'there is no error for her to read out to you.',
+            },
+          ],
+        },
+        { label: 'Tell her you will sort the starter out' },
+      ],
+    },
+    {
+      id: 'starter-q',
+      npc_line: 'Nothing whatsoever. She said it was like printing into a '
+        + 'cupboard. She has been emailing things to the girl next to her and '
+        + 'asking her to print them, which I only found out this morning.',
+      options: [
+        { label: 'Back to the top', next: 'starter' },
+        { label: 'Go and put it right' },
+      ],
+    },
+    {
+      id: 'starter-done',
+      npc_line: 'She has printed. Thank you. And I will get that put on the '
+        + 'form, before the next one spends a fortnight printing into a '
+        + 'cupboard.',
+      options: [{ label: 'Log the fix' }],
+    },
   ],
 };
 
 /**
- * Facilities. No tickets, no clock, and the only permanent fix in the week.
+ * Facilities, and the only permanent fix in the authored week.
  *
  * The sticky note is a real verb with a real outcome and it is the closing half
- * of the recurring arc - which is why Vic is a contact rather than a line of
- * flavour text. Nothing here asks anybody anything: he is not a reporter, so
- * there is no ticket to log a question against.
+ * of the recurring arc - which is why Vic was a contact before he was ever a
+ * reporter. He had no ticket at all until the pool arrived (E11, 0.34.0 slice
+ * 2), and the one he has now is the shape his job makes: Facilities came off
+ * the staff payroll onto a contract, and the run that processes leavers reads
+ * the payroll list.
  */
 const FACILITIES: DialogueTree = {
   id: 'dialogue/facilities',
   speaker: COMPANY_IDS.vic,
-  tickets: [],
+  tickets: ['ticket:pool-facilities-disabled'],
   root: 'vic',
+  // Named per ticket even though he only files one, because his `root` is the
+  // small talk a passer-by gets and a man who cannot log on is not making small
+  // talk. Without this the conversation about his own ticket would open on the
+  // second-floor heating.
+  roots: { 'ticket:pool-facilities-disabled': 'switched-off' },
+  resolved_root: 'switched-back-on',
   // He rings on the Thursday about a printer in a building this desk does not
   // hold the contract for, which is the malignant half of the cost model made
   // of words: nothing lands on any ticket, because there is no ticket, and
@@ -1696,6 +2645,77 @@ const FACILITIES: DialogueTree = {
           label: 'Ask him what sort of noise',
           next: 'ringing-annexe-noise',
         },
+      ],
+    },
+    /* -- the pool: the man the leavers run has retired ------------------ */
+    {
+      id: 'switched-off',
+      npc_line: 'The computer says I do not work here. I have written down '
+        + 'what it says: "Your account has been disabled. Please see your '
+        + 'system administrator." I am holding the keys to the second floor '
+        + 'and I would like somebody to tell me whether I still should be.',
+      options: [
+        {
+          label: 'Ask what changed about Facilities at the end of the quarter',
+          next: 'switched-off-when',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Facilities came off the staff payroll and onto a '
+                + 'contract at the end of the quarter, and the run that '
+                + 'processes leavers reads the payroll list. It did exactly '
+                + 'what it is written to do.',
+            },
+          ],
+        },
+        {
+          label: 'Ask him to read the message out again, all of it',
+          next: 'switched-off-words',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell him he works here and to hold on to the keys' },
+      ],
+    },
+    {
+      id: 'switched-off-when',
+      npc_line: 'We went onto the contract. Same job, same me, same van. '
+        + 'Payroll stopped paying me and the contract started, and I signed '
+        + 'something about it in a corridor.',
+      options: [
+        { label: 'Go back to the top', next: 'switched-off' },
+        { label: 'Tell him that is the whole of it, and it is not about him' },
+      ],
+    },
+    {
+      id: 'switched-off-words',
+      npc_line: 'Disabled. Not locked, not expired - I have had both of those '
+        + 'and they say something else. This one says disabled and it says see '
+        + 'your system administrator, which is a phrase I have never had to '
+        + 'read out loud before.',
+      options: [
+        {
+          label: 'Ask what changed about Facilities at the end of the quarter',
+          next: 'switched-off-when',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Facilities came off the staff payroll and onto a '
+                + 'contract at the end of the quarter, and the run that '
+                + 'processes leavers reads the payroll list. It did exactly '
+                + 'what it is written to do.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'switched-off' },
+      ],
+    },
+    {
+      id: 'switched-back-on',
+      npc_line: 'I am in. Good. I shall go and unlock the second floor, and I '
+        + 'shall not mention to anybody that for forty minutes this morning I '
+        + 'was, technically, a member of the public.',
+      options: [
+        { label: 'Agree never to mention the forty minutes' },
       ],
     },
   ],

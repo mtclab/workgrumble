@@ -30,17 +30,27 @@ const ROTATED_SCREEN: DialogueTree = {
     'ticket:rotated-screen',
     'ticket:flat-mouse',
     'ticket:vpn-cert-dup-ada',
+    // And the two she can be dealt in any week but the authored one (E11,
+    // 0.34.0 slice 2). They hang off the same conversation because she is the
+    // same person: one channel, one manner, and a different opening line per
+    // complaint so she never answers the phone about the wrong problem.
+    'ticket:pool-sales-restart',
+    'ticket:pool-sales-spooler',
   ],
   root: 'complaint',
   roots: {
     'ticket:rotated-screen': 'complaint',
     'ticket:flat-mouse': 'frozen',
     'ticket:vpn-cert-dup-ada': 'vpn',
+    'ticket:pool-sales-restart': 'restart-box',
+    'ticket:pool-sales-spooler': 'not-printing',
   },
   resolved_roots: {
     'ticket:rotated-screen': 'after',
     'ticket:flat-mouse': 'mouse-after',
     'ticket:vpn-cert-dup-ada': 'vpn-after',
+    'ticket:pool-sales-restart': 'restart-done',
+    'ticket:pool-sales-spooler': 'printing-again',
   },
   nodes: [
     {
@@ -315,6 +325,130 @@ const ROTATED_SCREEN: DialogueTree = {
         { label: 'Suggest she shows Gareth the same shortcut, twice' },
       ],
     },
+    /* -- the pool: the box she has been pressing Later on --------------- */
+    {
+      id: 'restart-box',
+      npc_line: 'There is a box. It has been there for weeks. I press the '
+        + 'other one, it goes away, and in the morning it is back. I would '
+        + 'like it to stop asking.',
+      options: [
+        {
+          label: 'Ask her to read the box out, both buttons included',
+          next: 'restart-what-it-says',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'She reads it out: the updates are downloaded and it '
+                + 'needs to restart to finish. It has said that since the week '
+                + 'before last, and Later is the button she can press while on '
+                + 'a call.',
+            },
+          ],
+        },
+        {
+          label: 'Ask when she is not on the phone',
+          next: 'restart-window',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her you will take it away today' },
+      ],
+    },
+    {
+      id: 'restart-what-it-says',
+      npc_line: 'It says the updates are downloaded and it needs to restart to '
+        + 'finish. So it has been finished for a fortnight and is waiting for '
+        + 'me. That is a very passive way for a machine to behave.',
+      options: [
+        { label: 'Ask when she is not on the phone', next: 'restart-window',
+          effects: [{ asks: true }] },
+        { label: 'Agree it is passive, and go and do it' },
+      ],
+    },
+    {
+      id: 'restart-window',
+      npc_line: 'Twelve until half past. Not before, not after, and I mean '
+        + 'that pleasantly. If it goes down during the Denby call I shall not '
+        + 'mean it pleasantly.',
+      options: [
+        { label: 'Take the half hour and say nothing else' },
+      ],
+    },
+    {
+      id: 'restart-done',
+      npc_line: 'It went round and came back and the box has gone. Weeks of '
+        + 'that, and it was four minutes at lunchtime.',
+      options: [
+        { label: 'Say that is usually the ratio' },
+      ],
+    },
+    /* -- and the printing that never leaves her desk -------------------- */
+    {
+      id: 'not-printing',
+      npc_line: 'The print server is down. I am telling you rather than asking '
+        + 'you, because I have sent the same page six times and none of them '
+        + 'has arrived and there has not been one error about any of it.',
+      options: [
+        {
+          label: 'Ask whether anybody near her has printed since',
+          next: 'not-printing-others',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'She has watched the man at the next desk print the same '
+                + 'document to the same printer while hers vanished, which puts '
+                + 'the fault on SALES-02 rather than on the print server.',
+            },
+          ],
+        },
+        {
+          label: 'Ask what the machine said when the jobs went',
+          next: 'not-printing-silence',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her not to send it a seventh time' },
+      ],
+    },
+    {
+      id: 'not-printing-others',
+      npc_line: 'Kwame printed. From the desk next to mine. The same document, '
+        + 'because I made him. I am now less certain about the print server and '
+        + 'considerably more annoyed.',
+      options: [
+        { label: 'Go back to the top', next: 'not-printing' },
+        { label: 'Tell her that is the most useful thing anybody has said today' },
+      ],
+    },
+    {
+      id: 'not-printing-silence',
+      npc_line: 'Nothing. That is what I keep saying. It does not say it has '
+        + 'failed, it does not say it is printing, it says nothing at all and '
+        + 'then there is no paper.',
+      options: [
+        {
+          label: 'Ask whether anybody near her has printed since',
+          next: 'not-printing-others',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'She has watched the man at the next desk print the same '
+                + 'document to the same printer while hers vanished, which puts '
+                + 'the fault on SALES-02 rather than on the print server.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'not-printing' },
+      ],
+    },
+    {
+      id: 'printing-again',
+      npc_line: 'Six copies have just come out at once and Kwame has brought '
+        + 'them over. So it was my machine all along and I have told four '
+        + 'people it was the server.',
+      options: [
+        { label: 'Offer to tell the four people' },
+        { label: 'Let her tell them herself, in her own time' },
+      ],
+    },
   ],
 };
 
@@ -325,17 +459,25 @@ const LOCKED_ACCOUNT: DialogueTree = {
     'ticket:locked-account',
     'ticket:vpn-cert-dup-gary',
     'ticket:gary-restart',
+    // The pool's two (E11, 0.34.0 slice 2): a clock nobody has been correcting
+    // and a drive payroll was never put on.
+    'ticket:pool-payroll-clock',
+    'ticket:pool-payroll-share',
   ],
   root: 'complaint',
   roots: {
     'ticket:locked-account': 'complaint',
     'ticket:vpn-cert-dup-gary': 'remote',
     'ticket:gary-restart': 'restart-chased',
+    'ticket:pool-payroll-clock': 'clock-out',
+    'ticket:pool-payroll-share': 'common-denied',
   },
   resolved_roots: {
     'ticket:locked-account': 'after',
     'ticket:vpn-cert-dup-gary': 'remote-after',
     'ticket:gary-restart': 'restart-done',
+    'ticket:pool-payroll-clock': 'clock-right',
+    'ticket:pool-payroll-share': 'common-in',
   },
   // The walk-up. Nothing in this tree points at either of them: the day puts
   // him at the desk and the window opens on whichever one the meters choose,
@@ -689,21 +831,162 @@ const LOCKED_ACCOUNT: DialogueTree = {
         { label: 'Do not push the point any further than that' },
       ],
     },
+    /* -- the pool: the machine that is wrong about the time ------------- */
+    {
+      id: 'clock-out',
+      npc_line: 'It keeps throwing me out. I sign in, I do two things, and it '
+        + 'asks me again. And the timesheet has me arriving at twenty past '
+        + 'seven, which I would like corrected, because I was in bed.',
+      options: [
+        {
+          label: 'Ask what the clock in the corner of his screen says',
+          next: 'clock-hand-set',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The clock on PAYROLL-04 is minutes away from the clock '
+                + 'on the wall, and he has been putting it back by hand every '
+                + 'few days, so nothing has been keeping it with the domain.',
+            },
+          ],
+        },
+        {
+          label: 'Ask whether anybody else in payroll has it',
+          next: 'clock-just-him',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell him the timesheet is a symptom and not the fault' },
+      ],
+    },
+    {
+      id: 'clock-hand-set',
+      npc_line: 'It is out. It has been out for weeks. I put it back by hand '
+        + 'on a Monday and by Thursday it has wandered off again. I assumed '
+        + 'that was just what it did.',
+      options: [
+        { label: 'Ask whether anybody else in payroll has it',
+          next: 'clock-just-him', effects: [{ asks: true }] },
+        { label: 'Tell him a machine is not supposed to do that' },
+      ],
+    },
+    {
+      id: 'clock-just-him',
+      npc_line: 'Just me. Which is the sentence I always end up saying to you, '
+        + 'and it is never good news when I say it.',
+      options: [
+        { label: 'Go back to the top', next: 'clock-out' },
+        { label: 'Tell him it is good news this once' },
+      ],
+    },
+    {
+      id: 'clock-right',
+      npc_line: 'It has stopped throwing me out, and the clock has moved four '
+        + 'minutes on its own, which I am choosing to find reassuring. So it '
+        + 'was the TIME. Nobody would have guessed that.',
+      options: [
+        { label: 'Explain what the domain does about clocks, briefly' },
+        { label: 'Agree that nobody would have guessed it' },
+      ],
+    },
+    /* -- and the drive nobody ever put him on --------------------------- */
+    {
+      id: 'common-denied',
+      npc_line: 'I have been told to put the quarter\'s figures on the common '
+        + 'drive. The common drive says access is denied. I am happy to email '
+        + 'them, as I have done for eleven years, but apparently that is now '
+        + 'wrong of me.',
+      options: [
+        {
+          label: 'Ask when he last had the common drive working',
+          next: 'common-ever',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'He has never had it. Payroll kept its figures on its own '
+                + 'machine, so nobody was ever asked to put him on the drive, '
+                + 'and nothing has changed except who is asking for the file.',
+            },
+          ],
+        },
+        {
+          label: 'Ask whether anybody else in payroll can reach it',
+          next: 'common-nobody',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell him you will sort the drive out either way' },
+      ],
+    },
+    {
+      id: 'common-ever',
+      npc_line: 'Never. I have never used it once. Payroll keeps payroll on '
+        + 'the payroll machine, which used to be called being careful.',
+      options: [
+        { label: 'Go back to the top', next: 'common-denied' },
+        { label: 'Tell him it is still being careful, and get him on the list' },
+      ],
+    },
+    {
+      id: 'common-nobody',
+      npc_line: 'There is no anybody else in payroll. There is me. That is the '
+        + 'whole department and it has a plant in front of it.',
+      options: [
+        {
+          label: 'Ask when he last had the common drive working',
+          next: 'common-ever',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'He has never had it. Payroll kept its figures on its own '
+                + 'machine, so nobody was ever asked to put him on the drive, '
+                + 'and nothing has changed except who is asking for the file.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'common-denied' },
+      ],
+    },
+    {
+      id: 'common-in',
+      npc_line: 'It has let me in. There is a folder in there called FINAL '
+        + 'FIGURES 96 and I am going to pretend I have not seen it.',
+      options: [
+        { label: 'Pretend you have not seen it either' },
+      ],
+    },
   ],
 };
 
 const WEDGED_SPOOLER: DialogueTree = {
   id: 'dialogue/logistics',
   speaker: COMPANY_IDS.nina,
-  tickets: ['ticket:wedged-spooler', 'ticket:vpn-cert-expired'],
+  tickets: [
+    'ticket:wedged-spooler',
+    'ticket:vpn-cert-expired',
+    // The pool's two (E11, 0.34.0 slice 2). She sits nearest the printer, so
+    // the printer is hers whether or not it is her fault, and the depot's
+    // delivery notes are the one thing on this estate that does not print out
+    // of Windows.
+    'ticket:pool-hercules-dead',
+    'ticket:pool-despatch-lpd',
+    // And the morning the whole floor lost its mapped drives. She is the right
+    // reporter for it because she is the one who checks the server is up
+    // before she says the network is down.
+    'ticket:pool-logistics-share',
+  ],
   root: 'complaint',
   roots: {
     'ticket:wedged-spooler': 'complaint',
     'ticket:vpn-cert-expired': 'depot',
+    'ticket:pool-hercules-dead': 'dead-printer',
+    'ticket:pool-despatch-lpd': 'old-system',
+    'ticket:pool-logistics-share': 'files',
   },
   resolved_roots: {
     'ticket:wedged-spooler': 'after',
     'ticket:vpn-cert-expired': 'depot-after',
+    'ticket:pool-hercules-dead': 'lights-on',
+    'ticket:pool-despatch-lpd': 'notes-again',
+    'ticket:pool-logistics-share': 'files-after',
   },
   // She rings on the Tuesday, about the printer, while you are already on the
   // printer - which is the benign half of the cost model made of words: no
@@ -935,6 +1218,192 @@ const WEDGED_SPOOLER: DialogueTree = {
         },
       ],
     },
+    /* -- the pool: a printer with nothing on it at all ------------------ */
+    {
+      id: 'dead-printer',
+      npc_line: 'It is dead. Not haunted this time, dead. No lights, no hum, '
+        + 'no little green one, nothing. I have opened it and closed it and '
+        + 'looked at it in the way you look at a thing that is dead.',
+      options: [
+        {
+          label: 'Ask her to describe every light on it, including the ones '
+            + 'that are off',
+          next: 'dead-printer-switch',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'There is no standby light either, which is a printer '
+                + 'with no power going into it rather than a printer with '
+                + 'something wrong with it.',
+            },
+          ],
+        },
+        {
+          label: 'Ask whether anything else on that wall is off',
+          next: 'dead-printer-wall',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her you can see it from here and you are looking' },
+      ],
+    },
+    {
+      id: 'dead-printer-switch',
+      npc_line: 'There are no lights. That is the thing I have been saying. '
+        + 'Even the little orange one that is always on is not on, and I have '
+        + 'never once thought about that one before.',
+      options: [
+        { label: 'Go back to the top', next: 'dead-printer' },
+        { label: 'Tell her the orange one is the whole answer' },
+      ],
+    },
+    {
+      id: 'dead-printer-wall',
+      npc_line: 'The kettle works, if that helps. I checked the kettle first, '
+        + 'which tells you something about the order I do things in.',
+      options: [
+        {
+          label: 'Ask her to describe every light on it, including the ones '
+            + 'that are off',
+          next: 'dead-printer-switch',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'There is no standby light either, which is a printer '
+                + 'with no power going into it rather than a printer with '
+                + 'something wrong with it.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'dead-printer' },
+      ],
+    },
+    {
+      id: 'lights-on',
+      npc_line: 'It is on. It is doing the noise it does when it wakes up, '
+        + 'which I have never been so pleased to hear. Nobody touched it, '
+        + 'obviously. Nobody ever touches it.',
+      options: [
+        { label: 'Leave the question of who touched it alone' },
+      ],
+    },
+    /* -- and the notes that do not come out of Windows ------------------ */
+    {
+      id: 'old-system',
+      npc_line: 'The delivery notes are not printing. Everything else prints. '
+        + 'I have printed a memo I did not need to prove it. The notes go, '
+        + 'nothing comes out, and nothing anywhere says a word about it.',
+      options: [
+        {
+          label: 'Ask what does print, and what it was printed from',
+          next: 'old-system-windows',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Everything printed out of Windows arrives and '
+                + 'everything printed out of the old delivery system does not, '
+                + 'so whatever is wrong is on the way IN to the print server '
+                + 'rather than on the printer or on her desk.',
+            },
+          ],
+        },
+        {
+          label: 'Ask whether the notes are in the queue at all',
+          next: 'old-system-queue',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her you are going to look at the print server' },
+      ],
+    },
+    {
+      id: 'old-system-windows',
+      npc_line: 'The memo was Windows. The notes are the old system, the green '
+        + 'screen, the one with the keyboard that goes clack. That has printed '
+        + 'to that printer since before I worked here.',
+      options: [
+        { label: 'Go back to the top', next: 'old-system' },
+        { label: 'Tell her the green screen is the useful half of that' },
+      ],
+    },
+    {
+      id: 'old-system-queue',
+      npc_line: 'Nothing in the queue. That is what is strange about it. If it '
+        + 'were stuck I would understand it. There is no queue. They just do '
+        + 'not exist anywhere.',
+      options: [
+        {
+          label: 'Ask what does print, and what it was printed from',
+          next: 'old-system-windows',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'Everything printed out of Windows arrives and '
+                + 'everything printed out of the old delivery system does not, '
+                + 'so whatever is wrong is on the way IN to the print server '
+                + 'rather than on the printer or on her desk.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'old-system' },
+      ],
+    },
+    {
+      id: 'notes-again',
+      npc_line: 'They are coming out. All of this morning\'s at once, in the '
+        + 'wrong order, which is exactly how they came out before as well. '
+        + 'Normal service, and I mean that literally for once.',
+      options: [
+        { label: 'Accept normal service and go' },
+      ],
+    },
+    {
+      id: 'files',
+      npc_line: 'The network is down. Before you say anything - I know that is '
+        + 'not a diagnosis, and I have written it anyway because it is what '
+        + 'everybody out there is saying. Nothing on FILES-01 will open for '
+        + 'anyone. The box is on, I can ping it, and the despatch notes I need '
+        + 'are sitting on it.',
+      options: [
+        {
+          label: 'Ask what happens when she opens the drive',
+          next: 'files-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Look at what the server is actually offering',
+          effects: [
+            {
+              reveal: 'A drive letter here is a namespace rather than a '
+                + 'folder: one letter standing in front of several places, '
+                + 'resolved by its own service on that box. That service is '
+                + 'stopped, so the letter has nothing to resolve against while '
+                + 'the server itself is up and still serving the folders to '
+                + 'anyone who knows their real paths - which is every mapped '
+                + 'drive failing for one reason rather than the network '
+                + 'failing for another.',
+            },
+          ],
+        },
+        { label: 'Tell her you are on it' },
+      ],
+    },
+    {
+      id: 'files-q',
+      npc_line: 'It thinks about it and then says it cannot find it. Same on '
+        + 'every machine out there, and the same if you type the path in by '
+        + 'hand. Which I did, before you ask, because I have been here long '
+        + 'enough to be asked.',
+      options: [
+        { label: 'Back to the top', next: 'files' },
+        { label: 'Go and look at the server' },
+      ],
+    },
+    {
+      id: 'files-after',
+      npc_line: 'Drives are back. The floor has stopped asking me. I will tell '
+        + 'them it was not the network, and they will not listen, and that is '
+        + 'fine.',
+      options: [{ label: 'Log the fix' }],
+    },
   ],
 };
 
@@ -1160,6 +1629,11 @@ const RECEPTION: DialogueTree = {
     'ticket:tidied-list',
     'ticket:share-maintenance',
     'ticket:bev-vpn-request',
+    // The pool's two (E11, 0.34.0 slice 2). Both of them are reception's whole
+    // job made of computers: a door she cannot get through and a badge she
+    // cannot hand anybody.
+    'ticket:pool-reception-locked',
+    'ticket:pool-reception-badges',
   ],
   root: 'hello',
   roots: {
@@ -1170,11 +1644,15 @@ const RECEPTION: DialogueTree = {
     // the request itself lives on the convert / answer / deflect bar rather
     // than in here.
     'ticket:bev-vpn-request': 'vpn',
+    'ticket:pool-reception-locked': 'locked-out',
+    'ticket:pool-reception-badges': 'badges',
   },
   resolved_roots: {
     'ticket:tidied-list': 'after',
     'ticket:share-maintenance': 'drive-after',
     'ticket:bev-vpn-request': 'vpn-after',
+    'ticket:pool-reception-locked': 'let-in',
+    'ticket:pool-reception-badges': 'badges-printed',
   },
   nodes: [
     {
@@ -1357,6 +1835,141 @@ const RECEPTION: DialogueTree = {
         + 'the boiler can say.',
       options: [
         { label: 'Log that it was a group membership, not a fault' },
+      ],
+    },
+    /* -- the pool: the door she cannot get through ---------------------- */
+    {
+      id: 'locked-out',
+      npc_line: 'It will not have my password. It is the same password it has '
+        + 'had since March. There are two people standing in front of me '
+        + 'holding coats and I am smiling at them.',
+      options: [
+        {
+          label: 'Ask her to type it once more and watch the little light on '
+            + 'the keyboard',
+          next: 'locked-out-caps',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The caps light on the reception keyboard stopped working '
+                + 'before the merger, so every one of the five attempts went in '
+                + 'in capitals - and five is the number that shuts the door.',
+            },
+          ],
+        },
+        {
+          label: 'Ask exactly how many times she has tried it',
+          next: 'locked-out-count',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her to stop typing it and give you a moment' },
+      ],
+    },
+    {
+      id: 'locked-out-caps',
+      npc_line: 'The light has not worked for years. I know about the light. I '
+        + 'did not know the light was allowed to do THIS.',
+      options: [
+        { label: 'Go back to the top', next: 'locked-out' },
+        { label: 'Promise to get her a keyboard whose light works' },
+      ],
+    },
+    {
+      id: 'locked-out-count',
+      npc_line: 'Five. Possibly six. I stopped at the point where it changed '
+        + 'what it was saying to me, which I took as a hint.',
+      options: [
+        {
+          label: 'Ask her to type it once more and watch the little light on '
+            + 'the keyboard',
+          next: 'locked-out-caps',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The caps light on the reception keyboard stopped working '
+                + 'before the merger, so every one of the five attempts went in '
+                + 'in capitals - and five is the number that shuts the door.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'locked-out' },
+      ],
+    },
+    {
+      id: 'let-in',
+      npc_line: 'I am in. The visitors have been given tea and have been '
+        + 'extremely nice about all of it, which somehow made it worse.',
+      options: [
+        { label: 'Agree that being forgiven is the worst part' },
+      ],
+    },
+    /* -- and the badges, which nobody needed until today ---------------- */
+    {
+      id: 'badges',
+      npc_line: 'The badges will not print. I write them out by hand, and that '
+        + 'has been perfectly all right, and today the auditors are in at two '
+        + 'and a handwritten badge for an auditor is going to be a whole '
+        + 'conversation I would rather not have.',
+      options: [
+        {
+          label: 'Ask when a badge last came out of that printer on its own',
+          next: 'badges-since',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The badge template stopped printing in the autumn, which '
+                + 'is when the print server started asking to restart to finish '
+                + 'installing - and nothing on it has finished installing since.',
+            },
+          ],
+        },
+        {
+          label: 'Ask what happens when she prints one now',
+          next: 'badges-now',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her what you can honestly do before two' },
+      ],
+    },
+    {
+      id: 'badges-since',
+      npc_line: 'The autumn. September, October, somewhere in there. I stopped '
+        + 'trying and started writing, and nobody has ever once mentioned it, '
+        + 'which I have views about.',
+      options: [
+        { label: 'Go back to the top', next: 'badges' },
+        { label: 'Tell her the date is the useful part of this' },
+      ],
+    },
+    {
+      id: 'badges-now',
+      npc_line: 'It thinks about it. There is a little hourglass and a great '
+        + 'deal of thinking and then nothing whatever happens, and the queue is '
+        + 'empty, and I am left holding a pen.',
+      options: [
+        {
+          label: 'Ask when a badge last came out of that printer on its own',
+          next: 'badges-since',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The badge template stopped printing in the autumn, which '
+                + 'is when the print server started asking to restart to finish '
+                + 'installing - and nothing on it has finished installing since.',
+            },
+          ],
+        },
+        { label: 'Go back to the top', next: 'badges' },
+      ],
+    },
+    {
+      id: 'badges-printed',
+      npc_line: 'Four badges, with the little logo on and everything. The '
+        + 'auditors have been given proper ones. One of them said it was a nice '
+        + 'badge. I have had a better afternoon than I expected.',
+      options: [
+        { label: 'Say nothing about the two minutes the depot lost' },
+        { label: 'Tell her exactly what it cost, because she would want to know' },
       ],
     },
   ],

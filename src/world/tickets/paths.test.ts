@@ -264,6 +264,41 @@ describe('shipped tickets', () => {
       // the books (0.5.0 slice 2). Summoned, like Gary's restart - it exists
       // only if you did the right thing with the cross-posted noise.
       'ticket:bev-vpn-request',
+      // And the probation shop's pool (E11, 0.34.0 slice 2): twenty the
+      // surplus can deal on any day but the authored one. Six of the estate's
+      // baseline services read six ways, eight pieces of the job's own texture
+      // (a lockout, an expired password, a battery, a screen somebody turned
+      // over, a printer at the wall, a queue, a restart, a drive nobody was
+      // ever added to), and the awkward remainder - a disabled update service,
+      // a certificate that ran out on a Sunday, a tender in a temp directory.
+      'ticket:pool-sales-restart',
+      'ticket:pool-sales-spooler',
+      'ticket:pool-payroll-clock',
+      'ticket:pool-payroll-share',
+      'ticket:pool-hercules-dead',
+      'ticket:pool-despatch-lpd',
+      'ticket:pool-reception-locked',
+      'ticket:pool-reception-badges',
+      'ticket:pool-despatch-queue',
+      'ticket:pool-despatch-expired',
+      'ticket:pool-facilities-disabled',
+      'ticket:pool-accounts-updates',
+      'ticket:pool-accounts-drives',
+      'ticket:pool-estimating-rotated',
+      'ticket:pool-estimating-tender',
+      'ticket:pool-portal-cert',
+      'ticket:pool-accounts-browse',
+      'ticket:pool-warehouse-schedule',
+      'ticket:pool-warehouse-tablet',
+      'ticket:pool-sales-new-mfa',
+      // And the four the morning pile was short of. The exclusion window costs
+      // five inherited tickets a week and eleven in the pool left the second
+      // week drawing from a remainder with no room to be wrong about which day
+      // each was allowed on - which the generator found out at week 564.
+      'ticket:pool-finance-sound',
+      'ticket:pool-logistics-share',
+      'ticket:pool-marketing-trust',
+      'ticket:pool-hr-print-group',
       // And the second employer's five (0.6.0 slice 3), in the one roster
       // because the gates read one roster - spawned into the Bodgeworth world,
       // not this one.
@@ -272,6 +307,15 @@ describe('shipped tickets', () => {
       'ticket:yard-printer-wedged',
       'ticket:the-share-down',
       'ticket:vernon-mouse',
+      // And Bodgeworth's pool (E11, 0.34.0 slice 2): the surplus a second week
+      // is drawn out of, dealt by no authored day. The client half of a share,
+      // a login the yard printer keeps shutting, and three the shop has every
+      // week of its life.
+      'ticket:front-desk-no-network',
+      'ticket:kev-relock',
+      'ticket:baz-locked-out',
+      'ticket:trev-switched-off',
+      'ticket:yard-printer-unplugged',
       // And the MSP's ten (0.8.0, Pass B), spawned into the MSP world: the law
       // firm's three (matter access, the iManage check-out deadlock, the e-filing
       // panic), the SaaS shop's four (SSO loop, offboarding gap, MFA lockout, and
@@ -340,6 +384,28 @@ describe('shipped tickets', () => {
       'ticket:arden-fw-handover',
       'ticket:arden-fw-scream-brenmark',
       'ticket:arden-fw-scream-scanners',
+      // And the MSP's pool (E11, 0.34.0 slice 2): the surplus each customer
+      // scope can be dealt on a drawn week - the two helpdesk shops' walls, the
+      // monitoring-only clinic's escalate-only alerts, the co-managed plant's
+      // RACI hand-backs, and the Mac agency's own texture.
+      'ticket:msp-pool-fontaine-partner-lockout',
+      'ticket:msp-pool-fontaine-file-server-full',
+      'ticket:msp-pool-fontaine-supervising-partner',
+      'ticket:msp-pool-meridian-restart-prompt',
+      'ticket:msp-pool-meridian-wrong-groups',
+      'ticket:msp-pool-meridian-status-page',
+      'ticket:msp-pool-northwind-portal-stopped',
+      'ticket:msp-pool-northwind-server-service',
+      'ticket:msp-pool-holloway-payroll-export',
+      'ticket:msp-pool-holloway-workstation-service',
+      'ticket:msp-pool-holloway-disabled-account',
+      'ticket:msp-pool-elmwood-reception-spooler',
+      'ticket:msp-pool-elmwood-task-scheduler',
+      'ticket:msp-pool-arden-reset-handback',
+      'ticket:msp-pool-arden-server-service',
+      'ticket:msp-pool-marlowe-share-access',
+      'ticket:msp-pool-marlowe-password-expired',
+      'ticket:msp-pool-marlowe-nas-capacity',
       // And the corporate employer's three VIP exceptions (E8, 0.22.0), spawned
       // into the Halcyon world: the CEO's MFA off, the EA's mailbox delegate, and
       // the CEO taken off the mail filter - the setup a later BEC incident reads.
@@ -371,6 +437,22 @@ describe('shipped tickets', () => {
       'ticket:halcyon-ceo-earbuds',
       'ticket:halcyon-finance-ledger',
       'ticket:halcyon-ceo-tablet',
+      // And Halcyon's pool (E11, 0.34.0 slice 2): the housekeeping the
+      // governance is supposed to produce and does not - a morning where no
+      // name resolves, a fortnight's cover with no end date, an account that
+      // outlived the director, and a password that expired on schedule.
+      'ticket:halcyon-dns-down',
+      'ticket:halcyon-ap-cover',
+      'ticket:halcyon-interim-leaver',
+      'ticket:halcyon-colm-password',
+      // And the three that close in two steps rather than one. They are here
+      // because a day at this shop tops out at four arrivals, and four
+      // one-step arrivals cannot reach the floor of its load-2 Thursday - so
+      // the surplus needed weight rather than volume before the exclusion
+      // window could be honoured at all.
+      'ticket:halcyon-dfs-disabled',
+      'ticket:halcyon-bits-disabled',
+      'ticket:halcyon-audio-disabled',
     ]);
   }, ROSTER_SWEEP_MS);
 
@@ -522,6 +604,19 @@ describe('escalation policy', () => {
       'ticket:tillman-backup-discovery',
       'ticket:elmwood-imaging-bridge',
       'ticket:marlowe-seat-expired',
+      // And the MSP pool's six that close ONLY by escalation (E11, 0.34.0
+      // slice 2), each for the same reason as one above: the two helpdesk
+      // shops' out-of-scope work goes back to the client (a file server they
+      // own; a status page on a Linux box), the monitoring-only clinic's two
+      // alerts are escalate-by-contract, the co-managed plant's user reset is
+      // the RACI hand-back, and the project NAS at capacity is a purchase
+      // nobody at the desk can authorise.
+      'ticket:msp-pool-fontaine-file-server-full',
+      'ticket:msp-pool-meridian-status-page',
+      'ticket:msp-pool-northwind-portal-stopped',
+      'ticket:msp-pool-northwind-server-service',
+      'ticket:msp-pool-arden-reset-handback',
+      'ticket:msp-pool-marlowe-nas-capacity',
     ]);
   });
 

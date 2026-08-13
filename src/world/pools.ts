@@ -51,6 +51,7 @@ import { EMPLOYER_IDS, type Employer } from './employers';
 import type { InterruptionSlot } from './interruptions';
 import type { OnCallPage } from './on-call';
 import type { LinkedRequestSlot } from './requests';
+import { SPARE_EMPLOYERS, sparesFor } from './spares';
 import {
   arrivesBeforeClose,
   MAX_INHERITED,
@@ -250,6 +251,22 @@ for (const keyed of Object.keys(BINDINGS)) {
     throw new Error(
       `The coupling table binds content at "${keyed}", and no employer in this `
       + 'build is called that. A binding nobody reads is an arc nobody holds.',
+    );
+  }
+}
+
+/**
+ * And the same refusal for the surplus (E11, 0.34.0 slice 2), for the same
+ * reason one level along: a pool filed under a shop this build does not have is
+ * a pool nothing ever draws from, and the symptom is not an error - it is one
+ * shop whose second week is the same shape as its first while the tickets
+ * somebody wrote for it sit in a file nobody reads.
+ */
+for (const keyed of SPARE_EMPLOYERS) {
+  if (!(EMPLOYER_IDS as readonly string[]).includes(keyed)) {
+    throw new Error(
+      `The surplus is filed under "${keyed}", and no employer in this build is `
+      + 'called that. A pool nobody draws from is content that ships dead.',
     );
   }
 }
@@ -497,12 +514,11 @@ export function contentFrom(
   /**
    * Entries the shop can be dealt that its authored week does not use.
    *
-   * The surplus, and the whole of what week two is made of. Nothing ships one
-   * yet - this version adds no content - so the parameter is empty everywhere
-   * in the product and is the seam the next slice's fifty-entry drip pool
-   * arrives through. A spare has no home day, which is exactly right: it can
-   * be drawn into any week but the authored one, and the authored one is the
-   * table somebody wrote.
+   * The surplus, and the whole of what week two is made of. It arrives with
+   * 0.34.0 slice 2 (`src/world/spares/`); before that the parameter was empty
+   * everywhere in the product and existed as the seam. A spare has no home day,
+   * which is exactly right: it can be drawn into any week but the authored one,
+   * and the authored one is the table somebody wrote.
    */
   spare: readonly DayFragment[] = [],
 ): EmployerContent {
@@ -601,6 +617,14 @@ export function contentFor(employer: Employer): EmployerContent {
     employer.id,
     employer.week,
     new Set(employer.channels.map((room) => room.id)),
+    // The surplus (E11, 0.34.0 slice 2). Empty everywhere until this version -
+    // the seam existed a slice before the content did, which is why the window
+    // could be wired, measured and refused honestly before anybody wrote a
+    // ticket for it. `sparesFor` answers for a shop the registry knows; a
+    // fixture company the registry has never heard of gets none, which is
+    // right: a test standing up three days of its own week has not written a
+    // pool for it either.
+    sparesFor(employer.id),
   );
 
   CONTENT.set(employer, built);

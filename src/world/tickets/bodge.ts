@@ -21,6 +21,7 @@ import { HELPDESK_ACTIONS } from '../actions';
 import { FIELDS, LOCKOUT_THRESHOLD, SERVICE_STATUS } from '../fields';
 import { UNTRIAGED_SLA_TICKS } from '../priority';
 import { BODGE_IDS } from '../second-company';
+import { POOL_BODGE_TICKETS } from './pool-bodge';
 import type { WorldTicket } from './types';
 
 /**
@@ -417,4 +418,10 @@ export const BODGE_TICKETS: readonly WorldTicket[] = [
   YARD_PRINTER_WEDGED,
   THE_SHARE_DOWN,
   VERNON_MOUSE,
+  // And the pool (E11, 0.34.0 slice 2). They are in THIS list rather than in
+  // the roster's own because every gate that stands a world up per employer
+  // reads these arrays to decide which estate a ticket belongs in - so a pool
+  // ticket filed anywhere else would be spawned into the probation shop, where
+  // its reporter does not exist.
+  ...POOL_BODGE_TICKETS,
 ];

@@ -4,7 +4,12 @@ import {
   REBUFF_AGAIN_PARAM,
   REBUFF_FIRST_PARAM,
 } from '../actions';
+import { CORPORATE_WEEK } from '../corporate-week';
 import { FIELDS } from '../fields';
+import { MSP_WEEK } from '../msp-week';
+import { SECOND_WEEK } from '../second-week';
+import { spareWeeks } from '../spares';
+import { assertWeekGreetings, WEEK } from '../week';
 import { isDispatchableAction } from './dispatch';
 import { DIALOGUE_TREES } from './trees';
 import {
@@ -609,8 +614,27 @@ function assertEveryNodeReachable(tree: Readonly<DialogueTree>): void {
   }
 }
 
-export const WORLD_DIALOGUE: readonly DialogueTree[] = validateDialogueTrees(
-  DIALOGUE_TREES,
+/**
+ * The trees, checked for being trees - and then checked against the weeks.
+ *
+ * The second half was written in `week.ts` when the bare-hello beat shipped,
+ * documented there as living in week.ts and being "CALLED from the module that
+ * builds the trees", and then never called from anywhere but its own unit test.
+ * So the claim in `no-hello.test.ts` that "the loader refuses both at boot" has
+ * been false since it was written: a day scheduling a greeting from somebody
+ * with no greeting written booted clean and produced a minute in which nothing
+ * whatever happened, which is exactly the quiet wrongness the function exists
+ * to refuse. Wiring it here is what makes the comment true.
+ *
+ * It runs over the SURPLUS as well as the four authored weeks (E11, 0.34.0
+ * slice 2), and that is the half that now matters most: an authored week's
+ * greetings were read by a person, a pool entry's are placed by a draw, so a
+ * spare naming a speaker with nothing to say would only ever be a silent minute
+ * on the seeds that happened to deal it.
+ */
+export const WORLD_DIALOGUE: readonly DialogueTree[] = assertWeekGreetings(
+  validateDialogueTrees(DIALOGUE_TREES),
+  [WEEK, SECOND_WEEK, MSP_WEEK, CORPORATE_WEEK, ...spareWeeks()],
 );
 
 export function findDialogueTree(id: string): DialogueTree | undefined {
