@@ -121,7 +121,7 @@ export const DISPLAY_APP: AppDef = {
         skin.blurb,
       );
       button.addEventListener('click', () => {
-        choose(() => api.setDesktop({ skin: skin.id }));
+        choose(() => api.setDesktop({ skin: skin.id }), button);
       });
       desktops.append(button);
       return { id: skin.id, button };
@@ -160,7 +160,7 @@ export const DISPLAY_APP: AppDef = {
           return;
         }
 
-        choose(() => api.setDesktop({ distro: distro.id }));
+        choose(() => api.setDesktop({ distro: distro.id }), button);
       });
       distros.append(button);
       return { id: distro.id, button };
@@ -228,7 +228,7 @@ export const DISPLAY_APP: AppDef = {
           return;
         }
 
-        choose(() => api.setDesktop({ skin: skin.id, distro }));
+        choose(() => api.setDesktop({ skin: skin.id, distro }), button);
       });
       pickChoices.append(button);
     }
@@ -298,10 +298,25 @@ export const DISPLAY_APP: AppDef = {
      * prompt left standing over a settled machine is the window asking about
      * something that has already happened.
      */
-    function choose(ask: () => ReturnType<GameApi['setDesktop']>): void {
+    function choose(
+      ask: () => ReturnType<GameApi['setDesktop']>,
+      at?: HTMLElement,
+    ): void {
       const outcome = ask();
       refusal.hidden = outcome.ok;
       refusal.textContent = outcome.ok ? '' : outcome.reason;
+
+      // A refusal is said AGAINST THE BUTTON THAT WAS PRESSED, not two lists
+      // further down the window. The element used to live at the bottom of
+      // the root, which on a service-desk machine meant: click a desktop,
+      // watch nothing happen, conclude the window is broken - the owner did
+      // exactly that. One refusal node, moved to the point of the question,
+      // and brought into view in case the row itself is at the fold.
+      if (!outcome.ok && at !== undefined) {
+        at.insertAdjacentElement('afterend', refusal);
+        refusal.scrollIntoView({ block: 'nearest' });
+      }
+
       closePick();
       render();
     }

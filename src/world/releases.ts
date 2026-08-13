@@ -31,6 +31,20 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.35.1',
+    date: '2026-08-13',
+    summary: 'Display Properties now says no where you can see it saying no.',
+    lines: Object.freeze([
+      'If you clicked a desktop in Display Properties on a service-desk '
+        + 'machine and concluded the window was broken: it was saying no '
+        + 'the whole time, two lists further down, where nobody was '
+        + 'looking. The refusal now appears directly under the button you '
+        + 'pressed, in view, and explains that your own desktop arrives '
+        + 'with the promotion. The window was never broken. It was just '
+        + 'talking to the floor.',
+    ]),
+  },
+  {
     version: '0.35.0',
     date: '2026-08-13',
     summary: 'You may now be hired as somebody more senior. The queue has '

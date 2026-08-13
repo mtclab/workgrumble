@@ -92,6 +92,23 @@ test('the desk is refused its own desktop, and told why', async ({ page }) => {
   // has not moved an inch: the panel is still at the bottom, the launcher still
   // says Start, and the titlebar in front still has all three of its buttons.
   await expect(page.getByTestId('display-refusal')).toContainText('promotion');
+
+  // AND THE EYE CAN FIND IT: attached-with-a-box is not seen. The refusal
+  // used to render two lists below the button - technically visible, actually
+  // off-screen, and the owner read the window as broken. The gate is
+  // GEOMETRY: the refusal's box intersects the window's own visible box, and
+  // it sits within a row's height of the button that was pressed.
+  const refusalBox = await page.getByTestId('display-refusal').boundingBox();
+  const windowBox = await page.getByTestId('window-display').boundingBox();
+  const buttonBox = await page.getByTestId('display-desktop-gnome')
+    .boundingBox();
+  expect(refusalBox).not.toBeNull();
+  expect(windowBox).not.toBeNull();
+  expect((refusalBox?.y ?? 0) >= (windowBox?.y ?? 0)).toBe(true);
+  expect((refusalBox?.y ?? 0) <= (windowBox?.y ?? 0) + (windowBox?.height ?? 0))
+    .toBe(true);
+  expect(Math.abs((refusalBox?.y ?? 0) - ((buttonBox?.y ?? 0)
+    + (buttonBox?.height ?? 0)))).toBeLessThan(160);
   await expect(page.getByTestId('desktop'))
     .toHaveAttribute('data-skin', 'deskpro');
   await expect(page.getByTestId('desktop'))
