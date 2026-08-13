@@ -12,8 +12,11 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadEngineForTests } from '../engine-api/load-node';
+import { FRESH_CAREER_TIER } from '../world/career';
 import { COMPANY_IDS } from '../world/company';
-import { FIELDS } from '../world/fields';
+import { FIELDS, isSystemsEngineer, PLAYER_TIERS } from '../world/fields';
+import { MSP_IDS } from '../world/msp-company';
+import { ENGINEER_TITLE } from '../world/titles';
 import { STARTING_REPUTATION } from '../world/meters';
 import { PROBATION_WEEK } from '../world/pressure';
 import { BODGE_IDS } from '../world/second-company';
@@ -113,6 +116,11 @@ describe('what a firing leaves behind', () => {
       // And the building as it stood on the Monday that was lost, which is
       // empty for a week that carried nothing in (E11, 0.34.0).
       estate: [],
+      // And the career, which for a probationer is the desk and no title -
+      // written as the absence it is, so a junior's record is the record it
+      // has always been.
+      tier: FRESH_CAREER_TIER,
+      title: null,
     });
 
     const screens = screensFrom(record);
@@ -274,6 +282,83 @@ describe('the week the retry starts', () => {
       .toEqual(first.arrivals.map((arrival) => arrival.ticketId));
     expect(second.arrivals.map((arrival) => arrival.tick))
       .not.toEqual(first.arrivals.map((arrival) => arrival.tick));
+  });
+
+  /**
+   * A FIRING DOES NOT WALK THE TIER BACK (E9, 0.35.0).
+   *
+   * The bug this forbids, found in the self-review of the start select and
+   * reachable since E6: the retry record carried the fund, the shop and the arc
+   * position and dropped the CAREER, so an engineer fired on the Thursday came
+   * back to the Monday as a service desk player. The ssh gate shut, the pager
+   * went silent, the incidents on their own desk became unfixable, and nothing
+   * on any screen said why - while `career.ts` said out loud, about the switch,
+   * that a firing leaves the tier alone. The start select is what turned it
+   * from a late-career surprise into a first-week one.
+   *
+   * Driven through the real record -> carry -> session path, and the assertion
+   * is the WORLD rather than the record: the player node the retried week
+   * stands up is an engineer's.
+   */
+  it('gives a fired engineer back an engineer\'s Monday', () => {
+    const record = recordFrom(
+      1,
+      30_000,
+      createAppState(),
+      1,
+      'msp',
+      [],
+      PLAYER_TIERS.systemsEngineer,
+      ENGINEER_TITLE,
+    );
+
+    expect(record.tier).toBe(PLAYER_TIERS.systemsEngineer);
+
+    const retried = createWorldSession(carryFrom(record));
+    const read = (field: string): unknown => retried.engine.graph.getField(
+      MSP_IDS.player,
+      field,
+    );
+
+    expect(isSystemsEngineer(read(FIELDS.playerTier))).toBe(true);
+    expect(read(FIELDS.title)).toBe(ENGINEER_TITLE);
+    // And the standing is NOT carried by the retry: the week is played again
+    // from the shop's own figure, which is what a retry has always done.
+    expect(read(FIELDS.reputation)).toBe(STARTING_REPUTATION);
+  });
+
+  it('reads a record written before the career was on it as a probationer', () => {
+    // Back-compat, and the reason the fix needed no schema version: every
+    // record any earlier build wrote has no tier and no title on it, which is
+    // exactly what a probationer's record still writes.
+    const parsed = parseRetryRecord({
+      attempt: 2,
+      farmFund: 500,
+      kbSelected: null,
+      arcWeek: 1,
+      employer: 'workgrumble',
+      estate: [],
+    });
+
+    expect(parsed?.tier).toBe(FRESH_CAREER_TIER);
+    expect(parsed?.title).toBeNull();
+    // And it seeds a carry with no career fields at all - byte-identical to
+    // the carry that build produced.
+    expect(carryFrom(parsed ?? {
+      attempt: 2,
+      farmFund: 500,
+      kbSelected: null,
+      arcWeek: 1,
+      employer: 'workgrumble',
+      estate: [],
+      tier: FRESH_CAREER_TIER,
+      title: null,
+    })).toEqual({
+      farmFund: 500,
+      attempt: 2,
+      arcWeek: 1,
+      employer: 'workgrumble',
+    });
   });
 
   it('refuses a carry-over that is not one', () => {

@@ -665,6 +665,11 @@ export function createShellSession(
       ? value
       : 0;
   };
+  /** A string field off the player, or null where there is nothing to read. */
+  const text = (field: string): string | null => {
+    const value = engine.graph.getField(actor, field);
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  };
 
   return {
     save: (): SaveOutcome => {
@@ -788,6 +793,13 @@ export function createShellSession(
         // opening balance, never the Friday's. A firing does not hand back the
         // repairs made in the week it was for (E11, 0.34.0).
         carriedIn,
+        // And the career the firing does NOT take off you (E9, 0.35.0): the
+        // tier is permanent and the title with it, so the Monday a fired
+        // engineer comes back to is an engineer's Monday. Read off the graph
+        // rather than remembered, because a promotion taken during the week
+        // that ended in a firing still happened.
+        playerTierOf(engine.graph.getField(actor, FIELDS.playerTier)),
+        text(FIELDS.title),
       ));
 
       parts.onWrite?.(written);

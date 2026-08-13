@@ -35,7 +35,9 @@ import type { AppState, AppStateStore } from './app-state';
 import { createAppState } from './app-state';
 import type { SaveOutcome } from './save';
 import { type CarriedValue, parseCarried } from '../world/carry';
+import { FRESH_CAREER_TIER } from '../world/career';
 import { FIRST_EMPLOYER } from '../world/employers';
+import { playerTierOf, type PlayerTier } from '../world/fields';
 import { PROBATION_WEEK } from '../world/pressure';
 import type { WeekCarry } from '../world/session';
 
@@ -73,6 +75,26 @@ export interface RetryRecord {
    */
   readonly employer: string;
   /**
+   * And the TIER and TITLE the fired player held (E9, 0.35.0).
+   *
+   * A firing dents the standing and leaves the tier - `career.ts` says so out
+   * loud about the switch, "a Systems Engineer who is let go is still a Systems
+   * Engineer at the next desk" - and until this record carried them, the one
+   * door that did not honour it was the door a firing actually goes through.
+   * The retry rebuilt the world from a carry with no career on it, so an
+   * engineer fired on the Thursday came back to the same Monday as a service
+   * desk player: the ssh gate shut, the pager silent, the incidents on the desk
+   * unfixable, and nothing anywhere saying why.
+   *
+   * It was reachable before this version (be promoted, be fired) and it is a
+   * first-week experience after it (the start select hires straight onto the
+   * tier), which is why it is fixed here rather than filed. Absent is the desk
+   * and no title, which is every record any earlier build wrote and every
+   * probationer's - so a junior's retry writes the same bytes it always did.
+   */
+  readonly tier: PlayerTier;
+  readonly title: string | null;
+  /**
    * And the estate the fired week was STOOD UP with (E11, 0.34.0).
    *
    * The start-of-week delta, not the end-of-week one, and the difference is the
@@ -104,6 +126,9 @@ export function recordFrom(
   arcWeek: number = PROBATION_WEEK,
   employer: string = FIRST_EMPLOYER,
   estate: readonly CarriedValue[] = [],
+  /** The career the firing does not take off you: the tier, and the title. */
+  tier: PlayerTier = FRESH_CAREER_TIER,
+  title: string | null = null,
 ): RetryRecord {
   return {
     attempt: attempt + 1,
@@ -112,6 +137,8 @@ export function recordFrom(
     arcWeek: Math.max(PROBATION_WEEK, arcWeek),
     employer: employer.length > 0 ? employer : FIRST_EMPLOYER,
     estate,
+    tier,
+    title: title === null || title.length === 0 ? null : title,
   };
 }
 
@@ -127,6 +154,8 @@ export function parseRetryRecord(value: unknown): RetryRecord | null {
     arcWeek,
     employer,
     estate,
+    tier,
+    title,
   } = value as Record<string, unknown>;
   const whole = (candidate: unknown, least: number): number | null => (
     typeof candidate === 'number'
@@ -171,6 +200,11 @@ export function parseRetryRecord(value: unknown): RetryRecord | null {
       ? employer
       : FIRST_EMPLOYER,
     estate: delta,
+    // The same back-compat courtesy the tier gets everywhere else it is read:
+    // absent, or a word this build does not know, is the service desk - which
+    // is what every record written before this field existed was.
+    tier: playerTierOf(tier),
+    title: typeof title === 'string' && title.length > 0 ? title : null,
   };
 }
 
@@ -183,6 +217,11 @@ export function carryFrom(record: Readonly<RetryRecord>): WeekCarry {
     // The retried week stands up the SAME shop it was fired at, not a fall-back
     // to the probation one (0.6.0, P1-5).
     employer: record.employer,
+    // The career a firing does not take: an engineer comes back to the Monday
+    // an engineer. Written only when there is something to write, so a
+    // probationer's retry emits exactly the ops it always did.
+    ...(record.tier === FRESH_CAREER_TIER ? {} : { playerTier: record.tier }),
+    ...(record.title === null ? {} : { title: record.title }),
     // And the building as it stood on the Monday that was lost, which is empty
     // for every retry of a first week.
     ...(record.estate.length === 0 ? {} : { estate: record.estate }),
@@ -217,7 +256,20 @@ export class RetrySlot {
 
   public write(record: Readonly<RetryRecord>): SaveOutcome {
     try {
-      this.storage.setItem(this.key, JSON.stringify(record));
+      // Field by field rather than by spreading the record, so a probationer's
+      // retry writes exactly the bytes it has always written and only a career
+      // with something on it grows the file. Nothing that reads an older record
+      // has to learn a new shape.
+      this.storage.setItem(this.key, JSON.stringify({
+        attempt: record.attempt,
+        farmFund: record.farmFund,
+        kbSelected: record.kbSelected,
+        arcWeek: record.arcWeek,
+        employer: record.employer,
+        estate: record.estate,
+        ...(record.tier === FRESH_CAREER_TIER ? {} : { tier: record.tier }),
+        ...(record.title === null ? {} : { title: record.title }),
+      }));
       return { ok: true, value: undefined };
     } catch {
       return refuse(

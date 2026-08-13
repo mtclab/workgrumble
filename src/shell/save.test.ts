@@ -40,6 +40,7 @@ import {
   type ShellSessionApi,
 } from './save';
 import { BUILD_VERSION } from '../shared/build';
+import { FRESH_CAREER_TIER } from '../world/career';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -824,6 +825,8 @@ describe('the carry-over a firing leaves behind', () => {
       arcWeek: 1,
       employer: 'workgrumble',
       estate: [],
+      tier: FRESH_CAREER_TIER,
+      title: null,
     }))
       .toEqual({ ok: true, value: undefined });
 
@@ -837,6 +840,8 @@ describe('the carry-over a firing leaves behind', () => {
       arcWeek: 1,
       employer: 'workgrumble',
       estate: [],
+      tier: FRESH_CAREER_TIER,
+      title: null,
     }));
     expect(
       acknowledgeCarry(slot, () => booted.session.save(), new SaveSlot(storage)),
@@ -866,6 +871,8 @@ describe('the carry-over a firing leaves behind', () => {
       arcWeek: 1,
       employer: 'workgrumble',
       estate: [],
+      tier: FRESH_CAREER_TIER,
+      title: null,
     });
 
     const booted = session(storage, { farmFund: 900, attempt: 3 });
@@ -909,6 +916,8 @@ describe('the carry-over a firing leaves behind', () => {
       arcWeek: 1,
       employer: 'workgrumble',
       estate: [],
+      tier: FRESH_CAREER_TIER,
+      title: null,
     });
 
     // The boot whose write was refused: the record stays, nothing is saved.

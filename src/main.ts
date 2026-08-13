@@ -776,6 +776,22 @@ async function boot(): Promise<void> {
         })),
         standard: DEFAULT_RUNG,
         choose: (rung: string): SaveOutcome => {
+          // A browser that keeps nothing cannot be offered a different desk,
+          // and this is the one place that matters: taking one needs the
+          // machine to start again, and a choice written into a store that
+          // forgets when the tab reloads would put somebody on the service desk
+          // seconds after they asked for the engineer's, silently. The standard
+          // desk is the world already booted, so it is always available.
+          if (store.reason !== null) {
+            return {
+              ok: false,
+              reason: `${store.reason} A different desk needs the workstation `
+                + 'to start again, and this browser would forget which one on '
+                + 'the way - so the desk you are already sat at is the only '
+                + 'one it can honestly offer.',
+            };
+          }
+
           if (!isBuiltRung(rung)) {
             return {
               ok: false,
