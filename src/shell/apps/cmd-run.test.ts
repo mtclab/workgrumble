@@ -11,6 +11,8 @@ import {
   type WorldSession,
 } from '../../world/session';
 import { spawnWorldTicket } from '../../world/tickets';
+import { triedFromTouches, whyThin } from '../../world/tickets/handoff';
+import { FIELDS } from '../../world/fields';
 import { parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
 import type { GameApi } from './types';
@@ -19,20 +21,27 @@ function apiFor(
   session: WorldSession,
   actor: string = COMPANY_IDS.player,
 ): GameApi {
+  const day = new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
+    onDayBoundary: () => {},
+    openSlackApps: () => [],
+    focusedSlackApp: () => null,
+  });
+
   return {
     graph: session.engine.graph,
     appState: new AppStateStore(),
-    day: new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
-      onDayBoundary: () => {},
-      openSlackApps: () => [],
-      focusedSlackApp: () => null,
-    }),
+    day,
     dispatch: (id, dispatchActor, target, params) => session.engine.dispatch(
       id,
       dispatchActor,
       target,
       params,
     ),
+    // The REAL seam, not a stub: a terminal test that pings a box with an open
+    // ticket about it should find the probe on that ticket's touch log.
+    recordProbe: (machineId, probeId, ok) => {
+      day.recordProbe(machineId, probeId, ok);
+    },
     dispatchLog: () => session.engine.dispatchLog(),
     clock: {
       now: () => session.engine.now(),
@@ -765,5 +774,60 @@ describe('a Windows terminal meets the Linux boxes', () => {
     // And the DC names Active Directory honestly.
     expect(run(api, 'services DC-01'))
       .toContain('Active Directory Domain Services');
+  });
+});
+
+/**
+ * Probe evidence (0.36.0). A box run found the hole the hard way: the senior
+ * walk did exactly the diagnosis `pool-product-login-down` asks for - proved
+ * the box up on the wire, proved ssh stops at the desk's tier - and the
+ * handoff form still said "you have not touched this one", because ping and
+ * ssh are reads and reads dispatched nothing. The 10k sweep never saw it: an
+ * advertised path hands `tried` over as a param, and only the FORM fills it
+ * from the touch log. These are the standing gate on that class.
+ */
+describe('a read-only diagnostic is evidence on the ticket about the box', () => {
+  it('ping puts "answers on the wire" on the open ticket\'s touch log', () => {
+    const session = sessionWith('ticket:pool-product-login-down');
+    const api = apiFor(session);
+
+    run(api, 'ping APP-01');
+
+    const ticket = session.engine.graph.getNode('ticket:pool-product-login-down');
+    const tried = triedFromTouches(ticket?.fields[FIELDS.touchLog]);
+
+    expect(tried.length).toBeGreaterThan(0);
+    expect(tried[0]?.text).toContain('answers on the wire');
+    expect(tried[0]?.worked).toBe(true);
+
+    // Which is exactly what the handoff form needed: with a symptom typed in,
+    // the evidence makes the handoff COMPLETE - the retained-ownership branch
+    // is reachable through real play, which is what the walk now proves too.
+    expect(whyThin({
+      reported: 'Customers cannot sign in.',
+      tried: tried.map((line) => line.text),
+    })).toBeNull();
+  });
+
+  it('a probe stops no response clock - it is evidence, not contact', () => {
+    const session = sessionWith('ticket:pool-product-login-down');
+    const api = apiFor(session);
+
+    run(api, 'ping APP-01');
+
+    const ticket = session.engine.graph.getNode('ticket:pool-product-login-down');
+    expect(ticket?.fields[FIELDS.respondedAt]).toBeUndefined();
+  });
+
+  it('records nothing anywhere when no ticket is about the box', () => {
+    const session = createWorldSession();
+    const api = apiFor(session);
+
+    run(api, 'ping APP-01');
+
+    for (const ticket of session.engine.graph.nodesOfKind('ticket')) {
+      const tried = triedFromTouches(ticket.fields[FIELDS.touchLog]);
+      expect(tried.some((line) => line.text.includes('Pinged'))).toBe(false);
+    }
   });
 });

@@ -30,6 +30,23 @@ export interface TriedEntry {
  * falls back to its id, which is ugly on purpose: it is a content bug and it
  * should look like one.
  */
+/**
+ * Evidence ids for the terminal's read-only diagnostics (0.36.0).
+ *
+ * Not actions - nothing in the world moves when you ping it - but they go
+ * into the same touch log under ids of their own, because "it answers on the
+ * wire and ssh stops at my tier" is the evidence half of a handoff and the
+ * form was claiming the player had not touched a box they had just proven
+ * three true things about. Two ids for ping because the refused-suffix
+ * grammar below belongs to verbs the WORLD refused; a ping that came back
+ * empty is a diagnostic that worked and found silence.
+ */
+export const PROBES = Object.freeze({
+  ping: 'probe.ping',
+  pingDead: 'probe.ping-dead',
+  ssh: 'probe.ssh',
+});
+
 const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.accountUnlock]: 'Unlocked the account',
   [HELPDESK_ACTIONS.accountResetPassword]: 'Reset the password',
@@ -80,6 +97,9 @@ const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.mdmPushProfile]: 'Pushed the mail profile from the MDM console',
   [HELPDESK_ACTIONS.deviceManualMailSetup]: 'Walked the owner through the mailbox '
     + 'by hand',
+  [PROBES.ping]: 'Pinged it from the desk - it answers on the wire',
+  [PROBES.pingDead]: 'Pinged it from the desk - nothing came back',
+  [PROBES.ssh]: 'Tried ssh to it from the desk',
 };
 
 export function actionSummary(id: string): string {

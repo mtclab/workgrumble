@@ -71,6 +71,13 @@ export interface GameApi {
     onTick(listener: (tick: number) => void): () => void;
   };
   /**
+   * Diagnostic evidence from a read-only terminal command (0.36.0): records
+   * the probe on the touch log of every unresolved ticket the machine is part
+   * of the story of, so the handoff form can say what was checked and what
+   * refused. Evidence only - it stops no response clock and bills no minute.
+   */
+  recordProbe(machineId: string, probeId: string, ok: boolean): void;
+  /**
    * What has been dispatched since the last day boundary.
    *
    * The engine keeps it for determinism; the escalation form reads it so that

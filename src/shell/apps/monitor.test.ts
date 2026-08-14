@@ -276,6 +276,7 @@ function terminalApi(session: WorldSession, appState: AppStateStore): GameApi {
       target,
       params,
     ),
+    recordProbe: () => {},
     dispatchLog: () => session.engine.dispatchLog(),
     clock: {
       now: () => session.engine.now(),

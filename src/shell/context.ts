@@ -138,6 +138,13 @@ export interface ShellContext {
     target: NodeId | null,
     params: Record<string, FieldValue>,
   ): DispatchResult;
+  /**
+   * Diagnostic evidence from the terminal's read-only commands (0.36.0):
+   * a probe against a machine goes onto the touch log of every unresolved
+   * ticket that machine is part of the story of. Evidence only - no response
+   * clock, no work segment, no world change beyond the log line.
+   */
+  recordProbe(machineId: NodeId, probeId: string, ok: boolean): void;
   /** What has been dispatched since the last day boundary. Read-only. */
   dispatchLog(): readonly DispatchLogEntry[];
   /**

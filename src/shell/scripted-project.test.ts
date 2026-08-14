@@ -95,6 +95,7 @@ function rig(): Rig {
       target,
       params,
     ),
+    recordProbe: () => {},
     dispatchLog: () => session.engine.dispatchLog(),
     clock: {
       now: () => session.engine.now(),

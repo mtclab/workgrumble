@@ -105,6 +105,7 @@ function apiFor(world: Week): GameApi {
       target,
       params,
     ),
+    recordProbe: () => {},
     dispatchLog: () => world.session.engine.dispatchLog(),
     clock: {
       now: () => world.session.engine.now(),

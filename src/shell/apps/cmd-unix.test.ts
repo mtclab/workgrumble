@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import { COMPANY_IDS } from '../../world/company';
 import { MSP_IDS } from '../../world/msp-company';
+import { spawnWorldTicket } from '../../world/tickets';
+import { triedFromTouches } from '../../world/tickets/handoff';
 import { WasmEngine } from '../../engine-api';
 import {
   FIELDS,
@@ -46,20 +48,27 @@ import type { GameApi } from './types';
 import { ENGINEER_TITLE, offeredAtFor } from '../../world/titles';
 
 function apiFor(session: WorldSession): GameApi {
+  const day = new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
+    onDayBoundary: () => {},
+    openSlackApps: () => [],
+    focusedSlackApp: () => null,
+  });
+
   return {
     graph: session.engine.graph,
     appState: new AppStateStore(),
-    day: new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
-      onDayBoundary: () => {},
-      openSlackApps: () => [],
-      focusedSlackApp: () => null,
-    }),
+    day,
     dispatch: (id, actor, target, params) => session.engine.dispatch(
       id,
       actor,
       target,
       params,
     ),
+    // The REAL seam, not a stub: an ssh test against a box with an open ticket
+    // about it should find the refusal on that ticket's touch log.
+    recordProbe: (machineId, probeId, ok) => {
+      day.recordProbe(machineId, probeId, ok);
+    },
     dispatchLog: () => session.engine.dispatchLog(),
     clock: {
       now: () => session.engine.now(),
@@ -163,6 +172,26 @@ describe('the promotion, ssh, and the unix terminal (E6)', () => {
 
       expect(result.enterSession).toBeUndefined();
       expect(result.lines.join('\n')).toContain('not service-desk access');
+    });
+
+    it('the refusal is evidence on the ticket about the box (0.36.0)', () => {
+      // "ssh stops at my tier" is the ruled-out half of a clean handoff. The
+      // refusal above used to evaporate; now it lands on the touch log of the
+      // ticket whose whole journey is proving that boundary.
+      const session = createWorldSession();
+      spawnWorldTicket(session.engine, 'ticket:pool-product-login-down');
+      const api = apiFor(session);
+
+      win(api, 'ssh pat@APP-01');
+
+      const ticket = session.engine.graph
+        .getNode('ticket:pool-product-login-down');
+      const tried = triedFromTouches(ticket?.fields[FIELDS.touchLog]);
+
+      expect(tried.length).toBeGreaterThan(0);
+      expect(tried[0]?.text).toContain('Tried ssh');
+      expect(tried[0]?.text).toContain('refused');
+      expect(tried[0]?.worked).toBe(false);
     });
 
     it('connects once promoted - the same box, the gate now open', () => {

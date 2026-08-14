@@ -6355,6 +6355,36 @@ export class DayDriver implements DayApi {
   }
 
   /**
+   * Diagnostic evidence from the terminal's read-only commands (0.36.0).
+   *
+   * `ping` and `ssh` never dispatch - they are reads, and half their value is
+   * the refusal - so until this seam existed they left no evidence, and the
+   * handoff form on a ticket whose whole journey IS those reads said "you have
+   * not touched this one" to somebody who had done exactly what the ticket
+   * asks. The probe goes onto the ticket's touch log under its own id, ok and
+   * refused alike, because "ruled out" is the half of a handoff L2 actually
+   * reads.
+   *
+   * Deliberately NOT `recordTouches`: a probe stops no response clock (pinging
+   * a server is neither contact with the reporter nor a fix) and charges no
+   * work segment - it is evidence, and only evidence.
+   */
+  public recordProbe(machineId: NodeId, probeId: string, ok: boolean): void {
+    const now = this.engine.now();
+
+    for (const ticket of this.ticketsAbout(machineId)) {
+      this.engine.dispatch(
+        HELPDESK_ACTIONS.ticketRecordTouch,
+        this.actor,
+        ticket.id,
+        {
+          touches: withTouch(ticket.fields[FIELDS.touchLog], now, probeId, ok),
+        },
+      );
+    }
+  }
+
+  /**
    * The bulk close, once the fault behind a flood has actually been fixed.
    *
    * Nobody presses a button for this: the children were attached to a parent

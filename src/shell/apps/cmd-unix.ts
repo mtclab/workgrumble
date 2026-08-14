@@ -72,6 +72,7 @@ import {
   type SelinuxMode,
   selinuxDeniesFile,
 } from '../../world/selinux';
+import { PROBES } from '../../world/tickets/handoff';
 import {
   type DistroId,
   type PackageManager,
@@ -923,8 +924,26 @@ function motdLines(
  * the terminal now stands in, which is what flips the dialect to unix.
  */
 export function sshLines(api: GameApi, query: string): CommandResult {
+  // `user@host`, or a bare host. The user is whoever the account is - a real
+  // ssh takes it from the argument, and here it is the label before the @.
+  // Resolved BEFORE the tier gate, because a refusal against a real box is
+  // evidence (0.36.0) and evidence needs to know which box; the gate's own
+  // words below are unchanged.
+  const trimmed = query.trim();
+  const at = trimmed.indexOf('@');
+  const user = at >= 0 ? trimmed.slice(0, at).trim() : 'engineer';
+  const hostQuery = at >= 0 ? trimmed.slice(at + 1).trim() : trimmed;
+
+  const machine = machineByName(api, hostQuery);
+
   // The tier gate, first and hardest: a service-desk player has no ssh at all.
   if (!isSystemsEngineer(api.graph.getField(api.actor, FIELDS.playerTier))) {
+    // "ssh stops at my tier" is the ruled-out half of a clean handoff, and it
+    // goes on the form the same minute it was proven.
+    if (machine !== null) {
+      api.recordProbe(machine.id, PROBES.ssh, false);
+    }
+
     return lines(
       'ssh: connect refused - this is not service-desk access.',
       'Reaching a server over ssh is the engineers\' tier, not the desk\'s. It '
@@ -933,15 +952,6 @@ export function sshLines(api: GameApi, query: string): CommandResult {
         + 'are on it.',
     );
   }
-
-  // `user@host`, or a bare host. The user is whoever the account is - a real
-  // ssh takes it from the argument, and here it is the label before the @.
-  const trimmed = query.trim();
-  const at = trimmed.indexOf('@');
-  const user = at >= 0 ? trimmed.slice(0, at).trim() : 'engineer';
-  const hostQuery = at >= 0 ? trimmed.slice(at + 1).trim() : trimmed;
-
-  const machine = machineByName(api, hostQuery);
 
   if (machine === null) {
     return lines(
@@ -962,6 +972,8 @@ export function sshLines(api: GameApi, query: string): CommandResult {
   // this seam is the Windows refusal, which is true of every Windows box on
   // this estate and was never true of a Mac.
   if (!isUnixHost(api, machine)) {
+    api.recordProbe(machine.id, PROBES.ssh, false);
+
     return lines(
       `ssh: connect to host ${labelOf(machine)} port 22: Connection refused.`,
       `${labelOf(machine)} is a Windows box; it does not run sshd. A Windows `
@@ -987,6 +999,10 @@ export function sshLines(api: GameApi, query: string): CommandResult {
   // where the SELinux beat is BUILT - see `motdLines` - because standing on the
   // box is the first moment anybody could have found what the rebuild did to it.
   const motd = motdLines(api, machine, hostname);
+
+  // A connection that lands is evidence too (0.36.0): "we can get on the box"
+  // is the other true sentence a handoff about it should carry.
+  api.recordProbe(machine.id, PROBES.ssh, true);
 
   // Trust-on-first-use. A host already in known_hosts connects straight
   // through; a new one shows its fingerprint and is recorded, which is what

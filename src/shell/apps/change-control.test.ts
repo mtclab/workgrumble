@@ -50,6 +50,7 @@ function apiFor(session: WorldSession): GameApi {
       target,
       params,
     ),
+    recordProbe: () => {},
     dispatchLog: () => session.engine.dispatchLog(),
     clock: {
       now: () => session.engine.now(),

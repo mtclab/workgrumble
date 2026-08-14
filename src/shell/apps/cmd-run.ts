@@ -5,6 +5,7 @@ import type {
 } from '../../engine-api';
 import { HELPDESK_ACTIONS } from '../../world/actions';
 import { COMPANY } from '../../world/company';
+import { PROBES } from '../../world/tickets/handoff';
 import {
   VERIFICATION_METHOD_LABELS,
   VERIFICATION_METHODS,
@@ -690,6 +691,15 @@ function pingLines(api: GameApi, query: string): CommandResult {
 
   const label = labelOf(found.node);
   const route = routeTo(api, found.node);
+
+  // The answer is EVIDENCE (0.36.0): a box proven up - or proven silent - is
+  // a line on the handoff form of every open ticket about that box, which is
+  // the difference between "you have not touched this one" and the truth.
+  api.recordProbe(
+    found.node.id,
+    route === null ? PROBES.pingDead : PROBES.ping,
+    true,
+  );
 
   if (route === null) {
     return lines(

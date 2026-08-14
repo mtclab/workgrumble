@@ -84,6 +84,7 @@ function rig(distro: DistroId = 'fedora'): Rig {
       target,
       params,
     ),
+    recordProbe: () => {},
     dispatchLog: () => session.engine.dispatchLog(),
     clock: {
       now: () => session.engine.now(),

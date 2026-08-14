@@ -6198,6 +6198,18 @@ test('walks the second queue: audited, corrected, billed and written up',
      * change that moved it reds there rather than here.
      */
     await step('tickets.retained', async () => {
+      // THE DIAGNOSIS FIRST, because the form means it. "What I tried" fills
+      // itself from the ticket's own touch log and a handoff with nothing
+      // tried is accepted, sent, and BOUNCED - which a box run proved by
+      // walking straight to the escalate button and watching the retained row
+      // never come. The desk can prove exactly two true things about APP-01
+      // and the walk now proves both: it answers on the wire, and ssh stops
+      // at this desk's tier.
+      await openFromStartMenu(page, 'cmd');
+      await runCommand(page, 'ping APP-01');
+      await runCommand(page, 'ssh APP-01');
+      await page.getByTestId('window-cmd').getByTestId('window-close').click();
+
       await page.getByTestId('ticket-row-pool-product-login-down').click();
       const escalate = page.getByTestId('ticket-escalate');
       // ENABLED FIRST, always. A disabled control is a wrong target, and a
@@ -6205,6 +6217,12 @@ test('walks the second queue: audited, corrected, billed and written up',
       // clicking at something that was never going to move.
       await expect(escalate).toBeEnabled();
       await escalate.click();
+      // The evidence arrived without being typed: the form lists the ping and
+      // the refused ssh off the log, which is the difference between this
+      // handoff and a ticket number with a name on it.
+      await expect(page.getByTestId('handoff-tried'))
+        .toContainText('answers on the wire');
+      await expect(page.getByTestId('handoff-tried')).toContainText('Tried ssh');
       await page.getByTestId('handoff-reported').fill(
         'Customers cannot sign in; APP-01 answers on the wire and is out of '
         + 'reach on OS and on tier.',
