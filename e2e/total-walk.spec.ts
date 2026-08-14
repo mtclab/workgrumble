@@ -6208,7 +6208,10 @@ test('walks the second queue: audited, corrected, billed and written up',
       await openFromStartMenu(page, 'cmd');
       await runCommand(page, 'ping APP-01');
       await runCommand(page, 'ssh APP-01');
-      await page.getByTestId('window-cmd').getByTestId('window-close').click();
+      // Visible first, same manners as the escalate button below: a missing
+      // control should red in seconds, not eat the multi-day run's budget.
+      await expect(page.getByTestId('close-cmd')).toBeVisible();
+      await page.getByTestId('close-cmd').click();
 
       await page.getByTestId('ticket-row-pool-product-login-down').click();
       const escalate = page.getByTestId('ticket-escalate');
