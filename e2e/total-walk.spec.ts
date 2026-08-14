@@ -6145,6 +6145,7 @@ test('walks the second queue: audited, corrected, billed and written up',
     await step('tickets.audit-correct', async () => {
       await page.getByTestId('triage-impact').selectOption('3');
       await page.getByTestId('triage-urgency').selectOption('2');
+      await expect(page.getByTestId('triage-file')).toBeEnabled();
       await page.getByTestId('triage-file').click();
       await expect(page.getByTestId('ticket-audit-outcome'))
         .toContainText('re-triaged');
@@ -6160,7 +6161,9 @@ test('walks the second queue: audited, corrected, billed and written up',
     // temptation the bill later is the answer to.
     await step('tickets.audit-confirm', async () => {
       await page.getByTestId('ticket-row-audit-marketing-spooler').click();
-      await page.getByTestId('audit-confirm').click();
+      const confirm = page.getByTestId('audit-confirm');
+      await expect(confirm).toBeEnabled();
+      await confirm.click();
       await expect(page.getByTestId('ticket-audit')).toHaveAttribute(
         'data-verdict',
         'confirmed',
@@ -6180,12 +6183,35 @@ test('walks the second queue: audited, corrected, billed and written up',
      * Retained ownership: the handoff goes and the ticket stays, with the clock
      * still running. Driven on one of the player's OWN tickets, because that is
      * where the rung's second shape break lives - it is not an audit thing.
+     *
+     * THE TICKET IS NAMED, and that is the fix for what a box run found the
+     * hard way: this step used to press `ticket-escalate` on whatever happened
+     * to be open, which at that moment was a desk-fixable audit item, so the
+     * button was correctly disabled and the walk clicked at it for half an
+     * hour. The escalate button is only live on a ticket whose own resolution
+     * rule accepts escalation, and this shop has exactly one of those in a
+     * drawn week - `pool-product-login-down`, the product on the Linux box the
+     * desk cannot reach on OS or on tier. The seed deals it on the Monday at
+     * 09:45, deterministically (`weekSeedFor` is a hash of the shop and the
+     * week, and nothing in this run has moved either); `world/audit.test.ts`
+     * asserts in milliseconds that the drawn week still holds one, so a pool
+     * change that moved it reds there rather than here.
      */
     await step('tickets.retained', async () => {
-      const escalatable = page.getByTestId('ticket-escalate');
-      await escalatable.click();
-      await page.getByTestId('handoff-reported').fill('Reported by the user.');
-      await page.getByTestId('handoff-send').click();
+      await page.getByTestId('ticket-row-pool-product-login-down').click();
+      const escalate = page.getByTestId('ticket-escalate');
+      // ENABLED FIRST, always. A disabled control is a wrong target, and a
+      // wrong target should red in seconds rather than time the suite out
+      // clicking at something that was never going to move.
+      await expect(escalate).toBeEnabled();
+      await escalate.click();
+      await page.getByTestId('handoff-reported').fill(
+        'Customers cannot sign in; APP-01 answers on the wire and is out of '
+        + 'reach on OS and on tier.',
+      );
+      const send = page.getByTestId('handoff-send');
+      await expect(send).toBeEnabled();
+      await send.click();
       await expect(page.getByTestId('ticket-detail-retained'))
         .toContainText('still yours');
     });
@@ -6200,7 +6226,8 @@ test('walks the second queue: audited, corrected, billed and written up',
     });
 
     // Wednesday deals the second instance of the class; ruling on it is what
-    // earns the prompt.
+    // earns the prompt. (The days each item lands on are a budget decision
+    // measured against the drawn week - see `AUDIT_ITEMS`.)
     await runToDayEnd(page);
     await logInOnDay(page, 3, { brief: 'keep' });
     await beginShift(page);
@@ -6208,6 +6235,7 @@ test('walks the second queue: audited, corrected, billed and written up',
     await openFromStartMenu(page, 'tickets');
     await page.getByTestId('tickets-tab-audit').click();
     await page.getByTestId('ticket-row-audit-print-workstation').click();
+    await expect(page.getByTestId('audit-confirm')).toBeEnabled();
     await page.getByTestId('audit-confirm').click();
 
     await step('tickets.write-up', async () => {

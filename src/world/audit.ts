@@ -328,7 +328,7 @@ export const AUDIT_ITEMS: readonly AuditItem[] = Object.freeze([
     // The flag read off the person who typed it.
     ticket: 'ticket:audit-lead-locked',
     junior: 'Sasha Bright (first line)',
-    day: 2,
+    day: 3,
     minute: 605,
     filed: { impact: 1, urgency: 2, priority: 4 },
     fault: 'beneficiary',
@@ -351,13 +351,24 @@ export const AUDIT_ITEMS: readonly AuditItem[] = Object.freeze([
     ticket: 'ticket:audit-print-browser',
     junior: 'Callum Vance (first line)',
     // FRIDAY, and the spread of all five is a BUDGET decision rather than a
-    // taste one. Two items land on the Monday because Monday is the lightest
-    // drawn day this shop has; the drawn Thursday is the heaviest and takes
-    // none at all, because one on top of it prices past the top load band and
-    // the overlay refuses that outright; and the class's last instance is here,
-    // where the ramp does not bind and there is room for it. The beat's only
-    // hard requirement is that it lands AFTER the prompt is earned, which the
-    // Wednesday instance does.
+    // taste one - measured against the drawn week rather than chosen, and
+    // re-measured every time the pool changes shape.
+    //
+    // The senior's week (Workgrumble, arc week two) is drawn at loads 1/3/3/4/2
+    // with 14/19/75/17/24 minutes of slack in those bands. Two items fit the
+    // Monday, which is the lightest day and has room to move up a band without
+    // passing the Tuesday; two fit the Wednesday inside its own band; the
+    // Thursday takes NONE, because it is the heaviest day in the game and one
+    // item on top of it prices past the top band, which the overlay refuses
+    // outright; the Tuesday takes none either, because a single item there
+    // crosses into band four and the Wednesday behind it would then be a day
+    // going backwards before Thursday, which the ramp forbids. That leaves the
+    // Friday, where the ramp does not bind - and the class's last instance is
+    // the one that belongs there, because its only hard requirement is landing
+    // AFTER the prompt is earned on the Wednesday.
+    //
+    // None of that is a promise this comment keeps: `audit.test.ts` prices the
+    // shipped week and refuses a spread that has drifted.
     day: 5,
     minute: 640,
     filed: { impact: 1, urgency: 2, priority: 4 },

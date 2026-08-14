@@ -28,7 +28,7 @@ import { CAUGHT_MINUTES } from './boss';
 import { REFOCUS_TICKS } from './meters';
 import { priorityFor } from './priority';
 import { createWorldSession } from './session';
-import { findWorldTicket } from './tickets';
+import { acceptsEscalation, findWorldTicket } from './tickets';
 import { VIP_FORCED_PRIORITY } from './vip';
 
 const world = createWorldSession().engine.graph;
@@ -254,6 +254,37 @@ describe('the week the senior is actually dealt', () => {
 
     expect(withThem - without)
       .toBe((carrying.audits ?? []).length * AUDIT_MINUTES);
+  });
+
+  /**
+   * RETAINED OWNERSHIP HAS TO BE REACHABLE, and this is the gate that says so.
+   *
+   * It exists because it was not. The rung's second shape break is an
+   * escalation that keeps the ticket, and until 0.36.0 the probation shop's
+   * whole surplus was faults a first-liner could fix - its only two
+   * escalation-accepting tickets are in the AUTHORED week one, which week two
+   * cannot re-deal under the exclusion window. So the senior start held ZERO
+   * tickets that could legally escalate, the button was refused wherever it was
+   * pressed, and the only thing that noticed was a browser walk hanging for
+   * half an hour on a disabled control.
+   *
+   * A unit assertion on the drawn week catches the same class of hole in
+   * milliseconds, and it catches it whenever the pool changes shape rather than
+   * only when somebody runs the box.
+   */
+  it('deals something the senior can actually escalate', () => {
+    const dealt = seniorWeek().flatMap((script) => [
+      ...script.inherited,
+      ...script.drip.map((slot) => slot.ticketId),
+    ]);
+    const escalatable = dealt.filter((id) => {
+      const entry = findWorldTicket(id);
+
+      return entry !== undefined
+        && acceptsEscalation(entry.def.resolved_when, id);
+    });
+
+    expect(escalatable.length).toBeGreaterThan(0);
   });
 
   /** And the other rungs are dealt none of it, through the same seam. */

@@ -299,6 +299,8 @@ describe('shipped tickets', () => {
       'ticket:pool-logistics-share',
       'ticket:pool-marketing-trust',
       'ticket:pool-hr-print-group',
+      // The shop's one escalate-only fault (E9, 0.36.0).
+      'ticket:pool-product-login-down',
       // And the second employer's five (0.6.0 slice 3), in the one roster
       // because the gates read one roster - spawned into the Bodgeworth world,
       // not this one.
@@ -600,9 +602,16 @@ describe('escalation policy', () => {
     // creative agency's expired seat is the same shape one step further out - a
     // Named User licence that lapsed at the VENDOR cannot be conjured by any
     // verb on any estate, so raising it with the licensing desk is the work.
+    // And the probation shop's own escalate-ONLY pool ticket (E9, 0.36.0): the
+    // product is on a Linux box, so the desk's tools stop at its operating
+    // system and ssh stops at the tier - out of reach on both counts, which
+    // makes the handoff the whole of the job rather than a fallback. It is the
+    // only escalatable thing this shop has after week one, and without it the
+    // escalate button is decoration at every rung that plays a drawn week.
     expect(escalatable).toEqual([
       'ticket:fan-noise',
       'ticket:hr-report-macro',
+      'ticket:pool-product-login-down',
       'ticket:meridian-prod-down',
       'ticket:northwind-backup-alert',
       'ticket:northwind-cert-alert',

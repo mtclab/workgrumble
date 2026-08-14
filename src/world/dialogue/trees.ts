@@ -36,9 +36,13 @@ const ROTATED_SCREEN: DialogueTree = {
     // complaint so she never answers the phone about the wrong problem.
     'ticket:pool-sales-restart',
     'ticket:pool-sales-spooler',
+    // And the one she relays rather than suffers (E9, 0.36.0), which is why
+    // she is calm about the worst thing happening this morning.
+    'ticket:pool-product-login-down',
   ],
   root: 'complaint',
   roots: {
+    'ticket:pool-product-login-down': 'customers-cannot-log-in',
     'ticket:rotated-screen': 'complaint',
     'ticket:flat-mouse': 'frozen',
     'ticket:vpn-cert-dup-ada': 'vpn',
@@ -46,6 +50,7 @@ const ROTATED_SCREEN: DialogueTree = {
     'ticket:pool-sales-spooler': 'not-printing',
   },
   resolved_roots: {
+    'ticket:pool-product-login-down': 'customers-in-again',
     'ticket:rotated-screen': 'after',
     'ticket:flat-mouse': 'mouse-after',
     'ticket:vpn-cert-dup-ada': 'vpn-after',
@@ -53,6 +58,7 @@ const ROTATED_SCREEN: DialogueTree = {
     'ticket:pool-sales-spooler': 'printing-again',
   },
   nodes: [
+
     {
       id: 'complaint',
       npc_line: 'I want it on record that I have been hacked. My screen is '
@@ -448,6 +454,57 @@ const ROTATED_SCREEN: DialogueTree = {
         { label: 'Offer to tell the four people' },
         { label: 'Let her tell them herself, in her own time' },
       ],
+    },
+    {
+      // The out-of-reach ticket (E9, 0.36.0). She is relaying, so she is
+      // pleasant about it, and the reveal is the boundary rather than a fault:
+      // the box is up, and it is not one anybody at this desk can get into.
+      id: 'customers-cannot-log-in',
+      npc_line: 'Two of them have emailed this morning to say the login just '
+        + 'hangs. I tried the demo account and it did the same to me. I have '
+        + 'put it in as low because it is not stopping me doing anything.',
+      options: [
+        {
+          label: 'Ask whether anything else about the product is working',
+          next: 'customers-what-else',
+          effects: [
+            { asks: true },
+            {
+              reveal: 'The product runs on APP-01, which is a Linux box - the '
+                + 'desk can prove it is on the network and has no way into it '
+                + 'at all, on the operating system or on the tier.',
+            },
+          ],
+        },
+        {
+          label: 'Ask when the first email came in',
+          next: 'customers-when',
+          effects: [{ asks: true }],
+        },
+        { label: 'Tell her you will send it to the people who can get into it' },
+      ],
+    },
+    {
+      id: 'customers-what-else',
+      npc_line: 'The website is up. The page loads. It is only when you put a '
+        + 'password in that it goes and sits there and thinks about it.',
+      options: [
+        { label: 'Go back to the top', next: 'customers-cannot-log-in' },
+      ],
+    },
+    {
+      id: 'customers-when',
+      npc_line: 'Twenty past eight, and the second one at ten to nine. I did '
+        + 'not read them until half past because I was on a call.',
+      options: [
+        { label: 'Go back to the top', next: 'customers-cannot-log-in' },
+      ],
+    },
+    {
+      id: 'customers-in-again',
+      npc_line: 'They are both back in. One of them has written to say thank '
+        + 'you, which I have never known a customer do about a login.',
+      options: [{ label: 'Leave her to it' }],
     },
   ],
 };

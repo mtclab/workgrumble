@@ -1680,6 +1680,106 @@ export const POOL_HR_PRINT_GROUP: WorldTicket = {
   ],
 };
 
+
+/* -- 25. the one the desk cannot reach, on either count -------------------- */
+
+/**
+ * The product is down, and it is not on your side of two different walls.
+ *
+ * The one class of fault this shop's surplus had none of, and the estate was
+ * built for it: APP-01 is a LINUX box running the thing customers log into, it
+ * is wired to the same switch as everything else - "the product is reachable
+ * from the desk, which is what lets the SD player confirm the wire and
+ * escalate" (`company.ts`) - and every tool a first-line Windows desk has stops
+ * at its wire. `services` and `sc` are Windows service control and refuse it by
+ * operating system; `ssh` is refused by the PAM tier until a promotion crosses
+ * it. So there is no verb on this estate, at this grade, that can touch it.
+ *
+ * That makes escalation the WHOLE of the job rather than a fallback, which is
+ * the same honest reason `meridian-prod-down` closes only by escalation - and
+ * unlike that one, the wall here is the player's own tier rather than a
+ * contract, which is the lesson this shop is for.
+ *
+ * NO SETUP, and that is the content-truth half rather than a shortcut. Nothing
+ * on the Windows estate is wrong, and seeding a field to make the ticket "look
+ * broken" would be inventing a symptom the desk could chase. What the player
+ * can verify is the BOUNDARY: the box answers on the wire, the Windows service
+ * tools refuse it by OS, ssh refuses it by tier, and all three of those are
+ * shipped refusals rather than flavour text.
+ *
+ * TWO AXES, and they point opposite ways for once. Ada reports it mildly -
+ * "a couple of customers have mentioned it" - because she is relaying rather
+ * than suffering, so the claimed urgency is low for the only time in this pool.
+ * And the IMPACT the estate supports is genuinely one desk: the people this
+ * outage reaches are customers, and customers are not nodes in this building.
+ * A triage that reads the estate honestly lands on a middling priority for the
+ * worst thing happening that morning, which is a true and uncomfortable fact
+ * about impact-times-urgency and not a bug in the matrix.
+ */
+export const POOL_PRODUCT_LOGIN_DOWN: WorldTicket = {
+  arrival: 'drip',
+  nodes: [COMPANY_IDS.appServer],
+  claimed_urgency: 2,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:pool-product-login-down',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'A couple of customers say they cannot log in to the product',
+      body:
+        'Ada has had two emails this morning from customers saying the login '
+        + 'page takes their password and then sits there. She has tried it '
+        + 'herself on the demo account and it does the same. She has flagged it '
+        + 'as a low priority because it is not stopping her doing anything.',
+    },
+    reporter: COMPANY_IDS.ada,
+    setup: [],
+    // Escalation is the only ending, because it is the only thing anybody at
+    // this desk is able to do about it.
+    resolved_when: {
+      op: 'eq',
+      selector: { id: 'ticket:pool-product-login-down' },
+      field: FIELDS.escalated,
+      value: true,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 4 },
+    kb_ref: 'kb/msp-scope-escalation',
+  },
+  cause: 'Whatever is wrong is on APP-01, which is a Linux box. The desk can '
+    + 'prove it is on the network and can prove it cannot get into it: the '
+    + 'Windows service tools stop at its operating system and ssh stops at the '
+    + 'tier this account stands on. The article is written for an MSP helpdesk '
+    + 'and the sentence is the same one either way - it is a server, it is '
+    + 'production, and you are the helpdesk. What the desk owes it is a clean '
+    + 'handoff with the time it started and what was ruled out, fast.',
+  dialogue_ref: 'dialogue/sales',
+  paths: [
+    {
+      id: 'escalate-product-login',
+      app: 'tickets',
+      label: 'Send it up with what you could and could not reach',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.ticketEscalate,
+          target: 'ticket:pool-product-login-down',
+          params: {
+            reported: 'Customers cannot sign in to the product. The login page '
+              + 'accepts the password and then hangs. Reproduced on the demo '
+              + 'account from the office.',
+            tried:
+              'APP-01 answers on the network from the desk, so it is up and '
+              + 'the wire is fine\n'
+              + 'Windows service tools stop at its operating system and this '
+              + 'account has no ssh, so nothing further can be checked from '
+              + 'first line - sending it up rather than sitting on it',
+          },
+        },
+      ],
+    },
+  ],
+};
+
 export const POOL_DESK_TICKETS: readonly WorldTicket[] = [
   POOL_SALES_RESTART,
   POOL_SALES_SPOOLER,
@@ -1706,4 +1806,9 @@ export const POOL_DESK_TICKETS: readonly WorldTicket[] = [
   POOL_LOGISTICS_SHARE,
   POOL_MARKETING_TRUST,
   POOL_HR_PRINT_GROUP,
+  // And the one that closes ONLY by escalation (E9, 0.36.0). The surplus had
+  // twenty-four faults and every one of them was something a first-liner could
+  // fix, which made this shop the one place in the game where the escalate
+  // button was decoration after week one.
+  POOL_PRODUCT_LOGIN_DOWN,
 ];

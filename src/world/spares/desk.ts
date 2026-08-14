@@ -54,6 +54,10 @@ export const DESK_SPARES: readonly DayFragment[] = [
 
   // 09:32. The first thing anybody raises is never the worst thing.
   { drip: [{ ticketId: 'ticket:pool-sales-restart', minute: 572 }] },
+  // 09:45. And the one nobody at this grade can do anything about but hand on
+  // (E9, 0.36.0) - early, because a clean handoff on a production outage is
+  // worth more at a quarter to ten than at four.
+  { drip: [{ ticketId: 'ticket:pool-product-login-down', minute: 585 }] },
   // 10:00.
   { drip: [{ ticketId: 'ticket:pool-sales-spooler', minute: 600 }] },
   // 10:27.
