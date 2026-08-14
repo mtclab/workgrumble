@@ -6247,7 +6247,15 @@ test('walks the second queue: audited, corrected, billed and written up',
     await runToDayEnd(page);
     await logInOnDay(page, 2, { brief: 'keep' });
     await beginShift(page);
-    await workUntilMinute(page, 800);
+    // The exact minute is the unit suite's to prove (audit-teeth claim 1
+    // owns the mechanism; a driver-level repro put this filing's bill at
+    // 13:15 on the dot - spawn 795 + the P4 day + the overnight excused).
+    // The walk only OBSERVES the journey, from a point far enough past the
+    // arithmetic that neither clock coarseness nor the minutes this walk's
+    // own day-one detours cost can put the check before the bill: a 13:20
+    // check against the 13:15 bill was five sim-minutes of margin, and the
+    // box spent them.
+    await workUntilMinute(page, 900);
 
     await step('tickets.audit-bill', async () => {
       await expectNoticed(page, 'QA sign-off');
