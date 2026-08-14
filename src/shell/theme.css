@@ -1882,6 +1882,16 @@ input {
   min-height: 0;
 }
 
+/* Grid items refuse to shrink below their content unless told (min-width:
+   auto), so one wide line inside the detail pane - the audit panel found it
+   first, at the default window width - pushes the whole column past the
+   window edge and every sentence in the pane loses its last word to the
+   border. Seen in visual-sweep frames 35/36; same class as the taskbar's
+   min-width fix (0.3.6 F1). */
+.tickets-columns > * {
+  min-width: 0;
+}
+
 .tickets-queue {
   display: grid;
   align-content: start;

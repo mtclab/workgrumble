@@ -155,6 +155,10 @@ test('captures the senior rung\'s audit queue', async ({ page }) => {
   await shot(page, '35-audit-queue-tab');
 
   await page.getByTestId('ticket-row-audit-print-task').click();
+  // The frame is named for the filing AND the triage: scroll the form into
+  // view before shooting, or 36 is 35 again with the same fold - which is
+  // what the first human eyeball of these frames found it was.
+  await page.getByTestId('triage-file').scrollIntoViewIfNeeded();
   await shot(page, '36-audit-filing-and-triage');
 });
 

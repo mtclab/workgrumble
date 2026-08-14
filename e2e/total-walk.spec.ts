@@ -6237,10 +6237,17 @@ test('walks the second queue: audited, corrected, billed and written up',
         .toContainText('still yours');
     });
 
-    // The clock the confirmed filing bought, run out.
+    // The clock the confirmed filing bought, run out. It runs out on TUESDAY'S
+    // shift, not at Tuesday's login: SLA clocks are sim-minutes and sim-minutes
+    // only pass at the desk, so the filing signed off at 16:00 with hours left
+    // on it breaches mid-morning the next day - which is the release note's
+    // whole sentence ("today is not the day it bills") made schedule. The box
+    // proved it the direct way: an assertion at the login screen found no
+    // notice, because no minute had passed to cause one.
     await runToDayEnd(page);
     await logInOnDay(page, 2, { brief: 'keep' });
     await beginShift(page);
+    await workUntilMinute(page, 800);
 
     await step('tickets.audit-bill', async () => {
       await expectNoticed(page, 'QA sign-off');
