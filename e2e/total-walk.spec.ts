@@ -6258,6 +6258,15 @@ test('walks the second queue: audited, corrected, billed and written up',
      * reads the file on Wednesday; mechanism and minute stay audit-teeth's.
      */
     const resumeSaved = async (day: number): Promise<void> => {
+      // The queue window this walk works in covers the scorecard button, and
+      // a covered control is a wrong target: close it before clocking off.
+      const tickets = page.getByTestId('window-tickets');
+
+      if (await tickets.count()) {
+        await page.getByTestId('close-tickets').click();
+        await expect(tickets).toHaveCount(0);
+      }
+
       // Clock off IN THIS SESSION first: the boundary save is written at the
       // clock-off, and a reload before it would hand Load yesterday morning.
       await page.getByTestId('scorecard-clock-off').click();
