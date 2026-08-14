@@ -6237,23 +6237,54 @@ test('walks the second queue: audited, corrected, billed and written up',
         .toContainText('still yours');
     });
 
-    // The clock the confirmed filing bought runs out on TUESDAY (~13:16 -
-    // spawn 795 plus the P4 day plus the arrival minutes the SLA excuses),
-    // and the bill lands as a toast plus a line ON THE TICKET'S RECORD. The
-    // walk asserts the record on Wednesday, not the notification panel: the
-    // panel is a 24-slot history, and three box runs in a row watched a busy
-    // Tuesday walk the career event straight out of it - which is exactly
-    // why the fallout writes the file too. The mechanism and its minute stay
-    // audit-teeth's to prove.
+    /**
+     * THE RESUME, the way a senior actually resumes - and the find of this
+     * release's box rounds. `logInOnDay` REPLAYS the missing days on the
+     * world the boot stood up, and a plain boot stands up the PROBATION shop:
+     * the desk you chose lives in the save, and the shipped resume for a
+     * saved week is the badge adopting a newer copy or the Load option on
+     * the start menu. Every junior cross-day walk survives replay because a
+     * drawn week is a function of the seed; this walk's whole career is a
+     * fact the seed does not carry, so replay silently demoted the player
+     * and five box rounds chased "missing" senior surfaces around a junior
+     * world. (Whether a plain refresh SHOULD hand the desk back without
+     * Load is a design question filed with the owner - the walk plays the
+     * path that ships.)
+     *
+     * The clock the confirmed filing bought runs out on Tuesday (~13:16),
+     * and the bill lands as a toast plus a line ON THE TICKET'S RECORD -
+     * the notification panel is a 24-slot history a busy Tuesday evicts
+     * from, which is exactly why the fallout writes the file too. The walk
+     * reads the file on Wednesday; mechanism and minute stay audit-teeth's.
+     */
+    const resumeSaved = async (day: number): Promise<void> => {
+      // Clock off IN THIS SESSION first: the boundary save is written at the
+      // clock-off, and a reload before it would hand Load yesterday morning.
+      await page.getByTestId('scorecard-clock-off').click();
+      await expect(page.getByTestId('brief-heading'))
+        .toContainText(`Day ${String(day)}`);
+
+      await page.clock.install();
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.goto('/');
+      await completeLogin(page, { brief: 'keep' });
+      await page.getByTestId('start-button').click();
+      await page.getByTestId('start-menu-load').click();
+      await expect(page.getByTestId('toast').filter({ hasText: 'Game loaded' }))
+        .toHaveCount(1);
+      await expect(page.getByTestId('brief-heading'))
+        .toContainText(`Day ${String(day)}`);
+    };
+
     await runToDayEnd(page);
-    await logInOnDay(page, 2, { brief: 'keep' });
+    await resumeSaved(2);
     await beginShift(page);
 
     // Wednesday: the second instance of the class - ruling on it is what
     // earns the prompt. (The days each item lands on are a budget decision
     // measured against the drawn week - see `AUDIT_ITEMS`.)
     await runToDayEnd(page);
-    await logInOnDay(page, 3, { brief: 'keep' });
+    await resumeSaved(3);
     await beginShift(page);
     await workUntilMinute(page, 700);
 
