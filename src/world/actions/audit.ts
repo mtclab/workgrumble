@@ -329,6 +329,29 @@ export const AUDIT_ACTION_LIST: readonly ActionData[] = [
         field: FIELDS.auditFalloutAt,
         value: { now: true },
       },
+      // The finding goes on the FILE, not only on a toast. The notice is a
+      // 24-slot history that a busy Tuesday at x4 can walk a career event
+      // straight out of - a box run proved it, eviction and all - and a bill
+      // whose whole content is "the wrong answer was findable" teaches
+      // nothing from a slot it no longer occupies. The ticket's record is
+      // where findings live, and it is saved with the ticket.
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.worknotes,
+        value: {
+          append_line: {
+            node: TARGET,
+            field: FIELDS.worknotes,
+            value: {
+              const: 'QA sign-off came back: the clock ran out, and the '
+                + 'review of the breach found the priority wrong before '
+                + 'anybody started. The confirming signature is on the '
+                + 'finding beside the analyst\'s.',
+            },
+          },
+        },
+      },
       {
         op: 'set_field',
         node: ACTOR,

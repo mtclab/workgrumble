@@ -189,6 +189,15 @@ describe('confirming a wrong filing comes due later', () => {
     expect(rigged.notices.some((line) => line.includes('QA sign-off')))
       .toBe(true);
 
+    // And the finding is ON THE FILE, durably - the notice is a bounded
+    // history a busy day evicts from (a box run watched it happen), so the
+    // bill's teaching half lives on the ticket's own record. Revert the
+    // fallout worknote and this is the half that goes red.
+    for (const ticket of billed) {
+      expect(String(field(rigged, ticket, FIELDS.worknotes)))
+        .toContain('QA sign-off came back');
+    }
+
     /**
      * TEETH. The bill is charged off the FAULT stamped at the deal, not off the
      * breach - so every ticket that was billed carries one, and no ticket

@@ -2092,6 +2092,18 @@ input {
   display: grid;
   gap: var(--space-2);
   flex: 1 1 var(--measure-field);
+  /* A flex item's floor is its content unless told otherwise, and a select's
+     content is its LONGEST OPTION - so the two triage dropdowns held the row
+     at ~500px, the row set the pane's scroll width, and every paragraph in
+     the pane wrapped to a width the window cannot show. The dropdown list
+     still opens at full text width; only the closed control narrows. Found
+     by the first human eyeball of the audit-queue frames (35/36). */
+  min-width: 0;
+}
+
+.triage-field select {
+  width: 100%;
+  min-width: 0;
 }
 
 .triage-label {

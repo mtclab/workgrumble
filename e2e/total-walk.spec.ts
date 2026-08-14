@@ -6237,34 +6237,37 @@ test('walks the second queue: audited, corrected, billed and written up',
         .toContainText('still yours');
     });
 
-    // The clock the confirmed filing bought, run out - WHICH TAKES UNTIL
-    // WEDNESDAY on the shipped path, and the box taught this walk that twice.
-    // The filing arrives at 13:15 with a P4 day on it; every minute the desk
-    // is dark is excused back onto the deadline (the atDesk freeze - the
-    // clock you cannot work does not eat your SLA), so the clock runs out
-    // AFTER Tuesday's close and the breach latches the next time a minute
-    // passes: Wednesday morning. A driver rig without the atDesk seam bills
-    // a day earlier, because its nights eat SLA - which is the dishonest
-    // clock, not this one. The walk observes the journey where the shipped
-    // schedule puts it; the mechanism stays audit-teeth's to prove.
+    // The clock the confirmed filing bought runs out on TUESDAY (~13:16 -
+    // spawn 795 plus the P4 day plus the arrival minutes the SLA excuses),
+    // and the bill lands as a toast plus a line ON THE TICKET'S RECORD. The
+    // walk asserts the record on Wednesday, not the notification panel: the
+    // panel is a 24-slot history, and three box runs in a row watched a busy
+    // Tuesday walk the career event straight out of it - which is exactly
+    // why the fallout writes the file too. The mechanism and its minute stay
+    // audit-teeth's to prove.
     await runToDayEnd(page);
     await logInOnDay(page, 2, { brief: 'keep' });
     await beginShift(page);
 
-    // Wednesday: the bill from Monday's signature, and the second instance of
-    // the class - ruling on it is what earns the prompt. (The days each item
-    // lands on are a budget decision measured against the drawn week - see
-    // `AUDIT_ITEMS`.)
+    // Wednesday: the second instance of the class - ruling on it is what
+    // earns the prompt. (The days each item lands on are a budget decision
+    // measured against the drawn week - see `AUDIT_ITEMS`.)
     await runToDayEnd(page);
     await logInOnDay(page, 3, { brief: 'keep' });
     await beginShift(page);
     await workUntilMinute(page, 700);
 
-    await step('tickets.audit-bill', async () => {
-      await expectNoticed(page, 'QA sign-off');
-    });
     await openFromStartMenu(page, 'tickets');
     await page.getByTestId('tickets-tab-audit').click();
+
+    await step('tickets.audit-bill', async () => {
+      // Monday's signature, on Monday's filing, read off the file where QA
+      // wrote it - durable across any number of louder days since.
+      await page.getByTestId('ticket-row-audit-marketing-spooler').click();
+      await expect(page.getByTestId('ticket-worknotes'))
+        .toContainText('QA sign-off came back');
+    });
+
     await page.getByTestId('ticket-row-audit-print-workstation').click();
     await expect(page.getByTestId('audit-confirm')).toBeEnabled();
     await page.getByTestId('audit-confirm').click();
