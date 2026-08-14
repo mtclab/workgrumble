@@ -31,6 +31,45 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.36.0',
+    date: '2026-08-14',
+    summary: 'A senior desk is available, which means somebody else\'s '
+      + 'triage is now your problem. Also the redundancy round has agreed '
+      + 'to stay at the company that invented it.',
+    lines: Object.freeze([
+      'You may now be hired as a Senior Service Desk Analyst. It is the '
+        + 'same shop, one week past your own probation, and the queue you '
+        + 'know comes with a second tab in it: the first line\'s filings, '
+        + 'waiting for your signature. Each one is wrong or right in a '
+        + 'way you can check from your chair. Correcting a filing costs '
+        + 'you the morning\'s minutes. Signing a wrong one costs you '
+        + 'nothing today, and today is not the day it bills.',
+      'At the senior desk, escalating a ticket no longer makes it leave. '
+        + 'It stays on your board with its clock running until the vendor '
+        + 'actually answers, because retained ownership is a real thing '
+        + 'the industry does and the industry is sorry.',
+      'The handoff form now notices diagnostics. Pinging a box and being '
+        + 'refused by one are things you did, and they appear under "what I '
+        + 'tried" on their own, which means proving a server is up and out '
+        + 'of your reach finally counts as touching it. Second line have '
+        + 'asked us to pass on that this is the most information they have '
+        + 'ever received.',
+      'When the same fault crosses your desk enough times, the game will '
+        + 'suggest you write it up. Writing it up costs minutes and makes '
+        + 'every later instance cheaper, which is the entire knowledge-'
+        + 'base argument in one Tuesday.',
+      'And a repair from the fiction department: employees at your other '
+        + 'employers will no longer conduct a redundancy consultation '
+        + 'about five people who work somewhere else. The round stays at '
+        + 'the company that authored it. Other shops now run their weeks '
+        + 'without a season, which their staff describe as "still plenty".',
+      'The ticket window has also stopped amputating the ends of '
+        + 'sentences. A dropdown was holding the whole pane hostage at its '
+        + 'own width, and IT would like it noted that the dropdown has '
+        + 'been spoken to.',
+    ]),
+  },
+  {
     version: '0.35.2',
     date: '2026-08-13',
     summary: 'Your inbox no longer contains another building\'s post.',
