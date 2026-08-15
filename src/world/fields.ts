@@ -923,6 +923,55 @@ export const FIELDS = {
   customerServiceScope: 'service_scope',
   /** A customer node's SLA tier (0.8.0): `bronze`, `silver`, or `gold`. */
   customerSlaTier: 'sla_tier',
+  /* -- the co-managed RACI (E9, 0.37.0) ----------------------------------- */
+  /**
+   * Which of the two IT teams the RACI map hands THIS box to at a co-managed
+   * customer: `msp` or `internal`.
+   *
+   * A machine dimension seeded per machine, exactly like `os` and `customer`
+   * above, and read by the scope pre-flight and by nothing else. A mature
+   * co-managed contract RACI-maps every major function - endpoint management,
+   * server patching, backup monitoring, the help desk, application ownership -
+   * and the commonest split leaves APPLICATION OWNERSHIP with the customer's own
+   * team while the MSP takes infrastructure and the desk. This is that map, at
+   * the grain a game can act on: a box.
+   *
+   * ABSENT is the shipped 0.8.0 behaviour and means the map says nothing about
+   * this target, so the co-managed default stands - notify their IT, then act.
+   * Every non-co-managed customer reads it as absent because nobody writes it
+   * there, which is why the field is purely additive and no other estate moves.
+   */
+  raciOwner: 'raci_owner',
+  /**
+   * The trail of unilateral remediations on a box their own IT owns: one
+   * `verb@tick` line per action taken without a coordination notice, oldest
+   * first.
+   *
+   * The same append-only shape as `install_audit` and `break_glass_audit`, and
+   * the SHELL builds the line in the minute the action was dispatched so a
+   * replay writes the identical string. It only ever grows: the complaint that
+   * comes back is answered and finished with, and what was done on somebody
+   * else's box is not.
+   */
+  raciViolations: 'raci_violations',
+  /**
+   * The minute of the LATEST unilateral remediation on that box - the stamp the
+   * peer sysadmin's complaint is due off.
+   *
+   * Latest rather than first, and that is the whole of how a second violation
+   * gets a second complaint: the settler compares it against the minute of the
+   * last complaint below, so a box that has been touched again since the last
+   * word has a word owing, and one that has not is quiet.
+   */
+  raciViolatedAt: 'raci_violated_at',
+  /**
+   * The minute their sysadmin's complaint about that box landed.
+   *
+   * Absent until one has. At or after `raci_violated_at` it means every
+   * unilateral touch on that box has already been answered for, which is what
+   * the fallout verb refuses a second time on.
+   */
+  raciComplainedAt: 'raci_complained_at',
   /* -- the change request (0.10.0) ---------------------------------------- */
   /**
    * The exact action a change request authorises: the id of the node it is
@@ -2307,6 +2356,42 @@ export function serviceScopeOf(value: unknown): ServiceScope | null {
     || value === SERVICE_SCOPES.helpdesk
     || value === SERVICE_SCOPES.coManaged
     || value === SERVICE_SCOPES.fullyManaged
+    ? value
+    : null;
+}
+
+/**
+ * Which team the co-managed RACI map hands a box to (E9, 0.37.0). Two values,
+ * because a RACI line has two sides here: the provider and the customer's own
+ * IT. Nobody is `both` - "we thought you had it" is the failure the map exists
+ * to prevent, so a map that could say both would be the bug written down.
+ *
+ * The order is the one the escalation rules use: what the desk does, then what
+ * gets handed over.
+ */
+export const RACI_OWNERS = {
+  /** The MSP's under the map: the desk, the infrastructure, the monitoring. */
+  msp: 'msp',
+  /** Their own IT's: on-site, the custom systems, the applications they run. */
+  internal: 'internal',
+} as const;
+
+export type RaciOwner = (typeof RACI_OWNERS)[keyof typeof RACI_OWNERS];
+
+export const RACI_OWNER_LABELS: Readonly<Record<RaciOwner, string>> = {
+  [RACI_OWNERS.msp]: 'MSP-owned under the RACI',
+  [RACI_OWNERS.internal]: 'Customer IT-owned under the RACI',
+};
+
+/**
+ * A RACI owner read defensively off a field: absent, or anything that is not
+ * one of the two, reads as `null` - the map says nothing about this target -
+ * and the caller decides what that means. It is never treated as permissive,
+ * for the same reason `serviceScopeOf` is not: a hand-edited save must not be
+ * able to hand itself a box by writing nonsense into the field.
+ */
+export function raciOwnerOf(value: unknown): RaciOwner | null {
+  return value === RACI_OWNERS.msp || value === RACI_OWNERS.internal
     ? value
     : null;
 }

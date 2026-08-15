@@ -2,7 +2,7 @@
  * Fettle & Crane Managed IT's surplus (E11, 0.34.0 slice 2): the entries the
  * MSP can be dealt that its authored week never uses.
  *
- * Eighteen entries over two columns, and only two, because that is what this
+ * Nineteen entries over two columns, and only two, because that is what this
  * shop's authored week actually uses: the MSP deals a morning pile and drips,
  * and its quota for every other column is nought to nought - no interruptions,
  * no walk-ups, no room posts, no incidents. An entry in a column the shop never
@@ -24,9 +24,27 @@
  * quarter to ten to five past three, is what gives the draw somewhere to put
  * five of them in one day.
  *
- * The four morning entries are first, so that the five-day shape the roster
- * gate reads spreads them across four different days rather than stacking them
+ * The FIVE morning entries are first, so that the five-day shape the roster
+ * gate reads spreads them across five different days rather than stacking them
  * past the two-ticket cap a real morning pile has.
+ *
+ * NINETEEN from 0.37.0, and the nineteenth is here for a reason worth writing
+ * down, because it is not the reason the other eighteen are. PENNINGTON-ACCT's
+ * practice suite is the co-managed RACI's teaching ticket - it is not surplus
+ * in spirit - and it is in the surplus because the AUTHORED week could not
+ * take it. The engineer's blend at this shop is measured off the authored
+ * week's own mix (`mixBoundsFor`), and that mix is at the edge of what this
+ * shop's content can express: adding one server-kind arrival to the authored
+ * table moves the access and device ceilings by one apiece, and
+ * `mixAfforded(msp, systems_engineer, 20)` falls from twenty to ten - half an
+ * engineer's weeks quietly served as a junior's. Measured three ways round
+ * (Tuesday, Wednesday, Thursday, and again with a compensating access-kind
+ * arrival beside it) and it is the mix rather than the day or the band. A
+ * spare carries no home day, so it is outside that baseline entirely and the
+ * shipped week, its ramp, its load table and its work-kind mix are all
+ * byte-identical. Buying it a place in the authored week is a content-tuning
+ * job - more access and device weight, measured against the same gate - and it
+ * is a slice of its own rather than a line in this one.
  */
 
 import type { DayFragment } from '../pools';
@@ -38,6 +56,17 @@ export const MSP_SPARES: readonly DayFragment[] = [
   { inherited: ['ticket:msp-pool-meridian-restart-prompt'] },
   { inherited: ['ticket:msp-pool-elmwood-reception-spooler'] },
   { inherited: ['ticket:msp-pool-marlowe-password-expired'] },
+  // And the fifth, which is the co-managed RACI's teaching ticket rather than
+  // texture (E9, 0.37.0). In the MORNING pile deliberately: it is a firm that
+  // cannot bill until it is fixed, so it reads as the thing that was already
+  // waiting at eight rather than as an afternoon interruption - and a ticket
+  // whose consequence lands the NEXT morning wants the whole of a day in front
+  // of it. The sampler still chooses the day, and on a Friday draw the peer's
+  // mail has no morning to arrive on: the violation is stamped and the week
+  // ends before anybody says anything, which is honest (he writes to you on
+  // Monday, and there is no Monday) and is the one draw where the second half
+  // of the lesson does not land.
+  { inherited: ['ticket:pennington-practice-down'] },
 
   // And the fourteen that arrive during the shift.
   {

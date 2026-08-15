@@ -3,7 +3,11 @@ import type {
   NodeKind,
   ReadOnlyGraphNode,
 } from '../../engine-api';
-import { HELPDESK_ACTIONS } from '../../world/actions';
+import {
+  HELPDESK_ACTIONS,
+  RACI_LINE_PARAM,
+  WORLD_ACTIONS,
+} from '../../world/actions';
 import { COMPANY } from '../../world/company';
 import { PROBES } from '../../world/tickets/handoff';
 import {
@@ -41,6 +45,7 @@ import {
   customerIdOfAccount,
   customerIdOfMachine,
   customerName,
+  raciOwnerOfMachine,
   scopeOfCustomer,
   scopeRefusalForMachine,
   scopeVerdict,
@@ -53,6 +58,7 @@ import {
   changeRequestListing,
 } from '../../world/change-request';
 import { isCoordinated } from '../../world/coordination';
+import { raciViolationDue, raciViolationLine } from '../../world/raci';
 import {
   ARDEN_EDGE_ESTATE,
   projectRules,
@@ -68,7 +74,7 @@ import {
 } from '../../world/timesheet';
 import { INVOICE_RUNG_LABELS } from '../../world/invoice';
 import { isProjectRag, RAG_LABELS } from '../../world/watermelon';
-import type { MachineRole } from '../../world/fields';
+import type { MachineRole, RaciOwner } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { DEFAULT_CWD } from '../../world/filesystem';
 import { readSpoolJobs, type TerminalSession } from '../../world/fs';
@@ -417,6 +423,7 @@ function customerScopeGuard(
   api: GameApi,
   customerId: string | null,
   role: MachineRole | null,
+  raci: RaciOwner | null,
   label: string,
   targetId: string,
   verb: string,
@@ -433,9 +440,19 @@ function customerScopeGuard(
     return null;
   }
 
-  const verdict = scopeVerdict(scopeOfCustomer(api.graph, customerId), role);
+  const verdict = scopeVerdict(scopeOfCustomer(api.graph, customerId), role, raci);
 
   if (verdict === 'allowed') {
+    return null;
+  }
+
+  // The RACI soft wall (E9, 0.37.0), and the one branch of this guard that
+  // refuses nothing. A box the customer's own IT owns is a box the MSP's
+  // credentials reach anyway, so the terminal does not pretend otherwise: the
+  // action goes through, and `dispatchLines` writes down that it went through
+  // unannounced. Turning this into a refusal would be a lock the estate does
+  // not have; leaving the consequence out would be a wall nobody meets.
+  if (verdict === 'raci_internal') {
     return null;
   }
 
@@ -492,6 +509,7 @@ function customerPreflight(
       api,
       customerIdOfMachine(machine),
       machineRoleOf(machine.fields[FIELDS.machineRole]),
+      raciOwnerOfMachine(machine),
       labelOf(machine),
       targetId,
       verb,
@@ -507,6 +525,10 @@ function customerPreflight(
     return customerScopeGuard(
       api,
       customerIdOfAccount(node),
+      null,
+      // An account is in nobody's RACI map - the document divides functions
+      // that run on boxes - so identity work at a co-managed customer meets the
+      // shipped notify-first wall, not the soft one.
       null,
       labelOf(node),
       targetId,
@@ -1301,7 +1323,59 @@ function dispatchLines(
   }
 
   const result = api.dispatch(action, api.actor, target, params);
-  return result.ok ? lines(...success) : lines(result.reason);
+
+  if (!result.ok) {
+    return lines(result.reason);
+  }
+
+  stampRaciViolation(api, target, action);
+
+  return lines(...success);
+}
+
+/**
+ * The soft wall's record, written AFTER the work it is about (E9, 0.37.0).
+ *
+ * The order is the mechanic. The remediation has already succeeded - it was
+ * never going to fail, because an MSP admin account on a co-managed estate can
+ * reach the customer's own boxes and everybody involved knows it - and this
+ * asks the world the question nothing else asked: was that theirs, and did
+ * anybody tell them? If so it stamps the box, and the day driver turns the
+ * stamp into their sysadmin's mail tomorrow morning.
+ *
+ * Silent for every other target in the game. Nothing is stamped in-house, at a
+ * customer whose contract has no second IT team in it, on the MSP's own side of
+ * this customer's RACI, or on a box somebody notified about first - and the
+ * verb refuses each of those on its own account too, so a shell that asked
+ * wrongly could not write a record the world does not agree with.
+ *
+ * It sits at `dispatchLines` because that is where the scope pre-flight sits:
+ * one seam, every mutating verb the terminal sends, which is the arrangement
+ * 0.8.0 chose and the reason the customer dimension has no bypass.
+ */
+function stampRaciViolation(
+  api: GameApi,
+  targetId: string,
+  verb: string,
+): void {
+  const machine = machineForTarget(api, targetId);
+
+  if (machine === null) {
+    return;
+  }
+
+  const now = api.clock.now();
+
+  if (!raciViolationDue(api.graph, machine, targetId, verb, now)) {
+    return;
+  }
+
+  // The line is built HERE, in the minute the action was dispatched, and the
+  // world appends it - the same contract the install audit and the break-glass
+  // trail keep, so replaying the log writes the identical string.
+  api.dispatch(WORLD_ACTIONS.raciViolation, api.actor, machine.id, {
+    [RACI_LINE_PARAM]: raciViolationLine(verb, now),
+  });
 }
 
 /**

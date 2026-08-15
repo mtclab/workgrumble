@@ -152,6 +152,13 @@ export const AWAY_NOTICED_LINES: Readonly<Record<string, string>> = Object.freez
   [MSP_IDS.mspLead]: 'You are showing away, and the portal is still down - '
     + 'customers cannot log in. You are on the tier now; "away" while our own box '
     + 'is on the floor is not a look I can carry upstairs for you.',
+  // The co-managed accountancy's practice manager (E9, 0.37.0). She is not
+  // annoyed about the dot - she is a woman with forty idle people behind her,
+  // and what she says is what that room costs by the hour.
+  [MSP_IDS.penningtonContact]: 'Your status says away. I have forty people who '
+    + 'cannot record a minute of today, and I am the one standing between them '
+    + 'and the door of my office. I am not asking you to hurry. I am telling '
+    + 'you what away looks like from this side of it.',
   [HALCYON_IDS.ea]: 'Your status is set to away, and Roland is asking me why his '
     + 'thing is not done. I cannot tell the CEO his IT has gone quiet - so I will '
     + 'just say it is being looked at, and you can imagine how that goes for both '
@@ -278,6 +285,17 @@ export const PRESENCE_CHATTER: readonly PresenceRemark[] = Object.freeze([
     line: 'You have gone Away. Nights here: mine has said that for four '
       + 'years. Nobody has ever come looking, which is either the best or the '
       + 'worst thing about this place.',
+  },
+  {
+    // The co-managed peer (E9, 0.37.0), and the first line in this table from
+    // somebody who is not in this building at all - which is the point of him.
+    // He is the other sysadmin on the account, he is not your colleague, and
+    // his remark about your dot is a remark about his own.
+    presence: 'dnd',
+    speaker: MSP_IDS.penningtonSysadmin,
+    line: 'You have gone Do Not Disturb. Mine has said that since 2019 and I '
+      + 'am the entire IT department, so it is decorative at best. Do not '
+      + 'worry - if I want you I will find out where you have been anyway.',
   },
   {
     presence: 'available',

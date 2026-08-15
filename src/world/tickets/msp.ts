@@ -1201,6 +1201,99 @@ const ARDEN_PORTAL_AFTERHOURS: WorldTicket = {
   ],
 };
 
+/* -- PENNINGTON-ACCT: the box you can touch and should not (E9, 0.37.0) ---- */
+
+/**
+ * The RACI's soft wall, as the one ticket that walks straight into it.
+ *
+ * The practice suite the whole firm bills through has stopped, on PENN-SRV-01,
+ * which is Callum's box under the RACI - their one IT man owns the application,
+ * and he is out at a client until the afternoon. The fix is a service restart
+ * and it WORKS: the MSP monitors that box, so the MSP has an admin account on
+ * it, and nothing in the estate is going to refuse a Tier-1 tech bouncing a
+ * service. That is not a hole in the mechanic, it is the mechanic.
+ *
+ * WHERE IT LIVES, because it is not where a teaching ticket would normally go.
+ * It is dealt out of the MSP's SURPLUS (`spares/msp.ts`) rather than off the
+ * authored week, and that is a measurement rather than a preference: the
+ * engineer's work blend at this shop is derived from the authored week's own
+ * mix, and one more server-kind arrival in that table drops
+ * `mixAfforded(msp, systems_engineer, 20)` from twenty to ten. The reasoning,
+ * the three placements it was measured at and what buying it a seat in the
+ * authored week would cost are written down beside the entry itself.
+ *
+ * Both ways through close the ticket, which is the padding rule applied to a
+ * social cost: the player is never handed a fault they cannot fix. Notify
+ * Callum first and the restart is coordinated work on a shared estate, and his
+ * morning is a mail he already knew about. Restart it without a word and the
+ * ticket closes just the same - and tomorrow his monitoring tells him, in his
+ * words rather than yours, which is what the reputation is spent on. The seam
+ * that tells the two apart is the scope pre-flight in `cmd-run.ts`; the graph
+ * path below is the restart itself, exactly as ARDEN's after-hours portal is.
+ */
+const PENNINGTON_PRACTICE_DOWN: WorldTicket = {
+  arrival: 'morning',
+  nodes: [MSP_IDS.penningtonServer, MSP_IDS.penningtonPracticeApp],
+  claimed_urgency: 3,
+  true_urgency: 3,
+  def: {
+    id: 'ticket:pennington-practice-down',
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Pennington: the practice suite has stopped, and Callum is out',
+      body:
+        'Esme rings: nobody at Pennington & Roe can get into Ledgerline - no '
+        + 'time recording, no billing, forty people at a standstill on a '
+        + 'Tuesday. The service on PENN-SRV-01 has stopped. Callum, their IT '
+        + 'manager, is at a client until three and is not picking up. That box '
+        + 'is his under the RACI - the practice system is the customer\'s own '
+        + 'to run, the MSP has the desks and the monitoring - which is why the '
+        + 'move is to notify their IT ("notify <target>") and then restart the '
+        + 'service. Your account will bounce it either way. That is the point.',
+    },
+    reporter: MSP_IDS.penningtonContact,
+    setup: [
+      {
+        op: 'setField',
+        id: MSP_IDS.penningtonPracticeApp,
+        field: FIELDS.status,
+        value: SERVICE_STATUS.stopped,
+      },
+    ],
+    resolved_when: {
+      op: 'eq',
+      selector: { id: MSP_IDS.penningtonPracticeApp },
+      field: FIELDS.status,
+      value: SERVICE_STATUS.running,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 5 },
+    kb_ref: 'kb/co-managed-application-ownership',
+  },
+  cause: 'The Ledgerline service on PENN-SRV-01 has stopped and taken time '
+    + 'recording and billing with it. The restart is the fix and it is four '
+    + 'seconds of work; the question the co-managed RACI asks is a different '
+    + 'one, because that server and the application on it are the customer\'s '
+    + 'own IT manager\'s under the split. Nothing refuses the restart - the MSP '
+    + 'monitors the box and holds an account on it - so the honest move is to '
+    + 'notify him first and then do it, and the cost of not bothering arrives '
+    + 'the next morning off his own monitoring rather than at the keyboard.',
+  dialogue_ref: 'dialogue/msp-esme',
+  paths: [
+    {
+      id: 'notify-then-restart-ledgerline',
+      app: 'cmd',
+      label: 'Notify Callum, then restart Ledgerline on PENN-SRV-01',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.serviceRestart,
+          target: MSP_IDS.penningtonPracticeApp,
+        },
+      ],
+    },
+  ],
+};
+
 /* -- TILLMAN-FREIGHT: the onboarding discovery, and the horror (0.13.0) ---- */
 
 /**
@@ -2460,6 +2553,9 @@ export const MSP_TICKETS: readonly WorldTicket[] = [
   // ARDEN-MFG - co-managed, coordinate-then-act (0.11.0).
   ARDEN_LOCKOUT_HANDBACK,
   ARDEN_PORTAL_AFTERHOURS,
+  // PENNINGTON-ACCT - co-managed with the RACI map written down (E9, 0.37.0):
+  // the box the map hands to their own IT, which the desk can reach anyway.
+  PENNINGTON_PRACTICE_DOWN,
   // TILLMAN-FREIGHT - the mid-week onboarding + the discovery horror (0.13.0).
   TILLMAN_BACKUP_DISCOVERY,
   // ELMWOOD-DENTAL - the fully-managed dental vertical, hands-on + chair-side

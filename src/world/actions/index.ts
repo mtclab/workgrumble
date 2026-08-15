@@ -10,6 +10,7 @@ export { BEER_TOO_EARLY_REASON, LATE_CAN_REASON } from './consumables';
 export { APT_PACKAGE_PARAM } from './apt';
 export { FS_GROUP_PARAM, FS_MODE_PARAM, FS_OWNER_PARAM } from './fs';
 export { SELINUX_MODE_PARAM } from './selinux';
+export { RACI_COMPLAINT_REPUTATION, RACI_LINE_PARAM } from './raci';
 export {
   CUTOVER_INCOMPLETE_REASON,
   PROJECT_ANSWERED_PARAM,
@@ -43,6 +44,7 @@ import { METER_ACTION_DATA } from './meters';
 import { OVERRIDE_ACTIONS } from './override';
 import { PRESENCE_ACTION_DATA } from './presence';
 import { PROJECT_ACTION_DATA } from './project';
+import { RACI_ACTION_DATA } from './raci';
 import { REQUEST_ACTION_DATA } from './request';
 import { SECURITY_ACTIONS } from './security';
 import { SELINUX_ACTION_DATA } from './selinux';
@@ -241,6 +243,12 @@ export function helpdeskActions(): readonly ActionData[] {
     // fallout (a world verb the day driver settles, below the line with the rest
     // of the world's own timetable).
     ...OVERRIDE_ACTIONS,
+    // The co-managed RACI's two verbs (E9, 0.37.0): the trail a remediation on
+    // the customer's OWN box leaves when nobody was told, and the complaint
+    // their sysadmin makes about it the next morning. Both world verbs - one
+    // dispatched by the terminal after the act it records, one settled by the
+    // day driver - because neither is a move anybody in this building chooses.
+    ...RACI_ACTION_DATA,
     // The legendary manager / implement-then-revert verbs (E8, 0.25.0): the
     // startup-type config change the mandate makes, the rollback capture (the
     // diligent step onto the reused change_request record), and the clean restore

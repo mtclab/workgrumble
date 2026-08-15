@@ -23,6 +23,12 @@
  * contract - that is a change request or an escalation, not a coordination), or
  * for a fully-managed one (nobody else's IT to tell). Only co-managed is
  * coordinate-then-act, so only co-managed is what `notify` files against.
+ *
+ * From 0.37.0 that covers both co-managed shapes: the estate the map says
+ * nothing about (where the notice CLEARS an action the pre-flight would refuse)
+ * and the box the map hands to their own IT (where nothing is refused at all
+ * and the notice is what stops the peer sysadmin finding out from his
+ * monitoring). Same node, same verb, two different things being bought with it.
  */
 
 import type {
@@ -34,10 +40,16 @@ import {
   customerIdOfAccount,
   customerIdOfMachine,
   customerName,
+  raciOwnerOfMachine,
   scopeOfCustomer,
   scopeVerdict,
 } from './customers';
-import { FIELDS, machineRoleOf, type MachineRole } from './fields';
+import {
+  FIELDS,
+  machineRoleOf,
+  type MachineRole,
+  type RaciOwner,
+} from './fields';
 
 /* -- resolving what a target IS, for its customer and scope ---------------- */
 
@@ -76,24 +88,33 @@ function machineBehind(
   return null;
 }
 
-/** The customer a target belongs to, and the machine role behind it. */
+/**
+ * The customer a target belongs to, the machine role behind it, and which team
+ * the RACI map hands that box to - the same three the scope pre-flight reads,
+ * because a notice has to be decided against the same verdict it clears.
+ */
 function customerAndRole(
   graph: ReadOnlyGraphView,
   targetId: string,
-): { readonly customerId: string | null; readonly role: MachineRole | null } {
+): {
+  readonly customerId: string | null;
+  readonly role: MachineRole | null;
+  readonly raci: RaciOwner | null;
+} {
   const node = graph.getNode(targetId);
 
   if (node?.kind === 'account') {
-    return { customerId: customerIdOfAccount(node), role: null };
+    return { customerId: customerIdOfAccount(node), role: null, raci: null };
   }
 
   const machine = machineBehind(graph, targetId);
 
   return machine === null
-    ? { customerId: null, role: null }
+    ? { customerId: null, role: null, raci: null }
     : {
       customerId: customerIdOfMachine(machine),
       role: machineRoleOf(machine.fields[FIELDS.machineRole]),
+      raci: raciOwnerOfMachine(machine),
     };
 }
 
@@ -163,7 +184,7 @@ export function planCoordination(
   targetId: string,
   now: number,
 ): CoordinationFiling {
-  const { customerId, role } = customerAndRole(graph, targetId);
+  const { customerId, role, raci } = customerAndRole(graph, targetId);
 
   if (customerId === null) {
     return {
@@ -176,10 +197,17 @@ export function planCoordination(
     };
   }
 
-  const verdict = scopeVerdict(scopeOfCustomer(graph, customerId), role);
+  const verdict = scopeVerdict(scopeOfCustomer(graph, customerId), role, raci);
   const label = customerName(graph, customerId);
 
-  if (verdict !== 'co_managed') {
+  // Both co-managed shapes take a notice, and for the same reason: there is
+  // another IT team on the account and this is the sentence that tells them.
+  // `raci_internal` is the one where nothing would have stopped you - the
+  // heads-up is not what unlocks the work there, it is the difference between
+  // a colleague being told and a colleague finding out - so refusing to file
+  // one on their own box would be refusing the honest move on the one target
+  // that most needs it.
+  if (verdict !== 'co_managed' && verdict !== 'raci_internal') {
     return {
       kind: 'not_needed',
       lines: [
@@ -195,12 +223,20 @@ export function planCoordination(
 
   const coordId = `coordination:${targetId}@${String(now)}`;
 
-  const lines = [
-    `${label}'s IT notified: you are working on ${targetId}.`,
-    'Co-managed is coordinate-then-act - their team owns this estate alongside',
-    'the MSP, so telling them before you touch it is the contract, not a',
-    'courtesy. The heads-up is on the record; the action is cleared.',
-  ];
+  const lines = verdict === 'raci_internal'
+    ? [
+      `${label}'s IT notified: you are working on ${targetId}.`,
+      'That box is THEIRS under the RACI - their application, their sysadmin -',
+      'and nothing was ever going to stop you touching it. This is the',
+      'difference between a colleague being told and a colleague finding out',
+      'from his own monitoring tomorrow morning. The heads-up is on the record.',
+    ]
+    : [
+      `${label}'s IT notified: you are working on ${targetId}.`,
+      'Co-managed is coordinate-then-act - their team owns this estate alongside',
+      'the MSP, so telling them before you touch it is the contract, not a',
+      'courtesy. The heads-up is on the record; the action is cleared.',
+    ];
 
   return {
     kind: 'filed',

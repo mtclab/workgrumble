@@ -50,6 +50,7 @@ import {
   customerIdOfAccount,
   customerIdOfMachine,
   customerName,
+  raciOwnerOfMachine,
   scopeOfCustomer,
   type ScopeVerdict,
   scopeRefusalLines,
@@ -166,7 +167,14 @@ function targetContext(
     return {
       customerId,
       role: null,
-      verdict: scopeVerdict(scopeOfCustomer(graph, customerId ?? ''), null),
+      verdict: scopeVerdict(
+        scopeOfCustomer(graph, customerId ?? ''),
+        null,
+        // An account is in nobody's RACI map: the document divides FUNCTIONS
+        // that run on boxes, and identity work at a co-managed customer falls
+        // to the shipped default.
+        null,
+      ),
     };
   }
 
@@ -182,6 +190,7 @@ function targetContext(
     verdict: scopeVerdict(
       customerId === null ? null : scopeOfCustomer(graph, customerId),
       role,
+      machine === null ? null : raciOwnerOfMachine(machine),
     ),
   };
 }
@@ -222,6 +231,17 @@ function decisionForVerdict(
         reason: `Approved by ${customerLabel}'s own IT: co-managed work signed `
           + 'off through the change process, which is the coordination the '
           + 'contract asks for.',
+      };
+    case 'raci_internal':
+      // Nothing was refusing this one, so the request is not buying permission
+      // - it is buying the same thing the heads-up buys, in writing and with
+      // their sysadmin's name on it. Which is why it is offered at all: the
+      // heavier version of "tell them first" is still telling them first.
+      return {
+        decision: CHANGE_REQUEST_DECISIONS.approve,
+        reason: `Approved by ${customerLabel}'s own IT: their application, on `
+          + 'their box, under the RACI - signed off rather than simply done, '
+          + 'which is the coordination that contract is made of.',
       };
     case 'monitoring_only':
       return {
