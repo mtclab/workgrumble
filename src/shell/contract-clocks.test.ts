@@ -81,8 +81,8 @@ describe('the contract settler', () => {
     rigged.driver.startShift();
     runMinutes(rigged, 90);
 
-    // Triage it so the cadence promise exists (a silver P2 promises an update
-    // every sixty minutes), then let the desk say nothing for two windows.
+    // Triage it so the cadence promise exists (a silver P3 promises an
+    // update every two hours), then let the desk say nothing past a window.
     expect(rigged.session.engine.dispatch(
       HELPDESK_ACTIONS.ticketClassify,
       COMPANY_IDS.player,
