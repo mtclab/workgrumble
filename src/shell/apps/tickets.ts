@@ -36,6 +36,7 @@ import {
   LEVELS,
   priorityLabel,
   tierTargetsFor,
+  type Priority,
 } from '../../world/priority';
 import {
   HOLD_REASON_LABELS,
@@ -193,6 +194,28 @@ export function prioritySourceLine(source: PrioritySource): string | null {
       + 'triaged yet, and the desk treats an unread claim as P3.'
     : 'Priority came out of the matrix - impact times urgency, the two '
       + 'dropdowns below, nobody\'s name involved.';
+}
+
+/**
+ * The VIP row's sentence, whose flag named honestly (E9, 0.37.0).
+ *
+ * Exported for the same reason `prioritySourceLine` is: the shadow VIP's
+ * ticket is typed by the assistant and flagged for the executive it is FOR,
+ * so "the caller is on the list" would be a lie on exactly the ticket this
+ * row most needs to be true on - and a claim about what the player reads
+ * has to be checkable without a browser standing up.
+ */
+export function vipRowLine(
+  beneficiary: unknown,
+  priority: Priority | null,
+): string {
+  return (typeof beneficiary === 'string' && beneficiary.length > 0
+    ? `Raised on behalf of ${beneficiary}, who is on the VIP list - the `
+      + 'flag keys off who it is FOR, not who typed it. The priority '
+    : 'The caller is on the VIP list, so the priority ')
+    + 'is forced to '
+    + `${priorityLabel(priority)} regardless of impact. Nobody `
+    + 'chose it and nobody can unpick it here.';
 }
 
 /** The player's own triage, if they have done one. */
@@ -1302,18 +1325,10 @@ export const TICKETS_APP: AppDef = {
       // this deadline was set by the caller's name and not by the fault.
       if (clocks.vip) {
         const vipValue = definitionRow(facts, 'VIP flag', 'ticket-detail-vip');
-        // Whose flag, said honestly (E9, 0.37.0): the shadow VIP's ticket is
-        // typed by the assistant and flagged for the executive it is FOR, so
-        // "the caller is on the list" would be a lie on exactly the ticket
-        // this row most needs to be true on.
-        const forWhom = node.fields[FIELDS.beneficiary];
-        vipValue.textContent = (typeof forWhom === 'string' && forWhom.length > 0
-          ? `Raised on behalf of ${forWhom}, who is on the VIP list - the `
-            + 'flag keys off who it is FOR, not who typed it. The priority '
-          : 'The caller is on the VIP list, so the priority ')
-          + 'is forced to '
-          + `${priorityLabel(clocks.priority)} regardless of impact. Nobody `
-          + 'chose it and nobody can unpick it here.';
+        vipValue.textContent = vipRowLine(
+          node.fields[FIELDS.beneficiary],
+          clocks.priority,
+        );
       }
 
       // And the same question answered for the other two levers (E9, 0.37.0).

@@ -13,6 +13,7 @@ import {
   type TicketRow,
   ticketRows,
   ticketStateLabel,
+  vipRowLine,
   wasBreached,
 } from './tickets';
 
@@ -214,5 +215,19 @@ describe('the row that says which lever set the priority', () => {
   it('says nothing of its own on a VIP ticket, because the row above it '
     + 'already has', () => {
     expect(prioritySourceLine('vip')).toBeNull();
+  });
+});
+
+describe('the VIP row names whose flag it is (E9, 0.37.0)', () => {
+  it('reads as the caller\'s own flag when nobody else is named', () => {
+    expect(vipRowLine(undefined, 2)).toContain('The caller is on the VIP list');
+    expect(vipRowLine(undefined, 2)).toContain('forced to P2');
+  });
+
+  it('names the beneficiary on the shadow VIP\'s ticket', () => {
+    const line = vipRowLine('Roland Cushing-Vane, Chief Executive Officer', 2);
+    expect(line).toContain('Raised on behalf of Roland Cushing-Vane');
+    expect(line).toContain('keys off who it is FOR, not who typed it');
+    expect(line).not.toContain('The caller is on the VIP list');
   });
 });
