@@ -38,7 +38,11 @@ import {
   STRESS_PER_EXCESS_TICKET,
   STRESS_PER_UNREAD_CHANNEL,
   SUSPICION_CLEAN_DRAIN,
+  breachCostOf,
+  breachWeightOf,
+  CADENCE_MISS_CAP,
 } from './meters';
+import { SLA_TIERS } from './fields';
 import { INSTALL_PRESENT_SUSPICION } from './software';
 
 const QUIET: MeterInputs = {
@@ -431,5 +435,37 @@ describe('the web store audit-risk drip', () => {
   it('refuses a count that is not a whole number at or above zero', () => {
     expect(() => deltas({ installedAgainstPolicy: -1 })).toThrow(TypeError);
     expect(() => deltas({ installedAgainstPolicy: 1.5 })).toThrow(TypeError);
+  });
+});
+
+describe('what a miss weighs at each clock (D4, 0.37.0)', () => {
+  const ticket = (fields: Record<string, unknown>) => ({
+    id: 'ticket:synthetic',
+    kind: 'ticket',
+    fields,
+  }) as never;
+
+  it('bills the in-house resolution breach exactly as 0.12.0 shipped it', () => {
+    expect(breachWeightOf([ticket({ breached: true })])).toBe(1);
+    expect(breachWeightOf([ticket({})])).toBe(0);
+  });
+
+  it('bills a tiered ticket nothing for its resolution breach - the contract never bound it', () => {
+    expect(breachWeightOf([
+      ticket({ breached: true, sla_tier: 'gold' }),
+    ])).toBe(0);
+  });
+
+  it('bills the tiered clocks the contract does bind: the ack at tier cost, silence capped', () => {
+    expect(breachWeightOf([
+      ticket({ sla_tier: 'gold', ack_missed: true }),
+    ])).toBe(breachCostOf(SLA_TIERS.gold));
+    expect(breachWeightOf([
+      ticket({ sla_tier: 'silver', cadence_missed: 2 }),
+    ])).toBe(2);
+    // The cap: an abandoned ticket cannot out-bill an outage.
+    expect(breachWeightOf([
+      ticket({ sla_tier: 'silver', cadence_missed: 9 }),
+    ])).toBe(CADENCE_MISS_CAP);
   });
 });

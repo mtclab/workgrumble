@@ -43,6 +43,7 @@ import {
   ticketClocks,
   type TicketClocks,
 } from '../../world/sla';
+import { cadenceIntervalFor, cadenceMissesOn } from '../../world/cadence';
 import {
   allowsEscalation,
   childrenOf,
@@ -197,6 +198,11 @@ function responseLine(clocks: Readonly<TicketClocks>): string {
 function resolutionLine(clocks: Readonly<TicketClocks>): string {
   return `${clockSummary(clocks.resolution, 'Closed')}`
     + ` · due ${formatSimTime(clocks.resolution.dueAt).time}`
+    // The contract's honesty (D4, 0.37.0): an external tier binds the talking,
+    // not the fixing - published resolution targets are best effort at every
+    // vendor the research checked. The tool still shows its target, because
+    // the tool always does; the words stop it reading as the binding clock.
+    + (clocks.tier !== null ? ' · goal, best effort' : '')
     + (clocks.heldTicks > 0
       ? ` · paused ${formatDuration(clocks.heldTicks)}`
       : '');
@@ -1321,6 +1327,30 @@ export const TICKETS_APP: AppDef = {
       );
       resolutionRow.textContent = resolutionLine(clocks);
       resolutionRow.dataset.due = formatSimTime(clocks.resolution.dueAt).time;
+
+      // The clock the external contract actually binds beside the ack (D4,
+      // 0.37.0): a promised gap between customer-visible updates, and the
+      // count of windows this ticket has already let pass. Deliberately no
+      // live countdown - the row changes when the RECORD changes, so it stays
+      // out of the per-minute repaint the two cells below are allowed.
+      const cadenceInterval = cadenceIntervalFor(clocks.tier, clocks.priority);
+
+      if (cadenceInterval !== null) {
+        const cadenceRow = definitionRow(
+          facts,
+          'Update cadence',
+          'ticket-detail-cadence',
+        );
+        const missed = cadenceMissesOn(node);
+        cadenceRow.dataset.missed = String(missed);
+        cadenceRow.textContent = `An update every ${formatDuration(cadenceInterval)}`
+          + ' - the contract clock on talking, not fixing.'
+          + (missed > 0
+            ? ` ${String(missed)} window${missed === 1 ? '' : 's'} of silence `
+              + 'on the record already; the record does not shrink.'
+            : '');
+      }
+
       // The two cells the next minute is allowed to move on their own. Every
       // other thing on this pane is a fact about the world, and the world
       // announces itself.

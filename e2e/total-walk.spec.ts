@@ -4069,6 +4069,42 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     });
   });
 
+  /**
+   * The contract's own clocks, on the one board that has contracts (D4,
+   * 0.37.0). An MSP ticket runs on a tier, and once it has a priority the
+   * pane grows the cadence row: the promised gap between updates, which is
+   * the clock the contract actually binds - the resolution target on the row
+   * above it now says "goal, best effort" out loud, because that is all an
+   * external resolution target ever was.
+   */
+  await step('tickets.contract-clocks', async () => {
+    await openFromStartMenu(page, 'tickets');
+    // NAMED, the lesson the retained step bought: fontaine-matter-access is a
+    // morning arrival at a silver customer, so it is on the board from 08:00
+    // in every drawn week and it runs on a tier by construction.
+    const row = page.getByTestId('ticket-row-fontaine-matter-access');
+    await expect(row).toBeVisible();
+    await row.click();
+
+    // A tier the ticket already carries; a priority it may still need. The
+    // cadence row exists only once both are true, so triage it here if the
+    // pickers are on screen - the act is the desk's own and costs the walk
+    // nothing it asserts later.
+    const impact = page.getByTestId('triage-impact');
+
+    if (await impact.count()) {
+      await impact.selectOption('1');
+      await page.getByTestId('triage-urgency').selectOption('2');
+      await page.getByTestId('triage-file').click();
+    }
+
+    await expect(page.getByTestId('ticket-detail-cadence'))
+      .toContainText('contract clock on talking');
+    await expect(page.getByTestId('ticket-detail-resolution'))
+      .toContainText('best effort');
+    await page.getByTestId('close-tickets').click();
+  });
+
   await step('projects.phase', async () => {
     // The same window, opened again after the terminal moved the world twice.
     // Nothing here was told what happened - the board is a read, so the audit

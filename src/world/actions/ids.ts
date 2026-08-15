@@ -271,6 +271,15 @@ export const HELPDESK_ACTIONS = {
    * handoff form asks.
    */
   ticketRecordTouch: 'ticket.record_touch',
+  /**
+   * The contract settler's two stamps (E9, 0.37.0): an acknowledgment clock
+   * that ran out untouched, recorded once and forever, and the running count
+   * of update-cadence windows a tiered ticket has let pass in silence. Both
+   * are bookkeeping the meters derive charges from - the settler notices, the
+   * world records, because a contract miss is world state.
+   */
+  ticketRecordAckMiss: 'ticket.record_ack_miss',
+  ticketRecordCadenceMiss: 'ticket.record_cadence_miss',
   /** Second line sending a thin handoff back, with the bill attached. */
   ticketBounceHandoff: 'ticket.bounce_handoff',
   /**

@@ -23,6 +23,7 @@ const COMMENT_PARAM = 'comment';
 const ARTICLE_PARAM = 'article';
 const PARENT_PARAM = 'parent';
 const REPORTED_PARAM = 'reported';
+const MISSES_PARAM = 'misses';
 const TRIED_PARAM = 'tried';
 const TOUCHES_PARAM = 'touches';
 
@@ -466,6 +467,16 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
           },
         ],
       },
+      // And every contact re-anchors the update-cadence clock (E9, 0.37.0):
+      // the contract's promise is a gap between words, and a question is
+      // words. Unconditional where the response stamp above is once-only,
+      // because the cadence clock measures the LAST time, not the first.
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.lastUpdateAt,
+        value: { now: true },
+      },
     ],
   ),
   /**
@@ -553,6 +564,15 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
           },
         ],
       },
+      // A reply re-anchors the update-cadence clock the same way a question
+      // does (E9, 0.37.0): the contract's gap is measured to the LAST words,
+      // whichever kind they were.
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.lastUpdateAt,
+        value: { now: true },
+      },
     ],
   },
   {
@@ -607,6 +627,66 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
         node: TARGET,
         field: FIELDS.touchLog,
         value: { param: TOUCHES_PARAM },
+      },
+    ],
+  },
+  /**
+   * The contract settler's stamps (E9, 0.37.0). Both are bookkeeping in the
+   * `ticketRecordTouch` mould: a due-read notices, the world records, and the
+   * meters derive the charge - so each fact is written exactly once and a
+   * replay writes the same world.
+   */
+  {
+    id: HELPDESK_ACTIONS.ticketRecordAckMiss,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('ticket'),
+      UNTRACKED_GUARD,
+      // Once and forever: an acknowledgment that came late is late whatever
+      // happens afterwards, and a second stamp would be a second bill.
+      {
+        when: fieldIs(TARGET, FIELDS.ackMissed, true),
+        reason: 'That acknowledgment has already been recorded as missed. '
+          + 'Once is the whole record.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.ackMissed,
+        value: { const: true },
+      },
+    ],
+  },
+  {
+    id: HELPDESK_ACTIONS.ticketRecordCadenceMiss,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('ticket'),
+      UNTRACKED_GUARD,
+      {
+        when: { pred: 'param_absent', param: MISSES_PARAM },
+        reason: 'A cadence record is a count of windows that passed in '
+          + 'silence, and this is not one.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.cadenceMissed,
+        value: { param: MISSES_PARAM },
+      },
+      // The watermark beside the count: this minute's silence is now read up
+      // to this minute, so the next due-read charges only windows newer than
+      // it - see the field's own register for the shrinking-record bug this
+      // pair exists to prevent.
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.cadenceCountedTo,
+        value: { now: true },
       },
     ],
   },

@@ -1259,6 +1259,23 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'tickets.contract-clocks',
+    surface: 'tickets',
+    control: 'ticket-detail-cadence',
+    does: 'The external contract\'s own clocks (D4): the acknowledgment the '
+      + 'tier sells and a promised gap between updates - misses stamped by '
+      + 'the settler as the silence stretches, billed like the breaches the '
+      + 'contract never actually bound.',
+    actions: [
+      HELPDESK_ACTIONS.ticketRecordAckMiss,
+      HELPDESK_ACTIONS.ticketRecordCadenceMiss,
+    ],
+    run: 'sysadmin',
+    why: 'An in-house shop has no tier, so the probation week cannot grow '
+      + 'the cadence row at all - the contract clocks exist only where '
+      + 'contracts do, and the MSP walk is the one standing on a contract.',
+  },
+  {
     id: 'tickets.streams',
     surface: 'tickets',
     control: 'ticket-worknotes, ticket-comments',

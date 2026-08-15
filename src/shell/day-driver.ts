@@ -247,7 +247,6 @@ import {
   isSystemsEngineer,
   type PlayerTier,
   playerTierOf,
-  slaTierOf,
   SYSTEMD_STATES,
 } from '../world/fields';
 import {
@@ -285,13 +284,19 @@ import {
   PROJECT_KICKOFF_TICKETS,
 } from '../world/tickets/project';
 import {
-  breachCostOf,
+  breachWeightOf,
   isMeterTick,
   meterDeltas,
   type MeterState,
   movesAnything,
 } from '../world/meters';
-import { isActiveWork, isUnresolved, needsResponse } from '../world/sla';
+import { ackMissesDue, cadenceMissesDue } from '../world/cadence';
+import {
+  isActiveWork,
+  isUnresolved,
+  needsResponse,
+  ticketClocks,
+} from '../world/sla';
 import {
   bounceLandsAt,
   cascadeComment,
@@ -475,6 +480,7 @@ export const TAKEOVER_WINDOWS: readonly string[] = Object.freeze([
 ]);
 
 export const SPEEDS = [1, 2, 4] as const;
+
 
 export type Speed = (typeof SPEEDS)[number];
 
@@ -2767,6 +2773,11 @@ export class DayDriver implements DayApi {
     // until the clock it bought runs out, and that is a minute passing rather
     // than anything anybody did.
     this.settleAuditFallout();
+    // And the external contract's clocks (E9, 0.37.0): an acknowledgment that
+    // ran out untouched and an update window that passed in silence are both
+    // things a minute causes, noticed here and stamped once - the meters read
+    // the stamps.
+    this.settleContractClocks(now);
     // And second line coming back on a ticket the senior KEPT (E9, 0.36.0),
     // which is the same kind of event again: somebody else finishing, on their
     // own timetable, noticed by a minute passing.
@@ -6369,6 +6380,40 @@ export class DayDriver implements DayApi {
    * a server is neither contact with the reporter nor a fix) and charges no
    * work segment - it is evidence, and only evidence.
    */
+  /**
+   * The external contract's clocks, settled (E9, 0.37.0 - D4).
+   *
+   * The customer-axis research is unambiguous: published external SLAs bind
+   * the ACKNOWLEDGMENT and the update cadence; resolution is best effort at
+   * every vendor checked. So a tiered ticket's misses are these two, each a
+   * monotone stamp the meters derive a charge from - the ack miss once and
+   * forever, the cadence count only ever up. Both reads live in
+   * `world/cadence.ts`; this is the notice-and-dispatch half, the same shape
+   * as every settler above it.
+   */
+  private settleContractClocks(now: number): void {
+    for (const ticket of ackMissesDue(
+      this.engine.graph,
+      (node) => ticketClocks(node, now).response.breached,
+    )) {
+      this.engine.dispatch(
+        HELPDESK_ACTIONS.ticketRecordAckMiss,
+        this.actor,
+        ticket,
+        {},
+      );
+    }
+
+    for (const due of cadenceMissesDue(this.engine.graph, now)) {
+      this.engine.dispatch(
+        HELPDESK_ACTIONS.ticketRecordCadenceMiss,
+        this.actor,
+        due.ticket,
+        { misses: due.misses },
+      );
+    }
+  }
+
   public recordProbe(machineId: NodeId, probeId: string, ok: boolean): void {
     const now = this.engine.now();
 
@@ -6518,16 +6563,10 @@ export class DayDriver implements DayApi {
       // because its SLA ran out, and a queue that stopped counting it would
       // pay the player to let the next one go the same way.
       openTickets: tickets.filter(isActiveWork).length,
-      // The tier-weighted breach total (0.12.0): a Gold miss costs more than a
-      // Bronze one, so what the meters bill is the SUM of the breached tickets'
-      // tier costs, not a headcount. A tier-less in-house ticket weighs one, so
-      // a world with no customers in it sums to the count it always was.
-      breachedTickets: tickets.reduce(
-        (weight, ticket) => ticket.fields[FIELDS.breached] === true
-          ? weight + breachCostOf(slaTierOf(ticket.fields[FIELDS.customerSlaTier]))
-          : weight,
-        0,
-      ),
+      // What a miss weighs, and WHICH clock misses (D4, 0.37.0) - the whole
+      // arithmetic lives in `breachWeightOf`, where it is a pure function a
+      // test can hold still.
+      breachedTickets: breachWeightOf(tickets),
       breachesCharged: state.breachesCharged,
       resolveCredit: resolveCredit(tickets),
       resolveCreditPaid: state.resolveCreditPaid,

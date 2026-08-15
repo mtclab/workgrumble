@@ -1803,6 +1803,41 @@ export const FIELDS = {
    * takes it from there.
    */
   beneficiary: 'beneficiary',
+  /**
+   * The tick the reporter last had words put to them (E9, 0.37.0).
+   *
+   * Stamped by the two customer-visible writers - the question and the reply -
+   * because the external contract's update-cadence clock is a clock on
+   * TALKING, and a clock needs a minute to measure from. The stream itself
+   * carries no timestamps (its lines are sentences), so the anchor lives
+   * beside it rather than being parsed out of it.
+   */
+  lastUpdateAt: 'last_update_at',
+  /**
+   * Whether the contract's acknowledgment clock ran out before anybody
+   * touched this ticket (E9, 0.37.0). Stamped ONCE by the contract settler
+   * and never cleared: an ack that came late is late forever, which is what
+   * lets the meters bill it exactly once off a monotone fact.
+   */
+  ackMissed: 'ack_missed',
+  /**
+   * How many update-cadence windows this ticket has let pass in silence
+   * (E9, 0.37.0). Counted up by the contract settler, never down: an update
+   * resets the WINDOW (the anchor above moves), not the record of the
+   * windows already missed. External tiers bind talking, not fixing - this
+   * count is what that sentence bills through.
+   */
+  cadenceMissed: 'cadence_missed',
+  /**
+   * The tick up to which the count above has already read the silence.
+   *
+   * Written beside every count so the read can tell windows-already-counted
+   * from windows-newly-due AFTER an update moves the anchor: without it, a
+   * record of three old misses would swallow every new window until a fourth
+   * whole one had passed since the last words, which is not what "the record
+   * does not shrink" was supposed to buy.
+   */
+  cadenceCountedTo: 'cadence_counted_to',
   /** `confirmed` or `corrected` - how the audit was ruled, and when. */
   auditVerdict: 'audit_verdict',
   auditVerdictAt: 'audit_verdict_at',

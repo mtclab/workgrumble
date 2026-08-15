@@ -15,7 +15,8 @@
  * arithmetic exact all the way through - see `METER_INTERVAL_TICKS`.
  */
 
-import { SLA_TIERS, type SlaTier } from './fields';
+import type { ReadOnlyGraphNode } from '../engine-api';
+import { FIELDS, SLA_TIERS, type SlaTier, slaTierOf } from './fields';
 import { DND_WORKING_SUSPICION } from './presence';
 import { INSTALL_PRESENT_SUSPICION, INSTALLED_TOY_SLACK_RATE } from './software';
 
@@ -235,6 +236,52 @@ export const BREACH_TIER_COST: Readonly<Record<SlaTier, number>> = {
  */
 export function breachCostOf(tier: SlaTier | null): number {
   return tier === null ? 1 : BREACH_TIER_COST[tier];
+}
+
+/**
+ * How many silent update windows one tiered ticket can bill (D4, 0.37.0).
+ *
+ * The cap is the honesty: the cadence clock punishes a PATTERN of silence,
+ * and past a few windows the customer has stopped reading anyway - an
+ * abandoned P4 must not out-bill an outage. OVERSEER TUNING KNOB.
+ */
+export const CADENCE_MISS_CAP = 3;
+
+/**
+ * What the queue's misses weigh, and WHICH clock misses (D4, 0.37.0).
+ *
+ * In-house tickets bill the resolution breach exactly as 0.12.0 shipped it -
+ * the tool's target is the binding one indoors. A TIERED ticket's contract
+ * binds the acknowledgment and the update cadence instead - published
+ * external SLAs make resolution "best effort" at every vendor the research
+ * checked - so its resolution breach weighs nothing and its two contract
+ * stamps weigh in its place: the missed ack at the tier's breach cost (the
+ * clock the tier actually sells), and each silent window one point, capped.
+ * Every term is a monotone fact stamped by the contract settler, so the
+ * charged watermark's arithmetic only ever climbs.
+ */
+export function breachWeightOf(
+  tickets: readonly Readonly<ReadOnlyGraphNode>[],
+): number {
+  return tickets.reduce((weight, ticket) => {
+    const tier = slaTierOf(ticket.fields[FIELDS.customerSlaTier]);
+
+    if (tier === null) {
+      return ticket.fields[FIELDS.breached] === true
+        ? weight + breachCostOf(null)
+        : weight;
+    }
+
+    const ack = ticket.fields[FIELDS.ackMissed] === true
+      ? breachCostOf(tier)
+      : 0;
+    const missed = ticket.fields[FIELDS.cadenceMissed];
+    const cadence = typeof missed === 'number'
+      ? Math.min(missed, CADENCE_MISS_CAP)
+      : 0;
+
+    return weight + ack + cadence;
+  }, 0);
 }
 
 /**

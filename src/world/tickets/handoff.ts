@@ -120,6 +120,11 @@ const NOT_WORK: ReadonlySet<string> = new Set<string>([
   HELPDESK_ACTIONS.ticketAddWorknote,
   HELPDESK_ACTIONS.ticketRecordTouch,
   HELPDESK_ACTIONS.ticketRecordResponse,
+  // The contract settler's stamps (E9, 0.37.0): a recorded miss is a fact
+  // about the desk's silence, and silence is the one thing that cannot be
+  // "what was tried".
+  HELPDESK_ACTIONS.ticketRecordAckMiss,
+  HELPDESK_ACTIONS.ticketRecordCadenceMiss,
   // Reading the knowledge base is not something that was done to the fault,
   // and it is emphatically not contact with the reporter: a handoff listing
   // "linked an article" where L2 asked what happens when you power-cycle it is
