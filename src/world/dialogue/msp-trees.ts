@@ -2466,6 +2466,84 @@ const MORGAN: DialogueTree = {
   ],
 };
 
+/**
+ * Esme at PENNINGTON-ACCT, the co-managed accountancy with a written RACI (E9,
+ * 0.37.0). She runs the practice and she is not an IT person: what she knows is
+ * that Ledgerline will not open and that forty people are sitting on their
+ * hands, which is exactly as much as a practice manager should know.
+ *
+ * The tree is careful about one thing in particular. She never says "and you
+ * are allowed to fix it" and she never says you are not, because that is not
+ * hers to say and because the whole beat is that nobody will say it: the
+ * question of whose box PENN-SRV-01 is belongs to a document, and the answer is
+ * on the `reveal` where every other cause on this shelf lives. What she does
+ * say - twice, in her own words - is that Callum will want to know, which is
+ * the honest shape of the thing. The person who tells you to tell him is the
+ * one who has to work with him.
+ */
+const ESME: DialogueTree = {
+  id: 'dialogue/msp-esme',
+  speaker: MSP_IDS.penningtonContact,
+  tickets: ['ticket:pennington-practice-down'],
+  root: 'ledgerline',
+  roots: {
+    'ticket:pennington-practice-down': 'ledgerline',
+  },
+  resolved_roots: {
+    'ticket:pennington-practice-down': 'ledgerline-done',
+  },
+  nodes: [
+    {
+      id: 'ledgerline',
+      npc_line: 'Ledgerline will not open. Not for me, not for the seniors, not '
+        + 'for the two juniors who have been trying since half eight - it just '
+        + 'sits there. Nobody can put their time in and nobody can raise a bill, '
+        + 'and it is the Tuesday of a filing week.',
+      options: [
+        {
+          label: 'Ask whether Callum knows, and whether he is reachable',
+          next: 'ledgerline-callum',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the Ledgerline service on PENN-SRV-01',
+          effects: [
+            {
+              reveal: 'The Ledgerline service on PENN-SRV-01 is stopped - the '
+                + 'application is down, not the network and not anybody\'s '
+                + 'password. A restart brings it back and your account will do '
+                + 'it without an argument, because the MSP monitors that box '
+                + 'and holds an admin login on it. What the contract says is a '
+                + 'separate question: PENN-SRV-01 and the practice system on it '
+                + 'are Callum\'s under the RACI, so the move is to notify their '
+                + 'IT and then restart it. Nothing will stop you doing it the '
+                + 'other way round.',
+            },
+          ],
+        },
+        { label: 'Tell her you are looking at it now' },
+      ],
+    },
+    {
+      id: 'ledgerline-callum',
+      npc_line: 'Callum is at the Brightwater office until three and his phone '
+        + 'goes to voicemail in that building - it always has. He is very good, '
+        + 'and he is one man. He will see it, mind. He has that screen with the '
+        + 'graphs on it and he looks at it before he takes his coat off.',
+      options: [
+        { label: 'Leave their IT the heads-up, then restart the service' },
+      ],
+    },
+    {
+      id: 'ledgerline-done',
+      npc_line: 'It is back - people are logging their morning in now, and the '
+        + 'seniors have stopped standing behind me. Thank you. I will tell '
+        + 'Callum you were on it, though I dare say he will already know.',
+      options: [{ label: 'Log the restart' }],
+    },
+  ],
+};
+
 export const MSP_TREES: readonly DialogueTree[] = [
   NADIA,
   THEO,
@@ -2476,4 +2554,5 @@ export const MSP_TREES: readonly DialogueTree[] = [
   GRACE,
   ROSA,
   MORGAN,
+  ESME,
 ];

@@ -25,6 +25,9 @@ import {
   isServerRole,
   type MachineRole,
   machineRoleOf,
+  type RaciOwner,
+  RACI_OWNERS,
+  raciOwnerOf,
   type ServiceScope,
   SERVICE_SCOPES,
   serviceScopeOf,
@@ -176,11 +179,12 @@ export function scopeOfCustomer(
 
 /**
  * What the contract says about a REMEDIATION (any mutating action) aimed at a
- * machine of the given role.
+ * machine of the given role, and - at a co-managed customer - at a box the RACI
+ * map has an owner for.
  *
  * Every action the terminal dispatches is a remediation - reads never reach
- * here - so the verdict is a pure function of the scope and whether the target
- * is a server:
+ * here - so the verdict is a pure function of the scope, whether the target is
+ * a server, and which team the map hands the target to:
  *
  *  - monitoring_only: nothing may be fixed; the move is to escalate.
  *  - helpdesk: workstations and users, yes; servers, no.
@@ -189,16 +193,37 @@ export function scopeOfCustomer(
  *
  * `null` scope (no customer, or a customer with no readable contract) is
  * `allowed`: an in-house box has no contract to be out of.
+ *
+ * THE RACI SPLIT (E9, 0.37.0) is the third input, and it only ever means
+ * something under co_managed - the other three contracts have no second IT team
+ * for a map to divide the work with, so the owner is not read there at all:
+ *
+ *  - `msp`: the map gives this function to the provider. It is the desk's work
+ *    to do, so it is `allowed`, exactly as a fully-managed box is - a heads-up
+ *    about work the customer has contracted out is not coordination, it is
+ *    noise, and a wall in front of it would be a wall in front of the job.
+ *  - `internal`: the map gives it to the customer's own team - their
+ *    application, their box, their afternoon. The command is not refused, and
+ *    that is the point: `raci_internal` is ALLOWED WITH A CONSEQUENCE. Nothing
+ *    technical stops an MSP admin account restarting a service on a box it can
+ *    reach, and pretending otherwise would be the game inventing a permission
+ *    the estate does not have. What actually happens is the peer sysadmin finds
+ *    out afterwards, from his own monitoring, and says so. The refusal is
+ *    social and it is late, and the seam that stamps it is `cmd-run.ts`.
+ *  - absent: the map says nothing about this target, so the shipped co-managed
+ *    default stands - notify them first, then act.
  */
 export type ScopeVerdict =
   | 'allowed'
   | 'monitoring_only'
   | 'helpdesk_server'
-  | 'co_managed';
+  | 'co_managed'
+  | 'raci_internal';
 
 export function scopeVerdict(
   scope: ServiceScope | null,
   role: MachineRole | null,
+  raci: RaciOwner | null,
 ): ScopeVerdict {
   switch (scope) {
     case SERVICE_SCOPES.monitoringOnly:
@@ -209,11 +234,30 @@ export function scopeVerdict(
       // out of a helpdesk contract.
       return role !== null && isServerRole(role) ? 'helpdesk_server' : 'allowed';
     case SERVICE_SCOPES.coManaged:
-      return 'co_managed';
+      return raci === RACI_OWNERS.internal
+        ? 'raci_internal'
+        : raci === RACI_OWNERS.msp
+          ? 'allowed'
+          : 'co_managed';
     case SERVICE_SCOPES.fullyManaged:
     case null:
       return 'allowed';
   }
+}
+
+/**
+ * Which team the RACI map hands a MACHINE to, read defensively off the box.
+ *
+ * On the box rather than on the customer because that is the grain the real
+ * document works at: a co-managed RACI does not hand over "the estate", it
+ * hands over functions, and the boxes those functions run on are what a desk
+ * actually aims a verb at. A non-machine target (an account) has no entry in
+ * anybody's map and reads null, which is the co-managed default.
+ */
+export function raciOwnerOfMachine(
+  machine: Readonly<ReadOnlyGraphNode>,
+): RaciOwner | null {
+  return raciOwnerOf(machine.fields[FIELDS.raciOwner]);
 }
 
 /**
@@ -224,7 +268,13 @@ export function scopeVerdict(
  */
 export function scopeRefusalLines(verdict: ScopeVerdict): readonly string[] | null {
   switch (verdict) {
+    // The two that say nothing: an action the contract covers, and the wall
+    // that is not one. A box the RACI hands to the customer's own IT refuses
+    // NOTHING here, because nothing refuses it in life either - the cost of it
+    // arrives the next morning in their sysadmin's own words, which is a
+    // different thing from a permission and lives in `world/raci.ts`.
     case 'allowed':
+    case 'raci_internal':
       return null;
     case 'monitoring_only':
       return [
@@ -257,28 +307,30 @@ export function scopeRefusalLines(verdict: ScopeVerdict): readonly string[] | nu
  * The scope refusal for a remediation aimed at a resolved CUSTOMER, at the
  * given role, or null when the contract covers it (or there is no customer).
  *
- * The one decision both target paths share: a machine resolves a customer and a
- * server-or-not role, an account resolves a customer and a `null` role
- * (user-and-identity work, never a server). Reading the scope and turning the
- * verdict into the true sentence happens here, once.
+ * The one decision both target paths share: a machine resolves a customer, a
+ * server-or-not role and a RACI owner, an account resolves a customer, a `null`
+ * role (user-and-identity work, never a server) and a `null` owner (nobody's
+ * map has a line for an account). Reading the scope and turning the verdict
+ * into the true sentence happens here, once.
  */
 export function scopeRefusalForCustomer(
   graph: ReadOnlyGraphView,
   customerId: string | null,
   role: MachineRole | null,
+  raci: RaciOwner | null,
 ): readonly string[] | null {
   if (customerId === null) {
     return null;
   }
 
   const scope = scopeOfCustomer(graph, customerId);
-  return scopeRefusalLines(scopeVerdict(scope, role));
+  return scopeRefusalLines(scopeVerdict(scope, role, raci));
 }
 
 /**
  * The scope refusal for a remediation aimed at a machine, or null when the
- * contract covers it. Resolves the machine's customer and role and hands both
- * to the shared decision above.
+ * contract covers it. Resolves the machine's customer, role and RACI owner and
+ * hands all three to the shared decision above.
  */
 export function scopeRefusalForMachine(
   graph: ReadOnlyGraphView,
@@ -288,6 +340,7 @@ export function scopeRefusalForMachine(
     graph,
     customerIdOfMachine(machine),
     machineRoleOf(machine.fields[FIELDS.machineRole]),
+    raciOwnerOfMachine(machine),
   );
 }
 

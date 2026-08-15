@@ -623,6 +623,28 @@ export const WORLD_ACTIONS = {
    * what happens TO you on somebody else's timetable off a choice you made.
    */
   queueJumpFallout: 'world.queue_jump_fallout',
+  /**
+   * The record of a remediation done on a co-managed customer's OWN box without
+   * telling their IT (E9, 0.37.0).
+   *
+   * Not a refusal and not a punishment: the action it follows has already
+   * succeeded, because nothing in that estate was ever going to stop it. This
+   * is the WRITING DOWN - the trail on the box, and the minute the last one
+   * happened - and it is a world verb because the thing it records is a fact
+   * about somebody else's estate rather than a move the player chose to make.
+   */
+  raciViolation: 'world.raci_violation',
+  /**
+   * And the word that comes back (E9, 0.37.0): their sysadmin has read his own
+   * monitoring, seen the MSP on his box, and said so.
+   *
+   * A world verb the day driver settles at the next start of shift, exactly as
+   * it settles the compliance sweep and the privileged-access finding. It
+   * charges reputation rather than suspicion: nobody suspects anything - they
+   * know precisely what happened and who did it - and what it costs is standing
+   * with the other IT team on the account.
+   */
+  raciComplaint: 'world.raci_complaint',
 } as const;
 
 /**

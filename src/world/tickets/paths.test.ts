@@ -343,6 +343,10 @@ describe('shipped tickets', () => {
       'ticket:holloway-lockout',
       'ticket:arden-lockout-handback',
       'ticket:arden-portal-afterhours',
+      // The co-managed RACI's soft wall (E9, 0.37.0), dealt out of the MSP's
+      // surplus rather than off its authored week - see the entry in
+      // `spares/msp.ts` for the measurement that put it there.
+      'ticket:pennington-practice-down',
       // And the onboarding capstone (0.13.0): the discovery of a silently-failing
       // backup at the customer that signs mid-week, spawned into the estate the
       // onboarding event stands up.

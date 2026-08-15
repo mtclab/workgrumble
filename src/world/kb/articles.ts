@@ -1462,7 +1462,65 @@ export const KB_ARTICLES: readonly KbArticle[] = [
       + 'through a change request their IT signs off, which is the same '
       + 'coordination with a bigger paper trail.',
     ],
-    see_also: ['kb/co-managed-raci', 'kb/the-restart-nobody-does'],
+    see_also: [
+      'kb/co-managed-raci',
+      'kb/co-managed-application-ownership',
+      'kb/the-restart-nobody-does',
+    ],
+  },
+  {
+    id: 'kb/co-managed-application-ownership',
+    title: 'Co-managed: the box you CAN touch and should not',
+    summary: 'Where the RACI gives an application to the customer\'s own IT, '
+      + 'your credentials still reach it. Nothing stops you. Tell them first '
+      + 'anyway - they find out either way, and the difference is only whether '
+      + 'you were the one who said it.',
+    state: 'published',
+    issue: 'A line-of-business application at a co-managed customer has fallen '
+      + 'over, the fix is a service restart, and the box it runs on is one the '
+      + 'RACI hands to their own IT. The restart works. Nothing refuses it, no '
+      + 'permission is missing, and there is no error to read - which is '
+      + 'exactly why this article exists.',
+    environment: 'A co-managed customer with a written RACI: a document that '
+      + 'names, function by function, which team is responsible for what. The '
+      + 'usual split gives the MSP infrastructure monitoring, patching, the '
+      + 'security stack and the end-user help desk, and keeps application '
+      + 'ownership, the custom systems and on-site work with the customer\'s '
+      + 'own team. The MSP holds an admin account regardless, because it '
+      + 'monitors the box.',
+    resolution: [
+      'Check the RACI before the box, not after it. "Can I reach it" and "is it '
+        + 'mine" are two different questions, and on a co-managed account only '
+        + 'the second one is about the contract.',
+      'If the function is theirs, notify their IT first ("notify <target>"), '
+        + 'then do the work if it still needs doing. For anything with a real '
+        + 'blast radius, a change request with their sysadmin as the sign-off '
+        + 'is the same courtesy with a signature on it.',
+      'If it is out of hours and their one IT person is not answering, do the '
+        + 'work and tell them anyway - the notify is a record, not a request '
+        + 'for permission, and a heads-up filed at nine at night is still a '
+        + 'heads-up. What is never right is doing it and saying nothing.',
+    ],
+    cause: [
+      'A RACI divides responsibility; it does not divide credentials. The MSP '
+      + 'monitors the estate, so the MSP has an admin account on the estate, so '
+      + 'every box on it is technically reachable - including the ones the '
+      + 'document says are somebody else\'s. The wall is a written agreement '
+      + 'between two teams, and a written agreement is not enforced by an '
+      + 'access-denied.',
+      'Their IT manager finds out regardless. He runs monitoring on his own '
+      + 'application: a service that stopped and started again is on his '
+      + 'dashboard before he has finished his coffee, with the account name '
+      + 'that did it beside it. The only thing your silence changes is whether '
+      + 'he heard it from you or from a graph - and a peer who has to ask "who '
+      + 'was on my server last night" is a peer who starts checking.',
+      'That is the whole cost, and it is worth being precise about it: nothing '
+      + 'breaks, no contract is voided, and the ticket closed. What you spend '
+      + 'is standing with the other IT department on the account - the one '
+      + 'whose opinion of the MSP is the renewal conversation - and you spend '
+      + 'it to save the fifteen seconds that telling him would have taken.',
+    ],
+    see_also: ['kb/co-managed-coordination', 'kb/co-managed-raci'],
   },
   {
     id: 'kb/xray-sensor-not-detected',

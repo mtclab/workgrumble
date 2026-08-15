@@ -449,6 +449,57 @@ export const MAIL_THREADS: readonly MailThread[] = [
     ],
   },
   /**
+   * The other IT department, the morning after (E9, 0.37.0).
+   *
+   * The whole of the co-managed RACI's soft wall, delivered the only way a soft
+   * wall can be: as a mail from a man who found out on his own. It is gated on
+   * PENN-SRV-01's `raci_complained_at`, so it exists exactly when the day
+   * driver has settled the complaint - and never at all for a player who
+   * notified him first, because nothing stamped the box.
+   *
+   * He is not angry and he does not threaten anything, and that is deliberate:
+   * he is a peer rather than a manager, he has no lever to pull, and the cost
+   * is precisely that a competent colleague now checks. The one thing he says
+   * plainly is the thing the mechanic is about - the restart was right, and he
+   * would have said yes.
+   */
+  {
+    id: 'mail/raci-unannounced',
+    subject: 'PENN-SRV-01 - who was on my box yesterday?',
+    employer: MSP,
+    arrival: {
+      node: MSP_IDS.penningtonServer,
+      field: FIELDS.raciComplainedAt,
+    },
+    messages: [
+      {
+        id: 'mail/raci-unannounced#1',
+        from: MSP_IDS.penningtonSysadmin,
+        tick: 0,
+        body: [
+          'Morning. Ledgerline went down and came back yesterday and I found '
+          + 'out from my own graphs - service stopped, service started, your '
+          + 'admin account against it. Nobody rang me and there was nothing in '
+          + 'my inbox.',
+          'To be clear, because I do not want this read as a complaint about '
+          + 'the work: the restart was the right call and I would have said yes '
+          + 'in four seconds. Esme was right to ring you and you were right to '
+          + 'fix it. I am not asking anybody to have waited.',
+          'It is my box. Not in a possessive way - in the sense that the RACI '
+          + 'we both signed puts the practice system on my side of the line, so '
+          + 'when the partners ask me on Thursday why billing stopped for '
+          + 'twenty minutes on Tuesday, I am the one who answers, and yesterday '
+          + 'I could not have. That is the whole of it.',
+          'You have an admin account on that server because you monitor it. I '
+          + 'know there is nothing stopping you, and I am not going to start '
+          + 'taking your access off over a service restart - that would be a '
+          + 'worse arrangement for both of us. Just tell me. A line in a ticket '
+          + 'is fine. I will keep reading the graphs either way.',
+        ],
+      },
+    ],
+  },
+  /**
    * The compliance report that read the estate overnight (E6, 0.28.0).
    *
    * The other half of `setenforce 0`: it worked, it worked instantly, and it is

@@ -107,6 +107,7 @@ import {
 import { socialEngineeringDue, staleLogonsDue } from '../world/fallout';
 import { legendaryRevertDue } from '../world/legendary';
 import { OVERRIDE_RISK_ACCEPTANCE, overrideFalloutDue } from '../world/override';
+import { raciComplaintDue, raciPeerOf } from '../world/raci';
 import { recertFollowUpDue } from '../world/recert';
 import {
   selinuxAuditDue,
@@ -2852,6 +2853,12 @@ export class DayDriver implements DayApi {
     // that notices a box somebody left in permissive mode. Same rail, same
     // reason it is here and not at last night's clock-off.
     this.settleSelinuxAudit();
+    // And the third overnight read (E9, 0.37.0): the co-managed peer who has
+    // been through his own monitoring and found the MSP on a box the RACI says
+    // is his. Same rail and the same reason for the timing - his morning is
+    // when he reads it, and a complaint that arrived while the desk was still
+    // typing would be a permission wearing a mail's clothes.
+    this.settleRaciComplaint();
     // The project's two morning beats (E10, 0.29.0), in this order. The scream
     // test FIRST, because it is a consequence of yesterday and the kickoff is a
     // thing that happens today - and because a morning that is quiet has to be
@@ -4247,6 +4254,51 @@ export class DayDriver implements DayApi {
           + 'account it was.',
         );
       }
+    }
+  }
+
+  /**
+   * The peer sysadmin's complaint landing (E9, 0.37.0) - the whole cost of the
+   * co-managed RACI's soft wall, and the reason it is a wall at all.
+   *
+   * The same conditional-dispatch shape as `settleSecurityFallout` and
+   * `settleSelinuxAudit`: the world decides whether there is a consequence
+   * (`raciComplaintDue` - his box, touched unannounced, a night gone by, not
+   * yet answered for), the verb applies the charge and the latch, and this
+   * writes the notice. Nothing here decides anything, which is what lets a save
+   * and a replay land on the same morning.
+   *
+   * The notice names the man and the box, because that is the entire content of
+   * the mechanic: what a co-managed customer buys with a RACI is a colleague on
+   * the other side of it, and what he does when you go round him is not lock
+   * you out - it is know. The mail from him is in the inbox by the time this is
+   * read, hung off the same stamp the verb writes.
+   */
+  private settleRaciComplaint(): void {
+    for (const box of raciComplaintDue(this.engine.graph, this.engine.now())) {
+      const peer = raciPeerOf(this.engine.graph, box);
+      const result = this.engine.dispatch(
+        WORLD_ACTIONS.raciComplaint,
+        this.actor,
+        box,
+        {},
+      );
+
+      if (!result.ok) {
+        continue;
+      }
+
+      const name = peer === null
+        ? 'Their IT manager'
+        : String(peer.fields[FIELDS.name] ?? 'Their IT manager');
+
+      this.handlers.onNotice?.(
+        'The other IT team has been in touch',
+        `${name} has read his overnight monitoring and found the MSP on `
+        + `${this.hostnameOf(box)} - his box under the RACI - with nobody `
+        + 'having told him. Nothing was blocked and nothing was broken; he is '
+        + 'simply the man whose application it is, and he found out afterwards.',
+      );
     }
   }
 

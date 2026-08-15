@@ -4007,6 +4007,27 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'arrives on. Nobody presses it and nobody can: it is somebody upstream '
     + 'reading a report, and what the player meets is the notice and the mail '
     + 'it puts in their inbox (walked as cmd.setenforce).',
+  // The co-managed RACI's two (E9, 0.37.0). Neither is a button and neither
+  // can be: one is the terminal writing down what a player has just been
+  // allowed to do, the other is another company's IT manager reading his own
+  // monitoring the next morning. What the player meets is the mail from him
+  // and the notice above it; the whole arc - restart, stamp, complaint, charge
+  // - is driven through the real terminal and the real day driver in
+  // `shell/raci-teeth.test.ts`, which is a second day and so out of the browser
+  // walk's reach.
+  [WORLD_ACTIONS.raciViolation]: 'The record of a remediation done on a '
+    + 'co-managed customer\'s own box with nobody told - their sysadmin\'s box '
+    + 'under the RACI, which the MSP\'s account reaches anyway. Nobody presses '
+    + 'it: the terminal dispatches it AFTER the action it is about has already '
+    + 'succeeded, because the whole of this wall is that it refuses nothing. '
+    + 'What it writes is the trail on the box and the minute of the last one.',
+  [WORLD_ACTIONS.raciComplaint]: 'The other IT team getting in touch: the '
+    + 'customer\'s own IT manager has read his overnight monitoring, found the '
+    + 'MSP on a box the RACI gives to him, and said so. Settled by the day '
+    + 'driver at the next start of shift - the same rail the compliance sweep '
+    + 'arrives on - and it charges reputation, because nobody suspects '
+    + 'anything: he knows exactly what happened and thinks less of the desk '
+    + 'that did not mention it. The player meets the notice and his mail.',
   [DAY_ACTIONS.reviewMatrixRead]: 'Somebody scoring the selection pool in the '
     + 'minute before the conversation, in a week where a round is being '
     + 'decided. The day loop dispatches it; the player has been reading the '

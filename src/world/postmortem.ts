@@ -65,6 +65,13 @@ export const BANNED_NAMES: readonly string[] = [
   // blameless record naming MARLOWE-STUDIO's manager is exactly what the ban
   // is for, and the customer can be identified by its estate.
   'Rosa', 'Marlowe', 'Corin', 'Adeyemi', 'Luca', 'Vasquez',
+  // The co-managed accountancy (E9, 0.37.0), and the one entry on this list
+  // who is not the MSP's customer at all: Callum runs the OTHER IT department
+  // on that account. A blameless record is about a system rather than a
+  // person whichever payroll the person is on, and a peer sysadmin's name in
+  // one would be the worst version of it - so both halves of his go here
+  // beside the practice manager's.
+  'Esme', 'Roe', 'Callum', 'Vance',
 ];
 
 /** One matcher per banned name, whole-word and case-insensitive, built once. */
