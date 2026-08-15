@@ -15,7 +15,7 @@
  */
 
 import type { ReadOnlyGraphNode } from '../engine-api';
-import { FIELDS } from './fields';
+import { FIELDS, slaTierOf } from './fields';
 import {
   dayForTick,
   dayOpensTick,
@@ -370,7 +370,12 @@ export function arrivalsBetween(
  *
  * - `arrived`: spawned in this day.
  * - `closed`: RESOLVED in this day, whichever day it arrived on.
- * - `breached`: went red in this day, same.
+ * - `breached`: went red in this day ON A CLOCK THAT BINDS - which since D4
+ *   (0.37.1) means an in-house ticket. An external tier's resolution target
+ *   is contractual best effort; what its contract binds is the acknowledgment
+ *   and the update cadence, and those bill through the meters' contract
+ *   stamps. Counting a tiered resolution breach here fined the player a
+ *   "service credit" for missing a clock the pane truthfully calls a goal.
  * - `stillOpen`: arrived on or before this day and was not resolved before it
  *   ended - which is the one number that is a fact about a MOMENT rather than
  *   about an interval, so it is measured at the day's own close.
@@ -486,7 +491,9 @@ export function dayLedger(
   return {
     arrived: ticketsArrivedOn(tickets, day).length,
     closed: ticketsResolvedOn(tickets, day).length,
-    breached: ticketsBreachedOn(tickets, day).length,
+    breached: ticketsBreachedOn(tickets, day)
+      .filter((ticket) => slaTierOf(ticket.fields[FIELDS.customerSlaTier]) === null)
+      .length,
     stillOpen: ticketsOpenAtCloseOf(tickets, day).length,
   };
 }

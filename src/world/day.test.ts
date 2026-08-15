@@ -424,6 +424,17 @@ describe('the day scorecard', () => {
       state: 'open',
       breached: false,
     }),
+    // A tiered breach beside the in-house ones (D4, 0.37.1): its resolution
+    // clock is best effort, so the LEDGER - the payslip's and the review's
+    // number - must not count it. It still shows in "still open", because
+    // going red never made anything stop being somebody's problem.
+    ticket('ticket:external', {
+      spawned_at: 70,
+      state: 'breached',
+      breached: true,
+      breached_at: 410,
+      sla_tier: 'gold',
+    }),
   ];
 
   /**
@@ -438,19 +449,22 @@ describe('the day scorecard', () => {
     // being somebody's problem by going red, and a day with breaches on it
     // that reports nothing still open is a day telling a story about itself.
     expect(dayLedger(tickets, 1)).toEqual({
-      arrived: 5,
+      arrived: 6,
       closed: 2,
+      // Two, NOT three: the gold ticket's deadline also ran out today, and a
+      // clock the contract calls a goal cannot fine anybody - revert the
+      // ledger's tier filter and this is the assertion that goes red.
       breached: 2,
-      stillOpen: 3,
+      stillOpen: 4,
     });
     expect(dayLedger(tickets, 2)).toEqual({
       arrived: 1,
       closed: 0,
       breached: 0,
-      // Yesterday's three unfixed ones are still unfixed, and today's arrival
+      // Yesterday's four unfixed ones are still unfixed, and today's arrival
       // joins them: "open at the close" is about the whole queue, not about
       // one day's cohort.
-      stillOpen: 4,
+      stillOpen: 5,
     });
     expect(dayLedger([], 1)).toEqual({
       arrived: 0,

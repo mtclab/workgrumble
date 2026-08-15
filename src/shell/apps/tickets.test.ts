@@ -7,6 +7,8 @@ import { FIELDS } from '../../world/fields';
 import { createWorldSession } from '../../world/session';
 import { prioritySourceOf } from '../../world/sla';
 import { spawnWorldTicket } from '../../world/tickets';
+import { DayDriver, TICK_INTERVAL_MS } from '../day-driver';
+import { carryForStart } from '../start';
 import {
   breachedTicketCount,
   prioritySourceLine,
@@ -229,5 +231,41 @@ describe('the VIP row names whose flag it is (E9, 0.37.0)', () => {
     expect(line).toContain('Raised on behalf of Roland Cushing-Vane');
     expect(line).toContain('keys off who it is FOR, not who typed it');
     expect(line).not.toContain('The caller is on the VIP list');
+  });
+});
+
+describe('the source line refuses to credit the matrix for numbers it never made', () => {
+  it('names the disagreement on a mis-filed audit ticket (0.37.1)', () => {
+    // The marketing spooler is filed impact 1 / urgency 3 / P4; the matrix
+    // cell for (1,3) is P3. The senior's whole queue is this shape, and the
+    // pane used to assert the opposite on exactly these tickets.
+    const session = createWorldSession(carryForStart('sd_senior'));
+    const driver = new DayDriver(
+      session.engine,
+      COMPANY_IDS.player,
+      session.seed,
+      {
+        onDayBoundary: () => {},
+        openSlackApps: () => [],
+        focusedSlackApp: () => null,
+      },
+      undefined,
+      session.week,
+      session.channels,
+    );
+    driver.startShift();
+    driver.setSpeed(1);
+
+    for (let minute = 0; minute < 340 && driver.state() === 'shift'; minute += 1) {
+      driver.step(TICK_INTERVAL_MS);
+    }
+
+    const spooler = session.engine.graph.getNode('ticket:audit-marketing-spooler');
+    expect(spooler).toBeDefined();
+    expect(prioritySourceOf(spooler!)).toBe('off_matrix');
+    expect(prioritySourceLine('off_matrix')).toContain('does not follow');
+
+    // And a number the matrix DID make keeps its sentence.
+    expect(prioritySourceLine('impact')).toContain('came out of the matrix');
   });
 });

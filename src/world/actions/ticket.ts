@@ -371,6 +371,29 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
     apply: [
       { op: 'set_waiting', node: TARGET, waiting: false },
       { op: 'clear_field', node: TARGET, field: FIELDS.holdReason },
+      // The cadence clock's parked minutes are excused minutes (0.37.1): the
+      // due-read skips a parked ticket but its watermark stood still, so the
+      // whole park landed as one minute's "silence" on the way back - two
+      // windows charged for doing what the hold rules ask. Moving the
+      // counted-to watermark to the unpark minute writes the park off, the
+      // same statement held_ticks makes for the resolution clock. Tier-guarded
+      // like every cadence write: an in-house ticket must not grow the field.
+      {
+        op: 'when',
+        cond: not({
+          pred: 'field_missing',
+          node: TARGET,
+          field: FIELDS.customerSlaTier,
+        }),
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.cadenceCountedTo,
+            value: { now: true },
+          },
+        ],
+      },
     ],
   },
   {

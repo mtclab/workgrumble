@@ -171,4 +171,49 @@ describe('the contract settler', () => {
 
     void rigged;
   });
+
+  it('writes the park off - waiting minutes are excused, not banked (0.37.1)', () => {
+    const rigged = rig();
+    rigged.driver.startShift();
+    runMinutes(rigged, 90);
+
+    expect(rigged.session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketClassify,
+      COMPANY_IDS.player,
+      TARGET,
+      { impact: 2, urgency: 2, priority: priorityFor(2, 2) },
+    )).toEqual({ ok: true });
+    // A question first - the CYA rule wants words before a park.
+    expect(rigged.session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketAddComment,
+      COMPANY_IDS.player,
+      TARGET,
+      { comment: 'Which matter were you in when it refused you?' },
+    )).toEqual({ ok: true });
+    expect(rigged.session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketSetWaiting,
+      COMPANY_IDS.player,
+      TARGET,
+      {},
+    )).toEqual({ ok: true });
+
+    const node = () => rigged.session.engine.graph.getNode(TARGET)!;
+    const parkedWith = cadenceMissesOn(node());
+
+    // Park across several would-be windows; a parked ticket owes nothing.
+    runMinutes(rigged, 150);
+    expect(cadenceMissesOn(node())).toBe(parkedWith);
+
+    expect(rigged.session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketClearWaiting,
+      COMPANY_IDS.player,
+      TARGET,
+      {},
+    )).toEqual({ ok: true });
+
+    // The measured bug: one minute after the unpark, the whole park landed
+    // as silence. The write-off must hold it exactly where it stood.
+    runMinutes(rigged, 3);
+    expect(cadenceMissesOn(node())).toBe(parkedWith);
+  });
 });

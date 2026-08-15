@@ -102,7 +102,12 @@ function rig(): Rig {
     graph: session.engine.graph,
     appState,
     day: driver,
-    dispatch: (id, actor, target, params) => session.engine.dispatch(
+    // THE SHIPPED PATH, not the raw engine (0.37.1). The first rig wired
+    // straight at engine.dispatch, and the hole that shipped through it was
+    // exact: the RACI stamp rode DayDriver.dispatch in the real shell, where
+    // it counted as WORK - one keystroke stung every Away reporter twice.
+    // A rig that claims to drive the real terminal drives the real dispatch.
+    dispatch: (id, actor, target, params) => driver.dispatch(
       id,
       actor,
       target,

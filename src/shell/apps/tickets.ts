@@ -189,6 +189,12 @@ export function prioritySourceLine(source: PrioritySource): string | null {
     return null;
   }
 
+  if (source === 'off_matrix') {
+    return 'The number does not follow from the recorded cell - the two '
+      + 'dropdowns below disagree with it. Somebody\'s arithmetic, not the '
+      + 'matrix\'s; the audit queue exists for exactly this.';
+  }
+
   return source === 'self_declared'
     ? 'The number on this one is the reporter\'s own claim - nothing has been '
       + 'triaged yet, and the desk treats an unread claim as P3.'

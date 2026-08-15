@@ -12,7 +12,7 @@
  * functions over readable state, all of it.
  */
 
-import { HELPDESK_ACTIONS } from '../actions/ids';
+import { HELPDESK_ACTIONS, WORLD_ACTIONS } from '../actions/ids';
 
 /** One line of the "what I tried" list, as it goes onto the form. */
 export interface TriedEntry {
@@ -125,6 +125,11 @@ const NOT_WORK: ReadonlySet<string> = new Set<string>([
   // "what was tried".
   HELPDESK_ACTIONS.ticketRecordAckMiss,
   HELPDESK_ACTIONS.ticketRecordCadenceMiss,
+  // The RACI stamp (0.37.1): bookkeeping about the act that just succeeded,
+  // riding the same player dispatch as that act - so counting it as WORK
+  // made one keystroke two acts, and an Away dot stung every waiting
+  // reporter twice in a minute. The record of a thing is never the thing.
+  WORLD_ACTIONS.raciViolation,
   // Reading the knowledge base is not something that was done to the fault,
   // and it is emphatically not contact with the reporter: a handoff listing
   // "linked an article" where L2 asked what happens when you power-cycle it is

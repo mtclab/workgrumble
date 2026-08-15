@@ -17,8 +17,10 @@ import { serviceDeadline, serviceMinutesBetween } from './day';
 import type { ReadOnlyGraphNode } from '../engine-api';
 import { FIELDS, type SlaTier, slaTierOf } from './fields';
 import {
+  isLevel,
   isPriority,
   type Priority,
+  priorityFor,
   type SlaTarget,
   tierTargetsFor,
 } from './priority';
@@ -145,7 +147,7 @@ function ticketPriority(
  * which ladder is running. Adding it here would be completing an enum by its
  * shape rather than by what the levers do.
  */
-export type PrioritySource = 'impact' | 'vip' | 'self_declared';
+export type PrioritySource = 'impact' | 'vip' | 'self_declared' | 'off_matrix';
 
 export function prioritySourceOf(
   node: Readonly<ReadOnlyGraphNode>,
@@ -154,7 +156,30 @@ export function prioritySourceOf(
     return 'vip';
   }
 
-  return isPriority(node.fields[FIELDS.priority]) ? 'impact' : 'self_declared';
+  const priority = node.fields[FIELDS.priority];
+
+  if (!isPriority(priority)) {
+    return 'self_declared';
+  }
+
+  // Claiming "the matrix made this number" without asking the matrix was the
+  // review's sharpest catch (0.37.1): the senior's whole audit queue is
+  // filings whose number does NOT follow from the recorded cell, and the
+  // pane asserted it did on exactly those tickets. When both halves of the
+  // cell are on the node and disagree with the number, the honest source is
+  // that somebody's arithmetic was not the table's.
+  const impact = node.fields[FIELDS.impact];
+  const urgency = node.fields[FIELDS.urgency];
+
+  if (
+    isLevel(impact)
+    && isLevel(urgency)
+    && priorityFor(impact, urgency) !== priority
+  ) {
+    return 'off_matrix';
+  }
+
+  return 'impact';
 }
 
 /**
