@@ -57,6 +57,7 @@ import {
   VIP_DEVICE_EXCEPTION,
   VIP_EARBUDS_TICKET,
   VIP_LEDGER_TICKET,
+  VIP_SHADOW_EARBUDS_TICKET,
   VIP_TABLET_TICKET,
 } from '../vip';
 import type { Expr } from '../../engine-api';
@@ -1318,6 +1319,116 @@ const FINANCE_LEDGER_LOCKOUT: WorldTicket = {
 };
 
 /**
+ * The SHADOW VIP (E9, 0.37.0): the immaculate ticket, for nothing at all.
+ *
+ * Denise types it, and Denise is not on the list. Roland is, and it is his
+ * problem - so the flag lands on it exactly as if he had come down himself,
+ * because a VIP rule that read the typist would be a rule any executive's office
+ * could turn off by having somebody else press the keys. That is the half of the
+ * real behaviour the collision did not show, and the whole reason this ticket
+ * exists: the priority on the queue row is P2, the fault is a pair of earbuds in
+ * a travel bag, and the only thing that put the two together is a name that is
+ * not the reporter's.
+ *
+ * THE JOKE IS THE WORKMANSHIP. This is the best-written ticket in the game -
+ * numbered repro steps, timestamps, charge levels, the model number, the two
+ * things she has already tried - and it is about one earbud that will not pair
+ * for a man with another pair on his desk. It is not a trap and it is not a
+ * punishment for reading it: the report is genuinely good, the fault is
+ * genuinely there, a reset genuinely fixes it, and closing it is genuinely worth
+ * something. What is wrong with it is the arithmetic somewhere above the desk
+ * that put it at P2.
+ *
+ * The Friday morning slot is deliberate. Thursday's collision has already
+ * happened by then, so a second earbuds ticket the day after reads as the
+ * running joke it is - and it is a DIFFERENT device, so nobody can close it by
+ * having fixed the first pair.
+ */
+const EA_EARBUDS_AGAIN: WorldTicket = {
+  arrival: 'drip',
+  nodes: [HALCYON_IDS.ceoSpareEarbuds],
+  // She is the last person in this building who would call anything critical,
+  // and she still has to write down that it is for the board dinner. The truth
+  // is what it was on Thursday: the bottom of the ladder.
+  claimed_urgency: 2,
+  true_urgency: 1,
+  // The name the flag is read off. Roland is on the list; Denise, who typed
+  // every word of this, is not.
+  beneficiary: HALCYON_IDS.ceo,
+  def: {
+    id: VIP_SHADOW_EARBUDS_TICKET,
+    archetype: 'read_the_screen',
+    flavor: {
+      title: 'Halcyon: right earbud will not pair (raised by Denise, for Roland)',
+      body:
+        'Good morning, and apologies for another one of these.\n'
+        + '\n'
+        + 'Device: Roland\'s travel earbuds, Aurelian A2-Pro, serial ending '
+        + '4471. Not the pair from yesterday\'s ticket - these live in his '
+        + 'bag.\n'
+        + '\n'
+        + 'What happens: the LEFT earbud connects to his laptop and plays '
+        + 'audio. The RIGHT one shows a white light for about four seconds and '
+        + 'then goes out, and the laptop never lists it. I have reproduced it '
+        + 'four times, at 08:12, 08:19, 08:24 and 08:31 this morning.\n'
+        + '\n'
+        + 'Already tried: (1) both earbuds back in the case for two minutes, '
+        + 'lid closed - no change. (2) Removed the pairing on his laptop and '
+        + 'added it again - the right one does not appear in the list to be '
+        + 'added. Charge is 100% on the case, 96% left and 94% right, so it is '
+        + 'not that. Nothing was dropped and nothing has been near water.\n'
+        + '\n'
+        + 'He is at the board dinner this evening and would like them working '
+        + 'before he leaves at four. I am at my desk all day and can bring them '
+        + 'down whenever suits you - please just say the word. Thank you.',
+    },
+    // The typist, and it is the whole point that she is nobody special: the
+    // flag on this ticket does not come from her.
+    reporter: HALCYON_IDS.ea,
+    // The same fault as the first pair and arriving with the ticket, like
+    // every other in this roster: one earbud holding a pairing it will not
+    // hand back.
+    setup: [
+      {
+        op: 'setField',
+        id: HALCYON_IDS.ceoSpareEarbuds,
+        field: FIELDS.wedged,
+        value: true,
+      },
+    ],
+    resolved_when: {
+      op: 'eq',
+      selector: { id: HALCYON_IDS.ceoSpareEarbuds },
+      field: FIELDS.wedged,
+      value: false,
+    },
+    sla_ticks: UNTRIAGED_SLA_TICKS,
+    reward: { reputation: 1 },
+    kb_ref: KB_VIP_TIER,
+  },
+  cause: 'The right earbud is holding a stale pairing and will not release it, '
+    + 'which is what the first pair was doing and what earbuds do. A reset '
+    + 'clears it in half a minute. Everything Denise wrote is accurate and '
+    + 'everything she tried was the right thing to try; the report is better '
+    + 'than most incident write-ups in this building. It is still one earbud, '
+    + 'belonging to one man, and it is a P2 because of whose bag it lives in.',
+  dialogue_ref: 'dialogue/halcyon-denise',
+  paths: [
+    {
+      id: 'reset-the-travel-earbuds',
+      app: 'directory',
+      label: 'Reset the travel earbuds and pair them again',
+      steps: [
+        {
+          action: HELPDESK_ACTIONS.devicePowerCycle,
+          target: HALCYON_IDS.ceoSpareEarbuds,
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * The shadow-IT tail (E8, 0.26.0): the executive's personal tablet, with the
  * company's mail on it.
  *
@@ -1490,6 +1601,10 @@ export const CORPORATE_TICKETS: readonly WorldTicket[] = [
   CEO_EARBUDS,
   FINANCE_LEDGER_LOCKOUT,
   CEO_PERSONAL_TABLET,
+  // And the shadow VIP behind all three (E9, 0.37.0): the assistant's ticket,
+  // forced by the executive's flag because the flag keys off whoever the ticket
+  // is FOR.
+  EA_EARBUDS_AGAIN,
   // And the pool (E11, 0.34.0 slice 2), in this list because the gates that
   // stand a world up per employer read it to pick the estate.
   ...POOL_CORPORATE_TICKETS,

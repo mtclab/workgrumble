@@ -103,6 +103,15 @@ pub struct TicketDef {
     /// times. `false` stamps nothing, so every ticket that came before this
     /// carries exactly the fields it always did.
     pub vip: bool,
+    /// Who the ticket is FOR, where that is not who typed it (E9, 0.37.0).
+    ///
+    /// A display line - a name and a job title - rather than a node reference,
+    /// which is what the field already means where the audit queue writes it.
+    /// Stamped onto the ticket node at spawn like `sla_tier` and `vip`, and for
+    /// the same reason: the flag beside it was decided off this person, so the
+    /// ticket has to be able to say whose ticket it actually is. `None` is the
+    /// ordinary case - somebody raising their own problem - and stamps nothing.
+    pub beneficiary: Option<String>,
     /// The definition exactly as it arrived, for `serialize`.
     pub raw: Json,
 }
@@ -213,6 +222,15 @@ impl TicketDef {
             Some(_) => return refuse!("Ticket vip must be a boolean."),
         };
 
+        // Who it is FOR (E9, 0.37.0), optional and a non-empty string: the VIP
+        // flag beside it was read off this person, so a blank one would be a
+        // ticket claiming to be on somebody's behalf without saying whose.
+        let beneficiary = match object.get("beneficiary") {
+            None | Some(Json::Null) => None,
+            Some(Json::String(line)) if !line.trim().is_empty() => Some(line.clone()),
+            Some(_) => return refuse!("Ticket beneficiary must be a non-empty string."),
+        };
+
         Ok(Self {
             id: id.to_owned(),
             reporter: reporter.to_owned(),
@@ -221,6 +239,7 @@ impl TicketDef {
             sla_ticks,
             sla_tier,
             vip,
+            beneficiary,
             raw: value.clone(),
         })
     }
@@ -544,6 +563,31 @@ mod tests {
         assert_eq!(
             TicketDef::parse(&wrong).expect_err("refused").message(),
             "Ticket vip must be a boolean.",
+        );
+    }
+
+    #[test]
+    fn parses_and_refuses_the_beneficiary() {
+        // A line rides through to the struct, so spawn can stamp whose ticket
+        // this actually is beside the flag that was read off them.
+        let mut behalf = valid_def();
+        behalf["beneficiary"] = json!("Roland Cushing-Vane, Chief Executive Officer");
+        assert_eq!(
+            TicketDef::parse(&behalf).expect("valid").beneficiary,
+            Some("Roland Cushing-Vane, Chief Executive Officer".to_owned()),
+        );
+
+        // Absent is the ordinary case: somebody raising their own problem.
+        assert_eq!(TicketDef::parse(&valid_def()).expect("valid").beneficiary, None);
+
+        // A blank one is refused rather than stamped: the flag was decided off
+        // this person, so a ticket that names nobody is a ticket whose priority
+        // nobody can account for.
+        let mut blank = valid_def();
+        blank["beneficiary"] = json!("   ");
+        assert_eq!(
+            TicketDef::parse(&blank).expect_err("refused").message(),
+            "Ticket beneficiary must be a non-empty string.",
         );
     }
 

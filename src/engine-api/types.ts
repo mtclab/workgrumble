@@ -271,6 +271,15 @@ export interface TicketDef {
    */
   vip?: boolean;
   /**
+   * Who the ticket is FOR (E9, 0.37.0), where that is not the reporter, stamped
+   * onto the ticket node at spawn the way `vip` is - and stamped beside it,
+   * because on a ticket raised on somebody else's behalf the flag above was
+   * read off THIS person. A display line (a name, a job title) rather than a
+   * node id, which is what the field already means where the audit queue writes
+   * it. Absent is the ordinary case: somebody reporting their own problem.
+   */
+  beneficiary?: string;
+  /**
    * What closing it is worth, and it is worth REPUTATION only.
    *
    * There used to be a `money` beside it, from 5 to 30 per ticket, and nothing

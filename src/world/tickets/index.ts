@@ -541,14 +541,17 @@ export function spawnWorldTicket(
 
 /**
  * The ticket def as it goes to the engine: the customer's tier folded in
- * (0.12.0), and then the caller's VIP flag (E8, 0.26.0).
+ * (0.12.0), then who the ticket is FOR (E9, 0.37.0), then the caller's VIP flag
+ * (E8, 0.26.0) - and in that order, because the flag is read off the person the
+ * fold before it named.
  *
- * Both are facts about WHO the ticket is for rather than about what broke, both
- * are resolved once at spawn off a graph that already holds them, and both are
- * stamped onto the ticket node so nothing downstream has to re-derive them. An
- * ordinary in-house ticket from an ordinary reporter passes through untouched -
- * same object, same `sla_ticks`, no `sla_tier`, no `vip` - which is why every
- * ticket written before either existed spawns byte-identically.
+ * All three are facts about WHO the ticket is for rather than about what broke,
+ * all three are resolved once at spawn off a graph that already holds them, and
+ * all three are stamped onto the ticket node so nothing downstream has to
+ * re-derive them. An ordinary in-house ticket from an ordinary reporter passes
+ * through untouched - same object, same `sla_ticks`, no `sla_tier`, no
+ * `beneficiary`, no `vip` - which is why every ticket written before any of them
+ * existed spawns byte-identically.
  *
  * Exported because the CLOCK a ticket lands with is settled here and nowhere
  * else, and anything reasoning about deadlines off the authored `sla_ticks` is
@@ -562,7 +565,51 @@ export function defForSpawn(
   graph: ReadOnlyGraphView,
   now: number,
 ): TicketDef {
-  return defForVip(defForTier(entry, graph, now), entry, graph);
+  return defForVip(
+    defForBeneficiary(defForTier(entry, graph, now), entry, graph),
+    entry,
+    graph,
+  );
+}
+
+/**
+ * Who the ticket is FOR, folded into the def (E9, 0.37.0).
+ *
+ * The roster names a PERSON; what goes onto the ticket is the line that person
+ * reads as - their name and their job title, off the estate. Resolved here
+ * rather than authored beside the id for the same reason the tier is: the
+ * estate already holds it, and a second copy in the content is a second answer
+ * that can go stale the day somebody is promoted.
+ *
+ * The id is the fallback when the world has no such person, which is the honest
+ * one: it says exactly as much as is known. It is not reachable in the shipped
+ * roster - the load-time gate refuses a beneficiary who is not in the estate -
+ * and it keeps a bare-world test from stamping an empty line.
+ */
+function defForBeneficiary(
+  def: TicketDef,
+  entry: WorldTicket,
+  graph: ReadOnlyGraphView,
+): TicketDef {
+  const { beneficiary } = entry;
+
+  if (beneficiary === undefined) {
+    return def;
+  }
+
+  const name = graph.getField(beneficiary, FIELDS.name);
+  const title = graph.getField(beneficiary, FIELDS.title);
+
+  if (typeof name !== 'string' || name.length === 0) {
+    return { ...def, beneficiary };
+  }
+
+  return {
+    ...def,
+    beneficiary: typeof title === 'string' && title.length > 0
+      ? `${name}, ${title}`
+      : name,
+  };
 }
 
 /**
@@ -580,13 +627,25 @@ export function defForSpawn(
  * VIP caller at a customer would get that customer's tier crossed with the forced
  * priority rather than a second ladder invented here. Nobody flagged sits at a
  * customer today; the coherence is free and the alternative is two tables.
+ *
+ * IT KEYS OFF THE BENEFICIARY (E9, 0.37.0). Where a ticket is raised on
+ * somebody's behalf, the flag that matters is theirs and not the typist's -
+ * which is the rule the real product has, the lesson the audit queue bills a
+ * junior for getting wrong (`audit.ts`), and, until this, the one thing the
+ * spawn seam itself did not do. An assistant who is not on the list files for
+ * an executive who is, and the ticket is forced exactly as if he had typed it.
+ * With nobody named it is the reporter's own flag, as it always was, which is
+ * every ticket written before this one.
  */
 function defForVip(
   def: TicketDef,
   entry: WorldTicket,
   graph: ReadOnlyGraphView,
 ): TicketDef {
-  const forced = vipForcedPriority(graph, entry.def.reporter);
+  const forced = vipForcedPriority(
+    graph,
+    entry.beneficiary ?? entry.def.reporter,
+  );
 
   if (forced === null) {
     return def;

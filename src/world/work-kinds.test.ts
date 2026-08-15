@@ -100,7 +100,11 @@ describe('the shipped weeks, measured', () => {
     workgrumble: { access: 8, device: 8, server: 7, project: 0 },
     bodgeworth: { access: 1, device: 2, server: 2, project: 0 },
     msp: { access: 8, device: 5, server: 9, project: 0 },
-    corporate: { access: 5, device: 2, server: 2, project: 0 },
+    // Halcyon's device column went from two to three when the shadow VIP was
+    // added to the Friday (E9, 0.37.0): a reset on a pair of earbuds is device
+    // work whoever it is for, and the flag that forces its priority has nothing
+    // to say about what kind of job it is.
+    corporate: { access: 5, device: 3, server: 2, project: 0 },
   };
 
   it.each(EMPLOYER_IDS)('%s deals the mix its row is measured from', (id) => {

@@ -203,7 +203,16 @@ describe('shipped tickets', () => {
       // asserted here, across the WHOLE roster, so it is also the proof that no
       // other ticket moved: every reporter but one is off the list, and every one
       // of their deadlines is the number it was.
-      const forced = vipForcedPriority(session.engine.graph, entry.def.reporter);
+      // And since 0.37.0 the flag is read off whoever the ticket is FOR, where
+      // it names somebody: the assistant's ticket for the executive lands on his
+      // budget rather than on hers, which is the rule the audit rung bills a
+      // junior for missing. Everything that names nobody is the reporter's own
+      // flag, as it always was - which is what makes this line the proof that
+      // the change moved exactly one ticket.
+      const forced = vipForcedPriority(
+        session.engine.graph,
+        entry.beneficiary ?? entry.def.reporter,
+      );
       // And a PROJECT TASK (E10, 0.29.0) keeps the date it was PLANNED with,
       // whichever customer it is for: the tier ladder answers "how fast is a
       // fault of theirs answered", which is not a question anybody asked about
@@ -439,6 +448,9 @@ describe('shipped tickets', () => {
       'ticket:halcyon-ceo-earbuds',
       'ticket:halcyon-finance-ledger',
       'ticket:halcyon-ceo-tablet',
+      // And the shadow VIP (E9, 0.37.0): the assistant's immaculate ticket for
+      // the executive's other earbuds, forced by his flag rather than by hers.
+      'ticket:halcyon-ea-earbuds-again',
       // And Halcyon's pool (E11, 0.34.0 slice 2): the housekeeping the
       // governance is supposed to produce and does not - a morning where no
       // name resolves, a fortnight's cover with no end date, an account that

@@ -41,9 +41,12 @@ import {
   holdReasonOf,
   isHoldReason,
   needsResponse,
+  prioritySourceOf,
   ticketClocks,
 } from './sla';
 import { WORLD_TICKETS } from './tickets';
+import { HALCYON_IDS } from './corporate-company';
+import { VIP_EARBUDS_TICKET, VIP_FORCED_PRIORITY } from './vip';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -765,5 +768,80 @@ describe('a customer\'s SLA tier sets the clock', () => {
     expect(after.resolution.dueAt).toBe(parked.resolution.dueAt + 30);
     expect(after.heldTicks).toBe(30);
     expect(after.response.dueAt).toBe(parked.response.dueAt);
+  });
+});
+
+/* -- which lever moved the number (E9, 0.37.0) ---------------------------- */
+
+/**
+ * `prioritySourceOf`, three ways, on three real tickets.
+ *
+ * The pane prints one sentence off this, and the sentence is a claim about the
+ * world rather than a label: a number nobody has triaged is the reporter's own
+ * opinion, a number the matrix produced is the desk's, and a forced one is
+ * neither. So it is driven on the shipped worlds through the shipped classify
+ * verb - the answer has to change because the WORLD changed, not because a test
+ * wrote a field.
+ *
+ * TEETH: the VIP case is asserted AFTER an honest low/low triage has been filed
+ * and accepted. Read the priority field instead of the flag and that case
+ * answers "impact" - the pane would then be telling the player that the nine
+ * cells made a P2 out of low impact and low urgency, which they cannot.
+ */
+describe('which lever put the priority on the ticket', () => {
+  it('is the reporter\'s own claim while nobody has triaged it', () => {
+    const world = harness();
+
+    expect(world.clocks().priority).toBeNull();
+    expect(prioritySourceOf(world.node())).toBe('self_declared');
+  });
+
+  it('is the matrix once somebody has filed a cell', () => {
+    const world = harness();
+    world.act(HELPDESK_ACTIONS.ticketClassify, {
+      impact: 1,
+      urgency: 1,
+      priority: 4,
+    });
+
+    expect(world.clocks().priority).toBe(4);
+    expect(prioritySourceOf(world.node())).toBe('impact');
+  });
+
+  it('is the flag on a VIP ticket, before and after a triage is filed', () => {
+    const { engine } = createWorldSession({
+      farmFund: 0,
+      attempt: 1,
+      arcWeek: 1,
+      employer: 'corporate',
+    });
+    spawnWorldTicket(engine, VIP_EARBUDS_TICKET);
+
+    const node = (): ReadOnlyGraphNode => {
+      const found = engine.graph.getNode(VIP_EARBUDS_TICKET);
+
+      if (found === undefined) {
+        throw new Error('The corporate world has no earbuds ticket.');
+      }
+
+      return found;
+    };
+
+    expect(prioritySourceOf(node())).toBe('vip');
+
+    // The honest triage of a pair of earbuds, filed and accepted. The number on
+    // the ticket does not move, because the flag is what set it - and the pane
+    // has to keep saying so, or it starts crediting the matrix with a cell the
+    // matrix never produced.
+    expect(engine.dispatch(
+      HELPDESK_ACTIONS.ticketClassify,
+      HALCYON_IDS.player,
+      VIP_EARBUDS_TICKET,
+      { impact: 1, urgency: 1, priority: 4 },
+    )).toEqual({ ok: true });
+
+    expect(ticketClocks(node(), engine.now()).priority)
+      .toBe(VIP_FORCED_PRIORITY);
+    expect(prioritySourceOf(node())).toBe('vip');
   });
 });

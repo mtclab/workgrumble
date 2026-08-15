@@ -241,6 +241,17 @@ export const HALCYON_IDS = {
    */
   ceoEarbuds: 'device:halcyon-ceo-earbuds',
   /**
+   * And the SECOND pair, the ones that live in his travel bag (E9, 0.37.0).
+   *
+   * A node of its own rather than the pair above because two live tickets
+   * watching one device would close on a single reset - the ticket the assistant
+   * files on Friday would be the Thursday one wearing a different title, and the
+   * beat is that it is a genuinely separate, genuinely trivial fault. Owned by
+   * the same man, so the impact walk reads exactly what it reads for the first
+   * pair: one person, and the bottom of the ladder.
+   */
+  ceoSpareEarbuds: 'device:halcyon-ceo-earbuds-travel',
+  /**
    * The company-issue phone: MANAGED, enrolled in MDM, and the contrast the
    * shadow-IT ticket is built on. The desk can push a mail profile to this in one
    * dispatch, which is what makes the tablet beside it legible as a problem.
@@ -701,8 +712,10 @@ export function halcyonSetup(): readonly SetupOp[] {
 }
 
 /**
- * The VIP tier's estate (E8, 0.26.0) - the exec's three devices and the ledger
- * four people cannot get into.
+ * The VIP tier's estate (E8, 0.26.0) - the exec's devices and the ledger four
+ * people cannot get into. There are four of them since 0.37.0: the travel
+ * earbuds are the shadow-VIP beat's own fault, and they are a separate device
+ * because they are a separate problem.
  *
  * STANDING, like the recert and legendary estates: the earbuds are paired and
  * behaving, both mail profiles are working, the ledger is running and its service
@@ -713,9 +726,10 @@ export function halcyonSetup(): readonly SetupOp[] {
  * The one thing seeded that is not scenery is ENROLMENT: the company-issue phone
  * carries `mdmEnrolled`, the personal tablet does not, and that difference - a
  * standing fact of the estate, not something a ticket sets up - is the whole of
- * why one of them can be fixed from a console and the other cannot. The earbuds
- * hang off the CEO's laptop and every one of the three is OWNED by him, which is
- * what the impact walk reads: one man, one desk, no blast radius at all.
+ * why one of them can be fixed from a console and the other cannot. Both pairs
+ * of earbuds hang off the CEO's laptop and every one of the four devices is
+ * OWNED by him, which is what the impact walk reads: one man, one desk, no blast
+ * radius at all.
  *
  * The ledger is the other side of the collision. Four ACCOUNTS are wired to it -
  * the CFO, the finance business partner, the AP clerk and the office manager -
@@ -733,6 +747,12 @@ function seedVipEstate(ops: SetupOp[]): void {
     {
       id: HALCYON_IDS.ceoEarbuds,
       name: 'Roland\'s wireless earbuds',
+      type: DEVICE_TYPES.earbuds,
+      wiredTo: HALCYON_IDS.ceoLaptop,
+    },
+    {
+      id: HALCYON_IDS.ceoSpareEarbuds,
+      name: 'Roland\'s travel earbuds (the second pair)',
       type: DEVICE_TYPES.earbuds,
       wiredTo: HALCYON_IDS.ceoLaptop,
     },

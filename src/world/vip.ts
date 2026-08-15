@@ -65,6 +65,21 @@ export const VIP_LEDGER_TICKET = 'ticket:halcyon-finance-ledger';
 /** The shadow-IT tail (slice 3): the exec's unmanaged tablet with company mail. */
 export const VIP_TABLET_TICKET = 'ticket:halcyon-ceo-tablet';
 
+/**
+ * The SHADOW VIP (E9, 0.37.0): the same trivial fault, typed by somebody who is
+ * not on the list, for somebody who is.
+ *
+ * The half of the real rule the collision did not show. A VIP list covers the
+ * executive AND the people who file for him, because the flag keys off WHO THE
+ * TICKET IS FOR rather than off who typed it - so the assistant's immaculate
+ * ticket about a pair of earbuds is forced to P2 exactly like the exec's own,
+ * and nothing on the face of it says why. It is named here beside the other
+ * three because the week that deals it, the conversation that answers it and
+ * the gate that proves the flag came off the beneficiary all have to agree
+ * about which ticket it is.
+ */
+export const VIP_SHADOW_EARBUDS_TICKET = 'ticket:halcyon-ea-earbuds-again';
+
 /** The documented exception the unmanaged device is closed with. */
 export const VIP_DEVICE_EXCEPTION = 'changereq:halcyon-unmanaged-tablet';
 
