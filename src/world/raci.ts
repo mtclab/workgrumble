@@ -32,7 +32,7 @@
 
 import type { ReadOnlyGraphNode, ReadOnlyGraphView } from '../engine-api';
 import { changeRequestAuthorises } from './change-request';
-import { isCoordinated } from './coordination';
+import { coordinationCovers } from './coordination';
 import {
   customerIdOfMachine,
   raciOwnerOfMachine,
@@ -63,6 +63,54 @@ export function isInternallyOwned(
 }
 
 /**
+ * Whether their IT has been told about this box RECENTLY ENOUGH for this touch
+ * (0.37.1) - the freshness the RACI read applies to a coordination notice, and
+ * the reason it is here rather than in `isCoordinated`.
+ *
+ * `isCoordinated` asks whether a notice for this target exists at all, which is
+ * the right question for the SCOPE PRE-FLIGHT: there the notice is a permission
+ * being consulted before a refusal, and a permission does not evaporate. Here
+ * it is a courtesy, and a courtesy has a shelf life. Without one, the first
+ * `notify` a player ever typed on a box bought permanent silence on it: every
+ * unannounced touch of that server for the rest of the run read as coordinated,
+ * no trail was written, the peer never wrote, and the documented second
+ * complaint was unreachable for anybody who had ever done the right thing once.
+ *
+ * The cut is the honest one and it is the day: a heads-up covers the day it was
+ * given. That is what the heads-up SAYS - somebody is on your box this
+ * evening - and it is what their sysadmin would take it to mean when he reads
+ * his graphs tomorrow and finds a change he was told about last Tuesday. The
+ * second clause is the same rule read against the box's own history: a notice
+ * older than the last unannounced touch on it cannot be the word about this
+ * one.
+ *
+ * Scoped deliberately to this read. Nothing about the pre-flight moves, so a
+ * co-managed target the map says nothing about still refuses and still clears
+ * on a notice of any age - that wall is about contract scope rather than about
+ * whether a colleague was told this morning.
+ */
+function coordinatedForNow(
+  graph: ReadOnlyGraphView,
+  machine: Readonly<ReadOnlyGraphNode>,
+  targetId: string,
+  now: number,
+): boolean {
+  const violated = machine.fields[FIELDS.raciViolatedAt];
+  const today = dayForTick(now);
+
+  return graph.nodesOfKind('coordination').some((node) => {
+    const filed = node.fields[FIELDS.coordNotifiedAt];
+
+    if (!coordinationCovers(node, targetId) || typeof filed !== 'number') {
+      return false;
+    }
+
+    return dayForTick(filed) === today
+      && (typeof violated !== 'number' || filed > violated);
+  });
+}
+
+/**
  * The `verb@tick` line a violation goes onto the trail as.
  *
  * Built by the CALLER in the minute the action was dispatched and appended by
@@ -80,7 +128,8 @@ export function raciViolationLine(verb: string, tick: number): string {
  *
  * "Told them" is either of the two things that count as telling them, and it
  * has to be both or the mechanic punishes the honest player. A COORDINATION
- * NOTICE for this exact target is the heads-up (`notify <target>`). An
+ * NOTICE for this exact target, given today, is the heads-up (`notify
+ * <target>`) - see `coordinatedForNow` for why the day is on it. An
  * APPROVED, IN-WINDOW CHANGE REQUEST for this exact (target, verb) is the same
  * heads-up with their sysadmin's signature on it - heavier, slower, and if
  * anything more correct - so a desk that went through the change process and
@@ -103,7 +152,7 @@ export function raciViolationDue(
     return false;
   }
 
-  if (isCoordinated(graph, targetId)) {
+  if (coordinatedForNow(graph, machine, targetId, now)) {
     return false;
   }
 

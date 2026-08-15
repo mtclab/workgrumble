@@ -2498,7 +2498,7 @@ const ESME: DialogueTree = {
       npc_line: 'Ledgerline will not open. Not for me, not for the seniors, not '
         + 'for the two juniors who have been trying since half eight - it just '
         + 'sits there. Nobody can put their time in and nobody can raise a bill, '
-        + 'and it is the Tuesday of a filing week.',
+        + 'and it is a filing week.',
       options: [
         {
           label: 'Ask whether Gil knows, and whether he is reachable',
@@ -2544,6 +2544,69 @@ const ESME: DialogueTree = {
   ],
 };
 
+/**
+ * Gil Farrant, who does not work for you and files nothing (0.37.1).
+ *
+ * The one man in the MSP's contact list who is a PEER rather than a customer:
+ * an IT department of one on the other side of a co-managed RACI, with an
+ * admin account of his own, a monitoring dashboard he actually reads, and no
+ * ticket he could raise if he wanted to. So this tree has no `tickets` and no
+ * reveal in it - it is the Facilities shape, a person who is in the world and
+ * is not a queue - and every word he says is about the boundary rather than
+ * about a fault.
+ *
+ * It exists because he already TALKS: he writes the mail when somebody has
+ * been on his box, and he has a line about your status dot in the presence
+ * chatter. Both of those are delivered into a chat thread, and a chat thread
+ * is opened against a tree, so a Gil with no tree was a Gil whose remark could
+ * never be said out loud. The gate in `presence.ts` now refuses that shape
+ * outright.
+ */
+const GIL: DialogueTree = {
+  id: 'dialogue/msp-gil',
+  speaker: MSP_IDS.penningtonSysadmin,
+  tickets: [],
+  root: 'peer',
+  nodes: [
+    {
+      id: 'peer',
+      npc_line: 'Gil Farrant, Pennington. I am not ringing about anything - I '
+        + 'have nothing to raise and if I did I would have fixed it. I answer '
+        + 'to the partners here and you answer to whoever you answer to, and '
+        + 'in between us there is a document neither of us wrote.',
+      options: [
+        {
+          label: 'Ask how he wants the boundary handled in practice',
+          next: 'boundary',
+        },
+        {
+          label: 'Ask what he is watching on that dashboard',
+          next: 'graphs',
+        },
+        { label: 'Leave him to it' },
+      ],
+    },
+    {
+      id: 'boundary',
+      npc_line: 'Tell me. That is the whole of it. The server and the practice '
+        + 'system are mine on the RACI and the desks and the monitoring are '
+        + 'yours, and none of that stops your account doing anything, because '
+        + 'a signed document is not an access list. If it needs doing out of '
+        + 'hours and I am not answering, do it and leave me a line. I have '
+        + 'never once said no to a restart.',
+      options: [{ label: 'Say you will send the line either way' }],
+    },
+    {
+      id: 'graphs',
+      npc_line: 'Services, disk, the backup job, and whether Ledgerline is '
+        + 'answering. Four screens, one man, and I look at them before I take '
+        + 'my coat off. It is not sophisticated. It does mean I find out about '
+        + 'my own estate on my own estate, which I would rather do from you.',
+      options: [{ label: 'Tell him the graphs are more than most places have' }],
+    },
+  ],
+};
+
 export const MSP_TREES: readonly DialogueTree[] = [
   NADIA,
   THEO,
@@ -2555,4 +2618,5 @@ export const MSP_TREES: readonly DialogueTree[] = [
   ROSA,
   MORGAN,
   ESME,
+  GIL,
 ];

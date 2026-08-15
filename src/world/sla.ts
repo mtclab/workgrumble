@@ -141,6 +141,16 @@ function ticketPriority(
  * verb. A fourth stored field would be a second answer to one question, and the
  * two would disagree the first time a triage was re-filed.
  *
+ * AND `self_declared` HERE IS NOT THE RESEARCH'S `self_declared`, which is a
+ * drift worth naming rather than leaving for somebody to "finish". The
+ * customer-type research (Tier B, `docs/research/titles-customer-types.md`)
+ * uses the word for a customer whose own stated priority is TAKEN AS the
+ * priority - the everything-is-urgent client, whose claim is what the queue
+ * runs on. This value is the opposite situation: the claim has been recorded
+ * and has moved nothing, and the number on the screen is the desk's untriaged
+ * default. If the research's meaning is ever wanted it is a fourth value with
+ * a different name, not a re-reading of this one.
+ *
  * THE CONTRACT TIER IS NOT ONE OF THESE, and it looks like it should be. A
  * customer's tier moves the CLOCK the number is measured against, not the number
  * itself: a Gold P3 and a Bronze P3 are both P3, and the pane's own tier row says

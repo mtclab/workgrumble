@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import type { SetupOp } from '../engine-api';
 import { companySetup } from './company';
+import { FIELDS } from './fields';
 import { ARC_WEEKS, EMPLOYER_ARC, seasonlessArc } from './pressure';
 import {
   EMPLOYER_IDS,
@@ -134,5 +136,159 @@ describe('the employer registry', () => {
     // coherently been at.
     expect(nextEmployerAfter('a-shop-that-does-not-exist'))
       .toBe(nextEmployerAfter(FIRST_EMPLOYER));
+  });
+});
+
+/**
+ * Who is who, across all four buildings (0.37.1).
+ *
+ * The Directory app prints and searches usernames, and mail, dialogue and the
+ * audit all print display names, so an identity that collides or that belongs
+ * to somebody else is a lie the player reads directly. Three of them have
+ * shipped: two people who ended up with the same display name in two estates,
+ * and an IT manager called Gil Farrant logging in as `cvance` - the login of a
+ * first-line junior who works at a different company in a different city.
+ *
+ * None of the three is catchable by a content review of one file, because each
+ * is a fact about a PAIR of files. They are catchable here, where every shop's
+ * seed is in one place, so this is where they get forbidden as a class.
+ */
+interface EstateIdentities {
+  /** Account node id -> the login on it. */
+  readonly usernames: ReadonlyMap<string, string>;
+  /** Person node id -> the name everything prints. */
+  readonly people: ReadonlyMap<string, string>;
+  /** Account node id -> the person who owns it, where anybody does. */
+  readonly holders: ReadonlyMap<string, string>;
+}
+
+function identitiesOf(ops: readonly SetupOp[]): EstateIdentities {
+  const usernames = new Map<string, string>();
+  const people = new Map<string, string>();
+  const holders = new Map<string, string>();
+
+  for (const op of ops) {
+    if (op.op === 'addNode') {
+      const login = op.node.fields[FIELDS.username];
+      const name = op.node.fields[FIELDS.name];
+
+      if (typeof login === 'string') {
+        usernames.set(op.node.id, login);
+      }
+
+      if (op.node.kind === 'person' && typeof name === 'string') {
+        people.set(op.node.id, name);
+      }
+    }
+
+    if (op.op === 'addEdge' && op.edge.kind === 'owns'
+      && op.edge.to.startsWith('account:')) {
+      holders.set(op.edge.to, op.edge.from);
+    }
+  }
+
+  return { usernames, people, holders };
+}
+
+/**
+ * The one login in the estate that is a nickname rather than a name, and is
+ * meant to be: Barry Coker has been Baz to everyone at Bodgeworth since before
+ * the domain existed, and his login says so. Named here rather than allowed by
+ * a looser rule, so that adding a second one is a deliberate line in a test
+ * rather than a shrug.
+ */
+const NICKNAME_LOGINS: ReadonlyMap<string, string> = new Map([
+  ['account:baz', 'Barry Coker'],
+]);
+
+/**
+ * Whether a login is one the person it is on could actually have been given:
+ * first-initial-plus-surname (the house convention - `eroe`, `gfarrant`), or
+ * their first name or a short form of it (`pat`, `vernon`, `trev`), optionally
+ * with the `-ext` suffix the corporate estate hangs on a contractor.
+ */
+function loginSuitsHolder(username: string, personName: string): boolean {
+  const login = username.toLowerCase().replace(/-ext$/, '');
+  const parts = personName.toLowerCase().split(/\s+/).filter((p) => p !== '');
+  const first = (parts[0] ?? '').replace(/[^a-z]/g, '');
+  const surname = (parts.at(-1) ?? '').replace(/[^a-z]/g, '');
+
+  if (parts.length > 1 && login === `${first.slice(0, 1)}${surname}`) {
+    return true;
+  }
+
+  return login.length >= 3 && first.startsWith(login);
+}
+
+describe('identity across the estates', () => {
+  it('gives every login to exactly one person, estate by estate and across them', () => {
+    const seen = new Map<string, { holder: string; where: string }>();
+
+    for (const employer of EMPLOYER_IDS) {
+      const { usernames, holders } = identitiesOf(employerFor(employer).setup());
+      const inEstate = new Set<string>();
+
+      for (const [account, login] of usernames) {
+        // Within one building a login is a login: two accounts answering to
+        // the same string is the thing a domain itself refuses.
+        expect(inEstate.has(login), `${employer}/${account}`).toBe(false);
+        inEstate.add(login);
+
+        // Across buildings it may repeat only when it is the SAME human -
+        // which it is exactly once, because Pat carries from job to job and
+        // keeps being Pat. Anybody else reusing a login is two people wearing
+        // one name in a game that prints both.
+        const holder = holders.get(account) ?? account;
+        const prior = seen.get(login);
+
+        expect(prior?.holder ?? holder, `${login} at ${employer}, ${prior?.where ?? ''}`)
+          .toBe(holder);
+        seen.set(login, { holder, where: `${employer}/${account}` });
+      }
+    }
+  });
+
+  it('puts a login on the person it belongs to', () => {
+    for (const employer of EMPLOYER_IDS) {
+      const { usernames, people, holders } = identitiesOf(
+        employerFor(employer).setup(),
+      );
+
+      for (const [account, login] of usernames) {
+        const holder = holders.get(account);
+
+        // Accounts nobody owns are the shared and service ones - the office
+        // login at Bodgeworth, the two service accounts at Halcyon - and a
+        // person's name is not what those are named after.
+        if (holder === undefined) {
+          continue;
+        }
+
+        const name = people.get(holder);
+        expect(name, `${employer}/${account}`).toBeDefined();
+
+        const nickname = NICKNAME_LOGINS.get(account);
+        expect(
+          nickname === name || loginSuitsHolder(login, name ?? ''),
+          `${employer}/${account}: "${login}" is not ${name ?? '?'}'s login`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('gives every person their own name, across the estates', () => {
+    const named = new Map<string, string>();
+
+    for (const employer of EMPLOYER_IDS) {
+      for (const [id, name] of identitiesOf(employerFor(employer).setup()).people) {
+        // Same name, same person: Pat is in all four buildings under one node
+        // id. Two different ids under one name is the collision that has
+        // shipped twice, and it reads as one person being in two places.
+        const prior = named.get(name);
+
+        expect(prior ?? id, `${name} at ${employer}`).toBe(id);
+        named.set(name, id);
+      }
+    }
   });
 });

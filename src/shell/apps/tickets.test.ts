@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ReadOnlyGraphNode } from '../../engine-api';
 import { HELPDESK_ACTIONS } from '../../world/actions';
+import { cadenceIntervalFor } from '../../world/cadence';
 import { COMPANY_IDS } from '../../world/company';
 import { FIELDS } from '../../world/fields';
 import { createWorldSession } from '../../world/session';
@@ -11,6 +12,7 @@ import { DayDriver, TICK_INTERVAL_MS } from '../day-driver';
 import { carryForStart } from '../start';
 import {
   breachedTicketCount,
+  cadenceLine,
   prioritySourceLine,
   type TicketRow,
   ticketRows,
@@ -189,16 +191,34 @@ describe('the row that says which lever set the priority', () => {
     return found;
   };
 
-  it('calls an untriaged number the reporter\'s own claim, and a triaged one '
+  /**
+   * The untriaged sentence says two things and they used to contradict each
+   * other (0.37.1): it called the number on the screen the reporter's claim,
+   * two rows under a badge reading "Untriaged (treated as P3)" - the desk's
+   * default, which is what the number actually is. The claim is a thing the
+   * reporter made and nobody has read; the number is the desk's, until
+   * somebody triages it. Both facts are true and they are different facts.
+   */
+  it('calls an untriaged number the desk\'s default, and a triaged one '
     + 'the matrix\'s', () => {
     const session = createWorldSession();
     spawnWorldTicket(session.engine, FAN_TICKET);
 
-    expect(prioritySourceLine(prioritySourceOf(nodeOf(session, FAN_TICKET))))
-      .toBe(
-        'The number on this one is the reporter\'s own claim - nothing has '
-        + 'been triaged yet, and the desk treats an unread claim as P3.',
-      );
+    const untriaged = prioritySourceLine(
+      prioritySourceOf(nodeOf(session, FAN_TICKET)),
+    );
+
+    expect(untriaged).toBe(
+      'The reporter made a claim about how urgent this is and nobody has '
+      + 'read it yet. The number above is not that claim - it is the desk\'s '
+      + 'default for anything untriaged, and it stands until somebody '
+      + 'triages this one.',
+    );
+    // The badge two rows up says the same thing in three words, and the
+    // sentence may never disagree with it.
+    expect(untriaged).toContain('untriaged');
+    expect(untriaged).toContain('default');
+    expect(untriaged).not.toContain('The number on this one is the reporter');
 
     expect(session.engine.dispatch(
       HELPDESK_ACTIONS.ticketClassify,
@@ -217,6 +237,65 @@ describe('the row that says which lever set the priority', () => {
   it('says nothing of its own on a VIP ticket, because the row above it '
     + 'already has', () => {
     expect(prioritySourceLine('vip')).toBeNull();
+  });
+});
+
+/**
+ * The update-cadence row, and the addition it used to leave to the player
+ * (0.37.1).
+ *
+ * It printed the promised gap and the windows already missed. Turning that
+ * into "when does silence start costing me" needs the anchor, the count, and
+ * a calendar that skips a night and an hour of lunch - so in practice nobody
+ * did it and everybody found out afterwards. The row now says the minute.
+ */
+describe('the update-cadence row', () => {
+  const CADENCE_TICKET = 'ticket:fontaine-matter-access';
+  /** A silver P3's promise, off the table in `world/cadence.ts`. */
+  const SILVER_P3 = 120;
+
+  it('says when this window closes, and moves it when words re-anchor', () => {
+    // The MSP's Monday deals this one itself, so it is already in the world.
+    const session = createWorldSession(carryForStart('systems_engineer'));
+
+    const node = (): Readonly<ReadOnlyGraphNode> => {
+      const found = session.engine.graph.getNode(CADENCE_TICKET);
+      if (found === undefined) {
+        throw new Error(`${CADENCE_TICKET} is not in the world.`);
+      }
+      return found;
+    };
+
+    expect(session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketClassify,
+      COMPANY_IDS.player,
+      CADENCE_TICKET,
+      { impact: 2, urgency: 2, priority: 3 },
+    )).toEqual({ ok: true });
+    expect(cadenceIntervalFor('silver', 3)).toBe(SILVER_P3);
+
+    // The ticket arrived on the minute the world opened, so its first window
+    // is two DESK hours after the shift starts at nine: eleven o'clock, said
+    // as a time rather than as a sum for the reader to do.
+    const line = cadenceLine(node(), SILVER_P3);
+
+    expect(line).toContain('An update every 2h');
+    expect(line).toContain('This window closes at 11:00.');
+    expect(line).not.toContain('of silence');
+
+    // Words to the reporter re-anchor the window, and the row says so - the
+    // whole point of printing a minute rather than a gap. Said at ten, so the
+    // next window is two desk hours from ten rather than from nine.
+    session.engine.advance(120);
+    expect(session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketReplyToReporter,
+      COMPANY_IDS.player,
+      CADENCE_TICKET,
+      { comment: 'The matter list is rebuilding - I will come back to you.' },
+    )).toEqual({ ok: true });
+
+    expect(cadenceLine(node(), SILVER_P3))
+      .toContain('This window closes at 12:00.');
   });
 });
 

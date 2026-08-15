@@ -654,6 +654,19 @@ export const WORLD_ACTIONS = {
    * with the other IT team on the account.
    */
   raciComplaint: 'world.raci_complaint',
+  /**
+   * The date on his FIRST letter (0.37.1) - a stamp, and nothing else.
+   *
+   * Bookkeeping in the `ticket.record_ack_miss` mould: it writes one watermark,
+   * it refuses to write it twice, and it charges nothing. The complaint verb
+   * above cannot do this job itself, because it is the verb that has to fire
+   * again on a second violation - the repeat is the mechanic - and everything
+   * it writes therefore moves. The inbox needs the one fact that does not.
+   *
+   * Dispatched by the day driver in the same breath as the complaint, and
+   * REFUSED on every morning after the first, which is the point of it.
+   */
+  raciFirstComplaint: 'world.raci_first_complaint',
 } as const;
 
 /**

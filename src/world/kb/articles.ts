@@ -1388,20 +1388,26 @@ export const KB_ARTICLES: readonly KbArticle[] = [
   {
     id: 'kb/co-managed-raci',
     title: 'Co-managed: hand the user resets back to their own helpdesk',
-    summary: 'On a co-managed contract, day-to-day user support is the '
-      + 'customer\'s internal IT. A routine reset that lands in the MSP queue is '
-      + 'handed back, not double-handled.',
+    summary: 'On this co-managed contract, day-to-day user support is the '
+      + 'customer\'s internal IT. That is what their RACI says; another one says '
+      + 'the opposite. Read the map, then hand it back rather than '
+      + 'double-handle it.',
     state: 'published',
     issue: 'A routine daytime user issue - a lockout, a password reset - reaches '
       + 'the MSP queue from a co-managed customer, often because a user mailed '
       + 'the wrong address, and the instinct is to just fix it.',
     environment: 'A co-managed MSP customer that keeps its own internal IT team. '
-      + 'A RACI split divides the work: their team owns day-to-day user support, '
-      + 'the MSP owns servers, after-hours, and specialist or project work.',
+      + 'The RACI on this account divides the work as most of them do: their '
+      + 'team owns day-to-day user support, the MSP owns servers, after-hours, '
+      + 'and specialist or project work. Co-managed contracts that hand the '
+      + 'help desk the other way exist and are just as real; which one you are '
+      + 'on is a fact about the account, not about co-managed.',
     resolution: [
-      'Read who owns the work before you touch it. Under a co-managed RACI, '
-        + 'day-to-day user support - lockouts, resets, the ordinary desk stuff - '
-        + 'is the customer\'s internal team\'s responsibility, not the MSP\'s.',
+      'Read who owns the work before you touch it. Under the RACI on this '
+        + 'account, day-to-day user support - lockouts, resets, the ordinary '
+        + 'desk stuff - is the customer\'s internal team\'s responsibility, not '
+        + 'the MSP\'s. On an account whose document says otherwise the answer '
+        + 'is the other one, and the document is still where you get it.',
       'Do not just do it because you can. Resetting their user from the MSP side '
         + 'poaches their team\'s job and risks two desks acting on one account - '
         + 'the "I thought you had it" double-work the split exists to prevent.',
@@ -1412,14 +1418,18 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     cause: [
       'Co-managed is not fully-managed with extra steps: it is a genuine division '
       + 'of labour between two IT teams, written down as a RACI so both sides '
-      + 'know who is Responsible for what. Day-to-day user support sitting with '
-      + 'the customer\'s own team is the commonest split, and it is deliberate - '
-      + 'their people are on site and know the users.',
+      + 'know who is Responsible for what. There is no industry answer to who '
+      + 'gets the help desk - contracts are written both ways, and the mature '
+      + 'ones map every major function line by line precisely because the answer '
+      + 'is not obvious. Day-to-day user support sitting with the customer\'s '
+      + 'own team is the commonest of the two and it is the split on this '
+      + 'account, deliberately: their people are on site and know the users.',
       'When a user-support ticket lands in the MSP queue anyway, the value the '
-      + 'desk adds is knowing it is not theirs and routing it back, not quietly '
-      + 'fixing it. Two teams both resetting the same account is how people get '
-      + 'locked out twice and how the account of who did what falls apart, which '
-      + 'is precisely the failure the co-managed boundary is drawn to avoid.',
+      + 'desk adds is knowing whose it is and routing it accordingly, not '
+      + 'quietly fixing it on the assumption that reachable means yours. Two '
+      + 'teams both resetting the same account is how people get locked out '
+      + 'twice and how the account of who did what falls apart, which is '
+      + 'precisely the failure the co-managed boundary is drawn to avoid.',
     ],
     see_also: ['kb/co-managed-coordination', 'kb/msp-scope-escalation'],
   },
@@ -1484,10 +1494,14 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     environment: 'A co-managed customer with a written RACI: a document that '
       + 'names, function by function, which team is responsible for what. The '
       + 'usual split gives the MSP infrastructure monitoring, patching, the '
-      + 'security stack and the end-user help desk, and keeps application '
-      + 'ownership, the custom systems and on-site work with the customer\'s '
-      + 'own team. The MSP holds an admin account regardless, because it '
-      + 'monitors the box.',
+      + 'security stack and the after-hours alert response, and keeps '
+      + 'application ownership, the custom systems and on-site work with the '
+      + 'customer\'s own team. Everything else - the end-user help desk above '
+      + 'all - is written per contract and goes both ways in the trade, which '
+      + 'is the entire reason the document exists. On this account the '
+      + 'per-box owner marker in the estate is that document made mechanical: '
+      + 'it is the answer, and it is the one to read. The MSP holds an admin '
+      + 'account regardless, because it monitors the box.',
     resolution: [
       'Check the RACI before the box, not after it. "Can I reach it" and "is it '
         + 'mine" are two different questions, and on a co-managed account only '

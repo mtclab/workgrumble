@@ -311,15 +311,36 @@ export function presenceChatter(presence: Presence): readonly PresenceRemark[] {
 }
 
 /**
- * Load-time gate for the chatter: every dot has somebody who noticed it.
+ * Load-time gate for the chatter: every dot has somebody who noticed it, and
+ * everybody who notices it can actually be heard.
  *
  * A status with no line at all would be a control that visibly does nothing on
  * one of its three settings, which reads as the setting being broken rather
  * than as the office being quiet.
+ *
+ * The second half is the 0.37.1 finding, and it is a class rather than a typo.
+ * A remark is delivered by `remarkInThread`, which opens the speaker's CHAT
+ * THREAD to say it, and a chat thread is opened against that person's dialogue
+ * tree - so a speaker with no tree returns `false` and the line is silently
+ * never said. It cost the co-managed peer his only spoken line for a whole
+ * version, and nothing anywhere went red, because a table of content and a
+ * table of trees are two files nobody diffs together. They are diffed here.
+ * The trees are handed in rather than imported, because this module is BELOW
+ * the tree registry and reaching up for it would be a cycle.
  */
 export function assertPresenceChatter(
   remarks: readonly PresenceRemark[],
+  trees: readonly { readonly speaker: string }[],
 ): readonly PresenceRemark[] {
+  for (const remark of remarks) {
+    if (!trees.some((tree) => tree.speaker === remark.speaker)) {
+      throw new Error(
+        `"${remark.speaker}" has a remark about the dot and no conversation to `
+        + 'say it in, so the shell would drop it on the floor.',
+      );
+    }
+  }
+
   for (const presence of PRESENCE_VALUES) {
     if (!remarks.some((remark) => remark.presence === presence)) {
       throw new Error(
@@ -341,5 +362,3 @@ export function assertPresenceChatter(
 
   return remarks;
 }
-
-assertPresenceChatter(PRESENCE_CHATTER);

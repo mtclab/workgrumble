@@ -394,6 +394,18 @@ export type PredData =
    * enumerates.
    */
   | { pred: 'param_is_whole_number'; param: string; value: number }
+  /**
+   * A parameter that is not BELOW the number a field already holds - the
+   * monotone half of a running total, where `param_is_whole_number` is the
+   * floor half.
+   *
+   * Every other numeric predicate compares a field with a constant or with
+   * another field, so the one comparison a caller-supplied total needs - itself
+   * against what is already written - was the one the language could not make,
+   * and a recount that arrived smaller rewrote the record downwards in silence.
+   * A field holding nothing yet is nothing to be below.
+   */
+  | { pred: 'param_at_least_field'; param: string; than: FieldRefData }
   | { pred: 'param_format'; param: string; format: 'resolution' }
   /**
    * Where the clock stands INSIDE a repeating period: `now % day_ticks` at or

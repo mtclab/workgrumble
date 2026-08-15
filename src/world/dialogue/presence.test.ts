@@ -12,8 +12,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { COMPANY_IDS } from '../company';
+import { MSP_IDS } from '../msp-company';
 import { WORLD_TICKETS } from '../tickets';
 import { PRESENCE_VALUES } from '../presence';
+import { dialogueForSpeaker, WORLD_DIALOGUE } from './index';
 import {
   assertAwayLines,
   assertPresenceChatter,
@@ -72,7 +74,8 @@ describe('what somebody says about being left waiting', () => {
 
 describe('the office noticing a dot', () => {
   it('has somebody for each of the three, and no line twice', () => {
-    expect(assertPresenceChatter(PRESENCE_CHATTER)).toBe(PRESENCE_CHATTER);
+    expect(assertPresenceChatter(PRESENCE_CHATTER, WORLD_DIALOGUE))
+      .toBe(PRESENCE_CHATTER);
 
     for (const presence of PRESENCE_VALUES) {
       expect(presenceChatter(presence).length, presence).toBeGreaterThan(0);
@@ -85,6 +88,7 @@ describe('the office noticing a dot', () => {
   it('refuses a table with a status nobody has noticed', () => {
     expect(() => assertPresenceChatter(
       PRESENCE_CHATTER.filter((remark) => remark.presence !== 'away'),
+      WORLD_DIALOGUE,
     )).toThrow('anything to say about "away"');
   });
 
@@ -95,7 +99,35 @@ describe('the office noticing a dot', () => {
     expect(() => assertPresenceChatter([
       ...PRESENCE_CHATTER,
       { ...first as NonNullable<typeof first>, speaker: COMPANY_IDS.bev },
-    ])).toThrow('say the same thing');
+    ], WORLD_DIALOGUE)).toThrow('say the same thing');
+  });
+
+  /**
+   * The 0.37.1 class gate. A remark is spoken by opening its speaker's chat
+   * thread, and a chat thread is opened against that person's dialogue tree,
+   * so a speaker with no tree is a speaker whose line is dropped in silence -
+   * which is exactly what happened to the co-managed peer for a whole version
+   * with every test in this file green.
+   *
+   * Two halves, and both are needed: the shipped table has to be reachable
+   * person by person, and the gate has to actually refuse an unreachable one.
+   */
+  it('refuses a remark from somebody with no conversation to say it in', () => {
+    for (const remark of PRESENCE_CHATTER) {
+      expect(dialogueForSpeaker(remark.speaker), remark.speaker).toBeDefined();
+    }
+
+    const first = PRESENCE_CHATTER[0];
+    expect(first).toBeDefined();
+    // Re-keyed to a node that is real, is in the estate, and is not somebody
+    // anybody has ever had a conversation with - the exact shape the bug had.
+    expect(() => assertPresenceChatter([
+      ...PRESENCE_CHATTER.slice(1),
+      {
+        ...first as NonNullable<typeof first>,
+        speaker: MSP_IDS.penningtonContactAccount,
+      },
+    ], WORLD_DIALOGUE)).toThrow('no conversation to say it in');
   });
 
   /**

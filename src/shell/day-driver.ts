@@ -482,7 +482,6 @@ export const TAKEOVER_WINDOWS: readonly string[] = Object.freeze([
 
 export const SPEEDS = [1, 2, 4] as const;
 
-
 export type Speed = (typeof SPEEDS)[number];
 
 export function isSpeed(value: unknown): value is Speed {
@@ -4298,6 +4297,17 @@ export class DayDriver implements DayApi {
       if (!result.ok) {
         continue;
       }
+
+      // And the date on his first letter, which is a different fact from the
+      // latch above and is written once (0.37.1). Refused on every morning
+      // after the first, deliberately and without comment: the stamp exists so
+      // that the mail already in the inbox does not move when he writes again.
+      this.engine.dispatch(
+        WORLD_ACTIONS.raciFirstComplaint,
+        this.actor,
+        box,
+        {},
+      );
 
       const name = peer === null
         ? 'Their IT manager'
