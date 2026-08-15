@@ -102,23 +102,22 @@ export function cadenceMissesOn(node: Readonly<ReadOnlyGraphNode>): number {
 }
 
 /**
- * How many windows on this ticket's CURRENT anchor have already been counted.
+ * The minute the CURRENT window is measured from: the later of the last words
+ * and the last minute silence was accounted (charged, or written off by an
+ * unpark).
  *
- * The record on the node is a lifetime total across every anchor the ticket
- * has had, and a re-anchor - a word to the reporter - starts the windows
- * again. This is the count since the anchor standing now, which is the only
- * count either the due-read or the pane can do arithmetic with.
+ * The second term is the 0.37.1 second-round fix, and it is what makes both
+ * write-offs whole: the first arithmetic kept every window on the anchor's
+ * grid, so a park or a charge mid-window left the REMAINDER of that window
+ * running - a ticket parked for one hundred percent of a window could come
+ * back and bill it. Measured from here, every window is a full window of
+ * actual desk silence, whatever happened before it started.
  */
-function countedSinceAnchor(
+function windowStart(
   node: Readonly<ReadOnlyGraphNode>,
-  interval: number,
   anchor: number,
 ): number {
-  const countedTo = numberField(node, FIELDS.cadenceCountedTo) ?? 0;
-
-  return countedTo <= anchor
-    ? 0
-    : Math.floor(serviceMinutesBetween(anchor, countedTo) / interval);
+  return Math.max(anchor, numberField(node, FIELDS.cadenceCountedTo) ?? 0);
 }
 
 /**
@@ -140,12 +139,7 @@ export function cadenceWindowClosesAt(
   node: Readonly<ReadOnlyGraphNode>,
   interval: number,
 ): number {
-  const anchor = cadenceAnchor(node);
-
-  return serviceDeadline(
-    anchor,
-    interval * (countedSinceAnchor(node, interval, anchor) + 1),
-  );
+  return serviceDeadline(windowStart(node, cadenceAnchor(node)), interval);
 }
 
 export interface CadenceDue {
@@ -226,19 +220,18 @@ export function contractStampsDue(
       continue;
     }
 
-    const anchor = cadenceAnchor(node);
+    const start = windowStart(node, cadenceAnchor(node));
 
-    if (now <= anchor) {
+    if (now <= start) {
       continue;
     }
 
-    const windows = Math.floor(serviceMinutesBetween(anchor, now) / interval);
-    const counted = countedSinceAnchor(node, interval, anchor);
+    const windows = Math.floor(serviceMinutesBetween(start, now) / interval);
 
-    if (windows > counted) {
+    if (windows > 0) {
       cadences.push({
         ticket: node.id,
-        misses: cadenceMissesOn(node) + (windows - counted),
+        misses: cadenceMissesOn(node) + windows,
       });
     }
   }

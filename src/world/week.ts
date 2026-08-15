@@ -31,6 +31,7 @@ import {
   type DayLedger,
   dayLedger,
   dripWindow,
+  ticketsArrivedOn,
   SHIFT_END_MINUTE,
   SHIFT_MINUTES,
   SHIFT_START_MINUTE,
@@ -53,7 +54,8 @@ import {
   validateRequestSlots,
 } from './requests';
 import { COMPANY_IDS } from './company';
-import { FIELDS } from './fields';
+import { FIELDS, slaTierOf } from './fields';
+import { cadenceMissesOn } from './cadence';
 import { findIncident, INCIDENTS } from './incidents';
 import { isOnboardingId } from './onboarding';
 import {
@@ -234,6 +236,18 @@ export interface WeekWork {
   readonly arrived: number;
   readonly closed: number;
   readonly breached: number;
+  /**
+   * Tiered arrivals that missed the clocks their CONTRACT binds (D4,
+   * 0.37.1): a late acknowledgment or any recorded window of silence. Counted
+   * per ticket, not per stamp, because attainment is a per-ticket ratio -
+   * whether a ticket met its promises, not how badly one of them was missed.
+   * Nought in every in-house world, where no ticket carries a tier - which is
+   * what the exclusion of tiered resolution breaches from `breached` was paid
+   * for with, and what a review round found it had not bought: without this
+   * term an MSP week's attainment was pinned at a hundred and the Friday
+   * review could not be failed on performance at all.
+   */
+  readonly contractMissed: number;
 }
 
 /**
@@ -281,7 +295,12 @@ export function weekPerformance(work: Readonly<WeekWork>): number | null {
 
   return Math.round(100 * (
     RESOLUTION_WEIGHT * share(work.closed)
-    + SLA_WEIGHT * share(work.arrived - work.breached)
+    // Attainment counts every clock that binds (D4, 0.37.1): the in-house
+    // resolution breaches AND the tiered tickets that missed their
+    // contract's own clocks - without the second term, a world where every
+    // ticket carries a tier pinned this share at one and made the review
+    // unfailable.
+    + SLA_WEIGHT * share(work.arrived - work.breached - work.contractMissed)
   ));
 }
 
@@ -2144,6 +2163,8 @@ export interface WeekScorecard {
   readonly arrived: number;
   readonly closed: number;
   readonly breached: number;
+  /** Tiered arrivals that missed their contract clocks - see WeekWork. */
+  readonly contractMissed: number;
   readonly stillOpen: number;
   /** What the week put in the fund, which is what the week was worth. */
   readonly earnedPence: number;
@@ -2214,10 +2235,19 @@ export function weekWorkThrough(
     0,
   );
 
+  const contractMissed = Array.from(
+    { length: through },
+    (_, index) => ticketsArrivedOn(tickets, index + 1),
+  ).flat().filter((ticket) =>
+    slaTierOf(ticket.fields[FIELDS.customerSlaTier]) !== null
+    && (ticket.fields[FIELDS.ackMissed] === true
+      || cadenceMissesOn(ticket) > 0)).length;
+
   return {
     arrived: sum((ledger) => ledger.arrived),
     closed: sum((ledger) => ledger.closed),
     breached: sum((ledger) => ledger.breached),
+    contractMissed,
   };
 }
 
@@ -2250,6 +2280,7 @@ export function weekScorecard(
     arrived: sum((ledger) => ledger.arrived),
     closed: sum((ledger) => ledger.closed),
     breached: sum((ledger) => ledger.breached),
+    contractMissed: weekWorkThrough(tickets, WEEK_DAYS).contractMissed,
     // Not a sum: "still open" is a fact about now, and a ticket that was open
     // on Monday and closed on Thursday must not be counted as still open once
     // per day it was ignored on.

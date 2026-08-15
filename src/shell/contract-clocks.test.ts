@@ -267,9 +267,19 @@ describe('the contract settler', () => {
       {},
     )).toEqual({ ok: true });
 
-    // The measured bug: one minute after the unpark, the whole park landed
-    // as silence. The write-off must hold it exactly where it stood.
+    // The measured bug, both rounds of it: round one landed the whole park
+    // as silence one minute after the unpark; round two still billed the
+    // REMAINDER of the window that was running when the park began - a
+    // window that could be one hundred percent parked. The write-off must
+    // buy a whole fresh window of actual desk silence.
     runMinutes(rigged, 3);
     expect(cadenceMissesOn(node())).toBe(parkedWith);
+    runMinutes(rigged, 100);
+    expect(cadenceMissesOn(node())).toBe(parkedWith);
+
+    // And a full window of real silence after the unpark still charges - the
+    // write-off is not an amnesty.
+    runMinutes(rigged, 40);
+    expect(cadenceMissesOn(node())).toBeGreaterThan(parkedWith);
   });
 });

@@ -763,11 +763,11 @@ describe('the week, scored', () => {
    */
   it('reads the week to date out of the same ticket nodes', () => {
     expect(weekWorkThrough(tickets, 2))
-      .toEqual({ arrived: 3, closed: 2, breached: 2 });
+      .toEqual({ arrived: 3, closed: 2, breached: 2, contractMissed: 0 });
     expect(weekWorkThrough(tickets, WEEK_DAYS))
-      .toEqual({ arrived: 4, closed: 2, breached: 2 });
+      .toEqual({ arrived: 4, closed: 2, breached: 2, contractMissed: 0 });
     expect(weekWorkThrough(tickets, 0))
-      .toEqual({ arrived: 0, closed: 0, breached: 0 });
+      .toEqual({ arrived: 0, closed: 0, breached: 0, contractMissed: 0 });
   });
 });
 
@@ -778,7 +778,22 @@ describe('the mark the review reads', () => {
     arrived: number,
     closed: number,
     breached: number,
-  ): WeekWork => ({ arrived, closed, breached });
+    contractMissed = 0,
+  ): WeekWork => ({ arrived, closed, breached, contractMissed });
+
+  it('cannot be passed by having every clock be somebody else\'s (D4)', () => {
+    // The review round's measured hole: a week of eight tiered arrivals, all
+    // of them missing their contract clocks, none closed, scored 50 - a pass
+    // - because tiered breaches left `breached` and nothing replaced them.
+    // With the contract term the same week is a zero, which is what a week
+    // of ignoring every customer deserves at any shop. Revert the
+    // contractMissed term in weekPerformance and this reads 50 again.
+    expect(weekPerformance(work(8, 0, 0, 8))).toBe(0);
+    // And meeting the contracts still counts: same week, every promise kept,
+    // is the attainment half at full marks.
+    expect(weekPerformance(work(8, 0, 0, 0))).toBe(50);
+    expect(weekPerformance(work(8, 4, 0, 4))).toBe(50);
+  });
 
   it('is a percentage of the work that arrived', () => {
     // Everything closed, nothing late.
@@ -882,7 +897,12 @@ describe('the week as a fraction of itself, at any roster size', () => {
       arrived += day * roster;
       closed += done * roster;
       breached += red * roster;
-      standing = weekStanding(standing, { arrived, closed, breached });
+      standing = weekStanding(standing, {
+        arrived,
+        closed,
+        breached,
+        contractMissed: 0,
+      });
     }
 
     return standing;

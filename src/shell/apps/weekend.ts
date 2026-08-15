@@ -181,6 +181,17 @@ export const WEEKEND_APP: AppDef = {
         .textContent = String(card.closed);
       definitionRow(list, 'Deadlines missed', 'weekend-breached')
         .textContent = String(card.breached);
+
+      // Only where contracts exist (D4, 0.37.1): the tiered arrivals that
+      // missed the clocks their contract binds. Absent in-house, so every
+      // shipped in-house weekend renders byte-identically - and present at
+      // the MSP, where the review's attainment half counts it and a screen
+      // without the row would print a mark its own lines cannot explain.
+      if (card.contractMissed > 0) {
+        definitionRow(list, 'Contract clocks missed', 'weekend-contract-missed')
+          .textContent = String(card.contractMissed);
+      }
+
       definitionRow(list, 'Still open', 'weekend-open')
         .textContent = String(card.stillOpen);
       // The two ratios the mark is made of, each printed as the fraction it
@@ -190,7 +201,10 @@ export const WEEKEND_APP: AppDef = {
       definitionRow(list, 'Queue closed', 'weekend-resolution')
         .textContent = shareLine(card.closed, card.arrived);
       definitionRow(list, 'Deadlines kept', 'weekend-attainment')
-        .textContent = shareLine(card.arrived - card.breached, card.arrived);
+        .textContent = shareLine(
+          card.arrived - card.breached - card.contractMissed,
+          card.arrived,
+        );
       // Said as what it is. The lead does not read a meter at five past three,
       // he reads the week - and a screen that printed the live number beside a
       // verdict that number did not produce is a screen arguing with itself
