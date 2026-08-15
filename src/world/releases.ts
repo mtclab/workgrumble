@@ -31,6 +31,41 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.37.1',
+    date: '2026-08-15',
+    summary: 'Fourteen findings from the new review process, fixed. The '
+      + 'review process found four more in the fixes. Those are fixed too. '
+      + 'IT describes the process as "working exactly as intended, '
+      + 'unfortunately".',
+    lines: Object.freeze([
+      'Remote Assist and the Directory now observe the same contract '
+        + 'walls as the terminal. They always claimed to; the claim is '
+        + 'now load-bearing. Remote Assist also shows who owns a box '
+        + 'under the RACI, beside the hostname, on every box the map '
+        + 'says something about.',
+      'The contract clocks start when the ticket arrives, not when '
+        + 'somebody files paperwork about it - the same rule the other '
+        + 'two clocks always had. Relatedly, the Friday review now '
+        + 'counts missed contract clocks alongside missed deadlines, '
+        + 'and a week of answering every customer exactly once has '
+        + 'stopped scoring like a week of answering them.',
+      'Parking a ticket now excuses its silence properly: the window '
+        + 'that was running when you parked it is written off whole, and '
+        + 'a fresh full window of actual silence is owed before anything '
+        + 'bills. The payslip has also stopped fining you a "service '
+        + 'credit" for external resolution targets, which were best '
+        + 'effort all along - the pane said so and the payroll system '
+        + 'has now been made to read the pane.',
+      'Assorted honesty: the priority row no longer credits the matrix '
+        + 'for numbers the matrix did not make, two knowledge articles '
+        + 'have stopped contradicting each other about co-managed '
+        + 'helpdesks, several notices have stopped naming weekdays the '
+        + 'calendar does not agree with, and the gentleman at the '
+        + 'accountancy firm has been issued a login that matches his '
+        + 'own name.',
+    ]),
+  },
+  {
     version: '0.37.0',
     date: '2026-08-15',
     summary: 'The customers acquire contracts, opinions, and their own IT '
