@@ -10,6 +10,11 @@ import {
 import { FIELDS } from '../../world/fields';
 import { formatSimTime } from '../clock-format';
 import { createIcon } from '../icons';
+import {
+  dispatchRemediation,
+  refusalOf,
+  type RemediationStrips,
+} from './remediation';
 import type { AppDef, GameApi } from './types';
 import {
   definitionRow,
@@ -238,6 +243,38 @@ export interface DirectoryDetail {
 }
 
 /**
+ * This window's write path - the same arrangement Remote Assist has, on the
+ * other target kind.
+ *
+ * An unlock or a password reset clicked here used to meet no tenant guard and
+ * no contract wall, while the terminal's `unlock` at the same account met both.
+ * Identity work at a monitoring-only customer is out of contract wherever it is
+ * clicked, and doing it in the wrong tenant is the MSP horror story whichever
+ * window happens to be open - so the decision belongs to the shared seam and
+ * this pane only says where the answer goes.
+ *
+ * Two windows with four lines each rather than one shared presenter, and on
+ * purpose: this function is the exact point at which THIS window could stop
+ * calling the seam, so it is the point its own gate has to be able to hold on
+ * to. A shared one would leave both apps' wiring untested by anything but a
+ * grep.
+ */
+export function directoryRemediation(
+  api: GameApi,
+  action: string,
+  target: string,
+  params: Record<string, string>,
+  success: string,
+): RemediationStrips {
+  const result = dispatchRemediation(api, action, target, params);
+
+  return {
+    refusal: refusalOf(result),
+    outcome: result.kind === 'done' ? success : null,
+  };
+}
+
+/**
  * "Active Dictionary" - the directory caricature. Everything on screen is read
  * live from the graph, and every button dispatches a registered action, so a
  * fix made here is the same fix the terminal makes.
@@ -295,15 +332,19 @@ export const DIRECTORY_APP: AppDef = {
       });
     };
 
+    /**
+     * The five buttons on this pane that change an account, through the window's
+     * one write path.
+     */
     const run = (
       action: string,
       target: string,
       params: Record<string, string> = {},
       success = 'Done.',
     ): void => {
-      const result = api.dispatch(action, api.actor, target, params);
-      refusal = result.ok ? null : result.reason;
-      outcome = result.ok ? success : null;
+      const strips = directoryRemediation(api, action, target, params, success);
+      refusal = strips.refusal;
+      outcome = strips.outcome;
       render();
     };
 

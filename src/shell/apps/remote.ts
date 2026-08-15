@@ -22,6 +22,11 @@ import {
 import { formatSimTime } from '../clock-format';
 import { createIcon } from '../icons';
 import { programImage } from './processes';
+import {
+  dispatchRemediation,
+  refusalOf,
+  type RemediationStrips,
+} from './remediation';
 import type { AppDef, AppInstance, GameApi } from './types';
 import {
   definitionRow,
@@ -553,6 +558,45 @@ export function remoteFace(model: Readonly<RemoteSession>): RemoteFace {
 }
 
 /**
+ * This window's write path: every control that CHANGES something on the remote
+ * box goes through here, and nothing in here decides whether it may.
+ *
+ * The decision is the shared seam's, which is the whole of #64's P1-3. For nine
+ * versions this window sent the same verbs at the same customer boxes as the
+ * terminal and met none of the customer walls: a Restart here on a
+ * monitoring-only estate simply worked, and one on a co-managed customer's own
+ * box closed the ticket and left no trail, so nobody's sysadmin ever wrote in
+ * the next morning. Every wall the game teaches was a property of the TERMINAL
+ * rather than of the game, and one window away from not existing.
+ *
+ * A refusal comes back before anything is dispatched, so a refused remediation
+ * leaves the box exactly as the player found it. What this window still decides
+ * is where the answer goes: its own refusal strip, in the shipped words, at the
+ * place the click happened.
+ *
+ * It is out here, rather than inside the mount, because it is the window's
+ * behaviour rather than its furniture - so the gate can play these controls
+ * without a browser, and so that taking the seam back out of this function
+ * turns those tests red. The machine LIST is deliberately not gated by any of
+ * it: seeing an estate is not touching it, and a monitoring-only customer is
+ * one you are paid to watch.
+ */
+export function remoteRemediation(
+  api: GameApi,
+  action: string,
+  target: string,
+  params: Record<string, string | number>,
+  success: string,
+): RemediationStrips {
+  const result = dispatchRemediation(api, action, target, params);
+
+  return {
+    refusal: refusalOf(result),
+    outcome: result.kind === 'done' ? success : null,
+  };
+}
+
+/**
  * Remote Assist - the signature tool.
  *
  * The target machine's screen is drawn from its own graph state, inside this
@@ -605,15 +649,20 @@ export const REMOTE_APP: AppDef = {
     const machines = (): readonly ReadOnlyGraphNode[] => api.graph
       .nodesOfKind('machine');
 
+    /**
+     * Every control in this window that CHANGES something on that box, and the
+     * only way any of them reaches the world: `remoteRemediation` above, then
+     * the two strips it answers with, then a repaint.
+     */
     const run = (
       action: string,
       target: string,
       params: Record<string, string | number> = {},
       success = 'Done.',
     ): void => {
-      const result = api.dispatch(action, api.actor, target, params);
-      refusal = result.ok ? null : result.reason;
-      outcome = result.ok ? success : null;
+      const strips = remoteRemediation(api, action, target, params, success);
+      refusal = strips.refusal;
+      outcome = strips.outcome;
       render();
     };
 
