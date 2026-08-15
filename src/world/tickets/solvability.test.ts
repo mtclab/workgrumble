@@ -43,7 +43,7 @@
  * own journeys.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { loadEngineForTests } from '../../engine-api/load-node';
 import type { ReadOnlyGraphView, TicketDef } from '../../engine-api';
@@ -105,6 +105,12 @@ import {
   spawnWorldTicket,
 } from './index';
 import type { TicketActionStep, WorldTicket } from './types';
+
+// Headroom for the loaded box, not for the work: alone this file is green in
+// under three minutes, and under a full parallel suite its 5s default has
+// flaked twice in a day (a verifier predicted the third). The sweeps are the
+// long pole and already carry their own budget through gate:seeds.
+vi.setConfig({ testTimeout: 120_000 });
 
 beforeAll(() => {
   loadEngineForTests();

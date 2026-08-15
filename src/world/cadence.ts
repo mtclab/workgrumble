@@ -18,7 +18,7 @@
 import type { ReadOnlyGraphNode, ReadOnlyGraphView } from '../engine-api';
 import { serviceDeadline, serviceMinutesBetween } from './day';
 import { FIELDS, SLA_TIERS, type SlaTier, slaTierOf } from './fields';
-import { isPriority, type Priority } from './priority';
+import { isPriority, type Priority, UNTRIAGED_PRIORITY } from './priority';
 import { VIP_FORCED_PRIORITY } from './vip';
 
 /**
@@ -59,6 +59,31 @@ const UPDATE_CADENCE:
     [SLA_TIERS.silver]: { 1: 30, 2: 60, 3: 120, 4: 240 },
     [SLA_TIERS.bronze]: { 1: 60, 2: 120, 3: null, 4: null },
   };
+
+/**
+ * The priority the CONTRACT's clocks run at (0.37.1, third round).
+ *
+ * Forced for a flagged caller, the filed cell once one exists, and the
+ * untriaged default until then - the same P3 the response and resolution
+ * clocks already run at, said out loud on the pane ("the desk treats an
+ * unread claim as P3"). The first cut made the cadence clock wait for the
+ * player's own triage, which a verifier measured as the loophole it is: a
+ * tiered ticket nobody triaged was invisible to the review's contract term,
+ * so answering once and abandoning scored like keeping every promise - and
+ * the eventual triage billed every window since the last words in one
+ * minute. A contract does not wait for the desk's paperwork, and neither do
+ * the other two clocks.
+ */
+export function cadencePriorityOf(
+  node: Readonly<ReadOnlyGraphNode>,
+): Priority {
+  if (node.fields[FIELDS.vip] === true) {
+    return VIP_FORCED_PRIORITY;
+  }
+
+  const stored = node.fields[FIELDS.priority];
+  return isPriority(stored) ? stored : UNTRIAGED_PRIORITY;
+}
 
 /** The promised gap for this tier and priority, or null for no promise. */
 export function cadenceIntervalFor(
@@ -205,16 +230,7 @@ export function contractStampsDue(
       continue;
     }
 
-    // The priority the clocks RUN AT, which for a flagged caller is the
-    // forced one (0.37.1 second round): the pane already read it that way,
-    // and a settler reading the stored field instead would let the first VIP
-    // at a tiered customer see a promise nobody ever charges. Latent today -
-    // no tiered customer carries a flag - and latent is when to fix it.
-    const stored = node.fields[FIELDS.priority];
-    const priority = node.fields[FIELDS.vip] === true
-      ? VIP_FORCED_PRIORITY
-      : isPriority(stored) ? stored : null;
-    const interval = cadenceIntervalFor(tier, priority);
+    const interval = cadenceIntervalFor(tier, cadencePriorityOf(node));
 
     if (interval === null) {
       continue;

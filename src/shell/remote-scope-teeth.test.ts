@@ -42,6 +42,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadEngineForTests } from '../engine-api/load-node';
 import {
+  DAY_ACTIONS,
   HELPDESK_ACTIONS,
   RACI_COMPLAINT_REPUTATION,
 } from '../world/actions';
@@ -176,6 +177,33 @@ function playOut(rigged: Rig): void {
   }
 }
 
+
+/**
+ * Headroom for the delta assertions (0.37.1 third round): the untriaged
+ * cadence clock now runs from arrival, so an ignored MSP day drains
+ * reputation toward the floor in BOTH runs of every pair - and a clamped
+ * meter compresses the one difference these tests exist to read. The top-up
+ * is the world's own verb, so the runs stay replay-honest.
+ */
+function topUpReputation(rigged: Rig): void {
+  expect(rigged.session.engine.dispatch(
+    DAY_ACTIONS.metersTick,
+    MSP_IDS.player,
+    null,
+    {
+      stress_up: 0,
+      stress_down: 0,
+      suspicion_up: 0,
+      suspicion_down: 0,
+      reputation_up: 50,
+      reputation_down: 0,
+      suspicion_events_up: 0,
+      breaches_charged: 0,
+      resolve_credit_paid: 0,
+    },
+  ).ok).toBe(true);
+}
+
 describe('Remote Assist meets the customer walls', () => {
   /**
    * CLAIM 1. The soft wall is soft here too - the window is not a lock the
@@ -189,6 +217,7 @@ describe('Remote Assist meets the customer walls', () => {
     const rigged = rig(MSP_CUSTOMERS.pennington);
 
     rigged.driver.startShift();
+  topUpReputation(rigged);
     spawnWorldTicket(rigged.session.engine, PENNINGTON_TICKET);
 
     const clicked = remote(

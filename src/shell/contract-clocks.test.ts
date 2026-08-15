@@ -23,6 +23,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { FieldValue } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { cadenceMissesOn } from '../world/cadence';
+import { weekPerformance, weekScorecard, weekWorkThrough } from '../world/week';
 import { priorityFor } from '../world/priority';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS } from '../world/fields';
@@ -281,5 +282,47 @@ describe('the contract settler', () => {
     // write-off is not an amnesty.
     runMinutes(rigged, 40);
     expect(cadenceMissesOn(node())).toBeGreaterThan(parkedWith);
+  });
+});
+
+describe('the review reads the stamps off the real board (0.37.1 third round)', () => {
+  it('a tiered ticket nobody touches reaches the mark, untriaged included', () => {
+    // The verifier's loophole, closed: the cadence clock runs from arrival
+    // at the untriaged default, so a ticket nobody triaged is not invisible
+    // to the review's contract term. Force the derivation in
+    // weekWorkThrough to zero and this is the gate that goes red - it is
+    // driven off real ticket nodes, not a hand-built WeekWork.
+    const rigged = rig();
+    rigged.driver.startShift();
+    // Far enough that the morning arrival has outlived its untriaged ack
+    // target AND at least one untriaged cadence window (silver P3: 120).
+    runMinutes(rigged, 320);
+
+    const tickets = rigged.session.engine.graph.nodesOfKind('ticket');
+    const work = weekWorkThrough(tickets, 1);
+    expect(work.contractMissed).toBeGreaterThanOrEqual(1);
+
+    // And the mark feels it: the same week with the term zeroed reads
+    // strictly higher, which is the difference between a review that can
+    // fail and the 52-for-everything the verifier measured.
+    const muted = weekPerformance({ ...work, contractMissed: 0 });
+    const real = weekPerformance(work);
+    expect(real).not.toBeNull();
+    expect(muted).not.toBeNull();
+    expect(real!).toBeLessThan(muted!);
+
+    // The weekend card carries the same number the mark uses, off the same
+    // nodes - the screen prints the card, so the card is where the gate is.
+    const card = weekScorecard(tickets, {
+      banked: 0,
+      opening: 0,
+      performance: real,
+      bar: 45,
+      conduct: [],
+      criteria: [],
+      utilisation: null,
+      outcome: null,
+    } as never);
+    expect(card.contractMissed).toBe(work.contractMissed);
   });
 });

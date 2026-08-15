@@ -49,6 +49,7 @@ import {
 import {
   cadenceIntervalFor,
   cadenceMissesOn,
+  cadencePriorityOf,
   cadenceWindowClosesAt,
 } from '../../world/cadence';
 import {
@@ -1458,7 +1459,14 @@ export const TICKETS_APP: AppDef = {
       // count of windows this ticket has already let pass. Deliberately no
       // live countdown - the row changes when the RECORD changes, so it stays
       // out of the per-minute repaint the two cells below are allowed.
-      const cadenceInterval = cadenceIntervalFor(clocks.tier, clocks.priority);
+      // The contract's priority, not the pane's: untriaged runs at the same
+      // default the other two clocks already run at, so the row exists from
+      // arrival - a promise that only appeared once the player triaged was
+      // the loophole the third review round measured.
+      const cadenceInterval = cadenceIntervalFor(
+        clocks.tier,
+        cadencePriorityOf(node),
+      );
 
       if (cadenceInterval !== null) {
         const cadenceRow = definitionRow(
