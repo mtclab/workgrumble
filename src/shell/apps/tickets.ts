@@ -46,7 +46,11 @@ import {
   ticketClocks,
   type TicketClocks,
 } from '../../world/sla';
-import { cadenceIntervalFor, cadenceMissesOn } from '../../world/cadence';
+import {
+  cadenceIntervalFor,
+  cadenceMissesOn,
+  cadenceWindowClosesAt,
+} from '../../world/cadence';
 import {
   allowsEscalation,
   childrenOf,
@@ -190,8 +194,10 @@ export function prioritySourceLine(source: PrioritySource): string | null {
   }
 
   return source === 'self_declared'
-    ? 'The number on this one is the reporter\'s own claim - nothing has been '
-      + 'triaged yet, and the desk treats an unread claim as P3.'
+    ? 'The reporter made a claim about how urgent this is and nobody has read '
+      + 'it yet. The number above is not that claim - it is the desk\'s '
+      + 'default for anything untriaged, and it stands until somebody triages '
+      + 'this one.'
     : 'Priority came out of the matrix - impact times urgency, the two '
       + 'dropdowns below, nobody\'s name involved.';
 }
@@ -242,6 +248,33 @@ function clocksFor(
 function responseLine(clocks: Readonly<TicketClocks>): string {
   return `${clockSummary(clocks.response, 'Answered')}`
     + ` · target ${formatDuration(clocks.target.response)}`;
+}
+
+/**
+ * The update-cadence row's sentence: the promised gap, the minute the window
+ * now running closes on, and what is already on the record.
+ *
+ * Exported and model-level for the reason `prioritySourceLine` is - the pane is
+ * DOM and the offline suite is not - and the closing minute is here rather than
+ * left to the reader (0.37.1). The row used to print the gap and the misses and
+ * expect the player to add one to the other across a night and a lunch hour,
+ * which is arithmetic nobody does and everybody gets wrong in the direction
+ * that costs them. It is static between records, so it belongs on the same
+ * repaint discipline the row already had.
+ */
+export function cadenceLine(
+  node: Readonly<ReadOnlyGraphNode>,
+  interval: number,
+): string {
+  const missed = cadenceMissesOn(node);
+
+  return `An update every ${formatDuration(interval)}`
+    + ' - the contract clock on talking, not fixing. This window closes at '
+    + `${formatSimTime(cadenceWindowClosesAt(node, interval)).time}.`
+    + (missed > 0
+      ? ` ${String(missed)} window${missed === 1 ? '' : 's'} of silence `
+        + 'on the record already; the record does not shrink.'
+      : '');
 }
 
 function resolutionLine(clocks: Readonly<TicketClocks>): string {
@@ -1407,14 +1440,11 @@ export const TICKETS_APP: AppDef = {
           'Update cadence',
           'ticket-detail-cadence',
         );
-        const missed = cadenceMissesOn(node);
-        cadenceRow.dataset.missed = String(missed);
-        cadenceRow.textContent = `An update every ${formatDuration(cadenceInterval)}`
-          + ' - the contract clock on talking, not fixing.'
-          + (missed > 0
-            ? ` ${String(missed)} window${missed === 1 ? '' : 's'} of silence `
-              + 'on the record already; the record does not shrink.'
-            : '');
+        cadenceRow.dataset.missed = String(cadenceMissesOn(node));
+        cadenceRow.dataset.due = formatSimTime(
+          cadenceWindowClosesAt(node, cadenceInterval),
+        ).time;
+        cadenceRow.textContent = cadenceLine(node, cadenceInterval);
       }
 
       // The two cells the next minute is allowed to move on their own. Every

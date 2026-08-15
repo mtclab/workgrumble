@@ -169,4 +169,55 @@ export const RACI_ACTION_DATA: readonly ActionData[] = [
       },
     ],
   },
+  /**
+   * The watermark under the first complaint (0.37.1), and nothing else.
+   *
+   * A third verb rather than a fourth op on the second one, because the op
+   * language has no conditional write and the condition is the whole content
+   * here: the stamp goes on once and stays where it is. The guard is the
+   * `ticket.record_ack_miss` guard word for word - already recorded, so this
+   * is refused - and the day driver dispatches it expecting to be refused on
+   * every morning but the first.
+   *
+   * What it is FOR is the inbox. `raci_complained_at` is a latch that moves
+   * with each complaint, and his mail is anchored to a field's minute, so a
+   * second violation used to re-date the first letter and shuffle it to the
+   * top of the inbox rather than add anything. The letter now stays where it
+   * was written. The repeat still charges, because that is the complaint
+   * verb's business and it is untouched.
+   */
+  {
+    id: WORLD_ACTIONS.raciFirstComplaint,
+    tier: HELPDESK_TIER,
+    validate: [
+      ...targetGuards('machine'),
+      THEIRS_UNDER_THE_RACI,
+      {
+        when: not({
+          pred: 'field_is_number',
+          node: TARGET,
+          field: FIELDS.raciComplainedAt,
+        }),
+        reason: 'Nobody has complained about that box yet, so there is no '
+          + 'first complaint to date.',
+      },
+      {
+        when: {
+          pred: 'field_is_number',
+          node: TARGET,
+          field: FIELDS.raciFirstComplainedAt,
+        },
+        reason: 'The first word about that box already has a date on it. A '
+          + 'letter is written once, whatever is said afterwards.',
+      },
+    ],
+    apply: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.raciFirstComplainedAt,
+        value: { now: true },
+      },
+    ],
+  },
 ];

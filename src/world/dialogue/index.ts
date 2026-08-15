@@ -11,6 +11,7 @@ import { SECOND_WEEK } from '../second-week';
 import { spareWeeks } from '../spares';
 import { assertWeekGreetings, WEEK } from '../week';
 import { isDispatchableAction } from './dispatch';
+import { assertPresenceChatter, PRESENCE_CHATTER } from './presence';
 import { DIALOGUE_TREES } from './trees';
 import {
   type DialogueEffect,
@@ -636,6 +637,13 @@ export const WORLD_DIALOGUE: readonly DialogueTree[] = assertWeekGreetings(
   validateDialogueTrees(DIALOGUE_TREES),
   [WEEK, SECOND_WEEK, MSP_WEEK, CORPORATE_WEEK, ...spareWeeks()],
 );
+
+// And the chatter, gated HERE rather than where it is written, because the
+// question it answers is about both tables at once: has everybody with a
+// remark about the dot got a conversation to say it in (0.37.1). Load-time,
+// like the greetings above, so a build that shipped a mute speaker would not
+// start rather than go quiet.
+assertPresenceChatter(PRESENCE_CHATTER, WORLD_DIALOGUE);
 
 export function findDialogueTree(id: string): DialogueTree | undefined {
   return WORLD_DIALOGUE.find((tree) => tree.id === id);

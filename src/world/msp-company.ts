@@ -470,6 +470,10 @@ export const MSP_IDS = {
    */
   penningtonContact: 'person:pennington-esme',
   penningtonContactAccount: 'account:pennington-esme',
+  // The `-callum` in these two ids is a first draft of the man who ended up
+  // being called Gil Farrant. They are save-borne internals - a save written
+  // before the rename names them - so they STAY as they are. The display name
+  // and the username are the parts a player ever reads, and those are his.
   penningtonSysadmin: 'person:pennington-callum',
   penningtonSysadminAccount: 'account:pennington-callum',
   penningtonServer: 'machine:penn-srv-01',
@@ -725,7 +729,7 @@ const STAFF: readonly StaffSeed[] = [
     account: MSP_IDS.penningtonSysadminAccount,
     name: 'Gil Farrant',
     title: 'IT Manager, Pennington & Roe',
-    username: 'cvance',
+    username: 'gfarrant',
     desk: 'A desk in the server room, an IT department of one, and a monitoring '
       + 'dashboard he actually reads',
     customer: MSP_CUSTOMERS.pennington,

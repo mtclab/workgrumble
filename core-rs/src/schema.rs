@@ -153,6 +153,19 @@ fn is_number(value: &FieldValue) -> bool {
     matches!(value, FieldValue::Num(_))
 }
 
+/// A count or a stamp: a whole number the browser holds exactly, and never
+/// below zero.
+///
+/// Written for the contract clocks (0.37.1), where the difference matters
+/// twice over. A negative count of missed update windows is priced by the
+/// meters as a negative breach weight, and the meter code refuses a negative
+/// weight by throwing - inside the day loop, so a number that should have been
+/// impossible stopped the shift. A negative minute is a stamp before the world
+/// began, which every read of it compares against and none of them expects.
+fn is_count(value: &FieldValue) -> bool {
+    value.as_safe_int().is_some_and(|number| number >= 0)
+}
+
 /// A name somebody could type. Empty is refused rather than tolerated: a
 /// directory entry with no name is an entry no path can ever reach, which is
 /// the same class of fault as a ticket with no deadline.
@@ -188,7 +201,22 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
                 },
                 "one of 0, 90, 180, or 270",
             )?;
-            assert_optional(fields, "resolution", is_string, "a string")
+            assert_optional(fields, "resolution", is_string, "a string")?;
+            // Which IT team the co-managed RACI map hands this box to (E9,
+            // 0.37.0), typed as a closed enum in 0.37.1 exactly as a ticket's
+            // SLA tier is. There are two teams on a co-managed account and
+            // there is no third: a word this list does not have would be read
+            // as "the map says nothing", so a hand-edited save could turn the
+            // customer's own server into an unowned one by misspelling it, and
+            // the soft wall would go quiet with nothing to say why. ABSENT
+            // still means the map says nothing, which is the shipped default
+            // everywhere but Pennington.
+            assert_optional(
+                fields,
+                "raci_owner",
+                |value| matches!(value.as_str(), Some("msp") | Some("internal")),
+                "either \"msp\" or \"internal\"",
+            )
         }
         "device" => {
             assert_optional(fields, "name", is_string, "a string")?;
@@ -401,6 +429,38 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
             // closed enum: it forces a priority, so a hand-edited save must not
             // be able to smuggle one in as a string.
             assert_optional(fields, "vip", is_boolean, "a boolean")?;
+            // The contract clocks (E9, 0.37.0), typed here in 0.37.1 because
+            // until then a save could carry any of them as anything at all.
+            //
+            // The acknowledgment either was missed or was not: it is a
+            // once-and-forever latch, and a string in it reads as truthy
+            // nowhere and as present everywhere. The other three are a count
+            // and two minutes, and all three are read as numbers the moment
+            // anything looks at them - the missed-window count is multiplied
+            // into a breach weight, and a negative one throws inside the day
+            // loop rather than showing up as a wrong number on a screen.
+            assert_optional(fields, "ack_missed", is_boolean, "a boolean")?;
+            assert_optional(
+                fields,
+                "cadence_missed",
+                is_count,
+                "a whole number of windows, at or above zero",
+            )?;
+            assert_optional(
+                fields,
+                "cadence_counted_to",
+                is_count,
+                "a whole minute, at or above zero",
+            )?;
+            assert_optional(
+                fields,
+                "last_update_at",
+                is_count,
+                "a whole minute, at or above zero",
+            )?;
+            // Who the ticket is FOR, where that is somebody other than the
+            // person who filed it (the shadow-VIP split). A name, printed.
+            assert_optional(fields, "beneficiary", is_string, "a string")?;
 
             if !optional(fields, "state").is_some_and(is_ticket_state) {
                 return refuse!("Ticket nodes require a valid \"state\" field.");
@@ -617,6 +677,93 @@ mod tests {
             error.message(),
             "Field \"project_cutover_due\" must be a number."
         );
+    }
+
+    /// The contract clocks, typed (0.37.1).
+    ///
+    /// Every one of these fields was untyped until now, which meant a save
+    /// could carry any of them as anything. The one that mattered most is the
+    /// missed-window count: it is multiplied into a breach weight, and a
+    /// negative weight is refused by the meters BY THROWING, inside the day
+    /// loop - so a number nothing was stopping made the shift stop. Refusing
+    /// it here is the load-time half of the guard the verb now carries.
+    #[test]
+    fn refuses_a_contract_clock_that_is_not_a_count() {
+        let ticket = |fields: Json| -> Json {
+            json!({
+                "id": "ticket:x",
+                "kind": "ticket",
+                "fields": fields,
+            })
+        };
+        let bookkeeping = |extra: (&str, Json)| -> Json {
+            ticket(json!({
+                "state": "open",
+                "spawned_at": 0,
+                "sla_deadline": 120,
+                extra.0: extra.1,
+            }))
+        };
+
+        let error = validate_node(&bookkeeping(("cadence_missed", json!(-1))))
+            .expect_err("a window does not un-pass");
+        assert_eq!(
+            error.message(),
+            "Field \"cadence_missed\" must be a whole number of windows, at or above zero."
+        );
+
+        assert!(validate_node(&bookkeeping(("cadence_missed", json!(0)))).is_ok());
+        assert!(validate_node(&bookkeeping(("cadence_missed", json!(3)))).is_ok());
+        assert!(validate_node(&bookkeeping(("cadence_missed", json!(1.5)))).is_err());
+        assert!(validate_node(&bookkeeping(("cadence_missed", json!("two")))).is_err());
+
+        // The two minutes beside it, and the latch above it.
+        assert!(validate_node(&bookkeeping(("cadence_counted_to", json!(-1)))).is_err());
+        assert!(validate_node(&bookkeeping(("cadence_counted_to", json!(600)))).is_ok());
+        assert!(validate_node(&bookkeeping(("last_update_at", json!(-1)))).is_err());
+        assert!(validate_node(&bookkeeping(("last_update_at", json!(600)))).is_ok());
+        assert!(validate_node(&bookkeeping(("ack_missed", json!("yes")))).is_err());
+        assert!(validate_node(&bookkeeping(("ack_missed", json!(true)))).is_ok());
+
+        // And who it is for, which is a line somebody reads.
+        assert!(validate_node(&bookkeeping(("beneficiary", json!(7)))).is_err());
+        assert!(validate_node(&bookkeeping(("beneficiary", json!("Miriam Thale")))).is_ok());
+    }
+
+    /// There are two IT teams on a co-managed account and there is no third.
+    ///
+    /// A word off this list is read everywhere as "the map says nothing about
+    /// this box", so a misspelling in a hand-edited save would hand the
+    /// customer's own server back to nobody and take the soft wall down with
+    /// it - silently, which is the worst way for a wall to go.
+    #[test]
+    fn refuses_a_raci_owner_that_is_neither_team() {
+        let machine = |owner: Json| -> Json {
+            json!({
+                "id": "machine:penn-srv-01",
+                "kind": "machine",
+                "fields": { "hostname": "PENN-SRV-01", "raci_owner": owner },
+            })
+        };
+
+        assert!(validate_node(&machine(json!("msp"))).is_ok());
+        assert!(validate_node(&machine(json!("internal"))).is_ok());
+
+        let error =
+            validate_node(&machine(json!("theirs"))).expect_err("a third team does not exist");
+        assert_eq!(
+            error.message(),
+            "Field \"raci_owner\" must be either \"msp\" or \"internal\"."
+        );
+
+        assert!(validate_node(&machine(json!(true))).is_err());
+        // Absent is still the map saying nothing, which is every box but one.
+        assert!(validate_node(&json!({
+            "id": "machine:penn-ws-01",
+            "kind": "machine",
+            "fields": { "hostname": "PENN-WS-01" },
+        }))
+        .is_ok());
     }
 
     #[test]

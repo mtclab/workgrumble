@@ -20,6 +20,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import type { FieldValue } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { cadenceMissesOn } from '../world/cadence';
 import { priorityFor } from '../world/priority';
@@ -137,6 +138,61 @@ describe('the contract settler', () => {
       TARGET,
       {},
     ).ok).toBe(false);
+  });
+
+  /**
+   * The record itself, guarded (0.37.1).
+   *
+   * The settler is the only caller and it counts up, so the verb only ever saw
+   * whole numbers that climbed - and it therefore only guarded that SOMETHING
+   * arrived. What that left open is the worst shape a param bug takes here: a
+   * negative count goes into the field, comes back out of `breachWeightOf` as
+   * a negative weight, and `nonNegative` THROWS inside `tickMeters`, which is
+   * the day loop. Not a wrong number on a screen - a shift that stops.
+   *
+   * Both halves are proven by dispatching what the caller cannot currently
+   * send, which is the only way to test a guard whose one caller is polite.
+   */
+  it('refuses a miss count that is not a count, or that shrinks the record', () => {
+    const rigged = rig();
+    rigged.driver.startShift();
+    runMinutes(rigged, 90);
+
+    // The param is typed `FieldValue` because that is what a dispatch carries;
+    // a string in it is exactly one of the shapes under test, and the caller
+    // that sends one will not be this polite about it.
+    const record = (misses: FieldValue): boolean => rigged.session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketRecordCadenceMiss,
+      COMPANY_IDS.player,
+      TARGET,
+      { misses },
+    ).ok;
+    const stamped = (): unknown => rigged.session.engine.graph
+      .getNode(TARGET)?.fields[FIELDS.cadenceMissed];
+
+    // The floor. Drop the whole-number guard and the first of these lands,
+    // and the day loop throws the next time the meters are read.
+    expect(record(-1)).toBe(false);
+    expect(record(-4)).toBe(false);
+    expect(record(1.5)).toBe(false);
+    expect(record('two')).toBe(false);
+    expect(stamped()).toBeUndefined();
+
+    // The record climbs, and holds.
+    expect(record(2)).toBe(true);
+    expect(stamped()).toBe(2);
+    expect(record(3)).toBe(true);
+    expect(stamped()).toBe(3);
+
+    // And never shrinks. Drop the monotone guard and this one lands, and the
+    // count of windows that passed in silence quietly un-passes two of them.
+    expect(record(1)).toBe(false);
+    expect(record(0)).toBe(false);
+    expect(stamped()).toBe(3);
+    // The same number twice is not a shrink - a settler that recounted the
+    // same silence must not be refused for saying so.
+    expect(record(3)).toBe(true);
+    expect(stamped()).toBe(3);
   });
 
   it('cannot stamp anything at the probation shop', () => {

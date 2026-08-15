@@ -1243,8 +1243,8 @@ const PENNINGTON_PRACTICE_DOWN: WorldTicket = {
       title: 'Pennington: the practice suite has stopped, and Gil is out',
       body:
         'Esme rings: nobody at Pennington & Roe can get into Ledgerline - no '
-        + 'time recording, no billing, forty people at a standstill on a '
-        + 'Tuesday. The service on PENN-SRV-01 has stopped. Gil, their IT '
+        + 'time recording, no billing, forty people at a standstill and the '
+        + 'morning going. The service on PENN-SRV-01 has stopped. Gil, their IT '
         + 'manager, is at a client until three and is not picking up. That box '
         + 'is his under the RACI - the practice system is the customer\'s own '
         + 'to run, the MSP has the desks and the monitoring - which is why the '

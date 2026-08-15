@@ -49,7 +49,7 @@ export const RELEASES: readonly ReleaseNote[] = Object.freeze([
         + 'on a tier holds you to the acknowledgment and to a promised '
         + 'gap between updates - a clock that runs out on silence, not '
         + 'on the fault - and their resolution target is displayed as '
-        + 'the goal it always legally was. Silence is recorded. The '
+        + 'the goal it always contractually was. Silence is recorded. The '
         + 'record does not shrink.',
       'One of the managed customers turns out to have its own IT '
         + 'department: one man, one server, and a document that says '

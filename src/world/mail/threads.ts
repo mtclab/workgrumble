@@ -453,9 +453,17 @@ export const MAIL_THREADS: readonly MailThread[] = [
    *
    * The whole of the co-managed RACI's soft wall, delivered the only way a soft
    * wall can be: as a mail from a man who found out on his own. It is gated on
-   * PENN-SRV-01's `raci_complained_at`, so it exists exactly when the day
-   * driver has settled the complaint - and never at all for a player who
+   * PENN-SRV-01's `raci_first_complained_at`, so it exists exactly when the day
+   * driver has settled the FIRST complaint - and never at all for a player who
    * notified him first, because nothing stamped the box.
+   *
+   * The first one, and that is the fix of 0.37.1: the anchor is a mail's
+   * ARRIVAL TIME, and `raci_complained_at` moves with every complaint, so a
+   * second violation used to re-date this letter and float it back to the top
+   * of the inbox unchanged - one consequence pretending to be two, and the
+   * evidence of the first one quietly rewritten. The watermark it now hangs
+   * off is written once. The second complaint still charges, in the verb that
+   * charges it.
    *
    * He is not angry and he does not threaten anything, and that is deliberate:
    * he is a peer rather than a manager, he has no lever to pull, and the cost
@@ -469,7 +477,7 @@ export const MAIL_THREADS: readonly MailThread[] = [
     employer: MSP,
     arrival: {
       node: MSP_IDS.penningtonServer,
-      field: FIELDS.raciComplainedAt,
+      field: FIELDS.raciFirstComplainedAt,
     },
     messages: [
       {
@@ -487,9 +495,9 @@ export const MAIL_THREADS: readonly MailThread[] = [
           + 'fix it. I am not asking anybody to have waited.',
           'It is my box. Not in a possessive way - in the sense that the RACI '
           + 'we both signed puts the practice system on my side of the line, so '
-          + 'when the partners ask me on Thursday why billing stopped for '
-          + 'twenty minutes on Tuesday, I am the one who answers, and yesterday '
-          + 'I could not have. That is the whole of it.',
+          + 'when the partners ask me why billing stopped yesterday and for how '
+          + 'long, I am the one who answers, and this morning I could not have. '
+          + 'That is the whole of it.',
           'You have an admin account on that server because you monitor it. I '
           + 'know there is nothing stopping you, and I am not going to start '
           + 'taking your access off over a service restart - that would be a '

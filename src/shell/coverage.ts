@@ -4045,6 +4045,12 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'arrives on - and it charges reputation, because nobody suspects '
     + 'anything: he knows exactly what happened and thinks less of the desk '
     + 'that did not mention it. The player meets the notice and his mail.',
+  [WORLD_ACTIONS.raciFirstComplaint]: 'The date on his first letter, stamped '
+    + 'by the day driver in the same breath as the complaint above and refused '
+    + 'on every morning after it. Nothing presses it and nothing it writes is '
+    + 'ever shown as a number: what the player meets is the ABSENCE of a bug - '
+    + 'a second complaint that does not re-date the mail already in the inbox. '
+    + 'Driven end to end over two mornings in `shell/raci-teeth.test.ts`.',
   [DAY_ACTIONS.reviewMatrixRead]: 'Somebody scoring the selection pool in the '
     + 'minute before the conversation, in a week where a round is being '
     + 'decided. The day loop dispatches it; the player has been reading the '

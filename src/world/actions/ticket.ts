@@ -691,6 +691,33 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
         reason: 'A cadence record is a count of windows that passed in '
           + 'silence, and this is not one.',
       },
+      // A count, and a count of things that happened: whole, and never below
+      // zero. `param_absent` above only asks whether SOMETHING arrived, so a
+      // negative one went straight into the field, came back out through
+      // `breachWeightOf` as a negative weight, and threw inside `tickMeters` -
+      // which is the day loop, so the crash was the shift stopping rather than
+      // a number looking wrong.
+      {
+        when: not({ pred: 'param_is_whole_number', param: MISSES_PARAM, value: 0 }),
+        reason: 'A cadence record is a whole number of windows that passed in '
+          + 'silence. A fraction of a window is not a thing that happened, and '
+          + 'a negative one is a window that un-passed.',
+      },
+      // And it only ever climbs. The field is a running total of windows that
+      // have already gone by, so a recount that arrives smaller is the record
+      // of a missed window being taken back - and nothing downstream, least of
+      // all the contract meter that prices it, could tell that from an honest
+      // recount.
+      {
+        when: not({
+          pred: 'param_at_least_field',
+          param: MISSES_PARAM,
+          than: { node: TARGET, field: FIELDS.cadenceMissed },
+        }),
+        reason: 'That ticket has already been recorded as missing more update '
+          + 'windows than this. A window that passed in silence does not '
+          + 'un-pass, so the count goes up or stays where it is.',
+      },
     ],
     apply: [
       {

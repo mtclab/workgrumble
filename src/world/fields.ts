@@ -972,6 +972,23 @@ export const FIELDS = {
    * the fallout verb refuses a second time on.
    */
   raciComplainedAt: 'raci_complained_at',
+  /**
+   * And the minute the FIRST one landed, which is the one the mail hangs off
+   * (0.37.1).
+   *
+   * Written once and never again - the `ack_missed` shape, a stamp with a guard
+   * in front of it - because `raci_complained_at` above is a LATCH that moves
+   * with every complaint, and the inbox reads its anchor as an arrival time. A
+   * mail hung off a moving stamp is a mail that jumps to the top of the inbox
+   * on the second violation, re-dated, with the same words in it: the player
+   * sees his one letter shuffle rather than a second consequence, which is a
+   * worse reading of the mechanic than no letter at all.
+   *
+   * The two are deliberately not the same field. The latch is the mechanism's
+   * memory of what has been answered for and it has to move; this is the
+   * archive's memory of when he first wrote, and it never does.
+   */
+  raciFirstComplainedAt: 'raci_first_complained_at',
   /* -- the change request (0.10.0) ---------------------------------------- */
   /**
    * The exact action a change request authorises: the id of the node it is

@@ -16,7 +16,7 @@
  */
 
 import type { ReadOnlyGraphNode, ReadOnlyGraphView } from '../engine-api';
-import { serviceMinutesBetween } from './day';
+import { serviceDeadline, serviceMinutesBetween } from './day';
 import { FIELDS, SLA_TIERS, type SlaTier, slaTierOf } from './fields';
 import { isPriority, type Priority } from './priority';
 
@@ -24,11 +24,31 @@ import { isPriority, type Priority } from './priority';
  * Desk minutes between required customer-visible updates, per tier and
  * priority, or null where the contract makes no promise about talking.
  *
- * Scaled to the game's compressed SLA table (TIER_SLA_TARGETS - a gold P1
- * resolves in 45 game-minutes), not to the real-world numbers the research
- * cites: the SHAPE is the sourced part - the top tier's top severity is a
- * drumbeat, the ladder loosens fast, and the bottom tier stops promising
- * anything below its top rows.
+ * ONE CELL OF THIS TABLE IS SOURCED. The research records a single published
+ * update cadence: Salesforce's Signature plan, its top tier, promising an
+ * update every fifteen minutes on a Sev-1 and hourly on a Sev-2. That is the
+ * gold column's top row and the reason this mechanic exists at all. Every
+ * other number here is the game's extrapolation, and saying otherwise would be
+ * this file citing a table nobody published.
+ *
+ * The extrapolation has the shape it has for two reasons, both of them about
+ * what the sourced point implies rather than about what any vendor ships:
+ *
+ *  - IT LOOSENS FAST DOWN THE SEVERITY LADDER, doubling each step, because the
+ *    one real ladder found does exactly that between its two published rows
+ *    (fifteen minutes to sixty) and because a cadence is an interruption - a
+ *    drumbeat on a P4 would be a promise that costs the customer more than it
+ *    buys them.
+ *  - IT THINS OUT DOWN THE TIERS, halving the drumbeat and then dropping the
+ *    bottom rows entirely, because that is what the tier research says money
+ *    buys everywhere it was checked: only the TOP severity row moves between
+ *    plans, and the cheap tier's answer to a small problem is no promise at
+ *    all rather than a slower one.
+ *
+ * The absolute numbers are scaled to the game's compressed SLA table
+ * (TIER_SLA_TARGETS - a gold P1 resolves in 45 game-minutes), so they are not
+ * the real-world minutes either, and the fifteen in the top-left is the real
+ * fifteen only by coincidence of that scaling.
  */
 const UPDATE_CADENCE:
   Readonly<Record<SlaTier, Readonly<Record<Priority, number | null>>>> = {
@@ -76,6 +96,53 @@ export function cadenceAnchor(node: Readonly<ReadOnlyGraphNode>): number {
 /** How many misses are already on the record. */
 export function cadenceMissesOn(node: Readonly<ReadOnlyGraphNode>): number {
   return numberField(node, FIELDS.cadenceMissed) ?? 0;
+}
+
+/**
+ * How many windows on this ticket's CURRENT anchor have already been counted.
+ *
+ * The record on the node is a lifetime total across every anchor the ticket
+ * has had, and a re-anchor - a word to the reporter - starts the windows
+ * again. This is the count since the anchor standing now, which is the only
+ * count either the due-read or the pane can do arithmetic with.
+ */
+function countedSinceAnchor(
+  node: Readonly<ReadOnlyGraphNode>,
+  interval: number,
+  anchor: number,
+): number {
+  const countedTo = numberField(node, FIELDS.cadenceCountedTo) ?? 0;
+
+  return countedTo <= anchor
+    ? 0
+    : Math.floor(serviceMinutesBetween(anchor, countedTo) / interval);
+}
+
+/**
+ * The minute the update window now running closes on - the moment silence
+ * starts costing something (0.37.1).
+ *
+ * The pane used to print the promised GAP and the windows already missed, and
+ * left the player to do the addition against a clock that skips a night and an
+ * hour of lunch. Nobody does that addition; what they do instead is find out
+ * afterwards. It is `serviceDeadline` off the anchor, which is the same
+ * arithmetic the response clock's own deadline is, so a window that closes at
+ * ten to five does not silently close during the night.
+ *
+ * STATIC until the record or the anchor moves, which is why the row that
+ * prints it is not on the per-minute repaint: it is a fact about the world
+ * rather than a countdown, exactly like the deadline beside it.
+ */
+export function cadenceWindowClosesAt(
+  node: Readonly<ReadOnlyGraphNode>,
+  interval: number,
+): number {
+  const anchor = cadenceAnchor(node);
+
+  return serviceDeadline(
+    anchor,
+    interval * (countedSinceAnchor(node, interval, anchor) + 1),
+  );
 }
 
 export interface CadenceDue {
@@ -158,10 +225,7 @@ export function contractStampsDue(
     }
 
     const windows = Math.floor(serviceMinutesBetween(anchor, now) / interval);
-    const countedTo = numberField(node, FIELDS.cadenceCountedTo) ?? 0;
-    const counted = countedTo <= anchor
-      ? 0
-      : Math.floor(serviceMinutesBetween(anchor, countedTo) / interval);
+    const counted = countedSinceAnchor(node, interval, anchor);
 
     if (windows > counted) {
       cadences.push({

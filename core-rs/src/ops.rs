@@ -644,6 +644,24 @@ pub enum Pred {
         param: String,
         value: f64,
     },
+    /// A parameter that is not BELOW the number a field already holds.
+    ///
+    /// The monotone half of a running total. `param_is_whole_number` gives a
+    /// count a floor, but a floor is not enough for a field that only ever
+    /// climbs: a recount that arrives smaller than the record is a record
+    /// being quietly rewritten downwards, and the reader downstream cannot
+    /// tell that from an honest recount. Every other numeric predicate here
+    /// compares a field with a constant or with another field, so the one
+    /// comparison a caller-supplied total actually needs - itself against what
+    /// is already written - was the one the language could not make.
+    ///
+    /// A field that holds nothing yet is nothing to be below, so the first
+    /// write always passes.
+    ParamAtLeastField {
+        param: String,
+        than_node: NodeRef,
+        than_field: String,
+    },
     ParamFormat {
         param: String,
         format: ParamFormat,
@@ -890,6 +908,17 @@ impl Pred {
                 param: param()?,
                 value: number()?,
             }),
+            "param_at_least_field" => {
+                let than = object.get("than").ok_or_else(|| {
+                    EngineError::new("param_at_least_field needs a \"than\" node and field.")
+                })?;
+                let (than_node, than_field) = parse_node_and_field(than, scope)?;
+                Ok(Self::ParamAtLeastField {
+                    param: param()?,
+                    than_node,
+                    than_field,
+                })
+            }
             "tick_of_day_at_most" => {
                 let whole = |key: &str| -> EngineResult<i64> {
                     object
@@ -1418,6 +1447,21 @@ pub fn evaluate_pred(context: &mut EvalContext<'_>, predicate: &Pred) -> bool {
             .param(param)
             .and_then(FieldValue::as_f64)
             .is_some_and(|actual| is_safe_int(actual) && actual >= *value),
+        // A param that is not a number at all is BELOW anything, which is the
+        // refusing direction under the `not(...)` this is written inside: a
+        // guard that shrugged at a string would be a guard the one caller that
+        // sends a string walks straight past.
+        Pred::ParamAtLeastField {
+            param,
+            than_node,
+            than_field,
+        } => match context.param(param).and_then(FieldValue::as_f64) {
+            Some(actual) => context
+                .field(than_node, than_field)
+                .and_then(FieldValue::as_f64)
+                .is_none_or(|floor| actual >= floor),
+            None => false,
+        },
         Pred::TickOfDayAtMost { day_ticks, value } => {
             context.now.rem_euclid(*day_ticks) <= *value
         }
@@ -1895,6 +1939,56 @@ mod tests {
 
         assert!(Pred::parse(&json!({ "pred": "param_is_whole_number", "param": "x" })).is_err());
         assert!(Pred::parse(&json!({ "pred": "param_is_whole_number", "value": 0 })).is_err());
+    }
+
+    /// A running total may be recounted upwards and never downwards.
+    ///
+    /// The floor a `param_is_whole_number` gives a count is a floor against
+    /// nonsense; this is the floor against the RECORD. A recount that arrives
+    /// smaller than what is already written is a number being rewritten
+    /// downwards, and nothing downstream can tell that from an honest one.
+    #[test]
+    fn a_running_total_may_not_arrive_smaller_than_the_one_already_written() {
+        let mut graph = fixture();
+        let predicate = Pred::parse(&json!({
+            "pred": "param_at_least_field",
+            "param": "misses",
+            "than": { "node": { "id": "device:printer" }, "field": "queue_len" },
+        }))
+        .expect("valid predicate");
+
+        let holds = |graph: &EntityGraph, value: FieldValue| -> bool {
+            let mut params = Params::new();
+            params.insert("misses".to_owned(), value);
+            let mut evaluation = context(graph, &params, None);
+            evaluate_pred(&mut evaluation, &predicate)
+        };
+
+        // The field holds twelve.
+        assert!(holds(&graph, FieldValue::Num(12.0)), "the same number");
+        assert!(holds(&graph, FieldValue::Num(13.0)), "one more");
+        assert!(!holds(&graph, FieldValue::Num(11.0)), "one fewer");
+        assert!(!holds(&graph, FieldValue::Num(-1.0)), "below zero");
+        assert!(!holds(&graph, FieldValue::Str("12".to_owned())), "in text");
+        assert!(!holds(&graph, FieldValue::Null));
+
+        // A field nobody has written yet is nothing to be below, so the first
+        // count always lands.
+        graph
+            .clear_field("device:printer", "queue_len")
+            .expect("clear the count");
+        assert!(holds(&graph, FieldValue::Num(0.0)), "the first write");
+
+        // And an absent parameter is below everything.
+        let params = Params::new();
+        let mut evaluation = context(&graph, &params, None);
+        assert!(!evaluate_pred(&mut evaluation, &predicate));
+
+        assert!(Pred::parse(&json!({
+            "pred": "param_at_least_field",
+            "param": "misses",
+        }))
+        .is_err());
     }
 
     /// A budget, which is the one shape `line_in_field` could not express.
