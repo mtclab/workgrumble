@@ -365,8 +365,13 @@ describe('helpdesk action registry', () => {
     // The queue-jump itself needs no player verb at all: the flag forces the
     // priority at spawn and the wait is billed by a WORLD verb the day loop
     // dispatches, so these two are the whole of what the mechanic adds here.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(52);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(52);
+    //
+    // Fifty-four from 0.37.0 (E9/D4): the contract settler's two stamps -
+    // the acknowledgment that ran out untouched and the count of silent
+    // update windows. World verbs the day loop dispatches, like the record
+    // pair above them.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(54);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(54);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});

@@ -11,11 +11,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadEngineForTests } from '../engine-api/load-node';
 import {
-  ackMissesDue,
   cadenceAnchor,
   cadenceIntervalFor,
-  cadenceMissesDue,
   cadenceMissesOn,
+  contractStampsDue,
   isContractTicket,
 } from './cadence';
 import { COMPANY_IDS } from './company';
@@ -46,10 +45,8 @@ describe('the miss arithmetic', () => {
     const node = session.engine.graph.getNode('ticket:fan-noise');
     expect(node).toBeDefined();
     expect(isContractTicket(node!)).toBe(false);
-    expect(cadenceMissesDue(session.engine.graph, 10_000)).toEqual([]);
-    expect(
-      ackMissesDue(session.engine.graph, () => true),
-    ).toEqual([]);
+    expect(contractStampsDue(session.engine.graph, 10_000, () => true))
+      .toEqual({ acks: [], cadences: [] });
   });
 
   it('anchors on the latest of arrival, first touch and last words', () => {
@@ -69,10 +66,13 @@ describe('the miss arithmetic', () => {
     ).toEqual({ ok: true });
 
     const after = session.engine.graph.getNode('ticket:fan-noise')!;
-    // The comment stamped both the first touch and the words - the anchor is
-    // whichever is latest, and both are now the same minute or later.
+    // The comment stamped the first touch; the anchor follows it. The WORDS
+    // stamp is tier-guarded - an in-house ticket must not grow the field,
+    // because nothing in-house ever reads it and every worked golden would
+    // move for it (the guard's whole reason).
     expect(cadenceAnchor(after)).toBeGreaterThanOrEqual(spawnedAt);
-    expect(typeof after.fields[FIELDS.lastUpdateAt]).toBe('number');
+    expect(after.fields[FIELDS.lastUpdateAt]).toBeUndefined();
+    expect(typeof after.fields[FIELDS.respondedAt]).toBe('number');
     expect(cadenceMissesOn(after)).toBe(0);
   });
 });

@@ -469,13 +469,24 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
       },
       // And every contact re-anchors the update-cadence clock (E9, 0.37.0):
       // the contract's promise is a gap between words, and a question is
-      // words. Unconditional where the response stamp above is once-only,
-      // because the cadence clock measures the LAST time, not the first.
+      // words. Guarded on the tier because only a contract reads the anchor -
+      // an in-house ticket stamping it would move every worked golden for a
+      // field nothing ever reads.
       {
-        op: 'set_field',
-        node: TARGET,
-        field: FIELDS.lastUpdateAt,
-        value: { now: true },
+        op: 'when',
+        cond: not({
+          pred: 'field_missing',
+          node: TARGET,
+          field: FIELDS.customerSlaTier,
+        }),
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.lastUpdateAt,
+            value: { now: true },
+          },
+        ],
       },
     ],
   ),
@@ -566,12 +577,22 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
       },
       // A reply re-anchors the update-cadence clock the same way a question
       // does (E9, 0.37.0): the contract's gap is measured to the LAST words,
-      // whichever kind they were.
+      // whichever kind they were. Tier-guarded for the same golden reason.
       {
-        op: 'set_field',
-        node: TARGET,
-        field: FIELDS.lastUpdateAt,
-        value: { now: true },
+        op: 'when',
+        cond: not({
+          pred: 'field_missing',
+          node: TARGET,
+          field: FIELDS.customerSlaTier,
+        }),
+        ops: [
+          {
+            op: 'set_field',
+            node: TARGET,
+            field: FIELDS.lastUpdateAt,
+            value: { now: true },
+          },
+        ],
       },
     ],
   },

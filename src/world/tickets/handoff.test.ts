@@ -176,6 +176,10 @@ describe('reading "what I tried" off the ticket', () => {
           // Being rude to the reporter is a social cost, not work on the fault:
           // it never reaches a handoff, because the fix it rides beside does.
           HELPDESK_ACTIONS.reporterRebuff,
+          // The contract settler's stamps (0.37.0): records of the desk's own
+          // silence, which is the one thing that cannot be "what was tried".
+          HELPDESK_ACTIONS.ticketRecordAckMiss,
+          HELPDESK_ACTIONS.ticketRecordCadenceMiss,
         ]).toContain(id);
       }
     }

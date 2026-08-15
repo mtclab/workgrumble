@@ -290,7 +290,7 @@ import {
   type MeterState,
   movesAnything,
 } from '../world/meters';
-import { ackMissesDue, cadenceMissesDue } from '../world/cadence';
+import { contractStampsDue } from '../world/cadence';
 import {
   isActiveWork,
   isUnresolved,
@@ -6392,10 +6392,13 @@ export class DayDriver implements DayApi {
    * as every settler above it.
    */
   private settleContractClocks(now: number): void {
-    for (const ticket of ackMissesDue(
+    const due = contractStampsDue(
       this.engine.graph,
+      now,
       (node) => ticketClocks(node, now).response.breached,
-    )) {
+    );
+
+    for (const ticket of due.acks) {
       this.engine.dispatch(
         HELPDESK_ACTIONS.ticketRecordAckMiss,
         this.actor,
@@ -6404,12 +6407,12 @@ export class DayDriver implements DayApi {
       );
     }
 
-    for (const due of cadenceMissesDue(this.engine.graph, now)) {
+    for (const miss of due.cadences) {
       this.engine.dispatch(
         HELPDESK_ACTIONS.ticketRecordCadenceMiss,
         this.actor,
-        due.ticket,
-        { misses: due.misses },
+        miss.ticket,
+        { misses: miss.misses },
       );
     }
   }

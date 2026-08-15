@@ -84,41 +84,63 @@ export interface CadenceDue {
   readonly misses: number;
 }
 
-/**
- * Whether this ticket runs on an external contract's clocks at all.
- *
- * The tier IS the fact: an in-house ticket carries none and keeps the tool's
- * resolution clock exactly as shipped.
- */
-export function isContractTicket(node: Readonly<ReadOnlyGraphNode>): boolean {
-  return slaTierOf(node.fields[FIELDS.customerSlaTier]) !== null;
+export interface ContractStampsDue {
+  /** Tickets whose acknowledgment clock ran out untouched, unstamped. */
+  readonly acks: readonly string[];
+  readonly cadences: readonly CadenceDue[];
 }
 
 /**
- * Every tiered, unresolved, unparked ticket whose silence has outrun the
- * promise, with the miss total its record should now show.
- *
- * The arithmetic: full windows elapsed since the anchor, capped against the
- * count already recorded. An update moves the anchor and the elapsed windows
- * fall back below the record - so the record HOLDS (misses already made stay
- * made) and nothing new is due until the silence stretches again. A parked
- * ticket is waiting on somebody who is not the desk, and the research's own
- * asymmetry applies: the clock on talking assumes there is something to say.
+ * Both due-reads in ONE pass over the tickets, because this runs every
+ * simulated minute: two separate scans through `nodesOfKind` were enough drag
+ * to push three of the suite's minute-loop harnesses over their own timeouts
+ * on the day this module landed. The response-clock predicate is injected so
+ * this module stays a pure derivation with no opinion about clocks.
  */
-export function cadenceMissesDue(
+const NOTHING_DUE: ContractStampsDue = Object.freeze({
+  acks: Object.freeze([]),
+  cadences: Object.freeze([]),
+});
+
+export function contractStampsDue(
   graph: ReadOnlyGraphView,
   now: number,
-): readonly CadenceDue[] {
-  const due: CadenceDue[] = [];
+  responseBreached: (node: Readonly<ReadOnlyGraphNode>) => boolean,
+): ContractStampsDue {
+  // The early-out for every in-house world: a ticket only carries a tier if
+  // a CUSTOMER did, and the customers are a handful of static estate nodes
+  // where the tickets are dozens and this runs every simulated minute. A
+  // world with no tiered customer can never owe a stamp - the probation
+  // shop's whole day skips at the cost of one tiny scan.
+  const contracted = graph.nodesOfKind('customer')
+    .some((node) => slaTierOf(node.fields[FIELDS.customerSlaTier]) !== null);
+
+  if (!contracted) {
+    return NOTHING_DUE;
+  }
+
+  const acks: string[] = [];
+  const cadences: CadenceDue[] = [];
 
   for (const node of graph.nodesOfKind('ticket')) {
-    const state = node.fields[FIELDS.state];
+    const tier = slaTierOf(node.fields[FIELDS.customerSlaTier]);
 
-    if (state === 'resolved' || state === 'waiting_on_user') {
+    if (tier === null || node.fields[FIELDS.state] === 'resolved') {
       continue;
     }
 
-    const tier = slaTierOf(node.fields[FIELDS.customerSlaTier]);
+    if (
+      node.fields[FIELDS.ackMissed] !== true
+      && typeof node.fields[FIELDS.respondedAt] !== 'number'
+      && responseBreached(node)
+    ) {
+      acks.push(node.id);
+    }
+
+    if (node.fields[FIELDS.state] === 'waiting_on_user') {
+      continue;
+    }
+
     const priority = node.fields[FIELDS.priority];
     const interval = cadenceIntervalFor(
       tier,
@@ -135,11 +157,6 @@ export function cadenceMissesDue(
       continue;
     }
 
-    // Windows elapsed since the LAST WORDS, less the windows of that same
-    // silence already on the record - the counted-to watermark is what keeps
-    // those two apart once an update has moved the anchor. Without it the
-    // historic count swallowed every new window until the new silence had
-    // outrun the whole record, which a driver test caught on the first try.
     const windows = Math.floor(serviceMinutesBetween(anchor, now) / interval);
     const countedTo = numberField(node, FIELDS.cadenceCountedTo) ?? 0;
     const counted = countedTo <= anchor
@@ -147,33 +164,22 @@ export function cadenceMissesDue(
       : Math.floor(serviceMinutesBetween(anchor, countedTo) / interval);
 
     if (windows > counted) {
-      due.push({
+      cadences.push({
         ticket: node.id,
         misses: cadenceMissesOn(node) + (windows - counted),
       });
     }
   }
 
-  return due;
+  return { acks, cadences };
 }
 
 /**
- * Every tiered ticket whose response clock has run out untouched and whose
- * record does not say so yet. The stamp is the settler's; this is the read.
+ * Whether this ticket runs on an external contract's clocks at all.
  *
- * The response target is the acknowledgment promise - the one clock every
- * vendor checked actually binds - so running it out before the first touch is
- * the external miss that bills like a breach used to.
+ * The tier IS the fact: an in-house ticket carries none and keeps the tool's
+ * resolution clock exactly as shipped.
  */
-export function ackMissesDue(
-  graph: ReadOnlyGraphView,
-  responseBreached: (node: Readonly<ReadOnlyGraphNode>) => boolean,
-): readonly string[] {
-  return graph.nodesOfKind('ticket')
-    .filter((node) => isContractTicket(node)
-      && node.fields[FIELDS.state] !== 'resolved'
-      && node.fields[FIELDS.ackMissed] !== true
-      && typeof node.fields[FIELDS.respondedAt] !== 'number'
-      && responseBreached(node))
-    .map((node) => node.id);
+export function isContractTicket(node: Readonly<ReadOnlyGraphNode>): boolean {
+  return slaTierOf(node.fields[FIELDS.customerSlaTier]) !== null;
 }
