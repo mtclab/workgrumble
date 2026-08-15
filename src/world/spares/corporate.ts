@@ -95,7 +95,7 @@ export const CORPORATE_SPARES: readonly DayFragment[] = [
         id: 'halcyon:pool-carpet-friday',
         channel: EXEC,
         author: HALCYON_IDS.ea,
-        body: 'diary note: the executive floor is being carpeted on Friday. '
+        body: 'diary note: the executive floor is being carpeted at the end of the week. '
           + 'anything with a cable on it will be moved and moved back by the '
           + 'contractors, so please do not raise that as a ticket until Monday.',
         minute: 10 * 60 + 30,
@@ -165,7 +165,7 @@ export const CORPORATE_SPARES: readonly DayFragment[] = [
         id: 'halcyon:pool-board-pack',
         channel: EXEC,
         author: HALCYON_IDS.ea,
-        body: 'the board pack goes out Thursday lunchtime. if anything on this '
+        body: 'the board pack goes out at lunchtime tomorrow. if anything on this '
           + 'floor is going to need IT, it needs IT before Thursday, not on '
           + 'Thursday.',
         minute: 9 * 60 + 55,

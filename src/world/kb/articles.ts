@@ -1499,9 +1499,10 @@ export const KB_ARTICLES: readonly KbArticle[] = [
       + 'customer\'s own team. Everything else - the end-user help desk above '
       + 'all - is written per contract and goes both ways in the trade, which '
       + 'is the entire reason the document exists. On this account the '
-      + 'per-box owner marker in the estate is that document made mechanical: '
-      + 'it is the answer, and it is the one to read. The MSP holds an admin '
-      + 'account regardless, because it monitors the box.',
+      + 'per-box owner marker is that document made mechanical - Remote '
+      + 'Assist prints it beside the hostname on every box the map says '
+      + 'something about, and that line is the answer. The MSP holds an '
+      + 'admin account regardless, because it monitors the box.',
     resolution: [
       'Check the RACI before the box, not after it. "Can I reach it" and "is it '
         + 'mine" are two different questions, and on a co-managed account only '

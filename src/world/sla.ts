@@ -130,7 +130,7 @@ function ticketPriority(
 /**
  * Which lever put the number on the ticket.
  *
- * Three answers, because there are three levers: the flag forced it, nobody has
+ * Four answers, one per lever the pane can truthfully name: the flag forced it, nobody has
  * triaged it and the only number on the screen is the reporter's own claim, or
  * the nine-cell matrix produced it from impact and urgency. The pane says which,
  * because a priority whose provenance is invisible is a number the player is

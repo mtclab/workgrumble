@@ -19,6 +19,7 @@ import type { ReadOnlyGraphNode, ReadOnlyGraphView } from '../engine-api';
 import { serviceDeadline, serviceMinutesBetween } from './day';
 import { FIELDS, SLA_TIERS, type SlaTier, slaTierOf } from './fields';
 import { isPriority, type Priority } from './priority';
+import { VIP_FORCED_PRIORITY } from './vip';
 
 /**
  * Desk minutes between required customer-visible updates, per tier and
@@ -34,16 +35,18 @@ import { isPriority, type Priority } from './priority';
  * The extrapolation has the shape it has for two reasons, both of them about
  * what the sourced point implies rather than about what any vendor ships:
  *
- *  - IT LOOSENS FAST DOWN THE SEVERITY LADDER, doubling each step, because the
- *    one real ladder found does exactly that between its two published rows
- *    (fifteen minutes to sixty) and because a cadence is an interruption - a
+ *  - IT LOOSENS FAST DOWN THE SEVERITY LADDER, doubling each step - gentler
+ *    than the one real ladder found, which quadruples between its two
+ *    published rows (fifteen minutes to sixty) and because a cadence is an interruption - a
  *    drumbeat on a P4 would be a promise that costs the customer more than it
  *    buys them.
  *  - IT THINS OUT DOWN THE TIERS, halving the drumbeat and then dropping the
- *    bottom rows entirely, because that is what the tier research says money
- *    buys everywhere it was checked: only the TOP severity row moves between
- *    plans, and the cheap tier's answer to a small problem is no promise at
- *    all rather than a slower one.
+ *    bottom rows entirely, a step FURTHER than the tier
+ *    research goes - the vendors checked move only the top severity row
+ *    between plans - taken because a game tier that changes one row of one
+ *    clock would be a difficulty knob nobody can feel. The sourced part is
+ *    the direction: the cheap tier's answer to a small problem is no promise
+ *    at all rather than a slower one.
  *
  * The absolute numbers are scaled to the game's compressed SLA table
  * (TIER_SLA_TARGETS - a gold P1 resolves in 45 game-minutes), so they are not
@@ -208,11 +211,16 @@ export function contractStampsDue(
       continue;
     }
 
-    const priority = node.fields[FIELDS.priority];
-    const interval = cadenceIntervalFor(
-      tier,
-      isPriority(priority) ? priority : null,
-    );
+    // The priority the clocks RUN AT, which for a flagged caller is the
+    // forced one (0.37.1 second round): the pane already read it that way,
+    // and a settler reading the stored field instead would let the first VIP
+    // at a tiered customer see a promise nobody ever charges. Latent today -
+    // no tiered customer carries a flag - and latent is when to fix it.
+    const stored = node.fields[FIELDS.priority];
+    const priority = node.fields[FIELDS.vip] === true
+      ? VIP_FORCED_PRIORITY
+      : isPriority(stored) ? stored : null;
+    const interval = cadenceIntervalFor(tier, priority);
 
     if (interval === null) {
       continue;

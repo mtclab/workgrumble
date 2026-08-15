@@ -460,7 +460,7 @@ export const DESK_SPARES: readonly DayFragment[] = [
       id: 'hub:pool-fire-drill',
       channel: 'chan:announcements',
       author: 'person:vic',
-      body: 'Fire alarm test Thursday at eleven. It is a test. Nobody needs to '
+      body: 'Fire alarm test tomorrow at eleven. It is a test. Nobody needs to '
         + 'leave, and nobody needs to ring the desk about it, which is what '
         + 'happened last time and the time before that.',
       minute: 13 * 60 + 5,

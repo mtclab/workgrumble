@@ -348,3 +348,34 @@ describe('the source line refuses to credit the matrix for numbers it never made
     expect(prioritySourceLine('impact')).toContain('came out of the matrix');
   });
 });
+
+describe('the cadence sentence only promises a minute where one is charged (0.37.1)', () => {
+  const node = (state: string, missed?: number) => ({
+    id: 'ticket:synthetic',
+    kind: 'ticket',
+    fields: {
+      state,
+      spawned_at: 480,
+      sla_tier: 'silver',
+      priority: 3,
+      ...(missed === undefined ? {} : { cadence_missed: missed }),
+    },
+  }) as never;
+
+  it('names a closing minute on a live ticket', () => {
+    expect(cadenceLine(node('open'), 120)).toContain('This window closes at');
+  });
+
+  it('says held, not a minute, on a parked ticket - waiting is excused', () => {
+    const line = cadenceLine(node('waiting_on_user'), 120);
+    expect(line).toContain('Parked, so the clock is held');
+    expect(line).not.toContain('This window closes at');
+  });
+
+  it('says history, not a minute, on a closed ticket', () => {
+    const line = cadenceLine(node('resolved', 2), 120);
+    expect(line).toContain('Closed now');
+    expect(line).not.toContain('This window closes at');
+    expect(line).toContain('2 windows of silence');
+  });
+});

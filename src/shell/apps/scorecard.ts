@@ -257,7 +257,13 @@ export const SCORECARD_APP: AppDef = {
         .textContent = String(ledger.arrived);
       definitionRow(list, 'Tickets closed', 'scorecard-closed')
         .textContent = String(ledger.closed);
-      definitionRow(list, 'Resolution SLAs missed', 'scorecard-breaches')
+      // Binding clocks only (D4, 0.37.1): an external tier's resolution is
+      // contractual best effort, so its breaches are not in this number and
+      // not in the pay - what its contract binds bills through the meters'
+      // ack and cadence stamps, read per ticket on the queue. A per-day
+      // stamp row here needs day-attributed stamps and is a named backlog
+      // item on #64's close-out, not an oversight.
+      definitionRow(list, 'Resolution SLAs missed (binding clocks)', 'scorecard-breaches')
         .textContent = String(ledger.breached);
       definitionRow(list, 'Response SLAs missed', 'scorecard-late-response')
         .textContent = String(counts.lateResponses);

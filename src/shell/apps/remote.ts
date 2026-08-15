@@ -15,6 +15,8 @@ import {
   serviceClassOf,
   SERVICE_STATUS,
   STARTUP_TYPE_LABELS,
+  RACI_OWNER_LABELS,
+  raciOwnerOf,
   type StartupType,
   STARTUP_TYPES,
   startupTypeOf,
@@ -1258,6 +1260,22 @@ export const REMOTE_APP: AppDef = {
       const owner = element('span', 'remote-owner', 'remote-owner');
       owner.textContent = model.owner;
       head.append(heading, owner);
+
+      // The RACI marker, where the wall lives (0.37.1 second round): the KB
+      // tells the player the per-box owner map is the document made
+      // mechanical, and until this line the map was a field only the guards
+      // could read. It prints on the box the map says something about and is
+      // absent everywhere else, so its presence is itself the teaching.
+      const raci = raciOwnerOf(
+        api.graph.getField(model.id, FIELDS.raciOwner),
+      );
+
+      if (raci !== null) {
+        const marker = element('span', 'remote-raci', 'remote-raci');
+        marker.dataset.raci = raci;
+        marker.textContent = RACI_OWNER_LABELS[raci];
+        head.append(marker);
+      }
 
       session.append(head, renderScreen(model));
 

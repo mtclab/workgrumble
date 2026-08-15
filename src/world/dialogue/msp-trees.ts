@@ -448,7 +448,7 @@ const THEO: DialogueTree = {
     },
     {
       id: 'mfa-q',
-      npc_line: 'Enough times that it gave up on her. It is a Monday, the codes '
+      npc_line: 'Enough times that it gave up on her. After the weekend she had, the codes '
         + 'were being difficult, and she is only human.',
       options: [{ label: 'Unlock the account' }],
     },
@@ -2551,7 +2551,7 @@ const ESME: DialogueTree = {
  * an IT department of one on the other side of a co-managed RACI, with an
  * admin account of his own, a monitoring dashboard he actually reads, and no
  * ticket he could raise if he wanted to. So this tree has no `tickets` and no
- * reveal in it - it is the Facilities shape, a person who is in the world and
+ * reveal in it - a person who is in the world and
  * is not a queue - and every word he says is about the boundary rather than
  * about a fault.
  *
@@ -2601,7 +2601,7 @@ const GIL: DialogueTree = {
       npc_line: 'Services, disk, the backup job, and whether Ledgerline is '
         + 'answering. Four screens, one man, and I look at them before I take '
         + 'my coat off. It is not sophisticated. It does mean I find out about '
-        + 'my own estate on my own estate, which I would rather do from you.',
+        + 'my own estate from my own graphs, which I would rather hear from you.',
       options: [{ label: 'Tell him the graphs are more than most places have' }],
     },
   ],

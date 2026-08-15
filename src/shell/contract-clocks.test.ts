@@ -113,8 +113,8 @@ describe('the contract settler', () => {
     expect(cadenceMissesOn(node())).toBe(stamped);
 
     // And another window of silence grows it again - monotone, never down.
-    // A hundred and fifty real minutes, because this leg straddles lunch and
-    // the cadence is desk minutes: an hour of the silence is excused.
+    // A hundred and fifty minutes, generous headroom past one more window on
+    // this leg of the day.
     runMinutes(rigged, 150);
     expect(cadenceMissesOn(node())).toBeGreaterThan(stamped);
   });

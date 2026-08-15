@@ -263,7 +263,7 @@ function responseLine(clocks: Readonly<TicketClocks>): string {
  * Exported and model-level for the reason `prioritySourceLine` is - the pane is
  * DOM and the offline suite is not - and the closing minute is here rather than
  * left to the reader (0.37.1). The row used to print the gap and the misses and
- * expect the player to add one to the other across a night and a lunch hour,
+ * expect the player to add one to the other across a night the clock skips,
  * which is arithmetic nobody does and everybody gets wrong in the direction
  * that costs them. It is static between records, so it belongs on the same
  * repaint discipline the row already had.
@@ -273,14 +273,34 @@ export function cadenceLine(
   interval: number,
 ): string {
   const missed = cadenceMissesOn(node);
+  const record = missed > 0
+    ? ` ${String(missed)} window${missed === 1 ? '' : 's'} of silence `
+      + 'on the record already; the record does not shrink.'
+    : '';
+  const state = node.fields[FIELDS.state];
+
+  // The clock only runs where the settler charges it (0.37.1 second round):
+  // a parked ticket's silence is excused and a closed ticket's record is
+  // history, and the first cut printed a closing minute on both - a specific
+  // false promise on the two commonest states a ticket can be read in.
+  if (state === 'resolved') {
+    return `An update every ${formatDuration(interval)} was the promise. `
+      + 'Closed now; what the record holds is what it billed.'
+      + record;
+  }
+
+  if (state === 'waiting_on_user') {
+    return `An update every ${formatDuration(interval)}`
+      + ' - the contract clock on talking, not fixing. Parked, so the clock '
+      + 'is held: waiting minutes are excused, and the window resumes when '
+      + 'the ticket comes back.'
+      + record;
+  }
 
   return `An update every ${formatDuration(interval)}`
     + ' - the contract clock on talking, not fixing. This window closes at '
     + `${formatSimTime(cadenceWindowClosesAt(node, interval)).time}.`
-    + (missed > 0
-      ? ` ${String(missed)} window${missed === 1 ? '' : 's'} of silence `
-        + 'on the record already; the record does not shrink.'
-      : '');
+    + record;
 }
 
 function resolutionLine(clocks: Readonly<TicketClocks>): string {
