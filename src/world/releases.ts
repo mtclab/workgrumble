@@ -31,6 +31,36 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.37.0',
+    date: '2026-08-15',
+    summary: 'The customers acquire contracts, opinions, and their own IT '
+      + 'department. The queue now says out loud who moved every number '
+      + 'on it, which IT legal insisted we phrase as a feature.',
+    lines: Object.freeze([
+      'Every priority now names the lever that set it. A number the '
+        + 'matrix produced says so; a number that is only the reporter\'s '
+        + 'opinion says that; and a number forced by the VIP list names '
+        + 'the person on the list - including the new case where the '
+        + 'flawless ticket was typed by an assistant and the earbuds '
+        + 'belong to an executive. The flag follows who it is for. The '
+        + 'assistant\'s repro steps remain the best documentation this '
+        + 'department has ever received.',
+      'External contracts now bind what they actually bind. A customer '
+        + 'on a tier holds you to the acknowledgment and to a promised '
+        + 'gap between updates - a clock that runs out on silence, not '
+        + 'on the fault - and their resolution target is displayed as '
+        + 'the goal it always legally was. Silence is recorded. The '
+        + 'record does not shrink.',
+      'One of the managed customers turns out to have its own IT '
+        + 'department: one man, one server, and a document that says '
+        + 'which of you owns what. Commands aimed at his box will '
+        + 'succeed, because your account reaches it. He will know by '
+        + 'morning, because it is his box. The document was signed by '
+        + 'both companies and describes this exact situation, which is '
+        + 'why nobody can say they were not told - including you.',
+    ]),
+  },
+  {
     version: '0.36.0',
     date: '2026-08-14',
     summary: 'A senior desk is available, which means somebody else\'s '
