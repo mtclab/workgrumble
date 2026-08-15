@@ -216,7 +216,7 @@ describe('the RACI soft wall: the box you can touch, and the morning after', () 
       (notice) => notice.includes('The other IT team has been in touch'),
     );
     expect(complaint).toBeDefined();
-    expect(complaint).toContain('Callum Vance');
+    expect(complaint).toContain('Gil Farrant');
     expect(complaint).toContain('PENN-SRV-01');
     expect(
       typeof field(rigged, MSP_IDS.penningtonServer, FIELDS.raciComplainedAt),

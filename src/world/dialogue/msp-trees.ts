@@ -2477,7 +2477,7 @@ const MORGAN: DialogueTree = {
  * hers to say and because the whole beat is that nobody will say it: the
  * question of whose box PENN-SRV-01 is belongs to a document, and the answer is
  * on the `reveal` where every other cause on this shelf lives. What she does
- * say - twice, in her own words - is that Callum will want to know, which is
+ * say - twice, in her own words - is that Gil will want to know, which is
  * the honest shape of the thing. The person who tells you to tell him is the
  * one who has to work with him.
  */
@@ -2501,7 +2501,7 @@ const ESME: DialogueTree = {
         + 'and it is the Tuesday of a filing week.',
       options: [
         {
-          label: 'Ask whether Callum knows, and whether he is reachable',
+          label: 'Ask whether Gil knows, and whether he is reachable',
           next: 'ledgerline-callum',
           effects: [{ asks: true }],
         },
@@ -2515,7 +2515,7 @@ const ESME: DialogueTree = {
                 + 'it without an argument, because the MSP monitors that box '
                 + 'and holds an admin login on it. What the contract says is a '
                 + 'separate question: PENN-SRV-01 and the practice system on it '
-                + 'are Callum\'s under the RACI, so the move is to notify their '
+                + 'are Gil\'s under the RACI, so the move is to notify their '
                 + 'IT and then restart it. Nothing will stop you doing it the '
                 + 'other way round.',
             },
@@ -2526,7 +2526,7 @@ const ESME: DialogueTree = {
     },
     {
       id: 'ledgerline-callum',
-      npc_line: 'Callum is at the Brightwater office until three and his phone '
+      npc_line: 'Gil is at the Brightwater office until three and his phone '
         + 'goes to voicemail in that building - it always has. He is very good, '
         + 'and he is one man. He will see it, mind. He has that screen with the '
         + 'graphs on it and he looks at it before he takes his coat off.',
@@ -2538,7 +2538,7 @@ const ESME: DialogueTree = {
       id: 'ledgerline-done',
       npc_line: 'It is back - people are logging their morning in now, and the '
         + 'seniors have stopped standing behind me. Thank you. I will tell '
-        + 'Callum you were on it, though I dare say he will already know.',
+        + 'Gil you were on it, though I dare say he will already know.',
       options: [{ label: 'Log the restart' }],
     },
   ],

@@ -1207,7 +1207,7 @@ const ARDEN_PORTAL_AFTERHOURS: WorldTicket = {
  * The RACI's soft wall, as the one ticket that walks straight into it.
  *
  * The practice suite the whole firm bills through has stopped, on PENN-SRV-01,
- * which is Callum's box under the RACI - their one IT man owns the application,
+ * which is Gil's box under the RACI - their one IT man owns the application,
  * and he is out at a client until the afternoon. The fix is a service restart
  * and it WORKS: the MSP monitors that box, so the MSP has an admin account on
  * it, and nothing in the estate is going to refuse a Tier-1 tech bouncing a
@@ -1224,7 +1224,7 @@ const ARDEN_PORTAL_AFTERHOURS: WorldTicket = {
  *
  * Both ways through close the ticket, which is the padding rule applied to a
  * social cost: the player is never handed a fault they cannot fix. Notify
- * Callum first and the restart is coordinated work on a shared estate, and his
+ * Gil first and the restart is coordinated work on a shared estate, and his
  * morning is a mail he already knew about. Restart it without a word and the
  * ticket closes just the same - and tomorrow his monitoring tells him, in his
  * words rather than yours, which is what the reputation is spent on. The seam
@@ -1240,11 +1240,11 @@ const PENNINGTON_PRACTICE_DOWN: WorldTicket = {
     id: 'ticket:pennington-practice-down',
     archetype: 'read_the_screen',
     flavor: {
-      title: 'Pennington: the practice suite has stopped, and Callum is out',
+      title: 'Pennington: the practice suite has stopped, and Gil is out',
       body:
         'Esme rings: nobody at Pennington & Roe can get into Ledgerline - no '
         + 'time recording, no billing, forty people at a standstill on a '
-        + 'Tuesday. The service on PENN-SRV-01 has stopped. Callum, their IT '
+        + 'Tuesday. The service on PENN-SRV-01 has stopped. Gil, their IT '
         + 'manager, is at a client until three and is not picking up. That box '
         + 'is his under the RACI - the practice system is the customer\'s own '
         + 'to run, the MSP has the desks and the monitoring - which is why the '
@@ -1283,7 +1283,7 @@ const PENNINGTON_PRACTICE_DOWN: WorldTicket = {
     {
       id: 'notify-then-restart-ledgerline',
       app: 'cmd',
-      label: 'Notify Callum, then restart Ledgerline on PENN-SRV-01',
+      label: 'Notify Gil, then restart Ledgerline on PENN-SRV-01',
       steps: [
         {
           action: HELPDESK_ACTIONS.serviceRestart,
