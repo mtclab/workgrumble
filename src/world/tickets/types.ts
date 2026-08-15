@@ -92,6 +92,22 @@ export interface WorldTicket {
    */
   readonly duplicate?: boolean;
   /**
+   * WHO THE TICKET IS FOR, when that is not the person who typed it (E9,
+   * 0.37.0) - the executive's assistant filing on the executive's behalf.
+   *
+   * A PERSON NODE rather than the display line the ticket ends up carrying,
+   * because the whole point of naming them is that the VIP flag is read off
+   * them: a name in a string cannot be asked whether it is on the list, and a
+   * second authored copy of somebody's job title is a second answer to who
+   * they are. The spawn seam resolves the line off the estate and stamps it, so
+   * the ticket says whose it is and the flag beside it agrees by construction.
+   *
+   * This is the audit rung's own lesson made true at spawn (`audit.ts`: "It
+   * keys off the beneficiary"). Absent on nearly everything, which is the
+   * ordinary case - people mostly report their own problems.
+   */
+  readonly beneficiary?: string;
+  /**
    * The ticket whose FIX raises this one.
    *
    * A chain, declared by the ticket at the end of it. Granting somebody access

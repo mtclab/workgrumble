@@ -53,8 +53,12 @@ const COMMITTED: Readonly<Record<string, readonly (readonly [number, number])[]>
   msp: [[270, 1], [270, 1], [330, 2], [330, 2], [270, 1]],
   // The exec week is about what you are asked to do, not how much of it there
   // is. Thursday's recertification is six dispatches - the longest ticket in
-  // the game - and it is still only the second band.
-  corporate: [[60, 1], [60, 1], [290, 1], [330, 2], [70, 1]],
+  // the game - and it is still only the second band. Friday moved from 70 to
+  // 135 when the shadow VIP was added to it (E9, 0.37.0): a second arrival on a
+  // day that had one takes the partition factor from x1 to x1.5, which is the
+  // count term doing its job on the lightest day in the shop. Still band one,
+  // and still the day the week ends quietly on.
+  corporate: [[60, 1], [60, 1], [290, 1], [330, 2], [135, 1]],
 };
 
 /** A ticket fixture with a given number of required dispatches. */

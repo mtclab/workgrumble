@@ -23,6 +23,7 @@ import {
   VIP_EARBUDS_TICKET,
   VIP_FORCED_PRIORITY,
   VIP_LEDGER_TICKET,
+  VIP_SHADOW_EARBUDS_TICKET,
   VIP_TABLET_TICKET,
 } from './vip';
 import { DayDriver, TICK_INTERVAL_MS } from '../shell/day-driver';
@@ -626,5 +627,119 @@ describe('the flag moves nothing that came before it', () => {
       .map((entry) => entry.def.id);
 
     expect(his).toEqual([VIP_EARBUDS_TICKET, VIP_TABLET_TICKET]);
+  });
+});
+
+/* -- the shadow VIP (E9, 0.37.0) ------------------------------------------ */
+
+/**
+ * The flag keys off the BENEFICIARY, driven on the shipped world.
+ *
+ * This is the half of the real rule the collision could not show, because both
+ * of its tickets are typed by the person they are about. A VIP list covers the
+ * executive AND whoever files for him: the flag is a fact about who the ticket
+ * is FOR, so an assistant nobody has ever heard of raising a ticket for a man on
+ * the list jumps the queue exactly as far as he does. It is the same lesson the
+ * audit rung bills a junior for missing (`audit.ts`: "It keys off the
+ * beneficiary"), made true at the seam that actually stamps the flag.
+ *
+ * TEETH: key the spawn back off `entry.def.reporter` and the first test here
+ * goes red in three places at once - Denise is not on the list, so the ticket
+ * lands unflagged, at no forced priority, on the untriaged clock. The last test
+ * is the other direction: every ticket that names nobody is still the reporter's
+ * own flag, so the change cannot have moved anything that came before it.
+ */
+describe('a ticket raised on somebody else\'s behalf', () => {
+  it('takes the flag from the person it is FOR, not from the person who typed '
+    + 'it', () => {
+    const session = corporate();
+    const entry = findWorldTicket(VIP_SHADOW_EARBUDS_TICKET);
+
+    // The reporter is an ordinary member of staff, and the estate says so. If
+    // this ever stops being true the test below proves nothing.
+    expect(entry?.def.reporter).toBe(HALCYON_IDS.ea);
+    expect(session.engine.graph.getField(HALCYON_IDS.ea, FIELDS.vip))
+      .not.toBe(true);
+    expect(entry?.beneficiary).toBe(HALCYON_IDS.ceo);
+
+    spawnWorldTicket(session.engine, VIP_SHADOW_EARBUDS_TICKET);
+
+    const clocks = clocksOf(session, VIP_SHADOW_EARBUDS_TICKET);
+
+    // Forced, on the arithmetic that matters: the flag on the ticket, the
+    // priority both clocks are measured against, and the resolution budget it
+    // actually landed with - two hours rather than the four an untriaged ticket
+    // gets, before anybody has read a word of it.
+    expect(clocks.vip).toBe(true);
+    expect(clocks.priority).toBe(VIP_FORCED_PRIORITY);
+    expect(budgetOf(session, VIP_SHADOW_EARBUDS_TICKET))
+      .toBe(SLA_TARGETS[VIP_FORCED_PRIORITY].resolution);
+    expect(budgetOf(session, VIP_SHADOW_EARBUDS_TICKET))
+      .toBeLessThan(UNTRIAGED_SLA_TICKS);
+  });
+
+  it('says on the ticket whose it is, so the forced priority has a name', () => {
+    const session = corporate();
+    spawnWorldTicket(session.engine, VIP_SHADOW_EARBUDS_TICKET);
+
+    // The line is resolved off the estate rather than authored twice, so it is
+    // the name and title the directory carries for him.
+    expect(session.engine.graph.getField(
+      VIP_SHADOW_EARBUDS_TICKET,
+      FIELDS.beneficiary,
+    )).toBe('Roland Cushing-Vane, Chief Executive Officer');
+  });
+
+  it('is closeable on its advertised path, and it is a different pair of '
+    + 'earbuds from Thursday\'s', () => {
+    const session = corporate();
+    const driver = driverFor(session);
+    driver.startShift();
+    spawnWorldTicket(session.engine, VIP_SHADOW_EARBUDS_TICKET);
+
+    expect(
+      drivePath(driver, VIP_SHADOW_EARBUDS_TICKET, 'reset-the-travel-earbuds')
+        .every(Boolean),
+    ).toBe(true);
+    expect(ticketState(session, VIP_SHADOW_EARBUDS_TICKET)).toBe('resolved');
+
+    // The first pair is untouched by it. Two tickets watching one device would
+    // be one reset closing both, and the Friday beat would be Thursday's ticket
+    // under another title.
+    expect(findWorldTicket(VIP_SHADOW_EARBUDS_TICKET)?.nodes)
+      .not.toContain(HALCYON_IDS.ceoEarbuds);
+    expect(session.engine.graph.getField(
+      HALCYON_IDS.ceoEarbuds,
+      FIELDS.wedged,
+    )).not.toBe(false);
+  });
+
+  it('leaves every ticket that names nobody keyed to its own reporter', () => {
+    const session = corporate();
+    spawnWorldTicket(session.engine, VIP_EARBUDS_TICKET);
+    spawnWorldTicket(session.engine, VIP_LEDGER_TICKET);
+
+    // The exec's own ticket: flagged, because he typed it, and carrying no
+    // beneficiary at all - there is nobody it is raised on behalf of.
+    expect(clocksOf(session, VIP_EARBUDS_TICKET).vip).toBe(true);
+    expect(session.engine.graph.getField(
+      VIP_EARBUDS_TICKET,
+      FIELDS.beneficiary,
+    )).toBeUndefined();
+
+    // And the ordinary user's: not flagged, not stamped, exactly as before.
+    expect(clocksOf(session, VIP_LEDGER_TICKET).vip).toBe(false);
+    expect(session.engine.graph.getField(
+      VIP_LEDGER_TICKET,
+      FIELDS.beneficiary,
+    )).toBeUndefined();
+
+    // Said once for the whole roster: one ticket names a beneficiary, and it is
+    // this one. A second would need its own reason to exist.
+    expect(
+      WORLD_TICKETS
+        .filter((entry) => entry.beneficiary !== undefined)
+        .map((entry) => entry.def.id),
+    ).toEqual([VIP_SHADOW_EARBUDS_TICKET]);
   });
 });

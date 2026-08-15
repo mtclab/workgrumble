@@ -106,5 +106,20 @@ export function assertPathsAimAtRealNodes(
         }
       }
     }
+
+    // And the person a ticket is raised on BEHALF of (E9, 0.37.0), which is the
+    // same claim about the same estate and matters more than a step's does: the
+    // VIP flag is read off that person at spawn, so a beneficiary nobody built
+    // is a flag read off nothing, silently, on a ticket whose priority is the
+    // thing the flag decides.
+    const { beneficiary } = entry;
+
+    if (beneficiary !== undefined && !seeded.has(beneficiary)) {
+      throw new Error(
+        `Ticket "${entry.def.id}" is raised on behalf of "${beneficiary}", who `
+        + 'is not in the estate. The VIP flag is read off that person at spawn, '
+        + 'so a name nobody built is a priority nobody can account for.',
+      );
+    }
   }
 }

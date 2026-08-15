@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
+import type { ReadOnlyGraphNode } from '../../engine-api';
 import { HELPDESK_ACTIONS } from '../../world/actions';
 import { COMPANY_IDS } from '../../world/company';
 import { FIELDS } from '../../world/fields';
 import { createWorldSession } from '../../world/session';
+import { prioritySourceOf } from '../../world/sla';
 import { spawnWorldTicket } from '../../world/tickets';
 import {
   breachedTicketCount,
+  prioritySourceLine,
   type TicketRow,
   ticketRows,
   ticketStateLabel,
@@ -152,5 +155,64 @@ describe('the queue between two minutes', () => {
 
     expect(arrived).toEqual([FAN_TICKET]);
     expect(new Set(after.map((row) => row.key)).size).toBe(after.length);
+  });
+});
+
+/**
+ * The row that names the lever (E9, 0.37.0).
+ *
+ * The pane prints one sentence beside the priority, and which sentence it is
+ * comes from the ticket rather than from the app: an untriaged one is still
+ * carrying the reporter's own opinion, and a triaged one is carrying the
+ * matrix's. Asserted through the shipped classify verb on the shipped world,
+ * because the claim is about what changed the number - a test that wrote the
+ * priority field itself would be asserting the sentence against its own fixture.
+ *
+ * The VIP branch is the row's ABSENCE, and that is checked here too: the pane
+ * already has a row saying the flag forced the number and that nobody can unpick
+ * it, so a second sentence would read as a second lever.
+ */
+describe('the row that says which lever set the priority', () => {
+  const nodeOf = (
+    session: ReturnType<typeof createWorldSession>,
+    id: string,
+  ): ReadOnlyGraphNode => {
+    const found = session.engine.graph.getNode(id);
+
+    if (found === undefined) {
+      throw new Error(`The world has no ticket "${id}".`);
+    }
+
+    return found;
+  };
+
+  it('calls an untriaged number the reporter\'s own claim, and a triaged one '
+    + 'the matrix\'s', () => {
+    const session = createWorldSession();
+    spawnWorldTicket(session.engine, FAN_TICKET);
+
+    expect(prioritySourceLine(prioritySourceOf(nodeOf(session, FAN_TICKET))))
+      .toBe(
+        'The number on this one is the reporter\'s own claim - nothing has '
+        + 'been triaged yet, and the desk treats an unread claim as P3.',
+      );
+
+    expect(session.engine.dispatch(
+      HELPDESK_ACTIONS.ticketClassify,
+      COMPANY_IDS.player,
+      FAN_TICKET,
+      { impact: 1, urgency: 1, priority: 4 },
+    )).toEqual({ ok: true });
+
+    expect(prioritySourceLine(prioritySourceOf(nodeOf(session, FAN_TICKET))))
+      .toBe(
+        'Priority came out of the matrix - impact times urgency, the two '
+        + 'dropdowns below, nobody\'s name involved.',
+      );
+  });
+
+  it('says nothing of its own on a VIP ticket, because the row above it '
+    + 'already has', () => {
+    expect(prioritySourceLine('vip')).toBeNull();
   });
 });

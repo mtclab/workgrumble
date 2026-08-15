@@ -914,6 +914,15 @@ impl World {
             fields.insert("vip".to_owned(), serde_json::json!(true));
         }
 
+        // And WHO IT IS FOR (E9, 0.37.0), stamped only when that is somebody
+        // other than the person who typed it. It rides beside the flag above
+        // rather than behind it because the two are one decision: the flag was
+        // read off this person, so the ticket that carries the forced priority
+        // has to be able to say on whose behalf it was forced.
+        if let Some(beneficiary) = &definition.beneficiary {
+            fields.insert("beneficiary".to_owned(), serde_json::json!(beneficiary));
+        }
+
         let node = serde_json::json!({
             "id": id,
             "kind": "ticket",

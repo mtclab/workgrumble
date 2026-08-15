@@ -126,6 +126,38 @@ function ticketPriority(
 }
 
 /**
+ * Which lever put the number on the ticket.
+ *
+ * Three answers, because there are three levers: the flag forced it, nobody has
+ * triaged it and the only number on the screen is the reporter's own claim, or
+ * the nine-cell matrix produced it from impact and urgency. The pane says which,
+ * because a priority whose provenance is invisible is a number the player is
+ * asked to argue with and given nothing to argue against.
+ *
+ * DERIVED, deliberately. Both facts it reads - the VIP stamp and the priority
+ * field - are already on the node, put there by the spawn seam and the classify
+ * verb. A fourth stored field would be a second answer to one question, and the
+ * two would disagree the first time a triage was re-filed.
+ *
+ * THE CONTRACT TIER IS NOT ONE OF THESE, and it looks like it should be. A
+ * customer's tier moves the CLOCK the number is measured against, not the number
+ * itself: a Gold P3 and a Bronze P3 are both P3, and the pane's own tier row says
+ * which ladder is running. Adding it here would be completing an enum by its
+ * shape rather than by what the levers do.
+ */
+export type PrioritySource = 'impact' | 'vip' | 'self_declared';
+
+export function prioritySourceOf(
+  node: Readonly<ReadOnlyGraphNode>,
+): PrioritySource {
+  if (isVipTicket(node)) {
+    return 'vip';
+  }
+
+  return isPriority(node.fields[FIELDS.priority]) ? 'impact' : 'self_declared';
+}
+
+/**
  * The tier stamped on the ticket at spawn (0.12.0), or null in-house.
  *
  * Read off the ticket's own field rather than re-walking the estate: the tier

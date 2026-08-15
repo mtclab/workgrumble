@@ -24,6 +24,7 @@ import { OVERRIDE_TICKET } from './override';
 import {
   VIP_EARBUDS_TICKET,
   VIP_LEDGER_TICKET,
+  VIP_SHADOW_EARBUDS_TICKET,
   VIP_TABLET_TICKET,
 } from './vip';
 import { type DayScript, validateWeek } from './week';
@@ -210,7 +211,13 @@ export const CORPORATE_WEEK: readonly DayScript[] = validateWeek([
     // he raised it himself before nine; the review at three still runs the way it
     // runs every employer's, and the audit finding lands the same day.
     inherited: [OVERRIDE_TICKET],
-    drip: [],
+    // And the shadow VIP (E9, 0.37.0), mid-morning: the same trivial fault as
+    // Thursday's, on a different pair, typed by somebody who is not on the list
+    // for somebody who is. It lands the day AFTER the collision on purpose - by
+    // Friday the player has already watched the flag jump a queue once, so the
+    // question this one asks is the sharper one: why is this P2, when the name
+    // at the top of it is Denise's.
+    drip: [{ ticketId: VIP_SHADOW_EARBUDS_TICKET, minute: 11 * 60 + 20 }],
     channels: [
       {
         id: 'halcyon:override-push',

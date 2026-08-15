@@ -40,6 +40,8 @@ import {
 import {
   HOLD_REASON_LABELS,
   holdReasonOf,
+  type PrioritySource,
+  prioritySourceOf,
   ticketClocks,
   type TicketClocks,
 } from '../../world/sla';
@@ -167,6 +169,30 @@ function reporterName(
     api.graph.getField(entry.def.reporter, FIELDS.name),
     entry.def.reporter,
   );
+}
+
+/**
+ * Which lever moved the number, in the one sentence the pane prints - or
+ * nothing, when the pane already has a row that says it.
+ *
+ * VIP is that case and it is `null` deliberately: the row above already says the
+ * priority is forced by the caller's name and that nobody here can unpick it, and
+ * a second sentence about the same lever would read as a second lever.
+ *
+ * Exported because this IS the row: the pane is DOM and the offline suite is
+ * not, so a claim about what the player reads has to be checkable without a
+ * browser standing up.
+ */
+export function prioritySourceLine(source: PrioritySource): string | null {
+  if (source === 'vip') {
+    return null;
+  }
+
+  return source === 'self_declared'
+    ? 'The number on this one is the reporter\'s own claim - nothing has been '
+      + 'triaged yet, and the desk treats an unread claim as P3.'
+    : 'Priority came out of the matrix - impact times urgency, the two '
+      + 'dropdowns below, nobody\'s name involved.';
 }
 
 /** The player's own triage, if they have done one. */
@@ -1280,6 +1306,23 @@ export const TICKETS_APP: AppDef = {
           + 'is forced to '
           + `${priorityLabel(clocks.priority)} regardless of impact. Nobody `
           + 'chose it and nobody can unpick it here.';
+      }
+
+      // And the same question answered for the other two levers (E9, 0.37.0).
+      // The VIP row above is this row's vip branch - it says the flag forced the
+      // number and that nobody can unpick it - so `prioritySourceLine` returns
+      // nothing there and this one is simply absent. What is left is the pair
+      // the player can actually act on: a number the matrix produced, and a
+      // number that is still the reporter's own opinion.
+      const sourceLine = prioritySourceLine(prioritySourceOf(node));
+
+      if (sourceLine !== null) {
+        const sourceValue = definitionRow(
+          facts,
+          'Set by',
+          'ticket-detail-priority-source',
+        );
+        sourceValue.textContent = sourceLine;
       }
 
       // RETAINED OWNERSHIP (E9, 0.36.0), where it can be read: this ticket has

@@ -40,6 +40,7 @@ import { RECERT_FOLLOWUP, RECERT_TICKET } from '../recert';
 import {
   VIP_EARBUDS_TICKET,
   VIP_LEDGER_TICKET,
+  VIP_SHADOW_EARBUDS_TICKET,
   VIP_TABLET_TICKET,
 } from '../vip';
 import type { DialogueTree } from './types';
@@ -57,6 +58,9 @@ const DENISE: DialogueTree = {
     'ticket:halcyon-ceo-filter',
     'ticket:halcyon-ceo-bec',
     'ticket:halcyon-audio-disabled',
+    // And the shadow VIP (E9, 0.37.0): the best-written ticket in the building,
+    // about one earbud, forced to P2 by a name that is not hers.
+    VIP_SHADOW_EARBUDS_TICKET,
   ],
   root: 'mfa',
   roots: {
@@ -65,6 +69,7 @@ const DENISE: DialogueTree = {
     'ticket:halcyon-ceo-filter': 'filter',
     'ticket:halcyon-ceo-bec': 'bec',
     'ticket:halcyon-audio-disabled': 'audio',
+    [VIP_SHADOW_EARBUDS_TICKET]: 'earbuds-again',
   },
   resolved_roots: {
     'ticket:halcyon-ceo-mfa-off': 'mfa-done',
@@ -72,6 +77,7 @@ const DENISE: DialogueTree = {
     'ticket:halcyon-ceo-filter': 'filter-done',
     'ticket:halcyon-ceo-bec': 'bec-done',
     'ticket:halcyon-audio-disabled': 'audio-done',
+    [VIP_SHADOW_EARBUDS_TICKET]: 'earbuds-again-done',
   },
   nodes: [
     {
@@ -275,6 +281,51 @@ const DENISE: DialogueTree = {
       id: 'audio-done',
       npc_line: 'Sound. Thank you - and with an hour to spare, which I am told '
         + 'is not how this normally goes.',
+      options: [{ label: 'Log the fix' }],
+    },
+    {
+      id: 'earbuds-again',
+      npc_line: 'I know. I am sorry - it is earbuds again, and it is not even '
+        + 'the same pair. I have written down everything I tried so you do not '
+        + 'have to ask me any of it. If it helps, I can bring them down; I know '
+        + 'perfectly well this is not what your Friday is for.',
+      options: [
+        {
+          label: 'Ask when the right one last paired with anything',
+          next: 'earbuds-again-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Wonder why a ticket from Denise is sitting at P2',
+          effects: [
+            {
+              reveal: 'Nothing on the face of this ticket asked for a P2. The '
+                + 'flag is not hers - it is Roland\'s, and it is read off the '
+                + 'person the ticket is FOR rather than the person who typed '
+                + 'it, which is how a VIP list is meant to work and is why an '
+                + 'assistant filing on an executive\'s behalf jumps the queue '
+                + 'exactly as far as he does.',
+            },
+          ],
+        },
+        { label: 'Tell her the write-up is the best one you have had all week' },
+      ],
+    },
+    {
+      id: 'earbuds-again-q',
+      npc_line: 'It paired the day he bought them, I think, and I could not '
+        + 'swear to it since. He only wears them travelling, and he is only ever '
+        + 'travelling when I am not with him.',
+      options: [
+        { label: 'Back to the top', next: 'earbuds-again' },
+        { label: 'Go and reset the pair' },
+      ],
+    },
+    {
+      id: 'earbuds-again-done',
+      npc_line: 'Both of them, in both ears. He will never mention it again, '
+        + 'which from Roland is a standing ovation. Thank you for taking it '
+        + 'seriously - I did feel silly raising it.',
       options: [{ label: 'Log the fix' }],
     },
   ],
