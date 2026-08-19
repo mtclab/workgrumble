@@ -141,7 +141,14 @@ export const REVIEW_APP: AppDef = {
       // after three o'clock would print a position that had moved since it
       // decided anything, because the queue does not stop.
       pressure.textContent = card.criteria;
-      utilisation.textContent = `The hours: ${card.utilisation}`;
+      // The conversation line, and only where there is a conversation to have
+      // (0.39.0): a rung the business asks nothing of has nothing said about
+      // its hours in the room, so the paragraph is not there rather than
+      // there and empty.
+      utilisation.hidden = card.utilisation === '';
+      utilisation.textContent = card.utilisation === ''
+        ? ''
+        : `The hours: ${card.utilisation}`;
       heading.textContent = scene.title;
       stamp.textContent = outcome === 'pending'
         ? 'Friday, three o\'clock. It has not happened yet.'

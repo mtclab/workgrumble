@@ -54,6 +54,7 @@ import {
   timesheetSheet,
   utilisationLine,
   utilisationOf,
+  utilisationReviewLine,
   TIMESHEET_LOG_LIMIT,
   type TimesheetClaim,
   withClaim,
@@ -62,6 +63,7 @@ import {
   type WorkResolver,
   type WorkSegment,
 } from './timesheet';
+import { utilisationTargetFor } from './titles';
 
 beforeAll(() => {
   loadEngineForTests();
@@ -89,6 +91,18 @@ function mspWorld(): WorldSession {
 }
 
 /** Nine o'clock on day one, which is where every segment below is measured. */
+/**
+ * The two targets the shipped table sets, read OFF the table rather than built
+ * here: the question these fixtures ask is what the READING does with a target,
+ * and a hand-made one would let the model agree with a rung the game does not
+ * have. The percentages are still pinned as literals in the assertions below,
+ * because they are tuning knobs and a change to one should be a change somebody
+ * made on purpose.
+ */
+const ENGINEER_TARGET = utilisationTargetFor('systems_engineer');
+const SENIOR_TARGET = utilisationTargetFor('sd_senior');
+const JUNIOR_TARGET = utilisationTargetFor('sd_junior');
+
 const MONDAY = shiftStartTick(1);
 
 function ledger(...segments: readonly (readonly [number, SegmentRef])[]): string {
@@ -708,7 +722,7 @@ describe('the tier shape', () => {
       segmentsFrom(ledger([MONDAY, ARDEN], [MONDAY + 60, PROJECT])),
       shiftEndTick(1),
     );
-    const honest = utilisationOf(worked, PLAYER_TIERS.systemsEngineer);
+    const honest = utilisationOf(worked, ENGINEER_TARGET);
 
     expect(honest.basis).toBe('billable');
     expect(honest.target).toBe(75);
@@ -734,8 +748,8 @@ describe('the tier shape', () => {
       })),
     );
 
-    expect(utilisationOf(padded, PLAYER_TIERS.systemsEngineer).percent)
-      .toBeGreaterThan(utilisationOf(honest, PLAYER_TIERS.systemsEngineer).percent);
+    expect(utilisationOf(padded, ENGINEER_TARGET).percent)
+      .toBeGreaterThan(utilisationOf(honest, ENGINEER_TARGET).percent);
     // And the derivation did not move an inch under it.
     expect(padded.derived).toBe(honest.derived);
   });
@@ -745,7 +759,7 @@ describe('the tier shape', () => {
       segmentsFrom(ledger([MONDAY, { kind: 'internal', id: 'internal' }])),
       shiftEndTick(1),
     );
-    const reading = utilisationOf(internal, PLAYER_TIERS.systemsEngineer);
+    const reading = utilisationOf(internal, ENGINEER_TARGET);
 
     // A morning on the shop's own kit is recorded and is on nobody's invoice,
     // and the two halves of the reading say exactly that.
@@ -754,19 +768,22 @@ describe('the tier shape', () => {
     expect(reading.percent).toBe(0);
   });
 
-  it('hits the SERVICE DESK\'s target exactly, which is the joke', () => {
+  it('hits the SENIOR DESK\'s target with room, which is the joke', () => {
     const desk = sheetOf(
       segmentsFrom(ledger([MONDAY, ARDEN])),
       shiftEndTick(1),
       [],
       PLAYER_TIERS.serviceDesk,
     );
-    const reading = utilisationOf(desk, PLAYER_TIERS.serviceDesk);
+    const reading = utilisationOf(desk, SENIOR_TARGET);
 
     // One bucket a day at seven and a half hours, over a day of seven and a
-    // half hours. Nobody decided anything and the target is met to the minute.
+    // half hours. Nobody decided anything and the target is cleared with room -
+    // which is the pathology the research names out loud ("if a business stops
+    // recording non-billable time, its utilisation rate will always be 100 per
+    // cent") shipped as a joke rather than as a punishment.
     expect(reading.basis).toBe('recorded');
-    expect(reading.target).toBe(100);
+    expect(reading.target).toBe(85);
     expect(reading.percent).toBe(100);
     expect(reading.met).toBe(true);
     expect(utilisationLine(reading)).toContain('the business asks for');
@@ -776,7 +793,7 @@ describe('the tier shape', () => {
     const said = utilisationLine(
       utilisationOf(
         sheetOf(segmentsFrom(ledger([MONDAY, ARDEN])), shiftEndTick(1)),
-        PLAYER_TIERS.systemsEngineer,
+        ENGINEER_TARGET,
       ),
     );
 
@@ -785,5 +802,83 @@ describe('the tier shape', () => {
     expect(said).not.toContain('should');
     expect(said).not.toContain('need');
     expect(said).toContain('75%');
+  });
+
+  /* -- the target is a column on the rung table (E9/E10 bridge, 0.39.0) --- */
+
+  it('asks the PROBATIONER for nothing, and claims no target at them', () => {
+    const desk = sheetOf(
+      segmentsFrom(ledger([MONDAY, ARDEN])),
+      shiftEndTick(1),
+      [],
+      PLAYER_TIERS.serviceDesk,
+    );
+    const reading = utilisationOf(desk, JUNIOR_TARGET);
+
+    // Null is the row's real answer and not a hole in it: a probationer's sheet
+    // is one bucket a day by construction, so every basis over it is a constant
+    // and a target on it could not be moved by anything the player did.
+    expect(JUNIOR_TARGET).toBeNull();
+    expect(reading.target).toBeNull();
+    // The number is still worth printing, and the sheet's own SHAPE says which
+    // one it is - a one-bucket sheet has no billable half to report.
+    expect(reading.basis).toBe('recorded');
+    expect(reading.percent).toBe(100);
+    // Nothing to be under, so nothing to be under it about.
+    expect(reading.met).toBe(true);
+    expect(utilisationLine(reading)).not.toContain('the business asks for');
+    expect(utilisationLine(reading)).toContain('100%');
+  });
+
+  it('gives an IDLE week the red row at a rung with a target and no row at one without', () => {
+    // Present all day and attributed to nothing: the ledger is empty, the day
+    // is not. This is the shape of week the whole target column exists to have
+    // an opinion about.
+    const idle = shiftEndTick(1);
+    const engineer = utilisationOf(sheetOf([], idle), ENGINEER_TARGET);
+    const junior = utilisationOf(
+      sheetOf([], idle, [], PLAYER_TIERS.serviceDesk),
+      JUNIOR_TARGET,
+    );
+
+    expect(engineer.availableMinutes).toBe(WORKING_MINUTES_PER_DAY);
+    expect(engineer.percent).toBe(0);
+    expect(engineer.met).toBe(false);
+    expect(utilisationReviewLine(engineer)).not.toBe('');
+    // And the probationer's card has no row on it at all, which is what keeps
+    // that week exactly the week it was before the column existed.
+    expect(junior.met).toBe(true);
+    expect(utilisationReviewLine(junior)).toBe('');
+  });
+
+  it('says in the ROW that the row is not the mark, either way', () => {
+    const under = utilisationReviewLine(
+      utilisationOf(sheetOf([], shiftEndTick(1)), ENGINEER_TARGET),
+    );
+    const met = utilisationReviewLine(
+      utilisationOf(
+        sheetOf(
+          segmentsFrom(ledger([MONDAY, ARDEN])),
+          shiftEndTick(1),
+          [],
+          PLAYER_TIERS.serviceDesk,
+        ),
+        SENIOR_TARGET,
+      ),
+    );
+
+    // The player must not have to guess whether the verdict above this row had
+    // this row in it. Both sentences say it, because being over target is
+    // exactly as unscored as being under it.
+    expect(under).toContain('nothing on this card is computed from it');
+    expect(met).toContain('nothing on this card is computed from it');
+    // Under target is a CONVERSATION and never a mark - #67's decision, in the
+    // words the player reads.
+    expect(under).toContain('conversation');
+    expect(under).toContain('not a mark');
+    expect(met).not.toContain('conversation');
+    // And still no advice anywhere in it.
+    expect(under).not.toContain('should');
+    expect(under).not.toContain('need');
   });
 });

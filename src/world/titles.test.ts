@@ -26,6 +26,7 @@ import {
   SLA_PROFILES,
   tierFor,
   TITLE_TABLE,
+  utilisationTargetFor,
   WORK_KINDS,
 } from './titles';
 
@@ -149,6 +150,67 @@ describe('the rung table', () => {
   it('refuses to answer for a rung that has no tier or no offer', () => {
     expect(() => tierFor('architect')).toThrow(/no tier/u);
     expect(() => offeredAtFor('sd_junior')).toThrow(/no standing|names none/u);
+  });
+
+  /* -- the utilisation column (E9/E10 bridge, 0.39.0) --------------------- */
+
+  /**
+   * The target as SHIPPED, pinned rung by rung.
+   *
+   * Literals rather than a read of the table, deliberately: this is the one
+   * column that is purely a difficulty knob, so a change to any figure has to
+   * be a change somebody came here and made on purpose rather than one that
+   * slid past behind a green suite.
+   */
+  it('asks each built rung for what the research says it is asked for', () => {
+    // NONE. One bucket a day at seven and a half hours, so every basis over a
+    // probationer's sheet is a constant and a target could not be moved by
+    // anything they did.
+    expect(TITLE_TABLE.sd_junior.utilisation).toBeNull();
+    expect(utilisationTargetFor('sd_junior')).toBeNull();
+    // GENTLE, and on the only basis an in-house rung can be measured on: the
+    // top of the sourced healthy band (Scoro/Teamwork, 75-85%), deliberately
+    // short of the hundred those same sources call a gaming signal.
+    expect(utilisationTargetFor('sd_senior'))
+      .toEqual({ basis: 'recorded', percent: 85 });
+    // REAL: the industry ask an honest week does not reach (Promys, 75%).
+    expect(utilisationTargetFor('systems_engineer'))
+      .toEqual({ basis: 'billable', percent: 75 });
+  });
+
+  it('names no target at a rung nobody can play yet', () => {
+    // A target is a claim about a WEEK, and there is no week at those rungs to
+    // measure one against. The same refusal `tier` and `employer` make on the
+    // same rows, and the seam is the column for the day one is built.
+    for (const rung of RUNGS) {
+      if (TITLE_TABLE[rung].built) {
+        continue;
+      }
+
+      expect(utilisationTargetFor(rung), rung).toBeNull();
+    }
+  });
+
+  it('keeps every target a percentage of a week somebody could work', () => {
+    for (const rung of RUNGS) {
+      const target = TITLE_TABLE[rung].utilisation;
+
+      if (target === null) {
+        continue;
+      }
+
+      // Nought is refused as hard as a hundred and one: a nought target is met
+      // by doing nothing at all, which is a target that lies rather than no
+      // target. The way to ask for nothing is null.
+      expect(target.percent, rung).toBeGreaterThan(0);
+      expect(target.percent, rung).toBeLessThanOrEqual(100);
+      // And the basis a rung's own customers can produce. `billable` over an
+      // in-house rung is nought every week for reasons the player cannot touch,
+      // which is a permanently red row rather than a difficulty.
+      if (TITLE_TABLE[rung].customers.inHouse) {
+        expect(target.basis, rung).toBe('recorded');
+      }
+    }
   });
 });
 

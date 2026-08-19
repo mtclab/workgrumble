@@ -122,7 +122,7 @@ import {
   selinuxRelabelSetup,
 } from '../world/selinux';
 import { queueJumpFalloutDue } from '../world/vip';
-import { rungFor } from '../world/titles';
+import { type Rung, rungFor, utilisationTargetFor } from '../world/titles';
 import {
   AUDIT_FAULT_NOTES,
   type AuditFault,
@@ -371,7 +371,7 @@ import {
   type TimesheetTruth,
   utilisationOf,
   type UtilisationReading,
-  utilisationLine,
+  utilisationReviewLine,
   type WorkResolver,
   withClaim,
   withSegment,
@@ -3081,7 +3081,11 @@ export class DayDriver implements DayApi {
       // week ends, and it decides nothing at all. A player who files a line at
       // four o'clock has moved their utilisation and moved nothing else, which
       // is the honest reading of what a timesheet is.
-      utilisation: utilisationLine(this.timesheetUtilisation()),
+      // And EMPTY at a rung the business asks nothing of (0.39.0), which is how
+      // a probationer's card comes out exactly as it did before the target
+      // column existed: the surfaces leave the row off rather than print a
+      // number against a blank.
+      utilisation: utilisationReviewLine(this.timesheetUtilisation()),
       // The mark the conversation was decided on, which stopped moving when
       // the conversation happened. Reading it live let the week screen print
       // "37 of 45 needed" directly above "Probation: passed", because the week
@@ -3682,7 +3686,7 @@ export class DayDriver implements DayApi {
    * other two, which is what `audit-teeth.test.ts` proves by doing exactly that.
    */
   private spawnAudits(after: number, upTo: number): void {
-    if (rungFor(this.playerTier(), this.playerText(FIELDS.title)) !== SENIOR_RUNG) {
+    if (this.playerRung() !== SENIOR_RUNG) {
       return;
     }
 
@@ -5103,7 +5107,19 @@ export class DayDriver implements DayApi {
    * moves it, which is correct: the sheet is still open until the week ends.
    */
   public timesheetUtilisation(): UtilisationReading {
-    return utilisationOf(this.timesheet(), this.playerTier());
+    return utilisationOf(this.timesheet(), utilisationTargetFor(this.playerRung()));
+  }
+
+  /**
+   * Which rung the player is on, off the two things the career already carries.
+   *
+   * One read, in one place, because there are now two questions that turn on it
+   * - whether the second queue deals anything, and what the business asks of
+   * the hours - and a second copy of the pair would be the seam they start
+   * disagreeing across.
+   */
+  private playerRung(): Rung {
+    return rungFor(this.playerTier(), this.playerText(FIELDS.title));
   }
 
   /** Which project a bucket's minutes belong to a customer through. */

@@ -244,11 +244,19 @@ export const WEEKEND_APP: AppDef = {
       // And the row the timesheet put on this card (0.30.0): what the business
       // makes of the hours. It is the ONLY row here that feeds into nothing -
       // the mark above it is the whole verdict and this is not a term in it -
-      // and it says the number and the target and stops, because a week that
-      // was honest about its hours must not be a week that reads as a worse
-      // one.
-      definitionRow(list, 'Utilisation', 'weekend-utilisation')
-        .textContent = card.utilisation;
+      // and it says the number, the target, and that it is not a term in the
+      // mark, because a week that was honest about its hours must not be a week
+      // that reads as a worse one.
+      //
+      // Only where a target exists (0.39.0): the rung table asks nothing of a
+      // probationer, whose sheet is one bucket a day by construction, so that
+      // card carries no row at all rather than a number with a blank beside it -
+      // exactly as the contract row above only appears where contracts do, and
+      // for the same reason.
+      if (card.utilisation !== '') {
+        definitionRow(list, 'Utilisation', 'weekend-utilisation')
+          .textContent = card.utilisation;
+      }
 
       const earned = definitionRow(list, 'Earned this week', 'weekend-earned');
       earned.textContent = `£${formatPence(card.earnedPence)}`;
