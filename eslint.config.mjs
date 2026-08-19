@@ -5,6 +5,7 @@ import tseslint from 'typescript-eslint';
 export default defineConfig(
   {
     ignores: [
+      '.claude/**',
       'core-rs/pkg/**',
       'core-rs/target/**',
       'coverage/**',
