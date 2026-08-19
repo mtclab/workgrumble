@@ -48,10 +48,6 @@ import {
   changeRequestListing,
 } from '../../world/change-request';
 import {
-  scopeRefusalForMachine,
-  wrongCustomerGuardLines,
-} from '../../world/customers';
-import {
   FIELDS,
   isSystemsEngineer,
   LAUNCHD_DOMAINS,
@@ -87,6 +83,7 @@ import {
   parseWith,
 } from './cmd-parse';
 import type { CommandResult } from './cmd-run';
+import { dispatchRemediation, remediationRefusal } from './remediation';
 import type { GameApi } from './types';
 import { textValue } from './ui';
 import { offeredAtFor } from '../../world/titles';
@@ -1426,7 +1423,7 @@ function systemctlVerbLines(
     } ${query.trim()}.service: Unit ${query.trim()}.service not found.`);
   }
 
-  return unitVerbLines(api, session, action, unit);
+  return unitVerbLines(api, action, unit);
 }
 
 /**
@@ -1445,43 +1442,52 @@ function systemctlVerbLines(
  * The two dialects keep their own sentences for the miss (systemd says "Unit
  * x.service not found", launchctl says it could not find the service in the
  * domain), because that is the half that genuinely differs.
+ *
+ * It takes no session as of 0.38.0. It used to, only to read the box out of it
+ * for its own copies of the customer guards; the seam walks the unit's own
+ * `runs_on` edge to the same box, which is one answer to that question instead
+ * of two and is the answer every other surface already got.
  */
 function unitVerbLines(
   api: GameApi,
-  session: Readonly<SshSession>,
   action: string,
   unit: Readonly<ReadOnlyGraphNode>,
 ): CommandResult {
   // The contract governs a change even over ssh: a wrong tenant, or a customer's
   // out-of-scope server, is refused before the action lands - the non-bypass the
   // 0.8.0 scope engine enforces, carried onto the unix path. An in-house box (the
-  // MSP's own infra) carries no customer, so both guards pass and it is fixable.
-  const box = api.graph.getNode(session.hostId);
+  // MSP's own infra) carries no customer, so every wall passes and it is fixable.
+  //
+  // THROUGH THE SEAM as of 0.38.0, and it was not before. This ran its own
+  // wrong-tenant and scope calls, which meant the three things the seam had
+  // grown since were absent from the engineer's terminal: no change-request
+  // consult (an approved, in-window request unlocked the Windows verb and not
+  // this one), no coordination clearance (a `notify` bought nothing over ssh),
+  // and no RACI stamp on a co-managed box the map hands to the customer's own
+  // team. It was latent rather than broken only because no raci-mapped Linux
+  // box ships - and "no content reaches it yet" is not a wall.
+  //
+  // The DIALECT survives the rerouting, which is the whole reason the refusal
+  // is structured rather than flattened. A tenant STOP reads the same in both
+  // terminals - it is about which customer is on screen, not about ssh - and a
+  // CONTRACT refusal keeps the paragraph that is this dialect's alone: you got
+  // in, which is exactly what makes the wall worth saying out loud.
+  const refusal = remediationRefusal(api, unit.id, action);
 
-  if (box !== undefined) {
-    const tenant = wrongCustomerGuardLines(
-      api.graph,
-      box,
-      api.appState.getCustomerContext(),
+  if (refusal !== null) {
+    return lines(
+      ...refusal.lines,
+      ...(refusal.wall === 'tenant'
+        ? []
+        : [
+          '',
+          'ssh reaches the box at the engineer tier, but the CONTRACT still '
+            + 'governs',
+          'what may change on it: this is a customer\'s server, and the fix is '
+            + 'theirs',
+          'or a change request, not a systemctl on our say-so.',
+        ]),
     );
-
-    if (tenant !== null) {
-      return lines(...tenant);
-    }
-
-    const scope = scopeRefusalForMachine(api.graph, box);
-
-    if (scope !== null) {
-      return lines(
-        ...scope,
-        '',
-        'ssh reaches the box at the engineer tier, but the CONTRACT still '
-          + 'governs',
-        'what may change on it: this is a customer\'s server, and the fix is '
-          + 'theirs',
-        'or a change request, not a systemctl on our say-so.',
-      );
-    }
   }
 
   // Change control (E6, 0.18.0): on the engineer's OWN prod, a risky verb on a
@@ -1523,11 +1529,26 @@ function unitVerbLines(
     }
   }
 
-  const result = api.dispatch(action, api.actor, unit.id, {});
+  // Through the seam, so that the act and the RECORD of it are one call: a
+  // remediation on a box the RACI hands to the customer's own IT succeeds -
+  // nothing technical stops an MSP admin account - and is stamped, and their
+  // sysadmin writes in the morning. Reverting this to `api.dispatch` leaves the
+  // restart working and the trail empty, which is the shape the whole soft wall
+  // is about.
+  const result = dispatchRemediation(api, action, unit.id, {});
 
   // Silent on success - systemd says nothing when it works, and neither does
-  // this. A refusal is the world's own sentence.
-  return result.ok ? { lines: [], clear: false } : lines(result.reason);
+  // this. A refusal is the world's own sentence. The seam's own refusal cannot
+  // arrive here: the pre-flight above already asked, and asking twice is how
+  // the two answers would drift.
+  switch (result.kind) {
+    case 'refused':
+      return lines(...result.lines);
+    case 'failed':
+      return lines(result.reason);
+    case 'done':
+      return { lines: [], clear: false };
+  }
 }
 
 /* -- journalctl: the unit's journal, the why behind a failure ------------- */
@@ -6250,7 +6271,7 @@ function launchctlTargetVerbLines(
 
   return job === null
     ? noSuchService(target)
-    : unitVerbLines(api, session, action, job);
+    : unitVerbLines(api, action, job);
 }
 
 /**
@@ -6306,7 +6327,7 @@ function launchctlBootstrapLines(
     );
   }
 
-  return unitVerbLines(api, session, SYSTEMD_ACTIONS.unitStart, job);
+  return unitVerbLines(api, SYSTEMD_ACTIONS.unitStart, job);
 }
 
 /** `launchctl <verb>` - the third dialect column, dispatched. */

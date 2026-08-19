@@ -12,8 +12,16 @@ import type {
 } from '../../engine-api';
 import { WasmEngine } from '../../engine-api';
 import { FIELDS } from '../fields';
-import { HELPDESK_ACTION_IDS, HELPDESK_ACTIONS } from './ids';
-import { fieldLines, helpdeskActionPayload } from './index';
+import {
+  HELPDESK_ACTION_IDS,
+  HELPDESK_ACTIONS,
+  SYSTEMD_ACTIONS,
+} from './ids';
+import {
+  fieldLines,
+  helpdeskActionPayload,
+  remediationActionIds,
+} from './index';
 
 const ACTOR = 'person:tech';
 const ESCALATABLE_TICKET = 'ticket:hardware';
@@ -387,6 +395,46 @@ describe('helpdesk action registry', () => {
         ok: false,
         reason: `Unknown action "${id}".`,
       });
+    }
+  });
+
+  /**
+   * WHICH verbs are remediations, read back off the registry (0.38.0).
+   *
+   * `remediationActionIds` derives the answer from each action's own target
+   * guard rather than from a list beside it, which is right and is also the
+   * fragile half: if `targetGuards` ever changed shape the derivation would
+   * quietly return NOTHING, and the dialogue gate that reads it would go on
+   * passing while guarding air. A gate that can lose its teeth in silence is
+   * the thing this file exists to refuse, so the classification is asserted in
+   * both directions, by name.
+   */
+  it('knows which verbs are remediations, in both directions', () => {
+    const remediations = new Set(remediationActionIds());
+
+    // Estate verbs: a box, a service on one, a systemd unit, a device, an
+    // identity, and the share the 0.38.0 slice taught the walls about.
+    for (const id of [
+      HELPDESK_ACTIONS.machineReboot,
+      HELPDESK_ACTIONS.serviceRestart,
+      SYSTEMD_ACTIONS.unitRestart,
+      HELPDESK_ACTIONS.devicePowerCycle,
+      HELPDESK_ACTIONS.accountUnlock,
+      HELPDESK_ACTIONS.shareGrantAccess,
+    ]) {
+      expect(remediations.has(id)).toBe(true);
+    }
+
+    // And the ones that are ticket-grain or social: paperwork and manners are
+    // nobody's estate, and calling them remediations would wall off the desk's
+    // own job.
+    for (const id of [
+      HELPDESK_ACTIONS.ticketEscalate,
+      HELPDESK_ACTIONS.ticketReplyToReporter,
+      HELPDESK_ACTIONS.reporterRebuff,
+      HELPDESK_ACTIONS.riskAcceptanceSign,
+    ]) {
+      expect(remediations.has(id)).toBe(false);
     }
   });
 

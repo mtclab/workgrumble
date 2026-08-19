@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 
+import { SYSTEMD_ACTIONS } from '../../world/actions';
 import { COMPANY_IDS } from '../../world/company';
 import { MSP_IDS } from '../../world/msp-company';
 import { spawnWorldTicket } from '../../world/tickets';
@@ -11,6 +12,7 @@ import {
   MACHINE_OS,
   PLAYER_TIERS,
   type PlayerTier,
+  RACI_OWNERS,
   SYSTEMD_STATES,
 } from '../../world/fields';
 import {
@@ -605,6 +607,154 @@ describe('the sysadmin command surface (E6, Pass B)', () => {
       // employer's own infra is the engineer's to fix.
       const { api, ssh } = onMsp('FC-RMM-01');
       expect(unix(api, ssh, 'systemctl restart fcportal').lines).toEqual([]);
+    });
+  });
+
+  /**
+   * AND IT IS THE SAME WALL, not a copy of it (0.38.0).
+   *
+   * The refusal above was right and the machinery behind it was the terminal's
+   * own: `unitVerbLines` called the tenant guard and the scope refusal itself,
+   * which meant the three things the shared seam had grown since 0.10.0 simply
+   * were not on this path. An approved change request unlocked the desktop verb
+   * and not the ssh one. A co-managed box the RACI hands to the customer's own
+   * IT was touched over ssh with no trail, so their sysadmin never wrote in the
+   * morning. Nobody had noticed because the estate ships no raci-mapped Linux
+   * box - which is a fact about the CONTENT, and the wall is supposed to be a
+   * fact about the game.
+   *
+   * Three claims, each written so that putting the old guards back turns it red:
+   *
+   *  1. THE PATH IS NAMED. The consult reaches this dialect, so a refusal over
+   *     ssh says how to get authorised instead of dead-ending - and the
+   *     dialect's own paragraph is still under it, word for word.
+   *  2. AND THE PATH WORKS. Filing the change on the box, waiting for the
+   *     window and running the same command lands the restart. Before this it
+   *     could not: the scope refusal was the last word over ssh whatever
+   *     paperwork existed.
+   *  3. THE SOFT WALL REACHES SSH. A box marked to their own IT is not refused
+   *     - nothing technical stops an MSP admin account - and the touch is
+   *     WRITTEN DOWN, which is the whole of that mechanic. The honest run, with
+   *     the change filed first, is the same restart and no trail at all.
+   */
+  describe('the walls reach ssh through the shared seam, not a copy of it', () => {
+    /**
+     * ARD-FW-01: Arden Manufacturing's edge box. Co-managed, Linux, with real
+     * units on it - the shipped estate's one place where a contract wall and a
+     * systemd unit meet, and therefore the honest place to play this.
+     */
+    const ARDEN_BOX = 'ARD-FW-01';
+
+    /** The change window's own arithmetic, read off the request the world made. */
+    function windowOpenOf(session: WorldSession): number {
+      const requests = session.engine.graph.nodesOfKind('change_request')
+        .filter((node) => node.fields[FIELDS.crWindowOpen] !== undefined);
+      const open = requests[0]?.fields[FIELDS.crWindowOpen];
+
+      expect(typeof open).toBe('number');
+      return typeof open === 'number' ? open : 0;
+    }
+
+    it('names the change-request path in a refusal over ssh, under the '
+      + 'dialect\'s own paragraph', () => {
+      const { api, ssh } = onMsp(ARDEN_BOX);
+      const out = unix(api, ssh, 'systemctl restart strongswan').lines.join('\n');
+
+      // The co-managed wall, in the shipped words.
+      expect(out).toContain('This is co-managed.');
+      // The consult, which this path did not have: it is GATED, not forbidden.
+      expect(out).toContain('changereq file');
+      // And the dialect, which the rerouting had to keep - the paragraph only
+      // the unix terminal says, because only here did you actually get in.
+      expect(out).toContain('CONTRACT still governs');
+      expect(out).toContain('not a systemctl on our say-so.');
+    });
+
+    it('lets an approved change request through over ssh, which the terminal\'s '
+      + 'own guards never did', () => {
+      const { world, api, ssh } = onMsp(ARDEN_BOX);
+
+      expect(unix(api, ssh, 'changereq file strongswan').lines.join('\n'))
+        .toContain('Change request filed');
+
+      // Under review is still refused - the fail-closed floor, over ssh too,
+      // and now in the consult's own words rather than the flat wall.
+      expect(unix(api, ssh, 'systemctl restart strongswan').lines.join('\n'))
+        .toContain('under review');
+
+      world.engine.advance(windowOpenOf(world));
+
+      // In the window: silent, because a systemctl that works says nothing.
+      // That silence IS the assertion - the wall stood down and the unit was
+      // set. Put the terminal's own scope call back and this prints the
+      // co-managed refusal instead, whatever the paperwork says.
+      expect(unix(api, ssh, 'systemctl restart strongswan').lines).toEqual([]);
+      expect(api.graph.getField(
+        unitIdOn(MSP_IDS.ardenEdgeOld, 'strongswan.service'),
+        FIELDS.unitState,
+      )).toBe(SYSTEMD_STATES.activeRunning);
+    });
+
+    /**
+     * The probe that makes the latent live. No raci-mapped Linux box ships, so
+     * the map is written onto one that already has the contract behind it -
+     * Arden is co-managed, so a single field is the whole difference, and it is
+     * a field the estate's own boxes carry. Nothing is invented: the world is
+     * asked to say a true thing it does not happen to say today.
+     */
+    it('stamps a touch on a box the RACI hands to their own IT, over ssh', () => {
+      const { world, api, ssh } = onMsp(ARDEN_BOX);
+
+      world.engine.applySetup([{
+        op: 'setField',
+        id: MSP_IDS.ardenEdgeOld,
+        field: FIELDS.raciOwner,
+        value: RACI_OWNERS.internal,
+      }]);
+
+      // Not refused, and not silent about being allowed: the shortcut works,
+      // exactly as it does from the desktop and from Remote Assist.
+      expect(unix(api, ssh, 'systemctl restart nftables').lines).toEqual([]);
+
+      // And it is on the box's trail. This is the line the revert was run
+      // against: send the verb with `api.dispatch` instead of the seam and the
+      // restart still works, the unit still comes up, and nothing is written
+      // down - which is the version of this game where their sysadmin never
+      // finds out.
+      const trail = api.graph.getField(
+        MSP_IDS.ardenEdgeOld,
+        FIELDS.raciViolations,
+      );
+      expect(typeof trail).toBe('string');
+      expect(String(trail)).toContain(`${SYSTEMD_ACTIONS.unitRestart}@`);
+      expect(typeof api.graph.getField(
+        MSP_IDS.ardenEdgeOld,
+        FIELDS.raciViolatedAt,
+      )).toBe('number');
+    });
+
+    it('and the honest run - the change filed first - leaves no trail at all', () => {
+      const { world, api, ssh } = onMsp(ARDEN_BOX);
+
+      world.engine.applySetup([{
+        op: 'setField',
+        id: MSP_IDS.ardenEdgeOld,
+        field: FIELDS.raciOwner,
+        value: RACI_OWNERS.internal,
+      }]);
+
+      expect(unix(api, ssh, 'changereq file nftables').lines.join('\n'))
+        .toContain('Change request filed');
+      world.engine.advance(windowOpenOf(world));
+
+      expect(unix(api, ssh, 'systemctl restart nftables').lines).toEqual([]);
+
+      // Same box, same verb, same minute of the week - and the only difference
+      // is that somebody signed it off. A build that stamped regardless would
+      // make this test and the one above identical, which is the point of
+      // running the pair.
+      expect(api.graph.getField(MSP_IDS.ardenEdgeOld, FIELDS.raciViolations))
+        .toBeUndefined();
     });
   });
 

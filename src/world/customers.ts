@@ -19,7 +19,11 @@
  * engine stays customer-agnostic for actions and every existing golden holds.
  */
 
-import type { ReadOnlyGraphNode, ReadOnlyGraphView } from '../engine-api';
+import type {
+  NodeKind,
+  ReadOnlyGraphNode,
+  ReadOnlyGraphView,
+} from '../engine-api';
 import {
   FIELDS,
   isServerRole,
@@ -34,6 +38,29 @@ import {
   type SlaTier,
   slaTierOf,
 } from './fields';
+
+/**
+ * The node kinds a remediation can be AIMED at - the kinds behind which these
+ * walls can find a customer, and therefore the kinds an action's target guard
+ * naming one makes that action a remediation.
+ *
+ * The list is the seam's own reach written down (`shell/apps/remediation.ts`
+ * resolves exactly these: a box, the box a service, unit or device sits on, an
+ * account, and now a share). It lives here, with the mechanic, because a second
+ * reader needs it: `actions/index.ts` derives WHICH VERBS are remediations from
+ * the registry by looking for a target guard on one of these kinds, and the
+ * dialogue dispatcher's load-time gate reads that answer. Two lists would
+ * eventually disagree, and the disagreement would be a verb that reaches an
+ * estate with no wall in front of it - the exact hole this is here to close.
+ */
+export const REMEDIATION_TARGET_KINDS: readonly NodeKind[] = Object.freeze([
+  'machine',
+  'service',
+  'unit',
+  'device',
+  'account',
+  'share',
+]);
 
 /**
  * The customer a NODE belongs to, by id, or null when it belongs to none.
@@ -72,6 +99,34 @@ export function customerIdOfAccount(
   account: Readonly<ReadOnlyGraphNode>,
 ): string | null {
   return customerIdOfNode(account);
+}
+
+/**
+ * The customer a SHARE belongs to, by id, or null when it belongs to none.
+ *
+ * The third node kind to carry the field, for the same reason the second one
+ * did. `shareGrantAccess` aims at a `share`, which resolves to neither a
+ * machine nor an account, so a grant on a customer's share slipped the scope
+ * pre-flight entirely from 0.8.0 onwards - a monitoring-only customer's
+ * workspace could be handed to somebody in silent breach of the contract, by
+ * the same verb the walls catch everywhere else.
+ *
+ * A share is not walked to a machine on purpose. It has no edge to one (its
+ * only edges are the `has_access` grants, and the whole point of the ticket is
+ * that the grant is not there yet), and the walk would be wrong even if it
+ * existed: permissions on a workspace are USER-AND-IDENTITY work, exactly like
+ * an account, so it is refused where an account is refused and allowed where an
+ * account is allowed. Resolving it to the file server behind it would refuse
+ * the shipped Fontaine matter grant as SERVER work, which is a wall the
+ * contract does not have.
+ *
+ * In-house shares (the common drive, the sales mailbox) carry no customer and
+ * read null, so every non-MSP world is untouched.
+ */
+export function customerIdOfShare(
+  share: Readonly<ReadOnlyGraphNode>,
+): string | null {
+  return customerIdOfNode(share);
 }
 
 /** The customer node itself, or undefined when nobody built it. */

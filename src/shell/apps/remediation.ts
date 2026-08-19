@@ -31,6 +31,7 @@ import { isCoordinated } from '../../world/coordination';
 import {
   customerIdOfAccount,
   customerIdOfMachine,
+  customerIdOfShare,
   raciOwnerOfMachine,
   scopeOfCustomer,
   scopeVerdict,
@@ -57,6 +58,28 @@ export type RemediationResult =
   | { readonly kind: 'done' };
 
 /**
+ * WHICH wall said no, alongside the sentences it said it in.
+ *
+ * The seam refuses for two different reasons and a caller can genuinely need to
+ * tell them apart. `tenant` is the wrong-customer STOP: you are in somebody
+ * else's estate, and nothing about this action is the subject. `contract` is
+ * everything the contract itself decides - the monitoring-only wall, the
+ * helpdesk server tier, co-managed coordination, and the change-request consult
+ * that either names the path or reports where a filed request has got to.
+ *
+ * It exists because the unix terminal has a paragraph of its own to add to a
+ * CONTRACT refusal ("ssh reaches the box at the engineer tier, but ...") and
+ * none to add to a tenant STOP, and it had that paragraph because it ran its
+ * own guards. Routing it through the seam without this would have meant either
+ * losing the dialect or reading it back out of the sentences, and a caller
+ * matching on the seam's prose would be the seam's prose becoming an API.
+ */
+export interface RemediationRefusal {
+  readonly wall: 'tenant' | 'contract';
+  readonly lines: readonly string[];
+}
+
+/**
  * The name a refusal calls a target by - its hostname, the name on it, or the
  * username, whichever the node has, and its id when it has none.
  *
@@ -77,9 +100,10 @@ export function labelOf(node: Readonly<ReadOnlyGraphNode>): string {
 /**
  * The MACHINE an action's target sits on, for the customer guards - the box
  * itself when the target is one, the box a service or unit runs on, the box a
- * device is plugged into. Null for a target with no machine behind it (an
- * account, a mail rule, a share): the customer mechanics are about boxes, and a
- * target that resolves to none is left to the in-house path unchanged.
+ * device is plugged into. Null for a target with no machine behind it: an
+ * account and a share carry their customer on the node instead and are guarded
+ * below on those terms, and anything else (a mail rule, a ticket) is left to
+ * the in-house path unchanged.
  */
 function machineForTarget(
   api: GameApi,
@@ -133,12 +157,12 @@ function customerScopeGuard(
   label: string,
   targetId: string,
   verb: string,
-): readonly string[] | null {
+): RemediationRefusal | null {
   const current = api.appState.getCustomerContext();
   const wrongCustomer = wrongCustomerLines(api.graph, customerId, label, current);
 
   if (wrongCustomer !== null) {
-    return wrongCustomer;
+    return { wall: 'tenant', lines: wrongCustomer };
   }
 
   // An in-house target has no contract to be out of.
@@ -187,7 +211,7 @@ function customerScopeGuard(
     verdict,
   });
 
-  return consult.allowed ? null : consult.lines;
+  return consult.allowed ? null : { wall: 'contract', lines: consult.lines };
 }
 
 /**
@@ -212,7 +236,7 @@ export function remediationRefusal(
   api: GameApi,
   targetId: string,
   verb: string,
-): readonly string[] | null {
+): RemediationRefusal | null {
   const machine = machineForTarget(api, targetId);
 
   if (machine !== null) {
@@ -240,6 +264,24 @@ export function remediationRefusal(
       // An account is in nobody's RACI map - the document divides functions
       // that run on boxes - so identity work at a co-managed customer meets the
       // shipped notify-first wall, not the soft one.
+      null,
+      labelOf(node),
+      targetId,
+      verb,
+    );
+  }
+
+  if (node?.kind === 'share') {
+    // A share resolves to neither a machine nor an account, which is how
+    // `shareGrantAccess` walked past this pre-flight from 0.8.0 until 0.38.0.
+    // It is guarded on the same terms an account is - a null role, because
+    // permissions on a workspace are identity work and never the server tier,
+    // and a null RACI owner, because a map divides functions that run on boxes
+    // and has no line for a share.
+    return customerScopeGuard(
+      api,
+      customerIdOfShare(node),
+      null,
       null,
       labelOf(node),
       targetId,
@@ -299,8 +341,9 @@ function stampRaciViolation(
  * is the property the whole scope mechanic rests on.
  *
  * Every surface that changes a customer's estate goes through here: the
- * terminal's `dispatchLines`, Remote Assist's `run`, the directory's `run`. A
- * fourth one is a call to this function.
+ * terminal's `dispatchLines`, the unix dialect's `unitVerbLines`, Remote
+ * Assist's `run`, the directory's `run`. A fifth one is a call to this
+ * function.
  */
 export function dispatchRemediation(
   api: GameApi,
@@ -311,7 +354,7 @@ export function dispatchRemediation(
   const refused = remediationRefusal(api, target, action);
 
   if (refused !== null) {
-    return { kind: 'refused', lines: refused };
+    return { kind: 'refused', lines: refused.lines };
   }
 
   const result = api.dispatch(action, api.actor, target, params);

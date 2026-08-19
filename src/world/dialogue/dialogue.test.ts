@@ -12,10 +12,14 @@ import {
   applyDialogueEffects,
   conversationFor,
   type DialogueEffectResult,
+  dialogueEffectVerbs,
   dialogueForSpeaker,
   dialogueNode,
+  dialogueRemediationRefusal,
   findDialogueTree,
   isAskEffect,
+  isDispatchableAction,
+  isRegisteredAction,
   isRevealEffect,
   validateDialogueTrees,
   WORLD_DIALOGUE,
@@ -151,6 +155,88 @@ describe('dialogue content gate', () => {
   it('refuses two trees for the same speaker', () => {
     expect(() => validateDialogueTrees([tree(), tree({ id: 'dialogue/2' })]))
       .toThrow('more than one dialogue tree');
+  });
+});
+
+/**
+ * THE ALLOWLIST THAT WAS THE WHOLE REGISTRY (0.38.0).
+ *
+ * A dialogue effect is dispatched with the SHELL's own dispatcher - chat and
+ * the phone hand theirs over - and not with the remediation seam, so nothing a
+ * conversation sends meets the tenant STOP, the contract scope or the RACI
+ * stamp. That was survivable while the allowlist meant something; it meant all
+ * fifty-four helpdesk verbs, which is to say it meant nothing, and the first
+ * MSP option offering "shall I just restart it for you?" would have reached a
+ * customer's estate with every wall in this codebase behind its back.
+ *
+ * The list is now read off the trees at load - so two people writing
+ * conversations cannot collide on a list neither of them edited - and any verb
+ * in it that is a REMEDIATION has to be named in the allowance with a reason.
+ */
+describe('the dialogue dispatcher no longer inherits the whole registry', () => {
+  it('narrows to the verbs the shipped conversations actually use', () => {
+    // What they do use, as a control.
+    expect(isDispatchableAction(HELPDESK_ACTIONS.machineReboot)).toBe(true);
+    expect(isDispatchableAction(HELPDESK_ACTIONS.ticketReplyToReporter))
+      .toBe(true);
+
+    // And what they do not - registered verbs, every one of them, and the
+    // sharpest ones in the game to hand to a conversation. Revert the
+    // derivation to `HELPDESK_ACTION_IDS` and all three of these go true.
+    expect(isRegisteredAction(HELPDESK_ACTIONS.serviceRestart)).toBe(true);
+    expect(isDispatchableAction(HELPDESK_ACTIONS.serviceRestart)).toBe(false);
+    expect(isDispatchableAction(HELPDESK_ACTIONS.accountDisable)).toBe(false);
+    expect(isDispatchableAction(HELPDESK_ACTIONS.shareGrantAccess)).toBe(false);
+  });
+
+  it('derives that list from the trees rather than from a second table', () => {
+    expect(dialogueEffectVerbs(WORLD_DIALOGUE))
+      .toContain(HELPDESK_ACTIONS.machineReboot);
+    // The derived set IS the dispatchable set: a tree is the only thing that
+    // can widen it, which is what stops the two lanes colliding at a merge.
+    for (const verb of dialogueEffectVerbs(WORLD_DIALOGUE)) {
+      expect(isDispatchableAction(verb)).toBe(true);
+    }
+  });
+
+  it('REFUSES TO LOAD a conversation that offers a remediation nobody named', () => {
+    // `service.restart` is exactly the option an MSP tree would grow first, and
+    // it is the one that must not arrive quietly. The throw names the verb and
+    // the conversation, because whoever reads it has just written the option.
+    expect(() => validateDialogueTrees([
+      tree({
+        nodes: [
+          {
+            id: 'start',
+            npc_line: 'It has stopped again.',
+            options: [
+              {
+                label: 'Shall I just bounce it for you?',
+                effects: [
+                  {
+                    action: HELPDESK_ACTIONS.serviceRestart,
+                    target: 'service:theirs',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ])).toThrow('does not go through the remediation seam');
+  });
+
+  it('lets the named in-house ones through, which is why the trees load', () => {
+    // The other half of the gate: an allowance that named nothing would be a
+    // gate that refused the shipped game, and one that named everything would
+    // be no gate. `machine.reboot` is in-house on both floors and passes.
+    expect(dialogueRemediationRefusal(HELPDESK_ACTIONS.machineReboot))
+      .toBeNull();
+    expect(dialogueRemediationRefusal(HELPDESK_ACTIONS.serviceRestart))
+      .not.toBeNull();
+    // And a verb that is not a remediation at all is never the gate's business.
+    expect(dialogueRemediationRefusal(HELPDESK_ACTIONS.ticketReplyToReporter))
+      .toBeNull();
   });
 });
 

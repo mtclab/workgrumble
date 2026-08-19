@@ -10,7 +10,7 @@ import { MSP_WEEK } from '../msp-week';
 import { SECOND_WEEK } from '../second-week';
 import { spareWeeks } from '../spares';
 import { assertWeekGreetings, WEEK } from '../week';
-import { isDispatchableAction } from './dispatch';
+import { dialogueRemediationRefusal, isRegisteredAction } from './dispatch';
 import { assertPresenceChatter, PRESENCE_CHATTER } from './presence';
 import { DIALOGUE_TREES } from './trees';
 import {
@@ -29,8 +29,11 @@ export {
   type DialogueEffectContext,
   type DialogueEffectResult,
   type DialogueEffectsOutcome,
+  dialogueEffectVerbs,
+  dialogueRemediationRefusal,
   type EffectDispatch,
   isDispatchableAction,
+  isRegisteredAction,
 } from './dispatch';
 export {
   assertAwayLines,
@@ -59,6 +62,13 @@ export {
  * Load-time content gate. A conversation that points at a node it does not
  * have, or at an action nobody registered, is a dead end in front of a player
  * - so it stops the boot here instead of stopping the player later.
+ *
+ * From 0.38.0 it refuses one more thing, and that one is not a dead end but a
+ * hole: an option that dispatches a REMEDIATION nobody named in the allowance.
+ * A scripted effect is sent with the shell's own dispatcher rather than the
+ * remediation seam, so a conversation offering to fix a customer's estate would
+ * meet no tenant STOP, no contract scope and no RACI stamp - and it would boot
+ * clean and play, which is exactly the quiet wrongness this function is for.
  */
 export function validateDialogueTrees(
   trees: readonly DialogueTree[],
@@ -252,10 +262,24 @@ export function validateDialogueTrees(
             continue;
           }
 
-          if (!isDispatchableAction(effect.action)) {
+          if (!isRegisteredAction(effect.action)) {
             throw new Error(
               `Option "${option.label}" of "${tree.id}" dispatches `
               + `unregistered action "${effect.action}".`,
+            );
+          }
+
+          // And the wall in front of the walls (0.38.0): the dispatcher a
+          // scripted effect is handed is the SHELL's, not the remediation
+          // seam's, so a conversation offering to fix a customer's estate would
+          // reach it with nothing in the way. Refused at load, by name, unless
+          // the allowance says why this one is in-house.
+          const remediation = dialogueRemediationRefusal(effect.action);
+
+          if (remediation !== null) {
+            throw new Error(
+              `Option "${option.label}" of "${tree.id}" dispatches `
+              + remediation,
             );
           }
 
