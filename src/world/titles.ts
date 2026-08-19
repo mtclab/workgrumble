@@ -15,6 +15,11 @@
  *
  *  - `workMix` - D2's blend ratios, per work kind, CONSUMED by the week
  *    generator (`week-gen.ts`) as a per-week quota on what the draw may deal.
+ *  - `utilisation` - what the business asks of the rung's HOURS, CONSUMED by
+ *    the timesheet's own reading (`timesheet.ts`) and printed at the review.
+ *    It was a map keyed by PAM tier until 0.39.0, which could not say what this
+ *    table can: two rungs stand on the service desk's tier and the paperwork
+ *    starts at the second one.
  *  - `tier`, `title`, `employer`, `carriesPager`, `offeredAt` - the state a rung
  *    IS. These were hardcoded in four places before this table existed and are
  *    here now instead of there, not as well as (see MOVED IN, below).
@@ -67,6 +72,7 @@ import {
   type ServiceScope,
   type SlaTier,
 } from './fields';
+import type { UtilisationTarget } from './timesheet';
 
 /**
  * The kinds of work a week can deal, which is the axis D2's ratios are per.
@@ -193,6 +199,26 @@ export interface TitleRow {
   readonly offeredAt: number | null;
   /** D2's blend ratios: a factor per work kind against the shop's own mix. */
   readonly workMix: Readonly<Record<WorkKind, number>>;
+  /**
+   * What the business asks of this rung's HOURS (E9/E10 bridge, 0.39.0), or
+   * null where it asks nothing at all.
+   *
+   * It is a COLUMN rather than a branch in the reader for the same reason
+   * `workMix` is: the target IS the difficulty knob the design named ("per-title
+   * targets ARE the difficulty paperwork", `docs/design/titles-difficulty.md`
+   * section 5), so it has to be tunable by editing one row rather than by
+   * finding the place that decided it. It used to be a two-entry map keyed by
+   * PAM TIER inside `timesheet.ts`, which could not express this at all: two
+   * rungs stand on the service desk's tier and only one of them is asked for
+   * anything.
+   *
+   * NULL IS A REAL ANSWER and not a gap. A rung with no target gets no row at
+   * the review, no target clause on its sheet, and nothing to be under - which
+   * is the honest thing to print for a rung whose sheet is a formality.
+   *
+   * Nothing anywhere computes a mark from it. See `utilisationReviewLine`.
+   */
+  readonly utilisation: UtilisationTarget | null;
   readonly customers: CustomerMix;
   readonly sla: SlaProfile;
   readonly rates: RatesProfile;
@@ -242,6 +268,55 @@ export interface TitleRow {
  *    outage-adjacent kind D2 named - which is why server is a half and access a
  *    fifth rather than both being a tenth.
  */
+/**
+ * The utilisation targets, and where each one comes from.
+ *
+ * OVERSEER TUNING KNOBS, all of them, and the one the whole mechanic turns on:
+ * being under target costs NOTHING anywhere in this game, so the target is the
+ * only thing that decides how hard the paperwork reads. Three figures, and each
+ * is a reading of the research rather than a number somebody liked.
+ *
+ *  - **SD junior - NONE.** Not an omission and not a rung nobody has got to
+ *    yet. A probationer's sheet is `single_bucket`: one line a day at
+ *    `WORKING_MINUTES_PER_DAY`, attributed to nobody, written by the shape of
+ *    the sheet rather than by the week. Every basis over it is a constant - a
+ *    hundred per cent recorded, nought per cent billable - so a target on it
+ *    would be a row that cannot move, on a screen, above a mark it does not
+ *    feed. The rung's own window already says the true thing ("there is nothing
+ *    on it to decide"), and the review says it by having no row.
+ *  - **SD senior - 85% of the day accounted for.** A service desk really is
+ *    held to a utilisation number: MetricNet's service-desk balanced scorecard
+ *    names *technician utilisation* as one of its six metrics
+ *    (`docs/research/review-scoring.md` 2.1), which is what makes the row
+ *    appear at the rung where somebody starts auditing other people's work. The
+ *    BASIS is `recorded` because an in-house desk bills nobody - `billable`
+ *    would be nought every week at every in-house shop, which is a target
+ *    nobody could ever meet rather than a gentle one. The FIGURE is the top of
+ *    the sourced healthy band, "senior technical staff target 75 to 85 per
+ *    cent... above ~90 per cent is read as a burnout signal, not an
+ *    achievement" (Scoro/Teamwork, same section), and it is deliberately not a
+ *    hundred: the same sources say a target pushed near a hundred produces
+ *    "quality issues, burnout, or timesheet gaming" (2.3). It is GENTLE in the
+ *    exact sense the research means - the desk's one-bucket sheet clears it
+ *    with room, which is the pathology those sources name out loud ("if a
+ *    business stops recording non-billable time, its utilisation rate will
+ *    always be 100 per cent") shipped as a joke rather than as a punishment.
+ *  - **Systems engineer - 75% billable.** The sourced industry ask: "service
+ *    executives aim for 75% billable ... and end up with yearly averages in the
+ *    mid-60s" (Promys, `docs/research/titles-projects-engine.md` 5.4). It is
+ *    the REAL one, and it is not reachable honestly: measured on the shipped
+ *    MSP week played properly at x1, a week that closes its queue and carries
+ *    its project lands between about 35% and 50% billable, because the engine
+ *    only credits a minute somebody was demonstrably working. The only way to
+ *    hit it is to claim time nobody worked - which is what the customer reads.
+ *
+ * The four UNBUILT rungs carry null, and that is the same refusal `tier` and
+ * `employer` make on those rows. A target is a claim about a week, and there is
+ * no week at those rungs to measure one against; picking a figure for a rung
+ * nobody can play would be a tuning decision made with no evidence and then
+ * inherited by whoever builds it. The seam is the column - the day
+ * `senior_engineer` is built it brings the SPI 55-70% senior band with it.
+ */
 const TITLE_ROWS: readonly TitleRow[] = [
   {
     id: 'sd_junior',
@@ -256,6 +331,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 1, device: 1, server: 1, project: 0 },
+    utilisation: null,
     customers: { inHouse: true, scopes: [], slaTiers: [] },
     sla: SLA_PROFILES.toolTargets,
     rates: RATES_PROFILES.house,
@@ -296,6 +372,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 0.9, device: 0.9, server: 1, project: 0 },
+    utilisation: { basis: 'recorded', percent: 85 },
     customers: { inHouse: true, scopes: [], slaTiers: [] },
     sla: SLA_PROFILES.toolTargets,
     rates: RATES_PROFILES.house,
@@ -314,6 +391,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 0.8, device: 1, server: 1, project: 0 },
+    utilisation: null,
     customers: { inHouse: true, scopes: [], slaTiers: [] },
     sla: SLA_PROFILES.toolTargets,
     rates: RATES_PROFILES.house,
@@ -332,6 +410,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     carriesPager: true,
     offeredAt: 70,
     workMix: { access: 0.75, device: 0.6, server: 1, project: 1 },
+    utilisation: { basis: 'billable', percent: 75 },
     customers: {
       inHouse: false,
       scopes: [
@@ -359,6 +438,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     carriesPager: true,
     offeredAt: null,
     workMix: { access: 0.5, device: 0.4, server: 1, project: 1 },
+    utilisation: null,
     customers: {
       inHouse: false,
       scopes: [
@@ -386,6 +466,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 0.4, device: 0.3, server: 0.8, project: 1 },
+    utilisation: null,
     customers: {
       inHouse: false,
       scopes: [
@@ -413,6 +494,7 @@ const TITLE_ROWS: readonly TitleRow[] = [
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 0.2, device: 0.15, server: 0.5, project: 1 },
+    utilisation: null,
     customers: {
       inHouse: false,
       scopes: [
@@ -480,6 +562,44 @@ export const TITLE_TABLE: Readonly<Record<Rung, TitleRow>> = (() => {
           + 'is a rung inventing work the shop does not have.',
         );
       }
+    }
+
+    /**
+     * And the target, refused for the same class of reason the ratios are: a
+     * percentage outside one-to-a-hundred is a row asking for a week that
+     * cannot be worked, and it would print as a target on a screen rather than
+     * fail anywhere. Nought is refused too, and deliberately - a nought target
+     * is met by doing nothing at all, which is not "no target", it is a target
+     * that lies. The way to ask for nothing is null.
+     */
+    const target = row.utilisation;
+
+    if (target !== null
+      && (!Number.isFinite(target.percent)
+        || target.percent <= 0
+        || target.percent > 100)) {
+      throw new Error(
+        `"${rung}" asks for ${String(target.percent)}% of a week. A `
+        + 'utilisation target is a percentage of the hours somebody is here '
+        + 'for, so it runs from just above nought to a hundred; the way to ask '
+        + 'for nothing is to name no target at all.',
+      );
+    }
+
+    /**
+     * And the basis, which is the one that would ship as a permanently red
+     * row. `billable` over an IN-HOUSE rung is nought every week at every
+     * in-house shop - the colleague down the corridor is on nobody's invoice -
+     * so a row asking an in-house rung for billable minutes is asking for a
+     * number the world cannot produce. It is refused here rather than
+     * discovered at somebody's review.
+     */
+    if (target !== null && target.basis === 'billable' && row.customers.inHouse) {
+      throw new Error(
+        `"${rung}" is an in-house rung and is asked for billable hours. `
+        + 'Nobody invoices the colleague down the corridor, so that target is '
+        + 'nought every week for reasons the player cannot do anything about.',
+      );
     }
 
     if (goals.has(row.winCondition)) {
@@ -623,6 +743,18 @@ export function tierFor(rung: Rung): PlayerTier {
   }
 
   return tier;
+}
+
+/**
+ * What the business asks of a rung's hours, or null where it asks nothing.
+ *
+ * A named read of the row rather than a lookup spelled out at every call site,
+ * and NOT a throwing one like `tierFor` and `offeredAtFor` beside it: null here
+ * is a decision the table made on purpose (see the row doc), not a rung the
+ * build has not finished. Every reader of it has to be able to say nothing.
+ */
+export function utilisationTargetFor(rung: Rung): UtilisationTarget | null {
+  return TITLE_TABLE[rung].utilisation;
 }
 
 /**

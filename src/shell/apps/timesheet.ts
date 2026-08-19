@@ -684,7 +684,14 @@ export const TIMESHEET_APP: AppDef = {
       const reading = api.day.timesheetUtilisation();
 
       setText(utilisation, utilisationLine(reading));
-      setFlag(masthead, 'utilisation', reading.met ? 'met' : 'under');
+      // Three states, not two (0.39.0): a rung the business asks nothing of is
+      // not "met", it is unasked, and a flag that said `met` there would be the
+      // window quietly claiming a target this player was never set.
+      setFlag(
+        masthead,
+        'utilisation',
+        reading.target === null ? 'unasked' : reading.met ? 'met' : 'under',
+      );
       setAvailability(submit, submitRefusal(sheet));
       setText(submit, sheet.submittedAt === null
         ? 'Send the sheet in'

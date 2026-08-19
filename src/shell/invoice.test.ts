@@ -659,7 +659,7 @@ describe('the org reading the same sheet', () => {
       .toContain('the business asks for');
   }, WEEK_TIMEOUT_MS);
 
-  it('holds the desk sheet at its target without anybody deciding anything', () => {
+  it('holds the probationer\'s sheet at a hundred and asks them for nothing', () => {
     const session = createWorldSession(MSP_CARRY);
     const driver = new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
       onDayBoundary: () => {},
@@ -676,10 +676,13 @@ describe('the org reading the same sheet', () => {
     const reading = driver.timesheetUtilisation();
 
     // The joke, mechanically: a service-desk sheet is one bucket that IS the
-    // day, so the number the business holds it to is met exactly, every week,
-    // by a sheet nobody thought about.
+    // day, so the number comes out at a hundred every week off a sheet nobody
+    // thought about. Which is exactly why the rung table asks a probationer for
+    // nothing (0.39.0) - a target on a number that cannot move is a row on a
+    // screen, and the reading says so by carrying no target at all.
     expect(reading.basis).toBe('recorded');
     expect(reading.percent).toBe(100);
+    expect(reading.target).toBeNull();
     expect(reading.met).toBe(true);
   }, WEEK_TIMEOUT_MS);
 });

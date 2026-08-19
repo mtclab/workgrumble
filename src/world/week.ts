@@ -2185,7 +2185,7 @@ export interface WeekScorecard {
    */
   readonly criteria: string;
   /**
-   * And what the timesheet says the week was worth (0.30.0): the tier's own
+   * And what the timesheet says the week was worth (0.30.0): the RUNG's own
    * utilisation reading, in the sentence `world/timesheet.ts` writes for it.
    *
    * It is on the card because the review is where the business reads it, and
@@ -2194,6 +2194,10 @@ export interface WeekScorecard {
    * consults it, and being under target is exactly as survivable as being over
    * it. That is the house rule this mechanic inherits, and this field's type is
    * the cheapest place to make it structurally true.
+   *
+   * EMPTY means the rung is asked for nothing (0.39.0) - the target is a column
+   * on the rung table and a probationer's row names none - and the surfaces
+   * leave the row off rather than print a number against a blank.
    */
   readonly utilisation: string;
   readonly outcome: ReviewOutcome;

@@ -1104,38 +1104,20 @@ export function lineFlag(line: Readonly<SheetLine>): string {
  */
 export type UtilisationBasis = 'recorded' | 'billable';
 
+/**
+ * What the business asks of a rung's week.
+ *
+ * The VALUES live on the rung table (`titles.ts`), one column, per rung, with
+ * the source of every figure written beside it - because the target IS the
+ * per-title difficulty knob the design named and it must be tunable by editing
+ * a row. They lived here until 0.39.0, as a map keyed by PAM TIER, which could
+ * not express the thing the table can: two rungs stand on the service desk's
+ * tier and only the senior one is asked for anything.
+ */
 export interface UtilisationTarget {
   readonly basis: UtilisationBasis;
   readonly percent: number;
 }
-
-/**
- * What the business asks of each tier.
- *
- * OVERSEER TUNING KNOBS, both, and the second one is the design.
- *
- * The DESK's is a hundred against `recorded`, and it is the joke: the sheet is
- * one bucket a day at seven and a half hours, so it hits the target exactly,
- * every week, without anybody deciding anything. Nobody at a service desk
- * attributes anything and the number that measures them says so.
- *
- * The ENGINEER's is seventy-five against `billable`, which is the sourced
- * industry ask - "service executives aim for 75% billable ... and end up with
- * yearly averages in the mid-60s" (Promys, via `docs/research/
- * titles-projects-engine.md` 5.4). The honest week does not reach it, and that
- * is the whole of the mechanic: MEASURED on the shipped MSP week played
- * properly at x1, a week that closes its queue and carries its project lands
- * between about 35% and 50% billable depending on how the acts fall - the
- * engine only credits a minute somebody was demonstrably working, and the
- * authored week runs out of arrivals before Friday afternoon does. So the
- * target is not reachable honestly, missing it costs exactly nothing (that is
- * the house rule, asserted in `timesheet.test.ts`), and the only way to hit it
- * is to claim time nobody worked - which is what the customer reads.
- */
-export const UTILISATION_TARGETS: Readonly<Record<PlayerTier, UtilisationTarget>> = {
-  [PLAYER_TIERS.serviceDesk]: { basis: 'recorded', percent: 100 },
-  [PLAYER_TIERS.systemsEngineer]: { basis: 'billable', percent: 75 },
-};
 
 export interface UtilisationReading {
   readonly basis: UtilisationBasis;
@@ -1145,7 +1127,18 @@ export interface UtilisationReading {
   readonly recorded: number;
   /** The minutes on somebody's invoice, as a whole percentage. */
   readonly billable: number;
-  readonly target: number;
+  /**
+   * The percentage this rung is asked for, or null where it is asked for
+   * nothing - which is a rung's real answer and not a missing one (see the
+   * `utilisation` column on `titles.ts`). Every surface that prints a target
+   * has to be able to print no target.
+   */
+  readonly target: number | null;
+  /**
+   * Whether the ask was met - and TRUE where there is no ask, because there is
+   * then nothing to be under. Nothing in the game branches on this: it moves a
+   * data attribute on the timesheet window and no more.
+   */
   readonly met: boolean;
   /** The minutes behind the ratio, so a surface can print the arithmetic. */
   readonly claimedMinutes: number;
@@ -1167,13 +1160,20 @@ function share(part: number, whole: number): number {
  * gap between what each of them can check is the mechanic.
  *
  * One call over the SHEET, which is already the derivation and the claim side
- * by side, so there is no second arithmetic here to drift from it.
+ * by side, so there is no second arithmetic here to drift from it. The sheet is
+ * `timesheetSheet` over `deriveTimesheet` and nothing else, which is what makes
+ * the review row and the window's own header two printings of one number rather
+ * than two readings of one week.
+ *
+ * The TARGET is handed in rather than looked up (0.39.0). It belongs to the
+ * rung, the rung table owns it, and this module stays a leaf that knows how to
+ * measure a week without knowing whose week it is - which is also what lets a
+ * fixture ask the question with no career in the world at all.
  */
 export function utilisationOf(
   sheet: Readonly<Timesheet>,
-  tier: PlayerTier,
+  target: Readonly<UtilisationTarget> | null,
 ): UtilisationReading {
-  const target = UTILISATION_TARGETS[tier];
   const claimedMinutes = sheet.days.reduce((total, day) => total + day.claimed, 0);
   const billableMinutes = sheet.days.reduce(
     (total, day) => total + day.lines.reduce(
@@ -1188,15 +1188,22 @@ export function utilisationOf(
   );
   const recorded = share(claimedMinutes, availableMinutes);
   const billable = share(billableMinutes, availableMinutes);
-  const percent = target.basis === 'recorded' ? recorded : billable;
+  // With no target there is still a number worth printing, and the sheet's own
+  // SHAPE says which one it is: a one-bucket sheet has no billable half to
+  // speak of, and a per-customer one is kept for exactly that half. Read off
+  // the sheet rather than defaulted to a constant, so a rung that loses its
+  // target does not quietly start reporting the wrong column.
+  const basis = target?.basis
+    ?? (sheet.shape === 'single_bucket' ? 'recorded' : 'billable');
+  const percent = basis === 'recorded' ? recorded : billable;
 
   return {
-    basis: target.basis,
+    basis,
     percent,
     recorded,
     billable,
-    target: target.percent,
-    met: percent >= target.percent,
+    target: target?.percent ?? null,
+    met: target === null || percent >= target.percent,
     claimedMinutes,
     billableMinutes,
     availableMinutes,
@@ -1204,26 +1211,75 @@ export function utilisationOf(
 }
 
 /**
- * The utilisation row, in the words the review uses.
+ * The utilisation row, in the words the sheet's own window uses.
  *
  * It says the number, the target, and NOTHING ELSE. There is no "should", no
  * "needs to improve" and no consequence attached anywhere in this game: being
- * under target reads at the review as being under target, because the one thing
- * this mechanic must never do is make honesty the losing move. The sentence
- * that follows the number is arithmetic, not advice.
+ * under target reads as being under target, because the one thing this mechanic
+ * must never do is make honesty the losing move. The sentence that follows the
+ * number is arithmetic, not advice.
+ *
+ * The TARGET CLAUSE goes with the target (0.39.0). A rung that is asked for
+ * nothing gets the number and the hours behind it and no claim about a figure
+ * nobody set - the alternative was printing a target of null, or inventing one
+ * for a rung whose sheet is a formality, and both are the window lying about
+ * what the business has said to this player.
  */
 export function utilisationLine(reading: Readonly<UtilisationReading>): string {
   const what = reading.basis === 'billable'
     ? 'billable'
     : 'of the day accounted for';
-
-  return `${String(reading.percent)}% ${what}, against the ${
-    String(reading.target)
-  }% the business asks for. ${hoursLabel(
+  const clock = `${hoursLabel(
     reading.basis === 'billable'
       ? reading.billableMinutes
       : reading.claimedMinutes,
   )} of ${hoursLabel(reading.availableMinutes)} on the clock.`;
+
+  return reading.target === null
+    ? `${String(reading.percent)}% ${what}. ${clock}`
+    : `${String(reading.percent)}% ${what}, against the ${
+      String(reading.target)
+    }% the business asks for. ${clock}`;
+}
+
+/**
+ * The same reading as the REVIEW prints it - or nothing at all, which is what a
+ * rung nobody asks anything of gets (E9/E10 bridge, 0.39.0).
+ *
+ * Two decisions, and they are the whole of what this slice does to the review.
+ *
+ * THE ROW EXISTS ONLY WHERE A TARGET DOES. An empty string means the surfaces
+ * leave the row off entirely rather than print a number against a blank, which
+ * is how a probationer's card comes out exactly as it did before this existed.
+ * That is deliberate and it is the honest shape: the paperwork starts at the
+ * rung the business starts asking about it, and a rung it does not ask has
+ * nothing to report.
+ *
+ * AND IT SAYS OUT LOUD THAT IT IS NOT SCORED. Under target is a CONVERSATION
+ * and never a mark (#67's decision: the difficulty knob is the TARGET, tuned
+ * per rung on the table, not an instant fail) - so the row says so in the row,
+ * beside the number, where somebody reading the card will actually see it.
+ * Leaving it to a comment would have been leaving the player to guess whether
+ * the verdict above them had this in it, and a player who thinks an honest week
+ * is being marked down for being honest will pad the sheet, which is the exact
+ * behaviour this mechanic exists to make a choice rather than a reflex. It is
+ * true, too, and structurally: the card carries this as a STRING, nothing reads
+ * it back, and `weekPerformance` never sees it.
+ */
+export function utilisationReviewLine(
+  reading: Readonly<UtilisationReading>,
+): string {
+  if (reading.target === null) {
+    return '';
+  }
+
+  return `${utilisationLine(reading)} ${
+    reading.met
+      ? 'On target. A reading rather than a mark - nothing on this card is '
+        + 'computed from it.'
+      : 'Under target. That is a conversation, not a mark - nothing on this '
+        + 'card is computed from it.'
+  }`;
 }
 
 /* -- how it reads --------------------------------------------------------- */
