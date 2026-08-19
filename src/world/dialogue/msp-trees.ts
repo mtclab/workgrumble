@@ -64,6 +64,10 @@ const NADIA: DialogueTree = {
     'ticket:msp-pool-fontaine-partner-lockout',
     'ticket:msp-pool-fontaine-file-server-full',
     'ticket:msp-pool-fontaine-supervising-partner',
+    // The two that are not faults (E9, 0.38.0): the floor they have taken, and
+    // the floor's desks once somebody has done the first one for nothing.
+    'ticket:fontaine-new-office-wifi',
+    'ticket:fontaine-new-office-cabling',
   ],
   root: 'matter',
   roots: {
@@ -73,6 +77,8 @@ const NADIA: DialogueTree = {
     'ticket:msp-pool-fontaine-partner-lockout': 'lockout',
     'ticket:msp-pool-fontaine-file-server-full': 'server-space',
     'ticket:msp-pool-fontaine-supervising-partner': 'supervising',
+    'ticket:fontaine-new-office-wifi': 'new-office',
+    'ticket:fontaine-new-office-cabling': 'new-office-more',
   },
   resolved_roots: {
     'ticket:fontaine-matter-access': 'matter-done',
@@ -81,6 +87,8 @@ const NADIA: DialogueTree = {
     'ticket:msp-pool-fontaine-partner-lockout': 'lockout-done',
     'ticket:msp-pool-fontaine-file-server-full': 'server-space-done',
     'ticket:msp-pool-fontaine-supervising-partner': 'supervising-done',
+    'ticket:fontaine-new-office-wifi': 'new-office-done',
+    'ticket:fontaine-new-office-cabling': 'new-office-more-done',
   },
   nodes: [
     {
@@ -312,6 +320,144 @@ const NADIA: DialogueTree = {
       npc_line: 'He can see it. He has already opened three things in it and '
         + 'changed none of them, which is supervision.',
       options: [{ label: 'Log the fix' }],
+    },
+    // The out-of-scope ask (E9, 0.38.0). Four options rather than three,
+    // because the question is worth asking BEFORE any of the three answers:
+    // what she has actually been promised upstairs is the difference between a
+    // firm chancing it and a firm that has been told something.
+    {
+      id: 'new-office',
+      npc_line: 'We have the second floor from the first - eleven desks, the '
+        + 'meeting room, and that little alcove for the printer. Could you get '
+        + 'the wireless sorted before anybody moves up? And there is a cabling '
+        + 'man coming on the Thursday who will want somebody technical to talk '
+        + 'to. I assume that is all the same as everything else.',
+      options: [
+        {
+          label: 'Ask what she was told was included when the floor was signed',
+          next: 'new-office-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read what Fontaine\'s agreement actually covers',
+          effects: [
+            {
+              reveal: 'Fontaine are on a helpdesk agreement: the people and '
+                + 'the machines they sit at. A floor build - a survey, access '
+                + 'points, a switch and somebody to meet the cabling '
+                + 'contractor - is in no part of it, at no tier. Nothing is '
+                + 'broken and nothing is refused; this is additional work, and '
+                + 'additional work is scoped, priced and approved before '
+                + 'anybody starts.',
+            },
+          ],
+        },
+        {
+          label: 'Tell her it is outside the agreement, and offer to price it',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeRefuse,
+            target: 'ticket:fontaine-new-office-wifi',
+          }],
+        },
+        {
+          label: 'Offer to put an estimate together and send it over',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeQuote,
+            target: 'ticket:fontaine-new-office-wifi',
+          }],
+        },
+        {
+          label: 'Tell her you will sort the wireless',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeDoWork,
+            target: 'ticket:fontaine-new-office-wifi',
+          }],
+        },
+      ],
+    },
+    {
+      id: 'new-office-q',
+      npc_line: 'Nobody told me anything, if I am honest. The lease was the '
+        + 'partners and the IT is you, and I have been ringing you about every '
+        + 'other thing for two years and it has never come with an invoice, so '
+        + 'I did rather assume. Should I be asking somebody else?',
+      options: [
+        {
+          label: 'Say that some of it is included and some of it is priced, '
+            + 'and that you will be clear which',
+        },
+      ],
+    },
+    {
+      id: 'new-office-done',
+      npc_line: 'Right - thank you for coming back to me on it. I will let the '
+        + 'partners know where we stand, and if there is paper to sign somebody '
+        + 'here will sign it.',
+      options: [{ label: 'Log the answer' }],
+    },
+    // And the sequel, for the player who did the first one for nothing. She is
+    // not chancing it: she is reasoning from the only evidence she has.
+    {
+      id: 'new-office-more',
+      npc_line: 'The floor went so smoothly that the partners have asked about '
+        + 'the desks as well - the machines lifted, the floor boxes run, the '
+        + 'screen in the meeting room, and the old suite out on the Saturday. '
+        + 'It is the same sort of thing, is it not? You did the last one.',
+      options: [
+        {
+          label: 'Ask what the partners think the last one cost',
+          next: 'new-office-more-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Look up what the floor build was booked against',
+          effects: [
+            {
+              reveal: 'It was booked against nothing, because it never went on '
+                + 'an invoice. That is the whole of why this ask exists and why '
+                + 'it is bigger: a precedent is a contract nobody signed, and '
+                + 'the firm is reasoning perfectly sensibly from the only '
+                + 'evidence it has - the last one came free.',
+            },
+          ],
+        },
+        {
+          label: 'Point at the agreement again, and offer to price the move',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeRefuse,
+            target: 'ticket:fontaine-new-office-cabling',
+          }],
+        },
+        {
+          label: 'Offer an estimate for the whole move',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeQuote,
+            target: 'ticket:fontaine-new-office-cabling',
+          }],
+        },
+        {
+          label: 'Tell her you will do the desks too',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeDoWork,
+            target: 'ticket:fontaine-new-office-cabling',
+          }],
+        },
+      ],
+    },
+    {
+      id: 'new-office-more-q',
+      npc_line: 'Nothing, I should think. It did not appear on anything, so it '
+        + 'went down as one of the things you do. That is not me being clever '
+        + '- I have nothing else to go on.',
+      options: [
+        { label: 'Tell her that is exactly the problem, pleasantly' },
+      ],
+    },
+    {
+      id: 'new-office-more-done',
+      npc_line: 'That is settled either way, then. I will put whatever you send '
+        + 'me in front of them - they are in on Thursday.',
+      options: [{ label: 'Log the answer' }],
     },
   ],
 };
@@ -2484,13 +2630,23 @@ const MORGAN: DialogueTree = {
 const ESME: DialogueTree = {
   id: 'dialogue/msp-esme',
   speaker: MSP_IDS.penningtonContact,
-  tickets: ['ticket:pennington-practice-down'],
+  tickets: [
+    'ticket:pennington-practice-down',
+    // The two that are not faults (E9, 0.38.0): the migration the firm has
+    // budget for, and what it turns into if the first one went in free.
+    'ticket:pennington-practice-migration',
+    'ticket:pennington-second-migration',
+  ],
   root: 'ledgerline',
   roots: {
     'ticket:pennington-practice-down': 'ledgerline',
+    'ticket:pennington-practice-migration': 'migration',
+    'ticket:pennington-second-migration': 'migration-more',
   },
   resolved_roots: {
     'ticket:pennington-practice-down': 'ledgerline-done',
+    'ticket:pennington-practice-migration': 'migration-done',
+    'ticket:pennington-second-migration': 'migration-more-done',
   },
   nodes: [
     {
@@ -2540,6 +2696,141 @@ const ESME: DialogueTree = {
         + 'seniors have stopped standing behind me. Thank you. I will tell '
         + 'Gil you were on it, though I dare say he will already know.',
       options: [{ label: 'Log the restart' }],
+    },
+    // The out-of-scope ask (E9, 0.38.0). Esme is the opposite end of Nadia's
+    // conversation and that is why the pair exists: this firm HAS a budget, a
+    // date and a vendor note, so the estimate is a thing they were expecting to
+    // be asked for - and the favour costs the same as it costs anywhere.
+    {
+      id: 'migration',
+      npc_line: 'We have signed for the hosted Ledgerline - the partners did it '
+        + 'in June. Somebody has to move eleven years of client files onto it '
+        + 'and there is a weekend in it, with a rehearsal first, the vendor '
+        + 'says. Gil has the note from them and has made his feelings about '
+        + 'his Saturday quite clear. Can you take it on?',
+      options: [
+        {
+          label: 'Ask what the partners have set aside for the move',
+          next: 'migration-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Read the co-managed split on the Pennington account',
+          effects: [
+            {
+              reveal: 'The RACI divides who RUNS the estate - the desks and the '
+                + 'endpoints are the MSP\'s, the practice system is Gil\'s - '
+                + 'and it says nothing at all about a migration, because a '
+                + 'migration is not either side\'s day job. A weekend, a '
+                + 'rehearsal and a rollback is project work, and project work '
+                + 'reaches somebody by being scoped, priced and signed for.',
+            },
+          ],
+        },
+        {
+          label: 'Tell her it is project work, and offer to scope and price it',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeRefuse,
+            target: 'ticket:pennington-practice-migration',
+          }],
+        },
+        {
+          label: 'Offer to scope it properly and send an estimate',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeQuote,
+            target: 'ticket:pennington-practice-migration',
+          }],
+        },
+        {
+          label: 'Tell her you will get started on it',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeDoWork,
+            target: 'ticket:pennington-practice-migration',
+          }],
+        },
+      ],
+    },
+    {
+      id: 'migration-q',
+      npc_line: 'There is money for it - it went through with the platform. '
+        + 'Nobody has said a figure to me, but nobody is expecting it for '
+        + 'nothing either. If you send something over I will walk it in to '
+        + 'them on Thursday.',
+      options: [
+        { label: 'Say you will get her something she can walk in' },
+      ],
+    },
+    {
+      id: 'migration-done',
+      npc_line: 'Understood, and thank you for being straight about it. I would '
+        + 'rather know where we are than find out in September.',
+      options: [{ label: 'Log the answer' }],
+    },
+    // And the sequel, for the player who moved eleven years of files for
+    // nothing. She is not being sharp about it. Nobody invoiced her.
+    {
+      id: 'migration-more',
+      npc_line: 'The partners were very pleased with the migration, so the '
+        + 'branch office is going on the platform by the end of the month - and '
+        + 'while it is all happening they would like the archive years brought '
+        + 'across too, 2011 to 2019, off that tape nobody has read since. When '
+        + 'can you start?',
+      options: [
+        {
+          label: 'Ask what she thinks the first migration was worth',
+          next: 'migration-more-q',
+          effects: [{ asks: true }],
+        },
+        {
+          label: 'Check what the first migration was invoiced at',
+          effects: [
+            {
+              reveal: 'Nothing. Eleven years of client files moved over a '
+                + 'weekend and the account has no record of it costing '
+                + 'anything, so the branch office is not a question anybody '
+                + 'here thinks they are asking. Nobody has ever put a number in '
+                + 'front of this firm, and until somebody does they will keep '
+                + 'assuming there is not one.',
+            },
+          ],
+        },
+        {
+          label: 'Tell her the branch office is quoted, and offer the estimate',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeRefuse,
+            target: 'ticket:pennington-second-migration',
+          }],
+        },
+        {
+          label: 'Offer an estimate for the branch and the archive years',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeQuote,
+            target: 'ticket:pennington-second-migration',
+          }],
+        },
+        {
+          label: 'Tell her you will take the branch and the archive on as well',
+          effects: [{
+            action: HELPDESK_ACTIONS.scopeDoWork,
+            target: 'ticket:pennington-second-migration',
+          }],
+        },
+      ],
+    },
+    {
+      id: 'migration-more-q',
+      npc_line: 'I could not tell you. It never came on an invoice, so as far '
+        + 'as this office is concerned it is one of the things the agreement '
+        + 'covers. That is how it looks from here, at any rate.',
+      options: [
+        { label: 'Tell her the agreement has never covered it, gently' },
+      ],
+    },
+    {
+      id: 'migration-more-done',
+      npc_line: 'Right you are. I will tell them what you have said and we will '
+        + 'go from there - it is not a fight, it is a filing week and a budget.',
+      options: [{ label: 'Log the answer' }],
     },
   ],
 };

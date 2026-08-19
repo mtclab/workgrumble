@@ -46,6 +46,7 @@ import { PRESENCE_ACTION_DATA } from './presence';
 import { PROJECT_ACTION_DATA } from './project';
 import { RACI_ACTION_DATA } from './raci';
 import { REQUEST_ACTION_DATA } from './request';
+import { SCOPE_ACTION_DATA } from './scope';
 import { SECURITY_ACTIONS } from './security';
 import { SELINUX_ACTION_DATA } from './selinux';
 import { SERVICE_ACTIONS } from './service';
@@ -177,6 +178,13 @@ export {
   REQUEST_OFF_SHIFT_REASON,
 } from './request';
 export {
+  SCOPE_ANSWERED_REASON,
+  SCOPE_CLOSED_REASON,
+  SCOPE_NOT_AN_ASK_REASON,
+  SCOPE_NOT_QUOTED_REASON,
+  SCOPE_QUOTE_OUT_REASON,
+} from './scope';
+export {
   REBUFF_AGAIN_PARAM,
   REBUFF_FIRST_PARAM,
 } from './tone';
@@ -284,6 +292,14 @@ export function helpdeskActions(): readonly ActionData[] {
     // derived off the sheet and the customer's own records every time anybody
     // asks, so there is no scrutiny meter here to fall out of step with it.
     ...INVOICE_ACTION_DATA,
+    // The out-of-scope ask's five (E9, 0.38.0): the player's three answers to a
+    // request nobody signed for - refuse and offer the estimate, quote and
+    // wait, or just do it - and the customer's two answers to the estimate,
+    // which the day driver settles off the minute the quote was stamped with.
+    // All five in one list because they are one mechanic, and the two world
+    // verbs at the end of it rather than below the line because they are about
+    // the same ticket the three above are.
+    ...SCOPE_ACTION_DATA,
     // The world's own verbs go in last and are offered by nothing: a cleaner's
     // trolley and a maintenance window are not things a first-line tech does.
     ...WORLD_ACTION_DATA,

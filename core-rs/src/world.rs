@@ -923,6 +923,15 @@ impl World {
             fields.insert("beneficiary".to_owned(), serde_json::json!(beneficiary));
         }
 
+        // And whether it is an OUT-OF-SCOPE ASK (E9, 0.38.0), stamped only on
+        // the handful of tickets that are one. It is what the three answers to
+        // such an ask are guarded on, so it has to be a fact of the ticket
+        // rather than a list the verbs are handed - and stamping nothing for
+        // `false` is what keeps every other ticket's node the node it was.
+        if definition.scope_ask {
+            fields.insert("scope_ask".to_owned(), serde_json::json!(true));
+        }
+
         let node = serde_json::json!({
             "id": id,
             "kind": "ticket",

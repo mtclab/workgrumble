@@ -355,6 +355,32 @@ export const HELPDESK_ACTIONS = {
    * costs - the owner has to be there and do it themselves.
    */
   deviceManualMailSetup: 'device.manual_mail_setup',
+  /* -- the out-of-scope ask (E9, 0.38.0) ----------------------------------- */
+  /**
+   * The three answers to a request for work nobody signed for, and the sourced
+   * three-way this slice is about (`docs/research/titles-customer-types.md`
+   * 3.5).
+   *
+   * Three verbs rather than one carrying a kind, exactly as the 0.5.0 request
+   * trio is and for the same reason: each writes the SAME fact - which way this
+   * ask went - and what differs is the social and financial consequence, which
+   * the op language cannot pick off a string parameter. They are helpdesk verbs
+   * because answering a customer is the job, and they are on the DIALOGUE's
+   * allowlist because the conversation is where a person asks you for something
+   * they are not entitled to.
+   *
+   * `scopeRefuse` points at the agreement and offers the estimate: closed, no
+   * cost, nothing earned. `scopeQuote` writes the estimate and parks the ticket
+   * on the customer through the shipped hold rails, which is the only one of
+   * the three that does not end the conversation today. `scopeDoWork` is the
+   * work itself - one verb, because doing the job is the same act whether or
+   * not anybody is paying, and the ticket already knows which it is: an
+   * approved estimate makes it billable delivery, and no answer at all makes it
+   * the unbilled favour that trains the customer to ask again.
+   */
+  scopeRefuse: 'scope.refuse',
+  scopeQuote: 'scope.quote',
+  scopeDoWork: 'scope.do_work',
 } as const;
 
 export type HelpdeskActionId =
@@ -667,6 +693,20 @@ export const WORLD_ACTIONS = {
    * REFUSED on every morning after the first, which is the point of it.
    */
   raciFirstComplaint: 'world.raci_first_complaint',
+  /**
+   * The customer coming back on an estimate (E9, 0.38.0) - yes, or no.
+   *
+   * Two verbs rather than one carrying the answer, because they are two
+   * different things happening and they leave the ticket in two different
+   * states: a yes takes it off hold and turns it into a job somebody is paying
+   * for, and a no takes it off hold and closes it with nothing owed. Which one
+   * a given ask gets is a CONTENT fact (`world/out-of-scope.ts`), settled by
+   * the day driver off the clock the quote stamped - never a roll, because the
+   * engine bans `Math.random` and a price whose answer depended on the minute
+   * you sent it would be a mechanic nobody could learn.
+   */
+  scopeApproved: 'world.scope_approved',
+  scopeDeclined: 'world.scope_declined',
 } as const;
 
 /**

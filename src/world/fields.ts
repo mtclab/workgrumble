@@ -1827,6 +1827,49 @@ export const FIELDS = {
    * somebody's notice period produced.
    */
   kbRef: 'kb_ref',
+  /* -- the out-of-scope ask (E9, 0.38.0) ---------------------------------- */
+  /**
+   * Whether this ticket is a request for work the agreement does not cover.
+   *
+   * Stamped at spawn off the ticket's own definition (the engine writes it, the
+   * way it writes `vip`), and it is the GUARD the three answers to an ask are
+   * validated on: a verb that closes a ticket by pointing at a contract has to
+   * refuse the printer fault next to it, and a content table the engine was
+   * handed could not do that. Absent on every other ticket in the game, which
+   * is what keeps their nodes the nodes they were.
+   */
+  scopeAsk: 'scope_ask',
+  /**
+   * WHICH WAY an out-of-scope ask went, in one word, on the ticket it arrived
+   * as.
+   *
+   * One field rather than three flags, because the answers are exclusive by
+   * nature - a request cannot have been refused and also obliged - and because
+   * the ticket's own resolution rule watches it: the terminal words
+   * (`refused`, `declined`, `obliged`, `delivered`) close the ticket and the
+   * two middle ones (`quoted`, `approved`) do not, which is what makes the
+   * quote a WAIT rather than a slower way of saying yes. It is also what the
+   * timesheet reads to know whose minutes these were: work obliged outside the
+   * agreement is real work on nobody's invoice, and the sheet says so in the
+   * word this field holds.
+   *
+   * On the TICKET rather than the player, because it is a fact about this
+   * request and not about the person answering it - a week has two of these in
+   * it and they can go two different ways.
+   */
+  scopeOutcome: 'scope_outcome',
+  /**
+   * The minute the estimate went over, and the minute the work was obliged.
+   *
+   * Two ticks rather than one "when did something happen here", because they
+   * start two different clocks and both of them have to survive a save: the
+   * customer answers a quote within the day (`quoteAnswerDue`) and the trained
+   * customer comes back for more later (`scopeRecurrenceDue`). Written by the
+   * verbs themselves off the engine's own `now`, so a replay lands on the same
+   * minute rather than on whatever minute the reload happened in.
+   */
+  scopeQuotedAt: 'scope_quoted_at',
+  scopeObligedAt: 'scope_obliged_at',
   /** The escalation handoff: what the user reported, and what was tried. */
   handoffReported: 'handoff_reported',
   handoffTried: 'handoff_tried',
