@@ -21,7 +21,7 @@ import { COMPANY_IDS } from '../world/company';
 import { tickAtMinute } from '../world/day';
 import { FIELDS } from '../world/fields';
 import { visibleMail } from '../world/mail';
-import { MSP_CHANNELS, MSP_IDS } from '../world/msp-company';
+import { MSP_CHANNELS, MSP_CUSTOMERS, MSP_IDS } from '../world/msp-company';
 import { MSP_WEEK } from '../world/msp-week';
 import type { DistroId } from './skins';
 import { selinuxNodeIds } from '../world/selinux';
@@ -202,6 +202,53 @@ describe('the SELinux denial, walked both ways (E6, 0.28.0)', () => {
       MSP_IDS.playerMachine,
       FIELDS.selinuxPermissiveAt,
     )).toBeUndefined();
+  });
+
+  /**
+   * AND IT GOES THROUGH THE SEAM (0.38.0 verifier round).
+   *
+   * `restorecon` is a file-targeted MUTATING verb and it went at `api.dispatch`
+   * raw - the last of the shape lane B spent its slice closing one kind at a
+   * time. It was latent rather than broken, because the beat is built on the
+   * player's OWN box and an own box carries no customer; and "no content
+   * reaches it yet" is not a wall.
+   *
+   * So the probe is the shipped node with one field changed to the contract
+   * this wall is about - the same move the share gate makes, and the same
+   * reason: the world says a true thing rather than an invented one. It also
+   * proves the walk gets there at all: this file hangs off no contains chain,
+   * it is reached through the httpd unit that needs it, and without that arm
+   * the seam's fail-closed refusal would land on the player's own box and the
+   * relabel above would stop working.
+   *
+   * Teeth: put `api.dispatch(SELINUX_ACTIONS.restorecon, ...)` back in
+   * `restoreconLines` and this reds - the relabel lands on a monitoring-only
+   * customer's server in silent breach of the contract.
+   */
+  it('the relabel meets the contract on a box that is not ours', () => {
+    const rigged = rig();
+
+    rigged.session.engine.applySetup([{
+      op: 'setField',
+      id: MSP_IDS.playerMachine,
+      field: FIELDS.machineCustomer,
+      value: MSP_CUSTOMERS.northwind,
+    }]);
+    rigged.api.appState.setCustomerContext(MSP_CUSTOMERS.northwind);
+
+    const said = run(rigged, 'sudo restorecon -v /var/www/html/index.html')
+      .join(' ');
+
+    expect(said).toContain('This account is monitoring-only');
+    // The dialect survives the rerouting: ssh got you onto the box, which is
+    // exactly what makes the wall worth saying out loud - and it is said about
+    // a FILE, because that is what was aimed at.
+    expect(said).toContain('ssh reaches the box at the engineer tier');
+    expect(said).toContain('relabelling a file on a customer\'s server');
+
+    // And nothing was relabelled: the page is still refused.
+    expect(run(rigged, 'curl -I http://localhost/')[0])
+      .toBe('HTTP/1.1 403 Forbidden');
   });
 
   it('the switch: the page is served, and the sweep says so in the morning', () => {

@@ -29,6 +29,7 @@ import { priorityFor } from '../world/priority';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS } from '../world/fields';
 import { HELPDESK_ACTIONS } from '../world/actions';
+import { dayOpensTick } from '../world/day';
 import { createWorldSession } from '../world/session';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
 import { carryForStart } from './start';
@@ -349,6 +350,95 @@ describe('the day knows which contract clocks it let run out (0.38.0)', () => {
 
     const node = rigged.session.engine.graph.getNode(TARGET);
     expect(typeof node?.fields[FIELDS.ackMissedAt]).toBe('number');
+  });
+
+  /**
+   * AN UN-PARK IS NOT A CHARGE (0.38.0 verifier round).
+   *
+   * The row used to read `cadence_counted_to`, which is a WATERMARK and not a
+   * charge: `ticket.clear_waiting` moves it too, because the minutes a ticket
+   * spent parked are excused rather than banked. So a Monday ticket taken off
+   * hold on the Tuesday stamped a Tuesday watermark, and Tuesday's scorecard
+   * reported a contract clock it had let run out - on the day the player did
+   * the correct thing with it. The fix reads the charge's own stamp,
+   * `cadence_charged_at`, which moves nowhere but where silence actually
+   * billed; and until now nothing held it to that, so putting both reads back
+   * on the watermark stayed green.
+   *
+   * Two days, through the shipped driver and the shipped verbs. Tuesday is
+   * driven with NO desk minutes on purpose - the un-park is the only thing
+   * that happens on it - so a zero on Tuesday's row is a zero about the
+   * un-park and not about whatever else a morning would have charged.
+   *
+   * Teeth: point either read in `contractMissesOn` back at
+   * `FIELDS.cadenceCountedTo` and Tuesday's row reds - an un-park counted as a
+   * charge, which is the exact reading a reviewer proved.
+   */
+  it('does not count Tuesday\'s un-park as a contract clock Tuesday lost', () => {
+    const rigged = rig();
+    const { engine } = rigged.session;
+    const counts = (day: number) => scorecardCounts(
+      {
+        graph: engine.graph,
+        clock: { now: () => engine.now(), onTick: () => () => {} },
+      },
+      day,
+    );
+    const node = () => engine.graph.getNode(TARGET)!;
+
+    rigged.driver.startShift();
+    runMinutes(rigged, 90);
+
+    // Monday: this one is triaged and parked on the reporter, words first as
+    // the CYA rule wants. Parked minutes owe nothing, so it is charged for
+    // nothing all day - and the rest of the board is left to run out its own
+    // windows in silence, which is what a charge actually is.
+    for (const [action, params] of [
+      [
+        HELPDESK_ACTIONS.ticketClassify,
+        { impact: 2, urgency: 2, priority: priorityFor(2, 2) },
+      ],
+      [HELPDESK_ACTIONS.ticketAddComment, { comment: 'Which matter were you in?' }],
+      [HELPDESK_ACTIONS.ticketSetWaiting, {}],
+    ] as const) {
+      expect(engine.dispatch(action, COMPANY_IDS.player, TARGET, params), action)
+        .toEqual({ ok: true });
+    }
+
+    runMinutes(rigged, 400);
+
+    expect(node().fields[FIELDS.cadenceChargedAt], 'a parked ticket is charged '
+      + 'for nothing').toBeUndefined();
+    expect(counts(1).contractMisses, 'Monday let something run out')
+      .toBeGreaterThanOrEqual(1);
+
+    // Tuesday, and nothing on it but the un-park. It writes the park off by
+    // moving the counted-to watermark to a Tuesday minute.
+    rigged.driver.clockOff();
+    engine.advance(dayOpensTick(2) - engine.now());
+    rigged.driver.startShift();
+
+    expect(engine.dispatch(
+      HELPDESK_ACTIONS.ticketClearWaiting,
+      COMPANY_IDS.player,
+      TARGET,
+      {},
+    )).toEqual({ ok: true });
+
+    const countedTo = node().fields[FIELDS.cadenceCountedTo];
+
+    // The watermark HAS moved into Tuesday - so the reverted read has
+    // something to find, which is what makes the next assertion mean something
+    // rather than pass by accident. The charge stamp is still absent.
+    expect(typeof countedTo === 'number' ? countedTo : -1)
+      .toBeGreaterThanOrEqual(dayOpensTick(2));
+    expect(node().fields[FIELDS.cadenceChargedAt]).toBeUndefined();
+
+    // The row Tuesday prints. Nothing on this board was charged today.
+    expect(counts(2).contractMisses).toBe(0);
+    // And Monday still carries what Monday lost. Reading the right stamp is
+    // not forgetting.
+    expect(counts(1).contractMisses).toBeGreaterThanOrEqual(1);
   });
 
   it('counts nothing at the probation shop, ever', () => {

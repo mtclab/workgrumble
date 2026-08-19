@@ -1013,7 +1013,20 @@ const GOLDEN_WORKED: GoldenWeek = {
   // the seeded spreader's finalizer and domain separation - the NINETEENTH MOVE
   // above, where the three minutes that moved and the one line that went are
   // listed with their cause.
-  hash: '83b93d51647cad8f',
+  //
+  // Moved a fourth time by 0.38.0's verifier round
+  // (`83b93d51647cad8f` -> `b78eb1cab84647c3`) for ONE FIELD ON ONE STRING: the
+  // timesheet ledger's lines now carry a fifth column, the node the minutes
+  // were attributed off, so the recorder can find and correct a stretch when
+  // the world's answer about that node arrives after the work (an
+  // out-of-contract ask answered at eleven for minutes worked at half ten).
+  // Nothing about this week moves: no ticket, no minute, no meter, no rate -
+  // every count below is the count it was, which is what the rest of this
+  // fixture asserts line by line. The ledger is a longer string saying the same
+  // thing about the same minutes, and the sheet buckets by the same four
+  // columns it always did. A conscious diff: one optional field, in a record
+  // nobody presses a button to write.
+  hash: 'b78eb1cab84647c3',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',

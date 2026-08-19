@@ -106,6 +106,26 @@ export interface WorkSegment {
   /** The last minute an act on this landed. Never before `tick`. */
   readonly last: number;
   readonly ref: SegmentRef;
+  /**
+   * WHAT the minutes were spent on - the node the attribution was read off,
+   * which is a ticket for anything a ticket witnessed and the target itself
+   * otherwise. Null for slack (a browser is not a node) and for a line written
+   * by a build that did not record one.
+   *
+   * It exists because a bucket is not enough to correct a bucket (E9, 0.38.0
+   * verifier round). The ledger is written at act-time, and the answer to "is
+   * this billable" can arrive AFTER the minutes: an out-of-contract ask worked
+   * for half an hour and refused at eleven has thirty minutes already on the
+   * customer's billable line, and `customer|fontaine` alone cannot say which
+   * of that customer's tickets they were for. Keeping the source means the
+   * stretch that has to move can be found and moved, so the ledger stays what
+   * `segmentsFromLog` would rebuild from the engine's own records rather than
+   * quietly disagreeing with it.
+   *
+   * The sheet never reads it. Minutes bucket by `bucketOf(ref)` exactly as
+   * they did - this is provenance, not a fourth dimension of the timesheet.
+   */
+  readonly source: string | null;
 }
 
 /**
@@ -163,13 +183,21 @@ export function encodeSegment(
   tick: number,
   ref: Readonly<SegmentRef>,
   last: number = tick,
+  source: string | null = null,
 ): string {
-  return [String(tick), ref.kind, ref.id, String(last)].join(SEPARATOR);
+  const head = [String(tick), ref.kind, ref.id, String(last)];
+
+  // The fifth field is OPTIONAL and absent when there is nothing to say, which
+  // is what keeps a slack line and every line a pre-0.38.0 save carries exactly
+  // the string this build would write for them.
+  return (source === null || source.length === 0
+    ? head
+    : [...head, source]).join(SEPARATOR);
 }
 
 function decodeSegment(line: string): WorkSegment | null {
   const parts = line.split(SEPARATOR);
-  const [stamp, kind, id, said] = parts;
+  const [stamp, kind, id, said, source] = parts;
   // `Number('')` is zero, which is a perfectly good tick and not what an empty
   // field means - the same trap `decodeTouch` sidesteps, for the same reason.
   const tick = stamp === undefined || stamp.length === 0
@@ -180,7 +208,7 @@ function decodeSegment(line: string): WorkSegment | null {
     : Number(said);
 
   if (
-    parts.length !== 4
+    (parts.length !== 4 && parts.length !== 5)
     || kind === undefined
     || id === undefined
     || id.length === 0
@@ -193,7 +221,12 @@ function decodeSegment(line: string): WorkSegment | null {
     return null;
   }
 
-  return { tick, last, ref: { kind, id } };
+  return {
+    tick,
+    last,
+    ref: { kind, id },
+    source: source === undefined || source.length === 0 ? null : source,
+  };
 }
 
 /**
@@ -243,31 +276,94 @@ export function withSegment(
   existing: unknown,
   tick: number,
   ref: Readonly<SegmentRef>,
+  source: string | null = null,
 ): string {
   const lines = typeof existing === 'string' && existing.length > 0
     ? existing.split('\n').filter((line) => line.length > 0)
     : [];
   const open = decodeSegment(lines[lines.length - 1] ?? '');
 
-  if (open !== null && bucketOf(open.ref) === bucketOf(ref)) {
+  // Same bucket AND the same thing (0.38.0 verifier round). Two tickets at one
+  // customer used to extend one line, which merged them past telling apart -
+  // and the re-bucket below has to be able to move ONE of them. Splitting the
+  // stretch costs the derivation nothing: a segment owns the minutes up to the
+  // next one, so two adjacent lines and one long one are the same arithmetic,
+  // and they land in the same bucket either way.
+  if (
+    open !== null
+    && bucketOf(open.ref) === bucketOf(ref)
+    && open.source === source
+  ) {
     if (ref.kind === 'slack' || tick <= open.last) {
       return lines.join('\n');
     }
 
     if (workingMinutesBetween(open.last, tick) > WORK_SEGMENT_MINUTES) {
-      return appended(lines, encodeSegment(tick, ref));
+      return appended(lines, encodeSegment(tick, ref, tick, source));
     }
 
-    lines[lines.length - 1] = encodeSegment(open.tick, ref, tick);
+    lines[lines.length - 1] = encodeSegment(open.tick, ref, tick, source);
     return lines.join('\n');
   }
 
   if (open !== null && open.tick === tick) {
-    lines[lines.length - 1] = encodeSegment(tick, ref);
+    lines[lines.length - 1] = encodeSegment(tick, ref, tick, source);
     return lines.join('\n');
   }
 
-  return appended(lines, encodeSegment(tick, ref));
+  return appended(lines, encodeSegment(tick, ref, tick, source));
+}
+
+/**
+ * The ledger with every stretch of work on one SOURCE re-bucketed - the
+ * correction that keeps the recorder honest when the answer arrives after the
+ * minutes (E9, 0.38.0 verifier round).
+ *
+ * The bug it exists for: `attributionFor` reads a ticket's scope outcome LIVE,
+ * so `segmentsFromLog` - the audit, rebuilt from the engine's own log - says an
+ * out-of-contract ask's minutes are unbilled the moment the answer lands. The
+ * ledger said what was true when the minute was worked, which for every minute
+ * spent BEFORE the answer was `customer`. Half an hour reading an ask you then
+ * correctly refuse went onto that customer's billable line and stayed there,
+ * and the two readings the whole mechanic claims are "one source by
+ * construction" disagreed about it.
+ *
+ * So when the world's answer about a node changes, the lines that node wrote
+ * are re-read against it. Not a rebuild from the log - the log holds the
+ * WORLD's own acts too, and slack is in the ledger and in no log at all - but
+ * the narrowest correction there is: same ticks, same lengths, same source, the
+ * bucket the attribution says today.
+ *
+ * Lines this build cannot decode are passed through untouched rather than
+ * dropped: a save is a file on the player's machine, and quietly rewriting a
+ * field to delete what it could not read is a worse answer than leaving it.
+ */
+export function rebucketSource(
+  existing: unknown,
+  source: string,
+  ref: Readonly<SegmentRef>,
+): string {
+  if (typeof existing !== 'string' || existing.length === 0) {
+    return '';
+  }
+
+  let changed = false;
+  const lines = existing.split('\n').map((line) => {
+    const segment = decodeSegment(line);
+
+    if (
+      segment === null
+      || segment.source !== source
+      || bucketOf(segment.ref) === bucketOf(ref)
+    ) {
+      return line;
+    }
+
+    changed = true;
+    return encodeSegment(segment.tick, ref, segment.last, source);
+  });
+
+  return changed ? lines.join('\n') : existing;
 }
 
 function appended(lines: readonly string[], line: string): string {
@@ -407,8 +503,8 @@ export function segmentsFromLog(
 
     const ref = attributionFor(graph, entry.target, resolve);
 
-    if (ref !== null) {
-      field = withSegment(field, entry.tick, ref);
+    if (ref !== null && entry.target !== null) {
+      field = withSegment(field, entry.tick, ref, entry.target);
     }
   }
 

@@ -330,8 +330,8 @@ const NADIA: DialogueTree = {
       npc_line: 'We have the second floor from the first - eleven desks, the '
         + 'meeting room, and that little alcove for the printer. Could you get '
         + 'the wireless sorted before anybody moves up? And there is a cabling '
-        + 'man coming on the Thursday who will want somebody technical to talk '
-        + 'to. I assume that is all the same as everything else.',
+        + 'man coming later in the week who will want somebody technical to '
+        + 'talk to. I assume that is all the same as everything else.',
       options: [
         {
           label: 'Ask what she was told was included when the floor was signed',
@@ -1146,7 +1146,7 @@ const PRIYA: DialogueTree = {
       npc_line: 'I exported Bramble\'s payslip pack an hour ago, went to '
         + 'lunch, and now the portal is asking me to pick a file and the '
         + 'folder is empty. BACS closes at two. After that forty-two people '
-        + 'get paid on Thursday instead of Wednesday. I am about to run the '
+        + 'get paid a day late. I am about to run the '
         + 'whole payroll again.',
       options: [
         {
@@ -2755,7 +2755,7 @@ const ESME: DialogueTree = {
       npc_line: 'There is money for it - it went through with the platform. '
         + 'Nobody has said a figure to me, but nobody is expecting it for '
         + 'nothing either. If you send something over I will walk it in to '
-        + 'them on Thursday.',
+        + 'them the moment I have them in one room.',
       options: [
         { label: 'Say you will get her something she can walk in' },
       ],

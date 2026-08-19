@@ -749,9 +749,9 @@ const HOLLOWAY_PAYROLL_EXPORT: WorldTicket = {
         'Priya exported a client\'s payslip pack out of the payroll software an '
         + 'hour ago, went to lunch, and has come back to a client portal asking '
         + 'her to choose a file and a folder with nothing in it. The bureau\'s '
-        + 'BACS submission closes at two; after that the money moves on '
-        + 'Thursday instead of Wednesday for forty-two people. She is about to '
-        + 'run the whole payroll again, which she says will take fifty minutes '
+        + 'BACS submission closes at two; after that the money moves a day '
+        + 'late for forty-two people. She is about to run the whole payroll '
+        + 'again, which she says will take fifty minutes '
         + 'and which she has correctly worked out she does not have.',
     },
     reporter: MSP_IDS.hollowayContact,

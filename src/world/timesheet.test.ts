@@ -148,7 +148,7 @@ describe('the ledger', () => {
     // same line, with its last act moved on. A ledger that grew per act would
     // be a save that grew per click.
     expect(segmentsFrom(again)).toEqual([
-      { tick: MONDAY, last: MONDAY + 12, ref: ARDEN },
+      { tick: MONDAY, last: MONDAY + 12, ref: ARDEN, source: null },
     ]);
     expect(withSegment(again, MONDAY + 12, ARDEN)).toBe(again);
 
@@ -362,6 +362,10 @@ describe('attribution', () => {
         tick: MONDAY,
         last: MONDAY,
         ref: { kind: 'customer', id: MSP_CUSTOMERS.arden },
+        // The audit carries the node it read the attribution off, exactly as
+        // the recorder does - which is what lets the ledger be corrected
+        // against it when the world's answer about that node changes.
+        source: box,
       },
     ]);
   });

@@ -50,6 +50,7 @@ import {
   customerIdOfAccount,
   customerIdOfMachine,
   customerName,
+  machineForTarget,
   raciOwnerOfMachine,
   scopeOfCustomer,
   type ScopeVerdict,
@@ -108,41 +109,6 @@ function clockLabel(tick: number): string {
 
 /* -- resolving what a target IS, for scope + decision --------------------- */
 
-/**
- * The machine behind a target, for reading its customer and role - the box
- * itself, or the box a service or unit runs on, or the box a device is plugged
- * into. The same walk `cmd-run.ts`'s pre-flight does, kept here so a request can
- * be decided from the target id alone.
- */
-function machineBehind(
-  graph: ReadOnlyGraphView,
-  targetId: string,
-): Readonly<ReadOnlyGraphNode> | null {
-  const node = graph.getNode(targetId);
-
-  if (node === undefined) {
-    return null;
-  }
-
-  if (node.kind === 'machine') {
-    return node;
-  }
-
-  if (node.kind === 'service' || node.kind === 'unit') {
-    return graph
-      .neighbors(node.id, { direction: 'out', edgeKind: 'runs_on' })
-      .find((owner) => owner.kind === 'machine') ?? null;
-  }
-
-  if (node.kind === 'device') {
-    return graph
-      .neighbors(node.id, { direction: 'out', edgeKind: 'connected_to' })
-      .find((owner) => owner.kind === 'machine') ?? null;
-  }
-
-  return null;
-}
-
 interface TargetContext {
   readonly customerId: string | null;
   readonly role: MachineRole | null;
@@ -178,7 +144,7 @@ function targetContext(
     };
   }
 
-  const machine = machineBehind(graph, targetId);
+  const machine = machineForTarget(graph, targetId);
   const customerId = machine === null ? null : customerIdOfMachine(machine);
   const role = machine === null
     ? null
@@ -469,6 +435,42 @@ export interface ChangeRequestConsult {
 }
 
 /**
+ * The way ON from a refusal, in words the shell the player is holding can
+ * actually be typed at (0.38.0 verifier round).
+ *
+ * The change-request line was printed for every target, and for a DRIVE target
+ * it was a lie twice over: `changereq file <x>` resolves a firewall machine or
+ * a service and nothing else, so the command cannot be typed for a file at
+ * all, and the consult that would have to honour it matches `service.restart`
+ * and never `directory.purge`. A refusal that names a door there is no door
+ * for is worse than a dead end, because the player spends the afternoon
+ * looking for the handle. So a file or a directory is told the truth: this one
+ * goes up, not through the change desk.
+ */
+function routeLines(
+  graph: ReadOnlyGraphView,
+  targetId: string,
+): readonly string[] {
+  const kind = graph.getNode(targetId)?.kind;
+
+  if (kind === 'file' || kind === 'directory') {
+    return [
+      'This is not a dead end, but it is not a change request either: the change',
+      'desk books work against a SERVICE, and there is no request to file for a',
+      'path. Escalate it - name the box, the path and what you were asked to do',
+      'with it - and the account manager takes it from there.',
+    ];
+  }
+
+  return [
+    'This is not a dead end. Work like this is GATED, not forbidden:',
+    'file a change request - "changereq file <service>" - and it records the',
+    'scope, the risk and the rollback, goes for review, and clears you to act',
+    'inside a window once it is approved.',
+  ];
+}
+
+/**
  * The branch the 0.8.0 scope pre-flight gains (slice 2, the heart): before it
  * refuses an out-of-scope action, it consults approvals.
  *
@@ -509,14 +511,7 @@ export function changeRequestConsult(
   if (latest === undefined) {
     return {
       allowed: false,
-      lines: [
-        ...base,
-        '',
-        'This is not a dead end. Work like this is GATED, not forbidden:',
-        'file a change request - "changereq file <service>" - and it records the',
-        'scope, the risk and the rollback, goes for review, and clears you to act',
-        'inside a window once it is approved.',
-      ],
+      lines: [...base, '', ...routeLines(graph, targetId)],
     };
   }
 

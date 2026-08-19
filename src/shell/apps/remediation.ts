@@ -32,6 +32,7 @@ import {
   customerIdOfAccount,
   customerIdOfMachine,
   customerIdOfShare,
+  machineForTarget,
   raciOwnerOfMachine,
   scopeOfCustomer,
   scopeVerdict,
@@ -73,9 +74,14 @@ export type RemediationResult =
  * own guards. Routing it through the seam without this would have meant either
  * losing the dialect or reading it back out of the sentences, and a caller
  * matching on the seam's prose would be the seam's prose becoming an API.
+ *
+ * The third wall, `unresolved`, is neither of those and has to be told apart
+ * from both: the target could not be placed on a box at all, so no contract
+ * was ever consulted and a dialect that bolted its own "the contract still
+ * governs" paragraph onto it would be explaining a rule that never fired.
  */
 export interface RemediationRefusal {
-  readonly wall: 'tenant' | 'contract';
+  readonly wall: 'tenant' | 'contract' | 'unresolved';
   readonly lines: readonly string[];
 }
 
@@ -98,65 +104,38 @@ export function labelOf(node: Readonly<ReadOnlyGraphNode>): string {
 }
 
 /**
- * The MACHINE an action's target sits on, for the customer guards - the box
- * itself when the target is one, the box a service or unit runs on, the box a
- * device is plugged into. Null for a target with no machine behind it: an
- * account and a share carry their customer on the node instead and are guarded
- * below on those terms, and anything else (a mail rule, a ticket) is left to
- * the in-house path unchanged.
+ * The MACHINE an action's target sits on, for the customer guards.
+ *
+ * The walk itself lives in `world/customers.ts` as of the 0.38.0 verifier
+ * round, because coordination was carrying a private copy of it that had gone
+ * a version stale. This is the seam's view of it: the same answer, taken off
+ * the api's graph.
  */
-function machineForTarget(
+function machineOf(
   api: GameApi,
   targetId: string,
 ): Readonly<ReadOnlyGraphNode> | null {
-  const node = api.graph.getNode(targetId);
-
-  if (node === undefined) {
-    return null;
-  }
-
-  if (node.kind === 'machine') {
-    return node;
-  }
-
-  if (node.kind === 'service' || node.kind === 'unit') {
-    return api.graph
-      .neighbors(node.id, { direction: 'out', edgeKind: 'runs_on' })
-      .find((owner) => owner.kind === 'machine') ?? null;
-  }
-
-  if (node.kind === 'device') {
-    return api.graph
-      .neighbors(node.id, { direction: 'out', edgeKind: 'connected_to' })
-      .find((owner) => owner.kind === 'machine') ?? null;
-  }
-
-  // The drive lives on a box the way a service does (0.38.0 review): a file
-  // or directory node hangs off the machine's own contains chain, and until
-  // this arm existed `directory.purge` and `file.move` reached a customer's
-  // file server with no wall at all - the exact shape the share arm had just
-  // closed, one kind over. Walk the chain up; it is seeded shallow.
-  if (node.kind === 'file' || node.kind === 'directory') {
-    let current: Readonly<ReadOnlyGraphNode> | undefined = node;
-
-    for (let hop = 0; hop < 12 && current !== undefined; hop += 1) {
-      const owner: Readonly<ReadOnlyGraphNode> | undefined = api.graph
-        .neighbors(current.id, { direction: 'in', edgeKind: 'contains' })[0];
-
-      if (owner === undefined) {
-        return null;
-      }
-
-      if (owner.kind === 'machine') {
-        return owner;
-      }
-
-      current = owner;
-    }
-  }
-
-  return null;
+  return machineForTarget(api.graph, targetId);
 }
+
+/**
+ * What the seam says about a drive node it cannot place on a box.
+ *
+ * FAIL CLOSED (0.38.0 verifier round). A file or directory whose contains
+ * chain reaches no machine used to resolve to null, and null meant "in-house,
+ * no contract to be out of" - so the one shape the walk cannot read was the
+ * one shape with no wall in front of it, which is the hole the drive arm was
+ * added to close said backwards. A wall that opens when it cannot see is not a
+ * wall. It refuses in the seam's own register: what it could not establish,
+ * and what to do instead.
+ */
+const UNPLACED_TARGET_LINES: readonly string[] = Object.freeze([
+  'Refused: nothing on this estate says which box that lives on.',
+  'A change is authorised against a MACHINE - whose it is, what the contract',
+  'covers on it, who else runs it - and none of those questions has an answer',
+  'here. Escalate it with the path; a write nobody can place is the one that',
+  'turns up in somebody else\'s morning.',
+]);
 
 /**
  * The one scope + tenant decision, on a RESOLVED customer id (0.8.0). Both the
@@ -261,7 +240,7 @@ export function remediationRefusal(
   targetId: string,
   verb: string,
 ): RemediationRefusal | null {
-  const machine = machineForTarget(api, targetId);
+  const machine = machineOf(api, targetId);
 
   if (machine !== null) {
     return customerScopeGuard(
@@ -313,6 +292,14 @@ export function remediationRefusal(
     );
   }
 
+  // And the drive node the walk could not place. It is reached ONLY when the
+  // arm above found no machine, so a file on a box - the whole of the shipped
+  // drive, and the SELinux beat's own file through the unit that needs it -
+  // never sees this sentence.
+  if (node?.kind === 'file' || node?.kind === 'directory') {
+    return { wall: 'unresolved', lines: UNPLACED_TARGET_LINES };
+  }
+
   return null;
 }
 
@@ -337,7 +324,7 @@ function stampRaciViolation(
   targetId: string,
   verb: string,
 ): void {
-  const machine = machineForTarget(api, targetId);
+  const machine = machineOf(api, targetId);
 
   if (machine === null) {
     return;

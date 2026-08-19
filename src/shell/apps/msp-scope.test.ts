@@ -23,8 +23,10 @@ import { FIELDS, SERVICE_STATUS } from '../../world/fields';
 import { MSP_CUSTOMERS, MSP_IDS } from '../../world/msp-company';
 import { baselineServiceId } from '../../world/services';
 import { spawnWorldTicket } from '../../world/tickets';
+import { planCoordination } from '../../world/coordination';
 import { parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
+import { remediationRefusal } from './remediation';
 import type { GameApi } from './types';
 
 const MSP_CARRY = Object.freeze({
@@ -709,5 +711,154 @@ describe('a share is somebody\'s, and the walls now know whose', () => {
     expect(api.dispatchLog().some(
       (entry) => entry.id === HELPDESK_ACTIONS.shareGrantAccess,
     )).toBe(false);
+  });
+});
+
+/* -- the drive, at the seam (0.38.0 verifier round) ----------------------- */
+
+/**
+ * The three things the drive arm of the seam got wrong the version it was
+ * written in, each of them a wall that was not one.
+ *
+ *  1. IT FAILED OPEN. A file or directory whose contains chain reaches no
+ *     machine resolved to null, and null is the in-house case - so the one
+ *     shape the walk cannot read was the one shape with no contract in front
+ *     of it. A wall that opens when it cannot see is not a wall.
+ *  2. IT NAMED A DOOR THAT IS NOT THERE. The refusal offered
+ *     `changereq file <service>`, which resolves a firewall machine or a
+ *     service and never a path - and the consult that would have to honour it
+ *     matches `service.restart` and never `directory.purge`. A player would
+ *     have spent the afternoon looking for the handle.
+ *  3. COORDINATION COULD NOT SEE THE BOX AT ALL. `planCoordination` carried a
+ *     private copy of the walk from before the drive arm existed, so it said
+ *     "in-house, nobody to notify" about a box the seam beside it was
+ *     refusing them on.
+ *
+ * The estate has no drive on a customer's SERVER today - both shipped drive
+ * tickets are workstation faults - so these hang the nodes off the file server
+ * that does ship, which is the same thing the next drive ticket at a server
+ * will do. Nothing here changes what a played world holds.
+ */
+const CUSTOMER_DIR = 'directory:font-file-01/matters';
+const ORPHAN_DIR = 'directory:nowhere/scratch';
+
+function withDrive(session: WorldSession): void {
+  session.engine.applySetup([
+    {
+      op: 'addNode',
+      node: {
+        id: CUSTOMER_DIR,
+        kind: 'directory',
+        fields: { [FIELDS.name]: 'MATTERS' },
+      },
+    },
+    {
+      op: 'addEdge',
+      edge: {
+        from: MSP_IDS.fontaineFileServer,
+        to: CUSTOMER_DIR,
+        kind: 'contains',
+      },
+    },
+    // And the one with nothing holding it: a hand-edited save, a content bug,
+    // a node built by a beat that forgot its edge. It is not reachable today
+    // and that is exactly why the seam must not be generous about it.
+    {
+      op: 'addNode',
+      node: {
+        id: ORPHAN_DIR,
+        kind: 'directory',
+        fields: { [FIELDS.name]: 'SCRATCH' },
+      },
+    },
+  ]);
+}
+
+describe('the drive meets the seam', () => {
+  it('walks a directory home to the box it is on, and refuses server work', () => {
+    const session = mspSession();
+    withDrive(session);
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.fontaine);
+    const api = apiFor(session, appState);
+
+    const refusal = remediationRefusal(
+      api,
+      CUSTOMER_DIR,
+      HELPDESK_ACTIONS.directoryPurge,
+    );
+
+    expect(refusal?.wall).toBe('contract');
+    expect(refusal?.lines.join(' '))
+      .toContain('Servers are not in this contract');
+  });
+
+  /**
+   * Teeth: put `changereq file <service>` back in `routeLines` for every kind
+   * and this reds - the refusal offers a command this shell cannot be made to
+   * accept for a path.
+   */
+  it('names a route that exists for a path, and not the change desk', () => {
+    const session = mspSession();
+    withDrive(session);
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.fontaine);
+    const api = apiFor(session, appState);
+
+    const said = remediationRefusal(
+      api,
+      CUSTOMER_DIR,
+      HELPDESK_ACTIONS.directoryPurge,
+    )?.lines.join(' ') ?? '';
+
+    expect(said).toContain('Escalate it');
+    expect(said).not.toContain('changereq file');
+  });
+
+  /**
+   * Teeth: return `null` from the seam's file/directory arm instead of the
+   * unresolved refusal and this reds - `directory.purge` lands on a node
+   * nothing can place, with no wall in front of it and no record of whose box
+   * it was.
+   */
+  it('FAILS CLOSED on a drive node nothing can place on a box', () => {
+    const session = mspSession();
+    withDrive(session);
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.fontaine);
+    const api = apiFor(session, appState);
+
+    const refusal = remediationRefusal(
+      api,
+      ORPHAN_DIR,
+      HELPDESK_ACTIONS.directoryPurge,
+    );
+
+    expect(refusal, 'an unplaceable drive node is refused, not waved through')
+      .not.toBeNull();
+    expect(refusal?.wall).toBe('unresolved');
+    expect(refusal?.lines.join(' '))
+      .toContain('nothing on this estate says which box that lives on');
+  });
+
+  /**
+   * Teeth: put `machineBehind` back in `coordination.ts` - the walk without
+   * the file/directory arm - and this reds: the plan says there is nobody to
+   * notify about a directory sitting on a customer's own file server.
+   */
+  it('lets coordination see the box a directory is on', () => {
+    const session = mspSession();
+    withDrive(session);
+
+    const plan = planCoordination(
+      session.engine.graph,
+      CUSTOMER_DIR,
+      session.engine.now(),
+    );
+
+    expect(plan.lines.join(' ')).not.toContain('in-house box with no customer');
+    // Fontaine are helpdesk, so no notice is filed - but the sentence is now
+    // about their CONTRACT rather than about a box the walk could not find.
+    expect(plan.lines.join(' ')).toContain('FONTAINE-LAW');
   });
 });

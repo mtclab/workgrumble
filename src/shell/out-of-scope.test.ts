@@ -55,8 +55,19 @@ import {
   scopeAskFor,
 } from '../world/out-of-scope';
 import { createWorldSession } from '../world/session';
-import { spawnWorldTicket, WORLD_TICKETS } from '../world/tickets';
-import { bucketOf } from '../world/timesheet';
+import {
+  spawnWorldTicket,
+  ticketNodes,
+  ticketProjectOf,
+  WORLD_TICKETS,
+} from '../world/tickets';
+import {
+  bucketOf,
+  type SegmentRef,
+  segmentsFrom,
+  segmentsFromLog,
+  type WorkResolver,
+} from '../world/timesheet';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
 
 beforeAll(() => {
@@ -178,6 +189,74 @@ function minutesOn(world: World, bucket: string): number {
     .reduce((total, line) => total + line.derived, 0);
 }
 
+/** The two authored facts about a ticket the graph does not carry. */
+const RESOLVER: WorkResolver = {
+  projectOfTicket: ticketProjectOf,
+  nodesOfTicket: ticketNodes,
+};
+
+/**
+ * How many stretches of ONE TICKET's work each of the two readings puts in a
+ * bucket: the LEDGER the driver wrote as it happened, and the AUDIT rebuilt
+ * from the engine's own dispatch log through the same `attributionFor`.
+ *
+ * The mechanic's own claim is that these are "one source by construction" - not
+ * that they agree but that there is only one of them - and this is the pair of
+ * numbers that claim is worth something as. They can differ for exactly one
+ * reason: the ledger was written in the minute and the audit is re-read now, so
+ * an answer that arrives after the minutes moves one and not the other.
+ *
+ * Scoped to the ticket by the segment's own SOURCE rather than to the bucket
+ * alone, because a raw rebuild from the log necessarily sees more than the
+ * ledger does: the log holds the WORLD's acts too, and an ack-miss the world
+ * records against another Fontaine ticket is not an afternoon anybody worked.
+ * The question here is about the minutes spent on THIS ask.
+ */
+function readingsOn(world: World, source: string, bucket: string): {
+  readonly ledger: number;
+  readonly log: number;
+} {
+  const counted = (
+    segments: readonly { readonly ref: SegmentRef; readonly source: string | null }[],
+  ): number => segments.filter(
+    (segment) => segment.source === source && bucketOf(segment.ref) === bucket,
+  ).length;
+
+  return {
+    ledger: counted(segmentsFrom(
+      world.engine.graph.getField(MSP_IDS.player, FIELDS.timesheetLog),
+    )),
+    log: counted(segmentsFromLog(
+      world.engine.graph,
+      world.engine.dispatchLog(),
+      RESOLVER,
+    )),
+  };
+}
+
+/**
+ * Half an hour of real work on the ask, BEFORE anybody answers it.
+ *
+ * The shipped way in, not a fixture: `ticket.add_comment` is the effect the
+ * NADIA tree's own "ask what she was told was included" option dispatches, so
+ * this is the player doing the thing the conversation invites them to do
+ * before choosing between the three answers.
+ */
+function workTheAsk(world: World, ticketId: string): void {
+  const asked = world.driver.dispatch(
+    HELPDESK_ACTIONS.ticketAddComment,
+    MSP_IDS.player,
+    ticketId,
+    { comment: 'What were you told was included when the floor was signed?' },
+  );
+
+  expect(asked.ok, asked.ok ? '' : asked.reason).toBe(true);
+  pass(world, WORKED_BEFORE_ANSWER);
+}
+
+/** The minutes spent on the ask before the answer lands. */
+const WORKED_BEFORE_ANSWER = 30;
+
 /* -- the content and the table agree -------------------------------------- */
 
 describe('the shipped asks', () => {
@@ -230,6 +309,31 @@ describe('refuse and offer to price it', () => {
     // The reputation on the meter is the ticket's own resolution credit, which
     // every close pays. The ANSWER charged nothing on top of it either way.
     expect(reputation(world)).toBeGreaterThanOrEqual(before);
+  });
+
+  /**
+   * AND OFFERS, which is the half the trade routinely drops and the half this
+   * verb is named for (0.38.0 verifier round). The refusal without the offer
+   * is "no" with a professional accent on it; the script is "no, and here is
+   * the door that is yes", and the door has to be on the record the customer
+   * can actually read rather than in the button's label.
+   *
+   * Teeth: drop the `customerVisible` append from `SCOPE_ACTION_DATA`'s refuse
+   * arm and this reds - the ticket closes with nothing said to the reporter,
+   * which is the shape the research names as the reason refusals sour.
+   */
+  it('writes the offer where the customer can read it', () => {
+    const world = withAsk(WIFI);
+
+    answer(world, HELPDESK_ACTIONS.scopeRefuse, WIFI);
+
+    const said = String(
+      world.engine.graph.getField(WIFI, FIELDS.customerVisible),
+    );
+
+    expect(said).toContain('outside what the agreement covers');
+    expect(said).toContain('price it');
+    expect(said).toContain('estimate');
   });
 });
 
@@ -423,10 +527,12 @@ describe('the ticket outcome is the same; the ledger is not', () => {
    */
   it('refusing and obliging close the same ticket and cost different things', () => {
     const refused = withAsk(WIFI);
+    workTheAsk(refused, WIFI);
     answer(refused, HELPDESK_ACTIONS.scopeRefuse, WIFI);
     pass(refused, SCOPE_RECURRENCE_MINUTES + 10);
 
     const obliged = withAsk(WIFI);
+    workTheAsk(obliged, WIFI);
     answer(obliged, HELPDESK_ACTIONS.scopeDoWork, WIFI);
     pass(obliged, SCOPE_RECURRENCE_MINUTES + 10);
 
@@ -446,6 +552,69 @@ describe('the ticket outcome is the same; the ledger is not', () => {
     // from the answer that obliged them.
     expect(refused.engine.graph.getNode(CABLING)).toBeUndefined();
     expect(obliged.engine.graph.getNode(CABLING)).toBeDefined();
+  });
+
+  /**
+   * THE MINUTES BEFORE THE ANSWER (0.38.0 verifier round). The ledger is
+   * written at act-time and the answer arrives later, so every minute spent
+   * reading, asking about and thinking over an out-of-scope ask was recorded
+   * BILLABLE and stayed billable after the answer that made it not. Half an
+   * hour of the industry's own correct move, quietly on the customer's
+   * invoice - which is the same shape as an obliged favour being invoiced,
+   * one step earlier in the conversation.
+   *
+   * Driven the way a player reaches it: the ask is commented on through the
+   * shipped verb the dialogue tree's own option dispatches, thirty minutes
+   * pass, and only then is it answered.
+   *
+   * All three out-of-contract answers, because the fix is about the CLASS -
+   * out-of-contract work never bills, whatever the answer - and because a
+   * clause per answer is a clause that can be dropped one at a time.
+   *
+   * Teeth, each proven by an actually-run revert:
+   *  - drop the `settleAttributionDrift` call from `DayDriver.dispatch` and all
+   *    three red on the billable line: thirty minutes on Fontaine's invoice,
+   *    and the ledger holding a stretch the audit does not.
+   *  - take `|| outcome === SCOPE_OUTCOMES.declined` back out of
+   *    `attributionFor` and the declined leg alone reds.
+   *  - take `|| outcome === SCOPE_OUTCOMES.refused` out and the refused leg
+   *    alone reds.
+   */
+  it('bills nothing for the half hour BEFORE any of the three answers', () => {
+    const billable = bucketOf({ kind: 'customer', id: MSP_CUSTOMERS.fontaine });
+    const unbilled = bucketOf({ kind: 'unbilled', id: MSP_CUSTOMERS.fontaine });
+
+    // REFUSED, and OBLIGED, both by the verb the player presses.
+    for (const action of [
+      HELPDESK_ACTIONS.scopeRefuse,
+      HELPDESK_ACTIONS.scopeDoWork,
+    ]) {
+      const world = withAsk(WIFI);
+      workTheAsk(world, WIFI);
+      answer(world, action, WIFI);
+      pass(world, 5);
+
+      expect(minutesOn(world, billable), action).toBe(0);
+      expect(minutesOn(world, unbilled), action)
+        .toBeGreaterThanOrEqual(WORKED_BEFORE_ANSWER);
+      // And the two readings agree about it, which is the invariant the whole
+      // mechanic rests on: the ledger holds no stretch on a bucket the audit
+      // rebuilt from the engine's own log does not.
+      expect(readingsOn(world, WIFI, billable), action)
+        .toEqual({ ledger: 0, log: 0 });
+    }
+
+    // DECLINED, which the player does not press: the estimate goes, the firm
+    // that was never going to pay says no, and the afternoon spent scoping it
+    // is still not theirs to be charged for.
+    const declined = withAsk(WIFI);
+    workTheAsk(declined, WIFI);
+    answer(declined, HELPDESK_ACTIONS.scopeQuote, WIFI);
+    pass(declined, QUOTE_ANSWER_MINUTES + SCOPE_QUOTE_MINUTES + 2);
+
+    expect(outcome(declined, WIFI)).toBe(SCOPE_OUTCOMES.declined);
+    expect(minutesOn(declined, billable)).toBe(0);
+    expect(readingsOn(declined, WIFI, billable)).toEqual({ ledger: 0, log: 0 });
   });
 });
 

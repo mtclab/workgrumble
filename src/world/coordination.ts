@@ -40,6 +40,7 @@ import {
   customerIdOfAccount,
   customerIdOfMachine,
   customerName,
+  machineForTarget,
   raciOwnerOfMachine,
   scopeOfCustomer,
   scopeVerdict,
@@ -54,44 +55,16 @@ import {
 /* -- resolving what a target IS, for its customer and scope ---------------- */
 
 /**
- * The machine behind a target - the box itself, or the box a service or unit
- * runs on, or the box a device is plugged into. The same walk `cmd-run.ts` and
- * `change-request.ts` do, kept here so a notice can be decided from a target id
- * alone.
- */
-function machineBehind(
-  graph: ReadOnlyGraphView,
-  targetId: string,
-): Readonly<ReadOnlyGraphNode> | null {
-  const node = graph.getNode(targetId);
-
-  if (node === undefined) {
-    return null;
-  }
-
-  if (node.kind === 'machine') {
-    return node;
-  }
-
-  if (node.kind === 'service' || node.kind === 'unit') {
-    return graph
-      .neighbors(node.id, { direction: 'out', edgeKind: 'runs_on' })
-      .find((owner) => owner.kind === 'machine') ?? null;
-  }
-
-  if (node.kind === 'device') {
-    return graph
-      .neighbors(node.id, { direction: 'out', edgeKind: 'connected_to' })
-      .find((owner) => owner.kind === 'machine') ?? null;
-  }
-
-  return null;
-}
-
-/**
  * The customer a target belongs to, the machine role behind it, and which team
  * the RACI map hands that box to - the same three the scope pre-flight reads,
  * because a notice has to be decided against the same verdict it clears.
+ *
+ * Through the SHARED resolver as of the 0.38.0 verifier round. This module used
+ * to carry its own `machineBehind`, which is the same walk written twice, and
+ * the two drifted the moment one of them grew an arm: the seam learned to walk
+ * a file or directory home down its contains chain and this copy did not, so
+ * `planCoordination` told a player there was nobody to notify about a box the
+ * seam was refusing them on. One walk, one answer, no second list of kinds.
  */
 function customerAndRole(
   graph: ReadOnlyGraphView,
@@ -107,7 +80,7 @@ function customerAndRole(
     return { customerId: customerIdOfAccount(node), role: null, raci: null };
   }
 
-  const machine = machineBehind(graph, targetId);
+  const machine = machineForTarget(graph, targetId);
 
   return machine === null
     ? { customerId: null, role: null, raci: null }

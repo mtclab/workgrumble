@@ -362,6 +362,7 @@ import {
   lineAt,
   type SegmentKind,
   type SegmentRef,
+  rebucketSource,
   segmentsFrom,
   type Timesheet,
   timesheetSheet,
@@ -2580,7 +2581,14 @@ export class DayDriver implements DayApi {
       // customer. The last witness rather than the first, which is the one the
       // touch records leave last in the engine's own log - the two readings
       // have to land on the same bucket or the audit is arguing with itself.
-      this.noteWorkSegment(witnesses[witnesses.length - 1]?.id ?? target);
+      const attributed = witnesses[witnesses.length - 1]?.id ?? target;
+
+      // And the minutes ALREADY recorded against it, if what just happened
+      // changed the answer about whose they are - the scope answer that lands
+      // after the work. First, so the corrected line is the one this minute
+      // then extends rather than a second line beside it.
+      this.settleAttributionDrift(attributed);
+      this.noteWorkSegment(attributed);
 
       // And writing an estimate costs the shift its minutes (E9, 0.38.0), the
       // way minting a ticket from a chat does and for the same reason: scoping
@@ -4066,6 +4074,16 @@ export class DayDriver implements DayApi {
         continue;
       }
 
+      // The minutes already spent on it are re-read against the answer that
+      // just landed (0.38.0 verifier round). Declining moves them off the
+      // invoice - out-of-contract work never bills, whatever the answer, and
+      // an estimate nobody bought is not billable time - and approving moves
+      // them back on, because approval makes them retroactively true. The
+      // player's own three answers come through `dispatch`, which does this
+      // itself; the CUSTOMER's answer arrives here, and a correction that only
+      // ran on the half a player pressed would be half a correction.
+      this.settleAttributionDrift(due.ticket);
+
       this.handlers.onNotice?.(
         approved ? 'They have signed the estimate' : 'They have declined the estimate',
         `${ticketTitle(due.ticket)} - ${
@@ -4826,9 +4844,57 @@ export class DayDriver implements DayApi {
       this.workResolver(),
     );
 
-    if (ref !== null) {
-      this.recordSegment(ref);
+    if (ref !== null && target !== null) {
+      this.recordSegment(ref, target);
     }
+  }
+
+  /**
+   * The ledger, re-read against what the world says NOW about the thing those
+   * minutes were spent on (E9, 0.38.0 verifier round).
+   *
+   * The recorder writes a bucket in the minute the player acts, and for one
+   * class of target that is a bucket the world has not decided yet. An
+   * out-of-scope ask is `customer` - billable - until it is answered, and three
+   * of the four answers make every minute ever spent on it unbillable, because
+   * out-of-contract work never bills whatever the answer. The audit read
+   * (`segmentsFromLog`) gets this right for free, since it re-resolves the
+   * attribution off the ticket every time it runs; the ledger did not, so the
+   * two disagreed about the half hour before the answer and the customer was
+   * invoiced for it.
+   *
+   * BEFORE `noteWorkSegment` rather than after, so the corrected line and the
+   * minute that corrected it are the same stretch: the player did not stop
+   * working on the ask to answer it.
+   *
+   * Not gated on the shift. It corrects minutes already recorded, and whether
+   * the correcting act happens to fall inside the shift is not a fact about
+   * whose afternoon they were.
+   */
+  private settleAttributionDrift(source: NodeId | null): void {
+    if (source === null) {
+      return;
+    }
+
+    const existing = this.playerText(FIELDS.timesheetLog);
+
+    if (existing.length === 0) {
+      return;
+    }
+
+    const ref = attributionFor(this.engine.graph, source, this.workResolver());
+
+    if (ref === null) {
+      return;
+    }
+
+    const lines = rebucketSource(existing, source, ref);
+
+    if (lines === existing) {
+      return;
+    }
+
+    this.engine.dispatch(TIMESHEET_ACTIONS.record, this.actor, null, { lines });
   }
 
   /**
@@ -4842,9 +4908,12 @@ export class DayDriver implements DayApi {
    * field dispatches nothing at all, so carrying on with what you were doing
    * costs the log nothing.
    */
-  private recordSegment(ref: Readonly<SegmentRef>): void {
+  private recordSegment(
+    ref: Readonly<SegmentRef>,
+    source: NodeId | null,
+  ): void {
     const existing = this.playerText(FIELDS.timesheetLog);
-    const lines = withSegment(existing, this.engine.now(), ref);
+    const lines = withSegment(existing, this.engine.now(), ref, source);
 
     if (lines === existing) {
       return;
@@ -4876,7 +4945,7 @@ export class DayDriver implements DayApi {
     const app = this.handlers.focusedSlackApp();
 
     if (app !== null) {
-      this.recordSegment({ kind: 'slack', id: app });
+      this.recordSegment({ kind: 'slack', id: app }, null);
     }
   }
 

@@ -264,7 +264,16 @@ function walk(): Walked {
  * goldens moved for the same one cause on the same commit, enumerated as the
  * NINETEENTH MOVE in `scripted-week.test.ts`.
  */
-const BODGE_GOLDEN_HASH = '8316c429d314a2da';
+/*
+ * And it MOVED again with 0.38.0's verifier round
+ * (`8316c429d314a2da` -> `57fc40713286846f`) for the timesheet ledger's fifth
+ * column and nothing else - the same one-field cause enumerated on the worked
+ * probation golden in `scripted-week.test.ts`. This shop's five tickets, its
+ * storm, its thirteen room messages, its pass and its buried signal are every
+ * one of them what they were, and the walk below asserts all of that beside
+ * the hash.
+ */
+const BODGE_GOLDEN_HASH = '57fc40713286846f';
 
 describe('the second employer plays, and differs', () => {
   it('stands up as a genuinely different archetype', () => {

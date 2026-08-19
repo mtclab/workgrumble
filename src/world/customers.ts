@@ -134,6 +134,119 @@ export function customerIdOfShare(
   return customerIdOfNode(share);
 }
 
+/** How far up a contains chain a file may sit before the walk gives up. */
+const CONTAINS_HOPS = 12;
+
+/**
+ * The MACHINE a remediation target sits on, or null when nothing links it to
+ * one - the box itself, the box a service or unit runs on, the box a device is
+ * plugged into, the box a file or directory is stored on.
+ *
+ * ONE walk, and that is the point of it living here (0.38.0 verifier round).
+ * There were two: the seam's (`shell/apps/remediation.ts`) and coordination's
+ * own private copy, and the copy was a pre-0.38.0 snapshot of the seam without
+ * the file/directory arm - so `planCoordination` answered "in-house, nobody to
+ * notify" for a customer's drive node while the seam right beside it resolved
+ * the same node to the same customer's file server. Two lists of kinds cannot
+ * be kept in step by intention; there is now one, in the module that owns the
+ * customer dimension both of them are asking about.
+ *
+ * Null is the honest answer for an account, a share or a ticket: those carry
+ * their customer on the node (or have none) and are guarded on their own terms
+ * by the callers. Null for a FILE or DIRECTORY means something different and
+ * the callers treat it differently - see the seam's fail-closed arm.
+ */
+export function machineForTarget(
+  graph: ReadOnlyGraphView,
+  targetId: string,
+): Readonly<ReadOnlyGraphNode> | null {
+  const node = graph.getNode(targetId);
+
+  if (node === undefined) {
+    return null;
+  }
+
+  if (node.kind === 'machine') {
+    return node;
+  }
+
+  if (node.kind === 'service' || node.kind === 'unit') {
+    return graph
+      .neighbors(node.id, { direction: 'out', edgeKind: 'runs_on' })
+      .find((owner) => owner.kind === 'machine') ?? null;
+  }
+
+  if (node.kind === 'device') {
+    return graph
+      .neighbors(node.id, { direction: 'out', edgeKind: 'connected_to' })
+      .find((owner) => owner.kind === 'machine') ?? null;
+  }
+
+  // The drive lives on a box the way a service does (0.38.0 review): a file or
+  // directory node hangs off the machine's own contains chain, and until this
+  // arm existed `directory.purge` and `file.move` reached a customer's file
+  // server with no wall at all. Walk the chain up; it is seeded shallow.
+  //
+  // `.find` rather than the first neighbour (0.38.0 verifier round), matching
+  // the service and device arms above: a node with two things containing it
+  // would otherwise resolve to whichever the engine listed first, and a walk
+  // that gives up on the wrong neighbour is a wall that fires on a guess.
+  if (node.kind === 'file' || node.kind === 'directory') {
+    let current: Readonly<ReadOnlyGraphNode> | undefined = node;
+
+    for (let hop = 0; hop < CONTAINS_HOPS && current !== undefined; hop += 1) {
+      const holders = graph.neighbors(current.id, {
+        direction: 'in',
+        edgeKind: 'contains',
+      });
+      const machine = holders.find((owner) => owner.kind === 'machine');
+
+      if (machine !== undefined) {
+        return machine;
+      }
+
+      current = holders.find((owner) => owner.kind === 'directory');
+    }
+
+    return fileServedByUnit(graph, node.id);
+  }
+
+  return null;
+}
+
+/**
+ * The last arm of the file walk: the box a file reaches through the UNIT that
+ * needs it, when nothing contains it.
+ *
+ * One shipped file is built that way and it is not an oversight - the SELinux
+ * relabel beat seeds `/var/www/html/index.html` beside the httpd unit that is
+ * being refused it, with `requires_file` naming it and the unit's `runs_on`
+ * edge naming the box. It is a file on a machine by every reading a player
+ * has; it simply arrives from the systemd side of the estate rather than from
+ * the drive's. Without this arm the seam's fail-closed refusal would land on
+ * the player's own box and `restorecon` would stop working.
+ */
+function fileServedByUnit(
+  graph: ReadOnlyGraphView,
+  fileId: string,
+): Readonly<ReadOnlyGraphNode> | null {
+  for (const unit of graph.nodesOfKind('unit')) {
+    if (unit.fields[FIELDS.requiresFile] !== fileId) {
+      continue;
+    }
+
+    const machine = graph
+      .neighbors(unit.id, { direction: 'out', edgeKind: 'runs_on' })
+      .find((owner) => owner.kind === 'machine');
+
+    if (machine !== undefined) {
+      return machine;
+    }
+  }
+
+  return null;
+}
+
 /** The customer node itself, or undefined when nobody built it. */
 export function customerNode(
   graph: ReadOnlyGraphView,

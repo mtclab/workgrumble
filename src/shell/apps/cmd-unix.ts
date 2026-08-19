@@ -5950,15 +5950,52 @@ function restoreconLines(
   }
 
   const before = textValue(file.fields[FIELDS.selinuxContext], '');
-  const result = api.dispatch(
-    SELINUX_ACTIONS.restorecon,
-    api.actor,
-    file.id,
-    {},
-  );
+  // THROUGH THE SEAM (0.38.0 verifier round). This is a file-targeted MUTATING
+  // verb and it went at `api.dispatch` raw, which is the whole shape lane B
+  // spent its slice closing one kind at a time: the drive's two verbs walked
+  // past the customer walls, and so did this one. The relabel is the player's
+  // own box in the shipped beat - so nothing about the SELinux content moves -
+  // but "no content reaches it yet" is not a wall, and the next Linux box a
+  // customer buys would have made it one.
+  //
+  // The DIALECT is kept the way `unitVerbLines` keeps it: the seam says WHICH
+  // wall refused, and the ssh paragraph is rendered here, under a contract
+  // refusal only. Not under a tenant STOP (that is about which customer is on
+  // screen, not about ssh) and not under the unresolved wall (no contract was
+  // consulted, so there is no contract to explain) - and it names the file
+  // rather than a unit, because that is what was aimed at.
+  const refusal = remediationRefusal(api, file.id, SELINUX_ACTIONS.restorecon);
 
-  if (!result.ok) {
-    return lines(result.reason);
+  if (refusal !== null) {
+    return lines(
+      ...refusal.lines,
+      ...(refusal.wall === 'contract'
+        ? [
+          '',
+          'ssh reaches the box at the engineer tier, but the CONTRACT still '
+            + 'governs',
+          'what may change on it: relabelling a file on a customer\'s server is '
+            + 'theirs',
+          'or an escalation, not a restorecon on our say-so.',
+        ]
+        : []),
+    );
+  }
+
+  const outcome = dispatchRemediation(
+    api,
+    SELINUX_ACTIONS.restorecon,
+    file.id,
+  );
+  // The seam's own refusal cannot arrive here - the pre-flight above already
+  // asked, and asking twice is how the two answers would drift - so what is
+  // left is the WORLD's reason, in the world's words.
+  if (outcome.kind === 'failed') {
+    return lines(outcome.reason);
+  }
+
+  if (outcome.kind === 'refused') {
+    return lines(...outcome.lines);
   }
 
   const after = textValue(
