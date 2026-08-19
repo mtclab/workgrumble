@@ -213,14 +213,11 @@ test('captures the Friday review scorecard at the MSP', async ({ page }) => {
 
   await runToDayEnd(page);
 
-  // The review comes up at three on a Friday and sits over the desk. It has
-  // its own frame elsewhere; this one is about what is behind it.
-  const review = page.getByTestId('window-review');
-
-  if (await review.count()) {
-    await page.getByTestId('review-dismiss').click();
-  }
-
+  // The review comes up at three on a Friday, but the scorecard window opens
+  // ON TOP of it, focused - proven by this frame's first box run, where the
+  // scorecard's own subtree intercepted the click meant to dismiss the review
+  // underneath. The window in front is the subject, so nothing needs moving:
+  // the frame is taken of the stack exactly as a player finds it.
   await expect(page.getByTestId('scorecard-app')).toBeVisible();
   await page.getByTestId('scorecard-work').scrollIntoViewIfNeeded();
   await shot(page, '44-msp-friday-scorecard');
