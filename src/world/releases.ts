@@ -31,6 +31,42 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.38.0',
+    date: '2026-08-19',
+    summary: 'Customers may now ask for work the contract does not cover, '
+      + 'and there are three honest answers. IT wishes to note that "just '
+      + 'do it" is technically one of them, in the way that the window is '
+      + 'technically a door.',
+    lines: Object.freeze([
+      'When a request arrives that the agreement does not cover, you '
+        + 'can now say so and offer a quote, prepare the quote and wait '
+        + 'for an answer, or simply do the work. All three are supported. '
+        + 'Two of them are billable. The third teaches the customer what '
+        + 'they can get for free, and they learn faster than anything '
+        + 'else this department has attempted to teach them.',
+      'Minutes spent on an out-of-contract request no longer reach the '
+        + 'customer\'s invoice, whichever answer you give - including the '
+        + 'half hour you spent on it before deciding. The timesheet knew '
+        + 'the whole time; the invoice has now been made to read the '
+        + 'timesheet.',
+      'The contract walls now hold whichever door is tried. The Linux '
+        + 'terminal, shared folders, files, directories and the '
+        + 'relabelling command all meet the same checks as everything '
+        + 'else, and a file that cannot be traced to any machine is '
+        + 'refused rather than waved through, on the grounds that work '
+        + 'nobody can place is work nobody agreed to.',
+      'The Friday scorecard now reports the day a contract clock was '
+        + 'actually missed on, rather than the day the paperwork caught '
+        + 'up with it. Missed acknowledgments are stamped the minute they '
+        + 'are missed. The weekend rows count the weekend.',
+      'Several colleagues have stopped announcing what day of the week '
+        + 'it is, following an internal audit which found them to be '
+        + 'wrong about it four days out of five. Days that have already '
+        + 'happened may still be named. The cleaners still come Tuesdays '
+        + 'and Thursdays.',
+    ]),
+  },
+  {
     version: '0.37.1',
     date: '2026-08-15',
     summary: 'Fourteen findings from the new review process, fixed. The '
