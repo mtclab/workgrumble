@@ -718,6 +718,10 @@ function preflight(
     // corruption that was in the file the whole time. It is read where every
     // other unreadable half of a save is read, in a session nobody is playing.
     driver.timesheetTruth();
+    // And the CLAIMS beside it (0.38.1 verifier): the sheet's other half, the
+    // one a customer disputes an invoice against, refused at the same door
+    // for the same reason.
+    driver.timesheetClaims();
   } catch (failure: unknown) {
     return refuse(loadFailure(failure));
   }

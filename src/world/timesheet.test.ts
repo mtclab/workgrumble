@@ -42,6 +42,7 @@ import {
   bucketOf,
   claimsFrom,
   deriveTimesheet,
+  encodeClaim,
   encodeSegment,
   hoursLabel,
   lineAt,
@@ -523,6 +524,38 @@ describe('the claim', () => {
     expect(claimsFrom(second)).toEqual([claim(1, bucketOf(ARDEN), 60)]);
   });
 
+  /**
+   * The same pair of refusals the ledger codec earned in this release, one
+   * codec along (0.38.1 verifier): the sheet's claims are the half a customer
+   * disputes an invoice against, so a line the build cannot read is refused
+   * loudly rather than quietly falling off the sheet - and the writer refuses
+   * the one shape that could ever produce such a line, an id carrying the
+   * separator into a bucket that already legitimately holds one.
+   */
+  it('refuses a claim line this build cannot read rather than dropping it', () => {
+    const good = withClaim('', claim(1, bucketOf(ARDEN), 60));
+
+    expect(claimsFrom(good)).toHaveLength(1);
+
+    for (const bad of [
+      'nonsense',
+      '1|customer',
+      '1|customer|customer:x|60|invented-detail',
+      // The six-field line, the quiet one: a bucket whose id carries its own
+      // bar reads as too many fields and used to vanish without a sound.
+      '1|customer|customer:x|y|60|detailed',
+    ]) {
+      expect(() => claimsFrom([good, bad].join('\n')), bad).toThrow();
+    }
+  });
+
+  it('refuses to write a bucket that is not exactly kind-bar-id', () => {
+    expect(() => encodeClaim(claim(1, 'customer|customer:x|extra', 60)))
+      .toThrow('kind');
+    expect(() => encodeClaim(claim(1, 'no-bar-at-all', 60)))
+      .toThrow('kind');
+  });
+
   it('keeps minutes and detail as two separate things about a line', () => {
     const field = withClaim('', claim(2, bucketOf(PROJECT), 90, 'vague'));
     const [line] = claimsFrom(field);
@@ -562,16 +595,27 @@ describe('the claim', () => {
     expect(invented?.claimed).toBe(180);
   });
 
-  it('drops a claim line this build cannot read', () => {
-    const field = [
-      '1|customer|customer:arden|120|detailed',
+  // The bad shapes this list used to prove were silently DROPPED - which was
+  // the defect, not the contract (0.38.1 verifier): a claim quietly falling
+  // off the sheet is exactly what the ledger codec was fixed for one release
+  // earlier. Each now refuses the whole read; the good line alone still reads.
+  it('refuses every bad shape it used to drop', () => {
+    expect(claimsFrom('1|customer|customer:arden|120|detailed'))
+      .toHaveLength(1);
+
+    for (const bad of [
       '1|customer|customer:arden|120',
       '0|customer|customer:arden|120|detailed',
       '1|customer|customer:arden|-5|detailed',
       '1|customer|customer:arden|120|shouting',
-    ].join('\n');
-
-    expect(claimsFrom(field)).toHaveLength(1);
+    ]) {
+      expect(
+        () => claimsFrom(
+          ['1|customer|customer:arden|120|detailed', bad].join('\n'),
+        ),
+        bad,
+      ).toThrow();
+    }
   });
 });
 

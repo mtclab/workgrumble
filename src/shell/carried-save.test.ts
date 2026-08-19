@@ -266,7 +266,11 @@ function asPreCustomerShares(raw: string): string {
 
   return JSON.stringify({
     ...file,
-    schema: SAVE_SCHEMA - 1,
+    // The literal, not SAVE_SCHEMA - 1: this fixture is a schema-5 file (the
+    // last build before the share walls), and it must STAY one at the next
+    // bump so the 5->6 arm keeps being the arm under test - the same reason
+    // save.test.ts pins its 2/3/4 fixtures (0.38.1 verifier).
+    schema: 5,
     engine: JSON.stringify(payload),
   });
 }
@@ -353,7 +357,7 @@ describe('a save carried in from before the share walls', () => {
     const twice = parseSaveFile(
       JSON.stringify({
         ...(JSON.parse(written) as Record<string, unknown>),
-        schema: SAVE_SCHEMA - 1,
+        schema: 5,
       }),
     );
 
@@ -414,5 +418,39 @@ describe('a save whose ledger cannot be read', () => {
       MSP_IDS.fontaineMatterShare,
       FIELDS.machineCustomer,
     )).toBe(MSP_CUSTOMERS.fontaine);
+  });
+
+  it('refuses a claim field the same way (0.38.1 verifier)', () => {
+    // The sheet's other half: a claim the player MADE that the build cannot
+    // read would silently fall off the sheet - and the sheet is what a
+    // customer disputes an invoice against. Same door, same sentence.
+    const live = rig();
+
+    expect(live.shell.save()).toEqual({ ok: true, value: undefined });
+
+    const written = live.slot.readRaw() ?? '';
+    const file = JSON.parse(written) as Record<string, unknown>;
+    const payload = JSON.parse(file.engine as string) as {
+      graph: { nodes: Record<string, unknown>[] };
+    };
+    // The claims live on the same node the ledger does - found the way the
+    // ledger test above finds it, by the field rather than by a kind.
+    let stamped = 0;
+    for (const node of payload.graph.nodes) {
+      const fields = node.fields as Record<string, unknown>;
+
+      if (typeof fields[FIELDS.timesheetLog] === 'string') {
+        fields[FIELDS.timesheetClaim] = '1|customer|customer:x|y|60|detailed';
+        stamped += 1;
+      }
+    }
+    expect(stamped).toBeGreaterThan(0);
+
+    live.slot.writeRaw(JSON.stringify({
+      ...file,
+      engine: JSON.stringify(payload),
+    }));
+
+    expect(live.shell.load().ok).toBe(false);
   });
 });

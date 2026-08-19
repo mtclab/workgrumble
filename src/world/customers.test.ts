@@ -6,8 +6,9 @@ import {
   scopeVerdict,
   wrongCustomerGuardLines,
 } from './customers';
-import { MACHINE_ROLES, RACI_OWNERS, SERVICE_SCOPES } from './fields';
-import { MSP_IDS } from './msp-company';
+import { EMPLOYER_IDS } from './employers';
+import { FIELDS, MACHINE_ROLES, RACI_OWNERS, SERVICE_SCOPES } from './fields';
+import { MSP_IDS, SHARE_CUSTOMERS } from './msp-company';
 import { createWorldSession } from './session';
 
 const CO_MANAGED_DIR = 'directory:penn-srv-01/ledger';
@@ -247,4 +248,59 @@ describe('the wrong-customer guard, over the real MSP graph', () => {
         : wrongCustomerGuardLines(engine.graph, ownDesk, 'customer:fontaine'),
     ).toBeNull();
   });
+});
+
+/**
+ * The invariant behind the 0.38.1 carried-save migration, made a gate (its own
+ * verifier's P2): a share seeded WITHOUT a customer is the 0.38.0 defect
+ * reopened - `customerIdOfShare` reads null off it, which is the in-house
+ * answer, so the grant meets neither the tenant STOP nor the contract wall.
+ * And it is worse than the original, because such a world's saves are written
+ * at the CURRENT schema, so the 5->6 migration that repaired the 0.38.0 files
+ * will never run over them - no later correction to the table can reach a
+ * save already on a disk. The seed stamps FROM `SHARE_CUSTOMERS`; this holds
+ * the two ends of that arrangement together, both directions, over every
+ * shipped employer's real graph.
+ */
+describe('every seeded share knows its customer', () => {
+  it.each(EMPLOYER_IDS.map((id) => [id] as const))(
+    'at %s, and the table names only shares that exist',
+    (employer) => {
+      const { engine } = createWorldSession(Object.freeze({
+        farmFund: 0,
+        attempt: 1,
+        arcWeek: 1,
+        employer,
+      }));
+      const shares = engine.graph.nodesOfKind('share');
+
+      // The rule holds where CUSTOMERS exist: an in-house world's share
+      // (probation's `share:common`) is legitimately bare, because null IS
+      // the in-house answer there. A world that seeds customer nodes is a
+      // world where a bare share is the fail-open wall.
+      if (engine.graph.nodesOfKind('customer').length > 0) {
+        for (const share of shares) {
+          expect(
+            share.fields[FIELDS.machineCustomer],
+            `${share.id} is seeded without a customer - the walls fail open `
+            + 'on it, and no carried-save migration can ever repair a file '
+            + 'saved this way',
+          ).toBeTypeOf('string');
+        }
+      }
+
+      if (employer === 'msp') {
+        // The subject guard: the world this gate exists for actually has
+        // shares in it, and the migration table points at real nodes.
+        expect(shares.length).toBeGreaterThan(0);
+        const ids = new Set(shares.map((share) => share.id));
+        for (const key of Object.keys(SHARE_CUSTOMERS)) {
+          expect(
+            ids.has(key),
+            `SHARE_CUSTOMERS names ${key}, which the msp seed does not create`,
+          ).toBe(true);
+        }
+      }
+    },
+  );
 });

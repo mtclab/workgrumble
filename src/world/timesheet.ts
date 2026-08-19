@@ -783,6 +783,17 @@ function isClaimDetail(value: string): value is ClaimDetail {
  * id with a bar in it. Five fields, all of them fixed-position.
  */
 export function encodeClaim(claim: Readonly<TimesheetClaim>): string {
+  // The writer half of the same refusal the ledger codec carries (0.38.1):
+  // the bucket legitimately holds ONE bar - it is `${kind}|${id}` - so the
+  // thing that would shift the fixed positions is a SECOND one, an id with a
+  // bar of its own. Refused here, so the reader below can refuse loudly
+  // knowing the game never wrote the line it is refusing.
+  if (claim.bucket.split(SEPARATOR).length !== 2) {
+    throw new Error(
+      `A claim bucket must be kind${SEPARATOR}id exactly: ${claim.bucket}`,
+    );
+  }
+
   return [
     String(claim.day),
     claim.bucket,
@@ -828,11 +839,22 @@ export function claimsFrom(value: unknown): readonly TimesheetClaim[] {
     return [];
   }
 
+  // Refused rather than filtered, the same sentence the ledger reader says
+  // (0.38.1): a line this build cannot read is a claim the player MADE that
+  // would silently fall off the sheet - and the sheet is the half a customer
+  // disputes an invoice against. The writer above makes this unreachable for
+  // anything the game wrote; reaching it means the field is corrupt, and a
+  // corrupt field is the save layer's sentence to say, at the load.
   return Object.freeze(
-    value
-      .split('\n')
-      .map(decodeClaim)
-      .filter((claim): claim is TimesheetClaim => claim !== null),
+    value.split('\n').map((line) => {
+      const claim = decodeClaim(line);
+
+      if (claim === null) {
+        throw new Error(`A claim line this build cannot read: "${line}"`);
+      }
+
+      return claim;
+    }),
   );
 }
 
