@@ -48,6 +48,7 @@ import { DayDriver, holdsTheDesk, TICK_INTERVAL_MS } from './day-driver';
 import { RetrySlot } from './retry';
 import {
   createShellSession,
+  SAVE_SCHEMA,
   type SaveOutcome,
   SaveSlot,
   type ShellSessionApi,
@@ -482,7 +483,10 @@ describe('a passed week hands the player the next one at the same desk', () => {
 
     const raw = two.slot.readRaw() ?? '';
     const file = JSON.parse(raw) as Record<string, unknown>;
-    expect(file.schema).toBe(5);
+    // Whatever this build writes today - the point of the case is the file it
+    // is wound back TO, and a literal here made a schema bump look like a
+    // week-two defect (0.38.1).
+    expect(file.schema).toBe(SAVE_SCHEMA);
     // Wind it back to what a build before this version would have written.
     delete file.carried;
     two.slot.writeRaw(JSON.stringify({ ...file, schema: 4 }));

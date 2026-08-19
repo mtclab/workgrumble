@@ -18,8 +18,9 @@ import {
   WORLD_SEED,
   type WorldSession,
 } from '../../world/session';
-import { HELPDESK_ACTIONS } from '../../world/actions';
+import { HELPDESK_ACTIONS, SELINUX_ACTIONS } from '../../world/actions';
 import { FIELDS, SERVICE_STATUS } from '../../world/fields';
+import { machineForTarget } from '../../world/customers';
 import { MSP_CUSTOMERS, MSP_IDS } from '../../world/msp-company';
 import { baselineServiceId } from '../../world/services';
 import { spawnWorldTicket } from '../../world/tickets';
@@ -741,6 +742,8 @@ describe('a share is somebody\'s, and the walls now know whose', () => {
  */
 const CUSTOMER_DIR = 'directory:font-file-01/matters';
 const ORPHAN_DIR = 'directory:nowhere/scratch';
+const ORPHAN_FILE = 'file:nowhere/etc/matters.cfg';
+const INHOUSE_UNIT = 'unit:fc-rmm-01/indexer.service';
 
 function withDrive(session: WorldSession): void {
   session.engine.applySetup([
@@ -839,6 +842,98 @@ describe('the drive meets the seam', () => {
     expect(refusal?.wall).toBe('unresolved');
     expect(refusal?.lines.join(' '))
       .toContain('nothing on this estate says which box that lives on');
+  });
+
+  /**
+   * THE LINK THAT WAS ONLY READ FROM ONE END (0.38.1).
+   *
+   * The last arm of the file walk reaches a box through the UNIT that needs
+   * the file, which two shipped beats genuinely build that way. It reached it
+   * by scanning EVERY unit in the world for a matching `requires_file` and
+   * taking the first one's box, whatever the file itself said about where it
+   * lives - so an orphan file on a CUSTOMER's volume that some in-house unit
+   * happened to name resolved to a box with no customer on it, and a box with
+   * no customer is the in-house case: no tenant STOP, no contract, no wall.
+   * The fail-closed refusal added one link along was reachable only because
+   * this link was honest, and it was not.
+   *
+   * The rule now is the one the two producers already satisfy: the file's own
+   * `volume` has to name the box the unit runs on. Both of them stamp exactly
+   * that, in the same setup that writes the link.
+   *
+   * Teeth: drop the volume check - scan for the unit and take its machine -
+   * and this reds, because `restorecon` on Fontaine's orphan lands on the
+   * MSP's own RMM box with no refusal at all.
+   */
+  it('will not place a customer\'s orphan file on an in-house box', () => {
+    const session = mspSession();
+    // A file with nothing containing it, saying it is on Fontaine's file
+    // server - and an in-house unit on the MSP's OWN box naming it. Neither
+    // half is exotic: the first is what the two shipped unit-served files look
+    // like, and the second is a `requires_file` pointing at the wrong thing,
+    // which is a content bug or a hand-edited save.
+    session.engine.applySetup([
+      {
+        op: 'addNode',
+        node: {
+          id: ORPHAN_FILE,
+          kind: 'file',
+          fields: {
+            [FIELDS.name]: 'matters.cfg',
+            [FIELDS.path]: '/etc/matters.cfg',
+            [FIELDS.volume]: 'FONT-FILE-01',
+          },
+        },
+      },
+      {
+        op: 'addNode',
+        node: {
+          id: INHOUSE_UNIT,
+          kind: 'unit',
+          fields: {
+            [FIELDS.name]: 'The MSP\'s own indexer',
+            [FIELDS.unitName]: 'indexer.service',
+            [FIELDS.requiresFile]: ORPHAN_FILE,
+          },
+        },
+      },
+      {
+        op: 'addEdge',
+        edge: {
+          from: INHOUSE_UNIT,
+          to: MSP_IDS.mspInfraServer,
+          kind: 'runs_on',
+        },
+      },
+    ]);
+
+    expect(machineForTarget(session.engine.graph, ORPHAN_FILE)).toBeNull();
+
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.fontaine);
+    const api = apiFor(session, appState);
+    const refusal = remediationRefusal(
+      api,
+      ORPHAN_FILE,
+      SELINUX_ACTIONS.restorecon,
+    );
+
+    expect(refusal, 'a file no box will own is refused, not waved through')
+      .not.toBeNull();
+    expect(refusal?.wall).toBe('unresolved');
+  });
+
+  /**
+   * And the control, in the other direction: the shipped unit-served file
+   * still walks home. Tighten the rule past the volume - refuse the arm
+   * outright - and this reds, and `restorecon` stops working on the beat it
+   * was written for.
+   */
+  it('still walks a shipped unit-served file home to its own box', () => {
+    const session = mspSession('ticket:syseng-permission-denied');
+
+    expect(machineForTarget(session.engine.graph, MSP_IDS.mspInfraAuthConfig)?.id)
+      .toBe(MSP_IDS.mspInfraServer);
   });
 
   /**

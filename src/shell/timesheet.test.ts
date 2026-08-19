@@ -35,7 +35,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { WasmEngine } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
-import { CAREER_ACTIONS } from '../world/actions';
+import { CAREER_ACTIONS, HELPDESK_ACTIONS } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS, PLAYER_TIERS } from '../world/fields';
 import { shiftEndTick, shiftStartTick } from '../world/hours';
@@ -43,10 +43,15 @@ import {
   ARDEN_EDGE_PROJECT,
   MSP_CHANNELS,
   MSP_CUSTOMERS,
+  MSP_IDS,
 } from '../world/msp-company';
 import { MSP_WEEK } from '../world/msp-week';
 import { createWorldSession, WORLD_SEED, type WorldSession } from '../world/session';
-import { ticketNodes, ticketProjectOf } from '../world/tickets';
+import {
+  spawnWorldTicket,
+  ticketNodes,
+  ticketProjectOf,
+} from '../world/tickets';
 import {
   attributionFor,
   bucketOf,
@@ -57,6 +62,7 @@ import {
   type Timesheet,
   TIMESHEET_LOG_LIMIT,
   type WorkResolver,
+  type WorkSegment,
 } from '../world/timesheet';
 import { REVIEW_DAY } from '../world/week';
 import { AppStateStore } from './app-state';
@@ -738,5 +744,97 @@ describe('the ledger through a whole shift', () => {
     // node rather than off an id nobody outside the save has ever seen.
     expect(rigged.driver.timesheet().days[0]?.lines
       .some((line) => line.label.includes('ELMWOOD'))).toBe(true);
+  });
+});
+
+/**
+ * THE TWO READINGS OF ONE MINUTE, ON ONE RULE (0.38.1).
+ *
+ * The ledger and the audit rebuild are meant to be one piece of code with two
+ * callers, and for the fifth column they were not: the driver filed a stretch
+ * under the TICKET that witnessed the act (`witnesses[last].id ?? target`) and
+ * `segmentsFromLog` filed the same stretch under the raw `entry.target`. They
+ * agreed anyway, most of the time, by luck - the touch record the driver
+ * writes onto that ticket is another dispatch at the same TICK, and
+ * `withSegment`'s same-minute branch overwrote the box's line with the
+ * ticket's. Ordering, not agreement.
+ *
+ * A SECOND act on the same box ten minutes later is where the luck runs out.
+ * The ledger extends one stretch, because the source has not changed; the old
+ * rebuild could not extend it - the source it wrote did not match the line it
+ * was looking at - so it opened a second stretch and then overwrote THAT with
+ * the ticket. One reading held a morning; the other held two halves of one,
+ * for a difference that was never about the work.
+ *
+ * The ticket is the right answer, and `rebucketSource` is why: the scope
+ * answer that arrives after the minutes lands on a TICKET, and minutes filed
+ * under a box would not be found by the correction.
+ *
+ * Teeth: put `entry.target` back in `segmentsFromLog` and the equality reds
+ * with two stretches against one.
+ */
+describe('a reboot on a box a ticket witnesses', () => {
+  const HOLLOWAY_LOCKOUT = 'ticket:holloway-lockout';
+
+  it('is one stretch against the TICKET in both readings', () => {
+    const rigged = rig();
+
+    if (rigged.session.engine.graph.getNode(HOLLOWAY_LOCKOUT) === undefined) {
+      spawnWorldTicket(rigged.session.engine, HOLLOWAY_LOCKOUT);
+    }
+
+    rigged.driver.startShift();
+    runTo(rigged, shiftStartTick(1) + 20);
+
+    const first = rigged.session.engine.now();
+
+    expect(rigged.driver.dispatch(
+      HELPDESK_ACTIONS.machineReboot,
+      COMPANY_IDS.player,
+      MSP_IDS.hollowayWorkstation,
+      {},
+    ).ok).toBe(true);
+
+    runTo(rigged, shiftStartTick(1) + 30);
+
+    const second = rigged.session.engine.now();
+
+    expect(rigged.driver.dispatch(
+      HELPDESK_ACTIONS.machineReboot,
+      COMPANY_IDS.player,
+      MSP_IDS.hollowayWorkstation,
+      {},
+    ).ok).toBe(true);
+    expect(second).toBeGreaterThan(first);
+
+    const onTicket = (
+      segments: readonly WorkSegment[],
+    ): readonly WorkSegment[] => segments
+      .filter((segment) => segment.source === HOLLOWAY_LOCKOUT);
+    const ledger = segmentsFrom(ledgerOf(rigged));
+    const rebuilt = segmentsFromLog(
+      rigged.session.engine.graph,
+      rigged.session.engine.dispatchLog(),
+      RESOLVER,
+    );
+
+    // ONE stretch, from the first act to the second, in both readings.
+    expect(onTicket(ledger)).toEqual([{
+      tick: first,
+      last: second,
+      ref: { kind: 'customer', id: MSP_CUSTOMERS.holloway },
+      source: HOLLOWAY_LOCKOUT,
+    }]);
+    expect(onTicket(rebuilt)).toEqual(onTicket(ledger));
+
+    // And the BOX is not a source in either of them: the ticket knows things
+    // the box cannot - whether this is a project task, whether the ask was in
+    // contract - and the correction that arrives late lands on the ticket.
+    expect(ledger.some(
+      (segment) => segment.source === MSP_IDS.hollowayWorkstation,
+    )).toBe(false);
+    expect(rebuilt.some(
+      (segment) => segment.source === MSP_IDS.hollowayWorkstation,
+    )).toBe(false);
   });
 });

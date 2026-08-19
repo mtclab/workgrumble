@@ -711,6 +711,13 @@ function preflight(
     // cannot answer them is a world the shell cannot draw.
     driver.state();
     driver.schedule();
+    // And the LEDGER (0.38.1). It is not on the first paint - the sheet is a
+    // window the player opens - and that is exactly why it belongs here: a
+    // file whose ledger cannot be read used to load fine and then either lose
+    // a morning silently or throw an afternoon later, in a window, over a
+    // corruption that was in the file the whole time. It is read where every
+    // other unreadable half of a save is read, in a session nobody is playing.
+    driver.timesheetTruth();
   } catch (failure: unknown) {
     return refuse(loadFailure(failure));
   }

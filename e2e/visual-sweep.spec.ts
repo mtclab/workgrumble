@@ -11,10 +11,12 @@ import { expect, type Page, test } from '@playwright/test';
 
 import {
   beginShift,
+  clockOffFor,
   completeLogin,
   dismissBrief,
   openFromStartMenu,
   runCommand,
+  runToDayEnd,
   workUntilMinute,
 } from './helpers';
 
@@ -177,6 +179,51 @@ test('captures the MSP surfaces', async ({ page }) => {
 
   await openFromStartMenu(page, 'projects');
   await shot(page, '43-projects');
+});
+
+/**
+ * THE FRIDAY REVIEW SCORECARD, WHICH HAS NEVER MET AN EYE (0.38.1).
+ *
+ * The sweep captures seventeen player surfaces and this was not one of them:
+ * the evening scorecard on the LAST day of the week, at a shop with tiered
+ * customers on it, where 0.38.0's per-day contract-miss row renders. The
+ * 0.36.0 pane-clip class lived in exactly this shape of gap - a surface that
+ * is reachable, shipped, tested for its numbers, and never looked at.
+ *
+ * The whole week is walked on the shipped path, day by day, through the same
+ * brief-and-clock-off pair every day-advancing spec uses. The review scene
+ * stands up first on the Friday and is dismissed, because it is the scorecard
+ * UNDER it that is the subject.
+ *
+ * A capture, not an assertion, like every other frame in this file - the
+ * contract-miss row is conditional on the week having charged one, so the
+ * frame is taken of the panel rather than of the row.
+ */
+test('captures the Friday review scorecard at the MSP', async ({ page }) => {
+  test.setTimeout(300_000);
+  await arriveAt(page, 'msp');
+  await beginShift(page);
+
+  // Monday to Thursday: run each day out, clock off, and start the next one.
+  for (let day = 1; day <= 4; day += 1) {
+    await clockOffFor(page, day);
+    await page.getByTestId('brief-start-shift').click();
+    await page.getByTestId('close-brief').click();
+  }
+
+  await runToDayEnd(page);
+
+  // The review comes up at three on a Friday and sits over the desk. It has
+  // its own frame elsewhere; this one is about what is behind it.
+  const review = page.getByTestId('window-review');
+
+  if (await review.count()) {
+    await page.getByTestId('review-dismiss').click();
+  }
+
+  await expect(page.getByTestId('scorecard-app')).toBeVisible();
+  await page.getByTestId('scorecard-work').scrollIntoViewIfNeeded();
+  await shot(page, '44-msp-friday-scorecard');
 });
 
 test('captures the remote faces (#55)', async ({ page }) => {

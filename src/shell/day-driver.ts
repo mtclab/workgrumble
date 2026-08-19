@@ -356,6 +356,7 @@ import {
 } from '../world/watermelon';
 import {
   attributionFor,
+  attributionSource,
   claimsFrom,
   type ClaimDetail,
   deriveTimesheet,
@@ -374,6 +375,7 @@ import {
   type WorkResolver,
   withClaim,
   withSegment,
+  witnessesOf,
 } from '../world/timesheet';
 
 /** Real milliseconds one simulated minute takes at normal speed. */
@@ -2581,7 +2583,7 @@ export class DayDriver implements DayApi {
       // customer. The last witness rather than the first, which is the one the
       // touch records leave last in the engine's own log - the two readings
       // have to land on the same bucket or the audit is arguing with itself.
-      const attributed = witnesses[witnesses.length - 1]?.id ?? target;
+      const attributed = attributionSource(target, witnesses);
 
       // And the minutes ALREADY recorded against it, if what just happened
       // changed the answer about whose they are - the scope answer that lands
@@ -6553,11 +6555,15 @@ export class DayDriver implements DayApi {
     return this.engine.graph.nodesOfKind('ticket');
   }
 
-  /** The unresolved tickets this node is part of the story of. */
+  /**
+   * The unresolved tickets this node is part of the story of.
+   *
+   * The rule moved to `world/timesheet.ts` in 0.38.1 - not because it belongs
+   * to the sheet, but because the AUDIT read needs the identical answer and
+   * had been making its own. One function, two callers.
+   */
   private ticketsAbout(target: NodeId): readonly ReadOnlyGraphNode[] {
-    return this.tickets().filter(
-      (ticket) => isUnresolved(ticket) && ticketNodes(ticket.id).includes(target),
-    );
+    return witnessesOf(this.engine.graph, target, this.workResolver());
   }
 
   /**

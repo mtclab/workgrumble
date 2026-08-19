@@ -208,7 +208,7 @@ export function machineForTarget(
       current = holders.find((owner) => owner.kind === 'directory');
     }
 
-    return fileServedByUnit(graph, node.id);
+    return fileServedByUnit(graph, node);
   }
 
   return null;
@@ -218,26 +218,53 @@ export function machineForTarget(
  * The last arm of the file walk: the box a file reaches through the UNIT that
  * needs it, when nothing contains it.
  *
- * One shipped file is built that way and it is not an oversight - the SELinux
- * relabel beat seeds `/var/www/html/index.html` beside the httpd unit that is
- * being refused it, with `requires_file` naming it and the unit's `runs_on`
- * edge naming the box. It is a file on a machine by every reading a player
- * has; it simply arrives from the systemd side of the estate rather than from
- * the drive's. Without this arm the seam's fail-closed refusal would land on
- * the player's own box and `restorecon` would stop working.
+ * Two shipped files are built that way and neither is an oversight. The
+ * SELinux relabel beat seeds `/var/www/html/index.html` beside the httpd unit
+ * that is being refused it, and the Fettle & Crane auth ticket seeds
+ * `/etc/fcauth/auth.env` beside the `fcauth.service` that cannot read it -
+ * both with `requires_file` naming the file and the unit's `runs_on` edge
+ * naming the box. They are files on machines by every reading a player has;
+ * they simply arrive from the systemd side of the estate rather than from the
+ * drive's. Without this arm the seam's fail-closed refusal would land on the
+ * player's own box and `restorecon` would stop working.
+ *
+ * IT IS NOT A GLOBAL SEARCH (0.38.1). It was: the first unit ANYWHERE whose
+ * `requires_file` matched won, whatever the file said about itself. So an
+ * orphan file on a CUSTOMER's volume that some in-house unit happened to name
+ * resolved to the player's own box, which carries no customer - and the seam
+ * read that as in-house and let the verb through with no wall in front of it.
+ * A walk that trusts one end of a link and never asks the other is the same
+ * failure the drive arm had, one link along.
+ *
+ * The rule comes from what the two shipped producers actually build, not from
+ * a guess about what might be safe: each of them stamps the file's `volume`
+ * with the HOSTNAME of the box its unit runs on. That is the file's own
+ * account of where it lives, written by the same setup that wrote the link, so
+ * requiring the two to agree costs the shipped beats nothing and closes the
+ * hole completely. A file that says nothing about its volume, or says a
+ * different box, does not resolve here at all - and the seam refuses a drive
+ * node it cannot place, which is the answer a wall is supposed to give when it
+ * cannot see.
  */
 function fileServedByUnit(
   graph: ReadOnlyGraphView,
-  fileId: string,
+  file: Readonly<ReadOnlyGraphNode>,
 ): Readonly<ReadOnlyGraphNode> | null {
+  const volume = file.fields[FIELDS.volume];
+
+  if (typeof volume !== 'string' || volume.length === 0) {
+    return null;
+  }
+
   for (const unit of graph.nodesOfKind('unit')) {
-    if (unit.fields[FIELDS.requiresFile] !== fileId) {
+    if (unit.fields[FIELDS.requiresFile] !== file.id) {
       continue;
     }
 
     const machine = graph
       .neighbors(unit.id, { direction: 'out', edgeKind: 'runs_on' })
-      .find((owner) => owner.kind === 'machine');
+      .find((owner) => owner.kind === 'machine'
+        && owner.fields[FIELDS.hostname] === volume);
 
     if (machine !== undefined) {
       return machine;
@@ -434,12 +461,42 @@ export function raciOwnerOfMachine(
 }
 
 /**
+ * Whether a target is a DRIVE node - a file or a directory.
+ *
+ * One predicate, exported, because two refusals now turn on it and they are
+ * the same question: a path cannot be typed at the verbs this shell has for
+ * naming things. The change desk books work against a service, and `notify`
+ * files a coordination notice against a service; neither resolves a path. A
+ * second copy of "is this a path" in the other module is the kind of pair that
+ * drifts, and the drift would be a refusal offering a door there is no door
+ * for - which is the whole class 0.38.0 closed once and 0.38.1 closed again.
+ */
+export function isDriveTarget(
+  graph: ReadOnlyGraphView,
+  targetId: string,
+): boolean {
+  const kind = graph.getNode(targetId)?.kind;
+  return kind === 'file' || kind === 'directory';
+}
+
+/**
  * The true refusal for a scope verdict, as the lines a terminal prints, or null
  * when the action is allowed. Every reason is a real one from the scope research
  * (Azure Lighthouse / GDAP / PAM tiering): the world teaches the shape of the
  * job by refusing, exactly as the 0.7.0 cross-OS refusals do.
+ *
+ * The TARGET rides in (0.38.1) for the same reason it rides into `routeLines`:
+ * the co-managed refusal told the player to type `notify <target>`, and
+ * `notify` resolves a SERVICE. For a box that is close enough to true to be
+ * useful; for a drive node it is a door that is not there, and the player
+ * spends the afternoon looking for the handle. The drive arm this bundle added
+ * made those two sentences reachable together for the first time.
  */
-export function scopeRefusalLines(verdict: ScopeVerdict): readonly string[] | null {
+export function scopeRefusalLines(
+  verdict: ScopeVerdict,
+  graph: ReadOnlyGraphView,
+  targetId: string,
+): readonly string[] | null {
   switch (verdict) {
     // The two that say nothing: an action the contract covers, and the wall
     // that is not one. A box the RACI hands to the customer's own IT refuses
@@ -465,14 +522,29 @@ export function scopeRefusalLines(verdict: ScopeVerdict): readonly string[] | nu
           + 'discouraged.)',
       ];
     case 'co_managed':
-      return [
-        'This is co-managed. Their own IT owns this estate alongside the MSP - '
-          + 'notify them first',
-        '("notify <target>"), the RACI says it is shared. Acting unilaterally '
-          + 'here is exactly the',
-        '"I thought you had it" coordination gap the contract exists to close; '
-          + 'coordinate, then act.',
-      ];
+      // A path cannot be notified against, so it is not told to be. The
+      // coordination gap is the same one and the answer to it goes up rather
+      // than through a verb this shell has no noun for.
+      return isDriveTarget(graph, targetId)
+        ? [
+          'This is co-managed. Their own IT owns this estate alongside the MSP, '
+            + 'and the',
+          'heads-up this needs cannot be typed at a path: "notify" books a '
+            + 'coordination',
+          'notice against a SERVICE, and there is no service here. Escalate it '
+            + '- name the box,',
+          'the path and what you were asked to do with it - and it reaches '
+            + 'their sysadmin',
+          'before anybody has been on his estate without telling him.',
+        ]
+        : [
+          'This is co-managed. Their own IT owns this estate alongside the MSP '
+            + '- notify them first',
+          '("notify <target>"), the RACI says it is shared. Acting unilaterally '
+            + 'here is exactly the',
+          '"I thought you had it" coordination gap the contract exists to '
+            + 'close; coordinate, then act.',
+        ];
   }
 }
 
@@ -491,13 +563,14 @@ export function scopeRefusalForCustomer(
   customerId: string | null,
   role: MachineRole | null,
   raci: RaciOwner | null,
+  targetId: string,
 ): readonly string[] | null {
   if (customerId === null) {
     return null;
   }
 
   const scope = scopeOfCustomer(graph, customerId);
-  return scopeRefusalLines(scopeVerdict(scope, role, raci));
+  return scopeRefusalLines(scopeVerdict(scope, role, raci), graph, targetId);
 }
 
 /**
@@ -514,6 +587,7 @@ export function scopeRefusalForMachine(
     customerIdOfMachine(machine),
     machineRoleOf(machine.fields[FIELDS.machineRole]),
     raciOwnerOfMachine(machine),
+    machine.id,
   );
 }
 

@@ -50,6 +50,7 @@ import {
   customerIdOfAccount,
   customerIdOfMachine,
   customerName,
+  isDriveTarget,
   machineForTarget,
   raciOwnerOfMachine,
   scopeOfCustomer,
@@ -451,9 +452,7 @@ function routeLines(
   graph: ReadOnlyGraphView,
   targetId: string,
 ): readonly string[] {
-  const kind = graph.getNode(targetId)?.kind;
-
-  if (kind === 'file' || kind === 'directory') {
+  if (isDriveTarget(graph, targetId)) {
     return [
       'This is not a dead end, but it is not a change request either: the change',
       'desk books work against a SERVICE, and there is no request to file for a',
@@ -492,7 +491,7 @@ export function changeRequestConsult(
   input: ChangeRequestConsult,
 ): { readonly allowed: true } | { readonly allowed: false; readonly lines: readonly string[] } {
   const { graph, now, targetId, verb, verdict } = input;
-  const base = scopeRefusalLines(verdict) ?? [];
+  const base = scopeRefusalLines(verdict, graph, targetId) ?? [];
 
   // Monitoring-only is the sharp line: watch-only is not made into remediation
   // by paperwork. The escalate refusal stands, and it does not offer a CR.

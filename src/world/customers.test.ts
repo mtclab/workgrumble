@@ -10,6 +10,8 @@ import { MACHINE_ROLES, RACI_OWNERS, SERVICE_SCOPES } from './fields';
 import { MSP_IDS } from './msp-company';
 import { createWorldSession } from './session';
 
+const CO_MANAGED_DIR = 'directory:penn-srv-01/ledger';
+
 const MSP_CARRY = Object.freeze({
   farmFund: 0,
   attempt: 1,
@@ -102,17 +104,70 @@ describe('scope-of-touch verdicts', () => {
   });
 
   it('gives each refusal its true reason, and none to an allowed action', () => {
-    expect(scopeRefusalLines('allowed')).toBeNull();
-    expect(scopeRefusalLines('monitoring_only')?.join(' '))
+    const { engine } = createWorldSession(MSP_CARRY);
+    const { graph } = engine;
+    const box = MSP_IDS.penningtonServer;
+
+    expect(scopeRefusalLines('allowed', graph, box)).toBeNull();
+    expect(scopeRefusalLines('monitoring_only', graph, box)?.join(' '))
       .toContain('notify-and-escalate');
-    expect(scopeRefusalLines('helpdesk_server')?.join(' '))
+    expect(scopeRefusalLines('helpdesk_server', graph, box)?.join(' '))
       .toContain('Servers are not in this contract');
-    expect(scopeRefusalLines('co_managed')?.join(' '))
+    expect(scopeRefusalLines('co_managed', graph, box)?.join(' '))
       .toContain('notify them first');
     // And the verdict that refuses nothing: a box their own IT owns is not
     // walled off, it is watched. A build that gave this one lines would be
     // back to a permission the estate does not have.
-    expect(scopeRefusalLines('raci_internal')).toBeNull();
+    expect(scopeRefusalLines('raci_internal', graph, box)).toBeNull();
+  });
+
+  /**
+   * THE CO-MANAGED REFUSAL, AT A PATH (0.38.1).
+   *
+   * The sentence said "notify <target>", and `notify` resolves a SERVICE - so
+   * on a drive node, which this bundle's own drive arm made reachable, it was
+   * naming a command the shell cannot be made to accept. `routeLines` had
+   * already solved this exact shape for the change desk; this is the other
+   * refusal that needed it, off the same predicate rather than a second copy
+   * of "is this a path".
+   *
+   * Teeth: return the flat line for every kind and this reds.
+   */
+  it('does not tell a path to be notified about', () => {
+    const { engine } = createWorldSession(MSP_CARRY);
+
+    engine.applySetup([
+      {
+        op: 'addNode',
+        node: {
+          id: CO_MANAGED_DIR,
+          kind: 'directory',
+          fields: { name: 'LEDGER' },
+        },
+      },
+      {
+        op: 'addEdge',
+        edge: {
+          from: MSP_IDS.penningtonServer,
+          to: CO_MANAGED_DIR,
+          kind: 'contains',
+        },
+      },
+    ]);
+
+    const said = scopeRefusalLines('co_managed', engine.graph, CO_MANAGED_DIR)
+      ?.join(' ') ?? '';
+
+    expect(said).toContain('This is co-managed');
+    expect(said).not.toContain('notify <target>');
+    expect(said).toContain('Escalate it');
+    // And the box arm is untouched - the wording only changes where it was
+    // untypeable, which is what keeps every shipped refusal what it was.
+    expect(scopeRefusalLines(
+      'co_managed',
+      engine.graph,
+      MSP_IDS.penningtonServer,
+    )?.join(' ')).toContain('notify <target>');
   });
 });
 

@@ -226,19 +226,50 @@ describe('the ledger', () => {
     expect(segments[0]?.ref.id).toBe('customer:5');
   });
 
-  it('drops a line this build cannot read rather than guessing at it', () => {
-    const field = [
+  /**
+   * REFUSED, NOT DROPPED (0.38.1). This used to assert the opposite - the
+   * unreadable lines were skipped and the readable ones came back - and the
+   * reason given was that an invented line would be an hour on somebody's
+   * invoice that nothing produced. That is true and it is only half of it: a
+   * line silently REMOVED is an hour somebody worked that nothing pays for,
+   * and its only symptom is a total that does not add up to a day.
+   *
+   * The four bad shapes are one class - a line that is not a segment - and the
+   * sheet now refuses to be built out of any of them. The load preflight is
+   * where that refusal is caught, which is the test below it.
+   */
+  it('refuses a line this build cannot read rather than dropping it', () => {
+    const good = [
       encodeSegment(MONDAY, ARDEN),
+      encodeSegment(MONDAY + 2, PROJECT),
+    ];
+
+    expect(segmentsFrom(good.join('\n'))).toHaveLength(2);
+
+    for (const bad of [
       'nonsense',
       '|customer|customer:x',
       `${String(MONDAY + 1)}|invented|customer:x`,
-      encodeSegment(MONDAY + 2, PROJECT),
-    ].join('\n');
+      // The six-field line: an id with a bar of its own. It was the quiet one
+      // - four fields short of nothing and five fields short of a refusal, so
+      // it fell through the count check and out of the sheet.
+      `${String(MONDAY + 1)}|customer|customer:x|${String(MONDAY + 1)}|a|b`,
+    ]) {
+      expect(() => segmentsFrom([good[0], bad, good[1]].join('\n')), bad)
+        .toThrow();
+    }
+  });
 
-    // A save is a file on the player's machine. An invented line would be an
-    // hour on somebody's invoice that nothing in the world ever produced.
-    expect(segmentsFrom(field).map((segment) => segment.ref.kind))
-      .toEqual(['customer', 'project']);
+  /**
+   * And the other half: the game cannot WRITE one. Teeth: drop `unbarred` from
+   * `encodeSegment` and this reds, and a bar in an id becomes a stretch of
+   * minutes that reads back as corruption.
+   */
+  it('refuses to write a field with the separator in it', () => {
+    expect(() => encodeSegment(MONDAY, { kind: 'customer', id: 'a|b' }))
+      .toThrow('cannot contain');
+    expect(() => encodeSegment(MONDAY, ARDEN, MONDAY, 'ticket:a|b'))
+      .toThrow('cannot contain');
   });
 });
 

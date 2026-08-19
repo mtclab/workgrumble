@@ -37,11 +37,13 @@
 import type {
   DispatchLogEntry,
   NodeId,
+  ReadOnlyGraphNode,
   ReadOnlyGraphView,
 } from '../engine-api';
 import { customerIdForTicketNodes, customerIdOfNode } from './customers';
 import { FIELDS, PLAYER_TIERS, type PlayerTier } from './fields';
 import { SCOPE_OUTCOMES } from './out-of-scope';
+import { isUnresolved } from './sla';
 import {
   dayForTick,
   shiftEndTick,
@@ -179,20 +181,52 @@ function isSegmentKind(value: string): value is SegmentKind {
   return SEGMENT_KINDS.some((kind) => kind === value);
 }
 
+/**
+ * The one thing that can make a ledger line unreadable, refused at the WRITER
+ * (0.38.1).
+ *
+ * A segment is fixed-position fields joined by a bar, so an id carrying a bar
+ * of its own writes a six-field line - and six fields is not a segment. The
+ * reader below refuses it, correctly and loudly; this is the other half, and
+ * it is the half that means the game can never produce one. No shipped node id
+ * has a bar in it, so this is unreachable by construction and stays that way
+ * BECAUSE it throws: the first id that breaks the rule breaks a test rather
+ * than eating somebody's afternoon out of a sheet.
+ *
+ * The same reasoning `encodeClaim` writes down for its own hazard, applied one
+ * codec along: fixed positions, never escaped, never rejoined - because a
+ * reader that rejoined the middle would be a reader that quietly ate an id
+ * with a bar in it.
+ */
+function unbarred(field: string, part: string): string {
+  if (field.includes(SEPARATOR)) {
+    throw new Error(
+      `A ledger ${part} cannot contain "${SEPARATOR}": ${field}`,
+    );
+  }
+
+  return field;
+}
+
 export function encodeSegment(
   tick: number,
   ref: Readonly<SegmentRef>,
   last: number = tick,
   source: string | null = null,
 ): string {
-  const head = [String(tick), ref.kind, ref.id, String(last)];
+  const head = [
+    String(tick),
+    ref.kind,
+    unbarred(ref.id, 'id'),
+    String(last),
+  ];
 
   // The fifth field is OPTIONAL and absent when there is nothing to say, which
   // is what keeps a slack line and every line a pre-0.38.0 save carries exactly
   // the string this build would write for them.
   return (source === null || source.length === 0
     ? head
-    : [...head, source]).join(SEPARATOR);
+    : [...head, unbarred(source, 'source')]).join(SEPARATOR);
 }
 
 function decodeSegment(line: string): WorkSegment | null {
@@ -232,22 +266,39 @@ function decodeSegment(line: string): WorkSegment | null {
 /**
  * The ledger, read back off the field.
  *
- * A line this build cannot read is dropped rather than guessed at: a save is a
- * file on the player's machine and a sheet built on an invented line would be a
- * sheet claiming hours nobody worked, which is the one failure mode the whole
- * mechanic exists to make legible.
+ * A line this build cannot read is REFUSED, not dropped (0.38.1). It used to
+ * be dropped, with a reason that sounded right and was not: "a sheet built on
+ * an invented line would be a sheet claiming hours nobody worked". True - and
+ * a sheet with a line silently removed is a sheet claiming FEWER hours than
+ * somebody worked, which is the same lie the other way round and the quieter
+ * of the two. A six-field line is a whole stretch of a morning, and the only
+ * sign of it going missing was a total that did not add up to a day.
+ *
+ * So the sheet refuses to be built at all. The throw is caught where every
+ * other corrupt-save failure is caught - the load preflight tries the whole
+ * file in a session nobody is playing, and a file whose ledger cannot be read
+ * is refused there, with the save layer's own sentence and the session the
+ * player was in still running. That is the difference between a save that
+ * loses a morning and a save that says it cannot be loaded.
+ *
+ * It is unreachable from anything this build writes: `encodeSegment` refuses
+ * to write a field with a bar in it, so the only way to hold one is to have
+ * edited the file by hand.
  */
 export function segmentsFrom(value: unknown): readonly WorkSegment[] {
   if (typeof value !== 'string' || value.length === 0) {
     return [];
   }
 
-  return Object.freeze(
-    value
-      .split('\n')
-      .map(decodeSegment)
-      .filter((segment): segment is WorkSegment => segment !== null),
-  );
+  return Object.freeze(value.split('\n').map((line) => {
+    const segment = decodeSegment(line);
+
+    if (segment === null) {
+      throw new Error(`That is not a line of a timesheet ledger: ${line}`);
+    }
+
+    return segment;
+  }));
 }
 
 /**
@@ -386,6 +437,52 @@ export interface WorkResolver {
 }
 
 /**
+ * The unresolved tickets a node is part of the story of - the WITNESSES to an
+ * act aimed at it.
+ *
+ * The day driver has always computed this to decide which tickets a touch is
+ * evidence on. It lives here now because a SECOND reader needs the identical
+ * answer and was quietly making its own (0.38.1) - see `attributionSource`.
+ */
+export function witnessesOf(
+  graph: ReadOnlyGraphView,
+  target: NodeId,
+  resolve: WorkResolver,
+): readonly Readonly<ReadOnlyGraphNode>[] {
+  return graph.nodesOfKind('ticket').filter(
+    (ticket) => isUnresolved(ticket) && resolve.nodesOfTicket(ticket.id).includes(target),
+  );
+}
+
+/**
+ * WHICH NODE a stretch of minutes is recorded against - the ticket that
+ * witnessed the act, or the target itself when nothing did.
+ *
+ * ONE rule, and it had to become one (0.38.1). There were two writers of a
+ * segment's fifth column and they disagreed: the driver wrote the last witness
+ * (`witnesses[last].id ?? target`) and the audit rebuild wrote the raw
+ * `entry.target`. For an act on a box a ticket witnesses - `machine.reboot` on
+ * a box named by an open ticket - the two readings therefore keyed the same
+ * minutes on different sources, and they agreed anyway, by luck: the touch
+ * record the driver writes onto that ticket is itself a dispatch at the same
+ * TICK, and `withSegment`'s same-minute branch overwrote the box's line with
+ * the ticket's. Ordering, not agreement.
+ *
+ * The TICKET is the meaningful one, and `rebucketSource` is why. It moves
+ * every stretch recorded against one source into a new bucket when the answer
+ * about that work arrives late - and the thing the answer lands on is a
+ * ticket. Minutes filed under the box would not be found by the correction and
+ * would stay on a customer's billable line after the ask they belong to had
+ * been refused.
+ */
+export function attributionSource(
+  target: NodeId | null,
+  witnesses: readonly Readonly<ReadOnlyGraphNode>[],
+): NodeId | null {
+  return witnesses[witnesses.length - 1]?.id ?? target;
+}
+
+/**
  * Whose time an act aimed at this target was, or null when it was nobody's.
  *
  * ONE function, used twice and deliberately: the driver calls it in the minute
@@ -488,6 +585,12 @@ export function attributionFor(
  * Refusals are left out on both sides. A refused act took no time worth
  * charging anybody for, and one aimed at the wrong customer's box would
  * otherwise put a minute on an invoice for an estate that was never touched.
+ *
+ * It resolves the SOURCE through `attributionSource` (0.38.1), which is the
+ * driver's own rule rather than a second one. It used to file each entry under
+ * its raw target, so an act on a box a ticket witnesses was keyed to the box
+ * here and to the ticket in the ledger - two readings of one minute, differing
+ * in the one column the late re-bucket has to match on.
  */
 export function segmentsFromLog(
   graph: ReadOnlyGraphView,
@@ -497,14 +600,18 @@ export function segmentsFromLog(
   let field = '';
 
   for (const entry of entries) {
-    if (!entry.ok) {
+    if (!entry.ok || entry.target === null) {
       continue;
     }
 
-    const ref = attributionFor(graph, entry.target, resolve);
+    const source = attributionSource(
+      entry.target,
+      witnessesOf(graph, entry.target, resolve),
+    );
+    const ref = attributionFor(graph, source, resolve);
 
-    if (ref !== null && entry.target !== null) {
-      field = withSegment(field, entry.tick, ref, entry.target);
+    if (ref !== null && source !== null) {
+      field = withSegment(field, entry.tick, ref, source);
     }
   }
 

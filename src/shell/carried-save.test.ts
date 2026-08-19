@@ -362,3 +362,57 @@ describe('a save carried in from before the share walls', () => {
     );
   });
 });
+
+/**
+ * A SAVE WHOSE LEDGER CANNOT BE READ (0.38.1).
+ *
+ * `segmentsFrom` used to drop a line it could not decode, which meant a
+ * six-field line - an id with a bar in it - took a stretch of somebody's
+ * morning out of the sheet with nothing to show for it but a total that did
+ * not add up to a day. It refuses now, and the refusal has to land somewhere a
+ * player can be told about: the LOAD, in the session nobody is playing, rather
+ * than an hour later in a window.
+ *
+ * Teeth: take `driver.timesheetTruth()` back out of `preflight` and this reds
+ * - the file loads, the session is replaced, and the throw is waiting in the
+ * timesheet window instead.
+ */
+describe('a save whose ledger cannot be read', () => {
+  it('is refused at the load, with the session still running', () => {
+    const live = rig();
+
+    expect(live.shell.save()).toEqual({ ok: true, value: undefined });
+
+    const written = live.slot.readRaw() ?? '';
+    const file = JSON.parse(written) as Record<string, unknown>;
+    const payload = JSON.parse(file.engine as string) as {
+      graph: { nodes: Record<string, unknown>[] };
+    };
+
+    for (const node of payload.graph.nodes) {
+      const fields = node.fields as Record<string, unknown>;
+      const ledger = fields[FIELDS.timesheetLog];
+
+      if (typeof ledger === 'string' && ledger.length > 0) {
+        // One extra bar in the last field, which is what an id carrying one
+        // would have written before the encoder learned to refuse it.
+        fields[FIELDS.timesheetLog] = `${ledger}|and-a-half`;
+      }
+    }
+
+    live.slot.writeRaw(JSON.stringify({
+      ...file,
+      engine: JSON.stringify(payload),
+    }));
+
+    const outcome = live.shell.load();
+
+    expect(outcome.ok).toBe(false);
+    // And the world the player was in is untouched - the preflight ran on a
+    // disposable engine, so nothing was replaced by a file that could not be.
+    expect(live.graph().getField(
+      MSP_IDS.fontaineMatterShare,
+      FIELDS.machineCustomer,
+    )).toBe(MSP_CUSTOMERS.fontaine);
+  });
+});
