@@ -267,7 +267,35 @@ const NADIA: DialogueTree = {
             },
           ],
         },
+        // The month-end freeze, in the mouth of the person whose month it is
+        // (E9, 0.39.0). It is asked HERE because this is the beat where the
+        // player is already looking at a change to a server they cannot make,
+        // and the honest next thought is when it could be made at all. Her
+        // answer is the rule the change desk enforces, said the way a practice
+        // manager says it: not a policy, a billing run.
+        {
+          label: 'Ask when their support company could take the box down',
+          next: 'server-space-close',
+        },
         { label: 'Tell her you are looking into it' },
+      ],
+    },
+    {
+      id: 'server-space-close',
+      // A STANDING fact about the firm rather than a claim about today, for
+      // the same reason nothing sampler-dealt names a weekday: this beat can
+      // be dealt into any week of the arc, and a line saying "we are in the
+      // close" would be wrong in most of them. What she describes is the rule,
+      // which is true whichever week the player hears it in - and the engine
+      // is what knows whether it is on this morning.
+      npc_line: 'Whoever does it, not in the last days of a month. That is the '
+        + 'billing run - the ledger closes at month end and every bill this '
+        + 'firm sends goes out of it, so nothing that could stop a fee earner '
+        + 'recording time gets touched until the 1st. If the document store '
+        + 'actually stops, that is different, and you will hear about it from '
+        + 'me at some volume. Anything that can wait, waits.',
+      options: [
+        { label: 'Note it: nothing moves at Fontaine until the 1st' },
       ],
     },
     {

@@ -1814,6 +1814,9 @@ export class DayDriver implements DayApi {
       targetId,
       verb,
       this.engine.now(),
+      // The actor, so the filing can read which week of the career this is and
+      // work out whether the customer is in its month-end close (0.39.0).
+      this.actor,
     );
 
     if (plan.kind === 'filed') {

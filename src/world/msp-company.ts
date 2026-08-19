@@ -34,6 +34,8 @@ import { driveSetup } from './filesystem';
 import {
   type BusinessType,
   BUSINESS_TYPES,
+  type ChangeFreeze,
+  CHANGE_FREEZES,
   DEVICE_TYPES,
   FIELDS,
   isUnixFamily,
@@ -84,6 +86,22 @@ interface CustomerSeed {
   readonly businessType: BusinessType;
   readonly scope: ServiceScope;
   readonly sla: SlaTier;
+  /**
+   * The CHANGE FREEZE this customer declares (E9, 0.39.0), when they declare
+   * one. Absent on most of the roster, and absent is the whole reason the
+   * dimension is additive: a customer with no declaration is seeded exactly as
+   * it was, node for node.
+   *
+   * The three that have one are the three whose MONTH is an event. Fontaine
+   * bills at month end - the fee earners' recorded time becomes the firm's
+   * invoices, and a document system that stops during the run stops the
+   * money; Holloway and Pennington close client ledgers for a living, which
+   * is the same thing said by an accountancy. Nobody else on this roster runs
+   * a calendar like that: a dental practice, a studio, a manufacturer and a
+   * SaaS shop all have month ends, but none of them has one that decides
+   * whether a change may happen.
+   */
+  readonly changeFreeze?: ChangeFreeze;
 }
 
 export const MSP_CUSTOMERS = {
@@ -115,6 +133,9 @@ const CUSTOMERS: readonly CustomerSeed[] = [
     businessType: BUSINESS_TYPES.lawFirm,
     scope: SERVICE_SCOPES.helpdesk,
     sla: SLA_TIERS.silver,
+    // The billing run: recorded time becomes bills in the last days of the
+    // month, and the practice manager holds anything that could interrupt it.
+    changeFreeze: CHANGE_FREEZES.monthEnd,
   },
   {
     id: MSP_CUSTOMERS.meridian,
@@ -140,6 +161,12 @@ const CUSTOMERS: readonly CustomerSeed[] = [
     businessType: BUSINESS_TYPES.accountancy,
     scope: SERVICE_SCOPES.fullyManaged,
     sla: SLA_TIERS.gold,
+    // The ledger close - the practice's own calendar, declared because it is
+    // TRUE of the practice and not because of what it costs the player. A
+    // fully-managed contract sends almost nothing to the change desk, which is
+    // where the freeze acts, so here it is mostly a fact on the record: the
+    // firm that is shut for three days a month, said out loud.
+    changeFreeze: CHANGE_FREEZES.monthEnd,
   },
   {
     // ARDEN-MFG: a mid-size manufacturer with its OWN internal IT the MSP works
@@ -207,6 +234,11 @@ const CUSTOMERS: readonly CustomerSeed[] = [
     businessType: BUSINESS_TYPES.accountancy,
     scope: SERVICE_SCOPES.coManaged,
     sla: SLA_TIERS.silver,
+    // The same close, three sizes up and with their own man inside it - which
+    // is why the freeze and the RACI are two different answers to two
+    // different questions. Gil's box is Gil's whatever the date is; the close
+    // holds the MSP's own boxes there too.
+    changeFreeze: CHANGE_FREEZES.monthEnd,
   },
 ] as const;
 
@@ -1298,6 +1330,11 @@ export function mspSetup(): readonly SetupOp[] {
         [FIELDS.customerBusinessType]: customer.businessType,
         [FIELDS.customerServiceScope]: customer.scope,
         [FIELDS.customerSlaTier]: customer.sla,
+        // Only when declared, so a customer without one is the node it always
+        // was rather than a node carrying an empty answer (0.39.0).
+        ...(customer.changeFreeze === undefined
+          ? {}
+          : { [FIELDS.customerChangeFreeze]: customer.changeFreeze }),
       },
     });
   }

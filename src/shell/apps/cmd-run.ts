@@ -47,6 +47,11 @@ import {
 } from '../../world/customers';
 import { changeRequestListing } from '../../world/change-request';
 import {
+  arcWeekOf,
+  freezeReading,
+  freezeRecordLines,
+} from '../../world/change-freeze';
+import {
   ARDEN_EDGE_ESTATE,
   projectRules,
   ruleIsKnown,
@@ -799,6 +804,12 @@ function auditLines(api: GameApi, query: string): CommandResult {
   const name = customerName(api.graph, customerId);
   const scope = scopeOfCustomer(api.graph, customerId);
   const tier = slaTierOfCustomer(api.graph, customerId);
+  const freeze = freezeReading(
+    api.graph,
+    customerId,
+    arcWeekOf(api.graph, api.actor),
+    api.clock.now(),
+  );
   const businessRaw = textValue(
     found.node.fields[FIELDS.customerBusinessType],
     'unrecorded',
@@ -818,6 +829,10 @@ function auditLines(api: GameApi, query: string): CommandResult {
       + `  |  Business: ${business}`,
     `Estate: ${String(machines.length)} machine(s), enumerated off the wire - `
       + 'no runbook required.',
+    // The customer's own calendar, beside their contract and their tier
+    // (0.39.0) - and nothing at all for the customers who declare no freeze,
+    // so their audit is the block it always was.
+    ...(freeze === null ? [] : freezeRecordLines(freeze)),
     '',
   ];
 
