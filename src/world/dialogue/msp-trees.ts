@@ -2370,7 +2370,7 @@ const ROSA: DialogueTree = {
     },
     {
       id: 'nas-space-done',
-      npc_line: 'Raised, and the disks are ordered for Tuesday. I had it filed '
+      npc_line: 'Raised, and the disks are on order. I had it filed '
         + 'as a tidy-up, which would have gone very badly the first time '
         + 'somebody asked for a re-cut.',
       options: [{ label: 'Log the escalation' }],

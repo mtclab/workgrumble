@@ -1797,8 +1797,8 @@ const LATE_SHIFT: DialogueTree = {
     },
     {
       id: 'back-up',
-      npc_line: 'It is printing. Cheers. I will see you Thursday, probably, '
-        + 'and I mean that in the worst way.',
+      npc_line: 'It is printing. Cheers. I will see you in a couple of days, '
+        + 'probably, and I mean that in the worst way.',
       options: [
         { label: 'Tell him you sincerely hope not' },
       ],
@@ -1874,9 +1874,9 @@ const LATE_SHIFT: DialogueTree = {
       id: 'ajax-clear',
       npc_line: 'It is going. The lorries will go at six and they will have '
         + 'paper with them. Whoever sent the big one will send it again and we '
-        + 'will do this on Thursday, but that is Thursday\'s business.',
+        + 'will do this all again, but that is the next morning\'s business.',
       options: [
-        { label: 'Agree to make it Thursday\'s business' },
+        { label: 'Agree to make it the next morning\'s business' },
       ],
     },
     /* -- and the password that expired before anybody was in ------------ */
@@ -2294,7 +2294,7 @@ const ACCOUNTS: DialogueTree = {
     },
     {
       id: 'month-end-after',
-      npc_line: 'I am in. From home. On a Thursday. I have told my wife and '
+      npc_line: 'I am in. From home. On a working day. I have told my wife and '
         + 'she was not as impressed as I had hoped.',
       options: [
         { label: 'Congratulate him on entering the current decade' },

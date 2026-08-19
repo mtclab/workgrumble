@@ -43,8 +43,8 @@ export const BEV_VPN_REQUEST: WorldTicket = {
     flavor: {
       title: 'VPN for working from home (raised from a channel request)',
       body:
-        'Bev is on reception and is working from home on Thursday while the '
-        + 'boiler is off. She has never used the remote client and it will not '
+        'Bev is on reception and is working from home the day they take the '
+        + 'boiler out. She has never used the remote client and it will not '
         + 'have her. She asked in mail, in chat and in the helpdesk room, all '
         + 'within a couple of minutes, because she was not sure which one '
         + 'anybody actually reads - and this ticket exists because somebody '

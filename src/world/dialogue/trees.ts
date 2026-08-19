@@ -1935,9 +1935,9 @@ const RECEPTION: DialogueTree = {
     // out of her is the one nobody thinks to ask.
     {
       id: 'vpn',
-      npc_line: 'The working-from-home thing. Thursday, while the boiler is '
-        + 'off. I have never done it before, so I have never needed whatever it '
-        + 'is, and now I need it by Thursday and I have asked everywhere.',
+      npc_line: 'The working-from-home thing. The day they take the boiler '
+        + 'out. I have never done it before, so I have never needed whatever it '
+        + 'is, and now I need it before then and I have asked everywhere.',
       options: [
         {
           label: 'Ask whether she has ever been set up for remote access',

@@ -797,12 +797,12 @@ export const WEEK: readonly DayScript[] = validateWeek([
         subject: 'VPN for a day working from home',
         raises: 'ticket:bev-vpn-request',
         minute: 9 * 60 + 50,
-        mail: 'Morning - I am working from home on Thursday while the boiler is '
-          + 'off and I cannot get the remote thing to let me in. Could you sort '
+        mail: 'Morning - I am working from home the day they take the boiler '
+          + 'out and I cannot get the remote thing to let me in. Could you sort '
           + 'it? Sorry if this is the wrong place to ask.',
         chat: 'hiya - did you see my email about the VPN? working from home '
-          + 'thurs and it will not have me. also put it in the helpdesk room in '
-          + 'case!',
+          + 'the boiler day and it will not have me. also put it in the '
+          + 'helpdesk room in case!',
       },
     ],
     // And the room copy of the same request, in #helpdesk, with the player's
@@ -814,8 +814,8 @@ export const WEEK: readonly DayScript[] = validateWeek([
         id: 'hub:bev-vpn',
         channel: 'chan:helpdesk',
         author: COMPANY_IDS.bev,
-        body: '@you sorry to chase - VPN for Thursday, working from home. '
-          + 'Emailed and messaged too, not sure which you use!',
+        body: '@you sorry to chase - VPN for the boiler day, working from '
+          + 'home. Emailed and messaged too, not sure which you use!',
         minute: 9 * 60 + 50,
         mentionsPlayer: true,
         request: 'req:bev-vpn',

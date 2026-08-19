@@ -288,7 +288,7 @@ const DENISE: DialogueTree = {
       npc_line: 'I know. I am sorry - it is earbuds again, and it is not even '
         + 'the same pair. I have written down everything I tried so you do not '
         + 'have to ask me any of it. If it helps, I can bring them down; I know '
-        + 'perfectly well this is not what your Friday is for.',
+        + 'perfectly well this is not what your day is for.',
       options: [
         {
           label: 'Ask when the right one last paired with anything',
