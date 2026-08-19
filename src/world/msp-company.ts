@@ -491,6 +491,27 @@ export const MSP_IDS = {
 
 export type MspNodeId = (typeof MSP_IDS)[keyof typeof MSP_IDS];
 
+/**
+ * Which customer each SHARE in this world belongs to, by node id (0.38.1).
+ *
+ * A table rather than two literals down in the seed, because there are now TWO
+ * places that have to know the answer and they must not be able to disagree:
+ * the seed stamps it onto a share as the world is built, and the carried-save
+ * migration (`shell/save.ts`) stamps it onto a share in a file written before
+ * 0.38.0 seeded it at all. A save from that build carries the shares with no
+ * customer on them, and `customerIdOfShare` reads null off them - which is the
+ * in-house answer, so a carried save's customer share had NEITHER the tenant
+ * STOP nor the contract wall while every fresh world had both.
+ *
+ * The 0.38.0 lesson said out loud: two copies of one resolver drift, and the
+ * copy is always the one that is a version behind. There is one, here, in the
+ * module that seeds the shares.
+ */
+export const SHARE_CUSTOMERS = Object.freeze({
+  [MSP_IDS.fontaineMatterShare]: MSP_CUSTOMERS.fontaine,
+  [MSP_IDS.marloweProjectShare]: MSP_CUSTOMERS.marlowe,
+});
+
 interface StaffSeed {
   readonly person: string;
   readonly account: string;
@@ -1516,7 +1537,11 @@ export function mspSetup(): readonly SetupOp[] {
       // nothing to read and the customer walls simply did not apply to
       // permissions work. Fully-managed here, so nothing about this grant
       // changes; it is the field being absent that was the hole.
-      [FIELDS.machineCustomer]: MSP_CUSTOMERS.marlowe,
+      //
+      // Off the shared table (0.38.1) rather than written out, because the
+      // carried-save migration stamps the same answer onto a file that
+      // predates this line.
+      [FIELDS.machineCustomer]: SHARE_CUSTOMERS[MSP_IDS.marloweProjectShare],
     },
   });
 
@@ -1656,8 +1681,9 @@ export function mspSetup(): readonly SetupOp[] {
       // field the boxes and the staff accounts carry. Helpdesk scope and
       // identity work, so the shipped matter grant stays exactly as legal as it
       // was; what it gains is a wall it can be refused by when the contract
-      // says so, which it did not have at all.
-      [FIELDS.machineCustomer]: MSP_CUSTOMERS.fontaine,
+      // says so, which it did not have at all. Off the shared table (0.38.1);
+      // see `SHARE_CUSTOMERS`.
+      [FIELDS.machineCustomer]: SHARE_CUSTOMERS[MSP_IDS.fontaineMatterShare],
     },
   });
 

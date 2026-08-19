@@ -37,6 +37,7 @@ import {
   nextEmployerAfter,
 } from '../world/employers';
 import { FIELDS, playerTierOf } from '../world/fields';
+import { SHARE_CUSTOMERS } from '../world/msp-company';
 import { exitForOutcome } from '../world/offer';
 import { PROBATION_WEEK } from '../world/pressure';
 import { isReviewOutcome } from '../world/week';
@@ -69,8 +70,16 @@ import { weekRequestFrom, type WeekSource } from '../world/week-source';
  *    building as it stood on the Monday - and by the Friday the graph is
  *    holding the Friday. Absent means no delta, which is what every week one
  *    of every career carries and what every schema-4 file was written with.
+ * 6: the customer walls reach the shares (0.38.1). 0.38.0 gave a `share` node
+ *    the customer field the boxes and the staff accounts already carried, and
+ *    it gave it AT SEED TIME only - so a file written by any earlier build
+ *    carries the two shares with the field absent, `customerIdOfShare` reads
+ *    null off them, and null is the in-house answer. A carried save's customer
+ *    share therefore had neither the tenant STOP nor the contract wall while
+ *    every world stood up fresh had both, which is a save that plays a
+ *    different game. The step stamps the field.
  */
-export const SAVE_SCHEMA = 5;
+export const SAVE_SCHEMA = 6;
 
 export const SAVE_KEY = 'workgrumble/save';
 
@@ -219,7 +228,103 @@ function migrate(file: Record<string, unknown>): SaveOutcome<
     value = { ...value, schema: 5, carried: [] };
   }
 
+  // 5 -> 6. The first step that reaches INTO the engine payload, because the
+  // fact that is missing is a field on a node rather than a fact about the
+  // file. 0.38.0 gave the shares the customer field the boxes and the staff
+  // accounts already had, and gave it at SEED time - so a world stood up by
+  // this build has it and a world carried in a file does not, and the one
+  // without it is the one whose customer share has no wall in front of it.
+  //
+  // The ledger's own 0.38.0 addition - the fifth column on a work segment,
+  // the node the minutes were attributed off - is deliberately NOT backfilled.
+  // A four-field line is legal and reads as "no source", which is exactly what
+  // it is: those minutes were recorded by a build that did not track one, and
+  // the invoices they went onto have already been rendered and paid. Inventing
+  // a source for them would let `settleAttributionDrift` re-bucket a week
+  // somebody has already been billed for, which is a worse answer than a
+  // column that says nothing.
+  if ((value.schema as number) < 6) {
+    value = { ...value, schema: 6, engine: withShareCustomers(value.engine) };
+  }
+
   return { ok: true, value };
+}
+
+/**
+ * The engine payload with every seeded share's customer stamped on, or the
+ * string exactly as it came in when there was nothing to stamp.
+ *
+ * The attribution comes from `SHARE_CUSTOMERS`, which is the same table the
+ * seed stamps from - one answer to "whose share is that", read twice, rather
+ * than a copy here that goes a version stale the first time a share is added.
+ *
+ * Absent-only: a share that already carries a customer is left alone, so the
+ * step is idempotent and a hand-edited file's own answer is not overwritten by
+ * this one.
+ *
+ * The payload is re-serialized rather than patched as text, and that is safe
+ * for the one reason worth writing down: the engine holds every field value as
+ * a double and hashes it through its own formatter, so a `0.0` this build
+ * writes and the `0` a JavaScript round trip gives back are the same value in
+ * the restored world and hash identically. Nothing else in the file is touched,
+ * and a file with no share to stamp keeps its bytes.
+ */
+function withShareCustomers(engine: unknown): unknown {
+  if (typeof engine !== 'string' || engine.length === 0) {
+    return engine;
+  }
+
+  let payload: unknown;
+
+  try {
+    payload = JSON.parse(engine);
+  } catch {
+    // Not readable as JSON, so not something this step can improve. The
+    // restore refuses it a moment later, with the engine's own sentence.
+    return engine;
+  }
+
+  const nodes = (payload as { graph?: { nodes?: unknown } })?.graph?.nodes;
+
+  if (!Array.isArray(nodes)) {
+    return engine;
+  }
+
+  const owners = new Map(Object.entries(SHARE_CUSTOMERS));
+  let stamped = false;
+
+  for (const node of nodes as unknown[]) {
+    if (typeof node !== 'object' || node === null) {
+      continue;
+    }
+
+    const { id, kind, fields } = node as {
+      id?: unknown;
+      kind?: unknown;
+      fields?: unknown;
+    };
+
+    if (
+      kind !== 'share'
+      || typeof id !== 'string'
+      || typeof fields !== 'object'
+      || fields === null
+    ) {
+      continue;
+    }
+
+    const owner = owners.get(id);
+    const bag = fields as Record<string, unknown>;
+
+    if (owner === undefined || bag[FIELDS.machineCustomer] !== undefined) {
+      continue;
+    }
+
+    bag[FIELDS.machineCustomer] = owner;
+    stamped = true;
+  }
+
+  return stamped ? JSON.stringify(payload) : engine;
 }
 
 export function parseSaveFile(raw: string): SaveOutcome<SaveFile> {
