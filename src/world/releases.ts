@@ -31,6 +31,32 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.38.1',
+    date: '2026-08-19',
+    summary: 'An update for the people who were already here. The new '
+      + 'contract walls now also apply to saves made before the walls '
+      + 'went up, which IT concedes is where most of the people are.',
+    lines: Object.freeze([
+      'A game saved before the last update now receives the customer '
+        + 'boundaries on its shared folders the moment it is loaded. '
+        + 'Fresh careers had them from the first minute; careers in '
+        + 'progress were walking through walls that had been built '
+        + 'around them. The walls now apply to everyone, including you.',
+      'A save file whose timesheet cannot be read is now refused at '
+        + 'loading, with your current session left running, instead of '
+        + 'loading anyway and quietly losing minutes off the sheet. The '
+        + 'minutes were yours and the sheet is what the customer argues '
+        + 'with; neither should go missing without a sentence saying so.',
+      'A file that cannot be traced to any machine is now refused on '
+        + 'every path, including the one through the department that '
+        + 'names servers. Previously such a file could, under specific '
+        + 'circumstances, be attributed to our own equipment, which is '
+        + 'how things end up on our own equipment.',
+      'The refusal you receive when touching a co-managed customer\'s '
+        + 'files now recommends a course of action that exists.',
+    ]),
+  },
+  {
     version: '0.38.0',
     date: '2026-08-19',
     summary: 'Customers may now ask for work the contract does not cover, '
