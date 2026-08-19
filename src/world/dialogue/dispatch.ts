@@ -91,6 +91,14 @@ export function dialogueEffectVerbs(
  * stale against the trees, and two people writing conversations in parallel
  * cannot collide on a list neither of them edited: a new verb in a tree is in
  * this set the moment the tree is.
+ *
+ * Which makes the RUNTIME refusal below a tautology for shipped content, and
+ * that is stated rather than hidden (0.38.0 review): every shipped effect is
+ * in this set by construction, so the check can only fire for dynamically
+ * built dialogue no version ships yet - defence in depth, not the gate. The
+ * gate with teeth is the load-time remediation check: a new NON-remediation
+ * verb rides in silently by design (it moves nothing a wall protects), and a
+ * remediation verb refuses to load without a named allowance.
  */
 const ALLOWED: ReadonlySet<string> = dialogueEffectVerbs(DIALOGUE_TREES);
 

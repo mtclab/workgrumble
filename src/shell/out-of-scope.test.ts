@@ -412,10 +412,14 @@ describe('the ticket outcome is the same; the ledger is not', () => {
    * concerned - the ticket closes, the day counts it, the resolution credit is
    * paid - so anything reading the queue alone would call them the same answer.
    *
-   * What separates them is the money and the future: one leaves an hour on
-   * nobody's invoice and a customer who will ask again, and the other leaves
-   * neither. If those two ever come out equal, the three-way has become a menu
-   * with one item on it.
+   * What separates them is the future, and only the future (0.38.0 review
+   * recut): BOTH answers' minutes are unbilled now - a correctness round
+   * proved the refused ask's reading minutes landing on Fontaine's invoice,
+   * which made the industry-script answer the one that quietly earned - so
+   * the sheet no longer tells them apart. What does is what the customer
+   * learned: obliging trains them and the same shape comes back bigger;
+   * refusing ends it. If the recurrence ever fires for both or neither, the
+   * three-way has become a menu with one item on it.
    */
   it('refusing and obliging close the same ticket and cost different things', () => {
     const refused = withAsk(WIFI);
@@ -430,10 +434,16 @@ describe('the ticket outcome is the same; the ledger is not', () => {
     expect(refused.engine.ticketState(WIFI)).toBe('resolved');
     expect(obliged.engine.ticketState(WIFI)).toBe('resolved');
 
-    // And not the same anywhere it costs anything.
+    // Both off the invoice - out-of-contract work never bills, whatever the
+    // answer - and neither on the billable line.
     const unbilled = bucketOf({ kind: 'unbilled', id: MSP_CUSTOMERS.fontaine });
-    expect(minutesOn(refused, unbilled)).toBe(0);
+    const billable = bucketOf({ kind: 'customer', id: MSP_CUSTOMERS.fontaine });
+    expect(minutesOn(refused, billable)).toBe(0);
+    expect(minutesOn(obliged, billable)).toBe(0);
     expect(minutesOn(obliged, unbilled)).toBeGreaterThan(0);
+
+    // And not the same where it actually costs: the customer only learns
+    // from the answer that obliged them.
     expect(refused.engine.graph.getNode(CABLING)).toBeUndefined();
     expect(obliged.engine.graph.getNode(CABLING)).toBeDefined();
   });

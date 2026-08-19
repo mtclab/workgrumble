@@ -1609,8 +1609,8 @@ export const KB_ARTICLES: readonly KbArticle[] = [
       + 'and the only way that conversation ever happens is if somebody puts a '
       + 'number in front of them.',
       'None of which makes the refusal the correct answer and the favour the '
-      + 'wrong one. The script exists because it works, the estimate costs an '
-      + 'hour that may buy nothing, and there are accounts and mornings where '
+      + 'wrong one. The script exists because it works, the estimate costs '
+      + 'minutes that may buy nothing, and there are accounts and mornings where '
       + 'doing the thing is worth more than being right about it. What is not '
       + 'available is doing it and expecting nothing to follow.',
     ],

@@ -131,6 +131,30 @@ function machineForTarget(
       .find((owner) => owner.kind === 'machine') ?? null;
   }
 
+  // The drive lives on a box the way a service does (0.38.0 review): a file
+  // or directory node hangs off the machine's own contains chain, and until
+  // this arm existed `directory.purge` and `file.move` reached a customer's
+  // file server with no wall at all - the exact shape the share arm had just
+  // closed, one kind over. Walk the chain up; it is seeded shallow.
+  if (node.kind === 'file' || node.kind === 'directory') {
+    let current: Readonly<ReadOnlyGraphNode> | undefined = node;
+
+    for (let hop = 0; hop < 12 && current !== undefined; hop += 1) {
+      const owner: Readonly<ReadOnlyGraphNode> | undefined = api.graph
+        .neighbors(current.id, { direction: 'in', edgeKind: 'contains' })[0];
+
+      if (owner === undefined) {
+        return null;
+      }
+
+      if (owner.kind === 'machine') {
+        return owner;
+      }
+
+      current = owner;
+    }
+  }
+
   return null;
 }
 

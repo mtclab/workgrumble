@@ -94,7 +94,7 @@ import {
 import { runningPrograms } from './processes';
 // The one remediation seam, shared with the windows that send the same verbs:
 // the terminal decides nothing about scope on its own any more.
-import { dispatchRemediation, labelOf } from './remediation';
+import { dispatchRemediation, labelOf, refusalOf } from './remediation';
 import type { GameApi } from './types';
 import { textValue } from './ui';
 
@@ -2214,11 +2214,27 @@ function fileCommandLines(
     username: account === undefined ? null : labelOf(account),
   };
 
+  // Through the seam (0.38.0 review): the drive's two mutating verbs reach
+  // whatever box the path names, and a raw dispatch here was the last door
+  // past the customer walls - the same shape the share and the unix terminal
+  // had. The seam refusal comes back as an ordinary refused DispatchResult,
+  // so the drive dialect renders it the way it renders every other "no".
   const dispatch = (
     action: string,
     target: string,
     params: Readonly<Record<string, string>>,
-  ): DispatchResult => api.dispatch(action, api.actor, target, { ...params });
+  ): DispatchResult => {
+    const outcome = dispatchRemediation(api, action, target, { ...params });
+
+    switch (outcome.kind) {
+      case 'refused':
+        return { ok: false, reason: refusalOf(outcome) ?? 'Refused.' };
+      case 'failed':
+        return { ok: false, reason: outcome.reason };
+      case 'done':
+        return { ok: true };
+    }
+  };
 
   const result = ((): FileCommandResult => {
     switch (parsed.spec.name) {

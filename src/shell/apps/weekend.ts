@@ -188,7 +188,11 @@ export const WEEKEND_APP: AppDef = {
       // the MSP, where the review's attainment half counts it and a screen
       // without the row would print a mark its own lines cannot explain.
       if (card.contractMissed > 0) {
-        definitionRow(list, 'Contract clocks missed', 'weekend-contract-missed')
+        // Per TICKET, not per stamp - the daily row counts charges landing
+        // on a day, this counts arrivals that ever missed a promise, and the
+        // two labels say so apart so five daily rows are not expected to sum
+        // to this one (0.38.0 review).
+        definitionRow(list, 'Tickets that missed a contract clock', 'weekend-contract-missed')
           .textContent = String(card.contractMissed);
       }
 

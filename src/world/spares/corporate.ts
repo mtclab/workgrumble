@@ -166,8 +166,8 @@ export const CORPORATE_SPARES: readonly DayFragment[] = [
         channel: EXEC,
         author: HALCYON_IDS.ea,
         body: 'the board pack goes out at lunchtime tomorrow. if anything on this '
-          + 'floor is going to need IT, it needs IT before Thursday, not on '
-          + 'Thursday.',
+          + 'floor is going to need IT, it needs IT before the pack goes, '
+          + 'not while it is going.',
         minute: 9 * 60 + 55,
       },
     ],

@@ -353,7 +353,19 @@ export function attributionFor(
     // read (`segmentsFromLog`) land on the same bucket from the same evidence -
     // and what makes it true of every act on that ticket rather than only of
     // the minute somebody pressed the button.
-    return graph.getField(node.id, FIELDS.scopeOutcome) === SCOPE_OUTCOMES.obliged
+    // Declined and refused join obliged (0.38.0 review, twice): work on an
+    // ask the contract does not cover never bills, whatever the answer -
+    // the estimate on a declined quote is the afternoon the design copy
+    // says it was, and minutes spent reading an ask you then correctly
+    // refuse must not make the industry-script answer the one that quietly
+    // earns. Only the QUOTED wait and an APPROVED quote's delivery are
+    // billable: approval makes them retroactively true, and the other
+    // three outcomes re-bucket the minute they land.
+    const outcome = graph.getField(node.id, FIELDS.scopeOutcome);
+
+    return outcome === SCOPE_OUTCOMES.obliged
+      || outcome === SCOPE_OUTCOMES.declined
+      || outcome === SCOPE_OUTCOMES.refused
       ? { kind: 'unbilled', id: customer }
       : { kind: 'customer', id: customer };
   }

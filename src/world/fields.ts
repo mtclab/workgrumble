@@ -1954,6 +1954,14 @@ export const FIELDS = {
    * does not shrink" was supposed to buy.
    */
   cadenceCountedTo: 'cadence_counted_to',
+  /**
+   * WHEN silence was last CHARGED (0.38.0) - written only by the miss verb,
+   * where the counted-to watermark above is also moved by the two write-offs
+   * (un-park, and a quote's answer). The scorecard's per-day row read the
+   * watermark and a truth reviewer proved the label lied: a Monday charge
+   * un-parked on Tuesday reported as charged Tuesday. The row reads this.
+   */
+  cadenceChargedAt: 'cadence_charged_at',
   /** `confirmed` or `corrected` - how the audit was ruled, and when. */
   auditVerdict: 'audit_verdict',
   auditVerdictAt: 'audit_verdict_at',

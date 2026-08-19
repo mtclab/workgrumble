@@ -186,7 +186,31 @@ export const SCOPE_ACTION_DATA: readonly ActionData[] = [
       { when: outcomeIs(SCOPE_OUTCOMES.quoted), reason: SCOPE_QUOTE_OUT_REASON },
       { when: not(UNANSWERED), reason: SCOPE_ANSWERED_REASON },
     ],
-    apply: [recordOutcome(SCOPE_OUTCOMES.refused)],
+    apply: [
+      recordOutcome(SCOPE_OUTCOMES.refused),
+      // The second half of the industry's own script, ON THE RECORD (0.38.0
+      // review): the refusal without the offer is the half the research says
+      // is routinely dropped, and this game's KB says so too - so the world
+      // writes the offer where the customer can read it, rather than
+      // trusting a button label to have said it.
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.customerVisible,
+        value: {
+          append_line: {
+            node: TARGET,
+            field: FIELDS.customerVisible,
+            value: {
+              const: 'This is outside what the agreement covers, so the desk '
+                + 'cannot pick it up as a ticket - but it is real work and '
+                + 'we would be glad to price it. Say the word and an '
+                + 'estimate follows.',
+            },
+          },
+        },
+      },
+    ],
   },
   // QUOTE-AND-WAIT: inform, estimate, get approval before proceeding. It does
   // not close anything - it PARKS, on the customer, with the estimate in the

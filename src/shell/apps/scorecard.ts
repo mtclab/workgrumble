@@ -13,7 +13,6 @@ import {
   stampedIn,
 } from '../../world/day';
 import { conductSummary } from '../../world/conduct';
-import { cadenceMissesOn } from '../../world/cadence';
 import { FIELDS } from '../../world/fields';
 import { STARTING_REPUTATION } from '../../world/meters';
 import { cellLabel } from '../../world/priority';
@@ -168,9 +167,10 @@ function lateResponses(
  * of the visibility #64 named as backlog. Acks read their own stamp minute;
  * silence reads the counted-to watermark, which is the LAST minute a charge
  * was written up to - so this row counts tickets whose silence was charged
- * today, which is the day-true fact the record can actually answer. An
- * exact per-day windows-missed figure would need a charge log nobody else
- * reads, and a scorecard row is not the reason to carry one.
+ * today, off the charge's own stamp - the counted-to watermark will not do,
+ * because write-offs move it too and a reviewer proved the row calling an
+ * un-park a charge. An exact per-day windows figure would still need a
+ * charge log; tickets-charged-today is the honest row without one.
  */
 function contractMissesOn(
   nodes: readonly ReadOnlyGraphNode[],
@@ -178,12 +178,11 @@ function contractMissesOn(
 ): number {
   return nodes.filter((node) => {
     const ack = node.fields[FIELDS.ackMissedAt];
-    const charged = node.fields[FIELDS.cadenceCountedTo];
+    const charged = node.fields[FIELDS.cadenceChargedAt];
 
     return (typeof ack === 'number' && stampedIn(node, FIELDS.ackMissedAt, day))
       || (typeof charged === 'number'
-        && cadenceMissesOn(node) > 0
-        && stampedIn(node, FIELDS.cadenceCountedTo, day));
+        && stampedIn(node, FIELDS.cadenceChargedAt, day));
   }).length;
 }
 

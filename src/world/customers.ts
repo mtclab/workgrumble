@@ -60,6 +60,11 @@ export const REMEDIATION_TARGET_KINDS: readonly NodeKind[] = Object.freeze([
   'device',
   'account',
   'share',
+  // The drive's two mutating verbs target these (0.38.0 review) - the
+  // machine rides in as a param the guard reader cannot see, but the TARGET
+  // is honest and the seam walks it home through the contains chain.
+  'file',
+  'directory',
 ]);
 
 /**

@@ -182,6 +182,13 @@ pub fn validate_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
 }
 
 fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
+    // Carried by machines, accounts and shares alike: which customer's
+    // estate this node belongs to. Typed here, above the per-kind arms,
+    // because the guards read it on every kind that can carry it and a
+    // hand-edited non-string fails those guards OPEN (0.38.0 review) -
+    // the same reason sla_tier and raci_owner are closed below.
+    assert_optional(fields, "customer", is_string, "a string")?;
+
     match kind {
         "person" => assert_optional(fields, "name", is_string, "a string"),
         "account" => {
@@ -443,6 +450,12 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
             assert_optional(
                 fields,
                 "ack_missed_at",
+                is_count,
+                "a tick, at or above zero",
+            )?;
+            assert_optional(
+                fields,
+                "cadence_charged_at",
                 is_count,
                 "a tick, at or above zero",
             )?;

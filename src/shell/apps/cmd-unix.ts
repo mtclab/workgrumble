@@ -1475,9 +1475,23 @@ function unitVerbLines(
   const refusal = remediationRefusal(api, unit.id, action);
 
   if (refusal !== null) {
+    // Two dialect repairs on the shared sentences (0.38.0 review). The
+    // co-managed wall names `notify <target>`, which no unix prompt accepts
+    // - the walkable route from ssh is the change request, so the route the
+    // refusal advertises is the one this shell can actually type. And the
+    // consult that says a change request is already under review must not
+    // grow the paragraph telling the player to file one.
+    const spoken = refusal.lines.map((line) => line.replace(
+      '"notify <target>"',
+      '"changereq file <unit>" from this shell',
+    ));
+    const alreadyConsulting = spoken.some(
+      (line) => line.includes('under review'),
+    );
+
     return lines(
-      ...refusal.lines,
-      ...(refusal.wall === 'tenant'
+      ...spoken,
+      ...(refusal.wall === 'tenant' || alreadyConsulting
         ? []
         : [
           '',

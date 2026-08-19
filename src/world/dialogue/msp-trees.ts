@@ -456,7 +456,7 @@ const NADIA: DialogueTree = {
     {
       id: 'new-office-more-done',
       npc_line: 'That is settled either way, then. I will put whatever you send '
-        + 'me in front of them - they are in on Thursday.',
+        + 'me in front of them - they are in later this week.',
       options: [{ label: 'Log the answer' }],
     },
   ],
@@ -2773,7 +2773,7 @@ const ESME: DialogueTree = {
       npc_line: 'The partners were very pleased with the migration, so the '
         + 'branch office is going on the platform by the end of the month - and '
         + 'while it is all happening they would like the archive years brought '
-        + 'across too, 2011 to 2019, off that tape nobody has read since. When '
+        + 'across too, 1987 to 1994, off that tape nobody has read since. When '
         + 'can you start?',
       options: [
         {

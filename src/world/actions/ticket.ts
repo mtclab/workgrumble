@@ -767,6 +767,15 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
         field: FIELDS.cadenceCountedTo,
         value: { now: true },
       },
+      // And the charge minute on its own field (0.38.0): the watermark moves
+      // on write-offs too, so a day row reading it counted un-parks as
+      // charges. This one moves only here, where silence actually billed.
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.cadenceChargedAt,
+        value: { now: true },
+      },
     ],
   },
   {
