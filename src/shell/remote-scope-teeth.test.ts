@@ -429,6 +429,27 @@ describe('the directory pane meets them too', () => {
  * and the phone hand a dispatcher to scripted dialogue effects, and `about`
  * runs the two diagnostics this fake OS lies to you with. Anything else with a
  * button that changes a customer's estate calls `dispatchRemediation`.
+ *
+ * TWO OF THOSE RATIONALES WERE THINNER THAN THEY READ, and 0.38.0 is where they
+ * stopped being:
+ *
+ *  - "the two terminal dialects run the seam themselves" was true of `cmd-run`
+ *    and only half true of `cmd-unix`, which ran its own copies of the tenant
+ *    and scope guards on the systemd/launchd fix verbs - so the change-request
+ *    consult, the coordination clearance and the RACI stamp were all absent
+ *    over ssh. `unitVerbLines` now calls the seam for both the pre-flight and
+ *    the dispatch, and the dialect's own paragraph is rendered off the
+ *    refusal's `wall` rather than off a second set of guards. What is still the
+ *    file's own is the rest of a sysadmin's shell - apt, chmod, setenforce,
+ *    the journal vacuum - which is BOX-LEVEL sysadmin work reached by an ssh
+ *    session the promotion gates, and the next slice to put a customer wall in
+ *    front of one of those verbs takes it through the same door.
+ *  - "chat and the phone hand a dispatcher to scripted dialogue effects" said
+ *    nothing about WHICH verbs those effects may send, and the answer was: all
+ *    fifty-four. It is now the verbs the shipped trees use, derived at load,
+ *    with any of them that is a remediation refused unless a named allowance
+ *    carries it (`world/dialogue/dispatch.ts`) - so a conversation cannot grow
+ *    a fix on a customer's estate without somebody looking at these walls.
  */
 describe('the seam is the only way an app reaches the world', () => {
   const APPS_DIR = 'src/shell/apps';
@@ -436,7 +457,10 @@ describe('the seam is the only way an app reaches the world', () => {
   const ALLOWED = new Set([
     // The seam itself: the one place a remediation is sent from.
     'remediation.ts',
-    // The terminal, both dialects - they call the seam for estate verbs.
+    // The terminal, both dialects - they call the seam for estate verbs. What
+    // is left on `api.dispatch` here is the box-level sysadmin shell (apt,
+    // chmod, setenforce, journal vacuum) and the player's own verbs, not a
+    // customer-estate remediation.
     'cmd-run.ts',
     'cmd-unix.ts',
     // Ticket-grain work: escalation, classification, the handoff form.

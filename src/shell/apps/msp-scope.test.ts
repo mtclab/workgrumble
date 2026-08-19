@@ -624,3 +624,90 @@ describe('a monitoring-only alert closes by escalation, never by a fix', () => {
       .toBe('resolved');
   });
 });
+
+/**
+ * THE SHARE, WHICH THE WALLS COULD NOT SEE (0.38.0).
+ *
+ * `shareGrantAccess` aims at a `share`, and a share resolved to neither a
+ * machine nor an account - so from 0.8.0 to here, the one verb that hands a
+ * customer's document workspace to a person ran with no tenant STOP and no
+ * contract behind it. It never showed, because the only two customer shares
+ * that ship are at customers whose contracts allow the grant; that is the
+ * definition of a latent hole, not a defence of one.
+ *
+ * The three claims, and what turns each red:
+ *
+ *  1. THE SHIPPED GRANT IS STILL THE SHIPPED GRANT, through the seam rather
+ *     than around it. Teeth in the wrong direction: resolve a share to the file
+ *     server behind it instead of reading its own customer, and this refuses as
+ *     SERVER work and the Fontaine ticket becomes unclosable.
+ *  2. THE WRONG TENANT IS THE WRONG TENANT for a permission too.
+ *  3. AND THE CONTRACT DECIDES. Teeth: take the `share` branch back out of
+ *     `remediationRefusal` and 2 and 3 both print the success line.
+ */
+describe('a share is somebody\'s, and the walls now know whose', () => {
+  it('grants the matter workspace at the helpdesk customer and closes the '
+    + 'ticket', () => {
+    const session = mspSession('ticket:fontaine-matter-access');
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.fontaine);
+    const api = apiFor(session, appState);
+
+    const output = run(api, 'grant ekhoury Delacroix');
+
+    // Identity work at a helpdesk customer is squarely in contract, and the
+    // ticket's own resolution rule is the edge this made.
+    expect(output).toContain('now has Full Access to');
+    expect(session.engine.ticketState('ticket:fontaine-matter-access'))
+      .toBe('resolved');
+  });
+
+  it('STOPs a grant on a share belonging to the customer not on screen', () => {
+    const session = mspSession();
+    const appState = new AppStateStore();
+    // Pennington's ticket is what is open; the Delacroix matter is Fontaine's.
+    appState.setCustomerContext(MSP_CUSTOMERS.pennington);
+    const api = apiFor(session, appState);
+
+    const output = run(api, 'grant ekhoury Delacroix');
+
+    expect(output).toContain('STOP. PENNINGTON-ACCT is on your screen');
+    expect(output).toContain('belongs to FONTAINE-LAW');
+    expect(output).not.toContain('now has Full Access to');
+    expect(api.dispatchLog().some(
+      (entry) => entry.id === HELPDESK_ACTIONS.shareGrantAccess,
+    )).toBe(false);
+  });
+
+  it('refuses a grant on a MONITORING-ONLY customer\'s share, in the shipped '
+    + 'sentence', () => {
+    const session = mspSession();
+    // No monitoring-only customer ships a share, so the probe moves one rather
+    // than inventing content: the same node, the same verb, one field changed
+    // to the contract this wall is about. The field is the one a box and an
+    // account already carry, so this is the world saying a true thing.
+    session.engine.applySetup([{
+      op: 'setField',
+      id: MSP_IDS.fontaineMatterShare,
+      field: FIELDS.machineCustomer,
+      value: MSP_CUSTOMERS.northwind,
+    }]);
+
+    const appState = new AppStateStore();
+    appState.setCustomerContext(MSP_CUSTOMERS.northwind);
+    const api = apiFor(session, appState);
+
+    const output = run(api, 'grant ekhoury Delacroix');
+
+    expect(output).toContain(
+      'This account is monitoring-only - the contract is notify-and-escalate, '
+      + 'not remediate.',
+    );
+    expect(output).not.toContain('now has Full Access to');
+    // And the world did not move: the grant was never sent, so the edge the
+    // ticket closes on does not exist.
+    expect(api.dispatchLog().some(
+      (entry) => entry.id === HELPDESK_ACTIONS.shareGrantAccess,
+    )).toBe(false);
+  });
+});

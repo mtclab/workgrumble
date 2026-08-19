@@ -1,4 +1,5 @@
-import type { ActionData, ActionPayload } from '../../engine-api';
+import type { ActionData, ActionPayload, NodeKind } from '../../engine-api';
+import { REMEDIATION_TARGET_KINDS } from '../customers';
 import { ACCOUNT_ACTIONS } from './account';
 import { APT_ACTION_DATA } from './apt';
 import { BOSS_ACTION_DATA } from './boss';
@@ -300,4 +301,64 @@ export function helpdeskActionPayload(): ActionPayload {
     kind_labels: KIND_LABELS,
     actions: helpdeskActions(),
   };
+}
+
+/* -- which verbs are REMEDIATIONS, read off the registry ------------------ */
+
+/**
+ * The kind an action's target guard says it only works on, or null for a verb
+ * that is not aimed at a node kind at all.
+ *
+ * Read off the guard `targetGuards` writes - the `not(kind_is TARGET x)` refusal
+ * that names what the action is for - rather than off a second table beside the
+ * registry. A verb declares what it aims at exactly once, in the place the
+ * refusal is written, and this reads that declaration back.
+ */
+function targetKindOf(action: Readonly<ActionData>): NodeKind | null {
+  for (const guard of action.validate ?? []) {
+    if (guard.when.pred !== 'not') {
+      continue;
+    }
+
+    const inner = guard.when.of;
+
+    if (inner.pred === 'kind_is' && 'ref' in inner.node
+      && inner.node.ref === 'target') {
+      return inner.kind;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Every verb that is a REMEDIATION - an action aimed at a node the customer
+ * walls can find a customer behind (`REMEDIATION_TARGET_KINDS`).
+ *
+ * Derived, never listed. A hand-kept list would be a second answer to a
+ * question the registry already answers, and it would go stale the first time
+ * somebody registered a verb without remembering it existed - which is the
+ * failure mode this whole set is here to prevent.
+ *
+ * What reads it: the dialogue dispatcher's load-time gate. A scripted
+ * conversation dispatches through the shell's own dispatcher and NOT through
+ * the remediation seam, so an option that offered to reboot a customer's server
+ * would reach the estate with none of the walls in front of it. The gate refuses
+ * to load a tree carrying one of these unless it is named in an allowance, so
+ * the first MSP dialogue that offers a fix has to be written where somebody is
+ * looking at the walls.
+ */
+export function remediationActionIds(): readonly string[] {
+  return helpdeskActions()
+    .map((action) => ({ id: action.id, kind: targetKindOf(action) }))
+    .filter(({ kind }) => kind !== null
+      && REMEDIATION_TARGET_KINDS.includes(kind))
+    .map(({ id }) => id);
+}
+
+const REMEDIATION_IDS: ReadonlySet<string> = new Set(remediationActionIds());
+
+/** Whether this verb changes an estate the customer walls apply to. */
+export function isRemediationAction(action: string): boolean {
+  return REMEDIATION_IDS.has(action);
 }

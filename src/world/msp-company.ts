@@ -1510,6 +1510,13 @@ export function mspSetup(): readonly SetupOp[] {
     fields: {
       [FIELDS.name]: 'Projects - live jobs',
       [FIELDS.path]: 'smb://marl-nas-01/projects',
+      // Whose share it is, in the SAME field a box and an account carry
+      // (0.38.0). A grant aims at the share, which resolves to neither a
+      // machine nor an account, so without this the scope pre-flight had
+      // nothing to read and the customer walls simply did not apply to
+      // permissions work. Fully-managed here, so nothing about this grant
+      // changes; it is the field being absent that was the hole.
+      [FIELDS.machineCustomer]: MSP_CUSTOMERS.marlowe,
     },
   });
 
@@ -1645,6 +1652,12 @@ export function mspSetup(): readonly SetupOp[] {
       // The customer's own UNC, not the MSP's: this share lives on Fontaine's
       // file server, which is who the matter security groups belong to.
       [FIELDS.path]: '\\\\FONTAINE\\matters\\delacroix',
+      // And who it belongs to, for the scope pre-flight (0.38.0) - the same
+      // field the boxes and the staff accounts carry. Helpdesk scope and
+      // identity work, so the shipped matter grant stays exactly as legal as it
+      // was; what it gains is a wall it can be refused by when the contract
+      // says so, which it did not have at all.
+      [FIELDS.machineCustomer]: MSP_CUSTOMERS.fontaine,
     },
   });
 
