@@ -370,8 +370,16 @@ describe('helpdesk action registry', () => {
     // the acknowledgment that ran out untouched and the count of silent
     // update windows. World verbs the day loop dispatches, like the record
     // pair above them.
-    expect(HELPDESK_ACTION_IDS).toHaveLength(54);
-    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(54);
+    //
+    // Fifty-seven from 0.38.0 (E9): the three answers to a request the
+    // agreement does not cover - point at it and offer to price the work,
+    // write the estimate and park the ticket on the customer, or do it. Three
+    // verbs rather than one with a kind on it, exactly as the request trio is
+    // and for the same reason: they write one fact and differ in what they
+    // cost. The customer's own answer to an estimate is a WORLD verb, so it is
+    // not in this count.
+    expect(HELPDESK_ACTION_IDS).toHaveLength(57);
+    expect(new Set(HELPDESK_ACTION_IDS).size).toBe(57);
 
     for (const id of HELPDESK_ACTION_IDS) {
       const result = dispatch(id, null, {});

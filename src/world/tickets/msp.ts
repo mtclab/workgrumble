@@ -58,6 +58,7 @@ import { UNTRIAGED_SLA_TICKS } from '../priority';
 import { baselineServiceId } from '../services';
 import { PROJECT_TICKETS } from './project';
 import { POOL_MSP_TICKETS } from './pool-msp';
+import { SCOPE_ASK_TICKETS } from './scope-asks';
 import type { WorldTicket } from './types';
 
 /* -- FONTAINE-LAW: a Windows-only law firm on a helpdesk contract --------- */
@@ -2590,6 +2591,12 @@ export const MSP_TICKETS: readonly WorldTicket[] = [
   // every gate that stands a world up per employer therefore stands the right
   // one up for them, without a fourth list of exceptions to keep in step.
   ...PROJECT_TICKETS,
+  // The out-of-scope asks (E9, 0.38.0): the two requests that are not faults -
+  // a floor build at the helpdesk-scope law firm and a migration at the
+  // co-managed accountancy - and the bigger sequel each of them earns from a
+  // player who simply did it. Here for the reason the project tasks are: the
+  // gates stand a world up per employer off these arrays.
+  ...SCOPE_ASK_TICKETS,
   // And the pool (E11, 0.34.0 slice 2), in this list for the same reason the
   // project tasks are: every gate that stands a world up per employer reads
   // these arrays to decide which estate a ticket belongs in.

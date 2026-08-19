@@ -97,6 +97,14 @@ const ACTION_SUMMARIES: Readonly<Record<string, string>> = {
   [HELPDESK_ACTIONS.mdmPushProfile]: 'Pushed the mail profile from the MDM console',
   [HELPDESK_ACTIONS.deviceManualMailSetup]: 'Walked the owner through the mailbox '
     + 'by hand',
+  // The out-of-scope answers (E9, 0.38.0). All three read as work on the
+  // REQUEST, which is what the ticket is: an escalated ask hands over what was
+  // said to the customer, because that is the state of it.
+  [HELPDESK_ACTIONS.scopeRefuse]: 'Told them it is outside the agreement and '
+    + 'offered to price it',
+  [HELPDESK_ACTIONS.scopeQuote]: 'Sent them an estimate and parked it on their '
+    + 'decision',
+  [HELPDESK_ACTIONS.scopeDoWork]: 'Did the work they asked for',
   [PROBES.ping]: 'Pinged it from the desk - it answers on the wire',
   [PROBES.pingDead]: 'Pinged it from the desk - nothing came back',
   [PROBES.ssh]: 'Tried ssh to it from the desk',

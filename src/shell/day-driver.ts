@@ -48,6 +48,12 @@ import {
   resolutionsBy,
 } from '../world/requests';
 import {
+  quoteAnswersDue,
+  SCOPE_OUTCOMES,
+  SCOPE_QUOTE_MINUTES,
+  scopeRecurrencesDue,
+} from '../world/out-of-scope';
+import {
   type BossPing,
   type BossVisit,
   buildPatrolSchedule,
@@ -2575,6 +2581,17 @@ export class DayDriver implements DayApi {
       // touch records leave last in the engine's own log - the two readings
       // have to land on the same bucket or the audit is arguing with itself.
       this.noteWorkSegment(witnesses[witnesses.length - 1]?.id ?? target);
+
+      // And writing an estimate costs the shift its minutes (E9, 0.38.0), the
+      // way minting a ticket from a chat does and for the same reason: scoping
+      // a piece of work you have not done is the afternoon it sounds like, and
+      // a quote that took no time at all would make the middle answer a strictly
+      // better refusal. Owed against the clock and drained by `step`, so the
+      // day still ends at five and is `SCOPE_QUOTE_MINUTES` shorter. Refusing
+      // and obliging are both one sentence, so neither owes this.
+      if (id === HELPDESK_ACTIONS.scopeQuote) {
+        this.owedMinutes_ += SCOPE_QUOTE_MINUTES;
+      }
     }
     // And, if the dot says Away while that was going on, the one person who
     // can see both halves of it.
@@ -2758,6 +2775,14 @@ export class DayDriver implements DayApi {
     this.settleDirectMessages(before, now);
     this.settleNoHello(before, now);
     this.settleStaleAuth(now);
+    // The two halves of the out-of-scope ask that are NOT the player's move
+    // (E9, 0.38.0): a customer answering an estimate, and a customer who was
+    // obliged for nothing coming back for more. Both are minutes passing on
+    // somebody else's timetable, which is what this stretch of the minute is
+    // for, and both are settled before the queue is read so a ticket that has
+    // just closed or just arrived is the queue's this minute rather than next.
+    this.settleScopeQuotes(now);
+    this.settleScopeRecurrence(now);
     this.settleLegendaryRevert();
     this.settleFollowUps();
     this.settleRecertFollowUp();
@@ -4013,6 +4038,80 @@ export class DayDriver implements DayApi {
   }
 
   /**
+   * The customer coming back on an estimate (E9, 0.38.0).
+   *
+   * The same conditional-settle shape as `settleStaleAuth`: the world decides
+   * which asks are due an answer (`quoteAnswersDue`, a pure read over the
+   * clock and the ticket's own stamp) and this dispatches the one the CONTENT
+   * says that customer gives. Nothing is rolled here and nothing is remembered
+   * - the answer is a fact about the ask, so the same quote gets the same reply
+   * in a replay, in a test and on a second playthrough.
+   *
+   * Both answers end the wait. A yes takes the ticket off hold and leaves it
+   * open, which is the point of it: the work is now a job somebody is paying
+   * for and it still has to be done. A no takes it off hold and closes it,
+   * because there is nothing left to do about a piece of work nobody bought.
+   */
+  private settleScopeQuotes(now: number): void {
+    for (const due of quoteAnswersDue(this.engine.graph, now)) {
+      const approved = due.answer === SCOPE_OUTCOMES.approved;
+      const result = this.engine.dispatch(
+        approved ? WORLD_ACTIONS.scopeApproved : WORLD_ACTIONS.scopeDeclined,
+        this.actor,
+        due.ticket,
+        {},
+      );
+
+      if (!result.ok) {
+        continue;
+      }
+
+      this.handlers.onNotice?.(
+        approved ? 'They have signed the estimate' : 'They have declined the estimate',
+        `${ticketTitle(due.ticket)} - ${
+          approved
+            ? 'the customer has approved the quote. It is chargeable work now, '
+              + 'and it is back on your queue to actually do.'
+            : 'the customer has decided against it. Nothing is owed by anybody '
+              + 'and the ticket is closed.'
+        }`,
+      );
+    }
+  }
+
+  /**
+   * And the customer who was obliged for nothing, coming back for more (E9,
+   * 0.38.0) - the delayed half of what "just do it" costs.
+   *
+   * A conditional summon, exactly as `settleRecertFollowUp` is: the world says
+   * whether a bigger ask is due (`scopeRecurrencesDue` - obliged, ninety
+   * minutes gone, and the sequel not already raised) and this raises it. It is
+   * due for the unbilled favour and for nothing else: refuse, quote, decline or
+   * deliver, and nobody comes back, because none of those taught them anything
+   * about what your afternoon is worth.
+   *
+   * It arrives ONCE. The sequels name no sequel of their own, so a player who
+   * obliges twice is taught twice and the chain still ends - a lesson that fed
+   * itself would be a grief loop rather than a consequence.
+   */
+  private settleScopeRecurrence(now: number): void {
+    for (const ticketId of scopeRecurrencesDue(this.engine.graph, now)) {
+      this.raiseSummonedTicket(ticketId);
+
+      if (this.engine.graph.getNode(ticketId) === undefined) {
+        continue;
+      }
+
+      this.handlers.onNotice?.(
+        'They are asking for more',
+        `${ticketTitle(ticketId)} - the same customer, about the same kind of `
+        + 'work, and this time it is bigger. You did the last one for nothing, '
+        + 'which is the reason they are asking.',
+      );
+    }
+  }
+
+  /**
    * The legendary manager's churn turning (E8, 0.25.0): the manager leaves and
    * the mandate becomes the mess it always was, so the org reverts.
    *
@@ -4830,6 +4929,14 @@ export class DayDriver implements DayApi {
   private workLabel(kind: SegmentKind, id: string): string {
     if (kind === 'customer') {
       return customerName(this.engine.graph, id);
+    }
+
+    // The out-of-scope favour (E9, 0.38.0): the customer's name, and what the
+    // hour actually was. The name has to be on it - "internal" would hide the
+    // one fact worth reading, which is whose free afternoon this was - and the
+    // words after it are what the line is for.
+    if (kind === 'unbilled') {
+      return `${customerName(this.engine.graph, id)} (off contract)`;
     }
 
     if (kind === 'project') {

@@ -2,7 +2,7 @@
  * Fettle & Crane Managed IT's surplus (E11, 0.34.0 slice 2): the entries the
  * MSP can be dealt that its authored week never uses.
  *
- * Nineteen entries over two columns, and only two, because that is what this
+ * Twenty-one entries over two columns, and only two, because that is what this
  * shop's authored week actually uses: the MSP deals a morning pile and drips,
  * and its quota for every other column is nought to nought - no interruptions,
  * no walk-ups, no room posts, no incidents. An entry in a column the shop never
@@ -45,6 +45,12 @@
  * byte-identical. Buying it a place in the authored week is a content-tuning
  * job - more access and device weight, measured against the same gate - and it
  * is a slice of its own rather than a line in this one.
+ *
+ * TWENTY-ONE from 0.38.0, and the two new ones are in the surplus for exactly
+ * that reason rather than as a preference: the out-of-scope asks are the same
+ * kind of teaching content on the same knife-edge of a mix, and the same
+ * measurement (`mixAfforded(msp, systems_engineer, 20)`, still twenty) is what
+ * put them here. They are noted again beside the entries themselves.
  */
 
 import type { DayFragment } from '../pools';
@@ -68,7 +74,34 @@ export const MSP_SPARES: readonly DayFragment[] = [
   // of the lesson does not land.
   { inherited: ['ticket:pennington-practice-down'] },
 
-  // And the fourteen that arrive during the shift.
+  // And the sixteen that arrive during the shift, of which the first two are
+  // the out-of-scope asks (E9, 0.38.0) and are here for the same reason the
+  // Pennington teaching ticket above is: the MSP's authored week is at the edge
+  // of the blend its content can express, and a spare carries no home day, so
+  // the shipped week, its ramp, its load table and its work-kind mix are all
+  // byte-identical with these in the pool. `mixAfforded(msp, systems_engineer,
+  // 20)` is measured with them in and is still twenty of twenty.
+  //
+  // THEY ARE THE EARLIEST TWO MINUTES IN THE POOL, and that is content rather
+  // than spacing. Each of them can start a clock that has to land inside the
+  // same shift to be seen at all - the customer answers an estimate
+  // forty-five minutes later, and the customer who was obliged for nothing is
+  // back ninety minutes later, asking for more - so an ask dealt at ten past
+  // three is an ask whose second half arrives tomorrow morning. Half past nine -
+  // the earliest minute a drip may land at all - and five past eleven leave the
+  // whole of a day in front of both.
+  {
+    drip: [{
+      ticketId: 'ticket:fontaine-new-office-wifi',
+      minute: 9 * 60 + 30,
+    }],
+  },
+  {
+    drip: [{
+      ticketId: 'ticket:pennington-practice-migration',
+      minute: 11 * 60 + 5,
+    }],
+  },
   {
     drip: [{
       ticketId: 'ticket:msp-pool-fontaine-file-server-full',

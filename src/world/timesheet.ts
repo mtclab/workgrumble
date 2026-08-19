@@ -41,6 +41,7 @@ import type {
 } from '../engine-api';
 import { customerIdForTicketNodes, customerIdOfNode } from './customers';
 import { FIELDS, PLAYER_TIERS, type PlayerTier } from './fields';
+import { SCOPE_OUTCOMES } from './out-of-scope';
 import {
   dayForTick,
   shiftEndTick,
@@ -58,6 +59,25 @@ export const SEGMENT_KINDS = [
   'project',
   /** The employer's own kit, or a world with no customers in it. Not billable. */
   'internal',
+  /**
+   * Work done for a customer that no contract covers (E9, 0.38.0), by customer
+   * id. Real work, on nobody's invoice.
+   *
+   * A kind of its own rather than `internal`, and the difference is the whole
+   * point of it: internal minutes are the shop's own kit and they were never
+   * anybody's to bill, while these are an afternoon somebody at a client asked
+   * for and got. Keeping the customer's id on them is what lets the sheet say
+   * WHOSE free work it was, which is the sentence the mechanic exists to put in
+   * front of the player - and keeping them off the `customer` kind is what
+   * keeps them off that customer's invoice, where they have no business being:
+   * nobody agreed a price, so there is nothing to bill and nothing to dispute.
+   *
+   * They are COUNTED, unlike slack. The hour is on the sheet, in the day, at
+   * full length - it is simply not billable, so the day looks accounted for and
+   * the billable share does not move. That gap is the cost of obliging, said as
+   * a number rather than as a punishment.
+   */
+  'unbilled',
   /** The browser, a toy, the thing that is not work. Attributable to nobody. */
   'slack',
 ] as const;
@@ -321,8 +341,20 @@ export function attributionFor(
     }
 
     const customer = customerIdForTicketNodes(graph, resolve.nodesOfTicket(node.id));
-    return customer === null
-      ? { kind: 'internal', id: 'internal' }
+
+    if (customer === null) {
+      return { kind: 'internal', id: 'internal' };
+    }
+
+    // The out-of-scope favour (E9, 0.38.0): work OBLIGED outside the agreement
+    // is real work for a real customer that nobody is going to pay for, so it
+    // keeps the customer's id and loses the invoice. It is read off the ticket
+    // rather than remembered by the recorder, which is what makes the audit
+    // read (`segmentsFromLog`) land on the same bucket from the same evidence -
+    // and what makes it true of every act on that ticket rather than only of
+    // the minute somebody pressed the button.
+    return graph.getField(node.id, FIELDS.scopeOutcome) === SCOPE_OUTCOMES.obliged
+      ? { kind: 'unbilled', id: customer }
       : { kind: 'customer', id: customer };
   }
 
@@ -464,7 +496,12 @@ export function deriveTimesheet(
       kind: segment.ref.kind,
       id: segment.ref.id,
       minutes: (existing?.minutes ?? 0) + minutes,
-      billable: segment.ref.kind !== 'internal',
+      // Billable is what somebody agreed to pay for, which is two of the four
+      // counted kinds: a customer's own work and a project's. Internal never
+      // was, and `unbilled` is the one that had to be said out loud (E9,
+      // 0.38.0) - it is a customer's work with no agreement behind it, so it
+      // counts as time and not as money.
+      billable: segment.ref.kind === 'customer' || segment.ref.kind === 'project',
     });
     byDay.set(day, lines);
   }
@@ -714,7 +751,12 @@ export function timesheetSheet(
       .map((claim) => ({
         bucket: claim.bucket,
         label: labelForBucket(claim.bucket, state),
-        billable: !claim.bucket.startsWith('internal|'),
+        // The same two-of-four rule the derivation uses, asked of a bucket
+        // rather than of a segment: a line the player typed onto an internal or
+        // an unbilled account is still not a line anybody is invoiced for, and
+        // reading it off the kind rather than off one prefix is what stops the
+        // out-of-scope bucket quietly counting as money.
+        billable: billableBucket(claim.bucket),
         derived: 0,
       }));
 
@@ -780,6 +822,32 @@ function labelForBucket(bucket: string, state: Readonly<SheetState>): string {
   const parts = bucketParts(bucket);
 
   return parts === null ? bucket : state.labelOf(parts.kind, parts.id);
+}
+
+/** Whether a bucket is money: a customer's own work, or a project's. */
+function billableBucket(bucket: string): boolean {
+  const kind = bucketParts(bucket)?.kind;
+
+  return kind === 'customer' || kind === 'project';
+}
+
+/**
+ * The word at the end of a row: what this time IS, in the sheet's own three
+ * registers. Exported because the terminal and the window both print it, and
+ * two surfaces disagreeing about what an hour was is the bug this codebase
+ * keeps refusing to ship.
+ *
+ * `unbilled` is the one worth having (E9, 0.38.0). Printing it as `internal`
+ * would have been true about the money and a lie about the afternoon - it would
+ * read as the shop's own kit rather than as an hour a named client got for
+ * nothing, which is the whole thing the player is meant to see.
+ */
+export function lineFlag(line: Readonly<SheetLine>): string {
+  if (line.billable) {
+    return 'billable';
+  }
+
+  return bucketParts(line.bucket)?.kind === 'unbilled' ? 'unbilled' : 'internal';
 }
 
 /* -- what the ORG reads off it (0.30.0, slice 2) -------------------------- */
@@ -1036,7 +1104,7 @@ export function timesheetLines(
     }${column(line.label)}${
       pad(hoursLabel(line.derived), 9)
     }${pad(hoursLabel(line.claimed), 9)}${
-      line.billable ? 'billable' : 'internal'
+      lineFlag(line)
     }${line.detail === 'vague' ? '  (vague)' : ''}`),
     ...(day.unattributed > 0
       ? [`  ${pad('', 6)}${column('unattributed')}${

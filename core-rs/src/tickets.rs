@@ -112,6 +112,18 @@ pub struct TicketDef {
     /// ticket has to be able to say whose ticket it actually is. `None` is the
     /// ordinary case - somebody raising their own problem - and stamps nothing.
     pub beneficiary: Option<String>,
+    /// Whether this ticket is an OUT-OF-SCOPE ASK (E9, 0.38.0).
+    ///
+    /// A request whose whole content is work the customer's agreement does not
+    /// cover, which is a different animal from a fault: the three answers to it
+    /// (refuse and offer a quote, quote and wait, or just do it) are verbs of
+    /// their own, and every one of them has to be able to refuse a ticket that
+    /// is not one of these. Stamped onto the ticket node at spawn like `vip`
+    /// and for the same reason - the guard is then one fact of the ticket
+    /// rather than a content table the engine would have to be handed - and
+    /// `false` stamps nothing, so every ticket written before this carries
+    /// exactly the fields it always did.
+    pub scope_ask: bool,
     /// The definition exactly as it arrived, for `serialize`.
     pub raw: Json,
 }
@@ -231,6 +243,17 @@ impl TicketDef {
             Some(_) => return refuse!("Ticket beneficiary must be a non-empty string."),
         };
 
+        // The out-of-scope ask (E9, 0.38.0), optional and strictly boolean for
+        // the reason the VIP flag is: it is what the three scope verbs are
+        // guarded on, so a hand-edited save must not be able to write
+        // "scope_ask": "yes" and unlock a way of closing an ordinary fault
+        // without fixing it. Absent is every other ticket in the game.
+        let scope_ask = match object.get("scope_ask") {
+            None | Some(Json::Null) => false,
+            Some(Json::Bool(flag)) => *flag,
+            Some(_) => return refuse!("Ticket scope_ask must be a boolean."),
+        };
+
         Ok(Self {
             id: id.to_owned(),
             reporter: reporter.to_owned(),
@@ -240,6 +263,7 @@ impl TicketDef {
             sla_tier,
             vip,
             beneficiary,
+            scope_ask,
             raw: value.clone(),
         })
     }

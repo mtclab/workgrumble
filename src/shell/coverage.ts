@@ -3963,14 +3963,26 @@ export type CoverageId = (typeof ENTRIES)[number]['id'];
 export const COVERAGE: readonly CoverageEntry[] = ENTRIES;
 
 /**
- * Registered verbs no control reaches, and what reaches them instead.
+ * Registered verbs the WALK cannot reach, and what reaches them instead.
  *
- * Every one of these is dispatched by the day loop or by the world's own
- * timetable, so there is nothing for a player to click - but a registry entry
+ * Two classes, and the second one is worth naming because it is not the one
+ * this table was written for.
+ *
+ * MOST of these are dispatched by the day loop or by the world's own timetable,
+ * so there is nothing for a player to click at all - but a registry entry
  * nobody can account for is exactly how a dead verb survives a review, which is
- * why they are written down here rather than quietly skipped. `coverage.test.ts`
- * refuses an id that is in both this table and the list above, and refuses one
- * that is in neither.
+ * why they are written down here rather than quietly skipped.
+ *
+ * The REST have a control and it is on content the shipped week does not deal:
+ * a verb that lives on a SURPLUS ticket is offered the moment that ticket is
+ * drawn and never in week one, so a walk of the shipped week cannot press it
+ * however thorough it is. That is the same distinction `SCENES_WITHOUT_A_ROUTE`
+ * records for the redundancy conversation - a rule rather than an omission -
+ * and every entry of that class here names both the control and the offline
+ * gate that drives the verb end to end instead.
+ *
+ * `coverage.test.ts` refuses an id that is in both this table and the list
+ * above, and refuses one that is in neither.
  */
 export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
   [DAY_ACTIONS.endShift]: 'Seventeen hundred, dispatched by the day loop '
@@ -4051,6 +4063,41 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'ever shown as a number: what the player meets is the ABSENCE of a bug - '
     + 'a second complaint that does not re-date the mail already in the inbox. '
     + 'Driven end to end over two mornings in `shell/raci-teeth.test.ts`.',
+  // The out-of-scope ask's five (E9, 0.38.0), and the first three are the
+  // second class this table records: they DO have controls - four options in
+  // the chat window, on the two customers who ask for work nobody signed for -
+  // and those options exist only while one of those asks is in the world. The
+  // asks are SURPLUS (`world/spares/msp.ts`), because that is the only
+  // placement the engineer's work-blend at this shop affords, so the shipped
+  // week never deals one and a walk of it cannot press any of them however
+  // thorough it is. All three are driven end to end - through the real driver,
+  // the real registry and the real tickets - in `shell/out-of-scope.test.ts`,
+  // which is also where the three-way is proven to be a real three-way.
+  [HELPDESK_ACTIONS.scopeRefuse]: 'Pointing at the agreement and offering to '
+    + 'price the work instead - the industry\'s own script, and the answer '
+    + 'that costs nothing and earns nothing. Reached from the chat window '
+    + '(chat-option-<n>) on an out-of-scope ask, which is surplus content the '
+    + 'shipped week does not deal.',
+  [HELPDESK_ACTIONS.scopeQuote]: 'Writing the estimate and parking the ticket '
+    + 'on the customer while they decide - the only one of the three answers '
+    + 'that does not end the conversation today, and the one that costs the '
+    + 'shift `SCOPE_QUOTE_MINUTES`. Same control and same reason it is not on '
+    + 'the walk; the wait, the customer\'s answer and both of its endings are '
+    + 'driven in `shell/out-of-scope.test.ts`.',
+  [HELPDESK_ACTIONS.scopeDoWork]: 'Doing the work: the favour, when nobody has '
+    + 'approved anything, and the delivery when somebody has. One verb because '
+    + 'it is one act, and the ticket already knows which it is. The favour is '
+    + 'what stamps the unbilled minutes and schedules the customer\'s return, '
+    + 'so it is the half the offline gate spends most of its assertions on.',
+  [WORLD_ACTIONS.scopeApproved]: 'The customer signing the estimate. Nobody '
+    + 'presses it: the day driver settles it forty-five minutes after the '
+    + 'quote went over, off a content fact about that ask rather than a roll, '
+    + 'and what the player meets is the notice, the ticket coming off hold and '
+    + 'a job that is now chargeable.',
+  [WORLD_ACTIONS.scopeDeclined]: 'And the customer deciding against it, on the '
+    + 'same rail and from the same table. It closes the ticket with nothing '
+    + 'owed by anybody - the estimate was the afternoon, and the afternoon is '
+    + 'what quoting costs when the answer is no.',
   [DAY_ACTIONS.reviewMatrixRead]: 'Somebody scoring the selection pool in the '
     + 'minute before the conversation, in a week where a round is being '
     + 'decided. The day loop dispatches it; the player has been reading the '

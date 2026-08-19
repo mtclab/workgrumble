@@ -461,6 +461,45 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
             // Who the ticket is FOR, where that is somebody other than the
             // person who filed it (the shadow-VIP split). A name, printed.
             assert_optional(fields, "beneficiary", is_string, "a string")?;
+            // The out-of-scope ask (E9, 0.38.0) and the three answers to it.
+            //
+            // The flag is strictly boolean for the reason `vip` is: it is what
+            // the scope verbs are guarded on, so a save must not be able to
+            // smuggle one in as a string. The outcome is a closed enum for the
+            // stronger reason - four of its six words CLOSE the ticket, and a
+            // seventh invented in a text editor would be a ticket resolved by
+            // typing - and the two stamps beside it are minutes, because the
+            // customer's answer and the customer's return are both measured
+            // from them.
+            assert_optional(fields, "scope_ask", is_boolean, "a boolean")?;
+            assert_optional(
+                fields,
+                "scope_outcome",
+                |value| {
+                    matches!(
+                        value.as_str(),
+                        Some("refused")
+                            | Some("quoted")
+                            | Some("approved")
+                            | Some("declined")
+                            | Some("obliged")
+                            | Some("delivered")
+                    )
+                },
+                "one of the six out-of-scope outcomes",
+            )?;
+            assert_optional(
+                fields,
+                "scope_quoted_at",
+                is_count,
+                "a whole minute, at or above zero",
+            )?;
+            assert_optional(
+                fields,
+                "scope_obliged_at",
+                is_count,
+                "a whole minute, at or above zero",
+            )?;
 
             if !optional(fields, "state").is_some_and(is_ticket_state) {
                 return refuse!("Ticket nodes require a valid \"state\" field.");
@@ -728,6 +767,20 @@ mod tests {
         // And who it is for, which is a line somebody reads.
         assert!(validate_node(&bookkeeping(("beneficiary", json!(7)))).is_err());
         assert!(validate_node(&bookkeeping(("beneficiary", json!("Miriam Thale")))).is_ok());
+
+        // The out-of-scope ask (E9, 0.38.0): the flag the three answers to one
+        // are guarded on, and the outcome four of whose six words CLOSE the
+        // ticket - so a seventh invented in a text editor would be a ticket
+        // resolved by typing, and "scope_ask": "yes" would be a way of shutting
+        // an ordinary fault by pointing at a contract.
+        assert!(validate_node(&bookkeeping(("scope_ask", json!("yes")))).is_err());
+        assert!(validate_node(&bookkeeping(("scope_ask", json!(true)))).is_ok());
+        assert!(validate_node(&bookkeeping(("scope_outcome", json!("obliged")))).is_ok());
+        assert!(validate_node(&bookkeeping(("scope_outcome", json!("settled")))).is_err());
+        assert!(validate_node(&bookkeeping(("scope_quoted_at", json!(-1)))).is_err());
+        assert!(validate_node(&bookkeeping(("scope_quoted_at", json!(600)))).is_ok());
+        assert!(validate_node(&bookkeeping(("scope_obliged_at", json!(1.5)))).is_err());
+        assert!(validate_node(&bookkeeping(("scope_obliged_at", json!(600)))).is_ok());
     }
 
     /// There are two IT teams on a co-managed account and there is no third.

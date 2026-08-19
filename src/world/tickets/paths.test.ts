@@ -399,6 +399,15 @@ describe('shipped tickets', () => {
       'ticket:arden-fw-handover',
       'ticket:arden-fw-scream-brenmark',
       'ticket:arden-fw-scream-scanners',
+      // The out-of-scope asks (E9, 0.38.0): the two requests that are not
+      // faults, and the bigger sequel each of them earns from a player who did
+      // it for nothing. Each ask is followed immediately by its own sequel, so
+      // the pairing is readable in the roster rather than only in the table
+      // that settles them.
+      'ticket:fontaine-new-office-wifi',
+      'ticket:fontaine-new-office-cabling',
+      'ticket:pennington-practice-migration',
+      'ticket:pennington-second-migration',
       // And the MSP's pool (E11, 0.34.0 slice 2): the surplus each customer
       // scope can be dealt on a drawn week - the two helpdesk shops' walls, the
       // monitoring-only clinic's escalate-only alerts, the co-managed plant's

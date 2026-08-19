@@ -1538,6 +1538,85 @@ export const KB_ARTICLES: readonly KbArticle[] = [
     see_also: ['kb/co-managed-coordination', 'kb/co-managed-raci'],
   },
   {
+    id: 'kb/out-of-scope-quote',
+    title: 'Out of scope: the sentence, and the sentence after it',
+    summary: 'A request the agreement does not cover is not a refusal and not '
+      + 'a favour. It is a quote - and the article is mostly about what '
+      + 'happens on the accounts where nobody wrote one.',
+    state: 'published',
+    issue: 'Somebody at a customer asks the desk for a piece of work their '
+      + 'agreement does not include - a floor build, a migration, a move, an '
+      + 'afternoon of somebody\'s time - and asks it in the ordinary way, as a '
+      + 'ticket, in the middle of a queue of faults. Nothing is broken. There '
+      + 'is nothing to fix and no reason to say no, and the request will be '
+      + 'answered one way or another before the morning is out.',
+    environment: 'Every contracted account, at every tier. It bites hardest on '
+      + 'the ones whose scope is narrowest - a helpdesk agreement is people and '
+      + 'the machines they sit at, so everything that is not a person or a desk '
+      + 'is an ask - and it turns up at co-managed accounts as work that is in '
+      + 'neither team\'s column because it is a project.',
+    resolution: [
+      'Say that it falls outside the agreement, in one sentence, without '
+        + 'apologising for the agreement. It is the document both sides signed '
+        + 'and it is the reason they know what they are paying for.',
+      'Offer to prepare an estimate in the same breath. This is the whole of '
+        + 'the script and the half that is routinely dropped: "that is outside '
+        + 'your agreement" on its own is a door closing, and "would you like me '
+        + 'to price it" is the same sentence with a way through it.',
+      'If they want the estimate, write it and send it, and PARK THE TICKET ON '
+        + 'THEM while they decide. The clock is theirs from that minute, and '
+        + 'the ticket is not yours again until they answer.',
+      'Get the approval before starting. A signature, a reply, a purchase '
+        + 'order - anything that exists outside your own memory of the '
+        + 'conversation. Work started on a nod is work argued about at '
+        + 'invoicing.',
+      'If they decline, close it. Nothing is owed by anybody and the estimate '
+        + 'was not wasted: an account that has been shown a number knows what '
+        + 'the work costs, which is the conversation that sells the tier above '
+        + 'the one they are on.',
+      'And if you decide to simply do it anyway - which is a real answer and '
+        + 'is sometimes the right one - write down that you did. Unrecorded '
+        + 'goodwill is indistinguishable from an entitlement six weeks later.',
+    ],
+    cause: [
+      'The request is not a chancer and it is important to start there. From '
+      + 'the customer\'s chair the MSP is "IT", and the boundary between what '
+      + 'is included and what is extra lives in a document they read once, '
+      + 'during a procurement, eighteen months ago. Everything they have ever '
+      + 'asked for that was included arrived without an invoice, so the '
+      + 'reasonable inference from a lifetime of tickets is that this one is '
+      + 'included too. The scope is a fact about the paperwork, not about their '
+      + 'manners.',
+      'What makes the favour expensive is not the afternoon. It is that the '
+      + 'afternoon becomes the precedent, and a precedent is a contract nobody '
+      + 'signed and nobody can renegotiate. The industry definition of scope '
+      + 'creep is exactly this and it names the mechanism rather than the '
+      + 'villain: the tiny request done once, outside the agreement, that '
+      + 'balloons into many requests nobody is compensated for. The second ask '
+      + 'is always larger than the first, because the first one established '
+      + 'the price.',
+      'It shows up on the sheet before it shows up anywhere else, and that is '
+      + 'the number worth watching. Work done off contract is real work with '
+      + 'nobody to bill it to: the hours are on your timesheet, the day looks '
+      + 'full, and the billable share of it does not move. A desk with a '
+      + 'reputation for helpfulness and a utilisation figure nobody can explain '
+      + 'is usually a desk that has been saying yes to this for a year.',
+      'The quote is also the upgrade conversation, which is the part the '
+      + 'trade press is blunt about: consistent overruns of what a tier '
+      + 'includes are an opportunity to move the account up a tier, not '
+      + 'something to absorb quietly. An account that keeps asking for onsite '
+      + 'work on a remote-only agreement is telling you what it actually needs, '
+      + 'and the only way that conversation ever happens is if somebody puts a '
+      + 'number in front of them.',
+      'None of which makes the refusal the correct answer and the favour the '
+      + 'wrong one. The script exists because it works, the estimate costs an '
+      + 'hour that may buy nothing, and there are accounts and mornings where '
+      + 'doing the thing is worth more than being right about it. What is not '
+      + 'available is doing it and expecting nothing to follow.',
+    ],
+    see_also: ['kb/msp-scope-escalation', 'kb/co-managed-raci'],
+  },
+  {
     id: 'kb/xray-sensor-not-detected',
     title: 'The intraoral X-ray sensor says "not detected"',
     summary: 'A chair-side sensor that stops being detected has usually dropped '

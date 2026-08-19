@@ -106,6 +106,14 @@ const PAPERWORK: ReadonlySet<string> = new Set([
   'ticket', 'interruption', 'request', 'reporter', 'change', 'risk_acceptance',
   'invoice', 'timesheet', 'career', 'consumable', 'day', 'boss', 'world',
   'meters', 'presence', 'security',
+  // The out-of-scope answers (E9, 0.38.0), and they belong here for a reason
+  // that is not "they are admin". Two of the three are plainly paperwork - a
+  // refusal and an estimate - and the third says only that the work was done,
+  // never what it was. What KIND of work an ask is is decided by what it would
+  // touch: a floor of desks at a law firm is device work and a data migration
+  // off a practice server is server work, and both of those are the ticket's
+  // own estate, which is where these fall through to.
+  'scope',
 ]);
 
 /** The class of one node of the estate, or nothing this module can class. */

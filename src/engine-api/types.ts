@@ -280,6 +280,17 @@ export interface TicketDef {
    */
   beneficiary?: string;
   /**
+   * Whether this ticket is an OUT-OF-SCOPE ASK (E9, 0.38.0) - a request for
+   * work the customer's agreement does not cover - stamped onto the ticket node
+   * at spawn the way `vip` is.
+   *
+   * It is what the three answers to such an ask are guarded on, which is why it
+   * is a fact of the ticket rather than a table: a verb that closed a ticket by
+   * pointing at a contract has to be able to refuse the printer fault next to
+   * it. Absent is every other ticket in the game.
+   */
+  scope_ask?: boolean;
+  /**
    * What closing it is worth, and it is worth REPUTATION only.
    *
    * There used to be a `money` beside it, from 5 to 30 per ticket, and nothing

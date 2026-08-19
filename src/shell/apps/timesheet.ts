@@ -2,6 +2,7 @@ import { TIMESHEET_SUBMITTED_REASON } from '../../world/actions';
 import { calendarDate } from '../../world/hours';
 import {
   hoursLabel,
+  lineFlag,
   lineHandle,
   type SheetDay,
   type SheetLine,
@@ -569,7 +570,7 @@ export const TIMESHEET_APP: AppDef = {
 
           setText(handle, item.handle);
           setText(label, item.line.label);
-          setText(flag, item.line.billable ? 'billable' : 'internal');
+          setText(flag, lineFlag(item.line));
           worked.dataset.testid = `timesheet-worked-${item.handle}`;
           setText(worked, hoursLabel(item.line.derived));
 
