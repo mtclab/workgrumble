@@ -399,7 +399,7 @@ function tickField(node: ReadOnlyGraphNode, field: string): number | null {
 }
 
 /** Whether a stamped minute falls inside a given day. */
-function stampedIn(
+export function stampedIn(
   ticket: ReadOnlyGraphNode,
   field: string,
   day: number,

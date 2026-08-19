@@ -701,6 +701,14 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
         field: FIELDS.ackMissed,
         value: { const: true },
       },
+      // And the minute beside the fact (0.38.0): the scorecard's per-day
+      // row reads the tick, the meters keep reading the latch.
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.ackMissedAt,
+        value: { now: true },
+      },
     ],
   },
   {

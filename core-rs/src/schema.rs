@@ -442,6 +442,12 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
             assert_optional(fields, "ack_missed", is_boolean, "a boolean")?;
             assert_optional(
                 fields,
+                "ack_missed_at",
+                is_count,
+                "a tick, at or above zero",
+            )?;
+            assert_optional(
+                fields,
                 "cadence_missed",
                 is_count,
                 "a whole number of windows, at or above zero",

@@ -24,6 +24,7 @@ import type { FieldValue } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { cadenceMissesOn } from '../world/cadence';
 import { weekPerformance, weekScorecard, weekWorkThrough } from '../world/week';
+import { scorecardCounts } from './apps/scorecard';
 import { priorityFor } from '../world/priority';
 import { COMPANY_IDS } from '../world/company';
 import { FIELDS } from '../world/fields';
@@ -324,5 +325,61 @@ describe('the review reads the stamps off the real board (0.37.1 third round)', 
       outcome: null,
     } as never);
     expect(card.contractMissed).toBe(work.contractMissed);
+  });
+});
+
+describe('the day knows which contract clocks it let run out (0.38.0)', () => {
+  it('counts the ack that ran out today, on the day it ran out', () => {
+    const rigged = rig();
+    rigged.driver.startShift();
+    // Past the silver untriaged ack target, nothing touched.
+    runMinutes(rigged, 220);
+
+    const counts = scorecardCounts(
+      {
+        graph: rigged.session.engine.graph,
+        clock: { now: () => rigged.session.engine.now(), onTick: () => () => {} },
+      },
+      1,
+    );
+    // The stamp carries its minute now, and the minute is today's: revert
+    // the ack_missed_at write in ticket.record_ack_miss and this is the
+    // assertion that goes red.
+    expect(counts.contractMisses).toBeGreaterThanOrEqual(1);
+
+    const node = rigged.session.engine.graph.getNode(TARGET);
+    expect(typeof node?.fields[FIELDS.ackMissedAt]).toBe('number');
+  });
+
+  it('counts nothing at the probation shop, ever', () => {
+    const inHouse = createWorldSession();
+    const driver = new DayDriver(
+      inHouse.engine,
+      COMPANY_IDS.player,
+      inHouse.seed,
+      {
+        onDayBoundary: () => {},
+        openSlackApps: () => [],
+        focusedSlackApp: () => null,
+      },
+      undefined,
+      inHouse.week,
+      inHouse.channels,
+    );
+    driver.startShift();
+    driver.setSpeed(1);
+
+    for (let minute = 0; minute < 300 && driver.state() === 'shift'; minute += 1) {
+      driver.step(TICK_INTERVAL_MS);
+    }
+
+    const counts = scorecardCounts(
+      {
+        graph: inHouse.engine.graph,
+        clock: { now: () => inHouse.engine.now(), onTick: () => () => {} },
+      },
+      1,
+    );
+    expect(counts.contractMisses).toBe(0);
   });
 });

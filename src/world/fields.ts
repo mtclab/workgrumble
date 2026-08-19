@@ -1887,6 +1887,13 @@ export const FIELDS = {
    */
   ackMissed: 'ack_missed',
   /**
+   * WHEN the acknowledgment clock ran out untouched (0.38.0), stamped in the
+   * same apply as the latch above. The latch answers the meters, which only
+   * ever ask whether; the scorecard asks WHICH DAY, and a bool cannot say -
+   * the D4 visibility gap #64 named. Write-once by the same guard.
+   */
+  ackMissedAt: 'ack_missed_at',
+  /**
    * How many update-cadence windows this ticket has let pass in silence
    * (E9, 0.37.0). Counted up by the contract settler, never down: an update
    * resets the WINDOW (the anchor above moves), not the record of the

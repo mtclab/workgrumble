@@ -9,6 +9,7 @@ import {
   runCommand,
   runSimMinutes,
   workUntilMinute,
+  SHIFT_MINUTES,
 } from './helpers';
 
 /**
@@ -384,4 +385,45 @@ test('the network toolbox diagnoses the downed portal over ssh (E6, 0.16.0)', as
   await runCommand(page, 'systemctl restart fcportal');
   await runCommand(page, 'curl -I http://localhost');
   await expect(output).toContainText('HTTP/2 200');
+});
+
+/**
+ * The MSP weekend carries the contract row (D4, 0.38.0) - the box-level
+ * assert #64's close-out named as owed. Five days of a mostly-ignored MSP
+ * queue is guaranteed silence on somebody's contract, so the weekend screen
+ * must show the row and fold it into the attainment fraction it prints -
+ * a screen whose mark its own lines cannot explain was the finding.
+ */
+test('the weekend explains the mark: contract misses on the screen', async ({
+  page,
+}) => {
+  test.setTimeout(900_000);
+  await arriveAtMsp(page);
+
+  for (let day = 1; day < 5; day += 1) {
+    await runSimMinutes(page, SHIFT_MINUTES + 90);
+    await expect(page.getByTestId('day-state')).toHaveText('Day end');
+    await page.getByTestId('scorecard-clock-off').click();
+    await expect(page.getByTestId('brief-heading'))
+      .toContainText(`Day ${String(day + 1)}`);
+    await page.getByTestId('brief-start-shift').click();
+    await page.getByTestId('close-brief').click();
+  }
+
+  await runSimMinutes(page, SHIFT_MINUTES + 90);
+  await expect(page.getByTestId('day-state')).toHaveText('Day end');
+  await page.getByTestId('scorecard-clock-off').click();
+
+  // The row exists where contracts do, and the fraction it feeds is the one
+  // on the screen: numerator = arrived - deadlines missed - contract misses.
+  const missed = Number(
+    await page.getByTestId('weekend-contract-missed').textContent(),
+  );
+  expect(missed).toBeGreaterThan(0);
+
+  const arrived = Number(await page.getByTestId('weekend-arrived').textContent());
+  const breached = Number(await page.getByTestId('weekend-breached').textContent());
+  await expect(page.getByTestId('weekend-attainment')).toContainText(
+    `${String(arrived - breached - missed)} of ${String(arrived)}`,
+  );
 });

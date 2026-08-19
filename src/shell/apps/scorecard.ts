@@ -10,8 +10,10 @@ import {
   type PaySlip,
   ticketsArrivedOn,
   ticketsClassifiedOn,
+  stampedIn,
 } from '../../world/day';
 import { conductSummary } from '../../world/conduct';
+import { cadenceMissesOn } from '../../world/cadence';
 import { FIELDS } from '../../world/fields';
 import { STARTING_REPUTATION } from '../../world/meters';
 import { cellLabel } from '../../world/priority';
@@ -161,10 +163,35 @@ function lateResponses(
   ).length;
 }
 
-/** What a day is answerable for, and the two counts scored over it. */
+/**
+ * The contract clocks the day let run out (D4, 0.38.0) - the per-day half
+ * of the visibility #64 named as backlog. Acks read their own stamp minute;
+ * silence reads the counted-to watermark, which is the LAST minute a charge
+ * was written up to - so this row counts tickets whose silence was charged
+ * today, which is the day-true fact the record can actually answer. An
+ * exact per-day windows-missed figure would need a charge log nobody else
+ * reads, and a scorecard row is not the reason to carry one.
+ */
+function contractMissesOn(
+  nodes: readonly ReadOnlyGraphNode[],
+  day: number,
+): number {
+  return nodes.filter((node) => {
+    const ack = node.fields[FIELDS.ackMissedAt];
+    const charged = node.fields[FIELDS.cadenceCountedTo];
+
+    return (typeof ack === 'number' && stampedIn(node, FIELDS.ackMissedAt, day))
+      || (typeof charged === 'number'
+        && cadenceMissesOn(node) > 0
+        && stampedIn(node, FIELDS.cadenceCountedTo, day));
+  }).length;
+}
+
+/** What a day is answerable for, and the counts scored over it. */
 export interface ScorecardCounts {
   readonly cohort: readonly ReadOnlyGraphNode[];
   readonly lateResponses: number;
+  readonly contractMisses: number;
   readonly misclassified: readonly Misclassified[];
 }
 
@@ -192,6 +219,9 @@ export function scorecardCounts(
   return {
     cohort,
     lateResponses: lateResponses(cohort, asOf),
+    // Whole board, not the arrival cohort: a contract clock charged today
+    // may belong to Monday's ticket, and today is still the day it ran out.
+    contractMisses: contractMissesOn(tickets, day),
     // Scoped to the triage FILED in this day rather than to the tickets that
     // arrived in it. A cell is mutable while a ticket is open, so reading the
     // arrival cohort's current cells reported Monday's misreading again on
@@ -267,6 +297,16 @@ export const SCORECARD_APP: AppDef = {
         .textContent = String(ledger.breached);
       definitionRow(list, 'Response SLAs missed', 'scorecard-late-response')
         .textContent = String(counts.lateResponses);
+
+      // Only where contracts exist: absent in-house, so every shipped
+      // in-house scorecard renders byte-identically.
+      if (counts.contractMisses > 0) {
+        definitionRow(
+          list,
+          'Contract clocks charged today',
+          'scorecard-contract-misses',
+        ).textContent = String(counts.contractMisses);
+      }
       definitionRow(list, 'Still open at 17:00', 'scorecard-open')
         .textContent = String(ledger.stillOpen);
       definitionRow(list, 'Stress carried', 'scorecard-stress')
