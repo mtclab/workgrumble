@@ -923,6 +923,23 @@ export const FIELDS = {
   customerServiceScope: 'service_scope',
   /** A customer node's SLA tier (0.8.0): `bronze`, `silver`, or `gold`. */
   customerSlaTier: 'sla_tier',
+  /**
+   * The CHANGE FREEZE a customer declares (E9, 0.39.0): `month_end`, or absent
+   * for the customers who declare none.
+   *
+   * A fact about the customer's BUSINESS rather than about their contract,
+   * which is why it sits beside the vertical and not inside the scope: a firm
+   * whose month runs on a ledger closing shuts the door on non-urgent change
+   * while it closes, and the provider works to that calendar whatever the
+   * contract says it may touch. Read defensively (`changeFreezeOf`) and closed
+   * to one declared kind, so a hand-edited save cannot invent a freeze shape
+   * the engine has no window arithmetic for.
+   *
+   * It can only ever DEFER. Nothing downstream of it widens a scope: the
+   * freeze moves the window an approved change may be done in, and a change
+   * the contract refuses is refused before the calendar is ever asked.
+   */
+  customerChangeFreeze: 'change_freeze',
   /* -- the co-managed RACI (E9, 0.37.0) ----------------------------------- */
   /**
    * Which of the two IT teams the RACI map hands THIS box to at a co-managed
@@ -1043,6 +1060,18 @@ export const FIELDS = {
   crWindowClose: 'cr_window_close',
   /** Which customer the request is for, by id, for the queue and the listing. */
   crCustomer: 'cr_customer',
+  /**
+   * The date a MONTH-END FREEZE deferred this request's window to (E9, 0.39.0),
+   * as the estate writes dates - the first of the new month. Absent on every
+   * request nobody's close held up, which is nearly all of them.
+   *
+   * Stamped at file time beside the window it explains, and for the same
+   * reason the window is: the deferral is a decision the paperwork carries, so
+   * a refusal three days later can say WHY the slot is where it is without
+   * re-deriving a calendar the request has already been judged against - and a
+   * save reloads to the same sentence.
+   */
+  crFreezeThaw: 'cr_freeze_thaw',
   /**
    * Which VARIANT of change request this node is (E8, 0.24.0). Absent on the
    * 0.10.0 scope change request (the default, the maintenance-window kind);
@@ -2433,6 +2462,42 @@ export function serviceScopeOf(value: unknown): ServiceScope | null {
     || value === SERVICE_SCOPES.fullyManaged
     ? value
     : null;
+}
+
+/**
+ * The CHANGE FREEZE a customer declares (E9, 0.39.0).
+ *
+ * One value today, and it is an enum rather than a flag because the shape of a
+ * freeze is what the window arithmetic is FOR: a month-end freeze is the last
+ * days of a calendar month and thaws on the first of the next, and a
+ * year-end or a trading-season one would be a different span off a different
+ * anchor. A boolean would have to be read as "the month-end one" by every
+ * caller, which is a second, unwritten enum.
+ */
+export const CHANGE_FREEZES = {
+  /**
+   * The accounting close: the last days of each calendar month, while the
+   * ledger for that month is being shut. Non-urgent change waits for the
+   * first.
+   */
+  monthEnd: 'month_end',
+} as const;
+
+export type ChangeFreeze = (typeof CHANGE_FREEZES)[keyof typeof CHANGE_FREEZES];
+
+export const CHANGE_FREEZE_LABELS: Readonly<Record<ChangeFreeze, string>> = {
+  [CHANGE_FREEZES.monthEnd]: 'Month-end change freeze',
+};
+
+/**
+ * A change freeze read defensively off a field: absent, or anything that is
+ * not a declared freeze, reads as `null` - this customer declares none - the
+ * same discipline `serviceScopeOf` and `raciOwnerOf` keep. Nonsense in the
+ * field cannot invent a freeze, and a freeze cannot widen anything anyway:
+ * the worst a forged one could do is make the game harder on itself.
+ */
+export function changeFreezeOf(value: unknown): ChangeFreeze | null {
+  return value === CHANGE_FREEZES.monthEnd ? value : null;
 }
 
 /**

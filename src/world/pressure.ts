@@ -49,7 +49,7 @@
  * gate forbids it and legibility forbids it twice.
  */
 
-import { calendarDate } from './hours';
+import { arcCalendarDay, calendarDate, DAYS_PER_CALENDAR_WEEK } from './hours';
 import { matrixSummary, type PoolStanding } from './pool';
 import { WEEK_DAYS } from './week';
 
@@ -500,8 +500,15 @@ export const QUIET_WEEKS_AFTER = 2;
  */
 export const NOTICE_DAYS_MINIMUM = 30;
 
-/** Calendar days in a week. The working week is five; the calendar is seven. */
-export const DAYS_PER_CALENDAR_WEEK = 7;
+/**
+ * Calendar days in a week. The working week is five; the calendar is seven.
+ *
+ * It moved down to `hours.ts` in 0.39.0, where the wall calendar lives and
+ * where the month-end freeze also has to ask it, and it is re-exported from
+ * here because this is the module the arc's own readers ask about the arc.
+ * One constant, two doors, no second answer.
+ */
+export { DAYS_PER_CALENDAR_WEEK };
 
 /**
  * The mail the two announcement beats arrive as.
@@ -988,13 +995,14 @@ export function pressureSummary(
  * days in front of it. A career has a longer calendar than that, and a notice
  * without a date on it is not a notice, so the arc week is folded back into
  * the same anchor: Monday 7 September 1998, plus seven days a week.
+ *
+ * The fold itself is `arcCalendarDay` (0.39.0), because the freeze asks the
+ * same question and wants the NUMBER rather than the string - it has to know
+ * how far the first of the month is, which a date somebody has already
+ * formatted cannot say.
  */
 export function arcDate(week: number, day: number): string {
-  if (!Number.isSafeInteger(week) || week < 1) {
-    throw new TypeError('A week of a career arc is numbered from 1.');
-  }
-
-  return calendarDate((week - 1) * DAYS_PER_CALENDAR_WEEK + day);
+  return calendarDate(arcCalendarDay(week, day));
 }
 
 /** The Friday the conversation happens on, as a date somebody can diarise. */

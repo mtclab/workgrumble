@@ -301,6 +301,18 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
                     )
                 },
                 "a bronze, silver, or gold SLA tier",
+            )?;
+            // The change freeze the customer declares (0.39.0): a closed enum
+            // for the same reason the scope above is one. It can only ever
+            // defer work, never authorise it, so a forged value costs nobody
+            // anything - but a shape the window arithmetic has never heard of
+            // is still a shape no surface can print, and the load is where
+            // this world says so.
+            assert_optional(
+                fields,
+                "change_freeze",
+                |value| matches!(value.as_str(), Some("month_end")),
+                "a declared change freeze",
             )
         }
         "change_request" => {
@@ -337,7 +349,10 @@ fn assert_known_fields(kind: &str, fields: &Fields) -> EngineResult<()> {
             assert_optional(fields, "cr_submitted_at", is_number, "a number")?;
             assert_optional(fields, "cr_review_until", is_number, "a number")?;
             assert_optional(fields, "cr_window_open", is_number, "a number")?;
-            assert_optional(fields, "cr_window_close", is_number, "a number")
+            assert_optional(fields, "cr_window_close", is_number, "a number")?;
+            // The date a month-end freeze pushed the window to (0.39.0), as
+            // the estate writes dates - a string like the reason beside it.
+            assert_optional(fields, "cr_freeze_thaw", is_string, "a string")
         }
         "coordination" => {
             // A coordination notice (0.11.0). The target it clears, the customer
@@ -834,6 +849,42 @@ mod tests {
             "id": "machine:penn-ws-01",
             "kind": "machine",
             "fields": { "hostname": "PENN-WS-01" },
+        }))
+        .is_ok());
+    }
+
+    /// A customer declares the month-end freeze or declares nothing.
+    ///
+    /// The freeze only ever DEFERS - it cannot hand anybody a permission - so
+    /// a forged value is not a way in. What it is, is a value every surface
+    /// would have to guess at: the window arithmetic knows the shape of a
+    /// month-end close and knows no other, and a save carrying "quarter_end"
+    /// would be a customer whose freeze nothing could compute or print.
+    #[test]
+    fn refuses_a_change_freeze_nobody_declared() {
+        let customer = |freeze: Json| -> Json {
+            json!({
+                "id": "customer:fontaine",
+                "kind": "customer",
+                "fields": { "name": "FONTAINE-LAW", "change_freeze": freeze },
+            })
+        };
+
+        assert!(validate_node(&customer(json!("month_end"))).is_ok());
+
+        let error = validate_node(&customer(json!("quarter_end")))
+            .expect_err("only the month-end close is declared");
+        assert_eq!(
+            error.message(),
+            "Field \"change_freeze\" must be a declared change freeze."
+        );
+
+        assert!(validate_node(&customer(json!(true))).is_err());
+        // Absent is the ordinary case: most customers declare no freeze.
+        assert!(validate_node(&json!({
+            "id": "customer:elmwood",
+            "kind": "customer",
+            "fields": { "name": "ELMWOOD-DENTAL" },
         }))
         .is_ok());
     }

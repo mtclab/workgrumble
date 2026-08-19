@@ -112,12 +112,63 @@ export const WEEK_STARTS_ON = Object.freeze({
   dayOfMonth: 7,
 });
 
+/**
+ * Calendar days in a week. The working week is five; the calendar is seven.
+ *
+ * It lives HERE rather than beside the arc that first needed it (0.39.0): a
+ * career's position is turned into a wall date by two callers now - the
+ * redundancy notice that has to be over a statutory floor, and the month-end
+ * change freeze that has to know which side of the first of the month a
+ * Wednesday is on - and two copies of "a week is seven days" is two calendars
+ * waiting to disagree about what month it is. `pressure.ts` re-exports it, so
+ * the arc's own readers still ask the arc.
+ */
+export const DAYS_PER_CALENDAR_WEEK = 7;
+
+/**
+ * The day of the WHOLE CAREER a given day of a given arc week is, counting
+ * from 1 - the arithmetic that folds the week the player is on back into the
+ * one anchor.
+ *
+ * The world's clock restarts every week (each week is its own session and its
+ * own graph), so `dayForTick` only ever answers one to five and the wall
+ * calendar above only ever knows the five days in front of it. Anything that
+ * has to know the real date - a notice, a month end - has to add the weeks
+ * back on, and this is where that is written down once.
+ */
+export function arcCalendarDay(week: number, day: number): number {
+  if (!Number.isSafeInteger(week) || week < 1) {
+    throw new TypeError('A week of a career arc is numbered from 1.');
+  }
+
+  requireDay(day);
+
+  return (week - 1) * DAYS_PER_CALENDAR_WEEK + day;
+}
+
 function twoDigits(value: number): string {
   return String(value).padStart(2, '0');
 }
 
-/** The date a simulated day falls on, as this estate writes dates. */
-export function calendarDate(day: number): string {
+/**
+ * A day of the career on the wall calendar, taken apart: the year, the month,
+ * the day of that month, and how many days that month has.
+ *
+ * The last of those is the one that cannot be guessed at, and it is why this
+ * exists rather than a caller doing its own arithmetic on the date string: a
+ * month-end is the thirtieth in September, the thirty-first in October and
+ * the twenty-eighth in February, and a rule that hard-coded any of those would
+ * be right for one month in twelve. `Date` knows; asking it is free.
+ */
+export interface CalendarDay {
+  readonly year: number;
+  /** 1-12, the way a human says it rather than the way a Date does. */
+  readonly month: number;
+  readonly dayOfMonth: number;
+  readonly daysInMonth: number;
+}
+
+export function calendarParts(day: number): CalendarDay {
   requireDay(day);
   // UTC throughout: the same save opened in two time zones is the same week,
   // and a date that moved with the reader would be a determinism hole.
@@ -126,10 +177,24 @@ export function calendarDate(day: number): string {
     WEEK_STARTS_ON.month - 1,
     WEEK_STARTS_ON.dayOfMonth + (day - 1),
   ));
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
 
-  return `${twoDigits(date.getUTCDate())}/${
-    twoDigits(date.getUTCMonth() + 1)
-  }/${String(date.getUTCFullYear())}`;
+  return {
+    year,
+    month,
+    dayOfMonth: date.getUTCDate(),
+    // Day zero of the NEXT month is the last day of this one, which is the
+    // standard way to ask a calendar how long a month is without a table.
+    daysInMonth: new Date(Date.UTC(year, month, 0)).getUTCDate(),
+  };
+}
+
+/** The date a simulated day falls on, as this estate writes dates. */
+export function calendarDate(day: number): string {
+  const { year, month, dayOfMonth } = calendarParts(day);
+
+  return `${twoDigits(dayOfMonth)}/${twoDigits(month)}/${String(year)}`;
 }
 
 /**

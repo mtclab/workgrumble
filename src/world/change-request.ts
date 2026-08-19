@@ -36,6 +36,7 @@ import type {
 } from '../engine-api';
 import { HELPDESK_ACTIONS, PROJECT_ACTIONS, SYSTEMD_ACTIONS } from './actions';
 import { isRiskyProductionChange } from './change-control';
+import { arcWeekOf, freezeDeferral } from './change-freeze';
 import {
   CHANGE_REQUEST_DECISIONS,
   CHANGE_REQUEST_KINDS,
@@ -543,6 +544,17 @@ export function changeRequestConsult(
               close === null ? 'later' : clockLabel(close)
             }. Come back then; that is the hour the change was booked for,`,
             'whether or not it is the hour anyone wanted.',
+            // Why the slot is so far out, when it is a month-end that put it
+            // there (0.39.0). Read off the request's own paperwork, so the
+            // sentence cannot drift from the window it explains.
+            ...(typeof latest.fields[FIELDS.crFreezeThaw] === 'string'
+              ? [
+                'It is out there because their MONTH-END FREEZE holds '
+                  + `non-urgent change until ${
+                    latest.fields[FIELDS.crFreezeThaw] as string
+                  }.`,
+              ]
+              : []),
           ],
       };
     case 'approved_closed':
@@ -588,12 +600,19 @@ export type ChangeRequestFiling =
  * would reach (approve for server/co-managed work, reject for a monitoring-only
  * remediation) baked in, along with the review delay and, when approved, the
  * window. The DRIVER applies the ops; nothing here mutates.
+ *
+ * The ACTOR rides in from 0.39.0 for one reason: the month-end freeze has to
+ * know what the date is, and the world's clock restarts every week, so which
+ * week of the career this is - a number on the player node - is the only thing
+ * that turns a Wednesday into the thirtieth of September. It is read, never
+ * written, and it moves no decision: a freeze can only push a window later.
  */
 export function planChangeRequestFiling(
   graph: ReadOnlyGraphView,
   targetId: string,
   verb: string,
   now: number,
+  actor: string,
 ): ChangeRequestFiling {
   // The in-house PRODUCTION change first (E6, 0.18.0): a risky verb on the
   // engineer's own live customer-facing prod is a NORMAL change - approvable
@@ -655,7 +674,21 @@ export function planChangeRequestFiling(
     + CR_REVIEW_MIN_MINUTES
     + (crHash(crId) % CR_REVIEW_SPAN_MINUTES);
   const approved = outcome.decision === CHANGE_REQUEST_DECISIONS.approve;
-  const windowOpen = reviewUntil
+  // THE MONTH-END FREEZE (0.39.0), and note where it sits: after the decision,
+  // and touching nothing but the tick the window is measured from. A rejected
+  // request is not asked - it has no window to defer, and a freeze that could
+  // reach a rejection would be a calendar overruling a contract. An approved
+  // one at a customer in its close books its slot after the thaw instead of
+  // after the review, which is the deferral in one line of arithmetic.
+  const deferred = approved
+    ? freezeDeferral(graph, customerId, targetId, arcWeekOf(graph, actor), now)
+    : null;
+  // Never EARLIER than the review that has not finished yet: the freeze is a
+  // floor under the window, not a replacement for the decision's own clock.
+  const windowFrom = deferred === null
+    ? reviewUntil
+    : Math.max(reviewUntil, deferred.from);
+  const windowOpen = windowFrom
     + CR_WINDOW_LEAD_MIN_MINUTES
     + (crHash(`${crId}:window`) % CR_WINDOW_LEAD_SPAN_MINUTES);
   const windowClose = windowOpen + CR_WINDOW_MINUTES;
@@ -680,6 +713,10 @@ export function planChangeRequestFiling(
     ...(approved
       ? { [FIELDS.crWindowOpen]: windowOpen, [FIELDS.crWindowClose]: windowClose }
       : {}),
+    // The thaw the window was pushed to, when one was - so the refusal three
+    // days later can say why the slot is where it is, off the paperwork rather
+    // than off a calendar re-derived at a screen.
+    ...(deferred === null ? {} : { [FIELDS.crFreezeThaw]: deferred.thawDate }),
   };
 
   const lines = [
@@ -689,11 +726,22 @@ export function planChangeRequestFiling(
     `  Rollback: ${rollback}`,
     '',
     ...(approved
-      ? [
-        `Under review; the decision is due about ${clockLabel(reviewUntil)}.`,
-        'If approved, a change window opens - you will be told the hour, and it',
-        'will not be the one you wanted. Until then the action is still refused.',
-      ]
+      ? deferred === null
+        ? [
+          `Under review; the decision is due about ${clockLabel(reviewUntil)}.`,
+          'If approved, a change window opens - you will be told the hour, and it',
+          'will not be the one you wanted. Until then the action is still refused.',
+        ]
+        : [
+          `Under review; the decision is due about ${clockLabel(reviewUntil)}.`,
+          `${label} is in its MONTH-END CHANGE FREEZE, so the approval was `
+            + 'never the question -',
+          'the calendar is. Nothing non-urgent moves there until '
+            + `${deferred.thawDate}, and the window this`,
+          'books opens on the other side of that. Something actually DOWN is '
+            + 'not frozen;',
+          'that is the fire, and the fire has never needed a window.',
+        ]
       : [
         'This one is headed for rejection, and it should be:',
         outcome.reason,
