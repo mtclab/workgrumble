@@ -34,13 +34,17 @@
  *
  * Nothing here reads a clock, a graph or the RNG: a ticket's kind is a fact
  * about the content, decided the same way on every run and in every session.
+ *
+ * THE WALK ITSELF IS NOT HERE ANY MORE (0.39.0). Classing a node means walking
+ * every shop's construction ops to find the box behind it, and churn asks the
+ * SECOND question of exactly the same walk - whose estate that box is on. Both
+ * answers now come off one pass in `estate-index.ts`, because two walks would
+ * be two answers to "which box is this", free to drift the first time a node
+ * kind grew a new way of being hosted.
  */
 
-import type { SetupOp } from '../engine-api';
-import { EMPLOYER_IDS, employerFor } from './employers';
-import { FIELDS, isServerRole, machineRoleOf } from './fields';
-import { ONBOARDINGS } from './onboarding';
-import { findWorldTicket, WORLD_TICKETS } from './tickets';
+import { nodeClassOf } from './estate-index';
+import { findWorldTicket } from './tickets';
 import type { WorkKind } from './titles';
 
 /**
@@ -116,125 +120,9 @@ const PAPERWORK: ReadonlySet<string> = new Set([
   'scope',
 ]);
 
-/** The class of one node of the estate, or nothing this module can class. */
-type NodeClass = 'access' | 'device' | 'server';
-
-/**
- * The node kinds that ARE the access surface: a person, their account, the
- * groups and shares and rules that decide what it can reach, and the customer
- * a contract is with.
- */
-const ACCESS_NODE_KINDS: ReadonlySet<string> = new Set([
-  'account', 'person', 'group', 'share', 'mail_rule', 'customer',
-]);
-
-interface Index {
-  readonly classes: ReadonlyMap<string, NodeClass>;
-}
-
-let INDEX: Index | null = null;
-
-/**
- * Every setup this build ships, in one list.
- *
- * The three sources are the three ways a node gets into a world: the shop's own
- * estate, a ticket standing up the thing it is about, and an onboarding signing
- * a customer up mid-week. The third was worth the line on its own - TILLMAN's
- * server is built by the onboarding rather than by the MSP, so without it the
- * one ticket about it had no estate to be classed by and came out unknown.
- */
-function everySetup(): readonly (readonly SetupOp[])[] {
-  return [
-    ...EMPLOYER_IDS.map((id) => employerFor(id).setup()),
-    ...ONBOARDINGS.map((event) => event.setup()),
-    ...WORLD_TICKETS.map((ticket) => ticket.def.setup),
-  ];
-}
-
-/**
- * The estate, classed once.
- *
- * Built lazily and kept, because it walks every shop's construction ops and
- * there is no reason to do that twice - and built from the SETUP rather than
- * from a live graph, because a ticket's kind is a fact about the content and
- * has to answer the same way in a generator that has no world to look at.
- */
-function index(): Index {
-  if (INDEX !== null) {
-    return INDEX;
-  }
-
-  const classes = new Map<string, NodeClass>();
-  const hosted = new Map<string, string>();
-
-  for (const ops of everySetup()) {
-    for (const op of ops) {
-      if (op.op === 'addNode') {
-        const { id, kind, fields } = op.node;
-
-        if (kind === 'machine') {
-          // A machine's ROLE is the difference between a desk and a server room
-          // and the world already writes it down, so this reads the field
-          // rather than guessing from a hostname.
-          classes.set(
-            id,
-            isServerRole(machineRoleOf(fields[FIELDS.machineRole]))
-              ? 'server'
-              : 'device',
-          );
-        } else if (kind === 'device') {
-          classes.set(id, 'device');
-        } else if (ACCESS_NODE_KINDS.has(kind)) {
-          classes.set(id, 'access');
-        }
-      }
-
-      // What a service or unit runs on, and what a drive holds: both answer
-      // "which box is this" for a node that is not a box.
-      if (op.op === 'addEdge'
-        && (op.edge.kind === 'runs_on' || op.edge.kind === 'contains')) {
-        const [child, box] = op.edge.kind === 'runs_on'
-          ? [op.edge.from, op.edge.to]
-          : [op.edge.to, op.edge.from];
-
-        if (!hosted.has(child)) {
-          hosted.set(child, box);
-        }
-      }
-    }
-  }
-
-  // A hosted thing is whatever its box is, resolved through however many hops
-  // the drive puts between a file and the machine holding it.
-  for (const child of hosted.keys()) {
-    const seen = new Set<string>();
-    let at: string | undefined = child;
-
-    while (at !== undefined && !seen.has(at) && classes.get(at) === undefined) {
-      seen.add(at);
-      at = hosted.get(at);
-    }
-
-    const settled = at === undefined ? undefined : classes.get(at);
-
-    if (settled !== undefined) {
-      classes.set(child, settled);
-    }
-  }
-
-  INDEX = { classes };
-
-  return INDEX;
-}
-
 /** The family half of an action id: `account.unlock` is `account`. */
 function familyOf(action: string): string {
   return action.split('.')[0] ?? '';
-}
-
-/** The class of one node, services and files resolved to the box they are on. */
-function classOf(node: string): NodeClass | undefined {
-  return index().classes.get(node);
 }
 
 /**
@@ -296,7 +184,7 @@ function classify(ticketId: string): WorkKind {
     const family = familyOf(fix.action);
 
     if (HOSTED_FAMILIES.has(family)) {
-      const where = classOf(fix.target);
+      const where = nodeClassOf(fix.target);
 
       if (where !== undefined) {
         return where === 'access' ? 'server' : where;
@@ -323,7 +211,7 @@ function classify(ticketId: string): WorkKind {
   // The work is about the estate, and the roster writes the estate primary
   // first.
   for (const node of ticket.nodes) {
-    const where = classOf(node);
+    const where = nodeClassOf(node);
 
     if (where !== undefined) {
       return where === 'access' ? 'access' : where;
