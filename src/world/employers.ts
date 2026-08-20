@@ -330,8 +330,26 @@ const MSP_EMPLOYER: Employer = Object.freeze({
    * in a whitelist - and a half-migrated rule set carried without the project
    * that was migrating it is an estate with a job half done and nobody doing
    * it. They go on this list the version the project carries, and not before.
+   *
+   * ONE THING JOINED IT (E9, 0.39.0): the patience ledger, which is the only
+   * field in this game that HAS to cross a Friday. Everything else on any
+   * carry list is an estate fact that could in principle be re-derived from a
+   * world; this one is a fold over weeks that no longer exist - a client's
+   * account of the last month, which cannot be read off a Monday's graph
+   * because the tickets it is about were last week's. It passes the three
+   * questions cleanly: it is a fact about the relationship rather than about a
+   * week, it carries no clock (the fold zeroes every tick, see `patience.ts`),
+   * and it cannot make a week unplayable - it can only take work OUT of one,
+   * which the post-churn solvability sweep is there to prove stays feasible.
+   *
+   * It is on this shop's list and nobody else's, for the obvious reason: the
+   * other three employers have no customers, so the field is never written
+   * there, the delta is empty, and their weeks are byte-identical.
    */
-  carries: playerCarries(MSP_IDS.player),
+  carries: Object.freeze([
+    ...playerCarries(MSP_IDS.player),
+    { node: MSP_IDS.player, field: FIELDS.customerPatience },
+  ]),
   setup: mspSetup,
 });
 

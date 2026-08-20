@@ -2200,6 +2200,25 @@ export interface WeekScorecard {
    * leave the row off rather than print a number against a blank.
    */
   readonly utilisation: string;
+  /**
+   * THE CAREER EVENT (E9, 0.39.0): the customers whose notice went out this
+   * week, by the handle the queue knows them by.
+   *
+   * On the card because the Friday is where a week's consequences are read,
+   * and this is the only one of them that changes what the JOB is next week -
+   * a client who has gone takes their machines, their queue and their share of
+   * the invoice with them, and the mix engine reweights on what is left. It is
+   * a list of names rather than a number for the same reason `utilisation` is
+   * a sentence: nothing on this card is computed from it and no outcome
+   * consults it. Losing a client is not a mark against the week; it is a fact
+   * about the desk.
+   *
+   * EMPTY in every week nobody left, which is every week at every employer
+   * without customers and every week at the MSP that was worked properly - so
+   * the surfaces leave the row off entirely and the card is the card it has
+   * always been.
+   */
+  readonly departures: readonly string[];
   readonly outcome: ReviewOutcome;
 }
 
@@ -2213,6 +2232,8 @@ export interface WeekTotals {
   readonly conduct: string;
   readonly criteria: string;
   readonly utilisation: string;
+  /** Defaults to nobody, so a caller that has no customers writes nothing. */
+  readonly departures?: readonly string[];
   readonly outcome: ReviewOutcome;
 }
 
@@ -2298,6 +2319,7 @@ export function weekScorecard(
     conduct: totals.conduct,
     criteria: totals.criteria,
     utilisation: totals.utilisation,
+    departures: Object.freeze([...totals.departures ?? []]),
     outcome: totals.outcome,
   };
 }

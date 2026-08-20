@@ -34,6 +34,7 @@ import {
   HELPDESK_ACTIONS,
   INCIDENT_ACTIONS,
   INVOICE_ACTIONS,
+  PATIENCE_ACTIONS,
   PROJECT_ACTIONS,
   REQUEST_ACTIONS,
   SELINUX_ACTIONS,
@@ -4024,6 +4025,19 @@ export const ACTIONS_WITHOUT_A_CONTROL: Readonly<Record<string, string>> = {
     + 'day boundaries to walk end to end, so the run that drives every rung, '
     + 'the breakdown, the escape and the departure is `shell/invoice.test.ts` '
     + 'rather than a browser - the same arrangement the redundancy ending has.',
+  [PATIENCE_ACTIONS.record]: 'A client deciding how they feel about the last '
+    + 'month. Nobody presses it and nobody can: the day loop settles it on the '
+    + 'same morning-and-evening rail the invoice ladder runs on, off '
+    + '`patienceLadderDue`, and again at the end of the week for the fold. All '
+    + 'it writes down is the history - which rung has been handed over, and '
+    + 'what the weeks that no longer exist came to - because where an account '
+    + 'stands this minute is derived off the contract stamps its own tickets '
+    + 'carry every time anybody asks. What the player meets is the account '
+    + 'manager\'s mail, the queue thinning on that client, and on the Friday '
+    + 'card the line saying they have gone. The ladder needs two ruinous weeks '
+    + 'and a week boundary to walk end to end, so the run that drives every '
+    + 'rung, the walk-back and the departure is `shell/patience.test.ts` '
+    + 'rather than a browser - the same arrangement the invoice ladder has.',
   [PROJECT_ACTIONS.reportAnswered]: 'The org having answered a status report: '
     + 'the meeting about the meeting after a red, and the question after a '
     + 'green that a date has since gone past. Nobody presses it - it is the '

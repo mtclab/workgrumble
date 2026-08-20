@@ -26,7 +26,9 @@ import {
   HELPDESK_ACTIONS,
   INCIDENT_ACTIONS,
   INVOICE_ACTIONS,
+  PATIENCE_ACTIONS,
   INVOICE_LADDER_PARAM,
+  PATIENCE_LEDGER_PARAM,
   PROJECT_ACTIONS,
   PROJECT_ANSWERED_PARAM,
   PROJECT_CIRCUIT_PARAM,
@@ -340,6 +342,24 @@ import {
   scrutinyByCustomer,
   withDeliveredRung,
 } from '../world/invoice';
+import {
+  debitsByCustomer,
+  encodeLedger,
+  foldPatience,
+  leavingThisWeek,
+  patienceDebits,
+  patienceLadderDue,
+  patienceLedger,
+  patienceStanding,
+  patienceThreads,
+  PATIENCE_RUNG_LABELS,
+  withPatienceEntry,
+  type PatienceDebit,
+  type PatienceEntry,
+  type PatienceRung,
+  type PatienceStep,
+  type PatienceThread,
+} from '../world/patience';
 import {
   answeredBeats,
   beatKey,
@@ -1062,6 +1082,23 @@ export interface DayApi {
   invoiceBreakdown(customer: string): readonly string[];
   invoiceMail(): readonly InvoiceThread[];
   /**
+   * And the CUSTOMER's other reading (E9, 0.39.0), which is about the work
+   * rather than the bill: where each account's patience stands, derived off
+   * the contract stamps its own tickets carry; the ladder as the post it
+   * arrives as; and the accounts whose notice went out this week, which is the
+   * one line of it the Friday card prints.
+   */
+  patienceStanding(): readonly {
+    readonly customer: NodeId;
+    readonly label: string;
+    readonly standing: number;
+    readonly debits: number;
+    readonly rung: PatienceRung;
+    readonly delivered: PatienceRung;
+  }[];
+  patienceMail(): readonly PatienceThread[];
+  customersLeaving(): readonly string[];
+  /**
    * The second queue's two verbs (E9, 0.36.0). The THIRD player answer -
    * correcting - is not here on purpose: it is `ticket.classify`, dispatched
    * from the triage panel like any other triage, because a correction is a
@@ -1423,6 +1460,19 @@ export interface DayDriverHandlers {
     customer: NodeId,
     label: string,
     breakdown: readonly string[],
+  ): void;
+  /**
+   * One rung of the patience ladder, handed over (E9, 0.39.0).
+   *
+   * The world has already written the beat down and raised the notice; this is
+   * the shell's half, and unlike the invoice ladder's it is the same shape at
+   * every rung - the account manager, in the post, because that is the only
+   * way any of this ever reaches a service desk.
+   */
+  onPatienceStep?(
+    rung: PatienceRung,
+    customer: NodeId,
+    label: string,
   ): void;
   /**
    * And the org, answering a status report (0.30.0, slice 3): the meeting about
@@ -2920,6 +2970,10 @@ export class DayDriver implements DayApi {
     // else to notice, and a consequence in the same afternoon would read as a
     // punishment for the keystroke rather than as the cost of the claim.
     this.settleInvoiceLadder();
+    // And the third reading of the same kind (E9, 0.39.0): the client who has
+    // been thinking about the last month. Same rail, same reason - a day is
+    // how long it takes somebody else to notice.
+    this.settlePatienceLadder();
     this.settleWatermelon();
     this.dispatchDay(DAY_ACTIONS.startShift, {});
     this.syncSlaClock();
@@ -2952,6 +3006,10 @@ export class DayDriver implements DayApi {
     // rung at a time, and a client can go from a question to a notice inside a
     // week the way they actually do.
     this.settleInvoiceLadder();
+    // The patience ladder gets an evening too, and for the invoice ladder's own
+    // reason one axis along: the person who decides they have had enough of a
+    // supplier does it at the end of their day, not at the start of yours.
+    this.settlePatienceLadder();
 
     if (isReviewDay(day)) {
       // A week that has already ended stays ended. The button is still on the
@@ -3029,6 +3087,10 @@ export class DayDriver implements DayApi {
       this.submitTimesheet(true);
     }
 
+    // What the clients made of the week, folded before the week is written
+    // down as over: the estate carry reads this field off the Friday graph,
+    // so the fold has to have happened by the time anybody reads it.
+    this.settlePatienceWeek();
     this.dispatchDay(DAY_ACTIONS.endWeek, { banked });
     this.carriedMs = 0;
     this.engine.checkpoint();
@@ -3089,6 +3151,12 @@ export class DayDriver implements DayApi {
       // column existed: the surfaces leave the row off rather than print a
       // number against a blank.
       utilisation: utilisationReviewLine(this.timesheetUtilisation()),
+      // The career event (E9, 0.39.0), and LIVE like the utilisation row above
+      // it rather than snapshotted like the mark: a notice that went out at ten
+      // to five on the Friday is still this week's news, and the card is the
+      // only screen that says so. Empty in every week nobody left, which is
+      // every week at every shop without clients.
+      departures: this.customersLeaving(),
       // The mark the conversation was decided on, which stopped moving when
       // the conversation happened. Reading it live let the week screen print
       // "37 of 45 needed" directly above "Probation: passed", because the week
@@ -5242,6 +5310,158 @@ export class DayDriver implements DayApi {
 
       this.announceInvoiceStep(step);
     }
+  }
+
+  /* -- the customer's patience (E9, 0.39.0) ------------------------------- */
+
+  /** The history: what each account carried in, and what has been said to it. */
+  private patienceLedgerNow(): readonly PatienceEntry[] {
+    return patienceLedger(this.playerText(FIELDS.customerPatience));
+  }
+
+  /**
+   * What this week has put on every account, off the stamps its own tickets
+   * carry.
+   *
+   * The customer of a ticket is resolved the way every other reader in this
+   * driver resolves it - off the estate behind it - so the debit lands on the
+   * same client the queue, the scope wall and the contract clock all agree it
+   * belongs to.
+   */
+  private patienceDebitsNow(): readonly PatienceDebit[] {
+    return patienceDebits(
+      this.engine.graph,
+      this.deliveredRungs(),
+      (ticketId: string) => this.customerOfTicket(ticketId),
+    );
+  }
+
+  /** Where every account stands this minute - derived, never stored. */
+  public patienceStanding(): readonly {
+    readonly customer: NodeId;
+    readonly label: string;
+    readonly standing: number;
+    readonly debits: number;
+    readonly rung: PatienceRung;
+    readonly delivered: PatienceRung;
+  }[] {
+    return Object.freeze(patienceStanding(
+      this.patienceLedgerNow(),
+      debitsByCustomer(this.patienceDebitsNow()),
+    ).map((account) => ({
+      ...account,
+      label: customerName(this.engine.graph, account.customer),
+    })));
+  }
+
+  /**
+   * The ladder as the post it arrives as, derived off the ledger and this
+   * week's own stamps. Nothing about it is stored, so a reload rebuilds the
+   * identical thread.
+   */
+  public patienceMail(): readonly PatienceThread[] {
+    return patienceThreads({
+      ledger: [...this.patienceLedgerNow()],
+      debits: this.patienceDebitsNow(),
+      labelOf: (customer: string) => customerName(this.engine.graph, customer),
+      accountManager: MSP_IDS.mspLead,
+    });
+  }
+
+  /** The accounts whose notice went out this week, by name. */
+  public customersLeaving(): readonly string[] {
+    return Object.freeze(
+      leavingThisWeek(this.patienceLedgerNow())
+        .map((customer) => customerName(this.engine.graph, customer)),
+    );
+  }
+
+  /**
+   * The morning's - and the evening's - reading of how the clients feel.
+   *
+   * On the invoice ladder's rail and settled beside it, because it is the same
+   * kind of event: somebody at a client getting round to a thought about you.
+   * ONE RUNG AT A TIME and never a skip, so a week that fell apart is asked
+   * about before the work stops coming and the work stops coming before
+   * anybody writes a letter, however badly it fell apart.
+   */
+  private settlePatienceLadder(): void {
+    const ledger = this.patienceLedgerNow();
+    const due = patienceLadderDue(
+      ledger,
+      debitsByCustomer(this.patienceDebitsNow()),
+      this.day(),
+    );
+
+    for (const step of due) {
+      const held = ledger.find((entry) => entry.customer === step.customer);
+      const result = this.engine.dispatch(
+        PATIENCE_ACTIONS.record,
+        this.actor,
+        null,
+        {
+          [PATIENCE_LEDGER_PARAM]: withPatienceEntry(
+            this.playerText(FIELDS.customerPatience),
+            {
+              customer: step.customer,
+              // The standing carried IN, untouched. This week's debits are
+              // derived on every read and are never written down, which is
+              // what stops the fold on Friday counting them a second time.
+              standing: held?.standing ?? 0,
+              rung: step.rung,
+              tick: this.engine.now(),
+            },
+          ),
+        },
+      );
+
+      if (!result.ok) {
+        continue;
+      }
+
+      this.announcePatienceStep(step);
+    }
+  }
+
+  /** What the player is told, in the minute the rung is handed over. */
+  private announcePatienceStep(step: Readonly<PatienceStep>): void {
+    const label = customerName(this.engine.graph, step.customer);
+
+    this.handlers.onPatienceStep?.(step.rung, step.customer, label);
+    this.handlers.onNotice?.(
+      `${label}: ${PATIENCE_RUNG_LABELS[step.rung]}`,
+      step.rung === 'leaving'
+        ? 'Morgan has forwarded the notice. It is in the post.'
+        : 'Morgan has forwarded something from them. It is in the post.',
+    );
+  }
+
+  /**
+   * The fold, at the end of the week, and the only moment a standing moves.
+   *
+   * A week with debits on an account adds them; a week with none takes one
+   * off, which is the walk-back that makes the first two rungs escapable. It
+   * runs BEFORE the week is written down as ended, so the ledger the estate
+   * carry reads off the Friday graph is the folded one - which is what the
+   * next Monday is built from, departures and all.
+   *
+   * Writes NOTHING when there is nothing to write: a shop with no customers
+   * folds an empty ledger to an empty ledger, the string is unchanged, and the
+   * dispatch is skipped entirely - so no world without clients grows a field.
+   */
+  private settlePatienceWeek(): void {
+    const folded = encodeLedger(foldPatience(
+      this.patienceLedgerNow(),
+      debitsByCustomer(this.patienceDebitsNow()),
+    ));
+
+    if (folded === this.playerText(FIELDS.customerPatience)) {
+      return;
+    }
+
+    this.engine.dispatch(PATIENCE_ACTIONS.record, this.actor, null, {
+      [PATIENCE_LEDGER_PARAM]: folded,
+    });
   }
 
   /** What the player is told, in the minute the rung is handed over. */

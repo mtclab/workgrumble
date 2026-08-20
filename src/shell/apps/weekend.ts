@@ -258,6 +258,17 @@ export const WEEKEND_APP: AppDef = {
           .textContent = card.utilisation;
       }
 
+      // THE CAREER EVENT (E9, 0.39.0). Present only where somebody actually
+      // gave notice, which is the same rule the two rows above keep, and worded
+      // as a fact rather than as a penalty: nothing on this card is computed
+      // from it and no outcome consults it. A client who has gone is not a mark
+      // against the week - it is a change in what the job is next week, and
+      // this is the screen where the week's changes are read.
+      if (card.departures.length > 0) {
+        definitionRow(list, 'Contracts ended', 'weekend-departures')
+          .textContent = `${card.departures.join(', ')} - their work stops here.`;
+      }
+
       const earned = definitionRow(list, 'Earned this week', 'weekend-earned');
       earned.textContent = `£${formatPence(card.earnedPence)}`;
       earned.dataset.total = 'true';

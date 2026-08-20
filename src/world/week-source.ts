@@ -36,6 +36,11 @@
 import type { ReadOnlyGraphView } from '../engine-api';
 import { employerFor } from './employers';
 import { FIELDS, playerTierOf } from './fields';
+import {
+  departedCustomers,
+  patienceLedger,
+  quietCustomers,
+} from './patience';
 import { rungFor, type Rung } from './titles';
 import type { DayScript } from './week';
 
@@ -60,6 +65,27 @@ export interface WeekRequest {
    * build made and every player who has not been promoted.
    */
   readonly rung?: Rung;
+  /**
+   * The accounts that have given notice and are not in this world at all
+   * (E9, 0.39.0), and the accounts that have gone quiet and whose work has
+   * thinned.
+   *
+   * The fifth and sixth things the answer may depend on, and they belong here
+   * for exactly the reason the other four do: both are read off a fact the
+   * world already carries and a save already restores - the patience ledger on
+   * the player node (`FIELDS.customerPatience`) - so no schema moves and a
+   * reload resolves the same week it left. Absent is the state every shipped
+   * world is in and every save written before churn existed, and an absent
+   * pair composes the week the generator has always composed.
+   *
+   * TWO LISTS RATHER THAN THE LEDGER, because a request is a statement of what
+   * the answer may depend on and the ledger holds a good deal more than that -
+   * the standings, the ticks, the accounts nothing has happened to. What
+   * changes a week is which accounts are gone and which have thinned, and
+   * naming exactly those keeps the cache key honest.
+   */
+  readonly departed?: readonly string[];
+  readonly quiet?: readonly string[];
 }
 
 export type WeekSource = (request: Readonly<WeekRequest>) => readonly DayScript[];
@@ -102,8 +128,19 @@ export function weekRequestFrom(
   actor: string,
   employer: string,
 ): WeekRequest {
+  // The churn, off the same graph and for the same reason (0.39.0): the ledger
+  // is on the player node, inside the engine payload a load restores, so a
+  // driver re-resolving its week after a reload gets the same one back. Both
+  // lists are dropped when empty, so a request from a world where nobody has
+  // left is the request it has always been, field for field.
+  const ledger = patienceLedger(graph.getField(actor, FIELDS.customerPatience));
+  const departed = departedCustomers(ledger);
+  const quiet = quietCustomers(ledger);
+
   return {
     employer,
+    ...(departed.length === 0 ? {} : { departed }),
+    ...(quiet.length === 0 ? {} : { quiet }),
     attempt: playerNumber(graph, actor, FIELDS.weekAttempt),
     arcWeek: playerNumber(graph, actor, FIELDS.arcWeek),
     // Off the graph like the other two, and for the sharper version of the same

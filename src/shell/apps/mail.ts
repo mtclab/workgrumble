@@ -54,6 +54,10 @@ export const MAIL_APP: AppDef = {
     const inbox = (): readonly MailContent[] => [
       ...visibleMail(api.graph, api.employer),
       ...api.day.invoiceMail(),
+      // And the account manager's own three (E9, 0.39.0), derived the same way
+      // off the ledger and this week's stamps: the question, the client who
+      // has gone quiet, and the notice.
+      ...api.day.patienceMail(),
     ];
     const unreadCount = (): number => inbox().filter(
       (thread) => isUnread(thread.id),

@@ -51,6 +51,11 @@
  */
 
 import { auditItemsOn, SENIOR_RUNG } from './audit';
+import {
+  type ChurnState,
+  contentAfterChurn,
+} from './departure';
+import { customerOfTicket } from './estate-index';
 import { CAUGHT_MINUTES, PATROLS_PER_DAY } from './boss';
 import { seedStream } from './day';
 import { employerFor, type Employer } from './employers';
@@ -342,6 +347,14 @@ export interface GenerateOptions {
    * `ticket:fill-3`, which no roster classifies and no mix could measure.
    */
   readonly kindOf?: (id: string) => WorkKind;
+  /**
+   * And WHOSE a ticket is, for the churn filter (0.39.0) - injected for the
+   * third time and for the third instance of the same reason: a fixture shop
+   * deals tickets the roster has never heard of, and a filter that could only
+   * answer for the shipped roster would leave a fixture's departed customer
+   * dealing work after they had gone.
+   */
+  readonly customerOf?: (id: string) => string | null;
 }
 
 /** Where every entry of a week ended up: the plan, before it is a table. */
@@ -1435,6 +1448,16 @@ function generateFor(
   arcWeek: number,
   rung: Rung,
   options: Readonly<GenerateOptions>,
+  /**
+   * What the churn did to this shop, as a string, for the cache key.
+   *
+   * Empty for every world where nobody has gone quiet or left, which is every
+   * shipped world - so the key is the key it has always been and no existing
+   * entry moves. A world WITH churn is a different shop's content behind the
+   * same employer id, and a cache that could not tell them apart would deal a
+   * week made of a departed client's tickets.
+   */
+  churnKey: string = '',
 ): readonly DayScript[] {
   // The rung is IN THE KEY and not in the seed, and the difference is the whole
   // of why a junior's weeks did not move when this arrived. In the key, because
@@ -1445,13 +1468,14 @@ function generateFor(
   // whose row changes nothing.
   const key = `${content.employer}#${String(arcWeek)}#${rung}#${String(
     options.window ?? RECENCY_WEEKS,
-  )}`;
+  )}${churnKey}`;
   // A week is only cacheable when both injected seams are absent. The pricer
   // has always been checked; the CLASSIFIER has to be too, and for the sharper
   // reason: a fixture that classes its own tickets and lets the roster price
   // them would otherwise put its own week in the cache under a key the product
   // shares, and get one of the product's back.
-  const shared = options.price === undefined && options.kindOf === undefined;
+  const shared = options.price === undefined && options.kindOf === undefined
+    && options.customerOf === undefined;
   const cached = shared ? GENERATED.get(key) : undefined;
 
   if (cached !== undefined) {
@@ -1490,7 +1514,42 @@ export function generateWeek(
   // reload resolves is the week the player was playing (`week-source.ts`). A
   // request with none is the bottom of the ladder, which is every save written
   // before the table existed and every player who has not been promoted.
-  return generateFor(content, request.arcWeek, request.rung ?? DEFAULT_RUNG, options);
+  const churn = churnOf(request);
+
+  return generateFor(
+    // The pool the churn leaves behind: a departed account's entries out of it
+    // entirely, a quiet account's thinned. `contentAfterChurn` hands the SAME
+    // content back when neither has happened, so an unchurned shop is composed
+    // out of the object it has always been composed out of.
+    contentAfterChurn(content, churn, options.customerOf ?? customerOfTicket),
+    request.arcWeek,
+    request.rung ?? DEFAULT_RUNG,
+    options,
+    churnKeyFor(churn),
+  );
+}
+
+/** The churn a request carries, as the sets the content filter reads. */
+function churnOf(request: Readonly<WeekRequest>): ChurnState {
+  return {
+    departed: new Set(request.departed ?? []),
+    quiet: new Set(request.quiet ?? []),
+  };
+}
+
+/**
+ * The churn, as a key - sorted, so two requests naming the same accounts in a
+ * different order share the week rather than composing it twice.
+ */
+function churnKeyFor(churn: Readonly<ChurnState>): string {
+  if (churn.departed.size === 0 && churn.quiet.size === 0) {
+    return '';
+  }
+
+  const listed = (accounts: ReadonlySet<string>): string =>
+    [...accounts].sort((left, right) => left.localeCompare(right)).join(',');
+
+  return `#gone:${listed(churn.departed)}#quiet:${listed(churn.quiet)}`;
 }
 
 /**

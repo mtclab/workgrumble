@@ -22,6 +22,7 @@ export {
   RULE_BEFORE_AUDIT_REASON,
 } from './project';
 export { INVOICE_LADDER_PARAM } from './invoice';
+export { PATIENCE_LEDGER_PARAM } from './patience';
 export {
   TIMESHEET_AUTO_PARAM,
   TIMESHEET_CLAIMS_PARAM,
@@ -37,6 +38,7 @@ import { FS_ACTION_DATA } from './fs';
 import { KIND_LABELS } from './helpers';
 import { INCIDENT_ACTION_DATA } from './incidents';
 import { INVOICE_ACTION_DATA } from './invoice';
+import { PATIENCE_ACTION_DATA } from './patience';
 import { INTERRUPTION_ACTION_DATA } from './interruptions';
 import { LEGENDARY_ACTIONS } from './legendary';
 import { MACHINE_ACTIONS } from './machine';
@@ -145,6 +147,9 @@ export {
   INVOICE_ACTION_IDS,
   INVOICE_ACTIONS,
   type InvoiceActionId,
+  PATIENCE_ACTION_IDS,
+  PATIENCE_ACTIONS,
+  type PatienceActionId,
   PROJECT_ACTION_IDS,
   PROJECT_ACTIONS,
   type ProjectActionId,
@@ -293,6 +298,13 @@ export function helpdeskActions(): readonly ActionData[] {
     // derived off the sheet and the customer's own records every time anybody
     // asks, so there is no scrutiny meter here to fall out of step with it.
     ...INVOICE_ACTION_DATA,
+    // And the patience ladder's one verb (E9, 0.39.0), which nobody presses
+    // either: the record of which rung an ACCOUNT has been taken to, and the
+    // Friday fold of what the week came to. Same shape as the ladder above it
+    // because it is the same idea about a different axis - the money there,
+    // the relationship here - and where an account stands is derived off the
+    // contract stamps every time anybody asks.
+    ...PATIENCE_ACTION_DATA,
     // The out-of-scope ask's five (E9, 0.38.0): the player's three answers to a
     // request nobody signed for - refuse and offer the estimate, quote and
     // wait, or just do it - and the customer's two answers to the estimate,

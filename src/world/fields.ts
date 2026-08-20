@@ -254,6 +254,42 @@ export const FIELDS = {
    */
   invoiceLadder: 'invoice_ladder',
   /**
+   * WHERE EVERY CUSTOMER'S PATIENCE STANDS, per customer -
+   * `customer|standing|rung|tick`, one line per account the desk has a history
+   * with (E9, 0.39.0).
+   *
+   * The sibling of the ladder above and deliberately the same shape, because it
+   * is the same idea one axis along: what an account is DOING is derived from
+   * the contract stamps the tickets already carry (`ack_missed`,
+   * `cadence_missed`, the resolution breach, the obliged out-of-scope answer),
+   * so there is no patience meter anywhere and a reload recomputes the identical
+   * number. What cannot be derived is what has already been SAID - a rung
+   * delivered twice is a rung that stops meaning anything - and, uniquely here,
+   * what the WEEKS BEFORE THIS ONE came to, because a week's tickets are gone
+   * when the week is.
+   *
+   * So the line holds four things and each is a different kind of fact:
+   *
+   *  - `standing` is the count the account carried INTO this week, folded at
+   *    the last Friday and never touched again until the next one. This week's
+   *    debits are added to it on every read and are never written down.
+   *  - `rung` is the furthest beat handed over and not yet walked back. It
+   *    walks back at the fold when the standing decays under it - which is
+   *    what makes the first two rungs escapable - and `leaving` never does,
+   *    because a notice given is given.
+   *  - `tick` is the minute the rung was handed over IN THIS WEEK, or nought
+   *    for a rung carried in from an earlier one. It is what stamps the post,
+   *    and the fold zeroes it for exactly the reason `carry.ts` gives: a tick
+   *    carried across a boundary describes a minute that has not happened.
+   *
+   * On the player rather than on the customer node, for the two reasons the
+   * invoice ladder gives: a customer node's fields are a closed schema in
+   * `core-rs`, and this is a fact about the desk's history with the client
+   * rather than about the client's business. It is on the MSP's carry list
+   * (`employers.ts`) and nobody else's, because nobody else has customers.
+   */
+  customerPatience: 'customer_patience',
+  /**
    * WHAT THE PLAYER SAID THE PROJECT WAS DOING - `day|rag|tick`, one line per
    * report filed, the latest for a day winning.
    *

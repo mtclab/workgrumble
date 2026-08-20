@@ -1081,6 +1081,28 @@ export const INVOICE_ACTION_IDS: readonly InvoiceActionId[] = Object.freeze(
 );
 
 /**
+ * The patience ladder's one verb (E9, 0.39.0), and it is the invoice ladder's
+ * verb one axis along - same shape, same reason, same nobody-presses-it.
+ *
+ * Where an account STANDS is derived off the contract stamps its tickets carry
+ * every time anybody asks, so there is no patience meter to fall out of step
+ * with anything. What has to be written down is the history: which rung has
+ * been handed over, and what the weeks before this one came to - because a
+ * week's tickets are gone when the week is, and no derivation can reach them.
+ */
+export const PATIENCE_ACTIONS = {
+  /** One rung of the ladder handed over, or the Friday fold. Not a player verb. */
+  record: 'patience.record',
+} as const;
+
+export type PatienceActionId =
+  (typeof PATIENCE_ACTIONS)[keyof typeof PATIENCE_ACTIONS];
+
+export const PATIENCE_ACTION_IDS: readonly PatienceActionId[] = Object.freeze(
+  Object.values(PATIENCE_ACTIONS),
+);
+
+/**
  * The audit queue's verbs (E9, 0.36.0 - the SD-senior rung).
  *
  * FOUR, and the fifth is deliberately missing: correcting a junior's filing is

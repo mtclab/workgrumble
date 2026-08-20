@@ -12,6 +12,7 @@ import {
 import type { ChannelDef } from './channels';
 import type { InstallPolicy } from './company';
 import { carriedSetup, type CarriedValue } from './carry';
+import { withoutDeparted } from './departure';
 import { DEMO_ACTION_DATA } from './demo-world';
 import {
   type Employer,
@@ -21,6 +22,11 @@ import {
 import { watchMachineEvents } from './events';
 import { FIELDS, PLAYER_TIERS, type PlayerTier } from './fields';
 import { clampMeter } from './meters';
+import {
+  departedCustomers,
+  patienceLedger,
+  quietCustomers,
+} from './patience';
 import {
   beatsFiredBy,
   type EmployerArc,
@@ -281,9 +287,17 @@ export function createWorldSession(
 ): WorldSession {
   const start = requireCarry(carry);
   const player = employer.playerId;
+  // Who is not here any more (E9, 0.39.0), read off the ledger the carry is
+  // already bringing across rather than out of a second list beside it. See
+  // `churnCarriedIn` for why there is no second list.
+  const churn = churnCarriedIn(start.estate, player);
   engine.setTier(HELPDESK_TIER);
   engine.applySetup([
-    ...employer.setup(),
+    // The shop's own seed, with any departed customer's estate left out of it.
+    // `withoutDeparted` hands the SAME array back when nobody has left, which
+    // is every world this build has ever stood up - so a career that has lost
+    // nobody applies the ops it has always applied, and no golden can move.
+    ...withoutDeparted(employer.setup(), churn.departed),
     // The estate delta goes on TOP of the shop's own seed and UNDER everything
     // a ticket does: this is a Monday that starts where Friday left the
     // building, and a fault a ticket reports still re-seeds itself when that
@@ -323,6 +337,16 @@ export function createWorldSession(
     rung: start.playerTier === undefined || start.playerTier === null
       ? DEFAULT_RUNG
       : rungFor(start.playerTier, start.title),
+    // And which accounts the draw may not deal, and which it deals less of
+    // (E9, 0.39.0). Off the carry rather than off the graph the setup just
+    // wrote, for the reason the rung above is: this session may be standing up
+    // a fixture shop with no player node yet. After this moment every
+    // re-resolution reads the graph (`weekRequestFrom`), which is what a
+    // notice given on the Wednesday needs.
+    ...(churn.departed.size === 0
+      ? {}
+      : { departed: [...churn.departed] }),
+    ...(churn.quiet.size === 0 ? {} : { quiet: [...churn.quiet] }),
   });
 
   // Only Monday's inherited pile is spawned here: it is what was waiting when
@@ -353,6 +377,39 @@ export function createWorldSession(
     installPolicy: employer.installPolicy,
     reviewBar: employer.reviewBar,
     runsBossPings: employer.runsBossPings,
+  };
+}
+
+/**
+ * WHO HAS LEFT AND WHO HAS GONE QUIET, off the delta the carry is bringing in.
+ *
+ * THERE IS NO SEPARATE LIST OF DEPARTED CUSTOMERS, and that is the decision
+ * rather than a saving. The patience ledger IS the departure fact - a customer
+ * has left exactly when their line says `leaving` - so a second field on the
+ * carry naming them would be a second answer to the same question, and the two
+ * would disagree the first time one of them was written and the other was not.
+ * This project has spent two versions closing exactly that class of defect on
+ * two other mechanics; it is not opening a third.
+ *
+ * The ledger rides across on the estate delta, which is the road the employer's
+ * own carry list already builds (`employers.ts` puts the field on the MSP's
+ * list and nobody else's). A carry with no delta - a first week, a retry, an
+ * employer switch, and every save written before this version - reads an empty
+ * ledger and answers with two empty sets, which is what keeps every existing
+ * world byte-identical.
+ */
+function churnCarriedIn(
+  estate: readonly CarriedValue[],
+  player: NodeId,
+): { readonly departed: ReadonlySet<string>; readonly quiet: ReadonlySet<string> } {
+  const held = estate.find(
+    (value) => value.node === player && value.field === FIELDS.customerPatience,
+  );
+  const ledger = patienceLedger(held?.value);
+
+  return {
+    departed: new Set(departedCustomers(ledger)),
+    quiet: new Set(quietCustomers(ledger)),
   };
 }
 
