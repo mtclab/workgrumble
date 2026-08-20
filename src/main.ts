@@ -10,10 +10,10 @@ import {
   pingBossThread,
   remarkInThread,
 } from './shell/boss-thread';
+import { beginCareer, bootCareer } from './shell/boot-career';
 import { formatSimTime } from './shell/clock-format';
 import type { ShellContext, ShellHireRung } from './shell/context';
 import { DayDriver, DRIVER_INTERVAL_MS, windowFor } from './shell/day-driver';
-import { bootCareer } from './shell/boot-career';
 import { acknowledgeCarry, hydrateFromRetry, RetrySlot } from './shell/retry';
 import { createShellSession, type SaveOutcome, SaveSlot } from './shell/save';
 import { SaveHealth } from './shell/save-health';
@@ -33,12 +33,7 @@ import { dayForTick } from './world/hours';
 import { FLAVOR, flavorText } from './world/interruptions';
 import { MSP_IDS } from './world/msp-company';
 import { createWorldSession } from './world/session';
-import {
-  DEFAULT_RUNG,
-  isBuiltRung,
-  RUNGS,
-  TITLE_TABLE,
-} from './world/titles';
+import { DEFAULT_RUNG, RUNGS, TITLE_TABLE } from './world/titles';
 import { ticketTitle } from './world/tickets';
 import { channelFeedThrough } from './world/week';
 
@@ -772,6 +767,10 @@ async function boot(): Promise<void> {
    * loses nothing), the old career's three records go next, and the reload is
    * last. A tab that dies in between comes back to the pick it was given, which
    * is the career the player asked for.
+   *
+   * The write and the letting-go are `beginCareer`, where their ORDER can be
+   * held by a test; what is left here is the one refusal that needs to know
+   * what kind of browser this is, and the reload.
    */
   const startCareer = (rung: string, replacing: boolean): SaveOutcome => {
     // A browser that keeps nothing cannot be offered a different desk, and this
@@ -790,28 +789,17 @@ async function boot(): Promise<void> {
       };
     }
 
-    if (!isBuiltRung(rung)) {
-      return {
-        ok: false,
-        reason: 'Nobody has written that rung of the ladder yet. It is on the '
-          + 'list because the ladder is the difficulty and this is where it '
-          + 'runs out, not because the agency can place you on it.',
-      };
-    }
-
-    const kept = startSlot.write({ rung });
+    // All three when this is a replacement, because all three are a career this
+    // browser is carrying and any one left behind would stand itself up on the
+    // next boot instead of the desk somebody just picked.
+    const kept = beginCareer(
+      startSlot,
+      rung,
+      replacing ? [slot, retry, switchSlot] : [],
+    );
 
     if (!kept.ok) {
       return kept;
-    }
-
-    if (replacing) {
-      // The confirmed moment. All three, because all three are a career this
-      // browser is carrying and any one left behind would stand itself up on
-      // the next boot instead of the desk somebody just picked.
-      slot.clear();
-      retry.clear();
-      switchSlot.clear();
     }
 
     // The world was stood up before anybody was asked, so taking a different

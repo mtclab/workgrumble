@@ -31,8 +31,10 @@
  */
 
 import { carryFrom, type RetryRecord } from './retry';
+import type { SaveOutcome } from './save';
 import { carryForStart, type StartRecord } from './start';
 import { carryForSwitch, type SwitchRecord } from './switch';
+import { isBuiltRung } from '../world/titles';
 import { FIRST_WEEK, type WeekCarry } from '../world/session';
 
 /** What the slots held when this boot read them. All four are read-and-leave. */
@@ -87,4 +89,65 @@ export function bootCareer(slots: Readonly<BootSlots>): BootCareer {
     resume: empty && slots.saved,
     hiring: empty && !slots.saved,
   };
+}
+
+/** The slot a pick is written into: `StartSlot`, or anything that answers. */
+export interface StartWriter {
+  write(record: { readonly rung: string }): SaveOutcome;
+}
+
+/** A record of a career this browser is carrying, and can be let go of. */
+export interface CareerRecord {
+  clear(): void;
+}
+
+/**
+ * TAKING A DESK, and - for the start-fresh door - letting go of the career that
+ * was here first (#61, 0.41.0).
+ *
+ * One implementation for both doors, because they are one move with one
+ * difference: a HIRE is offered to a browser carrying nothing, so `replaces` is
+ * empty and this writes a pick; the DOOR is offered to a browser carrying a
+ * career, has already asked and been answered, and hands over the save, the
+ * retry and the switch to be let go of.
+ *
+ * THE ORDER IS THE WHOLE OF IT, and it is `acknowledgeCarry`'s rule read the
+ * other way round. The pick is written FIRST and the old career is dropped only
+ * once that write has said it worked, so a browser that will not keep the pick
+ * refuses here with the old career sitting exactly where it was - rather than
+ * clearing three slots and then discovering there is nowhere to put the new
+ * one, which is a player left with neither career and nothing on screen to say
+ * why.
+ *
+ * A rung nobody has written is refused rather than dropped to the bottom of the
+ * ladder: the greying on the option is manners, and this is the rule. Nothing is
+ * cleared on a refusal, at all, for any reason.
+ */
+export function beginCareer(
+  start: StartWriter,
+  rung: string,
+  replaces: readonly CareerRecord[],
+): SaveOutcome {
+  if (!isBuiltRung(rung)) {
+    return {
+      ok: false,
+      reason: 'Nobody has written that rung of the ladder yet. It is on the '
+        + 'list because the ladder is the difficulty and this is where it runs '
+        + 'out, not because the agency can place you on it.',
+    };
+  }
+
+  const kept = start.write({ rung });
+
+  if (!kept.ok) {
+    return kept;
+  }
+
+  // The confirmed moment: every record of the old career, because any one left
+  // behind stands itself up on the next boot instead of the desk just picked.
+  for (const record of replaces) {
+    record.clear();
+  }
+
+  return kept;
 }
