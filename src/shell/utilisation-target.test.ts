@@ -188,13 +188,11 @@ describe('what the business asks of the hours is a column on the rung table', ()
     const reading = rigged.driver.timesheetUtilisation();
     const card = rigged.driver.weekScorecard();
 
-    // The rung's own sheet, which is the whole dependency: one line per party
-    // the day went on, off the ledger - so a week that went nowhere has no
-    // lines on it at all and a full day underneath as nobody's.
-    expect(sheet.shape).toBe('per_customer');
-    expect(sheet.derived).toBe(0);
-    expect(sheet.days[0]?.unattributed).toBeGreaterThan(0);
-
+    // THE READING FIRST, and deliberately: this is the assertion the whole
+    // slice is for, so it must be the one that speaks when somebody puts the
+    // shape back on the tier. Nought per cent of a week that was on the clock,
+    // against the 85 the business asks - where the tier-keyed sheet read a
+    // hundred and met it.
     expect(target).toEqual({ basis: 'recorded', percent: 85 });
     expect(reading.basis).toBe('recorded');
     expect(reading.availableMinutes).toBeGreaterThan(0);
@@ -207,6 +205,13 @@ describe('what the business asks of the hours is a column on the rung table', ()
     expect(card.utilisation).toContain('Under target');
     expect(card.utilisation).toContain('conversation');
     expect(card.utilisation).toContain('nothing on this card is computed from it');
+
+    // And the sheet under it, which is why the number could move: one line per
+    // party the day went on, off the ledger - so a week that went nowhere has
+    // no lines on it at all and a full day underneath as nobody's.
+    expect(sheet.shape).toBe('per_customer');
+    expect(sheet.derived).toBe(0);
+    expect(sheet.days[0]?.unattributed).toBeGreaterThan(0);
   }, 60_000);
 
   /**
