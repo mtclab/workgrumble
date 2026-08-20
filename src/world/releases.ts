@@ -31,6 +31,39 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.39.0',
+    date: '2026-08-20',
+    summary: 'Customers now notice how they are treated. IT is advised '
+      + 'that unlike the management, a customer does not schedule a '
+      + 'meeting about it. They just stop calling.',
+    lines: Object.freeze([
+      'A customer whose tickets go unacknowledged, unanswered past the '
+        + 'contract\'s own clocks, or done-for-free once too often now '
+        + 'notices, in order: the account manager forwards a one-line '
+        + 'mail asking if everything is ok; the customer goes quiet and '
+        + 'their tickets thin out; a letter arrives naming the pattern, '
+        + 'from the file, and the following week their machines are not '
+        + 'yours to reach any more. Every step is answerable from records '
+        + 'you can read, a good week walks the early steps back, and the '
+        + 'letter, once sent, is sent.',
+      'The accountancy and law firms observe a month-end close: for the '
+        + 'last days of each calendar month a change request against '
+        + 'their estate is approved with a start date after the 1st, and '
+        + 'the reply says so. Work on something that is actually down '
+        + 'still passes - a close is a freeze, not a hostage situation.',
+      'The Friday review shows engineers their utilisation against the '
+        + 'seventy-five percent the role is asked for. It is a '
+        + 'conversation, not a mark - nothing on the card is computed '
+        + 'from it. The service desk is asked no such number: the earlier '
+        + 'update note claiming management reads everyone\'s utilisation '
+        + 'has been corrected by the passage of time and one audit.',
+      'The estate\'s calendar has learned what month it is, and the '
+        + 'Linux listing now dates files the same minute the Windows one '
+        + 'does. The two disagreed by an hour for reasons IT describes '
+        + 'as "two people were sure they knew where the clock was".',
+    ]),
+  },
+  {
     version: '0.38.1',
     date: '2026-08-19',
     summary: 'An update for the people who were already here. The new '
