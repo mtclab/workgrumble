@@ -515,13 +515,18 @@ describe('the client that leaves', () => {
 
     const monday = rig(nextWeek(rigged, 2).carry);
 
-    // A hostname somebody read off a KB article, typed at a world the box is
-    // not in any more. The shell answers with what it does not have rather
-    // than with a stack trace: history is history, not a dangling pointer.
-    const lines = run(monday, 'audit customer:marlowe').join('\n');
+    // A name somebody read off a KB article or an old ticket, typed at a world
+    // it is not in any more. The shell answers with what it does not have,
+    // in its own words, rather than with a stack trace or a blank: history is
+    // history, not a dangling pointer.
+    expect(run(monday, 'audit customer:marlowe').join('\n'))
+      .toContain('this desk has none by that name');
+    expect(run(monday, 'restart MARL-WS-01\\Spooler').join('\n'))
+      .toContain('Unknown host "MARL-WS-01"');
 
-    expect(lines.length).toBeGreaterThan(0);
-    expect(lines).not.toContain('MARLOWE-STUDIO');
+    // And the same verb at a client who is still here is the wall it was.
+    expect(run(monday, 'restart FONT-FILE-01\\Spooler').join('\n'))
+      .toMatch(/change request|changereq/i);
   }, WEEK_TIMEOUT_MS);
 
   it('does not put last week\'s letter in this week\'s post', () => {

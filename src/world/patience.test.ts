@@ -21,6 +21,7 @@ import { loadEngineForTests } from '../engine-api/load-node';
 import type { SetupOp } from '../engine-api';
 import {
   contentAfterChurn,
+  customersInContent,
   customersOfEntry,
   NORMAL_WEIGHT,
   QUIET_WEIGHT,
@@ -56,9 +57,10 @@ import {
   type PatienceEntry,
 } from './patience';
 import { contentFor } from './pools';
+import { workKindOf } from './work-kinds';
 import { findWorldTicket } from './tickets';
-import { DEFAULT_RUNG } from './titles';
-import { generateWeek, PRODUCT_WINDOW } from './week-gen';
+import { DEFAULT_RUNG, WORK_KINDS } from './titles';
+import { generateWeek, mixBoundsFor, PRODUCT_WINDOW } from './week-gen';
 import type { WeekRequest } from './week-source';
 import { createWorldSession } from './session';
 
@@ -841,6 +843,82 @@ describe('the week a churned shop is dealt', () => {
         ]) {
           expect(customerOfTicket(id)).not.toBe(ACCOUNT_GONE);
         }
+      }
+    }
+  });
+});
+
+/* -- what the shop is worth afterwards ------------------------------------- */
+
+describe('the mix engine on a shrunken pool', () => {
+  const content = contentFor(employerFor('msp'));
+
+  it('reweights on the accounts that are left, rather than on the old shop', () => {
+    const whole = mixBoundsFor(content, 'systems_engineer', workKindOf);
+
+    expect(whole).not.toBeNull();
+
+    // The blend is a SHARE of the shop's own authored week, so the moment an
+    // account's work is out of that week the shares are different numbers. It
+    // is worth an assertion rather than an assumption: a mix measured off the
+    // shop as it used to be would be an engineer's week quietly held to the
+    // ratios of a client who is not there any more.
+    const moved = customersInContent(content).some((account) => {
+      const after = mixBoundsFor(
+        contentAfterChurn(
+          content,
+          { departed: new Set([account]), quiet: new Set() },
+        ),
+        'systems_engineer',
+        workKindOf,
+      );
+
+      return WORK_KINDS.some(
+        (kind) => after === null
+          || after[kind].share !== whole?.[kind].share
+          || after[kind].least !== whole[kind].least,
+      );
+    });
+
+    expect(moved).toBe(true);
+  });
+
+  it('still fills the week, so the desk loses the client and not the day', () => {
+    // The FINDING, pinned rather than assumed. The fill is budgeted in MINUTES
+    // of the shift and the day bands do not move when an account leaves, so
+    // what a departure changes is WHOSE work arrives and not how much of it -
+    // the remaining clients take up the slack, which is what happens at a real
+    // desk and is why losing a client is a change in the job rather than an
+    // afternoon off. The income consequence is the customer's own line of the
+    // sheet going to nothing, not the week going quiet.
+    const gone = MSP_CUSTOMERS.meridian;
+    const request = (departed: readonly string[]): WeekRequest => ({
+      employer: 'msp',
+      attempt: 1,
+      arcWeek: 6,
+      rung: DEFAULT_RUNG,
+      ...(departed.length === 0 ? {} : { departed }),
+    });
+    const arrivals = (week: readonly { readonly inherited: readonly string[];
+      readonly drip: readonly { readonly ticketId: string }[] }[]): number => week
+      .reduce((total, day) => total + day.inherited.length + day.drip.length, 0);
+
+    const whole = generateWeek(request([]), content, { window: PRODUCT_WINDOW });
+    const after = generateWeek(request([gone]), content, {
+      window: PRODUCT_WINDOW,
+    });
+
+    expect(arrivals(after)).toBeGreaterThan(0);
+    // Within a ticket of the whole shop's week: a band is a band.
+    expect(Math.abs(arrivals(after) - arrivals(whole))).toBeLessThanOrEqual(3);
+
+    // And none of it is theirs, which is the half that DID change.
+    for (const day of after) {
+      for (const id of [
+        ...day.inherited,
+        ...day.drip.map((slot) => slot.ticketId),
+      ]) {
+        expect(customerOfTicket(id)).not.toBe(gone);
       }
     }
   });
