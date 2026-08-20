@@ -728,6 +728,37 @@ input {
   justify-content: flex-end;
 }
 
+/*
+ * The start-fresh door (#61). It stacks whatever state it is in - a button, a
+ * question, or a question already answered with the ladder under it - so the
+ * thing being asked and the thing that answers it are never side by side with
+ * Log on.
+ */
+.login-door {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.login-door > * {
+  width: 100%;
+}
+
+.login-door > button {
+  width: auto;
+}
+
+.login-door-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.login-door-actions button {
+  width: auto;
+}
+
 /* --------------------------------------------------------------- controls */
 
 .os-button {

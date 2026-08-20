@@ -121,6 +121,11 @@ export class Shell {
         // was stood up. The shell passes it through and paints it; it has no
         // business knowing what a save slot is.
         hire: () => context.hire,
+        // And the other half of the same decision: the door out of a career
+        // this browser already has (#61). Passed through the same way and for
+        // the same reason - which of the two a boot offers is a fact about four
+        // storage slots, and the shell reads none of them.
+        freshStart: () => context.freshStart,
       },
       this.abort.signal,
     );

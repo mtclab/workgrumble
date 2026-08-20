@@ -1,6 +1,6 @@
 import { accountFacts, retentionNote } from './account';
 import type { Account, ApiResult } from './api';
-import type { ShellHire, ShellUser } from './context';
+import type { ShellFreshStart, ShellHire, ShellUser } from './context';
 import { createIcon } from './icons';
 import { setAvailability } from './apps/ui';
 import { RETENTION_DAYS } from '../shared/retention';
@@ -27,6 +27,13 @@ export interface LoginScreenHandlers {
    * somebody is looking at the log-on box.
    */
   hire(): ShellHire | null;
+  /**
+   * And the door for a browser that is carrying one already (#61, 0.41.0), or
+   * null when there is nothing to replace. Exactly one of these two is non-null
+   * on any boot; read once, when the screen is built, for the same reason
+   * `hire` is.
+   */
+  freshStart(): ShellFreshStart | null;
 }
 
 export interface LoginScreen {
@@ -197,6 +204,11 @@ export function createLoginScreen(
    * lying about what the button does.
    */
   const hire = handlers.hire();
+  const freshStart = handlers.freshStart();
+  // ONE LADDER, whichever door is showing it. The hire puts it straight on the
+  // screen; the start-fresh door keeps it behind a question. Building it twice
+  // would be two ladders free to disagree about which rungs are written.
+  const ladder = hire ?? freshStart;
   const deskField = document.createElement('label');
   deskField.className = 'field';
   deskField.dataset.testid = 'login-desk-field';
@@ -207,25 +219,25 @@ export function createLoginScreen(
   deskNote.className = 'login-hint';
   deskNote.dataset.testid = 'login-desk-note';
 
-  if (hire !== null) {
+  if (ladder !== null) {
     const deskLabel = document.createElement('span');
     deskLabel.textContent = 'The desk you were hired onto';
     deskField.append(deskLabel, desk);
 
-    for (const rung of hire.rungs) {
+    for (const rung of ladder.rungs) {
       const option = document.createElement('option');
       option.value = rung.id;
       option.textContent = rung.takeable && rung.employer !== null
         ? `${rung.label} - ${rung.employer}`
         : `${rung.label} - not written yet`;
       option.disabled = !rung.takeable;
-      option.selected = rung.id === hire.standard;
+      option.selected = rung.id === ladder.standard;
       desk.append(option);
     }
   }
 
   const sayDesk = (): void => {
-    const picked = hire?.rungs.find((rung) => rung.id === desk.value);
+    const picked = ladder?.rungs.find((rung) => rung.id === desk.value);
 
     deskNote.textContent = picked === undefined
       ? ''
@@ -233,6 +245,88 @@ export function createLoginScreen(
         ? picked.shapeBreak
         : `${picked.shapeBreak} Nobody has written this rung yet - the ladder `
           + 'is the difficulty, and this is where it runs out.';
+  };
+
+  /**
+   * THE START-FRESH DOOR (#61, 0.41.0), and the three states it has.
+   *
+   * SHUT is a button and nothing else, because that is what it should cost a
+   * player who came here to log on: one line of screen, no ladder, no warning
+   * about a career nobody is threatening.
+   *
+   * ASKING is the confirmation, and it names the career in plain words - the
+   * title, the shop, the day - because "are you sure?" over an unnamed thing is
+   * not a question anybody can answer. Nothing has been touched at this point;
+   * Keep this career puts the door back to shut.
+   *
+   * OPEN is the ladder, and only an answered question gets here. Logging on from
+   * here is the moment the old career is replaced, and the line above the select
+   * says so before the select is touched.
+   */
+  const door = document.createElement('div');
+  door.className = 'login-door';
+  door.dataset.testid = 'login-start-fresh-door';
+  const doorOpen = document.createElement('button');
+  doorOpen.type = 'button';
+  doorOpen.className = 'os-button os-button-compact';
+  doorOpen.dataset.testid = 'login-start-fresh';
+  doorOpen.textContent = 'Start a new career';
+  const doorAsk = document.createElement('div');
+  doorAsk.className = 'login-hint';
+  doorAsk.dataset.testid = 'login-start-fresh-confirm';
+  doorAsk.hidden = true;
+  const doorWarning = document.createElement('p');
+  doorWarning.dataset.testid = 'login-start-fresh-warning';
+  const doorActions = document.createElement('div');
+  doorActions.className = 'login-door-actions';
+  const doorYes = document.createElement('button');
+  doorYes.type = 'button';
+  doorYes.className = 'os-button os-button-compact';
+  doorYes.dataset.testid = 'login-start-fresh-confirm-yes';
+  doorYes.textContent = 'Replace it';
+  const doorNo = document.createElement('button');
+  doorNo.type = 'button';
+  doorNo.className = 'os-button os-button-compact';
+  doorNo.dataset.testid = 'login-start-fresh-cancel';
+  doorNo.textContent = 'Keep this career';
+  doorActions.append(doorYes, doorNo);
+  doorAsk.append(doorWarning, doorActions);
+  const doorNote = document.createElement('p');
+  doorNote.className = 'login-hint';
+  doorNote.dataset.testid = 'login-start-fresh-note';
+  doorNote.hidden = true;
+
+  /** Whether logging on now replaces the career this browser is carrying. */
+  let replacing = false;
+
+  const showDoor = (state: 'shut' | 'asking' | 'open'): void => {
+    // A browser being HIRED has no door and its ladder is already in the form,
+    // where the lines below would take it back out again.
+    if (freshStart === null) {
+      return;
+    }
+
+    replacing = state === 'open';
+    doorOpen.hidden = state !== 'shut';
+    doorAsk.hidden = state !== 'asking';
+    doorNote.hidden = state !== 'open';
+
+    if (state === 'asking') {
+      doorWarning.textContent = `Starting a new career replaces ${
+        freshStart.replacing()
+      }. It is not kept anywhere else, and nothing here can get it back `
+        + 'afterwards.';
+    }
+
+    if (state === 'open') {
+      doorNote.textContent = 'Pick the desk and log on. The career above is '
+        + 'replaced the moment you do, and not before.';
+      doorAsk.after(deskField, deskNote);
+      return;
+    }
+
+    deskField.remove();
+    deskNote.remove();
   };
 
   const passwordField = document.createElement('label');
@@ -265,6 +359,8 @@ export function createLoginScreen(
   submit.textContent = 'Log on';
   actions.append(restart, submit);
 
+  door.append(doorOpen, doorAsk, doorNote);
+
   form.append(
     userField,
     ...(hire === null ? [] : [deskField, deskNote]),
@@ -276,6 +372,11 @@ export function createLoginScreen(
     refusal,
     passwordField,
     hint,
+    // The door goes UNDER the password, above the two buttons: it is the last
+    // thing on the screen a player reading downwards meets, which is where a
+    // deliberate way out of a career belongs and nowhere near where somebody
+    // reaching for Log on is looking.
+    ...(freshStart === null ? [] : [door]),
     actions,
   );
   dialog.append(head, form);
@@ -339,7 +440,28 @@ export function createLoginScreen(
     event.preventDefault();
     const typed = badge.value.trim();
 
-    // The desk first, because taking a different job rebuilds the world: the
+    // The DOOR first, because it is the only path on this screen that replaces
+    // something. It is reachable only from the open state, which is reachable
+    // only through a question that named the career being replaced - so by the
+    // time this runs the player has said yes once and picked a rung since.
+    //
+    // Every rung goes through it, the standard one included. That is the one
+    // place this differs from the hire below: a hire that picks the bottom rung
+    // is already sitting in the world it asked for, and a REPLACEMENT that
+    // picks the bottom rung is sitting in somebody else's career.
+    if (replacing && freshStart !== null) {
+      const begun = freshStart.begin(desk.value);
+
+      if (!begun.ok) {
+        say(begun.reason);
+        return;
+      }
+
+      // Nothing after this runs: `begin` starts the page again.
+      return;
+    }
+
+    // The desk next, because taking a different job rebuilds the world: the
     // pick is written down and the machine starts again, arriving at the new
     // shop's own first boot. The standard desk is the world this browser has
     // ALREADY booted, so it costs nothing and changes nothing - which is why
@@ -403,6 +525,28 @@ export function createLoginScreen(
   form.addEventListener('submit', onSubmit, { signal });
   desk.addEventListener('change', sayDesk, { signal });
   issue.addEventListener('click', onIssue, { signal });
+  doorOpen.addEventListener(
+    'click',
+    () => {
+      showDoor('asking');
+    },
+    { signal },
+  );
+  doorYes.addEventListener(
+    'click',
+    () => {
+      showDoor('open');
+      sayDesk();
+    },
+    { signal },
+  );
+  doorNo.addEventListener(
+    'click',
+    () => {
+      showDoor('shut');
+    },
+    { signal },
+  );
   restart.addEventListener(
     'click',
     () => {
@@ -415,6 +559,11 @@ export function createLoginScreen(
     element,
     reset: (): void => {
       showBadge(handlers.knownAccount());
+      // The door is SHUT every time this screen comes back, including after a
+      // log off. An armed replacement left standing across a trip to the
+      // desktop and back would be a Log on that quietly means something else
+      // than it did the last time it was pressed.
+      showDoor('shut');
       sayDesk();
       say(null);
       password.value = '';

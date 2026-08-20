@@ -10,19 +10,16 @@ import {
   pingBossThread,
   remarkInThread,
 } from './shell/boss-thread';
-import type { ShellContext } from './shell/context';
+import { formatSimTime } from './shell/clock-format';
+import type { ShellContext, ShellHireRung } from './shell/context';
 import { DayDriver, DRIVER_INTERVAL_MS, windowFor } from './shell/day-driver';
-import {
-  acknowledgeCarry,
-  carryFrom,
-  hydrateFromRetry,
-  RetrySlot,
-} from './shell/retry';
+import { bootCareer } from './shell/boot-career';
+import { acknowledgeCarry, hydrateFromRetry, RetrySlot } from './shell/retry';
 import { createShellSession, type SaveOutcome, SaveSlot } from './shell/save';
 import { SaveHealth } from './shell/save-health';
 import { Shell } from './shell/shell';
-import { carryForStart, startsPromoted, StartSlot } from './shell/start';
-import { carryForSwitch, SwitchSlot } from './shell/switch';
+import { startsPromoted, StartSlot } from './shell/start';
+import { SwitchSlot } from './shell/switch';
 import { openStorage } from './shell/storage';
 import { CloudSaves } from './shell/sync';
 import { updateOnBoot, VersionSlot } from './shell/updates';
@@ -31,10 +28,11 @@ import { unreadIds } from './world/channels';
 import { COMPANY, COMPANY_IDS } from './world/company';
 import { type Employer, employerFor, employerName } from './world/employers';
 import { awayNoticedLine } from './world/dialogue';
+import { FIELDS } from './world/fields';
 import { dayForTick } from './world/hours';
 import { FLAVOR, flavorText } from './world/interruptions';
 import { MSP_IDS } from './world/msp-company';
-import { createWorldSession, FIRST_WEEK } from './world/session';
+import { createWorldSession } from './world/session';
 import {
   DEFAULT_RUNG,
   isBuiltRung,
@@ -171,38 +169,45 @@ async function boot(): Promise<void> {
   // DIFFERENT employer rather than the same Monday. Read-and-leave, exactly like
   // the retry, and let go of only once the arrival is durable.
   const switchSlot = new SwitchSlot(store.storage);
-  const arriving = switchSlot.peek();
-  const carried = arriving === null ? retry.peek() : null;
   // The save slot, read BEFORE the world is built rather than after, which it
-  // has to be now: whether this boot offers a job depends on whether this
-  // browser is already carrying a week (see `hiring` below). Reading it is free
-  // and the slot itself does nothing until it is written to.
+  // has to be now: whether this boot offers a job, and whether it goes and gets
+  // the week back, both depend on whether this browser is already carrying one.
+  // Reading it is free and the slot itself does nothing until it is written to.
   const slot = new SaveSlot(store.storage);
-  // And the third read-and-leave slot: WHICH DESK this career was started at
+  // And the fourth read-and-leave slot: WHICH DESK this career was started at
   // (E9, 0.35.0, D1). It is written by the log-on screen and consumed here, one
   // boot later, because a start title has to be decided before the world it
-  // decides exists. Absent - which is every existing browser and every player
-  // who takes the standard desk - is the probation shop, exactly as before.
+  // decides exists. Absent - which is every browser that is simply carrying on -
+  // is whatever the other three slots say.
   const startSlot = new StartSlot(store.storage);
-  const started = arriving === null && carried === null
-    ? startSlot.peek()
-    : null;
-  // Whether this boot is a HIRE at all. Four ways to already have a career, and
-  // none of them is one: a week in the slot, an arrival at a new employer, a
-  // retry after a firing, and a desk already chosen and not yet saved. The
-  // fourth is what stops the select coming back on a refresh between the pick
-  // and the first day boundary.
-  const hiring = arriving === null && carried === null && started === null
-    && !slot.exists();
-  // What this session's world was BUILT from, kept rather than thrown away: the
-  // save file stamps it (schema 5) and a firing reads it back, because the
-  // estate a retry is owed is the one the lost week OPENED on and the graph
-  // stops being able to answer that question the moment anybody fixes anything.
-  const opening = arriving !== null
-    ? carryForSwitch(arriving)
-    : carried !== null
-      ? carryFrom(carried)
-      : started === null ? FIRST_WEEK : carryForStart(started.rung);
+  // Which of the five kinds of boot this is, in one place (#61, 0.41.0). The
+  // precedence, the carry the world is built from, whether a job is offered and
+  // whether the saved week is resumed are one rule with four answers, and they
+  // used to be four chains that had to be kept agreeing by hand.
+  const {
+    arriving,
+    carried,
+    started,
+    // What this session's world was BUILT from, kept rather than thrown away:
+    // the save file stamps it (schema 5) and a firing reads it back, because the
+    // estate a retry is owed is the one the lost week OPENED on and the graph
+    // stops being able to answer that question the moment anybody fixes
+    // anything.
+    opening,
+    resume,
+    hiring,
+  } = bootCareer({
+    arriving: switchSlot.peek(),
+    carried: retry.peek(),
+    started: startSlot.peek(),
+    saved: slot.exists(),
+  });
+  // Whether the resume below was refused, which changes what the start-fresh
+  // door is allowed to SAY: with a week that would not open, the career on
+  // screen is a fresh Monday and the one being replaced is a file nobody can
+  // read - and a door that described the world in front of the player would be
+  // naming the wrong career.
+  let resumeRefused = false;
   const { engine, tier, seed, employer, week } = createWorldSession(opening);
   // The employer this session is a week at, as LIVE state rather than a
   // constant read once: the driver deals its week, the audit prices installs
@@ -726,6 +731,129 @@ async function boot(): Promise<void> {
   const startUnsaved = started !== null
     && !acknowledgeCarry(startSlot, () => session.save(), slot);
 
+  /**
+   * THE LADDER, built once and shown by both doors that show it.
+   *
+   * The whole thing goes to the screen, not only the rungs with content: the
+   * design is that the title IS the difficulty, and a list of three jobs would
+   * read as a game with three difficulties rather than as a career with four of
+   * its seven rungs still to be written. What can be taken is `takeable`, and
+   * the refusal in `startCareer` is the rule the greying is only the manners of.
+   */
+  const ladder = (): readonly ShellHireRung[] => RUNGS.map((rung) => ({
+    id: rung,
+    label: TITLE_TABLE[rung].label,
+    employer: TITLE_TABLE[rung].employer === null
+      ? null
+      : employerName(TITLE_TABLE[rung].employer ?? ''),
+    shapeBreak: TITLE_TABLE[rung].shapeBreak,
+    takeable: TITLE_TABLE[rung].built,
+  }));
+
+  /**
+   * Taking a desk: the one implementation, used by both doors (#61, 0.41.0).
+   *
+   * `replacing` is the whole of the difference, and it is the moment the old
+   * career dies. A HIRE is offered only to a browser carrying nothing, so there
+   * is nothing to throw away and the flag is false. The START-FRESH door is
+   * offered only to a browser that IS carrying one, has said in plain words
+   * which career that is, and has been answered - so by the time this runs the
+   * player has confirmed the replacement and then chosen a rung, and this click
+   * is the point of no return.
+   *
+   * WHY HERE AND NOT AT THE FIRST SAVE OF THE NEW CAREER. `acknowledgeCarry`
+   * refuses to make a carried week durable by writing over a saved one - that
+   * is 0.5.x WG-03 and it stays - so a new career left to overwrite the old at
+   * its first day boundary would never be saved at all: it would play,
+   * unsaveable, over a week it could not replace, and every refresh would put
+   * the old one back. The alternative is a second write path allowed to
+   * overwrite, which is exactly the "one door" this slice is against. So the
+   * record is written FIRST (a browser that will not keep it refuses here and
+   * loses nothing), the old career's three records go next, and the reload is
+   * last. A tab that dies in between comes back to the pick it was given, which
+   * is the career the player asked for.
+   */
+  const startCareer = (rung: string, replacing: boolean): SaveOutcome => {
+    // A browser that keeps nothing cannot be offered a different desk, and this
+    // is the one place that matters: taking one needs the machine to start
+    // again, and a choice written into a store that forgets when the tab
+    // reloads would put somebody on the service desk seconds after they asked
+    // for the engineer's, silently. The standard desk is the world already
+    // booted, so it is always available.
+    if (store.reason !== null) {
+      return {
+        ok: false,
+        reason: `${store.reason} A different desk needs the workstation to `
+          + 'start again, and this browser would forget which one on the way - '
+          + 'so the desk you are already sat at is the only one it can honestly '
+          + 'offer.',
+      };
+    }
+
+    if (!isBuiltRung(rung)) {
+      return {
+        ok: false,
+        reason: 'Nobody has written that rung of the ladder yet. It is on the '
+          + 'list because the ladder is the difficulty and this is where it '
+          + 'runs out, not because the agency can place you on it.',
+      };
+    }
+
+    const kept = startSlot.write({ rung });
+
+    if (!kept.ok) {
+      return kept;
+    }
+
+    if (replacing) {
+      // The confirmed moment. All three, because all three are a career this
+      // browser is carrying and any one left behind would stand itself up on
+      // the next boot instead of the desk somebody just picked.
+      slot.clear();
+      retry.clear();
+      switchSlot.clear();
+    }
+
+    // The world was stood up before anybody was asked, so taking a different
+    // job means building it again - and the honest way to build a world again
+    // is the way a retry already does it: start the page. The boot on the other
+    // side reads the slot, stands the new shop up and plays the "new machine"
+    // ceremony with its name on it.
+    window.location.reload();
+
+    return kept;
+  };
+
+  /**
+   * The career this browser is carrying, in the plainest words there are.
+   *
+   * Read off the LIVE world rather than off the file, because after the resume
+   * above the live world IS the file - and a title and a shop are two things a
+   * player recognises where a wall-clock stamp is not. The one case where the
+   * two disagree is a save that would not open: there the world on screen is a
+   * fresh Monday nobody asked for, and saying so is the only honest sentence
+   * the door can put in front of somebody about to replace it.
+   */
+  const careerInWords = (): string => {
+    if (resumeRefused) {
+      return 'the saved week in this browser, which this version of the '
+        + 'workstation could not open';
+    }
+
+    const title = engine.graph.getField(COMPANY_IDS.player, FIELDS.title);
+    const arcWeek = engine.graph.getField(COMPANY_IDS.player, FIELDS.arcWeek);
+    const display = formatSimTime(engine.now());
+    const where = `${
+      typeof title === 'string' && title.length > 0
+        ? title
+        : 'IT Support Technician'
+    } at ${currentEmployer.name}`;
+
+    return typeof arcWeek === 'number' && arcWeek > 1
+      ? `${where}, week ${String(arcWeek)}, ${display.day}`
+      : `${where}, ${display.day}`;
+  };
+
   const context: ShellContext = {
     manifest: APP_MANIFEST,
     saveHealth: health,
@@ -761,68 +889,39 @@ async function boot(): Promise<void> {
     /**
      * THE DESK, offered only on a boot that is starting a career (E9, 0.35.0).
      *
-     * The whole ladder goes to the screen, not only the two rungs with content:
-     * the design is that the title IS the difficulty, and a list of two jobs
-     * would read as a game with two difficulties rather than as a career with
-     * five rungs still to be written. What can be taken is `takeable`, and the
-     * refusal below is the rule the greying is only the manners of.
+     * NULL is the normal case and means "not now": this browser is carrying a
+     * week, arriving at a new employer or retrying a lost one, and none of those
+     * is a hire. What a browser in that state gets instead is the door below.
      */
     hire: hiring
       ? {
-        rungs: RUNGS.map((rung) => ({
-          id: rung,
-          label: TITLE_TABLE[rung].label,
-          employer: TITLE_TABLE[rung].employer === null
-            ? null
-            : employerName(TITLE_TABLE[rung].employer ?? ''),
-          shapeBreak: TITLE_TABLE[rung].shapeBreak,
-          takeable: TITLE_TABLE[rung].built,
-        })),
+        rungs: ladder(),
         standard: DEFAULT_RUNG,
-        choose: (rung: string): SaveOutcome => {
-          // A browser that keeps nothing cannot be offered a different desk,
-          // and this is the one place that matters: taking one needs the
-          // machine to start again, and a choice written into a store that
-          // forgets when the tab reloads would put somebody on the service desk
-          // seconds after they asked for the engineer's, silently. The standard
-          // desk is the world already booted, so it is always available.
-          if (store.reason !== null) {
-            return {
-              ok: false,
-              reason: `${store.reason} A different desk needs the workstation `
-                + 'to start again, and this browser would forget which one on '
-                + 'the way - so the desk you are already sat at is the only '
-                + 'one it can honestly offer.',
-            };
-          }
-
-          if (!isBuiltRung(rung)) {
-            return {
-              ok: false,
-              reason: 'Nobody has written that rung of the ladder yet. It is '
-                + 'on the list because the ladder is the difficulty and this '
-                + 'is where it runs out, not because the agency can place you '
-                + 'on it.',
-            };
-          }
-
-          const kept = startSlot.write({ rung });
-
-          if (!kept.ok) {
-            return kept;
-          }
-
-          // The world was stood up before anybody was asked, so taking a
-          // different job means building it again - and the honest way to
-          // build a world again is the way a retry already does it: start the
-          // page. The boot on the other side reads the slot, stands the new
-          // shop up and plays the "new machine" ceremony with its name on it.
-          window.location.reload();
-
-          return kept;
-        },
+        choose: (rung: string): SaveOutcome => startCareer(rung, false),
       }
       : null,
+    /**
+     * AND THE DOOR OUT OF A CAREER THAT ALREADY EXISTS (#61, 0.41.0).
+     *
+     * The exact mirror of the hire, and the residual 0.35.0 left: the ladder
+     * appeared on a career-less browser and nowhere else, so once a browser had
+     * a week in it there was no way to start another one at all - and now that a
+     * refresh RESUMES rather than dealing a fresh Monday, there is no accidental
+     * one either. So the door is deliberate, it is confirmed, and the ladder
+     * lives inside it.
+     *
+     * Offered on exactly the boots the hire is not, which is what makes the pair
+     * a rule rather than two features: a browser is either being offered a job
+     * or carrying a career, never both and never neither.
+     */
+    freshStart: hiring
+      ? null
+      : {
+        replacing: careerInWords,
+        rungs: ladder(),
+        standard: DEFAULT_RUNG,
+        begin: (rung: string): SaveOutcome => startCareer(rung, true),
+      },
     report: (submission) => api.sendFeedback(submission),
     tier,
     graph: engine.graph,
@@ -956,6 +1055,43 @@ async function boot(): Promise<void> {
   });
 
   /**
+   * THE WEEK THIS BROWSER WAS IN, put back before anybody logs on (#61).
+   *
+   * Through `session.load()` - the exact call the Load item on the start menu
+   * makes, preflight, rollback, employer re-point and all - because a second
+   * loader is how five P1s shipped in 0.6.0 and how a senior career spent five
+   * box rounds being silently demoted in 0.36.0. There is one door into a saved
+   * world and this is it; what this line adds is that a refresh walks through it
+   * without being asked to.
+   *
+   * AFTER the shell exists and BEFORE it starts, which is the one window where
+   * both halves are true: a refusal has somewhere to be said (the notification
+   * queue holds it until there is a desktop), and the world is put back before
+   * the desktop is built rather than repainted under it.
+   *
+   * It says NOTHING when it works. A refresh landing on the week it left is the
+   * product behaving, and a toast on every reload would be the game announcing
+   * that it has not lost anything - which is the note of an application that
+   * usually does. The badge's own adopt still speaks, because that one replaced
+   * this browser's copy with another machine's.
+   */
+  if (resume) {
+    const resumed = session.load();
+
+    if (!resumed.ok) {
+      resumeRefused = true;
+      shell.notify(
+        'The saved week would not open',
+        `${resumed.reason} You are looking at a first Monday instead, and it `
+          + 'is not the week that was in this browser - the file is still here '
+          + 'for now, and the first day this session keeps will file over it. '
+          + 'Start a new career on the log-on screen if a clean one is what you '
+          + 'want.',
+      );
+    }
+  }
+
+  /**
    * The badge's copy of the week, compared with this browser's, once.
    *
    * It runs when a badge turns up - at boot if the browser is already carrying
@@ -1064,9 +1200,19 @@ async function boot(): Promise<void> {
 
     shell.notify(
       `First day as ${row.title}`,
-      `${employerName(row.employer ?? '')} took you on at the title, not at `
-        + 'the bottom. The desk, the access and the work are the ones that come '
-        + 'with it - and so is everything nobody warned you about.',
+      // The bottom rung gets its own sentence, because the other one would be
+      // a lie about it. A start record naming the standard desk is only ever
+      // written by the start-fresh door (#61) - the hire writes nothing for a
+      // rung whose carry IS the first Monday - and telling somebody who has
+      // just deliberately gone back to the bottom that they were taken on at
+      // the title would be the game congratulating them for the wrong thing.
+      started.rung === DEFAULT_RUNG
+        ? `${employerName(row.employer ?? '')} took you on at the bottom, `
+          + 'which is where this ladder starts. A probation week, a queue, and '
+          + 'a knowledge base you are not allowed to argue with.'
+        : `${employerName(row.employer ?? '')} took you on at the title, not `
+          + 'at the bottom. The desk, the access and the work are the ones that '
+          + 'come with it - and so is everything nobody warned you about.',
     );
   }
 
