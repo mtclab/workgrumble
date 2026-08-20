@@ -2250,12 +2250,16 @@ test('walks every function of a probation week that goes well', async ({
   await step('start-menu.load', async () => {
     await page.reload();
     await completeLogin(page, { brief: 'keep' });
-    // A fresh session: a different world, at 08:00, having done none of it.
-    const fresh = await page.evaluate(() => ({
+    // THE RELOAD RESUMES IT (#61, 0.41.0). This step used to assert the
+    // opposite - "a fresh session: a different world, at 08:00, having done
+    // none of it" - and that was the defect written down as an expectation.
+    // The walk now checks the thing a player actually does: turn the machine
+    // off and on again at the end of a Monday, and be back on the Monday.
+    const resumed = await page.evaluate(() => ({
       hash: globalThis.careerSim?.hash() ?? '',
       tick: globalThis.careerSim?.tick() ?? -1,
     }));
-    expect(fresh.hash).not.toBe(before.hash);
+    expect(resumed).toEqual(before);
 
     await page.getByTestId('start-button').click();
     await page.getByTestId('start-menu-load').click();
@@ -5768,8 +5772,12 @@ test('walks the web store, the install, the audit and the uninstall', async ({
 
   await page.reload();
   await completeLogin(page, { brief: 'keep' });
-  // A fresh session has neither toy on the desktop.
-  await expect(page.getByTestId('desktop-icon-arcade')).toHaveCount(0);
+  // The install set rides the RESUME as well as the load (#61, 0.41.0): this
+  // used to be "a fresh session has neither toy on the desktop", and the toys
+  // are now on it before anybody has opened a menu. That is the same claim
+  // made harder - a session that had restarted would have a bare desktop, and
+  // this one is carrying four icons off a file it was handed at boot.
+  await expect(page.getByTestId('desktop-icon-arcade')).toBeVisible();
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-load').click();
@@ -6273,17 +6281,26 @@ test('walks the second queue: audited, corrected, billed and written up',
 
     /**
      * THE RESUME, the way a senior actually resumes - and the find of this
-     * release's box rounds. `logInOnDay` REPLAYS the missing days on the
-     * world the boot stood up, and a plain boot stands up the PROBATION shop:
-     * the desk you chose lives in the save, and the shipped resume for a
-     * saved week is the badge adopting a newer copy or the Load option on
-     * the start menu. Every junior cross-day walk survives replay because a
-     * drawn week is a function of the seed; this walk's whole career is a
-     * fact the seed does not carry, so replay silently demoted the player
-     * and five box rounds chased "missing" senior surfaces around a junior
-     * world. (Whether a plain refresh SHOULD hand the desk back without
-     * Load is a design question filed with the owner - the walk plays the
-     * path that ships.)
+     * release's box rounds, now closed. `logInOnDay` REPLAYS the missing days
+     * on the world the boot stood up, and a plain boot used to stand up the
+     * PROBATION shop: the desk you chose lives in the save, and until #61 the
+     * shipped resume for a saved week was the badge adopting a newer copy or
+     * the Load option on the start menu. Every junior cross-day walk survives
+     * replay because a drawn week is a function of the seed; this walk's whole
+     * career is a fact the seed does not carry, so replay silently demoted the
+     * player and five box rounds chased "missing" senior surfaces around a
+     * junior world.
+     *
+     * 0.36.0's answer was to clock off in-session and then press Load, which
+     * was the honest path at the time. Since #61 the BOOT does it, so the walk
+     * plays what a player plays: turn the machine off and on again between
+     * days and be at the same desk. The clock-off stays, because it is not a
+     * workaround - the boundary save is written at the clock-off, and a reload
+     * before it would come back to yesterday morning.
+     *
+     * The title is checked on the far side of every one of these, because
+     * "the same day came back" is a claim a probation world could also make
+     * and "the senior's desk came back" is not.
      *
      * The clock the confirmed filing bought runs out on Tuesday (~13:16),
      * and the bill lands as a toast plus a line ON THE TICKET'S RECORD -
@@ -6302,7 +6319,7 @@ test('walks the second queue: audited, corrected, billed and written up',
       }
 
       // Clock off IN THIS SESSION first: the boundary save is written at the
-      // clock-off, and a reload before it would hand Load yesterday morning.
+      // clock-off, and a reload before it would come back to yesterday.
       await page.getByTestId('scorecard-clock-off').click();
       await expect(page.getByTestId('brief-heading'))
         .toContainText(`Day ${String(day)}`);
@@ -6311,12 +6328,12 @@ test('walks the second queue: audited, corrected, billed and written up',
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.goto('/');
       await completeLogin(page, { brief: 'keep' });
-      await page.getByTestId('start-button').click();
-      await page.getByTestId('start-menu-load').click();
-      await expect(page.getByTestId('toast').filter({ hasText: 'Game loaded' }))
-        .toHaveCount(1);
+      // Nothing pressed: the boot went and got it.
       await expect(page.getByTestId('brief-heading'))
         .toContainText(`Day ${String(day)}`);
+      expect(await page.evaluate(
+        () => globalThis.careerSim?.field('person:pat', 'title') ?? null,
+      )).toBe('Senior Service Desk Analyst');
     };
 
     await runToDayEnd(page);

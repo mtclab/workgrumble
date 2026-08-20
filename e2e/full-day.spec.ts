@@ -314,16 +314,25 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   await page.reload();
   await completeLogin(page, { brief: 'keep' });
 
-  // A fresh session: a different world, at 08:00, having done none of it.
-  const fresh = await simState(page);
-  expect(fresh.hash).not.toBe(before.hash);
+  // THE RELOAD ITSELF BRINGS IT BACK (#61, 0.41.0). This used to be the
+  // "a fresh session: a different world, at 08:00, having done none of it"
+  // step, and that was the defect rather than the design: a browser carrying a
+  // week now resumes it at boot, through the same loader the menu item below
+  // goes through. The claim it used to make - that the world after the load is
+  // the file's rather than the default's - is made here instead and made
+  // harder: nothing has been clicked, and this is a Friday afternoon with two
+  // tickets closed on it rather than a Monday at eight.
+  const resumed = await simState(page);
+  expect(resumed).toEqual(before);
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-load').click();
   await expect(page.getByTestId('toast').filter({ hasText: 'Game loaded' }))
     .toHaveCount(1);
 
-  // The same world, to the byte; the same minute; the same screens.
+  // The same world, to the byte; the same minute; the same screens. Loading by
+  // hand over a session that has already resumed is a player pressing Load
+  // twice, and it has to be worth nothing rather than worth something.
   const after = await simState(page);
   expect(after).toEqual(before);
 

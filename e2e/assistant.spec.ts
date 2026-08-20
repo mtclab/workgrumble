@@ -211,11 +211,13 @@ test('a save taken after closing it remembers how many times', async ({
   await page.reload();
   await completeLogin(page, { brief: 'keep' });
 
-  // A fresh session has never been closed, which is what makes the load below
-  // a claim about the file rather than about the default.
+  // The reload resumes the week (#61, 0.41.0), so the dismissal comes back
+  // with it - which is the claim this made the other way round before: a fresh
+  // session has never been closed, so a count of one on a session nobody has
+  // touched is the file's answer rather than the default.
   expect(await page.evaluate(
     () => globalThis.careerSim?.screens().assistant.dismissals ?? -1,
-  )).toBe(0);
+  )).toBe(1);
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-load').click();

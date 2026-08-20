@@ -348,10 +348,21 @@ test('keeps a mid-day session across a page reload', async ({ page }) => {
   await page.getByTestId('start-menu-save').click();
   await expect(page.getByTestId('toast')).toContainText('Game saved');
 
-  // A reload is a new session: fresh world, 08:00, nothing read.
+  // A reload comes back into the shift it left (#61, 0.41.0). It used to be a
+  // new session at 08:00 with nothing read, which is what the load below then
+  // had to undo; now the boot resumes through that same loader and arrives
+  // mid-morning.
+  //
+  // The HOUR rather than the minute, because the clock is running again the
+  // instant there is a desktop and this assertion is not holding it - the
+  // exact minute is read after the load below, where it has just been put
+  // back. Nine-something is not a value both worlds could have: a session that
+  // had restarted would be at eight on a morning brief.
   await page.reload();
   await completeLogin(page);
-  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^08:/);
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);
+  await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 1');
+  await expect(page.getByTestId('day-state')).toHaveText('Shift');
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-load').click();

@@ -417,11 +417,16 @@ test('shows the right corridor the moment a paused save is loaded', async ({
   await expect(page.getByTestId('toast').filter({ hasText: 'Game saved' }))
     .toHaveCount(1);
 
-  // A fresh session: day one, nine in the morning, nobody in the corridor.
+  // The reload resumes it (#61, 0.41.0): the corridor comes back mid-telegraph
+  // on a day two that is still paused, rather than the day-one Monday this
+  // used to boot. The clock being where it was is the claim - a fresh session
+  // would be at nine on the first morning with nobody in the corridor - and
+  // it can be read exactly, because the world it came back into is frozen.
   await page.reload();
   await completeLogin(page, { brief: 'keep' });
-  await page.getByTestId('close-brief').click();
-  await expect(desktop).toHaveAttribute('data-boss', 'clear');
+  await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 2');
+  await expect(page.getByTestId('sim-clock-time')).toHaveText(clock ?? '');
+  await expect(desktop).toHaveAttribute('data-boss', 'telegraph');
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-load').click();

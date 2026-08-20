@@ -32,6 +32,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { WasmEngine } from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
+import { FRESH_CAREER_TIER } from '../world/career';
 import { COMPANY_IDS } from '../world/company';
 import { type Employer, employerFor } from '../world/employers';
 import { FIELDS } from '../world/fields';
@@ -245,6 +246,7 @@ describe('a refresh with a saved week in the browser', () => {
         title: 'IT Support Technician',
         farmFund: 25_000,
         trail: null,
+        tier: FRESH_CAREER_TIER,
       },
     }).ok).toBe(true);
 

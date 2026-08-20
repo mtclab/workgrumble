@@ -123,6 +123,40 @@ test('captures the start select and the engineer boot', async ({ page }) => {
 });
 
 /**
+ * THE START-FRESH DOOR (#61, 0.41.0), in all three of its states.
+ *
+ * Three frames because the door is a sequence rather than a control: a line
+ * on the log-on screen, a question that names the career, and only then the
+ * ladder with the line that says when the old one goes. A capture of the last
+ * frame alone would show a difficulty select on a screen it is not on until
+ * somebody has answered something.
+ */
+test('captures the start-fresh door on a career-carrying browser', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.clock.install();
+  await page.goto('/');
+
+  // A career worth being asked about: the senior desk, which is a fact the
+  // seed does not carry and the exact case #61 was found on.
+  await page.getByTestId('login-desk').selectOption('sd_senior');
+  await page.getByTestId('login-password').fill('hunter2');
+  await page.getByTestId('login-submit').click();
+  await expect(page.getByTestId('login-screen'))
+    .toBeVisible({ timeout: 30_000 });
+  await shot(page, '33-door-shut');
+
+  await page.getByTestId('login-start-fresh').click();
+  await expect(page.getByTestId('login-start-fresh-confirm')).toBeVisible();
+  await shot(page, '34-door-asking');
+
+  await page.getByTestId('login-start-fresh-confirm-yes').click();
+  await expect(page.getByTestId('login-desk-field')).toBeVisible();
+  await shot(page, '35-door-open-with-ladder');
+});
+
+/**
  * The second queue (E9, 0.36.0), which is the one surface this slice adds and
  * therefore the one the sweep has never seen.
  *

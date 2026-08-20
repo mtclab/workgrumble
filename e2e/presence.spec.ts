@@ -558,9 +558,11 @@ test('a save taken behind the dot reloads behind the dot', async ({ page }) => {
   await page.reload();
   await completeLogin(page, { brief: 'keep' });
 
-  // A fresh session is a fresh Monday with an honest dot on it, which is what
-  // makes the load below a claim about the save rather than about the default.
-  await expect(presenceState(page)).toHaveText('Available');
+  // The reload resumes the week (#61, 0.41.0), and the dot comes back with it
+  // - which is the claim this step used to make one line later: the DEFAULT is
+  // Available, so a Do Not Disturb on a session nobody has touched is the
+  // save's own answer rather than the screen's.
+  await expect(presenceState(page)).toHaveText('Do not disturb');
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-load').click();

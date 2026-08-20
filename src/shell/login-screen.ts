@@ -308,10 +308,15 @@ export function createLoginScreen(
 
     replacing = state === 'open';
     doorOpen.hidden = state !== 'shut';
-    doorAsk.hidden = state !== 'asking';
+    // The WARNING stays up once it has been read, and only the two buttons go:
+    // a player choosing a rung is choosing it against a career, and a sentence
+    // that named that career and then took itself off the screen would leave
+    // the ladder looking like the difficulty select on a new game.
+    doorAsk.hidden = state === 'shut';
+    doorActions.hidden = state !== 'asking';
     doorNote.hidden = state !== 'open';
 
-    if (state === 'asking') {
+    if (state !== 'shut') {
       doorWarning.textContent = `Starting a new career replaces ${
         freshStart.replacing()
       }. It is not kept anywhere else, and nothing here can get it back `
@@ -321,7 +326,7 @@ export function createLoginScreen(
     if (state === 'open') {
       doorNote.textContent = 'Pick the desk and log on. The career above is '
         + 'replaced the moment you do, and not before.';
-      doorAsk.after(deskField, deskNote);
+      doorNote.after(deskField, deskNote);
       return;
     }
 
