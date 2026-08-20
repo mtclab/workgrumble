@@ -31,6 +31,34 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.40.0',
+    date: '2026-08-20',
+    summary: 'The timesheet has learned who you are. IT regrets that for '
+      + 'some of you this means the timesheet now has more than one line '
+      + 'on it.',
+    lines: Object.freeze([
+      'A senior analyst\'s sheet now shows one line per party the day '
+        + 'was actually worked for, drawn from the same records the rest '
+        + 'of the building reads. With a sheet that can add up wrong, the '
+        + 'eighty-five percent the role is asked for is back on the '
+        + 'Friday card - it left in the previous update because a sheet '
+        + 'with one bucket met any target by existing, which even '
+        + 'management noticed was not a measurement.',
+      'The terminal no longer tells a desk analyst their sheet is "on '
+        + 'the invoice run". There is no invoice run for a desk analyst '
+        + 'to be on. The sentence was the engineer\'s, worn by whoever '
+        + 'filed a sheet; each rung now hears its own.',
+      'The building\'s dates now know which week of your career it is. '
+        + 'Previously the audit trail knew, while the file listings, the '
+        + 'event log and the timesheet headers dated everything to your '
+        + 'first week - a filing system IT describes as "nostalgic". '
+        + 'Directory stamps, ls, the event log and the sheet now ask the '
+        + 'same calendar the audit does. The print queue still lives in '
+        + 'the first week of September and IT is aware of the print '
+        + 'queue.',
+    ]),
+  },
+  {
     version: '0.39.0',
     date: '2026-08-20',
     summary: 'Customers now notice how they are treated. IT is advised '
