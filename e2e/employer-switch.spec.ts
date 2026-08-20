@@ -61,11 +61,8 @@ async function arriveAtBodgeworth(page: Page): Promise<void> {
   const arrival = page.getByTestId('window-updates');
 
   if (await arrival.count()) {
-    const close = arrival.getByTestId('window-close');
-
-    if (await close.count()) {
-      await close.first().click();
-    }
+    await page.getByTestId('close-updates').click();
+    await expect(arrival).toHaveCount(0);
   }
 
   // And the first brief, at the new shop.

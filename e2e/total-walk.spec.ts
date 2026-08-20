@@ -3714,11 +3714,8 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
   const arrival = page.getByTestId('window-updates');
 
   if (await arrival.count()) {
-    const close = arrival.getByTestId('window-close');
-
-    if (await close.count()) {
-      await close.first().click();
-    }
+    await page.getByTestId('close-updates').click();
+    await expect(arrival).toHaveCount(0);
   }
 
   await dismissBrief(page);
@@ -5332,11 +5329,8 @@ test('walks setenforce 0, and the sweep that puts it in the inbox', async ({
   const arrival = page.getByTestId('window-updates');
 
   if (await arrival.count()) {
-    const close = arrival.getByTestId('window-close');
-
-    if (await close.count()) {
-      await close.first().click();
-    }
+    await page.getByTestId('close-updates').click();
+    await expect(arrival).toHaveCount(0);
   }
 
   // The shift is genuinely started here, unlike the sysadmin run: this beat is
