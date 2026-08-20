@@ -6,6 +6,7 @@ import {
   lineHandle,
   type SheetDay,
   type SheetLine,
+  type SheetShape,
   type Timesheet,
   utilisationLine,
 } from '../../world/timesheet';
@@ -59,15 +60,18 @@ import {
  *    by the week ending because nobody got round to it. The fourth of those is
  *    a real thing that happens to this sheet and it says so in those words.
  *
- * THE SHAPE IS THE TIER'S, and the two shapes are two different windows:
- * `single_bucket` is the service desk and it is the joke - one bucket a day at
- * seven and a half hours, nothing attributed to anybody, no line to argue
- * with and one button - so this window offers NO edit affordances on it. That
- * is not the gate being hidden: there is nothing on a desk sheet to decide,
- * the window says so in its own sentence, and the terminal's verbs are still
- * there for anybody who insists. `per_customer` is the engineer's, and it is
- * the mechanic: a line per customer, the project on a line of its own with its
- * code, a billable flag, and an edit on every row.
+ * THE SHAPE IS THE RUNG'S (0.40.0), and the three shapes are three different
+ * windows. `single_bucket` is the probation desk and it is the joke - one
+ * bucket a day at seven and a half hours, nothing attributed to anybody, no
+ * line to argue with and one button - so this window offers NO edit
+ * affordances on it. That is not the gate being hidden: there is nothing on a
+ * probationer's sheet to decide, the window says so in its own sentence, and
+ * the terminal's verbs are still there for anybody who insists. `per_customer`
+ * is the senior desk's, and it is where the argument starts: a line per party
+ * the day was actually spent on, edits on every row, and no billable word at
+ * the end of one because that rung is on nobody's invoice.
+ * `per_customer_project` is the engineer's, and it is the whole mechanic: the
+ * project on a line of its own with its code, and the billable flag with it.
  *
  * WHY THIS ONE DOES NOT REPAINT WHOLESALE, unlike the plan surface next door.
  * The derived column MOVES - a line grows while the player is on it - so the
@@ -183,11 +187,23 @@ export function sheetStamp(
     };
 }
 
-/** What the window is for, said differently to the two tiers it is for. */
+/** What the window is for, said differently to each rung it is for. */
 export function shapeLine(sheet: Readonly<Timesheet>): string {
-  return sheet.shape === 'single_bucket'
-    ? 'One bucket a day, seven and a half hours, attributed to nobody. There '
-      + 'is nothing on it to decide and one thing to do with it.'
+  if (sheet.shape === 'single_bucket') {
+    return 'One bucket a day, seven and a half hours, attributed to nobody. '
+      + 'There is nothing on it to decide and one thing to do with it.';
+  }
+
+  // The senior desk's sentence says the two things that are actually different
+  // about it, and neither is the engineer's: the day has to add up, and the
+  // hours are the ones the records have rather than a number the sheet writes
+  // for you. No project code and no billable flag are named because there are
+  // none to name - a window that advertised a column it does not draw would be
+  // the engineer's sheet with the lights off.
+  return sheet.shape === 'per_customer'
+    ? 'A line for each account the day went on, off the records rather than '
+      + 'off the clock. What is left over is nobody\'s. What you say is what '
+      + 'goes in.'
     : 'A line per customer, the project on a line of its own, and a billable '
       + 'flag. What the records say is on the left. What you say is what goes '
       + 'out.';
@@ -196,12 +212,17 @@ export function shapeLine(sheet: Readonly<Timesheet>): string {
 /**
  * Whether this window offers an edit at all.
  *
- * Two ways to be false and they are different sentences: a desk sheet has
- * nothing on it to argue with, and a submitted one is somebody else's piece of
- * paper now. Both are said in the window rather than left as dead controls.
+ * Two ways to be false and they are different sentences: a PROBATIONER's sheet
+ * has nothing on it to argue with - it writes the same day every day whatever
+ * was worked - and a submitted one is somebody else's piece of paper now. Both
+ * are said in the window rather than left as dead controls.
+ *
+ * The senior desk gets the edits (0.40.0) and that is the point of the rung
+ * rather than an oversight: the moment a sheet says whose day it was, there is
+ * something on it to disagree with, and the disagreement is the mechanic.
  */
 export function editsOffered(sheet: Readonly<Timesheet>): boolean {
-  return sheet.shape === 'per_customer' && sheet.submittedAt === null;
+  return sheet.shape !== 'single_bucket' && sheet.submittedAt === null;
 }
 
 /** Why the sheet cannot be sent, in the world's own words, or null. */
@@ -226,6 +247,13 @@ export interface LineItem {
   readonly handle: string;
   readonly line: SheetLine;
   readonly editable: boolean;
+  /**
+   * The sheet's shape, carried onto the row because the word at the END of a
+   * row is the shape's and not the line's: a sheet that makes no billable
+   * split prints no register there (`lineFlag`). The row cannot read it off
+   * the line, which is why it rides here.
+   */
+  readonly shape: SheetShape;
 }
 
 export interface GapItem {
@@ -272,6 +300,7 @@ export function sheetItems(
         handle: lineHandle(day.day, index),
         line,
         editable,
+        shape: sheet.shape,
       });
     }
 
@@ -570,7 +599,7 @@ export const TIMESHEET_APP: AppDef = {
 
           setText(handle, item.handle);
           setText(label, item.line.label);
-          setText(flag, lineFlag(item.line));
+          setText(flag, lineFlag(item.line, item.shape));
           worked.dataset.testid = `timesheet-worked-${item.handle}`;
           setText(worked, hoursLabel(item.line.derived));
 

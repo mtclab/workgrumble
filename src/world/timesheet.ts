@@ -41,7 +41,7 @@ import type {
   ReadOnlyGraphView,
 } from '../engine-api';
 import { customerIdForTicketNodes, customerIdOfNode } from './customers';
-import { FIELDS, PLAYER_TIERS, type PlayerTier } from './fields';
+import { FIELDS } from './fields';
 import { SCOPE_OUTCOMES } from './out-of-scope';
 import { isUnresolved } from './sla';
 import {
@@ -882,9 +882,45 @@ export function withClaim(
     .join('\n');
 }
 
-/* -- the sheet, as the tier shapes it ------------------------------------- */
+/* -- the sheet, as the RUNG shapes it ------------------------------------- */
 
-export type SheetShape = 'single_bucket' | 'per_customer';
+/**
+ * The three shapes a sheet comes in - the paperwork ramp, as data (0.40.0).
+ *
+ * A shape is a claim about WHAT THIS RUNG HAS TO ATTRIBUTE, and the research's
+ * own ladder has three rungs of it (`docs/design/titles-difficulty.md`, hour
+ * registration): register the day to one bucket, then say whose day it was,
+ * then say whose, on what, and whether anybody is invoiced for it.
+ *
+ *  - `single_bucket` is the service desk's first rung, and it is the joke.
+ *    Nobody at a probation desk attributes anything: the sheet is a headcount
+ *    formality, one line a day at `WORKING_MINUTES_PER_DAY`, and it is finished
+ *    before the sigh is. The ledger is not consulted, because there is nothing
+ *    on it anybody would be asked about.
+ *  - `per_customer` is the senior desk, and it is the first rung of the ramp:
+ *    the day has to ADD UP. One line per party the minutes were actually for -
+ *    a customer where the shop has customers, the employer's own work where it
+ *    does not - with no project code and no billable split, because a desk
+ *    analyst is not on anybody's invoice and has no project to be on. What it
+ *    buys is the thing the one-bucket sheet cannot have: the minutes are the
+ *    LEDGER's, so a day spent on nothing shows as a day spent on nothing.
+ *  - `per_customer_project` is the engineer, and it is the whole mechanic: one
+ *    line per customer, the 0.29.0 project as an attributable line of its own
+ *    with its project code on it, a billable flag, and the rest of the day
+ *    sitting underneath as time that is on nobody's invoice.
+ *
+ * WHICH RUNG GETS WHICH IS A COLUMN ON THE RUNG TABLE (`titles.ts`) and it is
+ * handed in here. It was `shapeForTier` until 0.40.0 - a read of the PAM tier -
+ * and that could not tell a senior service desk analyst from a probationer,
+ * because those two rungs stand on one tier by design (privilege is what the
+ * tier is about, and a senior analyst has a junior's). The cost of that was not
+ * cosmetic: it cleared the senior's utilisation target by construction, so the
+ * figure had to come off the table at 0.39.0 and waited here for this.
+ */
+export type SheetShape =
+  | 'single_bucket'
+  | 'per_customer'
+  | 'per_customer_project';
 
 export interface SheetLine {
   readonly bucket: string;
@@ -924,42 +960,131 @@ export interface Timesheet {
   readonly dueDay: number;
 }
 
-/** Which sheet a tier is asked for. The tier read rides the shipped field. */
-export function shapeForTier(tier: PlayerTier): SheetShape {
-  return tier === PLAYER_TIERS.systemsEngineer ? 'per_customer' : 'single_bucket';
-}
-
 export interface SheetState {
-  readonly tier: PlayerTier;
+  /**
+   * Which sheet this player is asked for, HANDED IN rather than looked up -
+   * the same seam `utilisationOf` takes its target across (0.39.0). The shape
+   * belongs to the rung and the rung table owns it; this module knows how to
+   * draw a week without knowing whose week it is, which is what keeps it a leaf
+   * over the table and what lets a fixture ask for a shape with no career in
+   * the world at all.
+   */
+  readonly shape: SheetShape;
   readonly submittedAt: number | null;
   readonly submittedAuto: boolean;
   /** How the sheet names a customer or a project. */
   readonly labelOf: (kind: SegmentKind, id: string) => string;
+  /**
+   * Whose account a project's minutes are, for the shape that has no project
+   * column to put them in. Null where the world can name nobody - see
+   * `partyOf`, which is the only caller.
+   */
+  readonly customerOfProject: (id: string) => string | null;
+}
+
+/**
+ * WHOSE an hour was, for the shape that attributes to a party and no finer.
+ *
+ * The fold is the `per_customer` shape's whole definition, and each of the
+ * three cases is the shape's own sentence rather than a convenience:
+ *
+ *  - a customer's work and an OFF-CONTRACT favour for that customer are one
+ *    line, because this shape has no billable split to tell them apart with. A
+ *    desk analyst is not on anybody's invoice; splitting the line would be the
+ *    engineer's sheet with a column painted out.
+ *  - a PROJECT folds onto the customer it is for, which is the "no project
+ *    code" half said as arithmetic: the minutes are still on the sheet, on the
+ *    account they were worked for, without the code the rung above earns.
+ *  - anything else - the shop's own kit, a world with no customers in it -
+ *    stays exactly what it is.
+ *
+ * A project the world can name no customer for KEEPS ITS OWN LINE rather than
+ * being folded onto the wrong party or hidden under the employer's own work.
+ * Shipped content cannot produce one (every project node carries its customer,
+ * and no rung on this shape is dealt project work at all), and if a later one
+ * did, the sheet showing more than the shape promises is the honest failure -
+ * a line quietly landing on somebody else's account is not.
+ */
+function partyOf(
+  line: Readonly<TimesheetLine>,
+  state: Readonly<SheetState>,
+): Readonly<SegmentRef> {
+  if (line.kind === 'customer' || line.kind === 'unbilled') {
+    return { kind: 'customer', id: line.id };
+  }
+
+  if (line.kind === 'project') {
+    const customer = state.customerOfProject(line.id);
+
+    return customer === null
+      ? { kind: line.kind, id: line.id }
+      : { kind: 'customer', id: customer };
+  }
+
+  return { kind: line.kind, id: line.id };
+}
+
+/**
+ * The day as one line per party, which is the senior desk's sheet.
+ *
+ * Re-sorted rather than kept in the derivation's order, because the fold moves
+ * lines: a project's minutes land on a customer bucket that sorts somewhere
+ * else entirely, and the terminal's handles are POSITIONS down the day. A
+ * stable order is what stops `3.2` meaning one account on Tuesday and another
+ * on Wednesday.
+ */
+function partyLines(
+  day: Readonly<TimesheetDay>,
+  state: Readonly<SheetState>,
+): readonly Readonly<{
+  bucket: string;
+  label: string;
+  billable: boolean;
+  derived: number;
+}>[] {
+  const merged = new Map<string, { readonly label: string; minutes: number }>();
+
+  for (const line of day.lines) {
+    const party = partyOf(line, state);
+    const bucket = bucketOf(party);
+    const at = merged.get(bucket);
+
+    merged.set(bucket, {
+      label: at?.label ?? state.labelOf(party.kind, party.id),
+      minutes: (at?.minutes ?? 0) + line.minutes,
+    });
+  }
+
+  return [...merged.entries()]
+    .map(([bucket, line]) => ({
+      bucket,
+      label: line.label,
+      // NOT A MISSING FLAG - this shape makes no such split, so nothing on it
+      // is marked as money and the sheet says nothing either way about whose
+      // invoice a line is on. That is what a desk sheet is: hours against
+      // accounts, with the billing somebody else's paperwork. The reading
+      // cannot be misled by it - the table refuses a billable target over this
+      // shape, so nothing ever divides by a half the sheet does not have.
+      billable: false,
+      derived: line.minutes,
+    }))
+    .sort((left, right) => left.bucket.localeCompare(right.bucket));
 }
 
 /**
  * The sheet: the derived truth and the player's claim, side by side, in the
- * shape the tier asks for.
+ * shape the RUNG asks for.
  *
- * The two shapes are two different JOBS, which is why the tier decides and not
- * a preference:
- *
- *  - `single_bucket` is the service desk, and it is the joke. Nobody at a
- *    service desk attributes anything: the sheet is a headcount formality, one
- *    line a day at seven and a half hours, and it is finished before the sigh
- *    is. The ledger is not consulted, because there is nothing on it anybody
- *    would be asked about.
- *  - `per_customer` is the engineer, and it is the mechanic: one line per
- *    customer, the 0.29.0 project as an attributable line of its own with its
- *    project code on it, a billable flag, and the rest of the day sitting
- *    underneath as time that is on nobody's invoice.
+ * The three shapes are three different JOBS - see `SheetShape`, which is where
+ * each of them is written down - and which one a player is handed is the rung
+ * table's answer rather than a preference or a tier read.
  */
 export function timesheetSheet(
   truth: Readonly<TimesheetTruth>,
   claims: readonly Readonly<TimesheetClaim>[],
   state: Readonly<SheetState>,
 ): Timesheet {
-  const shape = shapeForTier(state.tier);
+  const shape = state.shape;
   const claimFor = (day: number, bucket: string): TimesheetClaim | undefined =>
     claims.find((claim) => claim.day === day && claim.bucket === bucket);
 
@@ -971,12 +1096,14 @@ export function timesheetSheet(
         billable: false,
         derived: WORKING_MINUTES_PER_DAY,
       }]
-      : day.lines.map((line) => ({
-        bucket: line.bucket,
-        label: state.labelOf(line.kind, line.id),
-        billable: line.billable,
-        derived: line.minutes,
-      }));
+      : shape === 'per_customer'
+        ? partyLines(day, state)
+        : day.lines.map((line) => ({
+          bucket: line.bucket,
+          label: state.labelOf(line.kind, line.id),
+          billable: line.billable,
+          derived: line.minutes,
+        }));
 
     // A bucket the player claimed on that the records know nothing about is
     // still a line: moving an hour onto a quiet account is the pad the whole
@@ -993,7 +1120,12 @@ export function timesheetSheet(
         // an unbilled account is still not a line anybody is invoiced for, and
         // reading it off the kind rather than off one prefix is what stops the
         // out-of-scope bucket quietly counting as money.
-        billable: billableBucket(claim.bucket),
+        //
+        // Except on the shape that has no billable half at all, where an
+        // invented line is exactly as unbillable as a derived one: a sheet
+        // whose typed lines could be money and whose worked lines could not
+        // would be a sheet paying for invention.
+        billable: shape === 'per_customer' ? false : billableBucket(claim.bucket),
         derived: 0,
       }));
 
@@ -1078,8 +1210,21 @@ function billableBucket(bucket: string): boolean {
  * would have been true about the money and a lie about the afternoon - it would
  * read as the shop's own kit rather than as an hour a named client got for
  * nothing, which is the whole thing the player is meant to see.
+ *
+ * AND NOTHING AT ALL ON THE SENIOR DESK'S SHEET (0.40.0), which is why the
+ * shape is asked. Those three registers are a BILLABLE SPLIT, and the
+ * `per_customer` shape does not make one - every line on it would come out as
+ * `internal`, which would read as a judgement about the work rather than as the
+ * absence of a column. A shape that does not split says nothing.
  */
-export function lineFlag(line: Readonly<SheetLine>): string {
+export function lineFlag(
+  line: Readonly<SheetLine>,
+  shape: SheetShape,
+): string {
+  if (shape === 'per_customer') {
+    return '';
+  }
+
   if (line.billable) {
     return 'billable';
   }
@@ -1090,14 +1235,16 @@ export function lineFlag(line: Readonly<SheetLine>): string {
 /* -- what the ORG reads off it (0.30.0, slice 2) -------------------------- */
 
 /**
- * Which number a tier's target is against, and the whole reason there are two.
+ * Which number a rung's target is against, and the whole reason there are two.
  *
- * They are two different JOBS being measured, exactly as the two sheet shapes
- * are two different jobs being filled in:
+ * They are two different JOBS being measured, exactly as the sheet shapes are
+ * different jobs being filled in:
  *
  *  - `recorded` is "is the sheet filled in" - every minute the sheet accounts
  *    for at all, billable or not. It is what a service desk is actually held
- *    to, and on a one-bucket sheet it is a hundred per cent by construction.
+ *    to, and on a ONE-BUCKET sheet it is a hundred per cent by construction,
+ *    which is why the table refuses a target over that shape. On the senior
+ *    desk's per-party sheet it is the ledger's own answer and it moves.
  *  - `billable` is utilisation in the trade's own sense - the minutes that are
  *    on somebody's invoice, over the minutes of the day. It is the engineer's
  *    number and it is the one padding moves.
@@ -1189,12 +1336,14 @@ export function utilisationOf(
   const recorded = share(claimedMinutes, availableMinutes);
   const billable = share(billableMinutes, availableMinutes);
   // With no target there is still a number worth printing, and the sheet's own
-  // SHAPE says which one it is: a one-bucket sheet has no billable half to
-  // speak of, and a per-customer one is kept for exactly that half. Read off
-  // the sheet rather than defaulted to a constant, so a rung that loses its
-  // target does not quietly start reporting the wrong column.
+  // SHAPE says which one it is: only the engineer's sheet HAS a billable half -
+  // the two desk shapes make no such split and would report nought per cent
+  // forever - so everything below it reads as what it is, which is how much of
+  // the day is accounted for at all. Read off the sheet rather than defaulted
+  // to a constant, so a rung that loses its target does not quietly start
+  // reporting the wrong column.
   const basis = target?.basis
-    ?? (sheet.shape === 'single_bucket' ? 'recorded' : 'billable');
+    ?? (sheet.shape === 'per_customer_project' ? 'billable' : 'recorded');
   const percent = basis === 'recorded' ? recorded : billable;
 
   return {
@@ -1397,7 +1546,7 @@ export function timesheetLines(
     }${column(line.label)}${
       pad(hoursLabel(line.derived), 9)
     }${pad(hoursLabel(line.claimed), 9)}${
-      lineFlag(line)
+      lineFlag(line, sheet.shape)
     }${line.detail === 'vague' ? '  (vague)' : ''}`),
     ...(day.unattributed > 0
       ? [`  ${pad('', 6)}${column('unattributed')}${

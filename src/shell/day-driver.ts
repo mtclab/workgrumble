@@ -124,7 +124,12 @@ import {
   selinuxRelabelSetup,
 } from '../world/selinux';
 import { queueJumpFalloutDue } from '../world/vip';
-import { type Rung, rungFor, utilisationTargetFor } from '../world/titles';
+import {
+  type Rung,
+  rungFor,
+  sheetShapeFor,
+  utilisationTargetFor,
+} from '../world/titles';
 import {
   AUDIT_FAULT_NOTES,
   type AuditFault,
@@ -5027,7 +5032,7 @@ export class DayDriver implements DayApi {
     }
   }
 
-  /** The player's tier, which is the only thing that shapes the sheet. */
+  /** The player's PAM tier: what the account may touch, and no more. */
   public playerTier(): PlayerTier {
     return playerTierOf(this.engine.graph.getField(this.actor, FIELDS.playerTier));
   }
@@ -5051,15 +5056,19 @@ export class DayDriver implements DayApi {
     return claimsFrom(this.playerText(FIELDS.timesheetClaim));
   }
 
-  /** The sheet: the truth and the claim side by side, in the tier's shape. */
+  /** The sheet: the truth and the claim side by side, in the RUNG's shape. */
   public timesheet(): Timesheet {
     return timesheetSheet(this.timesheetTruth(), this.timesheetClaims(), {
-      tier: this.playerTier(),
+      // The rung's, off the table, beside the target the same rung sets
+      // (0.40.0). It was `shapeForTier(this.playerTier())`, and the tier could
+      // not tell the two desk rungs apart.
+      shape: sheetShapeFor(this.playerRung()),
       submittedAt: this.timesheetSubmittedAt(),
       submittedAuto:
         this.engine.graph.getField(this.actor, FIELDS.timesheetSubmittedAuto)
           === true,
       labelOf: (kind: SegmentKind, id: string) => this.workLabel(kind, id),
+      customerOfProject: (id: string) => this.projectCustomerOf(id),
     });
   }
 
