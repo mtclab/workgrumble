@@ -195,13 +195,16 @@ export function createLoginScreen(
    * that this game has two difficulties instead of a career with two of its
    * seven rungs playable. Greyed with the reason on them says the true thing:
    * here is the ladder, here is where you can get on it today. The refusal is
-   * enforced in `main.ts` as well, because a disabled option is a courtesy and
-   * not a rule.
+   * enforced in `beginCareer` as well, because a disabled option is a courtesy
+   * and not a rule.
    *
-   * Absent entirely when this browser is not starting a career - a saved week,
-   * an arrival at a new employer, a retry after a firing - because none of
-   * those is a hire and offering a job to somebody mid-week would be a screen
-   * lying about what the button does.
+   * NOT ON THE SCREEN when this browser is not starting a career - a saved
+   * week, an arrival at a new employer, a retry after a firing - because none
+   * of those is a hire and offering a job to somebody mid-week would be a
+   * screen lying about what the button does. It is REACHABLE on such a browser,
+   * behind the start-fresh door below (#61, 0.41.0), and the difference between
+   * on-the-screen and reachable is the whole of that door: the same ladder,
+   * after a question about the career it would replace.
    */
   const hire = handlers.hire();
   const freshStart = handlers.freshStart();

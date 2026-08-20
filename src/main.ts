@@ -815,9 +815,12 @@ async function boot(): Promise<void> {
   /**
    * The career this browser is carrying, in the plainest words there are.
    *
-   * Read off the LIVE world rather than off the file, because after the resume
-   * above the live world IS the file - and a title and a shop are two things a
-   * player recognises where a wall-clock stamp is not. The one case where the
+   * Read off the LIVE world rather than off the file, because once the resume
+   * below has run the live world IS the file - and a title and a shop are two
+   * things a player recognises where a wall-clock stamp is not. It is a
+   * function rather than a string for the same reason: the door is opened long
+   * after this line, and the world it describes is still being put back when
+   * this line runs. The one case where the
    * two disagree is a save that would not open: there the world on screen is a
    * fresh Monday nobody asked for, and saying so is the only honest sentence
    * the door can put in front of somebody about to replace it.
