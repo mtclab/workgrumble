@@ -196,7 +196,7 @@ function oneStep(rigged: Rig, taken: Set<string>): void {
  * silence looks like from the customer's side, and the only thing the whole
  * mechanic ever measures.
  */
-function playWeek(rigged: Rig, worked: boolean): Rig {
+function playWeek(rigged: Rig, worked: boolean, actEvery = ACT_EVERY): Rig {
   const taken = new Set<string>();
 
   for (let day = 1; day <= REVIEW_DAY; day += 1) {
@@ -205,7 +205,7 @@ function playWeek(rigged: Rig, worked: boolean): Rig {
     let minute = 0;
 
     while (rigged.driver.state() === 'shift') {
-      if (worked && minute % ACT_EVERY === 0
+      if (worked && minute % actEvery === 0
         && rigged.driver.interruption() === null) {
         oneStep(rigged, taken);
       }
@@ -288,6 +288,86 @@ describe('a week that was worked', () => {
       expect(entry.standing).toBeLessThan(PATIENCE_THRESHOLDS.asking);
     }
   }, WEEK_TIMEOUT_MS);
+});
+
+/* -- and the same week, worked slower -------------------------------------- */
+
+/**
+ * A step of the queue every HOUR - present, trying, and behind.
+ *
+ * Three times slower than the pace above, which is the pace the headroom claim
+ * is measured at. It is not the abandoned week either: the player is at the
+ * desk and working, they are simply not keeping up, and this is the shape of
+ * week the whole difficulty question is about.
+ */
+const NEGLECT_PACE = 60;
+
+describe('a week that was worked slowly', () => {
+  /**
+   * THE PACE IS THE DIFFICULTY, pinned rather than promised (0.39.0 verifier
+   * round).
+   *
+   * `patience.ts` used to claim headroom as though it were a property of the
+   * mechanic; it is a measurement AT ONE PACE, and the slower pace climbs the
+   * ladder. That is the design - the boss can still pass the week, because the
+   * review is the boss's opinion and this is the customer's - so what has to be
+   * held is the SHAPE of the climb: one rung at a time, in order, a beat of
+   * post at each rung, and nobody lost before the third week of it.
+   *
+   * A CHARACTERISATION GATE. It does not assert that churn must happen; it
+   * asserts that when it does, it arrived the way the ladder says it arrives.
+   * Move a threshold and this reds, which is the point: the thresholds are the
+   * tuning knob, so a turn of one has to be a turn somebody made on purpose.
+   */
+  it('climbs the ladder in order, with the warnings in the post before the exit', () => {
+    const first = playWeek(rig(), true, NEGLECT_PACE);
+
+    // WEEK ONE IS QUESTIONS. A slower week leaves jobs behind at several
+    // accounts, and the first thing that happens anywhere is somebody asking
+    // about it - never a silence and never a letter.
+    expect(first.rungs.length).toBeGreaterThan(0);
+    expect(first.rungs.every((step) => step.rung === 'asking')).toBe(true);
+    expect(first.driver.customersLeaving()).toEqual([]);
+
+    // WEEK TWO IS SILENCE, at the accounts that did not get put right. Still
+    // nobody has given notice: the letter needs a week that is not this one.
+    const second = playWeek(rig(nextWeek(first, 2).carry), true, NEGLECT_PACE);
+
+    expect(second.rungs.some((step) => step.rung === 'quiet')).toBe(true);
+    expect(second.driver.customersLeaving()).toEqual([]);
+
+    // WEEK THREE IS THE LETTER, for the account that has had all three beats.
+    const third = playWeek(rig(nextWeek(second, 3).carry), true, NEGLECT_PACE);
+    const leaving = third.rungs.find((step) => step.rung === 'leaving');
+
+    expect(leaving).toBeDefined();
+    expect(third.driver.customersLeaving().length).toBeGreaterThan(0);
+    expect(third.driver.weekScorecard().departures.length).toBeGreaterThan(0);
+
+    // AND THE WALK IS THE WHOLE WALK, in order and with nothing skipped: the
+    // account that goes was asked about first and went quiet second, in earlier
+    // weeks, and the notice is the third thing that ever happened to it.
+    const walked = [...first.rungs, ...second.rungs, ...third.rungs]
+      .filter((step) => step.customer === leaving?.customer)
+      .map((step) => step.rung);
+
+    expect(walked).toEqual(['asking', 'quiet', 'leaving']);
+
+    // AND THE WARNING WAS IN THE POST FIRST. The week they were asked about has
+    // the account manager's own mail on it, in his own words, and the week they
+    // left has the letter. A player who read their post saw this coming.
+    const threadIn = (rigged: Rig, customer: string): string => rigged.driver
+      .patienceMail()
+      .find((entry) => entry.id.includes(customer.replace(':', '-')))
+      ?.messages[0]?.body.join('\n') ?? '';
+    const asked = first.rungs.some(
+      (step) => step.customer === leaving?.customer,
+    ) ? first : second;
+
+    expect(threadIn(asked, leaving?.customer ?? ''))
+      .toContain('Everything ok over there?');
+    expect(threadIn(third, leaving?.customer ?? '')).toContain('given notice');
+  }, WEEK_TIMEOUT_MS * 3);
 });
 
 /* -- the week that was not ------------------------------------------------- */

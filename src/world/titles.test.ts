@@ -168,11 +168,15 @@ describe('the rung table', () => {
     // anything they did.
     expect(TITLE_TABLE.sd_junior.utilisation).toBeNull();
     expect(utilisationTargetFor('sd_junior')).toBeNull();
-    // GENTLE, and on the only basis an in-house rung can be measured on: the
-    // top of the sourced healthy band (Scoro/Teamwork, 75-85%), deliberately
-    // short of the hundred those same sources call a gaming signal.
-    expect(utilisationTargetFor('sd_senior'))
-      .toEqual({ basis: 'recorded', percent: 85 });
+    // NONE AT THE SENIOR DESK EITHER, and for the junior's reason rather than
+    // for want of a figure: the sheet shape is keyed on the PAM TIER and a
+    // senior analyst stands on the junior's tier, so the senior's sheet is one
+    // bucket a day too and records a hundred per cent by construction. The 85
+    // that stood here for one version was cleared before the player did
+    // anything - a knob that cannot turn - and it comes back when the sheet
+    // shape moves to the rung (`titles.ts`, the column's docblock).
+    expect(TITLE_TABLE.sd_senior.utilisation).toBeNull();
+    expect(utilisationTargetFor('sd_senior')).toBeNull();
     // REAL: the industry ask an honest week does not reach (Promys, 75%).
     expect(utilisationTargetFor('systems_engineer'))
       .toEqual({ basis: 'billable', percent: 75 });

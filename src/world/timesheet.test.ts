@@ -92,12 +92,17 @@ function mspWorld(): WorldSession {
 
 /** Nine o'clock on day one, which is where every segment below is measured. */
 /**
- * The two targets the shipped table sets, read OFF the table rather than built
+ * The targets the shipped table sets, read OFF the table rather than built
  * here: the question these fixtures ask is what the READING does with a target,
  * and a hand-made one would let the model agree with a rung the game does not
  * have. The percentages are still pinned as literals in the assertions below,
  * because they are tuning knobs and a change to one should be a change somebody
  * made on purpose.
+ *
+ * TWO OF THE THREE ARE NULL as of 0.39.0's correction, and the null is the
+ * fixture: both service-desk rungs stand on a `single_bucket` sheet, which
+ * records a hundred per cent of the day whatever anybody does, so a target over
+ * one is cleared by construction rather than met. See `titles.ts`.
  */
 const ENGINEER_TARGET = utilisationTargetFor('systems_engineer');
 const SENIOR_TARGET = utilisationTargetFor('sd_senior');
@@ -768,7 +773,7 @@ describe('the tier shape', () => {
     expect(reading.percent).toBe(0);
   });
 
-  it('hits the SENIOR DESK\'s target with room, which is the joke', () => {
+  it('asks the SENIOR DESK for nothing either, because its sheet clears anything', () => {
     const desk = sheetOf(
       segmentsFrom(ledger([MONDAY, ARDEN])),
       shiftEndTick(1),
@@ -778,15 +783,19 @@ describe('the tier shape', () => {
     const reading = utilisationOf(desk, SENIOR_TARGET);
 
     // One bucket a day at seven and a half hours, over a day of seven and a
-    // half hours. Nobody decided anything and the target is cleared with room -
-    // which is the pathology the research names out loud ("if a business stops
-    // recording non-billable time, its utilisation rate will always be 100 per
-    // cent") shipped as a joke rather than as a punishment.
+    // half hours: a hundred per cent recorded whatever the week was, because
+    // the SHAPE writes it and not the work. That is the pathology the research
+    // names out loud ("if a business stops recording non-billable time, its
+    // utilisation rate will always be 100 per cent") - and it is why the senior
+    // row is null rather than 85: a target this sheet clears before the player
+    // has done anything is a difficulty knob that cannot turn. The figure comes
+    // back the day the sheet shape moves to the rung.
+    expect(SENIOR_TARGET).toBeNull();
     expect(reading.basis).toBe('recorded');
-    expect(reading.target).toBe(85);
+    expect(reading.target).toBeNull();
     expect(reading.percent).toBe(100);
     expect(reading.met).toBe(true);
-    expect(utilisationLine(reading)).toContain('the business asks for');
+    expect(utilisationLine(reading)).not.toContain('the business asks for');
   });
 
   it('says the number and the target and stops', () => {
@@ -855,15 +864,17 @@ describe('the tier shape', () => {
     const under = utilisationReviewLine(
       utilisationOf(sheetOf([], shiftEndTick(1)), ENGINEER_TARGET),
     );
+    // The met case is the ENGINEER's, and it has to be: the row exists only
+    // where a target does, and since 0.39.0 the engineer's is the only one. So
+    // it is read half an hour into the Monday with that half hour on a paying
+    // customer - every minute so far billable, which is over the 75% ask.
     const met = utilisationReviewLine(
       utilisationOf(
         sheetOf(
           segmentsFrom(ledger([MONDAY, ARDEN])),
-          shiftEndTick(1),
-          [],
-          PLAYER_TIERS.serviceDesk,
+          MONDAY + WORK_SEGMENT_MINUTES,
         ),
-        SENIOR_TARGET,
+        ENGINEER_TARGET,
       ),
     );
 

@@ -17,9 +17,12 @@
  *    generator (`week-gen.ts`) as a per-week quota on what the draw may deal.
  *  - `utilisation` - what the business asks of the rung's HOURS, CONSUMED by
  *    the timesheet's own reading (`timesheet.ts`) and printed at the review.
- *    It was a map keyed by PAM tier until 0.39.0, which could not say what this
- *    table can: two rungs stand on the service desk's tier and the paperwork
- *    starts at the second one.
+ *    It was a map keyed by PAM tier until 0.39.0; per-rung is where it belongs
+ *    whatever the figures are, because two rungs stand on the service desk's
+ *    tier and a tier-keyed map cannot ever tell them apart. Today ONE rung
+ *    carries a figure - the engineer - and the two desk rungs carry null,
+ *    because the sheet they are handed records the whole day by construction
+ *    (see the column's own docblock below).
  *  - `tier`, `title`, `employer`, `carriesPager`, `offeredAt` - the state a rung
  *    IS. These were hardcoded in four places before this table existed and are
  *    here now instead of there, not as well as (see MOVED IN, below).
@@ -284,23 +287,23 @@ export interface TitleRow {
  *    would be a row that cannot move, on a screen, above a mark it does not
  *    feed. The rung's own window already says the true thing ("there is nothing
  *    on it to decide"), and the review says it by having no row.
- *  - **SD senior - 85% of the day accounted for.** A service desk really is
- *    held to a utilisation number: MetricNet's service-desk balanced scorecard
- *    names *technician utilisation* as one of its six metrics
- *    (`docs/research/review-scoring.md` 2.1), which is what makes the row
- *    appear at the rung where somebody starts auditing other people's work. The
- *    BASIS is `recorded` because an in-house desk bills nobody - `billable`
- *    would be nought every week at every in-house shop, which is a target
- *    nobody could ever meet rather than a gentle one. The FIGURE is the top of
- *    the sourced healthy band, "senior technical staff target 75 to 85 per
- *    cent... above ~90 per cent is read as a burnout signal, not an
- *    achievement" (Scoro/Teamwork, same section), and it is deliberately not a
- *    hundred: the same sources say a target pushed near a hundred produces
- *    "quality issues, burnout, or timesheet gaming" (2.3). It is GENTLE in the
- *    exact sense the research means - the desk's one-bucket sheet clears it
- *    with room, which is the pathology those sources name out loud ("if a
- *    business stops recording non-billable time, its utilisation rate will
- *    always be 100 per cent") shipped as a joke rather than as a punishment.
+ *  - **SD senior - NONE, and it is the SHEET that says so.** This shipped at
+ *    85% recorded for one version and it was theatre: `shapeForTier` keys the
+ *    sheet on the PAM TIER, a senior service desk analyst stands on the
+ *    junior's tier, so the senior's sheet is `single_bucket` too - one line a
+ *    day at `WORKING_MINUTES_PER_DAY`, a hundred per cent recorded by
+ *    construction, cleared before the player has done anything. A target the
+ *    sheet clears by construction is not a target; it is a number on a card
+ *    that cannot move, which is the same thing the junior's row is null for.
+ *    The research figure is not wrong and is not lost - a service desk really
+ *    is held to a utilisation number (MetricNet's balanced scorecard names
+ *    technician utilisation, `docs/research/review-scoring.md` 2.1) and the
+ *    band is the sourced 75-85% with the top of it the honest ask
+ *    (Scoro/Teamwork, same section) - it is WAITING ON ITS DEPENDENCY: a senior
+ *    target waits for the sheet shape to move to the rung, which is its own
+ *    slice. The day `shapeForTier` becomes a question about the RUNG rather
+ *    than the tier - a senior who attributes their day the way an engineer does
+ *    - this row takes the 85 back and it means something.
  *  - **Systems engineer - 75% billable.** The sourced industry ask: "service
  *    executives aim for 75% billable ... and end up with yearly averages in the
  *    mid-60s" (Promys, `docs/research/titles-projects-engine.md` 5.4). It is
@@ -372,7 +375,10 @@ const TITLE_ROWS: readonly TitleRow[] = [
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 0.9, device: 0.9, server: 1, project: 0 },
-    utilisation: { basis: 'recorded', percent: 85 },
+    // NULL until the sheet moves to the rung - see the column's docblock above.
+    // The 85 that stood here was cleared by the shape of the sheet before the
+    // player touched it, which is a difficulty knob that cannot turn.
+    utilisation: null,
     customers: { inHouse: true, scopes: [], slaTiers: [] },
     sla: SLA_PROFILES.toolTargets,
     rates: RATES_PROFILES.house,

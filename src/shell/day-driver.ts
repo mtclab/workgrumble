@@ -1064,7 +1064,8 @@ export interface DayApi {
    * project learns to lie with (slice 3).
    *
    * `timesheetUtilisation()` is the ORG's - what you said, over the hours you
-   * were here, against what the tier is asked for, and it decides nothing.
+   * were here, against what the RUNG is asked for (the title's row on the rung
+   * table since 0.39.0, not the PAM tier), and it decides nothing.
    * `invoiceStanding()` and `invoiceBreakdown()` are the CUSTOMER's, both
    * derived off the sheet and the customer's own records with no stored meter
    * between them; `invoiceMail()` is the ladder as the post it arrives as.

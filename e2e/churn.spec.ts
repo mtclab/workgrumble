@@ -68,14 +68,17 @@ async function arriveAfterTheNotice(page: Page): Promise<void> {
   await page.goto('/');
   await completeLogin(page, { brief: 'keep' });
 
+  // The arrival window, shut through the testid the window renderer actually
+  // writes - `close-${appId}`, which for this one is `close-updates`. The guard
+  // this replaces asked for `window-close`, which nothing in the shell has ever
+  // been called: it matched nothing, so the window stayed up and a later click
+  // could land under it (the 0.38.1 stacking mode). A dead guard is worse than
+  // no guard, because it reads like one.
   const arrival = page.getByTestId('window-updates');
 
   if (await arrival.count()) {
-    const close = arrival.getByTestId('window-close');
-
-    if (await close.count()) {
-      await close.first().click();
-    }
+    await page.getByTestId('close-updates').click();
+    await expect(arrival).toHaveCount(0);
   }
 
   await expect(page.getByTestId('brief-heading')).toContainText('Day 1');
@@ -96,7 +99,13 @@ test('the departed customer\'s estate is not in the world', async ({ page }) => 
   const output = page.getByTestId('cmd-output');
 
   await expect(output).not.toContainText('MARLOWE-STUDIO');
-  await expect(output).toContainText(/no |not |unknown|cannot/i);
+  // THE EXACT WORDING, and it has to be exact to be a test at all. The box is a
+  // Mac in the un-churned world, so a world that still HAD the studio in it
+  // answers "is not a Windows host" - which matched the loose /no |not |unknown|
+  // cannot/i this replaces, and made the assertion true either way. The
+  // unknown-host refusal is the one and only answer that means the estate is
+  // gone, word for word as `src/shell/patience.test.ts` pins it in unit land.
+  await expect(output).toContainText('Unknown host "MARL-WS-01"');
 });
 
 test('every other estate is exactly where it was', async ({ page }) => {

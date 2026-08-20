@@ -70,6 +70,23 @@
  *   day, so the shortest possible route from a clean account to a lost one is
  *   three separate deliveries across two days of ruinous weeks.
  *
+ * WHAT THE HEADROOM CLAIM IS MEASURED AT, said plainly because it was not.
+ * "An honest week gets away from three accounts by one job each and stands on
+ * no rung" is a measurement of the shipped MSP week played AT THE WORKED PACE -
+ * a step of the queue every twenty minutes, the invoice suite's figure for what
+ * a person actually does (`../shell/patience.test.ts`). It is not a claim about
+ * every pace. Played slower, the ladder CLIMBS, and that is the difficulty
+ * rather than a hole in it: measured over three weeks, a step every 45 minutes
+ * reaches `quiet` at an account by the third week, and a step every hour loses
+ * one - asked about in week one, silent in week two, gone in week three, with
+ * the account manager's mail arriving at each beat in between. The review can
+ * say "passed" the whole way, and that is D4's split doing its job: the boss's
+ * opinion of the week and the customer's are two different readings, and the
+ * three-beat warning ladder is the customer's, in the post, before anybody
+ * leaves. The THRESHOLDS below are where that difficulty is tuned - they are
+ * overseer knobs, and the pinned characterisation of the slow pace lives beside
+ * the played week so a change to one shows up as a change to the other.
+ *
  * Nothing here mutates, dispatches, reads a wall clock or consumes the RNG.
  */
 
@@ -528,9 +545,12 @@ export function patienceLadderDue(
     }
 
     // THE NOTICE, which is not a threshold on its own. Their work stopped
-    // coming, a day has gone by, and it is still true. Escapable right up to
-    // the morning it lands: put the account right and `wanted` falls under the
-    // deweight, and this never fires.
+    // coming, a day has gone by, and it is still true. The escape is the
+    // FRIDAY FOLD and not the morning after it: the standing only moves where
+    // `foldPatience` moves it, so an account carried into a week at the
+    // notice's threshold has already decided the Monday - a week worked at them
+    // takes the standing off at THAT week's fold, which is what walks the
+    // deweight back before the next Monday reads it.
     if (next === 'leaving') {
       const held = entryFor(ledger, account.customer);
 

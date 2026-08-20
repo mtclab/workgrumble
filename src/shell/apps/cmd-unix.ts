@@ -63,6 +63,11 @@ import {
   unitEnablementOf,
 } from '../../world/fields';
 import {
+  calendarParts,
+  dayForTick,
+  minuteOfDay,
+} from '../../world/hours';
+import {
   isSelinuxMode,
   SELINUX_MODES,
   type SelinuxMode,
@@ -1288,22 +1293,29 @@ const MONTHS = [
 /**
  * The estate's own clock, in `ls`'s date column (`Mon DD HH:MM`).
  *
- * The same anchor `dir` dates its listings from (`clock-format.ts`), so the two
- * families date the same estate the same way rather than inventing two
- * calendars. `ls` writes the month as a word and the day and time without a
- * year for a recent file, which is what this is.
+ * OFF THE SHARED CALENDAR, which is the whole of the correction here: this used
+ * to carry its own copy of the anchor (`Date.UTC(1998, 8, 7)`) and its own idea
+ * of where tick zero sits (a literal 540, an hour past the `DAY_OPENS_MINUTE`
+ * every other surface in the build counts from). Two calendars is exactly what
+ * the docblock said it was avoiding, and the drift was visible: `ls -l` printed
+ * mtimes an hour later than `dir` did for the same minute, and rolled the date
+ * at 23:00. `dayForTick`/`minuteOfDay` put the minute where the world puts it
+ * and `calendarParts` puts the day where `dir` puts it, so the two families now
+ * date the same estate the same way because they are asking the same code.
+ *
+ * `ls` writes the month as a word and the day and time without a year for a
+ * recent file, which is what this is - the FORMAT is the family difference, and
+ * it is the only difference.
  */
 function lsDate(tick: number): string {
-  const face = new Date(Date.UTC(1998, 8, 7));
-  face.setUTCDate(face.getUTCDate() + Math.floor((540 + tick) / (24 * 60)));
-  const minuteOfDay = (540 + tick) % (24 * 60);
-  const month = MONTHS[face.getUTCMonth()] ?? 'Jan';
-  const day = String(face.getUTCDate()).padStart(2, ' ');
-  const time = `${String(Math.floor(minuteOfDay / 60)).padStart(2, '0')}:${
-    String(minuteOfDay % 60).padStart(2, '0')
+  const { month, dayOfMonth } = calendarParts(dayForTick(tick));
+  const minute = minuteOfDay(tick);
+  const day = String(dayOfMonth).padStart(2, ' ');
+  const time = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${
+    String(minute % 60).padStart(2, '0')
   }`;
 
-  return `${month} ${day} ${time}`;
+  return `${MONTHS[month - 1] ?? 'Jan'} ${day} ${time}`;
 }
 
 /**

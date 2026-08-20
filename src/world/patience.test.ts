@@ -136,16 +136,26 @@ describe('what an account counts against you', () => {
     const session = world();
     const ticket = contractedTicket(session);
 
+    // ONE, the literal, and that is the whole of the gate. Written as
+    // `PATIENCE_CADENCE_MISSES - 1` this passed for every value the constant
+    // could hold - including 1, where a single missed window debits and the
+    // design rule is broken with the suite still green. The rule is about the
+    // NUMBER, so the number is what the assertion names.
     stamp(session, [{
       op: 'setField',
       id: ticket.id,
       field: FIELDS.cadenceMissed,
-      value: PATIENCE_CADENCE_MISSES - 1,
+      value: 1,
     }]);
 
     // One window is the hour somebody was on another fault. The threshold is
     // where it stops being that, and it is the whole of "never a single miss".
     expect(patienceDebits(session.engine.graph)).toEqual([]);
+
+    // And the threshold is a tuning knob with a floor under it: whatever it is
+    // tuned to, a single missed window may never reach it (#67 - the ladder
+    // answers a PATTERN, never one bad hour).
+    expect(PATIENCE_CADENCE_MISSES).toBeGreaterThanOrEqual(2);
 
     stamp(session, [{
       op: 'setField',
