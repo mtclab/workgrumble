@@ -20,7 +20,7 @@ import {
   SELINUX_WEB_CONTEXT,
   selinuxNodeIds,
 } from '../../world/selinux';
-import { fileStamp } from '../../world/hours';
+import { arcFileStamp } from '../../world/hours';
 import { unitIdOn } from '../../world/services';
 import {
   createWorldSession,
@@ -356,7 +356,7 @@ describe('the promotion, ssh, and the unix terminal (E6)', () => {
     /**
      * The date column `dir` would print for a minute, in `ls`'s shape.
      *
-     * `fileStamp` is the stamp the WHOLE estate is dated by - it is what
+     * `arcFileStamp` is the stamp the WHOLE estate is dated by - it is what
      * `fs.ts` writes onto a file the world touches and what a `dir` row prints
      * - so turning it into `Mon DD HH:MM` here is the honest way to ask whether
      * the two families agree: the format is the family difference, and the
@@ -384,7 +384,7 @@ describe('the promotion, ssh, and the unix terminal (E6)', () => {
       // this minute and rolled the date at 23:00: two calendars over one
       // estate, which is the one thing its own docblock said it was not.
       expect(unix(api, ssh, 'ls -la').lines.join('\n'))
-        .toContain(lsShapeOf(fileStamp(api.clock.now())));
+        .toContain(lsShapeOf(arcFileStamp(1, api.clock.now())));
       expect(unix(api, ssh, 'ls -la').lines.join('\n')).toContain('Sep  7 08:00');
 
       // And the roll is MIDNIGHT, where a day rolls. The last minute of day one
@@ -393,13 +393,13 @@ describe('the promotion, ssh, and the unix terminal (E6)', () => {
 
       expect(unix(api, ssh, 'ls -la').lines.join('\n')).toContain('Sep  7 23:59');
       expect(unix(api, ssh, 'ls -la').lines.join('\n'))
-        .toContain(lsShapeOf(fileStamp(api.clock.now())));
+        .toContain(lsShapeOf(arcFileStamp(1, api.clock.now())));
 
       world.engine.advance(1);
 
       expect(unix(api, ssh, 'ls -la').lines.join('\n')).toContain('Sep  8 00:00');
       expect(unix(api, ssh, 'ls -la').lines.join('\n'))
-        .toContain(lsShapeOf(fileStamp(api.clock.now())));
+        .toContain(lsShapeOf(arcFileStamp(1, api.clock.now())));
     });
 
     it('exit and logout leave the session, back to the desktop', () => {

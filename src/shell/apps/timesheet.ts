@@ -1,5 +1,6 @@
 import { TIMESHEET_SUBMITTED_REASON } from '../../world/actions';
-import { calendarDate } from '../../world/hours';
+import { arcWeekOf } from '../../world/arc-week';
+import { arcDate } from '../../world/hours';
 import {
   hoursLabel,
   lineFlag,
@@ -106,11 +107,23 @@ export function gapOf(line: Readonly<SheetLine>): ClaimGap {
   return line.claimed < line.derived ? 'under' : 'level';
 }
 
-/** The sentence a line goes out as - the whole of the detail mechanic. */
-export function lineReads(day: number, line: Readonly<SheetLine>): string {
+/**
+ * The sentence a line goes out as - the whole of the detail mechanic.
+ *
+ * The date is the ARC's (0.40.0). A day number here is a day of THIS week, and
+ * an invoice line dated the eleventh of September in the fourth week of a
+ * career is a line the customer would query - the sheet is the one document in
+ * this game that leaves the building, so it is the last place a week-one date
+ * belongs.
+ */
+export function lineReads(
+  arcWeek: number,
+  day: number,
+  line: Readonly<SheetLine>,
+): string {
   return line.detail === 'vague'
     ? 'consulting'
-    : `${calendarDate(day)}, ${line.label}, ${hoursLabel(line.claimed)}`;
+    : `${arcDate(arcWeek, day)}, ${line.label}, ${hoursLabel(line.claimed)}`;
 }
 
 /**
@@ -582,7 +595,10 @@ export const TIMESHEET_APP: AppDef = {
             : hoursLabel(item.line.claimed));
 
           reads.dataset.testid = `timesheet-reads-${item.handle}`;
-          setText(reads, lineReads(item.day, item.line));
+          setText(
+            reads,
+            lineReads(arcWeekOf(api.graph, api.actor), item.day, item.line),
+          );
 
           if (!item.editable) {
             edit.remove();

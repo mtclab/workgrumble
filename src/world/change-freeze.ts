@@ -103,23 +103,11 @@ export function changeFreezeOfCustomer(
 }
 
 /**
- * Which week of the career this is, read off the player node the way
- * `week-source.ts` reads it - and defaulting to the first week, which is what
- * every world that has never been promoted is on.
- *
- * The freeze needs it because the world's clock restarts every week: a tick
- * only knows it is on day two of SOME week, and whether that day is the
- * twenty-ninth of September or the eighth is a question only the arc can
- * answer. Off the graph rather than remembered, for the reason the week
- * request is off the graph: the graph is the half that survives a load.
+ * Which week of the career this is - `arc-week.ts` now, because 0.40.0 gave
+ * every date surface in the build the same question to ask and this module is
+ * not the right thing for a directory listing to import to find out what day
+ * it is. The freeze reads it exactly as it always did; the read moved house.
  */
-export function arcWeekOf(graph: ReadOnlyGraphView, actor: string): number {
-  const value = graph.getField(actor, FIELDS.arcWeek);
-
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1
-    ? value
-    : 1;
-}
 
 /** Where a customer's month-end stands at a given minute of a given week. */
 export interface FreezeReading {

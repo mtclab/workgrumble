@@ -1,4 +1,5 @@
 import type { ReadOnlyGraphNode } from '../../engine-api';
+import { arcWeekOf } from '../../world/arc-week';
 import {
   EVENT_LEVEL_LABELS,
   EVENT_LEVELS,
@@ -8,8 +9,9 @@ import {
   readEventLog,
 } from '../../world/events';
 import { FIELDS } from '../../world/fields';
+import { arcDateForTick } from '../../world/hours';
 import { formatSimTime } from '../clock-format';
-import type { AppDef, AppInstance } from './types';
+import type { AppDef, AppInstance, GameApi } from './types';
 import {
   element,
   type KeyedRow,
@@ -63,6 +65,22 @@ interface LogRow {
   readonly source: string;
   readonly id: string;
   readonly message: string;
+}
+
+/**
+ * The date one row of this viewer prints - the arc's, and exported so the seam
+ * gate can drive the real thing rather than a copy of it.
+ *
+ * It is one line and it is still worth a name. The Event Viewer and the log
+ * FILE beside it are two windows onto one field (`fs.ts` derives `SYSTEM.LOG`
+ * from the same event log), so the one thing that must never happen is the two
+ * of them dating the same fault differently - which is exactly what happened
+ * from 0.39.0 until this, because the file learned about the arc and the
+ * window did not. Both now go through `arcDateForTick` with the week read off
+ * the player, and the cross-surface gate asserts they are the same string.
+ */
+export function eventRowDate(api: GameApi, tick: number): string {
+  return arcDateForTick(arcWeekOf(api.graph, api.actor), tick);
 }
 
 function worstLevel(log: readonly MachineEvent[]): string {
@@ -279,7 +297,7 @@ export const EVENTS_APP: AppDef = {
         rows.map((entry, index) => ({
           key: String(index),
           time: formatSimTime(entry.tick).time,
-          date: formatSimTime(entry.tick).date,
+          date: eventRowDate(api, entry.tick),
           level: entry.level,
           levelLabel: LEVEL_LABELS[entry.level],
           source: entry.source,

@@ -44,7 +44,7 @@ import {
   PROFILES_DIR,
   spoolDirId,
 } from './filesystem';
-import { fileStamp } from './hours';
+import { arcFileStamp } from './hours';
 import { readSpoolJobs, readStoredFiles, storedBytes } from './listings';
 
 // The spelling of both lists is a leaf module, and this is the reader of them.
@@ -128,6 +128,18 @@ export interface TerminalSession {
   readonly cwd: readonly string[];
   /** The account this session runs as, for `%USERPROFILE%`. */
   readonly username: string | null;
+  /**
+   * WHICH WEEK OF THE CAREER the terminal is standing in (0.40.0).
+   *
+   * A session already carries the two things a listing has to know that a
+   * graph cannot say on its own - which box, and standing where. The week is
+   * the third: a file surface dates rows off the clock, and a tick only names
+   * a minute of SOME week (`hours.ts`). Carrying it here rather than adding a
+   * parameter to every path function is what keeps the read to ONE place -
+   * the terminal builds its session once, off the player node, and everything
+   * downstream of it dates the estate the same way by construction.
+   */
+  readonly arcWeek: number;
 }
 
 /* -- paths ---------------------------------------------------------------- */
@@ -306,6 +318,44 @@ function nameOf(node: Readonly<ReadOnlyGraphNode>): string {
   return typeof name === 'string' ? name : node.id;
 }
 
+/**
+ * THE STAMP RULE (0.40.0), stated once because this file has both kinds of
+ * stamp in it and they are honest about different things.
+ *
+ * A SEEDED stamp is world data: a literal string on the node, written when the
+ * estate was described - `02/02/1998  16:40` on a config somebody last touched
+ * in February, `14/03/1998  02:00` on the scheduled task that has been paused
+ * since March, `07/09/1998  07:58` on the print jobs that piled up before
+ * anybody arrived. Those dates do NOT move with the arc week, and that is the
+ * point of them rather than an oversight: the estate is older than the player.
+ * A file the world was imaged with was there before the career started, so it
+ * carries the world's founding dates in week one and in week nine alike, the
+ * same way the fiction's March and February do. Week one IS the world's first
+ * week; a seed that quoted it is quoting the beginning of the world, not the
+ * beginning of this week.
+ *
+ * A DERIVED stamp is read off the CLOCK at render time - the machine's own
+ * event log, whose rows are ticks, and the log file's own mtime, which is
+ * whenever the last of those rows was written. Those are things that happened
+ * WHILE THE PLAYER WAS AT THE DESK, so they are dated on the arc's calendar
+ * (`arcFileStamp`) and they move with the week: a fault logged at ten past
+ * eleven in arc week four is dated the twenty-eighth of September, because
+ * that is when it happened.
+ *
+ * The line between the two is therefore not "which file" but "who wrote it,
+ * and when" - and it is the same line the fiction already draws.
+ *
+ * ONE CASE SITS ON THE LINE and is being left there deliberately: the spool
+ * jobs a jammed-printer ticket seeds, which are dated `stampAt(1, ...)` in the
+ * ticket's own definition because they piled up "before anybody arrived" THIS
+ * MORNING. Those are the estate's youngest seeded stamps, and in a later arc
+ * week they read as a queue that has been sitting there for a fortnight.
+ * Moving them is a WORLD-DATA change - the string is a field on a node, so it
+ * is in the graph the parity goldens and the Rust golden hash are taken of -
+ * and this slice is a RENDER change with a byte-identical week one. So the
+ * honest thing is to name it here rather than half-do it: the fix is for a
+ * version whose gate expects the world hash to move.
+ */
 function stampOf(node: Readonly<ReadOnlyGraphNode>): string {
   const modified = node.fields[FIELDS.modified];
   return typeof modified === 'string' ? modified : '';
@@ -519,15 +569,22 @@ export function storedDisagreements(
 export function eventLogText(
   graph: ReadOnlyGraphView,
   machineId: string,
+  arcWeek: number,
 ): string {
-  return logText(readEventLog(graph.getField(machineId, FIELDS.eventLog)));
+  return logText(
+    readEventLog(graph.getField(machineId, FIELDS.eventLog)),
+    arcWeek,
+  );
 }
 
 /** The rows themselves, from a log that has already been read. */
-function logText(log: readonly Readonly<MachineEvent>[]): string {
+function logText(
+  log: readonly Readonly<MachineEvent>[],
+  arcWeek: number,
+): string {
   return log
     .map((event) => [
-      fileStamp(event.tick),
+      arcFileStamp(arcWeek, event.tick),
       EVENT_LEVEL_LABELS[event.level].padEnd(11),
       event.source.padEnd(24),
       String(event.id).padEnd(6),
@@ -542,6 +599,7 @@ function entryOf(
   graph: ReadOnlyGraphView,
   machineId: string,
   node: Readonly<ReadOnlyGraphNode>,
+  arcWeek: number,
 ): FsEntry {
   const denied = node.fields[FIELDS.accessDenied] === true;
 
@@ -562,13 +620,15 @@ function entryOf(
   // it was imaged with, because that is the last time anything touched it.
   if (node.id === eventLogFileId(machineId)) {
     const log = readEventLog(graph.getField(machineId, FIELDS.eventLog));
-    const text = logText(log);
+    const text = logText(log, arcWeek);
     const last = log.at(-1);
 
     return {
       kind: 'file',
       name: nameOf(node),
-      modified: last === undefined ? stampOf(node) : fileStamp(last.tick),
+      modified: last === undefined
+        ? stampOf(node)
+        : arcFileStamp(arcWeek, last.tick),
       size: byteLength(text),
       accessDenied: denied,
       nodeId: node.id,
@@ -612,6 +672,7 @@ export function listEntries(
   graph: ReadOnlyGraphView,
   machineId: string,
   directoryId: string,
+  arcWeek: number,
 ): readonly FsEntry[] {
   if (directoryId === spoolDirId(machineId)) {
     return spoolEntries(graph, machineId);
@@ -629,7 +690,7 @@ export function listEntries(
     graph
       .neighbors(directoryId, { direction: 'out', edgeKind: 'contains' })
       .filter((node) => node.kind === 'directory' || node.kind === 'file')
-      .map((node) => entryOf(graph, machineId, node))
+      .map((node) => entryOf(graph, machineId, node, arcWeek))
       .sort(byName),
   );
 }
@@ -638,12 +699,13 @@ export function listEntries(
 function driveOf(
   graph: ReadOnlyGraphView,
   machineId: string,
+  arcWeek: number,
 ): FsEntry | undefined {
   const root = graph.getNode(driveRootId(machineId));
 
   return root === undefined || root.kind !== 'directory'
     ? undefined
-    : entryOf(graph, machineId, root);
+    : entryOf(graph, machineId, root, arcWeek);
 }
 
 /**
@@ -656,9 +718,10 @@ function driveOf(
 export function locate(
   graph: ReadOnlyGraphView,
   location: Readonly<Location>,
+  arcWeek: number,
 ): Found {
   const path = displayPath(location);
-  const root = driveOf(graph, location.machineId);
+  const root = driveOf(graph, location.machineId, arcWeek);
 
   if (root === undefined) {
     return { ok: false, fault: 'missing', path };
@@ -678,7 +741,7 @@ export function locate(
     }
 
     const needle = segment.toLowerCase();
-    const found = listEntries(graph, location.machineId, here.nodeId)
+    const found = listEntries(graph, location.machineId, here.nodeId, arcWeek)
       .find((entry) => entry.name.toLowerCase() === needle);
 
     if (found === undefined) {
@@ -704,6 +767,6 @@ export function findPath(
   const resolved = resolvePath(graph, session, input);
 
   return resolved.ok
-    ? locate(graph, resolved.location)
+    ? locate(graph, resolved.location, session.arcWeek)
     : { ok: false, fault: resolved.fault, path: input.trim() };
 }

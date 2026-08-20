@@ -21,8 +21,8 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { arcWeekOf } from './arc-week';
 import {
-  arcWeekOf,
   changeFreezeOfCustomer,
   FREEZE_DAYS,
   freezeDeferral,
