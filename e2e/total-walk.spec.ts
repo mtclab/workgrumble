@@ -6374,6 +6374,38 @@ test('walks the second queue: audited, corrected, billed and written up',
         page.getByTestId('kb-row-impact-is-the-estate-not-the-fault'),
       ).toBeVisible();
     });
+
+    /*
+     * And the door out, opened and refused - last, because it is the one
+     * control on the log-on screen that can end the career this run is made
+     * of. The half walked here is the half that has to cost nothing: it names
+     * the senior desk in plain words, it holds the ladder back until the
+     * question is answered, and Keep this career leaves the run exactly where
+     * it was. `resume.spec.ts` drives the other half, where the career it
+     * throws away is one nobody has spent an hour walking.
+     */
+    await step('login.start-fresh', async () => {
+      await page.getByTestId('start-button').click();
+      await page.getByTestId('start-menu-log-off').click();
+      await expect(page.getByTestId('login-screen')).toBeVisible();
+      await expect(page.getByTestId('login-desk-field')).toHaveCount(0);
+
+      await page.getByTestId('login-start-fresh').click();
+      await expect(page.getByTestId('login-start-fresh-warning'))
+        .toContainText('Senior Service Desk Analyst');
+      await expect(page.getByTestId('login-desk-field')).toHaveCount(0);
+
+      await page.getByTestId('login-start-fresh-cancel').click();
+      await expect(page.getByTestId('login-start-fresh-warning')).toBeHidden();
+      await expect(page.getByTestId('login-start-fresh')).toBeVisible();
+
+      // Back in, at the same desk: the door was read and refused, and it took
+      // nothing on the way out.
+      await completeLogin(page, { brief: 'keep' });
+      expect(await page.evaluate(
+        () => globalThis.careerSim?.field('person:pat', 'title') ?? null,
+      )).toBe('Senior Service Desk Analyst');
+    });
   });
 
 /* ========================================================================= *

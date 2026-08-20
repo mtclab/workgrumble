@@ -78,7 +78,9 @@ async function startAsSenior(page: Page): Promise<void> {
 test('a refresh comes back to the senior desk, on the day it left', async ({
   page,
 }) => {
-  test.setTimeout(240_000);
+  // A whole senior day at x4, plus two boots with the new starter's ceremony
+  // on the front of one of them.
+  test.setTimeout(300_000);
   await startAsSenior(page);
 
   // A day worked and clocked off, because the clock-off is where the boundary
