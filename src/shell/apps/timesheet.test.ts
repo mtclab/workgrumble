@@ -105,15 +105,19 @@ interface Rig {
   readonly api: GameApi;
 }
 
-/** The MSP desk, with the promotion taken through the real verb when asked. */
-function rig(promoted = true): Rig {
-  const session = createWorldSession(MSP_CARRY);
-  const driver = new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
-    onDayBoundary: () => {},
-    openSlackApps: () => [],
-    focusedSlackApp: () => null,
-  }, undefined, MSP_WEEK, MSP_CHANNELS);
-  const api = {
+/**
+ * The shell around a world, so the terminal can be driven at any rung.
+ *
+ * Lifted out of `rig` (0.40.0) rather than copied into the senior's, because
+ * two of these would be two shells and the point of driving through the
+ * shipped parser is that there is one.
+ */
+function apiFor(
+  session: WorldSession,
+  driver: DayDriver,
+  employer: string,
+): GameApi {
+  return {
     graph: session.engine.graph,
     appState: new AppStateStore(),
     day: driver,
@@ -143,9 +147,20 @@ function rig(promoted = true): Rig {
     restartWeek: () => {},
     acceptOffer: () => {},
     stayAnotherWeek: () => {},
-    employer: 'msp',
+    employer,
     actor: COMPANY_IDS.player,
   } as unknown as GameApi;
+}
+
+/** The MSP desk, with the promotion taken through the real verb when asked. */
+function rig(promoted = true): Rig {
+  const session = createWorldSession(MSP_CARRY);
+  const driver = new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
+    onDayBoundary: () => {},
+    openSlackApps: () => [],
+    focusedSlackApp: () => null,
+  }, undefined, MSP_WEEK, MSP_CHANNELS);
+  const api = apiFor(session, driver, 'msp');
 
   if (promoted) {
     session.engine.applySetup([{
@@ -279,7 +294,7 @@ describe('the sheet the desk fills in', () => {
  * on it, which no shop this rung can be hired at has.
  */
 describe('the sheet the senior desk has to make add up', () => {
-  function seniorRig(): { readonly driver: DayDriver; readonly session: WorldSession } {
+  function seniorRig(): Rig {
     const session = createWorldSession(carryForStart('sd_senior'));
     const driver = new DayDriver(
       session.engine,
@@ -319,7 +334,7 @@ describe('the sheet the senior desk has to make add up', () => {
           driver.step(TICK_INTERVAL_MS);
         }
 
-        return { driver, session };
+        return { driver, session, api: apiFor(session, driver, 'workgrumble') };
       }
     }
 
@@ -355,6 +370,23 @@ describe('the sheet the senior desk has to make add up', () => {
     expect(shapeLine(sheet)).not.toContain('billable');
     expect(timesheetLines(sheet, rigged.driver.day()).join('\n'))
       .not.toContain('internal');
+  });
+
+  it('files it without promising an invoice run nobody here does', () => {
+    // The terminal's submit sentence was two sentences for two shapes, and the
+    // one that was not the probationer's said "it is on the invoice run now".
+    // That is the ENGINEER's consequence: this rung's shop has no customers to
+    // invoice, so saying it here would be the terminal inventing one.
+    const rigged = seniorRig();
+    const said = executeCommand(
+      parseCommand('timesheet submit'),
+      rigged.api,
+    ).lines.join('\n');
+
+    expect(said).toContain('Timesheet submitted.');
+    expect(said).not.toContain('invoice run');
+    // And the half that is true at every rung is still said.
+    expect(said).toContain('the half nobody edits');
   });
 });
 
