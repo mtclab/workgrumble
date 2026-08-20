@@ -24,6 +24,7 @@ import { FIELDS, PLAYER_TIERS, type PlayerTier } from './fields';
 import { clampMeter } from './meters';
 import {
   departedCustomers,
+  ledgerArriving,
   patienceLedger,
   quietCustomers,
 } from './patience';
@@ -291,6 +292,12 @@ export function createWorldSession(
   // already bringing across rather than out of a second list beside it. See
   // `churnCarriedIn` for why there is no second list.
   const churn = churnCarriedIn(start.estate, player);
+  // And the same delta with the patience ledger's clocks taken off. A tick is
+  // a minute of a week, and the minute a new week starts there is no such
+  // minute - so this is `carry.ts`'s second question answered here rather than
+  // at the Friday fold, which runs before the player has read the post it is
+  // about. Every other value on the delta rides across untouched.
+  const estate = estateArriving(start.estate, player);
   engine.setTier(HELPDESK_TIER);
   engine.applySetup([
     // The shop's own seed, with any departed customer's estate left out of it.
@@ -302,7 +309,7 @@ export function createWorldSession(
     // a ticket does: this is a Monday that starts where Friday left the
     // building, and a fault a ticket reports still re-seeds itself when that
     // ticket spawns, which is what keeps a carried world solvable.
-    ...carriedSetup(start.estate),
+    ...carriedSetup(estate),
     ...weekOpeningSetup(player, employer.reviewBar),
     ...carrySetup(start, player),
     ...pressureSetup(start.arcWeek, employer.arc, player),
@@ -398,6 +405,30 @@ export function createWorldSession(
  * ledger and answers with two empty sets, which is what keeps every existing
  * world byte-identical.
  */
+/**
+ * The estate delta as it arrives, with the patience ledger's stamps cleared.
+ *
+ * Hands the SAME array back when there is no ledger on it, which is every
+ * delta at every employer without customers and every save written before
+ * this version - so nothing that has ever been carried is touched.
+ */
+function estateArriving(
+  estate: readonly CarriedValue[],
+  player: NodeId,
+): readonly CarriedValue[] {
+  const holds = estate.some(
+    (value) => value.node === player && value.field === FIELDS.customerPatience,
+  );
+
+  return holds
+    ? estate.map((value) => (
+      value.node === player && value.field === FIELDS.customerPatience
+        ? { ...value, value: ledgerArriving(value.value) }
+        : value
+    ))
+    : estate;
+}
+
 function churnCarriedIn(
   estate: readonly CarriedValue[],
   player: NodeId,

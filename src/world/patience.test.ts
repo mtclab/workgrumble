@@ -40,6 +40,7 @@ import {
   entryFor,
   foldPatience,
   leavingThisWeek,
+  ledgerArriving,
   patienceDebits,
   patienceLadderDue,
   patienceLedger,
@@ -406,7 +407,7 @@ describe('the fold at the end of the week', () => {
     expect(departedCustomers(folded)).toEqual([ACCOUNT]);
   });
 
-  it('takes every clock off, because a tick does not cross a Friday', () => {
+  it('keeps the clock on, because the Friday has not been read yet', () => {
     const stamped = ledgerOf({
       customer: ACCOUNT,
       standing: 4,
@@ -414,10 +415,27 @@ describe('the fold at the end of the week', () => {
       tick: 305,
     });
 
-    expect(foldPatience(stamped, debits(1))[0]?.tick).toBe(0);
-    // And it is what makes the notice week-scoped news: the letter is in this
-    // week's post and next week it is history.
-    expect(leavingThisWeek(stamped)).toEqual([]);
+    // The fold runs at the Friday clock-off, BEFORE the player sees the
+    // scorecard or opens the post. Zeroing here deleted the letter and the
+    // departure line in the minute they were written - which the played week
+    // found and this is the gate that keeps it found.
+    expect(foldPatience(stamped, debits(1))[0]?.tick).toBe(305);
+  });
+
+  it('takes every clock off on the way into the next week', () => {
+    const stamped = encodeLedger([
+      { customer: ACCOUNT, standing: 6, rung: 'leaving', tick: 305 },
+      { customer: MSP_CUSTOMERS.arden, standing: 2, rung: 'asking', tick: 90 },
+    ]);
+
+    expect(patienceLedger(ledgerArriving(stamped)).map((entry) => entry.tick))
+      .toEqual([0, 0]);
+    // Which is what makes the letter week-scoped news: it is in the post of
+    // the week it was written in, and next week it is history.
+    expect(leavingThisWeek(patienceLedger(stamped))).toEqual([ACCOUNT]);
+    expect(leavingThisWeek(patienceLedger(ledgerArriving(stamped)))).toEqual([]);
+    // And a ledger with nothing on it is still nothing.
+    expect(ledgerArriving('')).toBe('');
   });
 
   it('writes nothing at all for a shop nobody has a history with', () => {

@@ -567,8 +567,14 @@ export function patienceLadderDue(
  *    than things that happened. `leaving` is exempt: a notice given is given,
  *    and a ladder that took one back would be the mechanic's whole point
  *    undone by a good fortnight.
- *  - THE CLOCK, taken off. Every tick goes to nought, per `carry.ts`: a stamp
- *    carried across a boundary describes a minute that has not happened.
+ * THE CLOCK IS NOT TAKEN OFF HERE, and that is the correction the played week
+ * found. The fold runs at the Friday clock-off, which is BEFORE the player has
+ * seen the scorecard or read the post - so a fold that zeroed the ticks deleted
+ * the letter out of the inbox and the departure off the Friday card in the same
+ * minute it wrote them down. The stamp comes off where every other clock in
+ * this game restarts: at the next world build (`ledgerArriving`), which is
+ * exactly as faithful to `carry.ts` and leaves the week that earned the notice
+ * able to say so.
  *
  * An account that folds to nothing at all - no standing, no rung - is DROPPED,
  * so a shop where nobody has ever been let down carries an empty ledger and
@@ -602,10 +608,28 @@ export function foldPatience(
       continue;
     }
 
-    folded.push({ customer, standing, rung, tick: 0 });
+    folded.push({ customer, standing, rung, tick: held.tick });
   }
 
   return Object.freeze(folded);
+}
+
+/**
+ * The ledger as it ARRIVES in a new week: every clock taken off.
+ *
+ * `carry.ts`'s second question, answered at the only moment it can be answered
+ * without lying to the week that is ending: a tick is a minute of a week, and
+ * the minute a new week starts there is no such minute. A letter that kept its
+ * stamp would be dated into a Monday it did not arrive on, and the notice's own
+ * "has a day gone by" gate would be measuring against a day in another world.
+ *
+ * Returns the string the world is seeded with, so the transform happens once,
+ * in the one place a week is stood up.
+ */
+export function ledgerArriving(value: unknown): string {
+  return encodeLedger(
+    patienceLedger(value).map((entry) => ({ ...entry, tick: 0 })),
+  );
 }
 
 /* -- the post ------------------------------------------------------------- */
