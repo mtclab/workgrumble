@@ -563,21 +563,12 @@ export function storedDisagreements(
 }
 
 /**
- * The machine's own log, as a file: the same rows the Event Viewer paints,
- * from the same field, in the shape a log file has.
+ * The machine's own log as file rows: the same rows the Event Viewer paints,
+ * from the same field, in the shape a log file has. Private, because the only
+ * door onto the file is `entryOf` below - an exported wrapper existed until
+ * 0.40.0 with no caller but its own test, which now reads through `findPath`
+ * like every shipped surface does.
  */
-export function eventLogText(
-  graph: ReadOnlyGraphView,
-  machineId: string,
-  arcWeek: number,
-): string {
-  return logText(
-    readEventLog(graph.getField(machineId, FIELDS.eventLog)),
-    arcWeek,
-  );
-}
-
-/** The rows themselves, from a log that has already been read. */
 function logText(
   log: readonly Readonly<MachineEvent>[],
   arcWeek: number,

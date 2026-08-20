@@ -29,6 +29,16 @@
  *     `ls -l`'s date column all name the twenty-eighth of September for the
  *     Monday of arc week four, and all agree with `arcCalendarDay`. Revert any
  *     ONE of them to the old fold and it disagrees with the other four.
+ *
+ *     THROUGH THE SHIPPED READS, which is a verifier round's correction and
+ *     the load-bearing property of this gate: the first cut handed the week to
+ *     `dirLines`, `typeLines` and `lineReads` as a literal, and hardcoding the
+ *     RENDERERS' own week reads back to week one - the exact 0.39.0 defect -
+ *     left all three green. So the drive rows here come out of
+ *     `executeCommand`, whose one `arcWeekOf` read dates the whole family, and
+ *     the sheet sentence comes out of `lineReads` reading the same graph
+ *     field itself. The only hand-built desk left in this file is gate 3's,
+ *     whose subject is the stamp rule and not the week read.
  *  3. A SEEDED STAMP DOES NOT MOVE. The estate is older than the career: a
  *     file the world was imaged with keeps its founding date in every week.
  *     That is the stamp rule in `fs.ts`, and it is asserted rather than
@@ -65,7 +75,7 @@ import { type TerminalSession } from '../../world/fs';
 import { AppStateStore } from '../app-state';
 import { DayDriver } from '../day-driver';
 import { offeredAtFor } from '../../world/titles';
-import { dirLines, typeLines } from './cmd-files';
+import { dirLines } from './cmd-files';
 import { parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
 import {
@@ -189,12 +199,15 @@ function lastLogTick(session: WorldSession): number {
   return last?.tick ?? 0;
 }
 
-/** The `dir` row for SYSTEM.LOG on the print server, as a player reads it. */
-function logRowIn(session: WorldSession, arcWeek: number): string {
-  const listed = dirLines(
-    session.engine.graph,
-    deskAt(arcWeek),
-    PRINT_SERVER_LOGS,
+/**
+ * The `dir` row for SYSTEM.LOG on the print server, as a player reads it -
+ * through the parser and `executeCommand`, so the week on the stamp is the one
+ * `cmd-run`'s own `arcWeekOf` read answers and not one this file handed in.
+ */
+function logRowIn(api: GameApi): string {
+  const listed = executeCommand(
+    parseCommand(`dir ${PRINT_SERVER_LOGS}`),
+    api,
   ).lines;
   const row = listed.find((line) => line.includes('SYSTEM.LOG'));
 
@@ -203,17 +216,21 @@ function logRowIn(session: WorldSession, arcWeek: number): string {
   return row ?? '';
 }
 
-/** The first row `type` prints out of the same file. */
-function logFileFirstRow(session: WorldSession, arcWeek: number): string {
-  const printed = typeLines(
-    session.engine.graph,
-    deskAt(arcWeek),
-    `${PRINT_SERVER_LOGS}\\SYSTEM.LOG`,
+/**
+ * The first dated row `type` prints out of the same file, the same way. Found
+ * by the shape of a stamp rather than by the date this file expects, so the
+ * selection cannot smuggle the assertion in.
+ */
+function logFileFirstRow(api: GameApi): string {
+  const printed = executeCommand(
+    parseCommand(`type ${PRINT_SERVER_LOGS}\\SYSTEM.LOG`),
+    api,
   ).lines;
+  const row = printed.find((line) => /\d{2}\/\d{2}\/\d{4}/.test(line));
 
-  expect(printed.length).toBeGreaterThan(0);
+  expect(row).toBeDefined();
 
-  return printed[0] ?? '';
+  return row ?? '';
 }
 
 /** One line of a timesheet, which is a pure argument rather than a fixture. */
@@ -262,10 +279,10 @@ describe('the arc calendar at week one is the calendar that shipped', () => {
     const api = apiFor(session);
     const ssh = onBox(session, api);
 
-    expect(logRowIn(session, 1)).toContain(WEEK_ONE_MONDAY);
-    expect(logFileFirstRow(session, 1)).toContain(WEEK_ONE_MONDAY);
+    expect(logRowIn(api)).toContain(WEEK_ONE_MONDAY);
+    expect(logFileFirstRow(api)).toContain(WEEK_ONE_MONDAY);
     expect(eventRowDate(api, lastLogTick(session))).toBe(WEEK_ONE_MONDAY);
-    expect(lineReads(1, 1, INVOICE_LINE)).toContain(WEEK_ONE_MONDAY);
+    expect(lineReads(api, 1, INVOICE_LINE)).toContain(WEEK_ONE_MONDAY);
     expect(executeUnix(parseUnixCommand('ls -la'), api, ssh).lines.join('\n'))
       .toContain('Sep  7 ');
   });
@@ -294,12 +311,12 @@ describe('every date surface prints the week of the arc it is in', () => {
     expect(expected).toBe(ARC_MONDAY);
 
     // The drive: the listing's date column, and the file's own rows.
-    expect(logRowIn(session, ARC_WEEK)).toContain(expected);
-    expect(logFileFirstRow(session, ARC_WEEK)).toContain(expected);
+    expect(logRowIn(api)).toContain(expected);
+    expect(logFileFirstRow(api)).toContain(expected);
     // The window onto the same field.
     expect(eventRowDate(api, tick)).toBe(expected);
     // The document that leaves the building.
-    expect(lineReads(ARC_WEEK, dayForTick(tick), INVOICE_LINE))
+    expect(lineReads(api, dayForTick(tick), INVOICE_LINE))
       .toContain(expected);
     // And the other family's format for the same day, which is the whole of
     // the difference between `ls -l` and `dir`.
@@ -309,7 +326,7 @@ describe('every date surface prints the week of the arc it is in', () => {
     // Not week one, said out loud: an assertion that only checked agreement
     // would be satisfied by five surfaces all still folding to September the
     // seventh together.
-    expect(logRowIn(session, ARC_WEEK)).not.toContain(WEEK_ONE_MONDAY);
+    expect(logRowIn(api)).not.toContain(WEEK_ONE_MONDAY);
     expect(eventRowDate(api, tick)).not.toBe(WEEK_ONE_MONDAY);
   });
 

@@ -119,15 +119,24 @@ export function gapOf(line: Readonly<SheetLine>): ClaimGap {
  * career is a line the customer would query - the sheet is the one document in
  * this game that leaves the building, so it is the last place a week-one date
  * belongs.
+ *
+ * The sentence-maker READS THE WEEK ITSELF rather than being handed a number,
+ * and that is a verifier round's finding, not a taste call: with the read at
+ * the render call site, the gate that proves arc-week dates drove this
+ * function with a literal, and hardcoding the call site back to week one left
+ * every test green. The read the gate exercises has to be the read the
+ * renderer uses, so it lives here and there is no number parameter left to
+ * hand a wrong week through.
  */
 export function lineReads(
-  arcWeek: number,
+  api: Pick<GameApi, 'graph' | 'actor'>,
   day: number,
   line: Readonly<SheetLine>,
 ): string {
   return line.detail === 'vague'
     ? 'consulting'
-    : `${arcDate(arcWeek, day)}, ${line.label}, ${hoursLabel(line.claimed)}`;
+    : `${arcDate(arcWeekOf(api.graph, api.actor), day)}, ${line.label}, `
+      + hoursLabel(line.claimed);
 }
 
 /**
@@ -626,7 +635,7 @@ export const TIMESHEET_APP: AppDef = {
           reads.dataset.testid = `timesheet-reads-${item.handle}`;
           setText(
             reads,
-            lineReads(arcWeekOf(api.graph, api.actor), item.day, item.line),
+            lineReads(api, item.day, item.line),
           );
 
           if (!item.editable) {

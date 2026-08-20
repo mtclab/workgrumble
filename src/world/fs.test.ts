@@ -28,7 +28,6 @@ import {
 } from './filesystem';
 import {
   displayPath,
-  eventLogText,
   findPath,
   listEntries,
   promptPath,
@@ -241,11 +240,15 @@ describe('the machine log, as a file', () => {
       COMPANY_IDS.printServer,
       FIELDS.eventLog,
     ));
-    const text = eventLogText(
+    // Through `findPath`, which is the read every shipped surface makes - the
+    // convenience wrapper this test used to call had no other caller and went
+    // with the 0.40.0 verifier round.
+    const found = findPath(
       session.engine.graph,
-      COMPANY_IDS.printServer,
-      1,
+      DESK,
+      '\\\\PRINT-01\\C$\\WINDOWS\\SYSTEM32\\LOGFILES\\SYSTEM.LOG',
     );
+    const text = found.ok ? found.entry.text ?? '' : '';
     const rows = text.split('\n');
 
     expect(log.length).toBeGreaterThan(0);

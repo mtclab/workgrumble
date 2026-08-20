@@ -247,39 +247,16 @@ describe('the rung table', () => {
     }
   });
 
-  /**
-   * THE GATE UNDER 0.39.0's CORRECTION, standing as an assertion rather than as
-   * a comment about what somebody noticed.
-   *
-   * A `single_bucket` sheet writes one line a day at the full working day
-   * whatever was worked, so `recorded` is a hundred per cent before the player
-   * does anything and `billable` is nought for ever. A target over one is
-   * therefore a number on a card and not a difficulty knob - which is what
-   * shipped for one version. The table refuses the combination at load; this is
-   * the standing proof that no row has quietly grown one back.
+  /*
+   * NO LOOP TESTS FOR THE TARGET-AGAINST-SHAPE PAIRINGS, and the absence is
+   * deliberate (0.40.0 verifier round): `TITLE_TABLE` refuses a target over a
+   * one-bucket sheet and a billable basis over a sheet with no billable line
+   * AT MODULE LOAD, so a test restating either condition can never fail with
+   * its own message - the import throws first. The load guards are the gate
+   * (proven: a bad row on either condition fails the whole file at import,
+   * naming the rung), and a test that reads as teeth while being unreachable
+   * is decoration this suite does not keep.
    */
-  it('asks nothing of a rung whose sheet writes the day for it', () => {
-    for (const rung of RUNGS) {
-      if (TITLE_TABLE[rung].sheet !== 'single_bucket') {
-        continue;
-      }
-
-      expect(TITLE_TABLE[rung].utilisation, rung).toBeNull();
-    }
-  });
-
-  it('asks for billable hours only where the sheet has a billable line', () => {
-    // The other half of the same class: neither desk shape makes a billable
-    // split, so a billable target over one is nought per cent every week for
-    // reasons the player cannot touch.
-    for (const rung of RUNGS) {
-      if (TITLE_TABLE[rung].utilisation?.basis !== 'billable') {
-        continue;
-      }
-
-      expect(TITLE_TABLE[rung].sheet, rung).toBe('per_customer_project');
-    }
-  });
 });
 
 /**

@@ -95,7 +95,7 @@ Rust edit, a validator arm, a wasm rebuild and a save consideration - well-trodd
 
 **G1. No storage kind, and the word `bucket` is already taken.** `bucket` is the
 timesheet's primary key - `bucketOf` (`src/world/timesheet.ts:130`),
-`SERVICE_DESK_BUCKET` (`:135`), `SheetShape = 'single_bucket' | 'per_customer'` (`:613`),
+`SERVICE_DESK_BUCKET` (`:135`), `SheetShape = 'single_bucket' | 'per_customer' | 'per_customer_project'` (0.40.0),
 `bucketParts` (`:766`) - and it is player-facing in the service-desk joke
 (`src/shell/apps/timesheet.ts:188`: `'One bucket a day, seven and a half hours,
 attributed to nobody.'`), plus ~40 non-test sites across `src/world/invoice.ts:90-660`.

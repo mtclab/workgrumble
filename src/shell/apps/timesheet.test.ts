@@ -491,7 +491,7 @@ describe('the sheet the engineer argues with', () => {
     workTheMorning(rigged);
 
     const line = firstLine(rigged);
-    const written = lineReads(1, line.day, line.line);
+    const written = lineReads(rigged.api, line.day, line.line);
 
     // Date, estate, hours - the shape the research says survives a finance
     // team going through an invoice line by line.
@@ -504,7 +504,8 @@ describe('the sheet the engineer argues with', () => {
 
     // And the other one, which is the whole of what "vague" buys and costs:
     // one word, no date, no estate, nothing to check.
-    expect(lineReads(1, line.day, firstLine(rigged).line)).toBe('consulting');
+    expect(lineReads(rigged.api, line.day, firstLine(rigged).line))
+      .toBe('consulting');
   });
 
   it('puts the rest of the day on the sheet, on nobody\'s invoice', () => {
