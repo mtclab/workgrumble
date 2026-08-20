@@ -229,9 +229,12 @@ export function dirLines(
     graph,
     found.location.machineId,
     found.entry.nodeId,
+    session.arcWeek,
   );
   const atRoot = found.location.segments.length === 0;
-  const above = atRoot ? null : locate(graph, parentOf(found.location));
+  const above = atRoot
+    ? null
+    : locate(graph, parentOf(found.location), session.arcWeek);
   // Every directory but the root has itself and its parent in it, which is
   // both true of the real thing and the reason `cd ..` is discoverable. Each
   // carries the stamp of the directory it stands for, because that is what it
@@ -299,7 +302,7 @@ export function cdLines(
     };
   }
 
-  const found = locate(graph, resolved.location);
+  const found = locate(graph, resolved.location, session.arcWeek);
 
   if (!found.ok) {
     return { lines: faultLines(found.fault, 'path') };
@@ -338,7 +341,7 @@ export function typeLines(
     return { lines: faultLines(resolved.fault, 'file') };
   }
 
-  const found = locate(graph, resolved.location);
+  const found = locate(graph, resolved.location, session.arcWeek);
 
   if (!found.ok) {
     return { lines: faultLines(found.fault, 'file') };
@@ -453,7 +456,7 @@ export function moveLines(
     };
   }
 
-  const parent = locate(graph, parentOf(found.location));
+  const parent = locate(graph, parentOf(found.location), session.arcWeek);
   const parentId = parent.ok ? parent.entry.nodeId : null;
 
   if (found.entry.nodeId === null || parentId === null) {
@@ -606,8 +609,9 @@ function treeRows(
   directoryId: string,
   prefix: string,
   withFiles: boolean,
+  arcWeek: number,
 ): readonly string[] {
-  const entries = listEntries(graph, machineId, directoryId);
+  const entries = listEntries(graph, machineId, directoryId, arcWeek);
   const shown = withFiles
     ? entries
     : entries.filter((entry) => entry.kind === 'directory');
@@ -634,6 +638,7 @@ function treeRows(
       entry.nodeId,
       `${prefix}${last ? GAP : TRUNK}`,
       withFiles,
+      arcWeek,
     ));
   }
 
@@ -661,7 +666,7 @@ export function treeLines(
     return { lines: faultLines(resolved.fault, 'path') };
   }
 
-  const found = locate(graph, resolved.location);
+  const found = locate(graph, resolved.location, session.arcWeek);
 
   if (!found.ok) {
     return { lines: faultLines(found.fault, 'path') };
@@ -681,6 +686,7 @@ export function treeLines(
     found.entry.nodeId,
     '',
     withFiles,
+    session.arcWeek,
   );
 
   return {

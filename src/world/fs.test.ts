@@ -40,7 +40,12 @@ import {
   storedDisagreements,
   type TerminalSession,
 } from './fs';
-import { calendarDate, fileStamp, stampAt, WEEK_STARTS_ON } from './hours';
+import {
+  arcFileStamp,
+  calendarDate,
+  stampAt,
+  WEEK_STARTS_ON,
+} from './hours';
 import { createWorldSession, type WorldSession } from './session';
 import { spawnWorldTicket } from './tickets';
 
@@ -48,6 +53,11 @@ const DESK: TerminalSession = {
   machineId: COMPANY_IDS.playerMachine,
   cwd: ['SUPPORT'],
   username: 'ppending',
+  // The probation week, which is the week every literal date in this file is
+  // written for. Week one folds to itself (`arcCalendarDay(1, day) === day`),
+  // so these expectations are the same bytes they were before the calendar
+  // learned about the arc - which is the point of leaving them alone.
+  arcWeek: 1,
 };
 
 function world(...ticketIds: readonly string[]): WorldSession {
@@ -218,9 +228,9 @@ describe('the week in the year it happens in', () => {
   it('stamps a minute the way a listing prints one', () => {
     expect(stampAt(1, 8 * 60 + 41)).toBe('07/09/1998  08:41');
     // Tick zero is 08:00 on day one, which is where the clock starts.
-    expect(fileStamp(0)).toBe('07/09/1998  08:00');
-    expect(fileStamp(60)).toBe('07/09/1998  09:00');
-    expect(fileStamp(1_440)).toBe('08/09/1998  08:00');
+    expect(arcFileStamp(1, 0)).toBe('07/09/1998  08:00');
+    expect(arcFileStamp(1, 60)).toBe('07/09/1998  09:00');
+    expect(arcFileStamp(1, 1_440)).toBe('08/09/1998  08:00');
   });
 });
 
@@ -231,7 +241,11 @@ describe('the machine log, as a file', () => {
       COMPANY_IDS.printServer,
       FIELDS.eventLog,
     ));
-    const text = eventLogText(session.engine.graph, COMPANY_IDS.printServer);
+    const text = eventLogText(
+      session.engine.graph,
+      COMPANY_IDS.printServer,
+      1,
+    );
     const rows = text.split('\n');
 
     expect(log.length).toBeGreaterThan(0);
@@ -240,7 +254,7 @@ describe('the machine log, as a file', () => {
     for (const [index, event] of log.entries()) {
       const row = rows[index] ?? '';
 
-      expect(row).toContain(fileStamp(event.tick));
+      expect(row).toContain(arcFileStamp(1, event.tick));
       expect(row).toContain(EVENT_LEVEL_LABELS[event.level]);
       expect(row).toContain(event.source);
       expect(row).toContain(String(event.id));
@@ -265,7 +279,7 @@ describe('the machine log, as a file', () => {
     expect(found.ok && found.entry.nodeId)
       .toBe(eventLogFileId(COMPANY_IDS.printServer));
     expect(found.ok && found.entry.modified)
-      .toBe(fileStamp(last?.tick ?? 0));
+      .toBe(arcFileStamp(1, last?.tick ?? 0));
     expect(found.ok && found.entry.size).toBeGreaterThan(0);
 
     // A box nothing has happened to has an empty log file that still keeps
@@ -291,6 +305,7 @@ describe('the spool directory and the queue behind it', () => {
       empty.engine.graph,
       COMPANY_IDS.printServer,
       spoolDirId(COMPANY_IDS.printServer),
+      1,
     )).toEqual([]);
 
     const jammed = world('ticket:wedged-spooler');
@@ -298,6 +313,7 @@ describe('the spool directory and the queue behind it', () => {
       jammed.engine.graph,
       COMPANY_IDS.printServer,
       spoolDirId(COMPANY_IDS.printServer),
+      1,
     );
 
     expect(files).toHaveLength(47);
@@ -371,7 +387,7 @@ describe('the spool directory and the queue behind it', () => {
     const session = world();
     const graph = session.engine.graph;
     const exports = scannerExportDirId(COMPANY_IDS.warehouseMachine);
-    const files = listEntries(graph, COMPANY_IDS.warehouseMachine, exports);
+    const files = listEntries(graph, COMPANY_IDS.warehouseMachine, exports, 1);
 
     // Twelve months of barcode reads, each a size and a minute and nothing
     // else - which is what a listing prints and all this world knows.

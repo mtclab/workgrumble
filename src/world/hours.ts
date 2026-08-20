@@ -211,13 +211,76 @@ export function stampAt(day: number, minute: number): string {
   }:${twoDigits(minute % 60)}`;
 }
 
+/* -- the same calendar, with the career on it ----------------------------- */
+
 /**
- * A minute of the simulation, in the same shape. Everything a file surface
- * dates goes through one of these two, so a file the world wrote and a file it
- * was seeded with are stamped in one format.
+ * THE ARC SEAM (0.40.0). Everything above answers a question about ONE week -
+ * the five days in front of the player and the clock that restarts on Monday
+ * morning. Everything below answers the same question about a CAREER, and the
+ * difference between the two is `arcCalendarDay` and nothing else.
+ *
+ * It exists because 0.39.0 shipped the fold and then only two callers used it.
+ * A notice and a month-end close knew which week of the arc they were in;
+ * every other surface that printed a date - the taskbar's, the directory
+ * listing's, the Event Viewer's, the timesheet's, `ls -l`'s - folded whatever
+ * week was being played onto week one and printed the seventh of September
+ * forever. In arc week four that put "freeze since 28/09/1998" and a file
+ * stamped 07/09/1998 in the same terminal window, one screen apart, both
+ * claiming to be today.
+ *
+ * So the rule for the whole build, stated once, here:
+ *
+ *   A TICK IS NOT A DATE. A tick names a minute of SOME week. Only a week and
+ *   a tick together name a day of the career, and only a day of the career can
+ *   be written on a wall calendar.
+ *
+ * Which is why `fileStamp(tick)` is gone rather than deprecated: a function
+ * that turned a tick into a date on its own was the defect in function form,
+ * and anything that could still call it would still be wrong in week two.
+ * Every date a player reads now comes through one of the four below, each of
+ * which is `arcCalendarDay` composed with a formatter that was already here -
+ * one fold, four faces, no second copy of the arithmetic.
+ *
+ * WEEK ONE FOLDS TO ITSELF, by construction: `arcCalendarDay(1, day)` is
+ * `day`, so every one of these is byte-identical to what the old tick-only
+ * version printed for the probation week. The unit suite pins that identity
+ * rather than trusting the arithmetic, because it is the whole no-regression
+ * argument for a change that touches every date in the game.
  */
-export function fileStamp(tick: number): string {
-  return stampAt(dayForTick(tick), minuteOfDay(tick));
+
+/** The day of the CAREER a tick of a given arc week falls on. */
+export function arcDayForTick(week: number, tick: number): number {
+  return arcCalendarDay(week, dayForTick(tick));
+}
+
+/**
+ * A day of a week of the arc, as the estate writes dates.
+ *
+ * The notice and the redundancy round reached this first (0.39.0, where it
+ * lived in `pressure.ts`); it sits here now because it is the arc's date and
+ * not the round's, and `pressure.ts` re-exports it so the arc's own readers
+ * still ask the arc.
+ */
+export function arcDate(week: number, day: number): string {
+  return calendarDate(arcCalendarDay(week, day));
+}
+
+/** The date a minute of a week of the arc falls on. */
+export function arcDateForTick(week: number, tick: number): string {
+  return calendarDate(arcDayForTick(week, tick));
+}
+
+/**
+ * A minute of the simulation as a file surface stamps it: the arc's date, two
+ * spaces, the clock. Everything the world DATES FROM THE CLOCK goes through
+ * this, so a log row, a listing and a taskbar cannot disagree about the day.
+ *
+ * The other kind of stamp - the one a seeded file carries - is a literal built
+ * with `stampAt` at seed time and is deliberately NOT arc-aware; `fs.ts` says
+ * why, next to the code that reads it.
+ */
+export function arcFileStamp(week: number, tick: number): string {
+  return stampAt(arcDayForTick(week, tick), minuteOfDay(tick));
 }
 
 export function shiftEndTick(day: number): number {

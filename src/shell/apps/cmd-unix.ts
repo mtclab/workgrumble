@@ -26,6 +26,7 @@
  */
 
 import type { ReadOnlyGraphNode } from '../../engine-api';
+import { arcWeekOf } from '../../world/arc-week';
 import {
   APT_ACTIONS,
   APT_PACKAGE_PARAM,
@@ -63,8 +64,8 @@ import {
   unitEnablementOf,
 } from '../../world/fields';
 import {
+  arcDayForTick,
   calendarParts,
-  dayForTick,
   minuteOfDay,
 } from '../../world/hours';
 import {
@@ -1306,9 +1307,16 @@ const MONTHS = [
  * `ls` writes the month as a word and the day and time without a year for a
  * recent file, which is what this is - the FORMAT is the family difference, and
  * it is the only difference.
+ *
+ * ON THE ARC'S CALENDAR since 0.40.0, and for the same reason it was pulled
+ * onto the shared one in 0.39.0: `dayForTick` alone answers "day two of some
+ * week", so a listing built on it printed `Sep  8` in every week of a career.
+ * `arcDayForTick` is the same day counted from the start of the career rather
+ * than the start of the week, which is the only thing a wall calendar can be
+ * asked about.
  */
-function lsDate(tick: number): string {
-  const { month, dayOfMonth } = calendarParts(dayForTick(tick));
+function lsDate(arcWeek: number, tick: number): string {
+  const { month, dayOfMonth } = calendarParts(arcDayForTick(arcWeek, tick));
   const minute = minuteOfDay(tick);
   const day = String(dayOfMonth).padStart(2, ' ');
   const time = `${String(Math.floor(minute / 60)).padStart(2, '0')}:${
@@ -1343,7 +1351,7 @@ function lsLines(
   // listing is deliberately left byte-identical without it.
   const context = flags.includes('Z');
   const user = session.username;
-  const when = lsDate(api.clock.now());
+  const when = lsDate(arcWeekOf(api.graph, api.actor), api.clock.now());
 
   // A path that names a seeded file/dir on the box lists it the long way (E6,
   // 0.21.0) - the mode/owner/group a chmod/chown then rewrites. A path the world

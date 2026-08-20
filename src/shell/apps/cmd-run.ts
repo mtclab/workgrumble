@@ -4,6 +4,7 @@ import type {
   ReadOnlyGraphNode,
 } from '../../engine-api';
 import { HELPDESK_ACTIONS } from '../../world/actions';
+import { arcWeekOf } from '../../world/arc-week';
 import { COMPANY } from '../../world/company';
 import { PROBES } from '../../world/tickets/handoff';
 import {
@@ -47,7 +48,6 @@ import {
 } from '../../world/customers';
 import { changeRequestListing } from '../../world/change-request';
 import {
-  arcWeekOf,
   freezeReading,
   freezeRecordLines,
 } from '../../world/change-freeze';
@@ -2227,6 +2227,10 @@ function fileCommandLines(
     machineId: machine.id,
     cwd,
     username: account === undefined ? null : labelOf(account),
+    // The one read of the arc week the drive family makes (0.40.0). Every
+    // stamp `dir`, `type` and `tree` print is dated from here, so the listing
+    // and the audit's freeze dates cannot be two different Septembers.
+    arcWeek: arcWeekOf(api.graph, api.actor),
   };
 
   // Through the seam (0.38.0 review): the drive's two mutating verbs reach

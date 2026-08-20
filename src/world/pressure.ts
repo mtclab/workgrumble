@@ -49,7 +49,7 @@
  * gate forbids it and legibility forbids it twice.
  */
 
-import { arcCalendarDay, calendarDate, DAYS_PER_CALENDAR_WEEK } from './hours';
+import { arcDate, DAYS_PER_CALENDAR_WEEK } from './hours';
 import { matrixSummary, type PoolStanding } from './pool';
 import { WEEK_DAYS } from './week';
 
@@ -509,6 +509,17 @@ export const NOTICE_DAYS_MINIMUM = 30;
  * One constant, two doors, no second answer.
  */
 export { DAYS_PER_CALENDAR_WEEK };
+
+/**
+ * A day of the arc, as the estate writes dates.
+ *
+ * It moved down to `hours.ts` in 0.40.0 for the reason the constant above did.
+ * The notice needed a date first, so the fold was written here; then every
+ * other date surface in the build needed the same one, and a calendar that
+ * lives in the redundancy round is a calendar the Event Viewer has to import
+ * the redundancy round to read. Same door as before for the arc's own readers.
+ */
+export { arcDate };
 
 /**
  * The mail the two announcement beats arrive as.
@@ -986,24 +997,6 @@ export function pressureSummary(
 }
 
 /* -- the calendar the notice quotes ---------------------------------------- */
-
-/**
- * A day of the arc, as the estate writes dates.
- *
- * The world's clock restarts every week - each week is its own session and its
- * own graph - so the wall calendar in `hours.ts` only knows about the five
- * days in front of it. A career has a longer calendar than that, and a notice
- * without a date on it is not a notice, so the arc week is folded back into
- * the same anchor: Monday 7 September 1998, plus seven days a week.
- *
- * The fold itself is `arcCalendarDay` (0.39.0), because the freeze asks the
- * same question and wants the NUMBER rather than the string - it has to know
- * how far the first of the month is, which a date somebody has already
- * formatted cannot say.
- */
-export function arcDate(week: number, day: number): string {
-  return calendarDate(arcCalendarDay(week, day));
-}
 
 /** The Friday the conversation happens on, as a date somebody can diarise. */
 export function decisionDate(season: Readonly<PressureSeason>): string {

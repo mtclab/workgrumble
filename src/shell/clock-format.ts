@@ -1,22 +1,31 @@
 import { DAY_OPENS_MINUTE, MINUTES_PER_DAY } from '../world/day';
-import { calendarDate } from '../world/hours';
 
+/**
+ * The face of a minute: which day of the week it is, what the clock reads, and
+ * how a screen reader says both.
+ *
+ * IT HAS NO DATE ON IT, and losing one is the correction 0.40.0 makes here.
+ *
+ * It carried one until 0.39.0 - `date: calendarDate(dayNumber)` - for a good
+ * reason that turned out to be half a reason: a machine's own log and a
+ * directory listing are two views of one estate, so the Event Viewer has to
+ * print `09/09/1998` where a scorecard prints "Day 3", and formatting that a
+ * second way in whichever window needed it would have been a second calendar.
+ * True, and it stayed true. What was wrong is that it was derived HERE, from a
+ * tick and nothing else, and a tick is not a date: the world's clock restarts
+ * every Monday, so a tick names a minute of SOME week. In arc week four this
+ * printed the seventh of September on a fault that happened on the
+ * twenty-eighth, one window away from an audit that said so.
+ *
+ * So the date moved to the only place that can compute one - `hours.ts`, where
+ * `arcDateForTick(week, tick)` takes both halves - and this type dropped the
+ * field rather than defaulting it to week one. Defaulting would have kept
+ * every present caller working and left the next one to rediscover the bug;
+ * the missing field makes the compiler ask for the week.
+ */
 export interface SimTimeDisplay {
   readonly day: string;
   readonly time: string;
-  /**
-   * The same minute on the wall calendar: `09/09/1998`.
-   *
-   * "Day 3" is what a game clock says and it is what most of this shell wants
-   * - a scorecard, a payslip and a brief are all about which day of the week
-   * it is. A LOG is not: a machine's own log and a directory listing are two
-   * views of the same estate, and if one of them says "Day 3" and the other
-   * says 09/09/1998 the player has to do the arithmetic to know they are
-   * looking at the same evening. So the date is here, off the same anchor
-   * every file surface uses, rather than being formatted a second way by
-   * whichever window happened to need it.
-   */
-  readonly date: string;
   readonly accessible: string;
 }
 
@@ -37,7 +46,6 @@ export function formatSimTime(tick: number): SimTimeDisplay {
   return {
     day,
     time,
-    date: calendarDate(dayNumber),
     accessible: `${day}, simulation time ${time}`,
   };
 }

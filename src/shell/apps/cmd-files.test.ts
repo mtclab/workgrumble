@@ -31,6 +31,10 @@ const DESK: TerminalSession = {
   machineId: COMPANY_IDS.playerMachine,
   cwd: ['SUPPORT'],
   username: 'ppending',
+  // The probation week. Every date literal below is a week-one date and stays
+  // one: `arcCalendarDay(1, day)` is `day`, so this file is the byte-identity
+  // proof for the whole drive family.
+  arcWeek: 1,
 };
 
 const SPOOL = '\\\\PRINT-01\\C$\\WINDOWS\\SYSTEM32\\SPOOL\\PRINTERS';

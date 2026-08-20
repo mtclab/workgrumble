@@ -35,8 +35,9 @@ import type {
   SetupOp,
 } from '../engine-api';
 import { HELPDESK_ACTIONS, PROJECT_ACTIONS, SYSTEMD_ACTIONS } from './actions';
+import { arcWeekOf } from './arc-week';
 import { isRiskyProductionChange } from './change-control';
-import { arcWeekOf, freezeDeferral } from './change-freeze';
+import { freezeDeferral } from './change-freeze';
 import {
   CHANGE_REQUEST_DECISIONS,
   CHANGE_REQUEST_KINDS,
