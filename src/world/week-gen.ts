@@ -1059,6 +1059,7 @@ function drawnBefore(
   arcWeek: number,
   rung: Rung,
   options: Readonly<GenerateOptions>,
+  churnKey: string,
 ): ReadonlySet<string> {
   const window = options.window ?? RECENCY_WEEKS;
   const drawn = new Set<string>();
@@ -1069,7 +1070,7 @@ function drawnBefore(
     // as a junior, and recomputing them as an engineer can bar an entry they
     // never met. The window bars more than it strictly must and never less,
     // which is the safe direction and the one this module already documents.
-    for (const script of generateFor(content, week, rung, options)) {
+    for (const script of generateFor(content, week, rung, options, churnKey)) {
       for (const entry of [...content.beats.flatMap(
         (beat) => beat.members.map((member) => member.entry),
       ), ...content.pool]) {
@@ -1127,6 +1128,16 @@ function composeWeek(
   arcWeek: number,
   rung: Rung,
   options: Readonly<GenerateOptions>,
+  /**
+   * The churn, as the cache key its earlier weeks have to be filed under.
+   *
+   * It goes all the way down to `drawnBefore`, and that is a correctness fix
+   * rather than a tidy-up: the exclusion window is built by GENERATING the
+   * weeks before this one, and without the key those recursive calls would
+   * file a churned week three under the unchurned week three's entry - and
+   * hand it back to a world where nobody had left.
+   */
+  churnKey: string,
 ): readonly DayScript[] {
   const price = options.price ?? findWorldTicket;
   const cost = pricerFor(content, price);
@@ -1162,7 +1173,7 @@ function composeWeek(
     return gate(content, assemble(content, plan, arcWeek), price, plan, cost, mix);
   }
 
-  const history = drawnBefore(content, arcWeek, rung, options);
+  const history = drawnBefore(content, arcWeek, rung, options, churnKey);
   const weekSeed = weekSeedFor(content.employer, arcWeek);
   const spare = content.pool.filter((entry) => !history.has(entry.id));
   // Only beats are down while the placer runs, so nothing in the loose pool
@@ -1488,13 +1499,73 @@ function generateFor(
     );
   }
 
-  const built = composeWeek(content, arcWeek, rung, options);
+  const built = churnKey === ''
+    ? composeWeek(content, arcWeek, rung, options, churnKey)
+    : composeAfterChurn(content, arcWeek, rung, options, churnKey);
 
   if (shared) {
     GENERATED.set(key, built);
   }
 
   return built;
+}
+
+/**
+ * The same composition, at whatever exclusion window the SHRUNKEN content can
+ * carry (E9, 0.39.0).
+ *
+ * THE NEW SOLVABILITY RISK OF THE VERSION, and this is the answer to it. A
+ * departed account's entries leave the pool while the quotas and the ramp do
+ * not move - the shop still owes every morning two things on the desk - so a
+ * pool seven entries lighter has to fill the same five days to the same bands
+ * with the whole of last week still barred. Measured, the MSP manages it about
+ * ninety-nine weeks in a hundred and refuses the hundredth, which is a career
+ * that stops on somebody's week eighty.
+ *
+ * The yield is the WINDOW, and it is chosen the way `composeWeek` chooses to
+ * yield the blend: by asking what each promise is worth to a player. The day's
+ * band is a promise about the week being played - a Thursday under its floor is
+ * a broken Thursday - and the window is a promise about FRESHNESS, which the
+ * module already treats as content-dependent rather than absolute
+ * (`PRODUCT_WINDOW`, `windowAfforded`: three is the design, one is what the
+ * pools carry). A desk with one client fewer genuinely has less distinct work
+ * in it, and the same kind of job coming round sooner is the true version of
+ * that rather than a concession.
+ *
+ * IT ONLY EXISTS WHERE SOMEBODY HAS LEFT. An unchurned shop never reaches this
+ * function at all, so no shipped week moves, and `windowAfforded` - which is
+ * what the window ratchet measures the content against - still asks the whole
+ * shop the unsoftened question.
+ */
+function composeAfterChurn(
+  content: EmployerContent,
+  arcWeek: number,
+  rung: Rung,
+  options: Readonly<GenerateOptions>,
+  churnKey: string,
+): readonly DayScript[] {
+  const asked = options.window ?? RECENCY_WEEKS;
+  let last: unknown;
+
+  for (let window = asked; window >= 0; window -= 1) {
+    try {
+      return composeWeek(
+        content,
+        arcWeek,
+        rung,
+        { ...options, window },
+        churnKey,
+      );
+    } catch (failure: unknown) {
+      if (!(failure instanceof WeekRefused)) {
+        throw failure;
+      }
+
+      last = failure;
+    }
+  }
+
+  throw last;
 }
 
 /**

@@ -55,6 +55,10 @@ import {
   type PatienceEntry,
 } from './patience';
 import { contentFor } from './pools';
+import { findWorldTicket } from './tickets';
+import { DEFAULT_RUNG } from './titles';
+import { generateWeek, PRODUCT_WINDOW } from './week-gen';
+import type { WeekRequest } from './week-source';
 import { createWorldSession } from './session';
 
 beforeAll(() => {
@@ -751,5 +755,75 @@ describe('the pool after the churn', () => {
 
     expect(thinned).toBeGreaterThan(0);
     expect(ordinary).toBeGreaterThan(0);
+  });
+});
+
+/* -- the generator, after the churn ---------------------------------------- */
+
+describe('the week a churned shop is dealt', () => {
+  const content = contentFor(employerFor('msp'));
+  const ACCOUNT_GONE = MSP_CUSTOMERS.meridian;
+  /**
+   * Far enough up the arc that nothing else in this file has drawn near it.
+   *
+   * The generator keeps a module-global cache and the defect this gate is
+   * about is a cache-key one, so the week it asks about has to be one no
+   * earlier test has already filed an answer for.
+   */
+  const FAR = 40;
+
+  function request(departed: readonly string[]): WeekRequest {
+    return {
+      employer: 'msp',
+      attempt: 1,
+      arcWeek: FAR,
+      rung: DEFAULT_RUNG,
+      ...(departed.length === 0 ? {} : { departed }),
+    };
+  }
+
+  it('never files itself under the week a whole shop would have had', () => {
+    // The truth, composed with an injected pricer so it cannot be answered out
+    // of the cache: this is the week a shop that lost nobody is dealt.
+    const truth = generateWeek(request([]), content, {
+      window: PRODUCT_WINDOW,
+      price: findWorldTicket,
+    });
+
+    // A churned week at the same position. Building it generates the weeks
+    // BEFORE it to fill the exclusion window, and those are the ones that used
+    // to be filed under the unchurned shop's key.
+    generateWeek(request([ACCOUNT_GONE]), content, { window: PRODUCT_WINDOW });
+
+    // And the unchurned week, off the cached road. Take the churn out of the
+    // key `drawnBefore` recurses with and this is a week built on a history
+    // that never happened - at a shop where nobody has left.
+    expect(generateWeek(request([]), content, { window: PRODUCT_WINDOW }))
+      .toEqual(truth);
+  });
+
+  it('deals none of a departed account\'s work, at any position in the arc', () => {
+    for (let arcWeek = 2; arcWeek <= 8; arcWeek += 1) {
+      const week = generateWeek(
+        {
+          employer: 'msp',
+          attempt: 1,
+          arcWeek,
+          rung: DEFAULT_RUNG,
+          departed: [ACCOUNT_GONE],
+        },
+        content,
+        { window: PRODUCT_WINDOW },
+      );
+
+      for (const script of week) {
+        for (const id of [
+          ...script.inherited,
+          ...script.drip.map((slot) => slot.ticketId),
+        ]) {
+          expect(customerOfTicket(id)).not.toBe(ACCOUNT_GONE);
+        }
+      }
+    }
   });
 });

@@ -84,7 +84,10 @@ import {
   type DayScript,
 } from '../week';
 import { dayLoad } from '../load';
-import { contentFor } from '../pools';
+import { contentFor, type EmployerContent } from '../pools';
+import { customersInContent, customersOfEntry } from '../departure';
+import { customerOfTicket } from '../estate-index';
+import type { WeekRequest } from '../week-source';
 import { BUILT_RUNGS } from '../titles';
 import { generateWeek, PRODUCT_WINDOW } from '../week-gen';
 import { BODGE_TICKETS } from './bodge';
@@ -921,11 +924,101 @@ const SHIPPED_WEEKS = EMPLOYER_IDS.map((id) => {
  * degrade into the shop's own week rather than into a refusal, and a matrix
  * that only swept the MSP would never have asked.
  */
+interface ChurnRow {
+  readonly label: string;
+  readonly departed?: readonly string[];
+  readonly quiet?: readonly string[];
+}
+
+const NO_CHURN_ROW: ChurnRow = { label: 'whole' };
+
 const DRAWN_MATRIX = SHIPPED_WEEKS.flatMap((shop) => BUILT_RUNGS.map((rung) => ({
   ...shop,
   rung,
+  churn: NO_CHURN_ROW,
   name: `${shop.name} / ${rung}`,
 })));
+
+/** A shop's accounts, heaviest first by how much of its content is theirs. */
+function accountsByWeight(
+  content: Readonly<EmployerContent>,
+): readonly { readonly account: string; readonly entries: number }[] {
+  const entries = [
+    ...content.pool,
+    ...content.beats.flatMap((beat) => beat.members.map((member) => member.entry)),
+  ];
+
+  return customersInContent(content)
+    .map((account) => ({
+      account,
+      entries: entries.filter(
+        (entry) => customersOfEntry(entry).has(account),
+      ).length,
+    }))
+    .sort((left, right) => right.entries - left.entries
+      || left.account.localeCompare(right.account));
+}
+
+/**
+ * THE POST-CHURN ROWS (E9, 0.39.0), and they are the new solvability risk of
+ * the whole version.
+ *
+ * A departed account's entries leave the pool entirely (`contentAfterChurn`)
+ * while the QUOTAS do not move - the shop still owes every morning two things
+ * on the desk - so the shrunken pool has to fill the same five days to the same
+ * ramp under the same exclusion window. That is a world shape the sweep has
+ * never dealt, and it is exactly the kind of thing that would look fine in
+ * every unit test and refuse on somebody's week nine.
+ *
+ * THREE ROWS RATHER THAN NINE, because a cell of this matrix is ten thousand
+ * weeks under `gate:seeds` and nine accounts would be an hour of gate for a
+ * question three of them already answer. The three are chosen off the content
+ * rather than by name, so they cannot drift when somebody writes a ticket:
+ *
+ *  - the HEAVIEST account, which is the worst shrink the pool can suffer;
+ *  - the LIGHTEST, which at the MSP is the one whose content is a coupled
+ *    BEAT - the signing and the discovery drip that follows it - so its
+ *    departure takes a whole beat out of the placer rather than loose entries
+ *    out of the fill, which is a different failure mode entirely;
+ *  - and the heaviest again, gone QUIET rather than gone, because a deweight
+ *    changes every draw in the week without changing what is in the pool.
+ *
+ * All nine, at every rung, are swept at a hundred weeks apiece by the
+ * exhaustive test below - which is the "every account, every rung" claim, kept
+ * where it is affordable.
+ */
+const CHURN_ROWS: readonly ChurnRow[] = (() => {
+  const shop = SHIPPED_WEEKS.find((entry) => entry.id === 'msp');
+
+  if (shop === undefined) {
+    return [];
+  }
+
+  const ranked = accountsByWeight(contentFor(shop.employer));
+  const heaviest = ranked[0]?.account;
+  const lightest = ranked[ranked.length - 1]?.account;
+
+  return [
+    ...(heaviest === undefined
+      ? []
+      : [{ label: `without ${heaviest}`, departed: [heaviest] }]),
+    ...(lightest === undefined || lightest === heaviest
+      ? []
+      : [{ label: `without ${lightest}`, departed: [lightest] }]),
+    ...(heaviest === undefined
+      ? []
+      : [{ label: `${heaviest} gone quiet`, quiet: [heaviest] }]),
+  ];
+})();
+
+const CHURNED_MATRIX = SHIPPED_WEEKS
+  .filter((shop) => shop.id === 'msp')
+  .flatMap((shop) => BUILT_RUNGS.flatMap((rung) => CHURN_ROWS.map((churn) => ({
+    ...shop,
+    rung,
+    churn,
+    name: `${shop.name} ${churn.label} / ${rung}`,
+  }))));
 
 /**
  * How long one cell of that matrix may take.
@@ -1395,13 +1488,107 @@ describe('the solvability gate, pointed at something that is meant to fail', () 
  * The window's own behaviour - that week two deals none of week one - is gated
  * in `week-gen.test.ts`.
  */
-describe.each(DRAWN_MATRIX)('$name: a hundred drawn weeks', ({ employer, rung }) => {
+/**
+ * EVERY ACCOUNT, LOST, AT EVERY RUNG (E9, 0.39.0).
+ *
+ * The deep matrix above sweeps three churn states at ten thousand weeks
+ * apiece, which is the depth question. This is the BREADTH one: any account on
+ * the roster can be the one that leaves, because which of them does is decided
+ * by how the player treated them and not by anything the content picked - so a
+ * pool that happens to survive losing the biggest client and refuses on the
+ * fourth-biggest would be a career that stops for a reason nobody could have
+ * seen coming.
+ *
+ * A hundred weeks a cell, fixed, and deliberately NOT keyed on `WG_SEEDS`: at
+ * nine accounts and three rungs this is twenty-seven cells, and the deep gate's
+ * ten thousand belongs on the three cells above rather than on all of these.
+ * The title is out of `gate:seeds`' filter for the same reason.
+ */
+describe('a week at a shop that has lost somebody', () => {
+  const shop = SHIPPED_WEEKS.find((entry) => entry.id === 'msp');
+  const content = shop === undefined ? null : contentFor(shop.employer);
+  const accounts = content === null ? [] : customersInContent(content);
+
+  it('is composable for every account on the roster, at every rung', () => {
+    expect(accounts.length).toBeGreaterThan(1);
+
+    const refused: string[] = [];
+
+    for (const account of accounts) {
+      for (const rung of BUILT_RUNGS) {
+        for (let index = 0; index < 100; index += 1) {
+          const arcWeek = index + 2;
+          const attempt = 1 + (index % 5);
+
+          try {
+            const week = generateWeek(
+              {
+                employer: shop?.employer.id ?? '',
+                attempt,
+                arcWeek,
+                rung,
+                departed: [account],
+              },
+              content as EmployerContent,
+              { window: PRODUCT_WINDOW },
+            );
+
+            // And none of it is theirs. A pool filter that quietly let one
+            // through would be a client raising tickets a month after they
+            // stopped being a client.
+            for (const script of week) {
+              for (const id of [
+                ...script.inherited,
+                ...script.drip.map((slot) => slot.ticketId),
+              ]) {
+                expect(customerOfTicket(id)).not.toBe(account);
+              }
+            }
+          } catch (failure: unknown) {
+            refused.push(
+              `${account} / ${rung} / week ${String(arcWeek)}: ${String(failure)}`,
+            );
+          }
+        }
+      }
+    }
+
+    process.stderr.write(
+      `[seeds] post-churn breadth: ${String(accounts.length)} accounts x `
+      + `${String(BUILT_RUNGS.length)} rungs x 100 weeks, `
+      + `${String(refused.length)} refused.\n`,
+    );
+
+    expect(refused).toEqual([]);
+  }, DEEP_RUN_MS);
+});
+
+describe.each([...DRAWN_MATRIX, ...CHURNED_MATRIX])(
+  '$name: a hundred drawn weeks',
+  ({ employer, rung, churn }) => {
   const HOW_MANY = Number.parseInt(process.env.WG_SEEDS ?? '', 10) || 100;
   const content = contentFor(employer);
   const drawn = Array.from({ length: HOW_MANY }, (_, index) => ({
     arcWeek: index + 2,
     attempt: 1 + (index % 5),
   }));
+  /**
+   * The request, with whatever the churn row says has happened to the shop.
+   *
+   * The churn goes on the REQUEST rather than into the content by hand,
+   * because that is the road the product takes: `weekRequestFrom` reads it off
+   * the patience ledger on the player node and `generateWeek` applies it. A
+   * sweep that filtered the content itself would be proving a filter nobody
+   * ships.
+   */
+  const request = (attempt: number, arcWeek: number): WeekRequest => ({
+    employer: employer.id,
+    attempt,
+    arcWeek,
+    rung,
+    ...(churn.departed === undefined ? {} : { departed: churn.departed }),
+    ...(churn.quiet === undefined ? {} : { quiet: churn.quiet }),
+  });
 
   it(`are feasible under the worst schedule, all ${String(HOW_MANY)} of them`, () => {
     const refused: string[] = [];
@@ -1414,7 +1601,7 @@ describe.each(DRAWN_MATRIX)('$name: a hundred drawn weeks', ({ employer, rung })
 
       try {
         week = generateWeek(
-          { employer: employer.id, attempt, arcWeek, rung },
+          request(attempt, arcWeek),
           content,
           { window: PRODUCT_WINDOW },
         );
@@ -1443,7 +1630,7 @@ describe.each(DRAWN_MATRIX)('$name: a hundred drawn weeks', ({ employer, rung })
     // error stream, because that is the one the runner does not intercept and
     // a number nobody can read is a number nobody has.
     process.stderr.write(
-      `[seeds] ${employer.name} / ${rung}: `
+      `[seeds] ${employer.name} ${churn.label} / ${rung}: `
       + `${String(drawn.length - refused.length)} drawn `
       + `weeks, ${String(refused.length)} refused, worst clear air `
       + `${String(worst)} minutes against the `
@@ -1470,7 +1657,7 @@ describe.each(DRAWN_MATRIX)('$name: a hundred drawn weeks', ({ employer, rung })
 
     for (const { arcWeek, attempt } of drawn) {
       const week = generateWeek(
-        { employer: employer.id, attempt, arcWeek, rung },
+        request(attempt, arcWeek),
         content,
         { window: PRODUCT_WINDOW },
       );
@@ -1499,4 +1686,5 @@ describe.each(DRAWN_MATRIX)('$name: a hundred drawn weeks', ({ employer, rung })
       }
     }
   }, DEEP_RUN_MS);
-});
+  },
+);
