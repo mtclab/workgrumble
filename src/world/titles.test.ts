@@ -24,6 +24,7 @@ import {
   rowFor,
   rungFor,
   SLA_PROFILES,
+  sheetShapeFor,
   tierFor,
   TITLE_TABLE,
   utilisationTargetFor,
@@ -168,15 +169,15 @@ describe('the rung table', () => {
     // anything they did.
     expect(TITLE_TABLE.sd_junior.utilisation).toBeNull();
     expect(utilisationTargetFor('sd_junior')).toBeNull();
-    // NONE AT THE SENIOR DESK EITHER, and for the junior's reason rather than
-    // for want of a figure: the sheet shape is keyed on the PAM TIER and a
-    // senior analyst stands on the junior's tier, so the senior's sheet is one
-    // bucket a day too and records a hundred per cent by construction. The 85
-    // that stood here for one version was cleared before the player did
-    // anything - a knob that cannot turn - and it comes back when the sheet
-    // shape moves to the rung (`titles.ts`, the column's docblock).
-    expect(TITLE_TABLE.sd_senior.utilisation).toBeNull();
-    expect(utilisationTargetFor('sd_senior')).toBeNull();
+    // 85% RECORDED at the senior desk (MetricNet's 75-85 band, the top of it
+    // the honest ask). It is the figure that stood here at 0.38.0, came off at
+    // 0.39.0 because the tier-keyed sheet cleared it before the player did
+    // anything, and came back at 0.40.0 with the per-party sheet that makes it
+    // the ledger's answer instead of the shape's.
+    expect(TITLE_TABLE.sd_senior.utilisation)
+      .toEqual({ basis: 'recorded', percent: 85 });
+    expect(utilisationTargetFor('sd_senior'))
+      .toEqual({ basis: 'recorded', percent: 85 });
     // REAL: the industry ask an honest week does not reach (Promys, 75%).
     expect(utilisationTargetFor('systems_engineer'))
       .toEqual({ basis: 'billable', percent: 75 });
@@ -214,6 +215,69 @@ describe('the rung table', () => {
       if (TITLE_TABLE[rung].customers.inHouse) {
         expect(target.basis, rung).toBe('recorded');
       }
+    }
+  });
+
+  /* -- the sheet a rung fills in (0.40.0) -------------------------------- */
+
+  /**
+   * The shape column, and the pairing with the target that is the whole reason
+   * it is a column at all.
+   *
+   * Literals per rung for the reason the targets above are literals: this is
+   * the paperwork ramp, so a rung changing which sheet it fills in has to be
+   * somebody's decision rather than a thing that slid past behind a green
+   * suite.
+   */
+  it('walks the paperwork ramp one rung at a time', () => {
+    expect(sheetShapeFor('sd_junior')).toBe('single_bucket');
+    expect(sheetShapeFor('sd_senior')).toBe('per_customer');
+    expect(sheetShapeFor('systems_engineer')).toBe('per_customer_project');
+    // And the unbuilt rungs carry the nearest built rung BELOW them, which is
+    // the honest default: the ramp does not go back down, and a rung built
+    // later starts from the sheet its neighbour already has rather than from a
+    // blank. It is why every row carries a shape while four carry no target.
+    expect(sheetShapeFor('l2_desktop')).toBe('per_customer');
+    expect(sheetShapeFor('senior_engineer')).toBe('per_customer_project');
+    expect(sheetShapeFor('team_lead')).toBe('per_customer_project');
+    expect(sheetShapeFor('architect')).toBe('per_customer_project');
+
+    for (const rung of RUNGS) {
+      expect(TITLE_TABLE[rung].sheet, rung).toBe(sheetShapeFor(rung));
+    }
+  });
+
+  /**
+   * THE GATE UNDER 0.39.0's CORRECTION, standing as an assertion rather than as
+   * a comment about what somebody noticed.
+   *
+   * A `single_bucket` sheet writes one line a day at the full working day
+   * whatever was worked, so `recorded` is a hundred per cent before the player
+   * does anything and `billable` is nought for ever. A target over one is
+   * therefore a number on a card and not a difficulty knob - which is what
+   * shipped for one version. The table refuses the combination at load; this is
+   * the standing proof that no row has quietly grown one back.
+   */
+  it('asks nothing of a rung whose sheet writes the day for it', () => {
+    for (const rung of RUNGS) {
+      if (TITLE_TABLE[rung].sheet !== 'single_bucket') {
+        continue;
+      }
+
+      expect(TITLE_TABLE[rung].utilisation, rung).toBeNull();
+    }
+  });
+
+  it('asks for billable hours only where the sheet has a billable line', () => {
+    // The other half of the same class: neither desk shape makes a billable
+    // split, so a billable target over one is nought per cent every week for
+    // reasons the player cannot touch.
+    for (const rung of RUNGS) {
+      if (TITLE_TABLE[rung].utilisation?.basis !== 'billable') {
+        continue;
+      }
+
+      expect(TITLE_TABLE[rung].sheet, rung).toBe('per_customer_project');
     }
   });
 });

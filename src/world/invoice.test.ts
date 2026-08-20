@@ -19,7 +19,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { loadEngineForTests } from '../engine-api/load-node';
-import { PLAYER_TIERS } from './fields';
 import { shiftStartTick } from './hours';
 import {
   breakdownLines,
@@ -79,10 +78,11 @@ function sheetOf(
     deriveTimesheet(segmentsFrom(lines.join('\n')), now),
     claims,
     {
-      tier: PLAYER_TIERS.systemsEngineer,
+      shape: 'per_customer_project',
       submittedAt: null,
       submittedAuto: false,
       labelOf: (_kind, id) => id,
+      customerOfProject: () => null,
     },
   );
 }

@@ -344,7 +344,7 @@ describe('the sheet, driven', () => {
     const sheet = rigged.driver.timesheet();
     const day = sheet.days[0];
 
-    expect(sheet.shape).toBe('per_customer');
+    expect(sheet.shape).toBe('per_customer_project');
     expect(day?.lines.some((line) => line.label.includes('edge firewall')))
       .toBe(true);
     expect(day?.lines.every((line) => line.billable)).toBe(true);
@@ -483,7 +483,7 @@ describe('the claim', () => {
   });
 });
 
-describe('the service desk\'s sheet', () => {
+describe('the probation desk\'s sheet', () => {
   it('is one bucket a day, and there is nothing to decide about it', () => {
     const rigged = rig(false);
     rigged.driver.startShift();

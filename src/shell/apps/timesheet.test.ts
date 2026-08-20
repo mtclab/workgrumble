@@ -32,6 +32,12 @@
  *  - a submitted sheet offers no edit. Take the `submittedAt` half out of
  *    `editsOffered` and every row on a filed sheet goes editable again, which
  *    reds - and the refusal beside the button disappears with it.
+ *  - the SENIOR DESK's window is the middle shape (0.40.0) and it is neither of
+ *    the other two: rows to argue with, which the probationer's has not, and no
+ *    billable word at the end of them, which the engineer's has. Key the window
+ *    on `single_bucket` versus everything else and the flag comes back; key the
+ *    edits on the engineer's shape alone and the rung loses the argument that
+ *    is the whole point of it.
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -40,7 +46,11 @@ import { loadEngineForTests } from '../../engine-api/load-node';
 import { CAREER_ACTIONS } from '../../world/actions';
 import { COMPANY_IDS } from '../../world/company';
 import { FIELDS } from '../../world/fields';
-import { calendarDate, shiftStartTick } from '../../world/hours';
+import {
+  calendarDate,
+  shiftStartTick,
+  WORKING_MINUTES_PER_DAY,
+} from '../../world/hours';
 import { MSP_CHANNELS } from '../../world/msp-company';
 import { MSP_WEEK } from '../../world/msp-week';
 import {
@@ -48,14 +58,17 @@ import {
   WORLD_SEED,
   type WorldSession,
 } from '../../world/session';
+import { findWorldTicket } from '../../world/tickets';
 import {
   hoursLabel,
+  lineFlag,
   type SheetDay,
   SERVICE_DESK_LABEL,
   type Timesheet,
   timesheetLines,
 } from '../../world/timesheet';
 import { AppStateStore } from '../app-state';
+import { carryForStart } from '../start';
 import { DayDriver, TICK_INTERVAL_MS } from '../day-driver';
 import { parseCommand } from './cmd-parse';
 import { executeCommand } from './cmd-run';
@@ -92,15 +105,19 @@ interface Rig {
   readonly api: GameApi;
 }
 
-/** The MSP desk, with the promotion taken through the real verb when asked. */
-function rig(promoted = true): Rig {
-  const session = createWorldSession(MSP_CARRY);
-  const driver = new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
-    onDayBoundary: () => {},
-    openSlackApps: () => [],
-    focusedSlackApp: () => null,
-  }, undefined, MSP_WEEK, MSP_CHANNELS);
-  const api = {
+/**
+ * The shell around a world, so the terminal can be driven at any rung.
+ *
+ * Lifted out of `rig` (0.40.0) rather than copied into the senior's, because
+ * two of these would be two shells and the point of driving through the
+ * shipped parser is that there is one.
+ */
+function apiFor(
+  session: WorldSession,
+  driver: DayDriver,
+  employer: string,
+): GameApi {
+  return {
     graph: session.engine.graph,
     appState: new AppStateStore(),
     day: driver,
@@ -130,9 +147,20 @@ function rig(promoted = true): Rig {
     restartWeek: () => {},
     acceptOffer: () => {},
     stayAnotherWeek: () => {},
-    employer: 'msp',
+    employer,
     actor: COMPANY_IDS.player,
   } as unknown as GameApi;
+}
+
+/** The MSP desk, with the promotion taken through the real verb when asked. */
+function rig(promoted = true): Rig {
+  const session = createWorldSession(MSP_CARRY);
+  const driver = new DayDriver(session.engine, COMPANY_IDS.player, WORLD_SEED, {
+    onDayBoundary: () => {},
+    openSlackApps: () => [],
+    focusedSlackApp: () => null,
+  }, undefined, MSP_WEEK, MSP_CHANNELS);
+  const api = apiFor(session, driver, 'msp');
 
   if (promoted) {
     session.engine.applySetup([{
@@ -257,6 +285,111 @@ describe('the sheet the desk fills in', () => {
   });
 });
 
+/**
+ * The senior desk's window (0.40.0): the middle rung of the paperwork ramp.
+ *
+ * Driven at the shop the rung is actually hired into, through the shipped
+ * dispatch, because the question is what the window makes of a REAL week -
+ * `world/timesheet.test.ts` drives the fold itself over a shop with customers
+ * on it, which no shop this rung can be hired at has.
+ */
+describe('the sheet the senior desk has to make add up', () => {
+  function seniorRig(): Rig {
+    const session = createWorldSession(carryForStart('sd_senior'));
+    const driver = new DayDriver(
+      session.engine,
+      COMPANY_IDS.player,
+      session.seed,
+      {
+        onDayBoundary: () => {},
+        openSlackApps: () => [],
+        focusedSlackApp: () => null,
+      },
+      undefined,
+      session.week,
+      session.channels,
+    );
+
+    driver.startShift();
+
+    // One real job, off the shipped content, through the shipped dispatch.
+    for (const ticket of session.engine.graph.nodesOfKind('ticket')) {
+      const step = findWorldTicket(ticket.id)?.paths[0]?.steps[0];
+
+      if (step === undefined) {
+        continue;
+      }
+
+      if (driver.dispatch(
+        step.action,
+        COMPANY_IDS.player,
+        step.target,
+        { ...step.params },
+      ).ok) {
+        // And an hour of the morning going by on it, because a stretch owns
+        // the minutes AFTER it: a job dispatched at nine on a clock that has
+        // not moved is worth no time to anybody, on this sheet or a real one.
+        while (session.engine.now() < shiftStartTick(1) + 60
+          && driver.state() === 'shift') {
+          driver.step(TICK_INTERVAL_MS);
+        }
+
+        return { driver, session, api: apiFor(session, driver, 'workgrumble') };
+      }
+    }
+
+    throw new Error('The senior desk\'s Monday deals no job this rig can work.');
+  }
+
+  it('draws lines to argue with, and no billable word at the end of them', () => {
+    const rigged = seniorRig();
+    const sheet = rigged.driver.timesheet();
+    const rows = sheetItems(sheet, rigged.driver.day());
+    const lines = rows.filter((row): row is LineItem => row.kind === 'line');
+
+    expect(sheet.shape).toBe('per_customer');
+    expect(lines.length).toBeGreaterThan(0);
+
+    // The two things this window has that the probationer's has not: minutes
+    // read off the records rather than written by the shape, and an edit on
+    // every row - because a sheet that says whose day it was has something on
+    // it to disagree with.
+    expect(lines.every((row) => row.line.derived > 0)).toBe(true);
+    expect(sheet.days[0]?.derived).toBeLessThan(WORKING_MINUTES_PER_DAY);
+    expect(editsOffered(sheet)).toBe(true);
+    expect(lines.every((row) => row.editable)).toBe(true);
+    expect(rows.some((row) => row.kind === 'gap')).toBe(true);
+    expect(unattributedLine(sheet.days[0] as SheetDay)).not.toBeNull();
+
+    // And the thing it has NOT that the engineer's window has: a billable
+    // split. Every row would come out as "internal", which would read as a
+    // judgement about the work rather than as the absence of a column.
+    expect(lines.every((row) => lineFlag(row.line, row.shape) === '')).toBe(true);
+    expect(lines.every((row) => !row.line.billable)).toBe(true);
+    expect(shapeLine(sheet)).toContain('off the records');
+    expect(shapeLine(sheet)).not.toContain('billable');
+    expect(timesheetLines(sheet, rigged.driver.day()).join('\n'))
+      .not.toContain('internal');
+  });
+
+  it('files it without promising an invoice run nobody here does', () => {
+    // The terminal's submit sentence was two sentences for two shapes, and the
+    // one that was not the probationer's said "it is on the invoice run now".
+    // That is the ENGINEER's consequence: this rung's shop has no customers to
+    // invoice, so saying it here would be the terminal inventing one.
+    const rigged = seniorRig();
+    const said = executeCommand(
+      parseCommand('timesheet submit'),
+      rigged.api,
+    ).lines.join('\n');
+
+    expect(said).toContain('Timesheet submitted.');
+    expect(said).not.toContain('invoice run');
+    // And the half that is true at every rung is still said.
+    expect(said).toContain('the half nobody edits');
+  });
+});
+
 describe('the sheet the engineer argues with', () => {
   it('lays the week out a day at a time, lines under their day', () => {
     const rigged = rig();
@@ -265,7 +398,7 @@ describe('the sheet the engineer argues with', () => {
     const sheet = rigged.driver.timesheet();
     const rows = items(rigged);
 
-    expect(sheet.shape).toBe('per_customer');
+    expect(sheet.shape).toBe('per_customer_project');
     // A heading, then this day's lines, then what is left of the day - in
     // that order, which is the whole of the layout.
     expect(rows[0]?.kind).toBe('day');

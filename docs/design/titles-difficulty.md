@@ -164,6 +164,38 @@ would pause the deadline, and a rung that could escalate its way out of its own
 clock is the opposite of retained ownership. Second line come back ninety
 minutes later, which is inside a P3's budget and not reliably inside a P2's.
 
+## 5b. What 0.40.0 settled about the sheet shape (built)
+
+The hour-registration ladder - "SD registers to ONE bucket; each title up adds
+attribution and a rising utilisation target" - is now data rather than a
+sentence, and the build settled three things:
+
+- **The shape is a COLUMN on the rung table** (`sheet` on `TitleRow`,
+  `sheetShapeFor`), beside the utilisation target and read the same way: handed
+  in to `timesheetSheet`, which keeps `world/timesheet.ts` a leaf that can draw
+  a week without knowing whose it is. `shapeForTier` is deleted. Three shapes -
+  `single_bucket` (probationer), `per_customer` (senior desk: whose day it was,
+  no project code, no billable split), `per_customer_project` (engineer).
+  Unbuilt rungs carry the nearest built rung BELOW them, because the ramp does
+  not go back down; that is why every row carries a shape while four carry no
+  target.
+- **The senior's 85% recorded is back, and it is a knob.** With the sheet read
+  off the LEDGER the number moves: an idle-but-present senior week reads 0% and
+  reds the review row, a hard-worked day reads 94%. The pairing is now refused
+  at load - a rung on a one-bucket sheet may name no target at all (it is 100%
+  recorded and 0% billable by construction, on any week), and a billable target
+  needs the shape that has a billable line. That refusal is the standing gate
+  under the 0.39.0 correction.
+- **Attribution is only as fine as the shop's parties.** Every shop the senior
+  rung can be hired at is IN-HOUSE (the MSP is the engineers' shop), and
+  in-house nodes carry no customer, so a played senior week draws one party line
+  a day - the employer's own work - plus the unattributed rest. The mechanic
+  that arrives at this rung is therefore "the day has to add up", not "your
+  clients appear"; the per-customer grain is real and proven, but it only shows
+  more than one line at a shop that has customers. OPEN, for the overseer: if
+  the senior sheet should name the DEPARTMENT or the requester at an in-house
+  shop, that is a new segment kind and its own slice.
+
 ## 6. Owner decisions (ALL ANSWERED 2026-08-12; D3 earlier)
 
 - **D1 - DECIDED (owner, 2026-08-12): YES** - start-title = the difficulty

@@ -162,6 +162,15 @@ test('captures the senior rung\'s audit queue', async ({ page }) => {
   // what the first human eyeball of these frames found it was.
   await page.getByTestId('triage-file').scrollIntoViewIfNeeded();
   await shot(page, '36-audit-filing-and-triage');
+
+  // And the OTHER surface this rung now has of its own (0.40.0): the middle
+  // sheet. It is worth a frame because it is neither of the shapes the sweep
+  // already holds - it has rows to argue with, which the probationer's sheet
+  // has not, and no billable word at the end of them, which the engineer's
+  // sheet at frame 42 has - and because a shape nobody has looked at is a
+  // shape nobody has checked the fold of.
+  await openFromStartMenu(page, 'timesheet');
+  await shot(page, '37-senior-timesheet');
 });
 
 test('captures the MSP surfaces', async ({ page }) => {

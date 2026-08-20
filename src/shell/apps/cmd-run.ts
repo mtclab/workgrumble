@@ -1406,11 +1406,19 @@ function timesheetLines(
     return result.ok
       ? lines(
         'Timesheet submitted.',
+        // Three shapes, three true sentences (0.40.0). The invoice run is the
+        // ENGINEER's - it is where their sheet actually goes - and saying it to
+        // a desk analyst whose shop has no customers would be the terminal
+        // inventing a consequence. What is true at every rung is the half that
+        // does not move.
         sheet.shape === 'single_bucket'
           ? 'One line a day, seven and a half hours each, and it was done before '
             + 'the sigh finished.'
-          : 'It is on the invoice run now. What the records say is still on the '
-            + 'records, which is the half nobody edits.',
+          : sheet.shape === 'per_customer'
+            ? 'It has gone in as it stood. What the records say is still on the '
+              + 'records, which is the half nobody edits.'
+            : 'It is on the invoice run now. What the records say is still on '
+              + 'the records, which is the half nobody edits.',
       )
       : lines(result.reason);
   }

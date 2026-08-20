@@ -19,10 +19,16 @@
  *    the timesheet's own reading (`timesheet.ts`) and printed at the review.
  *    It was a map keyed by PAM tier until 0.39.0; per-rung is where it belongs
  *    whatever the figures are, because two rungs stand on the service desk's
- *    tier and a tier-keyed map cannot ever tell them apart. Today ONE rung
- *    carries a figure - the engineer - and the two desk rungs carry null,
- *    because the sheet they are handed records the whole day by construction
- *    (see the column's own docblock below).
+ *    tier and a tier-keyed map cannot ever tell them apart. Today TWO rungs
+ *    carry a figure - the senior desk and the engineer - and the probationer
+ *    carries null, because the sheet that rung is handed records the whole day
+ *    by construction (see the column's own docblock below).
+ *  - `sheet` - WHICH SHEET the rung fills in, CONSUMED by the timesheet
+ *    (`timesheetSheet` draws the shape this column names) and, through it, by
+ *    every surface that prints one. It was a read of the PAM tier until 0.40.0,
+ *    which is the same mistake the target's map was and had the same victim:
+ *    the senior desk's sheet was the probationer's, so its target was cleared
+ *    before the player did anything.
  *  - `tier`, `title`, `employer`, `carriesPager`, `offeredAt` - the state a rung
  *    IS. These were hardcoded in four places before this table existed and are
  *    here now instead of there, not as well as (see MOVED IN, below).
@@ -75,7 +81,7 @@ import {
   type ServiceScope,
   type SlaTier,
 } from './fields';
-import type { UtilisationTarget } from './timesheet';
+import type { SheetShape, UtilisationTarget } from './timesheet';
 
 /**
  * The kinds of work a week can deal, which is the axis D2's ratios are per.
@@ -222,6 +228,32 @@ export interface TitleRow {
    * Nothing anywhere computes a mark from it. See `utilisationReviewLine`.
    */
   readonly utilisation: UtilisationTarget | null;
+  /**
+   * WHICH SHEET this rung fills in (0.40.0) - the paperwork ramp, one row at a
+   * time. The three shapes are written down where they are drawn
+   * (`timesheet.ts`, `SheetShape`); this column is the whole of who gets which.
+   *
+   * It is a column for the reason `utilisation` is one, and it is the same
+   * mechanic seen from the other side: the target is what the business ASKS of
+   * the hours, and the shape is what the player can SAY about them, so a target
+   * is only a difficulty knob where the shape leaves something to decide. They
+   * were a tier read and a tier-keyed map respectively until this table, and
+   * that pairing is exactly what broke - two rungs stand on the service desk's
+   * PAM tier, so the senior's sheet was the probationer's, and a target over a
+   * sheet that records the whole day by construction is a number that cannot
+   * move (0.39.0 pulled the 85 off for it; the checks below now refuse the
+   * combination outright).
+   *
+   * EVERY ROW CARRIES ONE, including the four unbuilt rungs, and that is not
+   * the same claim `utilisation` and `tier` refuse to make on those rows. A
+   * target is a claim about a WEEK nobody can play yet; a shape is a statement
+   * about the PAPERWORK, and the honest default for an unbuilt rung is the
+   * nearest built rung below it - the ramp does not go back down. So
+   * `l2_desktop` fills in the senior desk's sheet and the three rungs above the
+   * engineer fill in the engineer's, and the day one of them is built it starts
+   * from the sheet its neighbour already has rather than from a blank.
+   */
+  readonly sheet: SheetShape;
   readonly customers: CustomerMix;
   readonly sla: SlaProfile;
   readonly rates: RatesProfile;
@@ -287,23 +319,24 @@ export interface TitleRow {
  *    would be a row that cannot move, on a screen, above a mark it does not
  *    feed. The rung's own window already says the true thing ("there is nothing
  *    on it to decide"), and the review says it by having no row.
- *  - **SD senior - NONE, and it is the SHEET that says so.** This shipped at
- *    85% recorded for one version and it was theatre: `shapeForTier` keys the
- *    sheet on the PAM TIER, a senior service desk analyst stands on the
- *    junior's tier, so the senior's sheet is `single_bucket` too - one line a
- *    day at `WORKING_MINUTES_PER_DAY`, a hundred per cent recorded by
- *    construction, cleared before the player has done anything. A target the
- *    sheet clears by construction is not a target; it is a number on a card
- *    that cannot move, which is the same thing the junior's row is null for.
- *    The research figure is not wrong and is not lost - a service desk really
- *    is held to a utilisation number (MetricNet's balanced scorecard names
- *    technician utilisation, `docs/research/review-scoring.md` 2.1) and the
- *    band is the sourced 75-85% with the top of it the honest ask
- *    (Scoro/Teamwork, same section) - it is WAITING ON ITS DEPENDENCY: a senior
- *    target waits for the sheet shape to move to the rung, which is its own
- *    slice. The day `shapeForTier` becomes a question about the RUNG rather
- *    than the tier - a senior who attributes their day the way an engineer does
- *    - this row takes the 85 back and it means something.
+ *  - **SD senior - 85% RECORDED, and the sheet is what makes it a knob.** It
+ *    shipped at this figure for one version and it was theatre, because the
+ *    sheet was keyed on the PAM TIER: a senior service desk analyst stands on
+ *    the junior's tier, so their sheet was `single_bucket` - one line a day at
+ *    `WORKING_MINUTES_PER_DAY`, a hundred per cent recorded by construction,
+ *    cleared before the player had done anything. 0.39.0 took the figure off
+ *    rather than leave a number on a card that could not move, and named its
+ *    dependency; 0.40.0 built it. The shape column above hands this rung
+ *    `per_customer`, so the recorded percentage is now the LEDGER's answer -
+ *    the minutes the week actually attributed, over the minutes on the clock -
+ *    and a week spent present and idle comes in under this and says so.
+ *    The figure is the sourced one: a service desk really is held to a
+ *    utilisation number (MetricNet's balanced scorecard names technician
+ *    utilisation, `docs/research/review-scoring.md` 2.1), the band is 75-85%
+ *    and the top of it is the honest ask (Scoro/Teamwork, same section). It is
+ *    RECORDED and not billable for a reason the table itself enforces: this is
+ *    an in-house rung, nobody invoices the colleague down the corridor, and a
+ *    billable target here would be a permanently red row.
  *  - **Systems engineer - 75% billable.** The sourced industry ask: "service
  *    executives aim for 75% billable ... and end up with yearly averages in the
  *    mid-60s" (Promys, `docs/research/titles-projects-engine.md` 5.4). It is
@@ -335,6 +368,10 @@ const TITLE_ROWS: readonly TitleRow[] = [
     offeredAt: null,
     workMix: { access: 1, device: 1, server: 1, project: 0 },
     utilisation: null,
+    // The joke the mechanic opens with: one line a day, seven and a half
+    // hours, attributed to nobody. There is nothing on it to decide, which is
+    // why the row above it asks for nothing either.
+    sheet: 'single_bucket',
     customers: { inHouse: true, scopes: [], slaTiers: [] },
     sla: SLA_PROFILES.toolTargets,
     rates: RATES_PROFILES.house,
@@ -375,10 +412,16 @@ const TITLE_ROWS: readonly TitleRow[] = [
     carriesPager: false,
     offeredAt: null,
     workMix: { access: 0.9, device: 0.9, server: 1, project: 0 },
-    // NULL until the sheet moves to the rung - see the column's docblock above.
-    // The 85 that stood here was cleared by the shape of the sheet before the
-    // player touched it, which is a difficulty knob that cannot turn.
-    utilisation: null,
+    // THE RESEARCH FIGURE, back and meaning something (0.40.0). It stood here
+    // at 0.38.0, came off at 0.39.0 because the tier-keyed sheet cleared it
+    // before the player touched it, and returns now that the shape below is
+    // the rung's own: recorded is the ledger's answer on a per-party sheet, so
+    // an idle week comes in under it. See the targets docblock above.
+    utilisation: { basis: 'recorded', percent: 85 },
+    // The first rung of the paperwork ramp: the day has to ADD UP. Whose work
+    // it was, with no project code and no billable split - a desk analyst has
+    // no project and is on nobody's invoice.
+    sheet: 'per_customer',
     customers: { inHouse: true, scopes: [], slaTiers: [] },
     sla: SLA_PROFILES.toolTargets,
     rates: RATES_PROFILES.house,
@@ -398,6 +441,10 @@ const TITLE_ROWS: readonly TitleRow[] = [
     offeredAt: null,
     workMix: { access: 0.8, device: 1, server: 1, project: 0 },
     utilisation: null,
+    // The senior desk's, which is the nearest built rung below: the ramp does
+    // not go back down, and the rung above this one is where the project code
+    // and the billable split are earned.
+    sheet: 'per_customer',
     customers: { inHouse: true, scopes: [], slaTiers: [] },
     sla: SLA_PROFILES.toolTargets,
     rates: RATES_PROFILES.house,
@@ -417,6 +464,9 @@ const TITLE_ROWS: readonly TitleRow[] = [
     offeredAt: 70,
     workMix: { access: 0.75, device: 0.6, server: 1, project: 1 },
     utilisation: { basis: 'billable', percent: 75 },
+    // The whole mechanic: per customer, the project on a line of its own with
+    // its code, and the billable flag the 75% above is measured against.
+    sheet: 'per_customer_project',
     customers: {
       inHouse: false,
       scopes: [
@@ -445,6 +495,8 @@ const TITLE_ROWS: readonly TitleRow[] = [
     offeredAt: null,
     workMix: { access: 0.5, device: 0.4, server: 1, project: 1 },
     utilisation: null,
+    // The engineer's, which is the nearest built rung below.
+    sheet: 'per_customer_project',
     customers: {
       inHouse: false,
       scopes: [
@@ -473,6 +525,8 @@ const TITLE_ROWS: readonly TitleRow[] = [
     offeredAt: null,
     workMix: { access: 0.4, device: 0.3, server: 0.8, project: 1 },
     utilisation: null,
+    // The engineer's, which is the nearest built rung below.
+    sheet: 'per_customer_project',
     customers: {
       inHouse: false,
       scopes: [
@@ -501,6 +555,8 @@ const TITLE_ROWS: readonly TitleRow[] = [
     offeredAt: null,
     workMix: { access: 0.2, device: 0.15, server: 0.5, project: 1 },
     utilisation: null,
+    // The engineer's, which is the nearest built rung below.
+    sheet: 'per_customer_project',
     customers: {
       inHouse: false,
       scopes: [
@@ -600,6 +656,46 @@ export const TITLE_TABLE: Readonly<Record<Rung, TitleRow>> = (() => {
      * number the world cannot produce. It is refused here rather than
      * discovered at somebody's review.
      */
+    /**
+     * And the pairing of the two columns, which is the check that would have
+     * refused what 0.39.0 had to delete by hand.
+     *
+     * A ONE-BUCKET SHEET IS A CONSTANT ON BOTH BASES. It writes one line a day
+     * at `WORKING_MINUTES_PER_DAY` whatever the week was, so `recorded` is a
+     * hundred per cent before the player has done anything and `billable` is
+     * nought for ever. Either way the target does not measure the player: it
+     * measures the shape of their sheet. That is a difficulty knob that cannot
+     * turn, it shipped for one version, and the way it is refused now is the
+     * whole class rather than the one figure.
+     */
+    if (target !== null && row.sheet === 'single_bucket') {
+      throw new Error(
+        `"${rung}" is asked for ${String(target.percent)}% of a week and `
+        + 'fills in a one-bucket sheet. That sheet writes the same day every '
+        + 'day whatever was worked, so the target is met - or missed - before '
+        + 'the player does anything, which is a number on a card rather than '
+        + 'something they can move.',
+      );
+    }
+
+    /**
+     * And the basis against a shape that makes no such split. Only the
+     * engineer's sheet carries a billable flag; on either desk shape every
+     * line is time nobody is invoiced for, so a billable target over one is
+     * nought per cent every week for reasons the player cannot touch - the
+     * same permanently-red row the in-house check below refuses, arriving by
+     * the other column.
+     */
+    if (target !== null
+      && target.basis === 'billable'
+      && row.sheet !== 'per_customer_project') {
+      throw new Error(
+        `"${rung}" is asked for billable hours and fills in a sheet with no `
+        + 'billable line on it. Nothing that rung records can ever be on an '
+        + 'invoice, so the row would be red every week whatever they did.',
+      );
+    }
+
     if (target !== null && target.basis === 'billable' && row.customers.inHouse) {
       throw new Error(
         `"${rung}" is an in-house rung and is asked for billable hours. `
@@ -761,6 +857,23 @@ export function tierFor(rung: Rung): PlayerTier {
  */
 export function utilisationTargetFor(rung: Rung): UtilisationTarget | null {
   return TITLE_TABLE[rung].utilisation;
+}
+
+/**
+ * Which sheet a rung fills in.
+ *
+ * A named read of the row beside `utilisationTargetFor`, and NOT a nullable one
+ * like it: every rung has a sheet, including the four nobody can play yet,
+ * because a shape is a statement about the paperwork rather than a claim about
+ * a week (see the column's docblock). There is nothing here to default and
+ * nothing to refuse.
+ *
+ * It is the ONE question the sheet asks about whose week it is. `timesheet.ts`
+ * takes the answer handed in, exactly as it takes the target, so that module
+ * stays a leaf that knows how to draw a week without knowing whose it is.
+ */
+export function sheetShapeFor(rung: Rung): SheetShape {
+  return TITLE_TABLE[rung].sheet;
 }
 
 /**

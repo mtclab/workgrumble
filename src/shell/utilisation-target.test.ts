@@ -16,12 +16,15 @@
  * broken otherwise:
  *
  *  - THE ROW IS PER RUNG, AND ONLY WHERE THE SHEET CAN MOVE. An idle week reds
- *    the row at the engineer and leaves BOTH service-desk cards without a row
- *    at all. The senior's 85% came off in 0.39.0's verifier round: their sheet
- *    is the junior's one-bucket sheet, which records the whole day by
- *    construction, so the target was cleared before the player did anything.
- *    Put any figure back on a `single_bucket` rung and the two desk cases below
- *    go red - which is the point of them.
+ *    the row at the engineer AND at the senior desk (0.40.0), and leaves the
+ *    probationer's card without a row at all. The senior's 85% came off in
+ *    0.39.0's verifier round because their sheet was the junior's one-bucket
+ *    sheet, which records the whole day by construction, so the target was
+ *    cleared before the player did anything; 0.40.0 moved the shape onto the
+ *    rung and the figure came back. Key the sheet on the PAM TIER again and the
+ *    senior case below goes green on a week nobody worked, which is the exact
+ *    failure it exists to catch. Put a figure back on the PROBATIONER's
+ *    one-bucket rung and the table refuses to load at all.
  *  - THE HEADER READS THE TABLE. The sentence the timesheet window prints names
  *    the percentage `utilisationTargetFor` returns for THAT rung, taken from the
  *    table here rather than written down again. Hardcode the figure in
@@ -38,10 +41,12 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { loadEngineForTests } from '../engine-api/load-node';
 import { COMPANY_IDS } from '../world/company';
 import { createWorldSession, type WorldSession } from '../world/session';
-import { utilisationLine } from '../world/timesheet';
+import { WORKING_MINUTES_PER_DAY } from '../world/hours';
+import { lineAt, utilisationLine } from '../world/timesheet';
 import { findWorldTicket } from '../world/tickets';
 import { type Rung, utilisationTargetFor } from '../world/titles';
 import { REVIEW_DAY } from '../world/week';
+import { editsOffered } from './apps/timesheet';
 import { DayDriver, TICK_INTERVAL_MS } from './day-driver';
 import { carryForStart } from './start';
 
@@ -161,25 +166,99 @@ describe('what the business asks of the hours is a column on the rung table', ()
     expect(utilisationLine(reading)).not.toContain('the business asks for');
   }, 60_000);
 
-  it('leaves the SENIOR desk\'s card without one too, and says why in the sheet', () => {
+  /**
+   * THE PROOF THE KNOB TURNS (0.40.0), and the one 0.39.0's verifier round
+   * could not write.
+   *
+   * The same idle week, at the rung whose target was theatre until the sheet
+   * moved with it. A senior who is present all week and attributes nothing now
+   * reads NOUGHT per cent recorded and the row goes red - where the identical
+   * week on the tier-keyed sheet read a hundred per cent, because that shape
+   * wrote seven and a half hours a day whatever anybody did.
+   *
+   * Revert the shape to a tier read and this test goes GREEN on a week nobody
+   * worked. That is what makes it a gate rather than an assertion.
+   */
+  it('REDS the SENIOR desk on an idle week, which is what the shape bought', () => {
     const rigged = rig('sd_senior');
     idleWeek(rigged);
 
+    const target = utilisationTargetFor('sd_senior');
+    const sheet = rigged.driver.timesheet();
+    const reading = rigged.driver.timesheetUtilisation();
+    const card = rigged.driver.weekScorecard();
+
+    // THE READING FIRST, and deliberately: this is the assertion the whole
+    // slice is for, so it must be the one that speaks when somebody puts the
+    // shape back on the tier. Nought per cent of a week that was on the clock,
+    // against the 85 the business asks - where the tier-keyed sheet read a
+    // hundred and met it.
+    expect(target).toEqual({ basis: 'recorded', percent: 85 });
+    expect(reading.basis).toBe('recorded');
+    expect(reading.availableMinutes).toBeGreaterThan(0);
+    expect(reading.percent).toBe(0);
+    expect(reading.met).toBe(false);
+    expect(utilisationLine(reading))
+      .toContain('against the 85% the business asks for');
+    // And the review row, in the same words #67 decided for the engineer's:
+    // under target is a conversation, and nothing is computed from it.
+    expect(card.utilisation).toContain('Under target');
+    expect(card.utilisation).toContain('conversation');
+    expect(card.utilisation).toContain('nothing on this card is computed from it');
+
+    // And the sheet under it, which is why the number could move: one line per
+    // party the day went on, off the ledger - so a week that went nowhere has
+    // no lines on it at all and a full day underneath as nobody's.
+    expect(sheet.shape).toBe('per_customer');
+    expect(sheet.derived).toBe(0);
+    expect(sheet.days[0]?.unattributed).toBeGreaterThan(0);
+  }, 60_000);
+
+  /**
+   * And the same rung with a morning's work on it, through the REAL DISPATCH.
+   *
+   * A sheet built by writing a ledger onto a fixture proves the formatter and
+   * nothing else. This drives a job the way the player does and asks the sheet
+   * what it made of it, which is the only way to catch a shape reading the
+   * clock instead of the records.
+   */
+  it('puts the senior\'s worked minutes on a party line, off the ledger', () => {
+    const rigged = rig('sd_senior');
+    idleWeek(rigged, false, oneJob);
+
+    const sheet = rigged.driver.timesheet();
+    const truth = rigged.driver.timesheetTruth();
+    const monday = sheet.days[0];
+
+    // Every line on the sheet is a party the LEDGER named. Nothing is invented
+    // and nothing is written by the shape: at an in-house shop that is the
+    // employer's own work, and at a shop with customers on it those are the
+    // customers (`world/timesheet.test.ts` drives the fold itself).
+    expect(monday?.lines.length).toBeGreaterThan(0);
+    expect(monday?.lines.every((line) => line.derived > 0)).toBe(true);
+    expect(
+      monday?.lines.reduce((total, line) => total + line.derived, 0),
+    ).toBe(truth.days[0]?.attributed);
+    // Not the desk's constant, and the rest of the day is on nobody - the two
+    // facts a `single_bucket` sheet cannot state.
+    expect(monday?.derived).toBeLessThan(WORKING_MINUTES_PER_DAY);
+    expect(monday?.unattributed).toBeGreaterThan(0);
+
+    // So the reading is off the floor and still under the ask, which is the
+    // band the whole rung is played in.
     const reading = rigged.driver.timesheetUtilisation();
 
-    // The senior stands on the JUNIOR'S PAM TIER, so `shapeForTier` hands them
-    // the same one-bucket sheet: seven and a half hours a day written by the
-    // shape of the sheet, a hundred per cent recorded on a week nobody worked.
-    // A target over that is cleared before the player has done anything, which
-    // is why this row is null and not 85 as it shipped for one version - the
-    // figure waits on the sheet shape moving to the rung.
-    expect(utilisationTargetFor('sd_senior')).toBeNull();
-    expect(reading.basis).toBe('recorded');
-    expect(reading.percent).toBe(100);
-    expect(reading.target).toBeNull();
-    expect(reading.met).toBe(true);
-    expect(rigged.driver.weekScorecard().utilisation).toBe('');
-    expect(utilisationLine(reading)).not.toContain('the business asks for');
+    expect(reading.percent).toBeGreaterThan(0);
+    expect(reading.percent).toBeLessThan(85);
+
+    // And there is something to disagree with, which is the other half of what
+    // the shape buys: the claim moves the row and the record does not move.
+    expect(lineAt(sheet, '1.1')).not.toBeNull();
+    expect(rigged.driver.claimTimesheet('1.1', 400, null).ok).toBe(true);
+    expect(rigged.driver.timesheetUtilisation().percent)
+      .toBeGreaterThan(reading.percent);
+    expect(rigged.driver.timesheetTruth().days[0]?.attributed)
+      .toBe(truth.days[0]?.attributed);
   }, 60_000);
 
   it('reds the ENGINEER\'s row on an idle week and calls it a conversation', () => {
@@ -207,25 +286,27 @@ describe('what the business asks of the hours is a column on the rung table', ()
     expect(card.utilisation).toContain('nothing on this card is computed from it');
   }, 60_000);
 
-  it('asks the two desk rungs for nothing, off one tier and one sheet', () => {
-    // The column moved onto the rung table because a tier-keyed map cannot tell
-    // these two apart: a senior service desk analyst has a junior's privileges.
-    // Today the table's answer for both is the same - NOTHING - and it is the
-    // same answer for the same reason, which is the sheet that tier hands them
-    // both. The seam is still the column: it is addressed per RUNG, so the day
-    // the sheet shape moves to the rung the senior's figure comes back on its
-    // own and the probationer's row stays off.
+  it('gives two rungs on ONE tier two different sheets and two answers', () => {
+    // The whole reason both columns had to leave the tier behind. These two
+    // players hold the same PAM tier - a senior service desk analyst has a
+    // junior's privileges, by design - and everything about their paperwork
+    // differs: the shape of the sheet, whether there is anything on it to
+    // decide, and what the business asks of the hours. A tier read cannot
+    // express any of that, and while it was making the decision the senior's
+    // target had to be null to stay honest.
     const junior = rig('sd_junior');
     const senior = rig('sd_senior');
 
     expect(junior.driver.playerTier()).toBe(senior.driver.playerTier());
-    expect(junior.driver.timesheet().shape)
-      .toBe(senior.driver.timesheet().shape);
+    expect(junior.driver.timesheet().shape).toBe('single_bucket');
+    expect(senior.driver.timesheet().shape).toBe('per_customer');
     expect(junior.driver.timesheetUtilisation().target).toBeNull();
-    expect(senior.driver.timesheetUtilisation().target).toBeNull();
-    // And the column is not empty, which is what makes those two nulls a
-    // decision rather than a feature nobody finished.
-    expect(utilisationTargetFor('systems_engineer')).not.toBeNull();
+    expect(senior.driver.timesheetUtilisation().target).toBe(85);
+    // And the probationer's sheet is still the joke it was: the day written by
+    // the shape rather than read off the week, with nothing on it to argue
+    // with. Byte for byte the surface 0.30.0 shipped.
+    expect(editsOffered(junior.driver.timesheet())).toBe(false);
+    expect(editsOffered(senior.driver.timesheet())).toBe(true);
   }, 60_000);
 
   it('moves the row off the target and leaves the mark where it was', () => {

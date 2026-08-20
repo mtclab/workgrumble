@@ -24,7 +24,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { loadEngineForTests } from '../engine-api/load-node';
 import type { DispatchLogEntry } from '../engine-api';
 import { COMPANY_IDS } from './company';
-import { FIELDS, PLAYER_TIERS, type PlayerTier } from './fields';
+import { FIELDS } from './fields';
 import {
   shiftEndTick,
   shiftStartTick,
@@ -46,10 +46,12 @@ import {
   encodeSegment,
   hoursLabel,
   lineAt,
+  lineFlag,
   segmentsFrom,
   segmentsFromLog,
   SERVICE_DESK_BUCKET,
   type SegmentRef,
+  type SheetShape,
   timesheetLines,
   timesheetSheet,
   utilisationLine,
@@ -99,10 +101,12 @@ function mspWorld(): WorldSession {
  * because they are tuning knobs and a change to one should be a change somebody
  * made on purpose.
  *
- * TWO OF THE THREE ARE NULL as of 0.39.0's correction, and the null is the
- * fixture: both service-desk rungs stand on a `single_bucket` sheet, which
- * records a hundred per cent of the day whatever anybody does, so a target over
- * one is cleared by construction rather than met. See `titles.ts`.
+ * ONE OF THE THREE IS NULL and that null is a fixture in its own right: the
+ * PROBATIONER stands on a `single_bucket` sheet, which records a hundred per
+ * cent of the day whatever anybody does, so a target over one is cleared by
+ * construction rather than met - the table refuses the combination outright
+ * since 0.40.0. The senior desk's 85 came back at 0.40.0 with the sheet that
+ * makes it movable. See `titles.ts`.
  */
 const ENGINEER_TARGET = utilisationTargetFor('systems_engineer');
 const SENIOR_TARGET = utilisationTargetFor('sd_senior');
@@ -124,13 +128,18 @@ function sheetOf(
   segments: readonly WorkSegment[],
   now: number,
   claims: readonly TimesheetClaim[] = [],
-  tier: PlayerTier = PLAYER_TIERS.systemsEngineer,
+  shape: SheetShape = 'per_customer_project',
 ): ReturnType<typeof timesheetSheet> {
   return timesheetSheet(deriveTimesheet(segments, now), claims, {
-    tier,
+    shape,
     submittedAt: null,
     submittedAuto: false,
     labelOf: labels(),
+    // The Arden project, whose customer the world can name - which is what the
+    // senior desk's shape folds a project line onto.
+    customerOfProject: (id) => (
+      id === ARDEN_EDGE_PROJECT ? MSP_CUSTOMERS.arden : null
+    ),
   });
 }
 
@@ -638,15 +647,15 @@ describe('the claim', () => {
   });
 });
 
-/* -- the shape the tier asks for ------------------------------------------ */
+/* -- the shape the RUNG asks for (0.40.0) --------------------------------- */
 
-describe('the tier shape', () => {
-  it('gives the service desk one bucket a day and nothing to decide', () => {
+describe('the rung shape', () => {
+  it('gives the probation desk one bucket a day and nothing to decide', () => {
     const sheet = sheetOf(
       segmentsFrom(ledger([MONDAY, ARDEN])),
       shiftEndTick(2),
       [],
-      PLAYER_TIERS.serviceDesk,
+      'single_bucket',
     );
 
     expect(sheet.shape).toBe('single_bucket');
@@ -674,12 +683,98 @@ describe('the tier shape', () => {
     );
     const day = sheet.days[0];
 
-    expect(sheet.shape).toBe('per_customer');
+    expect(sheet.shape).toBe('per_customer_project');
     expect(day?.lines.map((line) => [line.label, line.billable])).toEqual([
       [`customer:${MSP_CUSTOMERS.arden}`, true],
       ['internal:internal', false],
       [`project:${ARDEN_EDGE_PROJECT}`, true],
     ]);
+    // And the word at the end of each row, which is the split this shape has.
+    expect(day?.lines.map((line) => lineFlag(line, sheet.shape)))
+      .toEqual(['billable', 'internal', 'billable']);
+  });
+
+  /**
+   * The senior desk's sheet, which is the first rung of the paperwork ramp
+   * (0.40.0): the same week, said as WHOSE it was and no finer.
+   *
+   * The four assertions here are the four halves of the shape's definition,
+   * and each of them is a thing the engineer's sheet does differently:
+   *
+   *  - the PROJECT folds onto the customer it was for. Its minutes are on the
+   *    sheet, on the right account, without the code the rung above earns.
+   *  - the OFF-CONTRACT favour folds onto the same customer as their paid
+   *    work, because this shape has no billable split to tell them apart with.
+   *  - the shop's own kit stays exactly what it is.
+   *  - and nothing on it is billable, so no row carries a register at the end.
+   */
+  it('gives the senior desk a line per party, folded and unflagged', () => {
+    const sheet = sheetOf(
+      segmentsFrom(ledger(
+        [MONDAY, ARDEN],
+        [MONDAY + 20, PROJECT],
+        [MONDAY + 40, { kind: 'unbilled', id: MSP_CUSTOMERS.arden }],
+        [MONDAY + 60, { kind: 'internal', id: 'internal' }],
+      )),
+      MONDAY + 80,
+      [],
+      'per_customer',
+    );
+    const day = sheet.days[0];
+
+    expect(sheet.shape).toBe('per_customer');
+    expect(day?.lines.map((line) => line.label)).toEqual([
+      `customer:${MSP_CUSTOMERS.arden}`,
+      'internal:internal',
+    ]);
+    // Three stretches of twenty minutes on one account, on one line.
+    expect(day?.lines[0]?.derived).toBe(60);
+    expect(day?.lines[1]?.derived).toBe(20);
+    expect(day?.lines.every((line) => !line.billable)).toBe(true);
+    expect(day?.lines.map((line) => lineFlag(line, sheet.shape)))
+      .toEqual(['', '']);
+  });
+
+  it('keeps the senior desk\'s minutes the LEDGER\'s, not the clock\'s', () => {
+    // The whole difference between this shape and the one below it, in one
+    // assertion. A morning of twenty minutes' work and a day of nothing is
+    // twenty minutes on this sheet and the rest of the day on nobody - where
+    // the probationer's sheet would write seven and a half hours over it and
+    // call the day accounted for. That is what makes a target on this rung a
+    // knob rather than a decoration.
+    const worked = segmentsFrom(ledger([MONDAY, ARDEN]));
+    const senior = sheetOf(worked, shiftEndTick(1), [], 'per_customer');
+    const junior = sheetOf(worked, shiftEndTick(1), [], 'single_bucket');
+
+    expect(senior.days[0]?.derived).toBe(WORK_SEGMENT_MINUTES);
+    expect(senior.days[0]?.unattributed)
+      .toBe(WORKING_MINUTES_PER_DAY - WORK_SEGMENT_MINUTES);
+    expect(junior.days[0]?.derived).toBe(WORKING_MINUTES_PER_DAY);
+    expect(junior.days[0]?.unattributed).toBe(0);
+  });
+
+  it('leaves a project nobody can name a customer for on its own line', () => {
+    // It cannot happen with shipped content - every project node carries its
+    // customer, and no rung on this shape is dealt project work at all - and
+    // the answer if it ever did is to show MORE than the shape promises rather
+    // than to land the minutes on somebody else's account.
+    const sheet = timesheetSheet(
+      deriveTimesheet(
+        segmentsFrom(ledger([MONDAY, { kind: 'project', id: 'proj:orphan' }])),
+        MONDAY + 20,
+      ),
+      [],
+      {
+        shape: 'per_customer',
+        submittedAt: null,
+        submittedAuto: false,
+        labelOf: labels(),
+        customerOfProject: () => null,
+      },
+    );
+
+    expect(sheet.days[0]?.lines.map((line) => line.bucket))
+      .toEqual(['project|proj:orphan']);
   });
 
   it('finds a line by the handle the sheet prints beside it', () => {
@@ -773,29 +868,53 @@ describe('the tier shape', () => {
     expect(reading.percent).toBe(0);
   });
 
-  it('asks the SENIOR DESK for nothing either, because its sheet clears anything', () => {
-    const desk = sheetOf(
-      segmentsFrom(ledger([MONDAY, ARDEN])),
+  it('reads the SENIOR DESK against a recorded target its sheet can miss', () => {
+    // Twenty minutes of the day attributed and the rest of it on nobody: four
+    // per cent recorded, against the 85 the business asks. THE SAME WEEK on the
+    // probationer's one-bucket sheet reads a hundred per cent, because that
+    // shape writes the day rather than reading it - which is the pathology the
+    // research names out loud ("if a business stops recording non-billable
+    // time, its utilisation rate will always be 100 per cent") and the exact
+    // reason this figure was worth nothing until the shape moved to the rung.
+    const week = segmentsFrom(ledger([MONDAY, ARDEN]));
+    const senior = sheetOf(week, shiftEndTick(1), [], 'per_customer');
+    const reading = utilisationOf(senior, SENIOR_TARGET);
+
+    expect(SENIOR_TARGET).toEqual({ basis: 'recorded', percent: 85 });
+    expect(reading.basis).toBe('recorded');
+    expect(reading.target).toBe(85);
+    expect(reading.percent).toBeLessThan(85);
+    expect(reading.met).toBe(false);
+    expect(utilisationLine(reading))
+      .toContain('against the 85% the business asks for');
+    // And the one-bucket reading of the identical week, which is what the
+    // senior was handed until 0.40.0.
+    expect(
+      utilisationOf(sheetOf(week, shiftEndTick(1), [], 'single_bucket'), SENIOR_TARGET)
+        .percent,
+    ).toBe(100);
+  });
+
+  it('lets the senior desk MEET the ask by attributing the day', () => {
+    // The knob turns both ways, which is what makes it a knob. A day whose
+    // stretches cover the working hours records the lot - so the target is
+    // reachable by working the day rather than only by claiming it, and the
+    // red row above is a fact about the week and not about the shape.
+    const day = [...Array(WORKING_MINUTES_PER_DAY / WORK_SEGMENT_MINUTES).keys()]
+      .map((at): readonly [number, SegmentRef] => [
+        MONDAY + at * WORK_SEGMENT_MINUTES,
+        ARDEN,
+      ]);
+    const busy = sheetOf(
+      segmentsFrom(ledger(...day)),
       shiftEndTick(1),
       [],
-      PLAYER_TIERS.serviceDesk,
+      'per_customer',
     );
-    const reading = utilisationOf(desk, SENIOR_TARGET);
+    const reading = utilisationOf(busy, SENIOR_TARGET);
 
-    // One bucket a day at seven and a half hours, over a day of seven and a
-    // half hours: a hundred per cent recorded whatever the week was, because
-    // the SHAPE writes it and not the work. That is the pathology the research
-    // names out loud ("if a business stops recording non-billable time, its
-    // utilisation rate will always be 100 per cent") - and it is why the senior
-    // row is null rather than 85: a target this sheet clears before the player
-    // has done anything is a difficulty knob that cannot turn. The figure comes
-    // back the day the sheet shape moves to the rung.
-    expect(SENIOR_TARGET).toBeNull();
-    expect(reading.basis).toBe('recorded');
-    expect(reading.target).toBeNull();
-    expect(reading.percent).toBe(100);
+    expect(reading.percent).toBeGreaterThanOrEqual(85);
     expect(reading.met).toBe(true);
-    expect(utilisationLine(reading)).not.toContain('the business asks for');
   });
 
   it('says the number and the target and stops', () => {
@@ -820,7 +939,7 @@ describe('the tier shape', () => {
       segmentsFrom(ledger([MONDAY, ARDEN])),
       shiftEndTick(1),
       [],
-      PLAYER_TIERS.serviceDesk,
+      'single_bucket',
     );
     const reading = utilisationOf(desk, JUNIOR_TARGET);
 
@@ -846,7 +965,7 @@ describe('the tier shape', () => {
     const idle = shiftEndTick(1);
     const engineer = utilisationOf(sheetOf([], idle), ENGINEER_TARGET);
     const junior = utilisationOf(
-      sheetOf([], idle, [], PLAYER_TIERS.serviceDesk),
+      sheetOf([], idle, [], 'single_bucket'),
       JUNIOR_TARGET,
     );
 
