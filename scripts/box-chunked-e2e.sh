@@ -14,6 +14,18 @@ cd "$REPO" || exit 1
 
 node scripts/tokens.mjs seed-fixtures --local || exit 1
 
+# The worker serves ./dist, and dist is not in the git archive that ships the
+# tree - so a runner that trusts whatever build is lying around runs the NEW
+# specs against the PREVIOUS version's app. That is not hypothetical: the
+# 0.40.0 round went 11 chunks green against 0.39.0's bundle before anybody
+# looked at a frame. Rebuild whenever any shipped input is newer than the
+# build, and refuse to run without one.
+if [ ! -f dist/index.html ] \
+  || [ -n "$(find src e2e core-rs/pkg package.json index.html -newer dist/index.html -print -quit 2>/dev/null)" ]; then
+  echo "dist is stale or missing - rebuilding"
+  npm run build || exit 1
+fi
+
 port_free() { ! ss -tln 2>/dev/null | grep -q ":$PORT "; }
 
 sweep() {
