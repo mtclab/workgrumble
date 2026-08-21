@@ -102,13 +102,17 @@ test('a refresh comes back to the senior desk, on the day it left', async ({
   expect(await playerField(page, 'arc_week')).toBe(2);
   await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 2');
 
-  // The brief does NOT pop again - the save carries which day it was shown
-  // for, and a window the player already had is not re-opened at them
-  // (`syncDayScreens`, by design). What the resume owes instead is the house
-  // no-dead-end rule: the day's own screen is a button-press away, and it is
-  // Tuesday's.
-  await expect(page.getByTestId('window-brief')).toHaveCount(0);
-  await page.getByTestId('day-state').click();
+  // AND THE SCREEN, which is the half the first box round found missing: the
+  // brief is still standing where the clock-off left it, without a press.
+  //
+  // The ordering is why, and it is gated in `resume-screens.test.ts`: at a
+  // clock-off the driver walks the world into the new morning and ANNOUNCES it
+  // before it asks for the save, so the desktop's own listener has already put
+  // Tuesday's brief up by the time the file is written. The brief window is
+  // therefore IN the boundary save - and `syncDayScreens` after the restore is
+  // a no-op, because the same file carries `briefShownFor` for the day it was
+  // already shown for. Nothing pops; nothing is missing either.
+  await expect(page.getByTestId('window-brief')).toBeVisible();
   await expect(page.getByTestId('brief-heading')).toContainText('Day 2');
 });
 
