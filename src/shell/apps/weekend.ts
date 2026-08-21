@@ -473,7 +473,7 @@ export const WEEKEND_APP: AppDef = {
        * reads - and the length is read off the employer's own arc, because how
        * long a job is belongs to `pressure.ts` and nowhere else. Week ten of
        * ten therefore has no button rather than a disabled one: there is no
-       * week thirteen to be told to wait for.
+       * week eleven to be told to wait for.
        */
       const arc = employerFor(api.employer).arc;
       const arcWeek = Math.max(1, numberField(api, FIELDS.arcWeek));

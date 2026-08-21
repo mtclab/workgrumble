@@ -31,6 +31,32 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.41.0',
+    date: '2026-08-21',
+    summary: 'The workstation now remembers where you work. IT apologises '
+      + 'to everybody who had grown used to the alternative.',
+    lines: Object.freeze([
+      'Restarting your workstation brings you back to the week you were '
+        + 'actually in - your desk, your title, your employer. Previously '
+        + 'a restart returned you to your first Monday of probation '
+        + 'unless you found the Load option, a behaviour IT has stopped '
+        + 'defending. Should you WANT your first Monday back, the log-on '
+        + 'screen now has a door for starting a new career. It asks '
+        + 'first, in writing, naming the career you would be giving up.',
+      'The organisational-change calendar has been reviewed. A change '
+        + 'season now runs ten weeks rather than twelve, and the notice '
+        + 'period ahead of any decision is sized to the number of roles '
+        + 'affected, as the law actually sizes it: a large reduction is '
+        + 'announced at least forty-five days ahead, a substantial one '
+        + 'thirty, and a small one carries the individual statutory '
+        + 'period. An earlier update stated all announcements would come '
+        + 'thirty days ahead regardless of headcount; that undertaking '
+        + 'is withdrawn, and IT notes that every date is still named in '
+        + 'the announcement itself, which remains more than anybody is '
+        + 'owed at this headcount.',
+    ]),
+  },
+  {
     version: '0.40.0',
     date: '2026-08-20',
     summary: 'The timesheet has learned who you are. IT regrets that for '

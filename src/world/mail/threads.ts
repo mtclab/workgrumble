@@ -314,9 +314,11 @@ export const MAIL_THREADS: readonly MailThread[] = [
    * Named, dated, with a number in it, sent to everybody, exactly as the law
    * makes an employer send one. It says how many roles are proposed, who is in
    * the selection pool, what the criteria are, when consultation closes and
-   * when the decision is - because a round of two out of six has no statutory
-   * consultation period of its own, and this game holds itself to the
-   * collective one anyway rather than being harder to see coming than the law.
+   * when the decision is. A round of two out of six has no statutory
+   * consultation period of its own (0.41.0: the floor is sized to the round -
+   * see `noticeFloor`), so what keeps THIS round legible is the beat contract:
+   * the mail still names every date, and the machinery still cannot place the
+   * conversation closer than the beats allow.
    *
    * The numbers and the dates in it are interpolated from the season rather
    * than typed, so the mail and the machinery can never disagree about how

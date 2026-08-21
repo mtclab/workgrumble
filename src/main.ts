@@ -791,11 +791,15 @@ async function boot(): Promise<void> {
 
     // All three when this is a replacement, because all three are a career this
     // browser is carrying and any one left behind would stand itself up on the
-    // next boot instead of the desk somebody just picked.
+    // next boot instead of the desk somebody just picked. HIGHEST PRECEDENCE
+    // FIRST (0.41.0 verifier round): the boot ranks an arrival above a start
+    // record, so if the tab dies mid-clear the slot still standing must be one
+    // the record OUTRANKS - cleared in the old order, a surviving switch slot
+    // stood the abandoned arrival up over the pick this browser just wrote.
     const kept = beginCareer(
       startSlot,
       rung,
-      replacing ? [slot, retry, switchSlot] : [],
+      replacing ? [switchSlot, retry, slot] : [],
     );
 
     if (!kept.ok) {

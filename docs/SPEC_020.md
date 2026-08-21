@@ -184,11 +184,12 @@ weeks are the proof.
    misery simulator.
 2. **The arc is a table of weeks** the way `WEEK` is a table of days, and the pacing rules are its
    loader: nothing in the probation week, two quiet weeks before the first beat, one season per
-   employer, never two live at once, two clear weeks after resolution, and at least thirty days
-   between the announcement and the decision - the collective-consultation floor, held to even
-   though a round of two out of six does not trigger it. A game may not be less legible than
-   employment law. Shipped arc: twelve weeks, weather in 4, notice in 6, consultation 7-9,
-   decision on the Friday of 10, quiet in 11 and 12.
+   employer, never two live at once, two clear weeks after resolution, and a notice floor SIZED
+   TO THE ROUND (0.41.0): forty-five days at a hundred-plus roles, thirty at twenty to
+   ninety-nine, the individual statutory week below that - a round of two out of six owes no
+   collective period, and the beat contract is what keeps it legible. A game may not be less
+   legible than employment law. Shipped arc: ten weeks (0.41.0, re-timed from twelve), weather
+   in 4-5, notice in 6, consultation 7, decision on the Friday of 8, quiet in 9 and 10.
 3. **The four-beat contract is a TYPE.** `telegraph()` is the only function that produces the
    season the decision will accept, its brand is keyed on a symbol nothing exports, and it answers
    null unless all four beats have fired in order AND each left an artefact the player could read

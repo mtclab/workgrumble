@@ -197,14 +197,18 @@ test('the door names the career, asks first, and keeps it when refused', async (
 
   // AND THE EYE CAN FIND IT: attached-with-a-box is not seen. This is the one
   // sentence in the product that stands between a player and a career, so the
-  // gate is GEOMETRY - it sits inside the log-on dialog, on screen, and where
-  // the button that was pressed used to be rather than a scroll away from it.
+  // gate is GEOMETRY - it sits inside the log-on dialog, on screen, and NEAR
+  // where the button that was pressed used to be (a proximity bound, not an
+  // intersection: the button itself is hidden once the question is up).
   const warningBox = await warning.boundingBox();
   const dialogBox = await page.locator('.login-dialog').boundingBox();
   const viewport = page.viewportSize();
 
   expect(warningBox).not.toBeNull();
   expect(dialogBox).not.toBeNull();
+  // Without this the last line degrades to "within 160px of viewport top",
+  // which the dialog satisfies anyway - the guard is what makes it a gate.
+  expect(button).not.toBeNull();
   expect(warningBox?.width ?? 0).toBeGreaterThan(0);
   expect(warningBox?.height ?? 0).toBeGreaterThan(0);
   expect((warningBox?.y ?? 0) >= (dialogBox?.y ?? 0)).toBe(true);

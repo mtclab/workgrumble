@@ -264,6 +264,11 @@ describe('the pacing rules', () => {
     expect(noticeFloor(REDUNDANCY_ROUND.cut)).toBe(INDIVIDUAL_NOTICE_DAYS);
     expect(noticeFloor(COLLECTIVE_ROUND_ROLES)).toBe(COLLECTIVE_NOTICE_DAYS);
     expect(noticeFloor(LARGE_ROUND_ROLES)).toBe(LARGE_ROUND_NOTICE_DAYS);
+    // The numeric boundary itself, one below each threshold - without these
+    // two lines both thresholds move by one and every test stays green
+    // (0.41.0 verifier round: proven by mutation, 56 passed with both moved).
+    expect(noticeFloor(COLLECTIVE_ROUND_ROLES - 1)).toBe(INDIVIDUAL_NOTICE_DAYS);
+    expect(noticeFloor(LARGE_ROUND_ROLES - 1)).toBe(COLLECTIVE_NOTICE_DAYS);
 
     expect(() => validateArc(arc({ seasons: [season()] }))).not.toThrow();
     expect(() => validateArc(arc({ seasons: [season(big)] })))
@@ -299,6 +304,17 @@ describe('the pacing rules', () => {
     expect(noticeDays(tightest)).toBe(18);
     expect(noticeDays(tightest))
       .toBeGreaterThan(noticeFloor(REDUNDANCY_ROUND.cut));
+
+    // The impossibility half (0.41.0 verifier round): the sentence above says
+    // "cannot place tighter", so a placement one week tighter must be REFUSED,
+    // not merely absent - the consultation has nowhere to close before a
+    // decision in the same week it opened.
+    expect(() => validateArc(arc({ seasons: [season({
+      notice: REDUNDANCY_ROUND.notice,
+      criteriaFrom: REDUNDANCY_ROUND.notice + 1,
+      criteriaTo: REDUNDANCY_ROUND.notice + 1,
+      decision: REDUNDANCY_ROUND.notice + 1,
+    })] }))).toThrow('Four beats, in order, or no effect');
   });
 
   it('refuses a season with no quiet after it', () => {

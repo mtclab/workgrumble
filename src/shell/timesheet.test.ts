@@ -502,7 +502,9 @@ describe('the probation desk\'s sheet', () => {
 });
 
 describe('the week ending on it', () => {
-  it('submits whatever stands, and says that is what happened', () => {
+  // Five real shifts through the shipped driver - well over the default 5s
+  // on a loaded box (timed out once in a 0.41.0 verifier run at 5007ms).
+  it('submits whatever stands, and says that is what happened', { timeout: 120_000 }, () => {
     const rigged = rig();
     rigged.driver.startShift();
 
@@ -533,7 +535,7 @@ describe('the week ending on it', () => {
       .toContain('SUBMITTED automatically');
   });
 
-  it('leaves a sheet the player already submitted alone', () => {
+  it('leaves a sheet the player already submitted alone', { timeout: 120_000 }, () => {
     const rigged = rig();
     workTheMorning(rigged);
     run(rigged, 'timesheet submit');
