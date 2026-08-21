@@ -135,9 +135,12 @@ export interface CloudSavesParts {
   /**
    * Puts the local slot into the running session.
    *
-   * Only ever called at boot, before anybody has logged on - which is the one
-   * moment a load is not a load "under the player's feet", because the session
-   * it replaces is an empty Monday nobody has touched.
+   * Only ever called at boot or the moment a badge is typed in, and never in
+   * the middle of a day somebody is playing. Since #61 the session it replaces
+   * may be this browser's own week rather than an empty Monday - the boot
+   * resumes before this runs - which does not change the rule and does change
+   * what it costs: the copy being replaced is a real week, and `adopt` keeps it
+   * under its own key rather than dropping it, exactly as it always has.
    */
   load(): void;
 }

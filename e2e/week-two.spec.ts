@@ -181,6 +181,9 @@ test('a save taken in week two reloads into week two', async ({ page }) => {
 
   // A reload boots a NEW session - and the stay record has been let go of by
   // now, so this one comes back off the save file rather than off the arrival.
+  // Since #61 the boot resumes it without being asked, which is why the hash
+  // below is already right by the time the menu is opened; the load is left in
+  // as the second press of a button that has to be worth nothing.
   await page.reload();
   await completeLogin(page, { brief: 'keep' });
 

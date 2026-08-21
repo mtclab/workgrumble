@@ -416,12 +416,14 @@ test('the desktop the player chose survives a save and a load', async ({
   ).toHaveCount(1);
 
   // A browser that has been reloaded is a machine that has been turned off and
-  // on again: the session starts on the box IT issued, and the LOAD is what
-  // brings the reinstall back - chrome, distro and all.
+  // on again, and since #61 it comes back to the week it was in: the reinstall
+  // rides the save, so the distro is on the screen before anybody touches a
+  // menu. The box IT issued is `deskpro`, which is what makes gnome here the
+  // file's answer rather than the default one.
   await page.reload();
   await completeLogin(page, { brief: 'keep' });
   await expect(page.getByTestId('desktop'))
-    .toHaveAttribute('data-skin', 'deskpro');
+    .toHaveAttribute('data-skin', 'gnome');
 
   await page.getByTestId('start-button').click();
   await page.getByTestId('start-menu-load').click();

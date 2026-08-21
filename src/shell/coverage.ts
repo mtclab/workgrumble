@@ -263,6 +263,27 @@ const ENTRIES = [
     run: 'week',
   },
   {
+    id: 'login.start-fresh',
+    surface: 'login',
+    control: 'login-start-fresh, login-start-fresh-cancel',
+    does: 'Opens the door out of the career this browser is carrying: the '
+      + 'question that names the week being replaced - the title, the shop, '
+      + 'the day - and the ladder that only appears once it has been answered. '
+      + 'It is the only way back to a new game since a refresh started '
+      + 'resuming (#61), and the only way there has ever been that is not an '
+      + 'accident. Walked here as far as the refusal, which is the half that '
+      + 'has to cost nothing; the confirmed half - the pick, the log-on, and '
+      + 'the old week going at that moment and not before - is driven through '
+      + 'the real screens by `e2e/resume.spec.ts`, because a walk that took it '
+      + 'would be throwing away the career it is in the middle of walking.',
+    run: 'senior',
+    why: 'The door only exists on a browser that is already carrying a career, '
+      + 'and the probation week is the one run that boots without one - it is '
+      + 'the walk being HIRED, which is the other door. The senior run reloads '
+      + 'into its saved week between every day, so it is the walk that meets '
+      + 'this screen as a player does.',
+  },
+  {
     id: 'login.issue-badge',
     surface: 'login',
     control: 'login-issue-badge',
@@ -4346,6 +4367,13 @@ export const PLAYER_CONTROLS: readonly string[] = Object.freeze([
   'login-submit',
   'login-restart',
   'login-desk',
+  // The door out of a career this browser already has (#61). Three controls
+  // because it is three states: the way in, the two answers to the question,
+  // and the ladder it puts up - which is `login-desk` above, shown by the
+  // other of the two doors that show it.
+  'login-start-fresh',
+  'login-start-fresh-confirm-yes',
+  'login-start-fresh-cancel',
 
   /* -- the desktop, the taskbar and the start menu ------------------------ */
   'desktop-icon-*',

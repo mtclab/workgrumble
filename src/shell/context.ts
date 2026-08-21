@@ -80,6 +80,42 @@ export interface ShellHire {
 }
 
 /**
+ * Starting a career OVER one this browser is already carrying (#61, 0.41.0).
+ *
+ * The hire's mirror, and the two are exclusive by construction: `hire` is
+ * offered to a browser with nothing in it, this to a browser with something.
+ * Before #61 there was no third state to be in - a refresh dealt a fresh Monday
+ * whether anybody wanted one or not, so "start again" was something a player
+ * did by accident and could not do on purpose. Now the refresh resumes, and
+ * this is the only way back to the ladder.
+ *
+ * NOTHING HERE IS DESTRUCTIVE UNTIL `begin`. The screen asks first, in the
+ * words `replacing` gives it, and only an answered question puts the ladder on
+ * screen at all.
+ */
+export interface ShellFreshStart {
+  /**
+   * The career this would replace, in words a player recognises: the title,
+   * the shop and where in the week they are. A function rather than a string
+   * because it is read at the moment the door is opened - the world it
+   * describes is the live one, and at boot it is still being put back.
+   */
+  replacing(): string;
+  /** The same ladder the hire offers, greying the same rungs. */
+  readonly rungs: readonly ShellHireRung[];
+  readonly standard: string;
+  /**
+   * Takes the new desk, and throws the old career away doing it.
+   *
+   * THE POINT OF NO RETURN, and the screen must have confirmed before calling
+   * it. Answers rather than throwing for the same reason `choose` does: a
+   * browser that will not keep the pick has to say so on the screen the pick
+   * was made on, with the old career still exactly where it was.
+   */
+  begin(rung: string): SaveOutcome;
+}
+
+/**
  * Everything the view layer receives from the wiring in `main.ts`. There is no
  * writable graph handle here by design: the shell mutates the world only by
  * dispatching registered actions.
@@ -123,6 +159,13 @@ export interface ShellContext {
    * that draws it.
    */
   readonly hire: ShellHire | null;
+  /**
+   * The door back to the ladder for a browser that already has a career (#61).
+   *
+   * NULL exactly when `hire` is not: there is nothing to replace on a browser
+   * that is carrying nothing, and the inline ladder is already on the screen.
+   */
+  readonly freshStart: ShellFreshStart | null;
   /**
    * Filing a report about the game itself.
    *

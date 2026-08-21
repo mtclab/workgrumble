@@ -253,7 +253,7 @@ test('the engineer pads, blurs a line, and it survives a reload', async ({
     page.getByTestId('toast').filter({ hasText: 'Game loaded' }),
   ).toHaveCount(1);
 
-  // A new browser session, a world stood up from nothing and then loaded over:
+  // A new browser session, resumed at boot and then loaded over by hand (#61):
   // the sheet is still filed, the pad is still on it, and the vague line is
   // still vague. The claim is world state, so it comes back or it was never
   // really made.
