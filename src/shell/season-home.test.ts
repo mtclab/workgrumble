@@ -197,7 +197,7 @@ describe('a season belongs to one building', () => {
 
         if (reading.season === null) {
           // A shop with no season has no season SURFACE either: no beat, no
-          // matrix, and the same words in the same place all twelve weeks.
+          // matrix, and the same words in the same place all ten weeks.
           expect(reading.beat, where).toBeNull();
           expect(reading.standing, where).toBeNull();
           expect(summary, where).toBe(quiet);

@@ -65,7 +65,7 @@ function fixtureEmployer(): Employer {
     // slice 3 ships for real; here it just has to be a coherent, different value.
     installPolicy: 'wild_west',
     // Its own, and seasonless: a shop that has authored no weather runs the
-    // twelve weeks with nothing on them (#59a), which is what every shop but
+    // ten weeks with nothing on them (#59a), which is what every shop but
     // the probation one ships. Pointing a fixture at the probation shop's arc
     // is the exact mistake the registry now refuses.
     arc: seasonlessArc('fixture-shop'),

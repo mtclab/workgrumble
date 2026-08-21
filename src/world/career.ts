@@ -174,7 +174,7 @@ export function carryForEmployer(
  * places that matter. The employer does not change, because you did not leave.
  * The arc position CLIMBS rather than resetting, because a second week at a
  * shop is that shop's week two and not its probation over again - that
- * increment is the whole unlock, and the twelve-week ladder in `pressure.ts`
+ * increment is the whole unlock, and the ten-week ladder in `pressure.ts`
  * has been waiting at the top of it since 0.2.7. And the estate delta rides
  * across, because a week at the same desk is the same building on the Monday.
  *

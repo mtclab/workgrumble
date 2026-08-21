@@ -261,7 +261,7 @@ const SECOND_EMPLOYER: Employer = Object.freeze({
   name: BODGE_COMPANY.name,
   playerId: BODGE_IDS.player,
   installPolicy: 'wild_west',
-  // Twelve weeks and no weather on them. Bodgeworth has authored no season -
+  // Ten weeks and no weather on them. Bodgeworth has authored no season -
   // it has no Marcus in Accounts to forward the wrong board pack and no pool
   // to be scored in - so it runs the arc seasonless until it writes one, which
   // is the truthful shape rather than borrowing the probation shop's round.

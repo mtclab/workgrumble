@@ -37,7 +37,7 @@
  *   per employer, never two live at once, two clear weeks after each one is
  *   resolved. An arc BELONGS TO ONE SHOP and says which - the season on it is
  *   that shop's content, narrated by that shop's cast, and a building that has
- *   authored none runs the same twelve weeks with nothing on them.
+ *   authored none runs the same ten weeks with nothing on them.
  * - THE FOUR-BEAT CONTRACT. Weather, notice, criteria, decision - in that
  *   order, each inspectable, and `telegraph` is the only way to obtain the
  *   type the decision function will accept. A future entry cannot skip a beat
@@ -443,7 +443,7 @@ export interface PressureSeason {
 /**
  * An employer, as a length and a list of seasons.
  *
- * One employer is eight to twelve weeks of work with one season of pressure in
+ * One employer is eight to ten weeks of work with one season of pressure in
  * it and the rest is the job. This is the table the pacing rules are enforced
  * against, and it is one level up from `WEEK` in exactly the way the research
  * says it should be: `WEEK` is a table of days with beats on them, and this is
@@ -487,18 +487,65 @@ export const QUIET_WEEKS_BEFORE = 2;
 export const QUIET_WEEKS_AFTER = 2;
 
 /**
- * The shortest a notice may be, in days.
+ * Where collective consultation starts, in proposed roles.
  *
- * Thirty, taken from collective consultation, where twenty to ninety-nine
- * proposed redundancies require consultation to start at least thirty days
- * before the first dismissal (Acas; GOV.UK). A round of two out of six does
- * not meet that threshold and therefore has no statutory minimum of its own -
- * which makes it exactly the case where a game could be less legible than the
- * law and get away with it. It is held to the collective figure anyway, and
- * the arc loader enforces it, because a game may not be harder to see coming
- * than employment law.
+ * Twenty at one establishment inside ninety days, which is the number the duty
+ * hangs on rather than a number this game chose (TULRCA 1992 s.188; Acas;
+ * GOV.UK). Below it there is no collective period at all; at a hundred the
+ * period gets longer again.
  */
-export const NOTICE_DAYS_MINIMUM = 30;
+export const COLLECTIVE_ROUND_ROLES = 20;
+
+/** And where it gets longer: a hundred or more proposed roles. */
+export const LARGE_ROUND_ROLES = 100;
+
+/** Thirty days for twenty to ninety-nine, with form HR1 on the same clock. */
+export const COLLECTIVE_NOTICE_DAYS = 30;
+
+/** Forty-five for a hundred or more. */
+export const LARGE_ROUND_NOTICE_DAYS = 45;
+
+/**
+ * And what a round below the collective threshold owes: statutory notice,
+ * which is one week for anybody under two years' service - the player, on
+ * every arc this game ships.
+ */
+export const INDIVIDUAL_NOTICE_DAYS = DAYS_PER_CALENDAR_WEEK;
+
+/**
+ * The shortest a notice may be, in days, for a round of this size.
+ *
+ * Collective consultation is a THRESHOLD rule and it is finally written here
+ * as one. It shipped as a flat thirty until 0.41.0 - the twenty-to-ninety-nine
+ * figure applied to every round whatever its size, stated in this file as
+ * deliberate generosity on the grounds that a game may not be harder to see
+ * coming than the law.
+ *
+ * The generosity had a price nobody had costed. Thirty days between the
+ * announcement and the conversation is four calendar weeks; with two quiet
+ * weeks in front of the weather, a fortnight of weather, a consultation window
+ * and two clear weeks after the decision, the shortest career the pacing rules
+ * would admit was exactly twelve - the arc was sitting on that floor without
+ * anybody having chosen it, and the re-time to ten could not be placed at all
+ * until the rule knew its own threshold.
+ *
+ * A rule that knows its threshold is not a weaker rule. It still refuses a
+ * twenty-role round announced inside thirty days and a hundred-role one inside
+ * forty-five, which is more than the flat constant ever checked - and the
+ * refusal it now makes about a round of two out of six is one an employment
+ * lawyer would recognise instead of one this game invented. The round still
+ * announces itself eighteen days out, which is over twice the individual
+ * floor: legible by a distance, and no longer legible by accident.
+ */
+export function noticeFloor(cut: number): number {
+  if (cut >= LARGE_ROUND_ROLES) {
+    return LARGE_ROUND_NOTICE_DAYS;
+  }
+
+  return cut >= COLLECTIVE_ROUND_ROLES
+    ? COLLECTIVE_NOTICE_DAYS
+    : INDIVIDUAL_NOTICE_DAYS;
+}
 
 /**
  * Calendar days in a week. The working week is five; the calendar is seven.
@@ -544,11 +591,22 @@ export const PRESSURE_MAIL = Object.freeze({
  *
  * Week four is the earliest the pacing rules allow anything at all, so that is
  * where the weather sits: two weeks of it, with nothing in them but a budget
- * line and a closed door. The announcement is week six, the consultation runs
- * from week seven right up to the week it is decided in, and the conversation
- * is on the Friday of week ten - which is thirty-two calendar days after the
- * announcement went out, and therefore over the collective-consultation floor
- * rather than under it. Weeks eleven and twelve are quiet by construction.
+ * line and a closed door. The announcement is week six, the consultation is
+ * week seven and closes before the week it is decided in, and the conversation
+ * is on the Friday of week eight - eighteen calendar days after the
+ * announcement went out, which is over the floor a round of two out of six
+ * actually owes (`noticeFloor`) by more than double. Weeks nine and ten are
+ * quiet by construction.
+ *
+ * It ran two weeks longer until 0.41.0 - consultation seven to nine, the
+ * conversation on the Friday of week ten - and the two weeks came off the
+ * middle rather than off either end. The shape the research asks for is the
+ * ORDER and the gaps around it: the quiet before, the fortnight of weather
+ * that lets an attentive player feel clever later, the announcement, a window
+ * where nothing is decided and everybody is polite, the conversation, the
+ * quiet after. A consultation that is on screen for one week instead of three
+ * is a shorter polite window; it is not a missing beat, and the matrix is
+ * readable and scorable in exactly the same way while it is up.
  *
  * Quiet, weather, notice, consultation, decision, quiet: the player should be
  * able to feel the season turn, which is a different sensation from being
@@ -559,8 +617,8 @@ export const REDUNDANCY_ROUND: PressureSeason = {
   weather: 4,
   notice: 6,
   criteriaFrom: 7,
-  criteriaTo: 9,
-  decision: 10,
+  criteriaTo: 7,
+  decision: 8,
   cut: 2,
   pool: 6,
   weatherThread: PRESSURE_MAIL.weather,
@@ -576,8 +634,18 @@ export const REDUNDANCY_ROUND: PressureSeason = {
  * is the weather. An arc that also got shorter would be a second difference
  * nobody asked for, and `stayAnotherWeek` reads this to know when the job is
  * over.
+ *
+ * Ten since 0.41.0, down from twelve, and the two weeks came out of the middle
+ * of the season rather than off the end of the job (E11 slice 4, #71). Twelve
+ * was never chosen: it was the shortest arc the pacing rules would admit while
+ * the notice floor was a flat thirty days, which is to say the arc's length
+ * was a side effect of a threshold rule applied below its own threshold. With
+ * `noticeFloor` sized to the round the floor became the eighteen days a round
+ * of two out of six owes, and ten weeks is the shape that leaves: three quiet,
+ * a fortnight of weather, the announcement, the consultation, the
+ * conversation, and two clear weeks to come out into.
  */
-export const ARC_WEEKS = 12;
+export const ARC_WEEKS = 10;
 
 /**
  * The probation shop's arc, and the only one in this build with a season on it.
@@ -594,7 +662,7 @@ export const EMPLOYER_ARC: EmployerArc = validateArc({
 });
 
 /**
- * The same twelve weeks, at a shop that has not authored any weather yet.
+ * The same ten weeks, at a shop that has not authored any weather yet.
  *
  * This is the whole of #59a's fix stated as a value. The redundancy round is
  * Workgrumble's - its pool IS that building's five colleagues, its two
@@ -721,11 +789,17 @@ export function validateArc(arc: Readonly<EmployerArc>): EmployerArc {
     const days = (season.decision - season.notice) * DAYS_PER_CALENDAR_WEEK
       + (WEEK_DAYS - 1);
 
-    if (days < NOTICE_DAYS_MINIMUM) {
+    // Sized to the round, because the law is: the floor a season owes is a
+    // function of how many roles it proposes, and a round that grows past
+    // twenty owes the collective month whatever the arc would prefer.
+    const floor = noticeFloor(season.cut);
+
+    if (days < floor) {
       throw new Error(
         `"${season.id}" leaves ${String(days)} days between the announcement `
-        + `and the conversation. The floor is ${String(NOTICE_DAYS_MINIMUM)}: `
-        + 'a game may not be less legible than employment law.',
+        + `and the conversation. The floor for a round of ${String(season.cut)}`
+        + ` is ${String(floor)}: a game may not be less legible than `
+        + 'employment law.',
       );
     }
 

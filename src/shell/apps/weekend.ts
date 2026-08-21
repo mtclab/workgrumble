@@ -100,7 +100,7 @@ export const WEEKEND_APP: AppDef = {
      *
      * It exists only on a PASS, and only while the arc has another week in it.
      * A firing has taken the desk back and a redundancy has taken the role, so
-     * neither has a Monday here to come back to; week twelve has one but the
+     * neither has a Monday here to come back to; week ten has one but the
      * job does not, and the offer is what is on the other side of that.
      *
      * It is the SECOND button rather than the first on purpose, for now: the
@@ -471,8 +471,8 @@ export const WEEKEND_APP: AppDef = {
        * The number is read off the world rather than counted here - the arc
        * week is a player-node field the save carries and the redundancy matrix
        * reads - and the length is read off the employer's own arc, because how
-       * long a job is belongs to `pressure.ts` and nowhere else. Week twelve of
-       * twelve therefore has no button rather than a disabled one: there is no
+       * long a job is belongs to `pressure.ts` and nowhere else. Week ten of
+       * ten therefore has no button rather than a disabled one: there is no
        * week thirteen to be told to wait for.
        */
       const arc = employerFor(api.employer).arc;

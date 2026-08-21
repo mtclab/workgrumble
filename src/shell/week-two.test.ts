@@ -15,7 +15,7 @@
  * The four claims, each of which fails in a different place:
  *
  * - THE UNLOCK. A passed week hands the player the same employer's NEXT week.
- *   `arcWeek` climbs, the composition is a different week, and the twelve-week
+ *   `arcWeek` climbs, the composition is a different week, and the ten-week
  *   ladder in `pressure.ts` has somewhere to fire from for the first time since
  *   it shipped.
  * - THE WHITELIST CARRIES. What the employer declared persistent is in the new
@@ -580,7 +580,55 @@ describe('the doors that are not there', () => {
     expect(refused.ok).toBe(false);
     expect(refused.ok ? '' : refused.reason)
       .toContain(`${String(arc.weeks)} is how long`);
-    // And the offer is still there, which is what week twelve leads to.
+    // And the offer is still there, which is what week ten leads to.
+    expect(world.session.switchEmployer().ok).toBe(true);
+  });
+
+  /**
+   * A save from before the re-time, at a week this arc no longer has.
+   *
+   * 0.41.0 took the arc from twelve weeks to ten, so a career carried over
+   * from 0.40.0 can hold an `arcWeek` of eleven or twelve - a week that is now
+   * PAST the end of the job it belongs to. There is no migration for it and
+   * there should not be one: `arcWeek` has never been clamped to the arc (the
+   * generator is gated out to week 564 for exactly this reason), so the honest
+   * behaviour is the one every other post-decision week already has. The week
+   * boots, the generator draws it, the season is quiet because the round was
+   * decided in week eight, and the only door out is the offer.
+   *
+   * The failure this forbids is the tempting fix: a loader that refuses or
+   * clamps an `arcWeek` past `arc.weeks` would turn somebody's carried save
+   * into a boot error or silently move them backwards two weeks into a job
+   * they had finished.
+   */
+  it('boots a carried save from a week the shortened arc no longer has', () => {
+    const storage = new MemoryStorage();
+    // Twelve: the last week a 0.40.0 career could be sitting on when this
+    // version replaced it.
+    const carried = 12;
+
+    new SwitchSlot(storage).write({
+      employer: 'workgrumble',
+      career: {
+        reputation: 70,
+        title: 'IT Support Technician',
+        farmFund: 40_000,
+        trail: null,
+        tier: 'service_desk',
+      },
+      arcWeek: carried,
+    });
+
+    const world = boot(storage);
+
+    expect(carried).toBeGreaterThan(employerFor('workgrumble').arc.weeks);
+    expect(fieldOf(world, COMPANY_IDS.player, FIELDS.arcWeek)).toBe(carried);
+
+    // Buildable and dealt, not a special case: a full week plays out of it.
+    playAWeek(world);
+
+    // Quiet, because the round was decided and closed two weeks before this.
+    expect(world.session.stayAnotherWeek().ok).toBe(false);
     expect(world.session.switchEmployer().ok).toBe(true);
   });
 
