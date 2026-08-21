@@ -6328,7 +6328,12 @@ test('walks the second queue: audited, corrected, billed and written up',
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.goto('/');
       await completeLogin(page, { brief: 'keep' });
-      // Nothing pressed: the boot went and got it.
+      // Nothing pressed: the boot went and got the world AND the screen. The
+      // brief is still standing where the clock-off left it, because the
+      // driver announces the new morning before it asks for the save (gated in
+      // `resume-screens.test.ts`) - so the window is in the boundary save, and
+      // the restore puts it back rather than the day re-popping it.
+      await expect(page.getByTestId('window-brief')).toBeVisible();
       await expect(page.getByTestId('brief-heading'))
         .toContainText(`Day ${String(day)}`);
       expect(await page.evaluate(

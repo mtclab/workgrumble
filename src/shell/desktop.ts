@@ -7,7 +7,12 @@ import { ASSISTANT_DISMISSAL_CAP } from './app-state';
 import type { ShellContext } from './context';
 import { createIcon } from './icons';
 import { BOSS_KEY_CODE, DISMISS_KEY } from './keys';
-import { launchApp, windowIdFor } from './launch';
+import {
+  launchApp,
+  screenFrom,
+  windowIdFor,
+  windowsStateOf,
+} from './launch';
 import {
   createNotificationState,
   dismissToast,
@@ -22,9 +27,7 @@ import { WindowRenderer } from './window-renderer';
 import {
   closeWindow,
   createWindowManager,
-  focusWindow,
   minimizeSlackWindows,
-  minimizeWindow,
   setWindowViewport,
   toggleTaskbarWindow,
   type Viewport,
@@ -696,20 +699,7 @@ export class Desktop {
     // that resumes with an empty desktop is a session that reloaded its way
     // out of a conversation.
     this.unsubscribeScreens = this.context.appState.onReplaced(() => {
-      // The install set rides the save, so a load can bring back a machine with
-      // a toy on it that this session never installed. The manifest is resolved
-      // off that set, so it has to be rebuilt BEFORE the windows are restored -
-      // otherwise a saved toy window has no definition to reopen into and is
-      // silently dropped. It is a no-op when nothing installed changed, which is
-      // every external patch that is not a load.
-      this.rebuildAppSurfaces();
-      this.restoreWindows();
-      // The desktop the box is running rides the save too, so a session that
-      // comes back on GNOME comes back on GNOME - chrome and all. It is applied
-      // AFTER the windows are restored, because the titlebars it re-chromes are
-      // the ones that line just put back.
-      this.applySkin();
-      this.syncDayScreens();
+      this.adoptScreens();
     });
     // The character's transient display resets ONLY on a real load or restart,
     // never on an ordinary external patch: a boss beat writing to the store
@@ -724,14 +714,21 @@ export class Desktop {
       this.renderSaveHealth();
     });
 
+    // The chrome first, so the panel exists before anything paints into it.
     this.applySkin();
     this.renderSaveHealth();
     this.renderClock(this.context.clock.now());
     this.renderDay();
     this.renderPressure();
     this.renderNotifications();
-    this.renderWindows();
-    this.syncDayScreens();
+    // And then the SCREEN, off the store this desktop was handed rather than
+    // off the assumption that it is a fresh morning. It used to be
+    // `renderWindows()` - painting an empty window manager - plus the day's own
+    // screens, which is right for every boot that stands a new week up and
+    // wrong for the one that resumes an old one: the store handed over is
+    // already carrying somebody's four open windows, and nothing looked at it.
+    // The same sequence a load runs, because it is the same question.
+    this.adoptScreens();
   }
 
   public dispose(): void {
@@ -1551,52 +1548,61 @@ export class Desktop {
       return;
     }
 
-    this.context.appState.patch('windows', {
-      open: state.windows.map((windowState) => ({
-        appId: windowState.appId,
-        minimized: windowState.minimized,
-      })),
-      focusedId: state.focusedId,
-    });
+    // Through `windowsStateOf`, which is `screenFrom`'s inverse: what goes into
+    // the store and what comes back out of it are one pair of functions, so a
+    // screen that survives a save is a fact rather than two mappings agreeing.
+    this.context.appState.patch('windows', windowsStateOf(state));
   }
 
   /**
-   * And back again, after a load.
+   * And back again - after a load, and at the mount that follows a resume.
    *
    * Windows are reopened bottom of the pile first, so the z-order the player
    * left is the z-order they come back to - which decides which app the lead
-   * names when he catches them. Geometry is not restored because it was never
-   * saved: a window put back at coordinates from somebody else's screen is
-   * worse than one the cascade has placed.
+   * names when he catches them. What that means is `screenFrom`'s, because the
+   * mount does exactly this and used to do nothing at all (see `adoptScreens`).
    */
   private restoreWindows(): void {
     if (this.wm === null) {
       return;
     }
 
-    const saved = this.context.appState.get().windows;
-    let next = createWindowManager(this.measureViewport());
-
-    for (const entry of saved.open) {
-      const definition = this.apps.find((app) => app.id === entry.appId);
-
-      if (definition === undefined) {
-        continue;
-      }
-
-      next = launchApp(next, definition);
-
-      if (entry.minimized) {
-        next = minimizeWindow(next, windowIdFor(definition));
-      }
-    }
-
-    if (saved.focusedId !== null) {
-      next = focusWindow(next, saved.focusedId);
-    }
-
-    this.wm = next;
+    this.wm = screenFrom(
+      this.context.appState.get().windows,
+      this.apps,
+      this.measureViewport(),
+    );
     this.renderWindows();
+  }
+
+  /**
+   * THE SCREEN THE STORE DESCRIBES, taken up whole.
+   *
+   * The four steps a desktop runs when the app state under it is not the one it
+   * was built for, in the one order that works:
+   *
+   *  - the INSTALL SET first, because the manifest is resolved off it and a
+   *    saved toy window with no definition to open into is a window silently
+   *    dropped;
+   *  - the WINDOWS next, off the store rather than off nothing;
+   *  - the SKIN after them, because the titlebars it re-chromes are the ones
+   *    that line just put back;
+   *  - and the DAY'S OWN SCREENS last, which is a no-op for a day whose brief
+   *    the store already says was shown - so a resumed morning does not have
+   *    its brief re-popped at it, and a morning that never had one still gets
+   *    it.
+   *
+   * It is called from BOTH ends of the same fact (#61 box round): a load
+   * replaces the store under a running desktop, and a boot that RESUMES hands
+   * a brand-new desktop a store that is already somebody's Thursday. Those were
+   * one sequence and one no-sequence; a desktop that assumed a fresh morning
+   * brought the whole world back and none of the screen with it.
+   */
+  private adoptScreens(): void {
+    this.rebuildAppSurfaces();
+    this.restoreWindows();
+    this.applySkin();
+    this.syncDayScreens();
   }
 
   private renderWindows(): void {
