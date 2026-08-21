@@ -50,8 +50,15 @@ import { WEEK_DAYS } from './week';
 
 const ALWAYS = (): boolean => true;
 
+/**
+ * A synthetic arc for the refusal cases, the length the game actually ships.
+ *
+ * It read twelve until 0.41.0 and kept reading twelve after the arc came down
+ * to ten, which is a number in a test file quietly disagreeing with the number
+ * in the build. Cases that need more room ask for it by name.
+ */
 function arc(over: Partial<EmployerArc> = {}): EmployerArc {
-  return { employer: 'Test Ltd', weeks: 12, seasons: [], ...over };
+  return { employer: 'Test Ltd', weeks: ARC_WEEKS, seasons: [], ...over };
 }
 
 function season(over: Partial<typeof REDUNDANCY_ROUND> = {}): typeof
