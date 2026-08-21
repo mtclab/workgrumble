@@ -101,6 +101,14 @@ test('a refresh comes back to the senior desk, on the day it left', async ({
   expect(await playerField(page, 'title')).toBe(SENIOR_TITLE);
   expect(await playerField(page, 'arc_week')).toBe(2);
   await expect(page.getByTestId('sim-clock-day')).toHaveText('Day 2');
+
+  // The brief does NOT pop again - the save carries which day it was shown
+  // for, and a window the player already had is not re-opened at them
+  // (`syncDayScreens`, by design). What the resume owes instead is the house
+  // no-dead-end rule: the day's own screen is a button-press away, and it is
+  // Tuesday's.
+  await expect(page.getByTestId('window-brief')).toHaveCount(0);
+  await page.getByTestId('day-state').click();
   await expect(page.getByTestId('brief-heading')).toContainText('Day 2');
 });
 
