@@ -345,6 +345,24 @@ export class Shell {
     }
 
     if (screen !== 'desktop' && this.desktop !== null) {
+      // Leaving the desk - logging off, or restarting the workstation - closes
+      // what was open, and the STORE is told so rather than left holding a
+      // screen nobody is looking at.
+      //
+      // It reads as new and it is not: a desktop built after a log-on painted
+      // an empty window manager, so the windows went either way. What was new
+      // was the DISAGREEMENT it left behind - the store went on carrying the
+      // four windows from before the log-off, so a save taken between logging
+      // back on and touching a window filed a screen that was not on screen,
+      // and it came back at the next load. Now that a desktop derives what it
+      // shows from the store (`adoptScreens`), the store has to be right at the
+      // moment the desk is left rather than at the moment somebody next opens
+      // something.
+      //
+      // The tab going away is deliberately NOT this: `dispose` on its own is a
+      // page being torn down, and the last thing that should happen to a
+      // player's screen memory on the way out is being emptied.
+      this.desktop.leaveDesk();
       this.desktop.dispose();
       this.desktop = null;
     }

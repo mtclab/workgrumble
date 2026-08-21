@@ -731,6 +731,24 @@ export class Desktop {
     this.adoptScreens();
   }
 
+  /**
+   * The desk, left: what was open is closed, and the store says so.
+   *
+   * Logging off and restarting both close the windows - they always have, and
+   * on a beige box they should - but until the desktop started deriving its
+   * screen from the store (`adoptScreens`) that happened by accident: the
+   * windows went because the next desktop painted an empty window manager, and
+   * the store went on carrying them. This says it instead, which is what makes
+   * the store the one answer to what is on the screen rather than an answer
+   * that is right until somebody logs off.
+   *
+   * `patch` rather than `patchExternal`: the desktop owns this slice, and it is
+   * about to stop existing - there is nobody to announce to.
+   */
+  public leaveDesk(): void {
+    this.context.appState.patch('windows', { open: [], focusedId: null });
+  }
+
   public dispose(): void {
     this.observer.disconnect();
     this.unsubscribeClock?.();
