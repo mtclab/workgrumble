@@ -18,15 +18,20 @@ import {
   ARC_WEEKS,
   beatAt,
   beatsFiredBy,
+  COLLECTIVE_NOTICE_DAYS,
+  COLLECTIVE_ROUND_ROLES,
   cutsBothWays,
   DAYS_PER_CALENDAR_WEEK,
   EMPLOYER_ARC,
   type EmployerArc,
   findPressure,
+  INDIVIDUAL_NOTICE_DAYS,
   isQuietWeek,
-  NOTICE_DAYS_MINIMUM,
+  LARGE_ROUND_NOTICE_DAYS,
+  LARGE_ROUND_ROLES,
   noticeDate,
   noticeDays,
+  noticeFloor,
   PRESSURE_BEATS,
   PRESSURE_CATALOGUE,
   PRESSURE_IDS,
@@ -126,12 +131,12 @@ describe('the arc this employer ships', () => {
   /**
    * The shape of a shop that has not written any weather yet.
    *
-   * Not a switched-off arc - the same twelve weeks, climbing, drawing and
+   * Not a switched-off arc - the same ten weeks, climbing, drawing and
    * reviewing exactly as the probation shop's do. What it does not have is a
    * season, which is what the other three employers have truthfully had all
    * along everywhere except in the one field they shared.
    */
-  it('gives a shop with no season the same twelve quiet weeks', () => {
+  it('gives a shop with no season the same ten quiet weeks', () => {
     const bare = seasonlessArc('bodgeworth');
 
     expect(bare.employer).toBe('bodgeworth');
@@ -174,8 +179,14 @@ describe('the arc this employer ships', () => {
   });
 
   it('announces itself further out than the law would make it', () => {
+    // Eighteen days for a round of two out of six, against the one week that
+    // size of round actually owes. The figure is pinned as a literal because
+    // it is the number the announcement quotes the player: a re-time that
+    // moves it moves a sentence in Yolanda's mail, and that should be an edit
+    // somebody made on purpose.
+    expect(noticeDays(REDUNDANCY_ROUND)).toBe(18);
     expect(noticeDays(REDUNDANCY_ROUND))
-      .toBeGreaterThanOrEqual(NOTICE_DAYS_MINIMUM);
+      .toBeGreaterThanOrEqual(noticeFloor(REDUNDANCY_ROUND.cut));
     // The announcement is a Monday and the conversation is a Friday, both
     // dated on the estate's own calendar, so the mail can quote them.
     expect(noticeDate(REDUNDANCY_ROUND)).toMatch(/^\d\d\/\d\d\/\d{4}$/);
@@ -230,14 +241,57 @@ describe('the pacing rules', () => {
     }))).toThrow('two or more weeks out');
   });
 
-  it('refuses an announcement shorter than the law would make it', () => {
+  /**
+   * The notice floor, proven at both sides of its own threshold.
+   *
+   * It was a flat thirty days until 0.41.0 - the twenty-to-ninety-nine
+   * collective figure charged to every round whatever its size - and a flat
+   * constant cannot tell a round of two from a round of twenty. So the gate is
+   * the SAME placement judged twice: eighteen days for two roles out of six is
+   * admitted, and eighteen days for a round of twenty is refused, because at
+   * twenty the thirty days stops being a courtesy and becomes a duty.
+   */
+  it('sizes the notice floor to the round it is announcing', () => {
+    const big = { cut: COLLECTIVE_ROUND_ROLES, pool: 60 };
+
+    expect(noticeFloor(REDUNDANCY_ROUND.cut)).toBe(INDIVIDUAL_NOTICE_DAYS);
+    expect(noticeFloor(COLLECTIVE_ROUND_ROLES)).toBe(COLLECTIVE_NOTICE_DAYS);
+    expect(noticeFloor(LARGE_ROUND_ROLES)).toBe(LARGE_ROUND_NOTICE_DAYS);
+
+    expect(() => validateArc(arc({ seasons: [season()] }))).not.toThrow();
+    expect(() => validateArc(arc({ seasons: [season(big)] })))
+      .toThrow('less legible than employment law');
+    // And refused for the announcement rather than for the size: give the big
+    // round the month it is owed and the same loader takes it.
     expect(() => validateArc(arc({
-      seasons: [season({
-        notice: REDUNDANCY_ROUND.decision - 2,
-        criteriaFrom: REDUNDANCY_ROUND.decision - 1,
-        criteriaTo: REDUNDANCY_ROUND.decision - 1,
-      })],
-    }))).toThrow('less legible than employment law');
+      weeks: 20,
+      seasons: [season({ ...big, criteriaTo: 10, decision: 11 })],
+    }))).not.toThrow();
+  });
+
+  /**
+   * Why the individual floor never fires, said out loud.
+   *
+   * Below twenty roles the statutory floor is a week, and no admissible season
+   * can get near it: four beats strictly in order with the consultation
+   * closing before the decision put at least two calendar weeks plus the
+   * working week between the announcement and the conversation. The floor
+   * exists for the rounds above the threshold; down here the BEAT CONTRACT is
+   * what keeps the round legible, and this is the assertion that says so
+   * rather than leaving a constant looking like it is doing work it is not.
+   */
+  it('cannot place a small round tighter than eighteen days anyway', () => {
+    const tightest = season({
+      notice: REDUNDANCY_ROUND.notice,
+      criteriaFrom: REDUNDANCY_ROUND.notice + 1,
+      criteriaTo: REDUNDANCY_ROUND.notice + 1,
+      decision: REDUNDANCY_ROUND.notice + 2,
+    });
+
+    expect(() => validateArc(arc({ seasons: [tightest] }))).not.toThrow();
+    expect(noticeDays(tightest)).toBe(18);
+    expect(noticeDays(tightest))
+      .toBeGreaterThan(noticeFloor(REDUNDANCY_ROUND.cut));
   });
 
   it('refuses a season with no quiet after it', () => {

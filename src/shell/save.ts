@@ -531,8 +531,8 @@ export interface ShellSessionApi {
    *
    * The THIRD door out of a Friday, and the one the game has been written for
    * since 0.2.7 without ever having: `ARC_WEEKS` declares every employer a
-   * twelve-week job - the probation shop's twelve with a redundancy round at
-   * weeks four to ten on them (#59a), everybody else's twelve with nothing -
+   * ten-week job - the probation shop's ten with a redundancy round at weeks
+   * four to eight on them (#59a), everybody else's ten with nothing -
    * and no career had ever reached week two, so the whole systemic layer above
    * the week was shipped, tested and unreachable. This is the door.
    *
@@ -1003,8 +1003,8 @@ export function createShellSession(
      * available to the player as a matter of fact rather than of rules - one
      * has taken the lanyard off you and the other has taken the role away - so
      * both are answered in the words that say which. And the arc's last week is
-     * a refusal because the arc is twelve weeks long and `pressure.ts` says so:
-     * the door out of week twelve is the offer, and inventing a week thirteen
+     * a refusal because the arc is ten weeks long and `pressure.ts` says so:
+     * the door out of week ten is the offer, and inventing an eleventh
      * here would be the shell overruling the one table that knows how long a
      * job is (the several post-arc doors D-E11-3 asks for are a design
      * proposal, not a fall-through).

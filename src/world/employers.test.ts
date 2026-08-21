@@ -47,7 +47,7 @@ describe('the employer registry', () => {
       const arc = employerFor(id).arc;
 
       expect(arc.employer, id).toBe(id);
-      // The same twelve weeks everywhere: a seasonless arc is this arc with
+      // The same ten weeks everywhere: a seasonless arc is this arc with
       // nothing on it, not a shorter job.
       expect(arc.weeks, id).toBe(ARC_WEEKS);
       expect(arc.seasons.length, id)

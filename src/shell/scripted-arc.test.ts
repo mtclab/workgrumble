@@ -6,7 +6,7 @@
  * question and therefore lives in its own file: whether a SEASON decides, and
  * whether it is allowed to decide anything at all. The same five profiles are
  * played, on the same five days, with the same seed - and the week they are
- * played in is week ten of the employer arc rather than week one, which is the
+ * played in is week eight of the employer arc rather than week one, which is the
  * only difference between the two files and the whole subject of this one.
  *
  * Four things are gated here and each of them fails in a different place:
@@ -47,7 +47,7 @@ import {
   EMPLOYER_ARC,
   isQuietWeek,
   noticeDays,
-  NOTICE_DAYS_MINIMUM,
+  noticeFloor,
   PRESSURE_BEATS,
   PROBATION_WEEK,
   QUIET_WEEKS_AFTER,
@@ -100,7 +100,7 @@ interface Week {
  *
  * Until 0.34.0 this was what the seam handed back at every arc position anyway,
  * because the generator was clamped to week one and no career could reach week
- * two. Now the clamp is gone and week ten is a drawn week - which is right for
+ * two. Now the clamp is gone and week eight is a drawn week - which is right for
  * the product and wrong for this file, because this file is about a SEASON and
  * nothing else. Its five profiles, its marks, its bars and its ranking are the
  * same five profiles the probation goldens pin, played in a week where a round
@@ -394,8 +394,11 @@ describe('the season, paced', () => {
   });
 
   it('announces itself further out than the law would make it', () => {
+    // Against the floor this round's SIZE owes rather than against a flat
+    // constant (0.41.0): two roles out of six is under the collective
+    // threshold, and the eighteen days it gets is that floor twice over.
     expect(noticeDays(REDUNDANCY_ROUND))
-      .toBeGreaterThanOrEqual(NOTICE_DAYS_MINIMUM);
+      .toBeGreaterThanOrEqual(noticeFloor(REDUNDANCY_ROUND.cut));
   });
 });
 

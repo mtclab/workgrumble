@@ -817,7 +817,7 @@ const ENTRIES = [
     control: 'weekend-stay, then the boot that follows it',
     does: 'Staying: the same employer\'s NEXT week stands up, the arc position '
       + 'climbed, the career carried and the whitelisted estate still in the '
-      + 'building. The unlock the twelve-week pressure ladder has been waiting '
+      + 'building. The unlock the ten-week pressure ladder has been waiting '
       + 'on since 0.2.7.',
     run: 'week',
   },

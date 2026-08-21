@@ -10,10 +10,13 @@
  * beat function - and not one of them can tell you WHEN the season is. Move
  * every beat two weeks earlier and all three follow it, green.
  *
- * That hole was measured rather than guessed: with the arc re-cut to ten weeks
- * and the round moved to weather 4 / notice 6 / criteria 7 / decision 8, the
- * whole suite stayed green except one assertion about a constant. Three
- * thousand tests and nothing noticed that a third of the season had moved.
+ * That hole was measured rather than guessed, and it was measured on the exact
+ * change that then shipped: with the arc re-cut to ten weeks and the round
+ * moved to weather 4 / notice 6 / criteria 7 / decision 8, the whole suite
+ * stayed green except one assertion about a constant. Three thousand tests and
+ * nothing noticed that a third of the season had moved. This file was written
+ * before the re-time for that reason - the gate has to exist before the thing
+ * it guards moves, or nobody finds out what the move cost.
  *
  * So this file pins the schedule as LITERAL week numbers and reads them off
  * REAL worlds - the shipped session, the shipped driver, this shop's own arc -
@@ -25,7 +28,7 @@
  * TEETH: move any beat in `REDUNDANCY_ROUND` by a week - the revert - and the
  * week that lost it goes red naming the beat it expected and the beat it got.
  *
- * Twelve worlds with a wasm engine under each, which is what "played" costs
+ * Ten worlds with a wasm engine under each, which is what "played" costs
  * and the reason this is one pass rather than a case per week.
  */
 
@@ -83,14 +86,19 @@ function shopAt(arcWeek: number): Shop {
  * The season as it ships, written out in weeks rather than read out of the
  * table that places them.
  *
- * Twelve entries because the arc is twelve weeks: week one is the probation
- * week and carries nothing by rule, weeks two and three are the quiet ones a
- * player needs in order to have a normal week to compare an abnormal one
- * against, the weather runs four to five because two weeks is what makes an
- * attentive player feel clever later, the announcement is week six, the
- * consultation is on screen seven to nine, the conversation is the Friday of
- * week ten, and weeks eleven and twelve are clear by construction rather than
- * by luck.
+ * Ten entries because the arc is ten weeks: week one is the probation week and
+ * carries nothing by rule, weeks two and three are the quiet ones a player
+ * needs in order to have a normal week to compare an abnormal one against, the
+ * weather runs four to five because two weeks is what makes an attentive
+ * player feel clever later, the announcement is week six, the consultation is
+ * on screen in week seven and closes before the week that decides, the
+ * conversation is the Friday of week eight, and weeks nine and ten are clear
+ * by construction rather than by luck.
+ *
+ * It was twelve until 0.41.0, with the consultation on screen seven to nine
+ * and the conversation on the Friday of week ten. The two weeks came out of
+ * the consultation window and out of nothing else, which is why the only
+ * entries below that changed are weeks eight and nine.
  */
 const SCHEDULE: readonly (PressureBeat | null)[] = [
   null, // week 1 - probation
@@ -100,11 +108,9 @@ const SCHEDULE: readonly (PressureBeat | null)[] = [
   'weather', // week 5
   'notice', // week 6
   'criteria', // week 7
-  'criteria', // week 8
-  'criteria', // week 9
-  'decision', // week 10
-  null, // week 11 - clear
-  null, // week 12 - clear
+  'decision', // week 8
+  null, // week 9 - clear
+  null, // week 10 - clear
 ];
 
 /** What the quiet-week sentence is, taken from the week nothing is on. */
@@ -113,14 +119,14 @@ const QUIET = 'Nothing is being proposed. There is no round on, nobody is '
   + 'the file alone.';
 
 describe('the season plays on the weeks it is scheduled for', () => {
-  it('runs twelve weeks, which is the length the schedule fills', () => {
+  it('runs ten weeks, which is the length the schedule fills', () => {
     // The arc's length is half the schedule: a season placed correctly inside
     // an arc of the wrong length is still the wrong season, and the two clear
     // weeks at the end only exist because there are weeks there to be clear.
     // Its own case rather than a first line in the sweep below, so that a
     // re-time reports the beat that moved as well as the length that changed.
-    expect(employerFor(FIRST_EMPLOYER).arc.weeks).toBe(12);
-    expect(SCHEDULE).toHaveLength(12);
+    expect(employerFor(FIRST_EMPLOYER).arc.weeks).toBe(10);
+    expect(SCHEDULE).toHaveLength(10);
   });
 
   it('carries each beat in the week it belongs to, over real worlds', () => {
@@ -170,19 +176,21 @@ describe('the season plays on the weeks it is scheduled for', () => {
     expect(inboxAt(6)).toContain('mail/round-notice');
   }, 120_000);
 
-  it('tells the player thirty-two days, which is over the legal floor', () => {
+  it('tells the player eighteen days, which is over the legal floor', () => {
     // The one number in this season a player is asked to diarise, read out of
-    // the shipped mail body rather than recomputed here. Thirty-two is the
+    // the shipped mail body rather than recomputed here. Eighteen is the
     // announcement on the Monday of week six and the conversation on the
-    // Friday of week ten, and it clears the thirty-day collective figure this
-    // game holds itself to even though a round of two out of six has no
-    // statutory period of its own. Any re-time that moves the notice or the
-    // decision moves this sentence, and it is the sentence rather than the
-    // constant that decides whether the round is legible.
+    // Friday of week eight, and it clears the floor a round of two out of six
+    // actually owes - one week's statutory notice - by more than double. It
+    // read thirty-two until 0.41.0, when the arc came down to ten weeks and
+    // the notice floor stopped charging a small round the twenty-to-ninety-
+    // nine collective figure. Any re-time moves this sentence, and it is the
+    // sentence rather than the constant that decides whether a player can see
+    // the conversation coming.
     const thread = findMailThread('mail/round-notice');
     const body = (thread?.messages ?? []).flatMap((message) => message.body)
       .join(' ');
 
-    expect(body).toContain('32 days from today');
+    expect(body).toContain('18 days from today');
   });
 });
