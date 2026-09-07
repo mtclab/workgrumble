@@ -303,6 +303,15 @@ export class WindowRenderer {
    * then any control it does have (the fridge's button is disabled all week,
    * and a disabled button cannot hold a cursor); and the close button last,
    * which every window has and which is never a dead end.
+   *
+   * WITHOUT SCROLLING, always. A day screen's primary button is the LAST thing
+   * in it - "Clock off" sits under the whole scorecard - and a plain `focus()`
+   * asks the browser to bring the focused element into view, which drags the
+   * pane it lives in to the bottom. The scorecard opened two thirds of the way
+   * down, on the back half of a sentence, with the work and the payslip - the
+   * numbers the evening exists to show - above the fold and nothing on screen
+   * saying so. The keyboard still lands where it should; the reader still
+   * starts at the top, which is where the window starts.
    */
   public focusPrimaryControl(windowId: string): void {
     const rendered = this.rendered.get(windowId);
@@ -322,14 +331,14 @@ export class WindowRenderer {
       ));
 
     if (enabled instanceof HTMLButtonElement) {
-      enabled.focus();
+      enabled.focus({ preventScroll: true });
       return;
     }
 
     const close = rendered.element.querySelector('.window-close');
 
     if (close instanceof HTMLButtonElement) {
-      close.focus();
+      close.focus({ preventScroll: true });
     }
   }
 

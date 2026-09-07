@@ -263,6 +263,30 @@ test('walks a day from the morning brief to the scorecard', async ({
   await expect(page.getByTestId('scorecard-heading')).toContainText(
     'Day 1, clocking off',
   );
+
+  // AND IT OPENS AT THE TOP OF ITSELF. The evening screen is taller than the
+  // window it arrives in, its one button is the last thing in it, and the
+  // shell puts the keyboard on that button as the window mounts - so a plain
+  // focus() asked the browser to bring "Clock off" into view and took the
+  // whole pane down with it. What the player got was the back half of a
+  // sentence about their file; the work and the payslip - the two panels the
+  // evening exists to show - were above the fold with nothing on screen saying
+  // there was a fold. Geometry rather than toBeVisible(), the 0.35.1 rule:
+  // attached with a box is not seen. The heading sits inside the window's own
+  // visible box, and the pane it lives in has not been scrolled off its start.
+  const headingBox = await page.getByTestId('scorecard-heading').boundingBox();
+  const scorecardBox = await scorecard.boundingBox();
+  expect(headingBox).not.toBeNull();
+  expect(scorecardBox).not.toBeNull();
+  expect(headingBox?.y ?? 0).toBeGreaterThanOrEqual(scorecardBox?.y ?? 0);
+  expect(headingBox?.y ?? 0)
+    .toBeLessThanOrEqual((scorecardBox?.y ?? 0) + (scorecardBox?.height ?? 0));
+  expect(await page.getByTestId('scorecard-app').evaluate(
+    (pane) => pane.scrollTop,
+  )).toBe(0);
+  // The keyboard still landed where it belongs - the fix is where the browser
+  // scrolls, not where the cursor goes.
+  await expect(page.getByTestId('scorecard-clock-off')).toBeFocused();
   // Two inherited, the one that dripped in at eight minutes past ten, and the
   // one the lead raised by mentioning it at 11:49.
   await expect(page.getByTestId('scorecard-arrived')).toHaveText('5');

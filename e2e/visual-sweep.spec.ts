@@ -258,8 +258,14 @@ test('captures the Friday review scorecard at the MSP', async ({ page }) => {
   // scorecard's own subtree intercepted the click meant to dismiss the review
   // underneath. The window in front is the subject, so nothing needs moving:
   // the frame is taken of the stack exactly as a player finds it.
+  //
+  // The frame used to scroll the work panel into view before shooting, because
+  // the window opened two thirds of the way down its own content - the shell
+  // focused the Clock off button at the bottom and the browser took the pane
+  // with it. That is fixed at the root (window-renderer, `preventScroll`), so
+  // the scroll is gone from here too: a frame that puts the subject right is a
+  // frame that cannot show the day the defect comes back.
   await expect(page.getByTestId('scorecard-app')).toBeVisible();
-  await page.getByTestId('scorecard-work').scrollIntoViewIfNeeded();
   await shot(page, '44-msp-friday-scorecard');
 });
 
