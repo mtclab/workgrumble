@@ -801,6 +801,18 @@ input {
 /* ------------------------------------------------------------- desktop */
 
 .screen-desktop {
+  /* THE COLUMN IS THE SCREEN, not the widest thing standing in it. The
+     implicit `auto` column sized to the min-content of its widest row - the
+     taskbar, which will not fold below about 612px - so on a phone the desktop
+     surface was 612 wide inside a 390 screen. That is not only a picture
+     problem: the window manager measures its viewport off this surface, so
+     every window was clamped to a screen 222px wider than the one it was
+     opening on, and a window opened on a 390px phone landed at x=309 with 60%
+     of itself past the right edge. minmax(0, 1fr) is the same idiom the ticket
+     panes took in 0.36.0 - the track may shrink below its content, and the
+     things inside it that know how to cope (the taskbar scrolls, per 0.3.6)
+     get to. Nothing moves on a screen wide enough to hold the taskbar. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 1fr auto;
   height: 100%;
 }
