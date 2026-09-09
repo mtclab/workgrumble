@@ -65,6 +65,7 @@ import {
   whyThin,
   type WorldTicket,
 } from '../../world/tickets';
+import { serviceMinutesBetween } from '../../world/hours';
 import { formatSimTime } from '../clock-format';
 import { createIcon } from '../icons';
 import type { AppDef, GameApi } from './types';
@@ -252,9 +253,56 @@ function clocksFor(
 
 /** The two sentences the detail pane's SLA rows carry, built in one place so
  * the minute-by-minute repaint and the full one cannot come to disagree. */
-function responseLine(clocks: Readonly<TicketClocks>): string {
-  return `${clockSummary(clocks.response, 'Answered')}`
+export function responseLine(clocks: Readonly<TicketClocks>): string {
+  // "Touched", not "Answered" (0.42.0, W-04). The stamp behind this clock is
+  // the first time anybody DID anything about the ticket, and it is written
+  // even where the fix landed before a word was said to the reporter - which
+  // is the honest model and was the dishonest word: the row printed the
+  // trade's term for a conversation four rows above a stream saying nobody
+  // had been told anything. The conversation now has a row of its own below.
+  return `${clockSummary(clocks.response, 'Touched')}`
     + ` · target ${formatDuration(clocks.target.response)}`;
+}
+
+/**
+ * The other half of it: what the REPORTER has been told (0.42.0, W-04).
+ *
+ * Model-level and exported for the same reason `cadenceLine` is - the pane is
+ * DOM and the offline suite is not - and it reads one field, `answered_at`,
+ * which every write to the customer-visible stream stamps and nothing else
+ * does. Where both stamps exist the gap between them is the sentence: the
+ * minutes between somebody picking the ticket up and the reporter finding out
+ * anybody had. Where the second one does not exist the row says so in the
+ * words the stream below it already uses, rather than leaving the clock above
+ * to imply a conversation that never happened.
+ */
+export function answeredLine(
+  node: Readonly<ReadOnlyGraphNode>,
+  clocks: Readonly<TicketClocks>,
+): string {
+  const answeredAt = node.fields[FIELDS.answeredAt];
+
+  if (typeof answeredAt !== 'number') {
+    return node.fields[FIELDS.state] === 'resolved'
+      ? 'Nothing was ever put to the reporter. It was fixed in silence: the '
+        + 'clock above stopped when somebody picked it up, not when anybody '
+        + 'told them.'
+      : 'Nothing has been put to the reporter yet. The clock above stops at '
+        + 'the first touch; this one waits for words.';
+  }
+
+  const touchedAt = clocks.response.stoppedAt;
+  // Counted in minutes at the desk, like every other span this pane prints:
+  // the gap across a night is the hours somebody could have written in, not
+  // the hours on the wall.
+  const gap = touchedAt === null
+    ? 0
+    : serviceMinutesBetween(touchedAt, answeredAt);
+
+  return `First words to the reporter at ${formatSimTime(answeredAt).time}`
+    + (gap > 0
+      ? ` · ${formatDuration(gap)} after it was first touched.`
+      : '.');
 }
 
 /**
@@ -1445,6 +1493,20 @@ export const TICKETS_APP: AppDef = {
       );
       responseRow.textContent = responseLine(clocks);
       responseRow.dataset.due = formatSimTime(clocks.response.dueAt).time;
+
+      // What the reporter has actually been told, under the clock that stops
+      // when somebody touches it (0.42.0, W-04). It changes when the RECORD
+      // changes rather than every minute, so it stays out of the two cells
+      // below that the repaint is allowed to move.
+      const answeredRow = definitionRow(
+        facts,
+        'Answered',
+        'ticket-detail-answered',
+      );
+      answeredRow.textContent = answeredLine(node, clocks);
+      answeredRow.dataset.answered = String(
+        typeof node.fields[FIELDS.answeredAt] === 'number',
+      );
 
       const resolutionRow = definitionRow(
         facts,

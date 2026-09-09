@@ -739,6 +739,13 @@ test('walks every function of a probation week that goes well', async ({
     await expect(response).toHaveAttribute('data-due', /^\d{2}:\d{2}$/);
     await expect(resolution).toHaveAttribute('data-due', /^\d{2}:\d{2}$/);
     await expect(resolution).toContainText('left');
+
+    // And the row that says what the clock above does NOT (0.42.0, W-04):
+    // nobody has been told anything about this ticket, which is the same
+    // thing the customer-visible stream says further down the pane.
+    const answered = page.getByTestId('ticket-detail-answered');
+    await expect(answered).toHaveAttribute('data-answered', 'false');
+    await expect(answered).toContainText('Nothing has been put to the reporter');
   });
 
   await step('tickets.streams', async () => {
@@ -1267,6 +1274,19 @@ test('walks every function of a probation week that goes well', async ({
     const escalate = page.getByTestId('ticket-escalate');
     await expect(escalate).toBeDisabled();
     await expect(escalate).toHaveAttribute('title', /closed/);
+
+    // THE W-04 CONTRADICTION, GATED (0.42.0). This ticket has been worked and
+    // closed and the reporter has never heard a word - so the touch clock has
+    // stopped and the pane must not call that an answer, four rows above a
+    // stream that says nobody has looked. The word belongs to the row below,
+    // and on this ticket that row says out loud that nobody was told.
+    const response = page.getByTestId('ticket-detail-response');
+    await expect(response).toContainText('Touched');
+    await expect(response).not.toContainText('Answered');
+
+    const answered = page.getByTestId('ticket-detail-answered');
+    await expect(answered).toHaveAttribute('data-answered', 'false');
+    await expect(answered).toContainText('fixed in silence');
   });
 
   /* -- the toys, and the windows they come in ------------------------------ */

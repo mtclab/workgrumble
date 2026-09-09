@@ -1274,9 +1274,12 @@ const ENTRIES = [
   {
     id: 'tickets.clocks',
     surface: 'tickets',
-    control: 'ticket-detail-response, ticket-detail-resolution',
+    control: 'ticket-detail-response, ticket-detail-answered, '
+      + 'ticket-detail-resolution',
     does: 'The clock for the reporter and the clock for the problem, counting '
-      + 'down in desk minutes; the first thing done to a ticket stops one.',
+      + 'down in desk minutes; the first thing done to a ticket stops one - '
+      + 'and, beside it, whether the reporter has actually been told anything '
+      + 'yet, which is a different fact and used to wear the same word.',
     actions: [HELPDESK_ACTIONS.ticketRecordResponse],
     run: 'week',
   },

@@ -1026,7 +1026,18 @@ const GOLDEN_WORKED: GoldenWeek = {
   // thing about the same minutes, and the sheet buckets by the same four
   // columns it always did. A conscious diff: one optional field, in a record
   // nobody presses a button to write.
-  hash: 'b78eb1cab84647c3',
+  //
+  // Moved a fifth time by 0.42.0's W-04 fix
+  // (`b78eb1cab84647c3` -> `dee7377ea95b78f9`) for ONE NEW STAMP: the minute
+  // the reporter first heard anything, `answered_at`, written by the five
+  // verbs that put a line in front of a reporter and by nothing else. This
+  // week talks to people, so the stamp lands on the tickets it talks about -
+  // which is the whole of the diff. Nothing about the week moves: the same
+  // twenty-eight in and twenty-eight closed, the same clocks, meters, mark and
+  // pence, because the field is a record of a minute that had already
+  // happened and no rule anywhere reads it. Every count below is the count it
+  // was, which is what the rest of this fixture asserts line by line.
+  hash: 'dee7377ea95b78f9',
   /** Friday, 17:00, and no further: there is no Saturday to advance into. */
   tick: 6_300,
   outcome: 'passed',

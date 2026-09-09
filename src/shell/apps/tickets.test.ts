@@ -6,14 +6,16 @@ import { cadenceIntervalFor } from '../../world/cadence';
 import { COMPANY_IDS } from '../../world/company';
 import { FIELDS } from '../../world/fields';
 import { createWorldSession } from '../../world/session';
-import { prioritySourceOf } from '../../world/sla';
+import { prioritySourceOf, ticketClocks } from '../../world/sla';
 import { spawnWorldTicket } from '../../world/tickets';
 import { DayDriver, TICK_INTERVAL_MS } from '../day-driver';
 import { carryForStart } from '../start';
 import {
+  answeredLine,
   breachedTicketCount,
   cadenceLine,
   prioritySourceLine,
+  responseLine,
   type TicketRow,
   ticketRows,
   ticketStateLabel,
@@ -377,5 +379,66 @@ describe('the cadence sentence only promises a minute where one is charged (0.37
     expect(line).toContain('Closed now');
     expect(line).not.toContain('This window closes at');
     expect(line).toContain('2 windows of silence');
+  });
+});
+
+/**
+ * W-04, the September walk: the pane printed `Response SLA: Answered, in time`
+ * four rows above `Nothing has been put to the reporter. As far as they know,
+ * nobody has looked.` Both sentences were reading a true model with one word
+ * doing two jobs - `responded_at` is the first TOUCH, and in the trade a first
+ * response is a communication to the customer.
+ *
+ * So there are two rows now, and this is what each of them is allowed to say.
+ */
+describe('the answered row (0.42.0, W-04)', () => {
+  const node = (fields: Record<string, unknown>) => ({
+    id: 'ticket:synthetic',
+    kind: 'ticket',
+    fields: {
+      state: 'open',
+      spawned_at: 60,
+      priority: 3,
+      ...fields,
+    },
+  }) as never;
+
+  /** The minute the pane is read in, well inside the first shift. */
+  const NOW = 200;
+
+  it('never calls a touch an answer', () => {
+    const clocks = ticketClocks(node({ responded_at: 90 }), NOW);
+    const line = responseLine(clocks);
+
+    expect(line).toContain('Touched, in time');
+    // The word that was the whole finding. It belongs to the row below, which
+    // is about somebody having been spoken to.
+    expect(line).not.toContain('Answered');
+  });
+
+  it('says outright that a silently fixed ticket told nobody', () => {
+    const line = answeredLine(
+      node({ state: 'resolved', responded_at: 90 }),
+      ticketClocks(node({ state: 'resolved', responded_at: 90 }), NOW),
+    );
+
+    expect(line).toContain('Nothing was ever put to the reporter');
+    expect(line).toContain('fixed in silence');
+  });
+
+  it('says the clock above is waiting for a touch, not for words', () => {
+    expect(answeredLine(node({}), ticketClocks(node({}), NOW)))
+      .toContain('Nothing has been put to the reporter yet');
+  });
+
+  it('names the minute they heard, and how long after the touch it was', () => {
+    const fields = { responded_at: 90, answered_at: 120 };
+    const line = answeredLine(node(fields), ticketClocks(node(fields), NOW));
+
+    // The world opens at 08:00, so tick 120 is ten o'clock - and the half
+    // hour between somebody picking it up and the reporter finding out is the
+    // gap the two rows exist to make readable.
+    expect(line).toContain('First words to the reporter at 10:00');
+    expect(line).toContain('30m after it was first touched.');
   });
 });

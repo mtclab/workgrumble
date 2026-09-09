@@ -2,8 +2,10 @@ import type {
   GuardData,
   NodeKind,
   NodeRefData,
+  OpData,
   PredData,
 } from '../../engine-api';
+import { FIELDS } from '../fields';
 
 /** Every helpdesk action is tier 1: this is the job you were hired to do. */
 export const HELPDESK_TIER = 1;
@@ -33,6 +35,39 @@ export const KIND_LABELS: Readonly<Record<NodeKind, string>> = {
   directory: 'a directory',
   file: 'a file',
 };
+
+/**
+ * The stamp that goes with EVERY write to the customer-visible stream (0.42.0).
+ *
+ * One fragment, exported, because the honesty of the "Answered" row is a
+ * property of the whole registry rather than of one verb: the reporter has
+ * heard from you the first time anything lands in front of them, whether it
+ * was a question, a reply, a bulk close or a quote the scope verbs put there
+ * on the world's behalf. Written once and never rewritten - the first words
+ * are the answer, and the second question is not a faster first one.
+ *
+ * `actions.test.ts` walks the shipped registry and fails if an action writes
+ * `customer_visible` without carrying this, so a sixth writer added later
+ * cannot quietly leave the pane claiming nobody was told anything.
+ */
+export const ANSWERED_STAMP_OPS: readonly OpData[] = Object.freeze([
+  {
+    op: 'when',
+    cond: not({
+      pred: 'field_is_number',
+      node: TARGET,
+      field: FIELDS.answeredAt,
+    }),
+    ops: [
+      {
+        op: 'set_field',
+        node: TARGET,
+        field: FIELDS.answeredAt,
+        value: { now: true },
+      },
+    ],
+  },
+]);
 
 export function param(name: string): NodeRefData {
   return { param: name };
