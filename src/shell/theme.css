@@ -6194,7 +6194,7 @@ input {
    for the same reason: a menu whose last entry is under the other bar is a
    button you can see and cannot press. */
 .screen-desktop[data-panel-second="top"] .start-menu {
-  max-height: calc(100vh - (2 * var(--size-taskbar)) - var(--space-3));
+  --start-menu-cap: calc(100vh - (2 * var(--size-taskbar)) - var(--space-3));
 }
 
 /* A panel that is a MENU BAR: flat, no window buttons on it, the app name at
