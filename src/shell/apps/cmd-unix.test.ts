@@ -1093,6 +1093,21 @@ describe('the sysadmin network toolbox (E6, 0.16.0)', () => {
 
       expect(out).not.toContain('Name:    print-01.workgrumble.local');
     });
+
+    it('answers it with the pointer record, which is what it holds', () => {
+      // The other half: refusing to invent a forward record is only right if
+      // the honest answer is given instead. A resolver asked which name an
+      // address belongs to reads back the pointer, in the in-addr.arpa shape
+      // the unix `host` prints on the same estate.
+      const api = apiFor(createWorldSession());
+      const address = addressOf(COMPANY_IDS.printServer);
+      const out = win(api, `nslookup ${address}`).lines.join('\n');
+      const reversed = address.split('.').reverse().join('.');
+
+      expect(out)
+        .toContain(`${reversed}.in-addr.arpa name = print-01.workgrumble.local`);
+      expect(out).toContain('pointer record');
+    });
   });
 
   describe('ping: continuous by default (the sharpest family diff)', () => {
