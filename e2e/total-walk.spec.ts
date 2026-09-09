@@ -277,16 +277,22 @@ async function chatOption(page: Page, name: RegExp): Promise<void> {
  * solves the same problem by clearing the screen first and cannot be used
  * inside an ssh session, where `cls` is the other family's word.
  *
- * Safe as a raw read rather than a retried assertion because `runCommand`
- * has already waited for the line to be echoed back, and a command's output
- * is drawn in the same repaint as its echo.
+ * Measured from the ECHO rather than by subtracting a before-reading: the
+ * terminal forgets its oldest lines at four hundred, so in a long session the
+ * text after a command is not the text before it plus the new rows, and a
+ * subtraction would quietly eat the answer it was called to read.
+ *
+ * Safe as a raw read rather than a retried assertion because `runCommand` has
+ * already waited for the line to be echoed back, and a command's output is
+ * drawn in the same repaint as its echo.
  */
 async function printedBy(page: Page, line: string): Promise<string> {
-  const before = (await page.getByTestId('cmd-output').textContent()) ?? '';
   await runCommand(page, line);
-  const after = (await page.getByTestId('cmd-output').textContent()) ?? '';
 
-  return after.slice(before.length);
+  const text = (await page.getByTestId('cmd-output').textContent()) ?? '';
+  const echo = text.lastIndexOf(line);
+
+  return echo < 0 ? text : text.slice(echo + line.length);
 }
 
 function resolvedFor(page: Page, title: RegExp): Locator {

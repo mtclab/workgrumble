@@ -120,6 +120,16 @@ test('captures the start select and the engineer boot', async ({ page }) => {
   await shot(page, '31-engineer-first-monday');
   await dismissBrief(page);
   await shot(page, '32-engineer-desktop-with-pile');
+
+  // THE LAUNCHER (W-07, 0.42.0). The sweep exists so that every surface a
+  // player reaches gets a human eye on it each round, and the one surface
+  // that had never been captured was the one the September walk found five
+  // entries hidden in. The menu wraps into columns now; a frame is how
+  // anybody notices when a column goes somewhere silly.
+  await page.getByTestId('start-button').click();
+  await expect(page.getByTestId('start-menu')).toBeVisible();
+  await shot(page, '33-start-menu');
+  await page.keyboard.press('Escape');
 });
 
 /**
