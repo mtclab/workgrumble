@@ -216,6 +216,12 @@ test('announces a breach that happens while the player is working', async ({
   await page.getByTestId('day-pause').click();
   await row.click();
 
+  // And let it go again before doing anything (W-10, 0.42.0): a stopped clock
+  // stops the work as well as the minutes now, so a reboot pressed here would
+  // be refused and the touch log this journey needs would stay empty. Reading
+  // the row was what the pause was for.
+  await page.getByTestId('day-pause').click();
+
   // Escalating is a form now, and second line will not take a form with
   // nothing in it. What was tried fills itself in from what was actually
   // done, so the journey has to have done something first.

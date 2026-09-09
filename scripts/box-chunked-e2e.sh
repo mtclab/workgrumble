@@ -68,8 +68,20 @@ put_down() {
 }
 
 PASS=0; FAIL=0; FAILED_SPECS=""
-# Edit this list to subset; the full suite is every spec under e2e/.
-for spec in corporate interruptions services total-walk visual-sweep; do
+# The chunk list. The default is the version-relevant set; SPECS=all runs
+# every spec under e2e/, which is what a release round wants, and any other
+# value is taken as the list itself ("SPECS='day windows timesheet'"). It is a
+# variable rather than a line to edit because editing the runner to run it is
+# how a release round ends up gating a list nobody wrote down.
+SPECS="${SPECS:-corporate interruptions services total-walk visual-sweep}"
+
+if [ "$SPECS" = "all" ]; then
+  SPECS=$(ls e2e/*.spec.ts | sed 's|e2e/||; s|\.spec\.ts$||' | tr '\n' ' ')
+fi
+
+echo "chunks: $SPECS"
+
+for spec in $SPECS; do
   echo "=== chunk: $spec ==="
   if ! boot "$spec"; then FAIL=$((FAIL+1)); FAILED_SPECS="$FAILED_SPECS $spec(boot)"; continue; fi
   PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PORT" \

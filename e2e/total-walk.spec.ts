@@ -2007,9 +2007,14 @@ test('walks every function of a probation week that goes well', async ({
     // printed has to be an address the rest of the terminal can use. This is
     // the move the KB article about names failing while addresses answer is
     // entirely about, and until this version it was impossible here.
+    //
+    // On a screen of its own, and the LAST address on it: nslookup answers
+    // with the resolver it asked first and the box it asked about second, and
+    // the scrollback above holds addresses from every command before it.
+    await runOnlyCommand(page, 'nslookup PRINT-01');
+
     const printed = await page.getByTestId('cmd-output').textContent() ?? '';
-    const address = /Name:[^\n]+\nAddress:\s+(10\.42\.0\.\d+)/u
-      .exec(printed)?.[1];
+    const address = [...printed.matchAll(/10\.42\.0\.\d+/gu)].at(-1)?.[0];
 
     expect(address, 'nslookup printed no address to test with').toBeTruthy();
     await runCommand(page, `ping ${address ?? ''}`);
