@@ -451,6 +451,31 @@ export const INSTALLING_UPDATES_REASON = 'The workstation is installing '
   + 'updates. It said so. It is not sorry.';
 
 /**
+ * And what the desk answers with while the CLOCK is stopped (W-10, 0.42.0).
+ *
+ * The walk found the hole and it is one click wide: the day paused at 08:01, a
+ * triage filed, four terminal commands run and an account unlocked, and the
+ * ticket resolved at "Day 1 08:01". Every clock in this game - the SLA, the
+ * stress, the suspicion, the boss's rounds, the utilisation sheet - is priced
+ * in simulated minutes, so a player who pauses, empties the queue and unpauses
+ * has beaten the entire pressure layer with a taskbar control. That makes the
+ * honest way to play strictly harder than the dishonest one, which is the
+ * exact shape the house rule about honesty forbids everywhere else in here.
+ *
+ * The rule is the one the pause control's own words already imply: it stops
+ * the clock, and the work is in the clock. READING is untouched - the queue,
+ * the KB, a directory listing, `ls`, `services`, a ping, every window on the
+ * desk - because reading at leisure is what a pause is FOR and nothing in it
+ * moves the world. What is refused is what CHANGES the world, at the same
+ * driver seam a meeting refuses at and for the same reason: the shell has five
+ * ways to reach a verb, and a rule enforced in four of them is a rule with a
+ * hole in it.
+ */
+export const CLOCK_STOPPED_REASON = 'The clock is stopped, and so is the '
+  + 'work: nothing at this desk happens in a minute that is not passing. Read '
+  + 'all you like - start the clock when you want to do something about it.';
+
+/**
  * The sources that take the DESK rather than merely the attention, and the
  * sentence each of them refuses in.
  *
@@ -1771,7 +1796,7 @@ export class DayDriver implements DayApi {
    * does to the desk, the money and the minute the crash is measured from.
    */
   public drink(): DispatchResult {
-    const held = this.takeoverRefusal();
+    const held = this.workRefusal();
 
     if (held !== null) {
       return { ok: false, reason: held };
@@ -1786,7 +1811,7 @@ export class DayDriver implements DayApi {
   }
 
   public tidyDesk(): DispatchResult {
-    const held = this.takeoverRefusal();
+    const held = this.workRefusal();
 
     return held !== null
       ? { ok: false, reason: held }
@@ -1821,7 +1846,7 @@ export class DayDriver implements DayApi {
     // was banked is what actually happened.
     this.settleDrip(this.engine.now());
 
-    const held = this.takeoverRefusal();
+    const held = this.workRefusal();
 
     if (held !== null) {
       return { ok: false, reason: held };
@@ -2567,7 +2592,7 @@ export class DayDriver implements DayApi {
       };
     }
 
-    const held = this.takeoverRefusal();
+    const held = this.workRefusal();
 
     if (held !== null) {
       return { ok: false, reason: held };
@@ -2619,7 +2644,7 @@ export class DayDriver implements DayApi {
     target: NodeId | null,
     params: Record<string, string | number | boolean | null>,
   ): DispatchResult {
-    const held = this.takeoverRefusal();
+    const held = this.workRefusal();
 
     if (held !== null) {
       return { ok: false, reason: held };
@@ -3211,7 +3236,7 @@ export class DayDriver implements DayApi {
 
   /** The bottle in the fridge with your name on it. */
   public beer(): DispatchResult {
-    const held = this.takeoverRefusal();
+    const held = this.workRefusal();
 
     return held !== null
       ? { ok: false, reason: held }
@@ -6225,6 +6250,24 @@ export class DayDriver implements DayApi {
    */
   private takeoverRefusal(): string | null {
     return deskHeldReason(this.interruption()?.entry.source);
+  }
+
+  /**
+   * What the desk answers with to anything that would CHANGE the world - a
+   * takeover holding it, or the clock being stopped (W-10, 0.42.0).
+   *
+   * One question asked in one place, in front of every verb the shell can
+   * reach, because that is the only shape either rule holds in: a meeting that
+   * refused the mouse and not the keyboard was the lesson the first of them
+   * cost, and a pause that stopped the minutes and not the work was the second.
+   *
+   * The takeover speaks first where both are true. A player who paused the day
+   * while the phone was ringing is in a meeting AND stopped, and being in the
+   * meeting is the more useful half to be told about.
+   */
+  private workRefusal(): string | null {
+    return this.takeoverRefusal()
+      ?? (this.paused_ ? CLOCK_STOPPED_REASON : null);
   }
 
   /** Whether an id is in one of the lists the world keeps. */

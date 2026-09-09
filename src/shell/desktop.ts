@@ -2026,11 +2026,17 @@ export class Desktop {
 
     this.pauseButton.dataset.active = String(paused);
     this.pauseButton.setAttribute('aria-pressed', String(paused));
-    this.pauseButton.setAttribute(
-      'aria-label',
-      paused ? 'Resume the clock' : 'Pause the clock',
-    );
-    this.pauseButton.title = paused ? 'Resume the clock' : 'Pause the clock';
+
+    // What the control DOES, said on the control (W-10, 0.42.0). The clock
+    // being stopped now stops the work as well as the minutes, so the button
+    // that stops it says so before it is pressed rather than leaving the
+    // player to meet the refusal on the first thing they try.
+    const pauseLabel = paused
+      ? 'Resume the clock - nothing can be done at the desk while it is stopped'
+      : 'Pause the clock - reading stays open, work waits for the minutes';
+
+    this.pauseButton.setAttribute('aria-label', pauseLabel);
+    this.pauseButton.title = pauseLabel;
     this.pauseButton.replaceChildren(
       createIcon(paused ? 'icon-play' : 'icon-pause'),
     );

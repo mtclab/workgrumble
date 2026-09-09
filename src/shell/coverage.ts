@@ -364,7 +364,10 @@ const ENTRIES = [
     id: 'desktop.pause',
     surface: 'desktop',
     control: 'day-pause',
-    does: 'Stops the clock, and starts it again.',
+    does: 'Stops the clock, and starts it again - and with the clock stopped '
+      + 'the desk is stopped too (W-10, 0.42.0): everything on screen can be '
+      + 'read and nothing can be changed, because every cost in this game is '
+      + 'priced in minutes that are not passing.',
     run: 'week',
   },
   {

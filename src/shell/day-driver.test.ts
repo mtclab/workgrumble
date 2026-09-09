@@ -55,6 +55,7 @@ import {
   triedFromTouches,
 } from '../world/tickets';
 import {
+  CLOCK_STOPPED_REASON,
   DayDriver,
   TICK_INTERVAL_MS,
   ticksFromElapsed,
@@ -412,6 +413,114 @@ describe('the day driver', () => {
     expect(fresh.driver.schedule().day).toBe(2);
     expect(fresh.driver.state()).toBe('morning_brief');
     expect(fresh.driver.paused()).toBe(false);
+  });
+});
+
+/**
+ * W-10, the September walk: the day paused at 08:01, a triage filed, four
+ * terminal commands run and an account unlocked - "Ticket resolved, Day 1
+ * 08:01". Every cost in this game is priced in simulated minutes, so a player
+ * who pauses, empties the queue and unpauses had beaten the whole pressure
+ * layer with a taskbar control, and the honest way to play was strictly
+ * harder than the dishonest one.
+ *
+ * THE RULE: a stopped clock stops the desk. Reading is untouched, because
+ * reading at leisure is what a pause is for; anything that would CHANGE the
+ * world waits for the minutes, refused at the one seam every verb the shell
+ * can reach passes through.
+ */
+describe('a stopped clock stops the work (W-10)', () => {
+  it('refuses every verb the desk can reach, and moves nothing', () => {
+    const { driver, engine } = harness('ticket:locked-account');
+    driver.startShift();
+
+    const before = engine.snapshotHash();
+    driver.setPaused(true);
+
+    const unlock = driver.dispatch(
+      HELPDESK_ACTIONS.accountUnlock,
+      COMPANY_IDS.player,
+      COMPANY_IDS.garyAccount,
+      {},
+    );
+
+    expect(unlock).toEqual({ ok: false, reason: CLOCK_STOPPED_REASON });
+    // The walk's own sentence: an account unlocked in a minute that was not
+    // passing. The world has to be untouched, not merely un-billed.
+    expect(engine.snapshotHash()).toBe(before);
+
+    // And the same answer from the other four ways in - a can, the desk, the
+    // dot and the bottle all go through the same seam, because a rule that
+    // holds for one of them is a rule with four holes in it.
+    expect(driver.drink().ok).toBe(false);
+    expect(driver.tidyDesk()).toEqual({
+      ok: false,
+      reason: CLOCK_STOPPED_REASON,
+    });
+    expect(driver.setPresence('dnd')).toEqual({
+      ok: false,
+      reason: CLOCK_STOPPED_REASON,
+    });
+    expect(driver.beer()).toEqual({
+      ok: false,
+      reason: CLOCK_STOPPED_REASON,
+    });
+    expect(engine.snapshotHash()).toBe(before);
+  });
+
+  it('lets the same act through the moment the clock is running again', () => {
+    const { driver, engine } = harness('ticket:locked-account');
+    driver.startShift();
+    driver.setPaused(true);
+
+    expect(driver.dispatch(
+      HELPDESK_ACTIONS.accountUnlock,
+      COMPANY_IDS.player,
+      COMPANY_IDS.garyAccount,
+      {},
+    ).ok).toBe(false);
+
+    driver.setPaused(false);
+
+    expect(driver.dispatch(
+      HELPDESK_ACTIONS.accountUnlock,
+      COMPANY_IDS.player,
+      COMPANY_IDS.garyAccount,
+      {},
+    )).toEqual({ ok: true });
+    expect(engine.graph.getField(COMPANY_IDS.garyAccount, FIELDS.locked)).toBe(false);
+  });
+
+  it('leaves the reading alone, which is what a pause is for', () => {
+    const { driver, engine } = harness('ticket:locked-account');
+    driver.startShift();
+    driver.setPaused(true);
+
+    // The queue, the estate and the clock all answer exactly as they did:
+    // nothing here changes the world, so nothing here is refused.
+    expect(engine.graph.getNode('ticket:locked-account')).toBeDefined();
+    expect(driver.state()).toBe('shift');
+    expect(driver.timesheet().days.length).toBeGreaterThanOrEqual(0);
+
+    // Including the probe evidence a read command leaves behind: looking at a
+    // box is looking, and the record of having looked is a record.
+    driver.recordProbe('machine:gary', 'ping', true);
+  });
+
+  it('refuses in a sentence that says what is still open', () => {
+    // A refusal that teaches, like every other one in here: it names the
+    // reason, and it names what the player CAN still do - which is the half
+    // that keeps the pause worth having.
+    const { driver } = harness();
+    driver.startShift();
+    driver.setPaused(true);
+
+    const refused = driver.tidyDesk();
+
+    expect(refused.ok).toBe(false);
+    expect(refused.ok ? '' : refused.reason)
+      .toContain('The clock is stopped');
+    expect(refused.ok ? '' : refused.reason).toContain('Read all you like');
   });
 });
 
