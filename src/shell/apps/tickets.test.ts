@@ -438,7 +438,7 @@ describe('the answered row (0.42.0, W-04)', () => {
     // The world opens at 08:00, so tick 120 is ten o'clock - and the half
     // hour between somebody picking it up and the reporter finding out is the
     // gap the two rows exist to make readable.
-    expect(line).toContain('First words to the reporter at 10:00');
+    expect(line).toContain('First words to the reporter at 10:00 (Day 1)');
     expect(line).toContain('30m after it was first touched.');
   });
 });

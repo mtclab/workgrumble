@@ -299,7 +299,13 @@ export function answeredLine(
     ? 0
     : serviceMinutesBetween(touchedAt, answeredAt);
 
-  return `First words to the reporter at ${formatSimTime(answeredAt).time}`
+  // With the day on it, in the shape the rest of the building stamps a minute
+  // in - `10:00 (Day 1)`. A ticket can be answered on the Tuesday and read on
+  // the Thursday, and a bare time on a pane that spans a week is the W-17
+  // class of fault: a stamp that reads as today whatever day it happened on.
+  const at = formatSimTime(answeredAt);
+
+  return `First words to the reporter at ${at.time} (${at.day})`
     + (gap > 0
       ? ` · ${formatDuration(gap)} after it was first touched.`
       : '.');
