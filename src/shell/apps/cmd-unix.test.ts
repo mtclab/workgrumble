@@ -1208,11 +1208,89 @@ describe('the characteristic-incident commands (E6, 0.19.0)', () => {
       expect(out[out.length - 1]).toBe(`26G\t/var/log`);
     });
 
+    /**
+     * W-06, the September walk: `du -sh /var/log/*` answered `26G /var/log` -
+     * the parent, one line, and no clue which log had eaten the disk. The
+     * wildcard was being read as part of the path; it is the SHELL's, and it
+     * is the whole of the drill-down.
+     */
+    it('expands a trailing glob into a row per child, not the parent (W-06)', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'du -sh /var/log/*').lines;
+
+      // The journal and the nginx logs, one row each, sorted the way a shell
+      // sorts what it expands - and the runaway named where it can be seen.
+      expect(out).toEqual([
+        '26G\t/var/log/journal',
+        '12M\t/var/log/nginx',
+      ]);
+      // The parent's own total is emphatically NOT the answer to this line.
+      expect(out.some((line) => line.endsWith('\t/var/log'))).toBe(false);
+    });
+
+    it('says what the shell said when a glob matches nothing', () => {
+      const { api, ssh } = onMsp();
+
+      // Nothing matched, so nothing was expanded and du was handed the
+      // pattern itself - which is what an unset nullglob does and what du
+      // then says about it.
+      expect(unix(api, ssh, 'du -sh /nowhere/*').lines)
+        .toEqual(["du: cannot access '/nowhere/*': No such file or directory"]);
+    });
+
     it('a path with nothing under it is a small ordinary directory', () => {
       const { api, ssh } = onMsp();
       // The world seeds no directories under /etc for a Linux box; du reports the
       // 4K an empty ext4 directory takes, not an error.
       expect(unix(api, ssh, 'du -sh /etc').lines).toEqual(['4.0K\t/etc']);
+    });
+  });
+
+  /**
+   * W-05, the September walk: `journalctl --disk-usage` printed the entire
+   * journal. Every flag but `--vacuum-size` and `-u` fell through to the bare
+   * listing, so the command taught its own output wrong - on the exact path
+   * the KB article about a Linux box out of disk sends a player down, and
+   * wrong in the direction that buries the runaway in the log that caused it.
+   */
+  describe('journalctl --disk-usage: the one line systemd prints (W-05)', () => {
+    it('answers with the sentence, and with no journal at all', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'journalctl --disk-usage').lines;
+
+      expect(out).toEqual([
+        'Archived and active journals take up 26.0G in the file system.',
+      ]);
+    });
+
+    it('reads the same field the vacuum shrinks, so the three agree', () => {
+      const { api, ssh } = onMsp();
+      const usage = (): string => unix(api, ssh, 'journalctl --disk-usage')
+        .lines
+        .join('\n');
+
+      expect(usage()).toContain('26.0G');
+      expect(unix(api, ssh, 'du -sh /var/log/journal').lines[0])
+        .toBe('26G\t/var/log/journal');
+
+      // And the fix moves all of it: the vacuum is a real state change, and
+      // what --disk-usage reports afterwards is what the box now holds.
+      unix(api, ssh, 'journalctl --vacuum-size=200M');
+
+      expect(usage()).not.toContain('26.0G');
+      expect(unix(api, ssh, 'du -sh /var/log/journal').lines[0])
+        .not.toBe('26G\t/var/log/journal');
+    });
+
+    it('reports a healthy box in systemd shape, not df shape', () => {
+      const { api, ssh } = onMsp('MERI-APP-01');
+
+      // The whole part, one truncated tenth, and a single-letter unit - which
+      // is `format_bytes`, not the rounding `df -h` prints in its columns.
+      expect(unix(api, ssh, 'journalctl --disk-usage').lines)
+        .toEqual([
+          'Archived and active journals take up 40.0M in the file system.',
+        ]);
     });
   });
 

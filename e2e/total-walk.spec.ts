@@ -4429,6 +4429,20 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await expect(page.getByTestId('cmd-output'))
       .toContainText('12M /var/log/nginx');
 
+    // The glob is the drill-down (0.42.0, W-06): the shell hands du one
+    // argument per child, so the line answers with a row each and names the
+    // log that ate the disk - it used to answer `26G /var/log`, the parent,
+    // one line, no clue.
+    await runCommand(page, 'du -sh /var/log/*');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('26G /var/log/journal 12M /var/log/nginx');
+
+    // And the one line systemd prints (0.42.0, W-05), reading the same field
+    // both of those do - it used to print the whole journal instead.
+    await runCommand(page, 'journalctl --disk-usage');
+    await expect(page.getByTestId('cmd-output'))
+      .toContainText('Archived and active journals take up 26.0G in the file system.');
+
     await runCommand(page, 'journalctl --vacuum-size=200M');
     await expect(page.getByTestId('cmd-output'))
       .toContainText('Vacuuming done, freed 26G');
