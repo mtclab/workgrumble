@@ -149,6 +149,10 @@
      chrome above is unchanged - this is the touch floor, not a resize. */
   --size-touch-target: 44px;
   --size-start-menu: 232px;
+  /* One row of the start menu, which is what the column wrap counts with. A
+     16px icon and a 12px label inside 4px of padding: the Win95 menu row,
+     which is where this shape comes from. */
+  --size-menu-row: 26px;
   --size-panel: 300px;
   --size-toast: 288px;
   --size-dialog: 340px;
@@ -1294,12 +1298,19 @@ input {
   left: var(--space-3);
   display: grid;
   grid-template-columns: auto 1fr;
-  width: var(--size-start-menu);
   /* The menu is bottom-anchored and grows upward, so a list longer than the
      screen walks off the TOP edge, where a button can be visible yet
      unclickable. The cap keeps the whole menu on screen whatever the app
-     count; the list scrolls instead. */
-  max-height: calc(100vh - var(--size-taskbar) - var(--space-3));
+     count; the list wraps into a second column, and only scrolls when even
+     that will not fit (W-07, 0.42.0). */
+  /* The cap, once, as a variable: the LIST inside has to know it too - a
+     wrap needs a definite height to count rows against - and a desktop skin
+     that moves the panel overrides this one line rather than two rules that
+     could drift apart. */
+  --start-menu-cap: calc(100vh - var(--size-taskbar) - var(--space-3));
+
+  max-width: calc(100vw - var(--space-3) - var(--space-3));
+  max-height: var(--start-menu-cap);
   padding: var(--space-2);
 }
 
@@ -1321,13 +1332,76 @@ input {
   rotate: var(--angle-flip);
 }
 
+/*
+   The list wraps into columns rather than running off the bottom (W-07,
+   0.42.0). This is what the menu it is a caricature of did: a Programs list
+   too long for the screen grew sideways, because a launcher whose entries you
+   have to go looking for is a launcher with a hidden half.
+
+   `repeat(auto-fill, ROW)` against the list's own capped height is what counts
+   the rows that fit, and `grid-auto-flow: column` sends the rest into the next
+   column. The height cap is the menu's own, less both paddings, so the two can
+   never disagree about where the taskbar is.
+
+   The scroll stays as the last resort, for a window too small in BOTH
+   directions to hold the list at all - and when it is reached, `data-fold`
+   says so and the fade below shows it, because the walk's finding was not
+   that the fold was unreachable but that nothing on the screen admitted it
+   was there.
+*/
 .start-menu-list {
   display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--size-start-menu);
+  grid-template-rows: repeat(auto-fill, var(--size-menu-row));
   align-content: start;
-  gap: var(--space-1);
+  gap: var(--space-1) var(--space-4);
   min-height: 0;
+  max-height: calc(
+    var(--start-menu-cap) - var(--space-2) - var(--space-2) - var(--space-2)
+      - var(--space-2)
+  );
   padding: var(--space-2);
-  overflow-y: auto;
+  overflow: auto;
+}
+
+/* The fold, admitted: a hairline fade at the bottom edge and a rail that is
+   actually painted, only when there is something under them. */
+.start-menu-list[data-fold="true"] {
+  mask-image: linear-gradient(
+    to bottom,
+    rgb(0 0 0) calc(100% - var(--space-6)),
+    rgb(0 0 0 / 25%) 100%
+  );
+  scrollbar-color: var(--color-bevel-dark) var(--color-surface-sunken);
+  scrollbar-gutter: stable;
+}
+
+/* Every row in the menu is one grid row high, so the count above is the count
+   on the screen: an item that grew a second line would quietly re-flow the
+   whole menu. */
+.start-menu .menu-item {
+  min-width: 0;
+  padding: var(--space-2) var(--space-4);
+  white-space: nowrap;
+}
+
+.start-menu .menu-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A phone has height and no width, so the wrap is the wrong way round there:
+   a second column would be off the side of the screen, and the fold it would
+   take to reach one is worse than the fold it was meant to cure. One column,
+   the way it always was, and the fade above says when there is more of it. */
+@media (max-width: 640px) {
+  .start-menu-list {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-rows: none;
+    overflow-x: hidden;
+  }
 }
 
 .menu-item {
@@ -6047,7 +6121,7 @@ input {
 }
 
 .screen-desktop[data-panel="top"] .start-menu {
-  max-height: calc(100vh - var(--size-taskbar) - var(--space-3));
+  --start-menu-cap: calc(100vh - var(--size-taskbar) - var(--space-3));
 }
 
 /* MATE (0.28.0): TWO panels - a menu bar along the top and a taskbar along the
@@ -6080,7 +6154,7 @@ input {
    under the taskbar, where its last entry is visible and unclickable - which is
    the exact dead end the single-panel cap above exists to prevent. */
 .screen-desktop[data-panel-second="bottom"] .start-menu {
-  max-height: calc(100vh - (2 * var(--size-taskbar)) - var(--space-3));
+  --start-menu-cap: calc(100vh - (2 * var(--size-taskbar)) - var(--space-3));
 }
 
 /* The Mac family (0.33.0): a MENU BAR on top and a DOCK underneath - the first
