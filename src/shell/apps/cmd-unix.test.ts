@@ -35,6 +35,7 @@ import {
   type PackageManager,
 } from '../skins';
 import { DayDriver } from '../day-driver';
+import { addressOf } from './cmd-net';
 import { parseCommand } from './cmd-parse';
 import { executeCommand, type CommandResult } from './cmd-run';
 import {
@@ -1055,6 +1056,42 @@ describe('the sysadmin network toolbox (E6, 0.16.0)', () => {
       // reverse lookup rather than as a name nobody has heard of.
       expect(win(api, 'nslookup 10.42.0.251').lines.join('\n'))
         .toContain('reverse lookup');
+    });
+
+    /**
+     * AND THE ONE THE DESK ACTUALLY ANSWERS WITH - the adversarial review of
+     * the 0.42.0 bundle.
+     *
+     * The address branch went into `machineOf`, which is what `nslookup`
+     * resolves through as well as `ping` and `tracert`. So the desk's
+     * resolver, handed a number, now answers it as a FORWARD lookup:
+     *
+     *     Name:    print-01.workgrumble.local
+     *     Address:  10.42.0.48
+     *
+     * There is no such record. A name server asked for `10.42.0.48` is being
+     * asked to resolve a name that happens to look like an address, and the
+     * answer is that no such name exists - which is exactly what the same
+     * bundle made `dig` say on the engineer's box, what the new
+     * `isAddressLiteral` branch in `nslookupLines` was written to say, and
+     * what this version's own release note promises out loud ("a resolver
+     * asked to resolve an address still finds nothing, because an address is
+     * not a name"). The branch is unreachable for every address that names a
+     * box, so the only case the gate above covers is the one nothing answers.
+     *
+     * It matters here more than anywhere: the desk is where the KB article
+     * about names failing while addresses answer is READ, and a learner who
+     * takes this shape away has learned that a resolver returns A records for
+     * addresses. Either `nslookup` reverses (the real tool does, in the PTR
+     * shape `host` already prints) or it refuses - it may not invent a
+     * forward record.
+     */
+    it('does not answer an address with a NAME record it does not hold', () => {
+      const api = apiFor(createWorldSession());
+      const address = addressOf(COMPANY_IDS.printServer);
+      const out = win(api, `nslookup ${address}`).lines.join('\n');
+
+      expect(out).not.toContain('Name:    print-01.workgrumble.local');
     });
   });
 

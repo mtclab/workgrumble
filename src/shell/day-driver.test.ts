@@ -1,6 +1,11 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
-import type { EngineApi, Expr, TicketDef } from '../engine-api';
+import type {
+  DispatchResult,
+  EngineApi,
+  Expr,
+  TicketDef,
+} from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import {
   DAY_ACTIONS,
@@ -521,6 +526,58 @@ describe('a stopped clock stops the work (W-10)', () => {
     expect(refused.ok ? '' : refused.reason)
       .toContain('The clock is stopped');
     expect(refused.ok ? '' : refused.reason).toContain('Read all you like');
+  });
+
+  /**
+   * AND THE SEAMS THE RULE DOES NOT REACH - the adversarial review of the
+   * 0.42.0 bundle.
+   *
+   * `workRefusal` is asked in six places, and the driver hands the shell far
+   * more than six verbs that change the world. Every one of these is on a
+   * control a player can press with the day stopped: the web store's install
+   * button (`desktop.ts`), the timesheet window's Submit
+   * (`apps/timesheet.ts`), the ticket pane's "write it up" (`apps/tickets.ts`)
+   * and the terminal's `report` (`apps/cmd-run.ts`). They all answer `ok` and
+   * they all move the graph.
+   *
+   * That is the same hole W-10 was opened to close, one surface along, and it
+   * is worse than a residual because the version SAYS otherwise in two places
+   * a player reads: the release note ("anything that would CHANGE something
+   * waits until the minutes are running again") and the pause button's own
+   * label ("nothing can be done at the desk while it is stopped"). A rule the
+   * product states and does not hold is the shape the house rule about the
+   * honest way to play being the harder one already forbids.
+   *
+   * The fix is the one the driver already knows how to make: ask
+   * `workRefusal()` in front of these verbs too, and the walk's own words -
+   * "the shell has five ways to reach a verb, and a rule enforced in four of
+   * them is a rule with a hole in it".
+   */
+  it('holds the rule at EVERY verb that changes the world, not six of them', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+
+    const before = engine.snapshotHash();
+    driver.setPaused(true);
+
+    const leaks: string[] = [];
+    const check = (name: string, result: DispatchResult): void => {
+      if (result.ok) {
+        leaks.push(name);
+      }
+    };
+
+    // The web store, which is on the desktop from the first minute.
+    check('install', driver.install('solitaire'));
+    // The sheet, which is the surface W-08 in this same bundle is about.
+    check('submitTimesheet', driver.submitTimesheet());
+    // Two conduct verbs, both with consequences the week is graded on.
+    check('writeUpArticle', driver.writeUpArticle());
+    check('reportProject', driver.reportProject('green'));
+
+    expect(leaks, 'verbs that changed the world with the clock stopped')
+      .toEqual([]);
+    expect(engine.snapshotHash()).toBe(before);
   });
 });
 
