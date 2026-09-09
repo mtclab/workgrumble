@@ -10,6 +10,7 @@ import { loadEngineForTests } from '../engine-api/load-node';
 import {
   DAY_ACTIONS,
   fieldLines,
+  helpdeskActions,
   HELPDESK_ACTIONS,
 } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
@@ -553,6 +554,47 @@ describe('a stopped clock stops the work (W-10)', () => {
    * "the shell has five ways to reach a verb, and a rule enforced in four of
    * them is a rule with a hole in it".
    */
+  /**
+   * THE VERDICT FOR EVERY VERB THE BUILD SHIPS, said out loud.
+   *
+   * The gate above names four leaks because four were found; this one asks
+   * the question of the whole registry, so the next verb somebody adds is
+   * covered on the day it is written rather than on the day somebody plays a
+   * paused week and notices. It goes through the shell's own door - the
+   * generic `dispatch` every app reaches the world with - and it asserts the
+   * SENTENCE as well as the refusal, because "no" for the wrong reason is a
+   * different rule that happens to look like this one.
+   *
+   * Nothing is exempt here, deliberately. The scope that IS exempt - the
+   * clock's own bookkeeping, the evidence a read leaves, the screens the day
+   * itself put up - is not reachable through this door at all: it is what the
+   * driver does on its own turn, and `day-driver-door.test.ts` is what keeps
+   * it that way.
+   */
+  it('answers every action in the registry with the same stopped clock', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+
+    const before = engine.snapshotHash();
+    driver.setPaused(true);
+
+    const ids = helpdeskActions().map((action) => action.id);
+    const wrong: string[] = [];
+
+    for (const id of ids) {
+      const result = driver.dispatch(id, COMPANY_IDS.player, null, {});
+
+      if (result.ok || result.reason !== CLOCK_STOPPED_REASON) {
+        wrong.push(`${id}: ${result.ok ? 'ok' : result.reason}`);
+      }
+    }
+
+    // The gate is over the whole registry rather than over a handful of it.
+    expect(ids.length).toBeGreaterThan(50);
+    expect(wrong, 'actions that did not wait for the clock').toEqual([]);
+    expect(engine.snapshotHash()).toBe(before);
+  });
+
   it('holds the rule at EVERY verb that changes the world, not six of them', () => {
     const { driver, engine } = harness();
     driver.startShift();
