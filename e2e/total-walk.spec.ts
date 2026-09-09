@@ -268,6 +268,27 @@ async function chatOption(page: Page, name: RegExp): Promise<void> {
  * minutes the walk spent clicking. The title is in the body of the notice, so
  * asking for the ticket by name is both exact and stable.
  */
+/**
+ * What ONE command printed, as the delta on the terminal's own scrollback.
+ *
+ * `cmd-output` is the whole session, so a plain `toContainText` after a
+ * command is an assertion about every line typed in that window - which is
+ * how a step comes to pass on a row two commands above it. `runOnlyCommand`
+ * solves the same problem by clearing the screen first and cannot be used
+ * inside an ssh session, where `cls` is the other family's word.
+ *
+ * Safe as a raw read rather than a retried assertion because `runCommand`
+ * has already waited for the line to be echoed back, and a command's output
+ * is drawn in the same repaint as its echo.
+ */
+async function printedBy(page: Page, line: string): Promise<string> {
+  const before = (await page.getByTestId('cmd-output').textContent()) ?? '';
+  await runCommand(page, line);
+  const after = (await page.getByTestId('cmd-output').textContent()) ?? '';
+
+  return after.slice(before.length);
+}
+
 function resolvedFor(page: Page, title: RegExp): Locator {
   return page
     .getByTestId('toast')
@@ -4437,22 +4458,25 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     // The glob is the drill-down (0.42.0, W-06): the shell hands du one
     // argument per child, so the line answers with a row each and names the
     // log that ate the disk - it used to answer `26G /var/log`, the parent,
-    // one line, no clue. On a cleared screen, because both of those rows are
-    // already up there from the two commands above; that the parent's row is
-    // NOT among them is exact and is asserted in `cmd-unix.test.ts`.
-    await runOnlyCommand(page, 'du -sh /var/log/*');
-    await expect(page.getByTestId('cmd-output'))
-      .toContainText('26G /var/log/journal');
-    await expect(page.getByTestId('cmd-output'))
-      .toContainText('12M /var/log/nginx');
+    // one line, no clue.
+    //
+    // Read as the DELTA on the screen rather than by clearing it: this is a
+    // unix session, `cls` is the other family's word, and both of these rows
+    // are already up the screen from the two commands above. What the command
+    // itself printed is what everything below asserts on.
+    const printedByDu = await printedBy(page, 'du -sh /var/log/*');
+
+    expect(printedByDu).toMatch(/26G\s+\/var\/log\/journal/u);
+    expect(printedByDu).toMatch(/12M\s+\/var\/log\/nginx/u);
 
     // And the one line systemd prints (0.42.0, W-05), reading the same field
-    // both of those do - it used to print the whole journal instead.
-    await runOnlyCommand(page, 'journalctl --disk-usage');
-    await expect(page.getByTestId('cmd-output'))
-      .toContainText('Archived and active journals take up 26.0G in the file system.');
-    // The journal itself is emphatically not the answer to that question.
-    await expect(page.getByTestId('cmd-output')).not.toContainText('fcportal');
+    // both of those do - it used to print the whole journal instead, which is
+    // what the second half of this says it must not do again.
+    const printedByUsage = await printedBy(page, 'journalctl --disk-usage');
+
+    expect(printedByUsage)
+      .toContain('Archived and active journals take up 26.0G in the file system.');
+    expect(printedByUsage).not.toContain('fcportal');
 
     await runCommand(page, 'journalctl --vacuum-size=200M');
     await expect(page.getByTestId('cmd-output'))
