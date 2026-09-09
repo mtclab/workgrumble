@@ -4047,20 +4047,24 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
   const sheetRows = page.locator('[data-testid^="timesheet-line-"]');
 
   /*
-   * All three under ONE pause, and that is the house rule rather than a
-   * convenience. The worked column of an open line GROWS every tick - the
-   * segment the player is standing in is still running - so at x4 a figure read
-   * off the row is a different number by the time an assertion has retried
-   * against it once, which is exactly how this step first went red on the box
-   * (6m expected, 26m by the fourth attempt). Everything below is about what
-   * the sheet DOES with a claim, and none of it needs the clock moving.
+   * THE READS UNDER A PAUSE, THE WRITES ON THE CLOCK (W-10, 0.42.0).
+   *
+   * The worked column of an open line GROWS - the segment the player is
+   * standing in is still running - so a figure read off the row can be a
+   * different number by the time an assertion has retried against it once,
+   * which is exactly how this step first went red on the box (6m expected, 26m
+   * by the fourth attempt). A pause is the right tool for reading it and is
+   * now the wrong tool for everything else on this window: filling a sheet in
+   * is work, and work waits for the minutes. So the two readings of the worked
+   * column are taken with the day held and every claim, every detail and the
+   * submission are made with it running.
    *
    * The arithmetic of a line is not asserted here at all, in any of the three:
    * that is `src/shell/apps/timesheet.test.ts` and `src/shell/timesheet.test.ts`,
    * where a minute is a minute and nothing is racing a repaint. What a browser
    * proves is the direction - the claim moved, the record did not follow it.
    */
-  await underPause(page, async () => {
+  {
     await step('timesheet.claim', async () => {
       await expect(page.getByTestId('timesheet-stance'))
         .toContainText('A line per customer');
@@ -4070,9 +4074,9 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
       // off the row: a walk that typed a figure of its own would be a walk that
       // quietly claimed less than the truth on a slow morning.
       const handle = await sheetRows.first().getAttribute('data-handle') ?? '';
-      const worked = Number(
+      const worked = await underPause(page, async () => Number(
         await sheetRows.first().getAttribute('data-worked'),
-      );
+      ));
 
       expect(worked).toBeGreaterThan(0);
 
@@ -4093,9 +4097,9 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
       await expect(page.getByTestId('timesheet-outcome'))
         .toContainText('The records still say what they said');
 
-      const after = Number(
+      const after = await underPause(page, async () => Number(
         await sheetRows.first().getAttribute('data-worked'),
-      );
+      ));
 
       expect(after).toBeGreaterThan(0);
       expect(after).toBeLessThan(claim);
@@ -4133,7 +4137,7 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
         .toHaveCount(0);
       await expect(sheetRows.first()).toHaveAttribute('data-gap', 'over');
     });
-  });
+  }
 
   await step('projects.phase', async () => {
     // The same window, opened again after the terminal moved the world twice.
