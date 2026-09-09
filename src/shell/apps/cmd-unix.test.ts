@@ -1048,10 +1048,22 @@ describe('the sysadmin network toolbox (E6, 0.16.0)', () => {
         .exec(looked)?.[1] ?? '';
 
       expect(address).toMatch(/^10\.42\.0\.\d+$/u);
-      expect(win(api, `ping ${address}`).lines.join('\n'))
-        .toContain('Reply from PRINT-01');
+
+      // ping ECHOES what it was given and does not reverse-resolve - Windows
+      // ping needs -a for that - so a ping by address answers as the address
+      // (0.42.0 review round; it used to name the box, which is the -a output
+      // for a flag nobody typed).
+      const pinged = win(api, `ping ${address}`).lines.join('\n');
+
+      expect(pinged).toContain(`Pinging ${address}`);
+      expect(pinged).toContain(`Reply from ${address}`);
+      expect(pinged).not.toContain('PRINT-01');
+
+      // tracert is the other half of the same family difference: it resolves
+      // its hops by default, so it names what answered.
       expect(win(api, `tracert ${address}`).lines.join('\n'))
         .toContain('Tracing route to print-01.workgrumble.local');
+
       // And the resolver run backwards on a number nobody has answers as a
       // reverse lookup rather than as a name nobody has heard of.
       expect(win(api, 'nslookup 10.42.0.251').lines.join('\n'))

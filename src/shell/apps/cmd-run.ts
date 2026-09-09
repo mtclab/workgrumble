@@ -550,7 +550,12 @@ function pingLines(api: GameApi, query: string): CommandResult {
     return lines(found.reason);
   }
 
-  const label = labelOf(found.node);
+  // What ping ECHOES is what it was given (0.42.0 review round). Windows ping
+  // does not reverse-resolve unless it is asked to with -a, so a ping by
+  // address prints the address - in the header and in every reply - and a ping
+  // by name prints the name it was given. `tracert` below is the other half of
+  // that family difference: it DOES resolve, so it prints what answered.
+  const label = isAddressLiteral(query) ? query.trim() : labelOf(found.node);
   const route = routeTo(api, found.node);
 
   // The answer is EVIDENCE (0.36.0): a box proven up - or proven silent - is
