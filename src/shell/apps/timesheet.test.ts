@@ -251,12 +251,17 @@ describe('the sheet the desk fills in', () => {
     const rows = lineItems(rigged);
 
     expect(sheet.shape).toBe('single_bucket');
-    // One line, and it is the joke: seven and a half hours against a bucket
-    // that is nobody's invoice, on a day that is not over.
+    // One line, and it is the joke: the whole day against a bucket that is
+    // nobody's invoice. The day is not over, so the line is the hours the
+    // clock has actually run - an hour and fifty minutes of a morning that
+    // started at nine and has reached ten to eleven (W-08, 0.42.0). It used
+    // to say seven and a half hours here, which is a claim for an afternoon
+    // nobody had worked yet.
     expect(rows).toHaveLength(1);
     expect(rows[0]?.line.label).toBe(SERVICE_DESK_LABEL);
     expect(rows[0]?.line.billable).toBe(false);
-    expect(hoursLabel(rows[0]?.line.derived ?? 0)).toBe('7h 30m');
+    expect(hoursLabel(rows[0]?.line.derived ?? 0)).toBe('1h 50m');
+    expect(rows[0]?.line.derived).toBe(dayOf(sheet, 1).elapsed);
 
     // Nothing to argue with, so the window offers no argument - and says so
     // in its own sentence rather than by handing over a dead control.

@@ -48,7 +48,6 @@ import {
   dayForTick,
   shiftEndTick,
   shiftStartTick,
-  WORKING_MINUTES_PER_DAY,
   workingMinutesBetween,
 } from './hours';
 
@@ -894,9 +893,13 @@ export function withClaim(
  *
  *  - `single_bucket` is the service desk's first rung, and it is the joke.
  *    Nobody at a probation desk attributes anything: the sheet is a headcount
- *    formality, one line a day at `WORKING_MINUTES_PER_DAY`, and it is finished
- *    before the sigh is. The ledger is not consulted, because there is nothing
- *    on it anybody would be asked about.
+ *    formality, one line a day for the whole day, and it is finished before
+ *    the sigh is. The ledger is not consulted, because there is nothing on it
+ *    anybody would be asked about. The one thing it may not do is claim a day
+ *    that has not happened yet (W-08, 0.42.0): today's line is the minutes the
+ *    clock has actually run, and it grows through the afternoon like the day
+ *    does. A finished day is `WORKING_MINUTES_PER_DAY` to the minute, so the
+ *    Friday fold and every golden week are the numbers they were.
  *  - `per_customer` is the senior desk, and it is the first rung of the ramp:
  *    the day has to ADD UP. One line per party the minutes were actually for -
  *    a customer where the shop has customers, the employer's own work where it
@@ -1094,7 +1097,13 @@ export function timesheetSheet(
         bucket: SERVICE_DESK_BUCKET,
         label: SERVICE_DESK_LABEL,
         billable: false,
-        derived: WORKING_MINUTES_PER_DAY,
+        // The day that has HAPPENED, not the day that is booked (W-08,
+        // 0.42.0). A finished day elapses `WORKING_MINUTES_PER_DAY` exactly,
+        // so nothing about a whole week moves; a day in progress used to
+        // claim a full seven and a half hours at ten past nine, which is how
+        // the window came to read `100% of the day accounted for. 15h of
+        // 12h 56m on the clock.` at half past three on the Tuesday.
+        derived: day.elapsed,
       }]
       : shape === 'per_customer'
         ? partyLines(day, state)
@@ -1293,8 +1302,21 @@ export interface UtilisationReading {
   readonly availableMinutes: number;
 }
 
+/**
+ * A percentage, and deliberately NOT a percentage capped at a hundred (W-08,
+ * 0.42.0).
+ *
+ * The clamp was hiding the one thing this whole surface exists to show. A
+ * sheet that claims more hours than the clock has run is an over-claim, which
+ * is exactly what the customer's scrutiny ladder is built to notice - and the
+ * clamp printed a healthy green hundred beside two figures that contradicted
+ * it, so the player reading only the number was told they were exactly right
+ * while the sheet was two hours out. Padding is allowed in this game and it is
+ * meant to be legible; a number that cannot go above a pass is not a
+ * measurement.
+ */
 function share(part: number, whole: number): number {
-  return whole <= 0 ? 0 : Math.min(100, Math.round(100 * part / whole));
+  return whole <= 0 ? 0 : Math.round(100 * part / whole);
 }
 
 /**

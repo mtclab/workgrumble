@@ -854,6 +854,79 @@ describe('the rung shape', () => {
     expect(padded.derived).toBe(honest.derived);
   });
 
+  /**
+   * W-08, the September walk: the sheet read `100% of the day accounted for.
+   * 15h of 12h 56m on the clock.` at half past three on the Tuesday. Two
+   * things were wrong and they were hiding each other - the day in progress
+   * claimed a full seven and a half hours the minute it began, and the
+   * percentage was clamped at a hundred, so the row reported a healthy pass
+   * beside two figures that contradicted it.
+   */
+  describe('the sheet cannot claim a day it has not worked (W-08)', () => {
+    it('claims what the clock has run on a day still running', () => {
+      // Ten past eleven on the Monday: two hours and ten minutes of the
+      // working day have gone by, and that is what the desk's one bucket may
+      // say. It used to say seven and a half hours.
+      const elapsed = 130;
+      const midday = shiftStartTick(1) + elapsed;
+      const sheet = sheetOf(
+        segmentsFrom(ledger([MONDAY, ARDEN])),
+        midday,
+        [],
+        'single_bucket',
+      );
+      const reading = utilisationOf(sheet, JUNIOR_TARGET);
+
+      expect(sheet.claimed).toBe(elapsed);
+      expect(reading.availableMinutes).toBe(elapsed);
+      expect(reading.claimedMinutes).toBeLessThanOrEqual(
+        reading.availableMinutes,
+      );
+      expect(reading.percent).toBe(100);
+      // And the two figures in the sentence are the same number, which is the
+      // whole of what the walk found on the screen.
+      expect(utilisationLine(reading))
+        .toContain(`${hoursLabel(elapsed)} of ${hoursLabel(elapsed)}`);
+    });
+
+    it('still writes a finished day as the whole seven and a half hours', () => {
+      // The clamp on the other side: a day that is over elapsed the whole of
+      // itself, so nothing about a completed week - or a golden one - moves.
+      const sheet = sheetOf(
+        segmentsFrom(ledger([MONDAY, ARDEN])),
+        shiftEndTick(1),
+        [],
+        'single_bucket',
+      );
+
+      expect(sheet.claimed).toBe(WORKING_MINUTES_PER_DAY);
+      expect(utilisationOf(sheet, JUNIOR_TARGET).percent).toBe(100);
+    });
+
+    it('says an over-claim out loud rather than rounding it to a pass', () => {
+      // Four hours claimed against a morning that has run two: the sheet is
+      // over by two hours and the number now says so. The clamp printed 100%
+      // here - a pass, in green, beside its own contradiction.
+      const elapsed = 120;
+      const padded = sheetOf(
+        segmentsFrom(ledger([MONDAY, ARDEN])),
+        shiftStartTick(1) + elapsed,
+        claimsFrom(withClaim('', {
+          day: 1,
+          bucket: bucketOf(ARDEN),
+          minutes: 240,
+          detail: 'detailed',
+        })),
+      );
+      const reading = utilisationOf(padded, ENGINEER_TARGET);
+
+      expect(reading.availableMinutes).toBe(elapsed);
+      expect(reading.claimedMinutes).toBe(240);
+      expect(reading.percent).toBe(200);
+      expect(utilisationLine(reading)).toContain('200%');
+    });
+  });
+
   it('leaves internal time out of the engineer\'s number and in the desk\'s', () => {
     const internal = sheetOf(
       segmentsFrom(ledger([MONDAY, { kind: 'internal', id: 'internal' }])),
