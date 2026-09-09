@@ -2002,6 +2002,19 @@ test('walks every function of a probation week that goes well', async ({
     await runCommand(page, 'nslookup wibble');
     await expect(page.getByTestId('cmd-output'))
       .toContainText('Non-existent domain');
+
+    // W-20 (0.42.0), on the shipped artifact: the address the resolver just
+    // printed has to be an address the rest of the terminal can use. This is
+    // the move the KB article about names failing while addresses answer is
+    // entirely about, and until this version it was impossible here.
+    const printed = await page.getByTestId('cmd-output').textContent() ?? '';
+    const address = /Name:[^\n]+\nAddress:\s+(10\.42\.0\.\d+)/u
+      .exec(printed)?.[1];
+
+    expect(address, 'nslookup printed no address to test with').toBeTruthy();
+    await runCommand(page, `ping ${address ?? ''}`);
+    await expect(page.getByTestId('cmd-output')).toContainText('Reply from');
+    await expect(page.getByTestId('cmd-output')).not.toContainText('Unknown host');
   });
 
   await step('cmd.users', async () => {

@@ -82,7 +82,15 @@ import {
   type SecurityModule,
   securityModuleFor,
 } from '../skins';
-import { addressOf, fqdn, GATEWAY, stableHash } from './cmd-net';
+import {
+  addressOf,
+  fqdn,
+  GATEWAY,
+  isAddressLiteral,
+  machineAtAddress,
+  reverseName,
+  stableHash,
+} from './cmd-net';
 import {
   type CommandSpec,
   type ParsedCommand,
@@ -808,6 +816,14 @@ export function ed25519Fingerprint(hostId: string): string {
 
 /* -- ssh, its own mechanic ------------------------------------------------ */
 
+/**
+ * The box this NAME belongs to - names only, which is what a resolver reads.
+ *
+ * `dig` is the caller this matters for (0.42.0, W-20): asked for an address it
+ * has been asked to resolve a name that happens to look like one, and the real
+ * answer is NXDOMAIN. Everything that reaches a box rather than looking one up
+ * calls `machineAt` below.
+ */
 function machineByName(api: GameApi, query: string): ReadOnlyGraphNode | null {
   const needle = query.trim().toLowerCase();
 
@@ -824,6 +840,21 @@ function machineByName(api: GameApi, query: string): ReadOnlyGraphNode | null {
       || suffix.toLowerCase() === needle
       || labelOf(node).toLowerCase() === needle;
   }) ?? null;
+}
+
+/**
+ * The box this argument reaches: a name, or an ADDRESS (0.42.0, W-20).
+ *
+ * The walk found `dig fc-rmm-01` printing `10.42.0.29` and then `ping`,
+ * `traceroute` and `curl` all failing to resolve the number it had just been
+ * given - which makes the single most useful move in a network fault, and the
+ * one this game's own KB article is about, impossible in the terminal that
+ * teaches it. Testing by address is how you tell a dead resolver from a dead
+ * wire, so every tool that CONNECTS to a box takes one.
+ */
+function machineAt(api: GameApi, query: string): ReadOnlyGraphNode | null {
+  return machineByName(api, query)
+    ?? machineAtAddress(api.graph.nodesOfKind('machine'), query);
 }
 
 /**
@@ -937,7 +968,7 @@ export function sshLines(api: GameApi, query: string): CommandResult {
   const user = at >= 0 ? trimmed.slice(0, at).trim() : 'engineer';
   const hostQuery = at >= 0 ? trimmed.slice(at + 1).trim() : trimmed;
 
-  const machine = machineByName(api, hostQuery);
+  const machine = machineAt(api, hostQuery);
 
   // The tier gate, first and hardest: a service-desk player has no ssh at all.
   if (!isSystemsEngineer(api.graph.getField(api.actor, FIELDS.playerTier))) {
@@ -2267,10 +2298,26 @@ function digLines(api: GameApi, name: string): CommandResult {
  * `Host <name> not found: 3(NXDOMAIN)`.
  */
 function hostLines(api: GameApi, name: string): CommandResult {
-  const machine = machineByName(api, name);
+  const query = name.trim();
+
+  // An address is a REVERSE lookup, and `host` is the one tool in this
+  // terminal that does one without being asked (0.42.0, W-20). It answers
+  // with the pointer record, in the in-addr.arpa shape that is the whole
+  // reason the octets are printed backwards.
+  if (isAddressLiteral(query)) {
+    const box = machineAtAddress(api.graph.nodesOfKind('machine'), query);
+
+    return box === null
+      ? lines(`Host ${reverseName(query)}. not found: 3(NXDOMAIN)`)
+      : lines(
+        `${reverseName(query)} domain name pointer ${fqdn(labelOf(box))}.`,
+      );
+  }
+
+  const machine = machineByName(api, query);
 
   return machine === null
-    ? lines(`Host ${name} not found: 3(NXDOMAIN)`)
+    ? lines(`Host ${query} not found: 3(NXDOMAIN)`)
     : lines(`${fqdn(labelOf(machine))} has address ${addressOf(machine.id)}`);
 }
 
@@ -2326,7 +2373,7 @@ function pingLines(
       : args,
   );
 
-  const machine = machineByName(api, host);
+  const machine = machineAt(api, host);
 
   if (machine === null) {
     // The two resolvers fail in their own words, and both are the real ones.
@@ -2336,7 +2383,11 @@ function pingLines(
   }
 
   const address = addressOf(machine.id);
-  const canonical = fqdn(labelOf(machine));
+  // What ping ECHOES is what it was given (0.42.0, W-20): asked for a name it
+  // prints the name it resolved, and asked for an address it prints the
+  // address, because on that path nothing looked anything up - which is the
+  // entire point of testing by address.
+  const canonical = isAddressLiteral(host) ? address : fqdn(labelOf(machine));
   // BSD counts the ICMP payload and GNU counts the payload and the header, so
   // the same 56 bytes are announced two ways; and BSD's sequence starts at 0.
   const header = mac
@@ -2451,7 +2502,7 @@ function curlLines(
 
   const box = LOCALHOST_NAMES.has(host) || host === session.hostname.toLowerCase()
     ? api.graph.getNode(session.hostId)
-    : machineByName(api, host);
+    : machineAt(api, host);
 
   if (box === undefined || box === null) {
     return lines(`curl: (6) Could not resolve host: ${host}`);
@@ -2785,7 +2836,7 @@ function tracerouteLines(
       : 'Usage: traceroute [OPTIONS] HOST');
   }
 
-  const machine = machineByName(api, host);
+  const machine = machineAt(api, host);
 
   if (machine === null) {
     return lines(`traceroute: unknown host ${host}`);
@@ -2793,6 +2844,11 @@ function tracerouteLines(
 
   const address = addressOf(machine.id);
   const canonical = fqdn(labelOf(machine));
+  // The header echoes the argument and the hop line resolves (0.42.0, W-20):
+  // traceroute names what it was ASKED for at the top, and then names what
+  // actually answered on the way - which is why a trace by address still
+  // prints a hostname a line later.
+  const asked = isAddressLiteral(host) ? address : canonical;
   const probe = (sample: number): string => (
     (5 + ((stableHash(machine.id) + sample * 7) % 30)) / 10
   ).toFixed(3);
@@ -2801,8 +2857,8 @@ function tracerouteLines(
   // gives up at 30 hops with 60-byte probes, BSD's at 64 with 52-byte ones.
   return lines(
     mac
-      ? `traceroute to ${canonical} (${address}), 64 hops max, 52 byte packets`
-      : `traceroute to ${canonical} (${address}), 30 hops max, 60 byte packets`,
+      ? `traceroute to ${asked} (${address}), 64 hops max, 52 byte packets`
+      : `traceroute to ${asked} (${address}), 30 hops max, 60 byte packets`,
     ` 1  ${canonical} (${address})  ${probe(1)} ms  ${probe(2)} ms  ${
       probe(3)
     } ms`,

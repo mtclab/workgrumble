@@ -86,6 +86,8 @@ import {
   DNS_SUFFIX,
   fqdn,
   GATEWAY,
+  isAddressLiteral,
+  machineAtAddress,
   macOf,
   NAME_SERVER,
   traceLine,
@@ -228,13 +230,35 @@ function lookup(
   return { ok: true, node: first };
 }
 
+/**
+ * The box a command is aimed at - by name, or by ADDRESS (0.42.0, W-20).
+ *
+ * The KB article this desk is sent to by its own tickets ("The internet is
+ * down" and the addresses still work) teaches one move above all others: try
+ * something by address rather than by name, because a box that answers on its
+ * number and not on its name is a resolver fault rather than a dead line. The
+ * walk found that move impossible - every tool here matched the label only, so
+ * the address `nslookup` had just printed came back as an unknown host, which
+ * is the exact wrong answer to teach.
+ *
+ * The address branch is tried only when the names miss, so nothing a name
+ * already answered can be moved by it.
+ */
 function machineOf(api: GameApi, query: string): Lookup {
-  return lookup(
+  const byName = lookup(
     api,
     'machine',
     query,
     `Unknown host "${query}". Check the name, then check the plug.`,
   );
+
+  if (byName.ok) {
+    return byName;
+  }
+
+  const box = machineAtAddress(api.graph.nodesOfKind('machine'), query);
+
+  return box === null ? byName : { ok: true, node: box };
 }
 
 /**
@@ -2192,8 +2216,15 @@ function nslookupLines(api: GameApi, query: string): CommandResult {
     return lines(
       ...header,
       `*** ${NAME_SERVER} can't find ${query}: Non-existent domain`,
-      'The name server only knows the machines. People, printers and '
-        + 'grievances are filed elsewhere.',
+      // An address that answers to nobody is a different sentence from a name
+      // nobody has heard of (0.42.0, W-20): the resolver was asked to go
+      // backwards, and nothing in this building has that number.
+      isAddressLiteral(query)
+        ? 'Nothing in this estate answers to that address. A reverse lookup '
+          + 'asks the same server the same question the other way round, and '
+          + 'it has no record either way.'
+        : 'The name server only knows the machines. People, printers and '
+          + 'grievances are filed elsewhere.',
     );
   }
 

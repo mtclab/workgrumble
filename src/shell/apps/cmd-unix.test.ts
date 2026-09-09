@@ -950,6 +950,114 @@ describe('the sysadmin network toolbox (E6, 0.16.0)', () => {
     });
   });
 
+  /**
+   * W-20, the September walk: `dig fc-rmm-01` answered `10.42.0.29`, and then
+   * `ping`, `traceroute` and `curl` all said they could not resolve the number
+   * the resolver had just printed. Testing by address is the one move that
+   * separates a dead resolver from a dead wire - it is what this game's own KB
+   * article "\'The internet is down\' and the addresses still work" is about -
+   * and it was impossible in the terminal that teaches it.
+   */
+  describe('testing by address, the move the KB article is about (W-20)', () => {
+    /** The address the resolver itself printed, read back out of dig. */
+    function addressFromDig(api: GameApi, ssh: SshSession, host: string): string {
+      const answer = unix(api, ssh, `dig ${host}`).lines
+        .find((line) => /\sIN\sA\s/u.test(line) && !line.startsWith(';'));
+
+      expect(answer, 'dig printed no ANSWER row').toBeDefined();
+      return (answer ?? '').trim().split(/\s+/u).at(-1) ?? '';
+    }
+
+    it('reaches the box with the number dig just printed', () => {
+      const { api, ssh } = onMsp();
+      const address = addressFromDig(api, ssh, 'FC-RMM-01');
+
+      expect(address).toMatch(/^10\.42\.0\.\d+$/u);
+
+      // ping: it answers, and it echoes the ADDRESS rather than a name,
+      // because on this path nothing looked anything up.
+      const pinged = unix(api, ssh, `ping -c 2 ${address}`).lines.join('\n');
+      expect(pinged).toContain(`PING ${address} (${address})`);
+      expect(pinged).toContain('2 packets transmitted, 2 received');
+      expect(pinged).not.toContain('Name or service not known');
+
+      // traceroute, once the box has it - it is one of the not-installed gags
+      // until somebody installs it. The header echoes what it was asked for,
+      // and the hop it reaches still resolves to a name.
+      unix(api, ssh, 'sudo apt install traceroute');
+
+      const traced = unix(api, ssh, `traceroute ${address}`).lines.join('\n');
+      expect(traced).toContain(`traceroute to ${address} (${address})`);
+      expect(traced).toContain('fc-rmm-01.workgrumble.local');
+      expect(traced).not.toContain('unknown host');
+
+      // curl: the box answers over HTTP by number exactly as it does by name.
+      const got = unix(api, ssh, `curl -I http://${address}/`).lines.join('\n');
+      expect(got).toMatch(/^HTTP\/2 \d{3}/mu);
+      expect(got).not.toContain('Could not resolve host');
+    });
+
+    it('ssh takes an address, and the box it lands on is the same box', () => {
+      const { api } = onMsp();
+      const session = connect(api, `ssh engineer@${
+        addressFromDig(api, onMsp().ssh, 'FC-RMM-01')
+      }`);
+
+      expect(session).not.toBeNull();
+      expect(session?.hostId).toBe(MSP_IDS.mspInfraServer);
+    });
+
+    it('a resolver is not a router: dig by address is still NXDOMAIN', () => {
+      const { api, ssh } = onMsp();
+      const address = addressFromDig(api, ssh, 'FC-RMM-01');
+      const out = unix(api, ssh, `dig ${address}`).lines.join('\n');
+
+      // An address handed to dig is a NAME that looks like one, and the real
+      // answer is that no such name exists. Reversing it is `host`'s job.
+      expect(out).toContain('status: NXDOMAIN');
+      expect(out).not.toContain(';; ANSWER SECTION:');
+    });
+
+    it('host reverses an address into the name, in the in-addr.arpa shape', () => {
+      const { api, ssh } = onMsp();
+      const address = addressFromDig(api, ssh, 'FC-RMM-01');
+      const reversed = address.split('.').reverse().join('.');
+
+      expect(unix(api, ssh, `host ${address}`).lines.join('\n'))
+        .toBe(
+          `${reversed}.in-addr.arpa domain name pointer `
+            + 'fc-rmm-01.workgrumble.local.',
+        );
+
+      // And an address nothing in the building answers to says so as a reverse
+      // lookup, not as a missing hostname.
+      expect(unix(api, ssh, 'host 10.42.0.251').lines.join('\n'))
+        .toContain('251.0.42.10.in-addr.arpa. not found: 3(NXDOMAIN)');
+    });
+
+    it('answers at the DESK too, where the article is actually read', () => {
+      // The KB article is a corporate one and the junior reading it has the
+      // Windows terminal, so the same move has to work there: nslookup prints
+      // a number, and ping and tracert take it.
+      const api = apiFor(createWorldSession());
+      const looked = win(api, 'nslookup PRINT-01').lines.join('\n');
+      // The ANSWER's address, not the server's: nslookup prints the resolver
+      // it asked first, and the box it asked about second.
+      const address = /Name:[^\n]+\nAddress:\s+(10\.42\.0\.\d+)/u
+        .exec(looked)?.[1] ?? '';
+
+      expect(address).toMatch(/^10\.42\.0\.\d+$/u);
+      expect(win(api, `ping ${address}`).lines.join('\n'))
+        .toContain('Reply from PRINT-01');
+      expect(win(api, `tracert ${address}`).lines.join('\n'))
+        .toContain('Tracing route to print-01.workgrumble.local');
+      // And the resolver run backwards on a number nobody has answers as a
+      // reverse lookup rather than as a name nobody has heard of.
+      expect(win(api, 'nslookup 10.42.0.251').lines.join('\n'))
+        .toContain('reverse lookup');
+    });
+  });
+
   describe('ping: continuous by default (the sharpest family diff)', () => {
     it('bare ping says it is CONTINUOUS and names -c - not 4-and-stop (teeth)', () => {
       const { api, ssh } = onMsp();
