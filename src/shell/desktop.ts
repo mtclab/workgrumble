@@ -1063,6 +1063,7 @@ export class Desktop {
 
     const list = document.createElement('div');
     list.className = 'start-menu-list';
+    list.dataset.testid = 'start-menu-list';
     this.startMenuList = list;
     this.fillStartMenu(list);
     menu.append(rail, list);
@@ -1303,6 +1304,8 @@ export class Desktop {
 
     if (this.startMenuList !== null) {
       this.fillStartMenu(this.startMenuList);
+      // An install adds a row, so what fits may have just stopped fitting.
+      this.markStartMenuFold();
     }
   }
 
@@ -1493,9 +1496,42 @@ export class Desktop {
     this.startMenu.hidden = !open;
     this.startButton.setAttribute('aria-expanded', String(open));
 
+    if (open) {
+      this.markStartMenuFold();
+    }
+
     if (!open) {
       this.returnFocus(this.startMenu, this.startButton);
     }
+  }
+
+  /**
+   * Whether anything in the menu is out of sight, said on the element (W-07,
+   * 0.42.0).
+   *
+   * The list wraps into columns and only scrolls when a window is too small in
+   * both directions to hold it at all - but when that happens the browser's
+   * overlay scrollbars show nothing at all, which is exactly what the walk
+   * found: five entries below the fold, reachable with a wheel, with not one
+   * thing on the screen saying they were there. The flag paints the fade and
+   * the rail, and it is what the standing gate reads to know whether it is
+   * looking at a menu that fits or one that has to be scrolled.
+   *
+   * Measured after the menu is on screen, because a hidden element has no
+   * size to measure - and one pixel of slack, because a fractional layout can
+   * leave a scroll height a hair over the client height with nothing under it.
+   */
+  private markStartMenuFold(): void {
+    const list = this.startMenuList;
+
+    if (list === null) {
+      return;
+    }
+
+    list.dataset.fold = String(
+      list.scrollHeight > list.clientHeight + 1
+        || list.scrollWidth > list.clientWidth + 1,
+    );
   }
 
   private setTrayPanelOpen(open: boolean): void {
@@ -1990,11 +2026,17 @@ export class Desktop {
 
     this.pauseButton.dataset.active = String(paused);
     this.pauseButton.setAttribute('aria-pressed', String(paused));
-    this.pauseButton.setAttribute(
-      'aria-label',
-      paused ? 'Resume the clock' : 'Pause the clock',
-    );
-    this.pauseButton.title = paused ? 'Resume the clock' : 'Pause the clock';
+
+    // What the control DOES, said on the control (W-10, 0.42.0). The clock
+    // being stopped now stops the work as well as the minutes, so the button
+    // that stops it says so before it is pressed rather than leaving the
+    // player to meet the refusal on the first thing they try.
+    const pauseLabel = paused
+      ? 'Resume the clock - nothing can be done at the desk while it is stopped'
+      : 'Pause the clock - reading stays open, work waits for the minutes';
+
+    this.pauseButton.setAttribute('aria-label', pauseLabel);
+    this.pauseButton.title = pauseLabel;
     this.pauseButton.replaceChildren(
       createIcon(paused ? 'icon-play' : 'icon-pause'),
     );

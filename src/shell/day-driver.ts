@@ -451,6 +451,31 @@ export const INSTALLING_UPDATES_REASON = 'The workstation is installing '
   + 'updates. It said so. It is not sorry.';
 
 /**
+ * And what the desk answers with while the CLOCK is stopped (W-10, 0.42.0).
+ *
+ * The walk found the hole and it is one click wide: the day paused at 08:01, a
+ * triage filed, four terminal commands run and an account unlocked, and the
+ * ticket resolved at "Day 1 08:01". Every clock in this game - the SLA, the
+ * stress, the suspicion, the boss's rounds, the utilisation sheet - is priced
+ * in simulated minutes, so a player who pauses, empties the queue and unpauses
+ * has beaten the entire pressure layer with a taskbar control. That makes the
+ * honest way to play strictly harder than the dishonest one, which is the
+ * exact shape the house rule about honesty forbids everywhere else in here.
+ *
+ * The rule is the one the pause control's own words already imply: it stops
+ * the clock, and the work is in the clock. READING is untouched - the queue,
+ * the KB, a directory listing, `ls`, `services`, a ping, every window on the
+ * desk - because reading at leisure is what a pause is FOR and nothing in it
+ * moves the world. What is refused is what CHANGES the world, at the same
+ * driver seam a meeting refuses at and for the same reason: the shell has five
+ * ways to reach a verb, and a rule enforced in four of them is a rule with a
+ * hole in it.
+ */
+export const CLOCK_STOPPED_REASON = 'The clock is stopped, and so is the '
+  + 'work: nothing at this desk happens in a minute that is not passing. Read '
+  + 'all you like - start the clock when you want to do something about it.';
+
+/**
  * The sources that take the DESK rather than merely the attention, and the
  * sentence each of them refuses in.
  *
@@ -1616,6 +1641,13 @@ export class DayDriver implements DayApi {
   private interruptionsBlocked_: readonly TickWindow[];
   private seed_: number;
   private paused_ = false;
+
+  /**
+   * How deep inside `theDaysOwn` this call is - the world's own turn rather
+   * than the player's. Zero is the player asking, which is the state every
+   * verb the shell reaches arrives in.
+   */
+  private daysOwnTurn = 0;
   private speed_: Speed = 1;
   private carriedMs = 0;
   /**
@@ -1771,7 +1803,7 @@ export class DayDriver implements DayApi {
    * does to the desk, the money and the minute the crash is measured from.
    */
   public drink(): DispatchResult {
-    const held = this.takeoverRefusal();
+    const held = this.workRefusal();
 
     if (held !== null) {
       return { ok: false, reason: held };
@@ -1779,18 +1811,18 @@ export class DayDriver implements DayApi {
 
     const now = this.engine.now();
 
-    return this.engine.dispatch(DAY_ACTIONS.consumableDrink, this.actor, null, {
+    return this.act(DAY_ACTIONS.consumableDrink, this.actor, null, {
       tolerance: nextTolerance(this.drinkRun(), now),
       pence: DRINK_PRICE_PENCE,
     });
   }
 
   public tidyDesk(): DispatchResult {
-    const held = this.takeoverRefusal();
+    const held = this.workRefusal();
 
     return held !== null
       ? { ok: false, reason: held }
-      : this.engine.dispatch(DAY_ACTIONS.deskTidy, this.actor, null, {});
+      : this.act(DAY_ACTIONS.deskTidy, this.actor, null, {});
   }
 
   /**
@@ -1821,13 +1853,13 @@ export class DayDriver implements DayApi {
     // was banked is what actually happened.
     this.settleDrip(this.engine.now());
 
-    const held = this.takeoverRefusal();
+    const held = this.workRefusal();
 
     if (held !== null) {
       return { ok: false, reason: held };
     }
 
-    return this.announced(this.engine.dispatch(
+    return this.announced(this.act(
       DAY_ACTIONS.presenceSet,
       this.actor,
       null,
@@ -1929,8 +1961,8 @@ export class DayDriver implements DayApi {
       // The emergency fix (the ordinary restart) and the loud audit line. The
       // restart is the same verb the fire is fixed with; break-glass is the
       // DECLARATION that it was done outside change control, and the record.
-      this.engine.dispatch(SYSTEMD_ACTIONS.unitRestart, this.actor, unitId, {});
-      this.announced(this.engine.dispatch(
+      this.act(SYSTEMD_ACTIONS.unitRestart, this.actor, unitId, {});
+      this.announced(this.act(
         CHANGE_ACTIONS.breakGlassRecord,
         this.actor,
         null,
@@ -1942,7 +1974,7 @@ export class DayDriver implements DayApi {
 
     // No fire: the glass does not break, the abuse is recorded, and it costs
     // suspicion - an emergency override with no emergency reads at the review.
-    this.announced(this.engine.dispatch(
+    this.announced(this.act(
       CHANGE_ACTIONS.breakGlassAbuse,
       this.actor,
       null,
@@ -2042,7 +2074,7 @@ export class DayDriver implements DayApi {
 
     const now = this.engine.now();
     const line = `${unitId}@${String(now)}`;
-    const result = this.engine.dispatch(
+    const result = this.act(
       INCIDENT_ACTIONS.postmortemFile,
       this.actor,
       unitId,
@@ -2082,7 +2114,7 @@ export class DayDriver implements DayApi {
   private softwareVerb(action: string, id: string): DispatchResult {
     const line = `${id}@${String(this.engine.now())}`;
 
-    return this.announced(this.engine.dispatch(action, this.actor, null, {
+    return this.announced(this.act(action, this.actor, null, {
       id,
       line,
     }));
@@ -2227,7 +2259,7 @@ export class DayDriver implements DayApi {
       };
     }
 
-    return this.announced(this.engine.dispatch(
+    return this.announced(this.act(
       DAY_ACTIONS.afterHoursAnswer,
       this.actor,
       null,
@@ -2488,7 +2520,7 @@ export class DayDriver implements DayApi {
     id: string,
     outcome: OnCallOutcome,
   ): void {
-    this.announced(this.engine.dispatch(action, this.actor, null, {
+    this.announced(this.act(action, this.actor, null, {
       id,
       line: settledLine(id, outcome),
     }));
@@ -2567,7 +2599,7 @@ export class DayDriver implements DayApi {
       };
     }
 
-    const held = this.takeoverRefusal();
+    const held = this.workRefusal();
 
     if (held !== null) {
       return { ok: false, reason: held };
@@ -2579,7 +2611,7 @@ export class DayDriver implements DayApi {
         ? REQUEST_ACTIONS.answer
         : REQUEST_ACTIONS.deflect;
 
-    const result = this.engine.dispatch(action, this.actor, null, {
+    const result = this.act(action, this.actor, null, {
       id,
       line: resolutionLine(id, kind),
     });
@@ -2619,7 +2651,12 @@ export class DayDriver implements DayApi {
     target: NodeId | null,
     params: Record<string, string | number | boolean | null>,
   ): DispatchResult {
-    const held = this.takeoverRefusal();
+    // The door below refuses this anyway, and it is asked here as well for
+    // one reason that is not the rule: a touch log is evidence that somebody
+    // TRIED something on this ticket, refusals from the world included, and a
+    // desk that was shut made no attempt at all. Asking early is what stops a
+    // stopped clock leaving footprints (0.42.0 review round).
+    const held = this.workRefusal();
 
     if (held !== null) {
       return { ok: false, reason: held };
@@ -2628,7 +2665,25 @@ export class DayDriver implements DayApi {
     // Read BEFORE: this dispatch may resolve the ticket it is about, and a
     // fix that closes a ticket is still the first time anybody touched it.
     const witnesses = target === null ? [] : this.ticketsAbout(target);
-    const result = this.engine.dispatch(id, actor, target, params);
+    const result = this.act(id, actor, target, params);
+
+    // Everything below is the WORLD settling what the act caused - the touch
+    // record, the meters, the follow-ups a fix raised - so it runs as the
+    // day's own turn rather than as more of the player's.
+    return this.theDaysOwn(() => this.settleAfter(id, target, witnesses, result));
+  }
+
+  /**
+   * What the world does about an act that landed, all of it, in the minute it
+   * landed in. Split out of `dispatch` so the settlement can be run as the
+   * day's own turn rather than as more of the player's.
+   */
+  private settleAfter(
+    id: string,
+    target: NodeId | null,
+    witnesses: readonly Readonly<ReadOnlyGraphNode>[],
+    result: DispatchResult,
+  ): DispatchResult {
     this.recordTouches(id, witnesses, result.ok);
 
     // And where the minute went (0.30.0). Only when the act actually landed: a
@@ -2783,24 +2838,29 @@ export class DayDriver implements DayApi {
     const elapsed = ticksFromElapsed(elapsedMs, this.speed_, this.carriedMs);
     this.carriedMs = elapsed.carriedMs;
 
-    for (let tick = 0; tick < elapsed.ticks; tick += 1) {
-      if (!this.spendMinute()) {
-        return;
-      }
-
-      // The rounds are `PATROL_MIN_GAP` apart and a conversation is shorter
-      // than that, so this cannot cascade - but a drain whose bound is an
-      // invariant somewhere else is a loop nobody has bounded, and the clock
-      // is not the place to find out.
-      for (let spent = 0; this.owedMinutes_ > 0 && spent < CAUGHT_MINUTES;) {
-        this.owedMinutes_ -= 1;
-        spent += 1;
-
+    // The clock's own turn, all of it: everything a minute causes - meters,
+    // arrivals, settlers, the boss's rounds - is the world moving rather than
+    // the player working, and none of it asks the desk's permission.
+    this.theDaysOwn(() => {
+      for (let tick = 0; tick < elapsed.ticks; tick += 1) {
         if (!this.spendMinute()) {
           return;
         }
+
+        // The rounds are `PATROL_MIN_GAP` apart and a conversation is shorter
+        // than that, so this cannot cascade - but a drain whose bound is an
+        // invariant somewhere else is a loop nobody has bounded, and the clock
+        // is not the place to find out.
+        for (let spent = 0; this.owedMinutes_ > 0 && spent < CAUGHT_MINUTES;) {
+          this.owedMinutes_ -= 1;
+          spent += 1;
+
+          if (!this.spendMinute()) {
+            return;
+          }
+        }
       }
-    }
+    });
   }
 
   /**
@@ -3211,11 +3271,11 @@ export class DayDriver implements DayApi {
 
   /** The bottle in the fridge with your name on it. */
   public beer(): DispatchResult {
-    const held = this.takeoverRefusal();
+    const held = this.workRefusal();
 
     return held !== null
       ? { ok: false, reason: held }
-      : this.engine.dispatch(DAY_ACTIONS.consumableBeer, this.actor, null, {});
+      : this.act(DAY_ACTIONS.consumableBeer, this.actor, null, {});
   }
 
   public driverState(): DriverState {
@@ -3366,7 +3426,7 @@ export class DayDriver implements DayApi {
       this.playerNumber(FIELDS.reviewBar, REVIEW_PASS_PERFORMANCE),
       inTheCut,
     );
-    const result = this.engine.dispatch(
+    const result = this.act(
       outcome === 'passed'
         ? DAY_ACTIONS.reviewPassed
         : outcome === 'redundant'
@@ -3549,7 +3609,7 @@ export class DayDriver implements DayApi {
       return false;
     }
 
-    const result = this.engine.dispatch(
+    const result = this.act(
       DAY_ACTIONS.reviewMatrixRead,
       this.actor,
       null,
@@ -3578,7 +3638,7 @@ export class DayDriver implements DayApi {
    */
   private readTheFile(): void {
     const reading = this.conductReading();
-    const result = this.engine.dispatch(
+    const result = this.act(
       DAY_ACTIONS.reviewFileRead,
       this.actor,
       null,
@@ -3616,7 +3676,7 @@ export class DayDriver implements DayApi {
    */
   private recordWeekReading(): void {
     const reading = this.weekReading();
-    const result = this.engine.dispatch(
+    const result = this.act(
       DAY_ACTIONS.weekReading,
       this.actor,
       null,
@@ -3782,7 +3842,7 @@ export class DayDriver implements DayApi {
 
       const { filed, fault, kbRef } = filingOf(item, authored);
 
-      this.engine.dispatch(AUDIT_ACTIONS.auditDeal, this.actor, item.ticket, {
+      this.act(AUDIT_ACTIONS.auditDeal, this.actor, item.ticket, {
         [JUNIOR_PARAM]: item.junior,
         impact: filed.impact,
         urgency: filed.urgency,
@@ -3833,7 +3893,7 @@ export class DayDriver implements DayApi {
       }
 
       for (const step of incident.steps) {
-        this.engine.dispatch(
+        this.act(
           step.action,
           this.actor,
           step.target,
@@ -4097,7 +4157,7 @@ export class DayDriver implements DayApi {
    */
   private settleStaleAuth(now: number): void {
     for (const attempt of staleLogonsDue(this.engine.graph, now)) {
-      this.engine.dispatch(
+      this.act(
         WORLD_ACTIONS.staleLogon,
         this.actor,
         attempt.account,
@@ -4146,7 +4206,7 @@ export class DayDriver implements DayApi {
   private settleScopeQuotes(now: number): void {
     for (const due of quoteAnswersDue(this.engine.graph, now)) {
       const approved = due.answer === SCOPE_OUTCOMES.approved;
-      const result = this.engine.dispatch(
+      const result = this.act(
         approved ? WORLD_ACTIONS.scopeApproved : WORLD_ACTIONS.scopeDeclined,
         this.actor,
         due.ticket,
@@ -4303,7 +4363,7 @@ export class DayDriver implements DayApi {
       FIELDS.crDecision,
     ) === 'approve';
 
-    const result = this.engine.dispatch(
+    const result = this.act(
       WORLD_ACTIONS.overrideFallout,
       this.actor,
       due,
@@ -4348,7 +4408,7 @@ export class DayDriver implements DayApi {
   private settleQueueJumpFallout(): void {
     for (const ticket of queueJumpFalloutDue(this.engine.graph)) {
       const vip = this.engine.graph.getField(ticket, FIELDS.vip) === true;
-      const result = this.engine.dispatch(
+      const result = this.act(
         WORLD_ACTIONS.queueJumpFallout,
         this.actor,
         ticket,
@@ -4382,7 +4442,7 @@ export class DayDriver implements DayApi {
    */
   private settleVendorReplies(now: number): void {
     for (const ticket of vendorRepliesDue(this.engine.graph, now)) {
-      const result = this.engine.dispatch(
+      const result = this.act(
         AUDIT_ACTIONS.vendorReply,
         this.actor,
         ticket,
@@ -4417,7 +4477,7 @@ export class DayDriver implements DayApi {
   private settleAuditFallout(): void {
     for (const ticket of auditFalloutDue(this.engine.graph)) {
       const fault = this.engine.graph.getField(ticket, FIELDS.auditFault);
-      const result = this.engine.dispatch(
+      const result = this.act(
         AUDIT_ACTIONS.auditFallout,
         this.actor,
         ticket,
@@ -4448,7 +4508,7 @@ export class DayDriver implements DayApi {
    */
   private settleSecurityFallout(): void {
     for (const account of socialEngineeringDue(this.engine.graph, this.engine.now())) {
-      const result = this.engine.dispatch(
+      const result = this.act(
         WORLD_ACTIONS.securityFallout,
         this.actor,
         null,
@@ -4487,7 +4547,7 @@ export class DayDriver implements DayApi {
   private settleRaciComplaint(): void {
     for (const box of raciComplaintDue(this.engine.graph, this.engine.now())) {
       const peer = raciPeerOf(this.engine.graph, box);
-      const result = this.engine.dispatch(
+      const result = this.act(
         WORLD_ACTIONS.raciComplaint,
         this.actor,
         box,
@@ -4502,7 +4562,7 @@ export class DayDriver implements DayApi {
       // latch above and is written once (0.37.1). Refused on every morning
       // after the first, deliberately and without comment: the stamp exists so
       // that the mail already in the inbox does not move when he writes again.
-      this.engine.dispatch(
+      this.act(
         WORLD_ACTIONS.raciFirstComplaint,
         this.actor,
         box,
@@ -4540,7 +4600,7 @@ export class DayDriver implements DayApi {
    */
   private settleSelinuxAudit(): void {
     for (const box of selinuxAuditDue(this.engine.graph, this.engine.now())) {
-      const result = this.engine.dispatch(
+      const result = this.act(
         SELINUX_ACTIONS.selinuxNoticed,
         this.actor,
         box,
@@ -4637,7 +4697,7 @@ export class DayDriver implements DayApi {
       ARDEN_EDGE_PROJECT,
       this.engine.now(),
     )) {
-      const result = this.engine.dispatch(
+      const result = this.act(
         PROJECT_ACTIONS.screamNoticed,
         this.actor,
         finding.rule,
@@ -4977,7 +5037,7 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    this.engine.dispatch(TIMESHEET_ACTIONS.record, this.actor, null, { lines });
+    this.act(TIMESHEET_ACTIONS.record, this.actor, null, { lines });
   }
 
   /**
@@ -5002,7 +5062,7 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    this.engine.dispatch(TIMESHEET_ACTIONS.record, this.actor, null, { lines });
+    this.act(TIMESHEET_ACTIONS.record, this.actor, null, { lines });
   }
 
   /**
@@ -5149,7 +5209,7 @@ export class DayDriver implements DayApi {
       detail: detail ?? found.line.detail,
     };
 
-    return this.announced(this.engine.dispatch(
+    return this.announced(this.act(
       TIMESHEET_ACTIONS.claim,
       this.actor,
       null,
@@ -5166,7 +5226,7 @@ export class DayDriver implements DayApi {
    * is honest.
    */
   public submitTimesheet(auto = false): DispatchResult {
-    return this.announced(this.engine.dispatch(
+    return this.announced(this.act(
       TIMESHEET_ACTIONS.submit,
       this.actor,
       null,
@@ -5298,7 +5358,7 @@ export class DayDriver implements DayApi {
     );
 
     for (const step of due) {
-      const result = this.engine.dispatch(
+      const result = this.act(
         INVOICE_ACTIONS.escalate,
         this.actor,
         null,
@@ -5405,7 +5465,7 @@ export class DayDriver implements DayApi {
 
     for (const step of due) {
       const held = ledger.find((entry) => entry.customer === step.customer);
-      const result = this.engine.dispatch(
+      const result = this.act(
         PATIENCE_ACTIONS.record,
         this.actor,
         null,
@@ -5469,7 +5529,7 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    this.engine.dispatch(PATIENCE_ACTIONS.record, this.actor, null, {
+    this.act(PATIENCE_ACTIONS.record, this.actor, null, {
       [PATIENCE_LEDGER_PARAM]: folded,
     });
   }
@@ -5528,12 +5588,12 @@ export class DayDriver implements DayApi {
    */
   public writeUpArticle(): DispatchResult {
     return this.announced(
-      this.engine.dispatch(AUDIT_ACTIONS.kbWriteUp, this.actor, null, {}),
+      this.act(AUDIT_ACTIONS.kbWriteUp, this.actor, null, {}),
     );
   }
 
   public reportProject(rag: ProjectRag): DispatchResult {
-    return this.announced(this.engine.dispatch(
+    return this.announced(this.act(
       PROJECT_ACTIONS.report,
       this.actor,
       null,
@@ -5574,7 +5634,7 @@ export class DayDriver implements DayApi {
     );
 
     for (const entry of due) {
-      const result = this.engine.dispatch(
+      const result = this.act(
         PROJECT_ACTIONS.reportAnswered,
         this.actor,
         null,
@@ -5663,7 +5723,7 @@ export class DayDriver implements DayApi {
     const caught = caughtBy(this.handlers.openSlackApps());
 
     if (caught !== null) {
-      const result = this.engine.dispatch(
+      const result = this.act(
         DAY_ACTIONS.bossCaught,
         this.actor,
         null,
@@ -5720,7 +5780,7 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    const noticed = this.engine.dispatch(
+    const noticed = this.act(
       DAY_ACTIONS.bossNoticedEmpties,
       this.actor,
       null,
@@ -5784,7 +5844,7 @@ export class DayDriver implements DayApi {
     // the morning it was about - so a live read afterwards is a read of
     // nothing at all.
     const minutes = beat.minutes;
-    const result = this.engine.dispatch(DAY_ACTIONS.bossCaught, this.actor, null, {
+    const result = this.act(DAY_ACTIONS.bossCaught, this.actor, null, {
       // The quantity goes on the FILE, where a quantity belongs; the scene
       // says the same thing in the words a man standing there would use.
       file_line: conductLine(
@@ -5848,7 +5908,7 @@ export class DayDriver implements DayApi {
     // below closes them and a window asking afterwards would ask about nothing.
     const covered = [...new Set(this.unspokenInstalls().map((r) => r.id))];
 
-    const result = this.engine.dispatch(DAY_ACTIONS.bossCaught, this.actor, null, {
+    const result = this.act(DAY_ACTIONS.bossCaught, this.actor, null, {
       file_line: conductLine(
         visit.arrivalTick,
         'software',
@@ -5906,7 +5966,7 @@ export class DayDriver implements DayApi {
       return false;
     }
 
-    const result = this.engine.dispatch(DAY_ACTIONS.bossCaught, this.actor, null, {
+    const result = this.act(DAY_ACTIONS.bossCaught, this.actor, null, {
       file_line: conductLine(now, 'conduct', RUDE_CAUGHT_SCENE.fileSubject),
       // Not the status conversation and not the software one: those params stay
       // absent, so nothing about the dot's record or the install audit moves.
@@ -5934,7 +5994,7 @@ export class DayDriver implements DayApi {
       this.raiseSummonedTicket(ping.ticketId);
     }
 
-    const result = this.engine.dispatch(
+    const result = this.act(
       DAY_ACTIONS.bossPing,
       this.actor,
       null,
@@ -6227,6 +6287,85 @@ export class DayDriver implements DayApi {
     return deskHeldReason(this.interruption()?.entry.source);
   }
 
+  /**
+   * What the desk answers with to anything that would CHANGE the world - a
+   * takeover holding it, or the clock being stopped (W-10, 0.42.0).
+   *
+   * One question asked in one place, in front of every verb the shell can
+   * reach, because that is the only shape either rule holds in: a meeting that
+   * refused the mouse and not the keyboard was the lesson the first of them
+   * cost, and a pause that stopped the minutes and not the work was the second.
+   *
+   * The takeover speaks first where both are true. A player who paused the day
+   * while the phone was ringing is in a meeting AND stopped, and being in the
+   * meeting is the more useful half to be told about.
+   */
+  private workRefusal(): string | null {
+    return this.takeoverRefusal()
+      ?? (this.paused_ ? CLOCK_STOPPED_REASON : null);
+  }
+
+  /**
+   * THE ONE DOOR between this driver and the world (0.42.0 review round).
+   *
+   * Every verb the shell can reach comes through here, and here is where the
+   * desk's two "not now" rules are asked - the takeover holding it, and the
+   * clock being stopped. The first cut of W-10 asked in the six places that
+   * happened to be the six the walk had pressed, and the driver hands the
+   * shell far more than six: the web store's install, the timesheet's Submit,
+   * the ticket pane's write-up and the terminal's `report` all answered ok and
+   * moved the graph with the day stopped, which is the same hole one surface
+   * along. A rule enforced verb by verb is a rule that leaks the next time
+   * somebody adds a verb.
+   *
+   * So the rule is asked once, of everything, and it FAILS CLOSED: a verb
+   * added next year is refused under a stopped clock without anybody
+   * remembering this comment. `day-driver-door.test.ts` holds it there - the
+   * engine is reached from this method and nowhere else in this file - and the
+   * sweep in `day-driver.test.ts` states the verdict for every action id the
+   * build ships.
+   *
+   * What is exempt is not a list of verbs but a scope: `theDaysOwn`, below.
+   */
+  private act(
+    id: string,
+    actor: NodeId,
+    target: NodeId | null,
+    params: Record<string, string | number | boolean | null>,
+  ): DispatchResult {
+    const held = this.daysOwnTurn > 0 ? null : this.workRefusal();
+
+    return held === null
+      ? this.engine.dispatch(id, actor, target, params)
+      : { ok: false, reason: held };
+  }
+
+  /**
+   * What the DAY does, as against what the desk does.
+   *
+   * The clock's own bookkeeping - meters, settlers, arrivals, the boss's
+   * rounds, the ledger a minute is written into - is the world moving rather
+   * than the player working, and it does not wait for the player's permission
+   * or for a clock the player has stopped. Nor does the evidence a READ leaves
+   * behind: looking at a box is looking, and the record of having looked is a
+   * record. Nor are the SCREENS THE DAY ITSELF PUT UP - a phone you did not
+   * choose to have ring, a room you were told to be in, a workstation that has
+   * decided to reboot. Answering those is how a player gets their desk back,
+   * so a rule that refused them would be a rule that locks the desk away and
+   * then refuses to hand it over.
+   *
+   * Everything else is work at a desk, and work at a desk needs minutes.
+   */
+  private theDaysOwn<T>(run: () => T): T {
+    this.daysOwnTurn += 1;
+
+    try {
+      return run();
+    } finally {
+      this.daysOwnTurn -= 1;
+    }
+  }
+
   /** Whether an id is in one of the lists the world keeps. */
   private hasDecided(field: string, id: string): boolean {
     return this.playerText(field).split('\n').includes(id);
@@ -6377,7 +6516,7 @@ export class DayDriver implements DayApi {
     }
 
     const now = this.engine.now();
-    const slid = this.engine.dispatch(
+    const slid = this.act(
       DAY_ACTIONS.interruptionDodged,
       this.actor,
       null,
@@ -6397,7 +6536,7 @@ export class DayDriver implements DayApi {
     }
 
     if (!this.liveInterruptions().some((live) => live.id === entry.id)) {
-      this.engine.dispatch(DAY_ACTIONS.interruptionMissed, this.actor, null, {
+      this.act(DAY_ACTIONS.interruptionMissed, this.actor, null, {
         id: entry.id,
         benign: isBenign(entry, this.ticketInHand()) ? 1 : 0,
         // It never rang. The window a ring-out costs is the ringing itself,
@@ -6446,7 +6585,7 @@ export class DayDriver implements DayApi {
     const stress = heldOff ? 0 : arrivalStress(entry, benign);
 
     if (stress > 0) {
-      this.engine.dispatch(
+      this.act(
         DAY_ACTIONS.interruptionArrived,
         this.actor,
         null,
@@ -6482,16 +6621,16 @@ export class DayDriver implements DayApi {
     // minute they stop happening - which is also the minute the desk comes
     // back, and therefore the minute the refocus window is measured from.
     if (entry.source === 'machine') {
-      this.engine.dispatch(DAY_ACTIONS.interruptionAccept, this.actor, null, {
+      this.act(DAY_ACTIONS.interruptionAccept, this.actor, null, {
         id: entry.id,
       });
     }
 
     if (entry.source === 'meeting') {
-      this.engine.dispatch(DAY_ACTIONS.interruptionAccept, this.actor, null, {
+      this.act(DAY_ACTIONS.interruptionAccept, this.actor, null, {
         id: entry.id,
       });
-      this.engine.dispatch(DAY_ACTIONS.meetingRecap, this.actor, null, {});
+      this.act(DAY_ACTIONS.meetingRecap, this.actor, null, {});
       this.handlers.onNotice?.(
         'That could have been an email',
         'The recap is in your inbox. It is the meeting, in full, with '
@@ -6512,7 +6651,7 @@ export class DayDriver implements DayApi {
       // somebody who took a call about the ticket on their screen and is
       // still on it when they put the phone down did not lose their place.
       if (!benign) {
-        this.engine.dispatch(DAY_ACTIONS.interruptionRefocus, this.actor, null, {
+        this.act(DAY_ACTIONS.interruptionRefocus, this.actor, null, {
           id: entry.id,
         });
       }
@@ -6521,7 +6660,7 @@ export class DayDriver implements DayApi {
       // ringing pulled the thread whether or not anybody answered, and the
       // world keeps a record that this desk did not pick up - which is what
       // stops "ignore it" from being the correct answer to every phone.
-      const missed = this.engine.dispatch(
+      const missed = this.act(
         DAY_ACTIONS.interruptionMissed,
         this.actor,
         null,
@@ -6603,7 +6742,10 @@ export class DayDriver implements DayApi {
       ? undefined
       : this.tickets().find((node) => node.id === target);
 
-    return this.announced(this.engine.dispatch(
+    // The day's own screen, answered (0.42.0 review round): the phone rang
+    // because the day rang it, and taking it back off the desk is how a
+    // player gets the desk back. A stopped clock does not hold that hostage.
+    return this.announced(this.theDaysOwn(() => this.act(
       DAY_ACTIONS.interruptionAccept,
       this.actor,
       target,
@@ -6622,7 +6764,7 @@ export class DayDriver implements DayApi {
             true,
           ),
       },
-    ));
+    )));
   }
 
   /**
@@ -6652,7 +6794,8 @@ export class DayDriver implements DayApi {
 
     return view === null
       ? { ok: false, reason: NOTHING_RINGING }
-      : this.announced(this.engine.dispatch(
+      // The same screen, pushed away - the day's own, for the same reason.
+      : this.announced(this.theDaysOwn(() => this.act(
         DAY_ACTIONS.interruptionDefer,
         this.actor,
         null,
@@ -6675,7 +6818,7 @@ export class DayDriver implements DayApi {
           // telling the world how much of its own record to believe.
           postpones: view.entry.postpones.length,
         },
-      ));
+      )));
   }
 
   /**
@@ -6694,7 +6837,8 @@ export class DayDriver implements DayApi {
       return { ok: false, reason: NOTHING_RINGING };
     }
 
-    return this.announced(this.engine.dispatch(
+    // And said no to - the day's own screen again.
+    return this.announced(this.theDaysOwn(() => this.act(
       DAY_ACTIONS.interruptionDecline,
       this.actor,
       null,
@@ -6708,7 +6852,7 @@ export class DayDriver implements DayApi {
         // off the source rather than off a content row.
         withdrawn: declineWithdrawn(view.entry) ? 1 : 0,
       },
-    ));
+    )));
   }
 
   /* -- the pressure layer ------------------------------------------------ */
@@ -6760,7 +6904,7 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    const result = this.engine.dispatch(
+    const result = this.act(
       DAY_ACTIONS.consumableCrash,
       this.actor,
       null,
@@ -6838,7 +6982,7 @@ export class DayDriver implements DayApi {
     const now = this.engine.now();
 
     for (const ticket of witnesses) {
-      this.engine.dispatch(
+      this.act(
         HELPDESK_ACTIONS.ticketRecordTouch,
         this.actor,
         ticket.id,
@@ -6848,7 +6992,7 @@ export class DayDriver implements DayApi {
       );
 
       if (ok && needsResponse(ticket)) {
-        this.engine.dispatch(
+        this.act(
           HELPDESK_ACTIONS.ticketRecordResponse,
           this.actor,
           ticket.id,
@@ -6892,7 +7036,7 @@ export class DayDriver implements DayApi {
     );
 
     for (const ticket of due.acks) {
-      this.engine.dispatch(
+      this.act(
         HELPDESK_ACTIONS.ticketRecordAckMiss,
         this.actor,
         ticket,
@@ -6901,7 +7045,7 @@ export class DayDriver implements DayApi {
     }
 
     for (const miss of due.cadences) {
-      this.engine.dispatch(
+      this.act(
         HELPDESK_ACTIONS.ticketRecordCadenceMiss,
         this.actor,
         miss.ticket,
@@ -6913,16 +7057,23 @@ export class DayDriver implements DayApi {
   public recordProbe(machineId: NodeId, probeId: string, ok: boolean): void {
     const now = this.engine.now();
 
-    for (const ticket of this.ticketsAbout(machineId)) {
-      this.engine.dispatch(
-        HELPDESK_ACTIONS.ticketRecordTouch,
-        this.actor,
-        ticket.id,
-        {
-          touches: withTouch(ticket.fields[FIELDS.touchLog], now, probeId, ok),
-        },
-      );
-    }
+    // The day's own turn, deliberately (0.42.0 review round): this is not the
+    // player doing something, it is the world writing down that they LOOKED.
+    // A read stays open while the clock is stopped, so the record of one has
+    // to as well - a ping answered at leisure that left no evidence would be a
+    // handoff form that forgets what was checked.
+    this.theDaysOwn(() => {
+      for (const ticket of this.ticketsAbout(machineId)) {
+        this.act(
+          HELPDESK_ACTIONS.ticketRecordTouch,
+          this.actor,
+          ticket.id,
+          {
+            touches: withTouch(ticket.fields[FIELDS.touchLog], now, probeId, ok),
+          },
+        );
+      }
+    });
   }
 
   /**
@@ -6949,7 +7100,7 @@ export class DayDriver implements DayApi {
         continue;
       }
 
-      this.engine.dispatch(
+      this.act(
         HELPDESK_ACTIONS.ticketResolveWithParent,
         this.actor,
         due.child,
@@ -6978,7 +7129,7 @@ export class DayDriver implements DayApi {
         continue;
       }
 
-      const result = this.engine.dispatch(
+      const result = this.act(
         HELPDESK_ACTIONS.ticketBounceHandoff,
         this.actor,
         ticket.id,
@@ -7087,7 +7238,7 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    this.engine.dispatch(DAY_ACTIONS.metersTick, this.actor, null, {
+    this.act(DAY_ACTIONS.metersTick, this.actor, null, {
       stress_up: deltas.stressUp,
       stress_down: deltas.stressDown,
       suspicion_up: deltas.suspicionUp,
@@ -7177,22 +7328,27 @@ export class DayDriver implements DayApi {
     const minutes = this.dndAccrued(now);
     const state = this.meterState();
 
-    this.engine.dispatch(DAY_ACTIONS.metersTick, this.actor, null, {
-      stress_up: 0,
-      stress_down: 0,
-      suspicion_up: 0,
-      suspicion_down: 0,
-      reputation_up: 0,
-      reputation_down: 0,
-      suspicion_events_up: 0,
-      // Untouched: this is not the interval's settlement, it is the closing of
-      // one status's books inside it, and handing back the watermarks it found
-      // is what keeps it from billing anything twice.
-      breaches_charged: state.breachesCharged,
-      resolve_credit_paid: state.resolveCreditPaid,
-      dnd_ticks_up: minutes,
-      dnd_charged: state.dndSuspicionCharged,
-      dnd_billed_to: now,
+    // The books, as the world keeps them (0.42.0 review round): this is called
+    // BEFORE the dot is set, from a verb the desk may well be refused, and
+    // what has already been shown is already owed whatever happens next.
+    this.theDaysOwn(() => {
+      this.act(DAY_ACTIONS.metersTick, this.actor, null, {
+        stress_up: 0,
+        stress_down: 0,
+        suspicion_up: 0,
+        suspicion_down: 0,
+        reputation_up: 0,
+        reputation_down: 0,
+        suspicion_events_up: 0,
+        // Untouched: this is not the interval's settlement, it is the closing
+        // of one status's books inside it, and handing back the watermarks it
+        // found is what keeps it from billing anything twice.
+        breaches_charged: state.breachesCharged,
+        resolve_credit_paid: state.resolveCreditPaid,
+        dnd_ticks_up: minutes,
+        dnd_charged: state.dndSuspicionCharged,
+        dnd_billed_to: now,
+      });
     });
   }
 
@@ -7254,7 +7410,7 @@ export class DayDriver implements DayApi {
       return;
     }
 
-    const noticed = this.engine.dispatch(
+    const noticed = this.act(
       WORLD_ACTIONS.presenceNoticed,
       this.actor,
       null,
@@ -7323,7 +7479,13 @@ export class DayDriver implements DayApi {
    * disagree about what day it is, and every screen after it would be wrong.
    */
   private dispatchDay(id: string, params: Record<string, number>): void {
-    const result = this.engine.dispatch(id, this.actor, null, params);
+    // The day's own transitions - starting the shift, clocking off - are the
+    // day moving rather than the desk working, and a stopped clock may not
+    // refuse them: a session saved while paused comes back paused, and a shift
+    // that could not be started from there would be a save nobody can play.
+    const result = this.theDaysOwn(
+      () => this.act(id, this.actor, null, params),
+    );
 
     if (!result.ok) {
       throw new Error(`The day could not move: ${result.reason}`);

@@ -6,6 +6,7 @@ import { PRIORITY_MATRIX } from '../priority';
 import { HANDOFF_BOUNCE } from '../tickets/handoff';
 import { VIP_FORCED_PRIORITY } from '../vip';
 import {
+  ANSWERED_STAMP_OPS,
   fieldIs,
   HELPDESK_TIER,
   not,
@@ -490,6 +491,11 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
           },
         ],
       },
+      // And the OTHER clock (0.42.0): a question is words the reporter can
+      // see, so this is the minute they heard from somebody. Both stamps land
+      // here because a question is both things at once - which is exactly why
+      // the two were one field until the pane had to say them separately.
+      ...ANSWERED_STAMP_OPS,
       // And every contact re-anchors the update-cadence clock (E9, 0.37.0):
       // the contract's promise is a gap between words, and a question is
       // words. Guarded on the tier because only a contract reads the anchor -
@@ -598,6 +604,11 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
           },
         ],
       },
+      // And the minute they heard it (0.42.0). A reply is the purest case of
+      // the two stamps being different facts: on a ticket already fixed in
+      // silence the touch clock stopped hours ago, and THIS is when anybody
+      // was actually told.
+      ...ANSWERED_STAMP_OPS,
       // A reply re-anchors the update-cadence clock the same way a question
       // does (E9, 0.37.0): the contract's gap is measured to the LAST words,
       // whichever kind they were. Tier-guarded for the same golden reason.
@@ -975,6 +986,10 @@ export const TICKET_ACTIONS: readonly ActionData[] = [
           },
         ],
       },
+      // The forty duplicates hear about it here, and this is the minute they
+      // did (0.42.0) - a bulk close is still the first thing most of them were
+      // ever told.
+      ...ANSWERED_STAMP_OPS,
       {
         op: 'set_field',
         node: TARGET,

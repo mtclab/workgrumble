@@ -364,7 +364,10 @@ const ENTRIES = [
     id: 'desktop.pause',
     surface: 'desktop',
     control: 'day-pause',
-    does: 'Stops the clock, and starts it again.',
+    does: 'Stops the clock, and starts it again - and with the clock stopped '
+      + 'the desk is stopped too (W-10, 0.42.0): everything on screen can be '
+      + 'read and nothing can be changed, because every cost in this game is '
+      + 'priced in minutes that are not passing.',
     run: 'week',
   },
   {
@@ -1274,9 +1277,12 @@ const ENTRIES = [
   {
     id: 'tickets.clocks',
     surface: 'tickets',
-    control: 'ticket-detail-response, ticket-detail-resolution',
+    control: 'ticket-detail-response, ticket-detail-answered, '
+      + 'ticket-detail-resolution',
     does: 'The clock for the reporter and the clock for the problem, counting '
-      + 'down in desk minutes; the first thing done to a ticket stops one.',
+      + 'down in desk minutes; the first thing done to a ticket stops one - '
+      + 'and, beside it, whether the reporter has actually been told anything '
+      + 'yet, which is a different fact and used to wear the same word.',
     actions: [HELPDESK_ACTIONS.ticketRecordResponse],
     run: 'week',
   },

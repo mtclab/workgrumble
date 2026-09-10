@@ -4,6 +4,7 @@ import {
   completeLogin,
   logInOnDay,
   openFromStartMenu,
+  runCommand,
   underPause,
 } from './helpers';
 import { FIRST_EMPLOYER } from '../src/world/employers';
@@ -227,8 +228,31 @@ test('walks a day from the morning brief to the scorecard', async ({
   await page.clock.runFor(realMs(10, 1));
   await expect(page.getByTestId('sim-clock-time')).toHaveText(stopped);
 
+  // AND THE WORK IS IN THE CLOCK (W-10, 0.42.0). The walk emptied a queue
+  // with the day stopped - a triage filed, four commands run, an account
+  // unlocked, "Ticket resolved, Day 1 08:01" - which beats every clock in
+  // this game with one taskbar control. Reading stays open; anything that
+  // would change the world waits for the minutes.
+  await openFromStartMenu(page, 'cmd');
+  await runCommand(page, 'services PRINT-01');
+  // A read, under the pause, exactly as before: this is what a pause is for.
+  await expect(page.getByTestId('cmd-output'))
+    .toContainText('Services on PRINT-01');
+
+  await runCommand(page, 'unlock gpoole');
+  await expect(page.getByTestId('cmd-output'))
+    .toContainText('The clock is stopped, and so is the work');
+  await expect(page.getByTestId('cmd-output')).not.toContainText('unlocked');
+
   await pause.click();
   await expect(pause).toHaveAttribute('aria-pressed', 'false');
+
+  // And the same command, with the clock running, does the thing it always
+  // did - the rule is about the minute, not about the verb.
+  await runCommand(page, 'unlock gpoole');
+  await expect(page.getByTestId('cmd-output')).toContainText('unlocked');
+  await page.getByTestId('close-cmd').click();
+
   // The clock runs again, and the exact minute is landed and read held rather
   // than read off a bare runFor that can drift a tick either way.
   await settleAtClock(page, '09:10', 1);

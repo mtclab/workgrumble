@@ -8,7 +8,14 @@ import type {
 import { FIELDS } from '../fields';
 import { METER_CEILING, METER_FLOOR } from '../meters';
 import { SCOPE_OBLIGE_REPUTATION, SCOPE_OUTCOMES } from '../out-of-scope';
-import { fieldIs, HELPDESK_TIER, not, TARGET, targetGuards } from './helpers';
+import {
+  ANSWERED_STAMP_OPS,
+  fieldIs,
+  HELPDESK_TIER,
+  not,
+  TARGET,
+  targetGuards,
+} from './helpers';
 import { HELPDESK_ACTIONS, WORLD_ACTIONS } from './ids';
 
 /**
@@ -123,22 +130,28 @@ function reputation(by: number): OpData {
  * surface pressed it to have said something first, and the sentence is a
  * constant so a replay writes the identical string.
  */
-const ESTIMATE_SENT: OpData = {
-  op: 'set_field',
-  node: TARGET,
-  field: FIELDS.customerVisible,
-  value: {
-    append_line: {
-      node: TARGET,
-      field: FIELDS.customerVisible,
-      value: {
-        const: 'This falls outside the services in your agreement, so we have '
-          + 'prepared an estimate for it as additional work. Nothing will be '
-          + 'started until somebody there approves it.',
+const ESTIMATE_SENT: readonly OpData[] = Object.freeze([
+  {
+    op: 'set_field',
+    node: TARGET,
+    field: FIELDS.customerVisible,
+    value: {
+      append_line: {
+        node: TARGET,
+        field: FIELDS.customerVisible,
+        value: {
+          const: 'This falls outside the services in your agreement, so we '
+            + 'have prepared an estimate for it as additional work. Nothing '
+            + 'will be started until somebody there approves it.',
+        },
       },
     },
   },
-};
+  // The estimate is words the customer can read, so it is also the minute they
+  // heard from anybody (0.42.0) - which on an ask that arrived and was priced
+  // in silence is the only such minute there has been.
+  ...ANSWERED_STAMP_OPS,
+]);
 
 /**
  * Taking the ticket back off the customer, and writing the park off the
@@ -210,6 +223,8 @@ export const SCOPE_ACTION_DATA: readonly ActionData[] = [
           },
         },
       },
+      // Said to them, so they have heard from somebody (0.42.0).
+      ...ANSWERED_STAMP_OPS,
     ],
   },
   // QUOTE-AND-WAIT: inform, estimate, get approval before proceeding. It does
@@ -235,7 +250,7 @@ export const SCOPE_ACTION_DATA: readonly ActionData[] = [
         field: FIELDS.scopeQuotedAt,
         value: { now: true },
       },
-      ESTIMATE_SENT,
+      ...ESTIMATE_SENT,
       { op: 'set_waiting', node: TARGET, waiting: true },
       {
         op: 'set_field',

@@ -20,6 +20,7 @@ import {
 import {
   fieldLines,
   helpdeskActionPayload,
+  helpdeskActions,
   remediationActionIds,
 } from './index';
 
@@ -1506,6 +1507,102 @@ describe('ticket.record_response', () => {
       before,
     );
     expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.respondedAt)).toBe(10);
+  });
+});
+
+/**
+ * The stamp that has to ride with every word the reporter can read (0.42.0).
+ *
+ * Walks the ops of an action, however deeply the `when` blocks nest, and says
+ * whether any of them writes a given field. Written over the shipped data
+ * rather than over a list of verb names on purpose: a sixth writer added to
+ * the registry next year is caught by this without anybody remembering to add
+ * it here, which is the whole reason the check exists.
+ */
+function writesField(value: unknown, field: string): boolean {
+  if (Array.isArray(value)) {
+    return value.some((entry) => writesField(entry, field));
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if (record.op === 'set_field' && record.field === field) {
+    return true;
+  }
+
+  return Object.values(record).some((entry) => writesField(entry, field));
+}
+
+describe('the answer clock (W-04)', () => {
+  /**
+   * The structural half. `responded_at` is the FIRST TOUCH and stays that -
+   * the model is right and the pane's word was wrong - so the minute the
+   * reporter actually heard something is its own field, and it is written by
+   * every action that puts a line in front of them. A writer that forgot it
+   * would leave the pane saying nobody had been told anything under a stream
+   * that says they were.
+   */
+  it('is stamped by every action that writes to the customer-visible stream', () => {
+    const speakers = helpdeskActions()
+      .filter((action) => writesField(action.apply, FIELDS.customerVisible));
+
+    // The gate is over something: five verbs say things to a reporter today -
+    // a question, a reply, a bulk close, a scope refusal and a quote - and a
+    // check that walked an empty list would pass for ever.
+    expect(speakers.map((action) => action.id).sort()).toEqual([
+      'scope.quote',
+      'scope.refuse',
+      'ticket.add_comment',
+      'ticket.reply_to_reporter',
+      'ticket.resolve_with_parent',
+    ]);
+
+    expect(
+      speakers
+        .filter((action) => !writesField(action.apply, FIELDS.answeredAt))
+        .map((action) => action.id),
+    ).toEqual([]);
+  });
+
+  it('stamps the minute they first heard, once, and not on a silent fix', () => {
+    // Fixed and closed with nobody told - the walk's own case, in the two
+    // dispatches the driver makes for it: the work, and the touch stamp that
+    // goes with any work on a ticket. The touch clock stops, because somebody
+    // did do something about it. The answer clock does not, because nobody
+    // said anything.
+    fixture.advance(20);
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketEscalate, ESCALATABLE_TICKET, GOOD_HANDOFF),
+    ).toEqual({ ok: true });
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketRecordResponse, ESCALATABLE_TICKET),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.getField(ESCALATABLE_TICKET, FIELDS.respondedAt))
+      .toBe(20);
+    expect(fixture.graph.getField(ESCALATABLE_TICKET, FIELDS.answeredAt))
+      .toBeUndefined();
+
+    // And a question is words: both stamps, in the same minute, on a ticket
+    // nobody had touched.
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketAddComment, PLAIN_TICKET, {
+        comment: 'When exactly did it stop?',
+      }),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.answeredAt)).toBe(20);
+
+    // The second thing said is not a faster first thing.
+    fixture.advance(30);
+    expect(
+      dispatch(HELPDESK_ACTIONS.ticketAddComment, PLAIN_TICKET, {
+        comment: 'Any luck with that timing?',
+      }),
+    ).toEqual({ ok: true });
+    expect(fixture.graph.getField(PLAIN_TICKET, FIELDS.answeredAt)).toBe(20);
   });
 });
 

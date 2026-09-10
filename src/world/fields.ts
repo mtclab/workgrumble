@@ -1762,6 +1762,26 @@ export const FIELDS = {
    */
   respondedAt: 'responded_at',
   /**
+   * The minute the reporter first heard anything - the stamp on the first line
+   * of `customerVisible`, and a different fact from the one above (0.42.0).
+   *
+   * `respondedAt` is the FIRST TOUCH: somebody opened this ticket and did
+   * something about it, which is what stops the desk's response clock and is
+   * deliberately stamped even when the fix landed before a word was said,
+   * because a problem that stopped existing is not a missed response. In the
+   * trade, though, "first response" means a communication to the CUSTOMER -
+   * it is what every published SLA measures - so the pane that printed the
+   * touch and called it "Answered" was teaching the opposite of the thing it
+   * was naming, four rows above a stream saying nobody had been told anything.
+   *
+   * So the two clocks are two fields. This one is written by every action that
+   * appends to `customerVisible` and by nothing else, once and never again -
+   * the first words are the answer, and the second question is not a faster
+   * one. Absent on every ticket nobody has said anything on, which is exactly
+   * the state the pane now has words for.
+   */
+  answeredAt: 'answered_at',
+  /**
    * Why the ticket is parked - `awaiting_user` or `awaiting_vendor`. The
    * engine's own state says only that a clock is stopped; the reason is what a
    * review asks for, and it is the difference between "they have not answered"

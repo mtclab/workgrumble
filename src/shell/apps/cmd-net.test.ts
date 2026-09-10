@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { COMPANY_IDS } from '../../world/company';
+import { EMPLOYER_IDS } from '../../world/employers';
+import { ONBOARDINGS } from '../../world/onboarding';
+import { createWorldSession, FIRST_WEEK } from '../../world/session';
 import {
   addressOf,
   DNS_SUFFIX,
@@ -8,7 +11,10 @@ import {
   GATEWAY,
   hopMs,
   hostOctet,
+  isAddressLiteral,
+  machineAtAddress,
   macOf,
+  reverseName,
   stableHash,
   SUBNET,
   traceLine,
@@ -73,5 +79,85 @@ describe('the network the terminal prints', () => {
     // Further away is slower, which is what makes a trace worth reading.
     expect(hopMs(3, COMPANY_IDS.printServer, 0))
       .toBeGreaterThan(hopMs(1, COMPANY_IDS.printServer, 0));
+  });
+});
+
+/**
+ * The property the whole of W-20 stands on: an address names ONE box.
+ *
+ * Reading the derivation backwards is only an honest answer while it is a
+ * bijection over the estate, and two hundred and forty numbers against
+ * twenty-eight machines is not as much room as it sounds - the unsalted hash
+ * really did put two pairs of MSP boxes on one number each. Nothing in this
+ * estate models a duplicate address (there is no arp table, no conflict
+ * warning, no second claimant anywhere), so an estate with one would simply be
+ * a terminal giving the wrong box to a player who had just been taught to test
+ * by address.
+ *
+ * When this fails it names the two machines. The fix is to re-roll
+ * `ADDRESS_SALT` in `cmd-net.ts` - every address in this game is derived,
+ * printed, and never stored, so a re-roll costs the screen and nothing else.
+ */
+describe('an address names one box (0.42.0, W-20)', () => {
+  it('gives every machine in every shipped estate a number of its own', () => {
+    const clashes: string[] = [];
+
+    for (const employer of EMPLOYER_IDS) {
+      const session = createWorldSession({ ...FIRST_WEEK, employer });
+
+      // Including the customer who signs mid-week: their boxes are on the
+      // network from Wednesday, and an address that named two of them would
+      // be a fault that only appeared three days into an arc.
+      if (employer === 'msp') {
+        for (const event of ONBOARDINGS) {
+          session.engine.applySetup(event.setup());
+        }
+      }
+
+      const machines = session.engine.graph.nodesOfKind('machine');
+      const byAddress = new Map<string, string[]>();
+
+      for (const machine of machines) {
+        const address = addressOf(machine.id);
+        byAddress.set(address, [...(byAddress.get(address) ?? []), machine.id]);
+      }
+
+      for (const [address, ids] of byAddress) {
+        if (ids.length > 1) {
+          clashes.push(`${employer} ${address}: ${ids.join(' + ')}`);
+        }
+      }
+
+      // And the estate really was walked - an employer whose graph came back
+      // empty would pass an emptiness check for ever.
+      expect(machines.length).toBeGreaterThan(5);
+
+      // The read runs backwards for every one of them, which is the thing the
+      // terminal actually does with it.
+      for (const machine of machines) {
+        expect(machineAtAddress(machines, addressOf(machine.id))?.id)
+          .toBe(machine.id);
+      }
+    }
+
+    expect(clashes, 'two boxes on one address').toEqual([]);
+  });
+
+  it('knows an address from a name, and answers with neither for nonsense', () => {
+    expect(isAddressLiteral('10.42.0.29')).toBe(true);
+    expect(isAddressLiteral(' 10.42.0.29 ')).toBe(true);
+    // Three dots do not make an address: the estate's own names have more.
+    expect(isAddressLiteral('print-01.workgrumble.local')).toBe(false);
+    expect(isAddressLiteral('10.42.0')).toBe(false);
+    expect(isAddressLiteral('10.42.0.999')).toBe(false);
+
+    expect(machineAtAddress([{ id: COMPANY_IDS.printServer }], 'PRINT-01'))
+      .toBeNull();
+    expect(machineAtAddress([{ id: COMPANY_IDS.printServer }], '10.42.0.251'))
+      .toBeNull();
+  });
+
+  it('reverses an address the way the tree is actually walked', () => {
+    expect(reverseName('10.42.0.29')).toBe('29.0.42.10.in-addr.arpa');
   });
 });

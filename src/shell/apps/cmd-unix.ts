@@ -82,7 +82,15 @@ import {
   type SecurityModule,
   securityModuleFor,
 } from '../skins';
-import { addressOf, fqdn, GATEWAY, stableHash } from './cmd-net';
+import {
+  addressOf,
+  fqdn,
+  GATEWAY,
+  isAddressLiteral,
+  machineAtAddress,
+  reverseName,
+  stableHash,
+} from './cmd-net';
 import {
   type CommandSpec,
   type ParsedCommand,
@@ -808,6 +816,14 @@ export function ed25519Fingerprint(hostId: string): string {
 
 /* -- ssh, its own mechanic ------------------------------------------------ */
 
+/**
+ * The box this NAME belongs to - names only, which is what a resolver reads.
+ *
+ * `dig` is the caller this matters for (0.42.0, W-20): asked for an address it
+ * has been asked to resolve a name that happens to look like one, and the real
+ * answer is NXDOMAIN. Everything that reaches a box rather than looking one up
+ * calls `machineAt` below.
+ */
 function machineByName(api: GameApi, query: string): ReadOnlyGraphNode | null {
   const needle = query.trim().toLowerCase();
 
@@ -824,6 +840,21 @@ function machineByName(api: GameApi, query: string): ReadOnlyGraphNode | null {
       || suffix.toLowerCase() === needle
       || labelOf(node).toLowerCase() === needle;
   }) ?? null;
+}
+
+/**
+ * The box this argument reaches: a name, or an ADDRESS (0.42.0, W-20).
+ *
+ * The walk found `dig fc-rmm-01` printing `10.42.0.29` and then `ping`,
+ * `traceroute` and `curl` all failing to resolve the number it had just been
+ * given - which makes the single most useful move in a network fault, and the
+ * one this game's own KB article is about, impossible in the terminal that
+ * teaches it. Testing by address is how you tell a dead resolver from a dead
+ * wire, so every tool that CONNECTS to a box takes one.
+ */
+function machineAt(api: GameApi, query: string): ReadOnlyGraphNode | null {
+  return machineByName(api, query)
+    ?? machineAtAddress(api.graph.nodesOfKind('machine'), query);
 }
 
 /**
@@ -937,7 +968,7 @@ export function sshLines(api: GameApi, query: string): CommandResult {
   const user = at >= 0 ? trimmed.slice(0, at).trim() : 'engineer';
   const hostQuery = at >= 0 ? trimmed.slice(at + 1).trim() : trimmed;
 
-  const machine = machineByName(api, hostQuery);
+  const machine = machineAt(api, hostQuery);
 
   // The tier gate, first and hardest: a service-desk player has no ssh at all.
   if (!isSystemsEngineer(api.graph.getField(api.actor, FIELDS.playerTier))) {
@@ -1612,6 +1643,15 @@ function journalctlLines(
     return journalVacuumLines(api, session);
   }
 
+  // `journalctl --disk-usage`: one sentence, which is all systemd prints
+  // (0.42.0, W-05). It used to fall through to the bare journal listing - so
+  // the command taught its own shape wrong, on the exact path the KB article
+  // about a Linux box out of disk sends a player down, and wrong in the
+  // direction that buries the runaway in the log that caused it.
+  if (args.includes('--disk-usage')) {
+    return journalDiskUsageLines(api, session);
+  }
+
   const flagAt = args.findIndex((arg) => arg === '-u' || arg === '--unit');
   const named = flagAt >= 0 ? (args[flagAt + 1] ?? '').trim() : '';
 
@@ -1646,6 +1686,56 @@ function journalctlLines(
   return journal.length === 0
     ? lines('-- No entries --')
     : lines(...journal);
+}
+
+/**
+ * A size the way systemd's own `format_bytes` writes one: the whole part, one
+ * TRUNCATED tenth, and a single-letter unit - `26.0G`, `1.5G`, `40.0M`.
+ *
+ * Deliberately not `humanSize` below, which is df's rounding at df's widths.
+ * Two tools, two shapes, and a player learning either of them should learn the
+ * one they are looking at rather than this codebase's average of the two.
+ */
+function systemdSize(bytes: number): string {
+  const units = [
+    { suffix: 'T', size: 1024 ** 4 },
+    { suffix: 'G', size: 1024 ** 3 },
+    { suffix: 'M', size: 1024 ** 2 },
+    { suffix: 'K', size: 1024 },
+  ];
+  const unit = units.find((entry) => bytes >= entry.size);
+
+  if (unit === undefined) {
+    return `${String(Math.max(0, Math.trunc(bytes)))}B`;
+  }
+
+  return `${String(Math.floor(bytes / unit.size))}.${
+    String(Math.floor((bytes % unit.size) * 10 / unit.size))
+  }${unit.suffix}`;
+}
+
+/**
+ * `journalctl --disk-usage` - the one line, off the one field (0.42.0, W-05).
+ *
+ * It reads the same `journal_bytes` the vacuum shrinks and `du` reports, so
+ * the three cannot come to disagree about the same disk: the runaway is 26G
+ * here, 26G under `/var/log/journal`, and gone from all three the minute the
+ * vacuum runs. A box with no journal field of its own reports the healthy
+ * baseline, which is what a stock box's journal actually looks like.
+ */
+function journalDiskUsageLines(
+  api: GameApi,
+  session: Readonly<SshSession>,
+): CommandResult {
+  const box = api.graph.getNode(session.hostId);
+  const value = box?.fields[FIELDS.journalBytes];
+  const bytes = typeof value === 'number' ? value : DU_JOURNAL_BASELINE;
+
+  return lines(
+    `Archived and active journals take up ${
+      systemdSize(bytes)
+    } in the file system.`,
+  );
 }
 
 /**
@@ -1871,7 +1961,7 @@ function duLeaves(
   ];
 }
 
-/** A du path, normalised: trailing slash and a trailing `/*` wildcard dropped. */
+/** A du path, normalised: a trailing slash and a trailing `/*` wildcard off. */
 function duTarget(raw: string): string {
   const trimmed = raw.trim();
   const noWildcard = trimmed.endsWith('/*') ? trimmed.slice(0, -2) : trimmed;
@@ -1880,6 +1970,72 @@ function duTarget(raw: string): string {
     : noWildcard;
 
   return noSlash.length === 0 ? '.' : noSlash;
+}
+
+/**
+ * What the SHELL hands du when the line ends in `/*` (0.42.0, W-06).
+ *
+ * `du -sh /var/log/*` is not du reading a wildcard - du has never seen one.
+ * The shell expands it first and du gets one argument per child, which is why
+ * that line answers with a row per directory instead of the parent's total.
+ * Reading the glob as "the directory" printed `26G /var/log` and no clue which
+ * log ate the disk, which is the opposite of what the command is FOR: the
+ * expansion IS the drill-down.
+ *
+ * The children are the first path segment under the target, one row each and
+ * sorted, exactly as a shell sorts what it expands.
+ */
+function duGlobChildren(
+  target: string,
+  leaves: readonly DuLeaf[],
+): readonly string[] {
+  const prefix = `${target}/`;
+  const children = new Set<string>();
+
+  for (const leaf of leaves) {
+    if (!leaf.path.startsWith(prefix)) {
+      continue;
+    }
+
+    const rest = leaf.path.slice(prefix.length);
+    const cut = rest.indexOf('/');
+
+    children.add(`${prefix}${cut < 0 ? rest : rest.slice(0, cut)}`);
+  }
+
+  return [...children].sort((left, right) => left.localeCompare(right));
+}
+
+/** The rows du prints for ONE argument: the leaves under it, then its total. */
+function duRowsFor(
+  target: string,
+  leaves: readonly DuLeaf[],
+  summarise: boolean,
+  mac: boolean,
+): readonly string[] {
+  const under = leaves.filter((leaf) => underPath(leaf.path, target));
+  const total = under.reduce((sum, leaf) => sum + leaf.bytes, 0);
+
+  // A path with no directories under it is a small ordinary directory - du
+  // reports the 4K an empty ext4 directory takes, not an error. APFS reports
+  // an empty directory as nothing at all, which is what a Mac prints.
+  if (under.length === 0) {
+    return [duRow(mac ? 0 : 4096, target)];
+  }
+
+  // -s is the total alone; without it, every directory under the path and then
+  // the summed total for the path, which is how the drill-down reads.
+  if (summarise) {
+    return [duRow(total, target)];
+  }
+
+  return [
+    ...under
+      .filter((leaf) => leaf.path !== target)
+      .sort((left, right) => left.path.localeCompare(right.path))
+      .map((leaf) => duRow(leaf.bytes, leaf.path)),
+    duRow(total, target),
+  ];
 }
 
 /** Whether a leaf is at or under a path - the same containment du walks. */
@@ -1913,36 +2069,31 @@ function duLines(
   const mac = isMac(api, session);
   const flags = args.filter((arg) => arg.startsWith('-')).join('');
   const summarise = flags.includes('s');
-  const rawPath = args.find((arg) => !arg.startsWith('-'));
   // Where a bare `du` stands, which is where the home directory IS on each
   // family: /Users on a Mac, /home on Linux.
-  const target = duTarget(
-    rawPath ?? `${mac ? '/Users' : '/home'}/${session.username}`,
-  );
-
+  const asked = (
+    args.find((arg) => !arg.startsWith('-'))
+      ?? `${mac ? '/Users' : '/home'}/${session.username}`
+  ).trim();
+  const target = duTarget(asked);
   const leaves = duLeaves(api, session);
-  const under = leaves.filter((leaf) => underPath(leaf.path, target));
-  const total = under.reduce((sum, leaf) => sum + leaf.bytes, 0);
 
-  // A path with no directories under it is a small ordinary directory - du
-  // reports the 4K an empty ext4 directory takes, not an error. APFS reports
-  // an empty directory as nothing at all, which is what a Mac prints.
-  if (under.length === 0) {
-    return lines(duRow(mac ? 0 : 4096, target));
+  // The glob is the SHELL's, not du's (0.42.0, W-06): one argument per child,
+  // and each of them answered in full.
+  if (asked.endsWith('/*')) {
+    const children = duGlobChildren(target, leaves);
+
+    // Nothing matched, so no expansion happened and du was handed the pattern
+    // itself - which is exactly what an unset `nullglob` does and exactly what
+    // du then says about it.
+    return children.length === 0
+      ? lines(`du: cannot access '${asked}': No such file or directory`)
+      : lines(...children.flatMap(
+        (child) => duRowsFor(child, leaves, summarise, mac),
+      ));
   }
 
-  // -s is the total alone; without it, every directory under the path and then
-  // the summed total for the path, which is how the drill-down reads.
-  if (summarise) {
-    return lines(duRow(total, target));
-  }
-
-  const rows = under
-    .filter((leaf) => leaf.path !== target)
-    .sort((left, right) => left.path.localeCompare(right.path))
-    .map((leaf) => duRow(leaf.bytes, leaf.path));
-
-  return lines(...rows, duRow(total, target));
+  return lines(...duRowsFor(target, leaves, summarise, mac));
 }
 
 /**
@@ -2267,10 +2418,26 @@ function digLines(api: GameApi, name: string): CommandResult {
  * `Host <name> not found: 3(NXDOMAIN)`.
  */
 function hostLines(api: GameApi, name: string): CommandResult {
-  const machine = machineByName(api, name);
+  const query = name.trim();
+
+  // An address is a REVERSE lookup, and `host` is the one tool in this
+  // terminal that does one without being asked (0.42.0, W-20). It answers
+  // with the pointer record, in the in-addr.arpa shape that is the whole
+  // reason the octets are printed backwards.
+  if (isAddressLiteral(query)) {
+    const box = machineAtAddress(api.graph.nodesOfKind('machine'), query);
+
+    return box === null
+      ? lines(`Host ${reverseName(query)}. not found: 3(NXDOMAIN)`)
+      : lines(
+        `${reverseName(query)} domain name pointer ${fqdn(labelOf(box))}.`,
+      );
+  }
+
+  const machine = machineByName(api, query);
 
   return machine === null
-    ? lines(`Host ${name} not found: 3(NXDOMAIN)`)
+    ? lines(`Host ${query} not found: 3(NXDOMAIN)`)
     : lines(`${fqdn(labelOf(machine))} has address ${addressOf(machine.id)}`);
 }
 
@@ -2326,7 +2493,7 @@ function pingLines(
       : args,
   );
 
-  const machine = machineByName(api, host);
+  const machine = machineAt(api, host);
 
   if (machine === null) {
     // The two resolvers fail in their own words, and both are the real ones.
@@ -2336,7 +2503,11 @@ function pingLines(
   }
 
   const address = addressOf(machine.id);
-  const canonical = fqdn(labelOf(machine));
+  // What ping ECHOES is what it was given (0.42.0, W-20): asked for a name it
+  // prints the name it resolved, and asked for an address it prints the
+  // address, because on that path nothing looked anything up - which is the
+  // entire point of testing by address.
+  const canonical = isAddressLiteral(host) ? address : fqdn(labelOf(machine));
   // BSD counts the ICMP payload and GNU counts the payload and the header, so
   // the same 56 bytes are announced two ways; and BSD's sequence starts at 0.
   const header = mac
@@ -2451,7 +2622,7 @@ function curlLines(
 
   const box = LOCALHOST_NAMES.has(host) || host === session.hostname.toLowerCase()
     ? api.graph.getNode(session.hostId)
-    : machineByName(api, host);
+    : machineAt(api, host);
 
   if (box === undefined || box === null) {
     return lines(`curl: (6) Could not resolve host: ${host}`);
@@ -2785,7 +2956,7 @@ function tracerouteLines(
       : 'Usage: traceroute [OPTIONS] HOST');
   }
 
-  const machine = machineByName(api, host);
+  const machine = machineAt(api, host);
 
   if (machine === null) {
     return lines(`traceroute: unknown host ${host}`);
@@ -2793,6 +2964,11 @@ function tracerouteLines(
 
   const address = addressOf(machine.id);
   const canonical = fqdn(labelOf(machine));
+  // The header echoes the argument and the hop line resolves (0.42.0, W-20):
+  // traceroute names what it was ASKED for at the top, and then names what
+  // actually answered on the way - which is why a trace by address still
+  // prints a hostname a line later.
+  const asked = isAddressLiteral(host) ? address : canonical;
   const probe = (sample: number): string => (
     (5 + ((stableHash(machine.id) + sample * 7) % 30)) / 10
   ).toFixed(3);
@@ -2801,8 +2977,8 @@ function tracerouteLines(
   // gives up at 30 hops with 60-byte probes, BSD's at 64 with 52-byte ones.
   return lines(
     mac
-      ? `traceroute to ${canonical} (${address}), 64 hops max, 52 byte packets`
-      : `traceroute to ${canonical} (${address}), 30 hops max, 60 byte packets`,
+      ? `traceroute to ${asked} (${address}), 64 hops max, 52 byte packets`
+      : `traceroute to ${asked} (${address}), 30 hops max, 60 byte packets`,
     ` 1  ${canonical} (${address})  ${probe(1)} ms  ${probe(2)} ms  ${
       probe(3)
     } ms`,

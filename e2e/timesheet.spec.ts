@@ -115,18 +115,35 @@ test('the desk sheet is one bucket, one button, and no argument', async ({
   await expect(page.getByTestId('timesheet-stance'))
     .toContainText('nothing on it to decide');
 
-  // One line for the day, at seven and a half hours, attributed to nobody -
-  // which is the whole of a service-desk sheet and the whole of the joke.
+  // One line for the day, attributed to nobody - which is the whole of a
+  // service-desk sheet and the whole of the joke.
   const rows = page.locator('[data-testid^="timesheet-line-"]');
 
   await expect(rows).toHaveCount(1);
 
   const handle = await handleAt(page, 0);
 
-  await expect(page.getByTestId(`timesheet-worked-${handle}`))
-    .toHaveText('7h 30m');
   await expect(rows.first()).toHaveAttribute('data-billable', 'false');
   await expect(rows.first()).toContainText('Service Desk');
+
+  // W-08 (0.42.0): and it is the day that has HAPPENED. Whatever minute the
+  // clock has actually reached by here, the hours on the line are the hours
+  // that have run - so the utilisation row's two figures are the same figure
+  // and its percentage is a real hundred rather than a clamp hiding an
+  // over-claim. It used to read seven and a half hours at ten past nine, and
+  // the row said `100%` beside `15h of 12h 56m on the clock.`
+  //
+  // Read off the page rather than off the clock, deliberately: the number of
+  // minutes a faked clock has delivered is not a thing to assert, and the
+  // relation between the two figures is true in every one of them.
+  const worked = (
+    await page.getByTestId(`timesheet-worked-${handle}`).textContent()
+  )?.trim() ?? '';
+
+  expect(worked).toMatch(/^\d+h( \d+m)?$|^\d+m$/u);
+  await expect(page.getByTestId('timesheet-utilisation')).toHaveText(
+    `100% of the day accounted for. ${worked} of ${worked} on the clock.`,
+  );
 
   // Nothing on it has a second number, because nobody has said anything about
   // it - and there is nothing here to say it WITH.

@@ -1,10 +1,16 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
-import type { EngineApi, Expr, TicketDef } from '../engine-api';
+import type {
+  DispatchResult,
+  EngineApi,
+  Expr,
+  TicketDef,
+} from '../engine-api';
 import { loadEngineForTests } from '../engine-api/load-node';
 import {
   DAY_ACTIONS,
   fieldLines,
+  helpdeskActions,
   HELPDESK_ACTIONS,
 } from '../world/actions';
 import { COMPANY_IDS } from '../world/company';
@@ -55,6 +61,7 @@ import {
   triedFromTouches,
 } from '../world/tickets';
 import {
+  CLOCK_STOPPED_REASON,
   DayDriver,
   TICK_INTERVAL_MS,
   ticksFromElapsed,
@@ -412,6 +419,207 @@ describe('the day driver', () => {
     expect(fresh.driver.schedule().day).toBe(2);
     expect(fresh.driver.state()).toBe('morning_brief');
     expect(fresh.driver.paused()).toBe(false);
+  });
+});
+
+/**
+ * W-10, the September walk: the day paused at 08:01, a triage filed, four
+ * terminal commands run and an account unlocked - "Ticket resolved, Day 1
+ * 08:01". Every cost in this game is priced in simulated minutes, so a player
+ * who pauses, empties the queue and unpauses had beaten the whole pressure
+ * layer with a taskbar control, and the honest way to play was strictly
+ * harder than the dishonest one.
+ *
+ * THE RULE: a stopped clock stops the desk. Reading is untouched, because
+ * reading at leisure is what a pause is for; anything that would CHANGE the
+ * world waits for the minutes, refused at the one seam every verb the shell
+ * can reach passes through.
+ */
+describe('a stopped clock stops the work (W-10)', () => {
+  it('refuses every verb the desk can reach, and moves nothing', () => {
+    const { driver, engine } = harness('ticket:locked-account');
+    driver.startShift();
+
+    const before = engine.snapshotHash();
+    driver.setPaused(true);
+
+    const unlock = driver.dispatch(
+      HELPDESK_ACTIONS.accountUnlock,
+      COMPANY_IDS.player,
+      COMPANY_IDS.garyAccount,
+      {},
+    );
+
+    expect(unlock).toEqual({ ok: false, reason: CLOCK_STOPPED_REASON });
+    // The walk's own sentence: an account unlocked in a minute that was not
+    // passing. The world has to be untouched, not merely un-billed.
+    expect(engine.snapshotHash()).toBe(before);
+
+    // And the same answer from the other four ways in - a can, the desk, the
+    // dot and the bottle all go through the same seam, because a rule that
+    // holds for one of them is a rule with four holes in it.
+    expect(driver.drink().ok).toBe(false);
+    expect(driver.tidyDesk()).toEqual({
+      ok: false,
+      reason: CLOCK_STOPPED_REASON,
+    });
+    expect(driver.setPresence('dnd')).toEqual({
+      ok: false,
+      reason: CLOCK_STOPPED_REASON,
+    });
+    expect(driver.beer()).toEqual({
+      ok: false,
+      reason: CLOCK_STOPPED_REASON,
+    });
+    expect(engine.snapshotHash()).toBe(before);
+  });
+
+  it('lets the same act through the moment the clock is running again', () => {
+    const { driver, engine } = harness('ticket:locked-account');
+    driver.startShift();
+    driver.setPaused(true);
+
+    expect(driver.dispatch(
+      HELPDESK_ACTIONS.accountUnlock,
+      COMPANY_IDS.player,
+      COMPANY_IDS.garyAccount,
+      {},
+    ).ok).toBe(false);
+
+    driver.setPaused(false);
+
+    expect(driver.dispatch(
+      HELPDESK_ACTIONS.accountUnlock,
+      COMPANY_IDS.player,
+      COMPANY_IDS.garyAccount,
+      {},
+    )).toEqual({ ok: true });
+    expect(engine.graph.getField(COMPANY_IDS.garyAccount, FIELDS.locked)).toBe(false);
+  });
+
+  it('leaves the reading alone, which is what a pause is for', () => {
+    const { driver, engine } = harness('ticket:locked-account');
+    driver.startShift();
+    driver.setPaused(true);
+
+    // The queue, the estate and the clock all answer exactly as they did:
+    // nothing here changes the world, so nothing here is refused.
+    expect(engine.graph.getNode('ticket:locked-account')).toBeDefined();
+    expect(driver.state()).toBe('shift');
+    expect(driver.timesheet().days.length).toBeGreaterThanOrEqual(0);
+
+    // Including the probe evidence a read command leaves behind: looking at a
+    // box is looking, and the record of having looked is a record.
+    driver.recordProbe('machine:gary', 'ping', true);
+  });
+
+  it('refuses in a sentence that says what is still open', () => {
+    // A refusal that teaches, like every other one in here: it names the
+    // reason, and it names what the player CAN still do - which is the half
+    // that keeps the pause worth having.
+    const { driver } = harness();
+    driver.startShift();
+    driver.setPaused(true);
+
+    const refused = driver.tidyDesk();
+
+    expect(refused.ok).toBe(false);
+    expect(refused.ok ? '' : refused.reason)
+      .toContain('The clock is stopped');
+    expect(refused.ok ? '' : refused.reason).toContain('Read all you like');
+  });
+
+  /**
+   * AND THE SEAMS THE RULE DOES NOT REACH - the adversarial review of the
+   * 0.42.0 bundle.
+   *
+   * `workRefusal` is asked in six places, and the driver hands the shell far
+   * more than six verbs that change the world. Every one of these is on a
+   * control a player can press with the day stopped: the web store's install
+   * button (`desktop.ts`), the timesheet window's Submit
+   * (`apps/timesheet.ts`), the ticket pane's "write it up" (`apps/tickets.ts`)
+   * and the terminal's `report` (`apps/cmd-run.ts`). They all answer `ok` and
+   * they all move the graph.
+   *
+   * That is the same hole W-10 was opened to close, one surface along, and it
+   * is worse than a residual because the version SAYS otherwise in two places
+   * a player reads: the release note ("anything that would CHANGE something
+   * waits until the minutes are running again") and the pause button's own
+   * label ("nothing can be done at the desk while it is stopped"). A rule the
+   * product states and does not hold is the shape the house rule about the
+   * honest way to play being the harder one already forbids.
+   *
+   * The fix is the one the driver already knows how to make: ask
+   * `workRefusal()` in front of these verbs too, and the walk's own words -
+   * "the shell has five ways to reach a verb, and a rule enforced in four of
+   * them is a rule with a hole in it".
+   */
+  /**
+   * THE VERDICT FOR EVERY VERB THE BUILD SHIPS, said out loud.
+   *
+   * The gate above names four leaks because four were found; this one asks
+   * the question of the whole registry, so the next verb somebody adds is
+   * covered on the day it is written rather than on the day somebody plays a
+   * paused week and notices. It goes through the shell's own door - the
+   * generic `dispatch` every app reaches the world with - and it asserts the
+   * SENTENCE as well as the refusal, because "no" for the wrong reason is a
+   * different rule that happens to look like this one.
+   *
+   * Nothing is exempt here, deliberately. The scope that IS exempt - the
+   * clock's own bookkeeping, the evidence a read leaves, the screens the day
+   * itself put up - is not reachable through this door at all: it is what the
+   * driver does on its own turn, and `day-driver-door.test.ts` is what keeps
+   * it that way.
+   */
+  it('answers every action in the registry with the same stopped clock', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+
+    const before = engine.snapshotHash();
+    driver.setPaused(true);
+
+    const ids = helpdeskActions().map((action) => action.id);
+    const wrong: string[] = [];
+
+    for (const id of ids) {
+      const result = driver.dispatch(id, COMPANY_IDS.player, null, {});
+
+      if (result.ok || result.reason !== CLOCK_STOPPED_REASON) {
+        wrong.push(`${id}: ${result.ok ? 'ok' : result.reason}`);
+      }
+    }
+
+    // The gate is over the whole registry rather than over a handful of it.
+    expect(ids.length).toBeGreaterThan(50);
+    expect(wrong, 'actions that did not wait for the clock').toEqual([]);
+    expect(engine.snapshotHash()).toBe(before);
+  });
+
+  it('holds the rule at EVERY verb that changes the world, not six of them', () => {
+    const { driver, engine } = harness();
+    driver.startShift();
+
+    const before = engine.snapshotHash();
+    driver.setPaused(true);
+
+    const leaks: string[] = [];
+    const check = (name: string, result: DispatchResult): void => {
+      if (result.ok) {
+        leaks.push(name);
+      }
+    };
+
+    // The web store, which is on the desktop from the first minute.
+    check('install', driver.install('solitaire'));
+    // The sheet, which is the surface W-08 in this same bundle is about.
+    check('submitTimesheet', driver.submitTimesheet());
+    // Two conduct verbs, both with consequences the week is graded on.
+    check('writeUpArticle', driver.writeUpArticle());
+    check('reportProject', driver.reportProject('green'));
+
+    expect(leaks, 'verbs that changed the world with the clock stopped')
+      .toEqual([]);
+    expect(engine.snapshotHash()).toBe(before);
   });
 });
 

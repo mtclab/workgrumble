@@ -49,13 +49,87 @@ export function stableHash(value: string): number {
   return hash;
 }
 
+/**
+ * What the hash is salted with, and why there is a salt at all.
+ *
+ * Two boxes deriving one address is not a fault this estate models - there is
+ * no arp table, no conflict warning, nothing anywhere that knows what a
+ * duplicate address IS - so an estate that had one would simply have a number
+ * that names two machines, which is precisely the wrong answer to give a
+ * player who has just been taught to test by address. Two hundred and forty
+ * numbers and twenty-eight boxes is not a lot of room: the unsalted hash put
+ * the dental workstation on the engineer's own desk and Pennington's server on
+ * its own second workstation.
+ *
+ * The salt itself means nothing. It is a number picked because it happens to
+ * give every box in every shipped estate a number of its own, and the GATE is
+ * what makes that true rather than lucky: `cmd-net.test.ts` walks every
+ * employer's estate, and the onboarded customer as well, and fails the build
+ * if any two machines land on one address. When a later version adds a box
+ * that collides, the build says which two, and the fix is to re-roll this
+ * number - every address in the game is derived, printed and never stored, so
+ * a re-roll costs nothing but the numbers on the screen.
+ */
+const ADDRESS_SALT = 'addr47:';
+
 /** The last octet this node's address has always had. */
 export function hostOctet(id: string): number {
-  return FIRST_HOST + (stableHash(id) % (LAST_HOST - FIRST_HOST + 1));
+  return FIRST_HOST
+    + (stableHash(`${ADDRESS_SALT}${id}`) % (LAST_HOST - FIRST_HOST + 1));
 }
 
 export function addressOf(id: string): string {
   return `${SUBNET}.${String(hostOctet(id))}`;
+}
+
+/**
+ * Whether this argument is an ADDRESS rather than a name (0.42.0, W-20).
+ *
+ * Four dotted decimal parts, each of them a real octet. It is deliberately not
+ * "does it contain a dot" - `print-01.workgrumble.local` contains three - and
+ * deliberately not "is it in our subnet", because a tool asked about an
+ * address on somebody else's network should say the network is unreachable
+ * rather than that the name does not resolve.
+ */
+export function isAddressLiteral(value: string): boolean {
+  const parts = value.trim().split('.');
+
+  return parts.length === 4 && parts.every(
+    (part) => /^\d{1,3}$/u.test(part) && Number(part) <= 255,
+  );
+}
+
+/**
+ * The box AT an address, or null - the read the whole of W-20 turned on.
+ *
+ * The estate holds no addresses, so this is the derivation run backwards over
+ * the machines the graph does hold: the one whose derived address is this one.
+ * The uniqueness the gate keeps is what lets it hand back a single box, and
+ * the caller is what decides whether an address is a sensible thing to have
+ * been asked - `ping` and `curl` and `ssh` take one happily, `dig` does not,
+ * because an address is not a name and a resolver asked for one has been asked
+ * the wrong question.
+ */
+export function machineAtAddress<T extends { readonly id: string }>(
+  machines: readonly T[],
+  query: string,
+): T | null {
+  const needle = query.trim();
+
+  if (!isAddressLiteral(needle)) {
+    return null;
+  }
+
+  return machines.find((machine) => addressOf(machine.id) === needle) ?? null;
+}
+
+/**
+ * The name a reverse lookup asks about: `10.42.0.29` ->
+ * `29.0.42.10.in-addr.arpa`. The octets go backwards because the tree does,
+ * which is the fact the shape is worth printing for.
+ */
+export function reverseName(address: string): string {
+  return `${address.split('.').reverse().join('.')}.in-addr.arpa`;
 }
 
 /**

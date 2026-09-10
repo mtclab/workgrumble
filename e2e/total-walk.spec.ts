@@ -268,6 +268,33 @@ async function chatOption(page: Page, name: RegExp): Promise<void> {
  * minutes the walk spent clicking. The title is in the body of the notice, so
  * asking for the ticket by name is both exact and stable.
  */
+/**
+ * What ONE command printed, as the delta on the terminal's own scrollback.
+ *
+ * `cmd-output` is the whole session, so a plain `toContainText` after a
+ * command is an assertion about every line typed in that window - which is
+ * how a step comes to pass on a row two commands above it. `runOnlyCommand`
+ * solves the same problem by clearing the screen first and cannot be used
+ * inside an ssh session, where `cls` is the other family's word.
+ *
+ * Measured from the ECHO rather than by subtracting a before-reading: the
+ * terminal forgets its oldest lines at four hundred, so in a long session the
+ * text after a command is not the text before it plus the new rows, and a
+ * subtraction would quietly eat the answer it was called to read.
+ *
+ * Safe as a raw read rather than a retried assertion because `runCommand` has
+ * already waited for the line to be echoed back, and a command's output is
+ * drawn in the same repaint as its echo.
+ */
+async function printedBy(page: Page, line: string): Promise<string> {
+  await runCommand(page, line);
+
+  const text = (await page.getByTestId('cmd-output').textContent()) ?? '';
+  const echo = text.lastIndexOf(line);
+
+  return echo < 0 ? text : text.slice(echo + line.length);
+}
+
 function resolvedFor(page: Page, title: RegExp): Locator {
   return page
     .getByTestId('toast')
@@ -739,6 +766,13 @@ test('walks every function of a probation week that goes well', async ({
     await expect(response).toHaveAttribute('data-due', /^\d{2}:\d{2}$/);
     await expect(resolution).toHaveAttribute('data-due', /^\d{2}:\d{2}$/);
     await expect(resolution).toContainText('left');
+
+    // And the row that says what the clock above does NOT (0.42.0, W-04):
+    // nobody has been told anything about this ticket, which is the same
+    // thing the customer-visible stream says further down the pane.
+    const answered = page.getByTestId('ticket-detail-answered');
+    await expect(answered).toHaveAttribute('data-answered', 'false');
+    await expect(answered).toContainText('Nothing has been put to the reporter');
   });
 
   await step('tickets.streams', async () => {
@@ -1267,6 +1301,19 @@ test('walks every function of a probation week that goes well', async ({
     const escalate = page.getByTestId('ticket-escalate');
     await expect(escalate).toBeDisabled();
     await expect(escalate).toHaveAttribute('title', /closed/);
+
+    // THE W-04 CONTRADICTION, GATED (0.42.0). This ticket has been worked and
+    // closed and the reporter has never heard a word - so the touch clock has
+    // stopped and the pane must not call that an answer, four rows above a
+    // stream that says nobody has looked. The word belongs to the row below,
+    // and on this ticket that row says out loud that nobody was told.
+    const response = page.getByTestId('ticket-detail-response');
+    await expect(response).toContainText('Touched');
+    await expect(response).not.toContainText('Answered');
+
+    const answered = page.getByTestId('ticket-detail-answered');
+    await expect(answered).toHaveAttribute('data-answered', 'false');
+    await expect(answered).toContainText('fixed in silence');
   });
 
   /* -- the toys, and the windows they come in ------------------------------ */
@@ -1982,6 +2029,24 @@ test('walks every function of a probation week that goes well', async ({
     await runCommand(page, 'nslookup wibble');
     await expect(page.getByTestId('cmd-output'))
       .toContainText('Non-existent domain');
+
+    // W-20 (0.42.0), on the shipped artifact: the address the resolver just
+    // printed has to be an address the rest of the terminal can use. This is
+    // the move the KB article about names failing while addresses answer is
+    // entirely about, and until this version it was impossible here.
+    //
+    // On a screen of its own, and the LAST address on it: nslookup answers
+    // with the resolver it asked first and the box it asked about second, and
+    // the scrollback above holds addresses from every command before it.
+    await runOnlyCommand(page, 'nslookup PRINT-01');
+
+    const printed = await page.getByTestId('cmd-output').textContent() ?? '';
+    const address = [...printed.matchAll(/10\.42\.0\.\d+/gu)].at(-1)?.[0];
+
+    expect(address, 'nslookup printed no address to test with').toBeTruthy();
+    await runCommand(page, `ping ${address ?? ''}`);
+    await expect(page.getByTestId('cmd-output')).toContainText('Reply from');
+    await expect(page.getByTestId('cmd-output')).not.toContainText('Unknown host');
   });
 
   await step('cmd.users', async () => {
@@ -3982,20 +4047,24 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
   const sheetRows = page.locator('[data-testid^="timesheet-line-"]');
 
   /*
-   * All three under ONE pause, and that is the house rule rather than a
-   * convenience. The worked column of an open line GROWS every tick - the
-   * segment the player is standing in is still running - so at x4 a figure read
-   * off the row is a different number by the time an assertion has retried
-   * against it once, which is exactly how this step first went red on the box
-   * (6m expected, 26m by the fourth attempt). Everything below is about what
-   * the sheet DOES with a claim, and none of it needs the clock moving.
+   * THE READS UNDER A PAUSE, THE WRITES ON THE CLOCK (W-10, 0.42.0).
+   *
+   * The worked column of an open line GROWS - the segment the player is
+   * standing in is still running - so a figure read off the row can be a
+   * different number by the time an assertion has retried against it once,
+   * which is exactly how this step first went red on the box (6m expected, 26m
+   * by the fourth attempt). A pause is the right tool for reading it and is
+   * now the wrong tool for everything else on this window: filling a sheet in
+   * is work, and work waits for the minutes. So the two readings of the worked
+   * column are taken with the day held and every claim, every detail and the
+   * submission are made with it running.
    *
    * The arithmetic of a line is not asserted here at all, in any of the three:
    * that is `src/shell/apps/timesheet.test.ts` and `src/shell/timesheet.test.ts`,
    * where a minute is a minute and nothing is racing a repaint. What a browser
    * proves is the direction - the claim moved, the record did not follow it.
    */
-  await underPause(page, async () => {
+  {
     await step('timesheet.claim', async () => {
       await expect(page.getByTestId('timesheet-stance'))
         .toContainText('A line per customer');
@@ -4005,9 +4074,9 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
       // off the row: a walk that typed a figure of its own would be a walk that
       // quietly claimed less than the truth on a slow morning.
       const handle = await sheetRows.first().getAttribute('data-handle') ?? '';
-      const worked = Number(
+      const worked = await underPause(page, async () => Number(
         await sheetRows.first().getAttribute('data-worked'),
-      );
+      ));
 
       expect(worked).toBeGreaterThan(0);
 
@@ -4028,9 +4097,9 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
       await expect(page.getByTestId('timesheet-outcome'))
         .toContainText('The records still say what they said');
 
-      const after = Number(
+      const after = await underPause(page, async () => Number(
         await sheetRows.first().getAttribute('data-worked'),
-      );
+      ));
 
       expect(after).toBeGreaterThan(0);
       expect(after).toBeLessThan(claim);
@@ -4068,7 +4137,7 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
         .toHaveCount(0);
       await expect(sheetRows.first()).toHaveAttribute('data-gap', 'over');
     });
-  });
+  }
 
   await step('projects.phase', async () => {
     // The same window, opened again after the terminal moved the world twice.
@@ -4395,6 +4464,29 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
     await runCommand(page, 'du -h /var/log');
     await expect(page.getByTestId('cmd-output'))
       .toContainText('12M /var/log/nginx');
+
+    // The glob is the drill-down (0.42.0, W-06): the shell hands du one
+    // argument per child, so the line answers with a row each and names the
+    // log that ate the disk - it used to answer `26G /var/log`, the parent,
+    // one line, no clue.
+    //
+    // Read as the DELTA on the screen rather than by clearing it: this is a
+    // unix session, `cls` is the other family's word, and both of these rows
+    // are already up the screen from the two commands above. What the command
+    // itself printed is what everything below asserts on.
+    const printedByDu = await printedBy(page, 'du -sh /var/log/*');
+
+    expect(printedByDu).toMatch(/26G\s+\/var\/log\/journal/u);
+    expect(printedByDu).toMatch(/12M\s+\/var\/log\/nginx/u);
+
+    // And the one line systemd prints (0.42.0, W-05), reading the same field
+    // both of those do - it used to print the whole journal instead, which is
+    // what the second half of this says it must not do again.
+    const printedByUsage = await printedBy(page, 'journalctl --disk-usage');
+
+    expect(printedByUsage)
+      .toContain('Archived and active journals take up 26.0G in the file system.');
+    expect(printedByUsage).not.toContain('fcportal');
 
     await runCommand(page, 'journalctl --vacuum-size=200M');
     await expect(page.getByTestId('cmd-output'))

@@ -86,8 +86,11 @@ import {
   DNS_SUFFIX,
   fqdn,
   GATEWAY,
+  isAddressLiteral,
+  machineAtAddress,
   macOf,
   NAME_SERVER,
+  reverseName,
   traceLine,
 } from './cmd-net';
 import { COMMANDS, type ParsedCommand } from './cmd-parse';
@@ -228,13 +231,35 @@ function lookup(
   return { ok: true, node: first };
 }
 
+/**
+ * The box a command is aimed at - by name, or by ADDRESS (0.42.0, W-20).
+ *
+ * The KB article this desk is sent to by its own tickets ("The internet is
+ * down" and the addresses still work) teaches one move above all others: try
+ * something by address rather than by name, because a box that answers on its
+ * number and not on its name is a resolver fault rather than a dead line. The
+ * walk found that move impossible - every tool here matched the label only, so
+ * the address `nslookup` had just printed came back as an unknown host, which
+ * is the exact wrong answer to teach.
+ *
+ * The address branch is tried only when the names miss, so nothing a name
+ * already answered can be moved by it.
+ */
 function machineOf(api: GameApi, query: string): Lookup {
-  return lookup(
+  const byName = lookup(
     api,
     'machine',
     query,
     `Unknown host "${query}". Check the name, then check the plug.`,
   );
+
+  if (byName.ok) {
+    return byName;
+  }
+
+  const box = machineAtAddress(api.graph.nodesOfKind('machine'), query);
+
+  return box === null ? byName : { ok: true, node: box };
 }
 
 /**
@@ -525,7 +550,12 @@ function pingLines(api: GameApi, query: string): CommandResult {
     return lines(found.reason);
   }
 
-  const label = labelOf(found.node);
+  // What ping ECHOES is what it was given (0.42.0 review round). Windows ping
+  // does not reverse-resolve unless it is asked to with -a, so a ping by
+  // address prints the address - in the header and in every reply - and a ping
+  // by name prints the name it was given. `tracert` below is the other half of
+  // that family difference: it DOES resolve, so it prints what answered.
+  const label = isAddressLiteral(query) ? query.trim() : labelOf(found.node);
   const route = routeTo(api, found.node);
 
   // The answer is EVIDENCE (0.36.0): a box proven up - or proven silent - is
@@ -2186,6 +2216,39 @@ function nslookupLines(api: GameApi, query: string): CommandResult {
     `Address:  ${GATEWAY}`,
     '',
   ];
+
+  // AN ADDRESS IS THE OTHER QUESTION (0.42.0 review round). W-20 taught the
+  // desk's tools to take a number, and `nslookup` shares its lookup with
+  // `ping` and `tracert` - so the resolver started answering an address with a
+  // NAME record, which is a record the estate does not hold and the exact
+  // thing this version's own `dig` refuses to invent. A resolver handed a
+  // number is being asked which name that address belongs to: a pointer
+  // record, through the same derivation the unix `host` reverses with, and
+  // printed as the pointer it is rather than dressed up as a forward answer.
+  if (isAddressLiteral(query)) {
+    const box = machineAtAddress(api.graph.nodesOfKind('machine'), query.trim());
+
+    return box === null
+      ? lines(
+        ...header,
+        `*** ${NAME_SERVER} can't find ${query}: Non-existent domain`,
+        'Nothing in this estate answers to that address. A reverse lookup '
+          + 'asks the same server the same question the other way round, and '
+          + 'it has no record either way.',
+      )
+      : lines(
+        ...header,
+        `${reverseName(query.trim())} name = ${fqdn(labelOf(box))}`,
+        '',
+        // The teaching, and it is a different one from the forward lookup's:
+        // this direction proves a number is spoken for, not that a name can
+        // be reached.
+        'That is a pointer record - the estate saying which name this address '
+          + 'belongs to. It is the answer to the other question, and it is the '
+          + 'one worth asking when the names have stopped working.',
+      );
+  }
+
   const found = machineOf(api, query);
 
   if (!found.ok) {

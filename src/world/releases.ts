@@ -31,6 +31,81 @@ export interface ReleaseNote {
 
 export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   {
+    version: '0.42.0',
+    date: '2026-09-09',
+    summary: 'A maintenance release, made almost entirely of things this '
+      + 'building was saying that were not so. It has stopped saying them.',
+    lines: Object.freeze([
+      'A ticket fixed without a word to the person who raised it no '
+        + 'longer reports itself as answered. There are two rows on a '
+        + 'ticket now: the clock the desk is measured on, which stops the '
+        + 'first time anybody touches the ticket at all, and a line '
+        + 'saying what the reporter has actually been told and when. On a '
+        + 'ticket closed in silence, that line says so out loud. IT notes '
+        + 'that the two were one row for a year and that the row used the '
+        + 'word the trade uses for the one it was not.',
+      'The terminal takes an address wherever it takes a name. Pinging, '
+        + 'tracing, fetching from and connecting to a number all work, '
+        + 'which means the oldest test in the book can finally be run on '
+        + 'the machines it is about: if the address answers and the name '
+        + 'does not, the wire is fine and the thing that turns names into '
+        + 'addresses is not. The lookup tools keep their own manners - a '
+        + 'resolver asked to resolve an address still finds nothing, '
+        + 'because an address is not a name, and the tool that reverses '
+        + 'one reads back the record it found.',
+      'Two of the server commands were printing the wrong thing '
+        + 'altogether. Asking the journal how much disk it has taken now '
+        + 'answers in the one sentence it answers with everywhere else, '
+        + 'instead of printing the journal. Asking what is under a '
+        + 'directory with a star on the end lists the things under it '
+        + 'rather than adding them into one line about the directory - '
+        + 'which matters, because that is the line you use to find out '
+        + 'which log ate the disk.',
+      'The Start menu keeps all of itself on the screen. A list longer '
+        + 'than the screen is tall grows a second column rather than '
+        + 'running on under the taskbar, and on a window too small even '
+        + 'for that the list admits there is more of it instead of hiding '
+        + 'the rest behind a scrollbar nobody can see. The fridge, the '
+        + 'save, the load, the log off and the restart were the five '
+        + 'below the line, which is a list IT is not proud of.',
+      'The timesheet has stopped claiming hours nobody has worked yet. '
+        + 'The line for today is the hours the clock has actually run and '
+        + 'grows through the afternoon like the day does, and the '
+        + 'percentage at the top of the sheet is no longer held at a '
+        + 'hundred - so a sheet claiming more than the clock says now '
+        + 'reads as more than the clock says. Nothing has been added that '
+        + 'stops you. The number simply agrees with the two figures '
+        + 'printed next to it, which it did not before.',
+      'The pause control pauses the office as well as the clock. This is '
+        + 'a DECISION and it is now the rule: everything on screen can '
+        + 'still be read with the day stopped - the queue, the manuals, '
+        + 'the directory, the terminal, all of it - and anything that '
+        + 'would CHANGE something waits until the minutes are running '
+        + 'again. The clock also stops the desk for every verb rather '
+        + 'than for the handful anybody happened to try: the store, the '
+        + 'timesheet, the write-up and the terminal\'s status report used '
+        + 'to go through while the day was stopped, and they no longer '
+        + 'do. What does not wait is the day itself - starting a shift, '
+        + 'clocking off, and answering a phone the building rang at you. '
+        + 'IT records that the previous behaviour was not a feature, was '
+        + 'never advertised as one, and is survived by the reading.',
+      'The evening scorecard opens at the top of itself rather than two '
+        + 'thirds of the way down it, and on a telephone the windows open '
+        + 'on the screen rather than mostly beside it. Both were put '
+        + 'right at the end of last month and reach you here, because '
+        + 'this is the update that follows that one.',
+      'KNOWN, AND NOT PUT RIGHT IN THIS UPDATE. The engineers\' Monday '
+        + 'brief will tell you the board is light while showing you nine '
+        + 'things on it. Choosing a desk other than the one offered '
+        + 'returns you to the log-on screen once more before it lets you '
+        + 'in, and says nothing about why. "help" lists every command '
+        + 'the terminal has rather than the ones your grade can run. And '
+        + 'the manual is sixty-seven articles with no way to search '
+        + 'them. All four are on the list. IT does not give dates. IT '
+        + 'has learned.',
+    ]),
+  },
+  {
     version: '0.41.0',
     date: '2026-08-21',
     summary: 'The workstation now remembers where you work. IT apologises '

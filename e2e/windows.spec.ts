@@ -299,13 +299,80 @@ test('keeps the whole start menu on the screen at any app count', async ({
   expect(box!.y).toBeGreaterThanOrEqual(0);
   expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
 
-  // And the cap is a scroll rail, not a guillotine: the first and the last
-  // item are both still reachable with a click.
-  const items = page.locator('[data-testid^="start-menu-item-"]');
-  await items.first().scrollIntoViewIfNeeded();
-  await expect(items.first()).toBeInViewport();
-  await items.last().scrollIntoViewIfNeeded();
-  await expect(items.last()).toBeInViewport();
+  // THE ROWS, EVERY ONE OF THEM (W-07, 0.42.0). This test was green for a
+  // year over five entries nobody could see, for two halves of one mistake:
+  // it measured the WRAPPER, which is correctly clamped whatever is inside
+  // it, and it reached for `start-menu-item-`, a prefix that does not match
+  // the Save, Load, Log off or Restart rows at all. So it is the descendants
+  // of the list that are measured now, all of them, against the line the
+  // taskbar starts at rather than against the document.
+  const rows = page.locator('.start-menu-list [data-testid^="start-menu-"]');
+  const taskbar = await page.getByTestId('taskbar').boundingBox();
+  expect(taskbar).not.toBeNull();
+
+  const seen = await rows.evaluateAll(
+    (nodes) => nodes.map((node) => node.dataset.testid ?? '?'),
+  );
+
+  // The four the old selector could not see, named so that a future rename
+  // cannot quietly take them out of this gate's reach again.
+  for (const id of [
+    'start-menu-save',
+    'start-menu-load',
+    'start-menu-log-off',
+    'start-menu-restart',
+  ]) {
+    expect(seen, `${id} is not among the rows this gate measures`)
+      .toContain(id);
+  }
+
+  expect(seen.length).toBeGreaterThan(20);
+
+  for (let index = 0; index < seen.length; index += 1) {
+    const id = seen[index] ?? '?';
+    const row = await rows.nth(index).boundingBox();
+
+    expect(row, id).not.toBeNull();
+    expect(row!.y, `${id} is off the top of the screen`)
+      .toBeGreaterThanOrEqual(0);
+    expect(row!.y + row!.height, `${id} is under the taskbar`)
+      .toBeLessThanOrEqual(taskbar!.y + 1);
+    expect(row!.x, `${id} is off the left of the screen`)
+      .toBeGreaterThanOrEqual(0);
+    expect(row!.x + row!.width, `${id} is off the right of the screen`)
+      .toBeLessThanOrEqual(viewport!.width + 1);
+    await expect(rows.nth(index), id).toBeInViewport();
+  }
+
+  // And nothing is BELOW anything: at the suite's own screen the menu wraps
+  // into a second column rather than folding, so there is no scroll to find
+  // and nothing to say about one.
+  await expect(page.getByTestId('start-menu-list'))
+    .toHaveAttribute('data-fold', 'false');
+});
+
+test('admits the fold when a window is too small to hold the menu', async ({
+  page,
+}) => {
+  await logIn(page);
+
+  // Small in BOTH directions, which is the only shape the menu cannot lay
+  // out: too short for one column and too narrow for two. The walk's finding
+  // was not that a folded list is unreachable - it scrolls to a wheel - but
+  // that nothing on the screen admitted the fold was there.
+  await page.setViewportSize({ width: 460, height: 420 });
+  await page.getByTestId('start-button').click();
+
+  const list = page.getByTestId('start-menu-list');
+  await expect(list).toBeVisible();
+  await expect(list).toHaveAttribute('data-fold', 'true');
+
+  // Reachable, still, and the last row is a row rather than a rumour: it
+  // scrolls into the list and is on the screen when it gets there.
+  const rows = page.locator('.start-menu-list [data-testid^="start-menu-"]');
+  await rows.last().scrollIntoViewIfNeeded();
+  await expect(rows.last()).toBeInViewport();
+  await expect(rows.last()).toBeVisible();
 });
 
 test('closes the start menu with Escape and with an outside click', async ({

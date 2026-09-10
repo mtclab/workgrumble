@@ -35,6 +35,7 @@ import {
   type PackageManager,
 } from '../skins';
 import { DayDriver } from '../day-driver';
+import { addressOf } from './cmd-net';
 import { parseCommand } from './cmd-parse';
 import { executeCommand, type CommandResult } from './cmd-run';
 import {
@@ -950,6 +951,177 @@ describe('the sysadmin network toolbox (E6, 0.16.0)', () => {
     });
   });
 
+  /**
+   * W-20, the September walk: `dig fc-rmm-01` answered `10.42.0.29`, and then
+   * `ping`, `traceroute` and `curl` all said they could not resolve the number
+   * the resolver had just printed. Testing by address is the one move that
+   * separates a dead resolver from a dead wire - it is what this game's own KB
+   * article "\'The internet is down\' and the addresses still work" is about -
+   * and it was impossible in the terminal that teaches it.
+   */
+  describe('testing by address, the move the KB article is about (W-20)', () => {
+    /** The address the resolver itself printed, read back out of dig. */
+    function addressFromDig(api: GameApi, ssh: SshSession, host: string): string {
+      const answer = unix(api, ssh, `dig ${host}`).lines
+        .find((line) => /\sIN\sA\s/u.test(line) && !line.startsWith(';'));
+
+      expect(answer, 'dig printed no ANSWER row').toBeDefined();
+      return (answer ?? '').trim().split(/\s+/u).at(-1) ?? '';
+    }
+
+    it('reaches the box with the number dig just printed', () => {
+      const { api, ssh } = onMsp();
+      const address = addressFromDig(api, ssh, 'FC-RMM-01');
+
+      expect(address).toMatch(/^10\.42\.0\.\d+$/u);
+
+      // ping: it answers, and it echoes the ADDRESS rather than a name,
+      // because on this path nothing looked anything up.
+      const pinged = unix(api, ssh, `ping -c 2 ${address}`).lines.join('\n');
+      expect(pinged).toContain(`PING ${address} (${address})`);
+      expect(pinged).toContain('2 packets transmitted, 2 received');
+      expect(pinged).not.toContain('Name or service not known');
+
+      // traceroute, once the box has it - it is one of the not-installed gags
+      // until somebody installs it. The header echoes what it was asked for,
+      // and the hop it reaches still resolves to a name.
+      unix(api, ssh, 'sudo apt install traceroute');
+
+      const traced = unix(api, ssh, `traceroute ${address}`).lines.join('\n');
+      expect(traced).toContain(`traceroute to ${address} (${address})`);
+      expect(traced).toContain('fc-rmm-01.workgrumble.local');
+      expect(traced).not.toContain('unknown host');
+
+      // curl: the box answers over HTTP by number exactly as it does by name.
+      const got = unix(api, ssh, `curl -I http://${address}/`).lines.join('\n');
+      expect(got).toMatch(/^HTTP\/2 \d{3}/mu);
+      expect(got).not.toContain('Could not resolve host');
+    });
+
+    it('ssh takes an address, and the box it lands on is the same box', () => {
+      const { api } = onMsp();
+      const session = connect(api, `ssh engineer@${
+        addressFromDig(api, onMsp().ssh, 'FC-RMM-01')
+      }`);
+
+      expect(session).not.toBeNull();
+      expect(session?.hostId).toBe(MSP_IDS.mspInfraServer);
+    });
+
+    it('a resolver is not a router: dig by address is still NXDOMAIN', () => {
+      const { api, ssh } = onMsp();
+      const address = addressFromDig(api, ssh, 'FC-RMM-01');
+      const out = unix(api, ssh, `dig ${address}`).lines.join('\n');
+
+      // An address handed to dig is a NAME that looks like one, and the real
+      // answer is that no such name exists. Reversing it is `host`'s job.
+      expect(out).toContain('status: NXDOMAIN');
+      expect(out).not.toContain(';; ANSWER SECTION:');
+    });
+
+    it('host reverses an address into the name, in the in-addr.arpa shape', () => {
+      const { api, ssh } = onMsp();
+      const address = addressFromDig(api, ssh, 'FC-RMM-01');
+      const reversed = address.split('.').reverse().join('.');
+
+      expect(unix(api, ssh, `host ${address}`).lines.join('\n'))
+        .toBe(
+          `${reversed}.in-addr.arpa domain name pointer `
+            + 'fc-rmm-01.workgrumble.local.',
+        );
+
+      // And an address nothing in the building answers to says so as a reverse
+      // lookup, not as a missing hostname.
+      expect(unix(api, ssh, 'host 10.42.0.251').lines.join('\n'))
+        .toContain('251.0.42.10.in-addr.arpa. not found: 3(NXDOMAIN)');
+    });
+
+    it('answers at the DESK too, where the article is actually read', () => {
+      // The KB article is a corporate one and the junior reading it has the
+      // Windows terminal, so the same move has to work there: nslookup prints
+      // a number, and ping and tracert take it.
+      const api = apiFor(createWorldSession());
+      const looked = win(api, 'nslookup PRINT-01').lines.join('\n');
+      // The ANSWER's address, not the server's: nslookup prints the resolver
+      // it asked first, and the box it asked about second.
+      const address = /Name:[^\n]+\nAddress:\s+(10\.42\.0\.\d+)/u
+        .exec(looked)?.[1] ?? '';
+
+      expect(address).toMatch(/^10\.42\.0\.\d+$/u);
+
+      // ping ECHOES what it was given and does not reverse-resolve - Windows
+      // ping needs -a for that - so a ping by address answers as the address
+      // (0.42.0 review round; it used to name the box, which is the -a output
+      // for a flag nobody typed).
+      const pinged = win(api, `ping ${address}`).lines.join('\n');
+
+      expect(pinged).toContain(`Pinging ${address}`);
+      expect(pinged).toContain(`Reply from ${address}`);
+      expect(pinged).not.toContain('PRINT-01');
+
+      // tracert is the other half of the same family difference: it resolves
+      // its hops by default, so it names what answered.
+      expect(win(api, `tracert ${address}`).lines.join('\n'))
+        .toContain('Tracing route to print-01.workgrumble.local');
+
+      // And the resolver run backwards on a number nobody has answers as a
+      // reverse lookup rather than as a name nobody has heard of.
+      expect(win(api, 'nslookup 10.42.0.251').lines.join('\n'))
+        .toContain('reverse lookup');
+    });
+
+    /**
+     * AND THE ONE THE DESK ACTUALLY ANSWERS WITH - the adversarial review of
+     * the 0.42.0 bundle.
+     *
+     * The address branch went into `machineOf`, which is what `nslookup`
+     * resolves through as well as `ping` and `tracert`. So the desk's
+     * resolver, handed a number, now answers it as a FORWARD lookup:
+     *
+     *     Name:    print-01.workgrumble.local
+     *     Address:  10.42.0.48
+     *
+     * There is no such record. A name server asked for `10.42.0.48` is being
+     * asked to resolve a name that happens to look like an address, and the
+     * answer is that no such name exists - which is exactly what the same
+     * bundle made `dig` say on the engineer's box, what the new
+     * `isAddressLiteral` branch in `nslookupLines` was written to say, and
+     * what this version's own release note promises out loud ("a resolver
+     * asked to resolve an address still finds nothing, because an address is
+     * not a name"). The branch is unreachable for every address that names a
+     * box, so the only case the gate above covers is the one nothing answers.
+     *
+     * It matters here more than anywhere: the desk is where the KB article
+     * about names failing while addresses answer is READ, and a learner who
+     * takes this shape away has learned that a resolver returns A records for
+     * addresses. Either `nslookup` reverses (the real tool does, in the PTR
+     * shape `host` already prints) or it refuses - it may not invent a
+     * forward record.
+     */
+    it('does not answer an address with a NAME record it does not hold', () => {
+      const api = apiFor(createWorldSession());
+      const address = addressOf(COMPANY_IDS.printServer);
+      const out = win(api, `nslookup ${address}`).lines.join('\n');
+
+      expect(out).not.toContain('Name:    print-01.workgrumble.local');
+    });
+
+    it('answers it with the pointer record, which is what it holds', () => {
+      // The other half: refusing to invent a forward record is only right if
+      // the honest answer is given instead. A resolver asked which name an
+      // address belongs to reads back the pointer, in the in-addr.arpa shape
+      // the unix `host` prints on the same estate.
+      const api = apiFor(createWorldSession());
+      const address = addressOf(COMPANY_IDS.printServer);
+      const out = win(api, `nslookup ${address}`).lines.join('\n');
+      const reversed = address.split('.').reverse().join('.');
+
+      expect(out)
+        .toContain(`${reversed}.in-addr.arpa name = print-01.workgrumble.local`);
+      expect(out).toContain('pointer record');
+    });
+  });
+
   describe('ping: continuous by default (the sharpest family diff)', () => {
     it('bare ping says it is CONTINUOUS and names -c - not 4-and-stop (teeth)', () => {
       const { api, ssh } = onMsp();
@@ -1100,11 +1272,89 @@ describe('the characteristic-incident commands (E6, 0.19.0)', () => {
       expect(out[out.length - 1]).toBe(`26G\t/var/log`);
     });
 
+    /**
+     * W-06, the September walk: `du -sh /var/log/*` answered `26G /var/log` -
+     * the parent, one line, and no clue which log had eaten the disk. The
+     * wildcard was being read as part of the path; it is the SHELL's, and it
+     * is the whole of the drill-down.
+     */
+    it('expands a trailing glob into a row per child, not the parent (W-06)', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'du -sh /var/log/*').lines;
+
+      // The journal and the nginx logs, one row each, sorted the way a shell
+      // sorts what it expands - and the runaway named where it can be seen.
+      expect(out).toEqual([
+        '26G\t/var/log/journal',
+        '12M\t/var/log/nginx',
+      ]);
+      // The parent's own total is emphatically NOT the answer to this line.
+      expect(out.some((line) => line.endsWith('\t/var/log'))).toBe(false);
+    });
+
+    it('says what the shell said when a glob matches nothing', () => {
+      const { api, ssh } = onMsp();
+
+      // Nothing matched, so nothing was expanded and du was handed the
+      // pattern itself - which is what an unset nullglob does and what du
+      // then says about it.
+      expect(unix(api, ssh, 'du -sh /nowhere/*').lines)
+        .toEqual(["du: cannot access '/nowhere/*': No such file or directory"]);
+    });
+
     it('a path with nothing under it is a small ordinary directory', () => {
       const { api, ssh } = onMsp();
       // The world seeds no directories under /etc for a Linux box; du reports the
       // 4K an empty ext4 directory takes, not an error.
       expect(unix(api, ssh, 'du -sh /etc').lines).toEqual(['4.0K\t/etc']);
+    });
+  });
+
+  /**
+   * W-05, the September walk: `journalctl --disk-usage` printed the entire
+   * journal. Every flag but `--vacuum-size` and `-u` fell through to the bare
+   * listing, so the command taught its own output wrong - on the exact path
+   * the KB article about a Linux box out of disk sends a player down, and
+   * wrong in the direction that buries the runaway in the log that caused it.
+   */
+  describe('journalctl --disk-usage: the one line systemd prints (W-05)', () => {
+    it('answers with the sentence, and with no journal at all', () => {
+      const { api, ssh } = onMsp();
+      const out = unix(api, ssh, 'journalctl --disk-usage').lines;
+
+      expect(out).toEqual([
+        'Archived and active journals take up 26.0G in the file system.',
+      ]);
+    });
+
+    it('reads the same field the vacuum shrinks, so the three agree', () => {
+      const { api, ssh } = onMsp();
+      const usage = (): string => unix(api, ssh, 'journalctl --disk-usage')
+        .lines
+        .join('\n');
+
+      expect(usage()).toContain('26.0G');
+      expect(unix(api, ssh, 'du -sh /var/log/journal').lines[0])
+        .toBe('26G\t/var/log/journal');
+
+      // And the fix moves all of it: the vacuum is a real state change, and
+      // what --disk-usage reports afterwards is what the box now holds.
+      unix(api, ssh, 'journalctl --vacuum-size=200M');
+
+      expect(usage()).not.toContain('26.0G');
+      expect(unix(api, ssh, 'du -sh /var/log/journal').lines[0])
+        .not.toBe('26G\t/var/log/journal');
+    });
+
+    it('reports a healthy box in systemd shape, not df shape', () => {
+      const { api, ssh } = onMsp('MERI-APP-01');
+
+      // The whole part, one truncated tenth, and a single-letter unit - which
+      // is `format_bytes`, not the rounding `df -h` prints in its columns.
+      expect(unix(api, ssh, 'journalctl --disk-usage').lines)
+        .toEqual([
+          'Archived and active journals take up 40.0M in the file system.',
+        ]);
     });
   });
 
