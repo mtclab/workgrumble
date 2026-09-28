@@ -35,7 +35,7 @@ import {
   WORKPLACES,
 } from './rpg';
 import { fx } from './rng';
-import type { Settings } from './settings';
+import { ACTION_LABEL, ACTIONS, DEFAULT_KEYS, keyName, type Settings } from './settings';
 import {
   ACTION_ITEM_KG,
   canTakePerk,
@@ -759,6 +759,8 @@ export class Os {
       el('div', { class: 'os-equip' },
         range('Music', st.music, 0, 1, 0.05, (v) => { st.music = v; }, (v) => `${Math.round(v * 100)}%`),
         range('Effects', st.sfx, 0, 1, 0.05, (v) => { st.sfx = v; }, (v) => `${Math.round(v * 100)}%`)),
+      el('h4', {}, 'Keys (click one, then press the new key)'),
+      this.keyBinder(body),
       el('h4', {}, 'Interface'),
       el('div', { class: 'os-equip' },
         toggle('Tutorial tips', st.tips, (v) => { st.tips = v; }),
@@ -771,6 +773,35 @@ export class Os {
         },
       }, 'Resign (new career)'),
     );
+  }
+
+  private keyBinder(body: HTMLElement): HTMLElement {
+    const st = this.host.settings;
+    const grid = el('div', { class: 'os-keys' });
+    for (const a of ACTIONS) {
+      const b = el('button', { class: 'os-btn os-key' }, keyName(st.keys[a]));
+      b.addEventListener('click', () => {
+        b.textContent = 'press a key…';
+        const onKey = (e: KeyboardEvent): void => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.removeEventListener('keydown', onKey, true);
+          if (e.code !== 'Escape' && e.code !== 'F5' && e.code !== 'F9') {
+            // Swap with whatever had the key, so nothing is left unbound.
+            const clash = ACTIONS.find((x) => x !== a && st.keys[x] === e.code);
+            if (clash !== undefined) st.keys[clash] = st.keys[a];
+            st.keys[a] = e.code;
+            this.host.applySettings();
+          }
+          body.replaceChildren();
+          this.renderSettings(body);
+        };
+        window.addEventListener('keydown', onKey, true);
+      });
+      grid.append(el('label', {}, el('span', {}, ACTION_LABEL[a]), b));
+    }
+    grid.append(el('button', { class: 'os-btn', onclick: () => { st.keys = { ...DEFAULT_KEYS }; this.host.applySettings(); body.replaceChildren(); this.renderSettings(body); } }, 'Reset keys'));
+    return grid;
   }
 
   private renderHelp(body: HTMLElement): void {

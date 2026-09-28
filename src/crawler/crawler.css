@@ -264,6 +264,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .ach b { display: block; }
 /* Dialogue never runs off a short screen. */
 .dlg { max-height: min(70vh, 640px); overflow-y: auto; }
+.os-keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; }
+.os-keys label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+.os-key { min-width: 90px; font: bold 12px monospace; }
 .os-perk-tree { border: 1px solid var(--os-bevel-dark); background: var(--os-field); padding: 6px 8px; margin: 6px 0; }
 .os-perk-tree h5 { margin: 0 0 4px; font-size: 12px; }
 .os-perk { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; font-size: 12px; padding: 3px 0; border-top: 1px dotted var(--os-sunken); }

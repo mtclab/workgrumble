@@ -166,6 +166,19 @@ export class Sfx {
     }
     this.musicTimer -= dt;
     if (this.musicTimer > 0) return;
+    if (this.ambient === 'mokki' && !this.bossMode) {
+      // The weekend: a slow kantele tune in a minor pentatonic, and a drone.
+      const kantele = [440, 0, 523, 587, 0, 659, 587, 0, 523, 440, 0, 392, 440, 0, 0, 0];
+      const k = kantele[this.musicStep % kantele.length] ?? 0;
+      if (k > 0) {
+        this.tone(k, 0.9, 'triangle', 0.035, 0, 0, 'music');
+        this.tone(k * 2, 0.4, 'sine', 0.012, 0, 0.02, 'music');
+      }
+      if (this.musicStep % 16 === 0) this.tone(110, 5, 'sine', 0.03, 0, 0, 'music');
+      this.musicStep++;
+      this.musicTimer = 0.42;
+      return;
+    }
     const bass = this.bossMode ? [55, 55, 58, 55, 65, 55, 52, 49] : [110, 0, 98, 0, 87, 0, 98, 82];
     const lead = this.bossMode ? [220, 0, 233, 0, 262, 247, 0, 196] : [0, 330, 0, 294, 0, 0, 262, 0];
     const i = this.musicStep % 8;

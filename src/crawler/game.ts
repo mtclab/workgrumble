@@ -83,7 +83,7 @@ import {
   WORKPLACES,
 } from './rpg';
 import { clearAllSlots, latestSlot, readSlot, type SlotId, writeSlot } from './saves';
-import { loadSettings, type Settings, saveSettings } from './settings';
+import { type Action, loadSettings, type Settings, saveSettings } from './settings';
 import * as screens from './screens';
 import { castOdds, castSpell, cycleSpell, domainAbility, domainCooldown } from './spells';
 import {
@@ -878,17 +878,17 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     const sens = 0.0022 * this.settings.sensitivity;
     this.player.yaw -= inp.mouseDX * sens;
     this.player.pitch = Math.max(-1.35, Math.min(1.35, this.player.pitch - inp.mouseDY * sens * (this.settings.invertY ? -1 : 1)));
-    if (inp.hit('KeyV')) {
+    if (this.hit('view')) {
       this.settings.view = this.settings.view === 'first' ? 'third' : 'first';
       saveSettings(this.settings);
       this.hud.toast(this.settings.view === 'first' ? 'First person' : 'Third person');
     }
-    if (inp.hit('KeyM')) this.hud.mapOpen = !this.hud.mapOpen;
-    if (inp.hit('Tab') || inp.hit('KeyI')) {
+    if (this.hit('map')) this.hud.mapOpen = !this.hud.mapOpen;
+    if (this.hit('backpack') || inp.hit('KeyI')) {
       this.openOs('pack');
       return;
     }
-    if (inp.hit('KeyJ')) {
+    if (this.hit('journal')) {
       this.openOs('pack', 'journal');
       return;
     }
@@ -897,15 +897,15 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       screens.showPause(this);
       return;
     }
-    if (inp.hit('KeyC') || inp.hit('ControlLeft')) {
+    if (this.hit('sneak') || inp.hit('ControlLeft')) {
       this.player.crouching = !this.player.crouching;
       this.hud.toast(this.player.crouching ? 'Sneaking. Unaware people take sneak attacks.' : 'Standing up.');
       if (this.player.crouching) this.tip('sneak');
     }
-    if (inp.hit('KeyT')) host.tryRest(this);
-    if (inp.hit('KeyX')) cycleSpell(this);
-    if (inp.hit('KeyF')) castSpell(this);
-    if (inp.hit('KeyG')) domainAbility(this);
+    if (this.hit('rest')) host.tryRest(this);
+    if (this.hit('nextspell')) cycleSpell(this);
+    if (this.hit('cast')) castSpell(this);
+    if (this.hit('ability')) domainAbility(this);
     if (this.screen !== 'play') return;
 
     // Tools: 1-9 and the wheel cycle through the weapons you carry.
@@ -940,10 +940,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     // Movement.
     let fwd = 0;
     let side = 0;
-    if (inp.down('KeyW') || inp.down('ArrowUp')) fwd += 1;
-    if (inp.down('KeyS') || inp.down('ArrowDown')) fwd -= 1;
-    if (inp.down('KeyD') || inp.down('ArrowRight')) side += 1;
-    if (inp.down('KeyA') || inp.down('ArrowLeft')) side -= 1;
+    if (this.down('forward') || inp.down('ArrowUp')) fwd += 1;
+    if (this.down('back') || inp.down('ArrowDown')) fwd -= 1;
+    if (this.down('right') || inp.down('ArrowRight')) side += 1;
+    if (this.down('left') || inp.down('ArrowLeft')) side -= 1;
     const sy = Math.sin(this.player.yaw);
     const cy = Math.cos(this.player.yaw);
     let wx = -sy * fwd + cy * side;
@@ -956,7 +956,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     if (this.blocking) speed *= 0.5;
     if (this.charging && this.chargeT > 0.2 && d.weapon.kind === 'melee') speed *= 0.75;
     const moving = fwd !== 0 || side !== 0;
-    const sprint = inp.down('ShiftLeft') && moving && !d.overEncumbered && s.energy > 1 && !this.player.crouching && !this.blocking;
+    const sprint = this.down('sprint') && moving && !d.overEncumbered && s.energy > 1 && !this.player.crouching && !this.blocking;
     if (sprint) {
       speed *= 1.45 + skill(s, 'athletics') * 0.004;
       if (!d.specials.has('sandals')) s.energy = Math.max(0, s.energy - 24 * (perk(s, 'stairsguy') > 0 ? 0.6 : 1) * dt);
@@ -979,7 +979,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       }
     }
     if (this.rootT > 0) speed = 0;
-    const jump = inp.hit('Space') && this.rootT <= 0 && !this.player.crouching;
+    const jump = this.hit('jump') && this.rootT <= 0 && !this.player.crouching;
     this.player.move(this.level, wx, wz, speed, jump, dt, d.jump);
     if (moving && speed > 0 && this.player.onGround) {
       this.stepIn -= dt * speed;
@@ -1012,8 +1012,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     playerAttackInput(this, dt);
 
     findPrompt(this);
-    if (inp.hit('KeyE')) interact(this);
-    if (inp.hit('KeyQ')) host.quickUse(this);
+    if (this.hit('interact')) interact(this);
+    if (this.hit('quickuse')) host.quickUse(this);
     if (this.screen !== 'play') return;
 
     // World.
@@ -1077,6 +1077,15 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     // Sisu: you cannot be dropped below 1 while it lasts.
     if (this.sisuT > 0 && s.sanity < 1) s.sanity = 1;
     if (s.sanity <= 0 && this.screen === 'play') screens.showDead(this);
+  }
+
+  /** A bound action pressed this frame. */
+  hit(a: Action): boolean {
+    return this.input.hit(this.settings.keys[a]);
+  }
+
+  down(a: Action): boolean {
+    return this.input.down(this.settings.keys[a]);
   }
 
   private tickTimers(dt: number): void {
