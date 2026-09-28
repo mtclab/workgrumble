@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng } from './rng';
 import {
+  woodTexture,
   carpetTexture,
   ceilingTexture,
   POSTERS,
@@ -25,7 +26,8 @@ export type RoomKind =
   | 'it'
   | 'office'
   | 'boss'
-  | 'print';
+  | 'print'
+  | 'sauna';
 
 export interface Room {
   readonly x: number;
@@ -44,7 +46,17 @@ export type InteractKind =
   | 'vending'
   | 'itdesk'
   | 'elevator'
-  | 'crate';
+  | 'crate'
+  | 'kiuas'
+  | 'locker'
+  | 'fridge'
+  | 'pantti'
+  | 'bed'
+  | 'lake'
+  | 'grill'
+  | 'stash'
+  | 'car'
+  | 'runestone';
 
 export interface Interactable {
   readonly kind: InteractKind;
@@ -55,9 +67,11 @@ export interface Interactable {
   used: boolean;
   /** Meshes to highlight or change when used. */
   readonly mesh: THREE.Object3D | null;
+  /** Lock difficulty for supply closets (0 = unlocked). */
+  lock: number;
 }
 
-export type SpawnKind = 'user' | 'caller' | 'customer' | 'manager' | 'healer' | 'helper' | 'reply' | 'jam';
+export type SpawnKind = 'user' | 'caller' | 'customer' | 'manager' | 'healer' | 'helper' | 'reply' | 'jam' | 'npc' | 'tonttu' | 'mosquito';
 
 export interface Spawn {
   readonly kind: SpawnKind;
@@ -340,10 +354,16 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   (rooms[0] as Room).kind = 'lobby';
   (rooms[bossIdx] as Room).kind = 'boss';
   const others = r.shuffle(rooms.filter((rm) => rm.id !== 0 && rm.id !== bossIdx));
-  const plan: RoomKind[] = ['kitchen', 'it', 'server', 'meeting', 'print', 'kitchen', 'office', 'server', 'meeting'];
+  // A sauna on most floors: Finnish building regulations, probably.
+  const plan: RoomKind[] = ['kitchen', 'it', 'server', 'meeting', 'print', 'office', 'sauna', 'kitchen', 'server', 'meeting'];
+  const hasSauna = r.chance(0.7);
   others.forEach((rm, i) => {
-    rm.kind = i < plan.length && (i < 5 || r.chance(0.5)) ? (plan[i] as RoomKind) : 'cubicles';
+    const k = plan[i];
+    if (k === 'sauna' && !hasSauna) rm.kind = 'cubicles';
+    else rm.kind = k !== undefined && (i < 7 || r.chance(0.5)) ? k : 'cubicles';
   });
+  // The story NPC for this floor waits in an office, meeting room or desk area.
+  const npcRoom = others.find((rm) => rm.kind === 'office') ?? others.find((rm) => rm.kind === 'meeting') ?? others.find((rm) => rm.kind === 'cubicles') ?? others[0];
 
   const group = new THREE.Group();
   const builder: Builder = { boxes: new Map() };
@@ -362,7 +382,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     return floor[i] === 1 && solid[i] === 0;
   };
   const addInteract = (kind: InteractKind, x: number, y: number, room: number, mesh: THREE.Object3D | null): void => {
-    interactables.push({ kind, x: cellCenter(x), z: cellCenter(y), id: nextId++, room, used: false, mesh });
+    interactables.push({ kind, x: cellCenter(x), z: cellCenter(y), id: nextId++, room, used: false, mesh, lock: 0 });
   };
   // Doorway cells (room edge cells that a corridor enters) must never be
   // blocked, or rooms seal themselves off.
@@ -543,8 +563,52 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
           block(c3[0], c3[1], true);
           addInteract('vending', c3[0], c3[1], rm.id, m);
         }
+        const c4 = wallSpot(rm);
+        if (c4 !== null) {
+          const m = fridgeMesh();
+          m.position.set(cellCenter(c4[0]), 0, cellCenter(c4[1]));
+          m.rotation.y = facingInto(c4[0], c4[1], rm);
+          group.add(m);
+          block(c4[0], c4[1], true);
+          addInteract('fridge', c4[0], c4[1], rm.id, m);
+        }
+        const c5 = wallSpot(rm);
+        if (c5 !== null) {
+          const m = panttiMesh();
+          m.position.set(cellCenter(c5[0]), 0, cellCenter(c5[1]));
+          m.rotation.y = facingInto(c5[0], c5[1], rm);
+          group.add(m);
+          block(c5[0], c5[1]);
+          addInteract('pantti', c5[0], c5[1], rm.id, m);
+        }
         const s = interiorSpot(rm);
         if (s !== null) spawns.push({ kind: 'healer', x: cellCenter(s[0]), z: cellCenter(s[1]), room: rm.id });
+        break;
+      }
+      case 'sauna': {
+        // Lauteet (benches) along the far wall, the kiuas by the door.
+        for (let x = x0; x <= x1; x++) {
+          if (!free(x, y1) || nearDoor(x, y1, rm)) continue;
+          addBox(builder, 'bench', cellCenter(x), 0.45, cellCenter(y1), TILE, 0.9, TILE * 0.95);
+          addBox(builder, 'bench', cellCenter(x), 1.0, cellCenter(y1) + 0.45, TILE, 0.12, TILE * 0.5);
+          block(x, y1);
+        }
+        const k = wallSpot(rm);
+        if (k !== null) {
+          const m = kiuasMesh();
+          m.position.set(cellCenter(k[0]), 0, cellCenter(k[1]));
+          group.add(m);
+          block(k[0], k[1]);
+          addInteract('kiuas', k[0], k[1], rm.id, m);
+        }
+        const wood = paint(() => woodTexture());
+        wood?.repeat.set(rm.w, rm.h);
+        const planks = new THREE.Mesh(new THREE.PlaneGeometry(rm.w * TILE, rm.h * TILE), new THREE.MeshLambertMaterial({ map: wood, color: 0xd9a86c }));
+        planks.rotation.x = -Math.PI / 2;
+        planks.position.set(x0 * TILE + (rm.w * TILE) / 2, 0.01, y0 * TILE + (rm.h * TILE) / 2);
+        group.add(planks);
+        const t = interiorSpot(rm);
+        if (t !== null) spawns.push({ kind: 'tonttu', x: cellCenter(t[0]), z: cellCenter(t[1]), room: rm.id });
         break;
       }
       case 'server': {
@@ -640,8 +704,27 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
         break;
     }
 
+    // Supply closets: locked, full of things you should not take.
+    if ((rm.kind === 'office' || rm.kind === 'server' || rm.kind === 'meeting' || rm.kind === 'cubicles' || rm.kind === 'print') && r.chance(0.45)) {
+      const l = wallSpot(rm);
+      if (l !== null) {
+        const m = lockerMesh();
+        m.position.set(cellCenter(l[0]), 0, cellCenter(l[1]));
+        m.rotation.y = facingInto(l[0], l[1], rm);
+        group.add(m);
+        block(l[0], l[1], true);
+        addInteract('locker', l[0], l[1], rm.id, m);
+        const it = interactables[interactables.length - 1];
+        if (it !== undefined) it.lock = Math.min(95, 15 + floorIndex * 12 + r.int(0, 25));
+      }
+    }
+    if (rm === npcRoom) {
+      const s = interiorSpot(rm);
+      if (s !== null) spawns.push({ kind: 'npc', x: cellCenter(s[0]), z: cellCenter(s[1]), room: rm.id });
+    }
+
     // Everyone else: users in whatever room, scaled with the floor.
-    if (rm.kind !== 'lobby' && rm.kind !== 'boss' && rm.kind !== 'it') {
+    if (rm.kind !== 'lobby' && rm.kind !== 'boss' && rm.kind !== 'it' && rm.kind !== 'sauna') {
       const extra = r.int(0, 1 + Math.min(floorIndex, 3));
       for (let i = 0; i < extra; i++) {
         const s = interiorSpot(rm);
@@ -761,6 +844,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     plant: new THREE.MeshLambertMaterial({ color: 0x8a5a36 }),
     leaf: new THREE.MeshLambertMaterial({ color: 0x3f8a3a }),
     pillar: new THREE.MeshLambertMaterial({ color: 0x9c8f7a }),
+    bench: new THREE.MeshLambertMaterial({ color: 0xc8955a }),
   };
   for (const [key, geoms] of builder.boxes) {
     const mat = mats[key] ?? new THREE.MeshLambertMaterial({ color: 0xff00ff });
@@ -842,5 +926,52 @@ function elevatorMesh(): THREE.Group {
   const lamp = box(0.2, 0.2, 0.05, new THREE.MeshBasicMaterial({ color: 0xff3030 }), 0, 2.85, 0.1);
   lamp.name = 'lamp';
   g.add(lamp);
+  return g;
+}
+
+function fridgeMesh(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(1.1, 2.0, 0.9, lambert(0xe8e8e8), 0, 1.0, 0));
+  g.add(box(0.05, 0.5, 0.05, lambert(0x888888), 0.4, 1.3, 0.47));
+  g.add(box(0.9, 0.02, 0.02, lambert(0x999999), 0, 1.25, 0.46));
+  // The note on the door, which is the whole story of every office fridge.
+  g.add(box(0.3, 0.22, 0.01, lambert(0xfff27a), -0.2, 1.6, 0.46));
+  return g;
+}
+
+function panttiMesh(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(1.0, 1.8, 0.8, lambert(0x2e7d32), 0, 0.9, 0));
+  g.add(box(0.3, 0.3, 0.05, new THREE.MeshBasicMaterial({ color: 0x111111 }), 0, 1.1, 0.41));
+  g.add(box(0.5, 0.2, 0.05, new THREE.MeshBasicMaterial({ color: 0x9dff9d }), 0, 1.5, 0.41));
+  return g;
+}
+
+function kiuasMesh(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.9, 0.9, 0.9, lambert(0x2b2b2b), 0, 0.45, 0));
+  const rock = lambert(0x6b6b6b);
+  for (let i = 0; i < 7; i++) {
+    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16), rock);
+    m.position.set(-0.25 + (i % 3) * 0.25, 1.0 + Math.floor(i / 3) * 0.12, -0.2 + (i % 2) * 0.3);
+    g.add(m);
+  }
+  const glow = box(0.5, 0.2, 0.02, new THREE.MeshBasicMaterial({ color: 0xff6a1a }), 0, 0.35, 0.46);
+  g.add(glow);
+  const light = new THREE.PointLight(0xff8a3a, 6, 7, 1.6);
+  light.position.set(0, 1.4, 0);
+  g.add(light);
+  const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.13, 0.25, 10), lambert(0x8a5a2a));
+  bucket.position.set(0.7, 0.13, 0.3);
+  g.add(bucket);
+  return g;
+}
+
+function lockerMesh(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(1.4, 2.2, 0.8, lambert(0x5d6d7e), 0, 1.1, 0));
+  g.add(box(0.02, 2.1, 0.82, lambert(0x2c3e50), 0, 1.1, 0));
+  g.add(box(0.12, 0.16, 0.06, lambert(0xd4af37, 0x332200), 0.14, 1.1, 0.42));
+  g.add(box(0.6, 0.15, 0.01, lambert(0xffffff), -0.3, 1.9, 0.41));
   return g;
 }

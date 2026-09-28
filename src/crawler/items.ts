@@ -54,8 +54,16 @@ export interface ConsumableDef {
   readonly weight: number;
   readonly heal?: number;
   readonly energy?: number;
-  readonly buff?: 'coffee' | 'wired' | 'beer';
+  readonly buff?: 'coffee' | 'wired' | 'makkara';
   readonly clearsActionItem?: boolean;
+  /** Blood alcohol it adds before tolerance. */
+  readonly bac?: number;
+  /** Löyly it restores. */
+  readonly loyly?: number;
+  /** A rune stone: using it teaches this spell. */
+  readonly rune?: string;
+  /** Internal IT will not requisition this for you. */
+  readonly unsold?: boolean;
   readonly minFloor: number;
 }
 
@@ -101,13 +109,26 @@ export const GEAR: readonly GearDef[] = [
 ];
 
 export const CONSUMABLES: readonly ConsumableDef[] = [
-  { id: 'coffee', slot: 'consumable', name: 'Filter Coffee', desc: '+50 energy and a 25 second pep in your step.', price: 15, weight: 0.3, energy: 50, buff: 'coffee', minFloor: 0 },
+  { id: 'coffee', slot: 'consumable', name: 'Filter Coffee', desc: '+50 energy, a 25 second pep in your step, and it takes the edge off (-6 BAC).', price: 15, weight: 0.3, energy: 50, buff: 'coffee', minFloor: 0 },
   { id: 'energy', slot: 'consumable', name: 'Grumble Energy (Tropical)', desc: 'WIRED: faster everything for 20s. Then the crash.', price: 25, weight: 0.3, energy: 100, buff: 'wired', minFloor: 0 },
   { id: 'biscuits', slot: 'consumable', name: 'Chocolate Digestives', desc: '+30 sanity. The good biscuits, from the locked cupboard.', price: 12, weight: 0.3, heal: 30, minFloor: 0 },
   { id: 'cake', slot: 'consumable', name: 'Leftover Birthday Cake', desc: '+70 sanity. Nobody knows whose birthday it was.', price: 45, weight: 0.5, heal: 70, minFloor: 0 },
   { id: 'postit', slot: 'consumable', name: 'Sticky Note', desc: 'Write the action item down and it stops weighing on you. Clears one action item.', price: 20, weight: 0.05, clearsActionItem: true, minFloor: 0 },
-  { id: 'beer', slot: 'consumable', name: 'Friday Beer', desc: '+100 sanity, but the room will not stay still. Not during probation (floor 3+).', price: 40, weight: 0.5, heal: 100, buff: 'beer', minFloor: 2 },
+  { id: 'paperclip', slot: 'consumable', name: 'Paperclip', desc: 'A lockpick, if you have the Security for it. Breaks on a failed pin.', price: 6, weight: 0.01, minFloor: 0 },
+  { id: 'makkara', slot: 'consumable', name: 'Grilled Makkara', desc: '+40 sanity and +20 max sanity until the end of the floor. Mustard is not optional.', price: 30, weight: 0.3, heal: 40, buff: 'makkara', unsold: true, minFloor: 0 },
+  { id: 'beer', slot: 'consumable', name: 'Keskari (Lager)', desc: '+22 sanity, BAC +12. The Friday classic.', price: 0, weight: 0.5, heal: 22, bac: 12, unsold: true, minFloor: 0 },
+  { id: 'lonkero', slot: 'consumable', name: 'Lonkero (Long Drink)', desc: '+16 sanity, +25 energy, BAC +10. Grapefruit and gin, as the Olympics intended.', price: 0, weight: 0.4, heal: 16, energy: 25, bac: 10, unsold: true, minFloor: 0 },
+  { id: 'kossu', slot: 'consumable', name: 'Koskenkorva Shot', desc: '+10 sanity, BAC +22. Clear, honest, dangerous.', price: 0, weight: 0.1, heal: 10, bac: 22, unsold: true, minFloor: 0 },
+  { id: 'salmari', slot: 'consumable', name: 'Salmiakki Koskenkorva', desc: '+45 Löyly, BAC +18. Black, sweet, magical.', price: 0, weight: 0.2, loyly: 45, bac: 18, unsold: true, minFloor: 0 },
+  { id: 'sahti', slot: 'consumable', name: 'Farmhouse Sahti', desc: '+50 sanity, BAC +26. Brewed through juniper by someone\'s grandmother.', price: 0, weight: 0.8, heal: 50, bac: 26, unsold: true, minFloor: 0 },
+  { id: 'rune-salmiakki', slot: 'consumable', name: 'Rune Stone: Salmiakkikirous', desc: 'Read it to learn the Salmiakki Curse.', price: 0, weight: 1, rune: 'salmiakki', unsold: true, minFloor: 0 },
+  { id: 'rune-silence', slot: 'consumable', name: 'Rune Stone: Hiljaisuus', desc: 'Read it to learn Comfortable Silence.', price: 0, weight: 1, rune: 'silence', unsold: true, minFloor: 0 },
+  { id: 'rune-sisu', slot: 'consumable', name: 'Rune Stone: Sisu', desc: 'Read it to learn Sisu.', price: 0, weight: 1, rune: 'sisu', unsold: true, minFloor: 0 },
+  { id: 'rune-avanto', slot: 'consumable', name: 'Rune Stone: Avanto', desc: 'Read it to learn the Ice Hole.', price: 0, weight: 1, rune: 'avanto', unsold: true, minFloor: 0 },
 ];
+
+export const DRINKS = CONSUMABLES.filter((c) => c.bac !== undefined).map((c) => c.id);
+export const RUNES = CONSUMABLES.filter((c) => c.rune !== undefined).map((c) => c.id);
 
 export const AMMO: readonly AmmoDef[] = [
   { id: 'ammo-labels', slot: 'ammo', name: 'Label Tape x40', desc: 'For the Label Maker.', price: 18, weight: 0.2, ammo: 'labels', amount: 40, minFloor: 0 },
@@ -140,29 +161,10 @@ export const PERKS: readonly PerkDef[] = [
   { id: 'soft', name: 'Soft Skills', desc: '+30% healing received and +25% Rep from tickets per rank.', max: 2 },
   { id: 'cli', name: 'Command Line Fu', desc: 'Terminals strike one wrong fix off every ticket.', max: 1 },
   { id: 'caffeine', name: 'Caffeine Tolerance', desc: 'No crash after energy drinks. Coffee lasts twice as long.', max: 1 },
+  { id: 'hardened', name: 'Hardened Drinker', desc: 'Hangovers are half as long and withdrawal hurts half as much.', max: 1 },
+  { id: 'saunoja', name: 'Saunoja', desc: 'Saunas also restore all Löyly and grant +25% damage until you leave the floor.', max: 1 },
   { id: 'stealth', name: 'Invisible at Desk', desc: 'Users notice you 20% later per rank.', max: 2 },
   { id: 'teflon', name: 'Teflon', desc: 'Action items weigh half and meetings end twice as fast per rank.', max: 2 },
   { id: 'delegate', name: 'Delegation', desc: 'Allies hit twice as hard; office ladies heal more often.', max: 1 },
 ];
 
-export const TITLES = [
-  'Helpdesk Drone',
-  'IT Support Analyst',
-  'Senior Support Analyst',
-  'Desktop Engineer',
-  'Systems Administrator',
-  'Senior Sysadmin',
-  'DevOps Engineer',
-  'Site Reliability Engineer',
-  'Cloud Architect',
-  'Head of IT',
-  'CTO (Acting)',
-];
-
-export function titleFor(level: number): string {
-  return TITLES[Math.min(level - 1, TITLES.length - 1)] ?? 'CTO (Acting)';
-}
-
-export function xpForLevel(level: number): number {
-  return Math.floor(80 * Math.pow(level, 1.45));
-}

@@ -68,6 +68,45 @@ export function carpetTexture(theme: Theme, seed: number): THREE.CanvasTexture {
   return toTexture(c);
 }
 
+export function woodTexture(): THREE.CanvasTexture {
+  const [c, g] = canvas(64);
+  const r = new Rng(21);
+  for (let y = 0; y < 64; y += 8) {
+    const shade = r.int(150, 190);
+    g.fillStyle = `rgb(${shade},${Math.round(shade * 0.72)},${Math.round(shade * 0.45)})`;
+    g.fillRect(0, y, 64, 8);
+    g.fillStyle = 'rgba(60,30,10,0.35)';
+    g.fillRect(0, y + 7, 64, 1);
+    for (let i = 0; i < 6; i++) g.fillRect(r.int(0, 60), y + r.int(1, 6), r.int(4, 14), 1);
+  }
+  return toTexture(c);
+}
+
+export function logTexture(): THREE.CanvasTexture {
+  const [c, g] = canvas(64);
+  for (let y = 0; y < 64; y += 10) {
+    g.fillStyle = '#7a4a26';
+    g.fillRect(0, y, 64, 10);
+    g.fillStyle = '#9a6436';
+    g.fillRect(0, y + 1, 64, 5);
+    g.fillStyle = '#4a2a12';
+    g.fillRect(0, y + 9, 64, 1);
+  }
+  return toTexture(c);
+}
+
+export function grassTexture(seed: number): THREE.CanvasTexture {
+  const [c, g] = canvas(64);
+  const r = new Rng(seed);
+  g.fillStyle = '#4f7a36';
+  g.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 500; i++) {
+    g.fillStyle = r.chance(0.5) ? '#5f8f40' : r.chance(0.8) ? '#3f6a2c' : '#c9b458';
+    g.fillRect(r.int(0, 63), r.int(0, 63), 1, r.int(1, 3));
+  }
+  return toTexture(c);
+}
+
 export function ceilingTexture(theme: Theme): THREE.CanvasTexture {
   const [c, g] = canvas(64);
   g.fillStyle = theme.ceiling;

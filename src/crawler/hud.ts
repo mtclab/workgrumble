@@ -1,6 +1,6 @@
 import { TICKETS } from './content/tickets';
 import type { Actor } from './entities';
-import { titleFor, xpForLevel } from './items';
+import { SKILL_UPS_PER_LEVEL } from './rpg';
 import { type Level, TILE } from './level';
 import type { Derived, SaveState } from './state';
 
@@ -19,8 +19,13 @@ export interface HudFrame {
   readonly ammoText: string;
   readonly floorName: string;
   readonly elevatorOpen: boolean;
-  readonly exitX: number;
-  readonly exitZ: number;
+  readonly title: string;
+  readonly spellText: string;
+  readonly abilityText: string;
+  /** null when not sneaking; else whether anyone has noticed you. */
+  readonly hidden: boolean | null;
+  readonly bandLabel: string;
+  readonly promille: string;
 }
 
 function div(cls: string, parent: HTMLElement, text = ''): HTMLDivElement {
@@ -45,6 +50,14 @@ export class Hud {
   private readonly queue: HTMLDivElement;
   private readonly level: HTMLDivElement;
   private readonly weight: HTMLDivElement;
+  private readonly loylyFill: HTMLDivElement;
+  private readonly loylyText: HTMLDivElement;
+  private readonly spell: HTMLDivElement;
+  private readonly ability: HTMLDivElement;
+  private readonly bac: HTMLDivElement;
+  private readonly bacFill: HTMLDivElement;
+  private readonly bacLabel: HTMLDivElement;
+  private readonly eye: HTMLDivElement;
   private readonly prompt: HTMLDivElement;
   private readonly effects: HTMLDivElement;
   private readonly quests: HTMLDivElement;
@@ -129,12 +142,32 @@ export class Hud {
     this.rep = div('hud-big hud-rep', repCell);
     this.queue = div('hud-small', repCell);
 
+    const magicCell = div('hud-cell hud-cell-magic', bar);
+    div('hud-label', magicCell, 'LÖYLY');
+    this.loylyText = div('hud-small', magicCell);
+    const lt = div('hud-track', magicCell);
+    this.loylyFill = div('hud-fill hud-fill-loyly', lt);
+    this.spell = div('hud-small', magicCell);
+    this.ability = div('hud-small', magicCell);
+
+    const bacCell = div('hud-cell hud-cell-bac', bar);
+    div('hud-label', bacCell, 'PROMILLE');
+    this.bac = div('hud-big hud-bac', bacCell);
+    const bt = div('hud-track hud-track-bac', bacCell);
+    // The Ballmer Peak window, marked on the meter.
+    const peak = div('hud-bac-peak', bt);
+    peak.style.left = '26%';
+    peak.style.width = '10%';
+    this.bacFill = div('hud-fill hud-fill-bac', bt);
+    this.bacLabel = div('hud-small', bacCell);
+
     const lvlCell = div('hud-cell hud-cell-level', bar);
     div('hud-label', lvlCell, 'CAREER');
     this.level = div('hud-small', lvlCell);
     const xt = div('hud-track hud-track-thin', lvlCell);
     this.xpFill = div('hud-fill hud-fill-xp', xt);
     this.weight = div('hud-small', lvlCell);
+    this.eye = div('hud-eye', this.root);
   }
 
   flash(kind: 'hurt' | 'heal' | 'meeting'): void {
@@ -160,8 +193,22 @@ export class Hud {
     this.energyFill.style.width = `${Math.max(0, Math.min(100, s.energy))}%`;
     this.rep.textContent = `₡${s.rep}`;
     this.queue.textContent = `Queue: ${s.queue.length}  ·  Action items: ${s.actionItems}`;
-    this.level.textContent = `Lv ${s.level} ${titleFor(s.level)}${s.perkPoints > 0 ? `  (+${s.perkPoints} perk)` : ''}`;
-    this.xpFill.style.width = `${Math.min(100, (s.xp / xpForLevel(s.level)) * 100)}%`;
+    this.level.textContent = `Lv ${s.level} ${f.title}${s.perkPoints > 0 ? `  (+${s.perkPoints} perk)` : ''}`;
+    this.xpFill.style.width = `${Math.min(100, (s.skillUps / SKILL_UPS_PER_LEVEL) * 100)}%`;
+    this.xpFill.classList.toggle('is-ready', s.skillUps >= SKILL_UPS_PER_LEVEL);
+    this.loylyText.textContent = `${Math.floor(s.loyly)}/${d.maxLoyly}`;
+    this.loylyFill.style.width = `${Math.min(100, (s.loyly / d.maxLoyly) * 100)}%`;
+    this.spell.textContent = `F: ${f.spellText}`;
+    this.ability.textContent = f.abilityText;
+    this.bac.textContent = `${f.promille}‰`;
+    this.bacFill.style.width = `${Math.min(100, s.bac)}%`;
+    this.bacLabel.textContent = f.bandLabel;
+    this.bac.dataset.band = f.bandLabel;
+    this.bacLabel.classList.toggle('is-peak', f.bandLabel === 'BALLMER PEAK');
+    this.bacLabel.classList.toggle('is-alarm', s.bac >= 42);
+    this.eye.style.display = f.hidden === null ? 'none' : 'block';
+    this.eye.textContent = f.hidden === true ? '👁 HIDDEN' : '👁 SEEN';
+    this.eye.classList.toggle('is-seen', f.hidden === false);
     this.weight.textContent = `${d.weight}/${d.carry} kg${d.overEncumbered ? ' OVER-ENCUMBERED' : ''}`;
     this.weight.classList.toggle('is-alarm', d.overEncumbered);
     this.prompt.textContent = f.prompt;
@@ -374,7 +421,7 @@ export class Hud {
       const i = (rm.y + 1) * lv.w + rm.x + 1;
       if (lv.seen[i] !== 1) continue;
       g.fillStyle = '#c8e0d0';
-      const label = { lobby: 'LIFT', cubicles: 'DESKS', meeting: 'MEETING', kitchen: 'KITCHEN', server: 'SERVERS', it: 'INTERNAL IT', office: 'OFFICE', boss: 'CORNER OFFICE', print: 'PRINT ROOM' }[rm.kind];
+      const label = lv.rooms.length === 1 ? 'THE MOKKI' : { lobby: 'LIFT', cubicles: 'DESKS', meeting: 'MEETING', kitchen: 'KITCHEN', server: 'SERVERS', it: 'INTERNAL IT', office: 'OFFICE', boss: 'CORNER OFFICE', print: 'PRINT ROOM', sauna: 'SAUNA' }[rm.kind];
       g.fillText(label, ox + rm.x * scale + 2, oy + rm.y * scale + 11);
     }
     for (const it of lv.interactables) {

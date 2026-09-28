@@ -96,6 +96,15 @@ export class Sfx {
   step(): void { this.noise(0.04, 0.03, 500); }
   bossRoar(): void { this.tone(70, 1.2, 'sawtooth', 0.3, 30); this.noise(0.8, 0.2, 300); }
 
+  fizzle(): void { this.noise(0.25, 0.15, 900); this.tone(300, 0.2, 'sawtooth', 0.08, -200); }
+  hiss(): void { this.noise(0.9, 0.25, 7000); }
+  glug(): void { for (let i = 0; i < 3; i++) this.tone(180 + i * 40, 0.08, 'sine', 0.2, -60, i * 0.12); }
+  snore(): void { this.noise(0.6, 0.12, 300); this.noise(0.6, 0.08, 500, 0.9); }
+  splash(): void { this.noise(0.5, 0.35, 2500); this.tone(400, 0.3, 'sine', 0.1, -300); }
+  chime(): void { [784, 988, 1175].forEach((f, i) => this.tone(f, 0.25, 'triangle', 0.12, 0, i * 0.08)); }
+  lockClick(): void { this.tone(2400, 0.03, 'square', 0.08); }
+  snap(): void { this.tone(1200, 0.05, 'square', 0.12, -900); }
+
   setBoss(on: boolean): void { this.bossMode = on; }
 
   /** A tiny grim office-muzak sequencer, ticked from the game loop. */

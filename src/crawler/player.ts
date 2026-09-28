@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { animateRig, buildRig, type Rig } from './characters';
-import { collideCircle, type Level, TILE, toCell, WALL_H } from './level';
+import { collideCircle, type Level, toCell, WALL_H } from './level';
 
 export const EYE = 1.62;
 
@@ -95,6 +95,10 @@ export class Player {
   view: 'first' | 'third' = 'third';
   private camDist = 4;
   private toolId = '';
+  /** 0..1, eased toward 1 while sneaking. */
+  crouch = 0;
+  crouching = false;
+  outdoor = false;
 
   constructor(readonly camera: THREE.PerspectiveCamera, scene: THREE.Scene) {
     this.rig = buildRig(PLAYER_OUTFIT);
@@ -169,14 +173,19 @@ export class Player {
     animateRig(this.rig, this.onGround ? this.speedNow : 0, dt, this.swing);
     this.rig.head.rotation.x = -this.pitch * 0.5;
 
-    const eye = new THREE.Vector3(this.pos.x, this.pos.y + EYE, this.pos.z);
+    this.crouch += ((this.crouching ? 1 : 0) - this.crouch) * Math.min(1, dt * 10);
+    this.rig.root.scale.y = 1 - this.crouch * 0.28;
+    const eye = new THREE.Vector3(this.pos.x, this.pos.y + EYE - this.crouch * 0.55, this.pos.z);
     const bobY = Math.sin(this.bob * 2) * 0.04 * (this.onGround ? 1 : 0);
-    const wob = wobble > 0 ? Math.sin(performance.now() / 400) * 0.06 * wobble : 0;
+    // Drunk sway: a slow roll and a drift, the more the worse.
+    const t = performance.now() / 1000;
+    const wob = wobble > 0 ? Math.sin(t * 1.1) * 0.05 * wobble : 0;
+    const drift = wobble > 0 ? Math.sin(t * 0.7) * 0.03 * wobble : 0;
     if (this.view === 'first') {
       this.model.visible = false;
       this.viewmodel.visible = true;
       this.camera.position.set(eye.x, eye.y + bobY, eye.z);
-      this.camera.rotation.set(this.pitch, this.yaw, wob, 'YXZ');
+      this.camera.rotation.set(this.pitch + drift * 0.5, this.yaw + drift, wob, 'YXZ');
       this.viewmodel.position.set(0.24 + Math.sin(this.bob) * 0.015, -0.22 + bobY * 0.5, -0.55);
       this.viewmodel.rotation.set(0.15 - this.swing * 1.2, 0.25 + this.swing * 0.6, 0);
     } else {
@@ -193,7 +202,7 @@ export class Player {
         const cx = toCell(p.x);
         const cz = toCell(p.z);
         const i = cz * level.w + cx;
-        const blocked = cx < 0 || cz < 0 || cx >= level.w || cz >= level.h || level.floor[i] !== 1 || level.opaque[i] === 1 || p.y > WALL_H - 0.15 || p.y < 0.15;
+        const blocked = cx < 0 || cz < 0 || cx >= level.w || cz >= level.h || level.floor[i] !== 1 || level.opaque[i] === 1 || (!this.outdoor && p.y > WALL_H - 0.15) || p.y < 0.15;
         if (blocked) {
           dist = Math.max(0.3, d - 0.3);
           break;
@@ -202,10 +211,9 @@ export class Player {
       this.camDist += (dist - this.camDist) * Math.min(1, dt * (dist < this.camDist ? 20 : 4));
       const cam = pivot.addScaledVector(back, this.camDist);
       this.camera.position.copy(cam);
-      this.camera.rotation.set(this.pitch, this.yaw, wob, 'YXZ');
+      this.camera.rotation.set(this.pitch + drift * 0.5, this.yaw + drift, wob, 'YXZ');
       // Fade the model when the camera is inside the head.
       this.model.visible = this.camDist > 0.8;
     }
-    void TILE;
   }
 }

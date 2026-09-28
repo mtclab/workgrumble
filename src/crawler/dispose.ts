@@ -7,6 +7,8 @@ export function disposeTree(root: THREE.Object3D, materials: boolean): void {
   root.traverse((o) => {
     if (!(o instanceof THREE.Mesh)) return;
     const mesh = o as AnyMesh;
+    // Shared (cached) geometry and materials belong to everyone; leave them.
+    if (mesh.userData.shared === true) return;
     mesh.geometry.dispose();
     if (!materials) return;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];

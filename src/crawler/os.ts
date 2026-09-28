@@ -6,12 +6,28 @@ import {
   type ItemDef,
   itemById,
   PERKS,
-  titleFor,
   WEAPONS,
-  xpForLevel,
 } from './items';
+import { spellById } from './magic';
+import {
+  ATTRIBUTE_INFO,
+  ATTRIBUTES,
+  attributeMultiplier,
+  difficultyFor,
+  DOMAIN_INFO,
+  FACTION_INFO,
+  FACTIONS,
+  promotionNeeds,
+  salaryFor,
+  SKILL_INFO,
+  SKILL_UPS_PER_LEVEL,
+  SKILLS,
+  skillThreshold,
+  standingLabel,
+  TRACK_INFO,
+} from './rpg';
 import { fx } from './rng';
-import { ACTION_ITEM_KG, type Derived, perk, type QueuedTicket, type Quest, type SaveState } from './state';
+import { ACTION_ITEM_KG, type Derived, EMPTY_KG, perk, type QueuedTicket, type Quest, type SaveState, skill, skillSum } from './state';
 
 /**
  * WorkgrumbleOS, as found on every desk in the building. The office sim's
@@ -39,12 +55,17 @@ export interface OsHost {
   setView(v: 'first' | 'third'): void;
   setSens(v: number): void;
   setVolume(v: number): void;
+  setBloom(on: boolean): void;
+  price(base: number): number;
+  garble(label: string): string;
+  fixHint(q: QueuedTicket): string | null;
+  readonly title: string;
   click(): void;
   error(): void;
   coin(): void;
 }
 
-type AppId = 'tickets' | 'mail' | 'kb' | 'store' | 'career' | 'slack' | 'settings';
+type AppId = 'tickets' | 'mail' | 'kb' | 'store' | 'career' | 'hr' | 'journal' | 'slack' | 'settings';
 
 interface Win {
   readonly app: AppId;
@@ -79,7 +100,9 @@ const APPS: readonly { id: AppId; label: string; icon: string }[] = [
   { id: 'mail', label: 'Mail (Tasks)', icon: '✉️' },
   { id: 'kb', label: 'KB Wiki', icon: '📘' },
   { id: 'store', label: 'Internal IT', icon: '🛒' },
-  { id: 'career', label: 'Career & Kit', icon: '🧑‍💻' },
+  { id: 'career', label: 'Character & Kit', icon: '🧑‍💻' },
+  { id: 'hr', label: 'HR Portal', icon: '🗂️' },
+  { id: 'journal', label: 'Journal', icon: '📓' },
   { id: 'slack', label: 'cat_pictures.url', icon: '🐱' },
   { id: 'settings', label: 'Control Panel', icon: '⚙️' },
 ];
@@ -221,6 +244,8 @@ export class Os {
       case 'kb': this.renderKb(w.body); break;
       case 'store': this.renderStore(w.body); break;
       case 'career': this.renderCareer(w.body); break;
+      case 'hr': this.renderHr(w.body); break;
+      case 'journal': this.renderJournal(w.body); break;
       case 'slack': this.renderSlack(w.body); break;
       case 'settings': this.renderSettings(w.body); break;
     }
@@ -279,16 +304,19 @@ export class Os {
           right.append(el('p', { class: 'os-note' }, `🦆 You explain it to the duck. The duck suggests: ${t.cause}`));
         }
         right.append(el('p', { class: 'os-dim' }, 'Apply a fix:'));
+        const hint = this.host.fixHint(q);
+        if (s.bac >= 42) right.append(el('p', { class: 'os-note' }, 'The words on the screen are swimming a bit.'));
         for (const label of this.host.fixOptions(q)) {
           right.append(el('button', {
-            class: 'os-btn os-fix',
+            class: `os-btn os-fix${label === hint ? ' os-hint' : ''}`,
             onclick: () => {
               const res = this.host.resolve(q, label);
               if (res.ok) this.selectedTicket = 0;
               this.say(res.message);
             },
-          }, `▶ ${label}`));
+          }, `${label === hint ? '💡' : '▶'} ${this.host.garble(label)}`));
         }
+        if (hint !== null) right.append(el('p', { class: 'os-meta' }, `💡 Your Troubleshooting (${skill(s, 'troubleshooting')}) has a hunch.`));
         if (t.kb !== null) {
           right.append(el('button', {
             class: 'os-link',
@@ -310,12 +338,12 @@ export class Os {
 
   private renderMail(body: HTMLElement): void {
     const s = this.host.save;
-    body.append(el('p', { class: 'os-dim' }, 'Your inbox. Tasks from around the building. Finish them for Rep and experience.'));
+    body.append(el('p', { class: 'os-dim' }, 'Your inbox. Tasks from around the building. Finish them for Rep and Management standing.'));
     for (const q of s.quests) {
       const row = el('div', { class: `os-mail${q.done ? ' is-done' : ''}` },
         el('div', { class: 'os-mail-head' }, el('b', {}, q.title), el('span', {}, ` - from ${q.from}`)),
         el('p', {}, q.body),
-        el('p', { class: 'os-meta' }, `Progress: ${Math.min(q.progress, q.goal)}/${q.goal} · Reward ₡${q.reward} + ${q.xp} XP`),
+        el('p', { class: 'os-meta' }, `Progress: ${Math.min(q.progress, q.goal)}/${q.goal} · Reward ₡${q.reward}`),
       );
       if (q.done && q.kind !== 'boss') {
         row.append(el('button', { class: 'os-btn', onclick: () => { this.host.claimQuest(q); this.say(`Claimed ₡${q.reward}.`); } }, '✔ Mark complete & claim'));
@@ -383,9 +411,9 @@ export class Os {
     }
     body.append(el('p', { class: 'os-dim' }, this.mode === 'itdesk'
       ? '"Budget code? Right. Sign here, here and here. No, you cannot have admin rights." - Morag, Internal IT'
-      : 'Internal IT Requisition Portal v3.1 - approvals are instant if you have the Rep.'), tabs);
+      : 'Internal IT Requisition Portal v3.1 - approvals are instant if you have the Rep. Prices follow your IT Crowd standing and Charm.'), tabs);
     const items: readonly ItemDef[] = this.storeTab === 'weapons' ? WEAPONS.filter((w) => w.price > 0)
-      : this.storeTab === 'gear' ? GEAR : this.storeTab === 'supplies' ? CONSUMABLES : AMMO;
+      : this.storeTab === 'gear' ? GEAR : this.storeTab === 'supplies' ? CONSUMABLES.filter((c) => c.unsold !== true) : AMMO;
     const grid = el('div', { class: 'os-store' });
     for (const item of items) {
       const locked = item.minFloor > s.floor;
@@ -394,7 +422,7 @@ export class Os {
       grid.append(el('div', { class: `os-item${locked ? ' is-locked' : ''}` },
         el('b', {}, item.name),
         el('p', {}, locked ? `Clearance required: floor ${item.minFloor + 1}.` : item.desc),
-        el('p', { class: 'os-meta' }, `₡${item.price} · ${item.weight} kg${count !== null ? ` · have ${count}` : ''}`),
+        el('p', { class: 'os-meta' }, `₡${this.host.price(item.price)} · ${item.weight} kg${count !== null ? ` · have ${count}` : ''}`),
         el('button', {
           class: 'os-btn',
           ...(locked || owned ? { disabled: 'true' } : {}),
@@ -415,13 +443,32 @@ export class Os {
   private renderCareer(body: HTMLElement): void {
     const s = this.host.save;
     const d = this.host.derived();
-    const need = xpForLevel(s.level);
     body.append(
-      el('h3', {}, `Pat Pending - ${titleFor(s.level)} (Level ${s.level})`),
-      el('div', { class: 'os-bar' }, el('div', { class: 'os-bar-fill', style: `width:${Math.round((s.xp / need) * 100)}%` })),
-      el('p', { class: 'os-meta' }, `XP ${s.xp}/${need} · Rep ₡${s.rep} · Max sanity ${d.maxSanity} · Armour ${Math.round(d.armor * 100)}% · Speed ×${d.speedMult.toFixed(2)}`),
-      el('p', { class: `os-meta${d.overEncumbered ? ' is-alarm' : ''}` }, `Carrying ${d.weight}/${d.carry} kg${s.actionItems > 0 ? ` (incl. ${s.actionItems} action item${s.actionItems > 1 ? 's' : ''} at ${ACTION_ITEM_KG} kg each - office ladies can take them off you)` : ''}${d.overEncumbered ? ' - OVER-ENCUMBERED: slow, no sprinting' : ''}`),
+      el('h3', {}, `${s.name} - ${this.host.title} (Level ${s.level})`),
+      el('div', { class: 'os-bar' }, el('div', { class: 'os-bar-fill', style: `width:${Math.min(100, Math.round((s.skillUps / SKILL_UPS_PER_LEVEL) * 100))}%` })),
+      el('p', { class: 'os-meta' }, `Skill increases toward next level: ${s.skillUps}/${SKILL_UPS_PER_LEVEL}${s.skillUps >= SKILL_UPS_PER_LEVEL ? ' - REST (T) TO LEVEL UP' : ''} · Rep ₡${s.rep} · Max sanity ${d.maxSanity} · Armour ${Math.round(d.armor * 100)}% · Speed ×${d.speedMult.toFixed(2)} · Dodge ${Math.round(d.dodge * 100)}%`),
+      el('p', { class: `os-meta${d.overEncumbered ? ' is-alarm' : ''}` }, `Carrying ${d.weight}/${d.carry} kg${s.actionItems > 0 ? ` (incl. ${s.actionItems} action item${s.actionItems > 1 ? 's' : ''} at ${ACTION_ITEM_KG} kg each - office ladies can take them off you)` : ''}${s.empties > 0 ? ` (and ${s.empties} empties at ${EMPTY_KG} kg - return them at a bottle machine)` : ''}${d.overEncumbered ? ' - OVER-ENCUMBERED: slow, no sprinting' : ''}`),
     );
+    // Attributes, with the level-up multiplier they have earned so far.
+    const attrs = el('div', { class: 'os-equip' });
+    for (const a of ATTRIBUTES) {
+      attrs.append(el('label', { title: ATTRIBUTE_INFO[a].desc }, el('span', {}, `${ATTRIBUTE_INFO[a].name} ${s.attrs[a]}`), el('span', { class: 'os-meta' }, `next level ×${attributeMultiplier(s.attrUps[a])} · ${ATTRIBUTE_INFO[a].desc}`)));
+    }
+    body.append(el('h4', {}, 'Attributes'), attrs);
+    const skills = el('div', {});
+    for (const k of SKILLS) {
+      const st = s.skills[k];
+      const major = s.major.includes(k);
+      skills.append(el('div', { class: 'os-skill', title: SKILL_INFO[k].desc },
+        el('span', {}, `${major ? '★ ' : ''}${SKILL_INFO[k].name}`),
+        el('b', {}, String(skill(s, k))),
+        el('div', { class: 'os-bar' }, el('div', { class: 'os-bar-fill', style: `width:${Math.min(100, Math.round((st.progress / skillThreshold(st.value)) * 100))}%` }))));
+    }
+    body.append(el('h4', {}, 'Skills (★ major: learn 50% faster) - skills rise by use'), skills);
+    if (s.spells.length > 0) {
+      body.append(el('h4', {}, 'Runes known (X to select, F to cast)'), el('p', { class: 'os-meta' }, s.spells.map((id) => { const sp = spellById(id); return sp === undefined ? id : `${sp.name} (${sp.english}, ${sp.cost})`; }).join(' · ')));
+    }
+    body.append(el('p', { class: 'os-meta' }, `Promille ${(s.bac / 40).toFixed(2)}‰ · Dependency ${Math.round(s.dependency)}/100${s.dependency >= 50 ? ' (withdrawal when sober)' : ''}${s.hangover > 0 ? ' · hungover' : ''}`));
 
     // Equipment.
     const eq = el('div', { class: 'os-equip' });
@@ -480,6 +527,56 @@ export class Os {
     body.append(el('p', { class: 'os-meta' }, `Field resolutions ${s.stats.resolvedField} · Desk resolutions ${s.stats.resolvedDesk} · SLA breaches ${s.stats.breaches} · Burnouts ${s.stats.burnouts} · Bosses ${s.stats.bosses}`));
   }
 
+  // ---- HR ----
+
+  private renderHr(body: HTMLElement): void {
+    const s = this.host.save;
+    const next = s.rung + 1;
+    body.append(
+      el('h3', {}, `${s.name}: ${this.host.title}`),
+      el('p', { class: 'os-meta' }, `Rung ${s.rung + 1} of 9 · difficulty ×${difficultyFor(s.rung).toFixed(2)} · salary ₡${salaryFor(s.rung)} a week (paid at the mökki)`),
+    );
+    if (s.domain !== null && s.track !== null) {
+      body.append(el('p', { class: 'os-note' }, `${s.domain} - ${DOMAIN_INFO[s.domain].desc} · ${TRACK_INFO[s.track].name}: ${TRACK_INFO[s.track].desc}`));
+    }
+    if (next < 9) {
+      const n = promotionNeeds(next);
+      const row = (label: string, have: number, need: number): HTMLElement =>
+        el('p', { class: `os-meta${have >= need ? '' : ' is-alarm'}` }, `${have >= need ? '✔' : '✖'} ${label}: ${Math.round(have)} / ${need}`);
+      body.append(el('h4', {}, 'Next performance review (Friday, at the mökki)'),
+        row('Management standing', s.standing.management, n.management),
+        row('Top-four skills', skillSum(s), n.skillSum),
+        row('Level', s.level, n.level));
+    }
+    body.append(el('h4', {}, 'Standing'));
+    for (const f of FACTIONS) {
+      const v = s.standing[f];
+      const bar = el('div', { class: 'os-standing-bar' });
+      const fill = el('i', { class: v < 0 ? 'neg' : '' });
+      fill.style.left = v < 0 ? `${50 + v / 2}%` : '50%';
+      fill.style.width = `${Math.abs(v) / 2}%`;
+      bar.append(fill);
+      body.append(el('div', { class: 'os-standing', title: FACTION_INFO[f].desc }, el('span', {}, FACTION_INFO[f].name), bar, el('span', {}, `${Math.round(v)} ${standingLabel(v)}`)));
+    }
+    body.append(
+      el('h4', {}, 'Conduct'),
+      el('p', { class: s.warnings > 0 ? 'os-meta is-alarm' : 'os-meta' }, `Warnings on file: ${s.warnings}/3. Three means a disciplinary hearing.`),
+      el('p', { class: 'os-meta' }, `Audit findings with your name near them: ${s.findings}.`),
+      el('p', { class: 'os-dim' }, 'HR reminds all staff that the office fridge is not a communal resource.'),
+    );
+  }
+
+  private renderJournal(body: HTMLElement): void {
+    const s = this.host.save;
+    if (s.journal.length === 0) {
+      body.append(el('p', { class: 'os-dim' }, 'Nothing written yet.'));
+      return;
+    }
+    for (const j of [...s.journal].reverse()) {
+      body.append(el('div', { class: 'os-mail' }, el('p', { class: 'os-meta' }, j.floor === 0 ? 'B1' : `Floor ${j.floor}`), el('p', {}, j.text)));
+    }
+  }
+
   // ---- Slack ----
 
   private renderSlack(body: HTMLElement): void {
@@ -505,23 +602,29 @@ export class Os {
     const sens = el('input', { type: 'range', min: '0.2', max: '3', step: '0.1', value: String(s.mouseSens) });
     sens.addEventListener('input', () => this.host.setSens(Number(sens.value)));
     const vol = el('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(s.volume) });
+    const bloom = el('select', { class: 'os-input' },
+      el('option', { value: 'on', ...(s.bloom ? { selected: 'true' } : {}) }, 'On (glow)'),
+      el('option', { value: 'off', ...(!s.bloom ? { selected: 'true' } : {}) }, 'Off (faster)'));
+    bloom.addEventListener('change', () => this.host.setBloom(bloom.value === 'on'));
     vol.addEventListener('input', () => this.host.setVolume(Number(vol.value)));
     body.append(
       el('div', { class: 'os-equip' },
         el('label', {}, el('span', {}, 'Camera (V)'), view),
         el('label', {}, el('span', {}, 'Mouse sensitivity'), sens),
-        el('label', {}, el('span', {}, 'Volume'), vol)),
+        el('label', {}, el('span', {}, 'Volume'), vol),
+        el('label', {}, el('span', {}, 'Bloom'), bloom)),
       el('h4', {}, 'Controls'),
       el('pre', { class: 'os-pre' }, [
         'WASD move · Shift sprint · Space jump · Mouse look',
         'LMB use tool · 1-9 / wheel switch tool · Q quick-use supplies',
-        'E interact (computers, Internal IT, office ladies, helpers, printers, lifts)',
-        'V first/third person · Tab backpack · M map · Esc pause',
+        'E interact / talk (talk angry people down, negotiate with managers)',
+        'F cast rune · X next rune · G domain ability · C sneak · T rest (level up)',
+        'RMB shove · V first/third person · Tab backpack · M map · Esc pause',
       ].join('\n')),
       el('button', {
         class: 'os-btn os-danger',
         onclick: () => {
-          if (confirm('Resign and start a new career? Your save will be wiped.')) this.host.restart();
+          if (confirm('Resign and start a new career? Your save will be replaced.')) this.host.restart();
         },
       }, 'Resign (new game)'),
     );
