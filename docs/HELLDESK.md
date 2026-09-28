@@ -116,8 +116,34 @@ back.
 - **Side quests** from people with a "!" over their head: Milton's red
   stapler, Brenda's mug, the printer exorcism, the password sweep, escorting
   Josh the intern to Internal IT, the Reply-All apocalypse, the phishing
-  test, who drank Jukka's lonkero, the ticket sprint. Several end in a
-  choice. "?" means go back to them.
+  test, who drank Jukka's lonkero, the ticket sprint, Maureen's descaler
+  (or sell it to the capsule vendor), Bev's lost all-floors badge (or keep
+  it, and the Auditor hears), Graham's leaving card, karaoke with Kev (only
+  at the exact Ballmer Peak), the Ghost of Exchange 2003 in the server room,
+  Pekka's löyly inspection, rubber-duck debugging, Sanna's Dry Week bet (one
+  drink in the office and it fails), the "prince" vendor, Fiona's ergonomic
+  survey and Nik's cable ties. Several end in a choice. "?" means go back to
+  them. Up to three are on offer per floor, and ones you took follow you up
+  the building.
+- **Staffing** (📌): nobody asks. Every so often, and more often the higher
+  you climb, a manager rings (a Teams call, once you are not mid-fight) or
+  corners you after a meeting: "while I have you". War rooms, Patch
+  Tuesday, audit prep (three compliance forms scattered on the floor),
+  vendor evaluations, printer "refreshes", the DR walkthrough, chatbot
+  training data, the Shadow IT amnesty, a consultant to onboard (no
+  stapling), the all-hands catering. The P1s (war room, customer visit,
+  incident bridge) run on a clock that keeps ticking at a computer; the rest
+  are due Friday. Take it, push back (a Soft Skills check: harder the
+  higher you climb, easier when you really are over capacity), or hand it to your
+  helper (half credit, full with Delegation; the helper goes). Ignore a call
+  and after 25 seconds silence is consent. From any computer you can email
+  one push-back per assignment. Delivered: Rep and Management. Missed:
+  Management -6; two missed in a week is an HR warning.
+- **Workload**: side quests, staffing and inbox tasks all count against a
+  capacity of 3 (+1 for the specialist track, +2 from Time Management, +1
+  from Healthy Boundaries). Over capacity, max sanity and energy regeneration
+  drop for every item too many, and the HUD panel turns red. The journal has
+  the meter.
 - **One story per floor, with delayed consequences**: Marcus's stopped
   backups, the "CFO" demanding an MFA reset, admin rights for Sales, the
   Auditor's liaison offering to doctor the logs, the CEO's PA. Audit
@@ -232,7 +258,7 @@ runtime:
 | `vices.ts` | Drink and caffeine ticks, timed can buffs, blackouts. |
 | `spells.ts` | Runes and domain abilities. |
 | `interact.ts` | Everything E does, the upgrade board, fishing, lockers, the fridge. |
-| `questing.ts` | Puts quests into the world: evidence, givers, markers, events. |
+| `questing.ts` | Puts quests into the world: evidence, givers, hunt targets, markers, events; staffing calls, deadlines, push-back and the Friday settlement. |
 | `desk.ts` | The ticket queue and mail tasks. |
 | `hosts.ts` | Shop, inventory, perks, rest, deals, the small world effects. |
 | `screens.ts` | Title, load and save menus, pause, burnout, endings, lifts. |

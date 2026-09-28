@@ -4,6 +4,7 @@ import { tintRig } from './characters';
 import { say, type Actor } from './entities';
 import type { Game } from './game';
 import { BUFF_INFO, type ConsumableDef } from './items';
+import { drankOnDuty } from './questing';
 import { fx } from './rng';
 import { BAND_EFFECTS, bandFor, bacDecay, drinkBac, promille } from './rpg';
 import * as screens from './screens';
@@ -79,6 +80,7 @@ export function drink(g: Game, c: ConsumableDef): void {
   s.empties += 1;
   s.stats.drinks++;
   s.floorState.drinksHere++;
+  drankOnDuty(g);
   if (s.hangover > 0) {
     s.hangover = 0;
     s.dependency = Math.min(100, s.dependency + 4);

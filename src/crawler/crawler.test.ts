@@ -7,7 +7,7 @@ import { plainInstance, RARITY_INFO, rollGear, sellValue, UNIQUES, uniqueInstanc
 import { SPELLS } from './magic';
 import { generateMokki } from './mokki';
 import { TREE_PERKS } from './perks';
-import { advance, MAIN, QUESTS, type QuestState, sideQuestsFor } from './quests';
+import { advance, isActive, MAIN, QUEST_ITEMS, questById, QUESTS, type QuestState, sideQuestsFor, STAFFED, TRANSIENT_ITEMS } from './quests';
 import { Rng } from './rng';
 import {
   ARCH_RUNG,
@@ -35,6 +35,7 @@ import {
   normalizeSave,
   raiseSkill,
   useSkill,
+  workload,
 } from './state';
 import { THEMES } from './textures';
 import { UPGRADES } from './upgrades';
@@ -447,8 +448,63 @@ describe('Helldesk quests', () => {
   });
 
   it('every floor offers side quests and the main story has five chapters', () => {
-    for (let f = 0; f < 10; f++) expect(sideQuestsFor(f).length, `floor ${f}`).toBeGreaterThan(0);
+    for (let f = 0; f < 10; f++) expect(sideQuestsFor(f).length, `floor ${f}`).toBeGreaterThan(3);
     expect(MAIN).toHaveLength(5);
+  });
+
+  it('quest ids are unique, items exist, and staffing never appears as an offer', () => {
+    const all = [...QUESTS, ...STAFFED];
+    expect(new Set(all.map((q) => q.id)).size).toBe(all.length);
+    for (const q of all) {
+      expect(questById(q.id)).toBe(q);
+      for (const obj of q.stages) if (obj.item !== undefined) expect(QUEST_ITEMS[obj.item], `${q.id}: ${obj.item}`).toBeDefined();
+    }
+    for (const q of STAFFED) expect(q.staffed).toBe(true);
+    for (let f = 0; f < 10; f++) for (const q of sideQuestsFor(f)) expect(q.staffed).not.toBe(true);
+    for (const t of TRANSIENT_ITEMS) expect(QUEST_ITEMS[t]).toBeDefined();
+  });
+
+  it('advances use, collect and hunt stages', () => {
+    const erg: QuestState = { id: 'ergonomics', stage: 0, progress: 0, done: false, floor: 0 };
+    expect(advance(erg, { type: 'use', what: 'printer' }, 0)).toBe(false);
+    expect(advance(erg, { type: 'use', what: 'terminal' }, 0)).toBe(false);
+    expect(advance(erg, { type: 'use', what: 'terminal' }, 0)).toBe(false);
+    expect(erg.progress).toBe(2);
+    expect(advance(erg, { type: 'use', what: 'terminal' }, 0)).toBe(true);
+    expect(erg.stage).toBe(1);
+    const audit: QuestState = { id: 's-audit', stage: 0, progress: 0, done: false, floor: 0, staffed: true };
+    for (let i = 0; i < 2; i++) expect(advance(audit, { type: 'pickup', item: 'form' }, 0)).toBe(false);
+    expect(advance(audit, { type: 'pickup', item: 'badge' }, 0)).toBe(false);
+    expect(advance(audit, { type: 'pickup', item: 'form' }, 0)).toBe(true);
+    expect(audit.done).toBe(true);
+    // A hunt only counts the tagged target, not any chatbot.
+    const ghost: QuestState = { id: 'ghost', stage: 1, progress: 0, done: false, floor: 0 };
+    expect(advance(ghost, { type: 'resolve', kind: 'chatbot', peaceful: false, elite: true }, 0)).toBe(false);
+    expect(advance(ghost, { type: 'resolve', kind: 'chatbot', peaceful: false, elite: true, tag: 'prince' }, 0)).toBe(false);
+    expect(advance(ghost, { type: 'resolve', kind: 'chatbot', peaceful: true, elite: true, tag: 'ghost' }, 0)).toBe(true);
+  });
+
+  it('failed and delegated work stops advancing and stops counting', () => {
+    const s = newSave(7);
+    expect(workload(s)).toEqual({ active: 0, capacity: 3, over: 0 });
+    const war: QuestState = { id: 's-warroom', stage: 0, progress: 0, done: false, floor: 0, staffed: true, deadline: 240 };
+    s.questLog.push(war, { id: 's-patch', stage: 0, progress: 0, done: false, floor: 0, staffed: true },
+      { id: 'duck', stage: 0, progress: 0, done: false, floor: 0 }, { id: 'cables', stage: 0, progress: 0, done: false, floor: 0 });
+    expect(workload(s)).toEqual({ active: 4, capacity: 3, over: 1 });
+    const d = derive(s);
+    expect(d.overload).toBe(1);
+    expect(d.maxSanity).toBeLessThan(derive({ ...s, questLog: [] }).maxSanity);
+    war.failed = true;
+    expect(isActive(war)).toBe(false);
+    expect(advance(war, { type: 'resolve', kind: 'user', peaceful: false, elite: false }, 0)).toBe(false);
+    expect(workload(s).over).toBe(0);
+    const patch = s.questLog[1];
+    if (patch === undefined) throw new Error('missing');
+    patch.delegated = true;
+    expect(workload(s).active).toBe(2);
+    // Time management and Boundaries buy capacity.
+    s.perks.timemgmt = 2;
+    expect(workload(s).capacity).toBe(5);
   });
 });
 

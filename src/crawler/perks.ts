@@ -28,7 +28,8 @@ export const TREE_PERKS: readonly TreePerk[] = [
   { id: 'back', name: 'Strong Back', tree: null, ranks: [r(0, '+15 kg carry'), r(0, '+15 kg carry'), r(0, '+15 kg carry')] },
   { id: 'caffeine', name: 'Caffeine Tolerance', tree: null, ranks: [r(0, 'Crashes are half as long; can buffs last 50% longer.')] },
   { id: 'teflon', name: 'Teflon', tree: null, ranks: [r(0, 'Action items weigh half; meetings end twice as fast.'), r(0, 'Action items weigh a quarter.')] },
-  { id: 'delegate', name: 'Delegation', tree: null, ranks: [r(0, 'Allies hit twice as hard; office ladies heal more often.')] },
+  { id: 'delegate', name: 'Delegation', tree: null, ranks: [r(0, 'Allies hit twice as hard; office ladies heal more often; you can hand any assignment to a recruited helper.')] },
+  { id: 'timemgmt', name: 'Time Management', tree: null, ranks: [r(0, '+1 workload capacity'), r(0, '+1 workload capacity')] },
 
   // Hardware
   { id: 'percussive', name: 'Percussive Maintenance', tree: 'hardware', ranks: [r(15, '+20% melee damage'), r(40, '+40% melee damage'), r(70, '+60% melee damage')] },
@@ -50,6 +51,7 @@ export const TREE_PERKS: readonly TreePerk[] = [
   { id: 'stakeholder', name: 'Stakeholder Management', tree: 'soft', ranks: [r(30, 'Manager auras are halved.')] },
   { id: 'charmoffensive', name: 'Charm Offensive', tree: 'soft', ranks: [r(50, 'Internal IT prices -15%.')] },
   { id: 'presence', name: 'Executive Presence', tree: 'soft', ranks: [r(75, 'A failed talk-down no longer enrages anyone.')] },
+  { id: 'boundaries', name: 'Healthy Boundaries', tree: 'soft', ranks: [r(30, '+1 workload capacity, and pushing back on an assignment is 20 points easier.')] },
   // Sisu
   { id: 'thickskin', name: 'Thick Skin', tree: 'sisu', ranks: [r(15, '+6% armour'), r(40, '+12% armour'), r(70, '+18% armour')] },
   { id: 'secondwind', name: 'Second Wind', tree: 'sisu', ranks: [r(30, 'Below a quarter sanity, it comes back three times as fast.')] },

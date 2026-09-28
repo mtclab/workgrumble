@@ -37,6 +37,8 @@ export interface HudFrame {
   readonly crash: number;
   /** Journal quest objectives, then mail tasks. */
   readonly questLines: readonly string[];
+  /** How far over capacity the workload is (0: fine). */
+  readonly overload: number;
   /** Quest targets on the map. */
   readonly markers: readonly MapMarker[];
   /** 0..1 power-attack wind-up. */
@@ -309,6 +311,7 @@ export class Hud {
     // Quests and tasks.
     this.quests.textContent = f.questLines.length > 0 ? `QUESTS & TASKS\n${f.questLines.join('\n')}` : '';
     this.quests.style.display = f.questLines.length > 0 ? 'block' : 'none';
+    this.quests.classList.toggle('is-over', f.overload > 0);
 
     // SLA timers.
     const sl = s.queue.slice(0, 6).map((q) => {

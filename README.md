@@ -13,7 +13,8 @@ managers encumber you, consultants shield each other, office ladies heal you,
 the twelve-rung career ladder from Trainee to Senior Architect is the
 difficulty (with an employer dial and Ironman on top), Friday drinks and
 energy cans are tightropes (the White Monster is king), there is loot with
-rarity, perk trees, Project Phoenix and a dozen side quests, and every
+rarity, perk trees, Project Phoenix and twenty side quests, management
+staffs you on work whether you have room for it or not, and every
 weekend is at the mökki you build up, learning sauna magic. The computers
 still run the fake OS - that is where you work your queue, read the KB, take
 tasks, manage your character and trade with Internal IT. `npm run dev` and

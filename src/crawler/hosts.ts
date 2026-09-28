@@ -147,7 +147,7 @@ export function resolvePeacefully(g: Game, a: Actor, how: 'fix' | 'ticket' | 'sc
   if (how === 'fix' || how === 'charmed' || how === 'bribe') adjustStanding(s, 'staff', how === 'fix' ? 2 : 1);
   if (how !== 'ticket') s.queue = s.queue.filter((q) => q.from !== a.name);
   questProgress(g, 'peace');
-  g.questEvent({ type: 'resolve', kind: a.kind, peaceful: true, elite: a.elite !== null });
+  g.questEvent({ type: 'resolve', kind: a.kind, peaceful: true, elite: a.elite !== null, tag: a.questTag });
   if (s.stats.resolvedPeace >= 10) g.achieve('pacifist');
   if (rep > 0) g.floatText(a.pos.clone().setY(2.6), `+₡${rep}`, '#7dff9a');
   sfx.resolved();

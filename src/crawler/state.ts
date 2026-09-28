@@ -19,7 +19,7 @@ import {
   sumAffix,
 } from './loot';
 import { canTake, treePerk } from './perks';
-import type { QuestState } from './quests';
+import { isActive, type QuestState } from './quests';
 import { Rng } from './rng';
 import {
   type ArchPath,
@@ -194,6 +194,7 @@ export interface SaveState {
     resolvedField: number; resolvedDesk: number; resolvedPeace: number; breaches: number; burnouts: number;
     bosses: number; wrongFixes: number; drinks: number; blackouts: number; locks: number; spellsCast: number;
     cans: number; fish: number; elites: number;
+    staffedDone: number; staffedMissed: number;
   };
   seed: number;
   won: boolean;
@@ -292,7 +293,7 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
     achievements: [],
     tipsShown: [],
     booksRead: [],
-    stats: { resolvedField: 0, resolvedDesk: 0, resolvedPeace: 0, breaches: 0, burnouts: 0, bosses: 0, wrongFixes: 0, drinks: 0, blackouts: 0, locks: 0, spellsCast: 0, cans: 0, fish: 0, elites: 0 },
+    stats: { resolvedField: 0, resolvedDesk: 0, resolvedPeace: 0, breaches: 0, burnouts: 0, bosses: 0, wrongFixes: 0, drinks: 0, blackouts: 0, locks: 0, spellsCast: 0, cans: 0, fish: 0, elites: 0, staffedDone: 0, staffedMissed: 0 },
     seed,
     won: false,
   };
@@ -512,6 +513,21 @@ export interface Derived {
   deskRepMult: number;
   dodge: number;
   specials: Set<string>;
+  /** Things on your plate, your capacity, and how far over it you are. */
+  workload: number;
+  capacity: number;
+  overload: number;
+}
+
+/**
+ * Workload: every quest in play and every mail task not yet done is on your
+ * plate. Management does not check the plate before adding to it.
+ */
+export function workload(s: SaveState): { active: number; capacity: number; over: number } {
+  const active = s.questLog.filter(isActive).length + s.quests.filter((q) => !q.done && q.kind !== 'boss').length;
+  const specialist = s.rung >= 4 && s.track === 'specialist';
+  const capacity = 3 + (specialist ? 1 : 0) + perk(s, 'timemgmt') + (perk(s, 'boundaries') > 0 ? 1 : 0);
+  return { active, capacity, over: Math.max(0, active - capacity) };
 }
 
 export const ACTION_ITEM_KG = 6;
@@ -551,13 +567,16 @@ export function derive(s: SaveState): Derived {
   const archEnt = s.rung >= 10 && s.arch === 'enterprise';
   const tier = (id: string, per: number): number => perk(s, id) * per;
   const buff = (id: string): boolean => (s.buffs[id] ?? 0) > 0;
+  // Overallocated: every assignment past your capacity wears you down.
+  const load = workload(s);
+  const strain = Math.max(0.55, 1 - load.over * 0.07);
   // The White Monster: the king of cans. Ascended, nothing shakes you.
   const ultra = buff('ultra');
   const caffeine = ultra ? { ...caff, jitter: 0, drain: 0, speed: Math.max(caff.speed, 0.08), attack: Math.max(caff.attack, 0.08) } : caff;
   const powerUp = (ultra ? 1.4 : 1) * (s.saunaBuff ? 1.25 : 1);
   return {
     maxSanity: Math.round((50 + A('patience') * 1.3 + tier('patience', 25) + sum((g) => g.maxSanity) + affix(s, 'maxSanity') + (s.level - 1) * 4
-      + (sign === 'bsod' ? 25 : 0) + (s.makkara ? 20 : 0) + (s.hauki ? 15 : 0)) * hang * (s.palju ? 1.15 : 1)),
+      + (sign === 'bsod' ? 25 : 0) + (s.makkara ? 20 : 0) + (s.hauki ? 15 : 0)) * hang * (s.palju ? 1.15 : 1) * strain),
     maxLoyly: Math.round(20 + A('tech') * 0.8 + (sign === 'juhannus' ? 30 : 0) + affix(s, 'maxLoyly') + tier('loylywell', 15) + (s.upgrades.includes('savusauna') ? 20 : 0)),
     armor: Math.min(0.8, sum((g) => g.armor) + affix(s, 'armor') + skill(s, 'sisu') * 0.0025 + tier('thickskin', 0.06)),
     auraResist: Math.min(0.9, sum((g) => g.auraResist) + affix(s, 'auraResist') + A('liver') * 0.002 + (perk(s, 'stakeholder') > 0 ? 0.5 : 0) + (archEnt ? 0.5 : 0)),
@@ -567,7 +586,7 @@ export function derive(s: SaveState): Derived {
     healMult: 1 + sum((g) => g.healMult) + affix(s, 'heal') + (specialist ? 0.2 : 0),
     noRoot: ultra || defs.some((g) => g.noRoot === true),
     duck: defs.some((g) => g.duck === true),
-    energyRegen: (1 + sum((g) => g.energyRegen) + (s.domain === 'Cloud' && rungTrack ? 0.3 : 0) + caffeine.energyRegen + (perk(s, 'marathon') > 0 ? 0.5 : 0) + (buff('burn') ? 1 : 0)) * (s.hangover > 0 && !ultra ? 0.5 : 1) * (crash && !ultra ? 0.3 : 1) * (ultra ? 3 : 1),
+    energyRegen: (1 + sum((g) => g.energyRegen) + (s.domain === 'Cloud' && rungTrack ? 0.3 : 0) + caffeine.energyRegen + (perk(s, 'marathon') > 0 ? 0.5 : 0) + (buff('burn') ? 1 : 0)) * (s.hangover > 0 && !ultra ? 0.5 : 1) * (crash && !ultra ? 0.3 : 1) * (ultra ? 3 : 1) * Math.max(0.4, 1 - load.over * 0.15),
     attackSpeed: (1 + affix(s, 'attackSpeed') + (A('reflex') - 35) * 0.002 + caffeine.attack + (ultra ? 0.25 : 0)) * (crash && !ultra ? 0.8 : 1),
     meleeMult: (1 + (A('grit') - 35) * 0.008 + skill(s, 'hardware') * 0.006 + affix(s, 'damage') + tier('percussive', 0.2)) * (1 + band.damage) * (engineer ? 1.2 : 1) * (sign === 'deploy' ? 1.2 : 1) * (s.domain === 'Systems' && rungTrack ? 1.1 : 1) * powerUp * (buff('gymbro') ? 1.2 : 1),
     rangedMult: (1 + (A('reflex') - 35) * 0.008 + skill(s, 'scripting') * 0.006 + affix(s, 'damage') + tier('automation', 0.2)) * (1 + band.damage * 0.5) * (engineer ? 1.2 : 1) * (sign === 'deploy' ? 1.2 : 1) * powerUp,
@@ -589,6 +608,9 @@ export function derive(s: SaveState): Derived {
     deskRepMult: (specialist ? 1.25 : 1) * (1 + perk(s, 'runbook') * 0.5) * (archSol ? 1.25 : 1) * (specials.has('hoodie10x') ? 2 : 1),
     dodge: Math.min(0.35, Math.max(0, (A('reflex') - 30) * 0.004 + (perk(s, 'parkour') > 0 ? 0.1 : 0))),
     specials,
+    workload: load.active,
+    capacity: load.capacity,
+    overload: load.over,
   };
 }
 

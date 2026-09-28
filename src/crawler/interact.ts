@@ -137,6 +137,11 @@ function talkTo(g: Game, a: Actor): void {
     return;
   }
   if (a.kind === 'healer') {
+    // A leaving card or a cake rota counts each of the Kitchen Cabinet once.
+    if (a.memo.questTalk !== true && s.bac < 65 && s.standing.kitchen > -40) {
+      a.memo.questTalk = true;
+      g.questEvent({ type: 'talk', npc: 'healer' });
+    }
     // The weekend visitor brings cake and the week's gossip.
     if (s.location === 'mokki' && !s.weekend.visitorDone) {
       s.weekend.visitorDone = true;
@@ -167,6 +172,10 @@ function useThing(g: Game, it: Interactable): void {
       if (s.warnings >= 3) {
         g.openDialogue(disciplinary(g));
         return;
+      }
+      if (!g.loggedOn.has(it.id)) {
+        g.loggedOn.add(it.id);
+        g.questEvent({ type: 'use', what: 'terminal' });
       }
       g.openOs('desk');
       break;
@@ -226,6 +235,7 @@ function useThing(g: Game, it: Interactable): void {
       adjustStanding(s, 'itcrowd', 3);
       g.exercise('troubleshooting', 1);
       host.mailProgress(g, 'printer');
+      g.questEvent({ type: 'use', what: 'printer' });
       break;
     case 'crate':
       if (it.used) {
@@ -381,6 +391,7 @@ function sauna(g: Game, it: Interactable): void {
   g.exercise('sisu', 2);
   g.exercise('runecraft', 1);
   g.achieve('sauna');
+  g.questEvent({ type: 'use', what: 'kiuas' });
   g.refreshDerived();
   g.hud.toast(mokki ? 'Löylyä! Everything restored. Now the lake - while you are still hot.' : 'Löylyä! Sanity and Löyly restored, BAC down, hangover gone.', 'epic');
   g.journal(mokki ? 'Sauna at the mökki. Some things are simply right.' : 'Found a sauna in the office and used it. Building regulations are a mystery.');
@@ -503,6 +514,7 @@ function pickLock(g: Game, it: Interactable): void {
       sfx.lockClick();
       g.achieve('lock');
       lootLocker(g, it);
+      g.questEvent({ type: 'use', what: 'locker' });
       if (seen.length > 0) {
         adjustStanding(s, 'staff', -4);
         g.warn(`${seen[0]?.name ?? 'Someone'} saw you breaking into a supply closet`);

@@ -56,12 +56,17 @@ import { type OsHost, Os } from './os';
 import { Player } from './player';
 import {
   evidenceHeld,
+  maybeStaff,
   placeQuestContent,
+  pushBack,
   questEvent,
   questLines,
   questMarkers,
+  scheduleStaffing,
+  settleWeek,
+  tickQuests,
 } from './questing';
-import { type QuestEvent, type QuestHost, type QuestState } from './quests';
+import { type QuestDef, type QuestEvent, type QuestHost, type QuestState } from './quests';
 import { fx, Rng } from './rng';
 import {
   type ArchPath,
@@ -215,6 +220,13 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   readonly lockerItems = new Map<number, string>();
   markers: CompassMarker[] = [];
   markersIn = 0;
+  /** Seconds until someone tries to staff you on something. */
+  staffIn = 0;
+  staffFirst = false;
+  /** A staffing call waiting for a quiet moment to ring. */
+  pendingStaff: { def: QuestDef; by: string; wait: number } | null = null;
+  /** Computers you have logged on to on this floor. */
+  readonly loggedOn = new Set<number>();
 
   constructor(mount: HTMLElement) {
     this.mount = mount;
@@ -471,6 +483,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       if (this.boss !== null && n === 3 && evidenceHeld(this) >= 3 && s.flags.auditorFought !== true && s.flags.auditorAlly !== true) this.boss.docile = true;
     }
     this.slackedTerminals.clear();
+    this.loggedOn.clear();
     this.player.pos.set(this.level.start.x, 0, this.level.start.z);
     this.player.yaw = Math.PI;
     this.player.pitch = 0;
@@ -492,6 +505,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     // A boss already resolved: whatever it dropped is still lying there.
     if (fs.bossDone) redropBossLoot(this);
     placeQuestContent(this);
+    this.pendingStaff = null;
+    scheduleStaffing(this, fresh);
     this.spawnCompanions();
     if (!fromSave) host.consequencesOnArrival(this, n);
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
@@ -831,6 +846,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
         this.time += dt;
         this.update(dt);
       }
+    } else if (this.screen === 'os' && this.currentTerminal !== null) {
+      // At a computer, a P1 clock keeps running: the bridge call does not wait for you to log in.
+      tickQuests(this, dt);
     }
     sfx.music(this.screen === 'play' ? dt : 0);
     this.player.view = this.settings.view;
@@ -899,6 +917,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       caffeineZone: [50, 300],
       crash: s.crash,
       questLines: questLines(this),
+      overload: this.save.location === 'office' ? this.derivedCache.overload : 0,
       markers: this.markers,
       charge: this.charging && this.derivedCache.weapon.kind === 'melee' ? Math.min(1, this.chargeT / POWER_TIME) : 0,
       blocking: this.blocking,
@@ -969,6 +988,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     this.tickTimers(dt);
     tickVices(this, dt);
     tickCaffeine(this, dt);
+    tickQuests(this, dt);
     if (this.screen !== 'play') return;
 
     // Manager auras, and the smell test.
@@ -1386,6 +1406,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   questEvent(e: QuestEvent): void { questEvent(this, e); }
   turnHostile(npc: string, name: string): void { host.turnHostile(this, npc, name); }
   recruitIntern(): void { host.recruitIntern(this); }
+  atPeak(): boolean { return bandFor(this.save.bac, this.derivedCache.specials.has('flask')) === 'peak'; }
+  drinksHere(): number { return this.save.floorState.drinksHere; }
+  maybeStaff(by: string, chance: number): void { maybeStaff(this, by, chance); }
+  pushBack(index: number): string { return pushBack(this, index); }
   // OsHost
   buy(id: string): string | null { return host.buy(this, id); }
   sell(uid: string): string | null { return host.sell(this, uid); }
@@ -1421,12 +1445,14 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       s.weekend = freshWeekend();
       s.caffeineTol = Math.max(0, s.caffeineTol - 0.25);
       if (this.boss === null || this.boss.resolved) s.floorState.bossDone = true;
+      const week = settleWeek(this);
       const pay = Math.round(salaryFor(s.rung) * WORKPLACES[s.workplace].rep);
       s.rep += pay;
       this.loadMokki(false);
       screens.resume(this);
       this.hud.toast(`Salary: +₡${pay} (${this.title}).`, 'epic');
       this.journal(`Weekend ${s.week} at the mökki. Salary ₡${pay}.`);
+      if (week !== '') this.hud.toast(`📌 ${week}`, 'info');
       if (s.upgrades.includes('guestroom')) adjustStanding(s, 'kitchen', 3);
       // Friday evening phone calls: HR first, then Derek with the review.
       const queue: (() => DialogueNode)[] = [];

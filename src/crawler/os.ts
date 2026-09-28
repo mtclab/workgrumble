@@ -10,7 +10,7 @@ import {
 import { affixText, baseOf, type GearInstance, RARITY_INFO, sellValue, slotOf, uniqueSpecial } from './loot';
 import { spellById } from './magic';
 import { TREE_PERKS } from './perks';
-import { currentObjective, EVIDENCE, MAIN, QUEST_ITEMS, questById } from './quests';
+import { currentObjective, EVIDENCE, isActive, MAIN, QUEST_ITEMS, questById } from './quests';
 import {
   ARCH_INFO,
   ATTRIBUTE_INFO,
@@ -47,6 +47,7 @@ import {
   type SaveState,
   skill,
   skillSum,
+  workload,
 } from './state';
 import { ACHIEVEMENTS } from './upgrades';
 
@@ -81,6 +82,8 @@ export interface OsHost {
   claimQuest(q: Quest): void;
   slackOff(): string;
   canSlack(): boolean;
+  /** Email whoever staffed you and try to hand an assignment back (one go each). */
+  pushBack(index: number): string;
   hasTerminal(): boolean;
   close(): void;
   restart(): void;
@@ -671,8 +674,38 @@ export class Os {
       body.append(el('p', {}, 'The story of Project Phoenix is over. The overtime is not.'));
     }
     body.append(el('p', { class: 'os-meta' }, `Evidence: ${EVIDENCE.map((e) => `${has(e) ? '✔' : '✖'} ${QUEST_ITEMS[e]?.name ?? e}`).join(' · ')}`));
-    const active = s.questLog.filter((q) => !q.done);
-    const done = s.questLog.filter((q) => q.done);
+    // Workload: everything on your plate against what you can carry.
+    const load = workload(s);
+    const pct = Math.min(100, Math.round((load.active / Math.max(1, load.capacity)) * 100));
+    body.append(el('h4', {}, 'Workload'),
+      el('div', { class: `os-bar${load.over > 0 ? ' is-over' : ''}` }, el('div', { class: 'os-bar-fill', style: `width:${pct}%` })),
+      el('p', { class: load.over > 0 ? 'os-alert' : 'os-meta' }, load.over > 0
+        ? `${load.active}/${load.capacity}: OVERALLOCATED by ${load.over}. Max sanity and energy regeneration suffer until you clear some of it.`
+        : `${load.active}/${load.capacity}: quests, staffing and inbox tasks. Past capacity, everything starts to hurt.`));
+    if (this.feedback !== '') body.append(el('p', { class: 'os-feedback' }, this.feedback));
+    const staffed = s.questLog.map((q, i) => [q, i] as const).filter(([q]) => q.staffed === true && isActive(q));
+    if (staffed.length > 0) {
+      body.append(el('h4', {}, '📌 Staffed on'));
+      for (const [q, i] of staffed) {
+        const def = questById(q.id);
+        const obj = currentObjective(q);
+        const due = q.deadline !== undefined ? `P1: ${Math.max(0, Math.ceil(q.deadline))}s left` : 'Due Friday';
+        const row = el('div', { class: 'os-mail is-staffed' }, el('b', {}, def?.title ?? q.id), el('span', { class: 'os-meta' }, ` - for ${q.by ?? 'management'} · ${due}`),
+          el('p', {}, `${obj?.text ?? ''}${obj?.count !== undefined ? ` (${q.progress}/${obj.count})` : ''}`));
+        if (this.host.hasTerminal() && q.pushed !== true) {
+          row.append(el('button', { class: 'os-btn', onclick: () => { this.host.click(); this.say(this.host.pushBack(i)); } }, `✉ Push back (Soft Skills)`));
+        } else if (q.pushed === true) {
+          row.append(el('p', { class: 'os-dim' }, 'You already pushed back on this one.'));
+        } else {
+          row.append(el('p', { class: 'os-dim' }, 'Push back by email from any computer.'));
+        }
+        body.append(row);
+      }
+    }
+    const active = s.questLog.filter((q) => isActive(q) && q.staffed !== true);
+    const done = s.questLog.filter((q) => q.done && q.staffed !== true);
+    const delegated = s.questLog.filter((q) => q.delegated === true && !q.done);
+    const failed = s.questLog.filter((q) => q.failed === true);
     if (active.length > 0) {
       body.append(el('h4', {}, 'Active quests'));
       for (const q of active) {
@@ -682,8 +715,14 @@ export class Os {
           el('p', {}, `${obj?.text ?? ''}${obj?.count !== undefined ? ` (${q.progress}/${obj.count})` : ''}`)));
       }
     }
+    if (delegated.length > 0) {
+      body.append(el('h4', {}, 'Delegated'), el('p', { class: 'os-meta' }, `${delegated.map((q) => questById(q.id)?.title ?? q.id).join(' · ')}. Your helper is on it; it counts on Friday.`));
+    }
     if (done.length > 0) {
       body.append(el('h4', {}, 'Completed'), el('p', { class: 'os-meta' }, done.map((q) => questById(q.id)?.title ?? q.id).join(' · ')));
+    }
+    if (failed.length > 0 || s.stats.staffedDone > 0) {
+      body.append(el('p', { class: 'os-meta' }, `Staffing record: ${s.stats.staffedDone} delivered, ${s.stats.staffedMissed} missed.${failed.length > 0 ? ` Recently missed: ${failed.map((q) => questById(q.id)?.title ?? q.id).join(' · ')}.` : ''}`));
     }
     body.append(el('h4', {}, 'Entries'));
     if (s.journal.length === 0) body.append(el('p', { class: 'os-dim' }, 'Nothing written yet.'));

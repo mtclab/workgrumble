@@ -74,6 +74,10 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: 'ultra', name: 'The King', desc: 'Drink a White Monster.' },
   { id: 'elite', name: 'Senior Stakeholder', desc: 'Resolve an elite.' },
   { id: 'parry', name: 'Per My Last Email', desc: 'Parry ten attacks.' },
+  { id: 'handsfull', name: 'Hands Full', desc: 'Get staffed on something while already over capacity.' },
+  { id: 'delivered', name: 'Resource-Efficient', desc: 'Deliver 5 staffed assignments.' },
+  { id: 'boundaries', name: 'Boundaries', desc: 'Push back on an assignment, and win.' },
+  { id: 'questfan', name: 'Go-To Person', desc: 'Finish 8 side quests.' },
 ];
 
 export interface TipDef {
@@ -102,5 +106,6 @@ export const TIPS: Record<string, string> = {
   rest: 'Resting in the office costs an hour of SLA time, and somebody might find you napping.',
   caffeine: 'Caffeine is the second tightrope. Alert and WIRED (the green zone) make you faster; past it come the jitters and palpitations, and every big high ends in a crash. Tolerance builds up over the week.',
   elite: 'An elite (★): tougher, with a trick of its own, and much better loot.',
+  staffed: 'You have been STAFFED: management hands you work whether you have room or not. Assignments are due Friday (P1s have a clock). Over capacity, you lose max sanity and energy regen. Push back when they call, at a computer (Journal), or delegate to a helper - but a missed deliverable costs Management standing.',
   block: 'Hold the right mouse button to block (frontal hits, costs energy). Block just as a hit lands to PARRY it and stagger them. Tap it to shove.',
 };

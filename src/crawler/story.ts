@@ -49,6 +49,8 @@ export interface StoryHost {
   enrage(a: Actor): void;
   /** `resistible` false: a meeting you chose to accept happens whatever you wear. */
   rootPlayer(seconds: number, reason: string, resistible?: boolean): void;
+  /** "Oh, and while I have you": maybe staff you on something after this conversation. */
+  maybeStaff(by: string, chance: number): void;
   addActionItem(from: string): void;
   clearActionItems(from: string): number;
   enqueueTicket(a: Actor, gold: boolean): void;
@@ -181,11 +183,12 @@ export function talkManager(h: StoryHost, a: Actor): DialogueNode {
       h.rootPlayer(4, `In a meeting: "${subject}"`, false);
       h.standing('management', 3);
       h.resolvePeacefully(a, 'meeting');
+      h.maybeStaff(a.name, 0.35);
       return said(a.name, 'Great sync. Really valuable. I will send the notes. Nobody will read them.', 'good');
     } },
     checkOption(h, 'I am on a P1 right now, can we async this?', 'soft', 'charm', 35 + h.floor * 4,
       () => { h.resolvePeacefully(a, 'meeting'); return said(a.name, 'Of course, of course. Drop me a Teams message. Or three.', 'neutral'); },
-      () => { a.talked = true; h.rootPlayer(2, 'Cornered'); h.addActionItem(a.name); return said(a.name, 'Everything is a P1 with you people. Here, take an action item.', 'bad'); }),
+      () => { a.talked = true; h.rootPlayer(2, 'Cornered'); h.addActionItem(a.name); h.maybeStaff(a.name, 0.25); return said(a.name, 'Everything is a P1 with you people. Here, take an action item.', 'bad'); }),
   ];
   if (helper !== null) {
     opts.push({ label: `Delegate it to ${helper.name}.`, tag: 'Lose your helper', pick: () => {
@@ -197,7 +200,7 @@ export function talkManager(h: StoryHost, a: Actor): DialogueNode {
   }
   // One pitch per manager, win or lose.
   opts.push(checkOption(h, 'While I have you: about my promotion...', 'soft', 'charm', 45 + h.save.rung * 4,
-    () => { a.talked = true; h.standing('management', 5); return said(a.name, 'You know, I have been meaning to put your name forward. Leave it with me.', 'good', 'Fight them anyway'); },
+    () => { a.talked = true; h.standing('management', 5); h.maybeStaff(a.name, 0.5); return said(a.name, 'You know, I have been meaning to put your name forward. Leave it with me.', 'good', 'Fight them anyway'); },
     () => { a.talked = true; h.standing('management', -3); return said(a.name, 'Let us revisit that next quarter. And the one after.', 'bad', 'Brace yourself'); }));
   opts.push({ label: 'No.', pick: () => null });
   return { speaker: a.name, subtitle: 'Management', text: 'Got a sec? I have put fifteen minutes in your calendar. It is now.', options: opts };

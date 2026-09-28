@@ -190,6 +190,8 @@ export interface Actor {
   gold: boolean;
   /** Base emissive (a clone's blue); flashes and auras return to it. */
   glowBase: number;
+  /** The quest that wants this one dealt with (a hunt target), if any. */
+  questTag: string | null;
   readonly lastPos: THREE.Vector3;
   /** Who spawned it (turrets belong to a Shadow IT person). */
   owner: number;
@@ -674,6 +676,7 @@ export function createActor(
     rep,
     gold: kind === 'customer' || kind === 'boss' || elite === 'vip',
     glowBase,
+    questTag: null,
     lastPos: new THREE.Vector3(x, 0, z),
     owner: opts.owner ?? 0,
     spawnIndex: opts.spawnIndex ?? -1,

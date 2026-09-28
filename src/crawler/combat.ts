@@ -17,7 +17,7 @@ import { AMMO, type AmmoKind, BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, item
 import { lineOfSight, toCell, WALL_H } from './level';
 import { BOSS_UNIQUES, type GearInstance, RARITY_INFO, rollGear, uniqueInstance, WORLD_UNIQUES } from './loot';
 import { questItemMesh } from './meshes';
-import { MAIN } from './quests';
+import { MAIN, TRANSIENT_ITEMS } from './quests';
 import { fx } from './rng';
 import { adjustStanding, perk, skill } from './state';
 import { disposeSprite, textSprite } from './textures';
@@ -703,7 +703,7 @@ export function resolveActor(g: Game, a: Actor): void {
   floatText(g, a.pos.clone().setY(2.6), `+₡${rep}`, '#7dff9a');
   if (a.kind !== 'reply') g.hud.toast(`Resolved in person: "${t?.title ?? 'it'}" +₡${rep}${cleared > 0 ? ' (ticket closed)' : ''}`, 'good');
   questProgress(g, 'users');
-  questEvent(g, { type: 'resolve', kind: a.kind, peaceful: false, elite: a.elite !== null });
+  questEvent(g, { type: 'resolve', kind: a.kind, peaceful: false, elite: a.elite !== null, tag: a.questTag });
   if (a.elite !== null) {
     s.stats.elites++;
     g.achieve('elite');
@@ -901,8 +901,11 @@ export function updatePickups(g: Game, dt: number): void {
           }
           break;
         case 'quest':
-          if (!s.questItems.includes(p.id)) s.questItems.push(p.id);
-          if (!s.floorState.picked.includes(p.id)) s.floorState.picked.push(p.id);
+          // Paperwork is counted by the quest, not carried.
+          if (!TRANSIENT_ITEMS.includes(p.id)) {
+            if (!s.questItems.includes(p.id)) s.questItems.push(p.id);
+            if (!s.floorState.picked.includes(p.id)) s.floorState.picked.push(p.id);
+          }
           questEvent(g, { type: 'pickup', item: p.id });
           g.autosaveSoon();
           break;
