@@ -207,6 +207,8 @@ export function questEvent(g: Game, e: QuestEvent): void {
     }
   }
   if (e.type === 'pickup') {
+    // Picked up somewhere else: the closet that was hiding a copy of it is just a closet now.
+    for (const [id, item] of g.lockerItems) if (item === e.item) g.lockerItems.delete(id);
     const info = QUEST_ITEMS[e.item];
     if (info !== undefined) {
       g.hud.toast(`Found: ${info.name}`, 'epic');

@@ -26,7 +26,7 @@ export const TREE_PERKS: readonly TreePerk[] = [
   // General (the old flat perks, no skill needed)
   { id: 'patience', name: 'Infinite Patience', tree: null, ranks: [r(0, '+25 max sanity'), r(0, '+25 max sanity'), r(0, '+25 max sanity')] },
   { id: 'back', name: 'Strong Back', tree: null, ranks: [r(0, '+15 kg carry'), r(0, '+15 kg carry'), r(0, '+15 kg carry')] },
-  { id: 'caffeine', name: 'Caffeine Tolerance', tree: null, ranks: [r(0, 'Crashes are half as long; coffee lasts twice as long.')] },
+  { id: 'caffeine', name: 'Caffeine Tolerance', tree: null, ranks: [r(0, 'Crashes are half as long; can buffs last 50% longer.')] },
   { id: 'teflon', name: 'Teflon', tree: null, ranks: [r(0, 'Action items weigh half; meetings end twice as fast.'), r(0, 'Action items weigh a quarter.')] },
   { id: 'delegate', name: 'Delegation', tree: null, ranks: [r(0, 'Allies hit twice as hard; office ladies heal more often.')] },
 
@@ -53,7 +53,7 @@ export const TREE_PERKS: readonly TreePerk[] = [
   // Sisu
   { id: 'thickskin', name: 'Thick Skin', tree: 'sisu', ranks: [r(15, '+6% armour'), r(40, '+12% armour'), r(70, '+18% armour')] },
   { id: 'secondwind', name: 'Second Wind', tree: 'sisu', ranks: [r(30, 'Below a quarter sanity, it comes back three times as fast.')] },
-  { id: 'ironwill', name: 'Iron Will', tree: 'sisu', ranks: [r(50, 'You never stumble, and meetings hold you half as long.')] },
+  { id: 'ironwill', name: 'Iron Will', tree: 'sisu', ranks: [r(50, 'You never stumble, and meetings, freezes and hold-ups keep you half as long.')] },
   { id: 'unbreakable', name: 'Unbreakable', tree: 'sisu', ranks: [r(75, 'Once a floor, a burnout leaves you on 1 sanity instead.')] },
   // Stealth
   { id: 'greyhoodie', name: 'Grey Hoodie', tree: 'stealth', ranks: [r(15, '+8% stealth'), r(40, '+16% stealth'), r(70, '+24% stealth')] },

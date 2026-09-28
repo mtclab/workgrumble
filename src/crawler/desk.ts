@@ -45,10 +45,7 @@ export function breach(g: Game, q: QueuedTicket): void {
   g.hud.toast(`SLA BREACHED: "${title}". Escalated to a manager. (Management -3, Staff -2)`, 'bad');
   const ang = fx.range(0, Math.PI * 2);
   const m = g.spawn('manager', g.player.pos.x + Math.sin(ang) * 6, g.player.pos.z + Math.cos(ang) * 6, -1);
-  if (m !== null) {
-    m.docile = false;
-    say(m, `I have been asked to follow up on "${title}".`, 4);
-  }
+  if (m !== null) say(m, `I have been asked to follow up on "${title}".`, 4);
 }
 
 /**

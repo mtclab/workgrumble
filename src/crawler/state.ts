@@ -99,6 +99,10 @@ export interface FloorState {
   used: number[];
   /** Quest pickups already taken. */
   picked: string[];
+  /** Level spawns (by index) already resolved: they stay resolved on a reload. */
+  resolved: number[];
+  /** People who turned up because of an earlier choice, so a reload keeps them. */
+  extras: { kind: 'reply' | 'customer' | 'jam' | 'vendor'; x: number; z: number; name?: string }[];
   /** Once-a-floor saves already spent. */
   unbreakableUsed: boolean;
   nokiaUsed: boolean;
@@ -196,7 +200,7 @@ export interface SaveState {
 }
 
 export function freshFloorState(floor: number): FloorState {
-  return { floor, bossDone: false, used: [], picked: [], unbreakableUsed: false, nokiaUsed: false, drinksHere: 0 };
+  return { floor, bossDone: false, used: [], picked: [], resolved: [], extras: [], unbreakableUsed: false, nokiaUsed: false, drinksHere: 0 };
 }
 
 export function freshWeekend(): WeekendState {

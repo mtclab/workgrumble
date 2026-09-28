@@ -238,7 +238,8 @@ export function questItemMesh(color = 0xffd98a): THREE.Group {
   g.add(paper);
   const halo = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.03, 6, 24), new THREE.MeshBasicMaterial({ color }));
   g.add(halo);
-  const light = new THREE.PointLight(color, 2.5, 4, 2);
-  g.add(light);
+  // A glow, not a light: adding lights recompiles every lit material.
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 8), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.18, depthWrite: false }));
+  g.add(glow);
   return g;
 }

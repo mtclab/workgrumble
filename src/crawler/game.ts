@@ -47,6 +47,7 @@ import { Hud, type HudFrame } from './hud';
 import { Input } from './input';
 import { findPrompt, interact } from './interact';
 import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell } from './level';
+import { EXTRA_BASE, lastStand, redropBossLoot } from './combat';
 import { itemById } from './items';
 import { spellById } from './magic';
 import { FishingUI } from './minigames';
@@ -82,7 +83,7 @@ import {
   type Track,
   WORKPLACES,
 } from './rpg';
-import { clearAllSlots, latestSlot, readSlot, type SlotId, writeSlot } from './saves';
+import { latestSlot, readSlot, type SlotId, writeSlot } from './saves';
 import { type Action, loadSettings, type Settings, saveSettings } from './settings';
 import * as screens from './screens';
 import { castOdds, castSpell, cycleSpell, domainAbility, domainCooldown } from './spells';
@@ -171,6 +172,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   /** Seconds RMB has been held: a tap shoves, a hold blocks, an early hold parries. */
   rmbT = 0;
   hitStop = 0;
+  /** Seconds of a chatbot's slow. */
+  slowT = 0;
   rootT = 0;
   rootReason = '';
   sisuT = 0;
@@ -407,7 +410,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     const s = this.save;
     s.floor = n;
     s.location = 'office';
-    if (!fromSave || s.floorState.floor !== n) {
+    const fresh = !fromSave || s.floorState.floor !== n;
+    if (fresh) {
       s.floorState = freshFloorState(n);
       s.queue = [];
     }
@@ -434,15 +438,29 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     for (const it of this.level.interactables) if (fs.used.includes(it.id)) it.used = true;
 
     const npc = storyNpcFor(n);
-    for (const sp of this.level.spawns) {
+    // Whoever you already resolved on this floor stays resolved after a reload.
+    const gone = new Set(fs.resolved);
+    this.level.spawns.forEach((sp, k) => {
       if (sp.kind === 'reply') {
-        for (let i = 0; i < 3; i++) this.spawnAt(sp.kind, sp.x + fx.range(-1, 1), sp.z + fx.range(-1, 1), sp.room, false);
+        for (let i = 0; i < 3; i++) {
+          const idx = k * 4 + i;
+          if (!gone.has(idx)) this.spawnAt(sp.kind, sp.x + (i - 1) * 0.8, sp.z + (i % 2) * 0.6, sp.room, false, { spawnIndex: idx });
+        }
       } else if (sp.kind === 'npc') {
-        if (s.flags[`story_${npc.id}_${n}`] !== true) this.spawnAt('npc', sp.x, sp.z, sp.room, false, { npc });
+        // The PA has nothing left to offer once the story is over.
+        if (s.flags[`story_${npc.id}_${n}`] !== true && !(npc.id === 'pa' && s.won)) this.spawnAt('npc', sp.x, sp.z, sp.room, false, { npc });
       } else {
-        this.spawnAt(sp.kind, sp.x, sp.z, sp.room, false, { elite: this.rollElite(sp.kind) });
+        // Roll the elite either way, so the same people are elites after a reload.
+        const elite = this.rollElite(sp.kind);
+        if (!gone.has(k * 4)) this.spawnAt(sp.kind, sp.x, sp.z, sp.room, false, { elite, spawnIndex: k * 4 });
       }
-    }
+    });
+    fs.extras.forEach((x, i) => {
+      if (fromSave && !gone.has(EXTRA_BASE + i)) {
+        const a = this.spawnAt(x.kind, x.x, x.z, 0, false, { spawnIndex: EXTRA_BASE + i });
+        if (a !== null && x.name !== undefined) a.name = x.name;
+      }
+    });
     const bossRoom = this.level.roomOf[toCell(this.level.bossSpawn.z) * this.level.w + toCell(this.level.bossSpawn.x)] ?? -1;
     this.elevatorOpen = fs.bossDone;
     if (!fs.bossDone) {
@@ -450,15 +468,19 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       this.bossMult = 1;
       this.rescaleBoss();
       // Carrying the Phoenix file, the Auditor would rather talk.
-      if (this.boss !== null && this.boss.boss?.name === 'The Auditor' && evidenceHeld(this) >= 3 && s.flags.auditorFought !== true) this.boss.docile = true;
+      if (this.boss !== null && n === 3 && evidenceHeld(this) >= 3 && s.flags.auditorFought !== true && s.flags.auditorAlly !== true) this.boss.docile = true;
     }
     this.slackedTerminals.clear();
     this.player.pos.set(this.level.start.x, 0, this.level.start.z);
     this.player.yaw = Math.PI;
     this.player.pitch = 0;
 
-    s.quests = s.quests.filter((q) => q.kind !== 'boss' && q.kind !== 'printer' && q.kind !== 'deliver');
-    delete s.consumables.laptop;
+    if (fresh) {
+      s.quests = s.quests.filter((q) => q.kind !== 'boss' && q.kind !== 'printer' && q.kind !== 'deliver');
+      delete s.consumables.laptop;
+    } else {
+      s.quests = s.quests.filter((q) => q.kind !== 'boss');
+    }
     const b = this.boss?.boss;
     if (b !== undefined && b !== null && !fs.bossDone) {
       s.quests.unshift({
@@ -467,6 +489,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
         from: 'The Service Desk', goal: 1, progress: 0, reward: 0, done: false,
       });
     }
+    // A boss already resolved: whatever it dropped is still lying there.
+    if (fs.bossDone) redropBossLoot(this);
     placeQuestContent(this);
     this.spawnCompanions();
     if (!fromSave) host.consequencesOnArrival(this, n);
@@ -500,6 +524,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     const s = this.save;
     let mult = 1;
     if (s.flags.mokkiDeal === true && s.floor === FINAL_FLOOR) mult *= 0.5;
+    if (s.flags.exposed === true && s.floor === FINAL_FLOOR) mult *= 0.6;
     if (s.flags.whistleblower === true && s.floor % 5 === 3) mult *= 0.6;
     if (a.boss?.name === 'The Auditor') mult *= 1 + s.findings * 0.25;
     if (mult === this.bossMult) return;
@@ -570,7 +595,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     castShadows(a.root);
     if (aggro) a.aggro = true;
     // The CEO's hat: managers will not start anything with you.
-    if (kind === 'manager' && this.derivedCache.specials.has('ceoCrown')) a.docile = true;
+    if (kind === 'manager' && this.derivedCache.specials.has('ceoCrown')) {
+      a.docile = true;
+      a.aggro = false;
+    }
     this.actors.push(a);
     return a;
   }
@@ -643,10 +671,26 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     this.os.hide();
     this.dialogue.close();
     this.derivedCache = derive(s);
+    this.resetTransient();
     this.loadWorld(true);
     screens.startPlay(this);
     this.hud.toast(`Loaded: ${s.name}, ${this.title} (${this.floorName()}).`, 'good');
     return true;
+  }
+
+  /** Buffs and timers that belong to the moment, not the save. */
+  resetTransient(): void {
+    this.invisT = 0;
+    this.sisuT = 0;
+    this.saunaT = 0;
+    this.rootT = 0;
+    this.hitStop = 0;
+    this.slowT = 0;
+    this.charging = false;
+    this.chargeT = 0;
+    this.blocking = false;
+    this.caughtPending = false;
+    this.hurtFlash = 0;
   }
 
   applySettings(): void {
@@ -749,7 +793,6 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       const back = new THREE.Vector3(Math.sin(this.player.yaw), 0, Math.cos(this.player.yaw)).multiplyScalar(2.5);
       const m = this.spawn('manager', this.player.pos.x + back.x, this.player.pos.z + back.z, -1);
       if (m !== null) {
-        m.docile = false;
         say(m, 'Are those... CATS? My office. Now. Well, here. Now.', 4);
         this.hud.toast('CAUGHT! A manager saw the cat pictures.', 'bad');
         adjustStanding(this.save, 'management', -4);
@@ -765,7 +808,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
 
   beginCareer(setup: CharacterSetup): void {
     this.save = newSave(Date.now() >>> 0, setup);
-    if (this.save.ironman) clearAllSlots();
+    this.derivedCache = derive(this.save);
+    this.resetTransient();
     this.fixCache = new WeakMap();
     this.os.hide();
     this.loadFloor(0, false);
@@ -849,6 +893,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       bandLabel: BAND_EFFECTS[bandFor(s.bac, this.derivedCache.specials.has('flask'))].label,
       promille: promille(s.bac),
       bacForecast: Math.min(100, s.bac + s.stomach),
+      peakZone: this.derivedCache.specials.has('flask') ? [21, 41] : [26, 36],
       caffeine: s.caffeine * factor,
       caffeineLabel: s.crash > 0 ? 'CRASH' : CAFFEINE_EFFECTS[band].label.toUpperCase() === 'DECAF' ? 'Decaf' : CAFFEINE_EFFECTS[band].label.toUpperCase(),
       caffeineZone: [50, 300],
@@ -953,6 +998,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     if (d.overEncumbered) speed *= 0.55;
     speed *= 1 - this.auraSlow;
     speed *= 1 - this.hazardSlow;
+    if (this.slowT > 0 && !d.ultra) speed *= 0.6;
     if (this.player.crouching && perk(s, 'silentkeys') === 0) speed *= 0.55;
     if (this.blocking) speed *= 0.5;
     if (this.charging && this.chargeT > 0.2 && d.weapon.kind === 'melee') speed *= 0.75;
@@ -960,7 +1006,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     const sprint = this.down('sprint') && moving && !d.overEncumbered && s.energy > 1 && !this.player.crouching && !this.blocking;
     if (sprint) {
       speed *= 1.45 + skill(s, 'athletics') * 0.004;
-      if (!d.specials.has('sandals')) s.energy = Math.max(0, s.energy - 24 * (perk(s, 'stairsguy') > 0 ? 0.6 : 1) * dt);
+      if (!d.specials.has('sandals') && !d.ultra) s.energy = Math.max(0, s.energy - 24 * (perk(s, 'stairsguy') > 0 ? 0.6 : 1) * dt);
       this.athleticsT += dt;
       if (this.athleticsT > 2) {
         this.athleticsT = 0;
@@ -1075,9 +1121,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     if (s.sanity < d.maxSanity * 0.3) this.tip('lowsanity');
     if (d.overEncumbered) this.tip('encumbered');
 
-    // Sisu: you cannot be dropped below 1 while it lasts.
-    if (this.sisuT > 0 && s.sanity < 1) s.sanity = 1;
-    if (s.sanity <= 0 && this.screen === 'play') screens.showDead(this);
+    // Sisu, Unbreakable and the Nokia stand between you and a burnout, whatever did it.
+    if (s.sanity <= 0 && this.screen === 'play' && !lastStand(this)) screens.showDead(this);
   }
 
   /** A bound action pressed this frame. */
@@ -1105,7 +1150,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     // Löyly seeps back slowly; sanity trickles back with Patience.
     s.loyly = Math.min(d.maxLoyly, s.loyly + (0.35 + s.attrs.tech * 0.004) * dt);
     const second = perk(s, 'secondwind') > 0 && s.sanity < d.maxSanity * 0.25 ? 3 : 1;
-    s.sanity = Math.min(d.maxSanity, s.sanity + (s.attrs.patience * 0.003 + d.band.regen) * second * dt - d.caffeine.drain * dt);
+    const ultra = d.ultra ? 3 : 0;
+    s.sanity = Math.min(d.maxSanity, s.sanity + (s.attrs.patience * 0.003 + d.band.regen + ultra) * second * dt - d.caffeine.drain * dt);
+    this.slowT = Math.max(0, this.slowT - dt);
   }
 
   private effects(): string[] {
@@ -1306,7 +1353,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   }
 
   healPlayer(amount: number, from: string): void { host.healPlayer(this, amount, from); }
-  rootPlayer(seconds: number, reason: string): void { host.rootPlayer(this, seconds, reason); }
+  rootPlayer(seconds: number, reason: string, resistible = true): void { host.rootPlayer(this, seconds, reason, resistible); }
   shake(amount: number): void { this.shakeAmt = Math.max(this.shakeAmt, amount); }
   helperDamageMult(): number { return perk(this.save, 'delegate') > 0 ? 2 : 1; }
   healerFrequency(): number { return host.healerFrequency(this); }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { sfx } from './audio';
-import { dropGear } from './combat';
+import { dropGear, EXTRA_BASE } from './combat';
 import { questProgress } from './desk';
 import { type Actor, say } from './entities';
 import type { Game } from './game';
@@ -46,7 +46,13 @@ export function healPlayer(g: Game, amount: number, from: string): void {
   }
 }
 
-export function rootPlayer(g: Game, seconds: number, reason: string): void {
+/**
+ * Rooted: in a meeting, frozen, sat down. The Out-of-Office robe and the White
+ * Monster shrug off anything forced on you; a meeting you accepted still happens.
+ */
+export function rootPlayer(g: Game, seconds: number, reason: string, resistible = true): void {
+  if (resistible && g.derivedCache.noRoot) return;
+  if (resistible && g.save.perks.ironwill !== undefined) seconds *= 0.5;
   g.rootT = Math.max(g.rootT, seconds);
   g.rootReason = reason;
   sfx.meeting();
@@ -135,7 +141,8 @@ export function resolvePeacefully(g: Game, a: Actor, how: 'fix' | 'ticket' | 'sc
   a.talked = true;
   const rep = how === 'fix' ? Math.round(a.rep * 0.9) : how === 'ticket' || how === 'bribe' ? Math.round(a.rep * 0.3) : 0;
   if (rep > 0) g.addRep(rep);
-  if (a.stolen > 0) g.addRep(a.stolen);
+  if (a.stolen > 0) s.rep += a.stolen;
+  if (a.spawnIndex >= 0 && s.location === 'office' && !s.floorState.resolved.includes(a.spawnIndex)) s.floorState.resolved.push(a.spawnIndex);
   s.stats.resolvedPeace++;
   if (how === 'fix' || how === 'charmed' || how === 'bribe') adjustStanding(s, 'staff', how === 'fix' ? 2 : 1);
   if (how !== 'ticket') s.queue = s.queue.filter((q) => q.from !== a.name);
@@ -170,7 +177,6 @@ export function spawnHostile(g: Game, kind: 'user' | 'manager' | 'reply' | 'cust
   for (let i = 0; i < n; i++) {
     const a = g.spawn(kind, g.player.pos.x + fx.range(-3, 3), g.player.pos.z + fx.range(-3, 3), -1);
     if (a === null) continue;
-    a.docile = false;
     if (name !== undefined) {
       a.name = name;
       a.hp *= 2;
@@ -225,7 +231,6 @@ export function auditorParley(g: Game, outcome: 'ally' | 'fight'): void {
     if (o.name === 'lamp' && o instanceof THREE.Mesh) (o.material as THREE.MeshBasicMaterial).color.setHex(0x30ff60);
   });
   if (s.flags.unique_redPen !== true) {
-    s.flags.unique_redPen = true;
     const pen = uniqueInstance('redPen', g.lootRng);
     if (pen !== null) dropGear(g, a.pos, pen);
   }
@@ -236,24 +241,29 @@ export function bossDeal(g: Game, kind: 'nda' | 'mokki' | 'expose' | 'parachute'
   const s = g.save;
   switch (kind) {
     case 'nda':
-      s.flags.ceoDeal = true;
-      g.journal('I signed the NDA. The Company Man.');
-      g.afterDialogue = () => g.finishStory();
+    case 'parachute': {
+      if (s.flags.ceoDeal === true || s.flags.goldenParachute === true) return;
+      if (kind === 'nda') {
+        s.flags.ceoDeal = true;
+        g.journal('I signed the NDA. The Company Man.');
+      } else {
+        s.flags.goldenParachute = true;
+        s.rep += 2000;
+        g.journal('I showed the PA the Phoenix file and named a number. Sir Reginald paid it without coming out of his office.');
+      }
+      const prev = g.afterDialogue;
+      g.afterDialogue = () => {
+        prev?.();
+        g.finishStory();
+      };
       return;
-    case 'parachute':
-      s.flags.goldenParachute = true;
-      s.rep += 2000;
-      g.journal('I showed the PA the Phoenix file and named a number. Sir Reginald paid it without coming out of his office.');
-      g.afterDialogue = () => g.finishStory();
-      return;
+    }
     case 'expose':
+      if (s.flags.exposed === true) return;
       s.flags.whistleblower = true;
       s.flags.exposed = true;
       g.journal('I told Sir Reginald\'s PA the Phoenix file is going to the regulator. He is not taking it well.');
-      if (g.boss !== null) {
-        g.boss.hp *= 0.6;
-        g.boss.maxHp *= 0.6;
-      }
+      g.rescaleBoss();
       g.hud.toast('The file is sent. Sir Reginald is coming apart: he fights at 60%.', 'epic');
       return;
     case 'mokki':
@@ -268,9 +278,14 @@ export function bossDeal(g: Game, kind: 'nda' | 'mokki' | 'expose' | 'parachute'
 export function consequencesOnArrival(g: Game, n: number): void {
   const s = g.save;
   const f = s.flags;
+  // Recorded on the floor, so a reload cannot make the consequence go away.
   const near = (kind: 'reply' | 'customer' | 'jam' | 'vendor', count: number, name?: string): void => {
     for (let i = 0; i < count; i++) {
-      const a = g.spawnAt(kind, g.level.start.x + fx.range(-6, 6), g.level.start.z + fx.range(3, 10), 0, false);
+      const x = g.level.start.x + fx.range(-6, 6);
+      const z = g.level.start.z + fx.range(3, 10);
+      const idx = EXTRA_BASE + s.floorState.extras.length;
+      s.floorState.extras.push(name === undefined ? { kind, x, z } : { kind, x, z, name });
+      const a = g.spawnAt(kind, x, z, 0, false, { spawnIndex: idx });
       if (a !== null && name !== undefined) a.name = name;
     }
   };
@@ -347,7 +362,6 @@ export function rest(g: Game, safe: boolean): void {
       const ang = fx.range(0, Math.PI * 2);
       const m = g.spawn('manager', g.player.pos.x + Math.sin(ang) * 3, g.player.pos.z + Math.cos(ang) * 3, -1);
       if (m !== null) {
-        m.docile = false;
         say(m, 'Are you ASLEEP? Under a DESK?', 3);
         adjustStanding(s, 'management', -4);
         g.hud.toast('Found napping! (Management -4)', 'bad');
@@ -537,7 +551,7 @@ export function slackOff(g: Game): string {
   if (g.currentTerminal === null) return 'You cannot look at cats from your backpack.';
   g.slackedTerminals.add(g.currentTerminal.id);
   healPlayer(g, 30, '');
-  if (fx.chance(0.35 - g.stealth * 0.2)) {
+  if (g.save.location === 'office' && fx.chance(0.35 - g.stealth * 0.2)) {
     g.caughtPending = true;
     return 'Ahh. That is better. (+30 sanity) ...was that footsteps behind you?';
   }

@@ -522,7 +522,7 @@ function lootLocker(g: Game, it: Interactable): void {
     got.push(itemById(id)?.name ?? id);
   };
   const quest = g.lockerItems.get(it.id);
-  if (quest !== undefined) {
+  if (quest !== undefined && !s.questItems.includes(quest)) {
     g.lockerItems.delete(it.id);
     if (!s.questItems.includes(quest)) s.questItems.push(quest);
     if (!s.floorState.picked.includes(quest)) s.floorState.picked.push(quest);

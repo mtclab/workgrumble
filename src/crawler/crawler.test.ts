@@ -328,11 +328,15 @@ describe('Helldesk saves', () => {
     const partial = JSON.parse(JSON.stringify(s)) as Record<string, unknown>;
     delete partial.buffs;
     delete partial.weekend;
+    delete (partial.floorState as Record<string, unknown>).resolved;
     (partial.stats as Record<string, unknown>).fish = undefined;
     const n = normalizeSave(partial);
     expect(n).not.toBeNull();
     expect(n?.buffs).toEqual({});
     expect(n?.weekend.book).toBe(false);
+    expect(n?.floorState.resolved).toEqual([]);
+    expect(n?.floorState.extras).toEqual([]);
+    expect(n?.stomach).toBe(0);
     expect(normalizeSave('nonsense')).toBeNull();
   });
 });

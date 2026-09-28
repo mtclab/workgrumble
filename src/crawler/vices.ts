@@ -132,7 +132,7 @@ export function blackout(g: Game): void {
   s.stomach = 0;
   const what = fx.pick(INCIDENTS);
   g.journal(`Blackout. ${what}`);
-  g.warn('Blackout at work');
+  if (s.location === 'office') g.warn('Blackout at work');
   g.achieve('blackout');
   g.os.hide();
   g.screen = 'transition';

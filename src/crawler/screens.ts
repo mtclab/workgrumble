@@ -4,7 +4,7 @@ import { DEATH_LINES } from './content/lines';
 import type { Game } from './game';
 import { fx } from './rng';
 import { type Ending, WORKPLACES } from './rpg';
-import { clearAllSlots, deleteSlot, listSlots, SLOT_LABEL, type SlotId, timeAgo } from './saves';
+import { deleteSlot, latestSlot, listSlots, SLOT_LABEL, type SlotId, timeAgo } from './saves';
 import { adjustStanding } from './state';
 
 /** The full-screen overlays: title, load menu, pause, burnout, endings, lifts. */
@@ -49,7 +49,9 @@ export function showTitle(g: Game): void {
   g.screen = 'title';
   g.input.releaseLock();
   const buttons: Button[] = [];
-  if (g.hasSave()) buttons.push([`Continue: ${g.save.name}, ${g.title} (${g.floorName()})`, () => startPlay(g)]);
+  const latest = latestSlot();
+  const meta = latest === null ? undefined : listSlots().find((m) => m.id === latest);
+  if (latest !== null && meta !== undefined) buttons.push([`Continue: ${meta.name}, ${meta.title} (${meta.where})`, () => { g.loadSlot(latest); }]);
   if (listSlots().length > 0) buttons.push(['Load game', () => showLoadMenu(g, () => showTitle(g))]);
   buttons.push(['New career', () => showChargen(g)]);
   setOverlay(g, `
@@ -163,6 +165,7 @@ export function showDead(g: Game): void {
   s.actionItems = 0;
   s.queue = [];
   s.bac = Math.min(s.bac, 20);
+  s.stomach = 0;
   s.caffeine = Math.min(s.caffeine, 60);
   s.crash = 0;
   g.writeSlotFor('auto');
@@ -179,7 +182,7 @@ export function showDead(g: Game): void {
 /** Ironman: one burnout and the career is over. */
 function showCareerOver(g: Game): void {
   const s = g.save;
-  clearAllSlots();
+  deleteSlot('auto');
   setOverlay(g, `<div class="title-logo small dead">CAREER OVER</div>
     <p class="title-blurb">${fx.pick(DEATH_LINES)}</p>
     <p class="title-blurb">Ironman. ${s.name}, ${g.title}, level ${s.level}, burned out on ${g.floorName()} in week ${s.week}.

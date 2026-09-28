@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { sfx } from './audio';
 import { fxBall, fxRing, muzzle, aimPoint, steamBurst, strike } from './combat';
-import { type Actor, say, stun } from './entities';
+import { type Actor, say, stun, TALKERS } from './entities';
 import type { Game } from './game';
 import { lineOfSight, toCell } from './level';
 import { castChance, spellById } from './magic';
@@ -128,7 +128,7 @@ export function castSpell(g: Game): void {
       sfx.chime();
       g.hud.toast('You sing the old song. It goes on for a while. People forget why they came.', 'epic');
       for (const a of near(9)) {
-        if (a.kind === 'boss') continue;
+        if (!TALKERS.includes(a.kind) && a.kind !== 'manager') continue;
         g.resolvePeacefully(a, 'charmed');
         say(a, '...what was I doing? Never mind.', 2);
       }

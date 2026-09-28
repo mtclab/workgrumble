@@ -28,6 +28,8 @@ export interface HudFrame {
   readonly promille: string;
   /** Where your BAC is heading once the stomach empties (0..100). */
   readonly bacForecast: number;
+  /** The Ballmer Peak window on the meter (the Flask widens it). */
+  readonly peakZone: readonly [number, number];
   readonly caffeine: number;
   readonly caffeineLabel: string;
   /** Mg of the sweet spot (alert..wired) on the meter, for the current tolerance. */
@@ -77,6 +79,7 @@ export class Hud {
   private readonly bac: HTMLDivElement;
   private readonly bacFill: HTMLDivElement;
   private readonly bacGhost: HTMLDivElement;
+  private readonly bacPeak: HTMLDivElement;
   private readonly bacLabel: HTMLDivElement;
   private readonly eye: HTMLDivElement;
   private readonly caff: HTMLDivElement;
@@ -186,9 +189,9 @@ export class Hud {
     this.bac = div('hud-big hud-bac', bacCell);
     const bt = div('hud-track hud-track-bac', bacCell);
     // The Ballmer Peak window, marked on the meter.
-    const peak = div('hud-bac-peak', bt);
-    peak.style.left = '26%';
-    peak.style.width = '10%';
+    this.bacPeak = div('hud-bac-peak', bt);
+    this.bacPeak.style.left = '26%';
+    this.bacPeak.style.width = '10%';
     this.bacGhost = div('hud-bac-ghost', bt);
     this.bacFill = div('hud-fill hud-fill-bac', bt);
     this.bacLabel = div('hud-small', bacCell);
@@ -265,6 +268,8 @@ export class Hud {
     this.bac.textContent = `${f.promille}‰`;
     this.bacFill.style.width = `${Math.min(100, s.bac)}%`;
     this.bacGhost.style.width = `${Math.min(100, f.bacForecast)}%`;
+    this.bacPeak.style.left = `${f.peakZone[0]}%`;
+    this.bacPeak.style.width = `${f.peakZone[1] - f.peakZone[0]}%`;
     this.bacGhost.style.display = f.bacForecast > s.bac + 0.5 ? 'block' : 'none';
     this.bacLabel.textContent = f.bandLabel;
     this.bac.dataset.band = f.bandLabel;

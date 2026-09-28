@@ -47,7 +47,8 @@ export interface StoryHost {
   warn(why: string): void;
   resolvePeacefully(a: Actor, how: 'fix' | 'ticket' | 'scared' | 'charmed' | 'meeting' | 'bribe'): void;
   enrage(a: Actor): void;
-  rootPlayer(seconds: number, reason: string): void;
+  /** `resistible` false: a meeting you chose to accept happens whatever you wear. */
+  rootPlayer(seconds: number, reason: string, resistible?: boolean): void;
   addActionItem(from: string): void;
   clearActionItems(from: string): number;
   enqueueTicket(a: Actor, gold: boolean): void;
@@ -177,7 +178,7 @@ export function talkManager(h: StoryHost, a: Actor): DialogueNode {
   const helper = h.recruitedHelper();
   const opts: DialogueOption[] = [
     { label: `Accept the meeting: "${subject}".`, tag: '4s rooted', pick: () => {
-      h.rootPlayer(4, `In a meeting: "${subject}"`);
+      h.rootPlayer(4, `In a meeting: "${subject}"`, false);
       h.standing('management', 3);
       h.resolvePeacefully(a, 'meeting');
       return said(a.name, 'Great sync. Really valuable. I will send the notes. Nobody will read them.', 'good');
@@ -416,11 +417,16 @@ export function talkStory(h: StoryHost, a: Actor): DialogueNode {
     case 'pa': {
       const ev = h.evidence();
       const opts: DialogueOption[] = [];
+      // Whatever you choose here, the PA is done with you.
+      const settle = (): void => {
+        a.talked = true;
+        h.flag(`story_${a.npcId ?? ''}_${h.floor}`);
+      };
       if (ev >= MAIN_ENDING_EVIDENCE) {
-        opts.push({ label: 'Tell him I have the Phoenix file. All of it. And I am sending it to the regulator.', tag: `Evidence ${ev}/4`, pick: () => { h.bossDeal('expose'); return null; } });
-        opts.push({ label: 'Tell him I have the Phoenix file, and I have a number in mind.', tag: `Evidence ${ev}/4`, pick: () => { h.bossDeal('parachute'); return null; } });
+        opts.push({ label: 'Tell him I have the Phoenix file. All of it. And I am sending it to the regulator.', tag: `Evidence ${ev}/4`, pick: () => { settle(); h.bossDeal('expose'); return null; } });
+        opts.push({ label: 'Tell him I have the Phoenix file, and I have a number in mind.', tag: `Evidence ${ev}/4`, pick: () => { settle(); h.bossDeal('parachute'); return null; } });
       }
-      opts.push({ label: 'Sign the NDA.', tag: 'Ends your story', pick: () => { h.bossDeal('nda'); return null; } });
+      opts.push({ label: 'Sign the NDA.', tag: 'Ends your story', pick: () => { settle(); h.bossDeal('nda'); return null; } });
       opts.push(checkOption(h, 'Make it the mökki money, and he gets his quiet.', 'soft', 'charm', 60 - ev * 5,
         () => { h.bossDeal('mokki'); return done('He... agrees. He is counting it now. He will be distracted when you go in.', 'good'); },
         () => done('He laughed. He is still laughing. You should go in.', 'bad')));

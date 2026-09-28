@@ -193,6 +193,8 @@ export interface Actor {
   readonly lastPos: THREE.Vector3;
   /** Who spawned it (turrets belong to a Shadow IT person). */
   owner: number;
+  /** Which level spawn this is (-1: summoned), so resolving it survives a reload. */
+  spawnIndex: number;
 }
 
 /** What the AI needs from the game. The Game implements it. */
@@ -473,6 +475,7 @@ export interface SpawnOpts {
   readonly ttl?: number;
   readonly elite?: EliteAffix | null;
   readonly owner?: number;
+  readonly spawnIndex?: number;
 }
 
 export function createActor(
@@ -673,6 +676,7 @@ export function createActor(
     glowBase,
     lastPos: new THREE.Vector3(x, 0, z),
     owner: opts.owner ?? 0,
+    spawnIndex: opts.spawnIndex ?? -1,
   };
   if (rig !== null) {
     rig.glow = glowBase;

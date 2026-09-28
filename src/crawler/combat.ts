@@ -13,7 +13,7 @@ import {
   say,
 } from './entities';
 import { type Game, POWER_TIME } from './game';
-import { AMMO, type AmmoKind, BOOK_IDS, DRINKS, ENERGY_DRINKS, itemById, RUNES, type WeaponDef } from './items';
+import { AMMO, type AmmoKind, BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, itemById, RUNES, type WeaponDef } from './items';
 import { lineOfSight, toCell, WALL_H } from './level';
 import { BOSS_UNIQUES, type GearInstance, RARITY_INFO, rollGear, uniqueInstance, WORLD_UNIQUES } from './loot';
 import { questItemMesh } from './meshes';
@@ -536,7 +536,7 @@ function projectileHitsPlayer(g: Game, p: Projectile): void {
     case 'chat':
       // The chatbot's answer is never the answer. It is, however, very slow.
       if (hurtPlayer(g, p.damage, p.owner, 'ticket')) {
-        g.hazardSlow = Math.max(g.hazardSlow, 0.4);
+        g.slowT = Math.max(g.slowT, 2);
         g.rootPlayer(0.4, 'Reading 14 suggested articles');
       }
       break;
@@ -555,6 +555,7 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
   if (g.screen !== 'play') return false;
   const s = g.save;
   const d = g.derivedCache;
+  void d;
   // Blocking: anything coming at you from the front.
   if (g.blocking && from !== null && kind !== 'aura') {
     const dx = from.pos.x - g.player.pos.x;
@@ -604,23 +605,59 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
   } else {
     g.faceMood = 'hurt';
   }
-  // The things that stand between you and a burnout.
-  if (s.sanity <= 0) {
-    const fs = s.floorState;
-    if (g.sisuT > 0) {
-      s.sanity = 1;
-    } else if (perk(s, 'unbreakable') > 0 && !fs.unbreakableUsed) {
-      fs.unbreakableUsed = true;
-      s.sanity = 1;
-      g.sisuT = 3;
-      g.hud.toast('UNBREAKABLE. Not today.', 'epic');
-    } else if (d.specials.has('nokia') && !fs.nokiaUsed) {
-      fs.nokiaUsed = true;
-      s.sanity = 1;
-      g.hud.toast('The Nokia 3310 takes the hit. It is fine. It is always fine.', 'epic');
-    }
-  }
+  if (s.sanity <= 0) lastStand(g);
   return true;
+}
+
+/**
+ * The things that stand between you and a burnout, whatever brought you to
+ * zero: a hit, the jitters, the shakes, a wrong fix. True if one held.
+ */
+export function lastStand(g: Game): boolean {
+  const s = g.save;
+  const fs = s.floorState;
+  if (g.sisuT > 0) {
+    s.sanity = 1;
+    return true;
+  }
+  if (perk(s, 'unbreakable') > 0 && !fs.unbreakableUsed) {
+    fs.unbreakableUsed = true;
+    s.sanity = 1;
+    g.sisuT = 3;
+    g.hud.toast('UNBREAKABLE. Not today.', 'epic');
+    return true;
+  }
+  if (g.derivedCache.specials.has('nokia') && !fs.nokiaUsed) {
+    fs.nokiaUsed = true;
+    s.sanity = 1;
+    g.hud.toast('The Nokia 3310 takes the hit. It is fine. It is always fine.', 'epic');
+    return true;
+  }
+  return false;
+}
+
+/** Spawn indices of people who came because of an earlier choice start here. */
+export const EXTRA_BASE = 100000;
+
+/** Remember that a level spawn is dealt with, so a reload does not bring it back. */
+function markResolved(g: Game, a: Actor): void {
+  if (a.spawnIndex >= 0 && g.save.location === 'office' && !g.save.floorState.resolved.includes(a.spawnIndex)) g.save.floorState.resolved.push(a.spawnIndex);
+}
+
+/**
+ * Reloading a floor whose boss is already resolved: the boss's legendary and
+ * its evidence are put back where the boss fell, if you never picked them up.
+ */
+export function redropBossLoot(g: Game): void {
+  const s = g.save;
+  const at = new THREE.Vector3(g.level.bossSpawn.x, 0, g.level.bossSpawn.z);
+  const u = BOSS_UNIQUES[g.floor % BOSS_UNIQUES.length];
+  if (u !== undefined && s.flags[`unique_${u}`] !== true) {
+    const inst = uniqueInstance(u, g.lootRng);
+    if (inst !== null) dropGear(g, at, inst);
+  }
+  const drop = MAIN[g.floor]?.bossDrop;
+  if (drop !== undefined && g.floor <= 4 && !s.questItems.includes(drop) && !s.floorState.picked.includes(drop)) dropQuestItem(g, at, drop);
 }
 
 // ================================================================== resolving people
@@ -632,6 +669,7 @@ export function resolveActor(g: Game, a: Actor): void {
   a.removeIn = a.kind === 'boss' ? 3 : 1.4;
   a.flash = 1;
   a.hpBar.visible = false;
+  markResolved(g, a);
   if (a.expired) return;
   const rep = Math.round(a.rep * (1 + perk(s, 'listening') * 0.05));
   g.addRep(rep);
@@ -640,7 +678,8 @@ export function resolveActor(g: Game, a: Actor): void {
   g.faceT = 1.2;
   const t = TICKETS[a.ticket];
   if (a.stolen > 0) {
-    g.addRep(a.stolen);
+    // Your own money back, exactly: no employer bonus on a refund.
+    s.rep += a.stolen;
     g.hud.toast(`The vendor's "workshop fee" is refunded: +₡${a.stolen}.`, 'good');
   }
   if (a.kind === 'boss' && a.boss !== null) {
@@ -698,10 +737,11 @@ function resolveBoss(g: Game, a: Actor, rep: number): void {
     if (o.name === 'lamp' && o instanceof THREE.Mesh) (o.material as THREE.MeshBasicMaterial).color.setHex(0x30ff60);
   });
   for (let i = 0; i < 4; i++) dropLoot(g, a.pos, true);
-  // Every boss carries its legendary, once per career.
+  // Phase two's hazards go out with the boss.
+  for (const h of g.hazards) h.ttl = Math.min(h.ttl, 0.4);
+  // Every boss carries its legendary, once per career (it counts once you pick it up).
   const u = BOSS_UNIQUES[g.floor % BOSS_UNIQUES.length];
   if (u !== undefined && s.flags[`unique_${u}`] !== true) {
-    s.flags[`unique_${u}`] = true;
     const inst = uniqueInstance(u, g.lootRng);
     if (inst !== null) dropGear(g, a.pos, inst);
   } else {
@@ -777,7 +817,7 @@ export function dropLoot(g: Game, at: THREE.Vector3, rich: boolean): void {
     return;
   }
   if (rich && r.chance(0.06)) {
-    const unknown = RUNES.filter((id) => (s.consumables[id] ?? 0) === 0);
+    const unknown = RUNES.filter((id) => (s.consumables[id] ?? 0) === 0 && !s.spells.includes(itemRune(id)));
     if (unknown.length > 0) {
       dropItem(g, at, r.pick(unknown));
       return;
@@ -797,10 +837,10 @@ export function dropGear(g: Game, at: THREE.Vector3, inst: GearInstance): void {
 export function dropGearFrom(g: Game, at: THREE.Vector3, force?: 'fine' | 'rare' | 'legendary'): void {
   const s = g.save;
   if (force === 'legendary') {
-    const unowned = WORLD_UNIQUES.filter((u) => s.flags[`unique_${u}`] !== true);
+    const lying = new Set(g.pickups.map((p) => p.gear?.unique).filter((x): x is string => x !== undefined));
+    const unowned = WORLD_UNIQUES.filter((u) => s.flags[`unique_${u}`] !== true && !lying.has(u));
     const u = unowned.length > 0 ? g.lootRng.pick(unowned) : null;
     if (u !== null) {
-      s.flags[`unique_${u}`] = true;
       const inst = uniqueInstance(u, g.lootRng);
       if (inst !== null) {
         dropGear(g, at, inst);
@@ -853,6 +893,7 @@ export function updatePickups(g: Game, dt: number): void {
         case 'gear':
           if (p.gear !== null) {
             s.gear.push(p.gear);
+            if (p.gear.unique !== undefined) s.flags[`unique_${p.gear.unique}`] = true;
             g.hud.toast(`Found: ${p.gear.name} (${RARITY_INFO[p.gear.rarity].name}). Equip it from your backpack (Tab).`, p.gear.rarity === 'legendary' ? 'epic' : 'good');
             if (p.gear.rarity === 'legendary') g.achieve('legendary');
             g.tip('loot');
@@ -999,4 +1040,8 @@ export function floatText(g: Game, pos: THREE.Vector3, text: string, color: stri
   sp.material.depthTest = false;
   g.scene.add(sp);
   g.floaters.push({ sprite: sp, ttl: 0.9 });
+}
+
+function itemRune(id: string): string {
+  return CONSUMABLES.find((c) => c.id === id)?.rune ?? '';
 }
