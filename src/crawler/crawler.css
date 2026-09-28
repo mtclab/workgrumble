@@ -215,3 +215,46 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .os-standing-bar i { position: absolute; top: 0; bottom: 0; left: 50%; background: var(--os-accent); }
 .os-standing-bar i.neg { background: var(--os-alarm); }
 .os-hint { color: #b07a00; font-weight: bold; }
+
+/* ---------------- Full game: compass, tips, loot, cards ---------------- */
+.compass { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); width: min(560px, 60vw); height: 30px; overflow: hidden;
+  background: linear-gradient(90deg, transparent, rgba(20,22,20,0.75) 15%, rgba(20,22,20,0.75) 85%, transparent);
+  border-top: 1px solid rgba(141,135,121,0.6); border-bottom: 1px solid rgba(141,135,121,0.6); }
+.compass-strip { position: relative; width: 100%; height: 100%; }
+.compass-card, .compass-marker { position: absolute; top: 50%; transform: translate(-50%, -50%); font: bold 13px monospace; text-shadow: 0 0 3px #000; white-space: nowrap; pointer-events: none; }
+.compass-marker { font-size: 15px; display: flex; flex-direction: column; align-items: center; line-height: 1; }
+.compass-marker small { font-size: 9px; color: #d8d0c0; }
+.compass-marker.is-pinned { opacity: 0.6; }
+.hud-tip { position: absolute; left: 12px; bottom: 118px; max-width: min(420px, 60vw); background: rgba(16, 40, 36, 0.92); border: 1px solid #3aa295; border-left: 4px solid #3aa295; padding: 8px 12px; font-size: 13px; line-height: 1.45; display: none; }
+.hud-tip b { color: #7dffea; display: block; font-size: 11px; letter-spacing: 2px; margin-bottom: 2px; }
+.hud-card { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; display: none; }
+.hud-card-name { font: 900 clamp(28px, 5vw, 56px) Impact, "Arial Black", sans-serif; color: #ff5a4a; letter-spacing: 3px; text-shadow: 3px 3px 0 #000, 0 0 24px rgba(255,90,74,0.6); }
+.hud-card-title { font: bold 16px Tahoma, sans-serif; color: #f0e8d8; letter-spacing: 4px; text-transform: uppercase; text-shadow: 0 0 4px #000; }
+.hud-charge { position: absolute; left: 50%; top: calc(50% + 18px); transform: translateX(-50%); width: 60px; height: 4px; background: rgba(0,0,0,0.5); display: none; }
+.hud-charge i { display: block; height: 100%; background: #ffd98a; }
+.hud-block { position: absolute; left: 50%; top: calc(50% + 26px); transform: translateX(-50%); font: bold 12px monospace; color: #9ad0ff; text-shadow: 0 0 3px #000; display: none; }
+.rarity-common { color: #d8d0c0; }
+.rarity-fine { color: #3f9f55; }
+.rarity-rare { color: #2f6fbf; }
+.rarity-legendary { color: #c96a00; }
+.os-item .os-affix { font-size: 11px; color: #1c665e; margin: 1px 0; }
+.os-item .os-special { font-size: 11px; color: #9a5a00; font-style: italic; }
+.os-item.is-equipped { outline: 2px solid var(--os-accent-bright); }
+.os-slot-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.os-load { display: flex; flex-direction: column; gap: 6px; }
+.fish-meter { height: 8px; background: #111; border: 1px solid #5d564b; margin: 6px 0; }
+.fish-meter-fill { height: 100%; background: linear-gradient(90deg, #5fb6ff, #7dff9a); }
+.fish .lock-marker { background: #9ad0ff; box-shadow: 0 0 8px #9ad0ff; }
+.screen-slots { display: flex; flex-direction: column; gap: 6px; min-width: min(520px, 90vw); }
+.screen-slot { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; background: rgba(255,255,255,0.05); border: 1px solid #3a3a34; cursor: pointer; color: #e8e0d0; font: 14px Tahoma, sans-serif; text-align: left; }
+.screen-slot:hover { border-color: #3aa295; background: rgba(58,162,149,0.15); }
+.screen-slot span { color: #9a9282; font-size: 12px; }
+.ach { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; border-bottom: 1px solid var(--os-sunken); }
+.ach.is-locked { opacity: 0.45; }
+.ach b { display: block; }
+@media (max-width: 900px) {
+  .hud-cell { min-width: 0; padding: 6px 8px; }
+  .hud-cell-weapon, .hud-cell-level, .hud-cell-magic, .hud-cell-bac { min-width: 0; }
+  .hud-big { font-size: 22px; }
+  .hud-slas, .hud-quests { font-size: 10px; max-width: 46vw; }
+}
