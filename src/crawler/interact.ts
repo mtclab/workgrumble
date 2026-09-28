@@ -7,7 +7,7 @@ import { FINAL_FLOOR, type Game, type PromptTarget } from './game';
 import * as host from './hosts';
 import { BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, itemById, RUNES } from './items';
 import { type Interactable, lineOfSight } from './level';
-import { QUEST_ITEMS, talkGiver } from './quests';
+import { currentObjective, isActive, QUEST_ITEMS, type QuestEvent, talkGiver } from './quests';
 import { questOf } from './questing';
 import { fx } from './rng';
 import * as screens from './screens';
@@ -137,10 +137,12 @@ function talkTo(g: Game, a: Actor): void {
     return;
   }
   if (a.kind === 'healer') {
-    // A leaving card or a cake rota counts each of the Kitchen Cabinet once.
-    if (a.memo.questTalk !== true && s.bac < 65 && s.standing.kitchen > -40) {
+    // A leaving card or a cake rota counts each of the Kitchen Cabinet once - once it is asked for.
+    const sig: QuestEvent = { type: 'talk', npc: 'healer' };
+    const wanted = s.questLog.some((q) => isActive(q) && currentObjective(q)?.match?.(sig) === true);
+    if (wanted && a.memo.questTalk !== true && s.bac < 65 && s.standing.kitchen > -40) {
       a.memo.questTalk = true;
-      g.questEvent({ type: 'talk', npc: 'healer' });
+      g.questEvent(sig);
     }
     // The weekend visitor brings cake and the week's gossip.
     if (s.location === 'mokki' && !s.weekend.visitorDone) {

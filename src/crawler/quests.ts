@@ -69,7 +69,7 @@ export interface Objective {
   /** For 'hunt': who has to be dealt with (spawned when the stage starts). */
   readonly hunt?: HuntTarget;
   /** For 'count' on a staffed assignment: make sure there are enough of these on the floor. */
-  readonly ensure?: { readonly kind: HuntTarget['kind']; readonly count: number };
+  readonly ensure?: { readonly kind: HuntTarget['kind'] | 'healer'; readonly count: number };
 }
 
 export interface QuestDef {
@@ -195,7 +195,7 @@ export const QUESTS: readonly QuestDef[] = [
   {
     id: 'leavingcard', title: 'The Leaving Card', main: false, giver: 'Linda from HR', npc: 'linda', floors: [1, 2, 3],
     stages: [
-      { kind: 'count', count: 2, match: talkedToLady, text: 'Get Graham\'s leaving card signed by two of the Kitchen Cabinet (talk to two office ladies).' },
+      { kind: 'count', count: 2, match: talkedToLady, ensure: { kind: 'healer', count: 2 }, text: 'Get Graham\'s leaving card signed by two of the Kitchen Cabinet (talk to two office ladies).' },
       { kind: 'talk', npc: 'linda', text: 'Bring the card back to Linda before Graham finds out.' },
     ],
   },
@@ -288,7 +288,7 @@ export const STAFFED: readonly QuestDef[] = [
   { id: 's-customer', title: 'Customer Visit (P1)', main: false, giver: '', npc: '', floors: [], staffed: true, timeLimit: 200,
     stages: [{ kind: 'count', count: 3, match: isKind('customer'), ensure: { kind: 'customer', count: 3 }, text: 'Three gold-tier customers have turned up unannounced. Resolve them before they reach the CEO.' }] },
   { id: 's-allhands', title: 'All-Hands Catering', main: false, giver: '', npc: '', floors: [], staffed: true,
-    stages: [{ kind: 'count', count: 2, match: talkedToLady, text: 'You are running the all-hands, apparently. Sort the cake with two of the Kitchen Cabinet by Friday.' }] },
+    stages: [{ kind: 'count', count: 2, match: talkedToLady, ensure: { kind: 'healer', count: 2 }, text: 'You are running the all-hands, apparently. Sort the cake with two of the Kitchen Cabinet by Friday.' }] },
   { id: 's-incident', title: 'Major Incident Bridge (P1)', main: false, giver: '', npc: '', floors: [], staffed: true, timeLimit: 180,
     stages: [{ kind: 'fix', count: 2, text: 'You are on the bridge call. Close 2 tickets at a terminal in the next three minutes. Everyone is listening.' }] },
 ];

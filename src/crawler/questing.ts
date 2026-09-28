@@ -106,7 +106,8 @@ function spawnHunt(g: Game, st: QuestState, target: HuntTarget): void {
 function ensureKind(g: Game, obj: Objective, st: QuestState): void {
   if (obj.ensure === undefined) return;
   const need = (obj.count ?? 1) - st.progress;
-  const have = g.actors.filter((a) => a.kind === obj.ensure?.kind && !a.resolved).length;
+  // An office lady who has already signed cannot sign twice.
+  const have = g.actors.filter((a) => a.kind === obj.ensure?.kind && !a.resolved && a.memo.questTalk !== true).length;
   for (let i = have; i < need; i++) {
     const spot = randomSpot(g, undefined);
     if (spot !== null) g.spawnAt(obj.ensure.kind, spot.x, spot.z, spot.room, false);
