@@ -522,10 +522,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     this.scene.fog = new THREE.Fog(0xe8c0a8, 30, 150);
     this.hemi.color.setHex(0xbfd8ff);
     this.hemi.groundColor.setHex(0x3a5a2a);
-    this.hemi.intensity = 0.9;
-    this.sun.intensity = 2.6;
+    this.hemi.intensity = 1.35;
+    this.sun.intensity = 2.8;
     // Outdoors the sky is bright: expose for it, and keep the bloom for the sun.
-    this.renderer.toneMappingExposure = 0.62;
+    this.renderer.toneMappingExposure = 0.82;
     this.pipeline.bloom.strength = 0.22;
     this.pipeline.bloom.threshold = 0.95;
     // Low in the north, long shadows across the grass.

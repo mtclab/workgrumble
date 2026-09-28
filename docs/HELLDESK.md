@@ -130,7 +130,10 @@ markers; the journal (J, or at any computer) keeps the story.
 ## The two tightropes
 
 **Drink.** BAC in promille. Finnish drinks (keskari, lonkero, Koskenkorva,
-Salmari, sahti), never sold by Internal IT. Tipsy → **Ballmer Peak** (a
+Salmari, sahti), never sold by Internal IT. A drink goes into your stomach
+first and reaches your blood over the next half-minute (the hatched ghost on
+the meter is where you are heading), so it is easy to overshoot; food lines
+your stomach and slows it down. Tipsy → **Ballmer Peak** (a
 narrow window: damage, persuasion, and terminals strike a wrong fix) →
 Merry (sway, managers can smell it) → Hammered (stumbling, swimming text,
 healers refuse you) → Blackout (you wake somewhere with less Rep, a warning
@@ -178,6 +181,20 @@ C to sneak. Supply closets are locked: paperclips and a timing minigame
 Rep inside. The office fridge is always Jukka's. Doing any of it in front of
 someone earns an HR warning.
 
+## Looks
+
+Everything is procedural (no image or model files). A post-processing
+pipeline adds ambient occlusion, bloom and a "mood" pass that is how your
+body feels: the room breathes and doubles when you drink, shakes when you
+are jittery, tunnels in when you are close to burning out, goes grey in a
+crash and green in a hangover, and glows when you are ascended. Real shadows
+(the low white-night sun at the mökki, the nearest ceiling light in the
+office), PBR materials with normal maps generated from the painted textures,
+a different floor for each kind of room, skirting and lintels and blinking
+server racks, particles (paper confetti when a problem is resolved, sparks,
+steam, dust in the light), a sky, a rippling lake and swaying grass.
+Quality (low / medium / high) scales all of it.
+
 ## Saves and options
 
 An autosave, a quicksave (F5, F9 to load) and three slots, all in this
@@ -222,6 +239,7 @@ runtime:
 | `level.ts`, `mokki.ts` | Seeded floors and the cottage plot (grid collision, line of sight, flow fields). |
 | `entities.ts` | Every NPC: stats, elites, AI, boss patterns and phases. |
 | `os.ts` | WorkgrumbleOS: tickets, mail, KB, Internal IT (buy/sell), inventory, character and perks, HR, journal, achievements, settings, help. |
+| `graphics.ts`, `particles.ts` | The render pipeline and mood shader, generated normal maps; the particle pool. |
 | `hud.ts`, `compass.ts`, `player.ts`, `characters.ts`, `meshes.ts` | Status bar and maps; compass; camera rigs; the soft-voxel people; the dog, turrets, chatbots and mökki buildings. |
 | `dialogue.ts`, `minigames.ts`, `chargen.ts` | Conversations and lockpicking; fishing; the new starter form. |
 | `items.ts`, `audio.ts`, `textures.ts` | Item tables; synthesised sound (music and effects buses, ambience); canvas-painted textures (no asset files). |
