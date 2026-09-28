@@ -26,6 +26,24 @@ export interface HudFrame {
   readonly hidden: boolean | null;
   readonly bandLabel: string;
   readonly promille: string;
+  readonly caffeine: number;
+  readonly caffeineLabel: string;
+  /** Mg of the sweet spot (alert..wired) on the meter, for the current tolerance. */
+  readonly caffeineZone: readonly [number, number];
+  readonly crash: number;
+  /** Journal quest objectives, then mail tasks. */
+  readonly questLines: readonly string[];
+  /** Quest targets on the map. */
+  readonly markers: readonly MapMarker[];
+  /** 0..1 power-attack wind-up. */
+  readonly charge: number;
+  readonly blocking: boolean;
+}
+
+export interface MapMarker {
+  readonly x: number;
+  readonly z: number;
+  readonly color: string;
 }
 
 function div(cls: string, parent: HTMLElement, text = ''): HTMLDivElement {
@@ -58,6 +76,16 @@ export class Hud {
   private readonly bacFill: HTMLDivElement;
   private readonly bacLabel: HTMLDivElement;
   private readonly eye: HTMLDivElement;
+  private readonly caff: HTMLDivElement;
+  private readonly caffFill: HTMLDivElement;
+  private readonly caffZone: HTMLDivElement;
+  private readonly caffLabel: HTMLDivElement;
+  private readonly card: HTMLDivElement;
+  private readonly tipBox: HTMLDivElement;
+  private readonly chargeRing: HTMLDivElement;
+  private readonly blockIcon: HTMLDivElement;
+  private cardT = 0;
+  private tipT = 0;
   private readonly prompt: HTMLDivElement;
   private readonly effects: HTMLDivElement;
   private readonly quests: HTMLDivElement;
@@ -161,6 +189,14 @@ export class Hud {
     this.bacFill = div('hud-fill hud-fill-bac', bt);
     this.bacLabel = div('hud-small', bacCell);
 
+    const caffCell = div('hud-cell hud-cell-caff', bar);
+    div('hud-label', caffCell, 'CAFFEINE');
+    this.caff = div('hud-big hud-caff', caffCell);
+    const ct = div('hud-track hud-track-caff', caffCell);
+    this.caffZone = div('hud-caff-zone', ct);
+    this.caffFill = div('hud-fill hud-fill-caff', ct);
+    this.caffLabel = div('hud-small', caffCell);
+
     const lvlCell = div('hud-cell hud-cell-level', bar);
     div('hud-label', lvlCell, 'CAREER');
     this.level = div('hud-small', lvlCell);
@@ -168,6 +204,28 @@ export class Hud {
     this.xpFill = div('hud-fill hud-fill-xp', xt);
     this.weight = div('hud-small', lvlCell);
     this.eye = div('hud-eye', this.root);
+    this.card = div('hud-card', this.root);
+    this.tipBox = div('hud-tip', this.root);
+    this.chargeRing = div('hud-charge', this.root);
+    this.blockIcon = div('hud-block', this.root, '🛡 BLOCKING');
+  }
+
+  /** A boss's name across the screen, Souls-style. */
+  showCard(title: string, subtitle: string): void {
+    this.card.replaceChildren();
+    div('hud-card-title', this.card, title);
+    div('hud-card-sub', this.card, subtitle);
+    this.card.classList.remove('is-on');
+    void this.card.offsetWidth;
+    this.card.classList.add('is-on');
+    this.cardT = 3.6;
+  }
+
+  /** A first-time hint in the corner. */
+  tip(text: string): void {
+    this.tipBox.textContent = `💡 ${text}`;
+    this.tipBox.classList.add('is-on');
+    this.tipT = 9;
   }
 
   flash(kind: 'hurt' | 'heal' | 'meeting'): void {
@@ -206,6 +264,22 @@ export class Hud {
     this.bac.dataset.band = f.bandLabel;
     this.bacLabel.classList.toggle('is-peak', f.bandLabel === 'BALLMER PEAK');
     this.bacLabel.classList.toggle('is-alarm', s.bac >= 42);
+    const CAFF_MAX = 600;
+    this.caff.textContent = f.crash > 0 ? `CRASH ${Math.ceil(f.crash)}s` : `${Math.round(f.caffeine)} mg`;
+    this.caffFill.style.width = `${Math.min(100, (f.caffeine / CAFF_MAX) * 100)}%`;
+    this.caffZone.style.left = `${Math.min(100, (f.caffeineZone[0] / CAFF_MAX) * 100)}%`;
+    this.caffZone.style.width = `${Math.max(0, Math.min(100, ((f.caffeineZone[1] - f.caffeineZone[0]) / CAFF_MAX) * 100))}%`;
+    this.caffLabel.textContent = f.caffeineLabel;
+    this.caffLabel.classList.toggle('is-peak', f.caffeineLabel === 'WIRED');
+    this.caffLabel.classList.toggle('is-alarm', f.caffeineLabel === 'JITTERY' || f.caffeineLabel === 'PALPITATIONS' || f.crash > 0);
+    this.chargeRing.style.display = f.charge > 0.05 ? 'block' : 'none';
+    this.chargeRing.style.setProperty('--p', `${Math.round(f.charge * 100)}%`);
+    this.chargeRing.classList.toggle('is-full', f.charge >= 1);
+    this.blockIcon.style.display = f.blocking ? 'block' : 'none';
+    this.cardT = Math.max(0, this.cardT - dt);
+    if (this.cardT <= 0) this.card.classList.remove('is-on');
+    this.tipT = Math.max(0, this.tipT - dt);
+    if (this.tipT <= 0) this.tipBox.classList.remove('is-on');
     this.eye.style.display = f.hidden === null ? 'none' : 'block';
     this.eye.textContent = f.hidden === true ? '👁 HIDDEN' : '👁 SEEN';
     this.eye.classList.toggle('is-seen', f.hidden === false);
@@ -221,10 +295,9 @@ export class Hud {
     }));
     this.floorLabel.textContent = f.floorName;
 
-    // Tasks.
-    const lines = s.quests.map((q) => `${q.done ? '✔' : '•'} ${q.title}${q.goal > 1 ? ` (${Math.min(q.progress, q.goal)}/${q.goal})` : ''}`);
-    this.quests.textContent = lines.length > 0 ? `TASKS\n${lines.join('\n')}` : '';
-    this.quests.style.display = lines.length > 0 ? 'block' : 'none';
+    // Quests and tasks.
+    this.quests.textContent = f.questLines.length > 0 ? `QUESTS & TASKS\n${f.questLines.join('\n')}` : '';
+    this.quests.style.display = f.questLines.length > 0 ? 'block' : 'none';
 
     // SLA timers.
     const sl = s.queue.slice(0, 6).map((q) => {
@@ -239,7 +312,8 @@ export class Hud {
 
     if (f.boss !== null && f.boss.bossActive && !f.boss.resolved) {
       this.bossBar.style.display = 'block';
-      this.bossName.textContent = `${f.boss.name} - ${f.boss.boss?.title ?? ''}`;
+      this.bossName.textContent = `${f.boss.name} - ${f.boss.boss?.title ?? ''}${f.boss.phase === 2 ? '  ·  PHASE 2' : ''}`;
+      this.bossBar.classList.toggle('is-phase2', f.boss.phase === 2);
       this.bossFill.style.width = `${Math.max(0, (f.boss.hp / f.boss.maxHp) * 100)}%`;
     } else {
       this.bossBar.style.display = 'none';
@@ -377,10 +451,24 @@ export class Hud {
       const sx = size / 2 + (a.pos.x / TILE - pcx) * scale;
       const sy = size / 2 + (a.pos.z / TILE - pcz) * scale;
       if (sx < 0 || sy < 0 || sx > size || sy > size) continue;
-      g.fillStyle = a.kind === 'boss' ? '#ff00ff' : a.kind === 'healer' ? '#ff9ad5' : a.kind === 'helper' ? '#6fe0ff' : a.kind === 'manager' ? '#ffa030' : a.kind === 'customer' ? '#ffd700' : '#ff4040';
+      g.fillStyle = actorColor(a);
       g.beginPath();
-      g.arc(sx, sy, a.kind === 'boss' ? 4 : 2.5, 0, Math.PI * 2);
+      g.arc(sx, sy, a.kind === 'boss' ? 4 : a.elite !== null ? 3.5 : 2.5, 0, Math.PI * 2);
       g.fill();
+    }
+    for (const m of f.markers) {
+      let sx = size / 2 + (m.x / TILE - pcx) * scale;
+      let sy = size / 2 + (m.z / TILE - pcz) * scale;
+      // Off the edge: pin it to the rim so you know which way to go.
+      const edge = size / 2 - 7;
+      const ddx = sx - size / 2;
+      const ddy = sy - size / 2;
+      const far = Math.max(Math.abs(ddx), Math.abs(ddy));
+      if (far > edge) {
+        sx = size / 2 + (ddx / far) * edge;
+        sy = size / 2 + (ddy / far) * edge;
+      }
+      diamond(g, sx, sy, 5, m.color);
     }
     // Player arrow.
     g.save();
@@ -431,6 +519,7 @@ export class Hud {
       g.fillStyle = it.kind === 'terminal' ? '#5fb6ff' : it.kind === 'itdesk' ? '#7dff9a' : it.kind === 'elevator' ? (f.elevatorOpen ? '#ffffff' : '#ff4040') : '#d0c080';
       g.fillRect(ox + cx * scale, oy + cz * scale, scale, scale);
     }
+    for (const m of f.markers) diamond(g, ox + (m.x / TILE) * scale, oy + (m.z / TILE) * scale, 7, m.color);
     const px = ox + (f.px / TILE) * scale;
     const py = oy + (f.pz / TILE) * scale;
     g.save();
@@ -445,6 +534,37 @@ export class Hud {
     g.fill();
     g.restore();
     g.fillStyle = '#c8e0d0';
-    g.fillText('M: close map  ·  blue: computers  ·  green: Internal IT  ·  red/white: lift', 10, size - 10);
+    g.fillText('M: close map  ·  blue: computers  ·  green: Internal IT  ·  red/white: lift  ·  ◆ quest', 10, size - 10);
   }
+}
+
+function actorColor(a: Actor): string {
+  if (a.kind === 'boss') return '#ff00ff';
+  if (a.elite !== null) return '#ff9a3a';
+  switch (a.kind) {
+    case 'healer': return '#ff9ad5';
+    case 'helper': return '#6fe0ff';
+    case 'npc': case 'tonttu': return '#ffe07a';
+    case 'manager': return '#ffa030';
+    case 'customer': return '#ffd700';
+    case 'consultant': return '#5dade2';
+    case 'shadowit': case 'turret': return '#c39bd3';
+    case 'vendor': return '#f39c12';
+    case 'chatbot': return '#8fd0ff';
+    default: return '#ff4040';
+  }
+}
+
+function diamond(g: CanvasRenderingContext2D, x: number, y: number, r: number, color: string): void {
+  g.fillStyle = color;
+  g.strokeStyle = '#000';
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.moveTo(x, y - r);
+  g.lineTo(x + r, y);
+  g.lineTo(x, y + r);
+  g.lineTo(x - r, y);
+  g.closePath();
+  g.fill();
+  g.stroke();
 }

@@ -1,3 +1,4 @@
+import { BOOKS } from './books';
 /** Everything Internal IT will issue you, if the budget code clears. */
 
 export type AmmoKind = 'labels' | 'air' | 'ducks' | 'toner';
@@ -54,7 +55,13 @@ export interface ConsumableDef {
   readonly weight: number;
   readonly heal?: number;
   readonly energy?: number;
-  readonly buff?: 'coffee' | 'wired' | 'makkara';
+  readonly buff?: 'makkara' | 'hauki' | 'ultra' | 'wings' | 'gymbro' | 'burn';
+  /** Seconds a timed buff lasts. */
+  readonly buffTime?: number;
+  /** Caffeine in milligrams. */
+  readonly mg?: number;
+  /** A skill book: reading it raises this skill by one. */
+  readonly book?: string;
   readonly clearsActionItem?: boolean;
   /** Blood alcohol it adds before tolerance. */
   readonly bac?: number;
@@ -108,13 +115,30 @@ export const GEAR: readonly GearDef[] = [
   { id: 'lanyard', slot: 'trinket', name: 'Lanyard of Authority', desc: 'Managers and bosses deal 25% less and auras are halved.', price: 380, weight: 0.2, bossResist: 0.25, auraResist: 0.5, minFloor: 2 },
 ];
 
-export const CONSUMABLES: readonly ConsumableDef[] = [
-  { id: 'coffee', slot: 'consumable', name: 'Filter Coffee', desc: '+50 energy, a 25 second pep in your step, and it takes the edge off (-6 BAC).', price: 15, weight: 0.3, energy: 50, buff: 'coffee', minFloor: 0 },
-  { id: 'energy', slot: 'consumable', name: 'Grumble Energy (Tropical)', desc: 'WIRED: faster everything for 20s. Then the crash.', price: 25, weight: 0.3, energy: 100, buff: 'wired', minFloor: 0 },
+export const CONSUMABLES: ConsumableDef[] = [
+  { id: 'coffee', slot: 'consumable', name: 'Filter Coffee', desc: '90 mg caffeine, +40 energy, and it takes the edge off (-6 BAC).', price: 12, weight: 0.3, energy: 40, mg: 90, minFloor: 0 },
+  { id: 'espresso', slot: 'consumable', name: 'Espresso Shot', desc: '65 mg caffeine, +20 energy. Small, sharp, Italian.', price: 10, weight: 0.1, energy: 20, mg: 65, minFloor: 0 },
+  { id: 'battery', slot: 'consumable', name: 'Battery Energy Drink', desc: '160 mg caffeine, +70 energy. Finnish. Tastes like a charged 9-volt.', price: 20, weight: 0.35, energy: 70, mg: 160, minFloor: 0 },
+  { id: 'batteryzero', slot: 'consumable', name: 'Battery No Calories', desc: '160 mg caffeine, +50 energy, and a clear conscience.', price: 22, weight: 0.35, energy: 50, mg: 160, minFloor: 0 },
+  { id: 'energy', slot: 'consumable', name: 'Grumble Energy (Tropical)', desc: '200 mg caffeine, +100 energy. The company drink. It is the colour of a warning.', price: 24, weight: 0.35, energy: 100, mg: 200, minFloor: 0 },
+  { id: 'kraken', slot: 'consumable', name: 'Kraken Mega Can (1 litre)', desc: '320 mg caffeine, +100 energy, +20 sanity. Straight to Wired, one step from the shakes.', price: 38, weight: 1, energy: 100, heal: 20, mg: 320, minFloor: 1 },
+  { id: 'euroshopper', slot: 'consumable', name: 'Euroshopper Energy', desc: '80 mg caffeine, +35 energy, -5 sanity. Tastes like the tin it came in. Cheapest can in the building.', price: 6, weight: 0.35, energy: 35, heal: -5, mg: 80, minFloor: 0 },
+  { id: 'redbull', slot: 'consumable', name: 'Red Bull', desc: '80 mg caffeine, +40 energy. It gives you wings: you jump much higher for a minute.', price: 16, weight: 0.25, energy: 40, mg: 80, buff: 'wings', buffTime: 60, minFloor: 0 },
+  { id: 'monster', slot: 'consumable', name: 'Monster Energy (Green)', desc: '160 mg caffeine, +80 energy. Unleash the beast. The beast is mostly sugar.', price: 22, weight: 0.5, energy: 80, mg: 160, minFloor: 0 },
+  { id: 'pipeline', slot: 'consumable', name: 'Monster Pipeline Punch', desc: '160 mg caffeine, +60 energy, +25 sanity. Pink, tropical, surprisingly kind.', price: 26, weight: 0.5, energy: 60, heal: 25, mg: 160, minFloor: 1 },
+  { id: 'nocco', slot: 'consumable', name: 'NOCCO BCAA', desc: '180 mg caffeine, +50 energy. Gym bro in a can: +20% melee damage for 90 seconds.', price: 24, weight: 0.33, energy: 50, mg: 180, buff: 'gymbro', buffTime: 90, minFloor: 1 },
+  { id: 'celsius', slot: 'consumable', name: 'Celsius', desc: '200 mg caffeine, +60 energy. "Burns calories": energy comes back twice as fast for two minutes.', price: 24, weight: 0.35, energy: 60, mg: 200, buff: 'burn', buffTime: 120, minFloor: 1 },
+  { id: 'whitemonster', slot: 'consumable', name: 'WHITE MONSTER (Ultra)', desc: 'The king of energy drinks. Zero sugar, infinite power. 45 seconds ASCENDED: +40% damage, +30% speed, faster hands, free sprinting, sanity regen, immune to meetings and to the jitters. Never sold. Rarely found. Worshipped.', price: 0, weight: 0.5, energy: 100, heal: 30, mg: 150, buff: 'ultra', buffTime: 45, unsold: true, minFloor: 0 },
+  { id: 'vodkabattery', slot: 'consumable', name: 'Vodka Battery', desc: '120 mg caffeine and BAC +14. Wired and drunk: managers struggle to smell it, but the crash is legendary.', price: 0, weight: 0.4, energy: 60, mg: 120, bac: 14, unsold: true, minFloor: 0 },
   { id: 'biscuits', slot: 'consumable', name: 'Chocolate Digestives', desc: '+30 sanity. The good biscuits, from the locked cupboard.', price: 12, weight: 0.3, heal: 30, minFloor: 0 },
   { id: 'cake', slot: 'consumable', name: 'Leftover Birthday Cake', desc: '+70 sanity. Nobody knows whose birthday it was.', price: 45, weight: 0.5, heal: 70, minFloor: 0 },
   { id: 'postit', slot: 'consumable', name: 'Sticky Note', desc: 'Write the action item down and it stops weighing on you. Clears one action item.', price: 20, weight: 0.05, clearsActionItem: true, minFloor: 0 },
   { id: 'paperclip', slot: 'consumable', name: 'Paperclip', desc: 'A lockpick, if you have the Security for it. Breaks on a failed pin.', price: 6, weight: 0.01, minFloor: 0 },
+  { id: 'potatoes', slot: 'consumable', name: 'New Potatoes with Dill', desc: '+30 sanity. From your own patch at the mökki.', price: 0, weight: 0.2, heal: 30, unsold: true, minFloor: 0 },
+  { id: 'fish-muikku', slot: 'consumable', name: 'Fried Muikku', desc: '+25 sanity. Fried in rye flour, eaten with fingers.', price: 0, weight: 0.2, heal: 25, unsold: true, minFloor: 0 },
+  { id: 'fish-ahven', slot: 'consumable', name: 'Grilled Ahven', desc: '+35 sanity and +20 energy.', price: 0, weight: 0.3, heal: 35, energy: 20, unsold: true, minFloor: 0 },
+  { id: 'fish-hauki', slot: 'consumable', name: 'Smoked Hauki', desc: '+60 sanity and +15 max sanity for the rest of the week.', price: 0, weight: 0.8, heal: 60, buff: 'hauki', unsold: true, minFloor: 0 },
+  { id: 'fish-boot', slot: 'consumable', name: 'An Old Boot', desc: 'Not food. Sell it to the scrapyard (use it for ₡5).', price: 0, weight: 0.8, unsold: true, minFloor: 0 },
   { id: 'makkara', slot: 'consumable', name: 'Grilled Makkara', desc: '+40 sanity and +20 max sanity until the end of the floor. Mustard is not optional.', price: 30, weight: 0.3, heal: 40, buff: 'makkara', unsold: true, minFloor: 0 },
   { id: 'beer', slot: 'consumable', name: 'Keskari (Lager)', desc: '+22 sanity, BAC +12. The Friday classic.', price: 0, weight: 0.5, heal: 22, bac: 12, unsold: true, minFloor: 0 },
   { id: 'lonkero', slot: 'consumable', name: 'Lonkero (Long Drink)', desc: '+16 sanity, +25 energy, BAC +10. Grapefruit and gin, as the Olympics intended.', price: 0, weight: 0.4, heal: 16, energy: 25, bac: 10, unsold: true, minFloor: 0 },
@@ -127,8 +151,23 @@ export const CONSUMABLES: readonly ConsumableDef[] = [
   { id: 'rune-avanto', slot: 'consumable', name: 'Rune Stone: Avanto', desc: 'Read it to learn the Ice Hole.', price: 0, weight: 1, rune: 'avanto', unsold: true, minFloor: 0 },
 ];
 
+for (const b of BOOKS) {
+  CONSUMABLES.push({ id: b.id, slot: 'consumable', name: `Book: ${b.title}`, desc: `${b.blurb} Reading it raises a skill by one.`, price: 0, weight: 0.5, book: b.skill, unsold: true, minFloor: 0 });
+}
+
 export const DRINKS = CONSUMABLES.filter((c) => c.bac !== undefined).map((c) => c.id);
+export const CAFFEINATED = CONSUMABLES.filter((c) => c.mg !== undefined).map((c) => c.id);
+export const BOOK_IDS = CONSUMABLES.filter((c) => c.book !== undefined).map((c) => c.id);
 export const RUNES = CONSUMABLES.filter((c) => c.rune !== undefined).map((c) => c.id);
+/** Cans you can find lying about (not the king: he has his own odds). */
+export const ENERGY_DRINKS = ['euroshopper', 'redbull', 'monster', 'pipeline', 'nocco', 'celsius', 'battery', 'batteryzero', 'energy'];
+
+export const BUFF_INFO: Record<string, { icon: string; name: string }> = {
+  ultra: { icon: '⚪', name: 'ASCENDED (White Monster)' },
+  wings: { icon: '🪽', name: 'Wings' },
+  gymbro: { icon: '💪', name: 'Gym Bro' },
+  burn: { icon: '🔥', name: 'Burning calories' },
+};
 
 export const AMMO: readonly AmmoDef[] = [
   { id: 'ammo-labels', slot: 'ammo', name: 'Label Tape x40', desc: 'For the Label Maker.', price: 18, weight: 0.2, ammo: 'labels', amount: 40, minFloor: 0 },
@@ -147,24 +186,4 @@ export function weaponById(id: string): WeaponDef {
   return WEAPONS.find((w) => w.id === id) ?? (WEAPONS[0] as WeaponDef);
 }
 
-export interface PerkDef {
-  readonly id: string;
-  readonly name: string;
-  readonly desc: string;
-  readonly max: number;
-}
-
-export const PERKS: readonly PerkDef[] = [
-  { id: 'patience', name: 'Infinite Patience', desc: '+25 max sanity per rank.', max: 3 },
-  { id: 'typing', name: 'Touch Typing', desc: '+15% attack speed per rank.', max: 3 },
-  { id: 'back', name: 'Strong Back (Server Lifting)', desc: '+15 kg carry capacity per rank.', max: 3 },
-  { id: 'soft', name: 'Soft Skills', desc: '+30% healing received and +25% Rep from tickets per rank.', max: 2 },
-  { id: 'cli', name: 'Command Line Fu', desc: 'Terminals strike one wrong fix off every ticket.', max: 1 },
-  { id: 'caffeine', name: 'Caffeine Tolerance', desc: 'No crash after energy drinks. Coffee lasts twice as long.', max: 1 },
-  { id: 'hardened', name: 'Hardened Drinker', desc: 'Hangovers are half as long and withdrawal hurts half as much.', max: 1 },
-  { id: 'saunoja', name: 'Saunoja', desc: 'Saunas also restore all Löyly and grant +25% damage until you leave the floor.', max: 1 },
-  { id: 'stealth', name: 'Invisible at Desk', desc: 'Users notice you 20% later per rank.', max: 2 },
-  { id: 'teflon', name: 'Teflon', desc: 'Action items weigh half and meetings end twice as fast per rank.', max: 2 },
-  { id: 'delegate', name: 'Delegation', desc: 'Allies hit twice as hard; office ladies heal more often.', max: 1 },
-];
 

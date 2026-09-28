@@ -34,7 +34,7 @@ export class DialogueUI {
     this.root.style.display = 'none';
     parent.append(this.root);
     window.addEventListener('keydown', (e) => {
-      if (!this.open) return;
+      if (!this.open || e.repeat) return;
       const n = Number(e.key);
       if (n >= 1 && n <= 9) {
         const btn = this.root.querySelectorAll<HTMLButtonElement>('.dlg-opt')[n - 1];
@@ -128,10 +128,11 @@ export class LockpickUI {
     clips: () => number,
     onMiss: () => void,
     done: (success: boolean) => void,
+    zoneMult = 1,
   ): void {
     this.open = true;
     this.root.style.display = 'flex';
-    const width = Math.max(0.06, Math.min(0.45, 0.2 + (security - lock) / 200));
+    const width = Math.max(0.06, Math.min(0.6, (0.2 + (security - lock) / 200) * zoneMult));
     let pin = 0;
     let t = 0;
     let last = performance.now();
@@ -184,6 +185,7 @@ export class LockpickUI {
       }
     };
     const key = (e: KeyboardEvent): void => {
+      if (e.repeat) return;
       if (e.code === 'Space' || e.code === 'KeyE') {
         e.preventDefault();
         attempt();

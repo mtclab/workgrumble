@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import { animateRig, buildRig, type Rig } from './characters';
+import { disposeTree } from './dispose';
 import { collideCircle, type Level, toCell, WALL_H } from './level';
 
 export const EYE = 1.62;
+
+const CLEARANCE: readonly (readonly [number, number])[] = [[0, 0], [0.22, 0], [-0.22, 0], [0, 0.22], [0, -0.22]];
 
 export const PLAYER_OUTFIT = {
   skin: 0xf1c9a5,
@@ -120,8 +123,14 @@ export class Player {
   setTool(id: string): void {
     if (id === this.toolId) return;
     this.toolId = id;
-    if (this.handTool !== null) this.rig.hand.remove(this.handTool);
-    if (this.vmTool !== null) this.viewmodel.remove(this.vmTool);
+    if (this.handTool !== null) {
+      this.rig.hand.remove(this.handTool);
+      disposeTree(this.handTool, true);
+    }
+    if (this.vmTool !== null) {
+      this.viewmodel.remove(this.vmTool);
+      disposeTree(this.vmTool, true);
+    }
     this.handTool = toolMesh(id);
     this.handTool.rotation.x = Math.PI / 2;
     this.handTool.scale.setScalar(1.3);
@@ -137,7 +146,7 @@ export class Player {
   }
 
   /** Move with desired planar direction (already in world space) and speed. */
-  move(level: Level, wishX: number, wishZ: number, speed: number, jump: boolean, dt: number): void {
+  move(level: Level, wishX: number, wishZ: number, speed: number, jump: boolean, dt: number, jumpMult = 1): void {
     const len = Math.hypot(wishX, wishZ);
     let mx = 0;
     let mz = 0;
@@ -152,7 +161,7 @@ export class Player {
       collideCircle(level, this.pos, this.radius);
     }
     if (jump && this.onGround) {
-      this.velY = 6.2;
+      this.velY = 6.2 * Math.sqrt(jumpMult);
       this.onGround = false;
     }
     this.velY -= 18 * dt;
@@ -191,20 +200,34 @@ export class Player {
     } else {
       this.model.visible = true;
       this.viewmodel.visible = false;
-      // Over-the-shoulder boom, pulled in when a wall is in the way.
+      // Over-the-shoulder boom. The shoulder offset is walked out from the
+      // eye first (a wall on your right pulls the camera in behind your
+      // head), then the boom behind it is pulled in when a wall is in the way.
       const back = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), -Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
       const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-      const pivot = eye.clone().addScaledVector(right, 0.95);
+      const blockedAt = (p: THREE.Vector3): boolean => {
+        if (p.y < 0.15 || (!this.outdoor && p.y > WALL_H - 0.15)) return true;
+        // A little clearance all round, so the near plane never cuts a wall.
+        for (const [ox, oz] of CLEARANCE) {
+          const cx = toCell(p.x + ox);
+          const cz = toCell(p.z + oz);
+          const i = cz * level.w + cx;
+          if (cx < 0 || cz < 0 || cx >= level.w || cz >= level.h || level.floor[i] !== 1 || level.opaque[i] === 1) return true;
+        }
+        return false;
+      };
+      const pivot = eye.clone();
       pivot.y += 0.3;
+      if (blockedAt(pivot)) pivot.y = eye.y;
+      for (let o = 0.1; o <= 0.95 + 1e-6; o += 0.1) {
+        const p = pivot.clone().addScaledVector(right, 0.1);
+        if (blockedAt(p)) break;
+        pivot.copy(p);
+      }
       let dist = 4.2;
       for (let d = 0.3; d <= 4.2; d += 0.15) {
-        const p = pivot.clone().addScaledVector(back, d);
-        const cx = toCell(p.x);
-        const cz = toCell(p.z);
-        const i = cz * level.w + cx;
-        const blocked = cx < 0 || cz < 0 || cx >= level.w || cz >= level.h || level.floor[i] !== 1 || level.opaque[i] === 1 || (!this.outdoor && p.y > WALL_H - 0.15) || p.y < 0.15;
-        if (blocked) {
-          dist = Math.max(0.3, d - 0.3);
+        if (blockedAt(pivot.clone().addScaledVector(back, d))) {
+          dist = Math.max(0.15, d - 0.3);
           break;
         }
       }

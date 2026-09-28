@@ -1,4 +1,7 @@
 import {
+  ARCH_INFO,
+  ARCH_RUNG,
+  type ArchPath,
   ATTRIBUTE_INFO,
   ATTRIBUTES,
   BACKGROUNDS,
@@ -13,14 +16,16 @@ import {
   titleFor,
   type Track,
   TRACK_INFO,
+  type Workplace,
+  WORKPLACES,
 } from './rpg';
 import { type CharacterSetup, newSave } from './state';
 
 /**
  * New career: who you are, where you came from, what you were born under,
- * and the title you are hired at - which is the difficulty. Hired at or past
- * the branch rung, you also choose a domain and whether you are an
- * Operations Specialist or an Engineer.
+ * the title you are hired at (the difficulty ladder), and what kind of
+ * employer it is (a second difficulty dial, plus Ironman). Hired at or past
+ * the branch rungs, you also make the choices those rungs would have asked.
  */
 export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup) => void, onBack: () => void): void {
   const root = document.createElement('div');
@@ -32,6 +37,21 @@ export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup)
   let rung = 0;
   let domain: Domain = 'Systems';
   let track: Track = 'specialist';
+  let arch: ArchPath = 'solutions';
+  let workplace: Workplace = 'standard';
+  let ironman = false;
+
+  const current = (): CharacterSetup => ({
+    name: name.trim() === '' ? 'Pat Pending' : name.trim().slice(0, 28),
+    background,
+    sign,
+    rung,
+    domain: rung >= BRANCH_RUNG ? domain : null,
+    track: rung >= BRANCH_RUNG ? track : null,
+    arch: rung >= ARCH_RUNG ? arch : null,
+    workplace,
+    ironman,
+  });
 
   const card = (title: string, desc: string, selected: boolean, pick: () => void, extra = ''): HTMLButtonElement => {
     const b = document.createElement('button');
@@ -70,7 +90,7 @@ export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup)
 
     const nameRow = document.createElement('div');
     nameRow.className = 'cg-name';
-    nameRow.innerHTML = '<label>Name on the badge <input maxlength="28"></label>';
+    nameRow.innerHTML = '<label>Name on the badge <input maxlength="28" autocomplete="off"></label>';
     const input = nameRow.querySelector('input');
     if (input !== null) {
       input.value = name;
@@ -88,10 +108,10 @@ export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup)
     const sg = section('Born under');
     for (const s of SIGNS) sg.append(card(s.name, s.desc, s.id === sign, () => { sign = s.id; }));
 
-    const rg = section('Hired as (this is the difficulty)');
+    const rg = section('Hired as (the career ladder is the difficulty)');
     for (let r = 0; r < RUNG_COUNT; r++) {
-      const t = titleFor(r, r >= BRANCH_RUNG ? domain : null, r >= BRANCH_RUNG ? track : null);
-      const label = r === 0 ? 'Recommended for a first career.' : r >= 7 ? 'The building will not forgive you.' : `Arrive with ${r} rung${r > 1 ? 's' : ''} of experience.`;
+      const t = titleFor(r, r >= BRANCH_RUNG ? domain : null, r >= BRANCH_RUNG ? track : null, r >= ARCH_RUNG ? arch : null);
+      const label = r === 0 ? 'Recommended for a first career.' : r >= 9 ? 'The building will not forgive you.' : `Arrive with ${r} rung${r > 1 ? 's' : ''} of experience.`;
       rg.append(card(t, label, r === rung, () => { rung = r; }, `Difficulty ×${difficultyFor(r).toFixed(2)}`));
     }
 
@@ -103,18 +123,31 @@ export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup)
     } else {
       const note = document.createElement('p');
       note.className = 'title-blurb';
-      note.textContent = `At ${titleFor(BRANCH_RUNG, null, null).replace('Systems ', '')} level you will choose a domain (Systems, Network, Cloud, Security, Database) and whether you are an Operations Specialist or an Engineer.`;
+      note.textContent = 'At the fifth rung you choose a domain (Systems, Network, Cloud, Security, Database) and whether you are an Operations Specialist or an Engineer. At the eleventh, what kind of Architect you become.';
       root.append(note);
     }
+    if (rung >= ARCH_RUNG) {
+      const ag = section('Architect path');
+      for (const p of ['solutions', 'enterprise', 'domain'] as const) ag.append(card(ARCH_INFO[p].name(domain), ARCH_INFO[p].desc, p === arch, () => { arch = p; }));
+    }
+
+    const wg = section('Employer (a second difficulty dial)');
+    for (const w of ['fourday', 'standard', 'crunch', 'deathmarch'] as const) {
+      const def = WORKPLACES[w];
+      wg.append(card(def.name, def.desc, w === workplace, () => { workplace = w; }, `Enemies ×${def.enemy} · SLAs ×${def.sla} · Rep ×${def.rep}`));
+    }
+    const ig = section('Ironman');
+    ig.append(card('Normal', 'Save anywhere. Burnouts cost Rep and restart the floor.', !ironman, () => { ironman = false; }));
+    ig.append(card('Ironman', 'One autosave, no quicksave. A burnout ends the career.', ironman, () => { ironman = true; }, 'For the brave'));
 
     // Preview.
-    const setup: CharacterSetup = { name: name.trim() === '' ? 'Pat Pending' : name.trim(), background, sign, rung, domain: rung >= BRANCH_RUNG ? domain : null, track: rung >= BRANCH_RUNG ? track : null };
+    const setup = current();
     const preview = newSave(1, setup);
     const pv = document.createElement('div');
     pv.className = 'cg-preview';
-    pv.textContent = `${setup.name}, ${titleFor(setup.rung, setup.domain, setup.track)} · `
+    pv.textContent = `${setup.name}, ${titleFor(setup.rung, setup.domain, setup.track, setup.arch ?? null)} · `
       + ATTRIBUTES.map((a) => `${ATTRIBUTE_INFO[a].name} ${preview.attrs[a]}`).join(' · ')
-      + ` · Rep ₡${preview.rep}`;
+      + ` · Rep ₡${preview.rep} · difficulty ×${(difficultyFor(setup.rung) * WORKPLACES[workplace].enemy).toFixed(2)}${ironman ? ' · IRONMAN' : ''}`;
     root.append(pv);
 
     const row = document.createElement('div');
@@ -126,7 +159,8 @@ export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup)
     const go = document.createElement('button');
     go.className = 'screen-btn';
     go.textContent = 'Sign the contract';
-    go.addEventListener('click', () => { root.remove(); onDone(setup); });
+    // Read the form at click time: the name box does not re-render as you type.
+    go.addEventListener('click', () => { root.remove(); onDone(current()); });
     row.append(back, go);
     root.append(row);
     root.scrollTop = scroll;

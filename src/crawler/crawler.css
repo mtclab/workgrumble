@@ -225,14 +225,23 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .compass-marker { font-size: 15px; display: flex; flex-direction: column; align-items: center; line-height: 1; }
 .compass-marker small { font-size: 9px; color: #d8d0c0; }
 .compass-marker.is-pinned { opacity: 0.6; }
-.hud-tip { position: absolute; left: 12px; bottom: 118px; max-width: min(420px, 60vw); background: rgba(16, 40, 36, 0.92); border: 1px solid #3aa295; border-left: 4px solid #3aa295; padding: 8px 12px; font-size: 13px; line-height: 1.45; display: none; }
-.hud-tip b { color: #7dffea; display: block; font-size: 11px; letter-spacing: 2px; margin-bottom: 2px; }
-.hud-card { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; display: none; }
-.hud-card-name { font: 900 clamp(28px, 5vw, 56px) Impact, "Arial Black", sans-serif; color: #ff5a4a; letter-spacing: 3px; text-shadow: 3px 3px 0 #000, 0 0 24px rgba(255,90,74,0.6); }
-.hud-card-title { font: bold 16px Tahoma, sans-serif; color: #f0e8d8; letter-spacing: 4px; text-transform: uppercase; text-shadow: 0 0 4px #000; }
-.hud-charge { position: absolute; left: 50%; top: calc(50% + 18px); transform: translateX(-50%); width: 60px; height: 4px; background: rgba(0,0,0,0.5); display: none; }
-.hud-charge i { display: block; height: 100%; background: #ffd98a; }
-.hud-block { position: absolute; left: 50%; top: calc(50% + 26px); transform: translateX(-50%); font: bold 12px monospace; color: #9ad0ff; text-shadow: 0 0 3px #000; display: none; }
+.hud-tip { position: absolute; left: 12px; bottom: 118px; max-width: min(420px, 60vw); background: rgba(16, 40, 36, 0.92); border: 1px solid #3aa295; border-left: 4px solid #3aa295; padding: 8px 12px; font-size: 13px; line-height: 1.45; opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s; pointer-events: none; }
+.hud-tip.is-on { opacity: 1; transform: none; }
+.hud-card { position: absolute; left: 50%; top: 28%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; opacity: 0; }
+.hud-card.is-on { animation: card-in 3.6s ease-out forwards; }
+@keyframes card-in { 0% { opacity: 0; letter-spacing: 12px; } 12% { opacity: 1; letter-spacing: 3px; } 80% { opacity: 1; } 100% { opacity: 0; } }
+.hud-card-title { font: 900 clamp(28px, 5vw, 56px) Impact, "Arial Black", sans-serif; color: #ff5a4a; letter-spacing: 3px; text-shadow: 3px 3px 0 #000, 0 0 24px rgba(255,90,74,0.6); }
+.hud-card-sub { font: bold 16px Tahoma, sans-serif; color: #f0e8d8; letter-spacing: 4px; text-transform: uppercase; text-shadow: 0 0 4px #000; }
+.hud-charge { position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; display: none; pointer-events: none;
+  background: conic-gradient(#ffd98a var(--p, 0%), rgba(0,0,0,0.25) 0); -webkit-mask: radial-gradient(circle, transparent 15px, #000 16px); mask: radial-gradient(circle, transparent 15px, #000 16px); }
+.hud-charge.is-full { background: conic-gradient(#ff7a3a 100%, transparent 0); filter: drop-shadow(0 0 6px #ff7a3a); }
+.hud-block { position: absolute; left: 50%; top: calc(50% + 28px); transform: translateX(-50%); font: bold 12px monospace; color: #9ad0ff; text-shadow: 0 0 3px #000; display: none; }
+.hud-cell-caff { min-width: 140px; }
+.hud-caff { font-size: 22px; color: #c9f27a; }
+.hud-track-caff { position: relative; }
+.hud-caff-zone { position: absolute; top: 0; bottom: 0; background: rgba(125, 255, 154, 0.35); }
+.hud-fill-caff { position: relative; background: linear-gradient(90deg, #c9f27a, #f2d024 50%, #ff5a3a); }
+.hud-boss.is-phase2 .hud-boss-fill { background: linear-gradient(90deg, #ff2a2a, #ff8a3a); animation: pulse 0.5s infinite alternate; }
 .rarity-common { color: #d8d0c0; }
 .rarity-fine { color: #3f9f55; }
 .rarity-rare { color: #2f6fbf; }
@@ -252,9 +261,25 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .ach { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; border-bottom: 1px solid var(--os-sunken); }
 .ach.is-locked { opacity: 0.45; }
 .ach b { display: block; }
+/* Dialogue never runs off a short screen. */
+.dlg { max-height: min(70vh, 640px); overflow-y: auto; }
+.os-perk-tree { border: 1px solid var(--os-bevel-dark); background: var(--os-field); padding: 6px 8px; margin: 6px 0; }
+.os-perk-tree h5 { margin: 0 0 4px; font-size: 12px; }
+.os-perk { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; font-size: 12px; padding: 3px 0; border-top: 1px dotted var(--os-sunken); }
+.os-perk small { display: block; color: #555; }
+.os-help { font-size: 13px; line-height: 1.5; }
+.os-help kbd { display: inline-block; min-width: 18px; padding: 0 4px; border: 1px solid #888; border-bottom-width: 2px; border-radius: 3px; background: #f4f4f4; font: bold 11px monospace; text-align: center; }
+.os-help table { border-collapse: collapse; }
+.os-help td { padding: 2px 8px 2px 0; vertical-align: top; }
+@media (max-width: 1280px) {
+  .hud-bar { height: auto; min-height: 92px; flex-wrap: wrap; }
+  .hud-cell { min-width: 0; padding: 6px 10px; }
+  .hud-cell-magic, .hud-cell-bac, .hud-cell-caff { min-width: 120px; }
+}
 @media (max-width: 900px) {
   .hud-cell { min-width: 0; padding: 6px 8px; }
-  .hud-cell-weapon, .hud-cell-level, .hud-cell-magic, .hud-cell-bac { min-width: 0; }
+  .hud-cell-weapon, .hud-cell-level, .hud-cell-magic, .hud-cell-bac, .hud-cell-caff { min-width: 0; }
+  .hud-mini { width: 120px; height: 120px; }
   .hud-big { font-size: 22px; }
   .hud-slas, .hud-quests { font-size: 10px; max-width: 46vw; }
 }

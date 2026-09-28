@@ -4,10 +4,15 @@
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private musicBus: GainNode | null = null;
+  private hum: GainNode | null = null;
   private musicTimer = 0;
   private musicStep = 0;
   private bossMode = false;
-  volume = 0.6;
+  private ambient: 'office' | 'mokki' | 'none' = 'none';
+  private birdIn = 2;
+  volume = 0.7;
+  musicVolume = 0.5;
 
   unlock(): void {
     if (this.ctx !== null) {
@@ -19,19 +24,47 @@ export class Sfx {
       this.master = this.ctx.createGain();
       this.master.gain.value = this.volume;
       this.master.connect(this.ctx.destination);
+      this.musicBus = this.ctx.createGain();
+      this.musicBus.gain.value = this.musicVolume;
+      this.musicBus.connect(this.ctx.destination);
+      // The fluorescent hum of every office ever built: a quiet 100 Hz buzz.
+      this.hum = this.ctx.createGain();
+      this.hum.gain.value = 0;
+      this.hum.connect(this.musicBus);
+      const o = this.ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = 100;
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 240;
+      o.connect(f);
+      f.connect(this.hum);
+      o.start();
+      this.setAmbient(this.ambient);
     } catch {
       this.ctx = null;
     }
   }
 
+  /** Sound effects volume. */
   setVolume(v: number): void {
     this.volume = v;
     if (this.master !== null) this.master.gain.value = v;
   }
 
-  private tone(freq: number, dur: number, type: OscillatorType, vol: number, slide = 0, delay = 0): void {
+  setMusicVolume(v: number): void {
+    this.musicVolume = v;
+    if (this.musicBus !== null) this.musicBus.gain.value = v;
+  }
+
+  setAmbient(kind: 'office' | 'mokki' | 'none'): void {
+    this.ambient = kind;
+    if (this.hum !== null) this.hum.gain.value = kind === 'office' ? 0.018 : 0;
+  }
+
+  private tone(freq: number, dur: number, type: OscillatorType, vol: number, slide = 0, delay = 0, bus: 'sfx' | 'music' = 'sfx'): void {
     const ctx = this.ctx;
-    const master = this.master;
+    const master = bus === 'music' ? this.musicBus : this.master;
     if (ctx === null || master === null) return;
     const t0 = ctx.currentTime + delay;
     const o = ctx.createOscillator();
@@ -95,6 +128,17 @@ export class Sfx {
   ding(): void { this.tone(1046, 0.4, 'sine', 0.2); this.tone(784, 0.6, 'sine', 0.2, 0, 0.25); }
   step(): void { this.noise(0.04, 0.03, 500); }
   bossRoar(): void { this.tone(70, 1.2, 'sawtooth', 0.3, 30); this.noise(0.8, 0.2, 300); }
+  block(): void { this.tone(420, 0.06, 'square', 0.15, -200); this.noise(0.05, 0.12, 1800); }
+  parry(): void { this.tone(1500, 0.08, 'triangle', 0.18); this.tone(2200, 0.12, 'triangle', 0.12, 0, 0.05); }
+  charge(): void { this.tone(220, 0.25, 'sawtooth', 0.08, 440); }
+  heavy(): void { this.noise(0.18, 0.4, 900); this.tone(90, 0.25, 'square', 0.25, -40); }
+  bark(): void { this.tone(520, 0.07, 'square', 0.12, -250); this.tone(480, 0.08, 'square', 0.1, -250, 0.12); }
+  poof(): void { this.noise(0.2, 0.15, 4000); this.tone(600, 0.15, 'sine', 0.08, 600); }
+  bite(): void { this.tone(900, 0.05, 'sine', 0.2); this.tone(700, 0.05, 'sine', 0.2, 0, 0.08); }
+  reel(): void { this.noise(0.05, 0.06, 6000); }
+  sting(): void { [196, 185, 175, 98].forEach((f, i) => this.tone(f, 0.35, 'sawtooth', 0.12, 0, i * 0.12)); }
+  achievement(): void { [659, 784, 988, 1319].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.12, 0, i * 0.07)); }
+  jitter(): void { this.tone(60, 0.12, 'sine', 0.2); this.tone(60, 0.1, 'sine', 0.16, 0, 0.18); }
 
   fizzle(): void { this.noise(0.25, 0.15, 900); this.tone(300, 0.2, 'sawtooth', 0.08, -200); }
   hiss(): void { this.noise(0.9, 0.25, 7000); }
@@ -110,6 +154,16 @@ export class Sfx {
   /** A tiny grim office-muzak sequencer, ticked from the game loop. */
   music(dt: number): void {
     if (this.ctx === null) return;
+    if (this.ambient === 'mokki' && dt > 0) {
+      // Birds over the lake, and the odd loon.
+      this.birdIn -= dt;
+      if (this.birdIn <= 0) {
+        this.birdIn = 2 + (this.musicStep % 7) * 0.9;
+        const base = 1800 + (this.musicStep % 5) * 260;
+        for (let i = 0; i < 3; i++) this.tone(base + i * 120, 0.07, 'sine', 0.025, 300, i * 0.1, 'music');
+        if (this.musicStep % 23 === 0) this.tone(620, 1.4, 'sine', 0.03, 180, 0.5, 'music');
+      }
+    }
     this.musicTimer -= dt;
     if (this.musicTimer > 0) return;
     const bass = this.bossMode ? [55, 55, 58, 55, 65, 55, 52, 49] : [110, 0, 98, 0, 87, 0, 98, 82];
@@ -117,8 +171,8 @@ export class Sfx {
     const i = this.musicStep % 8;
     const b = bass[i] ?? 0;
     const l = lead[i] ?? 0;
-    if (b > 0) this.tone(b, 0.22, this.bossMode ? 'sawtooth' : 'triangle', this.bossMode ? 0.07 : 0.05);
-    if (l > 0 && this.musicStep % 16 < 12) this.tone(l, 0.15, 'square', 0.025);
+    if (b > 0) this.tone(b, 0.22, this.bossMode ? 'sawtooth' : 'triangle', this.bossMode ? 0.07 : 0.05, 0, 0, 'music');
+    if (l > 0 && this.musicStep % 16 < 12) this.tone(l, 0.15, 'square', 0.025, 0, 0, 'music');
     if (this.bossMode && i % 2 === 0) this.noise(0.05, 0.06, 6000);
     this.musicStep++;
     this.musicTimer = this.bossMode ? 0.16 : 0.32;

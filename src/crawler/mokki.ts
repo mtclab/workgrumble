@@ -1,6 +1,18 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { type Interactable, type InteractKind, type Level, type Room, type Spawn, TILE } from './level';
+import {
+  boardMesh,
+  boatMesh,
+  bookshelfMesh,
+  dishMesh,
+  kennelMesh,
+  paljuMesh,
+  potatoPatchMesh,
+  savusaunaMesh,
+  standingStonesMesh,
+  woodshedMesh,
+} from './meshes';
 import { Rng } from './rng';
 import { grassTexture, logTexture, woodTexture } from './textures';
 
@@ -15,7 +27,9 @@ const W = 36;
 const H = 36;
 export const LAKE_ROW = 25;
 
-export function generateMokki(seed: number, headless = false): Level {
+/** Every weekend you can build on the plot; what you have built shows up here. */
+export function generateMokki(seed: number, headless = false, upgrades: readonly string[] = []): Level {
+  const has = (id: string): boolean => upgrades.includes(id);
   const r = new Rng(seed);
   const floor = new Uint8Array(W * H).fill(1);
   const solid = new Uint8Array(W * H);
@@ -51,9 +65,10 @@ export function generateMokki(seed: number, headless = false): Level {
   }
   // The lake: everything south of the shore, bar the laituri (dock).
   const dockX = 18;
+  const dockEnd = LAKE_ROW + (has('laituri') ? 8 : 5);
   for (let y = LAKE_ROW; y < H - 1; y++) {
     for (let x = 1; x < W - 1; x++) {
-      if (x === dockX && y <= LAKE_ROW + 5) continue;
+      if (x === dockX && y <= dockEnd) continue;
       block(x, y);
     }
   }
@@ -176,7 +191,7 @@ export function generateMokki(seed: number, headless = false): Level {
 
   // Laituri, with the avanto at the end.
   const dockMat = lam(0xa07a50, planks);
-  for (let y = LAKE_ROW - 1; y <= LAKE_ROW + 5; y++) group.add(box(TILE * 0.9, 0.2, TILE, dockMat, cc(dockX), 0.2, cc(y)));
+  for (let y = LAKE_ROW - 1; y <= dockEnd; y++) group.add(box(TILE * 0.9, 0.2, TILE, dockMat, cc(dockX), 0.2, cc(y)));
   const ladder = box(0.6, 0.8, 0.1, lam(0x888888), cc(dockX), 0.1, cc(LAKE_ROW + 5) + 1);
   group.add(ladder);
   add('lake', dockX, LAKE_ROW + 5, ladder);
@@ -220,6 +235,40 @@ export function generateMokki(seed: number, headless = false): Level {
   group.add(car);
   for (let x = 3; x <= 5; x++) block(x, 4);
   add('car', 5, 5, car);
+
+  // ---- What you have built. ----
+  const place = (mesh: THREE.Object3D, x: number, y: number, cells: readonly [number, number][], rotY = 0): THREE.Object3D => {
+    mesh.position.set(cc(x), 0, cc(y));
+    mesh.rotation.y = rotY;
+    group.add(mesh);
+    for (const [bx, by] of cells) block(bx, by);
+    return mesh;
+  };
+  // The upgrade board is always there: it is where you plan the farm.
+  add('board', 16, 10, place(boardMesh(), 16, 10, [[16, 10]], Math.PI));
+  if (has('woodshed')) place(woodshedMesh(), 6, 13, [[5, 13], [6, 13], [7, 13]]);
+  if (has('savusauna')) {
+    const smokeSauna = place(savusaunaMesh(), 28, 21, [[27, 20], [28, 20], [29, 20], [27, 21], [28, 21], [29, 21]]);
+    add('kiuas', 28, 19, smokeSauna);
+  }
+  if (has('laituri')) {
+    const boat = boatMesh();
+    boat.position.set(cc(dockX) + 1.6, 0, cc(LAKE_ROW + 4));
+    group.add(boat);
+    add('dock', dockX, dockEnd, boat);
+  }
+  if (has('potatoes')) add('patch', 5, 17, place(potatoPatchMesh(), 5, 17, [[4, 17], [5, 17], [6, 17]]));
+  if (has('palju')) add('palju', 20, 21, place(paljuMesh(), 20, 21, [[20, 21]]));
+  if (has('guestroom')) building(14, 6, 2, 3, 2.6, 0xa0683a);
+  if (has('dog')) place(kennelMesh(), 7, 12, [[7, 12]], Math.PI / 2);
+  if (has('runegarden')) place(standingStonesMesh(), 30, 11, [[30, 11]]);
+  if (has('satellite')) {
+    const dish = dishMesh();
+    dish.position.set(cc(12), 4.1, cc(7));
+    cottage.add(dish);
+    add('terminal', 9, 10, dish);
+  }
+  if (has('library')) add('bookshelf', 8, 11, place(bookshelfMesh(), 8, 11, [[8, 11]]));
 
   // Trees inside the plot, clear of everything.
   const keepClear = (x: number, y: number): boolean => solid[y * W + x] === 1 || y >= LAKE_ROW - 2 || (y > 9 && y < 17 && x > 7 && x < 20) || (x < 12 && y < 10);

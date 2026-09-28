@@ -15,17 +15,23 @@ import {
   TROUSERS,
 } from './characters';
 import {
+  CHATBOT_BARKS,
+  CONSULTANT_BARKS,
   CUSTOMER_BARKS,
+  ELITE_LINES,
   HEALER_BARKS,
   HEALER_NAMES,
   HELPER_BARKS,
   MANAGER_BARKS,
   MANAGER_NAMES,
+  SHADOWIT_BARKS,
   USER_BARKS,
   USER_NAMES,
+  VENDOR_BARKS,
 } from './content/lines';
 import { disposeTree } from './dispose';
 import { collideCircle, type Level, lineOfSight, NEIGHBOURS8, TILE, toCell } from './level';
+import { chatbotMesh, dogMesh, turretMesh } from './meshes';
 import { fx, type Rng } from './rng';
 import { disposeSprite, textSprite } from './textures';
 
@@ -37,13 +43,40 @@ export type ActorKind =
   | 'reply'
   | 'jam'
   | 'mosquito'
+  | 'consultant'
+  | 'shadowit'
+  | 'vendor'
+  | 'chatbot'
+  | 'turret'
   | 'boss'
   | 'healer'
   | 'helper'
   | 'npc'
   | 'tonttu';
 
-export type HelperRole = 'sysadmin' | 'security' | 'intern' | 'clone' | 'spirit';
+/** Kinds that are people with a problem (they can be talked to). */
+export const TALKERS: readonly ActorKind[] = ['user', 'caller', 'customer', 'consultant', 'shadowit', 'vendor'];
+
+export type HelperRole = 'sysadmin' | 'security' | 'intern' | 'clone' | 'spirit' | 'dog';
+
+export type HazardKind = 'coffee' | 'fire' | 'meeting' | 'freeze';
+
+/**
+ * Elites: the same people, but worse. One affix each, a star over the head,
+ * and much better loot.
+ */
+export type EliteAffix = 'relentless' | 'tenured' | 'vip' | 'cc' | 'escalating' | 'passive';
+
+export const ELITE_INFO: Record<EliteAffix, { readonly prefix: string; readonly desc: string }> = {
+  relentless: { prefix: 'Relentless', desc: 'Faster, and never lets up.' },
+  tenured: { prefix: 'Tenured', desc: 'Twice the stamina. Has outlasted four reorgs.' },
+  vip: { prefix: 'VIP', desc: 'Hits much harder. Knows the CEO.' },
+  cc: { prefix: 'CC-Everyone', desc: 'Keeps summoning Reply-All storms.' },
+  escalating: { prefix: 'Escalating', desc: 'Enrages when hurt.' },
+  passive: { prefix: 'Passive-Aggressive', desc: 'Every hit drains your energy. Per their last email.' },
+};
+
+export const ELITE_AFFIXES = Object.keys(ELITE_INFO) as EliteAffix[];
 
 export interface BossDef {
   readonly name: string;
@@ -51,7 +84,9 @@ export interface BossDef {
   readonly hp: number;
   readonly outfit: Outfit;
   readonly intro: string;
+  readonly phase2: string;
   readonly defeat: string;
+  readonly hazard: HazardKind;
   readonly patterns: readonly BossPattern[];
 }
 
@@ -68,7 +103,14 @@ export type BossPattern =
   | 'lasers'
   | 'summonManagers'
   | 'allHands'
-  | 'teleport';
+  | 'teleport'
+  | 'hazards';
+
+export interface DogParts {
+  readonly legs: THREE.Object3D[];
+  readonly tail: THREE.Object3D;
+  readonly head: THREE.Object3D;
+}
 
 export interface Actor {
   readonly id: number;
@@ -77,6 +119,7 @@ export interface Actor {
   readonly hostile: boolean;
   readonly root: THREE.Group;
   readonly rig: Rig | null;
+  readonly dog: DogParts | null;
   readonly pos: THREE.Vector3;
   readonly push: THREE.Vector3;
   yaw: number;
@@ -90,6 +133,8 @@ export interface Actor {
   resolved: boolean;
   /** Resolved peacefully: walks off instead of floating away. */
   calm: boolean;
+  /** Removed without a reward (a reply-all that hit you, a turret that timed out). */
+  expired: boolean;
   removeIn: number;
   flash: number;
   attackAnim: number;
@@ -107,21 +152,32 @@ export interface Actor {
   role: HelperRole | null;
   giftGiven: boolean;
   healIn: number;
-  /** Seconds left for a temporary ally (clones, summoned tonttu); -1 forever. */
+  /** Seconds left for a temporary ally or a turret; -1 forever. */
   ttl: number;
   /** Talked to already: one talk-down per person. */
   talked: boolean;
-  /** Will not start trouble unless you do (high Staff standing). */
+  /** Will not start trouble unless you do (Staff standing; a boss open to talks). */
   docile: boolean;
-  /** Story NPC id, if this is one. */
+  /** Story or quest NPC id, if this is one. */
   npcId: string | null;
+  /** One-off conversation beats already had with this person. */
+  readonly memo: Record<string, boolean>;
+  elite: EliteAffix | null;
   boss: BossDef | null;
   bossActive: boolean;
+  phase: 1 | 2;
   patternIn: number;
   patternIdx: number;
   charging: number;
   readonly chargeDir: THREE.Vector3;
   summonIn: number;
+  /** Shadow IT: next blink, next turret. Vendors: fleeing timer. */
+  blinkIn: number;
+  fleeT: number;
+  /** Rep a vendor has taken off you; you get it back if you resolve them. */
+  stolen: number;
+  /** Inside a consultant's aura this frame: takes half damage. */
+  shielded: boolean;
   stunned: number;
   slowT: number;
   poisonT: number;
@@ -130,10 +186,14 @@ export interface Actor {
   revealT: number;
   rep: number;
   gold: boolean;
+  /** Base emissive (a clone's blue); flashes and auras return to it. */
+  glowBase: number;
   readonly lastPos: THREE.Vector3;
+  /** Who spawned it (turrets belong to a Shadow IT person). */
+  owner: number;
 }
 
-/** What the AI needs from the game. The Game class implements it. */
+/** What the AI needs from the game. The Game implements it. */
 export interface GameCtx {
   readonly level: Level;
   readonly scene: THREE.Scene;
@@ -165,6 +225,13 @@ export interface GameCtx {
   kitchenStanding(): number;
   ticketTitle(a: Actor): string;
   noticed(a: Actor): void;
+  /** A boss notices you: title card, music, the fight is on. */
+  bossStart(a: Actor): void;
+  /** A boss open to talks (the Auditor, when you carry the Phoenix file). */
+  bossParley(a: Actor): void;
+  hazard(x: number, z: number, radius: number, seconds: number, kind: HazardKind): void;
+  /** A vendor gets its hand in your pocket. Returns what it took. */
+  stealRep(a: Actor, amount: number): number;
 }
 
 export type ProjectileKind =
@@ -181,7 +248,10 @@ export type ProjectileKind =
   | 'laser'
   | 'ring'
   | 'steam'
-  | 'salmiakki';
+  | 'salmiakki'
+  | 'deck'
+  | 'code'
+  | 'chat';
 
 export interface ProjectileSpec {
   readonly kind: ProjectileKind;
@@ -209,7 +279,9 @@ interface KindStats {
   readonly rep: number;
 }
 
-const STATS: Record<'user' | 'caller' | 'customer' | 'manager' | 'reply' | 'jam' | 'mosquito', KindStats> = {
+type Grunt = 'user' | 'caller' | 'customer' | 'manager' | 'reply' | 'jam' | 'mosquito' | 'consultant' | 'shadowit' | 'vendor' | 'chatbot' | 'turret';
+
+const STATS: Record<Grunt, KindStats> = {
   user: { hp: 40, speed: 3.1, damage: 6, radius: 0.4, rep: 8 },
   caller: { hp: 32, speed: 2.7, damage: 8, radius: 0.4, rep: 10 },
   customer: { hp: 95, speed: 2.4, damage: 13, radius: 0.45, rep: 26 },
@@ -217,6 +289,11 @@ const STATS: Record<'user' | 'caller' | 'customer' | 'manager' | 'reply' | 'jam'
   reply: { hp: 12, speed: 5.6, damage: 4, radius: 0.3, rep: 3 },
   jam: { hp: 75, speed: 1.9, damage: 7, radius: 0.55, rep: 20 },
   mosquito: { hp: 6, speed: 6.5, damage: 2, radius: 0.2, rep: 1 },
+  consultant: { hp: 110, speed: 2.2, damage: 11, radius: 0.45, rep: 48 },
+  shadowit: { hp: 70, speed: 3.3, damage: 8, radius: 0.4, rep: 36 },
+  vendor: { hp: 55, speed: 4.2, damage: 3, radius: 0.4, rep: 30 },
+  chatbot: { hp: 48, speed: 1.6, damage: 6, radius: 0.4, rep: 18 },
+  turret: { hp: 30, speed: 0, damage: 5, radius: 0.35, rep: 4 },
 };
 
 export const BOSSES: readonly BossDef[] = [
@@ -224,41 +301,52 @@ export const BOSSES: readonly BossDef[] = [
     name: 'Derek', title: 'Team Leader, Service Desk', hp: 650,
     outfit: { skin: 0xf1c9a5, hair: 0x6b4423, top: 0xffffff, legs: 0x1f2a44, tie: 0xc0392b, lanyard: 0x2266cc, scale: 1.7, face: 'smug' },
     intro: 'Got a sec? I have booked us a quick 90-minute sync.',
+    phase2: 'Right. I am putting a RECURRING meeting in. Every fifteen minutes. Forever.',
     defeat: 'Fine. Let us... take this offline.',
+    hazard: 'meeting',
     patterns: ['invites', 'summonUsers', 'charge', 'invites', 'shockwave'],
   },
   {
     name: 'Karen', title: 'VP of Customer Success', hp: 950,
     outfit: { skin: 0xffdbac, hair: 0xd8b36a, top: 0x8e44ad, legs: 0x2e3440, hairStyle: 'bun', glasses: true, scale: 1.75, face: 'angry' },
     intro: 'We are a GOLD account. I want the person in charge of you.',
+    phase2: 'I am escalating this to the CEO. And the press. And my LinkedIn.',
     defeat: 'I will be leaving a review. A... good one.',
+    hazard: 'fire',
     patterns: ['goldSpiral', 'summonCustomers', 'shockwave', 'goldSpiral', 'charge'],
   },
   {
     name: 'Gordon', title: 'Head of Procurement', hp: 1250,
     outfit: { skin: 0xe0ac7e, hair: 0x8a8a8a, top: 0x3b3b3b, legs: 0x3b3b3b, tie: 0x27ae60, glasses: true, hairStyle: 'bald', scale: 1.8, face: 'stern' },
     intro: 'Has this purchase been through the three-quote process?',
+    phase2: 'Everything is frozen. The budget. The floor. YOU.',
     defeat: 'Approved. Under protest. Net 90.',
+    hazard: 'freeze',
     patterns: ['poBombs', 'freeze', 'summonReply', 'poBombs', 'invites'],
   },
   {
     name: 'The Auditor', title: 'External, Big Four', hp: 1500,
     outfit: { skin: 0xc68642, hair: 0x111111, top: 0x222222, legs: 0x111111, tie: 0x111111, glasses: true, scale: 1.8, face: 'stern' },
     intro: 'I will need evidence. Of everything. Since 2011.',
+    phase2: 'Material weakness. MATERIAL WEAKNESS.',
     defeat: 'No material findings. This time.',
+    hazard: 'fire',
     patterns: ['lasers', 'summonManagers', 'lasers', 'shockwave', 'teleport'],
   },
   {
     name: 'Sir Reginald Workgrumble', title: 'Founder & CEO', hp: 2400,
     outfit: { skin: 0xf1c9a5, hair: 0xeeeeee, top: 0x1a1a3a, legs: 0x1a1a3a, tie: 0xd4af37, hairStyle: 'short', scale: 2.1, face: 'smug' },
     intro: 'Ah, IT. We are restructuring. You are the structure.',
+    phase2: 'Do you know what I paid SynergyNow? Do you know what YOU cost? Everything must go.',
     defeat: 'Take the farm money. Take it! Just fix my email first.',
+    hazard: 'coffee',
     patterns: ['allHands', 'goldSpiral', 'lasers', 'teleport', 'shockwave', 'poBombs', 'charge'],
   },
 ];
 
 const FACES: Partial<Record<ActorKind, Expression>> = {
   user: 'angry', caller: 'angry', customer: 'smug', manager: 'smug', healer: 'kind', helper: 'tired', npc: 'neutral', tonttu: 'happy',
+  consultant: 'smug', shadowit: 'tired', vendor: 'happy',
 };
 
 function outfitFor(kind: ActorKind, r: Rng): Outfit {
@@ -272,6 +360,12 @@ function outfitFor(kind: ActorKind, r: Rng): Outfit {
       return { ...base, top: 0x2c3e50, legs: 0x2c3e50, tie: r.pick([0xd4af37, 0xc0392b, 0x2980b9]), glasses: r.chance(0.5), scale: 1.08 };
     case 'manager':
       return { ...base, top: 0xffffff, tie: r.pick([0xc0392b, 0x8e44ad, 0x16a085]), lanyard: 0xc0392b, scale: 1.15, hairStyle: 'short' };
+    case 'consultant':
+      return { ...base, top: 0x1c2833, legs: 0x1c2833, tie: 0x5dade2, glasses: true, hairStyle: 'short', backpack: 0x111111, scale: 1.1 };
+    case 'shadowit':
+      return { ...base, top: 0x4a235a, legs: 0x1b2631, hairStyle: 'hood', glasses: r.chance(0.7), backpack: 0x7d3c98 };
+    case 'vendor':
+      return { ...base, top: 0xf39c12, legs: 0x2e4053, tie: 0xe74c3c, lanyard: 0xf1c40f, hairStyle: 'short', face: 'happy' };
     case 'healer':
       return { ...base, top: r.pick([0xf5b7b1, 0xd7bde2, 0xfad7a0, 0xa9dfbf]), cardigan: r.pick([0x8e44ad, 0xc0392b, 0x2e86c1, 0xd35400, 0x117a65]), legs: 0x4a4036, hairStyle: r.pick(['bun', 'long'] as const), glasses: r.chance(0.6), hair: r.pick([0x8a8a8a, 0xa0522d, 0xd8b36a, 0x6b4423]) };
     case 'helper':
@@ -357,11 +451,26 @@ function jamMesh(): THREE.Group {
   return g;
 }
 
+/** The consultant's aura: a faint ring on the carpet showing who is covered. */
+const AURA_RADIUS = 6;
+function auraMesh(): THREE.Mesh {
+  const m = new THREE.Mesh(
+    new THREE.RingGeometry(AURA_RADIUS - 0.15, AURA_RADIUS, 48),
+    new THREE.MeshBasicMaterial({ color: 0x5dade2, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }),
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.03;
+  m.name = 'aura';
+  return m;
+}
+
 export interface SpawnOpts {
   readonly staffStanding?: number;
   readonly npc?: { id: string; name: string };
   readonly role?: HelperRole;
   readonly ttl?: number;
+  readonly elite?: EliteAffix | null;
+  readonly owner?: number;
 }
 
 export function createActor(
@@ -376,15 +485,17 @@ export function createActor(
 ): Actor {
   const f = ctx.floor;
   let rig: Rig | null = null;
+  let dog: DogParts | null = null;
   const root = new THREE.Group();
   let name = '';
-  let hp = 100;
-  let speed = 2.5;
+  let hp: number;
+  let speed: number;
   let damage = 5;
   let radius = 0.4;
   let rep = 0;
   let boss: BossDef | null = null;
   let role: HelperRole | null = opts.role ?? null;
+  let glowBase = 0;
   const hostile = kind !== 'healer' && kind !== 'helper' && kind !== 'npc' && kind !== 'tonttu';
 
   if (kind === 'reply') {
@@ -396,20 +507,37 @@ export function createActor(
   } else if (kind === 'mosquito') {
     root.add(mosquitoMesh());
     name = 'Hyttynen';
+  } else if (kind === 'chatbot') {
+    root.add(chatbotMesh());
+    name = r.pick(['HelpBot 3000', 'Clippy (Returns)', 'AskIT Assistant', 'Chatty McChatface']);
+  } else if (kind === 'turret') {
+    root.add(turretMesh());
+    name = 'Unsanctioned Deployment';
   } else if (kind === 'boss') {
     boss = BOSSES[f % BOSSES.length] ?? null;
     if (boss === null) throw new Error('no boss');
     rig = buildRig(boss.outfit);
     root.add(rig.root);
     name = f >= BOSSES.length ? `${boss.name} (Overtime)` : boss.name;
+  } else if (kind === 'helper' && role === 'dog') {
+    const d = dogMesh();
+    root.add(d.root);
+    dog = { legs: d.legs, tail: d.tail, head: d.head };
   } else if (kind === 'helper' && (role === 'clone' || role === 'spirit')) {
     rig = buildRig(role === 'spirit' ? outfitFor('tonttu', r) : { skin: 0x9fe0ff, hair: 0x5fb6ff, top: 0x5fb6ff, legs: 0x2a6fb0, face: 'neutral', glasses: true });
-    if (role === 'clone') for (const m of rig.materials) { m.transparent = true; m.opacity = 0.7; m.emissive.setHex(0x113355); }
+    if (role === 'clone') {
+      glowBase = 0x113355;
+      for (const m of rig.materials) {
+        m.transparent = true;
+        m.opacity = 0.7;
+      }
+    }
     root.add(rig.root);
   } else {
     rig = buildRig(outfitFor(kind, r));
     root.add(rig.root);
   }
+  if (kind === 'consultant') root.add(auraMesh());
 
   const diff = ctx.difficulty * (1 + f * 0.12);
   if (kind === 'boss' && boss !== null) {
@@ -434,40 +562,60 @@ export function createActor(
     speed = 1;
   } else if (kind === 'helper') {
     if (role === null) role = r.pick(['sysadmin', 'sysadmin', 'security', 'intern'] as const);
-    name = role === 'sysadmin'
+    name = opts.npc?.name ?? (role === 'sysadmin'
       ? r.pick(['Dave (Senior Sysadmin)', 'Old Bob (Mainframe)', 'Priya (Network Eng.)'])
       : role === 'security' ? 'Gary (Security)'
         : role === 'clone' ? 'Pat (autoscaled instance)'
-          : role === 'spirit' ? 'Saunatonttu (summoned)' : r.pick(['Josh (Intern)', 'Ellie (Intern)']);
+          : role === 'spirit' ? 'Saunatonttu (summoned)'
+            : role === 'dog' ? 'Musti' : r.pick(['Josh (Intern)', 'Ellie (Intern)']));
     hp = 1;
-    speed = 3.6;
-  } else if (kind !== 'boss') {
-    const st = STATS[kind];
+    speed = role === 'dog' ? 5.2 : 3.6;
+    radius = role === 'dog' ? 0.35 : 0.4;
+  } else {
+    const st = STATS[kind as Grunt];
     hp = st.hp * diff;
     speed = st.speed * (1 + f * 0.03) * (0.9 + ctx.difficulty * 0.1);
     damage = st.damage * diff;
     radius = st.radius;
     rep = Math.round(st.rep * (1 + f * 0.25) * (0.6 + ctx.difficulty * 0.4));
     const first = r.pick(USER_NAMES);
-    name = kind === 'manager' ? r.pick(MANAGER_NAMES)
-      : kind === 'customer' ? `${first} (Client, Gold SLA)`
-        : kind === 'caller' ? `${first} (on the phone)`
-          : kind === 'mosquito' ? 'Hyttynen' : name !== '' ? name
-            : `${first} from ${r.pick(['Sales', 'Marketing', 'Legal', 'Ops', 'Finance', 'HR', 'Comms'])}`;
+    const dept = r.pick(['Sales', 'Marketing', 'Legal', 'Ops', 'Finance', 'HR', 'Comms']);
+    switch (kind) {
+      case 'manager': name = r.pick(MANAGER_NAMES); break;
+      case 'customer': name = `${first} (Client, Gold SLA)`; break;
+      case 'caller': name = `${first} (on the phone)`; break;
+      case 'consultant': name = `${first} (${r.pick(['McKinsley', 'Bane & Co', 'Deloittish', 'Accentual'])})`; break;
+      case 'shadowit': name = `${first} from ${dept} (Shadow IT)`; break;
+      case 'vendor': name = `${first} (${r.pick(['SynergyNow', 'CloudSprout', 'AIforce', 'VendorLock Inc'])})`; break;
+      case 'user': name = `${first} from ${dept}`; break;
+      default: break;
+    }
+  }
+
+  const elite = hostile && kind !== 'boss' && kind !== 'turret' && kind !== 'reply' && kind !== 'mosquito' ? opts.elite ?? null : null;
+  if (elite !== null) {
+    hp *= elite === 'tenured' ? 2.8 : 1.7;
+    damage *= elite === 'vip' ? 1.6 : 1.1;
+    speed *= elite === 'relentless' ? 1.45 : 1;
+    rep = Math.round(rep * 3);
+    radius += 0.05;
+    name = `${ELITE_INFO[elite].prefix} ${name}`;
+    if (rig !== null) rig.root.scale.multiplyScalar(elite === 'tenured' ? 1.3 : 1.15);
+    else root.scale.setScalar(1.25);
   }
 
   const bar = hpBar();
-  bar.group.position.y = kind === 'boss' ? 4.2 : 2.35;
+  bar.group.position.y = kind === 'boss' ? 4.2 : kind === 'turret' ? 1.7 : 2.35 * (elite !== null ? 1.2 : 1);
   root.add(bar.group);
   root.position.set(x, 0, z);
   ctx.scene.add(root);
 
   const staff = opts.staffStanding ?? 0;
-  const docile = (kind === 'user' || kind === 'caller') && staff > 20 && r.chance((staff - 20) / 120);
+  const docile = (kind === 'user' || kind === 'caller') && elite === null && staff > 20 && r.chance((staff - 20) / 120);
 
   const a: Actor = {
     id: nextActorId++,
-    kind, name, hostile, root, rig,
+    kind, name, hostile, root, rig, dog,
     pos: root.position,
     push: new THREE.Vector3(),
     yaw: r.range(0, Math.PI * 2),
@@ -476,6 +624,7 @@ export function createActor(
     aggro: false,
     resolved: false,
     calm: false,
+    expired: false,
     removeIn: -1,
     flash: 0,
     attackAnim: 0,
@@ -488,21 +637,28 @@ export function createActor(
     marker: null,
     wanderTarget: null,
     room,
-    recruited: role === 'clone' || role === 'spirit',
+    recruited: role === 'clone' || role === 'spirit' || role === 'dog',
     role,
     giftGiven: false,
     healIn: 2,
-    ttl: opts.ttl ?? -1,
+    ttl: opts.ttl ?? (kind === 'turret' ? 30 : -1),
     talked: false,
     docile,
     npcId: opts.npc?.id ?? null,
+    memo: {},
+    elite,
     boss,
     bossActive: false,
+    phase: 1,
     patternIn: 2.5,
     patternIdx: 0,
     charging: 0,
     chargeDir: new THREE.Vector3(),
-    summonIn: 10,
+    summonIn: kind === 'shadowit' ? 5 : 10,
+    blinkIn: r.range(3, 6),
+    fleeT: 0,
+    stolen: 0,
+    shielded: false,
     stunned: 0,
     slowT: 0,
     poisonT: 0,
@@ -510,12 +666,25 @@ export function createActor(
     enragedT: 0,
     revealT: 0,
     rep,
-    gold: kind === 'customer' || kind === 'boss',
+    gold: kind === 'customer' || kind === 'boss' || elite === 'vip',
+    glowBase,
     lastPos: new THREE.Vector3(x, 0, z),
+    owner: opts.owner ?? 0,
   };
+  if (rig !== null) {
+    rig.glow = glowBase;
+    tintRig(rig, 0, 0);
+  }
   if (docile && a.rig !== null) setExpression(a.rig, 'neutral');
   if (kind === 'npc' || kind === 'tonttu') setMarker(a, '!', '#ffd54a');
+  if (elite !== null) setMarker(a, '★', '#ff9a3a');
   return a;
+}
+
+export function markerHeight(a: Actor): number {
+  if (a.kind === 'tonttu') return 1.9;
+  if (a.kind === 'boss') return 4.8;
+  return a.elite !== null ? 3.4 : 2.9;
 }
 
 export function setMarker(a: Actor, text: string | null, color = '#ffd54a'): void {
@@ -526,7 +695,7 @@ export function setMarker(a: Actor, text: string | null, color = '#ffd54a'): voi
   }
   if (text === null) return;
   const s = textSprite(text, { color, size: 60 });
-  s.position.y = a.kind === 'tonttu' ? 1.9 : 2.9;
+  s.position.y = markerHeight(a);
   a.root.add(s);
   a.marker = s;
 }
@@ -545,7 +714,9 @@ export function say(a: Actor, text: string, seconds = 3, color = '#111', bg = 'r
     disposeSprite(a.bubble);
   }
   const s = textSprite(text, { color, bg, size: 26, maxWidth: 420 });
-  const top = a.kind === 'boss' ? 4.7 : a.kind === 'reply' || a.kind === 'mosquito' ? 1.9 : a.kind === 'tonttu' ? 1.6 : 2.7;
+  const top = a.kind === 'boss' ? 4.7
+    : a.kind === 'reply' || a.kind === 'mosquito' || a.kind === 'turret' ? 1.9
+      : a.kind === 'tonttu' || a.role === 'dog' ? 1.6 : a.elite !== null ? 3.1 : 2.7;
   s.position.y = top + s.scale.y / 2;
   a.root.add(s);
   a.bubble = s;
@@ -576,6 +747,25 @@ function moveActor(ctx: GameCtx, a: Actor, dx: number, dz: number, speed: number
   collideCircle(ctx.level, a.pos, a.radius);
 }
 
+/**
+ * Can you walk it in a straight line? Line of sight only asks whether you can
+ * see across; desks, counters and meeting tables are see-through but solid.
+ */
+export function walkClear(level: Level, ax: number, az: number, bx: number, bz: number): boolean {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const dist = Math.hypot(dx, dz);
+  const steps = Math.ceil(dist / (TILE * 0.25));
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const cx = toCell(ax + dx * t);
+    const cz = toCell(az + dz * t);
+    if (cx < 0 || cz < 0 || cx >= level.w || cz >= level.h) return false;
+    if (level.solid[cz * level.w + cx] === 1) return false;
+  }
+  return true;
+}
+
 /** Direction toward the player by flow field when there is no clear line. */
 function navDir(ctx: GameCtx, a: Actor, out: THREE.Vector3): boolean {
   const lv = ctx.level;
@@ -604,9 +794,22 @@ function navDir(ctx: GameCtx, a: Actor, out: THREE.Vector3): boolean {
   return true;
 }
 
+/**
+ * Head for the player: straight at them when the way is clear, by the flow
+ * field when it is not. Returns false when there is no way at all.
+ */
+function approach(ctx: GameCtx, a: Actor, dx: number, dz: number, out: THREE.Vector3): boolean {
+  if (walkClear(ctx.level, a.pos.x, a.pos.z, ctx.playerPos.x, ctx.playerPos.z)) {
+    out.set(dx, 0, dz);
+    return true;
+  }
+  return navDir(ctx, a, out);
+}
+
 function throwAt(ctx: GameCtx, a: Actor, kind: ProjectileKind, speed: number, damage: number, spread = 0, lead = true): void {
   const from = a.pos.clone();
   from.y = 1.4 * Math.min(1.6, a.rig?.root.scale.y ?? 1);
+  if (a.kind === 'turret') from.y = 1.1;
   const target = ctx.playerPos.clone();
   target.y = 1.2;
   if (lead) target.x += fx.range(-0.4, 0.4);
@@ -625,10 +828,23 @@ function ring(ctx: GameCtx, a: Actor, kind: ProjectileKind, n: number, speed: nu
   }
 }
 
+function glowFor(a: Actor): number {
+  if (a.revealT > 0) return 0x552200;
+  if (a.shielded) return 0x0e2a4a;
+  if (a.elite !== null && a.enragedT > 0) return 0x3a0800;
+  return a.glowBase;
+}
+
 export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
   if (a.flash > 0) {
     a.flash = Math.max(0, a.flash - dt * 4);
     if (a.rig !== null) tintRig(a.rig, a.resolved ? 0x30ff60 : a.poisonT > 0 ? 0x30a030 : 0xff3030, a.flash);
+  } else if (a.rig !== null) {
+    const g = glowFor(a);
+    if (a.rig.glow !== g) {
+      a.rig.glow = g;
+      tintRig(a.rig, 0, 0);
+    }
   }
   if (a.bubble !== null) {
     a.bubbleTime -= dt;
@@ -638,10 +854,10 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
       a.bubble = null;
     }
   }
-  if (a.marker !== null) a.marker.position.y = (a.kind === 'tonttu' ? 1.9 : 2.9) + Math.sin(ctx.time * 3) * 0.08;
+  if (a.marker !== null) a.marker.position.y = markerHeight(a) + Math.sin(ctx.time * 3) * 0.08;
   a.attackAnim = Math.max(0, a.attackAnim - dt * 3);
   a.slowT = Math.max(0, a.slowT - dt);
-  a.enragedT = Math.max(0, a.enragedT - dt);
+  if (!(a.elite === 'escalating' && a.hp < a.maxHp * 0.5)) a.enragedT = Math.max(0, a.enragedT - dt);
   a.revealT = Math.max(0, a.revealT - dt);
 
   if (a.resolved) {
@@ -670,6 +886,7 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
     a.ttl -= dt;
     if (a.ttl <= 0) {
       a.resolved = true;
+      a.expired = true;
       a.removeIn = 0.6;
       return;
     }
@@ -689,20 +906,68 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
   a.root.rotation.y = a.yaw;
   const moved = Math.hypot(a.pos.x - a.lastPos.x, a.pos.z - a.lastPos.z) / Math.max(dt, 1e-4);
   if (a.rig !== null) animateRig(a.rig, moved, dt, a.attackAnim);
+  if (a.dog !== null) animateDog(a.dog, moved, ctx.time, a.attackAnim);
   if (a.kind === 'reply') a.root.children[0]?.position.set(0, Math.sin(ctx.time * 8 + a.id) * 0.15, 0);
+  if (a.kind === 'chatbot') a.root.children[0]?.position.set(0, Math.sin(ctx.time * 2.5 + a.id) * 0.12, 0);
   if (a.kind === 'mosquito') {
     a.root.position.y = Math.sin(ctx.time * 5 + a.id) * 0.3;
     a.root.traverse((o) => { if (o.name === 'wing') o.rotation.x = Math.sin(ctx.time * 80) * 0.8; });
   }
+  if (a.kind === 'consultant') {
+    const aura = a.root.getObjectByName('aura');
+    if (aura !== undefined) aura.rotation.z = ctx.time * 0.4;
+  }
+}
+
+function animateDog(d: DogParts, speed: number, time: number, attack: number): void {
+  const amp = Math.min(0.9, speed * 0.2);
+  const s = Math.sin(time * (6 + speed * 1.5));
+  d.legs.forEach((l, i) => { l.rotation.x = (i === 0 || i === 3 ? s : -s) * amp; });
+  d.tail.rotation.y = Math.sin(time * 12) * 0.5;
+  d.head.rotation.x = attack > 0 ? 0.4 * attack : Math.sin(time * 1.3) * 0.05;
 }
 
 function aggroRange(ctx: GameCtx, a: Actor): number {
-  const base = a.kind === 'boss' ? 16 : a.kind === 'manager' ? 13 : a.kind === 'caller' ? 14 : a.kind === 'mosquito' ? 9 : 11;
+  const base = a.kind === 'boss' ? 16 : a.kind === 'manager' || a.kind === 'consultant' ? 13 : a.kind === 'caller' || a.kind === 'turret' ? 14 : a.kind === 'mosquito' ? 9 : 11;
   return base * (1 - ctx.stealth);
 }
 
 function barksFor(a: Actor): readonly string[] {
-  return a.kind === 'customer' ? CUSTOMER_BARKS : a.kind === 'manager' ? MANAGER_BARKS : USER_BARKS;
+  switch (a.kind) {
+    case 'customer': return CUSTOMER_BARKS;
+    case 'manager': return MANAGER_BARKS;
+    case 'consultant': return CONSULTANT_BARKS;
+    case 'shadowit': return SHADOWIT_BARKS;
+    case 'vendor': return VENDOR_BARKS;
+    case 'chatbot': return CHATBOT_BARKS;
+    default: return USER_BARKS;
+  }
+}
+
+const SILENT: readonly ActorKind[] = ['reply', 'jam', 'mosquito', 'turret'];
+
+/** Consultants cover everyone near them. Computed once a frame by the game. */
+export function updateAuras(actors: readonly Actor[]): void {
+  const consultants = actors.filter((c) => c.kind === 'consultant' && !c.resolved);
+  for (const a of actors) {
+    a.shielded = false;
+    if (!a.hostile || a.resolved || a.kind === 'consultant' || a.kind === 'boss') continue;
+    for (const c of consultants) {
+      if (Math.hypot(c.pos.x - a.pos.x, c.pos.z - a.pos.z) < AURA_RADIUS) {
+        a.shielded = true;
+        break;
+      }
+    }
+  }
+}
+
+function startBoss(ctx: GameCtx, a: Actor): void {
+  if (a.bossActive) return;
+  a.aggro = true;
+  a.bossActive = true;
+  a.docile = false;
+  if (a.boss !== null) say(a, a.boss.intro, 5, '#fff', 'rgba(120,0,0,0.92)');
+  ctx.bossStart(a);
 }
 
 function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
@@ -720,15 +985,20 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
       const cx = toCell(ctx.playerPos.x);
       const cz = toCell(ctx.playerPos.z);
       if (!ctx.invisible && lv.roomOf[cz * lv.w + cx] === a.room) {
-        a.aggro = true;
-        a.bossActive = true;
-        if (a.boss !== null) say(a, a.boss.intro, 5, '#fff', 'rgba(120,0,0,0.92)');
-        ctx.noticed(a);
+        if (a.docile) {
+          if (a.memo.parley !== true) {
+            a.memo.parley = true;
+            ctx.bossParley(a);
+          }
+          if (dist < 12) a.yaw = Math.atan2(dx, dz);
+        } else {
+          startBoss(ctx, a);
+        }
       }
     } else if (sees && dist < aggroRange(ctx, a) && !a.docile) {
       a.aggro = true;
       ctx.noticed(a);
-      if (a.kind !== 'reply' && a.kind !== 'jam' && a.kind !== 'mosquito') say(a, fx.pick(barksFor(a)), 2.5);
+      if (!SILENT.includes(a.kind)) say(a, a.elite !== null ? fx.pick(ELITE_LINES) : fx.pick(barksFor(a)), 2.5);
     } else if (a.docile && sees && dist < 5) {
       a.barkIn -= dt;
       if (a.barkIn <= 0) {
@@ -738,6 +1008,10 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
       a.yaw = Math.atan2(dx, dz);
     }
     if (!a.aggro) {
+      if (a.kind === 'turret' || a.kind === 'boss') {
+        moveActor(ctx, a, 0, 0, 0, dt);
+        return;
+      }
       if (a.wanderTarget === null || fx.chance(dt * 0.2)) {
         a.wanderTarget = new THREE.Vector3(a.pos.x + fx.range(-3, 3), 0, a.pos.z + fx.range(-3, 3));
       }
@@ -748,32 +1022,87 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
     }
   }
 
-  a.cooldown -= dt;
-  a.barkIn -= dt;
-  if (a.barkIn <= 0 && dist < 12 && (a.kind === 'user' || a.kind === 'caller' || a.kind === 'customer' || a.kind === 'manager')) {
-    a.barkIn = fx.range(7, 14);
-    say(a, fx.chance(0.5) ? `"${ctx.ticketTitle(a)}"` : fx.pick(barksFor(a)), 3);
-  }
-
   if (a.kind === 'boss') {
     updateBoss(ctx, a, dt, dist, sees, dx, dz);
     return;
   }
 
+  a.cooldown -= dt;
+  a.barkIn -= dt;
+  if (a.barkIn <= 0 && dist < 12 && !SILENT.includes(a.kind)) {
+    a.barkIn = fx.range(7, 14);
+    const talker = a.kind === 'user' || a.kind === 'caller' || a.kind === 'customer';
+    say(a, talker && fx.chance(0.5) ? `"${ctx.ticketTitle(a)}"` : fx.pick(barksFor(a)), 3);
+  }
+
+  // Escalating elites snap at half health, for good.
+  if (a.elite === 'escalating' && a.hp < a.maxHp * 0.5 && a.enragedT <= 0) {
+    a.enragedT = 999;
+    say(a, 'Right. I want to speak to your MANAGER.', 2.5, '#fff', 'rgba(140,20,0,0.92)');
+  }
+
   // Low Staff standing: they come in angrier. An enraged one hits harder still.
   const grudge = 1 + Math.max(0, -ctx.staffStanding) / 200 + (a.enragedT > 0 ? 0.5 : 0);
-  const dmg = a.damage * (a.kind === 'user' || a.kind === 'caller' || a.kind === 'customer' ? grudge : 1);
+  const people = a.kind === 'user' || a.kind === 'caller' || a.kind === 'customer' || a.kind === 'vendor';
+  const dmg = a.damage * (people ? grudge : 1) * (a.enragedT > 0 && !people ? 1.5 : 1);
 
-  const keep = a.kind === 'caller' ? 8 : a.kind === 'customer' ? 5 : a.kind === 'manager' ? 5.5 : a.kind === 'jam' ? 6 : 0;
+  // Summoning runs on its own clock, not on the attack cooldown.
+  if (a.kind === 'manager' || a.elite === 'cc') {
+    a.summonIn -= dt;
+    if (a.summonIn <= 0 && sees && dist < 16) {
+      if (a.elite === 'cc') {
+        a.summonIn = fx.range(7, 10);
+        say(a, 'Adding everyone on this thread.', 2.5);
+        for (let i = 0; i < 2; i++) {
+          const s = ctx.spawn('reply', a.pos.x + fx.range(-1, 1), a.pos.z + fx.range(-1, 1), a.room);
+          if (s !== null) s.aggro = true;
+        }
+      } else {
+        a.summonIn = fx.range(12, 18);
+        say(a, 'I will get someone from my team to raise it with you.', 3);
+        const s = ctx.spawn('user', a.pos.x + fx.range(-1, 1), a.pos.z + fx.range(-1, 1), a.room);
+        if (s !== null) s.aggro = true;
+      }
+    }
+  }
+  if (a.kind === 'shadowit') {
+    a.summonIn -= dt;
+    const mine = ctx.actors.filter((t) => t.kind === 'turret' && t.owner === a.id && !t.resolved).length;
+    if (a.summonIn <= 0 && sees && dist < 18 && mine < 2) {
+      a.summonIn = fx.range(8, 11);
+      say(a, 'Hold on, I will just spin up another instance.', 2.5);
+      const t = ctx.spawn('turret', a.pos.x + fx.range(-1.2, 1.2), a.pos.z + fx.range(-1.2, 1.2), a.room);
+      if (t !== null) {
+        t.owner = a.id;
+        t.aggro = true;
+      }
+    }
+    a.blinkIn -= dt;
+    if (a.blinkIn <= 0 && (a.hp < a.maxHp || dist < 4)) {
+      a.blinkIn = fx.range(4, 6.5);
+      blink(ctx, a, 5);
+    }
+  }
+
+  const keep = a.kind === 'caller' ? 8 : a.kind === 'customer' ? 5 : a.kind === 'manager' ? 5.5 : a.kind === 'jam' ? 6
+    : a.kind === 'consultant' ? 7 : a.kind === 'shadowit' ? 9 : a.kind === 'chatbot' ? 8 : 0;
   let mx = 0;
   let mz = 0;
-  if (sees && dist < 20) {
+  if (a.kind === 'vendor' && a.fleeT > 0) {
+    a.fleeT -= dt;
+    mx = -dx;
+    mz = -dz;
+  } else if (a.kind === 'turret') {
+    // Tripods do not walk.
+  } else if (sees && dist < 20) {
     if (keep > 0 && dist < keep - 1.5) {
       mx = -dx;
       mz = -dz;
     } else if (dist > keep + 0.5) {
-      mx = dx;
-      mz = dz;
+      if (approach(ctx, a, dx, dz, tmp2)) {
+        mx = tmp2.x;
+        mz = tmp2.z;
+      }
     } else if (keep > 0) {
       mx = -dz * (a.id % 2 === 0 ? 1 : -1);
       mz = dx * (a.id % 2 === 0 ? 1 : -1);
@@ -782,31 +1111,35 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
     mx = tmp2.x;
     mz = tmp2.z;
   }
-  for (const o of ctx.actors) {
-    if (o === a || o.resolved) continue;
-    const sx = a.pos.x - o.pos.x;
-    const sz = a.pos.z - o.pos.z;
-    const d2 = sx * sx + sz * sz;
-    const min = a.radius + o.radius + 0.2;
-    if (d2 < min * min && d2 > 1e-4) {
-      const d = Math.sqrt(d2);
-      mx += (sx / d) * 2;
-      mz += (sz / d) * 2;
+  if (a.kind !== 'turret') {
+    for (const o of ctx.actors) {
+      if (o === a || o.resolved) continue;
+      const sx = a.pos.x - o.pos.x;
+      const sz = a.pos.z - o.pos.z;
+      const d2 = sx * sx + sz * sz;
+      const min = a.radius + o.radius + 0.2;
+      if (d2 < min * min && d2 > 1e-4) {
+        const d = Math.sqrt(d2);
+        mx += (sx / d) * 2;
+        mz += (sz / d) * 2;
+      }
     }
   }
   let speed = a.speed * (a.enragedT > 0 ? 1.3 : 1);
   if (a.kind === 'user' && dist < 1.8) speed = 0;
   if ((a.kind === 'reply' || a.kind === 'mosquito') && dist < 0.9) speed = 0;
+  if (a.kind === 'vendor' && a.fleeT <= 0 && dist < 1.2) speed = 0;
   moveActor(ctx, a, mx, mz, speed, dt);
-  if (sees && dist < 20) a.yaw = Math.atan2(dx, dz);
+  if (sees && dist < 20 && !(a.kind === 'vendor' && a.fleeT > 0)) a.yaw = Math.atan2(dx, dz);
 
   if (a.cooldown > 0) return;
+  const rate = a.elite === 'relentless' ? 0.8 : 1;
   // Low Management standing: managers send invites more often.
   const mgmtRate = 1 + Math.max(0, -ctx.managementStanding) / 100;
   switch (a.kind) {
     case 'user':
       if (dist < 2.0) {
-        a.cooldown = 1.2;
+        a.cooldown = 1.2 * rate;
         a.attackAnim = 1;
         ctx.hurtPlayer(dmg, a, 'melee');
         if (fx.chance(0.25)) ctx.enqueueTicket(a, false);
@@ -814,9 +1147,12 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
       break;
     case 'reply':
       if (dist < 1.1) {
+        // It delivers itself and is gone. That is not you resolving it.
         a.cooldown = 99;
         ctx.hurtPlayer(dmg, a, 'melee');
-        a.hp = 0;
+        a.resolved = true;
+        a.expired = true;
+        a.removeIn = 0.3;
       }
       break;
     case 'mosquito':
@@ -827,59 +1163,116 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
       break;
     case 'caller':
       if (sees && dist < 18) {
-        a.cooldown = fx.range(1.8, 2.8);
+        a.cooldown = fx.range(1.8, 2.8) * rate;
         a.attackAnim = 1;
         throwAt(ctx, a, 'ticket', 11, dmg);
       }
       break;
     case 'customer':
       if (sees && dist < 16) {
-        a.cooldown = fx.range(2.0, 3.0);
+        a.cooldown = fx.range(2.0, 3.0) * rate;
         a.attackAnim = 1;
         throwAt(ctx, a, 'gold', 12, dmg);
       }
       if (dist < 2) {
         ctx.hurtPlayer(dmg * 0.6, a, 'melee');
-        a.cooldown = 1.5;
+        a.cooldown = 1.5 * rate;
       }
       break;
     case 'jam':
       if (sees && dist < 14) {
-        a.cooldown = 1.9;
+        a.cooldown = 1.9 * rate;
         for (const s of [-0.25, 0, 0.25]) throwAt(ctx, a, 'paper', 10, dmg, s, false);
       }
       break;
     case 'manager':
       if (dist < 2.2) {
-        a.cooldown = 2.5 / mgmtRate;
+        a.cooldown = (2.5 / mgmtRate) * rate;
         a.attackAnim = 1;
         say(a, 'Can you take an action item on that?', 2.5);
         ctx.addActionItem(a.name);
         ctx.hurtPlayer(dmg, a, 'melee');
       } else if (sees && dist < 15) {
-        a.cooldown = fx.range(2.8, 4.0) / mgmtRate;
+        a.cooldown = (fx.range(2.8, 4.0) / mgmtRate) * rate;
         a.attackAnim = 1;
         throwAt(ctx, a, 'invite', 9, dmg);
+      }
+      break;
+    case 'consultant':
+      if (sees && dist < 16) {
+        a.cooldown = fx.range(2.6, 3.4) * rate;
+        a.attackAnim = 1;
+        throwAt(ctx, a, 'deck', 8, dmg * 1.3);
+      }
+      break;
+    case 'shadowit':
+      if (sees && dist < 17) {
+        a.cooldown = fx.range(1.6, 2.4) * rate;
+        a.attackAnim = 1;
+        for (const s of [-0.12, 0.12]) throwAt(ctx, a, 'code', 14, dmg * 0.8, s);
+      }
+      break;
+    case 'turret':
+      if (sees && dist < 16) {
+        a.cooldown = 1.2;
+        throwAt(ctx, a, 'code', 15, dmg);
+      }
+      break;
+    case 'chatbot':
+      if (sees && dist < 15) {
+        a.cooldown = fx.range(2.2, 3.0) * rate;
+        throwAt(ctx, a, 'chat', 7, dmg);
+        if (fx.chance(0.3)) say(a, fx.pick(CHATBOT_BARKS), 2.5, '#002244', 'rgba(210,235,255,0.95)');
+      }
+      break;
+    case 'vendor':
+      if (a.fleeT <= 0 && dist < 1.5) {
+        a.cooldown = 2 * rate;
+        a.attackAnim = 1;
+        const took = ctx.stealRep(a, Math.round((15 + ctx.floor * 6) * (a.elite === 'vip' ? 2 : 1)));
+        a.stolen += took;
+        ctx.hurtPlayer(dmg, a, 'melee');
+        say(a, took > 0 ? `Thanks! That is ₡${took} for the "discovery workshop".` : 'No budget? I will come back next quarter.', 2.5);
+        a.fleeT = 5;
       }
       break;
     default:
       break;
   }
-  if (a.kind === 'manager') {
-    a.summonIn -= dt;
-    if (a.summonIn <= 0 && sees && dist < 16) {
-      a.summonIn = fx.range(12, 18);
-      say(a, 'I will get someone from my team to raise it with you.', 3);
-      const s = ctx.spawn('user', a.pos.x + fx.range(-1, 1), a.pos.z + fx.range(-1, 1), a.room);
-      if (s !== null) s.aggro = true;
-    }
+}
+
+/** Shadow IT's trick: vanish and reappear somewhere nearby on the same floor. */
+function blink(ctx: GameCtx, a: Actor, radius: number): void {
+  const lv = ctx.level;
+  for (let t = 0; t < 20; t++) {
+    const x = a.pos.x + fx.range(-radius, radius);
+    const z = a.pos.z + fx.range(-radius, radius);
+    const cx = toCell(x);
+    const cz = toCell(z);
+    if (cx < 0 || cz < 0 || cx >= lv.w || cz >= lv.h) continue;
+    const i = cz * lv.w + cx;
+    if (lv.solid[i] !== 0 || lv.floor[i] !== 1 || (ctx.field[i] ?? -1) < 0) continue;
+    if (Math.hypot(x - ctx.playerPos.x, z - ctx.playerPos.z) < 4) continue;
+    ctx.floatText(new THREE.Vector3(a.pos.x, 1.6, a.pos.z), '*poof*', '#c39bd3');
+    a.pos.set(x, 0, z);
+    collideCircle(lv, a.pos, a.radius);
+    return;
   }
 }
 
 function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: boolean, dx: number, dz: number): void {
   const boss = a.boss;
   if (boss === null) return;
-  const enraged = a.hp < a.maxHp * 0.5;
+  if (!a.bossActive) startBoss(ctx, a);
+  // Phase two at half health: a line, a shake, and the floor turns against you.
+  if (a.phase === 1 && a.hp < a.maxHp * 0.5) {
+    a.phase = 2;
+    say(a, boss.phase2, 4, '#fff', 'rgba(140,0,0,0.95)');
+    ctx.shake(0.8);
+    ctx.floatText(new THREE.Vector3(a.pos.x, 5, a.pos.z), 'PHASE 2', '#ff5050');
+    a.patternIn = 0.8;
+  }
+  const enraged = a.phase === 2;
   // Every finding the Auditor holds against you makes the audit worse.
   const audit = boss.name === 'The Auditor' ? 1 + ctx.findings * 0.2 : 1;
   const rate = (enraged ? 1.5 : 1) * audit;
@@ -899,23 +1292,35 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
   let mx = 0;
   let mz = 0;
   if (sees) {
-    if (dist > want + 1) { mx = dx; mz = dz; } else if (dist < want - 1) { mx = -dx; mz = -dz; } else { mx = -dz; mz = dx; }
+    if (dist > want + 1) {
+      if (approach(ctx, a, dx, dz, tmp2)) {
+        mx = tmp2.x;
+        mz = tmp2.z;
+      }
+    } else if (dist < want - 1) {
+      mx = -dx;
+      mz = -dz;
+    } else {
+      mx = -dz;
+      mz = dx;
+    }
   } else if (navDir(ctx, a, tmp2)) {
     mx = tmp2.x;
     mz = tmp2.z;
   }
   moveActor(ctx, a, mx, mz, a.speed * rate, dt);
   a.yaw = Math.atan2(dx, dz);
+  a.cooldown -= dt;
   if (dist < 2.4 && a.cooldown <= 0) {
     a.cooldown = 1;
     a.attackAnim = 1;
     ctx.hurtPlayer(a.damage, a, 'boss');
   }
-  a.cooldown -= dt;
 
   a.patternIn -= dt * rate;
   if (a.patternIn > 0) return;
-  const pattern = boss.patterns[a.patternIdx % boss.patterns.length] ?? 'invites';
+  // In phase two every other pattern is a hazard volley.
+  const pattern: BossPattern = enraged && a.patternIdx % 2 === 1 ? 'hazards' : boss.patterns[a.patternIdx % boss.patterns.length] ?? 'invites';
   a.patternIdx++;
   a.patternIn = 3.2;
   a.attackAnim = 1;
@@ -940,11 +1345,11 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
       break;
     case 'summonManagers':
       say(a, ctx.findings > 0 ? `I have ${ctx.findings} finding${ctx.findings > 1 ? 's' : ''} to discuss with your managers.` : 'I will need to speak to your line managers.', 3);
-      for (let i = 0; i < 2 + Math.min(3, ctx.findings); i++) ctx.spawn('manager', a.pos.x + fx.range(-2, 2), a.pos.z + fx.range(-2, 2), a.room);
+      for (let i = 0; i < 2 + Math.min(3, ctx.findings); i++) ctx.spawn(i === 0 ? 'consultant' : 'manager', a.pos.x + fx.range(-2, 2), a.pos.z + fx.range(-2, 2), a.room);
       break;
     case 'allHands':
       say(a, 'ALL HANDS MEETING. Attendance is mandatory.', 3, '#fff', 'rgba(120,0,0,0.92)');
-      for (const k of ['user', 'caller', 'customer', 'manager', 'reply', 'reply'] as const) {
+      for (const k of ['user', 'caller', 'customer', 'manager', 'reply', 'reply', 'vendor'] as const) {
         ctx.spawn(k, a.pos.x + fx.range(-3, 3), a.pos.z + fx.range(-3, 3), a.room);
       }
       break;
@@ -979,10 +1384,10 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
       if (dist < 12) ctx.rootPlayer(1.6, 'Budget freeze');
       ring(ctx, a, 'invite', 12, 7, (6 + f) * d);
       break;
-    case 'lasers':
+    case 'lasers': {
       say(a, 'Finding. Finding. Finding.', 2);
-      for (let k = 0; k < 8 + Math.min(8, ctx.findings * 2); k++) {
-        const n = 8 + Math.min(8, ctx.findings * 2);
+      const n = 8 + Math.min(8, ctx.findings * 2);
+      for (let k = 0; k < n; k++) {
         const ang = (k / n) * Math.PI * 2 + ctx.time * 0.7;
         const from = a.pos.clone();
         from.y = 1.2;
@@ -990,6 +1395,7 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
       }
       a.patternIn = enraged ? 1.4 : 2.2;
       break;
+    }
     case 'teleport': {
       say(a, 'Golden parachute!', 1.5);
       const lv = ctx.level;
@@ -1007,6 +1413,24 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
       ring(ctx, a, 'gold', 8, 7, (8 + f) * d);
       break;
     }
+    case 'hazards': {
+      const lines: Record<HazardKind, string> = {
+        meeting: 'Recurring invite: "Quick catch-up". Accept all.',
+        fire: 'Everything is ON FIRE and it is YOUR fault.',
+        freeze: 'Frozen. Pending approval.',
+        coffee: 'Who spilled the executive espresso? YOU did.',
+      };
+      say(a, lines[boss.hazard], 2.5, '#fff', 'rgba(120,0,0,0.92)');
+      // One on you, the rest around you: keep moving.
+      ctx.hazard(ctx.playerPos.x, ctx.playerPos.z, 2.2, 7, boss.hazard);
+      for (let i = 0; i < 2 + Math.min(3, Math.floor(f / 2)); i++) {
+        const ang = fx.range(0, Math.PI * 2);
+        const r = fx.range(3, 6);
+        ctx.hazard(ctx.playerPos.x + Math.sin(ang) * r, ctx.playerPos.z + Math.cos(ang) * r, 2, 7, boss.hazard);
+      }
+      a.patternIn = 2.4;
+      break;
+    }
   }
 }
 
@@ -1014,7 +1438,9 @@ function nearestHostile(ctx: GameCtx, a: Actor, range: number): Actor | null {
   let best: Actor | null = null;
   let bestD = range;
   for (const o of ctx.actors) {
-    if (!o.hostile || o.resolved || o.docile && !o.aggro) continue;
+    if (!o.hostile || o.resolved || (o.docile && !o.aggro)) continue;
+    // Helpers never start a boss fight you have not started yourself.
+    if (o.kind === 'boss' && !o.bossActive) continue;
     const d = Math.hypot(o.pos.x - a.pos.x, o.pos.z - a.pos.z);
     if (d < bestD && lineOfSight(ctx.level, a.pos.x, a.pos.z, o.pos.x, o.pos.z)) {
       best = o;
@@ -1025,6 +1451,17 @@ function nearestHostile(ctx: GameCtx, a: Actor, range: number): Actor | null {
 }
 
 const ALLY_BUBBLE: [string, string] = ['#003040', 'rgba(220,250,255,0.95)'];
+
+/** Follow the player: straight when you can, by the flow field when you cannot. */
+function follow(ctx: GameCtx, a: Actor, dx: number, dz: number, dist: number, stopAt: number, dt: number): void {
+  if (dist > stopAt) {
+    if (approach(ctx, a, dx, dz, tmp2)) moveActor(ctx, a, tmp2.x, tmp2.z, a.speed * (dist > 8 ? 1.6 : 1), dt);
+    else moveActor(ctx, a, 0, 0, 0, dt);
+  } else {
+    moveActor(ctx, a, 0, 0, 0, dt);
+  }
+  if (dist > 30) a.pos.set(ctx.playerPos.x + 1, 0, ctx.playerPos.z + 1);
+}
 
 function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
   const dx = ctx.playerPos.x - a.pos.x;
@@ -1039,8 +1476,8 @@ function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
       say(a, fx.pick(HEALER_BARKS), 3, '#5a0040', 'rgba(255,230,245,0.95)');
       ctx.healPlayer(14 * (1 + kitchen / 150), a.name);
     }
-    if (dist < 10 && dist > 2.5 && kitchen > -40) {
-      moveActor(ctx, a, dx, dz, a.speed, dt);
+    if (dist < 10 && dist > 2.5 && kitchen > -40 && approach(ctx, a, dx, dz, tmp2)) {
+      moveActor(ctx, a, tmp2.x, tmp2.z, a.speed, dt);
     } else {
       if (a.wanderTarget === null || fx.chance(dt * 0.25)) {
         a.wanderTarget = new THREE.Vector3(a.pos.x + fx.range(-3, 3), 0, a.pos.z + fx.range(-3, 3));
@@ -1060,7 +1497,7 @@ function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
 
   if (!a.recruited) {
     a.barkIn -= dt;
-    if (dist < 5 && a.barkIn <= 0) {
+    if (dist < 5 && a.barkIn <= 0 && a.npcId === null) {
       a.barkIn = 8;
       say(a, a.role === 'intern' ? 'Is there anything I can do? Please?' : a.role === 'security' ? 'Need a hand? Press E.' : 'Need backup? Press E.', 3, ...ALLY_BUBBLE);
     }
@@ -1068,17 +1505,14 @@ function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
     if (dist < 8) a.yaw = Math.atan2(dx, dz);
     return;
   }
-  const sees = lineOfSight(ctx.level, a.pos.x, a.pos.z, ctx.playerPos.x, ctx.playerPos.z);
-  if (dist > 3) {
-    if (sees) moveActor(ctx, a, dx, dz, a.speed * (dist > 8 ? 1.6 : 1), dt);
-    else if (navDir(ctx, a, tmp2)) moveActor(ctx, a, tmp2.x, tmp2.z, a.speed * 1.4, dt);
-    else moveActor(ctx, a, 0, 0, 0, dt);
-  } else {
-    moveActor(ctx, a, 0, 0, 0, dt);
-  }
-  if (dist > 30) a.pos.set(ctx.playerPos.x + 1, 0, ctx.playerPos.z + 1);
+
   a.cooldown -= dt;
-  const target = nearestHostile(ctx, a, 14);
+  if (a.role === 'dog') {
+    updateDog(ctx, a, dt, dx, dz, dist);
+    return;
+  }
+  follow(ctx, a, dx, dz, dist, 3, dt);
+  const target = a.npcId === 'josh' ? null : nearestHostile(ctx, a, 14);
   if (target !== null) {
     a.yaw = Math.atan2(target.pos.x - a.pos.x, target.pos.z - a.pos.z);
     if (a.cooldown <= 0) {
@@ -1108,7 +1542,7 @@ function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
   } else if (dist < 6) {
     a.yaw = Math.atan2(dx, dz);
   }
-  if (a.role === 'intern') {
+  if (a.role === 'intern' && a.npcId === null) {
     a.healIn -= dt;
     if (a.healIn <= 0) {
       a.healIn = 30;
@@ -1123,18 +1557,55 @@ function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
   }
 }
 
+/** Musti: runs down the nearest trouble, bites it, and comes back for praise. */
+function updateDog(ctx: GameCtx, a: Actor, dt: number, dx: number, dz: number, dist: number): void {
+  const target = dist < 18 ? nearestHostile(ctx, a, 10) : null;
+  if (target === null) {
+    follow(ctx, a, dx, dz, dist, 2.2, dt);
+    if (dist < 5) a.yaw = Math.atan2(dx, dz);
+    a.barkIn -= dt;
+    if (a.barkIn <= 0 && dist < 6) {
+      a.barkIn = fx.range(14, 24);
+      say(a, fx.pick(['Hau!', 'Wuf.', '*sniffs your pocket for makkara*', '*wags*']), 2, ...ALLY_BUBBLE);
+    }
+    return;
+  }
+  const tx = target.pos.x - a.pos.x;
+  const tz = target.pos.z - a.pos.z;
+  const td = Math.hypot(tx, tz);
+  if (td > target.radius + 0.8) {
+    if (walkClear(ctx.level, a.pos.x, a.pos.z, target.pos.x, target.pos.z)) moveActor(ctx, a, tx, tz, a.speed, dt);
+    else follow(ctx, a, dx, dz, dist, 2.2, dt);
+  } else {
+    moveActor(ctx, a, 0, 0, 0, dt);
+  }
+  a.yaw = Math.atan2(tx, tz);
+  if (td < target.radius + 1.1 && a.cooldown <= 0) {
+    a.cooldown = 1.0;
+    a.attackAnim = 1;
+    const scale = ctx.helperDamageMult() * (1 + ctx.floor * 0.3) * ctx.difficulty;
+    hurtActor(ctx, target, 11 * scale, new THREE.Vector3(tx, 0, tz).normalize().multiplyScalar(2));
+    // Managers especially hate being barked at: they lose their train of thought.
+    if (target.kind === 'manager') target.summonIn += 3;
+    if (fx.chance(0.2)) say(a, 'GRRR-WUF!', 1.5, ...ALLY_BUBBLE);
+  }
+}
+
 export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vector3 | null): void {
   if (a.resolved || !a.hostile) return;
   a.hp -= dmg;
   a.flash = 1;
-  if (!a.aggro) {
+  if (a.kind === 'boss' && !a.bossActive) {
+    // Hitting a boss starts the fight properly, wherever you hit it from.
+    startBoss(ctx, a);
+  } else if (!a.aggro) {
     a.aggro = true;
     ctx.noticed(a);
   }
   a.docile = false;
-  if (knock !== null && a.kind !== 'boss') a.push.add(knock);
+  if (knock !== null && a.kind !== 'boss' && a.kind !== 'turret') a.push.add(knock);
   a.hpBar.visible = true;
   a.hpFill.scale.x = Math.max(0.001, a.hp / a.maxHp);
   a.hpFill.position.x = -(1 - a.hpFill.scale.x) / 2;
-  ctx.floatText(new THREE.Vector3(a.pos.x, (a.kind === 'boss' ? 4 : 2.2) + fx.range(0, 0.4), a.pos.z), `${Math.round(dmg)}`, '#ffe066');
+  ctx.floatText(new THREE.Vector3(a.pos.x, (a.kind === 'boss' ? 4 : 2.2) + fx.range(0, 0.4), a.pos.z), `${Math.round(dmg)}`, a.shielded ? '#8fd0ff' : '#ffe066');
 }

@@ -71,6 +71,9 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: 'mokki', name: 'The Farm', desc: 'Buy five mökki upgrades.' },
   { id: 'sober', name: 'Dry January', desc: 'Resolve a boss with zero drinks on the floor.' },
   { id: 'ending', name: 'Clocked Out', desc: 'Reach an ending.' },
+  { id: 'ultra', name: 'The King', desc: 'Drink a White Monster.' },
+  { id: 'elite', name: 'Senior Stakeholder', desc: 'Resolve an elite.' },
+  { id: 'parry', name: 'Per My Last Email', desc: 'Parry ten attacks.' },
 ];
 
 export interface TipDef {
@@ -97,4 +100,7 @@ export const TIPS: Record<string, string> = {
   quest: 'Somebody with a "?" over their head has a job for you. Quests are in the Journal (at any computer) and on the compass.',
   loot: 'Loot has rarity: green Fine, blue Rare, orange Legendary. Equip it from your backpack (Tab); sell spares at Internal IT.',
   rest: 'Resting in the office costs an hour of SLA time, and somebody might find you napping.',
+  caffeine: 'Caffeine is the second tightrope. Alert and WIRED (the green zone) make you faster; past it come the jitters and palpitations, and every big high ends in a crash. Tolerance builds up over the week.',
+  elite: 'An elite (★): tougher, with a trick of its own, and much better loot.',
+  block: 'Hold the right mouse button to block (frontal hits, costs energy). Block just as a hit lands to PARRY it and stagger them. Tap it to shove.',
 };

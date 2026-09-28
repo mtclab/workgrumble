@@ -56,7 +56,12 @@ export type InteractKind =
   | 'grill'
   | 'stash'
   | 'car'
-  | 'runestone';
+  | 'runestone'
+  | 'board'
+  | 'dock'
+  | 'patch'
+  | 'palju'
+  | 'bookshelf';
 
 export interface Interactable {
   readonly kind: InteractKind;
@@ -71,7 +76,9 @@ export interface Interactable {
   lock: number;
 }
 
-export type SpawnKind = 'user' | 'caller' | 'customer' | 'manager' | 'healer' | 'helper' | 'reply' | 'jam' | 'npc' | 'tonttu' | 'mosquito';
+export type SpawnKind =
+  | 'user' | 'caller' | 'customer' | 'manager' | 'healer' | 'helper' | 'reply' | 'jam' | 'npc' | 'tonttu' | 'mosquito'
+  | 'consultant' | 'shadowit' | 'vendor' | 'chatbot';
 
 export interface Spawn {
   readonly kind: SpawnKind;
@@ -240,6 +247,32 @@ function paint<T>(fn: () => T): T | null {
   return headless ? null : fn();
 }
 
+/**
+ * Who you meet in an ordinary room. The building gets stranger as you go up:
+ * the chatbot from the second floor, vendors and consultants from the third,
+ * Shadow IT from the fourth.
+ */
+function rollHostile(r: Rng, floorIndex: number): SpawnKind {
+  const roll = r.next();
+  if (floorIndex >= 1 && roll < 0.07) return 'chatbot';
+  if (floorIndex >= 2 && roll < 0.13) return 'vendor';
+  if (floorIndex >= 2 && roll < 0.19) return 'consultant';
+  if (floorIndex >= 3 && roll < 0.25) return 'shadowit';
+  const rest = r.next();
+  return rest < 0.45 ? 'user' : rest < 0.7 ? 'caller' : rest < 0.85 + floorIndex * 0.02 ? 'customer' : rest < 0.95 ? 'reply' : 'manager';
+}
+
+/** A walkable, empty cell in a room (for quest items and people placed after generation). */
+export function freeSpotIn(level: Level, room: Room, r: Rng, taken: ReadonlySet<number> = new Set()): { x: number; z: number; cell: number } | null {
+  for (let t = 0; t < 80; t++) {
+    const x = r.int(room.x + 1, Math.max(room.x + 1, room.x + room.w - 2));
+    const y = r.int(room.y + 1, Math.max(room.y + 1, room.y + room.h - 2));
+    const i = y * level.w + x;
+    if (level.floor[i] === 1 && level.solid[i] === 0 && !taken.has(i)) return { x: cellCenter(x), z: cellCenter(y), cell: i };
+  }
+  return null;
+}
+
 export function generateLevel(floorIndex: number, theme: Theme, seed: number, noTextures = false): Level {
   headless = noTextures;
   const r = new Rng(seed);
@@ -334,6 +367,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   let bossIdx = 1;
   let bestD = -1;
   for (const rm of rooms) {
+    if (rm.id === 0) continue;
     const [x, y] = centre(rm);
     const d = Math.abs(x - lx) + Math.abs(y - ly);
     if (d > bestD && rm.w >= 7 && rm.h >= 7) {
@@ -343,6 +377,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   }
   if (bestD < 0) {
     for (const rm of rooms) {
+      if (rm.id === 0) continue;
       const [x, y] = centre(rm);
       const d = Math.abs(x - lx) + Math.abs(y - ly);
       if (d > bestD) {
@@ -430,8 +465,10 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     const cx = cellCenter(x);
     const cz = cellCenter(y);
     addBox(builder, 'desk', cx, 0.74, cz, 1.8, 0.08, 1.1, facing);
-    addBox(builder, 'metal', cx - 0.8, 0.36, cz, 0.06, 0.72, 1.0, facing);
-    addBox(builder, 'metal', cx + 0.8, 0.36, cz, 0.06, 0.72, 1.0, facing);
+    // Legs sit at the desk's local ends, so rotate the offset with it.
+    for (const side of [-1, 1]) {
+      addBox(builder, 'metal', cx + side * 0.8 * Math.cos(facing), 0.36, cz - side * 0.8 * Math.sin(facing), 0.06, 0.72, 1.0, facing);
+    }
     const mon = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.62, 0.5), new THREE.MeshLambertMaterial({ color: 0xd8d2bf }));
     body.position.y = 1.12;
@@ -729,56 +766,134 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       for (let i = 0; i < extra; i++) {
         const s = interiorSpot(rm);
         if (s === null) continue;
-        const roll = r.next();
-        const kind: SpawnKind = roll < 0.45 ? 'user' : roll < 0.7 ? 'caller' : roll < 0.85 + floorIndex * 0.02 ? 'customer' : roll < 0.95 ? 'reply' : 'manager';
-        spawns.push({ kind, x: cellCenter(s[0]), z: cellCenter(s[1]), room: rm.id });
+        spawns.push({ kind: rollHostile(r, floorIndex), x: cellCenter(s[0]), z: cellCenter(s[1]), room: rm.id });
       }
     }
   }
 
-  // Elevators: arrival in the lobby, exit in the boss room.
+  // Elevators: arrival in the lobby, exit in the boss room. The doors go on a
+  // stretch of wall with no corridor opening next to it.
   const lobby = rooms[0] as Room;
   const start = { x: cellCenter(Math.floor(lobby.x + lobby.w / 2)), z: cellCenter(Math.floor(lobby.y + lobby.h / 2)) };
   const bossRoom = rooms[bossIdx] as Room;
   const bossSpawn = { x: cellCenter(Math.floor(bossRoom.x + bossRoom.w / 2)), z: cellCenter(Math.floor(bossRoom.y + bossRoom.h / 2)) };
+  const liftSpot = (rm: Room, first: 'top' | 'bottom'): { x: number; y: number; px: number; pz: number; rot: number } => {
+    const sides = first === 'bottom' ? ['bottom', 'top', 'left', 'right'] as const : ['top', 'bottom', 'left', 'right'] as const;
+    const mid = (a: number, n: number): number[] => {
+      const out: number[] = [];
+      const c = Math.floor(a + n / 2);
+      for (let k = 0; k < n; k++) {
+        const v = c + (k % 2 === 0 ? k / 2 : -(k + 1) / 2);
+        if (v > a && v < a + n - 1) out.push(v);
+      }
+      return out;
+    };
+    for (const side of sides) {
+      const cells: [number, number][] = side === 'top' || side === 'bottom'
+        ? mid(rm.x, rm.w).map((x) => [x, side === 'top' ? rm.y : rm.y + rm.h - 1])
+        : mid(rm.y, rm.h).map((y) => [side === 'left' ? rm.x : rm.x + rm.w - 1, y]);
+      for (const [x, y] of cells) {
+        if (!free(x, y) || nearDoor(x, y, rm)) continue;
+        const cx = cellCenter(x);
+        const cz = cellCenter(y);
+        switch (side) {
+          case 'top': return { x, y, px: cx, pz: cz - TILE / 2 + 0.15, rot: 0 };
+          case 'bottom': return { x, y, px: cx, pz: cz + TILE / 2 - 0.15, rot: Math.PI };
+          case 'left': return { x, y, px: cx - TILE / 2 + 0.15, pz: cz, rot: Math.PI / 2 };
+          default: return { x, y, px: cx + TILE / 2 - 0.15, pz: cz, rot: -Math.PI / 2 };
+        }
+      }
+    }
+    const x = Math.floor(rm.x + rm.w / 2);
+    const y = rm.y + rm.h - 1;
+    return { x, y, px: cellCenter(x), pz: cellCenter(y) + TILE / 2 - 0.15, rot: Math.PI };
+  };
   {
-    const ex = Math.floor(bossRoom.x + bossRoom.w / 2);
-    const ey = bossRoom.y + bossRoom.h - 1;
+    const exit = liftSpot(bossRoom, 'bottom');
     const doors = elevatorMesh();
-    doors.position.set(cellCenter(ex), 0, cellCenter(ey) + TILE / 2 - 0.15);
-    doors.rotation.y = Math.PI;
+    doors.position.set(exit.px, 0, exit.pz);
+    doors.rotation.y = exit.rot;
     group.add(doors);
-    addInteract('elevator', ex, ey, bossRoom.id, doors);
+    addInteract('elevator', exit.x, exit.y, bossRoom.id, doors);
+    const arrival = liftSpot(lobby, 'top');
     const arrive = elevatorMesh();
-    arrive.position.set(cellCenter(Math.floor(lobby.x + lobby.w / 2)), 0, cellCenter(lobby.y) - TILE / 2 + 0.15);
+    arrive.position.set(arrival.px, 0, arrival.pz);
+    arrive.rotation.y = arrival.rot;
     group.add(arrive);
   }
 
   // Safety pass: props must never seal off part of the floor. Flood from the
-  // lobby; any prop cell sitting between reached and unreached floor is made
-  // passable (you squeeze past the desk) until everything connects.
-  for (let guard = 0; guard < 200; guard++) {
-    const reached = flowField({ w, h, solid } as unknown as Level, start.x, start.z, 32000);
-    let fixed = false;
-    for (let i = 0; i < w * h && !fixed; i++) {
-      if (floor[i] !== 1 || solid[i] !== 1) continue;
-      const x = i % w;
-      const y = (i - x) / w;
-      let touchesReached = false;
-      let touchesLost = false;
-      for (const [ox, oy] of NEIGHBOURS4) {
-        const n = (y + oy) * w + (x + ox);
-        if (floor[n] !== 1 || solid[n] === 1) continue;
-        if (reached[n] !== -1) touchesReached = true;
-        else touchesLost = true;
-      }
-      if (touchesReached && touchesLost) {
-        solid[i] = 0;
-        opaque[i] = 0;
-        fixed = true;
+  // lobby. An empty pocket nobody needs is simply filled in. A pocket with
+  // somebody in it gets a way in: squeeze past a desk if there is one, and
+  // only if the one thing in the way is a machine (a fridge, a locker, a
+  // terminal), move the people out instead of making the machine a ghost.
+  const stub = { w, h, solid } as unknown as Level;
+  const machineCells = new Set(interactables.map((it) => toCell(it.z) * w + toCell(it.x)));
+  const cellOf = (s: Spawn): number => toCell(s.z) * w + toCell(s.x);
+  for (let guard = 0; guard < 400; guard++) {
+    const reached = flowField(stub, start.x, start.z, 32000);
+    let lost = -1;
+    for (let i = 0; i < w * h; i++) {
+      if (floor[i] === 1 && solid[i] === 0 && reached[i] === -1) {
+        lost = i;
+        break;
       }
     }
-    if (!fixed) break;
+    if (lost < 0) break;
+    const pocket = new Set<number>([lost]);
+    const stack = [lost];
+    while (stack.length > 0) {
+      const cur = stack.pop() as number;
+      const x = cur % w;
+      const y = (cur - x) / w;
+      for (const [ox, oy] of NEIGHBOURS4) {
+        const n = (y + oy) * w + (x + ox);
+        if (floor[n] === 1 && solid[n] === 0 && !pocket.has(n)) {
+          pocket.add(n);
+          stack.push(n);
+        }
+      }
+    }
+    const inside = spawns.map((sp, k) => (pocket.has(cellOf(sp)) ? k : -1)).filter((k) => k >= 0);
+    if (inside.length === 0) {
+      for (const i of pocket) solid[i] = 1;
+      continue;
+    }
+    let bridge = -1;
+    for (const i of pocket) {
+      const x = i % w;
+      const y = (i - x) / w;
+      for (const [ox, oy] of NEIGHBOURS4) {
+        const n = (y + oy) * w + (x + ox);
+        if (floor[n] !== 1 || solid[n] !== 1 || machineCells.has(n)) continue;
+        const nx = n % w;
+        const ny = (n - nx) / w;
+        if (NEIGHBOURS4.some(([ax, ay]) => reached[(ny + ay) * w + (nx + ax)] !== -1 && reached[(ny + ay) * w + (nx + ax)] !== undefined)) {
+          bridge = n;
+          break;
+        }
+      }
+      if (bridge >= 0) break;
+    }
+    if (bridge >= 0) {
+      solid[bridge] = 0;
+      opaque[bridge] = 0;
+      continue;
+    }
+    // Only a machine in the way: rehome the people and fill the pocket.
+    for (const k of inside) {
+      const sp = spawns[k] as Spawn;
+      const rm = rooms[sp.room] ?? lobby;
+      let moved: Spawn | null = null;
+      for (let t = 0; t < 60 && moved === null; t++) {
+        const x = r.int(rm.x, rm.x + rm.w - 1);
+        const y = r.int(rm.y, rm.y + rm.h - 1);
+        const i = y * w + x;
+        if (floor[i] === 1 && solid[i] === 0 && reached[i] !== -1) moved = { ...sp, x: cellCenter(x), z: cellCenter(y) };
+      }
+      spawns[k] = moved ?? { ...sp, x: start.x + TILE, z: start.z, room: 0 };
+    }
+    for (const i of pocket) solid[i] = 1;
   }
 
   // ---- Static geometry ----

@@ -101,3 +101,45 @@ export const MANAGER_NAMES = [
   'Derek (Team Lead)', 'Tristan (Delivery Mgr)', 'Clive (Ops Mgr)',
   'Imogen (Scrum Master)', 'Rupert (Programme Mgr)', 'Fiona (Head of Process)',
 ];
+
+export const CONSULTANT_BARKS = [
+  'Let us take a step back and look at the big picture.',
+  'Our framework says you are 40% overstaffed.',
+  'I have a slide on this.',
+  'Have you considered offshoring your feelings?',
+  'Synergy. Leverage. Next slide.',
+  'That will be a change request.',
+];
+
+export const SHADOWIT_BARKS = [
+  'It is not a server, it is a "personal productivity node".',
+  'I put the database on my own credit card. You are welcome.',
+  'Change control is for people with time.',
+  'It worked on my laptop.',
+  'The firewall was in the way, so I moved it.',
+];
+
+export const VENDOR_BARKS = [
+  'Have you got five minutes?',
+  'Free trial! Free trial! Only needs your card.',
+  'I will just leave a brochure. And an invoice.',
+  'Our AI is 30% more AI than the competition.',
+  'Let us circle back. I have circled back.',
+];
+
+export const CHATBOT_BARKS = [
+  'Did you mean: "Have you tried turning it off and on again?"',
+  'I am sorry, I did not understand that. Please rephrase.',
+  'Here are 14 articles that might help!',
+  'Was this answer helpful? 👍 👎',
+  'I have escalated your query to: me.',
+  'Please hold. You are caller number 999.',
+];
+
+export const ELITE_LINES = [
+  'I have been here longer than the building.',
+  'Per my last email.',
+  'I want to speak to your MANAGER.',
+  'I am CCing your whole department.',
+  'This is a VIP ticket. I am the VIP.',
+];

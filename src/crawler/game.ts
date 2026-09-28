@@ -4,9 +4,27 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { sfx } from './audio';
-import { showCharGen } from './chargen';
-import { DEATH_LINES, RESOLVED_LINES } from './content/lines';
+import { caffeineBand, CAFFEINE_EFFECTS, effectiveCaffeine } from './caffeine';
+import {
+  fire,
+  hurtPlayer,
+  playerAttackInput,
+  resolveActor,
+  updateFx,
+  updateHazards,
+  updatePickups,
+  updateProjectiles,
+  type FxMesh,
+  type Floater,
+  type Hazard,
+  type Pickup,
+  type Projectile,
+  floatText,
+  spawnHazard,
+} from './combat';
+import { Compass, type CompassMarker } from './compass';
 import { TICKETS } from './content/tickets';
+import { breach, type FixEntry } from './desk';
 import { type DialogueNode, DialogueUI, LockpickUI, said } from './dialogue';
 import { disposeTree } from './dispose';
 import {
@@ -14,138 +32,101 @@ import {
   type ActorKind,
   createActor,
   disposeActor,
+  ELITE_AFFIXES,
+  type EliteAffix,
   type GameCtx,
-  hurtActor,
+  type HazardKind,
   type ProjectileKind,
   type ProjectileSpec,
   say,
   setMarker,
   type SpawnOpts,
   updateActor,
+  updateAuras,
 } from './entities';
 import { Hud, type HudFrame } from './hud';
 import { Input } from './input';
-import {
-  ALL_ITEMS,
-  AMMO,
-  type AmmoKind,
-  CONSUMABLES,
-  DRINKS,
-  GEAR,
-  itemById,
-  PERKS,
-  RUNES,
-  type WeaponDef,
-} from './items';
-import {
-  flowField,
-  generateLevel,
-  type Interactable,
-  isSolidAt,
-  type Level,
-  lineOfSight,
-  TILE,
-  toCell,
-  WALL_H,
-} from './level';
-import { castChance, spellById } from './magic';
+import { findPrompt, interact } from './interact';
+import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell } from './level';
+import { itemById } from './items';
+import { spellById } from './magic';
+import { FishingUI } from './minigames';
 import { generateMokki } from './mokki';
 import { type OsHost, Os } from './os';
 import { Player } from './player';
+import {
+  evidenceHeld,
+  placeQuestContent,
+  questEvent,
+  questLines,
+  questMarkers,
+} from './questing';
+import { type QuestEvent, type QuestHost, type QuestState } from './quests';
 import { fx, Rng } from './rng';
 import {
+  type ArchPath,
   type Attribute,
   BAND_EFFECTS,
   bandFor,
-  bacDecay,
   checkChance,
   difficultyFor,
   type Domain,
-  drinkBac,
   endingFor,
   type Faction,
   FACTION_INFO,
   promille,
+  RUNG_COUNT,
   salaryFor,
   type Skill,
   SKILL_INFO,
   titleFor,
   type Track,
+  WORKPLACES,
 } from './rpg';
+import { clearAllSlots, latestSlot, readSlot, type SlotId, writeSlot } from './saves';
+import { loadSettings, type Settings, saveSettings } from './settings';
+import * as screens from './screens';
+import { castOdds, castSpell, cycleSpell, domainAbility, domainCooldown } from './spells';
 import {
   adjustStanding,
   applyLevelUp,
   type CharacterSetup,
-  clearSave,
+  clearLegacy,
   derive,
   type Derived,
+  freshFloorState,
+  freshWeekend,
   levelUpReady,
-  loadSave,
+  loadLegacy,
   newSave,
+  normalizeSave,
   perk,
   type QueuedTicket,
-  type Quest,
+  raiseSkill,
   type SaveState,
   skill,
   useSkill,
-  writeSave,
 } from './state';
-import {
-  disciplinary,
-  levelUpNode,
-  performanceReview,
-  type StoryHost,
-  storyNpcFor,
-  talkHealer,
-  talkHelper,
-  talkHostile,
-  talkManager,
-  talkStory,
-  talkTonttu,
-} from './story';
-import { disposeSprite, textSprite, THEMES } from './textures';
+import { disciplinary, levelUpNode, performanceReview, type StoryHost, storyNpcFor } from './story';
+import { THEMES } from './textures';
+import { ACHIEVEMENTS, TIPS } from './upgrades';
+import * as host from './hosts';
+import { tickCaffeine, tickVices } from './vices';
 
-interface Projectile {
-  readonly kind: ProjectileKind;
-  readonly mesh: THREE.Object3D;
-  readonly vel: THREE.Vector3;
-  readonly damage: number;
-  readonly hostile: boolean;
-  readonly owner: Actor | null;
-  ttl: number;
-  readonly splash: number;
-  readonly gravity: number;
-  readonly hitIds: Set<number>;
-}
+export type Screen = 'title' | 'chargen' | 'play' | 'os' | 'dialogue' | 'paused' | 'dead' | 'ending' | 'transition' | 'minigame';
 
-interface Pickup {
-  readonly mesh: THREE.Object3D;
-  readonly kind: 'ammo' | 'item';
-  readonly id: string;
-  readonly amount: number;
-  t: number;
-}
+export type PromptTarget = { kind: 'interact'; it: Interactable } | { kind: 'actor'; a: Actor } | null;
 
-interface FxMesh {
-  readonly mesh: THREE.Mesh;
-  ttl: number;
-  readonly life: number;
-  readonly grow: number;
-  readonly rise: number;
-}
+/** The last floor of the story. Past it, the game goes on as Overtime. */
+export const FINAL_FLOOR = 4;
 
-interface Floater {
-  readonly sprite: THREE.Sprite;
-  ttl: number;
-}
+/** Seconds of LMB hold that make a melee swing a power attack. */
+export const POWER_TIME = 0.65;
 
-type Screen = 'title' | 'chargen' | 'play' | 'os' | 'dialogue' | 'paused' | 'dead' | 'ending' | 'transition';
-
-const FINAL_FLOOR = 4;
-
-export class Game implements GameCtx, OsHost, StoryHost {
+export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   readonly renderer: THREE.WebGLRenderer;
   readonly composer: EffectComposer;
+  readonly bloom: UnrealBloomPass;
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
   readonly input: Input;
@@ -153,89 +134,105 @@ export class Game implements GameCtx, OsHost, StoryHost {
   readonly os: Os;
   readonly dialogue: DialogueUI;
   readonly lockpick: LockpickUI;
+  readonly fishing: FishingUI;
+  readonly compass: Compass;
   readonly player: Player;
+  readonly overlay: HTMLDivElement;
+  readonly mount: HTMLElement;
+  readonly lights: THREE.PointLight[] = [];
+  readonly hemi: THREE.HemisphereLight;
+  readonly sun: THREE.DirectionalLight;
   save: SaveState;
+  settings: Settings;
   level!: Level;
   actors: Actor[] = [];
   projectiles: Projectile[] = [];
   pickups: Pickup[] = [];
   fxMeshes: FxMesh[] = [];
   floaters: Floater[] = [];
-  private readonly lights: THREE.PointLight[] = [];
-  private readonly hemi: THREE.HemisphereLight;
-  private readonly sun: THREE.DirectionalLight;
-  private readonly overlay: HTMLDivElement;
-  private readonly mount: HTMLElement;
+  hazards: Hazard[] = [];
   field: Int16Array = new Int16Array(0);
-  private fieldIn = 0;
-  private seenIn = 0;
-  private lightIn = 0;
-  private saveIn = 20;
+  fieldIn = 0;
+  seenIn = 0;
+  lightIn = 0;
+  saveIn = 60;
   time = 0;
   screen: Screen = 'title';
-  private attackCd = 0;
-  private shoveCd = 0;
+  // Combat.
+  attackCd = 0;
+  shoveCd = 0;
+  /** Seconds LMB has been held since the last swing (melee power attacks). */
+  chargeT = 0;
+  charging = false;
+  blocking = false;
+  /** Seconds RMB has been held: a tap shoves, a hold blocks, an early hold parries. */
+  rmbT = 0;
+  hitStop = 0;
   rootT = 0;
-  private rootReason = '';
-  private coffeeT = 0;
-  private wiredT = 0;
-  private crashT = 0;
-  private sisuT = 0;
-  private invisT = 0;
-  private saunaT = 0;
-  private saunaBuff = false;
-  private abilityCd = 0;
-  private auraSlow = 0;
-  private athleticsT = 0;
-  private stealthT = 0;
-  private stumbleT = 3;
-  private withdrawalT = 0;
-  private caughtCd = 0;
-  private faceMood: 'normal' | 'hurt' | 'grin' | 'left' | 'right' = 'normal';
-  private faceT = 0;
-  private shakeAmt = 0;
+  rootReason = '';
+  sisuT = 0;
+  invisT = 0;
+  saunaT = 0;
+  abilityCd = 0;
+  auraSlow = 0;
+  hazardSlow = 0;
+  athleticsT = 0;
+  stealthT = 0;
+  stumbleT = 3;
+  withdrawalT = 0;
+  jitterT = 4;
+  caughtCd = 0;
+  stillT = 0;
+  faceMood: 'normal' | 'hurt' | 'grin' | 'left' | 'right' = 'normal';
+  faceT = 0;
+  shakeAmt = 0;
   boss: Actor | null = null;
+  bossMult = 1;
   elevatorOpen = false;
-  private derivedCache: Derived;
-  private currentTerminal: Interactable | null = null;
-  private slackedTerminals = new Set<number>();
-  private caughtPending = false;
-  private pendingHearing = false;
-  private fixCache = new WeakMap<QueuedTicket, { opts: string[]; hint: string | null }>();
-  private prompt = '';
-  private promptTarget: { kind: 'interact'; it: Interactable } | { kind: 'actor'; a: Actor } | null = null;
-  private stepIn = 0;
-  private last = performance.now();
-  private readonly projGeo = new Map<ProjectileKind, [THREE.BufferGeometry, THREE.Material]>();
-  private levelRng = new Rng(1);
-  private mark: THREE.Vector3 | null = null;
-  private history: { x: number; z: number; sanity: number }[] = [];
-  private historyIn = 0;
-  private weekendDone = { sauna: false, grill: false, lake: false };
-  private afterDialogue: (() => void) | null = null;
+  derivedCache: Derived;
+  currentTerminal: Interactable | null = null;
+  slackedTerminals = new Set<number>();
+  caughtPending = false;
+  fixCache = new WeakMap<QueuedTicket, FixEntry>();
+  prompt = '';
+  promptTarget: PromptTarget = null;
+  stepIn = 0;
+  last = performance.now();
+  readonly projGeo = new Map<ProjectileKind, [THREE.BufferGeometry, THREE.Material]>();
+  levelRng = new Rng(1);
+  lootRng = new Rng(2);
+  mark: THREE.Vector3 | null = null;
+  history: { x: number; z: number; sanity: number }[] = [];
+  historyIn = 0;
+  afterDialogue: (() => void) | null = null;
+  /** Locker id → the quest item waiting inside it. */
+  readonly lockerItems = new Map<number, string>();
+  markers: CompassMarker[] = [];
+  markersIn = 0;
 
   constructor(mount: HTMLElement) {
     this.mount = mount;
+    this.settings = loadSettings();
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     mount.append(this.renderer.domElement);
     this.renderer.domElement.className = 'game-canvas';
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 160);
+    this.camera = new THREE.PerspectiveCamera(this.settings.fov, window.innerWidth / window.innerHeight, 0.05, 160);
     this.scene.add(this.camera);
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.45, 0.55, 0.86));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.45, 0.55, 0.86);
+    this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x333333, 1.2);
     this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xffc890, 0);
     this.sun.position.set(-30, 40, 60);
     this.scene.add(this.sun);
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       const l = new THREE.PointLight(0xffffff, 14, 16, 1.4);
       this.scene.add(l);
       this.lights.push(l);
@@ -246,45 +243,55 @@ export class Game implements GameCtx, OsHost, StoryHost {
 
     this.input = new Input(this.renderer.domElement);
     this.hud = new Hud(mount);
+    this.compass = new Compass(mount);
     this.os = new Os(mount, this);
     this.dialogue = new DialogueUI(mount);
     this.lockpick = new LockpickUI(mount);
+    this.fishing = new FishingUI(mount);
     this.player = new Player(this.camera, this.scene);
     this.overlay = document.createElement('div');
     this.overlay.className = 'screen';
     mount.append(this.overlay);
 
-    this.save = loadSave() ?? newSave(Date.now() >>> 0);
+    this.save = this.loadLatest() ?? newSave(Date.now() >>> 0);
     this.derivedCache = derive(this.save);
-    sfx.setVolume(this.save.volume);
-    this.player.view = this.save.view;
+    this.applySettings();
 
-    window.addEventListener('resize', () => {
-      this.camera.aspect = window.innerWidth / window.innerHeight;
-      this.camera.updateProjectionMatrix();
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
-      this.composer.setSize(window.innerWidth, window.innerHeight);
-    });
+    window.addEventListener('resize', () => this.resize());
     document.addEventListener('pointerlockchange', () => {
-      if (document.pointerLockElement === null && this.screen === 'play') this.showPause();
+      if (document.pointerLockElement === null && this.screen === 'play') screens.showPause(this);
       // A lock request that lands after a dialogue or menu opened would trap
       // the cursor behind it: give it straight back.
       if (document.pointerLockElement !== null && this.screen !== 'play') this.input.releaseLock();
     });
+    // Quicksave and quickload work from anywhere the game is running.
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'F5' || e.code === 'F9') e.preventDefault();
+      if (e.repeat) return;
+      if (e.code === 'F5' && this.screen === 'play') this.quicksave();
+      if (e.code === 'F9' && (this.screen === 'play' || this.screen === 'paused')) this.quickload();
+    });
 
-    this.loadWorld();
-    this.showTitle();
+    this.loadWorld(true);
+    screens.showTitle(this);
     requestAnimationFrame(this.frame);
   }
 
-  // ================================================================== world
+  private resize(): void {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.composer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  // ================================================================== GameCtx
 
   get floor(): number {
     return this.save.floor;
   }
 
   get difficulty(): number {
-    return difficultyFor(this.save.rung);
+    return difficultyFor(this.save.rung) * WORKPLACES[this.save.workplace].enemy;
   }
 
   get playerPos(): THREE.Vector3 {
@@ -312,7 +319,11 @@ export class Game implements GameCtx, OsHost, StoryHost {
   }
 
   get title(): string {
-    return titleFor(this.save.rung, this.save.domain, this.save.track);
+    return titleFor(this.save.rung, this.save.domain, this.save.track, this.save.arch);
+  }
+
+  get questLog(): QuestState[] {
+    return this.save.questLog;
   }
 
   floorName(): string {
@@ -322,7 +333,9 @@ export class Game implements GameCtx, OsHost, StoryHost {
     return n > FINAL_FLOOR ? `Overtime ${n - FINAL_FLOOR} - ${theme?.name ?? ''}` : `Floor ${n === 0 ? 'B1' : n} - ${theme?.name ?? ''}`;
   }
 
-  private clearWorld(): void {
+  // ================================================================== world
+
+  clearWorld(): void {
     for (const a of this.actors) disposeActor(this.scene, a);
     this.actors = [];
     for (const p of this.projectiles) this.scene.remove(p.mesh);
@@ -334,34 +347,56 @@ export class Game implements GameCtx, OsHost, StoryHost {
     this.pickups = [];
     for (const f of this.floaters) {
       this.scene.remove(f.sprite);
-      disposeSprite(f.sprite);
+      f.sprite.material.map?.dispose();
+      f.sprite.material.dispose();
     }
     this.floaters = [];
-    for (const f of this.fxMeshes) this.scene.remove(f.mesh);
+    for (const f of this.fxMeshes) {
+      this.scene.remove(f.mesh);
+      f.mesh.geometry.dispose();
+      (f.mesh.material as THREE.Material).dispose();
+    }
     this.fxMeshes = [];
+    for (const h of this.hazards) {
+      this.scene.remove(h.mesh);
+      h.mesh.geometry.dispose();
+      (h.mesh.material as THREE.Material).dispose();
+    }
+    this.hazards = [];
     if (this.level !== undefined) {
       this.scene.remove(this.level.group);
       disposeTree(this.level.group, true);
     }
+    this.lockerItems.clear();
     this.mark = null;
     this.history = [];
     this.boss = null;
+    this.rootT = 0;
+    this.chargeT = 0;
+    this.charging = false;
+    this.blocking = false;
   }
 
-  private loadWorld(): void {
-    if (this.save.location === 'mokki') this.loadMokki();
-    else this.loadFloor(this.save.floor, true);
+  loadWorld(fromSave: boolean): void {
+    if (this.save.location === 'mokki') this.loadMokki(fromSave);
+    else this.loadFloor(this.save.floor, fromSave);
   }
 
-  private loadFloor(n: number, fromSave: boolean): void {
+  loadFloor(n: number, fromSave: boolean): void {
     this.clearWorld();
     const s = this.save;
     s.floor = n;
     s.location = 'office';
+    if (!fromSave || s.floorState.floor !== n) {
+      s.floorState = freshFloorState(n);
+      s.queue = [];
+    }
+    const fs = s.floorState;
     const theme = THEMES[n % THEMES.length] ?? THEMES[0];
     if (theme === undefined) throw new Error('no theme');
     const seed = (s.seed + n * 977) >>> 0;
     this.levelRng = new Rng(seed ^ 0x5bd1e995);
+    this.lootRng = new Rng((seed ^ 0x2545f491) + s.week);
     this.level = generateLevel(n, theme, seed);
     this.scene.add(this.level.group);
     this.scene.fog = new THREE.Fog(theme.fog, 6, 42);
@@ -372,6 +407,8 @@ export class Game implements GameCtx, OsHost, StoryHost {
     this.sun.intensity = 0;
     this.player.outdoor = false;
     for (const l of this.lights) l.color.setHex(theme.light);
+    // Whatever you already used on this floor stays used after a reload.
+    for (const it of this.level.interactables) if (fs.used.includes(it.id)) it.used = true;
 
     const npc = storyNpcFor(n);
     for (const sp of this.level.spawns) {
@@ -380,88 +417,82 @@ export class Game implements GameCtx, OsHost, StoryHost {
       } else if (sp.kind === 'npc') {
         if (s.flags[`story_${npc.id}_${n}`] !== true) this.spawnAt('npc', sp.x, sp.z, sp.room, false, { npc });
       } else {
-        this.spawnAt(sp.kind, sp.x, sp.z, sp.room, false);
+        this.spawnAt(sp.kind, sp.x, sp.z, sp.room, false, { elite: this.rollElite(sp.kind) });
       }
     }
     const bossRoom = this.level.roomOf[toCell(this.level.bossSpawn.z) * this.level.w + toCell(this.level.bossSpawn.x)] ?? -1;
-    this.boss = this.spawnAt('boss', this.level.bossSpawn.x, this.level.bossSpawn.z, bossRoom, false);
-    if (this.boss !== null) {
-      let mult = 1;
-      if (s.flags.mokkiDeal === true && n === FINAL_FLOOR) mult *= 0.5;
-      if (s.flags.whistleblower === true && n % 5 === 3) mult *= 0.6;
-      if (this.boss.boss?.name === 'The Auditor') mult *= 1 + s.findings * 0.25;
-      this.boss.hp *= mult;
-      this.boss.maxHp *= mult;
+    this.elevatorOpen = fs.bossDone;
+    if (!fs.bossDone) {
+      this.boss = this.spawnAt('boss', this.level.bossSpawn.x, this.level.bossSpawn.z, bossRoom, false);
+      this.bossMult = 1;
+      this.rescaleBoss();
+      // Carrying the Phoenix file, the Auditor would rather talk.
+      if (this.boss !== null && this.boss.boss?.name === 'The Auditor' && evidenceHeld(this) >= 3 && s.flags.auditorFought !== true) this.boss.docile = true;
     }
-    this.elevatorOpen = false;
     this.slackedTerminals.clear();
-
     this.player.pos.set(this.level.start.x, 0, this.level.start.z);
     this.player.yaw = Math.PI;
     this.player.pitch = 0;
-    if (!fromSave) s.queue = [];
+
     s.quests = s.quests.filter((q) => q.kind !== 'boss' && q.kind !== 'printer' && q.kind !== 'deliver');
     delete s.consumables.laptop;
     const b = this.boss?.boss;
-    if (b !== undefined && b !== null) {
+    if (b !== undefined && b !== null && !fs.bossDone) {
       s.quests.unshift({
         id: s.nextQuestId++, kind: 'boss', title: `MAJOR INCIDENT: ${this.boss?.name ?? b.name}`,
         body: `${b.name} (${b.title}) is holding the corner office hostage. Resolve them to unlock the lift - and the weekend.`,
         from: 'The Service Desk', goal: 1, progress: 0, reward: 0, done: false,
       });
     }
-    this.consequencesOnArrival(n);
+    placeQuestContent(this);
+    this.spawnCompanions();
+    if (!fromSave) host.consequencesOnArrival(this, n);
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     this.refreshDerived();
     this.markSeen();
     this.updateLights(true);
     sfx.setBoss(false);
-    writeSave(s);
+    sfx.setAmbient('office');
+    if (!fromSave) this.autosave();
   }
 
-  /** Choices made on earlier floors come due here. */
-  private consequencesOnArrival(n: number): void {
+  /** Elites get commoner as you climb the building and the ladder. */
+  private rollElite(kind: ActorKind): EliteAffix | null {
+    if (kind === 'reply' || kind === 'mosquito' || kind === 'healer' || kind === 'helper' || kind === 'npc' || kind === 'tonttu') return null;
+    const chance = Math.min(0.2, 0.03 + this.save.floor * 0.015 + this.save.rung * 0.006);
+    return this.levelRng.chance(chance) ? this.levelRng.pick(ELITE_AFFIXES) : null;
+  }
+
+  /** Musti comes along, if you have a dog. */
+  spawnCompanions(): void {
+    if (!this.save.upgrades.includes('dog')) return;
+    const p = this.level.start;
+    this.spawnAt('helper', p.x + 1.2, p.z + 1.2, -1, false, { role: 'dog' });
+  }
+
+  /** Recompute the boss's strength when the reasons for it change (findings, deals). */
+  rescaleBoss(): void {
+    const a = this.boss;
+    if (a === null || a.resolved) return;
     const s = this.save;
-    const f = s.flags;
-    const near = (kind: ActorKind, count: number, name?: string): void => {
-      for (let i = 0; i < count; i++) {
-        const a = this.spawnAt(kind, this.level.start.x + fx.range(-6, 6), this.level.start.z + fx.range(3, 10), 0, false);
-        if (a !== null && name !== undefined) a.name = name;
-      }
-    };
-    if (f.mfaSkipped === true && f.mfaFallout !== true && n >= 2) {
-      f.mfaFallout = true;
-      near('reply', 8);
-      near('customer', 2);
-      this.journal('The "CFO" I enrolled was a phisher. This floor woke up to a phishing wave, and two very angry clients.');
-      this.hud.toast('CONSEQUENCE: the fake CFO\'s account is sending phishing mail to the whole building.', 'bad');
-    }
-    if (f.adminGiven === true && f.adminFallout !== true && n >= 3) {
-      f.adminFallout = true;
-      near('reply', 6);
-      near('jam', 2);
-      this.journal('Tristan\'s "free screensaver" was malware. Sales printers are possessed and every inbox is on fire.');
-      this.hud.toast('CONSEQUENCE: Tristan\'s screensaver was malware. The printers are possessed.', 'bad');
-    }
-    if (f.reportedMarcus === true && f.marcusRevenge !== true && n >= 1) {
-      f.marcusRevenge = true;
-      near('customer', 1, 'Marcus (holding a grudge)');
-      this.hud.toast('Marcus has not forgotten that you reported him.', 'bad');
-    }
-    if (f.caughtPhish === true && f.phishThanks !== true && n >= 2) {
-      f.phishThanks = true;
-      this.giveItem('energy', 2, 'The CFO\'s office');
-      this.addRep(60);
-      this.journal('The real CFO sent a thank-you hamper for catching the phisher.');
-    }
+    let mult = 1;
+    if (s.flags.mokkiDeal === true && s.floor === FINAL_FLOOR) mult *= 0.5;
+    if (s.flags.whistleblower === true && s.floor % 5 === 3) mult *= 0.6;
+    if (a.boss?.name === 'The Auditor') mult *= 1 + s.findings * 0.25;
+    if (mult === this.bossMult) return;
+    const k = mult / this.bossMult;
+    a.hp *= k;
+    a.maxHp *= k;
+    this.bossMult = mult;
   }
 
-  private loadMokki(): void {
+  loadMokki(fromSave: boolean): void {
     this.clearWorld();
     const s = this.save;
     s.location = 'mokki';
-    this.level = generateMokki((s.seed ^ 0x6d6f6b6b) >>> 0);
+    this.level = generateMokki((s.seed ^ 0x6d6f6b6b) >>> 0, false, s.upgrades);
     this.levelRng = new Rng(s.seed + s.week);
+    this.lootRng = new Rng((s.seed ^ 0x51ed270b) + s.week);
     this.scene.add(this.level.group);
     // The white night: the sun low in the north, a sky that never quite gets dark.
     this.scene.background = new THREE.Color(0xf2c6a4);
@@ -473,17 +504,24 @@ export class Game implements GameCtx, OsHost, StoryHost {
     this.player.outdoor = true;
     for (const l of this.lights) l.visible = false;
     for (const sp of this.level.spawns) this.spawnAt(sp.kind, sp.x, sp.z, 0, false);
+    // A weekend visitor, if there is a guest room for them.
+    if (s.upgrades.includes('guestroom') && !s.weekend.visitorDone) {
+      const v = this.spawnAt('healer', this.level.start.x + 6, this.level.start.z + 8, 0, false);
+      if (v !== null) setMarker(v, '!', '#ff9ad5');
+    }
     this.player.pos.set(this.level.start.x, 0, this.level.start.z);
     this.player.yaw = Math.PI;
     this.player.pitch = -0.05;
+    this.spawnCompanions();
     this.elevatorOpen = true;
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     this.refreshDerived();
     sfx.setBoss(false);
-    writeSave(s);
+    sfx.setAmbient('mokki');
+    if (!fromSave) this.autosave();
   }
 
-  private spawnAt(kind: ActorKind, x: number, z: number, room: number, aggro: boolean, opts: SpawnOpts = {}): Actor | null {
+  spawnAt(kind: ActorKind, x: number, z: number, room: number, aggro: boolean, opts: SpawnOpts = {}): Actor | null {
     if (isSolidAt(this.level, x, z) && kind !== 'boss') {
       let placed = false;
       for (let t = 0; t < 12 && !placed; t++) {
@@ -499,6 +537,8 @@ export class Game implements GameCtx, OsHost, StoryHost {
     }
     const a = createActor(this, kind, x, z, room, this.levelRng, TICKETS.length, { staffStanding: this.save.standing.staff, ...opts });
     if (aggro) a.aggro = true;
+    // The CEO's hat: managers will not start anything with you.
+    if (kind === 'manager' && this.derivedCache.specials.has('ceoCrown')) a.docile = true;
     this.actors.push(a);
     return a;
   }
@@ -508,202 +548,114 @@ export class Game implements GameCtx, OsHost, StoryHost {
     return this.spawnAt(kind, x, z, room, true);
   }
 
-  // ================================================================== screens
+  // ================================================================== saves & settings
 
-  private setOverlay(html: string, buttons: [string, () => void][]): void {
-    this.overlay.innerHTML = html;
-    const row = document.createElement('div');
-    row.className = 'screen-buttons';
-    for (const [label, fn] of buttons) {
-      const b = document.createElement('button');
-      b.className = 'screen-btn';
-      b.textContent = label;
-      b.addEventListener('click', (e) => {
-        e.stopPropagation();
-        sfx.unlock();
-        fn();
-      });
-      row.append(b);
+  private loadLatest(): SaveState | null {
+    const id = latestSlot();
+    if (id !== null) {
+      const slot = readSlot(id);
+      const s = slot === null ? null : normalizeSave(slot.data);
+      if (s !== null) return s;
     }
-    this.overlay.append(row);
-    this.overlay.style.display = 'flex';
-  }
-
-  private hideOverlay(): void {
-    this.overlay.style.display = 'none';
-    this.overlay.replaceChildren();
-  }
-
-  private showTitle(): void {
-    this.screen = 'title';
-    this.input.releaseLock();
-    const hasSave = loadSave() !== null;
-    this.setOverlay(`
-      <div class="title-logo">WORKGRUMBLE</div>
-      <div class="title-sub">H E L L D E S K</div>
-      <p class="title-blurb">An IT career role-playing game. Start as a trainee, climb to Senior Architect - or don't.
-      Resolve the users, survive the managers, keep the office ladies sweet, walk the tightrope of Friday drinks,
-      and spend every weekend at the mökki learning the old sauna magic.</p>
-      <div class="title-controls">
-        <span><b>WASD</b> move</span><span><b>Mouse</b> look</span><span><b>LMB</b> tool</span><span><b>RMB</b> shove</span>
-        <span><b>E</b> use / talk</span><span><b>F</b> cast spell</span><span><b>X</b> next spell</span><span><b>G</b> domain ability</span>
-        <span><b>C</b> sneak</span><span><b>T</b> rest</span><span><b>Q</b> quick supplies</span><span><b>V</b> 1st/3rd person</span>
-        <span><b>Shift</b> sprint</span><span><b>1-9</b> tools</span><span><b>Tab</b> backpack</span><span><b>M</b> map</span>
-      </div>`, [
-      ...(hasSave ? [[`Continue: ${this.save.name}, ${this.title} (${this.floorName()})`, () => this.startPlay()] as [string, () => void]] : []),
-      ['New career', () => this.showChargen()],
-    ]);
-  }
-
-  private showChargen(): void {
-    this.screen = 'chargen';
-    this.hideOverlay();
-    showCharGen(this.mount, (setup) => this.beginCareer(setup), () => this.showTitle());
-  }
-
-  private beginCareer(setup: CharacterSetup): void {
-    clearSave();
-    this.save = newSave(Date.now() >>> 0, setup);
-    this.fixCache = new WeakMap();
-    this.pendingHearing = false;
-    this.os.hide();
-    this.loadFloor(0, false);
-    this.journal(`Day one. ${this.save.name}, ${this.title}. The badge photo is terrible.`);
-    this.startPlay();
-    this.openDialogue(said('Morag from Internal IT', `Welcome to Workgrumble, ${this.save.name}. Here is a stapler and a label maker. The users have tickets; the tickets have users. Computers are blue on the map; I am green. You can talk most people down (E) instead of stapling them. Every Friday you go to the mökki. Do not drink from the office fridge. Good luck.`, 'neutral', 'Clock in'));
-  }
-
-  private startPlay(): void {
-    sfx.unlock();
-    sfx.boot();
-    this.hideOverlay();
-    this.screen = 'play';
-    this.input.enabled = true;
-    this.input.requestLock();
-    this.hud.toast(`${this.floorName()}.`, 'info');
-  }
-
-  private showPause(): void {
-    this.screen = 'paused';
-    this.setOverlay(`<div class="title-logo small">PAUSED</div><p class="title-blurb">Taking a "comfort break". The SLA clocks are paused. Probably.</p>`, [
-      ['Resume', () => this.resume()],
-      ['Backpack & Career', () => this.openOs('pack')],
-      ['Title screen', () => { writeSave(this.save); this.showTitle(); }],
-    ]);
-  }
-
-  private resume(): void {
-    this.hideOverlay();
-    this.screen = 'play';
-    this.input.enabled = true;
-    this.input.requestLock();
-  }
-
-  private showDead(): void {
-    this.screen = 'dead';
-    this.input.releaseLock();
-    sfx.error();
-    const s = this.save;
-    const lost = Math.floor(s.rep * 0.25);
-    s.rep -= lost;
-    s.stats.burnouts++;
-    adjustStanding(s, 'management', -5);
-    this.journal('I burned out. HR sent a wellbeing webinar link.');
-    this.setOverlay(`<div class="title-logo small dead">BURNOUT</div><p class="title-blurb">${fx.pick(DEATH_LINES)}</p>
-      <p class="title-blurb">You lost ₡${lost} of Rep to the wellbeing webinar, and Management noticed. Your queue was reassigned.</p>`, [
-      ['Clock back in (restart the floor)', () => {
-        s.sanity = this.derivedCache.maxSanity;
-        s.energy = 100;
-        s.actionItems = 0;
-        s.queue = [];
-        s.bac = Math.min(s.bac, 20);
-        this.rootT = 0;
-        this.loadWorld();
-        this.resume();
-      }],
-    ]);
-  }
-
-  private showEnding(): void {
-    this.screen = 'ending';
-    this.input.releaseLock();
-    const s = this.save;
-    s.won = true;
-    writeSave(s);
-    sfx.levelUp();
-    const e = endingFor({ rung: s.rung, dependency: s.dependency, warnings: s.warnings, flags: s.flags, standing: s.standing });
-    const st = s.stats;
-    this.setOverlay(`<div class="title-logo small">${e.title}</div>
-      <p class="title-blurb">${e.text}</p>
-      <p class="title-blurb">${s.name}, ${this.title}, level ${s.level}. Field resolutions ${st.resolvedField} · Talked down ${st.resolvedPeace} · Desk fixes ${st.resolvedDesk} · SLA breaches ${st.breaches} · Drinks ${st.drinks} · Blackouts ${st.blackouts} · Burnouts ${st.burnouts}</p>
-      <p class="title-blurb">...Three weeks later, the goats' Wi-Fi goes down. Workgrumble calls. They are offering overtime.</p>`, [
-      ['Accept the overtime (keep playing)', () => this.goToMokki()],
-      ['Retire (title screen)', () => this.showTitle()],
-    ]);
-  }
-
-  private showFired(): void {
-    this.screen = 'ending';
-    this.input.releaseLock();
-    clearSave();
-    sfx.error();
-    this.setOverlay(`<div class="title-logo small dead">P45</div>
-      <p class="title-blurb">A trainee with three warnings and nowhere lower to go. Security walks you out holding a cardboard box with a stapler in it.</p>
-      <p class="title-blurb">Your career is over. The mökki was always rented anyway.</p>`, [
-      ['New career', () => this.showChargen()],
-    ]);
-  }
-
-  private transitionTo(label: string, big: string, line: string, then: () => void): void {
-    this.screen = 'transition';
-    this.input.releaseLock();
-    sfx.ding();
-    this.setOverlay(`<div class="lift"><div class="lift-num">${big}</div>
-      <div class="lift-name">${label}</div>
-      <p class="title-blurb">${line}</p></div>`, [['Continue', then]]);
-  }
-
-  private goToMokki(): void {
-    const s = this.save;
-    this.transitionTo('Friday 17:00 - to the mökki', '🌲', 'Three hours up the motorway, the last one on gravel. The phone loses signal at the petrol station. Mostly.', () => {
-      // Last week's blessings wear off on the drive; the weekend can grant new ones.
-      this.saunaBuff = false;
-      s.makkara = false;
-      this.loadMokki();
-      this.resume();
-      this.weekendDone = { sauna: false, grill: false, lake: false };
-      const pay = salaryFor(s.rung);
-      s.rep += pay;
-      this.hud.toast(`Salary: +₡${pay} (${this.title}).`, 'epic');
-      this.journal(`Weekend ${s.week} at the mökki. Salary ₡${pay}.`);
-      // Friday evening phone calls: HR first, then Derek with the review.
-      const queue: (() => DialogueNode)[] = [];
-      if (s.warnings >= 3) {
-        this.pendingHearing = false;
-        queue.push(() => disciplinary(this));
+    const legacy = loadLegacy();
+    if (legacy !== null) {
+      const s = normalizeSave(legacy);
+      if (s !== null) {
+        this.writeSlotFor('auto', s);
+        clearLegacy();
       }
-      queue.push(() => performanceReview(this));
-      this.chainDialogues(queue);
-    });
+      return s;
+    }
+    return null;
   }
 
-  private chainDialogues(queue: (() => DialogueNode)[]): void {
-    const next = queue.shift();
-    if (next === undefined) return;
-    this.openDialogue(next(), () => this.chainDialogues(queue));
+  hasSave(): boolean {
+    return latestSlot() !== null;
   }
 
-  private goToWork(): void {
+  writeSlotFor(id: SlotId, s: SaveState = this.save): boolean {
+    return writeSlot(id, { name: s.name, title: titleFor(s.rung, s.domain, s.track, s.arch), where: this.level === undefined ? '' : this.floorName(), level: s.level }, s);
+  }
+
+  autosave(): void {
+    if (this.save.won && this.screen === 'ending') return;
+    if (this.settings.autosave || this.save.ironman) this.writeSlotFor('auto');
+  }
+
+  quicksave(): void {
+    if (this.save.ironman) {
+      this.hud.toast('Ironman: no quicksaves. The building only remembers what you did.', 'bad');
+      return;
+    }
+    if (this.writeSlotFor('quick')) this.hud.toast('Quicksaved. (F9 to load)', 'good');
+    else this.hud.toast('Could not save: this browser is not keeping anything.', 'bad');
+  }
+
+  quickload(): void {
+    if (this.save.ironman) {
+      this.hud.toast('Ironman: there is no going back.', 'bad');
+      return;
+    }
+    this.loadSlot('quick');
+  }
+
+  loadSlot(id: SlotId): boolean {
+    const slot = readSlot(id);
+    const s = slot === null ? null : normalizeSave(slot.data);
+    if (s === null) {
+      this.hud.toast('Nothing saved there.', 'bad');
+      return false;
+    }
+    this.save = s;
+    this.fixCache = new WeakMap();
+    this.os.hide();
+    this.dialogue.close();
+    this.derivedCache = derive(s);
+    this.loadWorld(true);
+    screens.startPlay(this);
+    this.hud.toast(`Loaded: ${s.name}, ${this.title} (${this.floorName()}).`, 'good');
+    return true;
+  }
+
+  applySettings(): void {
+    const st = this.settings;
+    saveSettings(st);
+    this.camera.fov = st.fov;
+    this.camera.updateProjectionMatrix();
+    const ratio = Math.min(window.devicePixelRatio, st.quality === 'low' ? 1 : 1.5) * st.renderScale;
+    this.renderer.setPixelRatio(Math.max(0.35, ratio));
+    this.resize();
+    this.bloom.enabled = st.bloom;
+    const lights = st.quality === 'low' ? 3 : st.quality === 'medium' ? 5 : 8;
+    this.lights.forEach((l, i) => { l.userData.enabled = i < lights; });
+    sfx.setVolume(st.sfx);
+    sfx.setMusicVolume(st.music);
+    this.compass.visible = st.compass;
+    this.player.view = st.view;
+    this.lightIn = 0;
+  }
+
+  /** A one-off hint, the first time something happens (if tips are on). */
+  tip(id: keyof typeof TIPS): void {
     const s = this.save;
-    const next = s.floor + 1;
-    s.week += 1;
-    const theme = THEMES[next % THEMES.length];
-    this.transitionTo(theme?.name ?? '', String(next), 'Monday. The lift plays a pan-pipe cover of a song you used to like.', () => {
-      this.loadFloor(next, false);
-      this.resume();
-      this.hud.toast(`Welcome to ${this.floorName()}.`, 'epic');
-    });
+    if (!this.settings.tips || s.tipsShown.includes(id)) return;
+    const text = TIPS[id];
+    if (text === undefined) return;
+    s.tipsShown.push(id);
+    this.hud.tip(text);
   }
+
+  achieve(id: string): void {
+    const s = this.save;
+    if (s.achievements.includes(id)) return;
+    const a = ACHIEVEMENTS.find((x) => x.id === id);
+    if (a === undefined) return;
+    s.achievements.push(id);
+    sfx.achievement();
+    this.hud.toast(`🏆 ACHIEVEMENT: ${a.name} - ${a.desc}`, 'epic');
+  }
+
+  // ================================================================== dialogue & menus
 
   openDialogue(node: DialogueNode, after?: () => void): void {
     this.screen = 'dialogue';
@@ -711,33 +663,45 @@ export class Game implements GameCtx, OsHost, StoryHost {
     this.input.releaseLock();
     this.afterDialogue = after ?? null;
     this.dialogue.show(node, () => {
-      writeSave(this.save);
       const cb = this.afterDialogue;
       this.afterDialogue = null;
-      if (this.screen === 'dialogue') this.resume();
+      if (this.screen === 'dialogue') screens.resume(this);
       cb?.();
+      if (this.screen === 'play') this.autosaveSoon();
     });
   }
 
-  private openOs(mode: 'desk' | 'itdesk' | 'pack'): void {
+  /** Save shortly after a conversation, once whatever it set in motion has happened. */
+  autosaveSoon(): void {
+    this.saveIn = Math.min(this.saveIn, 1);
+  }
+
+  chainDialogues(queue: (() => DialogueNode)[]): void {
+    const next = queue.shift();
+    if (next === undefined) return;
+    this.openDialogue(next(), () => this.chainDialogues(queue));
+  }
+
+  openOs(mode: 'desk' | 'itdesk' | 'pack', first?: Parameters<Os['open']>[1]): void {
     this.screen = 'os';
-    this.hideOverlay();
+    screens.hideOverlay(this);
     this.input.enabled = false;
     this.input.releaseLock();
     if (mode === 'desk') sfx.boot();
-    this.os.open(mode);
+    this.os.open(mode, first);
   }
 
   close(): void {
     this.os.hide();
-    writeSave(this.save);
     this.currentTerminal = null;
-    this.resume();
+    screens.resume(this);
+    this.autosaveSoon();
     if (this.caughtPending) {
       this.caughtPending = false;
       const back = new THREE.Vector3(Math.sin(this.player.yaw), 0, Math.cos(this.player.yaw)).multiplyScalar(2.5);
       const m = this.spawn('manager', this.player.pos.x + back.x, this.player.pos.z + back.z, -1);
       if (m !== null) {
+        m.docile = false;
         say(m, 'Are those... CATS? My office. Now. Well, here. Now.', 4);
         this.hud.toast('CAUGHT! A manager saw the cat pictures.', 'bad');
         adjustStanding(this.save, 'management', -4);
@@ -748,7 +712,18 @@ export class Game implements GameCtx, OsHost, StoryHost {
 
   restart(): void {
     this.os.hide();
-    this.showChargen();
+    screens.showChargen(this);
+  }
+
+  beginCareer(setup: CharacterSetup): void {
+    this.save = newSave(Date.now() >>> 0, setup);
+    if (this.save.ironman) clearAllSlots();
+    this.fixCache = new WeakMap();
+    this.os.hide();
+    this.loadFloor(0, false);
+    this.journal(`Day one. ${this.save.name}, ${this.title}. The badge photo is terrible.`);
+    screens.startPlay(this);
+    this.openDialogue(said('Morag from Internal IT', `Welcome to Workgrumble, ${this.save.name}. Here is a stapler and a label maker. The users have tickets; the tickets have users. Computers are blue on the map; I am green. You can talk most people down (E) instead of stapling them. Hold the mouse to wind up a heavy swing, hold the right button to block. Every Friday you go to the mökki. Do not drink from the office fridge. Good luck.`, 'neutral', 'Clock in'), () => this.tip('start'));
   }
 
   // ================================================================== loop
@@ -758,32 +733,50 @@ export class Game implements GameCtx, OsHost, StoryHost {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     if (this.screen === 'play') {
-      this.time += dt;
-      this.update(dt);
+      if (this.hitStop > 0) {
+        this.hitStop -= dt;
+      } else {
+        this.time += dt;
+        this.update(dt);
+      }
     }
     sfx.music(this.screen === 'play' ? dt : 0);
-    this.player.view = this.save.view;
-    this.player.update(this.level, this.screen === 'play' ? dt : 0, this.derivedCache.band.sway);
+    this.player.view = this.settings.view;
+    const sway = this.derivedCache.band.sway * (this.derivedCache.caffeine.speed > 0 ? 0.7 : 1) + this.derivedCache.caffeine.jitter * 0.3;
+    this.player.update(this.level, this.screen === 'play' ? dt : 0, sway);
     if (this.shakeAmt > 0) {
-      this.camera.position.x += fx.range(-1, 1) * this.shakeAmt * 0.15;
-      this.camera.position.y += fx.range(-1, 1) * this.shakeAmt * 0.15;
+      const k = this.settings.shake ? 0.15 : 0.03;
+      this.camera.position.x += fx.range(-1, 1) * this.shakeAmt * k;
+      this.camera.position.y += fx.range(-1, 1) * this.shakeAmt * k;
       this.shakeAmt = Math.max(0, this.shakeAmt - dt * 2);
     }
     this.billboards();
     this.animateScenery();
-    if (this.save.bloom) this.composer.render();
+    if (this.settings.bloom) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
     this.input.endFrame();
-    const visible = this.screen === 'play' || this.screen === 'os' || this.screen === 'dialogue';
-    if (visible) this.hud.update(this.hudFrame(), dt);
+    const visible = this.screen === 'play' || this.screen === 'os' || this.screen === 'dialogue' || this.screen === 'minigame';
+    if (visible) {
+      this.markersIn -= dt;
+      if (this.markersIn <= 0) {
+        this.markersIn = 0.3;
+        this.markers = questMarkers(this);
+      }
+      this.hud.update(this.hudFrame(), dt);
+      if (this.settings.compass) this.compass.update(this.player.pos.x, this.player.pos.z, this.player.yaw, this.markers);
+    }
     this.hud.root.style.display = visible ? 'block' : 'none';
+    this.compass.visible = visible && this.settings.compass;
     this.hud.crosshair.style.display = this.screen === 'play' ? 'block' : 'none';
   };
 
   private hudFrame(): HudFrame {
     const s = this.save;
     const sp = s.spell === null ? undefined : spellById(s.spell);
-    const domainReady = s.rung >= 3 && s.domain !== null;
+    const domainReady = s.rung >= 4 && s.domain !== null;
+    const tol = s.caffeineTol;
+    const factor = effectiveCaffeine(1, tol);
+    const band = caffeineBand(s.caffeine, tol);
     return {
       save: s,
       d: this.derivedCache,
@@ -800,15 +793,23 @@ export class Game implements GameCtx, OsHost, StoryHost {
       floorName: this.floorName(),
       elevatorOpen: this.elevatorOpen,
       title: this.title,
-      spellText: sp === undefined ? 'No runes (find the Saunatonttu)' : `${sp.name} · ${sp.cost} · ${Math.round(this.castOdds(sp.cost) * 100)}%`,
+      spellText: sp === undefined ? 'No runes (find the Saunatonttu)' : `${sp.name} · ${Math.round(sp.cost * this.derivedCache.spellCost)} · ${Math.round(castOdds(this, sp.cost) * 100)}%`,
       abilityText: domainReady ? `${s.domain ?? ''} (G): ${this.abilityCd > 0 ? `${Math.ceil(this.abilityCd)}s` : 'ready'}` : '',
       hidden: this.player.crouching ? !this.actors.some((a) => a.hostile && a.aggro && !a.resolved) : null,
-      bandLabel: BAND_EFFECTS[bandFor(s.bac)].label,
+      bandLabel: BAND_EFFECTS[bandFor(s.bac, this.derivedCache.specials.has('flask'))].label,
       promille: promille(s.bac),
+      caffeine: s.caffeine * factor,
+      caffeineLabel: s.crash > 0 ? 'CRASH' : CAFFEINE_EFFECTS[band].label.toUpperCase() === 'DECAF' ? 'Decaf' : CAFFEINE_EFFECTS[band].label.toUpperCase(),
+      caffeineZone: [50, 300],
+      crash: s.crash,
+      questLines: questLines(this),
+      markers: this.markers,
+      charge: this.charging && this.derivedCache.weapon.kind === 'melee' ? Math.min(1, this.chargeT / POWER_TIME) : 0,
+      blocking: this.blocking,
     };
   }
 
-  private refreshDerived(): void {
+  refreshDerived(): void {
     this.derivedCache = derive(this.save);
     this.player.setTool(this.derivedCache.weapon.id);
     if (this.save.sanity > this.derivedCache.maxSanity) this.save.sanity = this.derivedCache.maxSanity;
@@ -824,46 +825,54 @@ export class Game implements GameCtx, OsHost, StoryHost {
     const s = this.save;
     const d = this.derivedCache;
 
-    const sens = 0.0022 * s.mouseSens;
+    const sens = 0.0022 * this.settings.sensitivity;
     this.player.yaw -= inp.mouseDX * sens;
-    this.player.pitch = Math.max(-1.35, Math.min(1.35, this.player.pitch - inp.mouseDY * sens));
-
+    this.player.pitch = Math.max(-1.35, Math.min(1.35, this.player.pitch - inp.mouseDY * sens * (this.settings.invertY ? -1 : 1)));
     if (inp.hit('KeyV')) {
-      s.view = s.view === 'first' ? 'third' : 'first';
-      this.hud.toast(s.view === 'first' ? 'First person' : 'Third person');
+      this.settings.view = this.settings.view === 'first' ? 'third' : 'first';
+      saveSettings(this.settings);
+      this.hud.toast(this.settings.view === 'first' ? 'First person' : 'Third person');
     }
     if (inp.hit('KeyM')) this.hud.mapOpen = !this.hud.mapOpen;
     if (inp.hit('Tab') || inp.hit('KeyI')) {
       this.openOs('pack');
       return;
     }
+    if (inp.hit('KeyJ')) {
+      this.openOs('pack', 'journal');
+      return;
+    }
     if (inp.hit('Escape')) {
       this.input.releaseLock();
-      this.showPause();
+      screens.showPause(this);
       return;
     }
     if (inp.hit('KeyC') || inp.hit('ControlLeft')) {
       this.player.crouching = !this.player.crouching;
       this.hud.toast(this.player.crouching ? 'Sneaking. Unaware people take sneak attacks.' : 'Standing up.');
+      if (this.player.crouching) this.tip('sneak');
     }
-    if (inp.hit('KeyT')) this.tryRest();
-    if (inp.hit('KeyX')) this.cycleSpell();
-    if (inp.hit('KeyF')) this.castSpell();
-    if (inp.hit('KeyG')) this.domainAbility();
+    if (inp.hit('KeyT')) host.tryRest(this);
+    if (inp.hit('KeyX')) cycleSpell(this);
+    if (inp.hit('KeyF')) castSpell(this);
+    if (inp.hit('KeyG')) domainAbility(this);
     if (this.screen !== 'play') return;
 
-    const weapons = s.owned.filter((id) => itemById(id)?.slot === 'weapon');
+    // Tools: 1-9 and the wheel cycle through the weapons you carry.
+    const weapons = s.gear.filter((g) => itemById(g.base)?.slot === 'weapon');
     for (let i = 0; i < 9; i++) {
-      if (inp.hit(`Digit${i + 1}`) && weapons[i] !== undefined) this.equip('weapon', weapons[i] ?? null);
+      const w = weapons[i];
+      if (inp.hit(`Digit${i + 1}`) && w !== undefined) this.equipGear(w.uid);
     }
     if (inp.wheel !== 0 && weapons.length > 1) {
-      const cur = weapons.indexOf(s.equipped.weapon);
+      const cur = weapons.findIndex((g) => g.uid === s.equipped.weapon);
       const next = weapons[(cur + inp.wheel + weapons.length) % weapons.length];
-      if (next !== undefined) this.equip('weapon', next);
+      if (next !== undefined) this.equipGear(next.uid);
     }
 
     this.tickTimers(dt);
-    this.tickVices(dt);
+    tickVices(this, dt);
+    tickCaffeine(this, dt);
     if (this.screen !== 'play') return;
 
     // Manager auras, and the smell test.
@@ -871,10 +880,10 @@ export class Game implements GameCtx, OsHost, StoryHost {
     const mgmtEase = Math.max(0, s.standing.management) / 200;
     for (const a of this.actors) {
       if (a.resolved || !a.aggro) continue;
-      if (a.kind !== 'manager' && a.kind !== 'boss') continue;
+      if (a.kind !== 'manager' && a.kind !== 'boss' && a.kind !== 'consultant') continue;
       const dist = Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z);
       if (dist < (a.kind === 'boss' ? 9 : 7)) this.auraSlow = Math.max(this.auraSlow, (a.kind === 'boss' ? 0.3 : 0.35) * (1 - d.auraResist) * (1 - mgmtEase));
-      if (a.kind === 'manager' && dist < 3.5 && this.caughtCd <= 0) this.caughtCheck(a);
+      if (a.kind === 'manager' && dist < 3.5 && this.caughtCd <= 0) host.caughtCheck(this, a);
     }
     if (this.screen !== 'play') return;
 
@@ -892,25 +901,25 @@ export class Game implements GameCtx, OsHost, StoryHost {
     let speed = 5.2 * d.speedMult;
     if (d.overEncumbered) speed *= 0.55;
     speed *= 1 - this.auraSlow;
-    if (this.coffeeT > 0) speed *= 1.12;
-    if (this.wiredT > 0) speed *= 1.3;
-    if (this.crashT > 0) speed *= 0.75;
-    if (this.player.crouching) speed *= 0.55;
+    speed *= 1 - this.hazardSlow;
+    if (this.player.crouching && perk(s, 'silentkeys') === 0) speed *= 0.55;
+    if (this.blocking) speed *= 0.5;
+    if (this.charging && this.chargeT > 0.2 && d.weapon.kind === 'melee') speed *= 0.75;
     const moving = fwd !== 0 || side !== 0;
-    const sprint = inp.down('ShiftLeft') && moving && !d.overEncumbered && s.energy > 1 && !this.player.crouching;
+    const sprint = inp.down('ShiftLeft') && moving && !d.overEncumbered && s.energy > 1 && !this.player.crouching && !this.blocking;
     if (sprint) {
       speed *= 1.45 + skill(s, 'athletics') * 0.004;
-      s.energy = Math.max(0, s.energy - 24 * dt);
+      if (!d.specials.has('sandals')) s.energy = Math.max(0, s.energy - 24 * (perk(s, 'stairsguy') > 0 ? 0.6 : 1) * dt);
       this.athleticsT += dt;
       if (this.athleticsT > 2) {
         this.athleticsT = 0;
         this.exercise('athletics', 1);
       }
-    } else {
-      s.energy = Math.min(100, s.energy + 11 * d.energyRegen * (this.coffeeT > 0 ? 1.8 : 1) * dt);
+    } else if (!this.blocking) {
+      s.energy = Math.min(100, s.energy + 11 * d.energyRegen * dt);
     }
-    // Hammered: the floor has opinions.
-    if (d.band.sway >= 1.5 && moving) {
+    // Hammered: the floor has opinions. (Iron Will: it does not.)
+    if (d.band.sway >= 1.5 && moving && perk(s, 'ironwill') === 0) {
       this.stumbleT -= dt;
       if (this.stumbleT <= 0) {
         this.stumbleT = fx.range(2, 5);
@@ -920,7 +929,8 @@ export class Game implements GameCtx, OsHost, StoryHost {
       }
     }
     if (this.rootT > 0) speed = 0;
-    this.player.move(this.level, wx, wz, speed, inp.hit('Space') && this.rootT <= 0 && !this.player.crouching, dt);
+    const jump = inp.hit('Space') && this.rootT <= 0 && !this.player.crouching;
+    this.player.move(this.level, wx, wz, speed, jump, dt, d.jump);
     if (moving && speed > 0 && this.player.onGround) {
       this.stepIn -= dt * speed;
       if (this.stepIn <= 0) {
@@ -929,25 +939,31 @@ export class Game implements GameCtx, OsHost, StoryHost {
       }
     }
 
-    // Stealth practice: sneaking near people who have not noticed you.
-    if (this.player.crouching && moving) {
-      const near = this.actors.some((a) => a.hostile && !a.aggro && !a.resolved && Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) < 10);
-      if (near) {
-        this.stealthT += dt;
-        if (this.stealthT > 1.5) {
-          this.stealthT = 0;
-          this.exercise('stealth', 1);
+    // Stealth practice, and Ghost Mode: stand still in the shadows to vanish.
+    if (this.player.crouching) {
+      if (moving) {
+        this.stillT = 0;
+        const near = this.actors.some((a) => a.hostile && !a.aggro && !a.resolved && Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) < 10);
+        if (near) {
+          this.stealthT += dt;
+          if (this.stealthT > 1.5) {
+            this.stealthT = 0;
+            this.exercise('stealth', 1);
+          }
         }
+      } else if (perk(s, 'ghost') > 0) {
+        this.stillT += dt;
+        if (this.stillT > 2) this.invisT = Math.max(this.invisT, 0.3);
       }
+    } else {
+      this.stillT = 0;
     }
 
-    const atkRate = d.attackSpeed * (this.wiredT > 0 ? 1.3 : 1) * (this.crashT > 0 ? 0.8 : 1) * (this.auraSlow > 0 ? 0.85 : 1);
-    if ((inp.lmb || inp.clicked()) && this.attackCd <= 0 && this.rootT <= 0) this.attack(d.weapon, atkRate);
-    if (inp.rmb && this.shoveCd <= 0 && s.energy >= 8) this.shove();
+    playerAttackInput(this, dt);
 
-    this.findPrompt();
-    if (inp.hit('KeyE')) this.interact();
-    if (inp.hit('KeyQ')) this.quickUse();
+    findPrompt(this);
+    if (inp.hit('KeyE')) interact(this);
+    if (inp.hit('KeyQ')) host.quickUse(this);
     if (this.screen !== 'play') return;
 
     // World.
@@ -956,12 +972,13 @@ export class Game implements GameCtx, OsHost, StoryHost {
       this.fieldIn = 0.35;
       this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     }
+    updateAuras(this.actors);
     for (const a of this.actors) {
       const far = Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) > 45;
       a.root.visible = !far;
       if (far && !a.aggro && !a.recruited) continue;
       updateActor(this, a, dt);
-      if (a.hostile && !a.resolved && a.hp <= 0) this.resolveActor(a);
+      if (a.hostile && !a.resolved && a.hp <= 0) resolveActor(this, a);
     }
     this.actors = this.actors.filter((a) => {
       if (a.resolved && a.removeIn <= 0) {
@@ -970,15 +987,20 @@ export class Game implements GameCtx, OsHost, StoryHost {
       }
       return true;
     });
-    this.updateProjectiles(dt);
-    this.updatePickups(dt);
-    this.updateFx(dt);
+    updateProjectiles(this, dt);
+    updatePickups(this, dt);
+    updateHazards(this, dt);
+    updateFx(this, dt);
 
     if (s.location === 'office') {
       for (const q of [...s.queue]) {
         q.sla -= dt;
-        if (q.sla <= 0) this.breach(q);
+        if (q.sla <= 0) breach(this, q);
       }
+      // Escort and room objectives: arriving somewhere counts.
+      const room = this.level.roomOf[toCell(this.player.pos.z) * this.level.w + toCell(this.player.pos.x)] ?? -1;
+      const rm = this.level.rooms[room];
+      if (rm !== undefined) questEvent(this, { type: 'room', room: rm.kind });
     }
     if (this.boss !== null && this.boss.bossActive && !this.boss.resolved) sfx.setBoss(true);
 
@@ -996,39 +1018,34 @@ export class Game implements GameCtx, OsHost, StoryHost {
     this.updateLights(false);
     this.saveIn -= dt;
     if (this.saveIn <= 0) {
-      this.saveIn = 20;
-      writeSave(s);
+      this.saveIn = 60;
+      this.autosave();
     }
+    if (s.sanity < d.maxSanity * 0.3) this.tip('lowsanity');
+    if (d.overEncumbered) this.tip('encumbered');
 
     // Sisu: you cannot be dropped below 1 while it lasts.
     if (this.sisuT > 0 && s.sanity < 1) s.sanity = 1;
-    if (s.sanity <= 0 && this.screen === 'play') this.showDead();
+    if (s.sanity <= 0 && this.screen === 'play') screens.showDead(this);
   }
 
   private tickTimers(dt: number): void {
     const s = this.save;
+    const d = this.derivedCache;
     this.attackCd -= dt;
     this.shoveCd -= dt;
-    this.rootT = Math.max(0, this.rootT - dt);
-    this.coffeeT = Math.max(0, this.coffeeT - dt);
+    this.rootT = Math.max(0, this.rootT - dt * (perk(s, 'teflon') > 0 ? 2 : 1));
     this.sisuT = Math.max(0, this.sisuT - dt);
     this.invisT = Math.max(0, this.invisT - dt);
     this.saunaT = Math.max(0, this.saunaT - dt);
     this.abilityCd = Math.max(0, this.abilityCd - dt);
     this.caughtCd = Math.max(0, this.caughtCd - dt);
-    if (this.wiredT > 0) {
-      this.wiredT -= dt;
-      if (this.wiredT <= 0 && perk(s, 'caffeine') === 0) {
-        this.crashT = 10;
-        this.hud.toast('The Grumble Energy wears off. CRASH.', 'bad');
-      }
-    }
-    this.crashT = Math.max(0, this.crashT - dt);
     this.faceT -= dt;
     if (this.faceT <= 0) this.faceMood = 'normal';
     // Löyly seeps back slowly; sanity trickles back with Patience.
-    s.loyly = Math.min(this.derivedCache.maxLoyly, s.loyly + (0.35 + s.attrs.tech * 0.004) * dt);
-    s.sanity = Math.min(this.derivedCache.maxSanity, s.sanity + (s.attrs.patience * 0.003 + this.derivedCache.band.regen) * dt);
+    s.loyly = Math.min(d.maxLoyly, s.loyly + (0.35 + s.attrs.tech * 0.004) * dt);
+    const second = perk(s, 'secondwind') > 0 && s.sanity < d.maxSanity * 0.25 ? 3 : 1;
+    s.sanity = Math.min(d.maxSanity, s.sanity + (s.attrs.patience * 0.003 + d.band.regen) * second * dt - d.caffeine.drain * dt);
   }
 
   private effects(): string[] {
@@ -1037,18 +1054,19 @@ export class Game implements GameCtx, OsHost, StoryHost {
     const out: string[] = [];
     if (this.rootT > 0) out.push(`📅 ${this.rootReason} (${this.rootT.toFixed(1)}s)`);
     if (this.auraSlow > 0) out.push(`🐢 Manager nearby: -${Math.round(this.auraSlow * 100)}% speed`);
+    if (this.hazardSlow > 0) out.push('🫗 Standing in something');
     if (d.overEncumbered) out.push('🎒 OVER-ENCUMBERED');
     if (s.actionItems > 0) out.push(`📋 ${s.actionItems} action item${s.actionItems > 1 ? 's' : ''}`);
     if (s.empties > 0) out.push(`🥫 ${s.empties} empties (evidence)`);
-    if (this.coffeeT > 0) out.push(`☕ Coffee ${Math.ceil(this.coffeeT)}s`);
-    if (this.wiredT > 0) out.push(`⚡ WIRED ${Math.ceil(this.wiredT)}s`);
-    if (this.crashT > 0) out.push(`💤 Crash ${Math.ceil(this.crashT)}s`);
+    if (s.crash > 0) out.push(`💤 Caffeine crash ${Math.ceil(s.crash)}s`);
     if (s.hangover > 0) out.push(`🤕 Hangover ${Math.ceil(s.hangover)}s`);
     if (s.dependency >= 50 && s.bac < 5) out.push('🫨 THE SHAKES (withdrawal)');
     if (this.sisuT > 0) out.push(`🪨 Sisu ${Math.ceil(this.sisuT)}s`);
-    if (this.invisT > 0) out.push(`🌫 Hiljaisuus ${Math.ceil(this.invisT)}s`);
-    if (this.saunaBuff) out.push('🧖 Löyly-blessed (+25% damage)');
+    if (this.invisT > 0) out.push(`🌫 Unseen ${Math.ceil(this.invisT)}s`);
+    if (s.saunaBuff) out.push('🧖 Löyly-blessed (+25% damage)');
     if (s.makkara) out.push('🌭 Makkara-fed');
+    if (s.hauki) out.push('🐟 Pike supper');
+    if (s.palju) out.push('♨ Palju-soaked');
     if (this.player.crouching) out.push('🐾 Sneaking');
     if (s.warnings > 0) out.push(`⚠ ${s.warnings}/3 HR warnings`);
     return out;
@@ -1058,26 +1076,38 @@ export class Game implements GameCtx, OsHost, StoryHost {
     const w = this.derivedCache.weapon;
     if (w.ammo !== undefined) return `${w.ammo}: ${this.save.ammo[w.ammo]}`;
     if (w.energyCost !== undefined) return `Energy ${Math.floor(this.save.energy)}/${w.energyCost} per use`;
-    return 'Melee';
+    return w.kind === 'melee' ? 'Melee · hold for a heavy swing' : 'Melee';
   }
 
-  // ================================================================== skills & standing
+  // ================================================================== skills & standing (StoryHost)
 
   /** Use a skill; announce when it goes up, Morrowind-style. */
   exercise(k: Skill, amount: number): void {
     const before = levelUpReady(this.save);
     const v = useSkill(this.save, k, amount);
     if (v === null) return;
+    this.skillRose(k, v, before);
+  }
+
+  private skillRose(k: Skill, v: number, wasReady: boolean): void {
     this.hud.toast(`Your ${SKILL_INFO[k].name} skill increased to ${v}.`, 'good');
     sfx.chime();
     this.refreshDerived();
-    if (!before && levelUpReady(this.save)) {
+    if (!wasReady && levelUpReady(this.save)) {
       this.hud.toast('You should rest and meditate on what you have learned. (T to rest)', 'epic');
+      this.tip('levelup');
     }
   }
 
+  /** Books and trainers: a flat point, still counting toward the level. */
+  bumpSkill(k: Skill): void {
+    const before = levelUpReady(this.save);
+    const v = raiseSkill(this.save, k);
+    if (v !== null) this.skillRose(k, v, before);
+  }
+
   odds(k: Skill, attr: Attribute, difficulty: number): number {
-    return checkChance(skill(this.save, k), this.save.attrs[attr], difficulty);
+    return checkChance(skill(this.save, k), this.save.attrs[attr], difficulty, this.derivedCache.persuade * (k === 'soft' ? 1 : 0.5));
   }
 
   check(k: Skill, attr: Attribute, difficulty: number): boolean {
@@ -1088,18 +1118,16 @@ export class Game implements GameCtx, OsHost, StoryHost {
     return ok;
   }
 
-  bandPersuade(): number {
-    return this.derivedCache.band.persuade;
-  }
-
   standing(f: Faction, delta: number): void {
     adjustStanding(this.save, f, delta);
     if (Math.abs(delta) >= 2) this.hud.toast(`${FACTION_INFO[f].name}: ${delta > 0 ? '+' : ''}${delta}`, delta > 0 ? 'good' : 'bad');
   }
 
+  /** Rep, scaled by the employer for what you earn (never for what you spend). */
   addRep(n: number): void {
-    this.save.rep = Math.max(0, this.save.rep + n);
-    if (n !== 0) this.hud.toast(`${n > 0 ? '+' : ''}₡${n}`, n > 0 ? 'good' : 'bad');
+    const v = n > 0 ? Math.round(n * WORKPLACES[this.save.workplace].rep) : n;
+    this.save.rep = Math.max(0, this.save.rep + v);
+    if (v !== 0) this.hud.toast(`${v > 0 ? '+' : ''}₡${v}`, v > 0 ? 'good' : 'bad');
   }
 
   flag(key: string, value: boolean | number = true): void {
@@ -1108,7 +1136,7 @@ export class Game implements GameCtx, OsHost, StoryHost {
 
   journal(text: string): void {
     this.save.journal.push({ floor: this.save.floor, text });
-    if (this.save.journal.length > 120) this.save.journal.shift();
+    if (this.save.journal.length > 160) this.save.journal.shift();
   }
 
   toast(text: string, kind: 'info' | 'good' | 'bad' | 'epic' = 'info'): void {
@@ -1119,6 +1147,12 @@ export class Game implements GameCtx, OsHost, StoryHost {
     this.save.findings += n;
     this.journal(`Audit finding: ${why}`);
     this.hud.toast(`The Auditor will hear about this. (${this.save.findings} finding${this.save.findings > 1 ? 's' : ''})`, 'bad');
+    this.rescaleBoss();
+  }
+
+  clearFindings(): void {
+    this.save.findings = 0;
+    this.rescaleBoss();
   }
 
   warn(why: string): void {
@@ -1128,21 +1162,22 @@ export class Game implements GameCtx, OsHost, StoryHost {
     this.journal(`HR warning: ${why}.`);
     this.hud.toast(`HR WARNING ${s.warnings}/3: ${why}.`, 'bad');
     sfx.error();
-    if (s.warnings >= 3) {
-      this.pendingHearing = true;
-      this.hud.toast('Three warnings. HR will see you at your next computer log-on, or on Friday.', 'bad');
-    }
+    this.tip('warning');
+    if (s.warnings >= 3) this.hud.toast('Three warnings. HR will see you at your next computer log-on, or on Friday.', 'bad');
   }
 
-  promote(domain: Domain | null, track: Track | null): void {
+  promote(domain: Domain | null, track: Track | null, arch: ArchPath | null): void {
     const s = this.save;
-    s.rung = Math.min(8, s.rung + 1);
+    s.rung = Math.min(RUNG_COUNT - 1, s.rung + 1);
     if (domain !== null) s.domain = domain;
     if (track !== null) s.track = track;
+    if (arch !== null) s.arch = arch;
     adjustStanding(s, 'management', 4);
     sfx.levelUp();
     this.journal(`Promoted to ${this.title}. The building will take me more seriously now. Much more seriously.`);
-    this.hud.toast(`PROMOTED: ${this.title}. Difficulty ×${difficultyFor(s.rung).toFixed(2)}.`, 'epic');
+    this.hud.toast(`PROMOTED: ${this.title}. Difficulty ×${this.difficulty.toFixed(2)}.`, 'epic');
+    if (domain !== null) this.achieve('promoted');
+    if (s.rung >= RUNG_COUNT - 1) this.achieve('architect');
     this.refreshDerived();
   }
 
@@ -1150,14 +1185,13 @@ export class Game implements GameCtx, OsHost, StoryHost {
     const s = this.save;
     s.rung = Math.max(0, s.rung - 1);
     s.warnings = 0;
-    this.pendingHearing = false;
     this.journal(`Demoted to ${this.title}.`);
     this.hud.toast(`DEMOTED to ${this.title}.`, 'bad');
     this.refreshDerived();
   }
 
   fireFromJob(): void {
-    this.afterDialogue = () => this.showFired();
+    this.afterDialogue = () => screens.showFired(this);
   }
 
   applyLevelUp(first: Attribute, second: Attribute): void {
@@ -1177,626 +1211,165 @@ export class Game implements GameCtx, OsHost, StoryHost {
     sfx.chime();
     this.hud.toast(`Learned ${sp?.name ?? id} (${sp?.english ?? ''}). X selects, F casts.`, 'epic');
     this.journal(`Learned the rune ${sp?.name ?? id}.`);
+    this.achieve('rune');
     return true;
   }
 
   trainSkill(k: Skill): void {
-    this.save.skills[k].progress = 999;
-    this.exercise(k, 0.001);
+    this.bumpSkill(k);
   }
 
-  // ================================================================== combat
-
-  private aimPoint(): THREE.Vector3 {
-    const origin = this.camera.getWorldPosition(new THREE.Vector3());
-    const dir = this.camera.getWorldDirection(new THREE.Vector3());
-    const p = origin.clone();
-    const startDist = this.save.view === 'third' ? origin.distanceTo(new THREE.Vector3(this.player.pos.x, origin.y, this.player.pos.z)) : 0;
-    const ceiling = this.player.outdoor ? 40 : WALL_H;
-    for (let t = startDist; t < 40; t += 0.25) {
-      p.copy(origin).addScaledVector(dir, t);
-      if (p.y < 0 || p.y > ceiling) return p;
-      const cx = toCell(p.x);
-      const cz = toCell(p.z);
-      const i = cz * this.level.w + cx;
-      if (this.level.floor[i] !== 1 || this.level.opaque[i] === 1) return p;
-      for (const a of this.actors) {
-        if (!a.hostile || a.resolved) continue;
-        const h = a.kind === 'boss' ? 3.8 : 2;
-        if (Math.hypot(a.pos.x - p.x, a.pos.z - p.z) < a.radius + 0.2 && p.y < h) return p;
-      }
-    }
-    return p;
+  evidence(): number {
+    return evidenceHeld(this);
   }
 
-  /** Every hit the player lands goes through here: sneak attacks, skills, buffs. */
-  private strike(a: Actor, base: number, knock: THREE.Vector3 | null, kind: 'melee' | 'ranged' | 'spell'): void {
-    const d = this.derivedCache;
-    let dmg = base * (kind === 'melee' ? d.meleeMult : kind === 'ranged' ? d.rangedMult : d.spellMult);
-    if (this.saunaBuff) dmg *= 1.25;
-    if (this.wiredT > 0) dmg *= 1.15;
-    if (!a.aggro && a.kind !== 'boss') {
-      const mult = 2 + skill(this.save, 'stealth') / 40;
-      dmg *= mult;
-      this.floatText(a.pos.clone().setY(2.9), `SNEAK ×${mult.toFixed(1)}`, '#b58cff');
-      this.exercise('stealth', 2);
-    }
-    hurtActor(this, a, dmg, knock);
-    if (kind === 'melee') this.exercise('hardware', 1);
-    if (kind === 'ranged') this.exercise('scripting', 1);
+  runeDiscount(): number {
+    return this.save.upgrades.includes('runegarden') ? 0.5 : 1;
   }
 
-  private attack(w: WeaponDef, rate: number): void {
-    const s = this.save;
-    if (w.ammo !== undefined && s.ammo[w.ammo] <= 0) {
-      if (this.input.clicked()) {
-        sfx.error();
-        this.hud.toast(`Out of ${w.ammo}. Internal IT sells more (or pick them up).`, 'bad');
-      }
-      this.attackCd = 0.3;
-      return;
-    }
-    if (w.energyCost !== undefined && s.energy < w.energyCost) {
-      if (this.input.clicked()) {
-        sfx.error();
-        this.hud.toast('Not enough energy. Coffee?', 'bad');
-      }
-      this.attackCd = 0.3;
-      return;
-    }
-    this.attackCd = w.cooldown / rate;
-    this.player.swing = 1;
-    if (this.invisT > 0) this.invisT = 0;
-    const pp = this.player.pos;
-    const yawFwd = new THREE.Vector3(-Math.sin(this.player.yaw), 0, -Math.cos(this.player.yaw));
+  // ================================================================== thin delegations
 
-    switch (w.kind) {
-      case 'melee': {
-        sfx.swing();
-        let hitAny = false;
-        for (const a of this.actors) {
-          if (!a.hostile || a.resolved) continue;
-          const dx = a.pos.x - pp.x;
-          const dz = a.pos.z - pp.z;
-          const dist = Math.hypot(dx, dz);
-          if (dist > w.range + a.radius) continue;
-          const dot = (dx * yawFwd.x + dz * yawFwd.z) / Math.max(dist, 1e-4);
-          if (dist > 0.8 && Math.acos(Math.max(-1, Math.min(1, dot))) > (w.arc ?? 1) / 2 + 0.25) continue;
-          if (!lineOfSight(this.level, pp.x, pp.z, a.pos.x, a.pos.z)) continue;
-          this.strike(a, w.damage, new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(w.knockback ?? 2), 'melee');
-          hitAny = true;
-          if (w.splash !== undefined) this.splash(a.pos, w.splash, w.damage * 0.5 * this.derivedCache.meleeMult, a.id);
-        }
-        if (hitAny) {
-          sfx.hit();
-          this.shake(0.15);
-        }
-        break;
-      }
-      case 'projectile':
-      case 'lob': {
-        if (w.ammo !== undefined) s.ammo[w.ammo] -= 1;
-        const from = this.muzzle();
-        const target = this.aimPoint();
-        const dir = target.sub(from).normalize();
-        const spread = 0.015 + this.derivedCache.band.sway * 0.03;
-        dir.x += fx.range(-spread, spread);
-        dir.y += fx.range(-spread, spread);
-        if (w.kind === 'lob') dir.y += 0.18;
-        dir.normalize();
-        const net = s.domain === 'Network' && s.rung >= 3 ? 1.3 : 1;
-        this.fire({
-          kind: w.id === 'labelmaker' ? 'label' : w.id === 'toner' ? 'toner' : 'duck',
-          from, dir, speed: (w.speed ?? 20) * net, damage: w.damage, hostile: false, owner: null,
-          ttl: 3 * net,
-          ...(w.kind === 'lob' ? { gravity: 12, splash: w.splash ?? 3 } : {}),
-        });
-        sfx.shoot();
-        break;
-      }
-      case 'cone': {
-        if (w.ammo !== undefined) s.ammo[w.ammo] -= 1;
-        sfx.air();
-        const fwd = this.camera.getWorldDirection(new THREE.Vector3());
-        fwd.y = 0;
-        fwd.normalize();
-        for (const a of this.actors) {
-          if (!a.hostile || a.resolved) continue;
-          const dx = a.pos.x - pp.x;
-          const dz = a.pos.z - pp.z;
-          const dist = Math.hypot(dx, dz);
-          if (dist > w.range) continue;
-          const dot = (dx * fwd.x + dz * fwd.z) / Math.max(dist, 1e-4);
-          if (dot < Math.cos(w.arc ?? 0.5)) continue;
-          if (!lineOfSight(this.level, pp.x, pp.z, a.pos.x, a.pos.z)) continue;
-          this.strike(a, w.damage, new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar((w.knockback ?? 3) * 0.6), 'ranged');
-        }
-        this.fxBall(this.muzzle().addScaledVector(fwd, 1.2 + fx.range(0, 2)), 0xeef8ff, 0.25, 0.35, 3);
-        break;
-      }
-      case 'nova': {
-        s.energy -= w.energyCost ?? 0;
-        sfx.nova();
-        this.shake(0.4);
-        this.fxRing(pp.clone().setY(1), w.color, w.range);
-        for (const a of this.actors) {
-          if (!a.hostile || a.resolved) continue;
-          const dx = a.pos.x - pp.x;
-          const dz = a.pos.z - pp.z;
-          const dist = Math.hypot(dx, dz);
-          if (dist > w.range || !lineOfSight(this.level, pp.x, pp.z, a.pos.x, a.pos.z)) continue;
-          this.strike(a, w.damage * (1 - dist / (w.range * 2)), new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(8), 'melee');
-        }
-        break;
-      }
-    }
-  }
-
-  private shove(): void {
-    this.shoveCd = 0.8;
-    this.save.energy -= 8;
-    this.player.swing = 1;
-    sfx.swing();
-    const pp = this.player.pos;
-    const fwd = new THREE.Vector3(-Math.sin(this.player.yaw), 0, -Math.cos(this.player.yaw));
-    for (const a of this.actors) {
-      if (!a.hostile || a.resolved || a.kind === 'boss') continue;
-      const dx = a.pos.x - pp.x;
-      const dz = a.pos.z - pp.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > 2.6) continue;
-      if ((dx * fwd.x + dz * fwd.z) / Math.max(dist, 1e-4) < 0.3) continue;
-      a.push.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(11));
-      a.stunned = 0.5;
-      a.cooldown = Math.max(a.cooldown, 0.8);
-      a.aggro = true;
-    }
-  }
-
-  private muzzle(): THREE.Vector3 {
-    if (this.save.view === 'first') {
-      const p = this.camera.getWorldPosition(new THREE.Vector3());
-      const right = new THREE.Vector3(Math.cos(this.player.yaw), 0, -Math.sin(this.player.yaw));
-      return p.addScaledVector(right, 0.2).add(new THREE.Vector3(0, -0.15, 0));
-    }
-    const p = this.player.pos.clone();
-    p.y += 1.3 - this.player.crouch * 0.4;
-    const right = new THREE.Vector3(Math.cos(this.player.yaw), 0, -Math.sin(this.player.yaw));
-    return p.addScaledVector(right, 0.35).addScaledVector(new THREE.Vector3(-Math.sin(this.player.yaw), 0, -Math.cos(this.player.yaw)), 0.4);
-  }
-
-  private splash(at: THREE.Vector3, radius: number, dmg: number, skip = -1): void {
-    for (const a of this.actors) {
-      if (!a.hostile || a.resolved || a.id === skip) continue;
-      const dist = Math.hypot(a.pos.x - at.x, a.pos.z - at.z);
-      if (dist > radius) continue;
-      hurtActor(this, a, dmg * (1 - dist / (radius * 1.5)), new THREE.Vector3(a.pos.x - at.x, 0, a.pos.z - at.z).normalize().multiplyScalar(5));
-    }
-  }
-
-  private projMesh(kind: ProjectileKind): THREE.Mesh {
-    let entry = this.projGeo.get(kind);
-    if (entry === undefined) {
-      const basic = (c: number): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({ color: c });
-      switch (kind) {
-        case 'ticket': entry = [new THREE.BoxGeometry(0.34, 0.03, 0.24), basic(0xffffff)]; break;
-        case 'gold': entry = [new THREE.BoxGeometry(0.36, 0.03, 0.26), basic(0xffd700)]; break;
-        case 'invite': entry = [new THREE.BoxGeometry(0.36, 0.36, 0.05), basic(0x4a8cff)]; break;
-        case 'paper': entry = [new THREE.BoxGeometry(0.3, 0.02, 0.4), basic(0xf4f4f4)]; break;
-        case 'label': entry = [new THREE.BoxGeometry(0.06, 0.02, 0.3), basic(0xfff27a)]; break;
-        case 'toner': entry = [new THREE.SphereGeometry(0.12, 6, 4), basic(0x111111)]; break;
-        case 'duck': entry = [new THREE.SphereGeometry(0.2, 8, 6), basic(0xffd400)]; break;
-        case 'rtfm': entry = [new THREE.BoxGeometry(0.08, 0.08, 0.7), basic(0x40e0ff)]; break;
-        case 'stun': entry = [new THREE.SphereGeometry(0.16, 8, 6), basic(0x8080ff)]; break;
-        case 'po': entry = [new THREE.BoxGeometry(0.4, 0.3, 0.3), basic(0xb5835a)]; break;
-        case 'laser': entry = [new THREE.BoxGeometry(0.1, 0.1, 1.4), basic(0xff2040)]; break;
-        case 'ring': entry = [new THREE.SphereGeometry(0.22, 6, 4), basic(0xff8a00)]; break;
-        case 'steam': entry = [new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ color: 0xeef6ff, transparent: true, opacity: 0.7 })]; break;
-        case 'salmiakki': entry = [new THREE.OctahedronGeometry(0.2), basic(0x1a1a1a)]; break;
-      }
-      this.projGeo.set(kind, entry);
-    }
-    return new THREE.Mesh(entry[0], entry[1]);
+  hurtPlayer(amount: number, from: Actor | null, kind: 'melee' | 'ticket' | 'meeting' | 'boss' | 'aura' | 'bite'): void {
+    hurtPlayer(this, amount, from, kind);
   }
 
   fire(p: ProjectileSpec): void {
-    const mesh = this.projMesh(p.kind);
-    mesh.position.copy(p.from);
-    mesh.lookAt(p.from.clone().add(p.dir));
-    this.scene.add(mesh);
-    this.projectiles.push({
-      kind: p.kind, mesh, vel: p.dir.clone().multiplyScalar(p.speed), damage: p.damage, hostile: p.hostile, owner: p.owner,
-      ttl: p.ttl ?? 3, splash: p.splash ?? 0, gravity: p.gravity ?? 0, hitIds: new Set(),
-    });
-    if (p.hostile && (p.kind === 'ticket' || p.kind === 'gold')) sfx.paper();
+    fire(this, p);
   }
 
-  private updateProjectiles(dt: number): void {
-    const pp = this.player.pos;
-    const keep: Projectile[] = [];
-    const ceiling = this.player.outdoor ? 40 : WALL_H;
-    for (const p of this.projectiles) {
-      p.ttl -= dt;
-      p.vel.y -= p.gravity * dt;
-      const m = p.mesh;
-      m.position.addScaledVector(p.vel, dt);
-      if (p.kind === 'ticket' || p.kind === 'gold' || p.kind === 'paper') m.rotation.z += dt * 12;
-      if (p.kind === 'invite' || p.kind === 'salmiakki') m.rotation.y += dt * 6;
-      let dead = p.ttl <= 0;
-      const pos = m.position;
-      const cx = toCell(pos.x);
-      const cz = toCell(pos.z);
-      const idx = cz * this.level.w + cx;
-      const inWall = cx < 0 || cz < 0 || cx >= this.level.w || cz >= this.level.h || this.level.floor[idx] !== 1
-        || (this.level.opaque[idx] === 1) || (this.level.solid[idx] === 1 && pos.y < 1.0 && !this.player.outdoor);
-      if (inWall || pos.y < 0.02 || pos.y > ceiling) dead = true;
-
-      if (!dead && p.hostile) {
-        const dx = pos.x - pp.x;
-        const dz = pos.z - pp.z;
-        if (dx * dx + dz * dz < 0.45 * 0.45 + 0.1 && pos.y > pp.y && pos.y < pp.y + 2) {
-          dead = true;
-          if (fx.chance(this.derivedCache.dodge)) {
-            this.floatText(pp.clone().setY(2.2), 'DODGE', '#9ad0ff');
-            this.exercise('athletics', 0.5);
-          } else {
-            this.projectileHitsPlayer(p);
-          }
-        }
-      } else if (!dead) {
-        for (const a of this.actors) {
-          if (!a.hostile || a.resolved || p.hitIds.has(a.id)) continue;
-          const h = a.kind === 'boss' ? 3.8 : a.kind === 'reply' || a.kind === 'mosquito' ? 1.8 : 2;
-          const dx = pos.x - a.pos.x;
-          const dz = pos.z - a.pos.z;
-          if (dx * dx + dz * dz < (a.radius + 0.25) ** 2 && pos.y < h) {
-            p.hitIds.add(a.id);
-            if (p.kind === 'stun') a.stunned = 2.2;
-            const knock = p.vel.clone().setY(0).normalize().multiplyScalar(p.kind === 'duck' ? 4 : 1.5);
-            if (p.kind === 'salmiakki') {
-              a.poisonT = 6;
-              a.poisonDps = p.damage;
-              hurtActor(this, a, p.damage * 0.5, knock);
-            } else if (p.owner === null) {
-              this.strike(a, p.damage, knock, 'ranged');
-            } else {
-              hurtActor(this, a, p.damage, knock);
-            }
-            sfx.hit();
-            dead = true;
-            break;
-          }
-        }
-      }
-      if (dead) {
-        if (p.splash > 0) {
-          if (p.hostile) {
-            const dist = Math.hypot(pos.x - pp.x, pos.z - pp.z);
-            if (dist < p.splash && !p.hitIds.has(-1)) {
-              this.hurtPlayer(p.damage * 0.8, p.owner, 'boss');
-              if (p.kind === 'po') this.addActionItem('Procurement');
-            }
-          } else {
-            this.splash(pos, p.splash, p.damage * (p.owner === null ? this.derivedCache.rangedMult : 1));
-          }
-          sfx.boom();
-          this.fxBall(pos.clone(), p.kind === 'po' ? 0xb5835a : p.kind === 'steam' ? 0xffffff : 0xffd400, 0.3, 0.45, p.splash * 1.4);
-          this.shake(0.25);
-        }
-        this.scene.remove(m);
-      } else {
-        keep.push(p);
-      }
-    }
-    this.projectiles = keep;
+  floatText(pos: THREE.Vector3, text: string, color: string): void {
+    floatText(this, pos, text, color);
   }
 
-  private projectileHitsPlayer(p: Projectile): void {
-    switch (p.kind) {
-      case 'ticket':
-        this.hurtPlayer(p.damage, p.owner, 'ticket');
-        if (p.owner !== null) this.enqueueTicket(p.owner, false);
-        break;
-      case 'gold':
-        this.hurtPlayer(p.damage, p.owner, 'ticket');
-        if (p.owner !== null && p.owner.kind !== 'boss') this.enqueueTicket(p.owner, true);
-        break;
-      case 'invite':
-        this.hurtPlayer(p.damage, p.owner, 'meeting');
-        if (!this.derivedCache.noRoot) {
-          const subjects = ['Quick sync re: the sync', 'Stand-up (sit-down)', 'Lessons learned: lessons', 'Alignment on alignment', 'KPI deep dive', '1:1 (with 14 people)'];
-          const resist = (this.save.sign === 'freeze' ? 0.5 : 1) / (1 + perk(this.save, 'teflon')) * (1 - this.save.attrs.liver * 0.004);
-          this.rootPlayer(2.2 * resist, `In a meeting: "${fx.pick(subjects)}"`);
-        }
-        break;
-      case 'po':
-        p.hitIds.add(-1);
-        this.hurtPlayer(p.damage, p.owner, 'boss');
-        this.addActionItem('Procurement');
-        break;
-      default:
-        this.hurtPlayer(p.damage, p.owner, p.owner?.kind === 'boss' ? 'boss' : 'ticket');
-    }
+  hazard(x: number, z: number, radius: number, seconds: number, kind: HazardKind): void {
+    spawnHazard(this, x, z, radius, seconds, kind);
   }
 
-  hurtPlayer(amount: number, from: Actor | null, kind: 'melee' | 'ticket' | 'meeting' | 'boss' | 'aura' | 'bite'): void {
-    if (this.screen !== 'play') return;
-    const d = this.derivedCache;
-    let dmg = amount * (1 - d.armor);
-    if (from !== null && (from.kind === 'boss' || from.kind === 'manager' || kind === 'boss')) dmg *= 1 - d.bossResist;
-    if (this.sisuT > 0) dmg *= 0.5;
-    if (this.save.hangover > 0) dmg *= 1.1;
-    this.save.sanity -= dmg;
-    this.exercise('sisu', Math.min(1, dmg / 20));
-    if (kind === 'bite' && fx.chance(0.3)) this.hud.toast('Bzzz. *slap*', 'info');
-    this.hud.flash(kind === 'meeting' ? 'meeting' : 'hurt');
-    sfx.hurt();
-    this.shake(Math.min(0.5, dmg / 30));
-    this.faceT = 0.6;
-    if (from !== null) {
-      const dx = from.pos.x - this.player.pos.x;
-      const dz = from.pos.z - this.player.pos.z;
-      const side = dx * Math.cos(this.player.yaw) - dz * Math.sin(this.player.yaw);
-      const fwdDot = -dx * Math.sin(this.player.yaw) - dz * Math.cos(this.player.yaw);
-      this.faceMood = fwdDot > Math.abs(side) ? 'hurt' : side > 0 ? 'right' : 'left';
-    } else {
-      this.faceMood = 'hurt';
-    }
-  }
+  healPlayer(amount: number, from: string): void { host.healPlayer(this, amount, from); }
+  rootPlayer(seconds: number, reason: string): void { host.rootPlayer(this, seconds, reason); }
+  shake(amount: number): void { this.shakeAmt = Math.max(this.shakeAmt, amount); }
+  helperDamageMult(): number { return perk(this.save, 'delegate') > 0 ? 2 : 1; }
+  healerFrequency(): number { return host.healerFrequency(this); }
+  kitchenStanding(): number { return this.derivedCache.band.healerMult === 0 ? -100 : this.save.standing.kitchen; }
+  ticketTitle(a: Actor): string { return TICKETS[a.ticket]?.title ?? 'It is broken'; }
+  ticketFix(a: Actor): string { return TICKETS[a.ticket]?.fixes[0] ?? 'Turn it off and on again'; }
+  noticed(a: Actor): void { if (this.player.crouching && a.kind !== 'mosquito') this.hud.toast(`${a.name} spotted you.`, 'bad'); }
+  bossStart(a: Actor): void { host.bossStart(this, a); }
+  bossParley(a: Actor): void { host.bossParley(this, a); }
+  stealRep(a: Actor, amount: number): number { return host.stealRep(this, a, amount); }
+  enqueueTicket(from: Actor, gold: boolean): void { host.enqueueTicket(this, from, gold); }
+  giveItem(id: string, n: number, from: string): void { host.giveItem(this, id, n, from); }
+  giveAmmo(): void { host.giveAmmo(this); }
+  addActionItem(from: string): void { host.addActionItem(this, from); }
+  clearActionItems(from: string): number { return host.clearActionItems(this, from); }
+  resolvePeacefully(a: Actor, how: 'fix' | 'ticket' | 'scared' | 'charmed' | 'meeting' | 'bribe'): void { host.resolvePeacefully(this, a, how); }
+  enrage(a: Actor): void { host.enrage(this, a); }
+  recruitedHelper(): Actor | null { return host.recruitedHelper(this); }
+  dismiss(a: Actor): void { host.dismiss(this, a); }
+  spawnHostile(kind: 'user' | 'manager' | 'reply' | 'customer', n: number, name?: string): void { host.spawnHostile(this, kind, n, name); }
+  deliverLaptop(a: Actor): boolean { return host.deliverLaptop(this, a); }
+  bossDeal(kind: 'nda' | 'mokki' | 'expose' | 'parachute'): void { host.bossDeal(this, kind); }
+  auditorParley(outcome: 'ally' | 'fight'): void { host.auditorParley(this, outcome); }
+  // QuestHost
+  hasItem(id: string): boolean { return this.save.questItems.includes(id); }
+  takeItem(id: string): void { this.save.questItems = this.save.questItems.filter((x) => x !== id); }
+  giveUnique(id: string): void { host.giveUnique(this, id); }
+  giveRandomGear(rarity: 'fine' | 'rare'): void { host.giveRandomGear(this, rarity); }
+  acceptQuest(id: string): void { host.acceptQuest(this, id); }
+  questEvent(e: QuestEvent): void { questEvent(this, e); }
+  turnHostile(npc: string, name: string): void { host.turnHostile(this, npc, name); }
+  recruitIntern(): void { host.recruitIntern(this); }
+  // OsHost
+  buy(id: string): string | null { return host.buy(this, id); }
+  sell(uid: string): string | null { return host.sell(this, uid); }
+  price(base: number): number { return host.price(this, base); }
+  equipGear(uid: string): void { host.equipGear(this, uid); }
+  unequip(slot: 'head' | 'body' | 'feet' | 'trinket'): void { host.unequip(this, slot); }
+  use(id: string): void { host.use(this, id); }
+  takePerk(id: string): void { host.takePerk(this, id); }
+  resolve(q: QueuedTicket, label: string): { ok: boolean; message: string } { return host.resolveTicket(this, q, label); }
+  fixOptions(q: QueuedTicket): string[] { return host.fixOptions(this, q); }
+  fixHint(q: QueuedTicket): string | null { return host.fixHint(this, q); }
+  garble(label: string): string { return host.garble(this, label); }
+  pullTickets(): number { return host.pullTickets(this); }
+  newQuest(): ReturnType<OsHost['newQuest']> { return host.newQuest(this); }
+  claimQuest(q: Parameters<OsHost['claimQuest']>[0]): void { host.claimQuest(this, q); }
+  slackOff(): string { return host.slackOff(this); }
+  canSlack(): boolean { return this.currentTerminal !== null && !this.slackedTerminals.has(this.currentTerminal.id); }
+  hasTerminal(): boolean { return this.currentTerminal !== null; }
+  click(): void { sfx.click(); }
+  error(): void { sfx.error(); }
+  coin(): void { sfx.coin(); }
 
-  healPlayer(amount: number, from: string): void {
-    const d = this.derivedCache;
-    const before = this.save.sanity;
-    this.save.sanity = Math.min(d.maxSanity, this.save.sanity + amount * d.healMult);
-    const got = Math.round(this.save.sanity - before);
-    if (got > 0) {
-      sfx.heal();
-      this.hud.flash('heal');
-      this.floatText(this.player.pos.clone().setY(2.2), `+${got}`, '#7dff9a');
-      if (from !== '') this.hud.toast(`${from}: +${got} sanity`, 'good');
-    }
-  }
+  // ================================================================== Friday and Monday
 
-  rootPlayer(seconds: number, reason: string): void {
-    this.rootT = Math.max(this.rootT, seconds);
-    this.rootReason = reason;
-    sfx.meeting();
-  }
-
-  shake(amount: number): void {
-    this.shakeAmt = Math.max(this.shakeAmt, amount);
-  }
-
-  helperDamageMult(): number {
-    return perk(this.save, 'delegate') > 0 ? 2 : 1;
-  }
-
-  healerFrequency(): number {
-    return (perk(this.save, 'delegate') > 0 ? 1.6 : 1) * (1 + Math.max(0, this.save.standing.kitchen) / 100) * (this.derivedCache.band.healerMult > 0 ? 1 : 0.01);
-  }
-
-  kitchenStanding(): number {
-    // The ladies do not enable a hammered IT person.
-    return this.derivedCache.band.healerMult === 0 ? -100 : this.save.standing.kitchen;
-  }
-
-  ticketTitle(a: Actor): string {
-    return TICKETS[a.ticket]?.title ?? 'It is broken';
-  }
-
-  ticketFix(a: Actor): string {
-    return TICKETS[a.ticket]?.fixes[0] ?? 'Turn it off and on again';
-  }
-
-  noticed(a: Actor): void {
-    if (this.player.crouching && a.kind !== 'mosquito') this.hud.toast(`${a.name} spotted you.`, 'bad');
-  }
-
-  /** Resolved in combat: the core loop. */
-  private resolveActor(a: Actor): void {
-    a.resolved = true;
-    a.removeIn = a.kind === 'boss' ? 3 : 1.4;
-    a.flash = 1;
-    a.hpBar.visible = false;
+  goToMokki(): void {
     const s = this.save;
-    const rep = Math.round(a.rep * (1 + perk(s, 'soft') * 0.1));
-    s.rep += rep;
-    sfx.resolved();
-    this.faceMood = 'grin';
-    this.faceT = 1.2;
-    const t = TICKETS[a.ticket];
-    if (a.kind === 'boss' && a.boss !== null) {
-      say(a, a.boss.defeat, 4, '#fff', 'rgba(0,100,40,0.92)');
-      s.stats.bosses++;
-      this.elevatorOpen = true;
-      sfx.setBoss(false);
-      sfx.levelUp();
-      s.quests = s.quests.filter((q) => q.kind !== 'boss');
-      adjustStanding(s, 'management', 6);
-      this.journal(`Resolved the major incident: ${a.name}.`);
-      this.hud.toast(`MAJOR INCIDENT RESOLVED: ${a.name}. +₡${rep}. The lift is unlocked - the weekend awaits.`, 'epic');
-      const exit = this.level.interactables.find((i) => i.kind === 'elevator');
-      exit?.mesh?.traverse((o) => {
-        if (o.name === 'lamp' && o instanceof THREE.Mesh) (o.material as THREE.MeshBasicMaterial).color.setHex(0x30ff60);
-      });
-      for (let i = 0; i < 4; i++) this.dropLoot(a.pos, true);
-      for (const o of this.actors) if (o.hostile && !o.resolved && o.kind !== 'boss' && fx.chance(0.5)) o.hp = 0;
-      writeSave(s);
-      return;
-    }
-    say(a, a.kind === 'reply' ? 'Unsubscribed.' : a.kind === 'jam' ? '*whirr* READY' : a.kind === 'mosquito' ? '*splat*' : fx.pick(RESOLVED_LINES), 2, '#063', 'rgba(220,255,225,0.95)');
-    if (a.kind === 'mosquito') return;
-    s.stats.resolvedField++;
-    // Throughput pleases management; being stapled does not please staff.
-    if (a.kind === 'user' || a.kind === 'caller' || a.kind === 'customer') {
-      adjustStanding(s, 'staff', -0.4);
-      adjustStanding(s, 'management', 0.3);
-    }
-    const before = s.queue.length;
-    s.queue = s.queue.filter((q) => q.from !== a.name);
-    const cleared = before - s.queue.length;
-    this.floatText(a.pos.clone().setY(2.6), `+₡${rep}`, '#7dff9a');
-    if (a.kind !== 'reply') this.hud.toast(`Resolved in person: "${t?.title ?? 'it'}" +₡${rep}${cleared > 0 ? ' (ticket closed)' : ''}`, 'good');
-    this.questProgress('users');
-    if (fx.chance(a.kind === 'customer' || a.kind === 'manager' ? 0.7 : a.kind === 'reply' ? 0.05 : 0.3)) this.dropLoot(a.pos, false);
-  }
-
-  resolvePeacefully(a: Actor, how: 'fix' | 'ticket' | 'scared' | 'charmed' | 'meeting' | 'bribe'): void {
-    if (a.resolved) return;
-    const s = this.save;
-    a.resolved = true;
-    a.calm = true;
-    a.removeIn = 3;
-    a.hpBar.visible = false;
-    a.talked = true;
-    const rep = how === 'fix' ? Math.round(a.rep * 0.9) : how === 'ticket' || how === 'bribe' ? Math.round(a.rep * 0.3) : 0;
-    s.rep += rep;
-    s.stats.resolvedPeace++;
-    if (how === 'fix' || how === 'charmed' || how === 'bribe') adjustStanding(s, 'staff', how === 'fix' ? 2 : 1);
-    if (how !== 'ticket') s.queue = s.queue.filter((q) => q.from !== a.name);
-    this.questProgress('peace');
-    if (rep > 0) this.floatText(a.pos.clone().setY(2.6), `+₡${rep}`, '#7dff9a');
-    sfx.resolved();
-  }
-
-  enrage(a: Actor): void {
-    a.enragedT = 10;
-    a.aggro = true;
-    a.talked = true;
-    adjustStanding(this.save, 'staff', -1);
-    say(a, 'RIGHT.', 1.5);
-  }
-
-  private questProgress(kind: Quest['kind']): void {
-    for (const q of this.save.quests) {
-      if (q.kind === kind && !q.done) {
-        q.progress++;
-        if (q.progress >= q.goal) this.questDone(q);
-      }
-    }
-  }
-
-  private dropLoot(at: THREE.Vector3, rich: boolean): void {
-    const s = this.save;
-    const ownedAmmo = (['labels', 'air', 'ducks', 'toner'] as const).filter((k) =>
-      s.owned.some((id) => { const w = itemById(id); return w?.slot === 'weapon' && w.ammo === k; }));
-    let mesh: THREE.Mesh;
-    let pickup: Pickup;
-    if (ownedAmmo.length > 0 && fx.chance(0.55)) {
-      const k = fx.pick(ownedAmmo);
-      const def = AMMO.find((a) => a.ammo === k);
-      const eng = s.track === 'engineer' && s.rung >= 3 ? 2 : 1;
-      const amount = Math.ceil((def?.amount ?? 10) * (rich ? 0.8 : 0.35) * eng);
-      mesh = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.25, 0.3), new THREE.MeshLambertMaterial({ color: 0x3aa0ff, emissive: 0x0a2a4a }));
-      pickup = { mesh, kind: 'ammo', id: k, amount, t: 0 };
-    } else {
-      const pool = ['biscuits', 'coffee', 'energy', 'postit', 'paperclip', 'paperclip', 'beer', 'lonkero', rich ? 'cake' : 'biscuits'];
-      const id = fx.pick(pool);
-      mesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshLambertMaterial({ color: DRINKS.includes(id) ? 0xd4af37 : 0xffb0d0, emissive: 0x4a1a2a }));
-      pickup = { mesh, kind: 'item', id, amount: 1, t: 0 };
-    }
-    mesh.position.set(at.x + fx.range(-0.8, 0.8), 0.4, at.z + fx.range(-0.8, 0.8));
-    this.scene.add(mesh);
-    this.pickups.push(pickup);
-  }
-
-  private updatePickups(dt: number): void {
-    const pp = this.player.pos;
-    this.pickups = this.pickups.filter((p) => {
-      p.t += dt;
-      p.mesh.rotation.y += dt * 2;
-      p.mesh.position.y = 0.4 + Math.sin(p.t * 3) * 0.1;
-      const dist = Math.hypot(p.mesh.position.x - pp.x, p.mesh.position.z - pp.z);
-      if (dist < 3) {
-        p.mesh.position.x += (pp.x - p.mesh.position.x) * dt * 6;
-        p.mesh.position.z += (pp.z - p.mesh.position.z) * dt * 6;
-      }
-      if (dist < 0.8) {
-        sfx.pickup();
-        if (p.kind === 'ammo') {
-          this.save.ammo[p.id as AmmoKind] += p.amount;
-          this.hud.toast(`+${p.amount} ${p.id}`);
-        } else {
-          this.giveItem(p.id, 1, '');
-        }
-        this.scene.remove(p.mesh);
-        disposeTree(p.mesh, true);
-        return false;
-      }
-      return p.t < 90;
+    screens.transitionTo(this, 'Friday 17:00 - to the mökki', '🌲', 'Three hours up the motorway, the last one on gravel. The phone loses signal at the petrol station. Mostly.', () => {
+      // Last week's blessings wear off on the drive; the weekend can grant new ones.
+      s.saunaBuff = false;
+      s.makkara = false;
+      s.hauki = false;
+      s.palju = false;
+      s.weekend = freshWeekend();
+      s.caffeineTol = Math.max(0, s.caffeineTol - 0.25);
+      if (this.boss === null || this.boss.resolved) s.floorState.bossDone = true;
+      const pay = Math.round(salaryFor(s.rung) * WORKPLACES[s.workplace].rep);
+      s.rep += pay;
+      this.loadMokki(false);
+      screens.resume(this);
+      this.hud.toast(`Salary: +₡${pay} (${this.title}).`, 'epic');
+      this.journal(`Weekend ${s.week} at the mökki. Salary ₡${pay}.`);
+      if (s.upgrades.includes('guestroom')) adjustStanding(s, 'kitchen', 3);
+      // Friday evening phone calls: HR first, then Derek with the review.
+      const queue: (() => DialogueNode)[] = [];
+      if (s.warnings >= 3) queue.push(() => disciplinary(this));
+      queue.push(() => performanceReview(this));
+      this.chainDialogues(queue);
+      this.tip('mokki');
+      this.autosave();
     });
   }
 
-  giveItem(id: string, n: number, from: string): void {
-    this.save.consumables[id] = (this.save.consumables[id] ?? 0) + n;
-    this.refreshDerived();
-    const name = itemById(id)?.name ?? id;
-    this.hud.toast(from === '' ? `Picked up ${name}` : `${from} gave you ${name}`, 'good');
-  }
-
-  giveAmmo(): void {
+  goToWork(): void {
     const s = this.save;
-    s.ammo.labels += 20;
-    if (s.owned.includes('aircan')) s.ammo.air += 30;
-    if (s.owned.includes('duck')) s.ammo.ducks += 2;
-    if (s.owned.includes('toner')) s.ammo.toner += 20;
-    sfx.pickup();
+    const next = s.floor + 1;
+    s.week += 1;
+    const theme = THEMES[next % THEMES.length];
+    screens.transitionTo(this, theme?.name ?? '', String(next), 'Monday. The lift plays a pan-pipe cover of a song you used to like.', () => {
+      this.loadFloor(next, false);
+      screens.resume(this);
+      this.hud.toast(`Welcome to ${this.floorName()}.`, 'epic');
+      if (s.upgrades.includes('dog')) this.achieve('dog');
+    });
   }
 
-  // ================================================================== fx
-
-  private fxBall(at: THREE.Vector3, color: number, life: number, size: number, grow: number, rise = 0): void {
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 10, 8), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, depthWrite: false }));
-    mesh.position.copy(at);
-    this.scene.add(mesh);
-    this.fxMeshes.push({ mesh, ttl: life, life, grow, rise });
+  finishStory(): void {
+    const s = this.save;
+    screens.showEnding(this, endingFor({ rung: s.rung, dependency: s.dependency, warnings: s.warnings, flags: s.flags, standing: s.standing }));
   }
 
-  private fxRing(at: THREE.Vector3, color: number, radius: number): void {
-    const mesh = new THREE.Mesh(new THREE.TorusGeometry(1, 0.08, 6, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false }));
-    mesh.rotation.x = Math.PI / 2;
-    mesh.position.copy(at);
-    this.scene.add(mesh);
-    this.fxMeshes.push({ mesh, ttl: 0.5, life: 0.5, grow: radius, rise: 0 });
+  levelUpIfReady(): void {
+    if (levelUpReady(this.save)) this.openDialogue(levelUpNode(this));
   }
 
-  private steamBurst(at: THREE.Vector3, radius: number): void {
-    for (let i = 0; i < 10; i++) {
-      const p = at.clone().add(new THREE.Vector3(fx.range(-1, 1) * radius * 0.6, fx.range(0.3, 1.6), fx.range(-1, 1) * radius * 0.6));
-      this.fxBall(p, 0xf4f8ff, fx.range(0.6, 1.1), fx.range(0.3, 0.6), 2.5, 1.2);
+  domainCooldown(): number {
+    return domainCooldown(this);
+  }
+
+  // ================================================================== upkeep
+
+  private billboards(): void {
+    const q = this.camera.quaternion;
+    const cam = this.camera.position;
+    for (const a of this.actors) {
+      if (a.hpBar.visible) a.hpBar.quaternion.copy(a.root.quaternion).invert().multiply(q);
+      if (a.bubble !== null) a.bubble.visible = Math.hypot(a.pos.x - cam.x, a.pos.z - cam.z) > 3.2;
     }
-  }
-
-  private updateFx(dt: number): void {
-    this.fxMeshes = this.fxMeshes.filter((f) => {
-      f.ttl -= dt;
-      const k = 1 - f.ttl / f.life;
-      f.mesh.scale.setScalar(0.2 + k * f.grow);
-      f.mesh.position.y += f.rise * dt;
-      (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.7 * (1 - k));
-      if (f.ttl <= 0) {
-        this.scene.remove(f.mesh);
-        f.mesh.geometry.dispose();
-        (f.mesh.material as THREE.Material).dispose();
-        return false;
-      }
-      return true;
-    });
-    this.floaters = this.floaters.filter((f) => {
-      f.ttl -= dt;
-      f.sprite.position.y += dt * 1.2;
-      f.sprite.material.opacity = Math.min(1, f.ttl * 2);
-      if (f.ttl <= 0) {
-        this.scene.remove(f.sprite);
-        disposeSprite(f.sprite);
-        return false;
-      }
-      return true;
-    });
   }
 
   private animateScenery(): void {
-    if (this.save.location !== 'mokki') return;
+    if (this.save.location !== 'mokki' || this.level === undefined) return;
     for (const child of this.level.group.children) {
       if (child.name === 'water' && child instanceof THREE.Mesh) {
         const m = child.material as THREE.MeshLambertMaterial;
@@ -1811,1192 +1384,7 @@ export class Game implements GameCtx, OsHost, StoryHost {
     }
   }
 
-  floatText(pos: THREE.Vector3, text: string, color: string): void {
-    if (this.floaters.length > 40) return;
-    const s = textSprite(text, { color, size: 30 });
-    s.position.copy(pos);
-    s.material.depthTest = false;
-    this.scene.add(s);
-    this.floaters.push({ sprite: s, ttl: 0.9 });
-  }
-
-  private billboards(): void {
-    const q = this.camera.quaternion;
-    const cam = this.camera.position;
-    for (const a of this.actors) {
-      if (a.hpBar.visible) a.hpBar.quaternion.copy(a.root.quaternion).invert().multiply(q);
-      if (a.bubble !== null) a.bubble.visible = Math.hypot(a.pos.x - cam.x, a.pos.z - cam.z) > 3.2;
-      if (a.rig !== null && !a.resolved && a.flash <= 0) {
-        // Network ping: revealed people glow through the gloom.
-        const glow = a.revealT > 0 ? 0x2a4a99 : 0x000000;
-        for (const m of a.rig.materials) m.emissive.setHex(glow);
-      }
-    }
-  }
-
-  // ================================================================== tickets
-
-  enqueueTicket(from: Actor, gold: boolean): void {
-    const s = this.save;
-    if (s.location !== 'office') return;
-    if (s.queue.some((q) => q.from === from.name)) return;
-    if (s.queue.length >= this.derivedCache.queueMax) {
-      this.hurtPlayer(6, null, 'ticket');
-      this.hud.toast('Queue overflow! The tickets are coming from inside the queue.', 'bad');
-      return;
-    }
-    const sla = ((gold ? 80 : 130) - Math.min(40, s.floor * 8)) * this.derivedCache.slaMult;
-    s.queue.push({ t: from.ticket, sla, from: from.name, struck: [], gold });
-    sfx.phone();
-    this.hud.toast(`${gold ? '⭐ GOLD ' : ''}Ticket from ${from.name}: "${TICKETS[from.ticket]?.title ?? ''}" - solve it at a computer or resolve them in person.`, gold ? 'bad' : 'info');
-  }
-
-  private breach(q: QueuedTicket): void {
-    const s = this.save;
-    s.queue = s.queue.filter((x) => x !== q);
-    s.stats.breaches++;
-    adjustStanding(s, 'management', -3);
-    adjustStanding(s, 'staff', -2);
-    this.hurtPlayer(q.gold ? 22 : 12, null, 'ticket');
-    const title = TICKETS[q.t]?.title ?? '';
-    this.hud.toast(`SLA BREACHED: "${title}". Escalated to a manager. (Management -3, Staff -2)`, 'bad');
-    const ang = fx.range(0, Math.PI * 2);
-    const m = this.spawn('manager', this.player.pos.x + Math.sin(ang) * 6, this.player.pos.z + Math.cos(ang) * 6, -1);
-    if (m !== null) say(m, `I have been asked to follow up on "${title}".`, 4);
-  }
-
-  fixOptions(q: QueuedTicket): string[] {
-    let entry = this.fixCache.get(q);
-    if (entry === undefined) {
-      const t = TICKETS[q.t];
-      if (t === undefined) return [];
-      const correct = fx.pick(t.fixes);
-      const own = new Set(t.fixes);
-      const decoys = new Set<string>();
-      for (let guard = 0; decoys.size < 3 && guard < 50; guard++) {
-        const f = fx.pick(fx.pick(TICKETS).fixes);
-        if (!own.has(f)) decoys.add(f);
-      }
-      let list = [...decoys];
-      if (perk(this.save, 'cli') > 0) list = list.slice(1);
-      // Troubleshooting: sometimes you just know.
-      const hint = fx.chance(skill(this.save, 'troubleshooting') / 140) ? correct : null;
-      entry = { opts: fx.shuffle([correct, ...list]), hint };
-      this.fixCache.set(q, entry);
-    }
-    let out = entry.opts.filter((o) => !q.struck.includes(o));
-    // The Ballmer Peak: at exactly the right BAC, one wrong answer is obviously wrong.
-    if (bandFor(this.save.bac) === 'peak') {
-      const t = TICKETS[q.t];
-      const wrong = out.find((o) => !(t?.fixes.includes(o) ?? false));
-      if (wrong !== undefined && out.length > 2) out = out.filter((o) => o !== wrong);
-    }
-    return out;
-  }
-
-  fixHint(q: QueuedTicket): string | null {
-    return this.fixCache.get(q)?.hint ?? null;
-  }
-
-  /** Drunk enough and the words start to swim. */
-  garble(label: string): string {
-    const g = this.derivedCache.band.garble;
-    if (g <= 0) return label;
-    const rng = new Rng(label.length * 7919 + 13);
-    return label.split(' ').map((w) => {
-      if (w.length < 4 || !rng.chance(g)) return w;
-      const chars = w.split('');
-      const i = rng.int(1, chars.length - 3);
-      const a = chars[i] as string;
-      chars[i] = chars[i + 1] as string;
-      chars[i + 1] = a;
-      return chars.join('');
-    }).join(' ');
-  }
-
-  resolve(q: QueuedTicket, label: string): { ok: boolean; message: string } {
-    const s = this.save;
-    const t = TICKETS[q.t];
-    if (t === undefined) return { ok: false, message: 'That ticket no longer exists.' };
-    if (t.fixes.includes(label)) {
-      s.queue = s.queue.filter((x) => x !== q);
-      const rep = Math.round((12 + t.urgency * 6 + s.floor * 5) * (q.gold ? 2 : 1) * this.derivedCache.deskRepMult * (0.7 + this.difficulty * 0.3));
-      s.rep += rep;
-      s.stats.resolvedDesk++;
-      adjustStanding(s, 'staff', 1);
-      adjustStanding(s, 'management', 0.5);
-      this.exercise('troubleshooting', 2);
-      this.healPlayer(6, '');
-      sfx.resolved();
-      this.questProgress('resolve');
-      return { ok: true, message: `✔ Resolved. +₡${rep}. Root cause: ${t.cause}` };
-    }
-    q.struck.push(label);
-    q.sla -= 10;
-    s.stats.wrongFixes++;
-    s.sanity -= 8;
-    adjustStanding(s, 'staff', -1);
-    this.exercise('troubleshooting', 0.5);
-    sfx.error();
-    return { ok: false, message: '✖ That was not it. The user has reopened the ticket, with feeling. (-8 sanity, -10s SLA, Staff -1)' };
-  }
-
-  pullTickets(): number {
-    const s = this.save;
-    let n = 0;
-    while (s.queue.length < this.derivedCache.queueMax && n < 2) {
-      const t = fx.int(0, TICKETS.length - 1);
-      const tk = TICKETS[t];
-      s.queue.push({ t, sla: 170 * this.derivedCache.slaMult, from: `${tk?.reporter ?? 'Backlog'} (backlog #${fx.int(1000, 9999)})`, struck: [], gold: false });
-      n++;
-    }
-    if (n > 0) sfx.phone();
-    return n;
-  }
-
-  // ================================================================== quests
-
-  newQuest(): Quest | null {
-    const s = this.save;
-    if (s.location !== 'office') return null;
-    if (s.quests.filter((q) => q.kind !== 'boss').length >= 3) return null;
-    const f = s.floor;
-    const kinds: Quest['kind'][] = ['resolve', 'users', 'peace'];
-    if (this.level.interactables.some((i) => i.kind === 'printer' && !i.used) && !s.quests.some((q) => q.kind === 'printer')) kinds.push('printer', 'printer');
-    const healers = this.actors.filter((a) => a.kind === 'healer');
-    if (healers.length > 0 && !s.quests.some((q) => q.kind === 'deliver')) kinds.push('deliver');
-    const kind = fx.pick(kinds);
-    const from = fx.pick(['Derek (Team Lead)', 'Service Desk Bot', 'Fiona (Head of Process)', 'Morag (Internal IT)', 'HR Wellbeing Team']);
-    const id = s.nextQuestId++;
-    let q: Quest;
-    switch (kind) {
-      case 'resolve': {
-        const goal = fx.int(2, 4);
-        q = { id, kind, title: `Close ${goal} tickets at a terminal`, body: 'The queue dashboard is red and it is on the big TV in reception. Close tickets from any computer.', from, goal, progress: 0, reward: 40 + goal * 15 + f * 25, done: false };
-        break;
-      }
-      case 'users': {
-        const goal = fx.int(5, 9);
-        q = { id, kind, title: `Resolve ${goal} people in person`, body: 'Walk the floor. Be visible. "Proactive floor-walking", they call it.', from, goal, progress: 0, reward: 30 + goal * 8 + f * 20, done: false };
-        break;
-      }
-      case 'peace': {
-        const goal = fx.int(2, 4);
-        q = { id, kind, title: `Talk ${goal} people down without a fight`, body: 'HR has noticed the stapler incidents. Walk up to someone angry, press E, and use your words.', from: 'HR Wellbeing Team', goal, progress: 0, reward: 50 + goal * 20 + f * 20, done: false };
-        break;
-      }
-      case 'printer':
-        q = { id, kind, title: 'Fix the printer in the print room', body: 'It says PC LOAD LETTER. Nobody knows what that means. Beware of paper jams.', from, goal: 1, progress: 0, reward: 60 + f * 25, done: false };
-        break;
-      case 'deliver':
-      default: {
-        const target = fx.pick(healers);
-        s.consumables.laptop = (s.consumables.laptop ?? 0) + 1;
-        q = { id, kind: 'deliver', title: `Deliver a laptop to ${target.name}`, body: `${target.name} has been waiting for a replacement laptop since the spring. It is in your backpack (3 kg).`, from, goal: 1, progress: 0, reward: 50 + f * 25, done: false, target: target.name };
-        break;
-      }
-    }
-    s.quests.push(q);
-    this.refreshDerived();
-    return q;
-  }
-
-  private questDone(q: Quest): void {
-    q.done = true;
-    sfx.coin();
-    this.hud.toast(`Task complete: ${q.title}. Claim it at any computer (Mail).`, 'good');
-  }
-
-  claimQuest(q: Quest): void {
-    const s = this.save;
-    if (!q.done) return;
-    s.rep += q.reward;
-    adjustStanding(s, 'management', 2);
-    s.quests = s.quests.filter((x) => x !== q);
-    sfx.coin();
-  }
-
-  deliverLaptop(a: Actor): boolean {
-    const s = this.save;
-    const q = s.quests.find((x) => x.kind === 'deliver' && x.target === a.name && !x.done);
-    if (q === undefined || (s.consumables.laptop ?? 0) <= 0) return false;
-    delete s.consumables.laptop;
-    q.progress = 1;
-    this.questDone(q);
-    adjustStanding(s, 'kitchen', 5);
-    adjustStanding(s, 'staff', 2);
-    this.giveItem('biscuits', 1, a.name);
-    this.refreshDerived();
-    return true;
-  }
-
-  // ================================================================== the vices
-
-  private tickVices(dt: number): void {
-    const s = this.save;
-    const before = bandFor(s.bac);
-    if (s.bac > 0) s.bac = Math.max(0, s.bac - bacDecay(s.attrs.liver, skill(s, 'drinking')) * dt);
-    s.peakBac = Math.max(s.peakBac, s.bac);
-    if (s.peakBac > 50 && s.bac < 10) {
-      s.peakBac = 0;
-      s.hangover = 110 * (perk(s, 'hardened') > 0 ? 0.5 : 1);
-      this.hud.toast('The hangover arrives like a Monday. (Sauna, coffee or the Avanto rune help.)', 'bad');
-      this.journal('Hungover. Never again. (Again.)');
-      this.refreshDerived();
-    }
-    if (s.hangover > 0) {
-      s.hangover = Math.max(0, s.hangover - dt);
-      if (s.hangover === 0) this.refreshDerived();
-    }
-    s.dependency = Math.max(0, s.dependency - dt * 0.012);
-    if (s.dependency >= 50 && s.bac < 5) {
-      s.sanity -= ((s.dependency - 45) / 60) * dt * (perk(s, 'hardened') > 0 ? 0.5 : 1);
-      this.withdrawalT -= dt;
-      if (this.withdrawalT <= 0) {
-        this.withdrawalT = 25;
-        this.hud.toast('The shakes. Something in you wants a drink. (Or a very long sauna.)', 'bad');
-      }
-    }
-    const after = bandFor(s.bac);
-    if (after !== before) {
-      this.refreshDerived();
-      if (after === 'peak') this.hud.toast('BALLMER PEAK: you can see the code behind the code. (+damage, +persuasion, terminals strike a wrong fix)', 'epic');
-      else if (after === 'merry' && before !== 'hammered') this.hud.toast('Merry. The office ladies will not approve. Managers can smell it.', 'bad');
-      else if (after === 'hammered') this.hud.toast('HAMMERED. The floor is moving. Stop drinking.', 'bad');
-      else if (after === 'blackout') this.blackout();
-    }
-  }
-
-  drink(id: string): void {
-    const s = this.save;
-    const c = CONSUMABLES.find((x) => x.id === id);
-    if (c?.bac === undefined) return;
-    const before = bandFor(s.bac);
-    s.bac = Math.min(100, s.bac + drinkBac(c.bac, s.attrs.liver, skill(s, 'drinking')));
-    s.dependency = Math.min(100, s.dependency + 3 + c.bac * 0.15);
-    s.empties += 1;
-    s.stats.drinks++;
-    if (s.hangover > 0) {
-      s.hangover = 0;
-      s.dependency = Math.min(100, s.dependency + 4);
-      this.hud.toast('Hair of the dog. The hangover lifts. Something else takes hold.', 'bad');
-    }
-    // Hardened drinkers get more out of it.
-    if (s.dependency >= 50 && c.heal !== undefined) this.healPlayer(c.heal * 0.5, '');
-    this.exercise('drinking', 1.5);
-    if (s.stats.drinks % 12 === 0) s.attrs.liver = Math.min(100, s.attrs.liver + 1);
-    sfx.glug();
-    this.hud.toast(`${c.name}. ${promille(s.bac)}‰ - ${BAND_EFFECTS[bandFor(s.bac)].label}.`, 'info');
-    this.refreshDerived();
-    if (bandFor(s.bac) === 'blackout' && before !== 'blackout') this.blackout();
-  }
-
-  /** A manager close by, and you smell of lonkero. */
-  private caughtCheck(m: Actor): void {
-    const s = this.save;
-    const band = this.derivedCache.band;
-    const evidence = s.empties >= 4 ? 0.35 : 0;
-    const chance = Math.min(1, band.caughtChance + evidence) * (1 - skill(s, 'drinking') / 250);
-    this.caughtCd = 15;
-    if (chance <= 0 || !fx.chance(chance)) return;
-    say(m, s.bac >= 14 ? 'Have you been DRINKING? At WORK?' : 'Is that a bag of empties? In the office?', 3);
-    adjustStanding(s, 'management', -8);
-    this.warn(s.bac >= 14 ? 'Caught under the influence by a manager' : 'Caught with a bag of empties');
-  }
-
-  private blackout(): void {
-    if (this.screen !== 'play' && this.screen !== 'os') return;
-    const s = this.save;
-    s.stats.blackouts++;
-    const lost = Math.floor(s.rep * 0.2);
-    s.rep -= lost;
-    s.bac = 45;
-    const incidents = [
-      'You replied-all to the whole company with a single word: "löyly".',
-      'You set the CEO\'s desktop wallpaper to a picture of a goat. It is still there.',
-      'You signed up for the charity 10k. It is on Saturday.',
-      'You told Derek what you really think of his stand-ups. In rhyme.',
-      'You tried to reimage the vending machine.',
-    ];
-    const what = fx.pick(incidents);
-    this.journal(`Blackout. ${what}`);
-    this.warn('Blackout at work');
-    this.os.hide();
-    this.screen = 'transition';
-    this.input.releaseLock();
-    this.setOverlay(`<div class="title-logo small dead">BLACKOUT</div>
-      <p class="title-blurb">You wake up ${s.location === 'mokki' ? 'face-down on the laituri' : 'under a desk in the lobby'}. You have lost ₡${lost}, most of your dignity, and some time.</p>
-      <p class="title-blurb">Apparently: ${what}</p>`, [['Get up', () => {
-      this.player.pos.set(this.level.start.x, 0, this.level.start.z);
-      s.hangover = 60;
-      this.refreshDerived();
-      this.resume();
-    }]]);
-  }
-
-  // ================================================================== magic
-
-  private castOdds(cost: number): number {
-    const s = this.save;
-    return castChance(cost, skill(s, 'runecraft'), s.attrs.tech, s.attrs.liver, this.derivedCache.band.spell);
-  }
-
-  private cycleSpell(): void {
-    const s = this.save;
-    if (s.spells.length === 0) {
-      this.hud.toast('You know no runes. Find the Saunatonttu in a sauna, or at the mökki.');
-      return;
-    }
-    const i = s.spell === null ? -1 : s.spells.indexOf(s.spell);
-    s.spell = s.spells[(i + 1) % s.spells.length] ?? null;
-    const sp = s.spell === null ? undefined : spellById(s.spell);
-    if (sp !== undefined) this.hud.toast(`${sp.name} (${sp.english}): ${sp.desc}`);
-  }
-
-  private castSpell(): void {
-    const s = this.save;
-    const sp = s.spell === null ? undefined : spellById(s.spell);
-    if (sp === undefined) {
-      this.hud.toast('No rune selected. The Saunatonttu teaches runes.');
-      return;
-    }
-    if (s.loyly < sp.cost) {
-      sfx.fizzle();
-      this.hud.toast('Not enough Löyly. Sit in a sauna, or drink a Salmari.', 'bad');
-      return;
-    }
-    const odds = this.castOdds(sp.cost);
-    if (!fx.chance(odds)) {
-      s.loyly -= sp.cost / 2;
-      sfx.fizzle();
-      this.hud.toast(`The rune fizzles. (${Math.round(odds * 100)}% chance)`, 'bad');
-      this.exercise('runecraft', 0.4);
-      return;
-    }
-    s.loyly -= sp.cost;
-    s.stats.spellsCast++;
-    this.exercise('runecraft', 1 + sp.cost / 25);
-    const pp = this.player.pos;
-    const d = this.derivedCache;
-    const near = (r: number): Actor[] => this.actors.filter((a) => a.hostile && !a.resolved && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < r && lineOfSight(this.level, pp.x, pp.z, a.pos.x, a.pos.z));
-    this.player.swing = 1;
-    switch (sp.id) {
-      case 'steam':
-        sfx.hiss();
-        this.steamBurst(pp.clone(), 5);
-        for (const a of near(5.5)) {
-          this.strike(a, 28 + skill(s, 'runecraft') * 0.8, new THREE.Vector3(a.pos.x - pp.x, 0, a.pos.z - pp.z).normalize().multiplyScalar(6), 'spell');
-          a.stunned = Math.max(a.stunned, 1);
-        }
-        break;
-      case 'vihta': {
-        sfx.swing();
-        const fwd = new THREE.Vector3(-Math.sin(this.player.yaw), 0, -Math.cos(this.player.yaw));
-        let dealt = 0;
-        for (const a of near(4)) {
-          const dx = a.pos.x - pp.x;
-          const dz = a.pos.z - pp.z;
-          if ((dx * fwd.x + dz * fwd.z) / Math.max(0.01, Math.hypot(dx, dz)) < 0.4) continue;
-          this.strike(a, 22, new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(4), 'spell');
-          dealt += 22 * d.spellMult;
-        }
-        this.fxBall(pp.clone().addScaledVector(fwd, 2).setY(1.2), 0x7aa84a, 0.4, 0.5, 3);
-        if (dealt > 0) this.healPlayer(dealt / 3, '');
-        break;
-      }
-      case 'salmiakki': {
-        const from = this.muzzle();
-        const dir = this.aimPoint().sub(from).normalize();
-        this.fire({ kind: 'salmiakki', from, dir, speed: 20, damage: 7 * d.spellMult, hostile: false, owner: null });
-        sfx.shoot();
-        break;
-      }
-      case 'sisu':
-        this.sisuT = 8;
-        sfx.chime();
-        this.hud.toast('SISU. Nothing gets through.', 'epic');
-        break;
-      case 'avanto':
-        sfx.splash();
-        this.fxRing(pp.clone().setY(0.5), 0x9ad8ff, 7);
-        for (const a of near(7)) {
-          a.slowT = 5;
-          this.strike(a, 10, null, 'spell');
-        }
-        s.bac = Math.max(0, s.bac - 30);
-        s.hangover = 0;
-        this.refreshDerived();
-        this.hud.toast('AVANTO! The cold hits like a truth. Sober, and very awake.', 'good');
-        break;
-      case 'silence':
-        this.invisT = 10;
-        sfx.chime();
-        this.hud.toast('Hiljaisuus. Nobody talks to you. Bliss.', 'good');
-        break;
-      case 'mark':
-        this.mark = pp.clone();
-        this.hud.toast('Mökkimerkki: this spot is remembered.', 'good');
-        sfx.chime();
-        break;
-      case 'recall': {
-        const to = this.mark ?? new THREE.Vector3(this.level.start.x, 0, this.level.start.z);
-        this.steamBurst(pp.clone(), 2);
-        this.player.pos.copy(to);
-        this.steamBurst(to.clone(), 2);
-        sfx.hiss();
-        break;
-      }
-      case 'song':
-        sfx.chime();
-        this.hud.toast('You sing the old song. It goes on for a while. People forget why they came.', 'epic');
-        for (const a of near(9)) {
-          if (a.kind === 'boss') continue;
-          this.resolvePeacefully(a, 'charmed');
-          say(a, '...what was I doing? Never mind.', 2);
-        }
-        break;
-      case 'tonttu':
-        sfx.chime();
-        this.spawnAt('helper', pp.x + 1, pp.z + 1, -1, false, { role: 'spirit', ttl: 25 });
-        this.steamBurst(pp.clone().add(new THREE.Vector3(1, 0, 1)), 1.5);
-        break;
-    }
-  }
-
-  private domainAbility(): void {
-    const s = this.save;
-    if (s.rung < 3 || s.domain === null) {
-      this.hud.toast('Domain abilities come with a specialism (from the third rung).');
-      return;
-    }
-    if (this.abilityCd > 0) {
-      this.hud.toast(`${s.domain} ability recharging (${Math.ceil(this.abilityCd)}s).`);
-      return;
-    }
-    this.abilityCd = 40;
-    const pp = this.player.pos;
-    switch (s.domain) {
-      case 'Systems':
-        sfx.nova();
-        this.fxRing(pp.clone().setY(1), 0x7dff9a, 7);
-        for (const a of this.actors) {
-          if (!a.hostile || a.resolved || Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) > 7) continue;
-          this.strike(a, 55 * this.difficulty, new THREE.Vector3(a.pos.x - pp.x, 0, a.pos.z - pp.z).normalize().multiplyScalar(9), 'melee');
-        }
-        this.hud.toast('HARD REBOOT.', 'epic');
-        break;
-      case 'Network':
-        sfx.chime();
-        for (const a of this.actors) {
-          if (!a.hostile || a.resolved) continue;
-          a.revealT = 15;
-          if (Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < 20) a.slowT = 3;
-          this.level.seen[toCell(a.pos.z) * this.level.w + toCell(a.pos.x)] = 1;
-        }
-        this.hud.mapOpen = true;
-        this.hud.toast('PING SWEEP: everyone on the floor answered. Map open (M).', 'epic');
-        break;
-      case 'Cloud':
-        sfx.chime();
-        for (let i = 0; i < 2; i++) this.spawnAt('helper', pp.x + fx.range(-1.5, 1.5), pp.z + fx.range(-1.5, 1.5), -1, false, { role: 'clone', ttl: 20 });
-        this.hud.toast('AUTOSCALE: two more of you. Billing is somebody else\'s problem.', 'epic');
-        break;
-      case 'Security':
-        sfx.meeting();
-        this.fxRing(pp.clone().setY(1), 0x8080ff, 9);
-        for (const a of this.actors) {
-          if (a.hostile && !a.resolved && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < 9) a.stunned = 3;
-        }
-        this.hud.toast('LOCKDOWN.', 'epic');
-        break;
-      case 'Database': {
-        const snap = this.history[0];
-        if (snap === undefined) {
-          this.abilityCd = 0;
-          return;
-        }
-        this.steamBurst(pp.clone(), 1.5);
-        this.player.pos.set(snap.x, 0, snap.z);
-        s.sanity = Math.max(s.sanity, snap.sanity);
-        this.history = [];
-        sfx.hiss();
-        this.hud.toast('ROLLBACK: restored to a known good state.', 'epic');
-        break;
-      }
-    }
-  }
-
-  // ================================================================== resting
-
-  private canRest(): string | null {
-    if (this.save.location === 'mokki') return 'At the mökki you sleep in the cottage (the red door).';
-    const pp = this.player.pos;
-    if (this.actors.some((a) => a.hostile && !a.resolved && a.aggro && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < 25)) return 'You cannot rest with people after you.';
-    if (this.boss?.bossActive === true && !this.boss.resolved) return 'Not during a major incident.';
-    return null;
-  }
-
-  private tryRest(): void {
-    const why = this.canRest();
-    if (why !== null) {
-      sfx.error();
-      this.hud.toast(why, 'bad');
-      return;
-    }
-    this.rest(false);
-  }
-
-  private rest(safe: boolean): void {
-    const s = this.save;
-    const d = this.derivedCache;
-    sfx.snore();
-    s.sanity = safe ? d.maxSanity : Math.min(d.maxSanity, s.sanity + d.maxSanity * 0.5);
-    s.energy = 100;
-    s.loyly = safe ? d.maxLoyly : Math.min(d.maxLoyly, s.loyly + d.maxLoyly * 0.5);
-    s.bac = Math.max(0, s.bac - (safe ? 100 : 35));
-    if (safe) {
-      s.hangover = 0;
-      this.hud.toast('You sleep like a log, to the sound of the lake.', 'good');
-    } else {
-      // An hour under the desk: the queue does not sleep.
-      for (const q of s.queue) q.sla -= 60;
-      this.hud.toast('You nap under a desk for an hour. The SLA clocks did not.', 'info');
-      if (fx.chance(0.25)) {
-        const ang = fx.range(0, Math.PI * 2);
-        const m = this.spawn('manager', this.player.pos.x + Math.sin(ang) * 3, this.player.pos.z + Math.cos(ang) * 3, -1);
-        if (m !== null) {
-          say(m, 'Are you ASLEEP? Under a DESK?', 3);
-          adjustStanding(s, 'management', -4);
-          this.hud.toast('Found napping! (Management -4)', 'bad');
-        }
-      }
-    }
-    this.refreshDerived();
-    if (levelUpReady(s)) this.openDialogue(levelUpNode(this));
-  }
-
-  // ================================================================== interaction
-
-  private findPrompt(): void {
-    const pp = this.player.pos;
-    const fwd = new THREE.Vector3(-Math.sin(this.player.yaw), 0, -Math.cos(this.player.yaw));
-    let best: { kind: 'interact'; it: Interactable } | { kind: 'actor'; a: Actor } | null = null;
-    let bestScore = Infinity;
-    for (const it of this.level.interactables) {
-      const dx = it.x - pp.x;
-      const dz = it.z - pp.z;
-      const dist = Math.hypot(dx, dz);
-      const reach = it.kind === 'elevator' || it.kind === 'itdesk' || it.kind === 'car' || it.kind === 'lake' ? 3.2 : 2.4;
-      if (dist > reach) continue;
-      const dot = (dx * fwd.x + dz * fwd.z) / Math.max(dist, 1e-4);
-      if (dot < 0.2 && dist > 1.4) continue;
-      const score = dist - dot;
-      if (score < bestScore) {
-        bestScore = score;
-        best = { kind: 'interact', it };
-      }
-    }
-    for (const a of this.actors) {
-      if (a.resolved) continue;
-      const talkable = !a.hostile || ((a.kind === 'user' || a.kind === 'caller' || a.kind === 'customer' || a.kind === 'manager') && !a.talked && a.enragedT <= 0);
-      if (!talkable || a.role === 'clone' || a.role === 'spirit') continue;
-      const dx = a.pos.x - pp.x;
-      const dz = a.pos.z - pp.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > 2.6) continue;
-      const score = dist - 0.5;
-      if (score < bestScore) {
-        bestScore = score;
-        best = { kind: 'actor', a };
-      }
-    }
-    this.promptTarget = best;
-    if (best === null) {
-      this.prompt = '';
-      return;
-    }
-    if (best.kind === 'actor') {
-      const a = best.a;
-      this.prompt = a.hostile ? `E: Talk to ${a.name} (${a.kind === 'manager' ? 'negotiate' : 'talk them down'})`
-        : a.kind === 'healer' ? `E: Talk to ${a.name}`
-          : a.kind === 'tonttu' ? 'E: Talk to the Saunatonttu (runes, training)'
-            : a.kind === 'npc' ? `E: Talk to ${a.name}` : `E: ${a.recruited ? 'Talk to' : 'Recruit'} ${a.name}`;
-      return;
-    }
-    const it = best.it;
-    const labels: Record<Interactable['kind'], string> = {
-      terminal: 'E: Log on to WorkgrumbleOS (tickets, tasks, HR, Internal IT)',
-      printer: it.used ? 'Printer: READY (for now)' : 'E: Fix the printer',
-      cooler: it.used ? 'Water cooler (empty)' : 'E: Water cooler (+sanity, -BAC)',
-      coffee: it.used ? 'Coffee machine (descaling)' : 'E: Coffee machine',
-      vending: 'E: Vending machine (₡10)',
-      itdesk: 'E: Internal IT Service Desk (requisition gear)',
-      elevator: this.elevatorOpen ? 'E: Take the lift - Friday, the mökki' : 'Lift locked - Major Incident in progress',
-      crate: it.used ? 'Empty spares crate' : 'E: Rummage in the spares crate',
-      kiuas: 'E: Throw löyly (sauna)',
-      locker: it.used ? 'Supply closet (empty)' : `E: Pick the supply-closet lock (lock ${it.lock})`,
-      fridge: it.used ? 'Office fridge (just a yoghurt, and a note)' : 'E: Office fridge',
-      pantti: `E: Bottle return (${this.save.empties} empties)`,
-      bed: 'E: Sleep (rest, level up)',
-      lake: 'E: Swim in the lake',
-      grill: this.weekendDone.grill ? 'The grill is cooling' : 'E: Grill makkara',
-      stash: 'E: Your stash chest',
-      car: 'E: Drive back to work (Monday)',
-      runestone: 'E: Read the rune stone',
-    };
-    this.prompt = labels[it.kind];
-  }
-
-  private interact(): void {
-    const target = this.promptTarget;
-    if (target === null) return;
-    const s = this.save;
-    if (target.kind === 'actor') {
-      const a = target.a;
-      if (a.hostile) {
-        this.openDialogue(a.kind === 'manager' ? talkManager(this, a) : talkHostile(this, a));
-        return;
-      }
-      if (a.kind === 'healer') this.openDialogue(talkHealer(this, a));
-      else if (a.kind === 'tonttu') this.openDialogue(talkTonttu(this, a));
-      else if (a.kind === 'npc') {
-        this.openDialogue(talkStory(this, a), () => {
-          if (a.talked) {
-            s.flags[`story_${a.npcId ?? ''}_${s.floor}`] = true;
-            setMarker(a, null);
-          }
-        });
-      } else this.openDialogue(talkHelper(this, a));
-      return;
-    }
-    const it = target.it;
-    switch (it.kind) {
-      case 'terminal':
-        this.currentTerminal = it;
-        if (this.pendingHearing) {
-          this.pendingHearing = false;
-          this.openDialogue(disciplinary(this));
-          return;
-        }
-        this.openOs('desk');
-        break;
-      case 'itdesk':
-        this.openOs('itdesk');
-        break;
-      case 'cooler':
-        if (it.used) {
-          this.hud.toast('Empty. Somebody should change the bottle. It will not be you.');
-          break;
-        }
-        it.used = true;
-        s.bac = Math.max(0, s.bac - 8);
-        this.healPlayer(25, 'Water cooler');
-        break;
-      case 'coffee':
-        if (it.used) {
-          this.hud.toast('"DESCALING IN PROGRESS". It has said that since 2019.');
-          break;
-        }
-        it.used = true;
-        s.energy = 100;
-        s.bac = Math.max(0, s.bac - 6);
-        s.hangover = Math.max(0, s.hangover - 40);
-        this.coffeeT = 30 * (perk(s, 'caffeine') > 0 ? 2 : 1);
-        sfx.heal();
-        this.hud.toast('Fresh filter coffee. Energy full, pep in step.', 'good');
-        break;
-      case 'vending':
-        if (s.rep < 10) {
-          sfx.error();
-          this.hud.toast('Insufficient Rep. The machine judges you.', 'bad');
-          break;
-        }
-        s.rep -= 10;
-        this.giveItem(fx.chance(0.5) ? 'energy' : 'biscuits', 1, 'The vending machine');
-        sfx.coin();
-        break;
-      case 'printer':
-        if (it.used) {
-          this.hud.toast('READY. For now.');
-          break;
-        }
-        it.used = true;
-        sfx.resolved();
-        this.hud.toast('You open every tray, remove one crumpled sheet, and turn it off and on again. READY.', 'good');
-        s.rep += 15;
-        adjustStanding(s, 'itcrowd', 3);
-        this.exercise('troubleshooting', 1);
-        this.questProgress('printer');
-        break;
-      case 'crate':
-        if (it.used) {
-          this.hud.toast('Just some SCSI terminators and a Zip drive.');
-          break;
-        }
-        it.used = true;
-        this.giveAmmo();
-        s.rep += 20;
-        adjustStanding(s, 'itcrowd', 1);
-        this.giveItem(fx.pick(['biscuits', 'coffee', 'energy', 'postit', 'paperclip']), 1, '');
-        break;
-      case 'elevator':
-        if (!this.elevatorOpen) {
-          sfx.error();
-          this.hud.toast(`The lift is locked while ${this.boss?.name ?? 'the boss'} is unresolved.`, 'bad');
-          break;
-        }
-        writeSave(s);
-        if (s.floor === FINAL_FLOOR && !s.won) this.showEnding();
-        else this.goToMokki();
-        break;
-      case 'kiuas':
-        this.sauna(it);
-        break;
-      case 'locker':
-        this.pickLock(it);
-        break;
-      case 'fridge':
-        if (it.used) {
-          this.hud.toast('Just the yoghurt now. And the note.');
-          break;
-        }
-        this.openDialogue(this.fridgeNode(it));
-        break;
-      case 'pantti': {
-        if (s.empties <= 0) {
-          this.hud.toast('No empties. The machine beeps, disappointed.');
-          break;
-        }
-        const n = s.empties;
-        s.empties = 0;
-        s.rep += n * 2;
-        sfx.coin();
-        this.hud.toast(`Pantti: ${n} empties returned, ₡${n * 2}. The evidence is gone.`, 'good');
-        this.refreshDerived();
-        break;
-      }
-      case 'bed':
-        this.rest(true);
-        break;
-      case 'lake':
-        this.swim();
-        break;
-      case 'grill':
-        if (this.weekendDone.grill) {
-          this.hud.toast('The coals are grey. Next weekend.');
-          break;
-        }
-        this.weekendDone.grill = true;
-        this.giveItem('makkara', 2, 'The grill');
-        this.giveItem('lonkero', 1, 'The cool box');
-        sfx.hiss();
-        break;
-      case 'stash':
-        this.openDialogue(this.stashNode());
-        break;
-      case 'car':
-        this.openDialogue({
-          speaker: 'The car', text: 'Monday morning. Three hours back down the motorway. Ready?',
-          options: [
-            { label: 'Drive back to work.', pick: () => { this.afterDialogue = () => this.goToWork(); return null; } },
-            { label: 'Five more minutes.', pick: () => null },
-          ],
-        });
-        break;
-      case 'runestone': {
-        const t = this.actors.find((a) => a.kind === 'tonttu');
-        if (t !== undefined) this.openDialogue(talkTonttu(this, t));
-        else this.hud.toast('The runes glow faintly. The tonttu is out.');
-        break;
-      }
-    }
-  }
-
-  private sauna(it: Interactable): void {
-    const s = this.save;
-    const mokki = s.location === 'mokki';
-    if (mokki ? this.weekendDone.sauna : it.used) {
-      this.hud.toast('The kiuas needs time to heat up again.');
-      return;
-    }
-    if (mokki) this.weekendDone.sauna = true;
-    else it.used = true;
-    const d = this.derivedCache;
-    const mult = s.sign === 'juhannus' ? 2 : 1;
-    sfx.hiss();
-    this.steamBurst(this.player.pos.clone(), 3);
-    s.sanity = Math.min(d.maxSanity, s.sanity + d.maxSanity * 0.6 * mult);
-    s.loyly = perk(s, 'saunoja') > 0 || mokki ? d.maxLoyly : Math.min(d.maxLoyly, s.loyly + 40 * mult);
-    s.bac = Math.max(0, s.bac - 40);
-    s.hangover = 0;
-    s.dependency = Math.max(0, s.dependency - 6);
-    this.saunaT = 90;
-    if (perk(s, 'saunoja') > 0) this.saunaBuff = true;
-    this.exercise('sisu', 2);
-    this.exercise('runecraft', 1);
-    this.refreshDerived();
-    this.hud.toast(mokki ? 'Löylyä! Everything restored. Now the lake - while you are still hot.' : 'Löylyä! Sanity and Löyly restored, BAC down, hangover gone.', 'epic');
-    this.journal(mokki ? 'Sauna at the mökki. Some things are simply right.' : 'Found a sauna in the office and used it. Building regulations are a mystery.');
-  }
-
-  private swim(): void {
-    const s = this.save;
-    sfx.splash();
-    this.steamBurst(this.player.pos.clone(), 1);
-    if (this.saunaT > 0 && !this.weekendDone.lake) {
-      this.weekendDone.lake = true;
-      this.saunaBuff = true;
-      this.hud.toast('SAUNA → LAKE. The Finnish way. Löyly-blessed: +25% damage for the whole next floor.', 'epic');
-      this.journal('Sauna, then straight into the lake. Blessed for the week.');
-      this.exercise('sisu', 3);
-    } else {
-      this.hud.toast('Brr! The lake is 14 degrees. Sober, at least. (Try it straight after the sauna.)', 'info');
-    }
-    s.bac = Math.max(0, s.bac - 25);
-    s.hangover = 0;
-    this.refreshDerived();
-  }
-
-  private fridgeNode(it: Interactable): DialogueNode {
-    const s = this.save;
-    const witnesses = this.actors.filter((a) => !a.resolved && (a.kind === 'user' || a.kind === 'caller' || a.kind === 'manager' || a.kind === 'healer')
-      && Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) < 10
-      && lineOfSight(this.level, a.pos.x, a.pos.z, this.player.pos.x, this.player.pos.z));
-    return {
-      speaker: 'The office fridge',
-      text: `A yoghurt from 2023. A note: "THIS IS JUKKA'S. DO NOT TOUCH." Behind it: two cans of lonkero and a Koskenkorva miniature.${witnesses.length > 0 ? ` ${witnesses.length} ${witnesses.length === 1 ? 'person is' : 'people are'} watching.` : ' Nobody is looking.'}`,
-      options: [
-        {
-          label: 'Take Jukka\'s drinks.',
-          tag: witnesses.length > 0 ? 'Theft, witnessed' : 'Theft',
-          pick: () => {
-            it.used = true;
-            this.giveItem('lonkero', 2, 'The fridge');
-            this.giveItem('kossu', 1, 'The fridge');
-            if (witnesses.length > 0) {
-              adjustStanding(s, 'staff', -4);
-              adjustStanding(s, 'kitchen', -6);
-              this.warn('Seen stealing from the office fridge');
-              return said('Somebody behind you', 'Is that JUKKA\'S? I am telling Denise.', 'bad');
-            }
-            this.exercise('stealth', 2);
-            return said('The office fridge', 'The door closes with a guilty little thud. Nobody saw.', 'neutral');
-          },
-        },
-        { label: 'Leave it.', pick: () => null },
-      ],
-    };
-  }
-
-  private pickLock(it: Interactable): void {
-    const s = this.save;
-    if (it.used) {
-      this.hud.toast('Empty. Somebody got here first. You.');
-      return;
-    }
-    if ((s.consumables.paperclip ?? 0) <= 0) {
-      sfx.error();
-      this.hud.toast('You need a paperclip. Internal IT has boxes of them.', 'bad');
-      return;
-    }
-    const witnesses = this.actors.filter((a) => !a.resolved && a.hostile && a.kind !== 'reply' && a.kind !== 'mosquito'
-      && Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) < 9
-      && lineOfSight(this.level, a.pos.x, a.pos.z, this.player.pos.x, this.player.pos.z));
-    this.screen = 'dialogue';
-    this.input.enabled = false;
-    this.input.releaseLock();
-    this.lockpick.start(it.lock, skill(s, 'security') + Math.floor(s.attrs.reflex / 5), () => s.consumables.paperclip ?? 0, () => {
-      s.consumables.paperclip = Math.max(0, (s.consumables.paperclip ?? 1) - 1);
-      sfx.snap();
-      this.exercise('security', 0.5);
-    }, (ok) => {
-      if (ok) {
-        it.used = true;
-        s.stats.locks++;
-        this.exercise('security', 2 + it.lock / 25);
-        sfx.lockClick();
-        this.lootLocker();
-        if (witnesses.length > 0) {
-          adjustStanding(s, 'staff', -4);
-          this.warn(`${witnesses[0]?.name ?? 'Someone'} saw you breaking into a supply closet`);
-        }
-      }
-      this.refreshDerived();
-      this.resume();
-    });
-  }
-
-  private lootLocker(): void {
-    const s = this.save;
-    const got: string[] = [];
-    const give = (id: string, n = 1): void => {
-      s.consumables[id] = (s.consumables[id] ?? 0) + n;
-      got.push(itemById(id)?.name ?? id);
-    };
-    give(fx.pick(['paperclip', 'postit', 'coffee', 'energy']), fx.int(1, 3));
-    if (fx.chance(0.5)) give(fx.pick(['beer', 'lonkero', 'kossu', 'salmari', 'sahti']));
-    const unknown = RUNES.filter((r) => {
-      const c = CONSUMABLES.find((x) => x.id === r);
-      return c?.rune !== undefined && !s.spells.includes(c.rune) && (s.consumables[r] ?? 0) === 0;
-    });
-    if (unknown.length > 0 && fx.chance(0.35)) give(fx.pick(unknown));
-    const gear = GEAR.filter((g) => !s.owned.includes(g.id) && g.minFloor <= s.floor);
-    if (gear.length > 0 && fx.chance(0.2)) {
-      const g = fx.pick(gear);
-      s.owned.push(g.id);
-      got.push(g.name);
-    }
-    const rep = fx.int(10, 30) + s.floor * 10;
-    s.rep += rep;
-    this.hud.toast(`Supply closet: ${got.join(', ')} and ₡${rep}.`, 'good');
-  }
-
-  private stashNode(): DialogueNode {
-    const s = this.save;
-    const move = (from: Record<string, number>, to: Record<string, number>, filter: (id: string) => boolean): number => {
-      let n = 0;
-      for (const [id, count] of Object.entries(from)) {
-        if (!filter(id) || count <= 0) continue;
-        to[id] = (to[id] ?? 0) + count;
-        delete from[id];
-        n += count;
-      }
-      this.refreshDerived();
-      return n;
-    };
-    const isDrink = (id: string): boolean => DRINKS.includes(id);
-    const isSupply = (id: string): boolean => !DRINKS.includes(id) && id !== 'laptop' && id !== 'paperclip';
-    const stored = Object.values(s.stash).reduce((a, b) => a + b, 0);
-    return {
-      speaker: 'Your stash chest', text: `An old pine chest on the porch. It holds ${stored} thing${stored === 1 ? '' : 's'}. Nothing in here counts toward your carry weight - or tempts you on a Tuesday.`,
-      options: [
-        { label: 'Put all my drinks in the chest. (Out of reach, out of mind.)', pick: () => { const n = move(s.consumables, s.stash, isDrink); return said('Your stash chest', `${n} drinks stored.`); } },
-        { label: 'Take my drinks back out.', pick: () => { const n = move(s.stash, s.consumables, isDrink); return said('Your stash chest', `${n} drinks taken.`); } },
-        { label: 'Store my supplies.', pick: () => { const n = move(s.consumables, s.stash, isSupply); return said('Your stash chest', `${n} supplies stored.`); } },
-        { label: 'Take my supplies back.', pick: () => { const n = move(s.stash, s.consumables, isSupply); return said('Your stash chest', `${n} supplies taken.`); } },
-        { label: 'Close the lid.', pick: () => null },
-      ],
-    };
-  }
-
-  private quickUse(): void {
-    const s = this.save;
-    const d = this.derivedCache;
-    const order = s.sanity < d.maxSanity * 0.6 ? ['biscuits', 'cake', 'makkara', 'coffee', 'energy'] : s.actionItems > 0 ? ['postit', 'coffee', 'energy', 'biscuits'] : ['coffee', 'energy', 'biscuits', 'cake'];
-    for (const id of order) {
-      if ((s.consumables[id] ?? 0) > 0) {
-        this.use(id);
-        return;
-      }
-    }
-    sfx.error();
-    this.hud.toast('Nothing quick in your pockets. (Drinks are never quick-used: choose them in the backpack.)');
-  }
-
-  addActionItem(from: string): void {
-    this.save.actionItems++;
-    this.refreshDerived();
-    this.hud.toast(`${from} assigned you an action item (+6 kg). An office lady or a sticky note can take it off you.`, 'bad');
-  }
-
-  clearActionItems(from: string): number {
-    const n = this.save.actionItems;
-    this.save.actionItems = 0;
-    this.refreshDerived();
-    if (n > 0) {
-      sfx.heal();
-      this.hud.toast(`${from} took ${n} action item${n > 1 ? 's' : ''} off your hands.`, 'good');
-    }
-    return n;
-  }
-
-  recruitedHelper(): Actor | null {
-    return this.actors.find((a) => a.kind === 'helper' && a.recruited && !a.resolved && a.role !== 'clone' && a.role !== 'spirit') ?? null;
-  }
-
-  dismiss(a: Actor): void {
-    a.recruited = false;
-    a.resolved = true;
-    a.calm = true;
-    a.removeIn = 3;
-  }
-
-  spawnHostile(kind: 'user' | 'manager' | 'reply' | 'customer', n: number, name?: string): void {
-    for (let i = 0; i < n; i++) {
-      const a = this.spawn(kind, this.player.pos.x + fx.range(-3, 3), this.player.pos.z + fx.range(-3, 3), -1);
-      if (a !== null && name !== undefined) {
-        a.name = name;
-        a.hp *= 2;
-        a.maxHp *= 2;
-      }
-    }
-  }
-
-  bossDeal(kind: 'nda' | 'mokki'): void {
-    const s = this.save;
-    if (kind === 'nda') {
-      s.flags.ceoDeal = true;
-      this.journal('I signed the NDA. The Company Man.');
-      this.afterDialogue = () => this.showEnding();
-      return;
-    }
-    s.flags.mokkiDeal = true;
-    s.rep += 500;
-    if (this.boss !== null) {
-      this.boss.hp *= 0.5;
-      this.boss.maxHp *= 0.5;
-    }
-    this.journal('I negotiated the mökki money out of Sir Reginald before the fight. He is distracted, counting it.');
-  }
-
-  // ================================================================== OsHost
-
-  buy(id: string): string | null {
-    const s = this.save;
-    const item = ALL_ITEMS.find((i) => i.id === id);
-    if (item === undefined) return 'Unknown item.';
-    if (item.minFloor > s.floor) return 'Your clearance does not cover that yet.';
-    const price = this.price(item.price);
-    if (s.rep < price) return `Requisition denied: needs ₡${price}, you have ₡${s.rep}.`;
-    if ((item.slot === 'weapon' || item.slot === 'head' || item.slot === 'body' || item.slot === 'feet' || item.slot === 'trinket') && s.owned.includes(id)) {
-      return 'Already issued. Internal IT keeps a spreadsheet.';
-    }
-    s.rep -= price;
-    adjustStanding(s, 'itcrowd', 0.5);
-    switch (item.slot) {
-      case 'weapon':
-        s.owned.push(id);
-        s.equipped.weapon = id;
-        if (item.ammo !== undefined && s.ammo[item.ammo] === 0) s.ammo[item.ammo] += AMMO.find((a) => a.ammo === item.ammo)?.amount ?? 20;
-        break;
-      case 'head':
-      case 'body':
-      case 'feet':
-      case 'trinket':
-        s.owned.push(id);
-        if (s.equipped[item.slot] === null) s.equipped[item.slot] = id;
-        break;
-      case 'consumable':
-        s.consumables[id] = (s.consumables[id] ?? 0) + 1;
-        break;
-      case 'ammo':
-        s.ammo[item.ammo] += item.amount;
-        break;
-    }
-    this.refreshDerived();
-    return null;
-  }
-
-  /** Internal IT prices: Charm and IT Crowd standing both count. */
-  price(base: number): number {
-    const s = this.save;
-    const m = 1 - s.standing.itcrowd / 300 - (s.attrs.charm - 35) / 400;
-    return Math.max(1, Math.round(base * Math.max(0.6, Math.min(1.4, m))));
-  }
-
-  equip(slot: 'weapon' | 'head' | 'body' | 'feet' | 'trinket', id: string | null): void {
-    if (slot === 'weapon') {
-      if (id !== null && this.save.owned.includes(id)) this.save.equipped.weapon = id;
-    } else {
-      this.save.equipped[slot] = id;
-    }
-    this.refreshDerived();
-    this.attackCd = Math.max(this.attackCd, 0.15);
-  }
-
-  use(id: string): void {
-    const s = this.save;
-    const c = CONSUMABLES.find((x) => x.id === id);
-    if (c === undefined || (s.consumables[id] ?? 0) <= 0) return;
-    if (c.rune !== undefined) {
-      if (s.spells.includes(c.rune)) {
-        this.hud.toast('You already know this rune.');
-        return;
-      }
-      s.consumables[id] = (s.consumables[id] ?? 1) - 1;
-      if ((s.consumables[id] ?? 0) <= 0) delete s.consumables[id];
-      this.learnSpell(c.rune);
-      this.refreshDerived();
-      return;
-    }
-    if (id === 'paperclip') {
-      this.hud.toast('Paperclips are for supply-closet locks. Walk up to one and press E.');
-      return;
-    }
-    s.consumables[id] = (s.consumables[id] ?? 1) - 1;
-    if ((s.consumables[id] ?? 0) <= 0) delete s.consumables[id];
-    if (c.heal !== undefined) this.healPlayer(c.heal, '');
-    if (c.energy !== undefined) s.energy = Math.min(100, s.energy + c.energy);
-    if (c.loyly !== undefined) s.loyly = Math.min(this.derivedCache.maxLoyly, s.loyly + c.loyly);
-    if (c.buff === 'coffee') {
-      this.coffeeT = 25 * (perk(s, 'caffeine') > 0 ? 2 : 1);
-      s.bac = Math.max(0, s.bac - 6);
-      s.hangover = Math.max(0, s.hangover - 30);
-    }
-    if (c.buff === 'wired') {
-      this.wiredT = 20;
-      this.crashT = 0;
-    }
-    if (c.buff === 'makkara') s.makkara = true;
-    if (c.clearsActionItem === true && s.actionItems > 0) s.actionItems--;
-    if (c.bac !== undefined) this.drink(id);
-    else {
-      sfx.pickup();
-      this.hud.toast(`Used ${c.name}.`);
-    }
-    this.refreshDerived();
-  }
-
-  spendPerk(id: string): void {
-    const s = this.save;
-    const p = PERKS.find((x) => x.id === id);
-    if (p === undefined || s.perkPoints <= 0 || perk(s, id) >= p.max) return;
-    s.perks[id] = perk(s, id) + 1;
-    s.perkPoints--;
-    sfx.levelUp();
-    this.fixCache = new WeakMap();
-    this.refreshDerived();
-  }
-
-  canSlack(): boolean {
-    return this.currentTerminal !== null && !this.slackedTerminals.has(this.currentTerminal.id);
-  }
-
-  slackOff(): string {
-    if (this.currentTerminal === null) return 'You cannot look at cats from your backpack.';
-    this.slackedTerminals.add(this.currentTerminal.id);
-    this.healPlayer(30, '');
-    if (fx.chance(0.35 - this.stealth * 0.2)) {
-      this.caughtPending = true;
-      return 'Ahh. That is better. (+30 sanity) ...was that footsteps behind you?';
-    }
-    return 'Ahh. That is better. (+30 sanity). Nobody saw. Probably.';
-  }
-
-  setView(v: 'first' | 'third'): void {
-    this.save.view = v;
-  }
-
-  setSens(v: number): void {
-    this.save.mouseSens = v;
-  }
-
-  setVolume(v: number): void {
-    this.save.volume = v;
-    sfx.setVolume(v);
-  }
-
-  setBloom(on: boolean): void {
-    this.save.bloom = on;
-  }
-
-  click(): void { sfx.click(); }
-  error(): void { sfx.error(); }
-  coin(): void { sfx.coin(); }
-
-  // ================================================================== upkeep
-
-  private markSeen(): void {
+  markSeen(): void {
     const lv = this.level;
     const pcx = toCell(this.player.pos.x);
     const pcz = toCell(this.player.pos.z);
@@ -3019,7 +1407,7 @@ export class Game implements GameCtx, OsHost, StoryHost {
     }
   }
 
-  private updateLights(force: boolean): void {
+  updateLights(force: boolean): void {
     if (this.save.location === 'mokki') return;
     this.lightIn -= 1 / 60;
     if (!force && this.lightIn > 0) return;
@@ -3028,13 +1416,13 @@ export class Game implements GameCtx, OsHost, StoryHost {
     const spots = [...this.level.lightSpots].sort((a, b) =>
       Math.hypot(a.x - pp.x, a.z - pp.z) - Math.hypot(b.x - pp.x, b.z - pp.z));
     this.lights.forEach((l, i) => {
-      const s = spots[i];
-      if (s === undefined) {
+      const spot = spots[i];
+      if (spot === undefined || l.userData.enabled === false) {
         l.visible = false;
         return;
       }
       l.visible = true;
-      l.position.copy(s);
+      l.position.copy(spot);
       l.intensity = this.save.floor === 0 ? 10 : 16;
     });
     const flick = this.lights[2];

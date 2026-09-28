@@ -119,30 +119,54 @@ export const TRACK_INFO: Record<Track, { name: string; desc: string }> = {
   engineer: { name: 'Engineer', desc: 'Builds and breaks things: +20% tool damage, +15% spell power, ammo pickups doubled.' },
 };
 
-/** Rung 0..8. The title you hold is the difficulty you play at. */
-export const RUNG_COUNT = 9;
-export const BRANCH_RUNG = 3;
+/** Where the second branch sends you: what kind of architect you become. */
+export type ArchPath = 'solutions' | 'enterprise' | 'domain';
+
+export const ARCH_INFO: Record<ArchPath, { name: (d: Domain) => string; desc: string }> = {
+  solutions: { name: () => 'Solutions Architect', desc: 'Talks to everyone: +20 to every persuasion and +25% Rep from terminal fixes.' },
+  enterprise: { name: () => 'Enterprise Architect', desc: 'Talks to the board: Management standing gains doubled, manager auras halved.' },
+  domain: { name: (d) => `${d} Architect`, desc: 'Goes deep: your domain ability recharges twice as fast and hits twice as hard.' },
+};
+
+/**
+ * Rung 0..11. The title you hold is the difficulty you play at. Two branch
+ * points: at the fifth rung you pick a domain and a track, at the tenth
+ * what kind of architect you become.
+ */
+export const RUNG_COUNT = 12;
+export const BRANCH_RUNG = 4;
+export const ARCH_RUNG = 10;
+
+const DIFFICULTY = [0.55, 0.65, 0.76, 0.88, 1.0, 1.12, 1.25, 1.4, 1.56, 1.74, 1.93, 2.15];
+const SALARY = [50, 70, 95, 120, 150, 185, 225, 270, 320, 380, 450, 540];
 
 export function difficultyFor(rung: number): number {
-  return [0.65, 0.8, 0.95, 1.1, 1.25, 1.4, 1.6, 1.8, 2.05][Math.max(0, Math.min(8, rung))] ?? 1;
+  return DIFFICULTY[Math.max(0, Math.min(RUNG_COUNT - 1, rung))] ?? 1;
 }
 
 export function salaryFor(rung: number): number {
-  return [60, 90, 120, 170, 220, 280, 350, 430, 520][Math.max(0, Math.min(8, rung))] ?? 60;
+  return SALARY[Math.max(0, Math.min(RUNG_COUNT - 1, rung))] ?? 50;
 }
 
-export function titleFor(rung: number, domain: Domain | null, track: Track | null): string {
+export function roleFor(domain: Domain | null, track: Track | null): string {
   const d = domain ?? 'Systems';
-  const role = track === 'engineer' ? `${d} Engineer` : `${d} Operations Specialist`;
-  switch (Math.max(0, Math.min(8, rung))) {
+  return track === 'engineer' ? `${d} Engineer` : `${d} Operations Specialist`;
+}
+
+export function titleFor(rung: number, domain: Domain | null, track: Track | null, arch: ArchPath | null = null): string {
+  const role = roleFor(domain, track);
+  switch (Math.max(0, Math.min(RUNG_COUNT - 1, rung))) {
     case 0: return 'IT Trainee';
-    case 1: return 'Helpdesk Analyst';
-    case 2: return 'Senior Helpdesk Analyst';
-    case 3: return role;
-    case 4: return `Senior ${role}`;
-    case 5: return `Lead ${role}`;
-    case 6: return `Principal ${role}`;
-    case 7: return `${d} Architect`;
+    case 1: return 'Junior Helpdesk Analyst';
+    case 2: return 'Helpdesk Analyst';
+    case 3: return 'Senior Helpdesk Analyst';
+    case 4: return `Junior ${role}`;
+    case 5: return role;
+    case 6: return `Senior ${role}`;
+    case 7: return `Lead ${role}`;
+    case 8: return `Principal ${role}`;
+    case 9: return 'Associate Architect';
+    case 10: return ARCH_INFO[arch ?? 'domain'].name(domain ?? 'Systems');
     default: return 'Senior Architect';
   }
 }
@@ -155,8 +179,32 @@ export interface PromotionNeeds {
 }
 
 export function promotionNeeds(rung: number): PromotionNeeds {
-  return { management: -10 + rung * 6, skillSum: 60 + rung * 22, level: 1 + rung };
+  return { management: -12 + rung * 5, skillSum: 48 + rung * 17, level: 1 + rung };
 }
+
+// ---------------------------------------------------------------- workplace difficulty
+
+export type Workplace = 'fourday' | 'standard' | 'crunch' | 'deathmarch';
+
+export interface WorkplaceDef {
+  readonly name: string;
+  readonly desc: string;
+  /** Multiplies every enemy's strength on top of the rung. */
+  readonly enemy: number;
+  /** Multiplies ticket SLA clocks. */
+  readonly sla: number;
+  /** Multiplies Rep earned. */
+  readonly rep: number;
+  /** Share of Rep lost on a burnout. */
+  readonly burnoutLoss: number;
+}
+
+export const WORKPLACES: Record<Workplace, WorkplaceDef> = {
+  fourday: { name: 'The Four-Day Week', desc: 'A humane employer. Weaker enemies, longer SLAs. For the story.', enemy: 0.75, sla: 1.4, rep: 0.9, burnoutLoss: 0.1 },
+  standard: { name: 'Standard Contract', desc: 'The game as designed.', enemy: 1, sla: 1, rep: 1, burnoutLoss: 0.25 },
+  crunch: { name: 'Crunch Time', desc: 'Tougher people, tighter SLAs, better pay.', enemy: 1.3, sla: 0.8, rep: 1.2, burnoutLoss: 0.3 },
+  deathmarch: { name: 'Death March', desc: 'Everything hurts. Everything pays. A burnout costs almost everything.', enemy: 1.65, sla: 0.62, rep: 1.45, burnoutLoss: 0.45 },
+};
 
 // ---------------------------------------------------------------- factions
 
@@ -199,11 +247,12 @@ export function promille(bac: number): string {
 
 export type Band = 'sober' | 'tipsy' | 'peak' | 'merry' | 'hammered' | 'blackout';
 
-export function bandFor(bac: number): Band {
+/** `widePeak`: the Koskenkorva Flask doubles the Ballmer Peak window. */
+export function bandFor(bac: number, widePeak = false): Band {
   if (bac >= 88) return 'blackout';
   if (bac >= 65) return 'hammered';
   if (bac >= 42) return 'merry';
-  if (bac >= 26 && bac <= 36) return 'peak';
+  if (widePeak ? bac >= 21 && bac <= 41 : bac >= 26 && bac <= 36) return 'peak';
   if (bac >= 14) return 'tipsy';
   return 'sober';
 }
@@ -258,13 +307,16 @@ export function endingFor(e: EndingInput): Ending {
   if (e.flags.ceoDeal === true) {
     return { title: 'THE COMPANY MAN', text: 'You shook Sir Reginald\'s hand instead of fighting him. The golden handcuffs fit perfectly. You never see the mökki again, but you do get a parking space.' };
   }
+  if (e.flags.goldenParachute === true) {
+    return { title: 'THE GOLDEN PARACHUTE', text: 'You showed Sir Reginald the Phoenix file and named a number. He paid it. You buy the mökki, the lake, and the island in the lake. You never talk about how.' };
+  }
   if (e.dependency >= 70) {
     return { title: 'THE DISTILLERY', text: 'You bought the farm. Within a year it was a sahti brewery, and within two you were its best customer. The goats are worried about you.' };
   }
   if (e.flags.whistleblower === true) {
     return { title: 'THE WHISTLEBLOWER', text: 'The Auditor\'s report had your name in the acknowledgements. Workgrumble Ltd is now in administration. You buy the mökki at the liquidation auction.' };
   }
-  if (e.rung >= 7) {
+  if (e.rung >= ARCH_RUNG) {
     return { title: 'THE ARCHITECT RETIRES', text: 'The board offers you CTO. You look at the offer, at the lake photo on your desk, and resign by email with the subject line "löyly". You buy the mökki outright.' };
   }
   if ((e.standing.kitchen ?? 0) >= 50) {

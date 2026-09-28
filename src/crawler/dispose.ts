@@ -13,7 +13,8 @@ export function disposeTree(root: THREE.Object3D, materials: boolean): void {
     if (!materials) return;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const m of mats) {
-      if (m instanceof THREE.MeshLambertMaterial || m instanceof THREE.MeshBasicMaterial) m.map?.dispose();
+      // Cached textures (faces) are shared by everyone wearing them.
+      if ((m instanceof THREE.MeshLambertMaterial || m instanceof THREE.MeshBasicMaterial) && m.map?.userData.cached !== true) m.map?.dispose();
       m.dispose();
     }
   });

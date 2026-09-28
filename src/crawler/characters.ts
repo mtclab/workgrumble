@@ -42,6 +42,8 @@ export interface Rig {
   readonly outfit: Outfit;
   expression: Expression;
   phase: number;
+  /** Resting emissive colour (a clone's blue glow); hit flashes return to it. */
+  glow: number;
 }
 
 const geoCache = new Map<string, THREE.BufferGeometry>();
@@ -131,6 +133,8 @@ export function faceTexture(skin: number, expr: Expression, glasses: boolean): T
   t.magFilter = THREE.NearestFilter;
   t.minFilter = THREE.NearestFilter;
   t.colorSpace = THREE.SRGBColorSpace;
+  // Shared by every face with this look: disposers must leave it alone.
+  t.userData.cached = true;
   faceCache.set(key, t);
   return t;
 }
@@ -266,7 +270,7 @@ export function buildRig(o: Outfit): Rig {
   body.add(head);
 
   root.scale.setScalar((o.scale ?? 1) * (small ? 0.6 : 1));
-  return { root, body, head, armL, armR, legL, legR, hand, materials: mats, faceMat, outfit: o, expression, phase: 0 };
+  return { root, body, head, armL, armR, legL, legR, hand, materials: mats, faceMat, outfit: o, expression, phase: 0, glow: 0 };
 }
 
 export function setExpression(rig: Rig, expr: Expression): void {
@@ -291,7 +295,10 @@ export function animateRig(rig: Rig, speed: number, dt: number, attacking = 0): 
 
 /** Flash every material a colour (hit feedback). */
 export function tintRig(rig: Rig, color: number, amount: number): void {
-  for (const m of rig.materials) m.emissive.setHex(amount > 0 ? color : 0x000000).multiplyScalar(amount);
+  for (const m of rig.materials) {
+    if (amount > 0) m.emissive.setHex(color).multiplyScalar(amount);
+    else m.emissive.setHex(rig.glow);
+  }
 }
 
 export function disposeRig(rig: Rig): void {
