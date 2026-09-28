@@ -133,15 +133,32 @@ back.
   training data, the Shadow IT amnesty, a consultant to onboard (no
   stapling), the all-hands catering. The P1s (war room, customer visit,
   incident bridge) run on a clock that keeps ticking at a computer; the rest
-  are due Friday. Take it, push back (a Soft Skills check: harder the
-  higher you climb, easier when you really are over capacity), or hand it to your
-  helper (half credit, full with Delegation; the helper goes). Ignore a call
+  are due Friday. Take it, or push back (a Soft Skills check: harder the
+  higher you climb, easier when you really are over capacity). Delegating is
+  for architects: from Associate Architect up you can hand it to whoever is
+  following you (half credit, full with Delegation; they go off to do it),
+  and send them to a manager's meeting in your place. Ignore a call
   and after 25 seconds silence is consent. From any computer you can email
   one push-back per assignment. Delivered: Rep and Management. Missed:
   Management -6; two missed in a week is an HR warning.
-- **Workload**: side quests, staffing and inbox tasks all count against a
-  capacity of 3 (+1 for the specialist track, +2 from Time Management, +1
-  from Healthy Boundaries). Over capacity, max sanity and energy regeneration
+- **Mentoring** (🎓): once you are the senior in your role (Senior Helpdesk
+  Analyst, then Senior, Lead, Principal and the architects - at Junior and
+  plain Specialist/Engineer you are the new one again), your team comes to you
+  when they are stuck. A teammate walks over, busy or not: pair on two tickets,
+  shadow two talk-downs, a server room induction, cover their on-call, lock
+  picking 101, backing them up against a manager, the intern's grand tour.
+  Take it on (it counts against your workload, and most of it only counts
+  with them beside you), give them five minutes on the spot (a
+  Troubleshooting check, no workload, no reward), or send them to the KB.
+  See it through by Friday and you get a perk point, they become a protégé
+  (they hit 30% harder for you from then on), and the Mentor perk grows on
+  its own at 1, 3 and 6 people: allies hit harder and tire slower, +1
+  workload capacity, then morale never drops below 40 and treats count
+  double. Never finding the time costs their morale and the IT crowd's
+  goodwill - nobody writes you up, they just stop asking.
+- **Workload**: side quests, staffing, mentoring and inbox tasks all count
+  against a capacity of 3 (+1 for the specialist track, +2 from Time
+  Management, +1 from Healthy Boundaries, +1 from Mentor rank 2). Over capacity, max sanity and energy regeneration
   drop for every item too many, and the HUD panel turns red. The journal has
   the meter.
 - **One story per floor, with delayed consequences**: Marcus's stopped
@@ -152,6 +169,25 @@ back.
 
 The compass (top of the screen), the minimap and the automap (M) show quest
 markers; the journal (J, or at any computer) keeps the story.
+
+## The team
+
+The IT crowd on each floor (sysadmins, security, interns) will follow you if
+you ask. The building remembers each of them by name, and so does their
+morale, from floor to floor. Morale sets how hard and how fast they work (a
+flagging teammate hits at 60%, a keen one at 140%); fights and a senior who
+is over capacity wear it down, the weekend brings it back. Below 15 they go
+on a break mid-floor, and below 25 they will not come with you at all.
+
+- **Sweets** (E on a teammate, then pick from your backpack): digestives,
+  Fazer Blue, a korvapuusti or a box of donuts (the rest of the team nearby
+  gets some too), birthday cake (everyone gets a slice), coffee. Salmiakki:
+  Finns love it; everyone else is polite about it.
+- **Energy drinks**: a timed boost to damage and fire rate, then a crash that
+  costs morale. The Euroshopper one does less and they notice. A second can
+  while they are still buzzing gives them the jitters, not more power. A
+  **White Monster** makes them ascend: 2.6× for a minute, glowing, and they
+  will never forget it.
 
 ## The two tightropes
 
@@ -259,6 +295,7 @@ runtime:
 | `spells.ts` | Runes and domain abilities. |
 | `interact.ts` | Everything E does, the upgrade board, fishing, lockers, the fridge. |
 | `questing.ts` | Puts quests into the world: evidence, givers, hunt targets, markers, events; staffing calls, deadlines, push-back and the Friday settlement. |
+| `team.ts`, `teamwork.ts` | The team: morale, treats and cans, seniority and delegation rules (pure); morale ticks, treat dialogue, mentoring requests and payouts (in the game). |
 | `desk.ts` | The ticket queue and mail tasks. |
 | `hosts.ts` | Shop, inventory, perks, rest, deals, the small world effects. |
 | `screens.ts` | Title, load and save menus, pause, burnout, endings, lifts. |

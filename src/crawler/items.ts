@@ -131,7 +131,11 @@ export const CONSUMABLES: ConsumableDef[] = [
   { id: 'whitemonster', slot: 'consumable', name: 'WHITE MONSTER (Ultra)', desc: 'The king of energy drinks. Zero sugar, infinite power. 45 seconds ASCENDED: +40% damage, +30% speed, faster hands, free sprinting, sanity regen, immune to meetings and to the jitters. Never sold. Rarely found. Worshipped.', price: 0, weight: 0.5, energy: 100, heal: 30, mg: 150, buff: 'ultra', buffTime: 45, unsold: true, minFloor: 0 },
   { id: 'vodkabattery', slot: 'consumable', name: 'Vodka Battery', desc: '120 mg caffeine and BAC +14. Wired and drunk: managers struggle to smell it, but the crash is legendary.', price: 0, weight: 0.4, energy: 60, mg: 120, bac: 14, unsold: true, minFloor: 0 },
   { id: 'biscuits', slot: 'consumable', name: 'Chocolate Digestives', desc: '+30 sanity. The good biscuits, from the locked cupboard.', price: 12, weight: 0.3, heal: 30, minFloor: 0 },
-  { id: 'cake', slot: 'consumable', name: 'Leftover Birthday Cake', desc: '+70 sanity. Nobody knows whose birthday it was.', price: 45, weight: 0.5, heal: 70, minFloor: 0 },
+  { id: 'cake', slot: 'consumable', name: 'Leftover Birthday Cake', desc: '+70 sanity. Nobody knows whose birthday it was. Give it to your team (E on a teammate): everyone nearby gets a slice.', price: 45, weight: 0.5, heal: 70, minFloor: 0 },
+  { id: 'fazer', slot: 'consumable', name: 'Fazer Blue (200 g)', desc: '+20 sanity. The correct chocolate. Teammates love it.', price: 10, weight: 0.2, heal: 20, minFloor: 0 },
+  { id: 'korvapuusti', slot: 'consumable', name: 'Korvapuusti', desc: '+35 sanity. A cardamom cinnamon bun, still warm. Give one to a teammate and the rest of the team gets a bite.', price: 16, weight: 0.2, heal: 35, minFloor: 0 },
+  { id: 'donuts', slot: 'consumable', name: 'Box of Donuts', desc: '+25 sanity. A box for the team: give it to a teammate and everyone nearby cheers up.', price: 40, weight: 0.8, heal: 25, minFloor: 0 },
+  { id: 'salmiakkibag', slot: 'consumable', name: 'Bag of Salmiakki', desc: '+10 sanity. Salty liquorice. Finnish teammates adore it. Everyone else will be polite about it.', price: 8, weight: 0.2, heal: 10, minFloor: 0 },
   { id: 'postit', slot: 'consumable', name: 'Sticky Note', desc: 'Write the action item down and it stops weighing on you. Clears one action item.', price: 20, weight: 0.05, clearsActionItem: true, minFloor: 0 },
   { id: 'paperclip', slot: 'consumable', name: 'Paperclip', desc: 'A lockpick, if you have the Security for it. Breaks on a failed pin.', price: 6, weight: 0.01, minFloor: 0 },
   { id: 'potatoes', slot: 'consumable', name: 'New Potatoes with Dill', desc: '+30 sanity. From your own patch at the mökki.', price: 0, weight: 0.2, heal: 30, unsold: true, minFloor: 0 },
@@ -163,7 +167,7 @@ export const RUNES = CONSUMABLES.filter((c) => c.rune !== undefined).map((c) => 
 export const ENERGY_DRINKS = ['euroshopper', 'redbull', 'monster', 'pipeline', 'nocco', 'celsius', 'battery', 'batteryzero', 'energy'];
 
 /** Food in your stomach slows how fast a drink reaches your blood. */
-export const LINING_FOODS = ['biscuits', 'cake', 'makkara', 'potatoes', 'fish-muikku', 'fish-ahven', 'fish-hauki'];
+export const LINING_FOODS = ['biscuits', 'cake', 'korvapuusti', 'donuts', 'makkara', 'potatoes', 'fish-muikku', 'fish-ahven', 'fish-hauki'];
 
 export const BUFF_INFO: Record<string, { icon: string; name: string }> = {
   lined: { icon: '🥔', name: 'Lined stomach (drinks hit slower)' },

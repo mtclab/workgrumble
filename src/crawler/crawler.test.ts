@@ -7,7 +7,8 @@ import { plainInstance, RARITY_INFO, rollGear, sellValue, UNIQUES, uniqueInstanc
 import { SPELLS } from './magic';
 import { generateMokki } from './mokki';
 import { TREE_PERKS } from './perks';
-import { advance, isActive, MAIN, QUEST_ITEMS, questById, QUESTS, type QuestState, sideQuestsFor, STAFFED, TRANSIENT_ITEMS } from './quests';
+import { advance, isActive, MAIN, MENTOR_PITCH, MENTORING, QUEST_ITEMS, questById, QUESTS, type QuestState, sideQuestsFor, STAFFED, TRANSIENT_ITEMS, withName } from './quests';
+import { CAN_BOOSTS, canDelegate, isFinn, isSenior, mentorRankFor, teamPower, TREATS } from './team';
 import { Rng } from './rng';
 import {
   ARCH_RUNG,
@@ -453,7 +454,7 @@ describe('Helldesk quests', () => {
   });
 
   it('quest ids are unique, items exist, and staffing never appears as an offer', () => {
-    const all = [...QUESTS, ...STAFFED];
+    const all = [...QUESTS, ...STAFFED, ...MENTORING];
     expect(new Set(all.map((q) => q.id)).size).toBe(all.length);
     for (const q of all) {
       expect(questById(q.id)).toBe(q);
@@ -505,6 +506,60 @@ describe('Helldesk quests', () => {
     // Time management and Boundaries buy capacity.
     s.perks.timemgmt = 2;
     expect(workload(s).capacity).toBe(5);
+    s.perks.mentor = 2;
+    expect(workload(s).capacity).toBe(6);
+  });
+});
+
+describe('Helldesk team', () => {
+  it('only architects delegate, and seniority depends on the role you are in', () => {
+    for (let r = 0; r < 9; r++) expect(canDelegate(r), `rung ${r}`).toBe(false);
+    for (let r = 9; r < 12; r++) expect(canDelegate(r), `rung ${r}`).toBe(true);
+    expect([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(isSenior)).toEqual([false, false, false, true, false, false, true, true, true, true, true, true]);
+  });
+
+  it('morale, cans and protégés make a teammate hit harder and faster', () => {
+    const low = teamPower(10, 1, false);
+    const mid = teamPower(55, 1, false);
+    const high = teamPower(95, 1, false);
+    expect(low.damage).toBeLessThan(mid.damage);
+    expect(mid.damage).toBeLessThan(high.damage);
+    expect(high.haste).toBeLessThan(low.haste);
+    expect(mid.damage).toBeCloseTo(1.04, 2);
+    const canned = teamPower(55, CAN_BOOSTS.monster?.power ?? 1, false);
+    const king = teamPower(55, CAN_BOOSTS.whitemonster?.power ?? 1, false);
+    expect(canned.damage).toBeGreaterThan(mid.damage);
+    expect(king.damage).toBeGreaterThan(canned.damage);
+    expect(king.haste).toBeLessThan(canned.haste);
+    expect(teamPower(55, 1, true).damage).toBeGreaterThan(mid.damage);
+  });
+
+  it('every treat and can is a real item, and every can in the building can be shared', () => {
+    const ids = new Set(CONSUMABLES.map((c) => c.id));
+    for (const id of [...Object.keys(TREATS), ...Object.keys(CAN_BOOSTS)]) expect(ids.has(id), id).toBe(true);
+    for (const id of ENERGY_DRINKS) expect(CAN_BOOSTS[id], id).toBeDefined();
+    for (const c of Object.values(CAN_BOOSTS)) expect(c.power).toBeGreaterThan(1);
+    expect(isFinn('Mikko (Sysadmin)')).toBe(true);
+    expect(isFinn('Priya (Network Eng.)')).toBe(false);
+  });
+
+  it('mentoring: every template has a pitch and a mentee, and the Mentor perk is earned, not bought', () => {
+    for (const d of MENTORING) {
+      expect(d.mentor).toBe(true);
+      expect(d.roles?.length ?? 0, d.id).toBeGreaterThan(0);
+      expect(MENTOR_PITCH[d.id], d.id).toBeDefined();
+    }
+    for (const role of ['sysadmin', 'security', 'intern'] as const) expect(MENTORING.some((d) => d.roles?.includes(role)), role).toBe(true);
+    const st: QuestState = { id: 'm-pair', stage: 0, progress: 0, done: false, floor: 0, mentor: true, by: 'Priya (Network Eng.)' };
+    expect(withName('Pair with {m}. {m} drives.', st)).toBe('Pair with Priya. Priya drives.');
+    expect([0, 1, 2, 3, 5, 6, 9].map(mentorRankFor)).toEqual([0, 1, 1, 2, 2, 3, 3]);
+    const s = newSave(3);
+    s.perkPoints = 5;
+    expect(canTakePerk(s, 'mentor')).toBe(false);
+    expect(canTakePerk(s, 'timemgmt')).toBe(true);
+    // Mentoring counts against your workload like anything else.
+    s.questLog.push(st);
+    expect(workload(s).active).toBe(1);
   });
 });
 

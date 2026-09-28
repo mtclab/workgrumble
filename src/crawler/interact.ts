@@ -9,6 +9,7 @@ import { BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, itemById, RUNES } from '.
 import { type Interactable, lineOfSight } from './level';
 import { currentObjective, isActive, QUEST_ITEMS, type QuestEvent, talkGiver } from './quests';
 import { questOf } from './questing';
+import { mentorRequestNode } from './teamwork';
 import { fx } from './rng';
 import * as screens from './screens';
 import { adjustStanding, perk, skill } from './state';
@@ -131,6 +132,11 @@ function talkTo(g: Game, a: Actor): void {
     else g.openDialogue(a.kind === 'manager' ? talkManager(g, a) : talkHostile(g, a));
     return;
   }
+  // A teammate who came to you with a problem.
+  if (g.mentorAsk?.actor === a) {
+    g.openDialogue(mentorRequestNode(g, a));
+    return;
+  }
   const quest = questOf(a);
   if (quest !== undefined) {
     g.openDialogue(talkGiver(g, quest, a.name));
@@ -222,7 +228,7 @@ function useThing(g: Game, it: Interactable): void {
         g.hud.toast('⚪ JACKPOT. The machine rattles and drops... a WHITE MONSTER. People gather. Somebody films it.', 'epic');
         break;
       }
-      g.giveItem(g.lootRng.pick(['euroshopper', 'euroshopper', 'redbull', 'monster', 'battery', 'energy', 'biscuits']), 1, 'The vending machine');
+      g.giveItem(g.lootRng.pick(['euroshopper', 'euroshopper', 'redbull', 'monster', 'battery', 'energy', 'biscuits', 'fazer', 'salmiakkibag']), 1, 'The vending machine');
       break;
     }
     case 'printer':
@@ -543,7 +549,7 @@ function lootLocker(g: Game, it: Interactable): void {
     got.push(QUEST_ITEMS[quest]?.name ?? quest);
     g.questEvent({ type: 'pickup', item: quest });
   }
-  give(r.pick(['paperclip', 'postit', 'coffee', ...ENERGY_DRINKS.slice(0, 5)]), r.int(1, 3));
+  give(r.pick(['paperclip', 'postit', 'coffee', 'fazer', 'korvapuusti', ...ENERGY_DRINKS.slice(0, 5)]), r.int(1, 3));
   if (r.chance(0.5)) give(r.pick(['beer', 'lonkero', 'kossu', 'salmari', 'sahti']));
   if (r.chance(0.05)) give('whitemonster');
   const unknown = RUNES.filter((id) => {

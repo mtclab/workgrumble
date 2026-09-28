@@ -10,7 +10,7 @@ import {
 import { affixText, baseOf, type GearInstance, RARITY_INFO, sellValue, slotOf, uniqueSpecial } from './loot';
 import { spellById } from './magic';
 import { TREE_PERKS } from './perks';
-import { currentObjective, EVIDENCE, isActive, MAIN, QUEST_ITEMS, questById } from './quests';
+import { currentObjective, EVIDENCE, isActive, MAIN, QUEST_ITEMS, questById, withName } from './quests';
 import {
   ARCH_INFO,
   ATTRIBUTE_INFO,
@@ -84,6 +84,8 @@ export interface OsHost {
   canSlack(): boolean;
   /** Email whoever staffed you and try to hand an assignment back (one go each). */
   pushBack(index: number): string;
+  /** Tell a mentee you do not have time after all. */
+  dropMentoring(index: number): string;
   hasTerminal(): boolean;
   close(): void;
   restart(): void;
@@ -605,7 +607,7 @@ export class Os {
             class: 'os-btn',
             ...(can ? {} : { disabled: 'true' }),
             onclick: () => { this.host.takePerk(p.id); this.refresh(); },
-          }, next === undefined ? 'Maxed' : can ? 'Learn' : tree !== null && (level ?? 0) < next.skill ? `Needs ${SKILL_INFO[tree].name} ${next.skill}` : 'No points')));
+          }, next === undefined ? 'Maxed' : p.earned !== undefined ? p.earned : can ? 'Learn' : tree !== null && (level ?? 0) < next.skill ? `Needs ${SKILL_INFO[tree].name} ${next.skill}` : 'No points')));
       }
       body.append(grid);
     }
@@ -702,10 +704,22 @@ export class Os {
         body.append(row);
       }
     }
-    const active = s.questLog.filter((q) => isActive(q) && q.staffed !== true);
-    const done = s.questLog.filter((q) => q.done && q.staffed !== true);
+    const mentoring = s.questLog.map((q, i) => [q, i] as const).filter(([q]) => q.mentor === true && isActive(q));
+    if (mentoring.length > 0) {
+      body.append(el('h4', {}, '🎓 Mentoring'));
+      for (const [q, i] of mentoring) {
+        const def = questById(q.id);
+        const obj = currentObjective(q);
+        const row = el('div', { class: 'os-mail is-mentor' }, el('b', {}, def?.title ?? q.id), el('span', { class: 'os-meta' }, ` - ${q.by ?? ''} asked you · by Friday · +1 perk point`),
+          el('p', {}, `${obj === undefined ? '' : withName(obj.text, q)}${obj?.count !== undefined ? ` (${q.progress}/${obj.count})` : ''}`));
+        row.append(el('button', { class: 'os-btn', onclick: () => { this.host.click(); this.say(this.host.dropMentoring(i)); } }, 'Tell them you do not have time'));
+        body.append(row);
+      }
+    }
+    const active = s.questLog.filter((q) => isActive(q) && q.staffed !== true && q.mentor !== true);
+    const done = s.questLog.filter((q) => q.done && q.staffed !== true && q.mentor !== true);
     const delegated = s.questLog.filter((q) => q.delegated === true && !q.done);
-    const failed = s.questLog.filter((q) => q.failed === true);
+    const failed = s.questLog.filter((q) => q.failed === true && q.staffed === true);
     if (active.length > 0) {
       body.append(el('h4', {}, 'Active quests'));
       for (const q of active) {
@@ -721,6 +735,7 @@ export class Os {
     if (done.length > 0) {
       body.append(el('h4', {}, 'Completed'), el('p', { class: 'os-meta' }, done.map((q) => questById(q.id)?.title ?? q.id).join(' · ')));
     }
+    if (s.stats.mentored > 0) body.append(el('p', { class: 'os-meta' }, `Mentored: ${s.stats.mentored} (${Object.entries(s.team).filter(([, m]) => m.mentored > 0).map(([n]) => n.split(' (')[0]).join(', ')}).`));
     if (failed.length > 0 || s.stats.staffedDone > 0) {
       body.append(el('p', { class: 'os-meta' }, `Staffing record: ${s.stats.staffedDone} delivered, ${s.stats.staffedMissed} missed.${failed.length > 0 ? ` Recently missed: ${failed.map((q) => questById(q.id)?.title ?? q.id).join(' · ')}.` : ''}`));
     }

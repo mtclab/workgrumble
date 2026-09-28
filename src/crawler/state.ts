@@ -19,6 +19,7 @@ import {
   sumAffix,
 } from './loot';
 import { canTake, treePerk } from './perks';
+import type { TeamMember } from './team';
 import { isActive, type QuestState } from './quests';
 import { Rng } from './rng';
 import {
@@ -195,7 +196,10 @@ export interface SaveState {
     bosses: number; wrongFixes: number; drinks: number; blackouts: number; locks: number; spellsCast: number;
     cans: number; fish: number; elites: number;
     staffedDone: number; staffedMissed: number;
+    mentored: number; treats: number;
   };
+  /** Your colleagues, by name: morale, and who you have mentored. */
+  team: Record<string, TeamMember>;
   seed: number;
   won: boolean;
 }
@@ -293,7 +297,8 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
     achievements: [],
     tipsShown: [],
     booksRead: [],
-    stats: { resolvedField: 0, resolvedDesk: 0, resolvedPeace: 0, breaches: 0, burnouts: 0, bosses: 0, wrongFixes: 0, drinks: 0, blackouts: 0, locks: 0, spellsCast: 0, cans: 0, fish: 0, elites: 0, staffedDone: 0, staffedMissed: 0 },
+    stats: { resolvedField: 0, resolvedDesk: 0, resolvedPeace: 0, breaches: 0, burnouts: 0, bosses: 0, wrongFixes: 0, drinks: 0, blackouts: 0, locks: 0, spellsCast: 0, cans: 0, fish: 0, elites: 0, staffedDone: 0, staffedMissed: 0, mentored: 0, treats: 0 },
+    team: {},
     seed,
     won: false,
   };
@@ -526,7 +531,7 @@ export interface Derived {
 export function workload(s: SaveState): { active: number; capacity: number; over: number } {
   const active = s.questLog.filter(isActive).length + s.quests.filter((q) => !q.done && q.kind !== 'boss').length;
   const specialist = s.rung >= 4 && s.track === 'specialist';
-  const capacity = 3 + (specialist ? 1 : 0) + perk(s, 'timemgmt') + (perk(s, 'boundaries') > 0 ? 1 : 0);
+  const capacity = 3 + (specialist ? 1 : 0) + perk(s, 'timemgmt') + (perk(s, 'boundaries') > 0 ? 1 : 0) + (perk(s, 'mentor') >= 2 ? 1 : 0);
   return { active, capacity, over: Math.max(0, active - capacity) };
 }
 

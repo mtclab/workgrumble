@@ -1,6 +1,7 @@
 import { Game } from './game';
 import { findPrompt, interact } from './interact';
 import { offerStaffing } from './questing';
+import { requestMentoring } from './teamwork';
 
 const mount = document.getElementById('crawler');
 if (mount === null) throw new Error('#crawler missing');
@@ -14,6 +15,7 @@ try {
     findPrompt: (): void => findPrompt(game),
     interact: (): void => interact(game),
     staff: (by: string, id?: string): boolean => offerStaffing(game, by, id),
+    mentor: (id?: string): boolean => requestMentoring(game, id),
   };
 } catch (err) {
   mount.innerHTML = '<div class="screen" style="display:flex"><div class="title-logo small dead">BSOD</div>'

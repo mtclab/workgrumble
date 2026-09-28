@@ -26,6 +26,7 @@ import {
   TRACK_INFO,
 } from './rpg';
 import { fx } from './rng';
+import { canDelegate } from './team';
 import { PATIENCE_BONUS, perk, type SaveState, skillSum } from './state';
 
 /** What the conversations are allowed to do to the world. Game implements it. */
@@ -51,6 +52,13 @@ export interface StoryHost {
   rootPlayer(seconds: number, reason: string, resistible?: boolean): void;
   /** "Oh, and while I have you": maybe staff you on something after this conversation. */
   maybeStaff(by: string, chance: number): void;
+  /** A teammate's morale, cans and protégé status, for the dialogue header. */
+  teamNote(a: Actor): string;
+  /** Sweets and cans you could hand a teammate. */
+  treatOptions(a: Actor): DialogueOption[];
+  /** Too worn down to come with you. */
+  tooTired(a: Actor): boolean;
+  tip(id: 'team'): void;
   addActionItem(from: string): void;
   clearActionItems(from: string): number;
   enqueueTicket(a: Actor, gold: boolean): void;
@@ -190,7 +198,9 @@ export function talkManager(h: StoryHost, a: Actor): DialogueNode {
       () => { h.resolvePeacefully(a, 'meeting'); return said(a.name, 'Of course, of course. Drop me a Teams message. Or three.', 'neutral'); },
       () => { a.talked = true; h.rootPlayer(2, 'Cornered'); h.addActionItem(a.name); h.maybeStaff(a.name, 0.25); return said(a.name, 'Everything is a P1 with you people. Here, take an action item.', 'bad'); }),
   ];
-  if (helper !== null) {
+  if (helper !== null && !canDelegate(h.save.rung)) {
+    opts.push({ label: `Delegate it to ${helper.name}.`, tag: 'Architects only', disabled: true, pick: () => null });
+  } else if (helper !== null) {
     opts.push({ label: `Delegate it to ${helper.name}.`, tag: 'Lose your helper', pick: () => {
       h.dismiss(helper);
       h.standing('itcrowd', -3);
@@ -284,23 +294,32 @@ function gossip(h: StoryHost): string {
 }
 
 export function talkHelper(h: StoryHost, a: Actor): DialogueNode {
+  const note = h.teamNote(a);
+  const treats = h.treatOptions(a);
   if (a.recruited) {
-    return { speaker: a.name, text: 'Yeah?', options: [
-      { label: 'Head back. I have got this.', pick: () => { h.dismiss(a); return said(a.name, 'Suit yourself.', 'neutral'); } },
+    return { speaker: a.name, subtitle: note, text: a.morale < 35 ? 'Yeah? ...Sorry. Long day.' : 'Yeah?', options: [
+      ...treats,
+      // They stay on the floor: colleagues, not summons.
+      { label: 'Wait here. I have got this.', pick: () => { a.recruited = false; return said(a.name, 'Suit yourself. I will be here.', 'neutral'); } },
       { label: 'Carry on.', pick: () => null },
     ] };
   }
   const it = h.save.standing.itcrowd;
   if (it <= -30) return said(a.name, 'You are the one who keeps raising P1s for password resets. I am on lunch. Forever.', 'bad');
-  return { speaker: a.name, subtitle: 'The IT Crowd', text: a.role === 'intern' ? 'Is there anything I can do? Anything at all? Please?' : 'Need backup?', options: [
-    { label: 'Come with me.', pick: () => {
+  const tired = h.tooTired(a);
+  const text = tired ? 'Honestly? I am running on empty. I cannot face another user right now. Unless... you have not got anything sweet, have you?'
+    : a.role === 'intern' ? 'Is there anything I can do? Anything at all? Please?' : 'Need backup?';
+  return { speaker: a.name, subtitle: note === '' ? 'The IT Crowd' : `The IT Crowd · ${note}`, text, options: [
+    { label: 'Come with me.', ...(tired ? { tag: 'Morale too low', disabled: true } : {}), pick: () => {
       a.recruited = true;
+      h.tip('team');
       if (a.memo.joined !== true) {
         a.memo.joined = true;
         h.standing('itcrowd', 1);
       }
       return said(a.name, a.role === 'intern' ? 'Yes! I will follow you everywhere!' : a.role === 'security' ? 'Right behind you. Badges out.' : 'Fine. But I am not doing printers.', 'good');
     } },
+    ...treats,
     { label: 'Not now.', pick: () => null },
   ] };
 }

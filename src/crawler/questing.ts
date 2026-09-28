@@ -23,8 +23,11 @@ import {
   STAFFED,
   STAFFERS,
   TRANSIENT_ITEMS,
+  withName,
 } from './quests';
 import { fx } from './rng';
+import { canDelegate } from './team';
+import { menteeNearby, mentorMarkers, mentorSuffix, mentoringDone, settleMentoring, teamLines } from './teamwork';
 import { checkChance } from './rpg';
 import { adjustStanding, perk, skill, workload } from './state';
 
@@ -115,7 +118,7 @@ function ensureKind(g: Game, obj: Objective, st: QuestState): void {
 }
 
 /** Whatever a stage needs in the world when it becomes the current one. */
-function startStage(g: Game, st: QuestState): void {
+export function startStage(g: Game, st: QuestState): void {
   if (g.save.location !== 'office' || !isActive(st)) return;
   const obj = currentObjective(st);
   if (obj === undefined) return;
@@ -239,13 +242,15 @@ export function questEvent(g: Game, e: QuestEvent): void {
   for (const st of s.questLog) {
     // An escort only counts with the person you are escorting beside you.
     if (e.type === 'room' && currentObjective(st)?.kind === 'escort' && !joshNearby(g)) continue;
+    // Mentoring only counts with the person you are mentoring there to see it.
+    if (currentObjective(st)?.withMentee === true && !menteeNearby(g, st)) continue;
     const before = st.progress;
     const moved = advance(st, e, g.floor);
     const def = questById(st.id);
     if (def === undefined) continue;
     if (!moved) {
       const obj = currentObjective(st);
-      if (st.progress > before && obj?.count !== undefined) g.hud.toast(`${st.staffed === true ? '📌 ' : ''}${def.title}: ${st.progress}/${obj.count}`, 'info');
+      if (st.progress > before && obj?.count !== undefined) g.hud.toast(`${st.staffed === true ? '📌 ' : st.mentor === true ? '🎓 ' : ''}${def.title}: ${st.progress}/${obj.count}`, 'info');
       continue;
     }
     any = true;
@@ -254,7 +259,7 @@ export function questEvent(g: Game, e: QuestEvent): void {
       completed(g, st, def);
     } else {
       const obj = currentObjective(st);
-      g.hud.toast(`${def.title}: ${obj?.text ?? 'next step'}`, 'good');
+      g.hud.toast(`${def.title}: ${obj === undefined ? 'next step' : withName(obj.text, st)}`, 'good');
       startStage(g, st);
     }
   }
@@ -280,6 +285,10 @@ export function questEvent(g: Game, e: QuestEvent): void {
 
 function completed(g: Game, st: QuestState, def: QuestDef): void {
   const s = g.save;
+  if (st.mentor === true) {
+    mentoringDone(g, st, def);
+    return;
+  }
   if (st.staffed === true) {
     delete st.deadline;
     const rep = Math.round((60 + g.floor * 20) * (def.timeLimit !== undefined ? 1.6 : 1));
@@ -293,7 +302,7 @@ function completed(g: Game, st: QuestState, def: QuestDef): void {
   }
   g.hud.toast(`Quest complete: ${def.title}`, 'epic');
   g.journal(`Quest done: ${def.title}.`);
-  if (s.questLog.filter((q) => q.done && q.staffed !== true).length >= 8) g.achieve('questfan');
+  if (s.questLog.filter((q) => q.done && q.staffed !== true && q.mentor !== true).length >= 8) g.achieve('questfan');
   // Quests that end on arriving somewhere pay out here; the rest pay at the turn-in.
   if (st.id === 'intern') {
     g.addRep(70);
@@ -425,8 +434,12 @@ function pushBackOdds(g: Game): number {
   return checkChance(skill(s, 'soft'), s.attrs.charm, difficulty, g.derivedCache.persuade);
 }
 
+/** Who you could hand work to: anyone following you, except somebody you are mentoring. */
 function helperFor(g: Game): Actor | null {
-  return g.recruitedHelper();
+  const mentees = new Set(g.save.questLog.filter((q) => q.mentor === true && isActive(q)).map((q) => q.by));
+  const h = g.recruitedHelper();
+  if (h === null || !mentees.has(h.name)) return h;
+  return g.actors.find((a) => a !== h && a.kind === 'helper' && a.recruited && !a.resolved && a.npcId === null && a.role !== 'dog' && a.role !== 'clone' && a.role !== 'spirit' && !mentees.has(a.name)) ?? null;
 }
 
 export function staffingNode(g: Game, def: QuestDef, by: string, inPerson = false): DialogueNode {
@@ -455,7 +468,10 @@ export function staffingNode(g: Game, def: QuestDef, by: string, inPerson = fals
     } },
   ];
   const helper = helperFor(g);
-  if (helper !== null) {
+  if (helper !== null && !canDelegate(s.rung)) {
+    // Trainees do not delegate. Nobody below architect really does.
+    opts.push({ label: `Put ${helper.name} on it.`, tag: 'Architects only', disabled: true, pick: () => null });
+  } else if (helper !== null) {
     opts.push({ label: `Put ${helper.name} on it.`, tag: `Delegate: ${perk(s, 'delegate') > 0 ? 'full' : 'half'} credit, helper leaves`, pick: () => {
       assignStaffed(g, def, by, helper.name);
       g.dismiss(helper);
@@ -562,8 +578,11 @@ export function settleWeek(g: Game): string {
     }
   }
   if (missedN >= 2) g.warn(`Missed ${missedN} deliverables in one week`);
-  if (delivered + missedN === 0) return '';
-  return `This week: ${delivered} delivered, ${missedN} missed.`;
+  const dropped = settleMentoring(g);
+  // Settled work from long ago drops out of the log.
+  s.questLog = s.questLog.filter((q) => (q.staffed !== true && q.mentor !== true) || isActive(q) || q.floor >= g.floor - 2);
+  if (delivered + missedN + dropped === 0) return '';
+  return `This week: ${delivered} delivered, ${missedN} missed.${dropped > 0 ? ` ${dropped} mentoring promise${dropped > 1 ? 's' : ''} broken.` : ''}`;
 }
 
 // ================================================================== what the HUD shows
@@ -574,6 +593,7 @@ export function questLines(g: Game): string[] {
   if (s.location === 'office') {
     const load = workload(s);
     out.push(`${load.over > 0 ? '⚠ OVERALLOCATED' : 'Workload'} ${load.active}/${load.capacity}`);
+    out.push(...teamLines(g));
     const ch = mainChapter(g.floor);
     if (ch !== undefined && !s.won) {
       const ev = ch.evidence;
@@ -586,7 +606,7 @@ export function questLines(g: Game): string[] {
       if (def === undefined || obj === undefined) continue;
       const count = obj.count !== undefined ? ` (${st.progress}/${obj.count})` : '';
       const clock = st.deadline !== undefined ? ` ⏱${Math.max(0, Math.ceil(st.deadline))}s` : '';
-      out.push(`${st.staffed === true ? '📌' : '◆'} ${def.title}${count}${clock}`);
+      out.push(`${st.staffed === true ? '📌' : st.mentor === true ? '🎓' : '◆'} ${def.title}${mentorSuffix(g, st)}${count}${clock}`);
     }
   }
   for (const q of s.quests) out.push(`${q.done ? '✔' : '•'} ${q.title}${q.goal > 1 ? ` (${Math.min(q.progress, q.goal)}/${q.goal})` : ''}`);
@@ -624,13 +644,14 @@ export function questMarkers(g: Game): CompassMarker[] {
     const obj = currentObjective(st);
     if ((obj?.kind === 'room' || obj?.kind === 'escort') && obj.room !== undefined) {
       const rm = roomsOfKind(g, obj.room)[0];
-      if (rm !== undefined) out.push({ x: (rm.x + rm.w / 2) * 2, z: (rm.y + rm.h / 2) * 2, icon: st.staffed === true ? '📌' : '◆', color: gold, label: questById(st.id)?.title ?? '' });
+      if (rm !== undefined) out.push({ x: (rm.x + rm.w / 2) * 2, z: (rm.y + rm.h / 2) * 2, icon: st.staffed === true ? '📌' : st.mentor === true ? '🎓' : '◆', color: gold, label: questById(st.id)?.title ?? '' });
     }
     if (obj?.kind === 'use' && obj.use === 'printer') {
       const p = g.level.interactables.find((i) => i.kind === 'printer' && !i.used);
       if (p !== undefined) out.push({ x: p.x, z: p.z, icon: '📌', color: gold, label: 'Printer' });
     }
   }
+  out.push(...mentorMarkers(g));
   if (currentObjectiveIsEscort(g)) {
     const desk = g.level.interactables.find((i) => i.kind === 'itdesk');
     if (desk !== undefined) out.push({ x: desk.x, z: desk.z, icon: '◆', color: gold, label: 'Internal IT (Josh)' });

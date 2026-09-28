@@ -24,7 +24,7 @@ import {
 import { Compass, type CompassMarker } from './compass';
 import { TICKETS } from './content/tickets';
 import { breach, type FixEntry } from './desk';
-import { type DialogueNode, DialogueUI, LockpickUI, said } from './dialogue';
+import { type DialogueNode, type DialogueOption, DialogueUI, LockpickUI, said } from './dialogue';
 import { disposeTree } from './dispose';
 import {
   type Actor,
@@ -64,6 +64,7 @@ import {
   questMarkers,
   scheduleStaffing,
   settleWeek,
+  startStage,
   tickQuests,
 } from './questing';
 import { type QuestDef, type QuestEvent, type QuestHost, type QuestState } from './quests';
@@ -117,6 +118,17 @@ import { THEMES } from './textures';
 import { ACHIEVEMENTS, TIPS } from './upgrades';
 import * as host from './hosts';
 import { tickCaffeine, tickVices } from './vices';
+import {
+  dropMentoring,
+  helperMult,
+  initTeammate,
+  restTeam,
+  scheduleMentoring,
+  teamNote,
+  tickTeam,
+  tooTired,
+  treatOptions,
+} from './teamwork';
 
 export type Screen = 'title' | 'chargen' | 'play' | 'os' | 'dialogue' | 'paused' | 'dead' | 'ending' | 'transition' | 'minigame';
 
@@ -227,6 +239,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   pendingStaff: { def: QuestDef; by: string; wait: number } | null = null;
   /** Computers you have logged on to on this floor. */
   readonly loggedOn = new Set<number>();
+  /** Seconds until somebody on the team gets stuck (seniors only). */
+  mentorIn = 0;
+  /** A teammate on their way to ask you for help. */
+  mentorAsk: { actor: Actor; def: QuestDef; wait: number } | null = null;
 
   constructor(mount: HTMLElement) {
     this.mount = mount;
@@ -402,6 +418,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       disposeTree(this.level.group, true);
     }
     this.lockerItems.clear();
+    this.mentorAsk = null;
     this.particles.clear();
     this.mark = null;
     this.history = [];
@@ -507,6 +524,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     placeQuestContent(this);
     this.pendingStaff = null;
     scheduleStaffing(this, fresh);
+    scheduleMentoring(this, fresh);
     this.spawnCompanions();
     if (!fromSave) host.consequencesOnArrival(this, n);
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
@@ -614,6 +632,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       a.docile = true;
       a.aggro = false;
     }
+    if (kind === 'helper') initTeammate(this, a);
     this.actors.push(a);
     return a;
   }
@@ -990,6 +1009,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     tickCaffeine(this, dt);
     tickQuests(this, dt);
     if (this.screen !== 'play') return;
+    tickTeam(this, dt);
 
     // Manager auras, and the smell test.
     this.auraSlow = 0;
@@ -1375,7 +1395,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   healPlayer(amount: number, from: string): void { host.healPlayer(this, amount, from); }
   rootPlayer(seconds: number, reason: string, resistible = true): void { host.rootPlayer(this, seconds, reason, resistible); }
   shake(amount: number): void { this.shakeAmt = Math.max(this.shakeAmt, amount); }
-  helperDamageMult(): number { return perk(this.save, 'delegate') > 0 ? 2 : 1; }
+  helperDamageMult(a: Actor): number { return helperMult(this, a); }
   healerFrequency(): number { return host.healerFrequency(this); }
   kitchenStanding(): number { return this.derivedCache.band.healerMult === 0 ? -100 : this.save.standing.kitchen; }
   ticketTitle(a: Actor): string { return TICKETS[a.ticket]?.title ?? 'It is broken'; }
@@ -1410,6 +1430,11 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   drinksHere(): number { return this.save.floorState.drinksHere; }
   maybeStaff(by: string, chance: number): void { maybeStaff(this, by, chance); }
   pushBack(index: number): string { return pushBack(this, index); }
+  dropMentoring(index: number): string { return dropMentoring(this, index); }
+  startQuestStage(st: QuestState): void { startStage(this, st); }
+  teamNote(a: Actor): string { return teamNote(a); }
+  treatOptions(a: Actor): DialogueOption[] { return treatOptions(this, a); }
+  tooTired(a: Actor): boolean { return tooTired(a); }
   // OsHost
   buy(id: string): string | null { return host.buy(this, id); }
   sell(uid: string): string | null { return host.sell(this, uid); }
@@ -1446,6 +1471,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       s.caffeineTol = Math.max(0, s.caffeineTol - 0.25);
       if (this.boss === null || this.boss.resolved) s.floorState.bossDone = true;
       const week = settleWeek(this);
+      restTeam(this);
       const pay = Math.round(salaryFor(s.rung) * WORKPLACES[s.workplace].rep);
       s.rep += pay;
       this.loadMokki(false);

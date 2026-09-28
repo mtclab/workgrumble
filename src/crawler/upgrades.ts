@@ -78,6 +78,10 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: 'delivered', name: 'Resource-Efficient', desc: 'Deliver 5 staffed assignments.' },
   { id: 'boundaries', name: 'Boundaries', desc: 'Push back on an assignment, and win.' },
   { id: 'questfan', name: 'Go-To Person', desc: 'Finish 8 side quests.' },
+  { id: 'mentor', name: 'Paying It Forward', desc: 'Mentor somebody on your team.' },
+  { id: 'servant', name: 'Servant Leader', desc: 'Mentor six people.' },
+  { id: 'snacks', name: 'Snack Manager', desc: 'Give your team ten treats.' },
+  { id: 'kinggift', name: 'The Greatest Gift', desc: 'Give a teammate a White Monster.' },
 ];
 
 export interface TipDef {
@@ -106,6 +110,8 @@ export const TIPS: Record<string, string> = {
   rest: 'Resting in the office costs an hour of SLA time, and somebody might find you napping.',
   caffeine: 'Caffeine is the second tightrope. Alert and WIRED (the green zone) make you faster; past it come the jitters and palpitations, and every big high ends in a crash. Tolerance builds up over the week.',
   elite: 'An elite (★): tougher, with a trick of its own, and much better loot.',
-  staffed: 'You have been STAFFED: management hands you work whether you have room or not. Assignments are due Friday (P1s have a clock). Over capacity, you lose max sanity and energy regen. Push back when they call, at a computer (Journal), or delegate to a helper - but a missed deliverable costs Management standing.',
+  staffed: 'You have been STAFFED: management hands you work whether you have room or not. Assignments are due Friday (P1s have a clock). Over capacity, you lose max sanity and energy regen. Push back when they call or at a computer (Journal); architects can delegate to a helper. A missed deliverable costs Management standing.',
+  team: 'Your team runs on morale. Give a teammate sweets (E, then pick one) to cheer them up, or an energy drink for a short, strong boost and a crash. Tired teammates hit softer, and below a point they go on a break.',
+  mentor: 'You are senior now: your team comes to you when they are stuck (🎓). Mentoring counts against your workload, but every person you get through it earns you a perk point, and the Mentor perk grows with it.',
   block: 'Hold the right mouse button to block (frontal hits, costs energy). Block just as a hit lands to PARRY it and stagger them. Tap it to shove.',
 };

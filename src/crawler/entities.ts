@@ -33,6 +33,7 @@ import { disposeTree } from './dispose';
 import { collideCircle, type Level, lineOfSight, NEIGHBOURS8, TILE, toCell } from './level';
 import { chatbotMesh, dogMesh, turretMesh } from './meshes';
 import { fx, type Rng } from './rng';
+import { MORALE_START, teamPower } from './team';
 import { disposeSprite, textSprite } from './textures';
 
 export type ActorKind =
@@ -192,6 +193,14 @@ export interface Actor {
   glowBase: number;
   /** The quest that wants this one dealt with (a hunt target), if any. */
   questTag: string | null;
+  /** A teammate's morale (0..100): how hard and how fast they work. */
+  morale: number;
+  /** An energy drink's power while it lasts (1: none), the seconds left, and the crash to come. */
+  boost: number;
+  boostT: number;
+  boostCrash: number;
+  /** Somebody you have mentored: they work harder for you. */
+  protege: boolean;
   readonly lastPos: THREE.Vector3;
   /** Who spawned it (turrets belong to a Shadow IT person). */
   owner: number;
@@ -226,7 +235,8 @@ export interface GameCtx {
   shake(amount: number): void;
   giveItem(id: string, n: number, from: string): void;
   giveAmmo(): void;
-  helperDamageMult(): number;
+  /** How hard this ally hits: perks, and a teammate's morale and cans. */
+  helperDamageMult(a: Actor): number;
   healerFrequency(): number;
   kitchenStanding(): number;
   ticketTitle(a: Actor): string;
@@ -570,11 +580,11 @@ export function createActor(
   } else if (kind === 'helper') {
     if (role === null) role = r.pick(['sysadmin', 'sysadmin', 'security', 'intern'] as const);
     name = opts.npc?.name ?? (role === 'sysadmin'
-      ? r.pick(['Dave (Senior Sysadmin)', 'Old Bob (Mainframe)', 'Priya (Network Eng.)'])
+      ? r.pick(['Dave (Senior Sysadmin)', 'Old Bob (Mainframe)', 'Priya (Network Eng.)', 'Mikko (Sysadmin)'])
       : role === 'security' ? r.pick(['Sunil (Security)', 'Bev (Security)'])
         : role === 'clone' ? 'Pat (autoscaled instance)'
           : role === 'spirit' ? 'Saunatonttu (summoned)'
-            : role === 'dog' ? 'Musti' : r.pick(['Josh (Intern)', 'Ellie (Intern)']));
+            : role === 'dog' ? 'Musti' : r.pick(['Josh (Intern)', 'Ellie (Intern)', 'Aino (Intern)']));
     hp = 1;
     speed = role === 'dog' ? 5.2 : 3.6;
     radius = role === 'dog' ? 0.35 : 0.4;
@@ -677,6 +687,11 @@ export function createActor(
     gold: kind === 'customer' || kind === 'boss' || elite === 'vip',
     glowBase,
     questTag: null,
+    morale: MORALE_START,
+    boost: 1,
+    boostT: 0,
+    boostCrash: 0,
+    protege: false,
     lastPos: new THREE.Vector3(x, 0, z),
     owner: opts.owner ?? 0,
     spawnIndex: opts.spawnIndex ?? -1,
@@ -1525,8 +1540,14 @@ function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
   }
 
   if (!a.recruited) {
+    // Stuck on something: they come and find you, busy or not.
+    if (a.memo.seeking === true && dist > 2.4 && dist < 40 && approach(ctx, a, dx, dz, tmp2)) {
+      moveActor(ctx, a, tmp2.x, tmp2.z, a.speed * 0.8, dt);
+      a.yaw = Math.atan2(dx, dz);
+      return;
+    }
     a.barkIn -= dt;
-    if (dist < 5 && a.barkIn <= 0 && a.npcId === null) {
+    if (dist < 5 && a.barkIn <= 0 && a.npcId === null && a.memo.seeking !== true) {
       a.barkIn = 8;
       say(a, a.role === 'intern' ? 'Is there anything I can do? Please?' : a.role === 'security' ? 'Need a hand? Press E.' : 'Need backup? Press E.', 3, ...ALLY_BUBBLE);
     }
@@ -1550,14 +1571,16 @@ function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
       const to = target.pos.clone();
       to.y = 1.2;
       const dir = to.sub(from).normalize();
-      const scale = ctx.helperDamageMult() * (1 + ctx.floor * 0.3) * ctx.difficulty;
+      const scale = ctx.helperDamageMult(a) * (1 + ctx.floor * 0.3) * ctx.difficulty;
+      // Morale and cans: a keen teammate works faster, a flagging one slower.
+      const haste = onTeam(a) ? teamPower(a.morale, a.boostT > 0 ? a.boost : 1, a.protege).haste : 1;
       if (a.role === 'sysadmin' || a.role === 'clone') {
-        a.cooldown = a.role === 'clone' ? 0.6 : 1.1;
+        a.cooldown = (a.role === 'clone' ? 0.6 : 1.1) * haste;
         a.attackAnim = 1;
         ctx.fire({ kind: 'rtfm', from, dir, speed: 24, damage: 15 * scale, hostile: false, owner: a });
         if (a.role === 'sysadmin' && fx.chance(0.15)) say(a, fx.pick(HELPER_BARKS), 2, ...ALLY_BUBBLE);
       } else if (a.role === 'security') {
-        a.cooldown = 2.2;
+        a.cooldown = 2.2 * haste;
         a.attackAnim = 1;
         ctx.fire({ kind: 'stun', from, dir, speed: 20, damage: 6 * scale, hostile: false, owner: a });
         if (fx.chance(0.2)) say(a, 'Badge, please.', 2, ...ALLY_BUBBLE);
@@ -1586,6 +1609,11 @@ function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
   }
 }
 
+/** One of your team: the IT crowd (not a clone, a spirit, the dog or a quest NPC). */
+export function onTeam(a: Actor): boolean {
+  return a.kind === 'helper' && a.npcId === null && (a.role === 'sysadmin' || a.role === 'security' || a.role === 'intern');
+}
+
 /** Musti: runs down the nearest trouble, bites it, and comes back for praise. */
 function updateDog(ctx: GameCtx, a: Actor, dt: number, dx: number, dz: number, dist: number): void {
   const target = dist < 18 ? nearestHostile(ctx, a, 10) : null;
@@ -1612,7 +1640,7 @@ function updateDog(ctx: GameCtx, a: Actor, dt: number, dx: number, dz: number, d
   if (td < target.radius + 1.1 && a.cooldown <= 0) {
     a.cooldown = 1.0;
     a.attackAnim = 1;
-    const scale = ctx.helperDamageMult() * (1 + ctx.floor * 0.3) * ctx.difficulty;
+    const scale = ctx.helperDamageMult(a) * (1 + ctx.floor * 0.3) * ctx.difficulty;
     hurtActor(ctx, target, 11 * scale, new THREE.Vector3(tx, 0, tz).normalize().multiplyScalar(2));
     // Managers especially hate being barked at: they lose their train of thought.
     if (target.kind === 'manager') target.summonIn += 3;

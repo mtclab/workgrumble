@@ -1,4 +1,5 @@
 import type { DialogueNode, DialogueOption } from './dialogue';
+import type { HelperRole } from './entities';
 import { said } from './dialogue';
 import type { RoomKind } from './level';
 import type { Attribute, Faction, Skill } from './rpg';
@@ -41,6 +42,8 @@ export interface QuestState {
   delegated?: boolean;
   /** You already tried to push back on it once. */
   pushed?: boolean;
+  /** Mentoring a teammate (`by` is who). */
+  mentor?: boolean;
 }
 
 /** Where a quest item is put into the world. */
@@ -70,6 +73,8 @@ export interface Objective {
   readonly hunt?: HuntTarget;
   /** For 'count' on a staffed assignment: make sure there are enough of these on the floor. */
   readonly ensure?: { readonly kind: HuntTarget['kind'] | 'healer'; readonly count: number };
+  /** Mentoring: only counts with the person you are mentoring beside you. */
+  readonly withMentee?: boolean;
 }
 
 export interface QuestDef {
@@ -89,6 +94,10 @@ export interface QuestDef {
   readonly timeLimit?: number;
   /** Only staffed on floors that have one of these. */
   readonly needs?: string;
+  /** A mentoring template: a teammate asks for your help. */
+  readonly mentor?: boolean;
+  /** Which kinds of teammate ask for it. */
+  readonly roles?: readonly HelperRole[];
 }
 
 export const EVIDENCE = ['memo', 'schedule', 'emails', 'po'] as const;
@@ -296,8 +305,52 @@ export const STAFFED: readonly QuestDef[] = [
 /** Who staffs you, in the voice of whoever is on the phone. */
 export const STAFFERS: readonly string[] = ['Derek (Team Lead)', 'Fiona (Head of Process)', 'Tristan (Delivery Mgr)', 'Clive (Ops Manager)', 'The PMO', 'Karen\'s EA'];
 
+/**
+ * Mentoring: a teammate is stuck and comes to you, because you are the
+ * senior. `{m}` is their name. It is never on anybody's plan but yours.
+ */
+export const MENTORING: readonly QuestDef[] = [
+  { id: 'm-pair', title: 'Pair Programming', main: false, giver: '', npc: '', floors: [], mentor: true, roles: ['sysadmin', 'intern'],
+    stages: [{ kind: 'fix', count: 2, withMentee: true, text: 'Pair with {m} on two tickets at a terminal. They drive, you navigate, nobody touches the mouse.' }] },
+  { id: 'm-talkdown', title: 'Soft Skills Shadowing', main: false, giver: '', npc: '', floors: [], mentor: true, roles: ['sysadmin', 'security', 'intern'],
+    stages: [{ kind: 'count', count: 2, withMentee: true, match: (e) => e.type === 'resolve' && e.peaceful, text: 'Show {m} how to talk somebody down. Two people, with {m} watching and taking notes.' }] },
+  { id: 'm-induction', title: 'Server Room Induction', main: false, giver: '', npc: '', floors: [], mentor: true, roles: ['intern', 'security'],
+    stages: [
+      { kind: 'room', room: 'server', withMentee: true, text: 'Walk {m} through the server room. Point at things. Say "do not touch that" a lot.' },
+      { kind: 'room', room: 'it', withMentee: true, text: 'Then introduce {m} to Internal IT, where the good cables live.' },
+    ] },
+  { id: 'm-oncall', title: 'Covering the On-Call', main: false, giver: '', npc: '', floors: [], mentor: true, roles: ['sysadmin', 'security'],
+    stages: [{ kind: 'count', count: 4, match: isKind('user', 'caller', 'customer'), text: '{m} has been on call all night. Take the pager until you have dealt with four users, so they can sleep.' }] },
+  { id: 'm-locks', title: 'Physical Security 101', main: false, giver: '', npc: '', floors: [], mentor: true, roles: ['security'],
+    stages: [{ kind: 'use', use: 'locker', count: 1, withMentee: true, text: 'Show {m} why the supply closets need better locks. Pick one, with {m} watching.' }] },
+  { id: 'm-backup', title: 'Backing Them Up', main: false, giver: '', npc: '', floors: [], mentor: true, roles: ['sysadmin', 'security', 'intern'],
+    stages: [{ kind: 'count', count: 1, match: isKind('manager'), ensure: { kind: 'manager', count: 1 }, withMentee: true, text: 'A manager has been leaning on {m}. Deal with a manager, any way you like, with {m} beside you to see how it is done.' }] },
+  { id: 'm-tour', title: 'The Grand Tour', main: false, giver: '', npc: '', floors: [], mentor: true, roles: ['intern'],
+    stages: [
+      { kind: 'room', room: 'kitchen', withMentee: true, text: 'Show {m} the kitchen: where the good biscuits hide, and which mug is Brenda\'s.' },
+      { kind: 'room', room: 'it', withMentee: true, text: 'Then Internal IT, and how to ask Morag for anything without making eye contact.' },
+    ] },
+];
+
+/** What {m} asks, when they come to you. */
+export const MENTOR_PITCH: Record<string, string> = {
+  'm-pair': 'Have you got a minute? I have been stuck on the same ticket for two hours and I think I am making it worse. Could you... sit with me? I know you are busy.',
+  'm-talkdown': 'How do you DO that? The talking-people-down thing. They just shout at me. Can I watch you do it? Properly?',
+  'm-induction': 'Nobody has shown me the server room. I have been here three weeks. I am scared to ask Morag. Could you?',
+  'm-oncall': 'I have been on call since Tuesday. I have not slept. The pager went off in the shower. Could you take it for a bit? Just a bit?',
+  'm-locks': 'Security audit next week, and I have no idea how bad our closets are. You know locks. Show me?',
+  'm-backup': 'My manager keeps putting fifteen-minute meetings in my calendar. At 17:45. I do not know how to say no. How do you do it?',
+  'm-tour': 'Hi! Sorry! I still do not know where anything is. Could you show me around? Just the important bits? The biscuits?',
+};
+
+/** A mentoring objective with the teammate's first name in it. */
+export function withName(text: string, st: QuestState): string {
+  const m = (st.by ?? 'them').split(' (')[0] ?? 'them';
+  return text.replaceAll('{m}', m);
+}
+
 export function questById(id: string): QuestDef | undefined {
-  return QUESTS.find((q) => q.id === id) ?? STAFFED.find((q) => q.id === id);
+  return QUESTS.find((q) => q.id === id) ?? STAFFED.find((q) => q.id === id) ?? MENTORING.find((q) => q.id === id);
 }
 
 /** Journal quests still in play (not done, missed or handed off). */
@@ -613,5 +666,5 @@ export function evidenceCount(has: (id: string) => boolean): number {
 
 /** Side quests on offer for a floor, in a stable order. */
 export function sideQuestsFor(floor: number): QuestDef[] {
-  return QUESTS.filter((q) => !q.main && q.staffed !== true && q.floors.includes(floor % 5));
+  return QUESTS.filter((q) => !q.main && q.staffed !== true && q.mentor !== true && q.floors.includes(floor % 5));
 }

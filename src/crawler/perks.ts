@@ -18,6 +18,8 @@ export interface TreePerk {
   /** null = the General tree, no skill needed. */
   readonly tree: Skill | null;
   readonly ranks: readonly PerkRank[];
+  /** Earned by doing, never bought with points: how. */
+  readonly earned?: string;
 }
 
 const r = (skill: number, desc: string): PerkRank => ({ skill, desc });
@@ -28,8 +30,13 @@ export const TREE_PERKS: readonly TreePerk[] = [
   { id: 'back', name: 'Strong Back', tree: null, ranks: [r(0, '+15 kg carry'), r(0, '+15 kg carry'), r(0, '+15 kg carry')] },
   { id: 'caffeine', name: 'Caffeine Tolerance', tree: null, ranks: [r(0, 'Crashes are half as long; can buffs last 50% longer.')] },
   { id: 'teflon', name: 'Teflon', tree: null, ranks: [r(0, 'Action items weigh half; meetings end twice as fast.'), r(0, 'Action items weigh a quarter.')] },
-  { id: 'delegate', name: 'Delegation', tree: null, ranks: [r(0, 'Allies hit twice as hard; office ladies heal more often; you can hand any assignment to a recruited helper.')] },
+  { id: 'delegate', name: 'Delegation', tree: null, ranks: [r(0, 'Allies hit twice as hard; office ladies heal more often; once you are an architect, what you delegate earns full credit.')] },
   { id: 'timemgmt', name: 'Time Management', tree: null, ranks: [r(0, '+1 workload capacity'), r(0, '+1 workload capacity')] },
+  { id: 'mentor', name: 'Mentor', tree: null, earned: 'Earned by mentoring (1, 3, 6 people)', ranks: [
+    r(0, 'Mentor: teammates who follow you hit 25% harder and tire half as fast.'),
+    r(0, 'Force Multiplier: +1 workload capacity. Your team picks up the slack.'),
+    r(0, 'Servant Leader: team morale never drops below 40, and treats do twice as much.'),
+  ] },
 
   // Hardware
   { id: 'percussive', name: 'Percussive Maintenance', tree: 'hardware', ranks: [r(15, '+20% melee damage'), r(40, '+40% melee damage'), r(70, '+60% melee damage')] },
@@ -90,6 +97,6 @@ export function treePerk(id: string): TreePerk | undefined {
 /** Can a character with this skill level and current rank take the next rank? */
 export function canTake(p: TreePerk, rank: number, skillLevel: number): boolean {
   const next = p.ranks[rank];
-  if (next === undefined) return false;
+  if (next === undefined || p.earned !== undefined) return false;
   return p.tree === null || skillLevel >= next.skill;
 }

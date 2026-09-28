@@ -162,6 +162,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .os-bar.is-over .os-bar-fill { background: #c62828; }
 .os-alert { margin: 6px 0; padding: 6px 10px; background: #f6dede; border-left: 4px solid #c62828; }
 .os-mail.is-staffed { border-left: 4px solid #d4a017; padding-left: 8px; }
+.os-mail.is-mentor { border-left: 4px solid #2aa198; padding-left: 8px; }
 .os-equip { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 14px; }
 .os-equip label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; font-weight: bold; }
 .os-equip .os-input { margin-bottom: 0; }
