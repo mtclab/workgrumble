@@ -271,3 +271,74 @@ export function disposeSprite(s: THREE.Sprite): void {
   s.material.map?.dispose();
   s.material.dispose();
 }
+
+/** Hard floors for the rooms that are not carpeted: tiles, lino, raised server floor, parquet. */
+export function tileTexture(a: string, b: string, grout: string, cells: number, seed: number, checker = true): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(seed);
+  const step = 128 / cells;
+  for (let y = 0; y < cells; y++) {
+    for (let x = 0; x < cells; x++) {
+      g.fillStyle = checker && (x + y) % 2 === 1 ? b : a;
+      g.fillRect(x * step, y * step, step, step);
+      // A little variation per tile, so it does not read as a grid of stickers.
+      g.fillStyle = `rgba(${r.chance(0.5) ? '255,255,255' : '0,0,0'},${r.range(0.01, 0.05).toFixed(3)})`;
+      g.fillRect(x * step, y * step, step, step);
+    }
+  }
+  g.strokeStyle = grout;
+  g.lineWidth = 2;
+  for (let i = 0; i <= cells; i++) {
+    g.beginPath();
+    g.moveTo(i * step, 0);
+    g.lineTo(i * step, 128);
+    g.moveTo(0, i * step);
+    g.lineTo(128, i * step);
+    g.stroke();
+  }
+  const t = toTexture(c);
+  t.magFilter = THREE.LinearFilter;
+  return t;
+}
+
+export function parquetTexture(): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(5);
+  for (let y = 0; y < 128; y += 16) {
+    for (let x = 0; x < 128; x += 64) {
+      const off = (y / 16) % 2 === 0 ? 0 : 32;
+      const shade = r.int(120, 165);
+      g.fillStyle = `rgb(${shade},${Math.round(shade * 0.68)},${Math.round(shade * 0.42)})`;
+      g.fillRect((x + off) % 128, y, 64, 16);
+      if ((x + off) % 128 > 64) g.fillRect(0, y, ((x + off) % 128) - 64, 16);
+      g.fillStyle = 'rgba(40,20,5,0.4)';
+      g.fillRect((x + off) % 128, y, 1, 16);
+      for (let k = 0; k < 3; k++) g.fillRect((x + off + r.int(2, 60)) % 128, y + r.int(2, 14), r.int(6, 18), 1);
+    }
+    g.fillStyle = 'rgba(40,20,5,0.5)';
+    g.fillRect(0, y + 15, 128, 1);
+  }
+  const t = toTexture(c);
+  t.magFilter = THREE.LinearFilter;
+  return t;
+}
+
+/** A small emissive sign: EXIT, the floor number, a room name. */
+export function signTexture(text: string, fg: string, bg: string): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 48;
+  const g = c.getContext('2d');
+  if (g === null) throw new Error('2d canvas unavailable');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, 128, 48);
+  g.fillStyle = fg;
+  g.font = 'bold 28px monospace';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(text, 64, 25);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+

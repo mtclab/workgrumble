@@ -371,6 +371,7 @@ function sauna(g: Game, it: Interactable): void {
   s.sanity = Math.min(d.maxSanity, s.sanity + d.maxSanity * 0.6 * mult);
   s.loyly = mokki ? d.maxLoyly : Math.min(d.maxLoyly, s.loyly + 40 * mult);
   s.bac = Math.max(0, s.bac - 40);
+  s.stomach *= 0.3;
   s.hangover = 0;
   s.dependency = Math.max(0, s.dependency - 6);
   s.caffeine *= 0.7;
@@ -389,6 +390,7 @@ function sauna(g: Game, it: Interactable): void {
 function swim(g: Game): void {
   const s = g.save;
   sfx.splash();
+  g.particles.emit('splash', g.player.pos.clone().setY(0.4), 40, 0.6);
   steamBurst(g, g.player.pos.clone(), 1);
   if (g.saunaT > 0 && !s.weekend.lake) {
     s.weekend.lake = true;
@@ -401,6 +403,7 @@ function swim(g: Game): void {
     g.hud.toast('Brr! The lake is 14 degrees. Sober, at least. (Try it straight after the sauna.)', 'info');
   }
   s.bac = Math.max(0, s.bac - 25);
+  s.stomach *= 0.5;
   s.hangover = 0;
   g.refreshDerived();
 }

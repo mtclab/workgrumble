@@ -1,15 +1,19 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng } from './rng';
+import { normalMapFrom } from './graphics';
 import {
   woodTexture,
   carpetTexture,
   ceilingTexture,
+  parquetTexture,
   POSTERS,
   posterTexture,
   rackTexture,
   screenTexture,
+  signTexture,
   type Theme,
+  tileTexture,
   wallTexture,
 } from './textures';
 
@@ -897,7 +901,9 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   }
 
   // ---- Static geometry ----
-  const wallMat = new THREE.MeshLambertMaterial({ map: paint(() => wallTexture(theme)) });
+  const std = (params: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial(params);
+  const wallTex = paint(() => wallTexture(theme));
+  const wallMat = std({ map: wallTex, normalMap: paint(() => normalMapFrom(wallTex, 1.2)), roughness: 0.92, metalness: 0 });
   const wallGeoms: THREE.BufferGeometry[] = [];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -914,60 +920,187 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       wallGeoms.push(g);
     }
   }
-  if (wallGeoms.length > 0) group.add(new THREE.Mesh(mergeGeometries(wallGeoms), wallMat));
+  if (wallGeoms.length > 0) {
+    const walls = new THREE.Mesh(mergeGeometries(wallGeoms), wallMat);
+    walls.receiveShadow = true;
+    walls.castShadow = true;
+    group.add(walls);
+  }
 
   const carpet = paint(() => carpetTexture(theme, seed));
   carpet?.repeat.set(w, h);
-  const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(w * TILE, h * TILE), new THREE.MeshLambertMaterial({ map: carpet }));
+  const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(w * TILE, h * TILE), std({ map: carpet, normalMap: paint(() => normalMapFrom(carpet, 2.5)), roughness: 1, metalness: 0 }));
   floorMesh.rotation.x = -Math.PI / 2;
   floorMesh.position.set((w * TILE) / 2, 0, (h * TILE) / 2);
+  floorMesh.receiveShadow = true;
   group.add(floorMesh);
   const ceil = paint(() => ceilingTexture(theme));
   ceil?.repeat.set(w, h);
-  const ceilMesh = new THREE.Mesh(new THREE.PlaneGeometry(w * TILE, h * TILE), new THREE.MeshLambertMaterial({ map: ceil }));
+  const ceilMesh = new THREE.Mesh(new THREE.PlaneGeometry(w * TILE, h * TILE), std({ map: ceil, normalMap: paint(() => normalMapFrom(ceil, 1.5, true)), roughness: 0.95 }));
   ceilMesh.rotation.x = Math.PI / 2;
   ceilMesh.position.set((w * TILE) / 2, WALL_H, (h * TILE) / 2);
   group.add(ceilMesh);
 
+  // Rooms that are not carpeted: a floor of their own, laid over the carpet.
+  const roomFloor = (rm: Room, mat: THREE.Material): void => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(rm.w * TILE, rm.h * TILE), mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(rm.x * TILE + (rm.w * TILE) / 2, 0.008, rm.y * TILE + (rm.h * TILE) / 2);
+    m.receiveShadow = true;
+    group.add(m);
+  };
+  const floorMat = (tex: THREE.CanvasTexture | null, rm: Room, per: number, roughness: number, metalness = 0, bump = 1.5): THREE.MeshStandardMaterial => {
+    tex?.repeat.set(rm.w / per, rm.h / per);
+    return std({ map: tex, normalMap: paint(() => normalMapFrom(tex, bump, true)), roughness, metalness });
+  };
+  for (const rm of rooms) {
+    switch (rm.kind) {
+      case 'lobby': roomFloor(rm, floorMat(paint(() => tileTexture('#d8d4cc', '#c4bfb4', 'rgba(60,55,50,0.6)', 4, seed + 1)), rm, 2, 0.28, 0.05)); break;
+      case 'kitchen': roomFloor(rm, floorMat(paint(() => tileTexture('#e8e4da', '#3a3a3a', 'rgba(0,0,0,0.35)', 8, seed + 2)), rm, 2, 0.55)); break;
+      case 'server': roomFloor(rm, floorMat(paint(() => tileTexture('#9aa0a6', '#8f959b', 'rgba(20,20,20,0.8)', 2, seed + 3, false)), rm, 1, 0.45, 0.6, 3)); break;
+      case 'it': roomFloor(rm, floorMat(paint(() => tileTexture('#cfd6c8', '#c0c8b8', 'rgba(0,0,0,0.25)', 4, seed + 4)), rm, 2, 0.6)); break;
+      case 'meeting':
+      case 'office': roomFloor(rm, floorMat(paint(() => parquetTexture()), rm, 2, 0.5, 0, 1)); break;
+      case 'boss': roomFloor(rm, floorMat(paint(() => carpetTexture({ ...theme, carpet: '#5a1418', carpetFleck: '#3e0d10' }, seed + 5)), rm, 1, 1, 0, 2.5)); break;
+      default: break;
+    }
+  }
+
+  // Architecture: skirting along every wall, a lintel over every opening into
+  // a room, vents in the ceiling.
+  const trim: THREE.BufferGeometry[] = [];
+  const lintels: THREE.BufferGeometry[] = [];
+  const vents: THREE.BufferGeometry[] = [];
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (floor[i] !== 1) continue;
+      for (const [ox, oy] of NEIGHBOURS4) {
+        const n = (y + oy) * w + (x + ox);
+        const fx0 = cellCenter(x) + ox * (TILE / 2 - 0.03);
+        const fz0 = cellCenter(y) + oy * (TILE / 2 - 0.03);
+        if (floor[n] !== 1) {
+          const g = new THREE.BoxGeometry(ox !== 0 ? 0.06 : TILE, 0.14, oy !== 0 ? 0.06 : TILE);
+          g.translate(fx0, 0.07, fz0);
+          trim.push(g);
+        } else if ((roomOf[i] ?? -1) < 0 && (roomOf[n] ?? -1) >= 0) {
+          // Corridor into a room: a lintel on the boundary.
+          const g = new THREE.BoxGeometry(ox !== 0 ? 0.25 : TILE, 0.45, oy !== 0 ? 0.25 : TILE);
+          g.translate(cellCenter(x) + ox * TILE / 2, WALL_H - 0.225, cellCenter(y) + oy * TILE / 2);
+          lintels.push(g);
+        }
+      }
+      if ((roomOf[i] ?? -1) >= 0 && x % 4 === 3 && y % 5 === 2) {
+        const g = new THREE.BoxGeometry(0.7, 0.03, 0.7);
+        g.translate(cellCenter(x), WALL_H - 0.015, cellCenter(y));
+        vents.push(g);
+      }
+    }
+  }
+  const trimMat = std({ color: new THREE.Color(theme.wallTrim), roughness: 0.6 });
+  if (trim.length > 0) group.add(new THREE.Mesh(mergeGeometries(trim), trimMat));
+  if (lintels.length > 0) {
+    const l = new THREE.Mesh(mergeGeometries(lintels), wallMat);
+    l.castShadow = true;
+    group.add(l);
+  }
+  if (vents.length > 0) group.add(new THREE.Mesh(mergeGeometries(vents), std({ color: 0x3a3d42, roughness: 0.4, metalness: 0.7 })));
+
   // Fluorescent panels in every room and every few corridor cells.
   const panelGeoms: THREE.BufferGeometry[] = [];
+  const frameGeoms: THREE.BufferGeometry[] = [];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (floor[y * w + x] !== 1) continue;
       const inRoom = (roomOf[y * w + x] ?? -1) >= 0;
       if ((inRoom && x % 3 === 1 && y % 3 === 1) || (!inRoom && (x + y) % 5 === 0)) {
         const g = new THREE.BoxGeometry(1.2, 0.04, 0.6);
-        g.translate(cellCenter(x), WALL_H - 0.02, cellCenter(y));
+        g.translate(cellCenter(x), WALL_H - 0.03, cellCenter(y));
         panelGeoms.push(g);
+        const f = new THREE.BoxGeometry(1.32, 0.05, 0.72);
+        f.translate(cellCenter(x), WALL_H - 0.015, cellCenter(y));
+        frameGeoms.push(f);
       }
     }
   }
   if (panelGeoms.length > 0) {
-    group.add(new THREE.Mesh(mergeGeometries(panelGeoms), new THREE.MeshBasicMaterial({ color: theme.light })));
+    const tube = new THREE.Color(theme.light).multiplyScalar(1.6);
+    group.add(new THREE.Mesh(mergeGeometries(panelGeoms), new THREE.MeshBasicMaterial({ color: tube })));
+    group.add(new THREE.Mesh(mergeGeometries(frameGeoms), std({ color: 0xb8b8b0, roughness: 0.5, metalness: 0.4 })));
   }
+
+  // Server rooms blink. Three LED colours, three phases; the game animates them.
+  const ledMats = [0x3cff6a, 0xffb020, 0x40a0ff].map((c) => new THREE.MeshBasicMaterial({ color: c }));
+  const ledGeoms: THREE.BufferGeometry[][] = [[], [], []];
+  for (const rm of rooms) {
+    if (rm.kind !== 'server') continue;
+    for (let y = rm.y; y < rm.y + rm.h; y++) {
+      for (let x = rm.x; x < rm.x + rm.w; x++) {
+        const i = y * w + x;
+        if (solid[i] !== 1 || opaque[i] !== 1 || floor[i] !== 1) continue;
+        for (const side of [-1, 1]) {
+          for (let k = 0; k < 7; k++) {
+            const g = new THREE.BoxGeometry(0.03, 0.035, 0.05);
+            g.translate(cellCenter(x) + side * (TILE * 0.4 + 0.01), 0.35 + k * 0.28 + r.range(0, 0.08), cellCenter(y) + r.range(-0.7, 0.7));
+            (ledGeoms[r.int(0, 2)] as THREE.BufferGeometry[]).push(g);
+          }
+        }
+      }
+    }
+  }
+  ledGeoms.forEach((list, k) => {
+    if (list.length > 0) group.add(new THREE.Mesh(mergeGeometries(list), ledMats[k]));
+  });
+  group.userData.leds = ledMats;
+
+  // EXIT over the lift, and a fire extinguisher in some rooms (Health and Safety insists).
+  const exitIt = interactables.find((i) => i.kind === 'elevator');
+  if (exitIt?.mesh !== null && exitIt?.mesh !== undefined) {
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.34), new THREE.MeshBasicMaterial({ map: paint(() => signTexture('EXIT', '#e8ffe8', '#0a7a2a')), color: 0xffffff }));
+    sign.position.set(0, 3.0, 0.12);
+    exitIt.mesh.add(sign);
+  }
+  const extMat = std({ color: 0xc0281e, roughness: 0.35, metalness: 0.2 });
+  const extGeoms: THREE.BufferGeometry[] = [];
+  for (const rm of rooms) {
+    if (!r.chance(0.45) || rm.kind === 'sauna') continue;
+    const spot = wallSpot(rm);
+    if (spot === null) continue;
+    const [ex, ey] = spot;
+    const dx = ex === rm.x ? -1 : ex === rm.x + rm.w - 1 ? 1 : 0;
+    const dz = ey === rm.y ? -1 : ey === rm.y + rm.h - 1 ? 1 : 0;
+    const g = new THREE.CylinderGeometry(0.11, 0.11, 0.55, 10);
+    g.translate(cellCenter(ex) + dx * (TILE / 2 - 0.15), 0.62, cellCenter(ey) + dz * (TILE / 2 - 0.15));
+    extGeoms.push(g);
+  }
+  if (extGeoms.length > 0) group.add(new THREE.Mesh(mergeGeometries(extGeoms), extMat));
 
   const rackTex = paint(() => rackTexture());
   const mats: Record<string, THREE.Material> = {
-    desk: new THREE.MeshLambertMaterial({ color: 0xc8b48a }),
-    metal: new THREE.MeshLambertMaterial({ color: 0x6b6f75 }),
-    partition: new THREE.MeshLambertMaterial({ color: 0x6f7c8f }),
-    monitor: new THREE.MeshLambertMaterial({ color: 0x1d1f24, emissive: 0x0b2a5a }),
-    chair: new THREE.MeshLambertMaterial({ color: 0x23262b }),
-    wood: new THREE.MeshLambertMaterial({ color: 0x7a5232 }),
-    counter: new THREE.MeshLambertMaterial({ color: 0xe6e2d6 }),
-    rack: new THREE.MeshLambertMaterial({ map: rackTex, emissive: 0x111111 }),
-    plant: new THREE.MeshLambertMaterial({ color: 0x8a5a36 }),
-    leaf: new THREE.MeshLambertMaterial({ color: 0x3f8a3a }),
-    pillar: new THREE.MeshLambertMaterial({ color: 0x9c8f7a }),
-    bench: new THREE.MeshLambertMaterial({ color: 0xc8955a }),
+    desk: std({ color: 0xc8b48a, roughness: 0.55 }),
+    metal: std({ color: 0x6b6f75, roughness: 0.4, metalness: 0.7 }),
+    partition: std({ color: 0x6f7c8f, roughness: 0.95 }),
+    monitor: std({ color: 0x1d1f24, emissive: 0x0b2a5a, emissiveIntensity: 1.2, roughness: 0.3 }),
+    chair: std({ color: 0x23262b, roughness: 0.7 }),
+    wood: std({ color: 0x7a5232, map: paint(() => woodTexture()), roughness: 0.5 }),
+    counter: std({ color: 0xe6e2d6, roughness: 0.35 }),
+    rack: std({ map: rackTex, emissive: 0x111111, roughness: 0.5, metalness: 0.5 }),
+    plant: std({ color: 0x8a5a36, roughness: 0.8 }),
+    leaf: std({ color: 0x3f8a3a, roughness: 0.7 }),
+    pillar: std({ color: 0x9c8f7a, roughness: 0.6 }),
+    bench: std({ color: 0xc8955a, map: paint(() => woodTexture()), roughness: 0.7 }),
   };
   for (const [key, geoms] of builder.boxes) {
-    const mat = mats[key] ?? new THREE.MeshLambertMaterial({ color: 0xff00ff });
-    group.add(new THREE.Mesh(mergeGeometries(geoms), mat));
+    const mat = mats[key] ?? std({ color: 0xff00ff });
+    const m = new THREE.Mesh(mergeGeometries(geoms), mat);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    group.add(m);
     for (const g of geoms) g.dispose();
   }
-  for (const g of wallGeoms) g.dispose();
-  for (const g of panelGeoms) g.dispose();
+  for (const list of [wallGeoms, panelGeoms, frameGeoms, trim, lintels, vents, extGeoms, ...ledGeoms]) for (const g of list) g.dispose();
+  // Interactive props cast shadows too.
+  for (const it of interactables) it.mesh?.traverse((o) => { if (o instanceof THREE.Mesh) o.castShadow = true; });
 
   return {
     w, h, floor, solid, opaque, roomOf, rooms, interactables, spawns, start, bossSpawn,
@@ -977,8 +1110,8 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
 
 // ---- Interactive prop meshes ----
 
-function lambert(color: number, emissive = 0): THREE.MeshLambertMaterial {
-  return new THREE.MeshLambertMaterial({ color, emissive });
+function lambert(color: number, emissive = 0): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ color, emissive, roughness: 0.55, metalness: 0.1 });
 }
 
 function box(sx: number, sy: number, sz: number, mat: THREE.Material, x = 0, y = 0, z = 0): THREE.Mesh {

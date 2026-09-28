@@ -1,9 +1,8 @@
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { sfx } from './audio';
+import { castShadows, setBlobShadows } from './characters';
+import { Pipeline } from './graphics';
+import { Particles } from './particles';
 import { caffeineBand, CAFFEINE_EFFECTS, effectiveCaffeine } from './caffeine';
 import {
   fire,
@@ -51,7 +50,7 @@ import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lin
 import { itemById } from './items';
 import { spellById } from './magic';
 import { FishingUI } from './minigames';
-import { generateMokki } from './mokki';
+import { generateMokki, MOKKI_SUN } from './mokki';
 import { type OsHost, Os } from './os';
 import { Player } from './player';
 import {
@@ -125,9 +124,13 @@ export const POWER_TIME = 0.65;
 
 export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   readonly renderer: THREE.WebGLRenderer;
-  readonly composer: EffectComposer;
-  readonly bloom: UnrealBloomPass;
+  readonly pipeline: Pipeline;
+  readonly particles: Particles;
   readonly scene = new THREE.Scene();
+  /** 0..1 red flash on the mood pass when you get hurt. */
+  hurtFlash = 0;
+  private dustIn = 0;
+  private readonly moodTint = new THREE.Color(1, 1, 1);
   readonly camera: THREE.PerspectiveCamera;
   readonly input: Input;
   readonly hud: Hud;
@@ -222,18 +225,32 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     this.renderer.domElement.className = 'game-canvas';
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, window.innerWidth / window.innerHeight, 0.05, 160);
     this.scene.add(this.camera);
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.45, 0.55, 0.86);
-    this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.pipeline = new Pipeline(this.renderer, this.scene, this.camera);
+    this.particles = new Particles(this.scene);
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x333333, 1.2);
     this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xffc890, 0);
     this.sun.position.set(-30, 40, 60);
+    // The sun's shadow covers the whole mökki plot.
+    const sc = this.sun.shadow.camera;
+    sc.left = -50;
+    sc.right = 50;
+    sc.top = 50;
+    sc.bottom = -50;
+    sc.near = 1;
+    sc.far = 160;
+    this.sun.shadow.bias = -0.0005;
+    this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun);
+    this.scene.add(this.sun.target);
     for (let i = 0; i < 8; i++) {
       const l = new THREE.PointLight(0xffffff, 14, 16, 1.4);
+      l.shadow.mapSize.set(512, 512);
+      l.shadow.bias = -0.002;
+      l.shadow.normalBias = 0.05;
+      l.shadow.camera.near = 0.2;
+      l.shadow.camera.far = 16;
       this.scene.add(l);
       this.lights.push(l);
     }
@@ -249,6 +266,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     this.lockpick = new LockpickUI(mount);
     this.fishing = new FishingUI(mount);
     this.player = new Player(this.camera, this.scene);
+    castShadows(this.player.model);
     this.overlay = document.createElement('div');
     this.overlay.className = 'screen';
     mount.append(this.overlay);
@@ -281,7 +299,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.composer.setSize(window.innerWidth, window.innerHeight);
+    this.pipeline.resize();
+    this.particles.setViewport(window.innerHeight * this.renderer.getPixelRatio());
   }
 
   // ================================================================== GameCtx
@@ -368,6 +387,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       disposeTree(this.level.group, true);
     }
     this.lockerItems.clear();
+    this.particles.clear();
     this.mark = null;
     this.history = [];
     this.boss = null;
@@ -405,6 +425,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     this.hemi.groundColor.setHex(theme.ambient);
     this.hemi.intensity = n === 0 ? 0.7 : 1.05;
     this.sun.intensity = 0;
+    this.renderer.toneMappingExposure = 1.15;
+    this.pipeline.bloom.strength = 0.5;
+    this.pipeline.bloom.threshold = 0.82;
     this.player.outdoor = false;
     for (const l of this.lights) l.color.setHex(theme.light);
     // Whatever you already used on this floor stays used after a reload.
@@ -499,8 +522,16 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     this.scene.fog = new THREE.Fog(0xe8c0a8, 30, 150);
     this.hemi.color.setHex(0xbfd8ff);
     this.hemi.groundColor.setHex(0x3a5a2a);
-    this.hemi.intensity = 1.1;
-    this.sun.intensity = 2.2;
+    this.hemi.intensity = 0.9;
+    this.sun.intensity = 2.6;
+    // Outdoors the sky is bright: expose for it, and keep the bloom for the sun.
+    this.renderer.toneMappingExposure = 0.62;
+    this.pipeline.bloom.strength = 0.22;
+    this.pipeline.bloom.threshold = 0.95;
+    // Low in the north, long shadows across the grass.
+    const mid = new THREE.Vector3((this.level.w * TILE) / 2, 0, (this.level.h * TILE) / 2);
+    this.sun.position.copy(mid).addScaledVector(MOKKI_SUN, 90);
+    this.sun.target.position.copy(mid);
     this.player.outdoor = true;
     for (const l of this.lights) l.visible = false;
     for (const sp of this.level.spawns) this.spawnAt(sp.kind, sp.x, sp.z, 0, false);
@@ -536,6 +567,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       if (!placed) return null;
     }
     const a = createActor(this, kind, x, z, room, this.levelRng, TICKETS.length, { staffStanding: this.save.standing.staff, ...opts });
+    castShadows(a.root);
     if (aggro) a.aggro = true;
     // The CEO's hat: managers will not start anything with you.
     if (kind === 'manager' && this.derivedCache.specials.has('ceoCrown')) a.docile = true;
@@ -624,10 +656,26 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     this.camera.updateProjectionMatrix();
     const ratio = Math.min(window.devicePixelRatio, st.quality === 'low' ? 1 : 1.5) * st.renderScale;
     this.renderer.setPixelRatio(Math.max(0.35, ratio));
+    this.pipeline.configure(st.quality, st.bloom);
     this.resize();
-    this.bloom.enabled = st.bloom;
     const lights = st.quality === 'low' ? 3 : st.quality === 'medium' ? 5 : 8;
     this.lights.forEach((l, i) => { l.userData.enabled = i < lights; });
+    // Real shadows on medium (the sun) and high (the nearest ceiling light too).
+    const shadows = st.quality !== 'low';
+    this.renderer.shadowMap.enabled = shadows;
+    this.sun.castShadow = shadows;
+    this.sun.shadow.mapSize.setScalar(st.quality === 'high' ? 2048 : 1024);
+    this.sun.shadow.map?.dispose();
+    this.sun.shadow.map = null;
+    setBlobShadows(st.quality !== 'high');
+    this.particles.density = st.quality === 'low' ? 0.4 : st.quality === 'medium' ? 0.7 : 1;
+    // Materials compile differently with shadows on or off.
+    this.scene.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats as THREE.Material[]) m.needsUpdate = true;
+      }
+    });
     sfx.setVolume(st.sfx);
     sfx.setMusicVolume(st.music);
     this.compass.visible = st.compass;
@@ -752,8 +800,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     }
     this.billboards();
     this.animateScenery();
-    if (this.settings.bloom) this.composer.render();
-    else this.renderer.render(this.scene, this.camera);
+    this.updateMood(dt);
+    this.particles.update(this.screen === 'play' ? dt : 0);
+    this.pipeline.render();
     this.input.endFrame();
     const visible = this.screen === 'play' || this.screen === 'os' || this.screen === 'dialogue' || this.screen === 'minigame';
     if (visible) {
@@ -798,6 +847,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       hidden: this.player.crouching ? !this.actors.some((a) => a.hostile && a.aggro && !a.resolved) : null,
       bandLabel: BAND_EFFECTS[bandFor(s.bac, this.derivedCache.specials.has('flask'))].label,
       promille: promille(s.bac),
+      bacForecast: Math.min(100, s.bac + s.stomach),
       caffeine: s.caffeine * factor,
       caffeineLabel: s.crash > 0 ? 'CRASH' : CAFFEINE_EFFECTS[band].label.toUpperCase() === 'DECAF' ? 'Decaf' : CAFFEINE_EFFECTS[band].label.toUpperCase(),
       caffeineZone: [50, 300],
@@ -1368,13 +1418,59 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     }
   }
 
+  /** How you feel, on the screen: drink, caffeine, stress, crash, the king of cans. */
+  private updateMood(dt: number): void {
+    const s = this.save;
+    const d = this.derivedCache;
+    this.hurtFlash = Math.max(0, this.hurtFlash - dt * 2.5);
+    const ratio = s.sanity / Math.max(1, d.maxSanity);
+    const play = this.screen === 'play' || this.screen === 'dialogue' || this.screen === 'os' || this.screen === 'minigame';
+    const sway = BAND_EFFECTS[bandFor(s.bac)].sway;
+    if (s.location === 'mokki') this.moodTint.setRGB(1.04, 1.0, 0.96);
+    else if (s.floor % 5 === 0) this.moodTint.setRGB(0.95, 1.0, 1.06);
+    else this.moodTint.setRGB(1, 1, 1);
+    this.pipeline.setMood({
+      drunk: play ? Math.min(2.5, sway * (d.ultra ? 0.4 : 1)) : 0,
+      jitter: play ? d.caffeine.jitter : 0,
+      stress: play ? Math.max(0, Math.min(1, (0.4 - ratio) / 0.4)) : 0,
+      hangover: s.hangover > 0 && !d.ultra ? 1 : 0,
+      crash: s.crash > 0 && !d.ultra ? 1 : 0,
+      ultra: d.ultra ? 1 : 0,
+      hurt: this.hurtFlash,
+    }, this.time, this.moodTint);
+    if (this.screen !== 'play') return;
+    // Dust in the light, and the white shimmer of the ascended.
+    this.dustIn -= dt;
+    if (this.dustIn <= 0 && s.location === 'office' && this.settings.quality !== 'low') {
+      this.dustIn = 0.3;
+      const p = this.player.pos;
+      this.particles.emit('dust', new THREE.Vector3(p.x + fx.range(-5, 5), fx.range(0.6, 2.8), p.z + fx.range(-5, 5)), 2, 1.5);
+    }
+    if (d.ultra) this.particles.emit('aura', this.player.pos.clone().setY(1.1), 1, 0.5);
+    // Server rooms blink.
+    const leds = this.level.group.userData.leds as THREE.MeshBasicMaterial[] | undefined;
+    if (leds !== undefined) {
+      leds.forEach((m, k) => {
+        const on = Math.sin(this.time * (3 + k * 2.3) + k) > -0.2 ? 1 : 0.15;
+        const base = m.userData.base as number | undefined ?? m.color.getHex();
+        m.userData.base = base;
+        m.color.setHex(base).multiplyScalar(on);
+      });
+    }
+  }
+
   private animateScenery(): void {
     if (this.save.location !== 'mokki' || this.level === undefined) return;
     for (const child of this.level.group.children) {
-      if (child.name === 'water' && child instanceof THREE.Mesh) {
-        const m = child.material as THREE.MeshLambertMaterial;
-        m.emissive.setRGB(0.04, 0.12 + Math.sin(this.time * 0.8) * 0.02, 0.18);
+      if (child.name === 'water' && child instanceof THREE.Mesh && child.material instanceof THREE.ShaderMaterial) {
+        const u = child.material.uniforms.time;
+        if (u !== undefined) u.value = this.time;
       }
+      if (child.name === 'grass' && child instanceof THREE.InstancedMesh) {
+        const t = (child.material as THREE.Material).userData.windTime as { value: number } | undefined;
+        if (t !== undefined) t.value = this.time;
+      }
+      if (child.name === 'sky') child.position.copy(this.camera.position);
       if (child.name === 'smoke') {
         child.children.forEach((c, i) => {
           c.position.y = (this.time * 0.4 + i * 0.5) % 2.5;
@@ -1424,6 +1520,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       l.visible = true;
       l.position.copy(spot);
       l.intensity = this.save.floor === 0 ? 10 : 16;
+      l.castShadow = i === 0 && this.settings.quality === 'high';
     });
     const flick = this.lights[2];
     if (flick !== undefined && fx.chance(0.3)) flick.intensity *= fx.range(0.2, 1);

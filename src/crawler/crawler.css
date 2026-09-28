@@ -170,6 +170,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .hud-bac { font-size: 24px; color: #ffd98a; }
 .hud-track-bac { position: relative; }
 .hud-bac-peak { position: absolute; top: 0; bottom: 0; background: rgba(125, 255, 154, 0.35); }
+.hud-bac-ghost { position: absolute; top: 0; bottom: 0; left: 0; background: repeating-linear-gradient(135deg, rgba(255,138,58,0.55) 0 4px, rgba(255,138,58,0.2) 4px 8px); }
 .hud-fill-bac { position: relative; background: linear-gradient(90deg, #ffd98a, #ff8a3a 60%, #e0453a); }
 .hud-small.is-peak { color: #7dff9a; font-weight: bold; }
 .hud-fill-xp.is-ready { background: #ffd54a; animation: pulse 0.6s infinite alternate; }

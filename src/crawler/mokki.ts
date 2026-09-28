@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { type Interactable, type InteractKind, type Level, type Room, type Spawn, TILE } from './level';
 import {
@@ -79,10 +80,12 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(W * TILE + 80, H * TILE + 80), lam(0xffffff, grass));
   ground.rotation.x = -Math.PI / 2;
   ground.position.set((W * TILE) / 2, 0, (H * TILE) / 2);
+  ground.receiveShadow = true;
+  ground.name = 'ground';
   group.add(ground);
   const water = new THREE.Mesh(
     new THREE.PlaneGeometry((W - 2) * TILE + 80, (H - LAKE_ROW) * TILE + 40),
-    new THREE.MeshLambertMaterial({ color: 0x2f5f7a, emissive: 0x0a2030, transparent: true, opacity: 0.92 }),
+    headless ? new THREE.MeshLambertMaterial({ color: 0x2f5f7a }) : waterMaterial(),
   );
   water.rotation.x = -Math.PI / 2;
   water.position.set((W * TILE) / 2, 0.05, LAKE_ROW * TILE + ((H - LAKE_ROW) * TILE + 40) / 2);
@@ -288,6 +291,30 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
   if (birchGeo.length > 0) group.add(new THREE.Mesh(mergeGeometries(birchGeo), lam(0xeeeeea)));
   if (leafGeo.length > 0) group.add(new THREE.Mesh(mergeGeometries(leafGeo), lam(0x7aa84a)));
 
+  if (!headless) {
+    // The white night: the sun sits just above the northern treeline and never quite sets.
+    const sky = new Sky();
+    sky.scale.setScalar(150);
+    sky.name = 'sky';
+    const u = sky.material.uniforms;
+    const set = (k: string, v: number): void => { const x = u[k]; if (x !== undefined) x.value = v; };
+    set('turbidity', 3.5);
+    set('rayleigh', 1.4);
+    set('mieCoefficient', 0.004);
+    set('mieDirectionalG', 0.78);
+    set('cloudCoverage', 0.35);
+    set('cloudDensity', 0.35);
+    (u.sunPosition?.value as THREE.Vector3 | undefined)?.copy(MOKKI_SUN);
+    group.add(sky);
+    group.add(grassField(solid, seed));
+  }
+  // Everything standing up casts a shadow in the low sun.
+  group.traverse((o) => {
+    if (!(o instanceof THREE.Mesh) || o.name === 'ground' || o.name === 'water' || o.name === 'sky') return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+  });
+
   // Mosquitoes by the water, obviously.
   for (let i = 0; i < 7; i++) spawns.push({ kind: 'mosquito', x: cc(r.int(4, W - 5)), z: cc(r.int(LAKE_ROW - 6, LAKE_ROW - 2)), room: 0 });
 
@@ -302,3 +329,109 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
     seen,
   };
 }
+
+/** Where the white-night sun hangs: low, in the north (-z). */
+export const MOKKI_SUN = new THREE.Vector3(-0.35, 0.09, -0.93).normalize();
+
+/**
+ * The lake: ripples from a few moving sine waves, the sky in it at a low
+ * angle (fresnel), and the sun on it. No reflection render: cheap enough
+ * for every quality setting.
+ */
+function waterMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    fog: true,
+    uniforms: {
+      ...THREE.UniformsLib.fog,
+      time: { value: 0 },
+      sunDir: { value: MOKKI_SUN.clone() },
+      deep: { value: new THREE.Color(0x0e2a3c) },
+      shallow: { value: new THREE.Color(0x2f6a7e) },
+      skyCol: { value: new THREE.Color(0xf6c9a8) },
+    },
+    vertexShader: /* glsl */ `
+      #include <fog_pars_vertex>
+      varying vec3 vWorld;
+      void main() {
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        vWorld = w.xyz;
+        vec4 mvPosition = viewMatrix * w;
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: /* glsl */ `
+      #include <fog_pars_fragment>
+      uniform float time;
+      uniform vec3 sunDir, deep, shallow, skyCol;
+      varying vec3 vWorld;
+      vec2 wave(vec2 p, vec2 d, float f, float s) {
+        float ph = dot(p, d) * f + time * s;
+        return d * cos(ph) * f;
+      }
+      void main() {
+        vec2 p = vWorld.xz;
+        vec2 g = wave(p, normalize(vec2(1.0, 0.3)), 0.9, 1.3) * 0.06
+               + wave(p, normalize(vec2(-0.4, 1.0)), 1.7, 1.9) * 0.035
+               + wave(p, normalize(vec2(0.7, -0.8)), 3.1, 2.7) * 0.02
+               + wave(p, normalize(vec2(-1.0, -0.2)), 6.3, 3.9) * 0.01;
+        vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
+        vec3 v = normalize(cameraPosition - vWorld);
+        float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+        float depthMix = clamp((vWorld.z - 50.0) / 30.0, 0.0, 1.0);
+        vec3 col = mix(shallow, deep, depthMix);
+        col = mix(col, skyCol, 0.25 + 0.6 * fres);
+        vec3 h = normalize(sunDir + v);
+        float spec = pow(max(dot(n, h), 0.0), 180.0);
+        col += vec3(1.0, 0.85, 0.65) * spec * 1.6;
+        gl_FragColor = vec4(col, 0.94);
+        #include <fog_fragment>
+      }`,
+  });
+}
+
+/** Tufts of grass over the plot, swaying in a breeze off the lake. */
+function grassField(solid: Uint8Array, seed: number): THREE.InstancedMesh {
+  const r = new Rng(seed ^ 0x9e37);
+  const blade = new THREE.PlaneGeometry(0.08, 0.5, 1, 3);
+  blade.translate(0, 0.25, 0);
+  const cross = mergeGeometries([blade, blade.clone().rotateY(Math.PI / 2)]);
+  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  const time = { value: 0 };
+  mat.onBeforeCompile = (shader): void => {
+    shader.uniforms.windTime = time;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float windTime;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vec4 wp = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        float sway = sin(windTime * 1.7 + wp.x * 0.35 + wp.z * 0.21) * 0.12 + sin(windTime * 3.1 + wp.z * 0.9) * 0.04;
+        transformed.x += sway * position.y * position.y * 3.0;`);
+  };
+  mat.userData.windTime = time;
+  const count = 3200;
+  const mesh = new THREE.InstancedMesh(cross, mat, count);
+  const m4 = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const col = new THREE.Color();
+  let n = 0;
+  for (let t = 0; t < count * 3 && n < count; t++) {
+    const x = r.range(2, (W - 2) * TILE);
+    const z = r.range(2, (LAKE_ROW - 0.4) * TILE);
+    const cx = Math.floor(x / TILE);
+    const cz = Math.floor(z / TILE);
+    if (solid[cz * W + cx] === 1) continue;
+    const sc = r.range(0.6, 1.4);
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r.range(0, Math.PI));
+    m4.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(sc, sc * r.range(0.7, 1.3), sc));
+    mesh.setMatrixAt(n, m4);
+    col.setHSL(r.range(0.23, 0.3), r.range(0.4, 0.6), r.range(0.28, 0.42));
+    if (r.chance(0.04)) col.setHSL(r.range(0.12, 0.16), 0.7, 0.55);
+    mesh.setColorAt(n, col);
+    n++;
+  }
+  mesh.count = n;
+  mesh.name = 'grass';
+  mesh.receiveShadow = true;
+  return mesh;
+}
+

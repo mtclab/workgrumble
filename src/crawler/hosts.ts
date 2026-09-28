@@ -4,7 +4,7 @@ import { dropGear } from './combat';
 import { questProgress } from './desk';
 import { type Actor, say } from './entities';
 import type { Game } from './game';
-import { ALL_ITEMS, AMMO, CONSUMABLES, itemById } from './items';
+import { ALL_ITEMS, AMMO, CONSUMABLES, itemById, LINING_FOODS } from './items';
 import { type GearInstance, plainInstance, RARITY_INFO, rollGear, sellValue, slotOf, uniqueInstance } from './loot';
 import { bookById } from './books';
 import { fx } from './rng';
@@ -40,6 +40,7 @@ export function healPlayer(g: Game, amount: number, from: string): void {
   if (got > 0) {
     sfx.heal();
     g.hud.flash('heal');
+    g.particles.emit('heal', g.player.pos.clone().setY(1.2), 10, 0.5);
     g.floatText(g.player.pos.clone().setY(2.2), `+${got}`, '#7dff9a');
     if (from !== '') g.hud.toast(`${from}: +${got} sanity`, 'good');
   }
@@ -331,6 +332,7 @@ export function rest(g: Game, safe: boolean): void {
   s.energy = 100;
   s.loyly = safe ? d.maxLoyly : Math.min(d.maxLoyly, s.loyly + d.maxLoyly * 0.5);
   s.bac = Math.max(0, s.bac - (safe ? 100 : 35));
+  s.stomach = 0;
   s.caffeine *= safe ? 0.1 : 0.5;
   s.crash = 0;
   if (safe) {
@@ -423,6 +425,7 @@ export function use(g: Game, id: string): void {
   }
   if (c.energy !== undefined) s.energy = Math.min(100, s.energy + c.energy);
   if (c.loyly !== undefined) s.loyly = Math.min(g.derivedCache.maxLoyly, s.loyly + c.loyly);
+  if (LINING_FOODS.includes(id)) s.buffs.lined = Math.max(s.buffs.lined ?? 0, 90);
   if (c.buff === 'makkara') s.makkara = true;
   if (c.buff === 'hauki') s.hauki = true;
   if (c.clearsActionItem === true && s.actionItems > 0) s.actionItems--;

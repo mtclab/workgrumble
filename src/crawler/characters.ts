@@ -37,8 +37,8 @@ export interface Rig {
   readonly legR: THREE.Group;
   /** Where a held tool attaches. */
   readonly hand: THREE.Group;
-  readonly materials: THREE.MeshLambertMaterial[];
-  readonly faceMat: THREE.MeshLambertMaterial;
+  readonly materials: THREE.MeshStandardMaterial[];
+  readonly faceMat: THREE.MeshStandardMaterial;
   readonly outfit: Outfit;
   expression: Expression;
   phase: number;
@@ -140,6 +140,20 @@ export function faceTexture(skin: number, expr: Expression, glasses: boolean): T
 }
 
 let shadowMat: THREE.MeshBasicMaterial | null = null;
+let blobsOn = true;
+
+/** With real shadows on, the painted blob shadows step aside. */
+export function setBlobShadows(on: boolean): void {
+  blobsOn = on;
+  if (shadowMat !== null) shadowMat.visible = on;
+}
+
+/** Everything in a rig casts a real shadow (except its blob). */
+export function castShadows(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    if (o instanceof THREE.Mesh && o.userData.blob !== true) o.castShadow = true;
+  });
+}
 const shadowGeo = new THREE.PlaneGeometry(1, 1);
 
 export function blobShadow(size = 0.95): THREE.Mesh | null {
@@ -163,17 +177,19 @@ export function blobShadow(size = 0.95): THREE.Mesh | null {
   m.scale.set(size, size, 1);
   m.renderOrder = 1;
   m.userData.shared = true;
+  m.userData.blob = true;
+  m.visible = blobsOn;
   return m;
 }
 
 export function buildRig(o: Outfit): Rig {
-  const mats: THREE.MeshLambertMaterial[] = [];
-  const mat = (c: number): THREE.MeshLambertMaterial => {
-    const m = new THREE.MeshLambertMaterial({ color: c });
+  const mats: THREE.MeshStandardMaterial[] = [];
+  const mat = (c: number, roughness = 0.82): THREE.MeshStandardMaterial => {
+    const m = new THREE.MeshStandardMaterial({ color: c, roughness, metalness: 0 });
     mats.push(m);
     return m;
   };
-  const skin = mat(o.skin);
+  const skin = mat(o.skin, 0.6);
   const top = mat(o.top);
   const legs = mat(o.legs);
   const hair = mat(o.hair);
@@ -231,7 +247,7 @@ export function buildRig(o: Outfit): Rig {
   head.position.set(0, 1.62, 0);
   part(head, 0.4, 0.42, 0.38, skin, 0, 0.23, 0);
   const expression = o.face ?? 'neutral';
-  const faceMat = new THREE.MeshLambertMaterial({ map: faceTexture(o.skin, expression, o.glasses === true) });
+  const faceMat = new THREE.MeshStandardMaterial({ map: faceTexture(o.skin, expression, o.glasses === true), roughness: 0.6 });
   mats.push(faceMat);
   const face = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.38), faceMat);
   face.position.set(0, 0.23, 0.192);

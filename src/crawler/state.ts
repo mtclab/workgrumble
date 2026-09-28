@@ -152,6 +152,8 @@ export interface SaveState {
   energy: number;
   loyly: number;
   bac: number;
+  /** Alcohol drunk but not yet in the blood: it arrives over the next half-minute. */
+  stomach: number;
   peakBac: number;
   dependency: number;
   hangover: number;
@@ -255,6 +257,7 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
     energy: 100,
     loyly: 40,
     bac: 0,
+    stomach: 0,
     peakBac: 0,
     dependency: 0,
     hangover: 0,

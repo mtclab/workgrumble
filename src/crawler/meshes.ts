@@ -8,8 +8,8 @@ import { blobShadow } from './characters';
  * upgrade it.
  */
 
-function lam(color: number, emissive = 0): THREE.MeshLambertMaterial {
-  return new THREE.MeshLambertMaterial({ color, emissive });
+function lam(color: number, emissive = 0): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ color, emissive, roughness: 0.7, metalness: 0.05 });
 }
 
 function rbox(sx: number, sy: number, sz: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {

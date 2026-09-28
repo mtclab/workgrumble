@@ -187,6 +187,7 @@ export function strike(g: Game, a: Actor, base: number, knock: THREE.Vector3 | n
   if (a.shielded) dmg *= 0.5;
   if (power) dmg *= 2.2 * (perk(s, 'powercycle') > 0 ? 1.25 : 1);
   hurtActor(g, a, dmg, knock);
+  g.particles.emit('sparks', a.pos.clone().setY(a.kind === 'boss' ? 2.4 : 1.3), power ? 16 : kind === 'spell' ? 4 : 7, 0.25);
   // Legendary specials.
   if (kind === 'melee') {
     if (d.specials.has('rubberStamp')) {
@@ -564,6 +565,7 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
       if (g.rmbT < 0.3) {
         sfx.parry();
         floatText(g, g.player.pos.clone().setY(2.3), 'PARRY', '#7dffea');
+        g.particles.emit('sparks', g.player.pos.clone().addScaledVector(fwdOf(g.player.yaw), 0.7).setY(1.4), 14, 0.2);
         if (Math.hypot(dx, dz) < 3.5 && from.kind !== 'boss') {
           stun(from, 1.2);
           from.push.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(6));
@@ -585,6 +587,7 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
   if (g.sisuT > 0) dmg *= 0.5;
   if (s.hangover > 0 && !d.ultra) dmg *= 1.1;
   s.sanity -= dmg;
+  g.hurtFlash = Math.min(1, g.hurtFlash + 0.25 + dmg / 40);
   g.exercise('sisu', Math.min(1, dmg / 20));
   if (from?.elite === 'passive') s.energy = Math.max(0, s.energy - 12);
   if (kind === 'bite' && fx.chance(0.3)) g.hud.toast('Bzzz. *slap*', 'info');
@@ -647,6 +650,7 @@ export function resolveActor(g: Game, a: Actor): void {
   const line = a.kind === 'reply' ? 'Unsubscribed.' : a.kind === 'jam' ? '*whirr* READY' : a.kind === 'mosquito' ? '*splat*'
     : a.kind === 'turret' ? '*decommissioned*' : a.kind === 'chatbot' ? 'Was this conversation helpful? 👍' : fx.pick(RESOLVED_LINES);
   say(a, line, 2, '#063', 'rgba(220,255,225,0.95)');
+  g.particles.emit(a.gold ? 'gold' : a.kind === 'turret' ? 'sparks' : a.kind === 'mosquito' ? 'splash' : 'confetti', a.pos.clone().setY(1.4), a.kind === 'mosquito' ? 4 : a.elite !== null ? 60 : 26, 0.4);
   if (a.kind === 'mosquito' || a.kind === 'turret') return;
   s.stats.resolvedField++;
   // Throughput pleases management; being stapled does not please staff.
@@ -678,6 +682,8 @@ function resolveBoss(g: Game, a: Actor, rep: number): void {
   const def = a.boss;
   if (def === null) return;
   say(a, def.defeat, 4, '#fff', 'rgba(0,100,40,0.92)');
+  g.particles.emit('gold', a.pos.clone().setY(2.5), 90, 1);
+  g.particles.emit('confetti', a.pos.clone().setY(2.5), 120, 1.2);
   s.stats.bosses++;
   s.floorState.bossDone = true;
   g.elevatorOpen = true;
@@ -949,7 +955,8 @@ export function fxRing(g: Game, at: THREE.Vector3, color: number, radius: number
 }
 
 export function steamBurst(g: Game, at: THREE.Vector3, radius: number): void {
-  for (let i = 0; i < 10; i++) {
+  g.particles.emit('steam', at.clone().setY(1), Math.round(12 + radius * 6), radius * 0.5);
+  for (let i = 0; i < 4; i++) {
     const p = at.clone().add(new THREE.Vector3(fx.range(-1, 1) * radius * 0.6, fx.range(0.3, 1.6), fx.range(-1, 1) * radius * 0.6));
     fxBall(g, p, 0xf4f8ff, fx.range(0.6, 1.1), fx.range(0.3, 0.6), 2.5, 1.2);
   }

@@ -21,6 +21,13 @@ export function tickVices(g: Game, dt: number): void {
   const s = g.save;
   const wide = g.derivedCache.specials.has('flask');
   const before = bandFor(s.bac, wide);
+  // The pipeline: what you drank a moment ago is still on its way.
+  if (s.stomach > 0) {
+    const rate = (s.buffs.lined ?? 0) > 0 ? 0.55 : 1.1;
+    const absorbed = Math.min(s.stomach, rate * dt);
+    s.stomach -= absorbed;
+    s.bac = Math.min(100, s.bac + absorbed);
+  }
   if (s.bac > 0) s.bac = Math.max(0, s.bac - bacDecay(s.attrs.liver, skill(s, 'drinking')) * dt);
   s.peakBac = Math.max(s.peakBac, s.bac);
   const hardened = perk(s, 'hardened') > 0 ? 0.5 : 1;
@@ -65,9 +72,9 @@ export function drink(g: Game, c: ConsumableDef): void {
   const s = g.save;
   if (c.bac === undefined) return;
   const wide = g.derivedCache.specials.has('flask');
-  const before = bandFor(s.bac, wide);
   const liver = 1 - perk(s, 'ironliver') * 0.1;
-  s.bac = Math.min(100, s.bac + drinkBac(c.bac, s.attrs.liver, skill(s, 'drinking')) * liver);
+  // It goes in the stomach first: the blood gets it over the next half-minute.
+  s.stomach += drinkBac(c.bac, s.attrs.liver, skill(s, 'drinking')) * liver;
   s.dependency = Math.min(100, s.dependency + 3 + c.bac * 0.15);
   s.empties += 1;
   s.stats.drinks++;
@@ -83,10 +90,10 @@ export function drink(g: Game, c: ConsumableDef): void {
   g.exercise('drinking', 1.5);
   if (s.stats.drinks % 12 === 0) s.attrs.liver = Math.min(100, s.attrs.liver + 1);
   sfx.glug();
-  g.hud.toast(`${c.name}. ${promille(s.bac)}‰ - ${BAND_EFFECTS[bandFor(s.bac, wide)].label}.`, 'info');
+  const forecast = Math.min(100, s.bac + s.stomach);
+  g.hud.toast(`${c.name}. ${promille(s.bac)}‰ now, heading for ${promille(forecast)}‰ (${BAND_EFFECTS[bandFor(forecast, wide)].label}).`, bandFor(forecast, wide) === 'hammered' || bandFor(forecast, wide) === 'blackout' ? 'bad' : 'info');
   g.tip('drink');
   g.refreshDerived();
-  if (bandFor(s.bac, wide) === 'blackout' && before !== 'blackout') blackout(g);
 }
 
 /** A manager close by, and you smell of lonkero. */
@@ -122,6 +129,7 @@ export function blackout(g: Game): void {
   const lost = Math.floor(s.rep * 0.2);
   s.rep -= lost;
   s.bac = 45;
+  s.stomach = 0;
   const what = fx.pick(INCIDENTS);
   g.journal(`Blackout. ${what}`);
   g.warn('Blackout at work');

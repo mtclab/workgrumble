@@ -162,7 +162,11 @@ export const RUNES = CONSUMABLES.filter((c) => c.rune !== undefined).map((c) => 
 /** Cans you can find lying about (not the king: he has his own odds). */
 export const ENERGY_DRINKS = ['euroshopper', 'redbull', 'monster', 'pipeline', 'nocco', 'celsius', 'battery', 'batteryzero', 'energy'];
 
+/** Food in your stomach slows how fast a drink reaches your blood. */
+export const LINING_FOODS = ['biscuits', 'cake', 'makkara', 'potatoes', 'fish-muikku', 'fish-ahven', 'fish-hauki'];
+
 export const BUFF_INFO: Record<string, { icon: string; name: string }> = {
+  lined: { icon: '🥔', name: 'Lined stomach (drinks hit slower)' },
   ultra: { icon: '⚪', name: 'ASCENDED (White Monster)' },
   wings: { icon: '🪽', name: 'Wings' },
   gymbro: { icon: '💪', name: 'Gym Bro' },

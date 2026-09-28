@@ -868,12 +868,15 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
     a.removeIn -= dt;
     if (a.calm) {
       // Walks off, satisfied (or just confused), and fades.
+      if (a.rig !== null && a.hostile) setExpression(a.rig, 'happy');
       moveActor(ctx, a, a.pos.x - ctx.playerPos.x, a.pos.z - ctx.playerPos.z, 1.5, dt);
       a.root.rotation.y = a.yaw;
       if (a.rig !== null) animateRig(a.rig, 1.5, dt);
       if (a.removeIn < 0.8) a.root.scale.setScalar(Math.max(0.01, a.removeIn / 0.8));
     } else {
+      // Resolved: a satisfied spin, up and away in a flurry of paper.
       a.root.position.y += dt * 0.6;
+      a.root.rotation.y += dt * (a.kind === 'boss' ? 2 : 9);
       a.root.scale.setScalar(Math.max(0.01, Math.min(1, a.removeIn / 1.2)));
       if (a.rig !== null) animateRig(a.rig, 0.5, dt);
     }
@@ -909,7 +912,22 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
 
   a.root.rotation.y = a.yaw;
   const moved = Math.hypot(a.pos.x - a.lastPos.x, a.pos.z - a.lastPos.z) / Math.max(dt, 1e-4);
-  if (a.rig !== null) animateRig(a.rig, moved, dt, a.attackAnim);
+  if (a.rig !== null) {
+    animateRig(a.rig, moved, dt, a.attackAnim);
+    // A flinch when hit.
+    a.rig.body.rotation.x = -a.flash * 0.28;
+    // People who are not fighting you look at you as you pass.
+    const dx = ctx.playerPos.x - a.pos.x;
+    const dz = ctx.playerPos.z - a.pos.z;
+    let look = 0;
+    if (!a.aggro && Math.hypot(dx, dz) < 7) {
+      look = Math.atan2(dx, dz) - a.yaw;
+      while (look > Math.PI) look -= Math.PI * 2;
+      while (look < -Math.PI) look += Math.PI * 2;
+      look = Math.max(-0.9, Math.min(0.9, look));
+    }
+    a.rig.head.rotation.y += (look - a.rig.head.rotation.y) * Math.min(1, dt * 5);
+  }
   if (a.dog !== null) animateDog(a.dog, moved, ctx.time, a.attackAnim);
   if (a.kind === 'reply') a.root.children[0]?.position.set(0, Math.sin(ctx.time * 8 + a.id) * 0.15, 0);
   if (a.kind === 'chatbot') a.root.children[0]?.position.set(0, Math.sin(ctx.time * 2.5 + a.id) * 0.12, 0);

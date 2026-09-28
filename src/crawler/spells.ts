@@ -100,6 +100,7 @@ export function castSpell(g: Game): void {
         strike(g, a, 10, null, 'spell');
       }
       s.bac = Math.max(0, s.bac - 30);
+      s.stomach = 0;
       s.hangover = 0;
       s.caffeine *= 0.6;
       g.refreshDerived();
