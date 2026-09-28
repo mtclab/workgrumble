@@ -29,32 +29,62 @@ export function dogMesh(): { root: THREE.Group; legs: THREE.Object3D[]; tail: TH
   const root = new THREE.Group();
   const fur = lam(0x3a2a1e);
   const cream = lam(0xe6d2b0);
-  const body = rbox(0.42, 0.4, 0.8, fur, 0, 0.55, 0);
+  const dark = lam(0x111111);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.42, 6, 14), fur);
+  body.rotation.x = Math.PI / 2;
+  body.position.set(0, 0.56, 0);
   root.add(body);
-  root.add(rbox(0.3, 0.22, 0.5, cream, 0, 0.42, 0.05));
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 10), cream);
+  chest.scale.set(0.9, 1, 0.8);
+  chest.position.set(0, 0.52, 0.26);
+  root.add(chest);
+  // A ruff of fur round the neck.
+  const ruff = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.07, 8, 16), fur);
+  ruff.position.set(0, 0.7, 0.3);
+  ruff.rotation.x = 0.4;
+  root.add(ruff);
   const head = new THREE.Group();
-  head.position.set(0, 0.82, 0.42);
-  head.add(rbox(0.34, 0.3, 0.3, fur, 0, 0, 0));
-  head.add(rbox(0.2, 0.16, 0.2, cream, 0, -0.05, 0.2));
-  head.add(box(0.07, 0.05, 0.03, lam(0x111111), 0, -0.02, 0.31));
-  for (const x of [-0.1, 0.1]) {
-    head.add(box(0.06, 0.06, 0.02, lam(0x111111), x, 0.06, 0.16));
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 4), fur);
-    ear.position.set(x, 0.22, -0.02);
+  head.position.set(0, 0.84, 0.42);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), fur);
+  skull.scale.set(1, 0.95, 1);
+  head.add(skull);
+  const snout = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.1, 4, 10), cream);
+  snout.rotation.x = Math.PI / 2;
+  snout.position.set(0, -0.05, 0.16);
+  head.add(snout);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), dark);
+  nose.position.set(0, -0.03, 0.27);
+  head.add(nose);
+  for (const x of [-0.07, 0.07]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 10, 8), dark);
+    eye.position.set(x, 0.04, 0.13);
+    head.add(eye);
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.17, 10), fur);
+    ear.position.set(x * 1.3, 0.17, -0.02);
+    ear.rotation.z = -x * 2;
     head.add(ear);
   }
   root.add(head);
   const legs: THREE.Object3D[] = [];
-  for (const [x, z] of [[-0.14, 0.28], [0.14, 0.28], [-0.14, -0.28], [0.14, -0.28]] as const) {
+  for (const [x, z] of [[-0.12, 0.26], [0.12, 0.26], [-0.12, -0.26], [0.12, -0.26]] as const) {
     const g = new THREE.Group();
-    g.position.set(x, 0.42, z);
-    g.add(rbox(0.12, 0.42, 0.12, fur, 0, -0.2, 0));
+    g.position.set(x, 0.44, z);
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.3, 4, 8), fur);
+    leg.position.y = -0.2;
+    g.add(leg);
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 6), cream);
+    paw.scale.set(1, 0.6, 1.3);
+    paw.position.set(0, -0.4, 0.02);
+    g.add(paw);
     root.add(g);
     legs.push(g);
   }
   const tail = new THREE.Group();
-  tail.position.set(0, 0.72, -0.42);
-  tail.add(rbox(0.16, 0.16, 0.36, cream, 0, 0.12, -0.08));
+  tail.position.set(0, 0.72, -0.4);
+  const brush = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.26, 6, 10), cream);
+  brush.position.set(0, 0.12, -0.08);
+  brush.rotation.x = 0.4;
+  tail.add(brush);
   tail.rotation.x = -0.9;
   root.add(tail);
   const sh = blobShadow(0.9);
@@ -67,15 +97,26 @@ export function chatbotMesh(): THREE.Group {
   const g = new THREE.Group();
   const shell = rbox(0.8, 0.6, 0.25, lam(0xe8e8f0), 0, 1.45, 0);
   g.add(shell);
-  const screen = box(0.66, 0.46, 0.02, new THREE.MeshBasicMaterial({ color: 0x2a7fff }), 0, 1.45, 0.13);
+  const screen = new THREE.Mesh(new RoundedBoxGeometry(0.66, 0.46, 0.02, 2, 0.008), new THREE.MeshBasicMaterial({ color: 0x2a7fff }));
+  screen.position.set(0, 1.45, 0.13);
   g.add(screen);
   const face = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  g.add(box(0.08, 0.08, 0.02, face, -0.14, 1.52, 0.15));
-  g.add(box(0.08, 0.08, 0.02, face, 0.14, 1.52, 0.15));
-  g.add(box(0.3, 0.04, 0.02, face, 0, 1.36, 0.15));
-  const antenna = box(0.03, 0.3, 0.03, lam(0x888888), 0, 1.9, 0);
+  for (const x of [-0.14, 0.14]) {
+    const eye = new THREE.Mesh(new THREE.CircleGeometry(0.05, 16), face);
+    eye.position.set(x, 1.52, 0.142);
+    g.add(eye);
+  }
+  const smile = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.018, 6, 20, Math.PI), face);
+  smile.position.set(0, 1.43, 0.142);
+  smile.rotation.z = Math.PI;
+  g.add(smile);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.2, 10), lam(0x888888));
+  neck.position.set(0, 1.08, 0);
+  g.add(neck);
+  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.3, 8), lam(0x888888));
+  antenna.position.set(0, 1.9, 0);
   g.add(antenna);
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshBasicMaterial({ color: 0x7dff9a }));
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshBasicMaterial({ color: 0x7dff9a }));
   bulb.position.set(0, 2.06, 0);
   g.add(bulb);
   const sh = blobShadow(0.7);
@@ -86,20 +127,25 @@ export function chatbotMesh(): THREE.Group {
 /** An unsanctioned deployment: a laptop on a tripod, firing unreviewed code. */
 export function turretMesh(): THREE.Group {
   const g = new THREE.Group();
-  const leg = lam(0x333333);
+  const leg = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7, roughness: 0.35 });
   for (let i = 0; i < 3; i++) {
-    const l = box(0.05, 0.9, 0.05, leg, Math.sin((i / 3) * Math.PI * 2) * 0.2, 0.45, Math.cos((i / 3) * Math.PI * 2) * 0.2);
-    l.rotation.z = Math.sin((i / 3) * Math.PI * 2) * 0.3;
-    l.rotation.x = -Math.cos((i / 3) * Math.PI * 2) * 0.3;
+    const a = (i / 3) * Math.PI * 2;
+    const l = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.025, 0.95, 8), leg);
+    l.position.set(Math.sin(a) * 0.2, 0.45, Math.cos(a) * 0.2);
+    l.rotation.z = Math.sin(a) * 0.3;
+    l.rotation.x = -Math.cos(a) * 0.3;
     g.add(l);
   }
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.08, 12), leg).translateY(0.92));
   const lap = new THREE.Group();
-  lap.position.y = 0.95;
-  lap.add(box(0.6, 0.04, 0.42, lam(0x9aa0a6), 0, 0, 0));
-  const lid = box(0.6, 0.4, 0.03, lam(0x9aa0a6), 0, 0.2, -0.2);
+  lap.position.y = 0.97;
+  lap.add(rbox(0.6, 0.035, 0.42, lam(0x9aa0a6), 0, 0, 0));
+  const lid = rbox(0.6, 0.4, 0.025, lam(0x9aa0a6), 0, 0.2, -0.2);
   lid.rotation.x = -0.25;
   lap.add(lid);
-  lap.add(box(0.5, 0.3, 0.01, new THREE.MeshBasicMaterial({ color: 0x00ff66 }), 0, 0.2, -0.18));
+  const scr = box(0.52, 0.32, 0.01, new THREE.MeshBasicMaterial({ color: 0x00ff66 }), 0, 0.2, -0.185);
+  scr.rotation.x = -0.25;
+  lap.add(scr);
   lap.name = 'head';
   g.add(lap);
   const sh = blobShadow(0.8);

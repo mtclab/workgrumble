@@ -366,12 +366,18 @@ export function mentoringDone(g: Game, st: QuestState, def: QuestDef): void {
   } else {
     m.morale = Math.min(100, m.morale + 25);
   }
-  s.perkPoints += 1;
+  // One perk point a week from mentoring; a second mentee that week pays in Rep and goodwill.
+  const weekKey = `mentorPerk_${s.week}`;
+  const perkPoint = s.flags[weekKey] !== true;
+  if (perkPoint) {
+    s.flags[weekKey] = true;
+    s.perkPoints += 1;
+  }
   s.stats.mentored++;
-  g.addRep(40 + g.floor * 15);
+  g.addRep((40 + g.floor * 15) * (perkPoint ? 1 : 2));
   adjustStanding(s, 'itcrowd', 4);
   sfx.levelUp();
-  g.hud.toast(`🎓 ${first(name)} gets it now. Teaching is learning: +1 perk point.`, 'epic');
+  g.hud.toast(perkPoint ? `🎓 ${first(name)} gets it now. Teaching is learning: +1 perk point.` : `🎓 ${first(name)} gets it now. (One perk point a week from mentoring; this one pays double Rep.)`, 'epic');
   g.journal(`I mentored ${name} through "${def.title}". They get it now. So, it turns out, do I.`);
   g.achieve('mentor');
   if (s.stats.mentored >= 6) g.achieve('servant');

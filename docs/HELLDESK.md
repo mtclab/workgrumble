@@ -88,7 +88,7 @@ noticed you do ×2 and up.
 | Chatbots (floor 1+) | Slow bubbles of "14 suggested articles". |
 | Reply-All storms, paper jams, mosquitoes | Swarms. |
 | **Elites (★)** | Relentless, Tenured, VIP, CC-Everyone, Escalating or Passive-Aggressive: tougher, one trick each, much better loot. |
-| **Bosses** | Derek, Karen, Gordon, The Auditor, Sir Reginald Workgrumble. A title card, boss music, patterns, and at half health **phase two**: hazard zones on the carpet (meetings, fires, freezes, spilt executive espresso). Stuns only stagger them. |
+| **Bosses** | Derek, Karen, Gordon, The Auditor, Sir Reginald Workgrumble. A title card, boss music, patterns, and at half health **phase two**: hazard zones on the carpet (meetings, fires, freezes, spilt executive espresso). Stuns only stagger them. A boss summons no second wave while the first is still standing (a few adds, more on higher floors). Leave the boss's room and stay well clear for six seconds and they go back to their office: the damage you did stays done, so you can back off, heal and come back. |
 
 Office ladies heal you (if you are sober enough and the Kitchen likes you);
 sysadmins, security guards and interns can be recruited; Musti the
@@ -150,7 +150,8 @@ back.
   Take it on (it counts against your workload, and most of it only counts
   with them beside you), give them five minutes on the spot (a
   Troubleshooting check, no workload, no reward), or send them to the KB.
-  See it through by Friday and you get a perk point, they become a protégé
+  See it through by Friday and you get a perk point (one a week; a second
+  mentee that week pays double Rep instead), they become a protégé
   (they hit 30% harder for you from then on), and the Mentor perk grows on
   its own at 1, 3 and 6 people: allies hit harder and tire slower, +1
   workload capacity, then morale never drops below 40 and treats count
@@ -245,15 +246,22 @@ someone earns an HR warning.
 
 ## Looks
 
-Everything is procedural (no image or model files). A post-processing
+Everything is procedural (no image or model files). People are sculpted,
+not boxed: a lathed torso, capsule limbs, an egg-shaped head with modelled
+eyes, brows, nose and mouth that change with their mood, and hair, ties,
+lanyards, cardigans, glasses and headsets on top, each limb welded into one
+vertex-coloured mesh so a whole person is a handful of draw calls. The
+office has rounded furniture (swivel chairs on five-star bases, monitors on
+stands, one-slab meeting tables, potted plants), door frames, dado rails and
+cornices; the mökki has log cabins with gable roofs, tiered pines, birches,
+a kettle grill, a plank dock and tufted grass. A post-processing
 pipeline adds ambient occlusion, bloom and a "mood" pass that is how your
 body feels: the room breathes and doubles when you drink, shakes when you
 are jittery, tunnels in when you are close to burning out, goes grey in a
 crash and green in a hangover, and glows when you are ascended. Real shadows
 (the low white-night sun at the mökki, the nearest ceiling light in the
 office), PBR materials with normal maps generated from the painted textures,
-a different floor for each kind of room, skirting and lintels and blinking
-server racks, particles (paper confetti when a problem is resolved, sparks,
+a different floor for each kind of room, blinking server racks, particles (paper confetti when a problem is resolved, sparks,
 steam, dust in the light), a sky, a rippling lake and swaying grass.
 Quality (low / medium / high) scales all of it.
 

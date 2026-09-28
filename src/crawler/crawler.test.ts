@@ -84,6 +84,17 @@ describe('Helldesk floors', () => {
     expect(level.rooms.some((r) => r.kind === 'kitchen')).toBe(true);
   });
 
+  it('builds a fully furnished floor without a browser, identical in layout to the bare one', () => {
+    const theme = THEMES[1];
+    if (theme === undefined) throw new Error('theme');
+    const full = generateLevel(2, theme, 777, true, true);
+    const bare = generateLevel(2, theme, 777, true);
+    expect(full.group.children.length).toBeGreaterThan(bare.group.children.length + 5);
+    expect([...full.solid]).toEqual([...bare.solid]);
+    expect(full.spawns).toEqual(bare.spawns);
+    expect(full.interactables.map((i) => `${i.kind}@${i.x},${i.z}`)).toEqual(bare.interactables.map((i) => `${i.kind}@${i.x},${i.z}`));
+  });
+
   it('puts the lift doors on a wall with no corridor opening beside them', () => {
     let clear = 0;
     let total = 0;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import {
   animateRig,
   blobShadow,
@@ -201,6 +202,10 @@ export interface Actor {
   boostCrash: number;
   /** Somebody you have mentored: they work harder for you. */
   protege: boolean;
+  /** Where they started: a boss who gives up the chase goes back there. */
+  readonly home: THREE.Vector3;
+  /** Seconds the player has kept away from an active boss's room. */
+  leashT: number;
   readonly lastPos: THREE.Vector3;
   /** Who spawned it (turrets belong to a Shadow IT person). */
   owner: number;
@@ -243,6 +248,8 @@ export interface GameCtx {
   noticed(a: Actor): void;
   /** A boss notices you: title card, music, the fight is on. */
   bossStart(a: Actor): void;
+  /** You got away: the boss goes back to its office and the music stops. */
+  bossLeash(a: Actor): void;
   /** A boss open to talks (the Auditor, when you carry the Phoenix file). */
   bossParley(a: Actor): void;
   hazard(x: number, z: number, radius: number, seconds: number, kind: HazardKind): void;
@@ -410,18 +417,25 @@ function hpBar(): { group: THREE.Group; fill: THREE.Mesh } {
 
 function envelopeMesh(): THREE.Group {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.45, 0.06), new THREE.MeshLambertMaterial({ color: 0xf4f4f4, emissive: 0x222222 }));
+  const paper = new THREE.MeshStandardMaterial({ color: 0xf4f4f4, emissive: 0x222222, roughness: 0.8 });
+  const body = new THREE.Mesh(new RoundedBoxGeometry(0.7, 0.45, 0.05, 2, 0.02), paper);
   body.position.y = 1.2;
   g.add(body);
-  const flap = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.25, 4), new THREE.MeshLambertMaterial({ color: 0xdddddd }));
-  flap.rotation.set(Math.PI / 2, Math.PI / 4, 0);
-  flap.position.set(0, 1.3, 0.04);
-  flap.scale.set(1.2, 0.3, 1);
+  // The flap: a triangle folded down over the front.
+  const tri = new THREE.Shape();
+  tri.moveTo(-0.34, 0);
+  tri.lineTo(0.34, 0);
+  tri.lineTo(0, -0.24);
+  tri.closePath();
+  const flap = new THREE.Mesh(new THREE.ExtrudeGeometry(tri, { depth: 0.012, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.006, bevelSegments: 1 }), new THREE.MeshStandardMaterial({ color: 0xe2e2e2, roughness: 0.8 }));
+  flap.position.set(0, 1.42, 0.026);
   g.add(flap);
   const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff2020 });
   for (const x of [-0.12, 0.12]) {
-    const e = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.02), eyeMat);
-    e.position.set(x, 1.22, 0.05);
+    const e = new THREE.Mesh(new THREE.CircleGeometry(0.035, 12), eyeMat);
+    e.position.set(x, 1.2, 0.045);
+    e.scale.y = 0.6;
+    e.rotation.z = x > 0 ? 0.3 : -0.3;
     g.add(e);
   }
   return g;
@@ -449,17 +463,22 @@ function mosquitoMesh(): THREE.Group {
 
 function jamMesh(): THREE.Group {
   const g = new THREE.Group();
-  const paper = new THREE.MeshLambertMaterial({ color: 0xfafafa });
+  const paper = new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.85 });
   for (let i = 0; i < 6; i++) {
-    const s = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 1.1), paper);
+    const s = new THREE.Mesh(new RoundedBoxGeometry(0.9, 0.1, 1.1, 2, 0.04), paper);
     s.position.y = 0.3 + i * 0.22;
-    s.rotation.y = (i % 3) * 0.3;
+    s.rotation.set((i % 2) * 0.08 - 0.04, (i % 3) * 0.3, ((i + 1) % 2) * 0.06 - 0.03);
     g.add(s);
   }
+  // A crumpled sheet sticking out of the top, like a tongue.
+  const tongue = new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 1), paper);
+  tongue.scale.set(1.3, 0.5, 0.9);
+  tongue.position.set(0.1, 1.55, 0.2);
+  g.add(tongue);
   const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff8800 });
   for (const x of [-0.18, 0.18]) {
-    const e = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.02), eyeMat);
-    e.position.set(x, 1.3, 0.56);
+    const e = new THREE.Mesh(new THREE.CircleGeometry(0.06, 14), eyeMat);
+    e.position.set(x, 1.3, 0.57);
     g.add(e);
   }
   const shadow = blobShadow(1.3);
@@ -692,6 +711,8 @@ export function createActor(
     boostT: 0,
     boostCrash: 0,
     protege: false,
+    home: new THREE.Vector3(x, 0, z),
+    leashT: 0,
     lastPos: new THREE.Vector3(x, 0, z),
     owner: opts.owner ?? 0,
     spawnIndex: opts.spawnIndex ?? -1,
@@ -1308,6 +1329,21 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
   const boss = a.boss;
   if (boss === null) return;
   if (!a.bossActive) startBoss(ctx, a);
+  // The leash: get out of their room and stay well clear, and a boss gives up the chase.
+  // The damage you did stays done, so backing off to heal is a real option.
+  const lv = ctx.level;
+  const inRoom = lv.roomOf[toCell(ctx.playerPos.z) * lv.w + toCell(ctx.playerPos.x)] === a.room;
+  a.leashT = !inRoom && dist > 12 ? a.leashT + dt : 0;
+  if (a.leashT > 6) {
+    a.leashT = 0;
+    a.aggro = false;
+    a.bossActive = false;
+    a.charging = 0;
+    a.pos.copy(a.home);
+    say(a, 'We will pick this up in my office.', 3);
+    ctx.bossLeash(a);
+    return;
+  }
   // Phase two at half health: a line, a shake, and the floor turns against you.
   if (a.phase === 1 && a.hp < a.maxHp * 0.5) {
     a.phase = 2;
@@ -1364,7 +1400,12 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
   a.patternIn -= dt * rate;
   if (a.patternIn > 0) return;
   // In phase two every other pattern is a hazard volley.
-  const pattern: BossPattern = enraged && a.patternIdx % 2 === 1 ? 'hazards' : boss.patterns[a.patternIdx % boss.patterns.length] ?? 'invites';
+  let pattern: BossPattern = enraged && a.patternIdx % 2 === 1 ? 'hazards' : boss.patterns[a.patternIdx % boss.patterns.length] ?? 'invites';
+  // Nobody summons a second wave while the first is still standing: the adds are capped.
+  if (pattern.startsWith('summon') || pattern === 'allHands') {
+    const adds = ctx.actors.filter((x) => x.owner === a.id && !x.resolved).length;
+    if (adds >= 3 + ctx.floor) pattern = 'invites';
+  }
   a.patternIdx++;
   a.patternIn = 3.2;
   a.attackAnim = 1;
@@ -1377,25 +1418,23 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
       break;
     case 'summonUsers':
       say(a, 'Team! Everyone raise your issues with IT. Now.', 3);
-      for (let i = 0; i < 3 + f; i++) ctx.spawn(i % 2 === 0 ? 'user' : 'caller', a.pos.x + fx.range(-2, 2), a.pos.z + fx.range(-2, 2), a.room);
+      for (let i = 0; i < 2 + f; i++) summon(ctx, a, i % 2 === 0 ? 'user' : 'caller', 2);
       break;
     case 'summonCustomers':
       say(a, 'I have brought some of our key accounts.', 3);
-      for (let i = 0; i < 2 + Math.floor(f / 2); i++) ctx.spawn('customer', a.pos.x + fx.range(-2, 2), a.pos.z + fx.range(-2, 2), a.room);
+      for (let i = 0; i < 2 + Math.floor(f / 2); i++) summon(ctx, a, 'customer', 2);
       break;
     case 'summonReply':
       say(a, 'I have CCd everyone.', 2);
-      for (let i = 0; i < 6 + f; i++) ctx.spawn('reply', a.pos.x + fx.range(-2, 2), a.pos.z + fx.range(-2, 2), a.room);
+      for (let i = 0; i < 6 + f; i++) summon(ctx, a, 'reply', 2);
       break;
     case 'summonManagers':
       say(a, ctx.findings > 0 ? `I have ${ctx.findings} finding${ctx.findings > 1 ? 's' : ''} to discuss with your managers.` : 'I will need to speak to your line managers.', 3);
-      for (let i = 0; i < 2 + Math.min(3, ctx.findings); i++) ctx.spawn(i === 0 ? 'consultant' : 'manager', a.pos.x + fx.range(-2, 2), a.pos.z + fx.range(-2, 2), a.room);
+      for (let i = 0; i < 2 + Math.min(3, ctx.findings); i++) summon(ctx, a, i === 0 ? 'consultant' : 'manager', 2);
       break;
     case 'allHands':
       say(a, 'ALL HANDS MEETING. Attendance is mandatory.', 3, '#fff', 'rgba(120,0,0,0.92)');
-      for (const k of ['user', 'caller', 'customer', 'manager', 'reply', 'reply', 'vendor'] as const) {
-        ctx.spawn(k, a.pos.x + fx.range(-3, 3), a.pos.z + fx.range(-3, 3), a.room);
-      }
+      for (const k of ['user', 'caller', 'customer', 'manager', 'reply', 'reply', 'vendor'] as const) summon(ctx, a, k, 3);
       break;
     case 'charge':
       say(a, 'Let us have a QUICK sync!', 1.5);
@@ -1646,6 +1685,12 @@ function updateDog(ctx: GameCtx, a: Actor, dt: number, dx: number, dz: number, d
     if (target.kind === 'manager') target.summonIn += 3;
     if (fx.chance(0.2)) say(a, 'GRRR-WUF!', 1.5, ...ALLY_BUBBLE);
   }
+}
+
+/** A boss's add: tagged as theirs, so the next wave waits until this one is dealt with. */
+function summon(ctx: GameCtx, boss: Actor, kind: ActorKind, spread: number): void {
+  const s = ctx.spawn(kind, boss.pos.x + fx.range(-spread, spread), boss.pos.z + fx.range(-spread, spread), boss.room);
+  if (s !== null) s.owner = boss.id;
 }
 
 /**

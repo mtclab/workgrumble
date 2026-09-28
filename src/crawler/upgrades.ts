@@ -112,6 +112,6 @@ export const TIPS: Record<string, string> = {
   elite: 'An elite (★): tougher, with a trick of its own, and much better loot.',
   staffed: 'You have been STAFFED: management hands you work whether you have room or not. Assignments are due Friday (P1s have a clock). Over capacity, you lose max sanity and energy regen. Push back when they call or at a computer (Journal); architects can delegate to a helper. A missed deliverable costs Management standing.',
   team: 'Your team runs on morale. Give a teammate sweets (E, then pick one) to cheer them up, or an energy drink for a short, strong boost and a crash. Tired teammates hit softer, and below a point they go on a break.',
-  mentor: 'You are senior now: your team comes to you when they are stuck (🎓). Mentoring counts against your workload, but every person you get through it earns you a perk point, and the Mentor perk grows with it.',
+  mentor: 'You are senior now: your team comes to you when they are stuck (🎓). Mentoring counts against your workload, but getting someone through it earns you a perk point (one a week), and the Mentor perk grows with it.',
   block: 'Hold the right mouse button to block (frontal hits, costs energy). Block just as a hit lands to PARRY it and stagger them. Tap it to shove.',
 };

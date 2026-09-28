@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng } from './rng';
 import { normalMapFrom } from './graphics';
@@ -227,6 +228,30 @@ interface Builder {
   readonly boxes: Map<string, THREE.BufferGeometry[]>;
 }
 
+/** Built once, cloned into place: most furniture comes in a handful of sizes. */
+const templates = new Map<string, THREE.BufferGeometry>();
+function template(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
+  let t = templates.get(key);
+  if (t === undefined) {
+    const g = make();
+    // A plain BufferGeometry: cloning a RoundedBoxGeometry would rebuild one from scratch first.
+    const flat = g.index !== null ? g.toNonIndexed() : g;
+    t = new THREE.BufferGeometry().copy(flat);
+    if (flat !== g) flat.dispose();
+    g.dispose();
+    templates.set(key, t);
+  }
+  return t.clone();
+}
+
+/** A softened box: every prop edge catches the light instead of ending in a hard line. */
+function softBox(sx: number, sy: number, sz: number, round = 0.35): THREE.BufferGeometry {
+  const r = Math.min(0.05, Math.min(sx, sy, sz) * round);
+  // Big pieces get a smooth bevel; small ones a single chamfer; slivers stay square.
+  const seg = Math.max(sx, sy, sz) > 0.9 ? 2 : 1;
+  return template(`box|${sx.toFixed(3)}|${sy.toFixed(3)}|${sz.toFixed(3)}|${r.toFixed(3)}`, () => (r < 0.006 ? new THREE.BoxGeometry(sx, sy, sz) : new RoundedBoxGeometry(sx, sy, sz, seg, r)));
+}
+
 function addBox(
   b: Builder,
   key: string,
@@ -234,12 +259,86 @@ function addBox(
   sx: number, sy: number, sz: number,
   rotY = 0,
 ): void {
-  const g = new THREE.BoxGeometry(sx, sy, sz);
+  if (!decor) return;
+  const g = softBox(sx, sy, sz);
   if (rotY !== 0) g.rotateY(rotY);
   g.translate(x, y, z);
+  addGeom(b, key, g);
+}
+
+/** Any shape, merged with everything else of the same material. */
+function addGeom(b: Builder, key: string, g: THREE.BufferGeometry): void {
+  if (!decor) {
+    g.dispose();
+    return;
+  }
   const list = b.boxes.get(key);
   if (list === undefined) b.boxes.set(key, [g]);
   else list.push(g);
+}
+
+/** Place a geometry: rotate about y, then move. */
+function placed(g: THREE.BufferGeometry, x: number, y: number, z: number, rotY = 0): THREE.BufferGeometry {
+  if (rotY !== 0) g.rotateY(rotY);
+  g.translate(x, y, z);
+  return g;
+}
+
+/** A swivel office chair; the seat faces +z after `rotY`, the back is behind it. */
+function officeChair(b: Builder, x: number, z: number, rotY: number): void {
+  if (!decor) return;
+  const local = (lx: number, lz: number): [number, number] => [x + lx * Math.cos(rotY) + lz * Math.sin(rotY), z - lx * Math.sin(rotY) + lz * Math.cos(rotY)];
+  addGeom(b, 'chair', placed(softBox(0.5, 0.09, 0.48, 0.5), x, 0.5, z, rotY));
+  const [bx, bz] = local(0, -0.24);
+  const back = softBox(0.46, 0.55, 0.07, 0.5);
+  back.rotateX(-0.12);
+  addGeom(b, 'chair', placed(back, bx, 0.86, bz, rotY));
+  addGeom(b, 'metal', placed(template('chair-column', () => new THREE.CylinderGeometry(0.03, 0.035, 0.36, 8)), x, 0.28, z));
+  for (let k = 0; k < 5; k++) {
+    const a = rotY + (k / 5) * Math.PI * 2;
+    const leg = softBox(0.05, 0.035, 0.3, 0.5);
+    leg.translate(0, 0, 0.15);
+    addGeom(b, 'metal', placed(leg, x, 0.09, z, a));
+    addGeom(b, 'chair', placed(template('caster', () => new THREE.SphereGeometry(0.035, 6, 4)), x + Math.sin(a) * 0.29, 0.035, z + Math.cos(a) * 0.29));
+  }
+}
+
+/** A flat-panel monitor on a stand, its screen facing +z after `rotY`. */
+function flatMonitor(b: Builder, x: number, y: number, z: number, rotY: number, w = 0.6): void {
+  if (!decor) return;
+  addGeom(b, 'monitor', placed(softBox(w, w * 0.62, 0.04, 0.5), x, y + 0.34, z, rotY));
+  addGeom(b, 'metal', placed(template('monitor-neck', () => new THREE.CylinderGeometry(0.018, 0.018, 0.24, 6)), x, y + 0.12, z));
+  addGeom(b, 'metal', placed(softBox(0.22, 0.015, 0.15, 0.5), x, y + 0.008, z, rotY));
+}
+
+/** A potted office plant: a tapered pot, a clump of leaves. `seed` varies it without touching the level's dice. */
+function pottedPlant(b: Builder, x: number, z: number, seed: number, tall = 1): void {
+  if (!decor) return;
+  addGeom(b, 'plant', placed(new THREE.CylinderGeometry(0.24, 0.18, 0.5, 14), x, 0.25, z));
+  addGeom(b, 'plant', placed(new THREE.TorusGeometry(0.235, 0.03, 6, 16).rotateX(Math.PI / 2), x, 0.5, z));
+  const n = 5 + (seed % 3);
+  for (let k = 0; k < n; k++) {
+    const a = (k / n) * Math.PI * 2 + seed * 0.7;
+    const rr = 0.12 + ((seed >> k) & 1) * 0.08;
+    const leaf = new THREE.IcosahedronGeometry(0.2 + ((seed + k) % 3) * 0.05, 1);
+    leaf.scale(1, 1.3 * tall, 1);
+    addGeom(b, 'leaf', placed(leaf, x + Math.sin(a) * rr, 0.75 + ((k * 7 + seed) % 5) * 0.12 * tall, z + Math.cos(a) * rr));
+  }
+  addGeom(b, 'leaf', placed(new THREE.IcosahedronGeometry(0.22, 1).scale(1, 1.4 * tall, 1), x, 1.15 * tall + 0.1, z));
+}
+
+/** A desk plant: a small pot and a few leaves. */
+function deskPlant(b: Builder, x: number, y: number, z: number): void {
+  if (!decor) return;
+  addGeom(b, 'plant', placed(new THREE.CylinderGeometry(0.07, 0.055, 0.12, 10), x, y + 0.06, z));
+  for (let k = 0; k < 3; k++) addGeom(b, 'leaf', placed(new THREE.IcosahedronGeometry(0.07, 1).scale(0.8, 1.4, 0.8), x + (k - 1) * 0.04, y + 0.18 + (k % 2) * 0.04, z));
+}
+
+/** Deterministic noise from a cell, so decoration never consumes the level's dice. */
+function cellHash(x: number, y: number): number {
+  let h = (x * 374761393 + y * 668265263) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+  return h;
 }
 
 /**
@@ -247,6 +346,8 @@ function addBox(
  * only the grid and geometry matter.
  */
 let headless = false;
+/** Furniture, trim and lights. The unit tests usually only need the grid; one test builds the lot. */
+let decor = true;
 function paint<T>(fn: () => T): T | null {
   return headless ? null : fn();
 }
@@ -277,8 +378,9 @@ export function freeSpotIn(level: Level, room: Room, r: Rng, taken: ReadonlySet<
   return null;
 }
 
-export function generateLevel(floorIndex: number, theme: Theme, seed: number, noTextures = false): Level {
+export function generateLevel(floorIndex: number, theme: Theme, seed: number, noTextures = false, withDecor = !noTextures): Level {
   headless = noTextures;
+  decor = withDecor;
   const r = new Rng(seed);
   const w = 44 + Math.min(floorIndex, 4) * 4;
   const h = w;
@@ -543,11 +645,16 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
             if (!free(x, y) || nearDoor(x, y, rm)) continue;
             const cx = cellCenter(x);
             const cz = cellCenter(y);
-            addBox(builder, 'desk', cx, 0.74, cz, TILE, 0.06, 1.2);
+            addBox(builder, 'desk', cx, 0.74, cz, TILE - 0.04, 0.05, 1.2);
+            for (const side of [-1, 1]) addBox(builder, 'metal', cx + side * (TILE / 2 - 0.08), 0.36, cz - 0.05, 0.05, 0.72, 1.0);
             addBox(builder, 'partition', cx, 0.7, cz - 0.62, TILE, 1.4, 0.08);
-            addBox(builder, 'monitor', cx + r.range(-0.4, 0.4), 1.0, cz - 0.25, 0.6, 0.45, 0.08);
-            addBox(builder, 'chair', cx, 0.45, cz + 0.8, 0.5, 0.1, 0.5);
-            addBox(builder, 'chair', cx, 0.8, cz + 1.05, 0.5, 0.7, 0.08);
+            addBox(builder, 'metal', cx, 1.41, cz - 0.62, TILE, 0.03, 0.1);
+            flatMonitor(builder, cx + r.range(-0.4, 0.4), 0.77, cz - 0.3, 0);
+            const hsh = cellHash(x, y);
+            addBox(builder, 'chair', cx + 0.1, 0.785, cz + 0.05, 0.62, 0.02, 0.2);
+            if ((hsh & 3) === 0) addGeom(builder, 'counter', placed(new THREE.CylinderGeometry(0.045, 0.04, 0.1, 10), cx + 0.62, 0.82, cz - 0.1));
+            if ((hsh & 12) === 4) deskPlant(builder, cx - 0.7, 0.77, cz - 0.35);
+            officeChair(builder, cx, cz + 0.85, Math.PI + ((hsh >> 4) % 7 - 3) * 0.12);
             block(x, y);
             if (r.chance(0.35)) spawns.push({ kind: r.chance(0.3) ? 'caller' : 'user', x: cx, z: cz + TILE, room: rm.id });
           }
@@ -558,13 +665,19 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       }
       case 'meeting': {
         for (let y = y0 + 2; y <= y1 - 2; y++) {
-          for (let x = x0 + 2; x <= x1 - 2; x++) {
-            addBox(builder, 'wood', cellCenter(x), 0.76, cellCenter(y), TILE, 0.1, TILE);
-            block(x, y);
-          }
+          for (let x = x0 + 2; x <= x1 - 2; x++) block(x, y);
+        }
+        if (x1 - 2 >= x0 + 2 && y1 - 2 >= y0 + 2) {
+          const tw = (x1 - x0 - 3) * TILE - 0.2;
+          const td = (y1 - y0 - 3) * TILE - 0.2;
+          const tx = (cellCenter(x0 + 2) + cellCenter(x1 - 2)) / 2;
+          const tz = (cellCenter(y0 + 2) + cellCenter(y1 - 2)) / 2;
+          addGeom(builder, 'wood', placed(new RoundedBoxGeometry(tw, 0.08, td, 3, 0.04), tx, 0.76, tz));
+          for (const sx of [-1, 1]) for (const sz of [-1, 1]) addGeom(builder, 'metal', placed(new THREE.CylinderGeometry(0.04, 0.05, 0.72, 8), tx + sx * (tw / 2 - 0.3), 0.36, tz + sz * (td / 2 - 0.3)));
+          flatMonitor(builder, tx, 0.8, tz - td / 2 + 0.3, 0, 0.5);
         }
         for (let x = x0 + 2; x <= x1 - 2; x += 1) {
-          addBox(builder, 'chair', cellCenter(x), 0.5, cellCenter(y0 + 1) + 0.3, 0.5, 0.1, 0.5);
+          officeChair(builder, cellCenter(x), cellCenter(y0 + 1) + 0.3, 0);
         }
         spawns.push({ kind: 'manager', x: cellCenter(x0 + 1), z: cellCenter(y0 + 1), room: rm.id });
         for (let i = 0; i < 2; i++) {
@@ -725,9 +838,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
         for (let i = 0; i < 3; i++) {
           const s = interiorSpot(rm);
           if (s !== null && r.chance(0.5)) {
-            addBox(builder, 'plant', cellCenter(s[0]), 0.3, cellCenter(s[1]), 0.5, 0.6, 0.5);
-            addBox(builder, 'leaf', cellCenter(s[0]), 0.9, cellCenter(s[1]), 0.7, 0.6, 0.7, Math.PI / 4);
-            addBox(builder, 'leaf', cellCenter(s[0]), 1.35, cellCenter(s[1]), 0.45, 0.5, 0.45);
+            pottedPlant(builder, cellCenter(s[0]), cellCenter(s[1]), cellHash(s[0], s[1]) % 97, 1.2);
             block(s[0], s[1]);
           }
         }
@@ -735,7 +846,9 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       }
       case 'boss':
         for (const [x, y] of [[x0 + 1, y0 + 1], [x1 - 1, y0 + 1], [x0 + 1, y1 - 1], [x1 - 1, y1 - 1]] as const) {
-          addBox(builder, 'pillar', cellCenter(x), WALL_H / 2, cellCenter(y), TILE * 0.6, WALL_H, TILE * 0.6);
+          addGeom(builder, 'pillar', placed(new THREE.CylinderGeometry(TILE * 0.26, TILE * 0.26, WALL_H - 0.5, 20), cellCenter(x), WALL_H / 2, cellCenter(y)));
+          addGeom(builder, 'pillar', placed(new RoundedBoxGeometry(TILE * 0.66, 0.25, TILE * 0.66, 2, 0.04), cellCenter(x), 0.125, cellCenter(y)));
+          addGeom(builder, 'pillar', placed(new RoundedBoxGeometry(TILE * 0.66, 0.25, TILE * 0.66, 2, 0.04), cellCenter(x), WALL_H - 0.125, cellCenter(y)));
           block(x, y, true);
         }
         for (let i = 0; i < 2; i++) {
@@ -766,7 +879,8 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
 
     // Everyone else: users in whatever room, scaled with the floor.
     if (rm.kind !== 'lobby' && rm.kind !== 'boss' && rm.kind !== 'it' && rm.kind !== 'sauna') {
-      const extra = r.int(0, 1 + Math.min(floorIndex, 3));
+      // Crowds stop growing after the second floor; the people in them keep getting tougher.
+      const extra = r.int(0, 1 + Math.min(floorIndex, 2));
       for (let i = 0; i < extra; i++) {
         const s = interiorSpot(rm);
         if (s === null) continue;
@@ -971,23 +1085,49 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   const trim: THREE.BufferGeometry[] = [];
   const lintels: THREE.BufferGeometry[] = [];
   const vents: THREE.BufferGeometry[] = [];
-  for (let y = 1; y < h - 1; y++) {
+  const jambs: THREE.BufferGeometry[] = [];
+  for (let y = 1; y < (decor ? h - 1 : 1); y++) {
     for (let x = 1; x < w - 1; x++) {
       const i = y * w + x;
       if (floor[i] !== 1) continue;
       for (const [ox, oy] of NEIGHBOURS4) {
         const n = (y + oy) * w + (x + ox);
-        const fx0 = cellCenter(x) + ox * (TILE / 2 - 0.03);
-        const fz0 = cellCenter(y) + oy * (TILE / 2 - 0.03);
         if (floor[n] !== 1) {
-          const g = new THREE.BoxGeometry(ox !== 0 ? 0.06 : TILE, 0.14, oy !== 0 ? 0.06 : TILE);
-          g.translate(fx0, 0.07, fz0);
+          // Skirting, a cornice where wall meets ceiling, and a dado rail in the rooms: one piece per wall edge.
+          const inRoom = (roomOf[i] ?? -1) >= 0;
+          const g = template(`trim|${ox}|${oy}|${inRoom}`, () => {
+            const parts = [
+              new THREE.BoxGeometry(ox !== 0 ? 0.06 : TILE, 0.14, oy !== 0 ? 0.06 : TILE).translate(ox * (TILE / 2 - 0.03), 0.07, oy * (TILE / 2 - 0.03)),
+              new THREE.BoxGeometry(ox !== 0 ? 0.09 : TILE, 0.1, oy !== 0 ? 0.09 : TILE).translate(ox * (TILE / 2 - 0.045), WALL_H - 0.05, oy * (TILE / 2 - 0.045)),
+            ];
+            if (inRoom) parts.push(new THREE.BoxGeometry(ox !== 0 ? 0.035 : TILE, 0.05, oy !== 0 ? 0.035 : TILE).translate(ox * (TILE / 2 - 0.018), 1.02, oy * (TILE / 2 - 0.018)));
+            const merged = mergeGeometries(parts);
+            for (const p of parts) p.dispose();
+            return merged;
+          });
+          g.translate(cellCenter(x), 0, cellCenter(y));
           trim.push(g);
         } else if ((roomOf[i] ?? -1) < 0 && (roomOf[n] ?? -1) >= 0) {
-          // Corridor into a room: a lintel on the boundary.
+          // Corridor into a room: a lintel on the boundary, and a door frame.
           const g = new THREE.BoxGeometry(ox !== 0 ? 0.25 : TILE, 0.45, oy !== 0 ? 0.25 : TILE);
           g.translate(cellCenter(x) + ox * TILE / 2, WALL_H - 0.225, cellCenter(y) + oy * TILE / 2);
           lintels.push(g);
+          const bx = cellCenter(x) + ox * TILE / 2;
+          const bz = cellCenter(y) + oy * TILE / 2;
+          const head = template(`jamb-head|${ox !== 0}`, () => new RoundedBoxGeometry(ox !== 0 ? 0.3 : TILE, 0.12, oy !== 0 ? 0.3 : TILE, 1, 0.03));
+          head.translate(bx, WALL_H - 0.51, bz);
+          jambs.push(head);
+          // Posts where the opening meets the wall on either side.
+          for (const side of [-1, 1]) {
+            const px = oy !== 0 ? side : 0;
+            const pz = ox !== 0 ? side : 0;
+            const a = (y + pz) * w + (x + px);
+            const bcell = (y + oy + pz) * w + (x + ox + px);
+            if (floor[a] === 1 && floor[bcell] === 1) continue;
+            const post = template(`jamb-post|${ox !== 0}`, () => new RoundedBoxGeometry(ox !== 0 ? 0.3 : 0.14, WALL_H - 0.45, oy !== 0 ? 0.3 : 0.14, 1, 0.03));
+            post.translate(bx + px * (TILE / 2 - 0.07), (WALL_H - 0.45) / 2, bz + pz * (TILE / 2 - 0.07));
+            jambs.push(post);
+          }
         }
       }
       if ((roomOf[i] ?? -1) >= 0 && x % 4 === 3 && y % 5 === 2) {
@@ -999,6 +1139,12 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   }
   const trimMat = std({ color: new THREE.Color(theme.wallTrim), roughness: 0.6 });
   if (trim.length > 0) group.add(new THREE.Mesh(mergeGeometries(trim), trimMat));
+  if (jambs.length > 0) {
+    const j = new THREE.Mesh(mergeGeometries(jambs), std({ color: new THREE.Color(theme.wallTrim).multiplyScalar(0.85), roughness: 0.45 }));
+    j.castShadow = true;
+    j.receiveShadow = true;
+    group.add(j);
+  }
   if (lintels.length > 0) {
     const l = new THREE.Mesh(mergeGeometries(lintels), wallMat);
     l.castShadow = true;
@@ -1009,7 +1155,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   // Fluorescent panels in every room and every few corridor cells.
   const panelGeoms: THREE.BufferGeometry[] = [];
   const frameGeoms: THREE.BufferGeometry[] = [];
-  for (let y = 0; y < h; y++) {
+  for (let y = 0; y < (decor ? h : 0); y++) {
     for (let x = 0; x < w; x++) {
       if (floor[y * w + x] !== 1) continue;
       const inRoom = (roomOf[y * w + x] ?? -1) >= 0;
@@ -1092,13 +1238,20 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   };
   for (const [key, geoms] of builder.boxes) {
     const mat = mats[key] ?? std({ color: 0xff00ff });
-    const m = new THREE.Mesh(mergeGeometries(geoms), mat);
+    // Mixed shapes: weld them as plain triangle soup with the same attributes.
+    const soup = geoms.map((g) => {
+      const n = g.index !== null ? g.toNonIndexed() : g;
+      for (const name of Object.keys(n.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv') n.deleteAttribute(name);
+      return n;
+    });
+    const m = new THREE.Mesh(mergeGeometries(soup), mat);
+    for (const g of soup) if (!geoms.includes(g)) g.dispose();
     m.castShadow = true;
     m.receiveShadow = true;
     group.add(m);
     for (const g of geoms) g.dispose();
   }
-  for (const list of [wallGeoms, panelGeoms, frameGeoms, trim, lintels, vents, extGeoms, ...ledGeoms]) for (const g of list) g.dispose();
+  for (const list of [wallGeoms, panelGeoms, frameGeoms, trim, lintels, vents, jambs, extGeoms, ...ledGeoms]) for (const g of list) g.dispose();
   // Interactive props cast shadows too.
   for (const it of interactables) it.mesh?.traverse((o) => { if (o instanceof THREE.Mesh) o.castShadow = true; });
 
@@ -1114,48 +1267,88 @@ function lambert(color: number, emissive = 0): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color, emissive, roughness: 0.55, metalness: 0.1 });
 }
 
+function metal(color: number, roughness = 0.35): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.75 });
+}
+
 function box(sx: number, sy: number, sz: number, mat: THREE.Material, x = 0, y = 0, z = 0): THREE.Mesh {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+  const m = new THREE.Mesh(softBox(sx, sy, sz, 0.18), mat);
+  m.position.set(x, y, z);
+  return m;
+}
+
+function cyl(rt: number, rb: number, h: number, mat: THREE.Material, x = 0, y = 0, z = 0, seg = 16): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
   m.position.set(x, y, z);
   return m;
 }
 
 function coolerMesh(): THREE.Group {
   const g = new THREE.Group();
-  g.add(box(0.6, 1.0, 0.6, lambert(0xeeeeee), 0, 0.5, 0));
-  const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.6, 12), new THREE.MeshLambertMaterial({ color: 0x5fb6ff, transparent: true, opacity: 0.7 }));
-  bottle.position.y = 1.3;
+  const white = lambert(0xeeeeee);
+  g.add(box(0.55, 1.0, 0.55, white, 0, 0.5, 0));
+  g.add(box(0.5, 0.04, 0.3, metal(0x9a9a9a), 0, 0.72, 0.16));
+  for (const [x, c] of [[-0.1, 0x3a7bd5], [0.1, 0xd53a3a]] as const) g.add(box(0.06, 0.08, 0.06, lambert(c), x, 0.86, 0.3));
+  const water = new THREE.MeshStandardMaterial({ color: 0x7fc4ff, transparent: true, opacity: 0.55, roughness: 0.05, metalness: 0 });
+  const bottle = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.34, 6, 16), water);
+  bottle.position.y = 1.36;
   g.add(bottle);
+  g.add(cyl(0.07, 0.07, 0.12, water, 0, 1.03, 0));
+  g.add(cyl(0.05, 0.035, 0.1, lambert(0xffffff), 0.2, 0.2, 0.3, 10));
   return g;
 }
 
 function coffeeMesh(): THREE.Group {
   const g = new THREE.Group();
   g.add(box(1.4, 0.9, 1.2, lambert(0xe6e2d6), 0, 0.45, 0));
-  g.add(box(0.6, 0.8, 0.5, lambert(0x2b2b2b), 0, 1.3, 0));
-  g.add(box(0.2, 0.1, 0.1, lambert(0xff3b30, 0x661111), 0.15, 1.5, 0.26));
+  const body = metal(0x2b2b2b, 0.4);
+  g.add(box(0.62, 0.78, 0.5, body, 0, 1.3, -0.05));
+  g.add(box(0.5, 0.1, 0.3, metal(0x9a9a9a), 0, 0.95, 0.12));
+  g.add(box(0.42, 0.16, 0.02, new THREE.MeshBasicMaterial({ color: 0x9fe8ff }), 0, 1.5, 0.21));
+  g.add(box(0.2, 0.1, 0.08, lambert(0xff3b30, 0x661111), 0.15, 1.32, 0.22));
+  g.add(cyl(0.04, 0.04, 0.12, metal(0x777777), 0, 1.08, 0.18, 10));
+  g.add(cyl(0.055, 0.045, 0.1, lambert(0xffffff), 0, 0.96, 0.18, 12));
+  for (let k = 0; k < 3; k++) g.add(cyl(0.05, 0.042, 0.1, lambert([0xc0392b, 0x2e86c1, 0xf1c40f][k] ?? 0xffffff), -0.5 + k * 0.14, 0.95, 0.35, 12));
   return g;
 }
 
 function vendingMesh(): THREE.Group {
   const g = new THREE.Group();
   g.add(box(1.2, 2.2, 0.9, lambert(0xb3202a), 0, 1.1, 0));
-  g.add(box(0.8, 1.3, 0.05, new THREE.MeshBasicMaterial({ color: 0x8fd0ff }), -0.1, 1.3, 0.46));
+  g.add(box(0.82, 1.4, 0.03, new THREE.MeshStandardMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.35, roughness: 0.05 }), -0.1, 1.35, 0.46));
+  const inside = lambert(0x1a1a1a);
+  g.add(box(0.78, 1.36, 0.02, inside, -0.1, 1.35, 0.3));
+  // Rows of cans behind the glass.
+  const cans = [0x2ecc71, 0x1e90ff, 0xf1c40f, 0xffffff, 0xe74c3c, 0x9b59b6];
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < 5; col++) {
+      g.add(cyl(0.05, 0.05, 0.18, lambert(cans[(row * 2 + col) % cans.length] ?? 0xffffff), -0.42 + col * 0.16, 0.8 + row * 0.33, 0.38, 10));
+    }
+  }
+  g.add(box(0.2, 0.5, 0.04, metal(0x333333), 0.46, 1.4, 0.46));
+  g.add(box(0.6, 0.18, 0.05, lambert(0x111111), -0.1, 0.35, 0.46));
   return g;
 }
 
 function printerMesh(): THREE.Group {
   const g = new THREE.Group();
-  g.add(box(1.3, 1.0, 1.0, lambert(0xd9d6cc), 0, 0.5, 0));
-  g.add(box(1.1, 0.2, 0.8, lambert(0xbab6aa), 0, 1.1, 0));
-  g.add(box(0.2, 0.1, 0.05, lambert(0xff9500, 0xaa4400), 0.4, 0.85, 0.51));
+  const shell = lambert(0xd9d6cc);
+  g.add(box(1.2, 0.8, 0.95, shell, 0, 0.4, 0));
+  g.add(box(1.1, 0.25, 0.85, lambert(0xcac6ba), 0, 0.93, 0));
+  for (let k = 0; k < 2; k++) g.add(box(1.0, 0.02, 0.02, lambert(0x8a8577), 0, 0.2 + k * 0.28, 0.48));
+  g.add(box(0.7, 0.03, 0.5, lambert(0xf8f8f8), 0, 1.08, 0.05));
+  g.add(box(0.36, 0.12, 0.2, lambert(0x333333), 0.35, 1.1, 0.35));
+  g.add(box(0.18, 0.07, 0.02, lambert(0xff9500, 0xaa4400), 0.35, 1.13, 0.46));
   return g;
 }
 
 function crateMesh(): THREE.Group {
   const g = new THREE.Group();
-  g.add(box(1.0, 0.7, 0.8, lambert(0x8a6a3f), 0, 0.35, 0));
-  g.add(box(1.02, 0.1, 0.82, lambert(0x5f4a2c), 0, 0.72, 0));
+  const wood = lambert(0x8a6a3f);
+  g.add(box(1.0, 0.7, 0.8, wood, 0, 0.35, 0));
+  const slat = lambert(0x5f4a2c);
+  for (const y of [0.12, 0.58]) g.add(box(1.03, 0.08, 0.83, slat, 0, y, 0));
+  g.add(box(0.5, 0.04, 0.3, lambert(0xe8e0c8), 0.1, 0.72, 0.1));
   return g;
 }
 
@@ -1164,14 +1357,21 @@ function itSignMesh(): THREE.Group {
   const tex = paint(() => screenTexture(['INTERNAL IT', 'SERVICE DESK', '', 'Take a number.', 'Now serving: 4'], '#12351c'));
   const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshBasicMaterial({ map: tex }));
   g.add(m);
+  g.add(box(2.55, 1.35, 0.06, metal(0x2b2b2b), 0, 0, -0.04));
   return g;
 }
 
 function elevatorMesh(): THREE.Group {
   const g = new THREE.Group();
-  g.add(box(2.0, 2.6, 0.2, lambert(0x9ea6ad, 0x111111), 0, 1.3, 0));
-  g.add(box(0.03, 2.5, 0.22, lambert(0x333333), 0, 1.3, 0));
-  const lamp = box(0.2, 0.2, 0.05, new THREE.MeshBasicMaterial({ color: 0xff3030 }), 0, 2.85, 0.1);
+  const frame = metal(0x7d858c, 0.3);
+  g.add(box(2.3, 2.9, 0.16, frame, 0, 1.45, -0.02));
+  const door = metal(0xb9c1c7, 0.22);
+  for (const side of [-1, 1]) g.add(box(0.96, 2.5, 0.06, door, side * 0.49, 1.25, 0.08));
+  g.add(box(0.02, 2.5, 0.08, lambert(0x333333), 0, 1.25, 0.1));
+  const panel = box(0.12, 0.3, 0.04, metal(0x444444), 1.3, 1.25, 0.06);
+  g.add(panel);
+  g.add(cyl(0.025, 0.025, 0.02, lambert(0xffffff, 0x777777), 1.3, 1.3, 0.09, 10).rotateX(Math.PI / 2));
+  const lamp = box(0.3, 0.12, 0.04, new THREE.MeshBasicMaterial({ color: 0xff3030 }), 0, 2.78, 0.1);
   lamp.name = 'lamp';
   g.add(lamp);
   return g;
@@ -1179,47 +1379,60 @@ function elevatorMesh(): THREE.Group {
 
 function fridgeMesh(): THREE.Group {
   const g = new THREE.Group();
-  g.add(box(1.1, 2.0, 0.9, lambert(0xe8e8e8), 0, 1.0, 0));
-  g.add(box(0.05, 0.5, 0.05, lambert(0x888888), 0.4, 1.3, 0.47));
-  g.add(box(0.9, 0.02, 0.02, lambert(0x999999), 0, 1.25, 0.46));
+  const white = lambert(0xe8e8e8);
+  g.add(box(1.0, 2.0, 0.85, white, 0, 1.0, 0));
+  g.add(box(0.96, 0.02, 0.02, lambert(0xbbbbbb), 0, 1.3, 0.43));
+  for (const y of [1.0, 1.65]) g.add(new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.35, 4, 8), metal(0x999999)).translateX(0.38).translateY(y).translateZ(0.46));
   // The note on the door, which is the whole story of every office fridge.
-  g.add(box(0.3, 0.22, 0.01, lambert(0xfff27a), -0.2, 1.6, 0.46));
+  g.add(box(0.3, 0.22, 0.01, lambert(0xfff27a), -0.2, 1.6, 0.43));
+  for (const [x, y, c] of [[-0.3, 1.1, 0xe74c3c], [0.05, 1.8, 0x3498db], [-0.05, 0.9, 0x2ecc71]] as const) g.add(cyl(0.03, 0.03, 0.02, lambert(c), x, y, 0.44, 10).rotateX(Math.PI / 2));
   return g;
 }
 
 function panttiMesh(): THREE.Group {
   const g = new THREE.Group();
   g.add(box(1.0, 1.8, 0.8, lambert(0x2e7d32), 0, 0.9, 0));
-  g.add(box(0.3, 0.3, 0.05, new THREE.MeshBasicMaterial({ color: 0x111111 }), 0, 1.1, 0.41));
-  g.add(box(0.5, 0.2, 0.05, new THREE.MeshBasicMaterial({ color: 0x9dff9d }), 0, 1.5, 0.41));
+  g.add(cyl(0.16, 0.16, 0.06, lambert(0x111111), 0, 1.1, 0.4, 20).rotateX(Math.PI / 2));
+  g.add(box(0.5, 0.2, 0.03, new THREE.MeshBasicMaterial({ color: 0x9dff9d }), 0, 1.5, 0.41));
+  g.add(box(0.3, 0.06, 0.03, lambert(0xdddddd), 0, 0.7, 0.41));
   return g;
 }
 
 function kiuasMesh(): THREE.Group {
   const g = new THREE.Group();
-  g.add(box(0.9, 0.9, 0.9, lambert(0x2b2b2b), 0, 0.45, 0));
-  const rock = lambert(0x6b6b6b);
-  for (let i = 0; i < 7; i++) {
-    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16), rock);
-    m.position.set(-0.25 + (i % 3) * 0.25, 1.0 + Math.floor(i / 3) * 0.12, -0.2 + (i % 2) * 0.3);
+  const iron = metal(0x2b2b2b, 0.6);
+  g.add(box(0.85, 0.85, 0.85, iron, 0, 0.45, 0));
+  g.add(box(0.95, 0.06, 0.95, iron, 0, 0.9, 0));
+  const rock = new THREE.MeshStandardMaterial({ color: 0x6b6b6b, roughness: 0.95 });
+  for (let i = 0; i < 12; i++) {
+    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(0.12 + (i % 3) * 0.02, 1), rock);
+    m.position.set(-0.3 + (i % 4) * 0.2, 1.0 + Math.floor(i / 4) * 0.1, -0.25 + ((i * 7) % 3) * 0.25);
+    m.rotation.set(i, i * 2, i * 3);
     g.add(m);
   }
-  const glow = box(0.5, 0.2, 0.02, new THREE.MeshBasicMaterial({ color: 0xff6a1a }), 0, 0.35, 0.46);
+  const glow = box(0.45, 0.18, 0.02, new THREE.MeshBasicMaterial({ color: 0xff6a1a }), 0, 0.35, 0.44);
   g.add(glow);
   const light = new THREE.PointLight(0xff8a3a, 6, 7, 1.6);
   light.position.set(0, 1.4, 0);
   g.add(light);
-  const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.13, 0.25, 10), lambert(0x8a5a2a));
-  bucket.position.set(0.7, 0.13, 0.3);
-  g.add(bucket);
+  const wood = lambert(0x8a5a2a);
+  g.add(cyl(0.16, 0.13, 0.25, wood, 0.7, 0.13, 0.3, 14));
+  const ladle = new THREE.Mesh(new THREE.CapsuleGeometry(0.012, 0.45, 4, 6), wood);
+  ladle.position.set(0.72, 0.4, 0.3);
+  ladle.rotation.z = 0.5;
+  g.add(ladle);
   return g;
 }
 
 function lockerMesh(): THREE.Group {
   const g = new THREE.Group();
-  g.add(box(1.4, 2.2, 0.8, lambert(0x5d6d7e), 0, 1.1, 0));
+  const steel = metal(0x5d6d7e, 0.45);
+  g.add(box(1.4, 2.2, 0.8, steel, 0, 1.1, 0));
   g.add(box(0.02, 2.1, 0.82, lambert(0x2c3e50), 0, 1.1, 0));
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < 4; k++) g.add(box(0.4, 0.025, 0.02, lambert(0x34495e), side * 0.35, 1.9 - k * 0.06, 0.41));
+  }
   g.add(box(0.12, 0.16, 0.06, lambert(0xd4af37, 0x332200), 0.14, 1.1, 0.42));
-  g.add(box(0.6, 0.15, 0.01, lambert(0xffffff), -0.3, 1.9, 0.41));
+  g.add(box(0.5, 0.13, 0.01, lambert(0xffffff), -0.35, 1.6, 0.41));
   return g;
 }

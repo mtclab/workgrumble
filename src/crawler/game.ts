@@ -192,6 +192,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   /** Seconds of a chatbot's slow. */
   slowT = 0;
   rootT = 0;
+  /** Meeting invites bounce off until this time: no chains of back-to-back meetings. */
+  rootImmuneUntil = 0;
   rootReason = '';
   sisuT = 0;
   invisT = 0;
@@ -854,10 +856,36 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
 
   // ================================================================== loop
 
+  /** Balance bots: the loop stops drawing and `step` drives the simulation instead. */
+  headless = false;
+
+  /** One tick of the simulation, without drawing anything. */
+  step(dt: number): void {
+    if (this.screen === 'play') {
+      if (this.hitStop > 0) {
+        this.hitStop -= dt;
+      } else {
+        this.time += dt;
+        this.update(dt);
+      }
+    } else if (this.screen === 'os' && this.currentTerminal !== null) {
+      tickQuests(this, dt);
+    }
+    this.player.update(this.level, this.screen === 'play' ? dt : 0, 0);
+    this.particles.update(this.screen === 'play' ? dt : 0);
+    this.input.endFrame();
+    this.markersIn -= dt;
+    if (this.markersIn <= 0) {
+      this.markersIn = 0.3;
+      this.markers = questMarkers(this);
+    }
+  }
+
   private readonly frame = (now: number): void => {
     requestAnimationFrame(this.frame);
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
+    if (this.headless) return;
     if (this.screen === 'play') {
       if (this.hitStop > 0) {
         this.hitStop -= dt;
@@ -1402,6 +1430,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   ticketFix(a: Actor): string { return TICKETS[a.ticket]?.fixes[0] ?? 'Turn it off and on again'; }
   noticed(a: Actor): void { if (this.player.crouching && a.kind !== 'mosquito') this.hud.toast(`${a.name} spotted you.`, 'bad'); }
   bossStart(a: Actor): void { host.bossStart(this, a); }
+  bossLeash(a: Actor): void { host.bossLeash(this, a); }
   bossParley(a: Actor): void { host.bossParley(this, a); }
   stealRep(a: Actor, amount: number): number { return host.stealRep(this, a, amount); }
   enqueueTicket(from: Actor, gold: boolean): void { host.enqueueTicket(this, from, gold); }

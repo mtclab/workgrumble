@@ -52,7 +52,10 @@ export function healPlayer(g: Game, amount: number, from: string): void {
  */
 export function rootPlayer(g: Game, seconds: number, reason: string, resistible = true): void {
   if (resistible && g.derivedCache.noRoot) return;
+  // No back-to-back meetings: after one, a short window where the next invite bounces off.
+  if (resistible && g.time < g.rootImmuneUntil) return;
   if (resistible && g.save.perks.ironwill !== undefined) seconds *= 0.5;
+  if (resistible) g.rootImmuneUntil = g.time + seconds + 2.5;
   g.rootT = Math.max(g.rootT, seconds);
   g.rootReason = reason;
   sfx.meeting();
@@ -194,6 +197,12 @@ export function bossStart(g: Game, a: Actor): void {
   sfx.bossRoar();
   sfx.setBoss(true);
   g.tip('boss');
+  g.markersIn = 0;
+}
+
+export function bossLeash(g: Game, a: Actor): void {
+  sfx.setBoss(false);
+  g.hud.toast(`${a.name} has gone back to their office. The fight is waiting for you there.`, 'info');
   g.markersIn = 0;
 }
 

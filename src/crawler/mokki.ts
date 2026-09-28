@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { type Interactable, type InteractKind, type Level, type Room, type Spawn, TILE } from './level';
@@ -53,7 +54,8 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
   const lam = (color: number, map: THREE.Texture | null = null, emissive = 0): THREE.MeshLambertMaterial =>
     new THREE.MeshLambertMaterial({ color, map, emissive });
   const box = (sx: number, sy: number, sz: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+    const rr = Math.min(0.06, Math.min(sx, sy, sz) * 0.2);
+    const m = new THREE.Mesh(rr < 0.005 ? new THREE.BoxGeometry(sx, sy, sz) : new RoundedBoxGeometry(sx, sy, sz, 2, rr), mat);
     m.position.set(x, y, z);
     return m;
   };
@@ -95,7 +97,8 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
   const stoneGeo: THREE.BufferGeometry[] = [];
   for (let x = 1; x < W - 1; x++) {
     if (!r.chance(0.5)) continue;
-    const g = new THREE.DodecahedronGeometry(r.range(0.3, 0.7));
+    const g = new THREE.DodecahedronGeometry(r.range(0.3, 0.7), 1);
+    g.scale(1.2, 0.6, 1);
     g.translate(cc(x) + r.range(-0.6, 0.6), 0.1, LAKE_ROW * TILE + r.range(-0.4, 0.3));
     stoneGeo.push(g);
   }
@@ -107,22 +110,35 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
   const birchGeo: THREE.BufferGeometry[] = [];
   const leafGeo: THREE.BufferGeometry[] = [];
   const addPine = (x: number, z: number, s: number): void => {
-    const t = new THREE.CylinderGeometry(0.18 * s, 0.25 * s, 1.6 * s, 6);
-    t.translate(x, 0.8 * s, z);
+    const t = new THREE.CylinderGeometry(0.14 * s, 0.26 * s, 2.2 * s, 10);
+    t.translate(x, 1.1 * s, z);
     trunkGeo.push(t);
-    for (let i = 0; i < 3; i++) {
-      const c = new THREE.ConeGeometry((1.6 - i * 0.4) * s, 2.0 * s, 7);
-      c.translate(x, (2.0 + i * 1.2) * s, z);
+    // Tiers of boughs, each a little lopsided (from the position: the plot's dice stay untouched).
+    const twist = Math.abs(Math.sin(x * 12.9898 + z * 78.233));
+    for (let i = 0; i < 4; i++) {
+      const c = new THREE.ConeGeometry((1.7 - i * 0.36) * s, 1.9 * s, 14, 1, true);
+      c.rotateY(twist * 6 + i);
+      c.translate(x + (i % 2 === 0 ? 0.06 : -0.06) * s * twist, (1.9 + i * 1.05) * s, z);
       pineGeo.push(c);
+      // Close the underside of each tier so the sun cannot see through it.
+      const base = new THREE.CircleGeometry((1.7 - i * 0.36) * s, 14);
+      base.rotateX(Math.PI / 2);
+      base.translate(x, (1.9 + i * 1.05) * s - 0.95 * s, z);
+      pineGeo.push(base);
     }
   };
   const addBirch = (x: number, z: number, s: number): void => {
-    const t = new THREE.CylinderGeometry(0.12 * s, 0.16 * s, 4 * s, 6);
-    t.translate(x, 2 * s, z);
+    const t = new THREE.CylinderGeometry(0.1 * s, 0.16 * s, 4.2 * s, 10);
+    t.translate(x, 2.1 * s, z);
     birchGeo.push(t);
-    const l = new THREE.IcosahedronGeometry(1.4 * s, 0);
-    l.translate(x, 4.4 * s, z);
-    leafGeo.push(l);
+    const twist = Math.abs(Math.sin(x * 4.1 + z * 9.7));
+    for (let k = 0; k < 4; k++) {
+      const a = k * 1.9 + twist * 5;
+      const l = new THREE.IcosahedronGeometry((0.9 + (k % 2) * 0.25) * s, 1);
+      l.scale(1, 0.85, 1);
+      l.translate(x + Math.sin(a) * 0.7 * s, (4.1 + (k % 3) * 0.5) * s, z + Math.cos(a) * 0.7 * s);
+      leafGeo.push(l);
+    }
   };
   // Forest beyond the edge, for the look of it.
   for (let i = 0; i < 160; i++) {
@@ -148,29 +164,86 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
     const bz = y0 * TILE;
     const bw = w * TILE;
     const bh = h * TILE;
-    const walls = box(bw, height, bh, lam(color, logs), bx + bw / 2, height / 2, bz + bh / 2);
+    // Log walls: round logs stacked, crossing and sticking out at the corners.
+    const logR = 0.16;
+    const logGeo: THREE.BufferGeometry[] = [];
+    const rows = Math.round(height / (logR * 1.7));
+    for (let k = 0; k < rows; k++) {
+      const y = logR + k * logR * 1.7;
+      const alongX = k % 2 === 0;
+      for (const side of [0, 1]) {
+        if (alongX) {
+          const lg = new THREE.CylinderGeometry(logR, logR, bw + 0.5, 10);
+          lg.rotateZ(Math.PI / 2);
+          lg.translate(bx + bw / 2, y, bz + logR + side * (bh - 2 * logR));
+          logGeo.push(lg);
+        } else {
+          const lg = new THREE.CylinderGeometry(logR, logR, bh + 0.5, 10);
+          lg.rotateX(Math.PI / 2);
+          lg.translate(bx + logR + side * (bw - 2 * logR), y + logR * 0.85, bz + bh / 2);
+          logGeo.push(lg);
+        }
+      }
+    }
+    const walls = new THREE.Mesh(mergeGeometries(logGeo), lam(color, logs));
+    for (const lg of logGeo) lg.dispose();
     g.add(walls);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(bw, bh) * 0.78, 1.8, 4), roofMat);
-    roof.rotation.y = Math.PI / 4;
-    roof.scale.set(bw / Math.max(bw, bh), 1, bh / Math.max(bw, bh));
-    roof.position.set(bx + bw / 2, height + 0.9, bz + bh / 2);
-    g.add(roof);
+    // Fill behind the logs so there is no daylight between them.
+    g.add(box(bw - 0.3, height, bh - 0.3, lam(new THREE.Color(color).multiplyScalar(0.7).getHex()), bx + bw / 2, height / 2, bz + bh / 2));
+    // A gable roof along the long side, with overhangs, and log gable ends.
+    const along = bw >= bh;
+    const span = along ? bh : bw;
+    const len = (along ? bw : bh) + 0.9;
+    const rise = Math.min(2.2, span * 0.42);
+    const slope = Math.atan2(rise, span / 2);
+    const slab = Math.hypot(rise, span / 2) + 0.45;
+    for (const side of [-1, 1]) {
+      const r0 = new THREE.Mesh(new RoundedBoxGeometry(along ? len : slab, 0.16, along ? slab : len, 2, 0.05), roofMat);
+      if (along) r0.rotateX(side * slope);
+      else r0.rotateZ(-side * slope);
+      const off = (Math.cos(slope) * slab) / 2 - 0.22;
+      r0.position.set(bx + bw / 2 + (along ? 0 : side * off), height + rise / 2 + 0.05, bz + bh / 2 + (along ? side * off : 0));
+      g.add(r0);
+    }
+    const tri = new THREE.Shape();
+    tri.moveTo(-span / 2, 0);
+    tri.lineTo(span / 2, 0);
+    tri.lineTo(0, rise);
+    tri.closePath();
+    for (const side of [0, 1]) {
+      const gable = new THREE.Mesh(new THREE.ExtrudeGeometry(tri, { depth: 0.2, bevelEnabled: false }), lam(color, logs));
+      if (along) {
+        gable.rotation.y = Math.PI / 2;
+        gable.position.set(bx + side * (bw - 0.2), height, bz + bh / 2);
+      } else {
+        gable.position.set(bx + bw / 2, height, bz + side * (bh - 0.2));
+      }
+      g.add(gable);
+    }
+    g.add(box(along ? len : 0.2, 0.2, along ? 0.2 : len, roofMat, bx + bw / 2, height + rise + 0.05, bz + bh / 2));
     for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) block(x, y, true);
     group.add(g);
     return g;
   };
   // The cottage, with a red door and a porch light.
-  const cottage = building(8, 6, 6, 4, 3.2, 0xb0703a);
-  cottage.add(box(1.0, 2.0, 0.08, lam(0x8a1c1c), cc(11), 1.0, 10 * TILE + 0.05));
+  const cottage = building(8, 6, 6, 4, 3.2, 0x9c6a42);
+  cottage.add(box(1.0, 2.0, 0.08, lam(0x8a1c1c), cc(11), 1.0, 10 * TILE + 0.1));
   const porch = new THREE.PointLight(0xffd9a0, 6, 10, 1.6);
   porch.position.set(cc(11), 2.6, 10 * TILE + 0.6);
   cottage.add(porch);
-  for (const wx of [9, 13]) cottage.add(box(0.9, 0.8, 0.06, lam(0xffe8a0, null, 0x886620), cc(wx), 1.6, 10 * TILE + 0.04));
+  for (const wx of [9, 13]) {
+    cottage.add(box(1.1, 1.0, 0.1, lam(0xf2efe6), cc(wx), 1.6, 10 * TILE + 0.06));
+    cottage.add(box(0.9, 0.8, 0.06, lam(0xffe8a0, null, 0x886620), cc(wx), 1.6, 10 * TILE + 0.1));
+    cottage.add(box(0.05, 0.8, 0.08, lam(0xf2efe6), cc(wx), 1.6, 10 * TILE + 0.13));
+    cottage.add(box(0.9, 0.05, 0.08, lam(0xf2efe6), cc(wx), 1.6, 10 * TILE + 0.13));
+  }
+  cottage.add(box(1.25, 2.25, 0.1, lam(0xf2efe6), cc(11), 1.1, 10 * TILE + 0.04));
   add('bed', 11, 10, cottage);
   // Stash: a chest on the porch.
   const chest = new THREE.Group();
   chest.add(box(1.0, 0.6, 0.6, lam(0x6a4020, planks), 0, 0.3, 0));
   chest.add(box(1.05, 0.08, 0.65, lam(0x3a2010), 0, 0.62, 0));
+  for (const x of [-0.35, 0.35]) chest.add(box(0.06, 0.66, 0.64, lam(0x555555), x, 0.33, 0));
   chest.position.set(cc(13) + 0.3, 0, cc(11));
   group.add(chest);
   block(13, 11);
@@ -179,7 +252,8 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
   // The sauna hut on the shore, chimney smoking.
   const sauna = building(22, 20, 3, 3, 2.6, 0x8a5a30);
   sauna.add(box(0.9, 1.9, 0.08, lam(0x5a3a1a), cc(23), 0.95, 20 * TILE - 0.05));
-  const chimney = box(0.4, 1.4, 0.4, lam(0x444444), cc(24), 3.6, cc(21));
+  const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 1.6, 12), new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.6, roughness: 0.5 }));
+  chimney.position.set(cc(24), 3.8, cc(21));
   sauna.add(chimney);
   const smoke = new THREE.Group();
   smoke.name = 'smoke';
@@ -194,15 +268,34 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
 
   // Laituri, with the avanto at the end.
   const dockMat = lam(0xa07a50, planks);
-  for (let y = LAKE_ROW - 1; y <= dockEnd; y++) group.add(box(TILE * 0.9, 0.2, TILE, dockMat, cc(dockX), 0.2, cc(y)));
+  for (let y = LAKE_ROW - 1; y <= dockEnd; y++) {
+    for (let k = 0; k < 4; k++) group.add(box(TILE * 0.95, 0.06, TILE / 4 - 0.05, dockMat, cc(dockX), 0.26, cc(y) - TILE / 2 + TILE / 8 + k * (TILE / 4)));
+    if ((y - LAKE_ROW) % 2 === 0) for (const side of [-1, 1]) group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.4, 10), dockMat).translateX(cc(dockX) + side * TILE * 0.45).translateY(-0.4).translateZ(cc(y)));
+  }
   const ladder = box(0.6, 0.8, 0.1, lam(0x888888), cc(dockX), 0.1, cc(LAKE_ROW + 5) + 1);
   group.add(ladder);
   add('lake', dockX, LAKE_ROW + 5, ladder);
 
   // Grill and the Saunatonttu's rune stone.
   const grill = new THREE.Group();
-  grill.add(box(0.9, 0.8, 0.6, lam(0x222222), 0, 0.4, 0));
-  grill.add(box(0.8, 0.05, 0.5, lam(0xff5a1a, null, 0xaa3300), 0, 0.82, 0));
+  const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.42, 18, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x1e1e1e, metalness: 0.6, roughness: 0.4, side: THREE.DoubleSide }));
+  bowl.position.y = 0.82;
+  grill.add(bowl);
+  for (let k = 0; k < 3; k++) {
+    const a = (k / 3) * Math.PI * 2;
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.85, 8), lam(0x333333));
+    leg.position.set(Math.sin(a) * 0.28, 0.42, Math.cos(a) * 0.28);
+    leg.rotation.set(Math.cos(a) * 0.18, 0, -Math.sin(a) * 0.18);
+    grill.add(leg);
+  }
+  const coals = new THREE.Mesh(new THREE.CircleGeometry(0.38, 18), lam(0xff5a1a, null, 0xaa3300));
+  coals.rotation.x = -Math.PI / 2;
+  coals.position.y = 0.8;
+  grill.add(coals);
+  const grate = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.012, 4, 24), lam(0x888888));
+  grate.rotation.x = Math.PI / 2;
+  grate.position.y = 0.84;
+  grill.add(grate);
   const glow = new THREE.PointLight(0xff7a2a, 3, 5, 2);
   glow.position.y = 1.2;
   grill.add(glow);
@@ -212,7 +305,7 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
   add('grill', 15, 14, grill);
 
   const stone = new THREE.Group();
-  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1.1, 0), lam(0x7d7d80));
+  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(1.1, 1), lam(0x7d7d80));
   rock.scale.set(0.8, 1.4, 0.6);
   rock.position.y = 1.1;
   stone.add(rock);
@@ -226,13 +319,20 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
 
   // The car, which is how Monday happens.
   const car = new THREE.Group();
-  car.add(box(4.0, 1.0, 1.9, lam(0xb03030), 0, 0.7, 0));
-  car.add(box(2.2, 0.8, 1.7, lam(0x223344), -0.2, 1.5, 0));
+  const paintMat = new THREE.MeshStandardMaterial({ color: 0xb03030, metalness: 0.5, roughness: 0.35 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x223344, metalness: 0.2, roughness: 0.1 });
+  car.add(new THREE.Mesh(new RoundedBoxGeometry(4.1, 0.85, 1.9, 3, 0.3), paintMat).translateY(0.72));
+  car.add(new THREE.Mesh(new RoundedBoxGeometry(2.6, 0.8, 1.75, 3, 0.28), paintMat).translateX(-0.35).translateY(1.4));
+  car.add(new THREE.Mesh(new RoundedBoxGeometry(2.5, 0.62, 1.8, 2, 0.2), glass).translateX(-0.35).translateY(1.43));
+  for (const x of [-2.03, 2.03]) for (const z of [-0.6, 0.6]) car.add(new THREE.Mesh(new THREE.CircleGeometry(0.12, 12), lam(x > 0 ? 0xfff6c0 : 0xff3030, null, x > 0 ? 0x999966 : 0x660000)).translateX(x).translateY(0.85).translateZ(z).rotateY(x > 0 ? Math.PI / 2 : -Math.PI / 2));
   for (const [x, z] of [[-1.3, 0.95], [1.3, 0.95], [-1.3, -0.95], [1.3, -0.95]] as const) {
-    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 12), lam(0x111111));
-    wheel.rotation.x = Math.PI / 2;
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.13, 10, 18), lam(0x111111));
     wheel.position.set(x, 0.4, z);
     car.add(wheel);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.2, 14), new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.8, roughness: 0.3 }));
+    hub.rotation.x = Math.PI / 2;
+    hub.position.set(x, 0.4, z);
+    car.add(hub);
   }
   car.position.set(cc(4) + 1, 0, cc(4));
   group.add(car);
@@ -393,9 +493,17 @@ function waterMaterial(): THREE.ShaderMaterial {
 /** Tufts of grass over the plot, swaying in a breeze off the lake. */
 function grassField(solid: Uint8Array, seed: number): THREE.InstancedMesh {
   const r = new Rng(seed ^ 0x9e37);
-  const blade = new THREE.PlaneGeometry(0.08, 0.5, 1, 3);
+  // A tuft: three tapered blades, leaning out a little, pointed at the tip.
+  const blade = new THREE.PlaneGeometry(0.09, 0.5, 1, 4);
   blade.translate(0, 0.25, 0);
-  const cross = mergeGeometries([blade, blade.clone().rotateY(Math.PI / 2)]);
+  const pos = blade.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    pos.setX(i, pos.getX(i) * (1 - (y / 0.5) * 0.92));
+    pos.setZ(i, (y / 0.5) * (y / 0.5) * 0.08);
+  }
+  blade.computeVertexNormals();
+  const cross = mergeGeometries([0, 1, 2].map((k) => blade.clone().rotateY((k * Math.PI * 2) / 3).translate(Math.sin(k * 2.1) * 0.03, 0, Math.cos(k * 2.1) * 0.03)));
   const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
   const time = { value: 0 };
   mat.onBeforeCompile = (shader): void => {

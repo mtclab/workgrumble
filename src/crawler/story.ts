@@ -297,11 +297,12 @@ export function talkHelper(h: StoryHost, a: Actor): DialogueNode {
   const note = h.teamNote(a);
   const treats = h.treatOptions(a);
   if (a.recruited) {
+    // "Carry on" first: a quick 1 should never give away somebody's White Monster.
     return { speaker: a.name, subtitle: note, text: a.morale < 35 ? 'Yeah? ...Sorry. Long day.' : 'Yeah?', options: [
+      { label: 'Carry on.', pick: () => null },
       ...treats,
       // They stay on the floor: colleagues, not summons.
       { label: 'Wait here. I have got this.', pick: () => { a.recruited = false; return said(a.name, 'Suit yourself. I will be here.', 'neutral'); } },
-      { label: 'Carry on.', pick: () => null },
     ] };
   }
   const it = h.save.standing.itcrowd;

@@ -1,6 +1,9 @@
+import { TICKETS } from './content/tickets';
 import { Game } from './game';
+import { rest } from './hosts';
 import { findPrompt, interact } from './interact';
 import { offerStaffing } from './questing';
+import { currentObjective, type QuestState } from './quests';
 import { requestMentoring } from './teamwork';
 
 const mount = document.getElementById('crawler');
@@ -16,6 +19,9 @@ try {
     interact: (): void => interact(game),
     staff: (by: string, id?: string): boolean => offerStaffing(game, by, id),
     mentor: (id?: string): boolean => requestMentoring(game, id),
+    fixesFor: (t: number): readonly string[] => TICKETS[t]?.fixes ?? [],
+    objective: (st: QuestState) => currentObjective(st),
+    rest: (): void => rest(game, true),
   };
 } catch (err) {
   mount.innerHTML = '<div class="screen" style="display:flex"><div class="title-logo small dead">BSOD</div>'

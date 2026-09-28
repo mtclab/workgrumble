@@ -293,7 +293,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
   .hud-cell { min-width: 0; padding: 6px 10px; }
   .hud-big { font-size: 24px; }
 }
-@media (max-width: 1000px) {
+@media (max-width: 1100px) {
+  .hud-cell-weapon { width: 126px; }
+  .hud-cell-magic { width: 132px; }
+  .hud-cell-bac, .hud-cell-caff { width: 102px; }
+  .hud-cell-level { width: 148px; }
+  .hud-cell-face { min-width: 80px; }
+  .hud-big { font-size: 21px; }
+}
+@media (max-width: 820px) {
   .hud-bar { height: auto; min-height: 92px; flex-wrap: wrap; }
   .hud-tip { bottom: 200px; }
 }
