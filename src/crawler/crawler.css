@@ -56,15 +56,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .hud-toast-bad { border-left-color: var(--hud-sanity); }
 .hud-toast-epic { border-left-color: var(--hud-gold); font-size: 17px; font-weight: bold; color: var(--hud-gold); }
 .hud-toast.is-fading { opacity: 0; }
-.hud-boss { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); width: min(620px, 70vw); display: none; text-align: center; }
+.hud-boss { position: absolute; left: 50%; top: 46px; transform: translateX(-50%); width: min(620px, 70vw); display: none; text-align: center; }
 .hud-boss-name { font: bold 15px Tahoma, sans-serif; text-shadow: 0 0 4px #000; color: #ffb0b0; margin-bottom: 3px; }
 .hud-boss-track { height: 14px; background: #300; border: 2px solid #822; }
 .hud-boss-fill { height: 100%; background: linear-gradient(#ff5a4a, #b0201a); transition: width 0.15s; }
 
 .hud-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 104px; display: flex; justify-content: center; gap: 0; background: linear-gradient(#57524a, #3c3832); border-top: 3px solid #8d8779; box-shadow: inset 0 2px 0 #9d9789; }
-.hud-cell { min-width: 150px; padding: 8px 14px; border-right: 2px solid #2a2722; border-left: 2px solid #6d675b; display: flex; flex-direction: column; justify-content: center; }
-.hud-cell-weapon { min-width: 230px; }
-.hud-cell-level { min-width: 250px; }
+.hud-cell { min-width: 110px; padding: 8px 12px; border-right: 2px solid #2a2722; border-left: 2px solid #6d675b; display: flex; flex-direction: column; justify-content: center; }
+.hud-cell-weapon { min-width: 0; }
+.hud-cell-level { min-width: 0; }
 .hud-cell-face { min-width: 104px; align-items: center; background: #2a2722; }
 .hud-face { width: 88px; height: 88px; image-rendering: pixelated; border: 2px solid #1a1814; }
 .hud-label { font: bold 11px monospace; color: #b8b0a0; letter-spacing: 2px; }
@@ -227,7 +227,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .compass-marker.is-pinned { opacity: 0.6; }
 .hud-tip { position: absolute; left: 12px; bottom: 118px; max-width: min(420px, 60vw); background: rgba(16, 40, 36, 0.92); border: 1px solid #3aa295; border-left: 4px solid #3aa295; padding: 8px 12px; font-size: 13px; line-height: 1.45; opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s; pointer-events: none; }
 .hud-tip.is-on { opacity: 1; transform: none; }
-.hud-card { position: absolute; left: 50%; top: 28%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; opacity: 0; }
+.hud-card { position: absolute; left: 50%; top: 64%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; opacity: 0; }
 .hud-card.is-on { animation: card-in 3.6s ease-out forwards; }
 @keyframes card-in { 0% { opacity: 0; letter-spacing: 12px; } 12% { opacity: 1; letter-spacing: 3px; } 80% { opacity: 1; } 100% { opacity: 0; } }
 .hud-card-title { font: 900 clamp(28px, 5vw, 56px) Impact, "Arial Black", sans-serif; color: #ff5a4a; letter-spacing: 3px; text-shadow: 3px 3px 0 #000, 0 0 24px rgba(255,90,74,0.6); }
@@ -242,8 +242,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .hud-caff-zone { position: absolute; top: 0; bottom: 0; background: rgba(125, 255, 154, 0.35); }
 .hud-fill-caff { position: relative; background: linear-gradient(90deg, #c9f27a, #f2d024 50%, #ff5a3a); }
 .hud-boss.is-phase2 .hud-boss-fill { background: linear-gradient(90deg, #ff2a2a, #ff8a3a); animation: pulse 0.5s infinite alternate; }
-.rarity-common { color: #d8d0c0; }
-.rarity-fine { color: #3f9f55; }
+.rarity-common { color: #3a3a3a; }
+.rarity-fine { color: #1f7a36; }
 .rarity-rare { color: #2f6fbf; }
 .rarity-legendary { color: #c96a00; }
 .os-item .os-affix { font-size: 11px; color: #1c665e; margin: 1px 0; }
@@ -271,10 +271,20 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .os-help kbd { display: inline-block; min-width: 18px; padding: 0 4px; border: 1px solid #888; border-bottom-width: 2px; border-radius: 3px; background: #f4f4f4; font: bold 11px monospace; text-align: center; }
 .os-help table { border-collapse: collapse; }
 .os-help td { padding: 2px 8px 2px 0; vertical-align: top; }
-@media (max-width: 1280px) {
-  .hud-bar { height: auto; min-height: 92px; flex-wrap: wrap; }
+/* Eight cells have to share the bar: fixed, modest widths that shrink before they wrap. */
+.hud-cell { flex: 0 1 auto; overflow: hidden; }
+.hud-cell .hud-small, .hud-cell .hud-big { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-cell-weapon { width: 160px; }
+.hud-cell-magic { width: 170px; min-width: 0; }
+.hud-cell-bac, .hud-cell-caff { width: 124px; min-width: 0; }
+.hud-cell-level { width: 200px; }
+@media (max-width: 1400px) {
   .hud-cell { min-width: 0; padding: 6px 10px; }
-  .hud-cell-magic, .hud-cell-bac, .hud-cell-caff { min-width: 120px; }
+  .hud-big { font-size: 24px; }
+}
+@media (max-width: 1000px) {
+  .hud-bar { height: auto; min-height: 92px; flex-wrap: wrap; }
+  .hud-tip { bottom: 200px; }
 }
 @media (max-width: 900px) {
   .hud-cell { min-width: 0; padding: 6px 8px; }

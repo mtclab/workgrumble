@@ -8,6 +8,7 @@ import {
   type HazardKind,
   hurtActor,
   type ProjectileKind,
+  stun,
   type ProjectileSpec,
   say,
 } from './entities';
@@ -189,14 +190,14 @@ export function strike(g: Game, a: Actor, base: number, knock: THREE.Vector3 | n
   // Legendary specials.
   if (kind === 'melee') {
     if (d.specials.has('rubberStamp')) {
-      a.stunned = Math.max(a.stunned, 0.8);
+      stun(a, 0.8);
       floatText(g, a.pos.clone().setY(3.1), 'APPROVED', '#ff5050');
     }
     if (d.specials.has('whisk')) {
       s.sanity = Math.min(d.maxSanity, s.sanity + 2);
       s.loyly = Math.min(d.maxLoyly, s.loyly + 2);
     }
-    if (perk(s, 'cablemgmt') > 0 || power) a.stunned = Math.max(a.stunned, power ? 0.6 : 0.3);
+    if (perk(s, 'cablemgmt') > 0 || power) stun(a, power ? 0.6 : 0.3);
   }
   if (kind === 'ranged' && d.specials.has('redPen') && a.memo.marked !== true) {
     a.memo.marked = true;
@@ -368,7 +369,7 @@ export function shove(g: Game): void {
     if (dist > 2.6) continue;
     if ((dx * fwd.x + dz * fwd.z) / Math.max(dist, 1e-4) < 0.3) continue;
     a.push.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(11));
-    a.stunned = 0.5;
+    stun(a, 0.5);
     a.cooldown = Math.max(a.cooldown, 0.8);
     a.aggro = true;
   }
@@ -466,7 +467,7 @@ export function updateProjectiles(g: Game, dt: number): void {
         const dz = pos.z - a.pos.z;
         if (dx * dx + dz * dz < (a.radius + 0.25) ** 2 && pos.y < h) {
           p.hitIds.add(a.id);
-          if (p.kind === 'stun') a.stunned = 2.2;
+          if (p.kind === 'stun') stun(a, 2.2);
           const knock = p.vel.clone().setY(0).normalize().multiplyScalar(p.kind === 'duck' ? 4 : 1.5);
           if (p.kind === 'salmiakki') {
             a.poisonT = 6;
@@ -564,7 +565,7 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
         sfx.parry();
         floatText(g, g.player.pos.clone().setY(2.3), 'PARRY', '#7dffea');
         if (Math.hypot(dx, dz) < 3.5 && from.kind !== 'boss') {
-          from.stunned = Math.max(from.stunned, 1.2);
+          stun(from, 1.2);
           from.push.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(6));
         }
         g.exercise('sisu', 1);

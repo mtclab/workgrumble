@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { sfx } from './audio';
 import { fxBall, fxRing, muzzle, aimPoint, steamBurst, strike } from './combat';
-import { type Actor, say } from './entities';
+import { type Actor, say, stun } from './entities';
 import type { Game } from './game';
 import { lineOfSight, toCell } from './level';
 import { castChance, spellById } from './magic';
@@ -62,7 +62,7 @@ export function castSpell(g: Game): void {
       steamBurst(g, pp.clone(), 5);
       for (const a of near(5.5)) {
         strike(g, a, 28 + skill(s, 'runecraft') * 0.8, new THREE.Vector3(a.pos.x - pp.x, 0, a.pos.z - pp.z).normalize().multiplyScalar(6), 'spell');
-        a.stunned = Math.max(a.stunned, 1);
+        stun(a, 1);
       }
       break;
     case 'vihta': {
@@ -189,7 +189,7 @@ export function domainAbility(g: Game): void {
       sfx.meeting();
       fxRing(g, pp.clone().setY(1), 0x8080ff, 9);
       for (const a of g.actors) {
-        if (a.hostile && !a.resolved && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < 9) a.stunned = 3 * power;
+        if (a.hostile && !a.resolved && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < 9) stun(a, 3 * power);
       }
       g.hud.toast('LOCKDOWN.', 'epic');
       break;

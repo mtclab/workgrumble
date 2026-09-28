@@ -4,133 +4,195 @@ An IT-career role-playing game built on the office sim's world. Doom's pace
 and face-in-the-status-bar; old-Elder-Scrolls rules (skills that rise by use,
 a level you earn by resting, persuasion checks with the odds printed,
 standing with factions, crime with witnesses, choices that come due later);
-Finnish sauna magic and a mökki to spend every weekend at. Every ticket in it
-is a real ticket from `src/world/tickets`.
+Skyrim-shaped perk trees; loot with rarity; Finnish sauna magic; and a mökki
+you build up, weekend by weekend. Every ticket in it is a real ticket from
+`src/world/tickets`.
 
 Play it: `npm run dev`, then open `/crawler.html`. It ships in the same
 `vite build` as the office sim (a second page), behind the same Worker door.
 
 ## The loop
 
-One floor of Workgrumble Ltd is one work week. Resolve the floor's boss in
-the corner office, take the lift, and it is Friday: you drive to the **mökki**
-for the weekend (salary, performance review, sauna, lake, grill, sleep, the
-Saunatonttu), then drive back on Monday to the next floor. Beat the CEO on
-floor 4 and you get one of several endings, then Overtime (endless floors).
+One floor of Workgrumble Ltd is one work week. Work the floor (your ticket
+queue at any computer, the people who bring their problems to you in person,
+the quests people hand you), resolve the boss in the corner office, take the
+lift, and it is Friday: you drive to the **mökki** (salary, HR, the
+performance review, sauna, lake, grill, fishing, sleep and level-up, the
+upgrade board, the Saunatonttu). On Monday you drive back to the next floor.
+Floor 4 ends the story (one of eight endings); after it comes Overtime:
+endless floors, stronger every loop.
+
+## Difficulty: three dials
+
+- **The career ladder (12 rungs).** IT Trainee → Junior Helpdesk Analyst →
+  Helpdesk Analyst → Senior Helpdesk Analyst → *choose a domain (Systems,
+  Network, Cloud, Security, Database) and a track (Operations Specialist or
+  Engineer)* → Junior … → {Domain} {Track} → Senior … → Lead … → Principal …
+  → Associate Architect → *choose Solutions, Enterprise or {Domain}
+  Architect* → Senior Architect. Each rung multiplies enemy strength (×0.55 up
+  to ×2.15) and salary. You can be hired at any rung (with the experience
+  that implies). Every Friday Derek phones with a performance review:
+  promotion needs Management standing, top skills and level, and you may
+  always decline. Warnings can demote you; a trainee with three is fired.
+- **The employer.** Four-Day Week (gentle), Standard, Crunch Time, Death
+  March: enemy strength, SLA clocks, pay and what a burnout costs.
+- **Ironman.** One autosave, no quicksave or loading; a burnout ends the
+  career.
+
+Tracks and paths change how you play: Operations Specialists get longer
+SLAs, a bigger queue and better healing; Engineers more damage and ammo.
+Solutions Architects talk (+20 persuasion, desk Rep), Enterprise Architects
+get double Management standing and half the manager auras, Domain Architects
+recharge their domain ability (G: Hard Reboot, Ping Sweep, Autoscale,
+Lockdown, Rollback) twice as fast and hit twice as hard.
 
 ## Character
 
-**New starter form**: name, background, star sign, and the title you are
-hired at.
+**New starter form**: name, background (six), star sign (six), the rung you
+are hired at, domain/track/architect path if the rung calls for it, the
+employer, Ironman.
 
-- **Backgrounds** (CS graduate, forum legend, ex-hospitality, ex-army
-  signals, nepotism hire, Finnish exchange worker) set attributes, three
-  *major* skills (learned 50% faster), and sometimes starting runes, drinks,
-  paperclips or standing.
-- **Signs** (Patch Tuesday, The Friday Deploy, The Leap Second, Juhannus,
-  The Year-End Freeze, The Blue Screen) are birthsigns with a trade-off.
 - **Attributes**: Grit, Reflex, Tech, Charm, Patience, Liver.
 - **Skills rise by use** (Morrowind): Hardware (melee), Scripting (ranged),
   Troubleshooting (terminal fixes, talking users through fixes), Soft Skills
-  (persuasion), Sisu (damage reduction, rises as you get hurt), Hiding in
-  Plain Sight (sneaking, sneak attacks), Security (lockpicking), Drinking
-  (tolerance), Mökki Magic (casting), Athletics (sprinting).
-- **Levelling**: every 8 skill increases, you can level - but only by resting
-  (T in the office, or the mökki bed). You raise two attributes, each by
-  ×1-×5 depending on how many increases its governed skills earned, and get
-  a perk point.
+  (persuasion), Sisu (rises as you get hurt), Hiding in Plain Sight
+  (sneaking), Security (lockpicking), Drinking (tolerance), Mökki Magic
+  (casting), Athletics. Skill books (found, and one a weekend from the
+  reading nook) and the Saunatonttu add a point directly.
+- **Levelling**: every 8 skill increases, rest (T, or the mökki bed) to
+  level: raise two attributes by ×1-×5 depending on the skills that rose,
+  Patience +1, and a perk point.
+- **Perk trees** (Tab → Character): a General tree plus four perks for each
+  skill, many with ranks, each rank gated by the skill's level - Percussive
+  Maintenance, Batch Job, Root Cause, Executive Presence, Unbreakable, Ghost
+  Mode, Master Key, Iron Liver, Kalevala, Marathon, and forty more.
 
-## The career ladder is the difficulty
+## Combat
 
-IT Trainee → Helpdesk Analyst → Senior Helpdesk Analyst → **choose a domain
-(Systems, Network, Cloud, Security, Database) and a track (Operations
-Specialist or Engineer)** → Senior … → Lead … → Principal … → {Domain}
-Architect → Senior Architect. Each rung multiplies enemy strength (×0.65 up
-to ×2.05) and salary. You can be hired at any rung, and every Friday Derek
-phones with a performance review: promotion needs Management standing, skill
-and level, and you may always decline. Warnings can demote you; three
-warnings at trainee level and you are fired.
+LMB swings or fires your tool; **hold LMB with a melee tool to wind up a
+heavy swing** (more damage and knockback, a stagger, costs energy). **Hold
+RMB to block** (frontal hits, costs energy, slows you); **block just as a
+hit lands to parry** (no damage, the attacker is staggered); tap RMB to
+shove. Hits land with a hit-stop. Sneak attacks on anyone who has not
+noticed you do ×2 and up.
 
-- **Operations Specialist**: longer SLA clocks, bigger queue, better healing,
-  more Rep per desk fix.
-- **Engineer**: more tool and spell damage, double ammo pickups.
-- **Domain ability (G)**: Hard Reboot (shockwave), Ping Sweep (reveal and
-  slow the whole floor), Autoscale (two clone helpers), Lockdown (stun
-  everyone nearby), Rollback (restore position and sanity from 6 seconds ago).
+**The people** (every one of them can be talked to first - E):
 
-## People and choices
+| Who | What they do |
+|---|---|
+| Users, callers, customers | Throw their real tickets at you (it joins your queue) or come at you in person. Gold customers pay and hurt more. |
+| Managers | Slow you with an aura, send meeting invites (rooted), give you action items (6 kg each), summon their team. |
+| Consultants (floor 2+) | A shield aura: everyone near them takes half damage. Take the consultant out first. |
+| Shadow IT (floor 3+) | Blinks away when hurt, deploys unsanctioned turrets. |
+| Vendors (floor 2+) | Rush you and bill you: steal Rep. Resolve them to get it back. |
+| Chatbots (floor 1+) | Slow bubbles of "14 suggested articles". |
+| Reply-All storms, paper jams, mosquitoes | Swarms. |
+| **Elites (★)** | Relentless, Tenured, VIP, CC-Everyone, Escalating or Passive-Aggressive: tougher, one trick each, much better loot. |
+| **Bosses** | Derek, Karen, Gordon, The Auditor, Sir Reginald Workgrumble. A title card, boss music, patterns, and at half health **phase two**: hazard zones on the carpet (meetings, fires, freezes, spilt executive espresso). Stuns only stagger them. |
 
-- **Talk before you staple.** Walk up to an angry user and press E:
-  walk them through their ticket's real fix (Troubleshooting), ask them to
-  raise a ticket (Soft Skills), intimidate them (Hardware), bribe them with a
-  biscuit or a service credit, or, if you are drunk enough, try to get a
-  kebab with them. Every option shows its odds; failure enrages them.
-- **Managers** can be met in a meeting (you are rooted, Management likes it),
-  deflected, delegated to a helper, or pitched for a promotion.
-- **Factions**: the Staff, Management, the Kitchen Cabinet (office ladies)
-  and the IT Crowd. Stapling users pleases Management and annoys the Staff;
-  desk fixes please both; SLA breaches cost both. Standing sets prices,
-  helper loyalty, how hard users hit, whether some users will not bother you
-  at all, heal sizes, and promotions.
-- **One story per floor, with delayed consequences**: covering for Marcus's
-  stopped backups (an audit finding), a "CFO" demanding an MFA reset (skip the
-  check and the next floors get a phishing wave), admin rights for Sales
-  (malware later), the Auditor's liaison offering to doctor the logs (or
-  whistleblow), and the CEO's PA with an NDA (the Company Man ending).
-  **Audit findings** make The Auditor boss tougher and more numerous.
-- **HR**: witnessed theft, blackouts and being caught drunk earn warnings;
-  three means a disciplinary hearing (demotion, a fine, or talk your way out).
-- **Endings**: the Farm, the Distillery, the Whistleblower, the Architect
-  Retires, Adopted by the Kitchen, the Company Man.
+Office ladies heal you (if you are sober enough and the Kitchen likes you);
+sysadmins, security guards and interns can be recruited; Musti the
+Lapphund, once you have him, comes to work and bites managers.
 
-## The tightrope (drink)
+## Loot
 
-BAC is shown in promille. Drinks are Finnish (keskari, lonkero, Koskenkorva,
-Salmiakki Koskenkorva, sahti) and never sold by Internal IT; they come from
-loot, the office fridge (theft, if anyone sees), Jukka from Finance, and the
-mökki cool box.
+Gear drops as instances with a rarity: **Common**, **Fine** (1 affix),
+**Rare** (2 affixes) and **Legendary** (named, with a special: Milton's Red
+Swingline pierces, Derek's Lanyard makes action items weightless, Karen's
+Gold Card triples gold tickets, Gordon's APPROVED stamp roots, the Auditor's
+Red Pen marks, Sir Reginald's hat keeps managers docile, the Nokia 3310
+survives a burnout once a floor, the Koskenkorva Flask widens the Ballmer
+Peak, and four more). Each boss carries its legendary; the rest turn up in
+supply closets and on elites. Internal IT sells plain kit and buys anything
+back.
 
-- **Tipsy**: a little more damage and persuasion, sanity regen.
-- **Ballmer Peak** (a narrow window, marked on the meter): more damage, more
-  persuasion, and terminals strike a wrong fix off every ticket.
-- **Merry**: aim sway, spells fail more, office ladies halve their help,
-  managers can smell it.
-- **Hammered**: heavy sway, stumbling, the terminal text swims, healers
-  refuse you.
-- **Blackout**: you wake up somewhere with less Rep, a warning and an
-  anecdote.
-- Afterwards: **hangover** (less max sanity, slower, take more damage) and
-  **dependency** - high dependency means drinks heal more but being sober
-  gives you the shakes. **Empties** are evidence that weighs 0.3 kg each;
-  return them to a bottle machine (pantti) before a manager notices. Sauna,
-  coffee, the lake and the Avanto rune all sober you up.
+## Quests
+
+- **Project Phoenix** (the main story): a chapter per floor, with evidence
+  to find (a server room, an office, a hard lock, a boss's pockets). Carry
+  three pieces and the Auditor would rather talk than fight, and Sir
+  Reginald's PA listens to you differently (expose it: the Whistleblower;
+  sell it: the Golden Parachute).
+- **Side quests** from people with a "!" over their head: Milton's red
+  stapler, Brenda's mug, the printer exorcism, the password sweep, escorting
+  Josh the intern to Internal IT, the Reply-All apocalypse, the phishing
+  test, who drank Jukka's lonkero, the ticket sprint. Several end in a
+  choice. "?" means go back to them.
+- **One story per floor, with delayed consequences**: Marcus's stopped
+  backups, the "CFO" demanding an MFA reset, admin rights for Sales, the
+  Auditor's liaison offering to doctor the logs, the CEO's PA. Audit
+  findings make the Auditor tougher.
+- **Mail tasks** at any computer, for a Rep bonus.
+
+The compass (top of the screen), the minimap and the automap (M) show quest
+markers; the journal (J, or at any computer) keeps the story.
+
+## The two tightropes
+
+**Drink.** BAC in promille. Finnish drinks (keskari, lonkero, Koskenkorva,
+Salmari, sahti), never sold by Internal IT. Tipsy → **Ballmer Peak** (a
+narrow window: damage, persuasion, and terminals strike a wrong fix) →
+Merry (sway, managers can smell it) → Hammered (stumbling, swimming text,
+healers refuse you) → Blackout (you wake somewhere with less Rep, a warning
+and an anecdote). Then the hangover, dependency and the shakes. Empties are
+evidence (0.3 kg each): return them to a pantti machine.
+
+**Caffeine.** Milligrams, with tolerance that builds over the week and
+drains at weekends. Alert → **WIRED** (the green zone: faster feet and
+hands) → Jittery (aim shakes, sanity frays) → Palpitations (sanity drains
+fast; push further and you end up sitting on the carpet counting
+heartbeats). Every big high ends in a **crash** unless you drink through it
+- which is how it gets you. Wired enough, managers struggle to smell the
+drink. The cans: filter coffee, espresso, Euroshopper, Red Bull (wings:
+jump higher), Battery, Battery No Calories, Monster, Pipeline Punch, NOCCO
+(+20% melee), Celsius (energy regen), Grumble Energy, the Kraken litre, the
+Vodka Battery - and **the White Monster**: never sold, rarely found (bosses,
+elites, the odd closet, a 1.5% vending jackpot), and 45 seconds
+**ASCENDED**: +40% damage, +30% speed, faster hands, free sprinting,
+sanity regen, immune to meetings and to the jitters.
 
 ## Mökki magic
 
 **Löyly** is your mana, restored by saunas (office saunas on most floors,
-the real one at the mökki) and Salmiakki Koskenkorva. Runes are learned from
-the **Saunatonttu** for Rep, or from rune stones in supply closets; casting
-can fail (Mökki Magic skill, Tech, Liver, and drink all count): Löylyhenki
-(steam burst), Vihtaisku (birch-whisk lifesteal), Salmiakkikirous (poison),
-Sisu (half damage, cannot drop below 1), Avanto (freeze nova that also
-sobers you), Hiljaisuus (invisibility), Mökkimerkki/Kotiinpaluu (Mark and
-Recall), Väinämöisen laulu (everyone nearby forgets their problem), and
-Tontun kutsu (summon the sauna elf). Sauna straight into the lake at the
-mökki blesses the whole next floor.
+the real one at the mökki) and Salmari. Runes are learned from the
+**Saunatonttu** or rune stones; casting can fail: Löylyhenki (steam burst),
+Vihtaisku (lifesteal), Salmiakkikirous (poison), Sisu, Avanto (freeze nova
+that sobers you), Hiljaisuus (invisibility), Mark and Recall, Väinämöisen
+laulu (everyone nearby forgets their problem), Tontun kutsu (summon the
+elf). Sauna straight into the lake blesses the whole next floor.
+
+## The mökki
+
+Spend Rep on the upgrade board and the plot changes: a wood shed (two
+saunas a weekend, double grill), a smoke sauna (+Löyly, blessed without the
+lake), a longer laituri and a boat (fishing: muikku, ahven, the legendary
+hauki, or a boot), a potato patch, a palju (+15% max sanity for the week), a
+guest room (an office lady visits with cake and gossip), Musti the dog, a
+rune garden (runes half price), a satellite dish (a terminal in the
+cottage), and a reading nook (a skill book every weekend).
 
 ## Stealth and crime
 
-C to sneak: slower and harder to notice, and hits on anyone who has not
-noticed you are sneak attacks (×2 and up). Supply closets are locked:
-paperclips and a timing minigame (Security vs the lock), with runes, drinks,
-gear and Rep inside. Doing it in front of someone costs you.
+C to sneak. Supply closets are locked: paperclips and a timing minigame
+(Security vs the lock), with runes, drinks, books, gear, quest items and
+Rep inside. The office fridge is always Jukka's. Doing any of it in front of
+someone earns an HR warning.
+
+## Saves and options
+
+An autosave, a quicksave (F5, F9 to load) and three slots, all in this
+browser. v2 saves are migrated. Options (Tab → Settings, or the pause menu):
+first/third person, field of view, sensitivity, invert Y, render scale,
+bloom, quality (lights), screen shake, damage numbers, tips, compass, music
+and effects volume, autosave.
 
 ## Controls
 
-WASD move · Mouse look · LMB tool · RMB shove · Shift sprint · Space jump ·
-E interact / talk · F cast · X next rune · G domain ability · C sneak ·
-T rest · Q quick-use supplies · 1-9 / wheel tools · V first/third person ·
-Tab backpack & character sheet · M automap · Esc pause.
+WASD move · Mouse look · LMB tool (hold: heavy swing) · RMB block (tap:
+shove) · Shift sprint · Space jump · E use / talk · F cast · X next rune ·
+G domain ability · C sneak · T rest · Q quick supplies · 1-9 / wheel tools ·
+V first/third person · Tab backpack · J journal · M map · F5/F9 quicksave /
+quickload · Esc pause.
 
 ## Code
 
@@ -139,21 +201,34 @@ runtime:
 
 | File | Role |
 |---|---|
-| `rpg.ts` | Pure rules: attributes, skills, careers and difficulty, factions, persuasion odds, inebriation bands, endings. |
-| `state.ts` | The save (localStorage), derived stats, use-based skill progress, level-up. |
-| `story.ts` | Every conversation: talk-downs, managers, office ladies, helpers, the Saunatonttu, the per-floor stories, HR, reviews, level-up. |
-| `dialogue.ts` | The conversation window and the lockpicking minigame. |
-| `chargen.ts` | The new starter form. |
-| `magic.ts` | Runes and cast chance. |
-| `mokki.ts` | The weekend cottage, built as a Level. |
+| `rpg.ts` | Pure rules: attributes, skills, the 12-rung ladder, workplaces, factions, persuasion odds, inebriation bands, endings. |
+| `caffeine.ts` | The caffeine bands, decay, tolerance and crash. |
+| `perks.ts` | The perk trees. |
+| `loot.ts`, `books.ts` | Rarity, affixes, legendaries, skill books. |
+| `quests.ts` | Side quests, Project Phoenix, quest stages and turn-in dialogue. |
+| `upgrades.ts` | Mökki upgrades, fish, achievements, tips. |
+| `state.ts` | The save (v3), migration from v2, derived stats, skills and level-up. |
+| `saves.ts`, `settings.ts` | Save slots; global options. |
+| `story.ts` | Every other conversation: talk-downs, managers, office ladies, helpers, the Saunatonttu, the per-floor stories, the Auditor, HR, reviews, level-up. |
+| `game.ts` | The Game: world loading, the loop, saves, settings, and the host interfaces the rest call into. |
+| `combat.ts` | Attacks (heavy, block, parry), projectiles, damage both ways, resolving people, loot on the floor, hazards, effects. |
+| `vices.ts` | Drink and caffeine ticks, timed can buffs, blackouts. |
+| `spells.ts` | Runes and domain abilities. |
+| `interact.ts` | Everything E does, the upgrade board, fishing, lockers, the fridge. |
+| `questing.ts` | Puts quests into the world: evidence, givers, markers, events. |
+| `desk.ts` | The ticket queue and mail tasks. |
+| `hosts.ts` | Shop, inventory, perks, rest, deals, the small world effects. |
+| `screens.ts` | Title, load and save menus, pause, burnout, endings, lifts. |
+| `level.ts`, `mokki.ts` | Seeded floors and the cottage plot (grid collision, line of sight, flow fields). |
+| `entities.ts` | Every NPC: stats, elites, AI, boss patterns and phases. |
+| `os.ts` | WorkgrumbleOS: tickets, mail, KB, Internal IT (buy/sell), inventory, character and perks, HR, journal, achievements, settings, help. |
+| `hud.ts`, `compass.ts`, `player.ts`, `characters.ts`, `meshes.ts` | Status bar and maps; compass; camera rigs; the soft-voxel people; the dog, turrets, chatbots and mökki buildings. |
+| `dialogue.ts`, `minigames.ts`, `chargen.ts` | Conversations and lockpicking; fishing; the new starter form. |
+| `items.ts`, `audio.ts`, `textures.ts` | Item tables; synthesised sound (music and effects buses, ambience); canvas-painted textures (no asset files). |
 | `content/tickets.ts` | GENERATED by `node scripts/crawler-content.mjs` from `src/world/tickets` + `src/world/kb`. |
-| `level.ts` | Seeded floors (rooms, corridors, props, saunas, closets), grid collision, line of sight, flow-field navigation. |
-| `entities.ts` | Every NPC: stats, AI, boss patterns, faction-aware behaviour. |
-| `game.ts` | The loop, combat, spells, vices, interaction, floors, screens. |
-| `os.ts` | WorkgrumbleOS: tickets, mail, KB, Internal IT, character sheet, HR portal, journal. |
-| `hud.ts`, `player.ts`, `characters.ts` | Status bar and maps; camera rigs; the soft-voxel people with pixel faces. |
-| `items.ts`, `audio.ts`, `textures.ts` | Gear tables; synthesised sound; canvas-painted textures (no asset files). |
 
-`crawler.test.ts` proves 150 generated floors and the mökki are fully
-connected with every interactable reachable, and covers the skill/level,
-career, persuasion, inebriation, encumbrance and ending rules.
+`crawler.test.ts` proves 150 generated floors and the mökki (bare and fully
+built) are connected with every interactable and spawn reachable and no
+machine made walk-through, and covers the skill/level, perk, career,
+workplace, save-migration, persuasion, inebriation, caffeine, White Monster,
+loot, quest and ending rules.

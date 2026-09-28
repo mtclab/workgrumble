@@ -179,6 +179,8 @@ export interface Actor {
   /** Inside a consultant's aura this frame: takes half damage. */
   shielded: boolean;
   stunned: number;
+  /** Bosses shrug off stuns for a while after one lands. */
+  stunImmune: number;
   slowT: number;
   poisonT: number;
   poisonDps: number;
@@ -564,7 +566,7 @@ export function createActor(
     if (role === null) role = r.pick(['sysadmin', 'sysadmin', 'security', 'intern'] as const);
     name = opts.npc?.name ?? (role === 'sysadmin'
       ? r.pick(['Dave (Senior Sysadmin)', 'Old Bob (Mainframe)', 'Priya (Network Eng.)'])
-      : role === 'security' ? 'Gary (Security)'
+      : role === 'security' ? r.pick(['Sunil (Security)', 'Bev (Security)'])
         : role === 'clone' ? 'Pat (autoscaled instance)'
           : role === 'spirit' ? 'Saunatonttu (summoned)'
             : role === 'dog' ? 'Musti' : r.pick(['Josh (Intern)', 'Ellie (Intern)']));
@@ -660,6 +662,7 @@ export function createActor(
     stolen: 0,
     shielded: false,
     stunned: 0,
+    stunImmune: 0,
     slowT: 0,
     poisonT: 0,
     poisonDps: 0,
@@ -857,6 +860,7 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
   if (a.marker !== null) a.marker.position.y = markerHeight(a) + Math.sin(ctx.time * 3) * 0.08;
   a.attackAnim = Math.max(0, a.attackAnim - dt * 3);
   a.slowT = Math.max(0, a.slowT - dt);
+  a.stunImmune = Math.max(0, a.stunImmune - dt);
   if (!(a.elite === 'escalating' && a.hp < a.maxHp * 0.5)) a.enragedT = Math.max(0, a.enragedT - dt);
   a.revealT = Math.max(0, a.revealT - dt);
 
@@ -1589,6 +1593,21 @@ function updateDog(ctx: GameCtx, a: Actor, dt: number, dx: number, dz: number, d
     if (target.kind === 'manager') target.summonIn += 3;
     if (fx.chance(0.2)) say(a, 'GRRR-WUF!', 1.5, ...ALLY_BUBBLE);
   }
+}
+
+/**
+ * Stun someone. Bosses take a short stagger at most, then shrug stuns off
+ * for a few seconds, so nothing (a security guard, a rubber stamp) can
+ * lock one down.
+ */
+export function stun(a: Actor, seconds: number): void {
+  if (a.kind === 'boss') {
+    if (a.stunImmune > 0) return;
+    a.stunned = Math.max(a.stunned, Math.min(0.5, seconds));
+    a.stunImmune = 6;
+    return;
+  }
+  a.stunned = Math.max(a.stunned, seconds);
 }
 
 export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vector3 | null): void {
