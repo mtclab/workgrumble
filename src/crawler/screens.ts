@@ -12,6 +12,7 @@ import { adjustStanding } from './state';
 type Button = [string, () => void];
 
 export function setOverlay(g: Game, html: string, buttons: Button[], extra?: HTMLElement): void {
+  g.overlay.classList.toggle('is-title', g.screen === 'title');
   g.overlay.innerHTML = html;
   if (extra !== undefined) g.overlay.append(extra);
   const row = document.createElement('div');

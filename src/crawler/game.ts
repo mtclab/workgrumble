@@ -792,6 +792,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     this.player.view = this.settings.view;
     const sway = this.derivedCache.band.sway * (this.derivedCache.caffeine.speed > 0 ? 0.7 : 1) + this.derivedCache.caffeine.jitter * 0.3;
     this.player.update(this.level, this.screen === 'play' ? dt : 0, sway);
+    if (this.screen === 'title' || this.screen === 'chargen') this.titleCamera(now / 1000);
     if (this.shakeAmt > 0) {
       const k = this.settings.shake ? 0.15 : 0.03;
       this.camera.position.x += fx.range(-1, 1) * this.shakeAmt * k;
@@ -1425,6 +1426,24 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       if (a.hpBar.visible) a.hpBar.quaternion.copy(a.root.quaternion).invert().multiply(q);
       if (a.bubble !== null) a.bubble.visible = Math.hypot(a.pos.x - cam.x, a.pos.z - cam.z) > 3.2;
     }
+  }
+
+  /** Behind the title: a slow orbit around wherever the save left you. */
+  private titleCamera(t: number): void {
+    const c = this.player.pos;
+    const a = t * 0.08;
+    const r = 5.5;
+    const p = new THREE.Vector3(c.x + Math.sin(a) * r, 2.4, c.z + Math.cos(a) * r);
+    // Keep the camera out of walls: pull in until the cell is open.
+    for (let k = r; k > 1.5; k -= 0.5) {
+      p.set(c.x + Math.sin(a) * k, 2.4, c.z + Math.cos(a) * k);
+      const cx = toCell(p.x);
+      const cz = toCell(p.z);
+      if (this.level.floor[cz * this.level.w + cx] === 1 && this.level.opaque[cz * this.level.w + cx] !== 1) break;
+    }
+    this.camera.position.copy(p);
+    this.camera.lookAt(c.x, 1.3, c.z);
+    this.player.model.visible = true;
   }
 
   /** How you feel, on the screen: drink, caffeine, stress, crash, the king of cans. */

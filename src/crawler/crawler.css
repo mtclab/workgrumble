@@ -84,6 +84,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 
 /* ---------------- Screens ---------------- */
 .screen { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: radial-gradient(ellipse at center, rgba(20,30,26,0.82), rgba(0,0,0,0.95)); z-index: 50; padding: 24px; text-align: center; }
+.screen.is-title .title-blurb, .screen.is-title .title-controls { text-shadow: 0 1px 3px #000, 0 0 8px #000; }
+.screen.is-title { background: radial-gradient(ellipse at center, rgba(10,14,12,0.35), rgba(0,0,0,0.78)); }
 .title-logo { font: 900 clamp(40px, 9vw, 96px) Impact, "Arial Black", sans-serif; color: #d0342c; letter-spacing: 4px; text-shadow: 4px 4px 0 #000, 0 0 30px rgba(208,52,44,0.6); transform: skewX(-6deg); }
 .title-logo.small { font-size: clamp(32px, 6vw, 64px); color: #e8e0d0; }
 .title-logo.dead { color: #d0342c; }
