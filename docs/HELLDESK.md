@@ -281,6 +281,30 @@ G domain ability · C sneak · T rest · Q quick supplies · 1-9 / wheel tools �
 V first/third person · Tab backpack · J journal · M map · F5/F9 quicksave /
 quickload · Esc pause.
 
+## Balance testing
+
+`scripts/helldesk-balance/` is a bot that plays whole careers on the real
+game code, headlessly and fast (a floor in seconds): it walks the floor on
+its own path-finding, fights or talks people down, blocks, backs off to heal,
+works the ticket queue at terminals, takes or pushes back on staffing,
+accepts mentoring, rides the lift, levels up and shops at the weekend. It
+records, per floor: time, burnouts and what caused them, lowest sanity, time
+spent over capacity, staffing offered/delivered/missed, mentoring, side
+quests, fixes, Rep, perk points, team morale and how much of the floor was
+cleared. The game has a `headless` mode and a `step(dt)` for it, and a few
+debug handles on `window.__helldesk`.
+
+```
+npx vite build --outDir /tmp/helldesk && npx vite preview --outDir /tmp/helldesk --port 4179 &
+node scripts/helldesk-balance/run.mjs '{"name":"trainee","floors":5,"wallMinutes":15}'
+node scripts/helldesk-balance/run.mjs '{"name":"senior","rung":6,"kit":["cat6","cardigan"]}'
+```
+
+It is a mediocre player on purpose: what kills it kills a new player. What
+it found so far: the first boss's summons had no cap, a woken boss chased
+you round the whole floor for ever, managers could chain meeting invites
+into a lock, and floor 3 (index 3) was a wall - all fixed (see Combat).
+
 ## Code
 
 All of it lives in `src/crawler/` and depends on nothing in the office sim at

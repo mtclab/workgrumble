@@ -575,7 +575,8 @@ export function createActor(
   }
   if (kind === 'consultant') root.add(auraMesh());
 
-  const diff = ctx.difficulty * (1 + f * 0.12);
+  // Each floor up, everyone is a tenth tougher (on top of your rung and your employer).
+  const diff = ctx.difficulty * (1 + f * 0.1);
   if (kind === 'boss' && boss !== null) {
     const loop = Math.floor(f / BOSSES.length);
     hp = boss.hp * ctx.difficulty * (1 + loop * 0.8);
