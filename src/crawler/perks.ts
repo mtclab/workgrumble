@@ -32,6 +32,7 @@ export const TREE_PERKS: readonly TreePerk[] = [
   { id: 'teflon', name: 'Teflon', tree: null, ranks: [r(0, 'Action items weigh half; meetings end twice as fast.'), r(0, 'Action items weigh a quarter.')] },
   { id: 'delegate', name: 'Delegation', tree: null, ranks: [r(0, 'Allies hit twice as hard; office ladies heal more often; once you are an architect, what you delegate earns full credit.')] },
   { id: 'timemgmt', name: 'Time Management', tree: null, ranks: [r(0, '+1 workload capacity'), r(0, '+1 workload capacity')] },
+  { id: 'pagerduty', name: 'Pager Duty', tree: null, ranks: [r(0, 'On-call pages you answer pay double Rep.')] },
   { id: 'mentor', name: 'Mentor', tree: null, earned: 'Earned by mentoring (1, 3, 6 people)', ranks: [
     r(0, 'Mentor: teammates who follow you hit 25% harder and tire half as fast.'),
     r(0, 'Force Multiplier: +1 workload capacity. Your team picks up the slack.'),

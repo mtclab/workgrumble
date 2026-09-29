@@ -53,6 +53,7 @@ import { spellById } from './magic';
 import { FishingUI } from './minigames';
 import { generateMokki, MOKKI_SUN } from './mokki';
 import { type OsHost, Os } from './os';
+import { endOnCall, type PagerHost, pagerHud, startOnCall, tickPager } from './pager';
 import { Player } from './player';
 import {
   evidenceHeld,
@@ -72,6 +73,7 @@ import { fx, Rng } from './rng';
 import {
   type ArchPath,
   type Attribute,
+  type Band,
   BAND_EFFECTS,
   bandFor,
   checkChance,
@@ -140,7 +142,7 @@ export const FINAL_FLOOR = 4;
 /** Seconds of LMB hold that make a melee swing a power attack. */
 export const POWER_TIME = 0.65;
 
-export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
+export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   readonly renderer: THREE.WebGLRenderer;
   readonly pipeline: Pipeline;
   readonly particles: Particles;
@@ -968,6 +970,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       markers: this.markers,
       charge: this.charging && this.derivedCache.weapon.kind === 'melee' ? Math.min(1, this.chargeT / POWER_TIME) : 0,
       blocking: this.blocking,
+      oncall: pagerHud(this),
     };
   }
 
@@ -1037,6 +1040,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     tickCaffeine(this, dt);
     tickQuests(this, dt);
     if (this.screen !== 'play') return;
+    tickPager(this, dt);
     tickTeam(this, dt);
 
     // Manager auras, and the smell test.
@@ -1464,6 +1468,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
   teamNote(a: Actor): string { return teamNote(a); }
   treatOptions(a: Actor): DialogueOption[] { return treatOptions(this, a); }
   tooTired(a: Actor): boolean { return tooTired(a); }
+  // PagerHost
+  drinkBand(): Band { return bandFor(this.save.bac, this.derivedCache.specials.has('flask')); }
   // OsHost
   buy(id: string): string | null { return host.buy(this, id); }
   sell(uid: string): string | null { return host.sell(this, uid); }
@@ -1507,6 +1513,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
       screens.resume(this);
       this.hud.toast(`Salary: +₡${pay} (${this.title}).`, 'epic');
       this.journal(`Weekend ${s.week} at the mökki. Salary ₡${pay}.`);
+      startOnCall(this);
       if (week !== '') this.hud.toast(`📌 ${week}`, 'info');
       if (s.upgrades.includes('guestroom')) adjustStanding(s, 'kitchen', 3);
       // Friday evening phone calls: HR first, then Derek with the review.
@@ -1525,6 +1532,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost {
     s.week += 1;
     const theme = THEMES[next % THEMES.length];
     screens.transitionTo(this, theme?.name ?? '', String(next), 'Monday. The lift plays a pan-pipe cover of a song you used to like.', () => {
+      endOnCall(this);
       this.loadFloor(next, false);
       screens.resume(this);
       this.hud.toast(`Welcome to ${this.floorName()}.`, 'epic');

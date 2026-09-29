@@ -2,6 +2,7 @@ import { TICKETS } from './content/tickets';
 import { Game } from './game';
 import { rest } from './hosts';
 import { findPrompt, interact } from './interact';
+import { pageNow } from './pager';
 import { offerStaffing } from './questing';
 import { currentObjective, type QuestState } from './quests';
 import { requestMentoring } from './teamwork';
@@ -22,6 +23,7 @@ try {
     fixesFor: (t: number): readonly string[] => TICKETS[t]?.fixes ?? [],
     objective: (st: QuestState) => currentObjective(st),
     rest: (): void => rest(game, true),
+    page: (): boolean => pageNow(game),
   };
 } catch (err) {
   mount.innerHTML = '<div class="screen" style="display:flex"><div class="title-logo small dead">BSOD</div>'

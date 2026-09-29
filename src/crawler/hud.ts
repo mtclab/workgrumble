@@ -44,6 +44,8 @@ export interface HudFrame {
   /** 0..1 power-attack wind-up. */
   readonly charge: number;
   readonly blocking: boolean;
+  /** On call at the mökki (null: not), and whether a page is going off. */
+  readonly oncall: { readonly text: string; readonly alarm: boolean } | null;
 }
 
 export interface MapMarker {
@@ -109,6 +111,7 @@ export class Hud {
   private readonly mapCtx: CanvasRenderingContext2D;
   readonly crosshair: HTMLDivElement;
   private readonly floorLabel: HTMLDivElement;
+  private readonly oncall: HTMLDivElement;
   private vignetteT = 0;
   private vignetteColor = 'rgba(255,0,0,';
   private faceBlink = 0;
@@ -126,6 +129,7 @@ export class Hud {
     this.slas = div('hud-slas', this.root);
     this.toasts = div('hud-toasts', this.root);
     this.floorLabel = div('hud-floor', this.root);
+    this.oncall = div('hud-oncall', this.root);
     this.bossBar = div('hud-boss', this.root);
     this.bossName = div('hud-boss-name', this.bossBar);
     const bossTrack = div('hud-boss-track', this.bossBar);
@@ -307,6 +311,11 @@ export class Hud {
       return x;
     }));
     this.floorLabel.textContent = f.floorName;
+    // The pager: a badge under the floor name, and the quests panel steps down for it.
+    this.oncall.textContent = f.oncall?.text ?? '';
+    this.oncall.style.display = f.oncall === null ? 'none' : 'block';
+    this.oncall.classList.toggle('is-alarm', f.oncall?.alarm === true);
+    this.root.classList.toggle('has-oncall', f.oncall !== null);
 
     // Quests and tasks.
     this.quests.textContent = f.questLines.length > 0 ? `QUESTS & TASKS\n${f.questLines.join('\n')}` : '';

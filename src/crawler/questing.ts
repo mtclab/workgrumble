@@ -28,6 +28,7 @@ import {
 import { fx } from './rng';
 import { canDelegate } from './team';
 import { menteeNearby, mentorMarkers, mentorSuffix, mentoringDone, settleMentoring, teamLines } from './teamwork';
+import { pagerMarkers } from './pager';
 import { checkChance } from './rpg';
 import { adjustStanding, perk, skill, workload } from './state';
 
@@ -664,6 +665,7 @@ export function questMarkers(g: Game): CompassMarker[] {
     if (board !== undefined) out.push({ x: board.x, z: board.z, icon: '⌂', color: '#7dffea', label: 'Upgrade board' });
     const car = g.level.interactables.find((i) => i.kind === 'car');
     if (car !== undefined) out.push({ x: car.x, z: car.z, icon: '▲', color: '#ffffff', label: 'The car (Monday)' });
+    out.push(...pagerMarkers(g));
   }
   return out;
 }

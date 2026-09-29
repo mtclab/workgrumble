@@ -4,6 +4,7 @@ import { tintRig } from './characters';
 import { say, type Actor } from './entities';
 import type { Game } from './game';
 import { BUFF_INFO, type ConsumableDef } from './items';
+import { abandonPage } from './pager';
 import { drankOnDuty } from './questing';
 import { fx } from './rng';
 import { BAND_EFFECTS, bandFor, bacDecay, drinkBac, promille } from './rpg';
@@ -135,6 +136,8 @@ export function blackout(g: Game): void {
   const what = fx.pick(INCIDENTS);
   g.journal(`Blackout. ${what}`);
   if (s.location === 'office') g.warn('Blackout at work');
+  // On call, the pager went off into the void.
+  if (s.location === 'mokki') abandonPage(g, 'I was face-down on the laituri');
   g.achieve('blackout');
   g.os.hide();
   g.screen = 'transition';

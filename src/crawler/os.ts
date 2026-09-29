@@ -739,6 +739,9 @@ export class Os {
     if (failed.length > 0 || s.stats.staffedDone > 0) {
       body.append(el('p', { class: 'os-meta' }, `Staffing record: ${s.stats.staffedDone} delivered, ${s.stats.staffedMissed} missed.${failed.length > 0 ? ` Recently missed: ${failed.map((q) => questById(q.id)?.title ?? q.id).join(' · ')}.` : ''}`));
     }
+    if (s.stats.pagesAnswered + s.stats.pagesMissed > 0) {
+      body.append(el('p', { class: 'os-meta' }, `On-call record: ${s.stats.pagesAnswered} page${s.stats.pagesAnswered === 1 ? '' : 's'} answered, ${s.stats.pagesMissed} missed.`));
+    }
     body.append(el('h4', {}, 'Entries'));
     if (s.journal.length === 0) body.append(el('p', { class: 'os-dim' }, 'Nothing written yet.'));
     for (const j of [...s.journal].reverse()) {

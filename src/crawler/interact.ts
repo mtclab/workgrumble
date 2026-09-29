@@ -7,6 +7,8 @@ import { FINAL_FLOOR, type Game, type PromptTarget } from './game';
 import * as host from './hosts';
 import { BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, itemById, RUNES } from './items';
 import { type Interactable, lineOfSight } from './level';
+import { livePage } from './oncall';
+import { answerAtTerminal, carNote, hasDish, villageOption } from './pager';
 import { currentObjective, isActive, QUEST_ITEMS, type QuestEvent, talkGiver } from './quests';
 import { questOf } from './questing';
 import { mentorRequestNode } from './teamwork';
@@ -87,8 +89,9 @@ export function findPrompt(g: Game): void {
   const s = g.save;
   const w = s.weekend;
   const saunaMax = s.upgrades.includes('woodshed') ? 2 : 1;
+  const paged = s.location === 'mokki' && livePage(s.oncall) !== undefined;
   const labels: Record<Interactable['kind'], string> = {
-    terminal: s.location === 'mokki' ? 'E: Remote work terminal (satellite)' : 'E: Log on to WorkgrumbleOS (tickets, tasks, HR, Internal IT)',
+    terminal: s.location === 'mokki' ? (paged ? 'E: Answer the page (satellite terminal)' : 'E: Remote work terminal (satellite)') : 'E: Log on to WorkgrumbleOS (tickets, tasks, HR, Internal IT)',
     printer: it.used ? 'Printer: READY (for now)' : 'E: Fix the printer',
     cooler: it.used ? 'Water cooler (empty)' : 'E: Water cooler (+sanity, -BAC)',
     coffee: it.used ? 'Coffee machine (descaling)' : 'E: Coffee machine (90 mg)',
@@ -104,7 +107,7 @@ export function findPrompt(g: Game): void {
     lake: 'E: Swim in the lake',
     grill: w.grill ? 'The grill is cooling' : 'E: Grill makkara',
     stash: 'E: Your stash chest',
-    car: 'E: Drive back to work (Monday)',
+    car: paged && !hasDish(g) ? 'E: The car (the village has Wi-Fi for the page; or back to work)' : 'E: Drive back to work (Monday)',
     runestone: 'E: Read the rune stone',
     board: `E: Plan the farm (${s.upgrades.length}/${UPGRADES.length} built)`,
     dock: w.fish >= 3 ? 'The fish have stopped biting (next weekend)' : 'E: Fish off the end of the laituri',
@@ -176,6 +179,8 @@ function useThing(g: Game, it: Interactable): void {
   const s = g.save;
   switch (it.kind) {
     case 'terminal':
+      // On call at the mökki: the page comes first.
+      if (answerAtTerminal(g)) break;
       g.currentTerminal = it;
       if (s.warnings >= 3) {
         g.openDialogue(disciplinary(g));
@@ -313,15 +318,19 @@ function useThing(g: Game, it: Interactable): void {
     case 'stash':
       g.openDialogue(stashNode(g));
       break;
-    case 'car':
+    case 'car': {
+      // On call with no dish, the car is also the way to the village Wi-Fi.
+      const village = villageOption(g);
       g.openDialogue({
-        speaker: 'The car', text: 'Monday morning. Three hours back down the motorway. Ready?',
+        speaker: 'The car', text: `Monday morning. Three hours back down the motorway. Ready?${carNote(g)}`,
         options: [
+          ...(village === null ? [] : [village]),
           { label: 'Drive back to work.', pick: () => { g.afterDialogue = () => g.goToWork(); return null; } },
           { label: 'Five more minutes.', pick: () => null },
         ],
       });
       break;
+    }
     case 'runestone': {
       const t = g.actors.find((a) => a.kind === 'tonttu');
       if (t !== undefined) g.openDialogue(talkTonttu(g, t));

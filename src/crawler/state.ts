@@ -18,6 +18,7 @@ import {
   plainInstance,
   sumAffix,
 } from './loot';
+import { freshOnCall, normalizeOnCall, type OnCallState } from './oncall';
 import { canTake, treePerk } from './perks';
 import type { TeamMember } from './team';
 import { isActive, type QuestState } from './quests';
@@ -187,6 +188,8 @@ export interface SaveState {
   buffs: Record<string, number>;
   floorState: FloorState;
   weekend: WeekendState;
+  /** The on-call rota: whether the pager comes to the mökki this weekend, and its pages. */
+  oncall: OnCallState;
   upgrades: string[];
   achievements: string[];
   tipsShown: string[];
@@ -197,6 +200,7 @@ export interface SaveState {
     cans: number; fish: number; elites: number;
     staffedDone: number; staffedMissed: number;
     mentored: number; treats: number;
+    pagesAnswered: number; pagesMissed: number;
   };
   /** Your colleagues, by name: morale, and who you have mentored. */
   team: Record<string, TeamMember>;
@@ -293,11 +297,12 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
     buffs: {},
     floorState: freshFloorState(0),
     weekend: freshWeekend(),
+    oncall: freshOnCall(),
     upgrades: [],
     achievements: [],
     tipsShown: [],
     booksRead: [],
-    stats: { resolvedField: 0, resolvedDesk: 0, resolvedPeace: 0, breaches: 0, burnouts: 0, bosses: 0, wrongFixes: 0, drinks: 0, blackouts: 0, locks: 0, spellsCast: 0, cans: 0, fish: 0, elites: 0, staffedDone: 0, staffedMissed: 0, mentored: 0, treats: 0 },
+    stats: { resolvedField: 0, resolvedDesk: 0, resolvedPeace: 0, breaches: 0, burnouts: 0, bosses: 0, wrongFixes: 0, drinks: 0, blackouts: 0, locks: 0, spellsCast: 0, cans: 0, fish: 0, elites: 0, staffedDone: 0, staffedMissed: 0, mentored: 0, treats: 0, pagesAnswered: 0, pagesMissed: 0 },
     team: {},
     seed,
     won: false,
@@ -394,6 +399,7 @@ export function normalizeSave(raw: unknown): SaveState | null {
     ...m,
     stats: { ...fresh.stats, ...m.stats },
     weekend: { ...fresh.weekend, ...m.weekend },
+    oncall: normalizeOnCall((m as Partial<SaveState>).oncall),
     floorState: { ...freshFloorState(m.floor ?? 0), ...m.floorState },
     ammo: { ...fresh.ammo, ...m.ammo },
     standing: { ...fresh.standing, ...m.standing },

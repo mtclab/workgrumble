@@ -47,6 +47,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .hud-quests, .hud-slas { position: absolute; background: var(--hud-panel); border: 1px solid var(--hud-edge); padding: 8px 10px; font: 12px/1.45 monospace; white-space: pre; max-width: 44vw; overflow: hidden; text-overflow: ellipsis; border-radius: 3px; }
 .hud-quests { left: 12px; top: 34px; }
 .hud-quests.is-over { border-color: #c62828; box-shadow: 0 0 10px rgba(198, 40, 40, 0.45) inset; }
+.hud-oncall { position: absolute; left: 12px; top: 32px; display: none; background: var(--hud-panel); border: 1px solid #c9a227; border-left: 4px solid #c9a227; padding: 3px 10px; font: bold 13px monospace; color: #ffe08a; border-radius: 3px; }
+.hud-oncall.is-alarm { border-color: var(--hud-sanity); color: #ff8a7a; animation: pulse 0.5s infinite alternate; }
+.hud.has-oncall .hud-quests { top: 62px; }
 .hud-slas { right: 12px; top: 204px; }
 .hud-slas.is-alarm { border-color: var(--hud-sanity); box-shadow: 0 0 12px rgba(224,69,58,0.5); }
 .hud-mini { position: absolute; right: 12px; top: 12px; width: 180px; height: 180px; border-radius: 4px; }

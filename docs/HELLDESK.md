@@ -237,6 +237,44 @@ guest room (an office lady visits with cake and gossip), Musti the dog, a
 rune garden (runes half price), a satellite dish (a terminal in the
 cottage), and a reading nook (a skill book every weekend).
 
+## On call
+
+Some weekends the pager comes to the mökki. Nobody is on the rota their
+first weekend; from the second, a weekend you were not on call for the week
+before is yours half the time (so about one weekend in three), three points
+more for every rung you climb (83% for a Senior Architect: about four
+weekends in nine), and never two weekends running. The rota is rolled from the save's seed, so reloading cannot dodge
+it. On Friday a toast and the journal say whether you are on call; at the
+mökki the HUD shows **📟 ON CALL** under the floor name.
+
+On call, the pager goes off one to three times (the first within about a
+minute of play, the next only after the last one's window has closed):
+payroll paying everyone a cent, the CEO's yacht Wi-Fi, a printer printing
+HELP, the certificate for everything, DNS (it is always DNS), the HR chatbot
+in the board's chat, a 41-degree server room, a reply-all storm, a botnet
+coffee machine, Derek in a lift stuck in demo mode, and the office sauna at
+110 degrees. From the page going off you have **90 seconds of play** (time
+stops in dialogue, menus and pause) to get to a computer: the satellite
+terminal in the cottage, if you built the dish (E on it answers the page
+before anything else), or else the car: **"Drive to the village and find
+Wi-Fi"** answers it from the K-Market car park and costs the rest of the
+weekend's sauna and grill. The compass points at whichever it is.
+
+Answering is a choice of three fixes, each a check with the odds printed:
+the proper fix (a skill that suits the incident; full Rep and Management
++3), talking it down to a P3 (Soft Skills; half Rep, Management +2) or the
+bodge (an easy Troubleshooting check; a third of the Rep, Management +1). A
+failed check still counts as answered but costs Management. At Merry or
+worse every fix is harder (+20, +35 at Hammered, +50 blacked out), and the
+first time it happens the journal says "I answered a P1 page three lonkeros
+in."; on the Ballmer Peak every fix is 15 easier. A missed page (the window
+runs out, you drive back to work with it going off, or you black out) costs
+Management -5 and goes in the journal and the on-call record; two missed in
+one on-call weekend is an HR warning. **Pager Duty** (General tree) doubles
+the Rep a page pays, and answering ten pages earns **Sleeps With The
+Pager**. `__helldesk.page()` puts you on call and sets the next page off, for
+testing.
+
 ## Stealth and crime
 
 C to sneak. Supply closets are locked: paperclips and a timing minigame
@@ -328,6 +366,7 @@ runtime:
 | `interact.ts` | Everything E does, the upgrade board, fishing, lockers, the fridge. |
 | `questing.ts` | Puts quests into the world: evidence, givers, hunt targets, markers, events; staffing calls, deadlines, push-back and the Friday settlement. |
 | `team.ts`, `teamwork.ts` | The team: morale, treats and cans, seniority and delegation rules (pure); morale ticks, treat dialogue, mentoring requests and payouts (in the game). |
+| `oncall.ts`, `pager.ts` | The on-call rota: who is on call which weekend, the page schedule and clock, the drink modifiers, payouts and the incidents (pure); the Friday notice, pages going off, the page dialogue (`PagerHost`), the terminal and the village drive, misses and the HUD badge (in the game). |
 | `desk.ts` | The ticket queue and mail tasks. |
 | `hosts.ts` | Shop, inventory, perks, rest, deals, the small world effects. |
 | `screens.ts` | Title, load and save menus, pause, burnout, endings, lifts. |
@@ -344,4 +383,7 @@ runtime:
 built) are connected with every interactable and spawn reachable and no
 machine made walk-through, and covers the skill/level, perk, career,
 workplace, save-migration, persuasion, inebriation, caffeine, White Monster,
-loot, quest and ending rules.
+loot, quest and ending rules. `oncall.test.ts` covers the on-call rota (never
+week one, never two running, the rate by rung), the page schedule and clock,
+the drunk and Ballmer Peak modifiers, the missed-page warning rule, the pay,
+and old and mid-weekend saves.
