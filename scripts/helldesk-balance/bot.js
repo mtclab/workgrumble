@@ -277,12 +277,14 @@
       if (m.label && m.label.includes('(locked)')) return false;
       if (m.icon === '!' && (!room || !B.policy.sideQuests) && m.color === '#ffd54a') return false;
       if (m.icon === '☠' && g.boss && m.label === g.boss.name) return false;
+      // Somebody we already gave up on (they wander, so their marker moves): skip them.
+      const who = g.actors.find((a) => !a.resolved && Math.hypot(a.pos.x - m.x, a.pos.z - m.z) < 0.6);
+      if (who && ignored.has(who.id)) return false;
       return true;
     });
     const m = nearestOf(marks);
     if (m) {
       const actor = g.actors.find((a) => !a.resolved && Math.hypot(a.pos.x - m.x, a.pos.z - m.z) < 0.6);
-      if (actor && ignored.has(actor.id)) { ignored.add(`${Math.round(m.x)},${Math.round(m.z)}`); return null; }
       if (actor && actor.hostile) return { kind: 'fight', actor };
       if (actor) return { kind: 'talk', actor, mark: m };
       return { kind: 'goto', x: m.x, z: m.z, near: 1.2, mark: m, wait: 0 };
