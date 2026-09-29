@@ -6,6 +6,7 @@ import {
   BODGE_DIFFICULTY,
   drunkOnCall,
   freshOnCall,
+  leaveEarly,
   livePage,
   MISSES_FOR_WARNING,
   missPage,
@@ -212,6 +213,26 @@ describe('Helldesk on call: the pages', () => {
     const timed: OnCallState = { ...freshOnCall(), active: true, missed: 1, pages: [{ at: 0, incident: 3, status: 'live', left: 2 }] };
     expect(advanceRota(timed, 1).warn).toBe(false);
     expect(advanceRota(timed, 1.5).warn).toBe(true);
+  });
+
+  it('driving off early misses the next page that had not gone off', () => {
+    const oc: OnCallState = { ...freshOnCall(), active: true, pages: [
+      { at: 10, incident: 0, status: 'answered', left: 0 },
+      { at: 200, incident: 1, status: 'pending', left: PAGE_WINDOW },
+      { at: 400, incident: 2, status: 'pending', left: PAGE_WINDOW },
+    ] };
+    const out = leaveEarly(oc);
+    expect(out?.page.incident).toBe(1);
+    expect(out?.warn).toBe(false);
+    expect(oc.missed).toBe(1);
+    // Only one: the rest of the rota goes to Jukka.
+    expect(oc.pages[2]?.status).toBe('pending');
+    // A miss already this weekend makes it the HR warning.
+    const again: OnCallState = { ...freshOnCall(), active: true, missed: 1, pages: [{ at: 300, incident: 4, status: 'pending', left: PAGE_WINDOW }] };
+    expect(leaveEarly(again)?.warn).toBe(true);
+    // Nothing left to ring, or off call: nothing to miss.
+    expect(leaveEarly(again)).toBeUndefined();
+    expect(leaveEarly(freshOnCall())).toBeUndefined();
   });
 });
 

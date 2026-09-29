@@ -141,6 +141,18 @@ export function missPage(oc: OnCallState, p: Page): boolean {
   return oc.missed === MISSES_FOR_WARNING;
 }
 
+/**
+ * Driving off before the weekend is done: the next page that has not gone
+ * off yet goes off on the motorway, with no signal, and is missed. Leaving
+ * early is not a way off the rota. Undefined when nothing is left to ring.
+ */
+export function leaveEarly(oc: OnCallState): { page: Page; warn: boolean } | undefined {
+  if (!oc.active) return undefined;
+  const p = oc.pages.find((q) => q.status === 'pending');
+  if (p === undefined) return undefined;
+  return { page: p, warn: missPage(oc, p) };
+}
+
 export function answerPage(p: Page): void {
   if (p.status === 'live') p.status = 'answered';
 }

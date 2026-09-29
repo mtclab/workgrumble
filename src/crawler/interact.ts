@@ -8,7 +8,7 @@ import * as host from './hosts';
 import { BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, itemById, RUNES } from './items';
 import { type Interactable, lineOfSight } from './level';
 import { livePage } from './oncall';
-import { answerAtTerminal, carNote, hasDish, villageOption } from './pager';
+import { answerAtTerminal, carNote, driveOffTag, hasDish, villageOption } from './pager';
 import { currentObjective, isActive, QUEST_ITEMS, type QuestEvent, talkGiver } from './quests';
 import { questOf } from './questing';
 import { mentorRequestNode } from './teamwork';
@@ -321,12 +321,13 @@ function useThing(g: Game, it: Interactable): void {
     case 'car': {
       // On call with no dish, the car is also the way to the village Wi-Fi.
       const village = villageOption(g);
+      const tag = driveOffTag(g);
       g.openDialogue({
         speaker: 'The car', text: `Monday morning. Three hours back down the motorway. Ready?${carNote(g)}`,
         options: [
           ...(village === null ? [] : [village]),
-          { label: 'Drive back to work.', pick: () => { g.afterDialogue = () => g.goToWork(); return null; } },
-          { label: 'Five more minutes.', pick: () => null },
+          { label: 'Drive back to work.', ...(tag === null ? {} : { tag }), pick: () => { g.afterDialogue = () => g.goToWork(); return null; } },
+          { label: village === null ? 'Five more minutes.' : 'Not yet.', pick: () => null },
         ],
       });
       break;

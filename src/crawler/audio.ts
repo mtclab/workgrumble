@@ -118,6 +118,8 @@ export class Sfx {
   pickup(): void { this.tone(1200, 0.06, 'square', 0.1); this.tone(1600, 0.08, 'square', 0.1, 0, 0.05); }
   coin(): void { this.tone(988, 0.07, 'square', 0.12); this.tone(1319, 0.2, 'square', 0.12, 0, 0.07); }
   phone(): void { for (let i = 0; i < 4; i++) this.tone(i % 2 === 0 ? 1400 : 1100, 0.05, 'square', 0.06, 0, i * 0.06); }
+  /** The pager: two rounds of three high beeps. */
+  pager(): void { for (let i = 0; i < 6; i++) this.tone(2300, 0.08, 'square', 0.07, 0, i * 0.12 + (i >= 3 ? 0.25 : 0)); }
   paper(): void { this.noise(0.08, 0.1, 3000); }
   heal(): void { this.tone(523, 0.12, 'sine', 0.2); this.tone(659, 0.12, 'sine', 0.2, 0, 0.1); this.tone(784, 0.2, 'sine', 0.2, 0, 0.2); }
   levelUp(): void { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.18, 'square', 0.12, 0, i * 0.1)); }

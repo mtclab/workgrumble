@@ -245,7 +245,8 @@ before is yours half the time (so about one weekend in three), three points
 more for every rung you climb (83% for a Senior Architect: about four
 weekends in nine), and never two weekends running. The rota is rolled from the save's seed, so reloading cannot dodge
 it. On Friday a toast and the journal say whether you are on call; at the
-mökki the HUD shows **📟 ON CALL** under the floor name.
+mökki the HUD shows **📟 ON CALL** under the floor name (and, while a page
+is going off, the incident, the seconds left and where to answer it).
 
 On call, the pager goes off one to three times (the first within about a
 minute of play, the next only after the last one's window has closed):
@@ -253,7 +254,8 @@ payroll paying everyone a cent, the CEO's yacht Wi-Fi, a printer printing
 HELP, the certificate for everything, DNS (it is always DNS), the HR chatbot
 in the board's chat, a 41-degree server room, a reply-all storm, a botnet
 coffee machine, Derek in a lift stuck in demo mode, and the office sauna at
-110 degrees. From the page going off you have **90 seconds of play** (time
+110 degrees. The pager beeps (its own beep, not the phone) and the screen
+flashes. From the page going off you have **90 seconds of play** (time
 stops in dialogue, menus and pause) to get to a computer: the satellite
 terminal in the cottage, if you built the dish (E on it answers the page
 before anything else), or else the car: **"Drive to the village and find
@@ -270,7 +272,10 @@ first time it happens the journal says "I answered a P1 page three lonkeros
 in."; on the Ballmer Peak every fix is 15 easier. A missed page (the window
 runs out, you drive back to work with it going off, or you black out) costs
 Management -5 and goes in the journal and the on-call record; two missed in
-one on-call weekend is an HR warning. **Pager Duty** (General tree) doubles
+one on-call weekend is an HR warning. Leaving early is not a way off the
+rota: drive back to work while pages are still to come and the next one goes
+off on the motorway, with no signal, and counts as missed (the car says so
+on the "Drive back to work" option). **Pager Duty** (General tree) doubles
 the Rep a page pays, and answering ten pages earns **Sleeps With The
 Pager**. `__helldesk.page()` puts you on call and sets the next page off, for
 testing.

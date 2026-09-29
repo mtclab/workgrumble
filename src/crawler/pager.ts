@@ -7,6 +7,7 @@ import {
   answerPage,
   BODGE_DIFFICULTY,
   drunkOnCall,
+  leaveEarly,
   livePage,
   MISSED_PAGE_MANAGEMENT,
   missPage,
@@ -145,15 +146,26 @@ export function startOnCall(g: Game): void {
   } else if (s.week < ONCALL_FROM_WEEK) {
     g.hud.toast('Not on call: you are not on the rota yet.', 'good');
     g.journal(`Weekend ${s.week}: not on call. New starters are not on the rota yet.`);
+  } else if (s.oncall.lastWeek === s.week - 1) {
+    g.hud.toast('Not on call this weekend. You had last weekend, so the rota lets you off.', 'good');
+    g.journal(`Weekend ${s.week}: not on call. I had the pager last weekend; Jukka has it now. I can hear it from here anyway.`);
   } else {
     g.hud.toast('Not on call this weekend. Somebody else\'s pager, somebody else\'s problem.', 'good');
     g.journal(`Weekend ${s.week}: not on call. Somebody else's pager, somebody else's problem.`);
   }
 }
 
-/** Monday: the rota is over. A page still going off as you drive away is a missed one. */
+/**
+ * Monday: the rota is over. A page still going off as you drive away is a
+ * missed one, and so is the next one that had not gone off yet.
+ */
 export function endOnCall(g: Game): void {
   abandonPage(g, 'I drove back to work with it still going off');
+  const early = leaveEarly(g.save.oncall);
+  if (early !== undefined) {
+    pageMissed(g, early.page, 'It went off on the motorway, where there is no signal');
+    if (early.warn) g.warn(WARN_WHY);
+  }
   g.save.oncall.active = false;
 }
 
@@ -179,7 +191,8 @@ export function abandonPage(g: Game, why: string): void {
 
 function pageFired(g: Game, p: Page): void {
   const title = PAGE_INCIDENTS[p.incident]?.title ?? 'P1';
-  sfx.phone();
+  sfx.pager();
+  g.hud.flash('hurt');
   g.hud.toast(`📟 PAGE: ${title}. ${PAGE_WINDOW} seconds to get to a computer (${hasDish(g) ? 'the terminal in the cottage' : 'no dish: take the car to the village Wi-Fi'}).`, 'bad');
   g.tip('pager');
   g.markersIn = 0;
@@ -231,10 +244,22 @@ export function villageOption(g: Game): DialogueOption | null {
 export function carNote(g: Game): string {
   const s = g.save;
   if (s.location !== 'mokki' || !s.oncall.active) return '';
-  if (livePage(s.oncall) === undefined) return ' You are on call until you leave.';
+  if (livePage(s.oncall) === undefined) {
+    return s.oncall.pages.some((p) => p.status === 'pending')
+      ? ' You are still on call. Leave now and the next page goes off on the motorway, with no signal: it counts as missed.'
+      : ' The pager has had its fun. You are free to go.';
+  }
   return hasDish(g)
     ? ' The pager is going off, and the terminal is in the cottage. Drive back to work now and it counts as missed.'
     : ' The pager is going off. The village has Wi-Fi, twenty minutes up the gravel. Drive back to work instead and it counts as missed.';
+}
+
+/** The warning on "Drive back to work", when leaving now misses a page. */
+export function driveOffTag(g: Game): string | null {
+  const s = g.save;
+  if (s.location !== 'mokki' || !s.oncall.active) return null;
+  if (livePage(s.oncall) !== undefined) return 'The page will count as missed';
+  return s.oncall.pages.some((p) => p.status === 'pending') ? 'The next page will count as missed' : null;
 }
 
 // ================================================================== what the HUD shows
@@ -244,7 +269,8 @@ export function pagerHud(g: Game): { text: string; alarm: boolean } | null {
   if (s.location !== 'mokki' || !s.oncall.active) return null;
   const p = livePage(s.oncall);
   if (p === undefined) return { text: '📟 ON CALL', alarm: false };
-  return { text: `📟 ON CALL · PAGE ${Math.max(0, Math.ceil(p.left))}s · ${hasDish(g) ? 'terminal in the cottage' : 'car → village Wi-Fi'}`, alarm: true };
+  const title = PAGE_INCIDENTS[p.incident]?.title ?? 'P1';
+  return { text: `📟 PAGE: ${title} · ${Math.max(0, Math.ceil(p.left))}s · ${hasDish(g) ? 'terminal in the cottage' : 'car → village Wi-Fi'}`, alarm: true };
 }
 
 /** The computer to run for, on the compass and the map. */
