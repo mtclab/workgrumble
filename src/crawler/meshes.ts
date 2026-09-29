@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { blobShadow } from './characters';
+import { GRAIN, meshShape, paintShape, Vox, voxelMaterial } from './voxels';
 
 /**
- * One-off models that are not office people: Musti the dog, the chatbot,
- * Shadow IT's unsanctioned turrets, and the bits the mökki grows as you
- * upgrade it.
+ * One-off models that are not office people: Musti the dog (in voxels, like
+ * the people), the chatbot, Shadow IT's unsanctioned turrets, and the bits
+ * the mökki grows as you upgrade it.
  */
 
 function lam(color: number, emissive = 0): THREE.MeshStandardMaterial {
@@ -24,68 +25,115 @@ function box(sx: number, sy: number, sz: number, mat: THREE.Material, x: number,
   return m;
 }
 
+/** Musti's palette slots: a dark coat with the Lapphund's cream markings. */
+const D = { COAT: 1, SADDLE: 2, CREAM: 3, NOSE: 4, EYE: 5, GLINT: 6, TONGUE: 7, MOUTH: 8 } as const;
+const DOG_PALETTE = [0, 0x4a3424, 0x2a1d15, 0xe2c79c, 0x141010, 0x0d0a08, 0xdfe7ee, 0xd9606a, 0x3a1a18];
+const DOG_GRAIN = [GRAIN.SMOOTH, GRAIN.HAIR, GRAIN.HAIR, GRAIN.HAIR, GRAIN.SMOOTH, GRAIN.SMOOTH, GRAIN.SMOOTH, GRAIN.SMOOTH, GRAIN.SMOOTH];
+
+/** Body, ruff and chest: a fluffy barrel, the ruff standing up round the neck. */
+function sculptDogBody(): Vox {
+  const g = new Vox(-6, 6, 5, 20, -11, 11);
+  g.rbox(D.COAT, -4, 4, 8, 16, -8, 6, 2.2);
+  g.rbox(D.COAT, -4, 4, 11, 19, 3, 8, 2.1);
+  // A darker saddle over the back, a cream bib and belly.
+  g.paint(D.SADDLE, -3, 3, 16, 17, -7, 3);
+  g.paint(D.CREAM, -3, 3, 8, 14, 7, 9).paint(D.CREAM, -2, 2, 8, 8, -5, 6);
+  return g;
+}
+
+/** The head: a broad skull, a cream muzzle with a nose and a tongue out, eyebrow spots and pricked ears. */
+function sculptDogHead(): Vox {
+  const g = new Vox(-5, 5, 13, 26, 5, 18);
+  g.rbox(D.COAT, -3, 3, 17, 22, 8, 13, 1.6);
+  g.rbox(D.CREAM, -2, 2, 16, 18, 13, 16, 0.9);
+  g.box(D.CREAM, -2, 2, 17, 18, 12, 12);
+  g.set(0, 18, 16, D.NOSE).set(0, 18, 17, D.NOSE).set(-1, 18, 16, D.NOSE).set(1, 18, 16, D.NOSE);
+  g.paint(D.MOUTH, -2, 2, 16, 16, 14, 16);
+  g.set(0, 15, 15, D.TONGUE).set(0, 15, 14, D.TONGUE).set(0, 16, 15, D.TONGUE);
+  // Cheeks and brows in cream, the "spectacles" round the eyes.
+  g.paint(D.CREAM, -3, -3, 17, 18, 11, 13).paint(D.CREAM, 3, 3, 17, 18, 11, 13);
+  g.set(-2, 21, 13, D.CREAM).set(2, 21, 13, D.CREAM).set(-2, 19, 13, D.CREAM).set(2, 19, 13, D.CREAM);
+  g.paint(D.CREAM, -3, -3, 19, 20, 12, 13).paint(D.CREAM, 3, 3, 19, 20, 12, 13);
+  g.set(-2, 20, 13, D.EYE).set(2, 20, 13, D.EYE);
+  g.detail(D.GLINT, -2.35, -2.1, 20.6, 20.85, 13.5, 13.54, false).detail(D.GLINT, 1.65, 1.9, 20.6, 20.85, 13.5, 13.54, false);
+  for (const s of [-1, 1]) {
+    const a = s < 0 ? -3 : 2;
+    g.box(D.COAT, a, a + 1, 23, 23, 9, 10);
+    g.box(D.COAT, 2 * s, 2 * s, 24, 24, 10, 10);
+    g.set(2 * s, 23, 10, D.CREAM);
+  }
+  return g;
+}
+
+/** One leg: coat above, cream stockings, a paw a cell longer than the leg; haunches on the back legs. */
+function sculptDogLeg(x: number, front: boolean): Vox {
+  const z0 = front ? 5 : -7;
+  const g = new Vox(x - 3, x + 3, 0, 13, z0 - 3, z0 + 4);
+  const xb = x + 1;
+  g.box(D.COAT, x, xb, 1, 11, z0, z0 + 1);
+  g.paint(D.CREAM, x, xb, 1, 5, z0, z0 + 1);
+  g.box(D.CREAM, x, xb, 0, 0, z0, z0 + 2);
+  if (!front) g.rbox(D.COAT, Math.min(x, xb) - (x < 0 ? 1 : 0), Math.max(x, xb) + (x < 0 ? 0 : 1), 6, 11, z0 - 1, z0 + 2, 1.2);
+  return g;
+}
+
+/** The tail: a thick brush rising from the rump and curling forward over the back, a cream tip. */
+function sculptDogTail(): Vox {
+  const g = new Vox(-3, 3, 14, 26, -13, -2);
+  g.rbox(D.COAT, -1, 1, 16, 19, -10, -8, 1.1);
+  g.rbox(D.COAT, -1, 1, 18, 21, -9, -6, 1.1);
+  g.rbox(D.CREAM, -1, 1, 19, 21, -6, -4, 1.0);
+  g.paint(D.CREAM, -1, 1, 16, 18, -10, -10);
+  return g;
+}
+
+const dogGeometry = new Map<string, THREE.BufferGeometry>();
+let dogBody: Vox | null = null;
+let dogMat: THREE.MeshStandardMaterial | null = null;
+
+/** One of Musti's parts, cached: every Musti shares its geometry and its material. */
+function dogPart(key: string, pivot: readonly [number, number, number], sculpt: () => Vox): THREE.Mesh {
+  let geo = dogGeometry.get(key);
+  if (geo === undefined) {
+    dogBody ??= sculptDogBody();
+    const body = dogBody;
+    const g = key === 'body' ? body : sculpt();
+    const neighbours = key === 'body' ? undefined : (i: number, j: number, k: number): boolean => body.get(i, j, k) !== 0;
+    geo = paintShape(`dog:${key}`, meshShape(g, { pivot, grain: DOG_GRAIN, top: 1.1, ...(neighbours === undefined ? {} : { neighbours }) }), DOG_PALETTE);
+    dogGeometry.set(key, geo);
+  }
+  dogMat ??= voxelMaterial();
+  const m = new THREE.Mesh(geo, dogMat);
+  m.userData.shared = true;
+  return m;
+}
+
 /** Musti, a Finnish Lapphund: fluffy, loyal, and not fond of middle managers. */
 export function dogMesh(): { root: THREE.Group; legs: THREE.Object3D[]; tail: THREE.Object3D; head: THREE.Object3D } {
   const root = new THREE.Group();
-  const fur = lam(0x3a2a1e);
-  const cream = lam(0xe6d2b0);
-  const dark = lam(0x111111);
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.42, 6, 14), fur);
-  body.rotation.x = Math.PI / 2;
-  body.position.set(0, 0.56, 0);
-  root.add(body);
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 10), cream);
-  chest.scale.set(0.9, 1, 0.8);
-  chest.position.set(0, 0.52, 0.26);
-  root.add(chest);
-  // A ruff of fur round the neck.
-  const ruff = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.07, 8, 16), fur);
-  ruff.position.set(0, 0.7, 0.3);
-  ruff.rotation.x = 0.4;
-  root.add(ruff);
+  root.add(dogPart('body', [0, 0, 0], sculptDogBody));
   const head = new THREE.Group();
   head.position.set(0, 0.84, 0.42);
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), fur);
-  skull.scale.set(1, 0.95, 1);
+  // Every part a hair smaller than drawn, so no face shares a plane with the body.
+  const skull = dogPart('head', [0, 0.84, 0.42], sculptDogHead);
+  skull.scale.setScalar(0.99);
   head.add(skull);
-  const snout = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.1, 4, 10), cream);
-  snout.rotation.x = Math.PI / 2;
-  snout.position.set(0, -0.05, 0.16);
-  head.add(snout);
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), dark);
-  nose.position.set(0, -0.03, 0.27);
-  head.add(nose);
-  for (const x of [-0.07, 0.07]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 10, 8), dark);
-    eye.position.set(x, 0.04, 0.13);
-    head.add(eye);
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.17, 10), fur);
-    ear.position.set(x * 1.3, 0.17, -0.02);
-    ear.rotation.z = -x * 2;
-    head.add(ear);
-  }
   root.add(head);
   const legs: THREE.Object3D[] = [];
-  for (const [x, z] of [[-0.12, 0.26], [0.12, 0.26], [-0.12, -0.26], [0.12, -0.26]] as const) {
+  for (const [x, z, front] of [[-0.12, 0.26, true], [0.12, 0.26, true], [-0.12, -0.26, false], [0.12, -0.26, false]] as const) {
     const g = new THREE.Group();
     g.position.set(x, 0.44, z);
-    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.3, 4, 8), fur);
-    leg.position.y = -0.2;
+    const cx = x < 0 ? -3 : 2;
+    const leg = dogPart(`leg${cx}${+front}`, [x, 0.44, z], () => sculptDogLeg(cx, front));
+    leg.scale.set(0.98, 1, 0.98);
     g.add(leg);
-    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 6), cream);
-    paw.scale.set(1, 0.6, 1.3);
-    paw.position.set(0, -0.4, 0.02);
-    g.add(paw);
     root.add(g);
     legs.push(g);
   }
   const tail = new THREE.Group();
   tail.position.set(0, 0.72, -0.4);
-  const brush = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.26, 6, 10), cream);
-  brush.position.set(0, 0.12, -0.08);
-  brush.rotation.x = 0.4;
-  tail.add(brush);
-  tail.rotation.x = -0.9;
+  tail.add(dogPart('tail', [0, 0.72, -0.4], sculptDogTail));
+  tail.rotation.x = -0.25;
   root.add(tail);
   const sh = blobShadow(0.9);
   if (sh !== null) root.add(sh);

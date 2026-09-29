@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { animateRig, buildRig, type Rig } from './characters';
+import { animateRig, buildRig, type Rig, viewmodelArm } from './characters';
 import { disposeTree } from './dispose';
 import { collideCircle, type Level, toCell, WALL_H } from './level';
 
@@ -115,20 +115,12 @@ export class Player {
     this.rig = buildRig(PLAYER_OUTFIT);
     this.model.add(this.rig.root);
     scene.add(this.model);
-    // First-person arm: a sleeve and a hand, in the IT polo.
-    const arm = new THREE.Group();
-    this.vmArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.36, 4, 12), new THREE.MeshStandardMaterial({ color: PLAYER_OUTFIT.top, roughness: 0.9 }));
-    this.vmArm.rotation.x = Math.PI / 2;
-    this.vmArm.position.set(0.02, -0.035, -0.24);
-    arm.add(this.vmArm);
-    const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.01, 6, 16), new THREE.MeshStandardMaterial({ color: new THREE.Color(PLAYER_OUTFIT.top).multiplyScalar(0.8), roughness: 0.9 }));
-    cuff.position.set(0.02, -0.035, -0.04);
-    arm.add(cuff);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.042, 14, 10), new THREE.MeshStandardMaterial({ color: new THREE.Color(PLAYER_OUTFIT.skin).multiplyScalar(0.8), roughness: 0.85 }));
-    hand.scale.set(0.9, 0.75, 1.2);
-    hand.position.set(0.01, -0.02, 0.0);
-    arm.add(hand);
-    this.viewmodel.add(arm);
+    // First-person arm: a voxel fist, cuff and sleeve in the IT polo, cut
+    // from the same kit as everyone else and a little smaller than life.
+    this.vmArm = viewmodelArm(PLAYER_OUTFIT);
+    this.vmArm.scale.setScalar(0.62);
+    this.vmArm.position.set(0, 0.015, 0.02);
+    this.viewmodel.add(this.vmArm);
     this.viewmodel.position.set(0.3, -0.3, -0.48);
     camera.add(this.viewmodel);
   }
