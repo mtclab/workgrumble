@@ -3,6 +3,19 @@ import type { Actor } from './entities';
 import { SKILL_UPS_PER_LEVEL } from './rpg';
 import { type Level, TILE } from './level';
 import type { Derived, SaveState } from './state';
+import { screenAngle } from './windup';
+
+/** How long the arc pointing at a hit stays on the screen's edge. */
+const HIT_FADE = 0.8;
+
+/** One arc on the rim of the screen, turned to face where a hit came from. */
+interface HitArc {
+  readonly el: HTMLDivElement;
+  /** Where it came from, relative to the player (so it keeps pointing there as you turn). */
+  dx: number;
+  dz: number;
+  t: number;
+}
 
 export interface HudFrame {
   readonly save: SaveState;
@@ -44,6 +57,8 @@ export interface HudFrame {
   /** 0..1 power-attack wind-up. */
   readonly charge: number;
   readonly blocking: boolean;
+  /** Holding the trigger on an empty tool. */
+  readonly dry: boolean;
   /** On call at the mökki (null: not), and whether a page is going off. */
   readonly oncall: { readonly text: string; readonly alarm: boolean } | null;
 }
@@ -114,6 +129,9 @@ export class Hud {
   private readonly oncall: HTMLDivElement;
   private vignetteT = 0;
   private vignetteColor = 'rgba(255,0,0,';
+  private readonly hitArcs: HitArc[] = [];
+  private readonly hitRing: HTMLDivElement;
+  private hitRingT = 0;
   private faceBlink = 0;
   mapOpen = false;
 
@@ -122,6 +140,9 @@ export class Hud {
     this.root.className = 'hud';
     parent.append(this.root);
     this.vignette = div('hud-vignette', this.root);
+    // Where hits come from: a few arcs to reuse, and a ring for hurt from nowhere in particular.
+    for (let i = 0; i < 4; i++) this.hitArcs.push({ el: div('hud-hit', this.root), dx: 0, dz: 0, t: 0 });
+    this.hitRing = div('hud-hit-ring', this.root);
     this.crosshair = div('hud-crosshair', this.root, '+');
     this.prompt = div('hud-prompt', this.root);
     this.effects = div('hud-effects', this.root);
@@ -246,6 +267,22 @@ export class Hud {
     this.vignetteColor = kind === 'hurt' ? 'rgba(255,0,0,' : kind === 'heal' ? 'rgba(80,255,140,' : 'rgba(80,140,255,';
   }
 
+  /** A hit from (dx, dz) away: an arc on the screen's edge that points at it and fades. */
+  hitFrom(dx: number, dz: number): void {
+    // The oldest arc goes first when four are already showing.
+    let arc = this.hitArcs[0];
+    for (const h of this.hitArcs) if (arc === undefined || h.t < arc.t) arc = h;
+    if (arc === undefined) return;
+    arc.dx = dx;
+    arc.dz = dz;
+    arc.t = HIT_FADE;
+  }
+
+  /** Hurt with no one to point at (an aura, the carpet on fire): a faint ring all round. */
+  hitAround(): void {
+    this.hitRingT = HIT_FADE;
+  }
+
   toast(text: string, kind: 'info' | 'good' | 'bad' | 'epic' = 'info'): void {
     const t = div(`hud-toast hud-toast-${kind}`, this.toasts, text);
     window.setTimeout(() => t.classList.add('is-fading'), kind === 'epic' ? 5200 : 3400);
@@ -293,6 +330,19 @@ export class Hud {
     this.chargeRing.style.setProperty('--p', `${Math.round(f.charge * 100)}%`);
     this.chargeRing.classList.toggle('is-full', f.charge >= 1);
     this.blockIcon.style.display = f.blocking ? 'block' : 'none';
+    this.crosshair.classList.toggle('is-dry', f.dry);
+    for (const h of this.hitArcs) {
+      if (h.t <= 0) continue;
+      h.t = Math.max(0, h.t - dt);
+      h.el.style.display = h.t > 0 ? 'block' : 'none';
+      h.el.style.opacity = (h.t / HIT_FADE).toFixed(3);
+      h.el.style.transform = `translate(-50%, -50%) rotate(${screenAngle(h.dx, h.dz, f.yaw).toFixed(3)}rad)`;
+    }
+    if (this.hitRingT > 0) {
+      this.hitRingT = Math.max(0, this.hitRingT - dt);
+      this.hitRing.style.display = this.hitRingT > 0 ? 'block' : 'none';
+      this.hitRing.style.opacity = ((this.hitRingT / HIT_FADE) * 0.6).toFixed(3);
+    }
     this.cardT = Math.max(0, this.cardT - dt);
     if (this.cardT <= 0) this.card.classList.remove('is-on');
     this.tipT = Math.max(0, this.tipT - dt);

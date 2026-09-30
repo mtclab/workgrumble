@@ -8,7 +8,7 @@ import { fx } from './rng';
  * CPU-simulated, drawn as a single Points object.
  */
 
-export type Burst = 'confetti' | 'sparks' | 'steam' | 'dust' | 'aura' | 'smoke' | 'splash' | 'heal' | 'gold';
+export type Burst = 'confetti' | 'sparks' | 'steam' | 'dust' | 'aura' | 'smoke' | 'splash' | 'heal' | 'gold' | 'puff';
 
 interface Style {
   readonly colors: readonly number[];
@@ -31,6 +31,8 @@ const STYLES: Record<Burst, Style> = {
   splash: { colors: [0xbfe6ff, 0xffffff, 0x8fc8f0], size: [0.08, 0.14], life: [0.5, 0.9], speed: [2, 4.5], gravity: 9, drag: 1, up: 4, additive: false },
   heal: { colors: [0x7dff9a, 0xc8ffd0], size: [0.07, 0.12], life: [0.7, 1.2], speed: [0.3, 1], gravity: -1.8, drag: 1, up: 0.8, additive: true },
   gold: { colors: [0xffd700, 0xfff08a], size: [0.08, 0.14], life: [0.6, 1.2], speed: [2, 5], gravity: 6, drag: 1.5, up: 3, additive: true },
+  // A swing that met nothing: a small puff of office dust where it ran out.
+  puff: { colors: [0xcfc6b4, 0xb8b0a0, 0xe4ddd0], size: [0.08, 0.16], life: [0.3, 0.6], speed: [0.6, 1.6], gravity: -0.4, drag: 3.5, up: 0.3, additive: false },
 };
 
 const MAX = 2400;

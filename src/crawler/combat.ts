@@ -5,12 +5,15 @@ import { TICKETS } from './content/tickets';
 import { disposeTree } from './dispose';
 import {
   type Actor,
+  type ActorKind,
   type HazardKind,
   hurtActor,
   type ProjectileKind,
   stun,
   type ProjectileSpec,
   say,
+  type TelegraphSpec,
+  walkClear,
 } from './entities';
 import { type Game, POWER_TIME } from './game';
 import { AMMO, type AmmoKind, BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, itemById, RUNES, type WeaponDef } from './items';
@@ -23,6 +26,7 @@ import { adjustStanding, perk, skill } from './state';
 import { disposeSprite, textSprite } from './textures';
 import { questEvent } from './questing';
 import { questProgress } from './desk';
+import { chargeShown, isParry, meleeStep, screenAngle, telegraphOpacity } from './windup';
 
 export interface Projectile {
   readonly kind: ProjectileKind;
@@ -68,7 +72,10 @@ export interface Hazard {
   readonly radius: number;
   ttl: number;
   readonly life: number;
-  readonly kind: HazardKind;
+  /** null: a landing marker, which only warns (the hit is on its way separately). */
+  readonly kind: HazardKind | null;
+  /** Seconds before it bites: a hazard's telegraph; a marker's whole life. */
+  readonly armAt: number;
   tick: number;
 }
 
@@ -78,8 +85,10 @@ const fwdOf = (yaw: number): THREE.Vector3 => new THREE.Vector3(-Math.sin(yaw), 
 
 /**
  * LMB: tap for a quick swing; hold a melee tool to wind up a heavy one and
- * release to let it go. Ranged tools fire while held. RMB: tap to shove,
- * hold to block; blocking just as a hit lands is a parry.
+ * release to let it go (the swing comes on the release, so a press is never
+ * a quick swing and a heavy one both). Ranged tools fire while held. RMB:
+ * tap to shove, hold to block; raising the block just before a strike lands
+ * is a parry.
  */
 export function playerAttackInput(g: Game, dt: number): void {
   const inp = g.input;
@@ -88,6 +97,7 @@ export function playerAttackInput(g: Game, dt: number): void {
   const w = d.weapon;
   const atkRate = d.attackSpeed * (g.auraSlow > 0 ? 0.85 : 1);
   const canAct = g.rootT <= 0;
+  g.dryFire = false;
 
   // Right button.
   if (inp.rmb && canAct) {
@@ -98,40 +108,51 @@ export function playerAttackInput(g: Game, dt: number): void {
     g.rmbT = 0;
     g.blocking = false;
   }
-  if (g.blocking) return;
+  if (g.blocking) {
+    // Blocking puts the swing down: nothing half-charged goes off when the guard drops.
+    g.charging = false;
+    g.chargeT = 0;
+    g.swingQueued = false;
+    g.player.charge = 0;
+    return;
+  }
 
   if (w.kind === 'melee') {
-    if (inp.clicked() && g.attackCd <= 0 && canAct) {
-      attack(g, w, atkRate, false);
-      g.charging = true;
-      g.chargeT = 0;
-    } else if (g.charging && inp.lmb) {
-      const before = g.chargeT;
-      g.chargeT += dt;
-      if (before < POWER_TIME && g.chargeT >= POWER_TIME) sfx.charge();
-    } else if (g.charging && !inp.lmb) {
-      g.charging = false;
-      if (g.chargeT >= POWER_TIME && canAct) {
-        const cost = perk(s, 'powercycle') > 0 ? 10 : 20;
-        if (s.energy >= cost || d.ultra) {
-          if (!d.ultra) s.energy -= cost;
-          g.attackCd = 0;
-          attack(g, w, atkRate, true);
-        } else {
-          sfx.error();
-          g.hud.toast('Too tired for a heavy swing. (Energy)', 'bad');
-        }
+    const act = meleeStep(g, { pressed: inp.clicked(), down: inp.lmb, dt, ready: g.attackCd <= 0, canAct }, POWER_TIME);
+    if (act === 'charged') sfx.charge();
+    else if (act === 'light') attack(g, w, atkRate, false);
+    else if (act === 'heavy') {
+      const cost = perk(s, 'powercycle') > 0 ? 10 : 20;
+      if (s.energy >= cost || d.ultra) {
+        if (!d.ultra) s.energy -= cost;
+        g.attackCd = 0;
+        attack(g, w, atkRate, true);
+      } else {
+        // Too tired to put your back into it: it still goes, as a quick one.
+        g.hud.toast('Too tired for a heavy swing. (Energy)', 'bad');
+        g.attackCd = 0;
+        attack(g, w, atkRate, false);
       }
-      g.chargeT = 0;
     }
+    g.player.charge = chargeShown(g, POWER_TIME);
     return;
   }
   g.charging = false;
   g.chargeT = 0;
+  g.swingQueued = false;
+  g.player.charge = 0;
+  // Holding the trigger on an empty tool: the crosshair says so for as long as you hold it.
+  g.dryFire = inp.lmb && !canFire(g, w);
   if ((inp.lmb || inp.clicked()) && g.attackCd <= 0 && canAct) {
     const race = perk(s, 'racecondition') > 0 ? 1.2 : 1;
     attack(g, w, atkRate * (w.kind === 'nova' ? 1 : race), false);
   }
+}
+
+/** Is there ammo (or energy) for another go with this tool? */
+function canFire(g: Game, w: WeaponDef): boolean {
+  if (w.ammo !== undefined && g.save.ammo[w.ammo] <= 0) return false;
+  return w.energyCost === undefined || g.save.energy >= w.energyCost || g.derivedCache.ultra;
 }
 
 export function aimPoint(g: Game): THREE.Vector3 {
@@ -185,7 +206,9 @@ export function strike(g: Game, a: Actor, base: number, knock: THREE.Vector3 | n
   }
   if (a.memo.marked === true) dmg *= 1.5;
   if (a.shielded) dmg *= 0.5;
-  if (power) dmg *= 2.2 * (perk(s, 'powercycle') > 0 ? 1.25 : 1);
+  // A heavy swing is the whole of its press now (it used to come after a free
+  // quick swing): x3 keeps a charged cycle worth what it was.
+  if (power) dmg *= 3 * (perk(s, 'powercycle') > 0 ? 1.25 : 1);
   hurtActor(g, a, dmg, knock);
   g.particles.emit('sparks', a.pos.clone().setY(a.kind === 'boss' ? 2.4 : 1.3), power ? 16 : kind === 'spell' ? 4 : 7, 0.25);
   // Legendary specials.
@@ -211,19 +234,16 @@ export function strike(g: Game, a: Actor, base: number, knock: THREE.Vector3 | n
 export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): void {
   const s = g.save;
   const d = g.derivedCache;
+  // Empty: a dry click on every go (the 0.3 s recovery spaces them), and the reason on a fresh press.
   if (w.ammo !== undefined && s.ammo[w.ammo] <= 0) {
-    if (g.input.clicked()) {
-      sfx.error();
-      g.hud.toast(`Out of ${w.ammo}. Internal IT sells more (or pick them up).`, 'bad');
-    }
+    sfx.empty();
+    if (g.input.clicked()) g.hud.toast(`Out of ${w.ammo}. Internal IT sells more (or pick them up).`, 'bad');
     g.attackCd = 0.3;
     return;
   }
   if (w.energyCost !== undefined && s.energy < w.energyCost && !d.ultra) {
-    if (g.input.clicked()) {
-      sfx.error();
-      g.hud.toast('Not enough energy. Coffee? A can of something?', 'bad');
-    }
+    sfx.empty();
+    if (g.input.clicked()) g.hud.toast('Not enough energy. Coffee? A can of something?', 'bad');
     g.attackCd = 0.3;
     return;
   }
@@ -243,7 +263,6 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
   switch (w.kind) {
     case 'melee': {
       if (power) sfx.heavy();
-      else sfx.swing();
       let hitAny = false;
       const range = w.range * (power ? 1.2 : 1);
       const arc = (w.arc ?? 1) * (power ? 1.4 : 1);
@@ -289,9 +308,14 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
         }
       }
       if (hitAny) {
+        if (!power) sfx.swing();
         sfx.hit();
         g.shake(power ? 0.45 : 0.15);
         g.hitStop = power ? 0.09 : 0.035;
+      } else {
+        // A miss answers too: a whiff, and a puff of dust where the swing ran out.
+        sfx.whiff();
+        g.particles.emit('puff', pp.clone().addScaledVector(yawFwd, range).setY(1.1), power ? 14 : 8, 0.25);
       }
       break;
     }
@@ -314,7 +338,6 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
         ttl: 3 * net,
         ...(w.kind === 'lob' ? { gravity: 12, splash: w.splash ?? 3 } : {}),
       });
-      sfx.shoot();
       break;
     }
     case 'cone': {
@@ -359,9 +382,11 @@ export function shove(g: Game): void {
   g.shoveCd = 0.8;
   g.save.energy -= 8;
   g.player.swing = 1;
-  sfx.swing();
+  sfx.shove();
   const pp = g.player.pos;
   const fwd = fwdOf(g.player.yaw);
+  // A small ring pushed out in front: the reach of the shove.
+  fxRing(g, pp.clone().addScaledVector(fwd, 1.1).setY(1), 0xdfe8ff, 1.5);
   for (const a of g.actors) {
     if (!a.hostile || a.resolved || a.kind === 'boss' || a.kind === 'turret') continue;
     const dx = a.pos.x - pp.x;
@@ -407,7 +432,8 @@ function projMesh(g: Game, kind: ProjectileKind): THREE.Mesh {
       case 'steam': entry = [new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ color: 0xeef6ff, transparent: true, opacity: 0.7 })]; break;
       case 'salmiakki': entry = [new THREE.OctahedronGeometry(0.2), basic(0x1a1a1a)]; break;
       case 'deck': entry = [new THREE.BoxGeometry(0.5, 0.36, 0.04), basic(0x5dade2)]; break;
-      case 'code': entry = [new THREE.BoxGeometry(0.08, 0.08, 0.5), basic(0x00ff66)]; break;
+      // Thick and bright enough to see coming across a dim office.
+      case 'code': entry = [new THREE.BoxGeometry(0.16, 0.16, 0.65), new THREE.MeshBasicMaterial({ color: 0x9dffc4, toneMapped: false })]; break;
       case 'chat': entry = [new THREE.SphereGeometry(0.24, 10, 8), new THREE.MeshBasicMaterial({ color: 0x8fd0ff, transparent: true, opacity: 0.8 })]; break;
     }
     g.projGeo.set(kind, entry);
@@ -424,7 +450,8 @@ export function fire(g: Game, p: ProjectileSpec): void {
     kind: p.kind, mesh, vel: p.dir.clone().multiplyScalar(p.speed), damage: p.damage, hostile: p.hostile, owner: p.owner,
     ttl: p.ttl ?? 3, splash: p.splash ?? 0, gravity: p.gravity ?? 0, hitIds: new Set(),
   });
-  if (p.hostile && (p.kind === 'ticket' || p.kind === 'gold' || p.kind === 'deck')) sfx.paper();
+  // Everything that flies makes a sound as it leaves (a ring of them makes one).
+  sfx.projectile(p.kind);
 }
 
 export function updateProjectiles(g: Game, dt: number): void {
@@ -490,7 +517,7 @@ export function updateProjectiles(g: Game, dt: number): void {
         if (p.hostile) {
           const dist = Math.hypot(pos.x - pp.x, pos.z - pp.z);
           if (dist < p.splash && !p.hitIds.has(-1)) {
-            hurtPlayer(g, p.damage * 0.8, p.owner, 'boss');
+            hurtPlayer(g, p.damage * 0.8, p.owner, 'boss', pos);
             if (p.kind === 'po') g.addActionItem('Procurement');
           }
         } else {
@@ -510,19 +537,23 @@ export function updateProjectiles(g: Game, dt: number): void {
 
 const SUBJECTS = ['Quick sync re: the sync', 'Stand-up (sit-down)', 'Lessons learned: lessons', 'Alignment on alignment', 'KPI deep dive', '1:1 (with 14 people)'];
 
+/** Where a projectile came from: a little back along its flight. */
+const cameFrom = new THREE.Vector3();
+
 function projectileHitsPlayer(g: Game, p: Projectile): void {
   const s = g.save;
+  const src = cameFrom.copy(p.mesh.position).addScaledVector(p.vel, -0.2);
   switch (p.kind) {
     case 'ticket':
-      hurtPlayer(g, p.damage, p.owner, 'ticket');
+      hurtPlayer(g, p.damage, p.owner, 'ticket', src);
       if (p.owner !== null) g.enqueueTicket(p.owner, false);
       break;
     case 'gold':
-      hurtPlayer(g, p.damage, p.owner, 'ticket');
+      hurtPlayer(g, p.damage, p.owner, 'ticket', src);
       if (p.owner !== null && p.owner.kind !== 'boss') g.enqueueTicket(p.owner, true);
       break;
     case 'invite':
-      if (hurtPlayer(g, p.damage, p.owner, 'meeting') && !g.derivedCache.noRoot) {
+      if (hurtPlayer(g, p.damage, p.owner, 'meeting', src) && !g.derivedCache.noRoot) {
         const resist = (s.sign === 'freeze' ? 0.5 : 1) / (1 + perk(s, 'teflon')) * (1 - s.attrs.liver * 0.004) * (perk(s, 'ironwill') > 0 ? 0.5 : 1);
         g.rootPlayer(2.2 * resist, `In a meeting: "${fx.pick(SUBJECTS)}"`);
         g.tip('manager');
@@ -530,28 +561,30 @@ function projectileHitsPlayer(g: Game, p: Projectile): void {
       break;
     case 'po':
       p.hitIds.add(-1);
-      hurtPlayer(g, p.damage, p.owner, 'boss');
+      hurtPlayer(g, p.damage, p.owner, 'boss', src);
       g.addActionItem('Procurement');
       break;
     case 'chat':
       // The chatbot's answer is never the answer. It is, however, very slow.
-      if (hurtPlayer(g, p.damage, p.owner, 'ticket')) {
+      if (hurtPlayer(g, p.damage, p.owner, 'ticket', src)) {
         g.slowT = Math.max(g.slowT, 2);
         g.rootPlayer(0.4, 'Reading 14 suggested articles');
       }
       break;
     case 'deck':
-      if (hurtPlayer(g, p.damage, p.owner, 'meeting') && fx.chance(0.35)) g.addActionItem(p.owner?.name ?? 'A consultant');
+      if (hurtPlayer(g, p.damage, p.owner, 'meeting', src) && fx.chance(0.35)) g.addActionItem(p.owner?.name ?? 'A consultant');
       break;
     default:
-      hurtPlayer(g, p.damage, p.owner, p.owner?.kind === 'boss' ? 'boss' : 'ticket');
+      hurtPlayer(g, p.damage, p.owner, p.owner?.kind === 'boss' ? 'boss' : 'ticket', src);
   }
 }
 
 /**
  * All damage to you. Returns false when it was blocked or parried outright.
+ * `src` is where it came from, for the arc on the screen's edge (the
+ * attacker when not given; with neither, a faint ring all round).
  */
-export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'melee' | 'ticket' | 'meeting' | 'boss' | 'aura' | 'bite'): boolean {
+export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'melee' | 'ticket' | 'meeting' | 'boss' | 'aura' | 'bite', src: THREE.Vector3 | null = null): boolean {
   if (g.screen !== 'play') return false;
   const s = g.save;
   const d = g.derivedCache;
@@ -563,7 +596,8 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
     const f = fwdOf(g.player.yaw);
     const facing = (dx * f.x + dz * f.z) / Math.max(1e-4, Math.hypot(dx, dz));
     if (facing > 0.2) {
-      if (g.rmbT < 0.3) {
+      // Timed on the strike: the guard went up in the last moment before it landed.
+      if (isParry(g.rmbT)) {
         sfx.parry();
         floatText(g, g.player.pos.clone().setY(2.3), 'PARRY', '#7dffea');
         g.particles.emit('sparks', g.player.pos.clone().addScaledVector(fwdOf(g.player.yaw), 0.7).setY(1.4), 14, 0.2);
@@ -596,14 +630,16 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
   sfx.hurt();
   g.shake(Math.min(0.5, dmg / 30));
   g.faceT = 0.6;
-  if (from !== null) {
-    const dx = from.pos.x - g.player.pos.x;
-    const dz = from.pos.z - g.player.pos.z;
-    const side = dx * Math.cos(g.player.yaw) - dz * Math.sin(g.player.yaw);
-    const fwdDot = -dx * Math.sin(g.player.yaw) - dz * Math.cos(g.player.yaw);
-    g.faceMood = fwdDot > Math.abs(side) ? 'hurt' : side > 0 ? 'right' : 'left';
+  const at = src ?? from?.pos ?? null;
+  if (at !== null && kind !== 'aura') {
+    const dx = at.x - g.player.pos.x;
+    const dz = at.z - g.player.pos.z;
+    const ang = screenAngle(dx, dz, g.player.yaw);
+    g.faceMood = Math.abs(ang) < Math.PI / 4 ? 'hurt' : ang > 0 ? 'right' : 'left';
+    g.hud.hitFrom(dx, dz);
   } else {
     g.faceMood = 'hurt';
+    g.hud.hitAround();
   }
   if (s.sanity <= 0) lastStand(g);
   return true;
@@ -926,7 +962,7 @@ export function updatePickups(g: Game, dt: number): void {
 const HAZARD_COLOR: Record<HazardKind, number> = { coffee: 0x6b3a1a, fire: 0xff5a1a, meeting: 0x4a8cff, freeze: 0x9ad8ff };
 
 export function spawnHazard(g: Game, x: number, z: number, radius: number, seconds: number, kind: HazardKind): void {
-  if (g.hazards.length > 14) return;
+  if (g.hazards.filter((h) => h.kind !== null).length > 14) return;
   const mesh = new THREE.Mesh(
     new THREE.CircleGeometry(radius, 32),
     new THREE.MeshBasicMaterial({ color: HAZARD_COLOR[kind], transparent: true, opacity: 0.0, depthWrite: false }),
@@ -934,7 +970,28 @@ export function spawnHazard(g: Game, x: number, z: number, radius: number, secon
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set(x, 0.04, z);
   g.scene.add(mesh);
-  g.hazards.push({ mesh, x, z, radius, ttl: seconds, life: seconds, kind, tick: 0.8 });
+  g.hazards.push({ mesh, x, z, radius, ttl: seconds, life: seconds, kind, armAt: 0.9, tick: 0.8 });
+}
+
+/**
+ * A landing marker: the same fade-in as a boss hazard's telegraph, where a
+ * PO bomb will come down or along a laser's line, gone as the hit arrives.
+ */
+export function spawnTelegraph(g: Game, t: TelegraphSpec): void {
+  if (g.hazards.length > 60) return;
+  const geo = t.beam === undefined ? new THREE.CircleGeometry(t.radius, 32) : new THREE.PlaneGeometry(t.radius * 2, t.beam.length);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xff3a2a, transparent: true, opacity: 0.0, depthWrite: false, side: THREE.DoubleSide }));
+  mesh.rotation.x = -Math.PI / 2;
+  if (t.beam === undefined) {
+    mesh.position.set(t.x, 0.05, t.z);
+  } else {
+    // A strip from (x, z) out along the bearing: centred half its length out.
+    const half = t.beam.length / 2;
+    mesh.position.set(t.x + Math.sin(t.beam.angle) * half, 0.05, t.z + Math.cos(t.beam.angle) * half);
+    mesh.rotation.z = t.beam.angle;
+  }
+  g.scene.add(mesh);
+  g.hazards.push({ mesh, x: t.x, z: t.z, radius: t.radius, ttl: t.seconds, life: t.seconds, kind: null, armAt: t.seconds, tick: 0 });
 }
 
 export function updateHazards(g: Game, dt: number): void {
@@ -944,12 +1001,12 @@ export function updateHazards(g: Game, dt: number): void {
   g.hazards = g.hazards.filter((h) => {
     h.ttl -= dt;
     const age = h.life - h.ttl;
-    // A telegraph: it fades in for most of a second before it bites.
-    const armed = age > 0.9;
+    // A telegraph: it fades in before it bites (a hazard's first second; a marker's whole life).
+    const armed = age > h.armAt;
     const m = h.mesh.material as THREE.MeshBasicMaterial;
-    m.opacity = armed ? 0.45 + Math.sin(g.time * 6) * 0.08 : Math.min(0.35, age * 0.4) * (0.5 + 0.5 * Math.sin(g.time * 20));
-    if (h.ttl < 1) m.opacity *= h.ttl;
-    if (armed && Math.hypot(pp.x - h.x, pp.z - h.z) < h.radius && pp.y < 0.5) {
+    m.opacity = telegraphOpacity(age, h.armAt, g.time);
+    if (h.kind !== null && h.ttl < 1) m.opacity *= h.ttl;
+    if (armed && h.kind !== null && Math.hypot(pp.x - h.x, pp.z - h.z) < h.radius && pp.y < 0.5) {
       switch (h.kind) {
         case 'coffee':
           g.hazardSlow = Math.max(g.hazardSlow, 0.45);
@@ -1047,4 +1104,44 @@ export function floatText(g: Game, pos: THREE.Vector3, text: string, color: stri
 
 function itemRune(id: string): string {
   return CONSUMABLES.find((c) => c.id === id)?.rune ?? '';
+}
+
+// ================================================================== a duel, for the browser tests
+
+/**
+ * Put one of `kind` in front of the player, `dist` metres off and already
+ * after them, with everyone else on the floor told to leave it: the setup
+ * the combat tests play out with real keys. The player is turned to face a
+ * direction with room to strafe right. Returns the newcomer's id, or -1.
+ */
+export function stageDuel(g: Game, kind: ActorKind, dist: number): number {
+  for (const a of g.actors) {
+    if (!a.hostile || a.resolved) continue;
+    a.aggro = false;
+    a.docile = true;
+    a.pending = null;
+    a.windup = 0;
+  }
+  const pp = g.player.pos;
+  const lv = g.level;
+  for (let k = 0; k < 16; k++) {
+    const yaw = g.player.yaw + (k * Math.PI) / 8;
+    const ex = pp.x - Math.sin(yaw) * dist;
+    const ez = pp.z - Math.cos(yaw) * dist;
+    // Room to step three metres right, and a clear line to the newcomer.
+    const rx = pp.x + Math.cos(yaw) * 3;
+    const rz = pp.z - Math.sin(yaw) * 3;
+    if (!walkClear(lv, pp.x, pp.z, ex, ez) || !walkClear(lv, pp.x, pp.z, rx, rz) || !walkClear(lv, ex, ez, rx, rz)) continue;
+    if (!lineOfSight(lv, pp.x, pp.z, ex, ez) || lv.solid[toCell(ez) * lv.w + toCell(ex)] !== 0 || lv.solid[toCell(rz) * lv.w + toCell(rx)] !== 0) continue;
+    const a = g.spawnAt(kind, ex, ez, lv.roomOf[toCell(ez) * lv.w + toCell(ex)] ?? -1, true);
+    if (a === null) continue;
+    g.player.yaw = yaw;
+    g.player.pitch = 0;
+    a.docile = false;
+    a.cooldown = 0;
+    a.yaw = Math.atan2(pp.x - a.pos.x, pp.z - a.pos.z);
+    g.save.sanity = g.derivedCache.maxSanity;
+    return a.id;
+  }
+  return -1;
 }

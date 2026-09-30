@@ -20,6 +20,7 @@ import {
   type Projectile,
   floatText,
   spawnHazard,
+  spawnTelegraph,
 } from './combat';
 import { Compass, type CompassMarker } from './compass';
 import { TICKETS } from './content/tickets';
@@ -40,6 +41,7 @@ import {
   say,
   setMarker,
   type SpawnOpts,
+  type TelegraphSpec,
   updateActor,
   updateAuras,
 } from './entities';
@@ -133,6 +135,7 @@ import {
   tooTired,
   treatOptions,
 } from './teamwork';
+import { chargeShown, TAP_TIME } from './windup';
 
 export type Screen = 'title' | 'chargen' | 'play' | 'os' | 'dialogue' | 'paused' | 'dead' | 'ending' | 'transition' | 'minigame';
 
@@ -195,9 +198,13 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   // Combat.
   attackCd = 0;
   shoveCd = 0;
-  /** Seconds LMB has been held since the last swing (melee power attacks). */
+  /** Seconds LMB has been held on this press (melee: the swing comes on the release). */
   chargeT = 0;
   charging = false;
+  /** A quick swing let go while the tool was still recovering: it goes as soon as it can. */
+  swingQueued = false;
+  /** Holding the trigger on an empty tool (the crosshair changes while you do). */
+  dryFire = false;
   blocking = false;
   /** Seconds RMB has been held: a tap shoves, a hold blocks, an early hold parries. */
   rmbT = 0;
@@ -462,6 +469,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.rootT = 0;
     this.chargeT = 0;
     this.charging = false;
+    this.swingQueued = false;
+    this.dryFire = false;
     this.blocking = false;
   }
 
@@ -806,6 +815,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.slowT = 0;
     this.charging = false;
     this.chargeT = 0;
+    this.swingQueued = false;
+    this.dryFire = false;
     this.blocking = false;
     this.caughtPending = false;
     this.hurtFlash = 0;
@@ -1051,8 +1062,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       questLines: questLines(this),
       overload: this.save.location === 'office' ? this.derivedCache.overload : 0,
       markers: this.markers,
-      charge: this.charging && this.derivedCache.weapon.kind === 'melee' ? Math.min(1, this.chargeT / POWER_TIME) : 0,
+      charge: this.derivedCache.weapon.kind === 'melee' ? chargeShown(this, POWER_TIME) : 0,
       blocking: this.blocking,
+      dry: this.dryFire,
       oncall: pagerHud(this),
     };
   }
@@ -1156,7 +1168,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.slowT > 0 && !d.ultra) speed *= 0.6;
     if (this.player.crouching && perk(s, 'silentkeys') === 0) speed *= 0.55;
     if (this.blocking) speed *= 0.5;
-    if (this.charging && this.chargeT > 0.2 && d.weapon.kind === 'melee') speed *= 0.75;
+    if (this.charging && this.chargeT > TAP_TIME && d.weapon.kind === 'melee') speed *= 0.75;
     const moving = fwd !== 0 || side !== 0;
     const sprint = this.down('sprint') && moving && !d.overEncumbered && s.energy > 1 && !this.player.crouching && !this.blocking;
     if (sprint) {
@@ -1615,6 +1627,15 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
   hazard(x: number, z: number, radius: number, seconds: number, kind: HazardKind): void {
     spawnHazard(this, x, z, radius, seconds, kind);
+  }
+
+  telegraph(t: TelegraphSpec): void {
+    spawnTelegraph(this, t);
+  }
+
+  /** The rising sound of a wind-up, for anyone close enough to matter; bosses lower. */
+  windupCue(a: Actor, seconds: number): void {
+    if (Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) < 18) sfx.windup(seconds, a.kind === 'boss');
   }
 
   healPlayer(amount: number, from: string): void { host.healPlayer(this, amount, from); }

@@ -247,6 +247,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
   background: conic-gradient(#ffd98a var(--p, 0%), rgba(0,0,0,0.25) 0); -webkit-mask: radial-gradient(circle, transparent 15px, #000 16px); mask: radial-gradient(circle, transparent 15px, #000 16px); }
 .hud-charge.is-full { background: conic-gradient(#ff7a3a 100%, transparent 0); filter: drop-shadow(0 0 6px #ff7a3a); }
 .hud-block { position: absolute; left: 50%; top: calc(50% + 28px); transform: translateX(-50%); font: bold 12px monospace; color: #9ad0ff; text-shadow: 0 0 3px #000; display: none; }
+/* Where a hit came from: an arc on a ring round the middle of the screen, turned toward it, with a notch on its outer edge. The shape carries it, not the colour. */
+.hud-hit { position: absolute; left: 50%; top: 50%; width: min(62vh, 62vw); height: min(62vh, 62vw); border-radius: 50%; border: 9px solid transparent; border-top-color: rgba(255, 90, 60, 0.9); filter: drop-shadow(0 0 3px #000); display: none; pointer-events: none; }
+.hud-hit::after { content: ''; position: absolute; left: 50%; top: -24px; margin-left: -9px; border: 9px solid transparent; border-bottom: 12px solid rgba(255, 90, 60, 0.95); }
+.hud-hit-ring { position: absolute; left: 50%; top: 50%; width: min(62vh, 62vw); height: min(62vh, 62vw); transform: translate(-50%, -50%); border-radius: 50%; border: 4px solid rgba(255, 110, 80, 0.8); display: none; pointer-events: none; }
+/* Holding the trigger on an empty tool: the cross becomes a struck-through ring. */
+.hud-crosshair.is-dry { color: transparent; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.85); border-radius: 50%; box-shadow: 0 0 3px #000; }
+.hud-crosshair.is-dry::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: rgba(255,255,255,0.85); transform: rotate(45deg); }
 .hud-cell-caff { min-width: 140px; }
 .hud-caff { font-size: 22px; color: #c9f27a; }
 .hud-track-caff { position: relative; }

@@ -69,12 +69,28 @@ employer, Ironman.
 
 ## Combat
 
-LMB swings or fires your tool; **hold LMB with a melee tool to wind up a
-heavy swing** (more damage and knockback, a stagger, costs energy). **Hold
-RMB to block** (frontal hits, costs energy, slows you); **block just as a
-hit lands to parry** (no damage, the attacker is staggered); tap RMB to
-shove. Hits land with a hit-stop. Sneak attacks on anyone who has not
-noticed you do ×2 and up.
+LMB swings or fires your tool. With a melee tool the swing comes on the
+release: **a tap is a quick swing; hold LMB to charge a heavy one** (the ring
+appears once the hold is longer than a tap, the tool draws back; more damage
+and knockback, a stagger, costs energy); let go early and it is a quick
+swing. One press is one swing. A miss whiffs and puffs dust. Holding the
+trigger on an empty tool clicks dry and the crosshair turns into a
+struck-through ring. **Hold RMB to block** (frontal hits, costs energy, slows
+you); **raise the block in the last quarter second before a strike lands to
+parry** (no damage, the attacker is staggered); tap RMB to shove. Hits land
+with a hit-stop. Sneak attacks on anyone who has not noticed you do ×2 and
+up.
+
+**Every hit on you is announced** (docs/SPEC_COMBAT_READ.md). Each enemy
+attack winds up first (the arm or body draws back, a warm glow, a rising
+sound): 0.35-0.55 s for melee and contact attacks, 0.3-0.5 s before a throw
+leaves, 0.6-0.8 s for a boss (the slam, the crouch before the QUICK sync,
+every pattern). The damage is decided at the strike, from where you are
+then: step out during the wind-up and it misses. PO bombs and the Auditor's
+lasers mark the carpet where they will land. An arc on the screen's edge
+points at whatever hurt you; a faint ring means it came from all round (a
+hazard). The wind-up table and the rules behind it are in
+`src/crawler/windup.ts`.
 
 **The people** (every one of them can be talked to first - E):
 
@@ -449,7 +465,8 @@ runtime:
 | `saves.ts`, `settings.ts` | Save slots; global options. |
 | `story.ts` | Every other conversation: talk-downs, managers, office ladies, helpers, the Saunatonttu, the per-floor stories, the Auditor, HR, reviews, level-up. |
 | `game.ts` | The Game: world loading, the loop, saves, settings, and the host interfaces the rest call into. |
-| `combat.ts` | Attacks (heavy, block, parry), projectiles, damage both ways, resolving people, loot on the floor, hazards, effects. |
+| `combat.ts` | Attacks (heavy, block, parry), projectiles, damage both ways, resolving people, loot on the floor, hazards and landing markers, effects. |
+| `windup.ts` | Combat you can read (pure): the enemy wind-up table and clock, the strike decided where you stand, the parry window, the melee button's tap/hold rules, the hit-direction angle. |
 | `vices.ts` | Drink and caffeine ticks, timed can buffs, blackouts. |
 | `spells.ts` | Runes (and the cold-steam cast) and domain abilities. |
 | `suo.ts`, `suodress.ts`, `vision.ts` | SUO: the overflow rules and tone lint (pure); the bog redress with its exact restore; the vision (the Löylyhenki, the serif line, the crossing). |
@@ -476,4 +493,11 @@ workplace, save-migration, persuasion, inebriation, caffeine, White Monster,
 loot, quest and ending rules. `oncall.test.ts` covers the on-call rota (never
 week one, never two running, the rate by rung), the page schedule and clock,
 the drunk and Ballmer Peak modifiers, the missed-page warning rule, the pay,
-and old and mid-weekend saves.
+and old and mid-weekend saves. `windup.test.ts` covers the wind-up table
+against the spec's floors, the melee button and the parry window;
+`attacks.test.ts` drives the real enemy AI in an empty room and fails any
+attack (every kind, every boss pattern) that reaches the player sooner than
+its floor after a visible wind-up, and proves a strike is decided where the
+player stands when it lands. `e2e/helldesk-combat.spec.ts` plays the same
+with real keys on the served page (strafe out of a swing; stand still and
+take it; parry on the wind-up; a block held too early only blocks).

@@ -968,7 +968,7 @@ export function setExpression(rig: Rig, expr: Expression): void {
 }
 
 /** Advance the walk cycle by `speed` (m/s) over `dt`. */
-export function animateRig(rig: Rig, speed: number, dt: number, attacking = 0): void {
+export function animateRig(rig: Rig, speed: number, dt: number, attacking = 0, windup = 0): void {
   rig.phase += dt * (3 + speed * 2.2);
   const amp = Math.min(0.8, speed * 0.22);
   const s = Math.sin(rig.phase);
@@ -976,7 +976,8 @@ export function animateRig(rig: Rig, speed: number, dt: number, attacking = 0): 
   rig.legR.rotation.x = -s * amp;
   rig.armL.rotation.x = -s * amp * 0.8;
   rig.armL.rotation.z = -0.06;
-  rig.armR.rotation.x = attacking > 0 ? -1.6 + attacking * 1.6 : s * amp * 0.8;
+  // Winding up, the arm draws back behind them; the strike swings it through to the front.
+  rig.armR.rotation.x = attacking > 0 ? -1.6 + attacking * 1.6 : windup > 0 ? windup * 1.3 : s * amp * 0.8;
   rig.armR.rotation.z = 0.06;
   rig.body.position.y = Math.abs(Math.cos(rig.phase)) * amp * 0.08;
   // Breathing, and a little sway of the shoulders when they walk.

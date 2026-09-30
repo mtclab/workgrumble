@@ -1,3 +1,5 @@
+import type { ProjectileKind } from './entities';
+
 /**
  * Every sound is synthesised on the fly with WebAudio: no audio assets.
  */
@@ -31,6 +33,8 @@ export class Sfx {
   private ambient: Ambient = 'none';
   private birdIn = 2;
   private dripIn = 3;
+  /** When each kind of projectile last made its sound: a ring of eighteen makes one. */
+  private readonly lastShot = new Map<ProjectileKind, number>();
   volume = 0.7;
   musicVolume = 0.5;
 
@@ -224,6 +228,36 @@ export class Sfx {
   sting(): void { [196, 185, 175, 98].forEach((f, i) => this.tone(f, 0.35, 'sawtooth', 0.12, 0, i * 0.12)); }
   achievement(): void { [659, 784, 988, 1319].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.12, 0, i * 0.07)); }
   jitter(): void { this.tone(60, 0.12, 'sine', 0.2); this.tone(60, 0.1, 'sine', 0.16, 0, 0.18); }
+  /** Someone drawing back to hit you: a short rise, lower and slower for a boss. */
+  windup(seconds: number, big = false): void { this.tone(big ? 110 : 240, Math.min(0.45, seconds), 'triangle', big ? 0.14 : 0.09, big ? 150 : 420); }
+  /** A swing that hits nothing: air, and a soft drop. */
+  whiff(): void { this.noise(0.16, 0.16, 1500); this.tone(340, 0.12, 'sine', 0.05, -200); }
+  /** Pulling the trigger on nothing. */
+  empty(): void { this.tone(2600, 0.015, 'square', 0.07); this.noise(0.03, 0.08, 4200); }
+  shove(): void { this.noise(0.1, 0.3, 600); this.tone(150, 0.12, 'sine', 0.25, -70); }
+
+  /** The sound of something leaving a hand (or a turret, or a boss). */
+  projectile(kind: ProjectileKind): void {
+    const ctx = this.ctx;
+    if (ctx === null) return;
+    const last = this.lastShot.get(kind) ?? -1;
+    if (ctx.currentTime - last < 0.06) return;
+    this.lastShot.set(kind, ctx.currentTime);
+    switch (kind) {
+      case 'ticket': case 'gold': case 'paper': case 'deck': this.paper(); break;
+      case 'invite': this.tone(990, 0.09, 'sine', 0.08, -120); break;
+      case 'code': this.tone(1500, 0.07, 'square', 0.05, -1000); break;
+      case 'chat': this.tone(480, 0.12, 'sine', 0.08, 320); break;
+      case 'laser': this.tone(1900, 0.14, 'sawtooth', 0.05, -1300); break;
+      case 'ring': this.tone(170, 0.2, 'square', 0.08, -70); break;
+      case 'po': this.tone(210, 0.1, 'square', 0.1, -90); this.noise(0.06, 0.1, 900); break;
+      case 'rtfm': this.tone(700, 0.06, 'square', 0.05, 300); break;
+      case 'stun': this.tone(520, 0.12, 'sine', 0.08, 500); break;
+      case 'steam': this.noise(0.25, 0.12, 6000); break;
+      case 'salmiakki': this.tone(300, 0.08, 'triangle', 0.08, -120); break;
+      case 'label': case 'toner': case 'duck': this.shoot(); break;
+    }
+  }
 
   fizzle(): void { this.noise(0.25, 0.15, 900); this.tone(300, 0.2, 'sawtooth', 0.08, -200); }
   hiss(): void { this.noise(0.9, 0.25, 7000); }

@@ -1,4 +1,6 @@
+import { stageDuel } from './combat';
 import { TICKETS } from './content/tickets';
+import type { ActorKind } from './entities';
 import { Game } from './game';
 import { rest } from './hosts';
 import { findPrompt, interact } from './interact';
@@ -30,6 +32,12 @@ try {
     toFigure: (): boolean => standNearFigure(game),
     calm: (): void => { for (const a of game.actors) a.aggro = false; },
     vision: (): { left: number; dist: number } | null => (game.vision === null ? null : { left: game.vision.clock.left, dist: game.vision.distance() }),
+    // Combat: one of `kind` squared up in front of you, and what it is doing.
+    duel: (kind: ActorKind, dist: number): number => stageDuel(game, kind, dist),
+    foe: (id: number): { pending: string | null; windup: number; stunned: number; resolved: boolean } | null => {
+      const a = game.actors.find((x) => x.id === id);
+      return a === undefined ? null : { pending: a.pending, windup: a.windup, stunned: a.stunned, resolved: a.resolved };
+    },
   };
 } catch (err) {
   mount.innerHTML = '<div class="screen" style="display:flex"><div class="title-logo small dead">BSOD</div>'

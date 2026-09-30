@@ -36,6 +36,17 @@ import { chatbotMesh, dogMesh, turretMesh } from './meshes';
 import { fx, type Rng } from './rng';
 import { MORALE_START, teamPower } from './team';
 import { disposeSprite, textSprite } from './textures';
+import {
+  ATTACKS,
+  type AttackId,
+  beginWindup,
+  type BossPattern,
+  cancelWindup,
+  patternOf,
+  strikeLands,
+  tickWindup,
+  windupProgress,
+} from './windup';
 
 export type ActorKind =
   | 'user'
@@ -92,21 +103,7 @@ export interface BossDef {
   readonly patterns: readonly BossPattern[];
 }
 
-export type BossPattern =
-  | 'invites'
-  | 'summonUsers'
-  | 'charge'
-  | 'goldSpiral'
-  | 'shockwave'
-  | 'summonCustomers'
-  | 'poBombs'
-  | 'freeze'
-  | 'summonReply'
-  | 'lasers'
-  | 'summonManagers'
-  | 'allHands'
-  | 'teleport'
-  | 'hazards';
+export type { BossPattern } from './windup';
 
 export interface DogParts {
   readonly legs: THREE.Object3D[];
@@ -140,6 +137,18 @@ export interface Actor {
   removeIn: number;
   flash: number;
   attackAnim: number;
+  /** The attack being wound up (null: none), seconds until it strikes, and the whole wind-up. */
+  pending: AttackId | null;
+  windup: number;
+  windupLen: number;
+  /** The way a melee or contact attack committed to when it started winding up. */
+  readonly aim: THREE.Vector3;
+  /** Lasers: the angle the carpet was marked at, so they fire where it said. */
+  patternAng: number;
+  /** Something without a rig: its own materials, for the warm glow of a wind-up (found when first needed). */
+  glowMats: GlowMat[] | null;
+  /** A glow or a flash is on the materials: put the resting glow back when it is over. */
+  tinted: boolean;
   /** Index into TICKETS: the problem this person brought. */
   ticket: number;
   bubble: THREE.Sprite | null;
@@ -213,6 +222,24 @@ export interface Actor {
   spawnIndex: number;
 }
 
+/** A material of something without a rig, and the emissive it rests at. */
+export interface GlowMat {
+  readonly mat: THREE.MeshStandardMaterial | THREE.MeshLambertMaterial;
+  readonly base: number;
+}
+
+/**
+ * A marking on the carpet that fades in where something is about to land: a
+ * disc, or (with `beam`) a strip running out from (x, z) along a bearing.
+ */
+export interface TelegraphSpec {
+  readonly x: number;
+  readonly z: number;
+  readonly radius: number;
+  readonly seconds: number;
+  readonly beam?: { readonly angle: number; readonly length: number };
+}
+
 /** What the AI needs from the game. The Game implements it. */
 export interface GameCtx {
   readonly level: Level;
@@ -255,6 +282,10 @@ export interface GameCtx {
   hazard(x: number, z: number, radius: number, seconds: number, kind: HazardKind): void;
   /** A vendor gets its hand in your pocket. Returns what it took. */
   stealRep(a: Actor, amount: number): number;
+  /** Someone starts winding up an attack: the short rising sound of it. */
+  windupCue(a: Actor, seconds: number): void;
+  /** Mark the carpet where something is about to land. */
+  telegraph(t: TelegraphSpec): void;
 }
 
 export type ProjectileKind =
@@ -665,6 +696,13 @@ export function createActor(
     removeIn: -1,
     flash: 0,
     attackAnim: 0,
+    pending: null,
+    windup: 0,
+    windupLen: 0,
+    aim: new THREE.Vector3(0, 0, 1),
+    patternAng: 0,
+    glowMats: null,
+    tinted: false,
     ticket: r.int(0, ticketCount - 1),
     bubble: null,
     bubbleTime: 0,
@@ -882,16 +920,52 @@ function glowFor(a: Actor): number {
   return a.glowBase;
 }
 
+/** The warm glow of someone winding up an attack. */
+const WARM = 0xff7a1a;
+const WARM_COLOR = new THREE.Color(WARM);
+
+/**
+ * Warm up something without a rig (an envelope, a jam, a turret): its own
+ * materials only, never the shared ones everybody's shadow is drawn with.
+ */
+function glowNonRig(a: Actor, amount: number): void {
+  if (a.glowMats === null) {
+    const mats: GlowMat[] = [];
+    a.root.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || o.userData.shared === true) return;
+      const m: unknown = o.material;
+      if ((m instanceof THREE.MeshStandardMaterial || m instanceof THREE.MeshLambertMaterial) && m.userData.shared !== true && !mats.some((g) => g.mat === m)) {
+        mats.push({ mat: m, base: m.emissive.getHex() });
+      }
+    });
+    a.glowMats = mats;
+  }
+  for (const g of a.glowMats) g.mat.emissive.setHex(g.base).lerp(WARM_COLOR, amount);
+}
+
 export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
+  // How far through a wind-up: the tell grows until the strike.
+  const tell = windupProgress(a);
   if (a.flash > 0) {
     a.flash = Math.max(0, a.flash - dt * 4);
     if (a.rig !== null) tintRig(a.rig, a.resolved ? 0x30ff60 : a.poisonT > 0 ? 0x30a030 : 0xff3030, a.flash);
+    a.tinted = true;
+  } else if (tell > 0) {
+    // Winding up: a warm glow that brightens toward the strike.
+    const amount = 0.3 + tell * 0.5;
+    if (a.rig !== null) tintRig(a.rig, WARM, amount);
+    else glowNonRig(a, amount * 0.8);
+    a.tinted = true;
   } else if (a.rig !== null) {
     const g = glowFor(a);
-    if (a.rig.glow !== g) {
+    if (a.rig.glow !== g || a.tinted) {
       a.rig.glow = g;
       tintRig(a.rig, 0, 0);
+      a.tinted = false;
     }
+  } else if (a.tinted) {
+    glowNonRig(a, 0);
+    a.tinted = false;
   }
   if (a.bubble !== null) {
     a.bubbleTime -= dt;
@@ -957,9 +1031,11 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
   a.root.rotation.y = a.yaw;
   const moved = Math.hypot(a.pos.x - a.lastPos.x, a.pos.z - a.lastPos.z) / Math.max(dt, 1e-4);
   if (a.rig !== null) {
-    animateRig(a.rig, moved, dt, a.attackAnim);
-    // A flinch when hit.
-    a.rig.body.rotation.x = -a.flash * 0.28;
+    animateRig(a.rig, moved, dt, a.attackAnim, tell);
+    // A flinch when hit; winding up, a lean back (or, for a charge, a crouch forward).
+    const crouch = a.pending === 'boss.charge' ? tell : 0;
+    a.rig.body.rotation.x = -a.flash * 0.28 - (tell - crouch) * 0.2 + crouch * 0.35;
+    a.rig.body.position.y -= crouch * 0.3;
     // People who are not fighting you look at you as you pass.
     const dx = ctx.playerPos.x - a.pos.x;
     const dz = ctx.playerPos.z - a.pos.z;
@@ -982,6 +1058,17 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
   if (a.kind === 'consultant') {
     const aura = a.root.getObjectByName('aura');
     if (aura !== undefined) aura.rotation.z = ctx.time * 0.4;
+  }
+  if (a.rig === null && a.dog === null) {
+    // No arms to draw back: the whole thing pulls back and shivers, and a
+    // swarm buzzes up before it dives.
+    const body = a.root.children[0];
+    if (body !== undefined && (tell > 0 || body.position.z !== 0)) {
+      body.position.z = -tell * 0.35;
+      body.position.x = tell > 0 ? Math.sin(ctx.time * 70) * 0.05 * tell : 0;
+      if (a.kind === 'mosquito') body.position.y = tell * 0.45;
+      else if (a.kind === 'reply') body.position.y += tell * 0.45;
+    }
   }
 }
 
@@ -1044,7 +1131,10 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
   const sees = !ctx.invisible && dist < 30 && lineOfSight(lv, a.pos.x, a.pos.z, ctx.playerPos.x, ctx.playerPos.z);
 
   // Invisible: everyone loses track of you unless you are standing on them.
-  if (ctx.invisible && a.aggro && a.kind !== 'boss' && dist > 1.5) a.aggro = false;
+  if (ctx.invisible && a.aggro && a.kind !== 'boss' && dist > 1.5) {
+    a.aggro = false;
+    cancelWindup(a);
+  }
 
   if (!a.aggro) {
     if (a.kind === 'boss') {
@@ -1074,6 +1164,8 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
       a.yaw = Math.atan2(dx, dz);
     }
     if (!a.aggro) {
+      // Nobody after you: whatever was winding up is off.
+      cancelWindup(a);
       if (a.kind === 'turret' || a.kind === 'boss') {
         moveActor(ctx, a, 0, 0, 0, dt);
         return;
@@ -1195,9 +1287,20 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
   if (a.kind === 'user' && dist < 1.8) speed = 0;
   if ((a.kind === 'reply' || a.kind === 'mosquito') && dist < 0.9) speed = 0;
   if (a.kind === 'vendor' && a.fleeT <= 0 && dist < 1.2) speed = 0;
+  // Winding up, they plant their feet: that is what makes it something you can step out of.
+  if (a.pending !== null) speed = 0;
   moveActor(ctx, a, mx, mz, speed, dt);
-  if (sees && dist < 20 && !(a.kind === 'vendor' && a.fleeT > 0)) a.yaw = Math.atan2(dx, dz);
+  const committed = a.pending !== null && ATTACKS[a.pending].cls !== 'ranged';
+  if (committed) a.yaw = Math.atan2(a.aim.x, a.aim.z);
+  else if (sees && dist < 20 && !(a.kind === 'vendor' && a.fleeT > 0)) a.yaw = Math.atan2(dx, dz);
 
+  // An attack on its way lands (or does not) when the wind-up runs out.
+  if (a.pending !== null) {
+    const id = tickWindup(a, dt);
+    if (id !== null) strikeGrunt(ctx, a, id, sees, dmg);
+    return;
+  }
+  // The cooldown runs from the start of a wind-up, so the pace of attacks is what it always was.
   if (a.cooldown > 0) return;
   const rate = a.elite === 'relentless' ? 0.8 : 1;
   // Low Management standing: managers send invites more often.
@@ -1206,13 +1309,125 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
     case 'user':
       if (dist < 2.0) {
         a.cooldown = 1.2 * rate;
-        a.attackAnim = 1;
-        ctx.hurtPlayer(dmg, a, 'melee');
-        if (fx.chance(0.25)) ctx.enqueueTicket(a, false);
+        windUp(ctx, a, 'user.melee', dx, dz);
       }
       break;
     case 'reply':
       if (dist < 1.1) {
+        a.cooldown = 0.9;
+        windUp(ctx, a, 'reply.dive', dx, dz);
+      }
+      break;
+    case 'mosquito':
+      if (dist < 1.1) {
+        a.cooldown = 1.1;
+        windUp(ctx, a, 'mosquito.bite', dx, dz);
+      }
+      break;
+    case 'caller':
+      if (sees && dist < 18) {
+        a.cooldown = fx.range(1.8, 2.8) * rate;
+        windUp(ctx, a, 'caller.throw', dx, dz);
+      }
+      break;
+    case 'customer':
+      // Up close they shove you; further off they throw their gold tickets.
+      if (dist < 2) {
+        a.cooldown = 1.5 * rate;
+        windUp(ctx, a, 'customer.shove', dx, dz);
+      } else if (sees && dist < 16) {
+        a.cooldown = fx.range(2.0, 3.0) * rate;
+        windUp(ctx, a, 'customer.throw', dx, dz);
+      }
+      break;
+    case 'jam':
+      if (sees && dist < 14) {
+        a.cooldown = 1.9 * rate;
+        windUp(ctx, a, 'jam.volley', dx, dz);
+      }
+      break;
+    case 'manager':
+      if (dist < 2.2) {
+        a.cooldown = (2.5 / mgmtRate) * rate;
+        say(a, 'Can you take an action item on that?', 2.5);
+        windUp(ctx, a, 'manager.melee', dx, dz);
+      } else if (sees && dist < 15) {
+        a.cooldown = (fx.range(2.8, 4.0) / mgmtRate) * rate;
+        windUp(ctx, a, 'manager.invite', dx, dz);
+      }
+      break;
+    case 'consultant':
+      if (sees && dist < 16) {
+        a.cooldown = fx.range(2.6, 3.4) * rate;
+        windUp(ctx, a, 'consultant.deck', dx, dz);
+      }
+      break;
+    case 'shadowit':
+      if (sees && dist < 17) {
+        a.cooldown = fx.range(1.6, 2.4) * rate;
+        windUp(ctx, a, 'shadowit.code', dx, dz);
+      }
+      break;
+    case 'turret':
+      if (sees && dist < 16) {
+        a.cooldown = 1.2;
+        windUp(ctx, a, 'turret.code', dx, dz);
+      }
+      break;
+    case 'chatbot':
+      if (sees && dist < 15) {
+        a.cooldown = fx.range(2.2, 3.0) * rate;
+        windUp(ctx, a, 'chatbot.chat', dx, dz);
+      }
+      break;
+    case 'vendor':
+      if (a.fleeT <= 0 && dist < 1.5) {
+        a.cooldown = 2 * rate;
+        windUp(ctx, a, 'vendor.grab', dx, dz);
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+/**
+ * The tell: the attack is chosen and the way it will go is fixed; the arm
+ * (or the body) draws back, a warm glow, and a short rising sound.
+ */
+function windUp(ctx: GameCtx, a: Actor, id: AttackId, dx: number, dz: number): void {
+  beginWindup(a, id);
+  const len = Math.hypot(dx, dz);
+  if (len > 1e-4) a.aim.set(dx / len, 0, dz / len);
+  else a.aim.set(Math.sin(a.yaw), 0, Math.cos(a.yaw));
+  a.attackAnim = 0;
+  ctx.windupCue(a, ATTACKS[id].windup);
+}
+
+/** Did a melee or contact strike reach the player, from where they stand now? */
+function lands(ctx: GameCtx, a: Actor, id: AttackId): boolean {
+  return strikeLands(ATTACKS[id], a.pos.x, a.pos.z, a.aim.x, a.aim.z, ctx.playerPos.x, ctx.playerPos.z)
+    && lineOfSight(ctx.level, a.pos.x, a.pos.z, ctx.playerPos.x, ctx.playerPos.z);
+}
+
+/**
+ * The strike, when the wind-up runs out. Melee and contact attacks hit only
+ * if you are still where they aimed; throws go at where you are now, and
+ * only if they can still see you.
+ */
+function strikeGrunt(ctx: GameCtx, a: Actor, id: AttackId, sees: boolean, dmg: number): void {
+  a.attackAnim = 1;
+  switch (id) {
+    case 'user.melee':
+      if (lands(ctx, a, id)) {
+        ctx.hurtPlayer(dmg, a, 'melee');
+        if (fx.chance(0.25)) ctx.enqueueTicket(a, false);
+      }
+      break;
+    case 'reply.dive':
+      // The lunge: it throws itself at you whether it connects or not.
+      a.push.addScaledVector(a.aim, 7);
+      if (lands(ctx, a, id)) {
         // It delivers itself and is gone. That is not you resolving it.
         a.cooldown = 99;
         ctx.hurtPlayer(dmg, a, 'melee');
@@ -1221,85 +1436,55 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
         a.removeIn = 0.3;
       }
       break;
-    case 'mosquito':
-      if (dist < 1.1) {
-        a.cooldown = 1.1;
-        ctx.hurtPlayer(dmg, a, 'bite');
-      }
+    case 'mosquito.bite':
+      a.push.addScaledVector(a.aim, 5);
+      if (lands(ctx, a, id)) ctx.hurtPlayer(dmg, a, 'bite');
       break;
-    case 'caller':
-      if (sees && dist < 18) {
-        a.cooldown = fx.range(1.8, 2.8) * rate;
-        a.attackAnim = 1;
-        throwAt(ctx, a, 'ticket', 11, dmg);
-      }
+    case 'customer.shove':
+      a.push.addScaledVector(a.aim, 4);
+      if (lands(ctx, a, id)) ctx.hurtPlayer(dmg * 0.6, a, 'melee');
       break;
-    case 'customer':
-      if (sees && dist < 16) {
-        a.cooldown = fx.range(2.0, 3.0) * rate;
-        a.attackAnim = 1;
-        throwAt(ctx, a, 'gold', 12, dmg);
-      }
-      if (dist < 2) {
-        ctx.hurtPlayer(dmg * 0.6, a, 'melee');
-        a.cooldown = 1.5 * rate;
-      }
-      break;
-    case 'jam':
-      if (sees && dist < 14) {
-        a.cooldown = 1.9 * rate;
-        for (const s of [-0.25, 0, 0.25]) throwAt(ctx, a, 'paper', 10, dmg, s, false);
-      }
-      break;
-    case 'manager':
-      if (dist < 2.2) {
-        a.cooldown = (2.5 / mgmtRate) * rate;
-        a.attackAnim = 1;
-        say(a, 'Can you take an action item on that?', 2.5);
+    case 'manager.melee':
+      if (lands(ctx, a, id)) {
         ctx.addActionItem(a.name);
         ctx.hurtPlayer(dmg, a, 'melee');
-      } else if (sees && dist < 15) {
-        a.cooldown = (fx.range(2.8, 4.0) / mgmtRate) * rate;
-        a.attackAnim = 1;
-        throwAt(ctx, a, 'invite', 9, dmg);
       }
       break;
-    case 'consultant':
-      if (sees && dist < 16) {
-        a.cooldown = fx.range(2.6, 3.4) * rate;
-        a.attackAnim = 1;
-        throwAt(ctx, a, 'deck', 8, dmg * 1.3);
-      }
-      break;
-    case 'shadowit':
-      if (sees && dist < 17) {
-        a.cooldown = fx.range(1.6, 2.4) * rate;
-        a.attackAnim = 1;
-        for (const s of [-0.12, 0.12]) throwAt(ctx, a, 'code', 14, dmg * 0.8, s);
-      }
-      break;
-    case 'turret':
-      if (sees && dist < 16) {
-        a.cooldown = 1.2;
-        throwAt(ctx, a, 'code', 15, dmg);
-      }
-      break;
-    case 'chatbot':
-      if (sees && dist < 15) {
-        a.cooldown = fx.range(2.2, 3.0) * rate;
-        throwAt(ctx, a, 'chat', 7, dmg);
-        if (fx.chance(0.3)) say(a, fx.pick(CHATBOT_BARKS), 2.5, '#002244', 'rgba(210,235,255,0.95)');
-      }
-      break;
-    case 'vendor':
-      if (a.fleeT <= 0 && dist < 1.5) {
-        a.cooldown = 2 * rate;
-        a.attackAnim = 1;
+    case 'vendor.grab':
+      a.push.addScaledVector(a.aim, 5);
+      if (lands(ctx, a, id)) {
         const took = ctx.stealRep(a, Math.round((15 + ctx.floor * 6) * (a.elite === 'vip' ? 2 : 1)));
         a.stolen += took;
         ctx.hurtPlayer(dmg, a, 'melee');
         say(a, took > 0 ? `Thanks! That is ₡${took} for the "discovery workshop".` : 'No budget? I will come back next quarter.', 2.5);
         a.fleeT = 5;
+      }
+      break;
+    case 'caller.throw':
+      if (sees) throwAt(ctx, a, 'ticket', 11, dmg);
+      break;
+    case 'customer.throw':
+      if (sees) throwAt(ctx, a, 'gold', 12, dmg);
+      break;
+    case 'jam.volley':
+      if (sees) for (const s of [-0.25, 0, 0.25]) throwAt(ctx, a, 'paper', 10, dmg, s, false);
+      break;
+    case 'manager.invite':
+      if (sees) throwAt(ctx, a, 'invite', 9, dmg);
+      break;
+    case 'consultant.deck':
+      if (sees) throwAt(ctx, a, 'deck', 8, dmg * 1.3);
+      break;
+    case 'shadowit.code':
+      if (sees) for (const s of [-0.12, 0.12]) throwAt(ctx, a, 'code', 14, dmg * 0.8, s);
+      break;
+    case 'turret.code':
+      if (sees) throwAt(ctx, a, 'code', 15, dmg);
+      break;
+    case 'chatbot.chat':
+      if (sees) {
+        throwAt(ctx, a, 'chat', 7, dmg);
+        if (fx.chance(0.3)) say(a, fx.pick(CHATBOT_BARKS), 2.5, '#002244', 'rgba(210,235,255,0.95)');
       }
       break;
     default:
@@ -1340,6 +1525,7 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
     a.aggro = false;
     a.bossActive = false;
     a.charging = 0;
+    cancelWindup(a);
     a.pos.copy(a.home);
     say(a, 'We will pick this up in my office.', 3);
     ctx.bossLeash(a);
@@ -1369,6 +1555,18 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
     return;
   }
 
+  // Winding up: planted, facing the way it committed to, until the strike.
+  // The clocks keep running, so the fight's pace is what it always was.
+  if (a.pending !== null) {
+    moveActor(ctx, a, 0, 0, 0, dt);
+    a.yaw = a.pending === 'boss.slam' || a.pending === 'boss.charge' ? Math.atan2(a.aim.x, a.aim.z) : Math.atan2(dx, dz);
+    a.cooldown -= dt;
+    a.patternIn -= dt * rate;
+    const id = tickWindup(a, dt);
+    if (id !== null) strikeBoss(ctx, a, id, dist);
+    return;
+  }
+
   const want = 6;
   let mx = 0;
   let mz = 0;
@@ -1394,8 +1592,8 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
   a.cooldown -= dt;
   if (dist < 2.4 && a.cooldown <= 0) {
     a.cooldown = 1;
-    a.attackAnim = 1;
-    ctx.hurtPlayer(a.damage, a, 'boss');
+    windUp(ctx, a, 'boss.slam', dx, dz);
+    return;
   }
 
   a.patternIn -= dt * rate;
@@ -1409,79 +1607,138 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
   }
   a.patternIdx++;
   a.patternIn = 3.2;
+  // The line is the tell: said as the boss winds up, before anything leaves its hands.
+  switch (pattern) {
+    case 'invites': say(a, 'I have sent you a few invites.', 2); break;
+    case 'summonUsers': say(a, 'Team! Everyone raise your issues with IT. Now.', 3); break;
+    case 'summonCustomers': say(a, 'I have brought some of our key accounts.', 3); break;
+    case 'summonReply': say(a, 'I have CCd everyone.', 2); break;
+    case 'summonManagers':
+      say(a, ctx.findings > 0 ? `I have ${ctx.findings} finding${ctx.findings > 1 ? 's' : ''} to discuss with your managers.` : 'I will need to speak to your line managers.', 3);
+      break;
+    case 'allHands': say(a, 'ALL HANDS MEETING. Attendance is mandatory.', 3, '#fff', 'rgba(120,0,0,0.92)'); break;
+    case 'charge': say(a, 'Let us have a QUICK sync!', 1.5); break;
+    case 'goldSpiral': say(a, 'Everything is a P1!', 2); break;
+    case 'shockwave': say(a, 'I would like to ESCALATE this.', 2); break;
+    case 'poBombs': say(a, 'Raise a PO for that. And that.', 2); break;
+    case 'freeze': say(a, 'BUDGET FREEZE. Nobody moves until Q3.', 2.5, '#fff', 'rgba(20,60,140,0.92)'); break;
+    case 'lasers': {
+      say(a, 'Finding. Finding. Finding.', 2);
+      a.patternIn = enraged ? 1.4 : 2.2;
+      // The spokes they will run along, marked on the carpet first.
+      a.patternAng = ctx.time * 0.7;
+      const n = laserCount(ctx);
+      for (let k = 0; k < n; k++) {
+        ctx.telegraph({ x: a.pos.x, z: a.pos.z, radius: 0.12, seconds: ATTACKS['boss.lasers'].windup, beam: { angle: (k / n) * Math.PI * 2 + a.patternAng, length: 12 } });
+      }
+      break;
+    }
+    case 'teleport': say(a, 'Golden parachute!', 1.5); break;
+    case 'hazards': {
+      const lines: Record<HazardKind, string> = {
+        meeting: 'Recurring invite: "Quick catch-up". Accept all.',
+        fire: 'Everything is ON FIRE and it is YOUR fault.',
+        freeze: 'Frozen. Pending approval.',
+        coffee: 'Who spilled the executive espresso? YOU did.',
+      };
+      say(a, lines[boss.hazard], 2.5, '#fff', 'rgba(120,0,0,0.92)');
+      a.patternIn = 2.4;
+      break;
+    }
+  }
+  windUp(ctx, a, `boss.${pattern}`, dx, dz);
+}
+
+/** The Auditor's lasers: more of them for every finding against you. */
+function laserCount(ctx: GameCtx): number {
+  return 8 + Math.min(8, ctx.findings * 2);
+}
+
+/**
+ * A lob that comes down on (tx, tz) after `t` seconds, from `from`, under
+ * `gravity`: the launch velocity, so the landing marker is where it lands.
+ */
+export function lobVelocity(from: THREE.Vector3, tx: number, tz: number, gravity: number, t: number, out: THREE.Vector3): THREE.Vector3 {
+  return out.set((tx - from.x) / t, (0.5 * gravity * t * t - from.y) / t, (tz - from.z) / t);
+}
+
+/** A boss's strike, when its wind-up runs out: aimed at where you are now. */
+function strikeBoss(ctx: GameCtx, a: Actor, id: AttackId, dist: number): void {
+  const boss = a.boss;
+  if (boss === null) return;
   a.attackAnim = 1;
+  if (id === 'boss.slam') {
+    if (lands(ctx, a, id)) {
+      ctx.hurtPlayer(a.damage, a, 'boss');
+      ctx.shake(0.3);
+    }
+    return;
+  }
+  const pattern = patternOf(id);
+  if (pattern === null) return;
   const f = ctx.floor;
   const d = ctx.difficulty;
   switch (pattern) {
     case 'invites':
-      say(a, 'I have sent you a few invites.', 2);
       for (let i = -2; i <= 2; i++) throwAt(ctx, a, 'invite', 10, (6 + f) * d, i * 0.18, false);
       break;
     case 'summonUsers':
-      say(a, 'Team! Everyone raise your issues with IT. Now.', 3);
       for (let i = 0; i < 2 + f; i++) summon(ctx, a, i % 2 === 0 ? 'user' : 'caller', 2);
       break;
     case 'summonCustomers':
-      say(a, 'I have brought some of our key accounts.', 3);
       for (let i = 0; i < 2 + Math.floor(f / 2); i++) summon(ctx, a, 'customer', 2);
       break;
     case 'summonReply':
-      say(a, 'I have CCd everyone.', 2);
       for (let i = 0; i < 6 + f; i++) summon(ctx, a, 'reply', 2);
       break;
     case 'summonManagers':
-      say(a, ctx.findings > 0 ? `I have ${ctx.findings} finding${ctx.findings > 1 ? 's' : ''} to discuss with your managers.` : 'I will need to speak to your line managers.', 3);
       for (let i = 0; i < 2 + Math.min(3, ctx.findings); i++) summon(ctx, a, i === 0 ? 'consultant' : 'manager', 2);
       break;
     case 'allHands':
-      say(a, 'ALL HANDS MEETING. Attendance is mandatory.', 3, '#fff', 'rgba(120,0,0,0.92)');
       for (const k of ['user', 'caller', 'customer', 'manager', 'reply', 'reply', 'vendor'] as const) summon(ctx, a, k, 3);
       break;
     case 'charge':
-      say(a, 'Let us have a QUICK sync!', 1.5);
-      a.chargeDir.set(dx, 0, dz).normalize();
+      // Off it goes, the way it faced while it crouched: step out of the line.
+      a.chargeDir.copy(a.aim);
       a.charging = 0.9;
       break;
     case 'goldSpiral':
-      say(a, 'Everything is a P1!', 2);
       for (let k = 0; k < 3; k++) ring(ctx, a, 'gold', 10, 8, (8 + f * 2) * d, k * 0.2 + ctx.time);
       break;
     case 'shockwave':
-      say(a, 'I would like to ESCALATE this.', 2);
       ctx.shake(0.4);
       ring(ctx, a, 'ring', 18, 9, (10 + f * 2) * d);
       break;
-    case 'poBombs':
-      say(a, 'Raise a PO for that. And that.', 2);
+    case 'poBombs': {
+      // Each one's landing spot is marked on the carpet for the whole of its flight.
       for (let i = 0; i < 3 + Math.floor(f / 2); i++) {
         const from = a.pos.clone();
         from.y = 2;
-        const t = ctx.playerPos.clone().add(new THREE.Vector3(fx.range(-3, 3), 0, fx.range(-3, 3)));
-        const dir = t.sub(from);
-        const flat = Math.hypot(dir.x, dir.z);
-        dir.set(dir.x / flat, 0.9, dir.z / flat).normalize();
-        ctx.fire({ kind: 'po', from, dir, speed: Math.min(16, 5 + flat * 0.9), damage: (12 + f * 2) * d, hostile: true, owner: a, gravity: 14, splash: 2.5 });
+        const tx = ctx.playerPos.x + fx.range(-3, 3);
+        const tz = ctx.playerPos.z + fx.range(-3, 3);
+        const t = Math.max(0.9, Math.min(1.6, 0.9 + Math.hypot(tx - from.x, tz - from.z) * 0.05));
+        const vel = lobVelocity(from, tx, tz, 14, t, new THREE.Vector3());
+        const speed = vel.length();
+        ctx.telegraph({ x: tx, z: tz, radius: 2.5, seconds: t });
+        ctx.fire({ kind: 'po', from, dir: vel.divideScalar(speed), speed, damage: (12 + f * 2) * d, hostile: true, owner: a, gravity: 14, splash: 2.5 });
       }
       break;
+    }
     case 'freeze':
-      say(a, 'BUDGET FREEZE. Nobody moves until Q3.', 2.5, '#fff', 'rgba(20,60,140,0.92)');
       if (dist < 12) ctx.rootPlayer(1.6, 'Budget freeze');
       ring(ctx, a, 'invite', 12, 7, (6 + f) * d);
       break;
     case 'lasers': {
-      say(a, 'Finding. Finding. Finding.', 2);
-      const n = 8 + Math.min(8, ctx.findings * 2);
+      const n = laserCount(ctx);
       for (let k = 0; k < n; k++) {
-        const ang = (k / n) * Math.PI * 2 + ctx.time * 0.7;
+        const ang = (k / n) * Math.PI * 2 + a.patternAng;
         const from = a.pos.clone();
         from.y = 1.2;
         ctx.fire({ kind: 'laser', from, dir: new THREE.Vector3(Math.sin(ang), 0, Math.cos(ang)), speed: 22, damage: (12 + f * 2) * d, hostile: true, owner: a, ttl: 2 });
       }
-      a.patternIn = enraged ? 1.4 : 2.2;
       break;
     }
     case 'teleport': {
-      say(a, 'Golden parachute!', 1.5);
       const lv = ctx.level;
       const room = lv.rooms[a.room];
       if (room !== undefined) {
@@ -1498,13 +1755,6 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
       break;
     }
     case 'hazards': {
-      const lines: Record<HazardKind, string> = {
-        meeting: 'Recurring invite: "Quick catch-up". Accept all.',
-        fire: 'Everything is ON FIRE and it is YOUR fault.',
-        freeze: 'Frozen. Pending approval.',
-        coffee: 'Who spilled the executive espresso? YOU did.',
-      };
-      say(a, lines[boss.hazard], 2.5, '#fff', 'rgba(120,0,0,0.92)');
       // One on you, the rest around you: keep moving.
       ctx.hazard(ctx.playerPos.x, ctx.playerPos.z, 2.2, 7, boss.hazard);
       for (let i = 0; i < 2 + Math.min(3, Math.floor(f / 2)); i++) {
@@ -1512,7 +1762,6 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
         const r = fx.range(3, 6);
         ctx.hazard(ctx.playerPos.x + Math.sin(ang) * r, ctx.playerPos.z + Math.cos(ang) * r, 2, 7, boss.hazard);
       }
-      a.patternIn = 2.4;
       break;
     }
   }
@@ -1694,10 +1943,16 @@ function summon(ctx: GameCtx, boss: Actor, kind: ActorKind, spread: number): voi
   if (s !== null) s.owner = boss.id;
 }
 
+/** A stun at least this long knocks an attack out of someone's hands. */
+const STAGGER = 0.5;
+
 /**
  * Stun someone. Bosses take a short stagger at most, then shrug stuns off
  * for a few seconds, so nothing (a security guard, a rubber stamp) can
- * lock one down.
+ * lock one down: a stagger only holds a boss's wind-up, it does not undo it.
+ * Anyone else properly staggered mid-wind-up (a shove, a parry, a heavy
+ * swing) loses the attack; a flinch shorter than that only holds it, or
+ * quick hits with a perk would keep everyone from ever finishing one.
  */
 export function stun(a: Actor, seconds: number): void {
   if (a.kind === 'boss') {
@@ -1707,6 +1962,7 @@ export function stun(a: Actor, seconds: number): void {
     return;
   }
   a.stunned = Math.max(a.stunned, seconds);
+  if (seconds >= STAGGER) cancelWindup(a);
 }
 
 export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vector3 | null): void {

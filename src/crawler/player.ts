@@ -101,6 +101,8 @@ export class Player {
   private vmTool: THREE.Group | null = null;
   private vmArm: THREE.Mesh;
   swing = 0;
+  /** 0..1 how far a heavy swing is charged: the tool draws back while you hold it. */
+  charge = 0;
   bob = 0;
   speedNow = 0;
   view: 'first' | 'third' = 'third';
@@ -185,7 +187,7 @@ export class Player {
     this.bob += dt * this.speedNow * 1.8;
     this.model.position.copy(this.pos);
     this.model.rotation.y = this.yaw + Math.PI;
-    animateRig(this.rig, this.onGround ? this.speedNow : 0, dt, this.swing);
+    animateRig(this.rig, this.onGround ? this.speedNow : 0, dt, this.swing, this.charge);
     this.rig.head.rotation.x = -this.pitch * 0.5;
 
     this.crouch += ((this.crouching ? 1 : 0) - this.crouch) * Math.min(1, dt * 10);
@@ -201,8 +203,10 @@ export class Player {
       this.viewmodel.visible = true;
       this.camera.position.set(eye.x, eye.y + bobY, eye.z);
       this.camera.rotation.set(this.pitch + drift * 0.5, this.yaw + drift, wob, 'YXZ');
-      this.viewmodel.position.set(0.24 + Math.sin(this.bob) * 0.015, -0.22 + bobY * 0.5, -0.55);
-      this.viewmodel.rotation.set(0.15 - this.swing * 1.2, 0.25 + this.swing * 0.6, 0);
+      // Charging, the tool comes back toward the shoulder and tips up, ready to come down.
+      const c = this.swing > 0 ? 0 : this.charge;
+      this.viewmodel.position.set(0.24 + Math.sin(this.bob) * 0.015 + c * 0.05, -0.22 + bobY * 0.5 + c * 0.08, -0.55 + c * 0.16);
+      this.viewmodel.rotation.set(0.15 - this.swing * 1.2 + c * 0.7, 0.25 + this.swing * 0.6 - c * 0.2, c * 0.25);
     } else {
       this.model.visible = true;
       this.viewmodel.visible = false;
