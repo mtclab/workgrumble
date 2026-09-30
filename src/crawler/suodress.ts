@@ -26,6 +26,7 @@ export interface DressActor {
   readonly root: THREE.Object3D;
   readonly pos: THREE.Vector3;
   readonly hpBar?: THREE.Object3D;
+  readonly bubble?: THREE.Object3D | null;
 }
 
 export interface DressHost {
@@ -57,7 +58,8 @@ const TURN_RATE = 0.45;
  * deep equality and not a hope. Objects are keyed by three's object id.
  */
 export interface WorldSnapshot {
-  readonly objects: Record<number, { visible: boolean; rotY: number; material: string; castShadow: boolean }>;
+  /** `visible` is null where the game itself decides it frame by frame. */
+  readonly objects: Record<number, { visible: boolean | null; rotY: number; material: string; castShadow: boolean }>;
   readonly lights: Record<number, { color: number; intensity: number; distance: number; decay: number; x: number; y: number; z: number; ground: number; castShadow: boolean }>;
   readonly fog: { color: number; near: number; far: number } | null;
   readonly background: number | null;
@@ -74,8 +76,8 @@ function materialKey(o: THREE.Object3D): string {
 export function snapshotWorld(h: DressHost): WorldSnapshot {
   const objects: Record<number, WorldSnapshot['objects'][number]> = {};
   const lights: Record<number, WorldSnapshot['lights'][number]> = {};
-  const note = (o: THREE.Object3D): void => {
-    objects[o.id] = { visible: o.visible, rotY: o.rotation.y, material: materialKey(o), castShadow: o.castShadow };
+  const note = (o: THREE.Object3D, engineShown = false): void => {
+    objects[o.id] = { visible: engineShown ? null : o.visible, rotY: o.rotation.y, material: materialKey(o), castShadow: o.castShadow };
     if (o instanceof THREE.Light) {
       const p = o as THREE.PointLight;
       lights[o.id] = {
@@ -88,7 +90,10 @@ export function snapshotWorld(h: DressHost): WorldSnapshot {
     }
   };
   h.group.traverse(note);
-  for (const a of h.actors) a.root.traverse(note);
+  // Whether a person, their speech bubble or their health bar is shown is the
+  // game's call every frame (sight lines past walls, distance, a fight), not
+  // something a vision changes and must put back: record the rest of them.
+  for (const a of h.actors) a.root.traverse((o) => note(o, o === a.root || o === a.bubble || o === a.hpBar));
   for (const l of [...h.lights, h.carry, h.hemi, h.sun]) note(l);
   const fog = h.scene.fog;
   const bg = h.scene.background;

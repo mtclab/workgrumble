@@ -110,3 +110,15 @@ test('a rebind that is answered works: the new key strafes right', async ({ page
   expect(step.across).toBeGreaterThan(0.3);
   expect(Math.abs(step.along)).toBeLessThan(step.across / 2);
 });
+
+test('at a desk terminal, closing the Control Panel window ends the wait, and the next key is the desk\'s', async ({ page }) => {
+  // A desk stays logged on after its last window closes, so this is the one
+  // way out of a rebind that does not close the whole OS.
+  await startCareer(page);
+  await page.evaluate(() => (window as unknown as { __crawler: { openOs: (m: string, a: string) => void } }).__crawler.openOs('desk', 'settings'));
+  await keyButton(page, 'Strafe right').click();
+  await expect(keyButton(page, 'Strafe right')).toHaveText('press a key…');
+  await page.locator('.os-window', { has: page.locator('.os-keys') }).locator('.os-x').click();
+  await page.keyboard.press('KeyP');
+  expect(await binding(page, 'right')).toBe('KeyD');
+});

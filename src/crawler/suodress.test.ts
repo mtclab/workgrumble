@@ -86,6 +86,16 @@ function watchOriginals(h: DressHost): { disposed: string[] } {
   return out;
 }
 
+/** The first mesh inside the first person: a hand, a head, a shoe. */
+function bodyPart(h: { actors: readonly DressActor[] }): THREE.Object3D {
+  let part: THREE.Object3D | null = null;
+  (h.actors[0] as DressActor).root.traverse((o) => {
+    if (part === null && o instanceof THREE.Mesh) part = o;
+  });
+  if (part === null) throw new Error('a person with no parts');
+  return part;
+}
+
 describe('the SUO dress', () => {
   it('the world is built with its SUO surfaces tagged: walls, floor, ceiling, lamps', () => {
     const lv = office(1);
@@ -169,6 +179,16 @@ describe('the SUO dress', () => {
     });
   }
 
+  it('the snapshot leaves alone what the game shows and hides by itself', () => {
+    const lv = office(1);
+    const h = hostFor(lv, false);
+    const before = snapshotWorld(h);
+    // Sight lines hide a person behind a wall every frame; that is not a
+    // restore gone wrong, and a check that said so would fail at random.
+    (h.actors[0] as DressActor).root.visible = false;
+    expect(diffSnapshots(before, snapshotWorld(h))).toEqual([]);
+  });
+
   it('the snapshot notices what a restore could miss (the check has teeth)', () => {
     const lv = office(1);
     const h = hostFor(lv, false);
@@ -180,7 +200,9 @@ describe('the SUO dress', () => {
       ['the exposure', () => { h.renderer.toneMappingExposure = 1; }, () => { h.renderer.toneMappingExposure = 1.15; }],
       ['the bloom', () => { h.bloom.threshold = 0.7; }, () => { h.bloom.threshold = 0.82; }],
       ['a person turned', () => { (h.actors[0] as DressActor).root.rotation.y += 0.01; }, () => { (h.actors[0] as DressActor).root.rotation.y -= 0.01; }],
-      ['a person hidden', () => { (h.actors[0] as DressActor).root.visible = false; }, () => { (h.actors[0] as DressActor).root.visible = true; }],
+      // Whether the person as a whole is shown is the game's call (sight lines);
+      // a part of them left hidden is the vision's to put back.
+      ['a part of a person hidden', () => { bodyPart(h).visible = false; }, () => { bodyPart(h).visible = true; }],
     ];
     const wall = tagged(lv, 'wall')[0] as THREE.Mesh;
     const wallMat = wall.material;

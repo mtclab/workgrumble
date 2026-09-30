@@ -3,6 +3,7 @@ import { sfx } from './audio';
 import type { Game } from './game';
 import { isSolidAt, toCell } from './level';
 import { fx } from './rng';
+import { hash } from './voxels';
 import { farthestCell, figureCell, SteamClock, SUO_LINES } from './suo';
 import { diffSnapshots, SuoDress, snapshotWorld, type WorldSnapshot } from './suodress';
 
@@ -95,36 +96,95 @@ function veilFor(mount: HTMLElement): Veil {
   return v;
 }
 
+/** One puff of the figure: where it rises from, how far, how wide, and when. */
+interface Puff {
+  readonly sprite: THREE.Sprite;
+  readonly material: THREE.SpriteMaterial;
+  readonly y0: number;
+  readonly r: number;
+  readonly phase: number;
+  readonly drift: number;
+}
+
+/** How long one puff takes to rise through its band and fade, in seconds. */
+const PUFF_CYCLE = 3.2;
+
+/**
+ * A soft round of steam: bright in the middle, gone at the edge, and not
+ * quite round, so a column of them reads as vapour and not as balls. Drawn
+ * once per vision.
+ */
+function puffTexture(): THREE.CanvasTexture {
+  const size = 64;
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext('2d');
+  if (ctx === null) throw new Error('2d canvas');
+  const blob = (x: number, y: number, r: number, a: number): void => {
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, `rgba(255,255,255,${a})`);
+    grad.addColorStop(0.45, `rgba(255,255,255,${a * 0.45})`);
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+  };
+  blob(32, 32, 30, 0.42);
+  // A few lumps off-centre, placed by a fixed hash so every vision looks alike.
+  for (let i = 0; i < 5; i++) {
+    const ang = hash(i, 3, 7, 11) * Math.PI * 2;
+    const d = 6 + hash(i, 5, 1, 13) * 9;
+    blob(32 + Math.cos(ang) * d, 32 + Math.sin(ang) * d, 12 + hash(i, 2, 9, 17) * 8, 0.2);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /**
  * The Löylyhenki: a tall column of steam with a little light in its chest.
- * Additive and outside the fog, so it reads as a glow through the murk from
- * the far end of the room.
+ * Soft sprites rise through bands shaped like someone standing - wider at
+ * the shoulders, thinning to the floor - fading in and out as they go, so
+ * it is always moving and never solid. Additive and outside the fog, so it
+ * reads as a glow through the murk from the far end of the room.
  */
-function buildFigure(): { group: THREE.Group; puffs: THREE.Mesh[]; owned: (THREE.Material | THREE.BufferGeometry)[] } {
+function buildFigure(): { group: THREE.Group; puffs: Puff[]; owned: (THREE.Material | THREE.Texture)[] } {
   const group = new THREE.Group();
   group.name = 'loylyhenki';
-  const geo = new THREE.SphereGeometry(1, 16, 12);
-  const steam = new THREE.MeshBasicMaterial({ color: 0xe8e2d4, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
-  const core = new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
-  const puffs: THREE.Mesh[] = [];
-  // Wider at the shoulders, thinning towards the ground: steam rising off something standing.
-  const column: readonly [number, number, number][] = [
-    [0.3, 0.26, 0.5], [0.8, 0.32, 0.55], [1.3, 0.4, 0.6], [1.75, 0.46, 0.55], [2.15, 0.4, 0.45], [2.55, 0.27, 0.34],
+  const tex = puffTexture();
+  const owned: (THREE.Material | THREE.Texture)[] = [tex];
+  const puffs: Puff[] = [];
+  // Band heights and half-widths: shins, knees, hips, chest, shoulders, head.
+  const column: readonly [number, number][] = [
+    [0.15, 0.2], [0.55, 0.26], [1.0, 0.32], [1.45, 0.4], [1.85, 0.44], [2.3, 0.3],
   ];
-  for (const [y, r, h] of column) {
-    const m = new THREE.Mesh(geo, steam);
-    m.position.y = y;
-    m.scale.set(r, h, r);
-    m.userData.baseY = y;
-    m.userData.baseR = r;
-    group.add(m);
-    puffs.push(m);
+  let n = 0;
+  for (const [y0, r] of column) {
+    for (let k = 0; k < 4; k++) {
+      const material = new THREE.SpriteMaterial({
+        map: tex, color: 0xf2e8d8, transparent: true, opacity: 0,
+        depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+      });
+      owned.push(material);
+      const sprite = new THREE.Sprite(material);
+      group.add(sprite);
+      puffs.push({ sprite, material, y0, r, phase: hash(n, 1, 2, 3), drift: (hash(n, 4, 5, 6) - 0.5) * 0.5 });
+      n++;
+    }
   }
-  const heart = new THREE.Mesh(geo, core);
-  heart.position.y = 1.65;
-  heart.scale.setScalar(0.09);
-  group.add(heart);
-  return { group, puffs, owned: [geo, steam, core] };
+  const glow = (color: number, y: number, w: number, h: number, opacity: number): void => {
+    const material = new THREE.SpriteMaterial({ map: tex, color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+    owned.push(material);
+    const s = new THREE.Sprite(material);
+    s.position.y = y;
+    s.scale.set(w, h, 1);
+    group.add(s);
+  };
+  // A faint halo the height of a person, so the whole column reads as
+  // someone standing there, and the ember in its chest.
+  glow(0xffcf8a, 1.25, 1.5, 3.2, 0.16);
+  glow(0xffd9a0, 1.6, 0.42, 0.42, 0.95);
+  return { group, puffs, owned };
 }
 
 export class Vision {
@@ -136,8 +196,8 @@ export class Vision {
   private readonly before: WorldSnapshot;
   private readonly veil: Veil;
   private readonly figure: THREE.Group;
-  private readonly puffs: THREE.Mesh[];
-  private readonly owned: (THREE.Material | THREE.BufferGeometry)[];
+  private readonly puffs: Puff[];
+  private readonly owned: (THREE.Material | THREE.Texture)[];
   private readonly steamAt = new THREE.Vector3();
   private age = 0;
   private noteT = 0;
@@ -213,15 +273,14 @@ export class Vision {
 
   private animateFigure(dt: number): void {
     const t = this.age;
-    for (let i = 0; i < this.puffs.length; i++) {
-      const m = this.puffs[i] as THREE.Mesh;
-      const r = m.userData.baseR as number;
-      const breathe = 1 + Math.sin(t * 1.3 + i * 0.9) * 0.08;
-      m.position.x = Math.sin(t * 0.7 + i * 1.7) * 0.07;
-      m.position.z = Math.cos(t * 0.6 + i * 1.3) * 0.05;
-      m.position.y = (m.userData.baseY as number) + Math.sin(t * 0.9 + i) * 0.04;
-      m.scale.x = r * breathe;
-      m.scale.z = r * breathe;
+    for (const p of this.puffs) {
+      // Each puff rises 0.45 m through its band, swelling, and fades out at
+      // the top as the next one fades in below it.
+      const u = (t / PUFF_CYCLE + p.phase) % 1;
+      const size = p.r * (3.0 + u * 1.4);
+      p.sprite.position.set(p.drift * p.r + Math.sin(t * 0.7 + p.phase * 6) * 0.06, p.y0 + u * 0.45, Math.cos(t * 0.6 + p.phase * 5) * 0.05);
+      p.sprite.scale.set(size, size * 1.15, 1);
+      p.material.opacity = Math.sin(Math.PI * u) * 0.3;
     }
     this.steamIn -= dt;
     if (this.steamIn <= 0) {

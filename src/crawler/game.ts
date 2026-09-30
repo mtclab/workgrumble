@@ -1753,7 +1753,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const cam = this.camera.position;
     for (const a of this.actors) {
       if (a.hpBar.visible) a.hpBar.quaternion.copy(a.root.quaternion).invert().multiply(q);
-      if (a.bubble !== null) a.bubble.visible = Math.hypot(a.pos.x - cam.x, a.pos.z - cam.z) > 3.2;
+      // Under the steam nobody has anything to say: the vision hides the
+      // bubbles, and this must not put them back over the silhouettes.
+      if (a.bubble !== null) a.bubble.visible = this.vision === null && Math.hypot(a.pos.x - cam.x, a.pos.z - cam.z) > 3.2;
     }
   }
 
