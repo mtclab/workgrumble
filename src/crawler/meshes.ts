@@ -337,3 +337,53 @@ export function questItemMesh(color = 0xffd98a): THREE.Group {
   g.add(glow);
   return g;
 }
+
+// ---------------------------------------------------------------- the induction
+
+/**
+ * Facilities' training dummy: a padded torso on a post, a head with a face
+ * drawn on in marker, a stripe of hazard tape. One group, so a wind-up can
+ * draw the whole of it back (it has no arms to draw).
+ */
+export function dummyMesh(): THREE.Group {
+  const g = new THREE.Group();
+  const post = lam(0x5a5a5a);
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.08, 20), post).translateY(0.04));
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8, 10), post).translateY(0.44));
+  const canvas = lam(0xc9b48c);
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.55, 4, 14), canvas);
+  torso.position.y = 1.15;
+  g.add(torso);
+  // Hazard tape round the middle: where to aim.
+  const tape = new THREE.Mesh(new THREE.CylinderGeometry(0.315, 0.315, 0.1, 20, 1, true), lam(0xe8c21a));
+  tape.position.y = 1.12;
+  g.add(tape);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), canvas);
+  head.position.y = 1.78;
+  g.add(head);
+  const marker = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+  for (const x of [-0.07, 0.07]) g.add(box(0.035, 0.035, 0.01, marker, x, 1.82, 0.195));
+  g.add(box(0.12, 0.02, 0.01, marker, 0, 1.72, 0.195));
+  const sh = blobShadow(0.9);
+  if (sh !== null) g.add(sh);
+  return g;
+}
+
+/**
+ * The computer put in the lobby for the induction's ticket: a desk and a
+ * monitor facing +z (turn the group to face it into the room). `screen` is
+ * the monitor's texture, or null where there is no canvas to paint one.
+ */
+export function inductionTerminalMesh(screen: THREE.Texture | null): THREE.Group {
+  const g = new THREE.Group();
+  const wood = lam(0xc8b48a);
+  g.add(box(1.8, 0.08, 1.1, wood, 0, 0.74, 0));
+  const metal = lam(0x6a6a6a);
+  for (const side of [-1, 1]) g.add(box(0.06, 0.72, 1.0, metal, side * 0.8, 0.36, 0));
+  g.add(box(0.9, 0.62, 0.5, lam(0xd8d2bf), 0, 1.12, 0));
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.5), new THREE.MeshBasicMaterial({ color: screen === null ? 0x0a3a8c : 0xffffff, map: screen }));
+  face.position.set(0, 1.12, 0.26);
+  g.add(face);
+  g.add(box(0.7, 0.04, 0.22, lam(0xcfc8b0), 0, 0.8, 0.35));
+  return g;
+}

@@ -72,6 +72,8 @@ test('a first visit shows no panel, and the title says which build it is', async
 test('Update History lists every release, newest first', async ({ page }) => {
   await boot(page, null);
   await page.getByRole('button', { name: 'New career' }).click();
+  // Straight to the floor: the induction has a spec of its own (helldesk-induction).
+  await page.getByLabel('Skip the induction').check();
   await page.getByRole('button', { name: 'Sign the contract' }).click();
   await page.locator('.dlg-opt').first().click();
   await page.evaluate(() => (window as unknown as { __crawler: { openOs: (m: string, a: string) => void } }).__crawler.openOs('pack', 'updates'));

@@ -32,7 +32,7 @@ import {
 } from './content/lines';
 import { disposeTree } from './dispose';
 import { collideCircle, type Level, lineOfSight, NEIGHBOURS8, TILE, toCell } from './level';
-import { chatbotMesh, dogMesh, turretMesh } from './meshes';
+import { chatbotMesh, dogMesh, dummyMesh, turretMesh } from './meshes';
 import { fx, type Rng } from './rng';
 import { MORALE_START, teamPower } from './team';
 import { disposeSprite, textSprite } from './textures';
@@ -65,7 +65,9 @@ export type ActorKind =
   | 'healer'
   | 'helper'
   | 'npc'
-  | 'tonttu';
+  | 'tonttu'
+  /** Facilities' training dummy: the induction's, and nowhere else. */
+  | 'dummy';
 
 /** Kinds that are people with a problem (they can be talked to). */
 export const TALKERS: readonly ActorKind[] = ['user', 'caller', 'customer', 'consultant', 'shadowit', 'vendor'];
@@ -255,6 +257,12 @@ export interface GameCtx {
   readonly staffStanding: number;
   readonly managementStanding: number;
   readonly findings: number;
+  /**
+   * Whether anything hostile may notice the player. False during the
+   * induction until its block and parry are done (docs/SPEC_INDUCTION.md):
+   * nobody aggroes, nobody approaches, the boss does not start.
+   */
+  readonly floorAwake: boolean;
   field: Int16Array;
   hurtPlayer(amount: number, from: Actor | null, kind: 'melee' | 'ticket' | 'meeting' | 'boss' | 'aura' | 'bite'): void;
   enqueueTicket(from: Actor, gold: boolean): void;
@@ -538,6 +546,8 @@ export interface SpawnOpts {
   readonly elite?: EliteAffix | null;
   readonly owner?: number;
   readonly spawnIndex?: number;
+  /** A particular person's clothes (Morag's cardigan), instead of the kind's usual roll. */
+  readonly outfit?: Outfit;
 }
 
 export function createActor(
@@ -586,6 +596,9 @@ export function createActor(
     rig = buildRig(boss.outfit);
     root.add(rig.root);
     name = f >= BOSSES.length ? `${boss.name} (Overtime)` : boss.name;
+  } else if (kind === 'dummy') {
+    root.add(dummyMesh());
+    name = 'Facilities training dummy';
   } else if (kind === 'helper' && role === 'dog') {
     const d = dogMesh();
     root.add(d.root);
@@ -601,7 +614,7 @@ export function createActor(
     }
     root.add(rig.root);
   } else {
-    rig = buildRig(outfitFor(kind, r));
+    rig = buildRig(opts.outfit ?? outfitFor(kind, r));
     root.add(rig.root);
   }
   if (kind === 'consultant') root.add(auraMesh());
@@ -628,6 +641,13 @@ export function createActor(
     name = opts.npc?.name ?? 'Someone';
     hp = 1;
     speed = 1;
+  } else if (kind === 'dummy') {
+    // A practice hit takes a little off you, the same on every rung and floor:
+    // the lesson is the block, not the arithmetic.
+    hp = 120;
+    speed = 0;
+    damage = 5;
+    radius = 0.45;
   } else if (kind === 'helper') {
     if (role === null) role = r.pick(['sysadmin', 'sysadmin', 'security', 'intern'] as const);
     name = opts.npc?.name ?? (role === 'sysadmin'
@@ -1019,6 +1039,13 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
     }
   }
 
+  // The dummy is bolted to its base: no shove, knock or parry moves it. And
+  // whatever got at it (a poison rune goes round hurtActor) is patched up.
+  if (a.kind === 'dummy') {
+    a.push.set(0, 0, 0);
+    a.pos.copy(a.home);
+    if (a.hp < a.maxHp * 0.25) a.hp = a.maxHp;
+  }
   a.lastPos.copy(a.pos);
   if (a.stunned > 0) {
     a.stunned -= dt;
@@ -1028,7 +1055,8 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
     return;
   }
 
-  if (a.hostile) updateHostile(ctx, a, dt);
+  if (a.kind === 'dummy') updateDummy(ctx, a, dt);
+  else if (a.hostile) updateHostile(ctx, a, dt);
   else updateFriendly(ctx, a, dt);
 
   a.root.rotation.y = a.yaw;
@@ -1143,7 +1171,7 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
     if (a.kind === 'boss') {
       const cx = toCell(ctx.playerPos.x);
       const cz = toCell(ctx.playerPos.z);
-      if (!ctx.invisible && lv.roomOf[cz * lv.w + cx] === a.room) {
+      if (!ctx.invisible && ctx.floorAwake && lv.roomOf[cz * lv.w + cx] === a.room) {
         if (a.docile) {
           if (a.memo.parley !== true) {
             a.memo.parley = true;
@@ -1154,7 +1182,7 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
           startBoss(ctx, a);
         }
       }
-    } else if (sees && dist < aggroRange(ctx, a) && !a.docile) {
+    } else if (sees && dist < aggroRange(ctx, a) && !a.docile && ctx.floorAwake) {
       a.aggro = true;
       ctx.noticed(a);
       if (!SILENT.includes(a.kind)) say(a, a.elite !== null ? fx.pick(ELITE_LINES) : fx.pick(barksFor(a)), 2.5);
@@ -1805,6 +1833,38 @@ function follow(ctx: GameCtx, a: Actor, dx: number, dz: number, dist: number, st
   if (dist > 30) a.pos.set(ctx.playerPos.x + 1, 0, ctx.playerPos.z + 1);
 }
 
+/** How near the player has to stand before the dummy starts a swing. Its reach is a little more, as for everyone. */
+const DUMMY_RANGE = 2.2;
+
+/**
+ * The induction's training dummy. It never walks and never notices anyone
+ * by itself: it swings only while it is set on the player (`aggro`, which the
+ * induction's block and parry steps turn on), and then exactly as everyone
+ * else does - a wind-up with the warm glow and the rising sound, and a strike
+ * decided from where the player is when it lands - so what it teaches is
+ * what the floor does.
+ */
+function updateDummy(ctx: GameCtx, a: Actor, dt: number): void {
+  const dx = ctx.playerPos.x - a.pos.x;
+  const dz = ctx.playerPos.z - a.pos.z;
+  if (a.pending !== null) {
+    const id = tickWindup(a, dt);
+    if (id !== null) {
+      a.attackAnim = 1;
+      if (lands(ctx, a, id)) ctx.hurtPlayer(a.damage, a, 'melee');
+    }
+    return;
+  }
+  if (!a.aggro) return;
+  a.yaw = Math.atan2(dx, dz);
+  a.cooldown -= dt;
+  if (a.cooldown <= 0 && Math.hypot(dx, dz) < DUMMY_RANGE) {
+    // Time to read the swing, lower the guard and try again before the next.
+    a.cooldown = 2.4;
+    windUp(ctx, a, 'dummy.swing', dx, dz);
+  }
+}
+
 function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
   const dx = ctx.playerPos.x - a.pos.x;
   const dz = ctx.playerPos.z - a.pos.z;
@@ -1999,12 +2059,14 @@ export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vect
   if (a.kind === 'boss' && !a.bossActive) {
     // Hitting a boss starts the fight properly, wherever you hit it from.
     startBoss(ctx, a);
-  } else if (!a.aggro) {
+  } else if (!a.aggro && a.kind !== 'dummy') {
     a.aggro = true;
     ctx.noticed(a);
   }
   a.docile = false;
-  if (knock !== null && a.kind !== 'boss' && a.kind !== 'turret') a.push.add(knock);
+  if (knock !== null && a.kind !== 'boss' && a.kind !== 'turret' && a.kind !== 'dummy') a.push.add(knock);
+  // Facilities want it back in one piece: it is never resolved, only patched up.
+  if (a.kind === 'dummy' && a.hp < a.maxHp * 0.25) a.hp = a.maxHp;
   a.hpBar.visible = true;
   a.hpFill.scale.x = Math.max(0.001, a.hp / a.maxHp);
   a.hpFill.position.x = -(1 - a.hpFill.scale.x) / 2;

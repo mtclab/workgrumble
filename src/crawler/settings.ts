@@ -43,6 +43,11 @@ export interface Settings {
   music: number;
   sfx: number;
   autosave: boolean;
+  /**
+   * This player has finished an induction once, in any career: the New
+   * Starter Form then ticks "Skip the induction" for them by default.
+   */
+  inductionDone: boolean;
   keys: Record<Action, string>;
 }
 
@@ -61,6 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
   music: 0.5,
   sfx: 0.7,
   autosave: true,
+  inductionDone: false,
   keys: { ...DEFAULT_KEYS },
 };
 

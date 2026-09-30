@@ -377,7 +377,8 @@ export function tickQuests(g: Game, dt: number): void {
   if (g.screen !== 'play') return;
   // New work arrives. Nobody asks.
   const bossDone = s.floorState.bossDone || g.boss === null || g.boss.resolved;
-  if (g.pendingStaff === null && !bossDone) {
+  // Nobody rings a new starter mid-induction: the clock starts once the floor is open.
+  if (g.pendingStaff === null && !bossDone && s.induction === null) {
     g.staffIn -= dt;
     if (g.staffIn <= 0) {
       const chance = g.staffFirst ? Math.min(0.85, 0.45 + s.rung * 0.035) : 0.45;

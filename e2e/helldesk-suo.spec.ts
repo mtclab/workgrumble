@@ -50,6 +50,8 @@ async function startCareer(page: Page): Promise<void> {
   });
   await page.reload();
   await page.getByRole('button', { name: 'New career' }).click();
+  // Straight to the floor: the induction has a spec of its own (helldesk-induction).
+  await page.getByLabel('Skip the induction').check();
   await page.getByRole('button', { name: 'Sign the contract' }).click();
   await page.locator('.dlg-opt').first().click();
 }

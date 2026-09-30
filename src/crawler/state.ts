@@ -18,6 +18,7 @@ import {
   plainInstance,
   sumAffix,
 } from './loot';
+import { HUD_METERS, type HudMeter, type InductionState, normalizeInduction } from './induction';
 import { freshOnCall, normalizeOnCall, type OnCallState } from './oncall';
 import { canTake, treePerk } from './perks';
 import type { TeamMember } from './team';
@@ -212,6 +213,10 @@ export interface SaveState {
   };
   /** Your colleagues, by name: morale, and who you have mentored. */
   team: Record<string, TeamMember>;
+  /** Induction day, while it runs (null: skipped, finished, or a career from before it). */
+  induction: InductionState | null;
+  /** HUD meters not shown yet: each appears when it first matters. Empty: everything shows. */
+  hudHidden: HudMeter[];
   seed: number;
   won: boolean;
 }
@@ -313,6 +318,8 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
     booksRead: [],
     stats: { resolvedField: 0, resolvedDesk: 0, resolvedPeace: 0, breaches: 0, burnouts: 0, bosses: 0, wrongFixes: 0, drinks: 0, blackouts: 0, locks: 0, spellsCast: 0, cans: 0, fish: 0, elites: 0, staffedDone: 0, staffedMissed: 0, mentored: 0, treats: 0, pagesAnswered: 0, pagesMissed: 0 },
     team: {},
+    induction: null,
+    hudHidden: [],
     seed,
     won: false,
   };
@@ -413,6 +420,8 @@ export function normalizeSave(raw: unknown): SaveState | null {
     ammo: { ...fresh.ammo, ...m.ammo },
     standing: { ...fresh.standing, ...m.standing },
     attrUps: { ...fresh.attrUps, ...m.attrUps },
+    induction: normalizeInduction((m as Partial<SaveState>).induction),
+    hudHidden: Array.isArray((m as Partial<SaveState>).hudHidden) ? (m.hudHidden as unknown[]).filter((x): x is HudMeter => (HUD_METERS as readonly unknown[]).includes(x)) : [],
   };
   for (const k of SKILLS) if (out.skills[k] === undefined) out.skills[k] = { value: 5, progress: 0 };
   for (const a of ATTRIBUTES) if (typeof out.attrs[a] !== 'number') out.attrs[a] = 35;

@@ -120,7 +120,7 @@ function showSaveMenu(g: Game): void {
 export function showChargen(g: Game): void {
   g.screen = 'chargen';
   hideOverlay(g);
-  showCharGen(g.mount, (setup) => g.beginCareer(setup), () => showTitle(g));
+  showCharGen(g.mount, (setup, skip) => g.beginCareer(setup, skip), () => showTitle(g), g.settings.inductionDone);
 }
 
 export function startPlay(g: Game): void {

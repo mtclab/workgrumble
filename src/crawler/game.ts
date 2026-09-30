@@ -46,6 +46,8 @@ import {
   updateAuras,
 } from './entities';
 import { Hud, type HudFrame } from './hud';
+import { floorAwake, HUD_METERS, type InductionEvent, MORAG, PRACTICE_TICKET_FROM, startInduction, stillHidden, welcomeLine } from './induction';
+import { InductionDay } from './inductionday';
 import { Input } from './input';
 import { findPrompt, interact } from './interact';
 import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell, wallBetween } from './level';
@@ -277,6 +279,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   lastVisionDiff: string[] | null = null;
   /** Reused by `walk`: no allocation per frame. */
   private readonly moveDir = new THREE.Vector2();
+  /** Induction day's props and card, while it runs on floor 0 (the step itself is in the save). */
+  inductionDay: InductionDay | null = null;
 
   constructor(mount: HTMLElement) {
     this.mount = mount;
@@ -399,6 +403,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     return this.invisT > 0;
   }
 
+  get floorAwake(): boolean {
+    return floorAwake(this.save.induction);
+  }
+
   get staffStanding(): number {
     return this.save.standing.staff;
   }
@@ -433,6 +441,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     // off before the floor it was dressing goes.
     this.abortVision();
     this.visionDue = false;
+    // The morning's props first: the computer is not part of the level's group.
+    this.inductionDay?.dispose();
+    this.inductionDay = null;
     for (const a of this.actors) disposeActor(this.scene, a);
     this.actors = [];
     for (const p of this.projectiles) this.scene.remove(p.mesh);
@@ -575,6 +586,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     scheduleStaffing(this, fresh);
     scheduleMentoring(this, fresh);
     this.spawnCompanions();
+    // Before the flow field: the lobby computer takes up a cell.
+    this.syncInduction();
     if (!fromSave) host.consequencesOnArrival(this, n);
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     this.refreshDerived();
@@ -652,6 +665,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.player.yaw = Math.PI;
     this.player.pitch = -0.05;
     this.spawnCompanions();
+    this.syncInduction();
     this.elevatorOpen = true;
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     this.refreshDerived();
@@ -940,8 +954,13 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     screens.showChargen(this);
   }
 
-  beginCareer(setup: CharacterSetup): void {
+  beginCareer(setup: CharacterSetup, skipInduction = false): void {
     this.save = newSave(Date.now() >>> 0, setup);
+    // Induction day: the meters come one at a time. Skipped, the floor is as it always was.
+    if (!skipInduction) {
+      this.save.induction = startInduction();
+      this.save.hudHidden = [...HUD_METERS];
+    }
     this.derivedCache = derive(this.save);
     this.resetTransient();
     this.fixCache = new WeakMap();
@@ -949,7 +968,51 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.loadFloor(0, false);
     this.journal(`Day one. ${this.save.name}, ${this.title}. The badge photo is terrible.`);
     screens.startPlay(this);
+    if (this.save.induction !== null) {
+      this.openDialogue(said(MORAG, welcomeLine(this.save.name), 'neutral', 'Clock in'));
+      return;
+    }
     this.openDialogue(said('Morag from Internal IT', `Welcome to Workgrumble, ${this.save.name}. Here is a stapler and a label maker. The users have tickets; the tickets have users. Computers are blue on the map; I am green. You can talk most people down (E) instead of stapling them. Hold the mouse to wind up a heavy swing, hold the right button to block. Every Friday you go to the mökki. Do not drink from the office fridge. Good luck.`, 'neutral', 'Clock in'), () => this.tip('start'));
+  }
+
+  /**
+   * Build the induction's props for the floor just loaded, if one is running
+   * and this is its floor. Anywhere else (the lift taken early, the mökki) or
+   * already finished, it is over: quietly, since Morag is not there to say so.
+   */
+  private syncInduction(): void {
+    const st = this.save.induction;
+    if (st === null) return;
+    if (st.step === 'done' || this.save.location !== 'office' || this.save.floor !== 0) {
+      this.endInduction(false);
+      return;
+    }
+    this.inductionDay = new InductionDay(this, st);
+  }
+
+  /**
+   * The induction is over: the props go, the floor wakes up, and this player
+   * is remembered as having done it (the skip box is ticked from now on).
+   */
+  endInduction(ceremony = true): void {
+    this.inductionDay?.dispose();
+    this.inductionDay = null;
+    const s = this.save;
+    s.induction = null;
+    // The practice ticket goes with the morning.
+    s.queue = s.queue.filter((q) => q.from !== PRACTICE_TICKET_FROM);
+    this.settings.inductionDone = true;
+    saveSettings(this.settings);
+    this.fieldIn = 0;
+    if (!ceremony) return;
+    this.journal('Induction done. Morag says the floor is mine now. It did not sound like a gift.');
+    this.tip('start');
+    this.autosaveSoon();
+  }
+
+  /** Something the induction may be waiting for (a hit on the dummy, a block, a fix). */
+  practice(e: InductionEvent): void {
+    this.inductionDay?.event(e);
   }
 
   // ================================================================== loop
@@ -1029,6 +1092,14 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     // Under the steam the HUD is gone: one serif line and the steam meter (the vision's own).
     const visible = (this.screen === 'play' || this.screen === 'os' || this.screen === 'dialogue' || this.screen === 'minigame') && this.vision === null;
     if (visible) {
+      // Meters still waiting to matter: a drink in the backpack counts as much as one on the floor.
+      const s = this.save;
+      if (s.hudHidden.length > 0) {
+        s.hudHidden = stillHidden(s.hudHidden, {
+          step: s.induction?.step ?? null, loyly: s.loyly, maxLoyly: this.derivedCache.maxLoyly, runes: s.spells.length,
+          bac: s.bac, stomach: s.stomach, caffeine: s.caffeine, crash: s.crash,
+        });
+      }
       this.markersIn -= dt;
       if (this.markersIn <= 0) {
         this.markersIn = 0.3;
@@ -1083,6 +1154,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       blocking: this.blocking,
       dry: this.dryFire,
       oncall: pagerHud(this),
+      hiddenMeters: s.hudHidden,
     };
   }
 
@@ -1111,12 +1183,16 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const d = this.derivedCache;
 
     this.look();
+    this.inductionDay?.update(dt);
     if (this.hit('view')) {
       this.settings.view = this.settings.view === 'first' ? 'third' : 'first';
       saveSettings(this.settings);
       this.hud.toast(this.settings.view === 'first' ? 'First person' : 'Third person');
     }
-    if (this.hit('map')) this.hud.mapOpen = !this.hud.mapOpen;
+    if (this.hit('map')) {
+      this.hud.mapOpen = !this.hud.mapOpen;
+      if (this.hud.mapOpen) this.practice({ type: 'map' });
+    }
     if (this.hit('backpack') || inp.hit('KeyI')) {
       this.openOs('pack');
       return;
@@ -1289,6 +1365,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.seenIn <= 0) {
       this.seenIn = 0.25;
       this.markSeen();
+      this.eliteInSight();
     }
     this.historyIn -= dt;
     if (this.historyIn <= 0) {
@@ -1709,7 +1786,11 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   unequip(slot: 'head' | 'body' | 'feet' | 'trinket'): void { host.unequip(this, slot); }
   use(id: string): void { host.use(this, id); }
   takePerk(id: string): void { host.takePerk(this, id); }
-  resolve(q: QueuedTicket, label: string): { ok: boolean; message: string } { return host.resolveTicket(this, q, label); }
+  resolve(q: QueuedTicket, label: string): { ok: boolean; message: string } {
+    const r = host.resolveTicket(this, q, label);
+    if (r.ok && q.from === PRACTICE_TICKET_FROM) this.practice({ type: 'fixed' });
+    return r;
+  }
   fixOptions(q: QueuedTicket): string[] { return host.fixOptions(this, q); }
   fixHint(q: QueuedTicket): string | null { return host.fixHint(this, q); }
   garble(label: string): string { return host.garble(this, label); }
@@ -1876,6 +1957,15 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
         });
       }
     }
+  }
+
+  /** The first elite you can see gets its tip (a star over its head is not self-explanatory). */
+  private eliteInSight(): void {
+    if (this.save.tipsShown.includes('elite') || !this.settings.tips) return;
+    const pp = this.player.pos;
+    const seen = this.actors.some((a) => a.elite !== null && !a.resolved && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < 16
+      && lineOfSight(this.level, pp.x, pp.z, a.pos.x, a.pos.z));
+    if (seen) this.tip('elite');
   }
 
   markSeen(): void {

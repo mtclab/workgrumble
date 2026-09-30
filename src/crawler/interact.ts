@@ -130,6 +130,8 @@ export function interact(g: Game): void {
 
 function talkTo(g: Game, a: Actor): void {
   const s = g.save;
+  // Morag and the practice colleague, on induction day.
+  if (g.inductionDay?.talk(a) === true) return;
   if (a.hostile) {
     if (a.kind === 'boss') g.openDialogue(talkAuditor(g, a));
     else g.openDialogue(a.kind === 'manager' ? talkManager(g, a) : talkHostile(g, a));

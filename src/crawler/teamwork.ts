@@ -250,6 +250,8 @@ function tickMentoring(g: Game, dt: number): void {
     return;
   }
   if (s.floorState.bossDone || g.boss === null || g.boss.resolved) return;
+  // Not during an induction: the team can wait until the floor is open.
+  if (s.induction !== null) return;
   g.mentorIn -= dt;
   if (g.mentorIn > 0) return;
   scheduleMentoring(g, false);

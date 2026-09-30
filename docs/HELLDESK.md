@@ -50,7 +50,27 @@ Lockdown, Rollback) twice as fast and hit twice as hard.
 
 **New starter form**: name, background (six), star sign (six), the rung you
 are hired at, domain/track/architect path if the rung calls for it, the
-employer, Ironman.
+employer, Ironman, and "Skip the induction" (off until you have finished one,
+on from then on: remembered in the settings, across careers).
+
+**Induction day** (docs/SPEC_INDUCTION.md). Unless skipped, a new career
+starts with a guided first morning in the floor-0 lobby. Morag runs it: one
+card at a time at the top of the screen (her line in the reading serif, the
+key drawn as a keycap, the mouse as a mouse), each moving on only when you
+have done what it says - look round, walk to Morag, talk down a practice
+colleague (it always works), a quick swing, a heavy swing and the label
+maker on Facilities' training dummy, then block and parry the dummy's
+swings (it winds up like everyone else; a blocked or parried practice swing
+costs nothing, the first one that gets through is where Sanity is explained),
+the one easy ticket on a computer put in the lobby for it, and the map. Until
+the block and parry are done nothing hostile on the floor notices you (no
+aggro, no approach, the boss does not start; hitting someone still does), and
+no staffing call or mentoring request comes. The HUD meters arrive when they
+matter: Sanity and the tool from the start, energy with the heavy swing, REP
+and the queue with the ticket, Löyly, promille and caffeine the first time
+each moves (a skipper sees everything). The step is saved with the career; a
+reload comes back at it. Morag, the colleague, the dummy and the lobby
+computer exist only while it runs. Taking the lift early ends it quietly.
 
 - **Attributes**: Grit, Reflex, Tech, Charm, Patience, Liver.
 - **Skills rise by use** (Morrowind): Hardware (melee), Scripting (ranged),
@@ -487,6 +507,7 @@ runtime:
 | `story.ts` | Every other conversation: talk-downs, managers, office ladies, helpers, the Saunatonttu, the per-floor stories, the Auditor, HR, reviews, level-up. |
 | `game.ts` | The Game: world loading, the loop, saves, settings, and the host interfaces the rest call into. |
 | `combat.ts` | Attacks (heavy, block, parry), projectiles, damage both ways, resolving people, loot on the floor, hazards and landing markers, effects. |
+| `induction.ts`, `inductionday.ts` | Induction day: the step machine, the floor's aggro gate, which meters show, the cards (pure); the props, the card on screen and where it all plugs in (in the game). |
 | `windup.ts` | Combat you can read (pure): the enemy wind-up table and clock, the strike decided where you stand, the parry window, the melee button's tap/hold rules, the hit-direction angle. |
 | `vices.ts` | Drink and caffeine ticks, timed can buffs, blackouts. |
 | `spells.ts` | Runes (and the cold-steam cast) and domain abilities. |
@@ -522,3 +543,11 @@ its floor after a visible wind-up, and proves a strike is decided where the
 player stands when it lands. `e2e/helldesk-combat.spec.ts` plays the same
 with real keys on the served page (strafe out of a swing; stand still and
 take it; parry on the wind-up; a block held too early only blocks).
+`induction.test.ts` covers the induction's step machine (each step moves only
+on its own action, nothing skips ahead, a saved step resumes), the floor
+waking after the block and parry, the meter reveal rules, the cards, where the
+props go on generated lobbies (the computer never cuts anything off) and that
+the props' meshes leave nothing behind; `attacks.test.ts` plays the aggro
+gate against the real enemy AI. `e2e/helldesk-induction.spec.ts` plays the
+whole morning from New career to normal play, the skip, and a reload
+mid-induction.

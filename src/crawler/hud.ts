@@ -1,5 +1,6 @@
 import { TICKETS } from './content/tickets';
 import type { Actor } from './entities';
+import type { HudMeter } from './induction';
 import { SKILL_UPS_PER_LEVEL } from './rpg';
 import { type Level, TILE } from './level';
 import type { Derived, SaveState } from './state';
@@ -61,6 +62,8 @@ export interface HudFrame {
   readonly dry: boolean;
   /** On call at the mökki (null: not), and whether a page is going off. */
   readonly oncall: { readonly text: string; readonly alarm: boolean } | null;
+  /** Meters not shown yet: each appears when it first matters (the induction). */
+  readonly hiddenMeters: readonly HudMeter[];
 }
 
 export interface MapMarker {
@@ -109,6 +112,10 @@ export class Hud {
   private readonly tipBox: HTMLDivElement;
   private readonly chargeRing: HTMLDivElement;
   private readonly blockIcon: HTMLDivElement;
+  /** The cells the induction points at, and the meters that wait until they matter. */
+  private readonly toolCell: HTMLDivElement;
+  private readonly sanityCell: HTMLDivElement;
+  private readonly meters: Record<HudMeter, HTMLDivElement>;
   private cardT = 0;
   private tipT = 0;
   private readonly prompt: HTMLDivElement;
@@ -176,11 +183,13 @@ export class Hud {
 
     const bar = div('hud-bar', this.root);
     const left = div('hud-cell hud-cell-weapon', bar);
+    this.toolCell = left;
     div('hud-label', left, 'TOOL');
     this.weapon = div('hud-big hud-weapon', left);
     this.ammo = div('hud-small', left);
 
     const sanCell = div('hud-cell', bar);
+    this.sanityCell = sanCell;
     div('hud-label', sanCell, 'SANITY');
     this.sanity = div('hud-big', sanCell);
     const st = div('hud-track', sanCell);
@@ -242,6 +251,21 @@ export class Hud {
     this.tipBox = div('hud-tip', this.root);
     this.chargeRing = div('hud-charge', this.root);
     this.blockIcon = div('hud-block', this.root, '🛡 BLOCKING');
+    this.meters = { energy: et, rep: repCell, loyly: magicCell, promille: bacCell, caffeine: caffCell };
+  }
+
+  /** The induction's card points at a cell: it is outlined until the card moves on. */
+  point(which: 'tool' | 'sanity' | null): void {
+    this.toolCell.classList.toggle('is-pointed', which === 'tool');
+    this.sanityCell.classList.toggle('is-pointed', which === 'sanity');
+  }
+
+  /** The sanity cell flashes once, to say "this one". */
+  pulseSanity(): void {
+    const el = this.sanityCell;
+    el.classList.remove('is-pulse');
+    void el.offsetWidth;
+    el.classList.add('is-pulse');
   }
 
   /** A boss's name across the screen, Souls-style. */
@@ -326,6 +350,12 @@ export class Hud {
     this.caffLabel.textContent = f.caffeineLabel;
     this.caffLabel.classList.toggle('is-peak', f.caffeineLabel === 'WIRED');
     this.caffLabel.classList.toggle('is-alarm', f.caffeineLabel === 'JITTERY' || f.caffeineLabel === 'PALPITATIONS' || f.crash > 0);
+    for (const [m, el] of Object.entries(this.meters) as [HudMeter, HTMLDivElement][]) {
+      const hide = f.hiddenMeters.includes(m);
+      // Coming into view for the first time: a short glow, so the eye finds it.
+      if (!hide && el.classList.contains('is-hidden')) el.classList.add('is-new');
+      el.classList.toggle('is-hidden', hide);
+    }
     this.chargeRing.style.display = f.charge > 0.05 ? 'block' : 'none';
     this.chargeRing.style.setProperty('--p', `${Math.round(f.charge * 100)}%`);
     this.chargeRing.classList.toggle('is-full', f.charge >= 1);

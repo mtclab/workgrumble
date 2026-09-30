@@ -103,6 +103,8 @@ export function playerAttackInput(g: Game, dt: number): void {
   if (inp.rmb && canAct) {
     g.rmbT += dt;
     g.blocking = s.energy > 0;
+    // The tip comes with the first block; an induction brings it at its own block step instead.
+    if (g.blocking && s.induction === null) g.tip('block');
   } else {
     if (g.rmbT > 0 && g.rmbT < 0.2 && g.shoveCd <= 0 && s.energy >= 8 && canAct) shove(g);
     g.rmbT = 0;
@@ -197,7 +199,8 @@ export function strike(g: Game, a: Actor, base: number, knock: THREE.Vector3 | n
   const s = g.save;
   const d = g.derivedCache;
   let dmg = base * (kind === 'melee' ? d.meleeMult : kind === 'ranged' ? d.rangedMult : d.spellMult);
-  if (!a.aggro && a.kind !== 'boss' && a.kind !== 'turret') {
+  // Nobody sneaks up on the training dummy: it is never looking anyway.
+  if (!a.aggro && a.kind !== 'boss' && a.kind !== 'turret' && a.kind !== 'dummy') {
     let mult = (2 + skill(s, 'stealth') / 40) * (perk(s, 'surprise') > 0 ? 1.5 : 1);
     if (kind === 'ranged' && perk(s, 'criticalpath') > 0) mult = Math.max(mult, 3);
     dmg *= mult;
@@ -286,6 +289,7 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
         hit.push(a);
         hitAny = true;
         if (w.splash !== undefined) splash(g, a.pos, w.splash, w.damage * 0.5 * d.meleeMult, a.id);
+        if (a.kind === 'dummy') g.practice({ type: 'hit', how: power ? 'heavy' : 'light' });
       }
       // Milton's stapler goes through: the person behind gets stapled too.
       if (d.specials.has('redstapler')) {
@@ -397,7 +401,8 @@ export function shove(g: Game): void {
     a.push.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(11));
     stun(a, 0.5);
     a.cooldown = Math.max(a.cooldown, 0.8);
-    a.aggro = true;
+    // A shoved dummy rocks on its base; it does not start swinging because of it.
+    if (a.kind !== 'dummy') a.aggro = true;
   }
 }
 
@@ -503,6 +508,7 @@ export function updateProjectiles(g: Game, dt: number): void {
             hurtActor(g, a, p.damage * 0.5, knock);
           } else if (p.owner === null) {
             strike(g, a, p.damage, knock, 'ranged');
+            if (a.kind === 'dummy') g.practice({ type: 'hit', how: p.kind === 'label' ? 'label' : 'other' });
           } else {
             hurtActor(g, a, p.damage * (a.shielded ? 0.5 : 1), knock);
           }
@@ -609,14 +615,22 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
         const n = Number(s.flags.parries ?? 0) + 1;
         s.flags.parries = n;
         if (n >= 10) g.achieve('parry');
+        if (from.kind === 'dummy') g.practice({ type: 'guard', how: 'parried' });
         return false;
       }
       sfx.block();
       s.energy = Math.max(0, s.energy - amount * 0.5);
+      // A blocked practice swing costs the guard its energy and nothing else.
+      if (from.kind === 'dummy') {
+        g.practice({ type: 'guard', how: 'blocked' });
+        return false;
+      }
       amount *= 0.35;
       g.exercise('sisu', 0.4);
     }
   }
+  // A practice swing that got through: a little, and the moment Sanity is explained.
+  if (from?.kind === 'dummy') g.practice({ type: 'guard', how: 'hurt' });
   let dmg = amount * (1 - d.armor);
   if (from !== null && (from.kind === 'boss' || from.kind === 'manager' || kind === 'boss')) dmg *= 1 - d.bossResist;
   if (g.sisuT > 0) dmg *= 0.5;
@@ -792,7 +806,7 @@ function resolveBoss(g: Game, a: Actor, rep: number): void {
   if (drop !== undefined && g.floor <= 4 && !s.questItems.includes(drop)) dropQuestItem(g, a.pos, drop);
   if (s.floorState.drinksHere === 0) g.achieve('sober');
   questEvent(g, { type: 'boss', floor: g.floor });
-  for (const o of g.actors) if (o.hostile && !o.resolved && o.kind !== 'boss' && fx.chance(0.5)) o.hp = 0;
+  for (const o of g.actors) if (o.hostile && !o.resolved && o.kind !== 'boss' && o.kind !== 'dummy' && fx.chance(0.5)) o.hp = 0;
   g.autosaveSoon();
 }
 

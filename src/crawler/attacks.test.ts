@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { type Actor, createActor, type GameCtx, stun, updateActor } from './entities';
+import { floorAwake, type InductionState, STEPS } from './induction';
 import { flowField, type Level, TILE } from './level';
 import { Rng } from './rng';
 import { ATTACKS, ATTACKS_BY_KIND, type AttackClass, type AttackId, BOSS_PATTERNS, type HostileKind } from './windup';
@@ -72,6 +73,8 @@ class Arena implements GameCtx {
   readonly staffStanding = 0;
   readonly managementStanding = 0;
   readonly findings = 0;
+  /** Awake unless a test says the induction is still running. */
+  floorAwake = true;
   field: Int16Array;
   readonly hits: Hit[] = [];
   readonly rng = new Rng(7);
@@ -197,6 +200,7 @@ const RANGE: Record<Exclude<AttackId, `boss.${string}`>, number> = {
   'shadowit.code': 8,
   'turret.code': 8,
   'chatbot.chat': 8,
+  'dummy.swing': 1.9,
 };
 
 const GRUNTS = (Object.entries(ATTACKS_BY_KIND) as [HostileKind, readonly AttackId[]][])
@@ -369,5 +373,74 @@ describe('boss pacing', () => {
     const next = starts.find((s) => s > first) ?? 0;
     expect(next - first).toBeGreaterThanOrEqual(2.2 - DT - 1e-9);
     expect(next - first).toBeLessThan(2.2 + 2 * DT);
+  });
+});
+
+describe('induction day: nothing on the floor notices a new starter before the block and parry are done', () => {
+  /** A `kind` 4 m in front of the player, in plain sight, for three seconds, with the induction at `st`. */
+  function watch(kind: HostileKind, st: InductionState | null): { aggro: boolean; hits: number; wound: boolean } {
+    const ctx = new Arena();
+    ctx.floorAwake = floorAwake(st);
+    const a = createActor(ctx, kind, ctx.playerPos.x, ctx.playerPos.z - 4, 0, ctx.rng, 10);
+    a.docile = false;
+    ctx.actors.push(a);
+    let wound = false;
+    for (let t = 0; t < 3; t += DT) {
+      ctx.time += DT;
+      updateActor(ctx, a, DT);
+      if (a.pending !== null) wound = true;
+    }
+    return { aggro: a.aggro, hits: ctx.hits.length, wound };
+  }
+
+  const at = (step: InductionState['step']): InductionState => ({ step, looked: 0, sanityTold: false });
+  const BEFORE = STEPS.slice(0, STEPS.indexOf('parry') + 1);
+
+  it.each(['user', 'caller', 'manager', 'customer', 'reply', 'mosquito', 'chatbot'] as const)('%s: unaware through step 6, noticing from step 7', (kind) => {
+    for (const step of BEFORE) {
+      const r = watch(kind, at(step));
+      expect(r.aggro, step).toBe(false);
+      // No approach, no wind-up, nothing thrown: it has not noticed anybody.
+      expect(r.wound, step).toBe(false);
+      expect(r.hits, step).toBe(0);
+    }
+    for (const step of ['ticket', 'map', 'done'] as const) expect(watch(kind, at(step)).aggro, step).toBe(true);
+    // No induction at all (skipped, finished, an older career): the floor as it always was.
+    expect(watch(kind, null).aggro).toBe(true);
+  });
+
+  it('the boss does not start when you walk into its room before step 6 is done', () => {
+    const start = (st: InductionState | null): boolean => {
+      const ctx = new Arena();
+      ctx.floorAwake = floorAwake(st);
+      const a = createActor(ctx, 'boss', ctx.playerPos.x, ctx.playerPos.z - 6, 0, ctx.rng, 10);
+      ctx.actors.push(a);
+      for (let i = 0; i < 30; i++) {
+        ctx.time += DT;
+        updateActor(ctx, a, DT);
+      }
+      return a.bossActive;
+    };
+    expect(start(at('block'))).toBe(false);
+    expect(start(at('ticket'))).toBe(true);
+  });
+
+  it('the training dummy swings only while it is set on you, and like everyone else', () => {
+    const ctx = new Arena();
+    const a = createActor(ctx, 'dummy', ctx.playerPos.x, ctx.playerPos.z - 1.9, 0, ctx.rng, 10);
+    ctx.actors.push(a);
+    for (let t = 0; t < 3; t += DT) {
+      ctx.time += DT;
+      updateActor(ctx, a, DT);
+    }
+    expect(ctx.hits).toEqual([]);
+    const home = a.pos.clone();
+    a.aggro = true;
+    a.cooldown = 0;
+    const run = fight(ctx, a, 3);
+    expect(run.early).toEqual([]);
+    expect([...run.landed]).toContain('dummy.swing');
+    // Bolted down: it never took a step.
+    expect(a.pos.distanceTo(home)).toBeLessThan(1e-9);
   });
 });

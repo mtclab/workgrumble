@@ -65,7 +65,8 @@ type GruntAttack =
   | 'consultant.deck'
   | 'shadowit.code'
   | 'turret.code'
-  | 'chatbot.chat';
+  | 'chatbot.chat'
+  | 'dummy.swing';
 
 export type AttackId = GruntAttack | `boss.${BossPattern}`;
 
@@ -95,6 +96,8 @@ export const ATTACKS: Record<AttackId, AttackDef> = {
   'shadowit.code': ranged(0.35),
   'turret.code': ranged(0.35),
   'chatbot.chat': ranged(0.4),
+  // The induction's dummy: a slow, honest swing, for learning to block and parry.
+  'dummy.swing': melee(0.55, 2.6, 1.2),
   'boss.invites': boss(0.6),
   'boss.summonUsers': boss(0.6),
   // The crouch before a QUICK sync.
@@ -128,6 +131,7 @@ export const ATTACKS_BY_KIND: Record<HostileKind, readonly AttackId[]> = {
   vendor: ['vendor.grab'],
   chatbot: ['chatbot.chat'],
   turret: ['turret.code'],
+  dummy: ['dummy.swing'],
   boss: ['boss.slam', ...BOSS_PATTERNS.map((p): AttackId => `boss.${p}`)],
 };
 

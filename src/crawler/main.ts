@@ -4,6 +4,7 @@ import type { ActorKind } from './entities';
 import { Game } from './game';
 import { rest } from './hosts';
 import { findPrompt, interact } from './interact';
+import { INDUCTION_TERMINAL_ID } from './inductionday';
 import { pageNow } from './pager';
 import { offerStaffing } from './questing';
 import { currentObjective, type QuestState } from './quests';
@@ -34,6 +35,16 @@ try {
     vision: (): { left: number; dist: number } | null => (game.vision === null ? null : { left: game.vision.clock.left, dist: game.vision.distance() }),
     // Combat: one of `kind` squared up in front of you, and what it is doing.
     duel: (kind: ActorKind, dist: number): number => stageDuel(game, kind, dist),
+    // Induction day: where it is, what is standing in the lobby for it, and a place in front of each prop.
+    induction: (): { step: string; sanityTold: boolean; dummy: number; props: string[]; terminal: boolean; hidden: string[] } | null => {
+      const st = game.save.induction;
+      const day = game.inductionDay;
+      const props = game.actors.filter((a) => a.npcId === 'induction-morag' || a.npcId === 'induction-practice' || a.kind === 'dummy').map((a) => a.name);
+      const terminal = game.level.interactables.some((it) => it.id === INDUCTION_TERMINAL_ID);
+      if (st === null) return { step: 'none', sanityTold: false, dummy: -1, props, terminal, hidden: [...game.save.hudHidden] };
+      return { step: st.step, sanityTold: st.sanityTold, dummy: day?.dummy?.id ?? -1, props, terminal, hidden: [...game.save.hudHidden] };
+    },
+    standBefore: (which: 'morag' | 'colleague' | 'dummy' | 'terminal', dist: number): boolean => game.inductionDay?.standBefore(which, dist) ?? false,
     foe: (id: number): { pending: string | null; windup: number; stunned: number; resolved: boolean } | null => {
       const a = game.actors.find((x) => x.id === id);
       return a === undefined ? null : { pending: a.pending, windup: a.windup, stunned: a.stunned, resolved: a.resolved };

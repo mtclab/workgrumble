@@ -27,7 +27,7 @@ import { type CharacterSetup, newSave } from './state';
  * employer it is (a second difficulty dial, plus Ironman). Hired at or past
  * the branch rungs, you also make the choices those rungs would have asked.
  */
-export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup) => void, onBack: () => void): void {
+export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup, skipInduction: boolean) => void, onBack: () => void, skipByDefault = false): void {
   const root = document.createElement('div');
   root.className = 'chargen';
   parent.append(root);
@@ -40,6 +40,8 @@ export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup)
   let arch: ArchPath = 'solutions';
   let workplace: Workplace = 'standard';
   let ironman = false;
+  // Off for somebody who has never finished an induction, on once they have.
+  let skipInduction = skipByDefault;
 
   const current = (): CharacterSetup => ({
     name: name.trim() === '' ? 'Pat Pending' : name.trim().slice(0, 28),
@@ -140,6 +142,22 @@ export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup)
     ig.append(card('Normal', 'Save anywhere. Burnouts cost Rep and restart the floor.', !ironman, () => { ironman = false; }));
     ig.append(card('Ironman', 'One autosave, no quicksave. A burnout ends the career.', ironman, () => { ironman = true; }, 'For the brave'));
 
+    // The induction: a guided first morning, for whoever wants one.
+    const skipRow = document.createElement('div');
+    skipRow.className = 'cg-skip';
+    const skipLabel = document.createElement('label');
+    const skipBox = document.createElement('input');
+    skipBox.type = 'checkbox';
+    skipBox.checked = skipInduction;
+    // No re-render: nothing else on the form depends on it.
+    skipBox.addEventListener('change', () => { skipInduction = skipBox.checked; });
+    skipLabel.append(skipBox, ' Skip the induction');
+    const skipNote = document.createElement('span');
+    skipNote.className = 'cg-skip-note';
+    skipNote.textContent = 'Morag walks new starters through the first morning in the lobby. Skip it and the floor is yours at once.';
+    skipRow.append(skipLabel, skipNote);
+    root.append(skipRow);
+
     // Preview.
     const setup = current();
     const preview = newSave(1, setup);
@@ -160,7 +178,7 @@ export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup)
     go.className = 'screen-btn';
     go.textContent = 'Sign the contract';
     // Read the form at click time: the name box does not re-render as you type.
-    go.addEventListener('click', () => { root.remove(); onDone(current()); });
+    go.addEventListener('click', () => { root.remove(); onDone(current(), skipInduction); });
     row.append(back, go);
     root.append(row);
     root.scrollTop = scroll;
