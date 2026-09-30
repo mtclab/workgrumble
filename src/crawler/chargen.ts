@@ -102,7 +102,7 @@ export function showCharGen(parent: HTMLElement, onDone: (setup: CharacterSetup)
     for (const b of BACKGROUNDS) {
       const bits = Object.entries(b.attrs).map(([a, v]) => `${v > 0 ? '+' : ''}${v} ${ATTRIBUTE_INFO[a as keyof typeof ATTRIBUTE_INFO].name}`);
       const majors = b.major.map((m) => SKILL_INFO[m].name).join(', ');
-      bg.append(card(b.name, b.desc, b.id === background, () => { background = b.id; }, `${bits.join(' · ')} — Major: ${majors}`));
+      bg.append(card(b.name, b.desc, b.id === background, () => { background = b.id; }, `${bits.join(' · ')} - Major: ${majors}`));
     }
 
     const sg = section('Born under');
