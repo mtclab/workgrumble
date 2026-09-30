@@ -56,6 +56,7 @@ interface Crawler {
 
 interface Handles {
   induction: () => Induction | null;
+  cardsShown: () => string[];
   standBefore: (which: 'morag' | 'colleague' | 'dummy' | 'terminal', dist: number) => boolean;
   foe: (id: number) => Foe | null;
 }
@@ -85,12 +86,74 @@ async function step(page: Page): Promise<string> {
   return (await induction(page)).step;
 }
 
-/** The card on screen shows `s`, and the induction is on it. */
-async function onCard(page: Page, s: string): Promise<void> {
-  await expect.poll(() => step(page), { timeout: 60_000 }).toBe(s);
-  const card = page.getByTestId('induction-card');
-  await expect(card).toBeVisible();
-  await expect(card).toHaveAttribute('data-step', s);
+/** The steps in order, as the game has them (induction.ts). */
+const STEPS = ['look', 'walk', 'talk', 'swing', 'heavy', 'label', 'block', 'parry', 'ticket', 'map', 'done'] as const;
+type Step = (typeof STEPS)[number];
+
+async function cardsShown(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as W).__helldesk.cardsShown());
+}
+
+/**
+ * The induction has reached step `s` and its card went up. On a slow
+ * renderer the step may already be over by the time the test looks (a
+ * glance round can finish the first step before the runner asks), so this
+ * waits for `s` or later and checks the page's record of cards shown; while
+ * the induction is still on `s`, the card on screen must say so. The full
+ * order of cards is asserted at the end of the journey.
+ */
+async function onCard(page: Page, s: Step): Promise<void> {
+  await expect.poll(async () => STEPS.indexOf((await step(page)) as Step) >= STEPS.indexOf(s), { timeout: 60_000 }).toBe(true);
+  expect(await cardsShown(page)).toContain(s);
+  // One read of both, so a step moving on between them cannot split the answer.
+  const now = await page.evaluate(() => {
+    const el = document.querySelector<HTMLElement>('[data-testid="induction-card"]');
+    return { step: (window as unknown as W).__helldesk.induction()?.step ?? 'none', card: el?.dataset.step ?? null, shown: el !== null && el.offsetParent !== null };
+  });
+  if (now.step === s) expect(now).toEqual({ step: s, card: s, shown: true });
+}
+
+/**
+ * Press and hold the right button from inside the page, through the
+ * canvas's own mouse handler, on the frame the dummy's wind-up reaches
+ * `left` seconds to go (a runner-sent press arrives hundreds of
+ * milliseconds late, past a half-second swing). Resolves with Sanity at
+ * the moment of the press.
+ */
+async function guardOn(page: Page, id: number, left: number): Promise<number> {
+  return page.evaluate(([i, l]) => new Promise<number>((done) => {
+    const w = window as unknown as W;
+    const canvas = document.querySelector('canvas.game-canvas');
+    const watch = (): void => {
+      const f = w.__helldesk.foe(i);
+      if (f !== null && f.pending !== null && f.windup <= l) {
+        canvas?.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true }));
+        done(w.__crawler.save.sanity);
+        return;
+      }
+      requestAnimationFrame(watch);
+    };
+    requestAnimationFrame(watch);
+  }), [id, left] as const);
+}
+
+/**
+ * A quick swing: press and release on one frame, through the game's own
+ * handlers. Sent from the runner, a late release could arrive after the
+ * charge is ready and make it a heavy swing, which (rightly) does not count.
+ */
+async function tap(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.querySelector('canvas.game-canvas')?.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('mouseup', { button: 0 }));
+  });
+}
+
+/** After the strike: let the guard down, through the same window handler, once it has been up a while (so it is not a shove). */
+async function guardOff(page: Page, id: number): Promise<void> {
+  await page.waitForFunction((i) => (window as unknown as W).__helldesk.foe(i)?.pending === null, id, { polling: 'raf', timeout: 60_000 });
+  await page.waitForFunction(() => (window as unknown as W).__crawler.rmbT > 0.3, null, { polling: 'raf', timeout: 60_000 });
+  await page.evaluate(() => window.dispatchEvent(new MouseEvent('mouseup', { button: 2 })));
 }
 
 async function standBefore(page: Page, which: 'morag' | 'colleague' | 'dummy' | 'terminal', dist: number): Promise<void> {
@@ -204,11 +267,7 @@ test('a new career plays the whole induction, one card at a time, and then the f
   await onCard(page, 'swing');
   await captureMouse(page);
   await standBefore(page, 'dummy', 1.5);
-  // A press and a release back to back: a tap, not a charge.
-  await until(page, 'swing', async () => {
-    await page.mouse.down();
-    await page.mouse.up();
-  });
+  await until(page, 'swing', () => tap(page));
 
   // 4. The heavy one: hold until the ring is ready, let go. Energy has come on to the HUD.
   await onCard(page, 'heavy');
@@ -224,6 +283,9 @@ test('a new career plays the whole induction, one card at a time, and then the f
   await expect(page.locator('.hud-cell-weapon')).toHaveClass(/is-pointed/);
   await page.keyboard.press('2');
   await expect(page.locator('.hud-weapon')).toContainText(/label/i);
+  // Face the dummy again: the heavy swing's follow-through can leave the
+  // player turned or stepped past it, and a label that misses teaches nothing.
+  await standBefore(page, 'dummy', 2.5);
   await until(page, 'label', async () => {
     await page.mouse.down();
     await page.mouse.up();
@@ -242,34 +304,21 @@ test('a new career plays the whole induction, one card at a time, and then the f
   await expect(page.getByTestId('induction-card')).toContainText('Sanity is your health');
   expect(await step(page)).toBe('block');
 
-  // Then held up in good time: blocked, no Sanity lost, on to the parry.
-  await page.mouse.down({ button: 'right' });
-  const guarded = await sanity(page);
-  await expect.poll(() => step(page), { timeout: 60_000 }).toBe('parry');
-  expect(await sanity(page)).toBeGreaterThanOrEqual(guarded - 0.01);
-  await page.waitForFunction(() => (window as unknown as W).__crawler.rmbT > 0.3, null, { polling: 'raf', timeout: 60_000 });
-  await page.mouse.up({ button: 'right' });
+  // Then held up in good time: raised on the frame the wind-up starts (a
+  // block, far outside the parry window), no Sanity lost, on to the parry.
+  for (let go = 0; go < 4 && (await step(page)) === 'block'; go++) {
+    const guarded = await guardOn(page, dummy, 99);
+    await guardOff(page, dummy);
+    if ((await step(page)) !== 'block') expect(await sanity(page)).toBeGreaterThanOrEqual(guarded - 0.01);
+  }
+  expect(await step(page)).not.toBe('block');
 
-  // The parry: raised in the wind-up's last quarter second, pressed on the right frame from inside the page.
+  // The parry: raised in the wind-up's last quarter second, on the right frame. A frame that skips
+  // past the window is another go on the next swing.
   await onCard(page, 'parry');
   for (let go = 0; go < 4 && (await step(page)) === 'parry'; go++) {
-    await page.evaluate((i) => new Promise<void>((done) => {
-      const h = (window as unknown as W).__helldesk;
-      const canvas = document.querySelector('canvas.game-canvas');
-      const watch = (): void => {
-        const f = h.foe(i);
-        if (f !== null && f.pending !== null && f.windup <= 0.2) {
-          canvas?.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true }));
-          done();
-          return;
-        }
-        requestAnimationFrame(watch);
-      };
-      requestAnimationFrame(watch);
-    }), dummy);
-    await page.waitForFunction((i) => (window as unknown as W).__helldesk.foe(i)?.pending === null, dummy, { polling: 'raf', timeout: 60_000 });
-    await page.waitForFunction(() => (window as unknown as W).__crawler.rmbT > 0.3, null, { polling: 'raf', timeout: 60_000 });
-    await page.evaluate(() => window.dispatchEvent(new MouseEvent('mouseup', { button: 2 })));
+    await guardOn(page, dummy, 0.2);
+    await guardOff(page, dummy);
   }
 
   // 7. The floor wakes up; REP and the queue arrive with the ticket.
@@ -294,6 +343,8 @@ test('a new career plays the whole induction, one card at a time, and then the f
 
   // Normal play: no card, no props, no lobby computer, the floor awake, and remembered for next time.
   await expect.poll(() => step(page)).toBe('none');
+  // Every card went up, once each, in order: nothing skipped, nothing out of turn.
+  expect(await cardsShown(page)).toEqual(STEPS.filter((x) => x !== 'done'));
   await expect(page.getByTestId('induction-card')).toHaveCount(0);
   st = await induction(page);
   expect(st.props).toEqual([]);
@@ -317,6 +368,7 @@ test('with "Skip the induction" ticked, a new career lands straight in normal pl
   expect(st.terminal).toBe(false);
   expect(st.hidden).toEqual([]);
   await expect(page.getByTestId('induction-card')).toHaveCount(0);
+  expect(await cardsShown(page)).toEqual([]);
   // Every meter on the bar, from the first frame.
   await expect(page.locator('.hud-bar .is-hidden')).toHaveCount(0);
   for (const label of ['SANITY', 'REP', 'LÖYLY', 'PROMILLE', 'CAFFEINE']) await expect(page.locator('.hud-bar')).toContainText(label);
@@ -338,6 +390,8 @@ test('a reload mid-induction comes back at the same step, with the lobby set for
   await page.getByRole('button', { name: /^Continue/ }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as W).__crawler.screen)).toBe('play');
   await onCard(page, 'swing');
+  // Resumed, not restarted: since the reload, the only card has been this step's.
+  expect(await cardsShown(page)).toEqual(['swing']);
   const st = await induction(page);
   expect(st.props).toHaveLength(3);
   expect(st.terminal).toBe(true);
@@ -346,9 +400,6 @@ test('a reload mid-induction comes back at the same step, with the lobby set for
   // And it carries on from there.
   await captureMouse(page);
   await standBefore(page, 'dummy', 1.5);
-  await until(page, 'swing', async () => {
-    await page.mouse.down();
-    await page.mouse.up();
-  });
+  await until(page, 'swing', () => tap(page));
   await onCard(page, 'heavy');
 });

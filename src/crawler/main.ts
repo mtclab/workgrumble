@@ -4,7 +4,7 @@ import type { ActorKind } from './entities';
 import { Game } from './game';
 import { rest } from './hosts';
 import { findPrompt, interact } from './interact';
-import { INDUCTION_TERMINAL_ID } from './inductionday';
+import { CARDS_SHOWN, INDUCTION_TERMINAL_ID } from './inductionday';
 import { pageNow } from './pager';
 import { offerStaffing } from './questing';
 import { currentObjective, type QuestState } from './quests';
@@ -44,6 +44,7 @@ try {
       if (st === null) return { step: 'none', sanityTold: false, dummy: -1, props, terminal, hidden: [...game.save.hudHidden] };
       return { step: st.step, sanityTold: st.sanityTold, dummy: day?.dummy?.id ?? -1, props, terminal, hidden: [...game.save.hudHidden] };
     },
+    cardsShown: (): string[] => [...CARDS_SHOWN],
     standBefore: (which: 'morag' | 'colleague' | 'dummy' | 'terminal', dist: number): boolean => game.inductionDay?.standBefore(which, dist) ?? false,
     foe: (id: number): { pending: string | null; windup: number; stunned: number; resolved: boolean } | null => {
       const a = game.actors.find((x) => x.id === id);

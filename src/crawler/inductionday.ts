@@ -48,6 +48,14 @@ import { cancelWindup } from './windup';
  * card. A reload builds it again from the saved step.
  */
 
+/**
+ * Every card put up since the page loaded, in order (a step once, however
+ * often it is redrawn). For the browser tests: a step can be over before a
+ * slow test runner looks, so they check this record, not only the card of
+ * the moment.
+ */
+export const CARDS_SHOWN: string[] = [];
+
 /** The lobby computer's id: well clear of anything a level numbers itself. */
 export const INDUCTION_TERMINAL_ID = 9_000_001;
 
@@ -453,6 +461,7 @@ export class InductionDay {
     if (key === this.shown) return;
     this.shown = key;
     const el = this.card;
+    if (st.step !== 'done' && CARDS_SHOWN[CARDS_SHOWN.length - 1] !== st.step) CARDS_SHOWN.push(st.step);
     el.dataset.step = st.step;
     el.replaceChildren();
     if (st.step === 'done') {
