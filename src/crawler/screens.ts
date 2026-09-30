@@ -1,7 +1,10 @@
+import type { ReleaseNote } from '../world/releases';
 import { sfx } from './audio';
+import { showWhatsNew } from './changelog';
 import { showCharGen } from './chargen';
 import { DEATH_LINES } from './content/lines';
 import type { Game } from './game';
+import { HELLDESK_VERSION } from './releases';
 import { fx } from './rng';
 import { type Ending, WORKPLACES } from './rpg';
 import { deleteSlot, latestSlot, listSlots, SLOT_LABEL, type SlotId, timeAgo } from './saves';
@@ -46,7 +49,12 @@ const CONTROLS = `<div class="title-controls">
   <span><b>F5</b> quicksave</span><span><b>F9</b> quickload</span><span><b>Esc</b> pause</span><span></span>
 </div>`;
 
-export function showTitle(g: Game): void {
+/**
+ * `news` is what boot decided to announce (`takeWhatsNew`). Only boot passes
+ * it: every later return to the title (retiring, the pause menu) is the same
+ * visit, and the panel has been shown or closed already.
+ */
+export function showTitle(g: Game, news: readonly ReleaseNote[] = []): void {
   g.screen = 'title';
   g.input.releaseLock();
   const buttons: Button[] = [];
@@ -61,7 +69,9 @@ export function showTitle(g: Game): void {
     <p class="title-blurb">An IT career role-playing game. Start as an IT Trainee, climb twelve rungs to Senior Architect - or don't.
     Resolve the users, survive the managers and the consultants, keep the office ladies sweet, walk the tightropes of Friday drinks and
     energy cans, uncover Project Phoenix, and spend every weekend building up the mökki and learning the old sauna magic.</p>
-    ${CONTROLS}`, buttons);
+    ${CONTROLS}
+    <div class="title-version" data-testid="title-version">Helldesk ${HELLDESK_VERSION}</div>`, buttons);
+  showWhatsNew(g.overlay, news);
 }
 
 export function showLoadMenu(g: Game, back: () => void): void {

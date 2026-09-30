@@ -103,6 +103,23 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .lift { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .lift-num { font: bold 120px "Courier New", monospace; color: #ff8a00; text-shadow: 0 0 20px rgba(255,138,0,0.7); background: #111; padding: 0 30px; border: 4px solid #444; }
 .lift-name { font: bold 28px Tahoma, sans-serif; color: #e8e0d0; }
+/* The version, small, under the title: there for whoever asks, not for everyone. */
+.title-version { font: 12px Tahoma, sans-serif; color: #8a8272; letter-spacing: 1px; }
+/* "What's new": a desk window in the corner of the title, not a wall in front of it. */
+.whats-new { position: absolute; top: 16px; right: 16px; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); display: flex; flex-direction: column; gap: 8px; padding: 12px; text-align: left; background: var(--os-raised); color: var(--os-ink); border: 2px solid; border-color: var(--os-bevel-light) var(--os-shadow) var(--os-shadow) var(--os-bevel-light); box-shadow: 4px 4px 0 rgba(20,18,15,0.35); z-index: 2; }
+.whats-new h3 { margin: 0; font: bold 15px Tahoma, sans-serif; }
+.whats-new-lede { margin: 0; font-size: 12px; color: var(--os-ink-soft); }
+.whats-new-list { overflow: auto; min-height: 0; }
+.whats-new-ok { align-self: flex-end; font-size: 14px; padding: 6px 18px; }
+/* One release, in the title panel and in Update History alike. Notes are read, so they get the reading face. */
+.rel-entry { padding: 8px 0; border-bottom: 1px solid var(--os-bevel-dark); }
+.rel-entry:last-child { border-bottom: none; }
+.rel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.rel-head h4 { margin: 0; font: bold 14px Tahoma, sans-serif; }
+.rel-head time { font-size: 12px; color: var(--os-ink-soft); }
+.rel-summary { margin: 6px 0; font: italic 15px/1.45 "Source Serif 4", Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif; }
+.rel-lines { margin: 0; padding-left: 18px; font: 14px/1.45 "Source Serif 4", Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif; }
+.rel-lines li { margin: 4px 0; }
 
 /* ---------------- WorkgrumbleOS ---------------- */
 .os { position: absolute; inset: 0; z-index: 40; display: none; flex-direction: column; font: 13px Tahoma, Verdana, sans-serif; color: var(--os-ink); }

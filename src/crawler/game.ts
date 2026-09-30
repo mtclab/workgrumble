@@ -71,6 +71,7 @@ import {
   tickQuests,
 } from './questing';
 import { type QuestDef, type QuestEvent, type QuestHost, type QuestState } from './quests';
+import { browserStorage, takeWhatsNew } from './releases';
 import { fx, Rng } from './rng';
 import {
   type ArchPath,
@@ -362,7 +363,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     });
 
     this.loadWorld(true);
-    screens.showTitle(this);
+    // Asked once per page load, here: the answer records this build as seen,
+    // so asking again on a later visit to the title would always say nothing.
+    screens.showTitle(this, takeWhatsNew(browserStorage()));
     requestAnimationFrame(this.frame);
   }
 

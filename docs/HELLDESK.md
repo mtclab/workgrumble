@@ -373,6 +373,27 @@ first/third person, field of view, sensitivity, invert Y, render scale,
 bloom, quality (lights), screen shake, damage numbers, tips, compass, music
 and effects volume, autosave.
 
+## Version and what changed
+
+Helldesk versions itself (`HELLDESK_VERSION` in `src/crawler/releases.ts`,
+not `package.json`, which is the office sim's), shown small on the title
+screen and in Help. The notes are in the same file, in the office sim's
+`ReleaseNote` shape, newest first; `releases.test.ts` fails if the newest note
+is not the version constant. Contract: `docs/SPEC_CHANGELOG.md`.
+
+The first time a browser opens a newer build than it last saw, the title
+screen shows a "What's new" panel with the notes since then (close it with
+Noted, Enter or Esc; it does not block the title's buttons). A first visit
+shows nothing. The last-seen version is in its own localStorage key,
+`workgrumble-helldesk-seen-version`, written at boot whether or not anything
+was shown (the office sim's `updateOnBoot` rules). Update History, on every
+desk and in the backpack, lists every release. Code: `releases.ts` (the rules,
+pure), `changelog.ts` (the panel and the entry both screens use). Tests:
+`releases.test.ts`, `e2e/helldesk-changelog.spec.ts`.
+
+A release bumps `HELLDESK_VERSION` and adds its note at the top of the list,
+in the same commit.
+
 ## Controls
 
 WASD move · Mouse look · LMB tool (hold: heavy swing) · RMB block (tap:

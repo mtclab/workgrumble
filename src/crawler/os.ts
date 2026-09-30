@@ -50,6 +50,8 @@ import {
   workload,
 } from './state';
 import { ACHIEVEMENTS } from './upgrades';
+import { releaseEntry } from './changelog';
+import { HELLDESK_VERSION, helldeskReleasesNewestFirst } from './releases';
 
 /**
  * WorkgrumbleOS, as found on every desk in the building. The office sim's
@@ -95,7 +97,7 @@ export interface OsHost {
   coin(): void;
 }
 
-export type AppId = 'tickets' | 'mail' | 'kb' | 'store' | 'inventory' | 'character' | 'hr' | 'journal' | 'achievements' | 'slack' | 'settings' | 'help';
+export type AppId = 'tickets' | 'mail' | 'kb' | 'store' | 'inventory' | 'character' | 'hr' | 'journal' | 'achievements' | 'slack' | 'settings' | 'help' | 'updates';
 
 interface Win {
   readonly app: AppId;
@@ -138,6 +140,7 @@ const APPS: readonly { id: AppId; label: string; icon: string; desk: boolean; pa
   { id: 'slack', label: 'cat_pictures.url', icon: '🐱', desk: true, pack: false },
   { id: 'settings', label: 'Control Panel', icon: '⚙️', desk: true, pack: true },
   { id: 'help', label: 'Help', icon: '❓', desk: true, pack: true },
+  { id: 'updates', label: 'Update History', icon: '📋', desk: true, pack: true },
 ];
 
 const floorLabel = (f: number): string => (f === 0 ? 'B1' : String(f));
@@ -298,6 +301,7 @@ export class Os {
       case 'slack': this.renderSlack(w.body); break;
       case 'settings': this.renderSettings(w.body); break;
       case 'help': this.renderHelp(w.body); break;
+      case 'updates': this.renderUpdates(w.body); break;
     }
     w.body.scrollTop = scroll;
   }
@@ -915,5 +919,24 @@ export class Os {
       'Löyly is your mana. Saunas refill it. The Saunatonttu teaches runes; rune stones hide in supply closets.',
       'Sauna then straight into the lake at the mökki: blessed for the whole next week.',
     ]);
+    sec('This build', [
+      `Helldesk ${HELLDESK_VERSION}. Update History, on any desk and in the backpack, says what changed and when.`,
+    ]);
+  }
+
+  // ---- Update History ----
+
+  /**
+   * Every release, newest first. No state and nothing to remember: which of
+   * it is NEW was answered at boot, by the title screen's panel. This is the
+   * copy that stays, because a changelog you can only read once is one
+   * nobody has read.
+   */
+  private renderUpdates(body: HTMLElement): void {
+    body.append(el('p', { class: 'os-dim', 'data-testid': 'updates-installed' },
+      `Helldesk ${HELLDESK_VERSION} is installed. No restart is required. There was no restart available.`));
+    const list = el('div', { class: 'rel-list', 'data-testid': 'updates-list' });
+    for (const note of helldeskReleasesNewestFirst()) list.append(releaseEntry(note));
+    body.append(list);
   }
 }
