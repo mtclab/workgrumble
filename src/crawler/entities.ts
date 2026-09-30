@@ -944,6 +944,8 @@ function glowNonRig(a: Actor, amount: number): void {
 }
 
 export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
+  // Resolved by any road (resolved in combat, talked down, a quest): nothing is coming any more.
+  if (a.resolved && a.pending !== null) cancelWindup(a);
   // How far through a wind-up: the tell grows until the strike.
   const tell = windupProgress(a);
   if (a.flash > 0) {
@@ -1022,6 +1024,7 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
     a.stunned -= dt;
     moveActor(ctx, a, 0, 0, 0, dt);
     a.root.rotation.y = a.yaw + Math.sin(ctx.time * 30) * 0.1;
+    if (a.stunned <= 0) rewind(ctx, a);
     return;
   }
 
@@ -1556,12 +1559,14 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
   }
 
   // Winding up: planted, facing the way it committed to, until the strike.
-  // The clocks keep running, so the fight's pace is what it always was.
+  // The slam's cooldown keeps running (contact hits come as often as they
+  // did); the pattern clock waits, so the next pattern comes as long after
+  // this one's strike as patterns always came after each other, and a
+  // wind-up only ever adds warning.
   if (a.pending !== null) {
     moveActor(ctx, a, 0, 0, 0, dt);
     a.yaw = a.pending === 'boss.slam' || a.pending === 'boss.charge' ? Math.atan2(a.aim.x, a.aim.z) : Math.atan2(dx, dz);
     a.cooldown -= dt;
-    a.patternIn -= dt * rate;
     const id = tickWindup(a, dt);
     if (id !== null) strikeBoss(ctx, a, id, dist);
     return;
@@ -1625,12 +1630,8 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
     case 'lasers': {
       say(a, 'Finding. Finding. Finding.', 2);
       a.patternIn = enraged ? 1.4 : 2.2;
-      // The spokes they will run along, marked on the carpet first.
       a.patternAng = ctx.time * 0.7;
-      const n = laserCount(ctx);
-      for (let k = 0; k < n; k++) {
-        ctx.telegraph({ x: a.pos.x, z: a.pos.z, radius: 0.12, seconds: ATTACKS['boss.lasers'].windup, beam: { angle: (k / n) * Math.PI * 2 + a.patternAng, length: 12 } });
-      }
+      markLasers(ctx, a);
       break;
     }
     case 'teleport': say(a, 'Golden parachute!', 1.5); break;
@@ -1647,6 +1648,14 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
     }
   }
   windUp(ctx, a, `boss.${pattern}`, dx, dz);
+}
+
+/** The spokes the lasers will run along, marked on the carpet for the wind-up. */
+function markLasers(ctx: GameCtx, a: Actor): void {
+  const n = laserCount(ctx);
+  for (let k = 0; k < n; k++) {
+    ctx.telegraph({ x: a.pos.x, z: a.pos.z, radius: 0.12, seconds: ATTACKS['boss.lasers'].windup, beam: { angle: (k / n) * Math.PI * 2 + a.patternAng, length: 12 } });
+  }
 }
 
 /** The Auditor's lasers: more of them for every finding against you. */
@@ -1949,20 +1958,38 @@ const STAGGER = 0.5;
 /**
  * Stun someone. Bosses take a short stagger at most, then shrug stuns off
  * for a few seconds, so nothing (a security guard, a rubber stamp) can
- * lock one down: a stagger only holds a boss's wind-up, it does not undo it.
+ * lock one down: a stagger only sets a boss's wind-up back to its start.
  * Anyone else properly staggered mid-wind-up (a shove, a parry, a heavy
- * swing) loses the attack; a flinch shorter than that only holds it, or
- * quick hits with a perk would keep everyone from ever finishing one.
+ * swing) loses the attack. A flinch shorter than that (or quick hits with a
+ * perk would keep everyone from ever finishing one) sets it back to the
+ * start: when the flinch is over, the whole tell plays again, so nothing
+ * lands a moment after a wind-up you last saw half a second ago.
  */
 export function stun(a: Actor, seconds: number): void {
   if (a.kind === 'boss') {
     if (a.stunImmune > 0) return;
     a.stunned = Math.max(a.stunned, Math.min(0.5, seconds));
     a.stunImmune = 6;
-    return;
+  } else {
+    a.stunned = Math.max(a.stunned, seconds);
+    if (seconds >= STAGGER) cancelWindup(a);
   }
-  a.stunned = Math.max(a.stunned, seconds);
-  if (seconds >= STAGGER) cancelWindup(a);
+  if (a.pending !== null) beginWindup(a, a.pending);
+}
+
+/**
+ * A wind-up set back by a stun starts over as the stun wears off: aimed at
+ * where you are now, with its sound (and a laser volley's marks) again.
+ */
+function rewind(ctx: GameCtx, a: Actor): void {
+  if (a.pending === null) return;
+  const dx = ctx.playerPos.x - a.pos.x;
+  const dz = ctx.playerPos.z - a.pos.z;
+  const len = Math.hypot(dx, dz);
+  if (len > 1e-4) a.aim.set(dx / len, 0, dz / len);
+  beginWindup(a, a.pending);
+  ctx.windupCue(a, a.windupLen);
+  if (a.pending === 'boss.lasers') markLasers(ctx, a);
 }
 
 export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vector3 | null): void {

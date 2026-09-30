@@ -135,7 +135,7 @@ import {
   tooTired,
   treatOptions,
 } from './teamwork';
-import { chargeShown, TAP_TIME } from './windup';
+import { chargeShown, dropHold, TAP_TIME } from './windup';
 
 export type Screen = 'title' | 'chargen' | 'play' | 'os' | 'dialogue' | 'paused' | 'dead' | 'ending' | 'transition' | 'minigame';
 
@@ -347,6 +347,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('pointerlockchange', () => {
+      if (document.pointerLockElement === null) this.dropMeleeHold();
       if (document.pointerLockElement === null && this.screen === 'play') screens.showPause(this);
       // A lock request that lands after a dialogue or menu opened would trap
       // the cursor behind it: give it straight back.
@@ -953,8 +954,20 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   /** Balance bots: the loop stops drawing and `step` drives the simulation instead. */
   headless = false;
 
+  /**
+   * Out of play (a menu, a dialogue, a computer), a held melee button is let
+   * go of for good: the first frame back must not swing on a release that
+   * happened behind the menu.
+   */
+  dropMeleeHold(): void {
+    if (!this.charging && !this.swingQueued && this.player.charge === 0) return;
+    dropHold(this);
+    this.player.charge = 0;
+  }
+
   /** One tick of the simulation, without drawing anything. */
   step(dt: number): void {
+    if (this.screen !== 'play') this.dropMeleeHold();
     if (this.screen === 'play') {
       if (this.hitStop > 0) {
         this.hitStop -= dt;
@@ -980,6 +993,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     if (this.headless) return;
+    if (this.screen !== 'play') this.dropMeleeHold();
     if (this.screen === 'play') {
       if (this.hitStop > 0) {
         this.hitStop -= dt;

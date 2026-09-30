@@ -26,7 +26,7 @@ import { adjustStanding, perk, skill } from './state';
 import { disposeSprite, textSprite } from './textures';
 import { questEvent } from './questing';
 import { questProgress } from './desk';
-import { chargeShown, isParry, meleeStep, screenAngle, telegraphOpacity } from './windup';
+import { cancelWindup, chargeShown, isParry, meleeStep, screenAngle, telegraphOpacity } from './windup';
 
 export interface Projectile {
   readonly kind: ProjectileKind;
@@ -702,6 +702,8 @@ export function redropBossLoot(g: Game): void {
 export function resolveActor(g: Game, a: Actor): void {
   const s = g.save;
   a.resolved = true;
+  // Whatever they were winding up goes with them, glow and all.
+  cancelWindup(a);
   a.removeIn = a.kind === 'boss' ? 3 : 1.4;
   a.flash = 1;
   a.hpBar.visible = false;
@@ -1119,8 +1121,7 @@ export function stageDuel(g: Game, kind: ActorKind, dist: number): number {
     if (!a.hostile || a.resolved) continue;
     a.aggro = false;
     a.docile = true;
-    a.pending = null;
-    a.windup = 0;
+    cancelWindup(a);
   }
   const pp = g.player.pos;
   const lv = g.level;

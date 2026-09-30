@@ -20,6 +20,9 @@ function noiseBuffer(ctx: AudioContext, seconds: number, seed: number): AudioBuf
   return buf;
 }
 
+/** The shortest gap between two wind-up sounds of the same size. */
+const WINDUP_GAP = 0.12;
+
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -33,6 +36,8 @@ export class Sfx {
   private ambient: Ambient = 'none';
   private birdIn = 2;
   private dripIn = 3;
+  /** When the last wind-up sounded (ordinary, boss): a crowd of them makes one. */
+  private readonly lastWindup = [-1, -1];
   /** When each kind of projectile last made its sound: a ring of eighteen makes one. */
   private readonly lastShot = new Map<ProjectileKind, number>();
   volume = 0.7;
@@ -228,8 +233,19 @@ export class Sfx {
   sting(): void { [196, 185, 175, 98].forEach((f, i) => this.tone(f, 0.35, 'sawtooth', 0.12, 0, i * 0.12)); }
   achievement(): void { [659, 784, 988, 1319].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.12, 0, i * 0.07)); }
   jitter(): void { this.tone(60, 0.12, 'sine', 0.2); this.tone(60, 0.1, 'sine', 0.16, 0, 0.18); }
-  /** Someone drawing back to hit you: a short rise, lower and slower for a boss. */
-  windup(seconds: number, big = false): void { this.tone(big ? 110 : 240, Math.min(0.45, seconds), 'triangle', big ? 0.14 : 0.09, big ? 150 : 420); }
+  /**
+   * Someone drawing back to hit you: a short rise, lower and slower for a
+   * boss. A crowd winding up at once (a summoned wave, an all-hands) makes
+   * one rise, not a dozen stacked into a clip; a boss's is never drowned out.
+   */
+  windup(seconds: number, big = false): void {
+    const ctx = this.ctx;
+    if (ctx === null) return;
+    const i = big ? 1 : 0;
+    if (ctx.currentTime - (this.lastWindup[i] ?? -1) < WINDUP_GAP) return;
+    this.lastWindup[i] = ctx.currentTime;
+    this.tone(big ? 110 : 240, Math.min(0.45, seconds), 'triangle', big ? 0.14 : 0.09, big ? 150 : 420);
+  }
   /** A swing that hits nothing: air, and a soft drop. */
   whiff(): void { this.noise(0.16, 0.16, 1500); this.tone(340, 0.12, 'sine', 0.05, -200); }
   /** Pulling the trigger on nothing. */

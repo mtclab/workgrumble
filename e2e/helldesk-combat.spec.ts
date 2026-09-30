@@ -31,6 +31,10 @@ interface Foe {
 interface Crawler {
   screen: string;
   rmbT: number;
+  charging: boolean;
+  chargeT: number;
+  attackCd: number;
+  player: { swing: number };
   blocking: boolean;
   input: { locked: boolean };
   save: { sanity: number; energy: number; flags: Record<string, unknown> };
@@ -204,4 +208,42 @@ test('a block held up long before the wind-up only blocks: no parry, no stagger'
   // It was blocked: the guard took it out of your energy.
   expect(await page.evaluate(() => (window as unknown as W).__crawler.save.energy)).toBeLessThan(energy);
   await page.mouse.up({ button: 'right' });
+});
+
+test('a swing held into the pause menu does not go off when play resumes', async ({ page }) => {
+  // Hold the melee button past a full charge, pause with Escape, let go
+  // behind the menu, resume: the release happened while nobody was playing,
+  // so nothing swings and no energy is spent on a heavy nobody asked for.
+  await startCareer(page);
+  await captureMouse(page);
+  await page.mouse.down({ button: 'left' });
+  await page.waitForFunction(() => (window as unknown as W).__crawler.chargeT > 0.9, null, { polling: 'raf', timeout: 60_000 });
+  const energy = await page.evaluate(() => (window as unknown as W).__crawler.save.energy);
+  await page.keyboard.press('Escape');
+  await expect.poll(() => page.evaluate(() => (window as unknown as W).__crawler.screen)).toBe('paused');
+  await page.mouse.up({ button: 'left' });
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await page.evaluate(() => { (window as unknown as W).__crawler.input.locked = true; });
+  // Watch the first thirty frames back in play for any swing at all.
+  const seen = await page.evaluate(() => new Promise<{ swing: number; cd: number; charging: boolean }>((done) => {
+    const g = (window as unknown as W).__crawler;
+    let frames = 0;
+    let swing = 0;
+    let cd = 0;
+    const watch = (): void => {
+      if (g.screen === 'play') frames++;
+      swing = Math.max(swing, g.player.swing);
+      cd = Math.max(cd, g.attackCd);
+      if (frames >= 30) {
+        done({ swing, cd, charging: g.charging });
+        return;
+      }
+      requestAnimationFrame(watch);
+    };
+    requestAnimationFrame(watch);
+  }));
+  expect(seen.swing).toBe(0);
+  expect(seen.cd).toBeLessThanOrEqual(0);
+  expect(seen.charging).toBe(false);
+  expect(await page.evaluate(() => (window as unknown as W).__crawler.save.energy)).toBeGreaterThanOrEqual(energy);
 });

@@ -8,6 +8,7 @@ import {
   BOSS_PATTERNS,
   cancelWindup,
   chargeShown,
+  dropHold,
   isParry,
   type MeleeAction,
   type MeleeHold,
@@ -230,6 +231,32 @@ describe('the melee button', () => {
   it('let go and pressed again inside one frame: the first press still answers', () => {
     const r = play([{ pressed: true, down: true }, { down: true }, { pressed: true, down: true }, { down: false }]);
     expect(r.swings).toEqual(['light', 'light']);
+  });
+
+  it('a queued tap and a new press make one swing, not two', () => {
+    const h: MeleeHold = { charging: false, chargeT: 0, swingQueued: false };
+    // Tapped while the tool recovered: queued.
+    play([{ pressed: true, down: true, ready: false }, { down: false, ready: false }], h);
+    expect(h.swingQueued).toBe(true);
+    // Tapped again once it is ready: that swing answers both.
+    const r = play([{ pressed: true, down: true }, { down: false }, ...Array.from({ length: 30 }, () => ({ down: false }))], h);
+    expect(r.swings).toEqual(['light']);
+    expect(h.swingQueued).toBe(false);
+  });
+
+  it('a hold dropped by a menu swings nothing when play comes back, however it was held', () => {
+    for (const held of [0.1, 0.4, 1.0]) {
+      const h: MeleeHold = { charging: false, chargeT: 0, swingQueued: false };
+      const n = Math.round(held / DT);
+      play([{ pressed: true, down: true }, ...Array.from({ length: n }, () => ({ down: true }))], h);
+      expect(h.charging).toBe(true);
+      // Escape, the OS, a lost mouse capture: the game puts the button down.
+      dropHold(h);
+      // Back in play, the button is up (it was let go behind the menu).
+      const r = play(Array.from({ length: 30 }, () => ({ down: false })), h);
+      expect(r.swings, `held ${held} s`).toEqual([]);
+      expect(chargeShown(h, POWER)).toBe(0);
+    }
   });
 
   it('rooted in a meeting, a press does nothing', () => {

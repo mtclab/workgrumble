@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { type Actor, createActor, type GameCtx, updateActor } from './entities';
+import { type Actor, createActor, type GameCtx, stun, updateActor } from './entities';
 import { flowField, type Level, TILE } from './level';
 import { Rng } from './rng';
 import { ATTACKS, ATTACKS_BY_KIND, type AttackClass, type AttackId, BOSS_PATTERNS, type HostileKind } from './windup';
@@ -105,7 +105,9 @@ class Arena implements GameCtx {
   bossLeash(): void { /* never leaves the room */ }
   bossParley(): void { /* not open to talks */ }
   stealRep(): number { return 0; }
-  windupCue(): void { /* no sound */ }
+  /** When each wind-up sound was asked for. */
+  readonly cues: number[] = [];
+  windupCue(): void { this.cues.push(this.time); }
   telegraph(): void { /* a marking, not a hit */ }
 
   /** One of `kind` `dist` metres due north of the player, after them and ready to go. */
@@ -280,5 +282,92 @@ describe('the strike is decided where the player is when it lands', () => {
     };
     expect(run(false)).toBe(1);
     expect(run(true)).toBe(0);
+  });
+});
+
+describe('a wind-up ends with the one who wound it up', () => {
+  it('resolved or talked down mid-wind-up: nothing is pending and no warm glow is left', () => {
+    for (const kind of ['user', 'reply'] as const) {
+      const ctx = new Arena();
+      const a = ctx.put(kind, kind === 'user' ? 1.9 : 1.0);
+      for (let i = 0; i < 12; i++) {
+        ctx.time += DT;
+        updateActor(ctx, a, DT);
+      }
+      expect(a.pending, kind).not.toBeNull();
+      // The glow is on while it winds up.
+      const glowing = a.rig !== null ? a.rig.materials.some((m) => m.emissive.getHex() !== 0) : (a.glowMats ?? []).some((g) => g.mat.emissive.getHex() !== g.base);
+      expect(glowing, kind).toBe(true);
+      // Talked down: resolved and calm, no flash of its own.
+      a.resolved = true;
+      a.calm = true;
+      a.removeIn = 2;
+      ctx.time += DT;
+      updateActor(ctx, a, DT);
+      expect(a.pending, kind).toBeNull();
+      if (a.rig !== null) for (const m of a.rig.materials) expect(m.emissive.getHex(), kind).toBe(a.rig.glow);
+      else for (const g of a.glowMats ?? []) expect(g.mat.emissive.getHex(), kind).toBe(g.base);
+    }
+  });
+});
+
+describe('a flinch sets a wind-up back to its start', () => {
+  it('after a short stun the whole tell plays again, sound and all, before anything lands', () => {
+    const ctx = new Arena();
+    const a = ctx.put('user', 1.9);
+    // Most of the way through the wind-up...
+    for (let t = 0; t < 0.3; t += DT) {
+      ctx.time += DT;
+      updateActor(ctx, a, DT);
+    }
+    expect(a.pending).toBe('user.melee');
+    const cuesBefore = ctx.cues.length;
+    // ...a 0.3 s flinch (cable management), shorter than a stagger.
+    stun(a, 0.3);
+    let stunEnd = -1;
+    for (let t = 0; t < 1.5 && ctx.hits.length === 0; t += DT) {
+      ctx.time += DT;
+      const was = a.stunned;
+      updateActor(ctx, a, DT);
+      if (was > 0 && a.stunned <= 0) stunEnd = ctx.time;
+    }
+    expect(stunEnd).toBeGreaterThan(0);
+    expect(ctx.cues.length, 'the sound again as it starts over').toBe(cuesBefore + 1);
+    expect(ctx.hits).toHaveLength(1);
+    expect(ctx.hits[0]?.at ?? 0).toBeGreaterThanOrEqual(stunEnd + ATTACKS['user.melee'].windup - 1e-9);
+  });
+
+  it('a stagger (a shove, a parry) takes the attack away altogether', () => {
+    const ctx = new Arena();
+    const a = ctx.put('user', 1.9);
+    for (let t = 0; t < 0.3; t += DT) {
+      ctx.time += DT;
+      updateActor(ctx, a, DT);
+    }
+    stun(a, 0.5);
+    expect(a.pending).toBeNull();
+  });
+});
+
+describe('boss pacing', () => {
+  it('the next pattern comes as long after a strike as it always did: the wind-up only adds warning', () => {
+    const ctx = new Arena();
+    const a = ctx.putBoss('lasers', 6);
+    const strikes: number[] = [];
+    const starts: number[] = [];
+    let prev: AttackId | null = null;
+    for (let t = 0; t < 8; t += DT) {
+      ctx.time += DT;
+      updateActor(ctx, a, DT);
+      if (prev === null && a.pending !== null) starts.push(ctx.time);
+      if (prev !== null && a.pending === null) strikes.push(ctx.time);
+      prev = a.pending;
+    }
+    expect(strikes.length).toBeGreaterThanOrEqual(2);
+    // The lasers' own gap (2.2 s, calm) runs from the strike to the next wind-up.
+    const first = strikes[0] ?? 0;
+    const next = starts.find((s) => s > first) ?? 0;
+    expect(next - first).toBeGreaterThanOrEqual(2.2 - DT - 1e-9);
+    expect(next - first).toBeLessThan(2.2 + 2 * DT);
   });
 });

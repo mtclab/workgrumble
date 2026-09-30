@@ -276,9 +276,24 @@ function release(h: MeleeHold, f: MeleeFrame, powerTime: number): MeleeAction {
     h.swingQueued = false;
     return 'heavy';
   }
-  if (f.ready) return 'light';
+  if (f.ready) {
+    // This swing answers any press still waiting too: one swing, not two.
+    h.swingQueued = false;
+    return 'light';
+  }
   h.swingQueued = true;
   return 'none';
+}
+
+/**
+ * Put the button down: a menu, a dialogue or a lost mouse capture came
+ * between the press and its release. The release the game sees afterwards
+ * belongs to nobody, so nothing half-charged or queued may go off on it.
+ */
+export function dropHold(h: MeleeHold): void {
+  h.charging = false;
+  h.chargeT = 0;
+  h.swingQueued = false;
 }
 
 /** How full the charge ring is: nothing at all until a hold passes a tap. */
