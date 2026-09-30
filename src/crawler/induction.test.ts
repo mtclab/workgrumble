@@ -4,6 +4,7 @@ import {
   cardFor,
   type CardKeys,
   closingLines,
+  eTarget,
   floorAwake,
   HUD_METERS,
   type HudMeter,
@@ -14,6 +15,8 @@ import {
   normalizeInduction,
   partOf,
   PARTS,
+  type PropId,
+  propLive,
   SANITY_LINE,
   startInduction,
   STEPS,
@@ -24,7 +27,7 @@ import * as THREE from 'three';
 import { disposeTree } from './dispose';
 import { generateLevel, flowField, toCell } from './level';
 import { dummyMesh, inductionTerminalMesh } from './meshes';
-import { planProps } from './inductionday';
+import { planProps, TERMINAL_CLEARANCE } from './inductionday';
 import { newSave, normalizeSave } from './state';
 import { THEMES } from './textures';
 
@@ -254,6 +257,11 @@ describe('where the props go', () => {
       expect(`${s.cx},${s.cz}`).not.toBe(`${start[0]},${start[1]}`);
       expect(lv.floor[s.cz * lv.w + s.cx]).toBe(1);
     }
+    // The computer well clear of the people, so no spot reaches both E prompts.
+    if (plan.terminal !== null) {
+      const t = plan.terminal;
+      expect(Math.min(Math.hypot(t.cx - plan.morag.cx, t.cz - plan.morag.cz), Math.hypot(t.cx - plan.colleague.cx, t.cz - plan.colleague.cz))).toBeGreaterThanOrEqual(TERMINAL_CLEARANCE);
+    }
     // Same floor, same places: a reload puts everyone back.
     expect(planProps(lv)).toEqual(plan);
     if (plan.terminal !== null) {
@@ -295,5 +303,24 @@ describe('the props leave nothing behind', () => {
     expect(made.length).toBeGreaterThan(3);
     disposeTree(root, true);
     expect(made.filter((m) => !m.disposed)).toEqual([]);
+  });
+});
+
+describe('E at each step: only the step\'s own prop answers', () => {
+  const PROPS: readonly PropId[] = ['morag', 'colleague', 'terminal'];
+  const WANTS: Record<StepId, PropId | null> = {
+    look: 'morag', walk: 'morag', talk: 'colleague', swing: null, heavy: null, label: null, block: null, parry: null, ticket: 'terminal', map: null,
+  };
+
+  it.each(STEPS.map((s) => [s]))('%s', (step) => {
+    expect(eTarget(step)).toBe(WANTS[step]);
+    // At most one prop is live, and it is the step's own.
+    expect(PROPS.filter((p) => propLive(p, step))).toEqual(WANTS[step] === null ? [] : [WANTS[step]]);
+  });
+
+  it('the lobby computer answers E only from the ticket step, the colleague only at the talk step', () => {
+    expect(STEPS.filter((s) => propLive('terminal', s))).toEqual(['ticket']);
+    expect(STEPS.filter((s) => propLive('colleague', s))).toEqual(['talk']);
+    expect(PROPS.some((p) => propLive(p, 'done'))).toBe(false);
   });
 });

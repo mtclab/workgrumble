@@ -122,6 +122,30 @@ export function floorAwake(st: InductionState | null): boolean {
   return st === null || stepIndex(st.step) > stepIndex('parry');
 }
 
+/** The morning's props that E can reach: Morag, the practice colleague, the lobby computer. */
+export type PropId = 'morag' | 'colleague' | 'terminal';
+
+/**
+ * Which prop E is for at a step, if any. Only that one is live: it wins the
+ * prompt over anything else in reach (the lobby's own computer, the other
+ * props), and the others offer no prompt at all until their step. Otherwise
+ * the computer placed for step 7 answers E while the card says to talk to
+ * the colleague. The steps that want no E (swings, guards, the map) have none.
+ */
+export function eTarget(step: StepId | 'done'): PropId | null {
+  switch (step) {
+    case 'look':
+    case 'walk': return 'morag';
+    case 'talk': return 'colleague';
+    case 'ticket': return 'terminal';
+    default: return null;
+  }
+}
+
+export function propLive(prop: PropId, step: StepId | 'done'): boolean {
+  return eTarget(step) === prop;
+}
+
 /** A save's induction, checked: anything malformed is no induction at all. */
 export function normalizeInduction(raw: unknown): InductionState | null {
   if (typeof raw !== 'object' || raw === null) return null;

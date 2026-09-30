@@ -40,7 +40,10 @@ export function findPrompt(g: Game): void {
   const fwd = new THREE.Vector3(-Math.sin(g.player.yaw), 0, -Math.cos(g.player.yaw));
   let best: PromptTarget = null;
   let bestScore = Infinity;
+  // Induction day: a prop answers E only at its own step.
+  const day = g.inductionDay;
   for (const it of g.level.interactables) {
+    if (day !== null && !day.offersPrompt(it)) continue;
     const dx = it.x - pp.x;
     const dz = it.z - pp.z;
     const dist = Math.hypot(dx, dz);
@@ -60,6 +63,7 @@ export function findPrompt(g: Game): void {
       || (a.kind === 'boss' && a.docile)
       || ((TALKERS.includes(a.kind) || a.kind === 'manager') && !a.talked && a.enragedT <= 0);
     if (!talkable || a.role === 'clone' || a.role === 'spirit' || a.role === 'dog') continue;
+    if (day !== null && !day.offersPrompt(a)) continue;
     const dx = a.pos.x - pp.x;
     const dz = a.pos.z - pp.z;
     const dist = Math.hypot(dx, dz);
@@ -70,6 +74,8 @@ export function findPrompt(g: Game): void {
       best = { kind: 'actor', a };
     }
   }
+  // ...and the step's own target, in reach, wins over anything else near.
+  best = day?.pinnedPrompt() ?? best;
   g.promptTarget = best;
   if (best === null) {
     g.prompt = '';

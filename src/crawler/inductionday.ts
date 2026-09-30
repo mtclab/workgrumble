@@ -4,7 +4,7 @@ import { TICKETS } from './content/tickets';
 import { type DialogueNode, said } from './dialogue';
 import { disposeTree } from './dispose';
 import { type Actor, disposeActor, say, setMarker, walkClear } from './entities';
-import type { Game } from './game';
+import type { Game, PromptTarget } from './game';
 import {
   advance,
   type Card,
@@ -18,6 +18,9 @@ import {
   MORAG_NUDGE,
   MORAG_REACH,
   partOf,
+  type PropId,
+  propLive,
+  eTarget,
   PARTS,
   PRACTICE_COMPLAINT,
   PRACTICE_NAME,
@@ -53,6 +56,10 @@ const MORAG_OUTFIT = {
   skin: 0xe8b98f, hair: 0x8a8a8a, top: 0xf0ece0, legs: 0x3a3a44, cardigan: 0x2e7d4f,
   lanyard: 0x2266cc, hairStyle: 'bun', glasses: true, face: 'neutral',
 } as const;
+
+/** How near E reaches, as in findPrompt: a person, a computer. */
+const ACTOR_REACH = 2.6;
+const TERMINAL_REACH = 2.4;
 
 const GREEN = '#7dff9a';
 const PRACTICE = '#7dffea';
@@ -136,7 +143,10 @@ export function planProps(level: Level): PropPlan {
     // The lift you arrived by is on the top wall, in the middle.
     const byLift = (c: Spot): boolean => c.cz === lobby.y && Math.abs(c.cx - sx) <= 1;
     const crowds = (c: Spot): boolean => taken.some((o) => dist(c, o.cx, o.cz) < 1.5);
-    const tier = (c: Spot): number => (edge(c) ? 0 : 2) + (byDoor(c) || byLift(c) ? 1 : 0) + (crowds(c) ? 4 : 0);
+    // Well clear of the people too, so nowhere you can stand reaches both
+    // the computer's E and theirs (E reaches 2.4 m and 2.6 m: 3 cells is 6 m).
+    const byPeople = (c: Spot): boolean => dist(c, morag.cx, morag.cz) < TERMINAL_CLEARANCE || dist(c, colleague.cx, colleague.cz) < TERMINAL_CLEARANCE;
+    const tier = (c: Spot): number => (edge(c) ? 0 : 2) + (byDoor(c) || byLift(c) ? 1 : 0) + (byPeople(c) ? 4 : 0) + (crowds(c) ? 8 : 0);
     const order = cells
       .filter((c) => !taken.some((o) => o.cx === c.cx && o.cz === c.cz))
       .map((c) => ({ c, rank: tier(c) * 1000 + dist(c, sx, sz) }))
@@ -157,6 +167,9 @@ export function planProps(level: Level): PropPlan {
   }
   return { morag, colleague, dummy, terminal };
 }
+
+/** Cells between the lobby computer and Morag or the colleague, where the lobby has room. */
+export const TERMINAL_CLEARANCE = 3;
 
 const AROUND: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
 
@@ -340,15 +353,47 @@ export class InductionDay {
   talk(a: Actor): boolean {
     if (this.disposed) return false;
     const g = this.g;
+    // Only the live prop is ever offered (see `offersPrompt`), so each has one conversation.
     if (a === this.morag) {
       g.openDialogue(said(MORAG, this.st.step === 'walk' ? 'Here I am. That was walking.' : MORAG_NUDGE, 'neutral', 'Right'));
       return true;
     }
     if (a === this.colleague) {
-      g.openDialogue(this.st.step === 'talk' ? this.practiceNode(a) : said(PRACTICE_NAME, 'I am back to being a normal user now. Please do not staple me.', 'neutral'));
+      g.openDialogue(this.practiceNode(a));
       return true;
     }
     return false;
+  }
+
+  /** Which prop this is, if it is one of the morning's. */
+  private propOf(x: Actor | Interactable): PropId | null {
+    if (x === this.morag) return 'morag';
+    if (x === this.colleague) return 'colleague';
+    if (this.terminal !== null && x === this.terminal.it) return 'terminal';
+    return null;
+  }
+
+  /** May E be offered for this? Everything but a prop whose step it is not. */
+  offersPrompt(x: Actor | Interactable): boolean {
+    if (this.disposed) return true;
+    const p = this.propOf(x);
+    return p === null || propLive(p, this.st.step);
+  }
+
+  /**
+   * The step's own E target when it is in reach: it wins the prompt over
+   * whatever else is near (the lobby's own computer, a colleague by the desk).
+   */
+  pinnedPrompt(): PromptTarget {
+    if (this.disposed) return null;
+    const pp = this.g.player.pos;
+    const target = eTarget(this.st.step);
+    if (target === 'terminal') {
+      const t = this.terminal;
+      return t !== null && Math.hypot(t.it.x - pp.x, t.it.z - pp.z) <= TERMINAL_REACH ? { kind: 'interact', it: t.it } : null;
+    }
+    const a = target === 'morag' ? this.morag : target === 'colleague' ? this.colleague : null;
+    return a !== null && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) <= ACTOR_REACH ? { kind: 'actor', a } : null;
   }
 
   /**

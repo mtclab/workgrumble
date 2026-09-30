@@ -1191,7 +1191,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     }
     if (this.hit('map')) {
       this.hud.mapOpen = !this.hud.mapOpen;
-      if (this.hud.mapOpen) this.practice({ type: 'map' });
+      // The card says press M: a map left open from earlier closing on the press counts too.
+      this.practice({ type: 'map' });
     }
     if (this.hit('backpack') || inp.hit('KeyI')) {
       this.openOs('pack');

@@ -62,7 +62,10 @@ colleague (it always works), a quick swing, a heavy swing and the label
 maker on Facilities' training dummy, then block and parry the dummy's
 swings (it winds up like everyone else; a blocked or parried practice swing
 costs nothing, the first one that gets through is where Sanity is explained),
-the one easy ticket on a computer put in the lobby for it, and the map. Until
+the one easy ticket on a computer put in the lobby for it, and the map. Only
+the prop the card is about answers E, and it wins the prompt over anything
+else in reach (the computer offers nothing before its step, and stands at
+least three cells from Morag and the colleague where the lobby allows). Until
 the block and parry are done nothing hostile on the floor notices you (no
 aggro, no approach, the boss does not start; hitting someone still does), and
 no staffing call or mentoring request comes. The HUD meters arrive when they
