@@ -108,17 +108,35 @@ async function captureMouse(page: Page): Promise<void> {
 /** Let go of the block only after it has been up a while, so letting go is not a shove. */
 async function lowerBlock(page: Page): Promise<void> {
   await page.waitForFunction(() => (window as unknown as W).__crawler.rmbT > 0.3, null, { polling: 'raf', timeout: 60_000 });
-  await page.mouse.up({ button: 'right' });
+  // Released through the same window handler the press went to, whichever
+  // way the press was made.
+  await page.evaluate(() => window.dispatchEvent(new MouseEvent('mouseup', { button: 2 })));
 }
 
-test('strafing out during the wind-up: the swing comes and misses', async ({ page }) => {
+test('stepping back during the wind-up: the swing comes and misses', async ({ page }) => {
   await startCareer(page);
   const id = await duel(page);
-  await windingUp(page, id);
+  // Start backing off on the very frame the wind-up begins. The key goes
+  // through the game's own keyboard handler, pressed from inside the page:
+  // a key sent from the test runner arrives a few hundred milliseconds
+  // late on a slow software renderer, after a 0.45 s wind-up has already
+  // ended, and the test would be measuring its own latency, not the game.
+  await page.evaluate((i) => new Promise<void>((done) => {
+    const h = (window as unknown as W).__helldesk;
+    const watch = (): void => {
+      const f = h.foe(i);
+      if (f !== null && f.pending !== null) {
+        window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS' }));
+        done();
+        return;
+      }
+      requestAnimationFrame(watch);
+    };
+    requestAnimationFrame(watch);
+  }), id);
   const before = await sanity(page);
-  await page.keyboard.down('KeyD');
   await struck(page, id);
-  await page.keyboard.up('KeyD');
+  await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyS' })));
   // The swing came (not interrupted), and it found nobody there.
   expect((await foe(page, id)).stunned).toBe(0);
   expect(await sanity(page)).toBeGreaterThanOrEqual(before);
@@ -138,13 +156,29 @@ test('raising the block on the wind-up parries: PARRY, and the attacker staggers
   await captureMouse(page);
   const id = await duel(page);
   const before = await parries(page);
-  // The window is the last quarter second before the strike. The page only
-  // sees the game between frames, so if a press lands late, the next wind-up
-  // (the user keeps swinging) is another go.
+  // The window is the last quarter second before the strike. The press is
+  // made from inside the page, on the frame the wind-up enters that window,
+  // through the canvas's own mouse handler: a press sent from the test
+  // runner arrives a few hundred milliseconds late on a slow software
+  // renderer and would miss a 0.25 s window by its own latency. If a frame
+  // still skips past it, the next wind-up (the user keeps swinging) is
+  // another go.
   let parried = false;
   for (let go = 0; go < 3 && !parried; go++) {
-    await windingUp(page, id, 0.14);
-    await page.mouse.down({ button: 'right' });
+    await page.evaluate((i) => new Promise<void>((done) => {
+      const h = (window as unknown as W).__helldesk;
+      const canvas = document.querySelector('canvas.game-canvas');
+      const watch = (): void => {
+        const f = h.foe(i);
+        if (f !== null && f.pending !== null && f.windup <= 0.2) {
+          canvas?.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true }));
+          done();
+          return;
+        }
+        requestAnimationFrame(watch);
+      };
+      requestAnimationFrame(watch);
+    }), id);
     await struck(page, id);
     parried = (await parries(page)) > before;
     if (parried) expect((await foe(page, id)).stunned).toBeGreaterThan(0);
