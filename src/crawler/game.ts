@@ -46,7 +46,7 @@ import {
 import { Hud, type HudFrame } from './hud';
 import { Input } from './input';
 import { findPrompt, interact } from './interact';
-import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell } from './level';
+import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell, wallBetween } from './level';
 import { EXTRA_BASE, lastStand, redropBossLoot } from './combat';
 import { itemById } from './items';
 import { spellById } from './magic';
@@ -142,6 +142,12 @@ export const FINAL_FLOOR = 4;
 /** Seconds of LMB hold that make a melee swing a power attack. */
 export const POWER_TIME = 0.65;
 
+/** How far away people are still drawn and simulated at leisure, in metres. */
+const ACTOR_RANGE = 45;
+
+/** Half a person's width, for the sight lines past a door frame. */
+const SHOULDER = 0.45;
+
 export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   readonly renderer: THREE.WebGLRenderer;
   readonly pipeline: Pipeline;
@@ -163,6 +169,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   readonly overlay: HTMLDivElement;
   readonly mount: HTMLElement;
   readonly lights: THREE.PointLight[] = [];
+  private readonly camPos = new THREE.Vector3();
   readonly hemi: THREE.HemisphereLight;
   readonly sun: THREE.DirectionalLight;
   save: SaveState;
@@ -251,7 +258,13 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   constructor(mount: HTMLElement) {
     this.mount = mount;
     this.settings = loadSettings();
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({
+      // Every frame is drawn offscreen by the pass chain and only a full-screen
+      // quad reaches the canvas, so canvas MSAA would smooth nothing; the
+      // SMAA/FXAA passes are the anti-aliasing.
+      antialias: false,
+      powerPreference: 'high-performance',
+    });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -535,6 +548,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.refreshDerived();
     this.markSeen();
     this.updateLights(true);
+    this.settleWorld();
     sfx.setBoss(false);
     sfx.setAmbient('office');
     if (!fromSave) this.autosave();
@@ -609,9 +623,41 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.elevatorOpen = true;
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     this.refreshDerived();
+    this.settleWorld();
     sfx.setBoss(false);
     sfx.setAmbient('mokki');
     if (!fromSave) this.autosave();
+  }
+
+  /**
+   * Fit the renderer to the world just built.
+   *
+   * The camera draws no further than the fog can be seen through: indoors the
+   * fog is solid by 42 m and everything behind it is a draw call that paints
+   * fog-coloured pixels over fog. The sun only casts where it shines (the
+   * office has it at zero, and a shadow map for a dark sun is a whole extra
+   * pass of the scene every frame). And the new world's shaders are compiled
+   * now, behind the loading moment, not the first time each thing turns up on
+   * screen in the middle of a fight.
+   */
+  private settleWorld(): void {
+    const fog = this.scene.fog;
+    this.camera.far = fog instanceof THREE.Fog ? fog.far + 2 : 160;
+    this.camera.updateProjectionMatrix();
+    this.syncSunShadow();
+    // Compiled against the pass chain's buffer, because that is what the scene
+    // is drawn into: a shader built for the canvas (sRGB, tone-mapped) is a
+    // different program, and the real one would still compile mid-fight.
+    // compileAsync picks every program synchronously, so the target only has
+    // to be in place for the call itself.
+    const target = this.renderer.getRenderTarget();
+    this.renderer.setRenderTarget(this.pipeline.composer.readBuffer);
+    void this.renderer.compileAsync(this.scene, this.camera).catch(() => undefined);
+    this.renderer.setRenderTarget(target);
+  }
+
+  private syncSunShadow(): void {
+    this.sun.castShadow = this.settings.quality !== 'low' && this.sun.intensity > 0;
   }
 
   spawnAt(kind: ActorKind, x: number, z: number, room: number, aggro: boolean, opts: SpawnOpts = {}): Actor | null {
@@ -745,7 +791,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     // Real shadows on medium (the sun) and high (the nearest ceiling light too).
     const shadows = st.quality !== 'low';
     this.renderer.shadowMap.enabled = shadows;
-    this.sun.castShadow = shadows;
+    this.syncSunShadow();
     this.sun.shadow.mapSize.setScalar(st.quality === 'high' ? 2048 : 1024);
     this.sun.shadow.map?.dispose();
     this.sun.shadow.map = null;
@@ -910,6 +956,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.camera.position.y += fx.range(-1, 1) * this.shakeAmt * k;
       this.shakeAmt = Math.max(0, this.shakeAmt - dt * 2);
     }
+    this.cullHidden();
     this.billboards();
     this.animateScenery();
     this.updateMood(dt);
@@ -1143,7 +1190,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     }
     updateAuras(this.actors);
     for (const a of this.actors) {
-      const far = Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) > 45;
+      const far = Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) > ACTOR_RANGE;
       a.root.visible = !far;
       if (far && !a.aggro && !a.recruited) continue;
       updateActor(this, a, dt);
@@ -1664,6 +1711,45 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Do not draw people a wall hides. Every one of them is several draw calls
+   * (more again for each shadow map they fall in), and indoors most of the
+   * crowd within fog range is in some other room. A person counts as seen if
+   * any of three sight lines - to their middle and to either shoulder - misses
+   * every wall, so nobody vanishes while still peeking round a door frame.
+   */
+  private cullHidden(): void {
+    if (this.save.location !== 'office') return;
+    const cam = this.camera.getWorldPosition(this.camPos);
+    const lv = this.level;
+    const cx = toCell(cam.x);
+    const cz = toCell(cam.z);
+    // A camera pushed into a wall (third person, tight corner) sees nothing
+    // cleanly: draw everyone rather than guess.
+    const inWall = cx < 0 || cz < 0 || cx >= lv.w || cz >= lv.h || (lv.opaque[cz * lv.w + cx] === 1 && lv.floor[cz * lv.w + cx] !== 1);
+    const pp = this.player.pos;
+    for (const a of this.actors) {
+      if (Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) > ACTOR_RANGE) {
+        a.root.visible = false;
+        continue;
+      }
+      if (inWall) {
+        a.root.visible = true;
+        continue;
+      }
+      const dx = a.pos.x - cam.x;
+      const dz = a.pos.z - cam.z;
+      const d = Math.hypot(dx, dz) || 1;
+      // Perpendicular to the sight line, half a person wide.
+      const px = (-dz / d) * SHOULDER;
+      const pz = (dx / d) * SHOULDER;
+      const seen = !wallBetween(lv, cam.x, cam.z, a.pos.x, a.pos.z)
+        || !wallBetween(lv, cam.x, cam.z, a.pos.x + px, a.pos.z + pz)
+        || !wallBetween(lv, cam.x, cam.z, a.pos.x - px, a.pos.z - pz);
+      a.root.visible = seen;
     }
   }
 

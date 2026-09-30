@@ -138,10 +138,18 @@ export class Pipeline {
     const h = window.innerHeight;
     if (quality === 'high') {
       const gtao = new GTAOPass(this.scene, this.camera, w, h);
+      // Ambient occlusion is soft by nature, so it is worked out at half
+      // resolution and blended over the full frame: measured on a desktop GPU
+      // it was most of the high setting's GPU time at full size. The composer
+      // sizes every pass to the canvas, so the halving happens here, and the
+      // denoise radius (in the AO buffer's pixels) halves with it to blur the
+      // same stretch of screen.
+      const fullSize = gtao.setSize.bind(gtao);
+      gtao.setSize = (width: number, height: number): void => fullSize(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)));
       gtao.output = GTAOPass.OUTPUT.Default;
       gtao.blendIntensity = 0.85;
       gtao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.4, thickness: 1.2, scale: 1 });
-      gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 8 });
+      gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 3, rings: 2, samples: 8 });
       c.addPass(gtao);
       this.gtao = gtao;
     }

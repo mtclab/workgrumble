@@ -360,6 +360,49 @@ it found so far: the first boss's summons had no cap, a woken boss chased
 you round the whole floor for ever, managers could chain meeting invites
 into a lock, and floor 3 (index 3) was a wall - all fixed (see Combat).
 
+## Performance
+
+`scripts/perf/bench.mjs` measures fixed scenes (title, floor 1, floor 4, the
+mökki) at each quality: frame time, main-thread time per frame, GPU time per
+frame (where the driver offers timer queries), draw calls and triangles. Runs
+are deterministic in content (Date.now pinned, the player unseen, the camera
+sweeping one full turn). Its numbers mean something only on real graphics
+hardware in a headed browser: software rendering and headless rAF both lie,
+and a virtual display cannot hold a paced 60 Hz even for a blank canvas, so
+it runs uncapped. `--tweak` runs a line of JS on the game before sampling,
+to measure what switching one thing off is worth.
+
+```
+npm run build
+node scripts/perf/bench.mjs --dist dist --out bench.json
+node scripts/perf/bench.mjs --scenes floor4 --qualities high --tweak "g.sun.castShadow = false"
+```
+
+What the first pass found and fixed (desktop RTX-class GPU, 1080p):
+
+- **Drawing behind the fog.** The camera reached 160 m while indoor fog is
+  solid by 42 m: half the meshes on a floor were drawn to paint fog over fog.
+  The far plane now follows the fog (`settleWorld`).
+- **A shadow map for a dark sun.** The sun is at zero in the office but still
+  rendered its shadow map every frame on medium and high. It casts only
+  where it shines now.
+- **People behind walls.** Each person is several draw calls (more in every
+  shadow map). `cullHidden` hides anyone a real wall stands between the
+  camera and: three sight lines (middle, both shoulders), walls only -
+  pillars, lockers and racks fill part of a cell and never hide anyone
+  (`wallBetween`, pinned in `sight.test.ts`).
+- **Shaders compiling mid-fight.** A new floor's shaders are compiled when it
+  loads, against the pass chain's buffer (a canvas-targeted compile builds
+  different programs and saved nothing).
+- **Ambient occlusion at full size** was ~70% of the high setting's GPU time
+  and ~40% of its CPU time; it now runs at half resolution.
+
+| | before | after |
+|---|---|---|
+| floor 4, medium | 3.5 ms CPU, 1.25 ms GPU, 328 draws | 2.1 ms CPU, 0.88 ms GPU, 130 draws |
+| floor 4, high | 6.2 ms CPU, 3.98 ms GPU, 790 draws | 4.4 ms CPU, 1.81 ms GPU, 401 draws |
+| floor 1, high | 5.6 ms CPU, 3.89 ms GPU, 650 draws | 3.4 ms CPU, 1.62 ms GPU, 378 draws |
+
 ## Code
 
 All of it lives in `src/crawler/` and depends on nothing in the office sim at

@@ -145,6 +145,28 @@ export function lineOfSight(level: Level, ax: number, az: number, bx: number, bz
   return true;
 }
 
+/**
+ * Whether a wall stands between two points: a cell that blocks sight and is
+ * not floor. Props that block sight (pillars, lockers, racks) stand on floor
+ * cells and are left out on purpose - a pillar fills half its cell, and
+ * something behind it can still show round the side - as are see-through
+ * walls, which are not opaque. So this only ever says "hidden" for a real wall.
+ */
+export function wallBetween(level: Level, ax: number, az: number, bx: number, bz: number): boolean {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const steps = Math.ceil(Math.hypot(dx, dz) / (TILE * 0.25));
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const cx = toCell(ax + dx * t);
+    const cz = toCell(az + dz * t);
+    if (cx < 0 || cz < 0 || cx >= level.w || cz >= level.h) return true;
+    const c = cz * level.w + cx;
+    if (level.opaque[c] === 1 && level.floor[c] !== 1) return true;
+  }
+  return false;
+}
+
 /** Push a circle out of solid cells. Returns true if it hit something. */
 export function collideCircle(level: Level, pos: THREE.Vector3, r: number): boolean {
   let hit = false;
