@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 
 import { completeLogin, openFromStartMenu } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * THE START SELECT, on the built artifact (E9, 0.35.0 slice B, #58).
@@ -32,7 +33,7 @@ async function playerField(page: Page, field: string): Promise<unknown> {
 /** Boot a browser that has never played before: the one boot that hires. */
 async function freshBoot(page: Page): Promise<void> {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
 
   const boot = page.getByTestId('boot-screen');
 
@@ -187,7 +188,7 @@ test('a browser already carrying a career is not offered a job', async ({
   );
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   await expect(page.getByTestId('desktop')).toBeVisible();
@@ -210,7 +211,7 @@ test('a rung nobody has written is refused, however it got into storage', async 
   );
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   expect(await playerField(page, 'title'))

@@ -8,6 +8,7 @@ import {
   runCommand,
   workUntilMinute,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * The Timesheet window, on the built artifact (0.30.0, slice 1).
@@ -66,7 +67,7 @@ const ARRIVAL = {
 async function arriveAtMsp(page: Page): Promise<void> {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.evaluate(
     ([key, record]) => {
       window.localStorage.setItem(key, JSON.stringify(record));

@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 
 import { completeLogin, openFromStartMenu } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * The corporate employer, on the built artifact (0.22.0, E8 #40/#41).
@@ -41,7 +42,7 @@ async function arriveAtCorporate(page: Page): Promise<void> {
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   const arrival = page.getByTestId('window-updates');

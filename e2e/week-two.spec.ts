@@ -6,6 +6,7 @@ import {
   runSimMinutes,
   underPause,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * Week two at the same desk, on the built artifact (E11, 0.34.0 slice 1).
@@ -61,7 +62,7 @@ async function arriveInWeekTwo(page: Page): Promise<void> {
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   const arrival = page.getByTestId('window-updates');

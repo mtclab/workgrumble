@@ -8,6 +8,7 @@ import {
   worldHash,
 } from './helpers';
 import { SHARED_TOKEN } from './tokens';
+import { OFFICE } from './office';
 
 /**
  * The journey the badge exists for: a week that survives the browser it was
@@ -28,7 +29,7 @@ test('carries a week to a browser that has never seen it', async ({
   page,
 }) => {
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.keyboard.press('Space');
 
   const badge = await issueBadge(page);
@@ -58,6 +59,8 @@ test('carries a week to a browser that has never seen it', async ({
   const other = await elsewhere.newPage();
   await other.clock.install();
   await other.goto(`/t/${SHARED_TOKEN}`);
+  // The link lands on Helldesk; the office has its own address.
+  await other.goto(OFFICE);
   await other.keyboard.press('Space');
 
   await logOnWithBadge(other, badge);
@@ -92,7 +95,7 @@ test('starts a stated Monday on a badge with nothing filed against it', async ({
   page,
 }) => {
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.keyboard.press('Space');
 
   const badge = await issueBadge(page);
@@ -111,6 +114,8 @@ test('starts a stated Monday on a badge with nothing filed against it', async ({
   const other = await elsewhere.newPage();
   await other.clock.install();
   await other.goto(`/t/${SHARED_TOKEN}`);
+  // The link lands on Helldesk; the office has its own address.
+  await other.goto(OFFICE);
   await other.keyboard.press('Space');
   await logOnWithBadge(other, badge);
 
@@ -141,7 +146,7 @@ test('starts a stated Monday on a badge with nothing filed against it', async ({
  * cheap rather than three days into a week that was never going to sync.
  */
 test('refuses a badge number nobody was issued', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.keyboard.press('Space');
 
   await page.getByTestId('login-badge').fill('WG-9999-ZZ');
@@ -162,7 +167,7 @@ test('refuses a badge number nobody was issued', async ({ page }) => {
 test('logs on with no badge at all and plays the week here', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.keyboard.press('Space');
 
   await expect(page.getByTestId('login-badge')).toHaveValue('');

@@ -7,6 +7,7 @@ import {
   runSimMinutes,
   runToDayEnd,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * The second employer, on the built artifact (0.6.0 slice 3, E5 #24).
@@ -53,7 +54,7 @@ async function arriveAtBodgeworth(page: Page): Promise<void> {
   // Install the fake clock before boot, the way every day-advancing spec does:
   // without it `runSimMinutes` cannot move the sim time and the day never ends.
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   // The arrival plays the shop's boot ceremony on the update screen; close it

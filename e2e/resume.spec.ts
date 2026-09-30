@@ -6,6 +6,7 @@ import {
   completeLogin,
   openFromStartMenu,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * A REFRESH COMES BACK TO THE WEEK YOU WERE IN, AND THE DOOR OUT OF IT
@@ -53,7 +54,7 @@ async function savedWeek(page: Page): Promise<string | null> {
 async function freshBoot(page: Page): Promise<void> {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await expect(page.getByTestId('login-screen')).toBeVisible();
 }
 
@@ -122,7 +123,7 @@ test('a refresh comes back to the shop that was switched to', async ({
   test.setTimeout(240_000);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
 
   // Seeded ONCE, by hand rather than through an init script: `addInitScript`
   // re-runs on every navigation, so the refresh below would arrive at
@@ -323,7 +324,7 @@ test('a week that will not open is said out loud, not swapped for a Monday', asy
   );
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await expect(page.getByTestId('login-screen')).toBeVisible();
 
   // No ladder over somebody's unreadable week: taking a desk from it would

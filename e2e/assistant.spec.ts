@@ -10,6 +10,7 @@ import {
   worldHash,
 } from './helpers';
 import { RETURNING_LINES } from '../src/shell/assistant-lines';
+import { OFFICE } from './office';
 
 /**
  * The thing on the desk with the face on it, on the built artifact.
@@ -83,7 +84,7 @@ async function startMonday(page: Page): Promise<void> {
   // The character breathes, and an actionability check on a moving element is
   // a flake looking for a slow machine. Nothing here is about the motion.
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
   await beginShift(page);
 }

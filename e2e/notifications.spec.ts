@@ -8,6 +8,7 @@ import {
   openFromStartMenu,
   workUntil,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * Real milliseconds the fan ticket needs to run out its SLA.
@@ -79,7 +80,7 @@ test('raises a toast, counts it on the badge and dismisses it', async ({
  */
 test('freezes the day while nobody is logged on', async ({ page }) => {
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
 
   await page.keyboard.press('Space');
   await expect(page.getByTestId('login-screen')).toBeVisible();
@@ -135,7 +136,7 @@ test('delivers a notice raised before any desktop existed', async ({ page }) => 
       },
     });
   });
-  await page.goto('/');
+  await page.goto(OFFICE);
 
   await page.keyboard.press('Space');
   await expect(page.getByTestId('login-screen')).toBeVisible();
@@ -175,7 +176,7 @@ test('announces a breach that happens while the player is working', async ({
 }) => {
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
   await page.getByTestId('brief-start-shift').click();
   await page.getByTestId('close-brief').click();
@@ -253,7 +254,7 @@ test('reports engine outcomes and refusals instead of failing silently', async (
   // it in mid-morning rather than handing it over at eight - so the shift has
   // to be under way before there is anything for the fix to close.
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
   await workUntil(page, FAN_ARRIVAL + 2);
   await openFromDesktopIcon(page, 'about');

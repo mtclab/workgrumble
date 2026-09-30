@@ -10,6 +10,7 @@ import {
   runSimMinutes,
   runToTelegraph,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * Focus follows what the player can see. Hiding a window or closing a menu
@@ -109,7 +110,7 @@ test('leaves the cursor in a half-typed line when the lead walks in', async ({
 }) => {
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
   await page.getByTestId('brief-start-shift').click();
   await page.getByTestId('close-brief').click();

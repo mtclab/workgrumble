@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
+import { OFFICE } from './office';
+
 /**
  * THE CLOCK CONTRACT, and the whole of the house style for this suite.
  *
@@ -55,7 +57,7 @@ export async function logIn(
   page: Page,
   options: Readonly<LoginOptions> = {},
 ): Promise<void> {
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, options);
 }
 
@@ -292,7 +294,7 @@ export async function logInOnDay(
   // player fumbling; the sway never settles under strict actionability
   // checks. Cross-day tests assert state, not pixels - reduced-motion path.
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   for (let current = 1; current < day; current += 1) {

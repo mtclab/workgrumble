@@ -9,6 +9,7 @@ import {
   runToDayEnd,
   workUntilMinute,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * The probation week, on the built artifact, both ways it ends.
@@ -80,7 +81,7 @@ test('passes the review, opens the beer and reads the week back', async ({
   // and the sway never settles under strict actionability checks. This is
   // about the week, not the hands - shipped reduced-motion path.
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   /* -- Monday: the two that were waiting, and the two that turn up -------- */
@@ -403,7 +404,7 @@ test('passes the review, opens the beer and reads the week back', async ({
 test('fires a week nobody worked and starts the next one', async ({ page }) => {
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
   await beginShift(page);
 

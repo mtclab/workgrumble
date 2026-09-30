@@ -12,6 +12,7 @@ import { dayLoad } from '../src/world/load';
 import { loadReading } from '../src/world/load-voice';
 import { dayScript } from '../src/world/week';
 import { findWorldTicket } from '../src/world/tickets';
+import { OFFICE } from './office';
 
 /**
  * What the brief should be saying about a day of the probation week, derived
@@ -171,7 +172,7 @@ test('walks a day from the morning brief to the scorecard', async ({
   page,
 }) => {
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   // The brief is put up by the day itself, not fetched from a menu.
@@ -362,7 +363,7 @@ test('walks a day from the morning brief to the scorecard', async ({
  */
 test('keeps a mid-day session across a page reload', async ({ page }) => {
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page);
 
   // Start the shift from the taskbar's own way back into the brief.
@@ -455,7 +456,7 @@ test('refuses a damaged save without taking the session with it', async ({
   page,
 }) => {
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page);
 
   await page.evaluate(() => {

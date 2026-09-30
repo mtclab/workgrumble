@@ -7,6 +7,7 @@ import {
   logIn,
   openFromStartMenu,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * Releases arrive as an operating-system update, which means the window has to
@@ -35,7 +36,7 @@ test('announces itself once on the first boot of a newer build', async ({
   // Seeded ONCE, on a workstation that is already open. `addInitScript` runs
   // again on every navigation, which would re-forget the build on the reload
   // below and announce it honestly a second time - proving nothing.
-  await page.goto('/');
+  await page.goto(OFFICE);
   // Wait for the workstation to finish booting before telling it what it last
   // ran: boot records the build it is, and a seed written mid-boot is a seed
   // the boot overwrites a moment later.

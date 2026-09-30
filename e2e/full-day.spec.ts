@@ -6,6 +6,7 @@ import {
   openFromStartMenu,
   runSimMinutes,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * The M3 exit gate: one player, one day, on the built artifact.
@@ -86,7 +87,7 @@ test('plays a whole day and comes back to the same one', async ({ page }) => {
   // pixels - reduced motion keeps every assertion honest while making mid-day
   // clicks stable under strict actionability checks.
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   /* -- the morning ------------------------------------------------------- */

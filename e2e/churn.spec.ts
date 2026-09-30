@@ -5,6 +5,7 @@ import {
   openFromStartMenu,
   runCommand,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * THE MONDAY AFTER A CLIENT LEFT, on the built artifact (E9, 0.39.0).
@@ -65,7 +66,7 @@ async function arriveAfterTheNotice(page: Page): Promise<void> {
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   // The arrival window, shut through the testid the window renderer actually

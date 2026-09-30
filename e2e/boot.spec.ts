@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test';
 
+import { OFFICE } from './office';
+
 /** Journey 1: boot -> skip -> login -> desktop. */
 test('boots, skips the POST gag, logs in and lands on the desktop', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto(OFFICE);
 
   const boot = page.getByTestId('boot-screen');
   await expect(boot).toBeVisible();
@@ -32,7 +34,7 @@ test('boots, skips the POST gag, logs in and lands on the desktop', async ({
 test('restarting from the login screen returns to boot without a reload', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.keyboard.press('Space');
   await expect(page.getByTestId('login-screen')).toBeVisible();
 

@@ -155,6 +155,8 @@ export class Os {
   private storeTab: 'weapons' | 'gear' | 'supplies' | 'ammo' | 'sell' = 'weapons';
   private feedback = '';
   mode: 'desk' | 'itdesk' | 'pack' | null = null;
+  /** Cancels the rebind waiting for a key, if there is one. */
+  private cancelRebind: (() => void) | null = null;
 
   constructor(parent: HTMLElement, private readonly host: OsHost) {
     this.root = el('div', { class: 'os', 'data-testid': 'os' });
@@ -212,6 +214,7 @@ export class Os {
   }
 
   hide(): void {
+    this.cancelRebind?.();
     this.mode = null;
     this.root.style.display = 'none';
   }
@@ -838,11 +841,30 @@ export class Os {
     for (const a of ACTIONS) {
       const b = el('button', { class: 'os-btn os-key' }, keyName(st.keys[a]));
       b.addEventListener('click', () => {
+        // One rebind at a time: a second click takes over from the first,
+        // or one key press would land on two actions at once.
+        this.cancelRebind?.();
         b.textContent = 'press a key…';
-        const onKey = (e: KeyboardEvent): void => {
-          e.preventDefault();
-          e.stopPropagation();
+        const stop = (): void => {
           window.removeEventListener('keydown', onKey, true);
+          if (this.cancelRebind === cancel) this.cancelRebind = null;
+        };
+        const cancel = (): void => {
+          stop();
+          b.textContent = keyName(st.keys[a]);
+        };
+        const onKey = (e: KeyboardEvent): void => {
+          // The listener outlives nothing: once this button has left the
+          // screen (window closed, backpack shut, settings redrawn), the key
+          // belongs to the game again. A listener that stayed behind used to
+          // bind the next key pressed anywhere - W walking right, for good.
+          if (!b.isConnected || this.mode === null) {
+            stop();
+            return;
+          }
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          stop();
           if (e.code !== 'Escape' && e.code !== 'F5' && e.code !== 'F9') {
             // Swap with whatever had the key, so nothing is left unbound.
             const clash = ACTIONS.find((x) => x !== a && st.keys[x] === e.code);
@@ -854,6 +876,7 @@ export class Os {
           this.renderSettings(body);
         };
         window.addEventListener('keydown', onKey, true);
+        this.cancelRebind = cancel;
       });
       grid.append(el('label', {}, el('span', {}, ACTION_LABEL[a]), b));
     }

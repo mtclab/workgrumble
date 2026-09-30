@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+import { OFFICE } from './office';
 import {
   isSeeded,
   REFUSED_TOKENS,
@@ -46,18 +47,21 @@ test.describe('the tester door', () => {
   test('lets a browser in through a live link, and keeps it in', async ({
     browser,
   }) => {
+    // The link lands on Helldesk, which builds a whole floor first.
+    test.slow();
     const context = await browser.newContext();
     const page = await context.newPage();
 
     await page.goto(`/t/${SHARED_TOKEN}`);
 
-    // The link redirects to the game, and the game is what arrives.
+    // The link redirects to the front door, and Helldesk is what arrives.
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByTestId('boot-screen')).toBeVisible();
+    await expect(page).toHaveTitle(/Helldesk/);
+    await expect(page.locator('canvas.game-canvas')).toBeVisible();
 
     // The pass outlives the navigation that set it: this is the second
-    // request, and it is not the redirect.
-    await page.goto('/');
+    // request, and it is not the redirect. The office is behind the same door.
+    await page.goto(OFFICE);
     await expect(page.getByTestId('boot-screen')).toBeVisible();
 
     await context.close();
