@@ -397,7 +397,10 @@ function sauna(g: Game, it: Interactable): void {
   sfx.hiss();
   steamBurst(g, g.player.pos.clone(), 3);
   s.sanity = Math.min(d.maxSanity, s.sanity + d.maxSanity * 0.6 * mult);
-  s.loyly = mokki ? d.maxLoyly : Math.min(d.maxLoyly, s.loyly + 40 * mult);
+  // The mökki's own sauna fills you whatever you had; an office one gives 40.
+  const loylyBefore = s.loyly;
+  const loylyGain = mokki ? d.maxLoyly : 40 * mult;
+  s.loyly = Math.min(d.maxLoyly, s.loyly + loylyGain);
   s.bac = Math.max(0, s.bac - 40);
   s.stomach *= 0.3;
   s.hangover = 0;
@@ -414,6 +417,7 @@ function sauna(g: Game, it: Interactable): void {
   g.hud.toast(mokki ? 'Löylyä! Everything restored. Now the lake - while you are still hot.' : 'Löylyä! Sanity and Löyly restored, BAC down, hangover gone.', 'epic');
   g.journal(mokki ? 'Sauna at the mökki. Some things are simply right.' : 'Found a sauna in the office and used it. Building regulations are a mystery.');
   if (!mokki) g.tip('sauna');
+  g.steamOverflow('sauna', loylyBefore, loylyGain);
 }
 
 function swim(g: Game): void {

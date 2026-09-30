@@ -109,6 +109,10 @@ export interface FloorState {
   unbreakableUsed: boolean;
   nokiaUsed: boolean;
   drinksHere: number;
+  /** The steam already took you under on this floor visit (SUO: once a visit). */
+  suo: boolean;
+  /** The cold-steam line has been said on this floor (after that, just the cost). */
+  coldSteam: boolean;
 }
 
 export interface WeekendState {
@@ -120,6 +124,8 @@ export interface WeekendState {
   visitorDone: boolean;
   book: boolean;
   potatoes: boolean;
+  /** The steam already took you under this weekend (SUO: once a weekend at the mökki). */
+  suo: boolean;
 }
 
 export interface SaveState {
@@ -184,6 +190,8 @@ export interface SaveState {
   hauki: boolean;
   palju: boolean;
   saunaBuff: boolean;
+  /** The Löylyhenki's blessing: the next rune costs no Löyly and cannot fail. */
+  suoBlessing: boolean;
   /** Timed can buffs (White Monster, Red Bull wings...), seconds left. */
   buffs: Record<string, number>;
   floorState: FloorState;
@@ -209,11 +217,11 @@ export interface SaveState {
 }
 
 export function freshFloorState(floor: number): FloorState {
-  return { floor, bossDone: false, used: [], picked: [], resolved: [], extras: [], unbreakableUsed: false, nokiaUsed: false, drinksHere: 0 };
+  return { floor, bossDone: false, used: [], picked: [], resolved: [], extras: [], unbreakableUsed: false, nokiaUsed: false, drinksHere: 0, suo: false, coldSteam: false };
 }
 
 export function freshWeekend(): WeekendState {
-  return { saunas: 0, grill: false, lake: false, palju: false, fish: 0, visitorDone: false, book: false, potatoes: false };
+  return { saunas: 0, grill: false, lake: false, palju: false, fish: 0, visitorDone: false, book: false, potatoes: false, suo: false };
 }
 
 function baseSkills(): Record<Skill, SkillState> {
@@ -294,6 +302,7 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
     hauki: false,
     palju: false,
     saunaBuff: false,
+    suoBlessing: false,
     buffs: {},
     floorState: freshFloorState(0),
     weekend: freshWeekend(),

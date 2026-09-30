@@ -84,6 +84,9 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
   ground.position.set((W * TILE) / 2, 0, (H * TILE) / 2);
   ground.receiveShadow = true;
   ground.name = 'ground';
+  // Under the steam (suodress.ts): the plot is bog, the lake black water, the log walls peat and timber, no sky.
+  ground.userData.suo = 'floor';
+  ground.userData.suoRepeat = [(W * TILE + 80) / TILE, (H * TILE + 80) / TILE];
   group.add(ground);
   const water = new THREE.Mesh(
     new THREE.PlaneGeometry((W - 2) * TILE + 80, (H - LAKE_ROW) * TILE + 40),
@@ -92,6 +95,7 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
   water.rotation.x = -Math.PI / 2;
   water.position.set((W * TILE) / 2, 0.05, LAKE_ROW * TILE + ((H - LAKE_ROW) * TILE + 40) / 2);
   water.name = 'water';
+  water.userData.suo = 'water';
   group.add(water);
   // Shore stones.
   const stoneGeo: THREE.BufferGeometry[] = [];
@@ -187,9 +191,12 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
     }
     const walls = new THREE.Mesh(mergeGeometries(logGeo), lam(color, logs));
     for (const lg of logGeo) lg.dispose();
+    walls.userData.suo = 'wall';
     g.add(walls);
     // Fill behind the logs so there is no daylight between them.
-    g.add(box(bw - 0.3, height, bh - 0.3, lam(new THREE.Color(color).multiplyScalar(0.7).getHex()), bx + bw / 2, height / 2, bz + bh / 2));
+    const fill = box(bw - 0.3, height, bh - 0.3, lam(new THREE.Color(color).multiplyScalar(0.7).getHex()), bx + bw / 2, height / 2, bz + bh / 2);
+    fill.userData.suo = 'timber';
+    g.add(fill);
     // A gable roof along the long side, with overhangs, and log gable ends.
     const along = bw >= bh;
     const span = along ? bh : bw;
@@ -212,6 +219,7 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
     tri.closePath();
     for (const side of [0, 1]) {
       const gable = new THREE.Mesh(new THREE.ExtrudeGeometry(tri, { depth: 0.2, bevelEnabled: false }), lam(color, logs));
+      gable.userData.suo = 'timber';
       if (along) {
         gable.rotation.y = Math.PI / 2;
         gable.position.set(bx + side * (bw - 0.2), height, bz + bh / 2);
@@ -396,6 +404,7 @@ export function generateMokki(seed: number, headless = false, upgrades: readonly
     const sky = new Sky();
     sky.scale.setScalar(150);
     sky.name = 'sky';
+    sky.userData.suo = 'hide';
     const u = sky.material.uniforms;
     const set = (k: string, v: number): void => { const x = u[k]; if (x !== undefined) x.value = v; };
     set('turbidity', 3.5);

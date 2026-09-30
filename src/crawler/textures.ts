@@ -342,3 +342,142 @@ export function signTexture(text: string, fg: string, bg: string): THREE.CanvasT
   return t;
 }
 
+
+// ---------------------------------------------------------------- SUO
+
+/**
+ * The bog under the office (see `vision.ts`). Five-step ramps, dark to light,
+ * warm in the highlights: cut peat, driven timber, moss, bog water and old
+ * bone. Painted once per vision and freed when it ends.
+ */
+const PEAT = ['#2b1d12', '#3d2918', '#50361f', '#664628', '#7d5835'] as const;
+const TIMBER = ['#33241a', '#4a3423', '#62472f', '#7a5c3d', '#94744f'] as const;
+const MOSS = ['#2a3318', '#3b4722', '#4f5d2c', '#667538', '#7d8c46'] as const;
+const WATER = ['#10171a', '#172228', '#213139', '#2e434c', '#3f5a64'] as const;
+const BONE = ['#6e6656', '#8c8270', '#b0a58e', '#cfc6b0', '#e2dac6'] as const;
+
+/** Speckle a canvas with its own ramp, so no surface is one flat colour. */
+function grain(g: CanvasRenderingContext2D, r: Rng, ramp: readonly string[], n: number, size: number): void {
+  for (let i = 0; i < n; i++) {
+    g.fillStyle = ramp[r.int(0, ramp.length - 1)] ?? '#000';
+    g.fillRect(r.int(0, 127), r.int(0, 127), size, size);
+  }
+}
+
+/**
+ * A wall of the bog: the cut face of the peat in strata, timber staves driven
+ * into it, roots reaching down, and a band of standing water along the foot
+ * (the water is always rising). A few walls have bone in the peat instead of
+ * staves.
+ */
+export function peatWallTexture(seed: number): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(seed);
+  g.fillStyle = PEAT[2];
+  g.fillRect(0, 0, 128, 128);
+  grain(g, r, PEAT, 700, 2);
+  for (let y = 0; y < 128; y += 11) {
+    g.fillStyle = r.chance(0.5) ? PEAT[1] : PEAT[3];
+    g.fillRect(0, y, 128, r.int(2, 4));
+  }
+  const bones = r.chance(0.25);
+  if (!bones) {
+    for (let i = 0; i < 6; i++) {
+      const x = i * 22 + r.int(0, 4);
+      const w = r.int(13, 16);
+      g.fillStyle = TIMBER[2];
+      g.fillRect(x, 0, w, 128);
+      g.fillStyle = TIMBER[4];
+      g.fillRect(x, 0, 2, 128);
+      g.fillStyle = TIMBER[0];
+      g.fillRect(x + w - 2, 0, 2, 128);
+      g.fillStyle = TIMBER[1];
+      for (let y = 0; y < 128; y += 7) if (r.chance(0.55)) g.fillRect(x + 3, y, w - 6, 1);
+      if (r.chance(0.6)) {
+        g.fillStyle = TIMBER[3];
+        g.fillRect(x + 2, r.int(30, 90), w - 4, 3);
+      }
+    }
+  } else {
+    for (let i = 0; i < 5; i++) {
+      const x = r.int(2, 106);
+      const y = r.int(20, 96);
+      g.fillStyle = BONE[3];
+      g.fillRect(x, y, 16, 4);
+      g.fillStyle = BONE[4];
+      g.fillRect(x, y, 16, 1);
+      g.fillStyle = BONE[2];
+      g.fillRect(x - 1, y - 1, 4, 6);
+      g.fillRect(x + 14, y - 1, 4, 6);
+    }
+  }
+  // Roots, wandering down from the top.
+  for (let i = 0; i < 7; i++) {
+    let x = r.int(0, 127);
+    for (let y = 0; y < r.int(40, 128); y += 3) {
+      g.fillStyle = PEAT[0];
+      g.fillRect(x, y, 2, 3);
+      g.fillStyle = PEAT[1];
+      g.fillRect(x + 2, y, 1, 3);
+      x += r.int(-1, 1);
+    }
+  }
+  g.fillStyle = WATER[1];
+  g.fillRect(0, 108, 128, 20);
+  g.fillStyle = WATER[3];
+  g.fillRect(0, 107, 128, 2);
+  g.fillStyle = MOSS[2];
+  for (let i = 0; i < 12; i++) g.fillRect(r.int(0, 124), r.int(100, 107), r.int(3, 8), 2);
+  return toTexture(c);
+}
+
+/** The floor of the bog: dark wet peat, pools of standing water with a lit rim, sedge. */
+export function bogFloorTexture(seed: number): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(seed);
+  g.fillStyle = PEAT[1];
+  g.fillRect(0, 0, 128, 128);
+  grain(g, r, PEAT.slice(0, 3), 800, 2);
+  for (let i = 0; i < 9; i++) {
+    const x = r.int(0, 116);
+    const y = r.int(0, 120);
+    const w = r.int(12, 38);
+    const h = r.int(8, 24);
+    g.fillStyle = WATER[1];
+    g.fillRect(x, y, w, h);
+    g.fillStyle = WATER[3];
+    g.fillRect(x, y, w, 1);
+    g.fillRect(x, y, 1, h);
+  }
+  for (let i = 0; i < 40; i++) {
+    const x = r.int(2, 125);
+    const y = r.int(0, 123);
+    g.fillStyle = MOSS[2];
+    g.fillRect(x, y, 1, 4);
+    g.fillStyle = MOSS[3];
+    g.fillRect(x + 2, y + 1, 1, 3);
+    g.fillStyle = MOSS[1];
+    g.fillRect(x - 2, y + 1, 1, 3);
+  }
+  return toTexture(c);
+}
+
+/** Overhead: the underside of the peat, nearly black, with root trails hanging through it. */
+export function peatCeilingTexture(seed: number): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(seed);
+  g.fillStyle = PEAT[0];
+  g.fillRect(0, 0, 128, 128);
+  grain(g, r, PEAT.slice(0, 2), 500, 2);
+  g.fillStyle = PEAT[1];
+  for (let i = 0; i < 14; i++) {
+    let x = r.int(0, 127);
+    let y = r.int(0, 127);
+    for (let s = 0; s < 16; s++) {
+      g.fillRect(x & 127, y & 127, 2, 2);
+      x += r.int(-1, 1);
+      y += 2;
+    }
+  }
+  return toTexture(c);
+}

@@ -4,9 +4,10 @@ import { fxBall, fxRing, muzzle, aimPoint, steamBurst, strike } from './combat';
 import { type Actor, say, stun, TALKERS } from './entities';
 import type { Game } from './game';
 import { lineOfSight, toCell } from './level';
-import { castChance, spellById } from './magic';
+import { castChance, type SpellDef, spellById } from './magic';
 import { fx } from './rng';
 import { perk, skill } from './state';
+import { castPlan, type CastPlan, SUO_LINES } from './suo';
 
 /** Mökki magic and the domain abilities (G). */
 
@@ -14,6 +15,24 @@ export function castOdds(g: Game, cost: number): number {
   const s = g.save;
   const kalevala = perk(s, 'kalevala') > 0 ? 15 : 0;
   return castChance(cost, skill(s, 'runecraft'), s.attrs.tech, s.attrs.liver, g.derivedCache.band.spell + kalevala);
+}
+
+/** How the selected rune would be paid for right now: the blessing, Löyly, or sisu (sanity). */
+function planFor(g: Game, sp: SpellDef): CastPlan {
+  const s = g.save;
+  return castPlan(Math.round(sp.cost * g.derivedCache.spellCost), s.loyly, s.sanity, castOdds(g, sp.cost), s.suoBlessing);
+}
+
+/** The rune line on the HUD: the name, what casting costs right now, and the odds. */
+export function spellLabel(g: Game, sp: SpellDef): string {
+  const cost = Math.round(sp.cost * g.derivedCache.spellCost);
+  const plan = planFor(g, sp);
+  switch (plan.kind) {
+    case 'blessed': return `${sp.name} · free · 100%`;
+    case 'loyly': return `${sp.name} · ${cost} · ${Math.round(plan.odds * 100)}%`;
+    case 'sisu': return `${sp.name} · ${plan.sanity} sanity · ${Math.round(plan.odds * 100)}%`;
+    case 'refuse': return `${sp.name} · ${cost} · ${Math.round(castOdds(g, sp.cost) * 100)}%`;
+  }
 }
 
 export function cycleSpell(g: Game): void {
@@ -37,20 +56,42 @@ export function castSpell(g: Game): void {
     return;
   }
   const cost = Math.round(sp.cost * d.spellCost);
-  if (s.loyly < cost) {
+  // Short of Löyly, a rune is paid for in sanity (cold steam) if you have
+  // enough to spare; with neither it refuses as it always did. The
+  // Löylyhenki's blessing pays for one outright.
+  const plan = planFor(g, sp);
+  if (plan.kind === 'refuse') {
     sfx.fizzle();
     g.hud.toast('Not enough Löyly. Sit in a sauna, or drink a Salmari.', 'bad');
     return;
   }
-  const odds = castOdds(g, sp.cost);
-  if (!fx.chance(odds)) {
-    if (perk(s, 'kalevala') === 0) s.loyly -= cost / 2;
+  // The first cold-steam cast on a floor says so; after that, just the price.
+  if (plan.kind === 'sisu' && !s.floorState.coldSteam) {
+    s.floorState.coldSteam = true;
+    g.hud.toast(SUO_LINES.dry, 'bad');
+  }
+  if (plan.kind === 'blessed') {
+    s.suoBlessing = false;
+  } else if (!fx.chance(plan.odds)) {
+    // A fizzle costs half, whatever you were paying with.
+    if (perk(s, 'kalevala') === 0) {
+      if (plan.kind === 'loyly') {
+        s.loyly -= cost / 2;
+      } else {
+        s.sanity -= plan.sanity / 2;
+        g.hud.toast(`-${Math.round(plan.sanity / 2)} sanity`, 'bad');
+      }
+    }
     sfx.fizzle();
-    g.hud.toast(`The rune fizzles. (${Math.round(odds * 100)}% chance)`, 'bad');
+    g.hud.toast(`The rune fizzles. (${Math.round(plan.odds * 100)}% chance)`, 'bad');
     g.exercise('runecraft', 0.4);
     return;
+  } else if (plan.kind === 'loyly') {
+    s.loyly -= cost;
+  } else {
+    s.sanity -= plan.sanity;
+    g.hud.toast(`-${plan.sanity} sanity`, 'bad');
   }
-  s.loyly -= cost;
   s.stats.spellsCast++;
   g.exercise('runecraft', 1 + sp.cost / 25);
   const pp = g.player.pos;

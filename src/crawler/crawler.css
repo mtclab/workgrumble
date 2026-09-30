@@ -315,3 +315,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
   .hud-big { font-size: 22px; }
   .hud-slas, .hud-quests { font-size: 10px; max-width: 46vw; }
 }
+
+/* ---------------- SUO (a vision) ----------------
+   The HUD gives way to one line in a reading serif and a hair-thin steam
+   meter. No panel, no icon: SUO says little, and quietly. */
+.suo-veil { position: absolute; left: 0; right: 0; bottom: 14vh; display: none; flex-direction: column; align-items: center; gap: 12px; padding: 0 16px; pointer-events: none; user-select: none; z-index: 30; }
+.suo-line { font: italic 400 clamp(17px, 2.2vw, 24px)/1.4 "Source Serif 4", Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif; color: #eadcc4; text-align: center; text-shadow: 0 1px 6px rgba(20, 10, 4, 0.9); max-width: 36em; }
+.suo-meter { width: min(220px, 50vw); height: 2px; background: rgba(234, 220, 196, 0.18); overflow: hidden; }
+.suo-meter-fill { width: 100%; height: 100%; background: #eadcc4; transform-origin: left center; }
+.suo-flash { position: absolute; inset: 0; display: none; background: #fff; pointer-events: none; z-index: 60; }
+.suo-pause { font-family: "Source Serif 4", Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif; font-style: italic; }

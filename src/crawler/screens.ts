@@ -6,6 +6,7 @@ import { fx } from './rng';
 import { type Ending, WORKPLACES } from './rpg';
 import { deleteSlot, latestSlot, listSlots, SLOT_LABEL, type SlotId, timeAgo } from './saves';
 import { adjustStanding } from './state';
+import { SUO_LINES } from './suo';
 
 /** The full-screen overlays: title, load menu, pause, burnout, endings, lifts. */
 
@@ -125,16 +126,25 @@ export function startPlay(g: Game): void {
 export function showPause(g: Game): void {
   g.screen = 'paused';
   const s = g.save;
+  // Under the steam nothing is saved and the office's computer does not
+  // open (it is the backpack too); loading, or the title screen, ends the
+  // vision.
+  const under = g.vision !== null;
   const buttons: Button[] = [['Resume', () => resume(g)]];
   if (!s.ironman) {
-    buttons.push(['Save game', () => showSaveMenu(g)]);
+    if (!under) buttons.push(['Save game', () => showSaveMenu(g)]);
     buttons.push(['Load game', () => showLoadMenu(g, () => showPause(g))]);
   }
-  buttons.push(['Backpack & Career', () => g.openOs('pack')]);
-  buttons.push(['Settings', () => g.openOs('pack', 'settings')]);
-  buttons.push(['Title screen', () => { g.autosave(); showTitle(g); }]);
+  if (!under) {
+    buttons.push(['Backpack & Career', () => g.openOs('pack')]);
+    buttons.push(['Settings', () => g.openOs('pack', 'settings')]);
+  }
+  buttons.push(['Title screen', () => { g.abortVision(); g.autosave(); showTitle(g); }]);
+  const blurb = under
+    ? `<p class="title-blurb suo-pause">${SUO_LINES.noSave}</p>`
+    : `<p class="title-blurb">Taking a "comfort break". The SLA clocks are paused. Probably.${s.ironman ? ' <b>IRONMAN</b>: the building saves for you.' : ''}</p>`;
   setOverlay(g, `<div class="title-logo small">PAUSED</div>
-    <p class="title-blurb">Taking a "comfort break". The SLA clocks are paused. Probably.${s.ironman ? ' <b>IRONMAN</b>: the building saves for you.' : ''}</p>
+    ${blurb}
     ${CONTROLS}`, buttons);
 }
 

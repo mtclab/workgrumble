@@ -1,16 +1,36 @@
 /**
  * Every sound is synthesised on the fly with WebAudio: no audio assets.
  */
+
+/** The bed under everything: the office's hum, the lake's birds, the bog, or nothing. */
+export type Ambient = 'office' | 'mokki' | 'suo' | 'none';
+
+/** White noise from a fixed seed (the repo bans Math.random in src/). */
+function noiseBuffer(ctx: AudioContext, seconds: number, seed: number): AudioBuffer {
+  const len = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  let x = seed;
+  for (let i = 0; i < len; i++) {
+    x = (x * 1103515245 + 12345) & 0x7fffffff;
+    data[i] = (x / 0x7fffffff) * 2 - 1;
+  }
+  return buf;
+}
+
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private musicBus: GainNode | null = null;
   private hum: GainNode | null = null;
+  /** SUO's bed: wind over the bog and a slow drone, faded in and out as one. */
+  private suoBed: GainNode | null = null;
   private musicTimer = 0;
   private musicStep = 0;
   private bossMode = false;
-  private ambient: 'office' | 'mokki' | 'none' = 'none';
+  private ambient: Ambient = 'none';
   private birdIn = 2;
+  private dripIn = 3;
   volume = 0.7;
   musicVolume = 0.5;
 
@@ -40,6 +60,7 @@ export class Sfx {
       o.connect(f);
       f.connect(this.hum);
       o.start();
+      this.suoBed = this.buildSuoBed(this.ctx, this.musicBus);
       this.setAmbient(this.ambient);
     } catch {
       this.ctx = null;
@@ -57,9 +78,79 @@ export class Sfx {
     if (this.musicBus !== null) this.musicBus.gain.value = v;
   }
 
-  setAmbient(kind: 'office' | 'mokki' | 'none'): void {
+  setAmbient(kind: Ambient): void {
     this.ambient = kind;
     if (this.hum !== null) this.hum.gain.value = kind === 'office' ? 0.018 : 0;
+    // The bog fades rather than cuts: the crossing's hiss covers the seam.
+    if (this.ctx !== null && this.suoBed !== null) this.suoBed.gain.setTargetAtTime(kind === 'suo' ? 1 : 0, this.ctx.currentTime, 0.25);
+  }
+
+  /**
+   * The bog's bed, built once and left running silent until a vision: wind
+   * (noise through a low-pass that a slow LFO opens and closes) and a low
+   * drone of two sines a hair apart, so it beats.
+   */
+  private buildSuoBed(ctx: AudioContext, bus: GainNode): GainNode {
+    const bed = ctx.createGain();
+    bed.gain.value = 0;
+    bed.connect(bus);
+    const wind = ctx.createBufferSource();
+    wind.buffer = noiseBuffer(ctx, 2, 7654321);
+    wind.loop = true;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 380;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.07;
+    const depth = ctx.createGain();
+    depth.gain.value = 220;
+    lfo.connect(depth);
+    depth.connect(lp.frequency);
+    const windGain = ctx.createGain();
+    windGain.gain.value = 0.05;
+    wind.connect(lp);
+    lp.connect(windGain);
+    windGain.connect(bed);
+    const drone = ctx.createGain();
+    drone.gain.value = 0.035;
+    drone.connect(bed);
+    for (const f of [55, 55.4]) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f;
+      o.connect(drone);
+      o.start();
+    }
+    wind.start();
+    lfo.start();
+    return bed;
+  }
+
+  /**
+   * The crossing: a steam hiss that falls into the bog's drone on the way
+   * under, and rises back into the office hum on the way out.
+   */
+  crossing(under: boolean): void {
+    const ctx = this.ctx;
+    const master = this.master;
+    if (ctx === null || master === null) return;
+    const t0 = ctx.currentTime;
+    const dur = 1.1;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(ctx, dur, 2468013);
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(under ? 7000 : 300, t0);
+    f.frequency.exponentialRampToValueAtTime(under ? 260 : 6000, t0 + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.3, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(f);
+    f.connect(g);
+    g.connect(master);
+    src.start(t0);
+    // The tone underneath lands where the next place's bed sits: the drone, or the hum.
+    this.tone(under ? 220 : 55, 1.2, 'sine', 0.12, under ? -165 : 45);
   }
 
   private tone(freq: number, dur: number, type: OscillatorType, vol: number, slide = 0, delay = 0, bus: 'sfx' | 'music' = 'sfx'): void {
@@ -85,16 +176,8 @@ export class Sfx {
     const master = this.master;
     if (ctx === null || master === null) return;
     const t0 = ctx.currentTime + delay;
-    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    let seed = 1234567;
-    for (let i = 0; i < len; i++) {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      data[i] = (seed / 0x7fffffff) * 2 - 1;
-    }
     const src = ctx.createBufferSource();
-    src.buffer = buf;
+    src.buffer = noiseBuffer(ctx, dur, 1234567);
     const f = ctx.createBiquadFilter();
     f.type = 'lowpass';
     f.frequency.value = filter;
@@ -156,6 +239,17 @@ export class Sfx {
   /** A tiny grim office-muzak sequencer, ticked from the game loop. */
   music(dt: number): void {
     if (this.ctx === null) return;
+    if (this.ambient === 'suo') {
+      // No tune under the steam: the bed, and now and then a drip.
+      if (dt <= 0) return;
+      this.dripIn -= dt;
+      if (this.dripIn <= 0) {
+        this.dripIn = 2.5 + (this.musicStep % 5) * 1.3;
+        this.musicStep++;
+        this.tone(1400 + (this.musicStep % 3) * 180, 0.12, 'sine', 0.05, -700, 0, 'music');
+      }
+      return;
+    }
     if (this.ambient === 'mokki' && dt > 0) {
       // Birds over the lake, and the odd loon.
       this.birdIn -= dt;

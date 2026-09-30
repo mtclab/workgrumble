@@ -354,7 +354,9 @@ export function rest(g: Game, safe: boolean): void {
   sfx.snore();
   s.sanity = safe ? d.maxSanity : Math.min(d.maxSanity, s.sanity + d.maxSanity * 0.5);
   s.energy = 100;
-  s.loyly = safe ? d.maxLoyly : Math.min(d.maxLoyly, s.loyly + d.maxLoyly * 0.5);
+  const loylyBefore = s.loyly;
+  const loylyGain = safe ? d.maxLoyly : d.maxLoyly * 0.5;
+  s.loyly = Math.min(d.maxLoyly, s.loyly + loylyGain);
   s.bac = Math.max(0, s.bac - (safe ? 100 : 35));
   s.stomach = 0;
   s.caffeine *= safe ? 0.1 : 0.5;
@@ -378,6 +380,8 @@ export function rest(g: Game, safe: boolean): void {
     }
   }
   g.refreshDerived();
+  // Asked before any level-up talk opens; a vision it earns waits for play to resume.
+  g.steamOverflow('rest', loylyBefore, loylyGain);
   if (levelUpReady(s)) g.openDialogue(levelUpNode(g));
 }
 
@@ -447,6 +451,7 @@ export function use(g: Game, id: string): void {
     else s.sanity = Math.max(1, s.sanity + c.heal);
   }
   if (c.energy !== undefined) s.energy = Math.min(100, s.energy + c.energy);
+  const loylyBefore = s.loyly;
   if (c.loyly !== undefined) s.loyly = Math.min(g.derivedCache.maxLoyly, s.loyly + c.loyly);
   if (LINING_FOODS.includes(id)) s.buffs.lined = Math.max(s.buffs.lined ?? 0, 90);
   if (c.buff === 'makkara') s.makkara = true;
@@ -463,6 +468,8 @@ export function use(g: Game, id: string): void {
     g.tip('caffeine');
   }
   g.refreshDerived();
+  // A Salmari is the only thing in a pocket that gives Löyly.
+  if (id === 'salmari' && c.loyly !== undefined) g.steamOverflow('salmari', loylyBefore, c.loyly);
 }
 
 export function takePerk(g: Game, id: string): void {

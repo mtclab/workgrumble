@@ -6,6 +6,7 @@ import { pageNow } from './pager';
 import { offerStaffing } from './questing';
 import { currentObjective, type QuestState } from './quests';
 import { requestMentoring } from './teamwork';
+import { standAtKiuas, standNearFigure } from './vision';
 
 const mount = document.getElementById('crawler');
 if (mount === null) throw new Error('#crawler missing');
@@ -24,6 +25,11 @@ try {
     objective: (st: QuestState) => currentObjective(st),
     rest: (): void => rest(game, true),
     page: (): boolean => pageNow(game),
+    // SUO: a real kiuas to throw löyly on, the figure's side, and what the vision shows.
+    toKiuas: (): boolean => standAtKiuas(game, findPrompt),
+    toFigure: (): boolean => standNearFigure(game),
+    calm: (): void => { for (const a of game.actors) a.aggro = false; },
+    vision: (): { left: number; dist: number } | null => (game.vision === null ? null : { left: game.vision.clock.left, dist: game.vision.distance() }),
   };
 } catch (err) {
   mount.innerHTML = '<div class="screen" style="display:flex"><div class="title-logo small dead">BSOD</div>'

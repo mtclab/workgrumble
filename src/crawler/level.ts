@@ -782,6 +782,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
         const planks = new THREE.Mesh(new THREE.PlaneGeometry(rm.w * TILE, rm.h * TILE), new THREE.MeshLambertMaterial({ map: wood, color: 0xd9a86c }));
         planks.rotation.x = -Math.PI / 2;
         planks.position.set(x0 * TILE + (rm.w * TILE) / 2, 0.01, y0 * TILE + (rm.h * TILE) / 2);
+        planks.userData.suo = 'hide';
         group.add(planks);
         const t = interiorSpot(rm);
         if (t !== null) spawns.push({ kind: 'tonttu', x: cellCenter(t[0]), z: cellCenter(t[1]), room: rm.id });
@@ -1037,6 +1038,8 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   }
 
   // ---- Static geometry ----
+  // `userData.suo` says what each surface becomes when the steam takes you
+  // under (see suodress.ts); `suoRepeat` gives a plane its tiles per side.
   const std = (params: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial(params);
   const wallTex = paint(() => wallTexture(theme));
   const wallMat = std({ map: wallTex, normalMap: paint(() => normalMapFrom(wallTex, 1.2)), roughness: 0.92, metalness: 0 });
@@ -1060,6 +1063,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     const walls = new THREE.Mesh(mergeGeometries(wallGeoms), wallMat);
     walls.receiveShadow = true;
     walls.castShadow = true;
+    walls.userData.suo = 'wall';
     group.add(walls);
   }
 
@@ -1069,12 +1073,16 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   floorMesh.rotation.x = -Math.PI / 2;
   floorMesh.position.set((w * TILE) / 2, 0, (h * TILE) / 2);
   floorMesh.receiveShadow = true;
+  floorMesh.userData.suo = 'floor';
+  floorMesh.userData.suoRepeat = [w, h];
   group.add(floorMesh);
   const ceil = paint(() => ceilingTexture(theme));
   ceil?.repeat.set(w, h);
   const ceilMesh = new THREE.Mesh(new THREE.PlaneGeometry(w * TILE, h * TILE), std({ map: ceil, normalMap: paint(() => normalMapFrom(ceil, 1.5, true)), roughness: 0.95 }));
   ceilMesh.rotation.x = Math.PI / 2;
   ceilMesh.position.set((w * TILE) / 2, WALL_H, (h * TILE) / 2);
+  ceilMesh.userData.suo = 'ceiling';
+  ceilMesh.userData.suoRepeat = [w, h];
   group.add(ceilMesh);
 
   // Rooms that are not carpeted: a floor of their own, laid over the carpet.
@@ -1083,6 +1091,8 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     m.rotation.x = -Math.PI / 2;
     m.position.set(rm.x * TILE + (rm.w * TILE) / 2, 0.008, rm.y * TILE + (rm.h * TILE) / 2);
     m.receiveShadow = true;
+    // Under the steam there is one floor, the bog's.
+    m.userData.suo = 'hide';
     group.add(m);
   };
   const floorMat = (tex: THREE.CanvasTexture | null, rm: Room, per: number, roughness: number, metalness = 0, bump = 1.5): THREE.MeshStandardMaterial => {
@@ -1160,16 +1170,22 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     }
   }
   const trimMat = std({ color: new THREE.Color(theme.wallTrim), roughness: 0.6 });
-  if (trim.length > 0) group.add(new THREE.Mesh(mergeGeometries(trim), trimMat));
+  if (trim.length > 0) {
+    const t = new THREE.Mesh(mergeGeometries(trim), trimMat);
+    t.userData.suo = 'timber';
+    group.add(t);
+  }
   if (jambs.length > 0) {
     const j = new THREE.Mesh(mergeGeometries(jambs), std({ color: new THREE.Color(theme.wallTrim).multiplyScalar(0.85), roughness: 0.45 }));
     j.castShadow = true;
     j.receiveShadow = true;
+    j.userData.suo = 'timber';
     group.add(j);
   }
   if (lintels.length > 0) {
     const l = new THREE.Mesh(mergeGeometries(lintels), wallMat);
     l.castShadow = true;
+    l.userData.suo = 'wall';
     group.add(l);
   }
   if (vents.length > 0) group.add(new THREE.Mesh(mergeGeometries(vents), std({ color: 0x3a3d42, roughness: 0.4, metalness: 0.7 })));
@@ -1193,7 +1209,9 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   }
   if (panelGeoms.length > 0) {
     const tube = new THREE.Color(theme.light).multiplyScalar(1.6);
-    group.add(new THREE.Mesh(mergeGeometries(panelGeoms), new THREE.MeshBasicMaterial({ color: tube })));
+    const panels = new THREE.Mesh(mergeGeometries(panelGeoms), new THREE.MeshBasicMaterial({ color: tube }));
+    panels.userData.suo = 'lamp';
+    group.add(panels);
     group.add(new THREE.Mesh(mergeGeometries(frameGeoms), std({ color: 0xb8b8b0, roughness: 0.5, metalness: 0.4 })));
   }
 
@@ -1226,6 +1244,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   if (exitIt?.mesh !== null && exitIt?.mesh !== undefined) {
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.34), new THREE.MeshBasicMaterial({ map: paint(() => signTexture('EXIT', '#e8ffe8', '#0a7a2a')), color: 0xffffff }));
     sign.position.set(0, 3.0, 0.12);
+    sign.userData.suo = 'lamp';
     exitIt.mesh.add(sign);
   }
   const extMat = std({ color: 0xc0281e, roughness: 0.35, metalness: 0.2 });

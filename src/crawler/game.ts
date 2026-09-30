@@ -94,7 +94,7 @@ import {
 import { latestSlot, readSlot, type SlotId, writeSlot } from './saves';
 import { type Action, loadSettings, type Settings, saveSettings } from './settings';
 import * as screens from './screens';
-import { castOdds, castSpell, cycleSpell, domainAbility, domainCooldown } from './spells';
+import { castSpell, cycleSpell, domainAbility, domainCooldown, spellLabel } from './spells';
 import {
   adjustStanding,
   applyLevelUp,
@@ -117,6 +117,8 @@ import {
 } from './state';
 import { disciplinary, levelUpNode, performanceReview, type StoryHost, storyNpcFor } from './story';
 import { THEMES } from './textures';
+import { overflowDecision, type LoylySource, SUO_LINES } from './suo';
+import { CROSSING_STOP, Vision, type VisionEnd } from './vision';
 import { ACHIEVEMENTS, TIPS } from './upgrades';
 import * as host from './hosts';
 import { tickCaffeine, tickVices } from './vices';
@@ -169,6 +171,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   readonly overlay: HTMLDivElement;
   readonly mount: HTMLElement;
   readonly lights: THREE.PointLight[] = [];
+  /** The light the camera carries (in a vision, the one low amber light left). */
+  readonly carry: THREE.PointLight;
   private readonly camPos = new THREE.Vector3();
   readonly hemi: THREE.HemisphereLight;
   readonly sun: THREE.DirectionalLight;
@@ -254,6 +258,17 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   mentorIn = 0;
   /** A teammate on their way to ask you for help. */
   mentorAsk: { actor: Actor; def: QuestDef; wait: number } | null = null;
+  /** Under the steam (SUO), or null. While it lasts nothing is saved. */
+  vision: Vision | null = null;
+  /** An overflow that earned a vision, waiting for play to resume (after a level-up dialogue, the backpack). */
+  visionDue = false;
+  /**
+   * How the world differed after the last vision from before it: one line per
+   * difference, empty when the restore was exact. Null before the first.
+   */
+  lastVisionDiff: string[] | null = null;
+  /** Reused by `walk`: no allocation per frame. */
+  private readonly moveDir = new THREE.Vector2();
 
   constructor(mount: HTMLElement) {
     this.mount = mount;
@@ -302,9 +317,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.scene.add(l);
       this.lights.push(l);
     }
-    const carry = new THREE.PointLight(0xfff0dd, 4, 8, 1.5);
-    carry.position.set(0, 0.3, 0);
-    this.camera.add(carry);
+    this.carry = new THREE.PointLight(0xfff0dd, 4, 8, 1.5);
+    this.carry.position.set(0, 0.3, 0);
+    this.camera.add(this.carry);
 
     this.input = new Input(this.renderer.domElement);
     this.hud = new Hud(mount);
@@ -403,6 +418,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   // ================================================================== world
 
   clearWorld(): void {
+    // A load or a new career mid-vision lands in the normal world: SUO comes
+    // off before the floor it was dressing goes.
+    this.abortVision();
+    this.visionDue = false;
     for (const a of this.actors) disposeActor(this.scene, a);
     this.actors = [];
     for (const p of this.projectiles) this.scene.remove(p.mesh);
@@ -645,6 +664,14 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.camera.far = fog instanceof THREE.Fog ? fog.far + 2 : 160;
     this.camera.updateProjectionMatrix();
     this.syncSunShadow();
+    this.precompile();
+  }
+
+  /**
+   * Compile every shader the scene needs now, behind a loading moment or a
+   * crossing, rather than the first time each thing turns up on screen.
+   */
+  precompile(): void {
     // Compiled against the pass chain's buffer, because that is what the scene
     // is drawn into: a shader built for the canvas (sRGB, tone-mapped) is a
     // different program, and the real one would still compile mid-fight.
@@ -718,15 +745,22 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   }
 
   writeSlotFor(id: SlotId, s: SaveState = this.save): boolean {
+    // A vision is never saved: whatever asks waits until you surface.
+    if (this.vision !== null) return false;
     return writeSlot(id, { name: s.name, title: titleFor(s.rung, s.domain, s.track, s.arch), where: this.level === undefined ? '' : this.floorName(), level: s.level }, s);
   }
 
   autosave(): void {
     if (this.save.won && this.screen === 'ending') return;
+    if (this.vision !== null) return;
     if (this.settings.autosave || this.save.ironman) this.writeSlotFor('auto');
   }
 
   quicksave(): void {
+    if (this.vision !== null) {
+      this.vision.say(SUO_LINES.noSave);
+      return;
+    }
     if (this.save.ironman) {
       this.hud.toast('Ironman: no quicksaves. The building only remembers what you did.', 'bad');
       return;
@@ -775,6 +809,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.blocking = false;
     this.caughtPending = false;
     this.hurtFlash = 0;
+    this.visionDue = false;
   }
 
   applySettings(): void {
@@ -963,7 +998,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.particles.update(this.screen === 'play' ? dt : 0);
     this.pipeline.render();
     this.input.endFrame();
-    const visible = this.screen === 'play' || this.screen === 'os' || this.screen === 'dialogue' || this.screen === 'minigame';
+    // Under the steam the HUD is gone: one serif line and the steam meter (the vision's own).
+    const visible = (this.screen === 'play' || this.screen === 'os' || this.screen === 'dialogue' || this.screen === 'minigame') && this.vision === null;
     if (visible) {
       this.markersIn -= dt;
       if (this.markersIn <= 0) {
@@ -1001,7 +1037,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       floorName: this.floorName(),
       elevatorOpen: this.elevatorOpen,
       title: this.title,
-      spellText: sp === undefined ? 'No runes (find the Saunatonttu)' : `${sp.name} · ${Math.round(sp.cost * this.derivedCache.spellCost)} · ${Math.round(castOdds(this, sp.cost) * 100)}%`,
+      spellText: sp === undefined ? 'No runes (find the Saunatonttu)' : spellLabel(this, sp),
       abilityText: domainReady ? `${s.domain ?? ''} (G): ${this.abilityCd > 0 ? `${Math.ceil(this.abilityCd)}s` : 'ready'}` : '',
       hidden: this.player.crouching ? !this.actors.some((a) => a.hostile && a.aggro && !a.resolved) : null,
       bandLabel: BAND_EFFECTS[bandFor(s.bac, this.derivedCache.specials.has('flask'))].label,
@@ -1033,13 +1069,19 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   }
 
   private update(dt: number): void {
+    // Under the steam the office's clocks stand still: no queue, no pager,
+    // no people, no trickle. Only the steam meter runs.
+    if (this.visionDue && this.vision === null) this.startVision();
+    if (this.vision !== null) {
+      const end = this.vision.update(dt);
+      if (end !== null) this.endVision(end);
+      return;
+    }
     const inp = this.input;
     const s = this.save;
     const d = this.derivedCache;
 
-    const sens = 0.0022 * this.settings.sensitivity;
-    this.player.yaw -= inp.mouseDX * sens;
-    this.player.pitch = Math.max(-1.35, Math.min(1.35, this.player.pitch - inp.mouseDY * sens * (this.settings.invertY ? -1 : 1)));
+    this.look();
     if (this.hit('view')) {
       this.settings.view = this.settings.view === 'first' ? 'third' : 'first';
       saveSettings(this.settings);
@@ -1055,8 +1097,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       return;
     }
     if (inp.hit('Escape')) {
-      this.input.releaseLock();
-      screens.showPause(this);
+      this.pause();
       return;
     }
     if (this.hit('sneak') || inp.hit('ControlLeft')) {
@@ -1103,12 +1144,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.screen !== 'play') return;
 
     // Movement.
-    let fwd = 0;
-    let side = 0;
-    if (this.down('forward') || inp.down('ArrowUp')) fwd += 1;
-    if (this.down('back') || inp.down('ArrowDown')) fwd -= 1;
-    if (this.down('right') || inp.down('ArrowRight')) side += 1;
-    if (this.down('left') || inp.down('ArrowLeft')) side -= 1;
+    const { x: side, y: fwd } = this.moveInput();
     const sy = Math.sin(this.player.yaw);
     const cy = Math.cos(this.player.yaw);
     let wx = -sy * fwd + cy * side;
@@ -1244,6 +1280,115 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (s.sanity <= 0 && this.screen === 'play' && !lastStand(this)) screens.showDead(this);
   }
 
+  /** Mouse look. */
+  look(): void {
+    const inp = this.input;
+    const sens = 0.0022 * this.settings.sensitivity;
+    this.player.yaw -= inp.mouseDX * sens;
+    this.player.pitch = Math.max(-1.35, Math.min(1.35, this.player.pitch - inp.mouseDY * sens * (this.settings.invertY ? -1 : 1)));
+  }
+
+  /** The movement keys held: x strafes (right +), y walks (forward +). The vector is reused. */
+  private moveInput(): THREE.Vector2 {
+    const inp = this.input;
+    let fwd = 0;
+    let side = 0;
+    if (this.down('forward') || inp.down('ArrowUp')) fwd += 1;
+    if (this.down('back') || inp.down('ArrowDown')) fwd -= 1;
+    if (this.down('right') || inp.down('ArrowRight')) side += 1;
+    if (this.down('left') || inp.down('ArrowLeft')) side -= 1;
+    return this.moveDir.set(side, fwd);
+  }
+
+  /**
+   * A plain walk at `pace` of the usual speed: no sprint, no jump, no
+   * stumbling. How you move under the steam.
+   */
+  walk(dt: number, pace: number): void {
+    const { x: side, y: fwd } = this.moveInput();
+    const sy = Math.sin(this.player.yaw);
+    const cy = Math.cos(this.player.yaw);
+    const speed = 5.2 * this.derivedCache.speedMult * pace;
+    this.player.move(this.level, -sy * fwd + cy * side, -cy * fwd - sy * side, speed, false, dt, this.derivedCache.jump);
+    if ((fwd !== 0 || side !== 0) && this.player.onGround) {
+      this.stepIn -= dt * speed;
+      if (this.stepIn <= 0) {
+        this.stepIn = 2.2;
+        sfx.step();
+      }
+    }
+  }
+
+  pause(): void {
+    this.input.releaseLock();
+    screens.showPause(this);
+  }
+
+  // ================================================================== SUO
+
+  /**
+   * A Löyly gain has just been applied (and clamped): does it take you under?
+   * `before` is the meter before the gain, `gain` the gain as offered. Only
+   * the deliberate gains call this - a sauna, a Salmari, a rest; the trickle
+   * and combat never do (and the rule refuses them anyway).
+   */
+  steamOverflow(source: LoylySource, before: number, gain: number): void {
+    const s = this.save;
+    const pp = this.player.pos;
+    let hostileAt = Infinity;
+    for (const a of this.actors) {
+      if (!a.hostile || a.resolved || !a.aggro) continue;
+      hostileAt = Math.min(hostileAt, Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z));
+    }
+    const spent = s.location === 'mokki' ? s.weekend.suo : s.floorState.suo;
+    const r = overflowDecision({ source, before, gain, max: this.derivedCache.maxLoyly, spent, hostileAt });
+    if (r === 'wait') this.hud.toast(SUO_LINES.wait, 'info');
+    if (r === 'go') this.visionDue = true;
+  }
+
+  private startVision(): void {
+    this.visionDue = false;
+    const s = this.save;
+    if (s.location === 'mokki') s.weekend.suo = true;
+    else s.floorState.suo = true;
+    this.prompt = '';
+    this.promptTarget = null;
+    this.hud.mapOpen = false;
+    this.player.crouching = false;
+    this.vision = new Vision(this);
+    this.hitStop = CROSSING_STOP;
+    this.precompile();
+  }
+
+  /** Surface: the world as it was, the blessing if you took its hand, and the saves that waited. */
+  private endVision(how: VisionEnd): void {
+    const v = this.vision;
+    if (v === null) return;
+    this.vision = null;
+    this.lastVisionDiff = v.end(true);
+    this.hitStop = CROSSING_STOP;
+    this.precompile();
+    this.updateLights(true);
+    const s = this.save;
+    if (how === 'blessed') {
+      s.sanity = this.derivedCache.maxSanity;
+      s.suoBlessing = true;
+      this.hud.toast(SUO_LINES.blessed, 'epic');
+      this.journal('Under the steam, something took my hand. I came back lighter.');
+    } else {
+      this.hud.toast(SUO_LINES.leave, 'info');
+    }
+    this.autosaveSoon();
+  }
+
+  /** Cut a vision short without ceremony (a load, a new career, the title screen). */
+  abortVision(): void {
+    const v = this.vision;
+    if (v === null) return;
+    this.vision = null;
+    this.lastVisionDiff = v.end(false);
+  }
+
   /** A bound action pressed this frame. */
   hit(a: Action): boolean {
     return this.input.hit(this.settings.keys[a]);
@@ -1290,6 +1435,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.sisuT > 0) out.push(`🪨 Sisu ${Math.ceil(this.sisuT)}s`);
     if (this.invisT > 0) out.push(`🌫 Unseen ${Math.ceil(this.invisT)}s`);
     if (s.saunaBuff) out.push('🧖 Löyly-blessed (+25% damage)');
+    if (s.suoBlessing) out.push(SUO_LINES.effect);
     if (s.makkara) out.push('🌭 Makkara-fed');
     if (s.hauki) out.push('🐟 Pike supper');
     if (s.palju) out.push('♨ Palju-soaked');
@@ -1637,7 +1783,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const ratio = s.sanity / Math.max(1, d.maxSanity);
     const play = this.screen === 'play' || this.screen === 'dialogue' || this.screen === 'os' || this.screen === 'minigame';
     const sway = BAND_EFFECTS[bandFor(s.bac)].sway;
-    if (s.location === 'mokki') this.moodTint.setRGB(1.04, 1.0, 0.96);
+    if (this.vision !== null) this.moodTint.setRGB(1.1, 0.97, 0.82);
+    else if (s.location === 'mokki') this.moodTint.setRGB(1.04, 1.0, 0.96);
     else if (s.floor % 5 === 0) this.moodTint.setRGB(0.95, 1.0, 1.06);
     else this.moodTint.setRGB(1, 1, 1);
     this.pipeline.setMood({
@@ -1652,7 +1799,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.screen !== 'play') return;
     // Dust in the light, and the white shimmer of the ascended.
     this.dustIn -= dt;
-    if (this.dustIn <= 0 && s.location === 'office' && this.settings.quality !== 'low') {
+    if (this.dustIn <= 0 && s.location === 'office' && this.vision === null && this.settings.quality !== 'low') {
       this.dustIn = 0.3;
       const p = this.player.pos;
       this.particles.emit('dust', new THREE.Vector3(p.x + fx.range(-5, 5), fx.range(0.6, 2.8), p.z + fx.range(-5, 5)), 2, 1.5);
