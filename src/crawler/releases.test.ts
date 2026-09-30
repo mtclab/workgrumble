@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { MemoryStorage } from '../shell/storage';
-import { compareVersions, type ReleaseNote } from '../world/releases';
+import { compareVersions } from '../shared/versions';
+import type { ReleaseNote } from '../world/releases';
 import {
   HELLDESK_RELEASES,
   HELLDESK_SEEN_VERSION_KEY,

@@ -23,30 +23,7 @@
 import type { ReleaseNote } from '../world/releases';
 import { compareVersions, releasesSince } from '../world/releases';
 
-export const SEEN_VERSION_KEY = 'workgrumble/seen-version';
-
-export class VersionSlot {
-  public constructor(
-    private readonly storage: Storage,
-    private readonly key: string = SEEN_VERSION_KEY,
-  ) {}
-
-  public read(): string | null {
-    try {
-      return this.storage.getItem(this.key);
-    } catch {
-      return null;
-    }
-  }
-
-  public write(version: string): void {
-    try {
-      this.storage.setItem(this.key, version);
-    } catch {
-      // A browser that will not remember gets told twice. That is all.
-    }
-  }
-}
+export { SEEN_VERSION_KEY, VersionSlot } from '../shared/versions';
 
 /**
  * The notes to put on screen at boot, given what this browser last saw.

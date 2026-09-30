@@ -18,8 +18,8 @@
  * three cases over this list instead of that one.
  */
 
-import { compareVersions, type ReleaseNote } from '../world/releases';
-import { VersionSlot } from '../shell/updates';
+import { compareVersions, VersionSlot } from '../shared/versions';
+import type { ReleaseNote } from '../world/releases';
 
 /** What this Helldesk build calls itself. The newest note must agree. */
 export const HELLDESK_VERSION = '0.2.0';
