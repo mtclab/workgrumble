@@ -134,6 +134,8 @@ interface TorsoOpts {
   readonly hoodie: boolean;
   /** A comfortable middle, for the bigger people of the office. */
   readonly portly: boolean;
+  /** A tonttu's plain woollen tunic: no buttons, no pockets. */
+  readonly tunic: boolean;
 }
 
 /**
@@ -191,7 +193,7 @@ function sculptTorso(t: TorsoOpts): Vox {
       decal(g, S.SHIRT, x, x + 0.25, 30.4, SHOULDER + 0.95, 0.07);
       decal(g, S.BUTTON, x - 0.04, x + 0.29, 30.0, 30.45, 0.1);
     }
-  } else if (!t.tie && !t.cardigan) {
+  } else if (!t.tie && !t.cardigan && !t.tunic) {
     // A button placket and a breast pocket.
     decal(g, S.SEAM, -0.14, 0.14, WAIST + 0.1, 25.95, 0.03);
     decal(g, S.SEAM, -0.14, 0.14, 26.05, SHOULDER - 0.05, 0.03);
@@ -282,8 +284,9 @@ interface HeadOpts {
  */
 function skull(g: Vox, ears: boolean): void {
   const c = CHIN;
-  g.box(S.SKIN, -3, 3, c + 1, c + 5, -3, 3, 1);
+  g.box(S.SKIN, -3, 3, c + 2, c + 5, -3, 3, 1);
   g.box(S.SKIN, -2, 2, c + 6, c + 6, -2, 2, 1);
+  g.box(S.SKIN, -2, 2, c + 1, c + 1, -3, 3, 1);
   g.box(S.SKIN, -2, 2, c, c, -2, 3);
   if (!ears) return;
   g.box(S.SKIN, -4, -4, c + 2, c + 3, 0, 0).box(S.SKIN, 4, 4, c + 2, c + 3, 0, 0);
@@ -397,8 +400,7 @@ function sculptHead(h: HeadOpts): Vox {
     }
     for (const i of [-4, 4]) {
       for (let j = c + 4; j < side; j++) g.set(i, j, 0, S.GEAR);
-      g.box(S.GEAR, i, i, c + 1, c + 3, -1, 1);
-      g.set(i, c + 1, -1, 0).set(i, c + 1, 1, 0).set(i, c + 3, -1, 0).set(i, c + 3, 1, 0);
+      g.box(S.GEAR, i, i, c + 2, c + 3, -1, 1);
       g.set(i + Math.sign(i), c + 2, 0, S.GEAR_HI);
     }
     g.detail(S.GEAR, 4.45, 4.7, c + 1.4, c + 1.65, 0.4, 3.8);
@@ -638,7 +640,7 @@ let canon: Vox[] | null = null;
 function canonical(): Vox[] {
   canon ??= [
     sculptLeg(-1), sculptLeg(1),
-    sculptTorso({ tie: false, suit: false, lanyard: false, cardigan: false, backpack: false, hoodie: false, portly: false }),
+    sculptTorso({ tie: false, suit: false, lanyard: false, cardigan: false, backpack: false, hoodie: false, portly: false, tunic: false }),
     sculptArm(-1, false), sculptArm(1, false),
     sculptHead({ style: 'bald', glasses: false, headset: false, beard: false, variant: 0 }),
   ];
@@ -693,9 +695,10 @@ function suited(o: Outfit): boolean {
   return o.tie !== undefined && luminance(o.top) < 0.35;
 }
 
-/** Shoes when the outfit names none: polish with a suit, otherwise a mix. */
+/** Shoes when the outfit names none: polish with a suit, boots on a tonttu, otherwise a mix. */
 function defaultShoes(o: Outfit): number {
   if (suited(o)) return 0x1d1917;
+  if (o.hairStyle === 'tonttu') return 0x3a2618;
   const pick = [0x2a211c, 0x5b3a24, 0x39404c, 0xd9d4ca];
   return pick[((o.top >>> 4) ^ (o.legs >>> 2) ^ o.skin) & 3] ?? 0x2a211c;
 }
@@ -914,8 +917,9 @@ export function buildRig(o: Outfit): Rig {
     backpack: o.backpack !== undefined,
     hoodie: style === 'hood',
     portly: (o.scale ?? 1) >= 1.12,
+    tunic: style === 'tonttu',
   };
-  mesh(`torso${+t.tie}${+t.suit}${+t.lanyard}${+t.cardigan}${+t.backpack}${+t.hoodie}${+t.portly}`, TORSO, () => sculptTorso(t), body);
+  mesh(`torso${+t.tie}${+t.suit}${+t.lanyard}${+t.cardigan}${+t.backpack}${+t.hoodie}${+t.portly}${+t.tunic}`, TORSO, () => sculptTorso(t), body);
 
   const arms: THREE.Group[] = [];
   let hand = new THREE.Group();
